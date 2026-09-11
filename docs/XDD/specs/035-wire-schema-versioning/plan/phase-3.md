@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Version integrity and document identity"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -35,7 +35,7 @@ phase: 3
 
 Removes two ways the mechanism could be defeated from underneath.
 
-- [ ] **T3.1 Renderers read their version instead of declaring it** `[parallel: true]` `[activity: backend-api]`
+- [x] **T3.1 Renderers read their version instead of declaring it** `[parallel: true]` `[activity: backend-api]`
 
   Today each renderer writes a free string literal. Nothing ties it to the schema it claims to
   conform to, so a bump can land in one and not the other, in either direction.
@@ -61,7 +61,7 @@ Removes two ways the mechanism could be defeated from underneath.
      - [ ] Every producer agrees with its schema `[ref: PRD/F3-AC2]`
      - [ ] Divergence in **either** direction is caught by the regression guard `[ref: PRD/F3-AC3]`
 
-- [ ] **T3.2 The two instruction documents stop sharing an identity** `[parallel: true]` `[activity: data-architecture]`
+- [x] **T3.2 The two instruction documents stop sharing an identity** `[parallel: true]` `[activity: data-architecture]`
 
   Both declare `$id` `https://miyo.tomo/schemas/instructions.schema.json` with identical title and
   description, while differing structurally — the contract carries a `replace_section` definition the
@@ -84,7 +84,7 @@ Removes two ways the mechanism could be defeated from underneath.
      - [ ] Each states its role `[ref: PRD/F5-AC2]`
      - [ ] The parity check still passes `[ref: PRD/F5-AC3]`
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean.
   - Confirm the emitted `schema_version` values are unchanged in all three documents — this phase

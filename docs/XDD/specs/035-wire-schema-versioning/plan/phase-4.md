@@ -198,6 +198,25 @@ from day one.
   `SuggestionsTab.ts:180-181` (`collectDailyLogStems`), with the same key and the same fan-out.
   Found while researching this spec.
 
+  **Carry-forward from T3.2 — the producer copy's `$id` moved.** Phase 3 gave
+  `tomo/schemas/instructions.schema.json` a distinct `$id`
+  (`https://miyo.tomo/schemas/instructions-producer.schema.json`); the Hashi-facing mirror
+  `hashi-instructions.schema.json` kept the canonical
+  `https://miyo.tomo/schemas/instructions.schema.json`, unchanged and byte-identical.
+
+  This is **not** a wire change and it does not move any `schema_version` — `describe_shape` never
+  records `$id`, title or description (the ADR-2 boundary), so the gate is correctly silent on it and
+  no manifest was regenerated. It is named in the handoff anyway, for one reason: the two documents
+  previously shared one identity, which is the mechanical cause of the consumer diffing the wrong
+  file and reporting drift that did not exist. Telling them the collision is gone lets them drop any
+  workaround built around it.
+
+  **The one thing to ask them**, because it cannot be verified from this repo: whether anything on
+  their side resolves our producer copy by its `$id` rather than by file path. Inside Tomo every
+  consumer keys on the filename and the URL occurred in exactly two places, both `$id` declarations
+  — verified by search. Their repository is outside our visibility, and a matcher keyed on `$id`
+  rather than path is the only way this change could break something no test here covers.
+
 - [ ] **T4.4 After confirmation: refresh, prove clean, integrate** `[activity: validate]`
 
   **Blocked on the owner returning with the consumer's confirmation. Do not begin otherwise.**

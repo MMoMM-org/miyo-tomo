@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_035_t4_2b_daily_source_identity.py — spec 035 Phase 4, T4.2b: the
 daily side gains its source identity.
 
@@ -50,6 +50,16 @@ signal at all until Hashi's editor rejected it downstream, with nothing
 pointing back at the cause. It now raises `ValueError` at render time
 instead, naming the day, bucket, discriminating value, and the likely
 cause — see the "fails loudly" tests below.
+
+**Follow-up (review round 2):** that raise's first cut named the offending
+`log_entries` entry with its own `content` field — the note's actual text —
+inside the exception message, violating MiYo Constitution L2 (operation
+traces are metadata-only, never note content). Fixed by giving each bucket
+a METADATA-ONLY locator (`_DAILY_LOCATOR_FIELD` in suggestions-render.py:
+`field` for trackers, `source_stem` for log_entries, `target_stem` for
+log_links — never `content`); guarded here with a deliberately
+sensitive-sounding fixture string so a regression back to `content` fails
+loudly on realistic input.
 
 Spec: docs/XDD/specs/035-wire-schema-versioning/
 Ref:  PRD Feature 9 (F9-AC1..AC5), ADR-5 (schema_version read via
@@ -260,7 +270,18 @@ def test_ambiguous_entries_still_resolve_to_their_own_key_by_construction():
 # suggestions-doc.json from a reducer older than 2026-09-06 carries no
 # source_item_key on daily_notes_updates at all — the join must raise, never
 # write None, fall back to source_stem, or silently drop the entry.
+#
+# Constitution guard (review round 2, L2 Privacy & Security): the raised
+# message names an entry using a METADATA-ONLY locator per bucket — never
+# `log_entries[].content`, which is the note's own text, not metadata. The
+# fixture below uses a deliberately sensitive-sounding sentence specifically
+# so a regression (the locator reverting to `content`) would make this test
+# fail loudly on real-looking content, not on a bland placeholder that could
+# pass for the wrong reason.
 # ──────────────────────────────────────────────────────────────────────────────
+
+_SENSITIVE_LOG_ENTRY_CONTENT = "Therapiesitzung: über die Trennung gesprochen"
+
 
 def _stale_daily(bucket: str) -> list[dict]:
     """One day, one entry in `bucket`, with NO `source_item_key` on the
@@ -274,7 +295,7 @@ def _stale_daily(bucket: str) -> list[dict]:
                               "source_stem": "Dresden", "source_section": "S01"}]
     elif bucket == "log_entries":
         base["log_entries"] = [{"time": None, "position": "after_last_line",
-                                 "content": "wrote about Dresden", "reason": "r",
+                                 "content": _SENSITIVE_LOG_ENTRY_CONTENT, "reason": "r",
                                  "source_stem": "Dresden", "source_section": "S01"}]
     else:
         base["log_links"] = [{"target_stem": "Frauenkirche", "time": None,
@@ -283,24 +304,47 @@ def _stale_daily(bucket: str) -> list[dict]:
     return [base]
 
 
-@pytest.mark.parametrize("bucket,discriminator_value", [
+@pytest.mark.parametrize("bucket,locator_value", [
     ("trackers", "field='Sport'"),
-    ("log_entries", "content='wrote about Dresden'"),
+    ("log_entries", "source_stem='Dresden'"),
     ("log_links", "target_stem='Frauenkirche'"),
 ])
-def test_missing_source_item_key_raises_naming_bucket_and_stem(bucket, discriminator_value):
+def test_missing_source_item_key_raises_naming_bucket_and_stem(bucket, locator_value):
     with pytest.raises(ValueError) as excinfo:
         render.build_wire_payload(_doc(_stale_daily(bucket)))
     message = str(excinfo.value)
     assert bucket in message, message
     assert "2026-09-11" in message, message
-    assert discriminator_value in message, message
+    assert locator_value in message, message
     assert "2026-09-06" in message, (
         "the message must name the reducer-change date, so a maintainer can "
         f"tell a stale doc from any other cause: {message}"
     )
     assert "re-run" in message.lower() and "reducer" in message.lower(), (
         f"the message must say what to do: {message}"
+    )
+    # The guard itself: no bucket's message may ever carry note content —
+    # log_entries is the only bucket that HAS content to leak, so it is the
+    # only one this specific string could appear in, but the assertion runs
+    # for every bucket rather than special-casing log_entries.
+    assert _SENSITIVE_LOG_ENTRY_CONTENT not in message, (
+        f"note content leaked into an exception message (MiYo Constitution "
+        f"L2, Privacy & Security — operation traces are metadata-only): {message}"
+    )
+
+
+def test_log_entries_content_never_appears_in_the_message():
+    """Dedicated guard for the exact violation found in review: the message
+    for a log_entries failure must name the entry WITHOUT ever quoting its
+    own text. Kept separate from the parametrized test above so this
+    specific guarantee cannot be silently dropped by editing the shared
+    parametrize list."""
+    with pytest.raises(ValueError) as excinfo:
+        render.build_wire_payload(_doc(_stale_daily("log_entries")))
+    message = str(excinfo.value)
+    assert _SENSITIVE_LOG_ENTRY_CONTENT not in message, message
+    assert "content=" not in message, (
+        f"the message must not even label a content value, leaked or not: {message}"
     )
 
 

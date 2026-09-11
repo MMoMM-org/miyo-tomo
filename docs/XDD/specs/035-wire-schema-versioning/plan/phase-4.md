@@ -153,7 +153,7 @@ from day one.
      - [ ] The display field is unchanged `[ref: PRD/F9-AC3]`
      - [ ] The lossy recovery is retired `[ref: PRD/F9-AC4]`
 
-- [ ] **T4.3 One handoff for the whole release — then STOP** `[activity: validate]`
+- [x] **T4.3 One handoff for the whole release — then STOP** `[activity: validate]`
 
   **This handoff carries the entire release, not just the garden-audit half.** The consumer asked
   for one changed-fields list and one vendoring pass; three separate handoffs for one release is the

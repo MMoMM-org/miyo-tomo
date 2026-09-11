@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.9.1
+# version: 0.9.2
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -360,9 +360,16 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
 
     old_properties = old.get("properties") or {}
     new_properties = new.get("properties") or {}
-    for name in sorted(set(new_properties) - set(old_properties)):
+    # Named once, reused below by the values loop — a property whose
+    # PRESENCE flipped this edit (wholly added or wholly removed) is
+    # excluded from per-value enum diffing there. See "WHY a Property's Own
+    # Enum Values Are Suppressed When the Property Itself Was Added or
+    # Removed" in docs/tomo/scripts/lib/wire_shape.md.
+    added_property_names = set(new_properties) - set(old_properties)
+    removed_property_names = set(old_properties) - set(new_properties)
+    for name in sorted(added_property_names):
         changes.append(_change(pointer, ADDED_PROPERTY, f"added property: {name}"))
-    for name in sorted(set(old_properties) - set(new_properties)):
+    for name in sorted(removed_property_names):
         changes.append(_change(pointer, REMOVED_PROPERTY, f"removed property: {name}"))
     for name in sorted(set(old_properties) & set(new_properties)):
         if old_properties[name] != new_properties[name]:
@@ -397,6 +404,20 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
     old_values = old.get("values") or {}
     new_values = new.get("values") or {}
     for name in sorted(set(old_values) | set(new_values)):
+        # A property whose presence itself just flipped (wholly added or
+        # wholly removed above) is already reported once, as
+        # added_property/removed_property. Its enum, if it has one, is not
+        # an independent fact for either direction: for an added property
+        # the consumer's older copy has no declaration for this name at
+        # all, so there is no enum on their side for a value to violate;
+        # for a removed property nothing downstream can violate a
+        # constraint on a field that no longer exists. Decomposing further
+        # into per-value added_enum_value/removed_enum_value would be
+        # redundant at best (removed case) and actively wrong at worst
+        # (added case, where it implies the consumer validates a property
+        # it has never heard of) — see docs/tomo/scripts/lib/wire_shape.md.
+        if name in added_property_names or name in removed_property_names:
+            continue
         # Keyed on _value_sort_key, NOT on the raw values themselves. A
         # bare `set(values)` uses Python equality/hash, where `1 == True`
         # and `hash(1) == hash(True)` (bool is an int subtype) — an enum

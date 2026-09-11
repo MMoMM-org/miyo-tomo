@@ -311,6 +311,103 @@ and the two regression tests
 (`test_list_valued_type_is_sorted`,
 `test_list_valued_type_is_a_copy_not_an_alias`).
 
+## WHY a Property's Own Enum Values Are Suppressed When the Property Itself Was Added or Removed (out-of-band fix, 2026-09-11)
+
+Measured on the real live wire, before this fix: diffing
+`garden-audit-wire.schema.json` against the consumer's vendored copy
+(`hashi-garden-audit-wire.schema.json`) produced six changes, four flagged
+`consumer_affecting`. Three of the four were `added_enum_value` entries on
+`up_source` — a property the consumer's vendored copy does not declare AT
+ALL, on an open node, where a bare `added_property` was already emitted and
+already correctly classified `False` (Rule 1/2 — an added field on an open
+node is a subset of what they already accept). Only one of the four was
+genuinely affecting: a new value added to `check`, a property that exists
+on BOTH sides. The mechanism was over-reporting 3:1 on its own governing
+example — the exact failure PRD/Supporting Research names explicitly: "a
+detector whose report is never empty is one nobody reads."
+
+**Why this was wrong, not merely noisy.** `classify`'s `ADDED_ENUM_VALUE`
+rule ("Rule 3/class 5") reasons: the producer is now emitting a value the
+consumer's OLDER, SMALLER accepted set does not include, so their validator
+rejects it. That reasoning presupposes the consumer HAS an enum for this
+property to reject against — true when the property exists on both sides
+(the `check` case), false when the property is new. A validator cannot
+reject a value of a property it never validates in the first place; a
+consumer with `additionalProperties: true` and no declaration for `up_source`
+at all does not "reject the new enum value `frontmatter`" — it ignores the
+whole property, value included, exactly as `added_property`'s own `False`
+verdict on the open node already says. `added_enum_value` firing anyway was
+answering a question that does not apply to a property the consumer has
+never declared.
+
+**Where the fix lives, and why not in `classify`.** `classify(change,
+observed)` receives only the `observed` side (SDD signature, see "WHY
+`classify` Never Takes `recorded`" below) — it cannot tell "this property is
+new" from "this property has always been here," because that fact is a
+property of the DIFFERENCE between `recorded` and `observed`, not of
+`observed` alone. `_diff_node` is the one place both still exist side by
+side at the point the kind is chosen — same reasoning, same precedent as
+`required_added`/`required_removed` needing to be decided there rather than
+re-derived later. The fix computes `added_property_names`/
+`removed_property_names` once (reusing the same set-differences the
+`added_property`/`removed_property` loop already computes) and skips any
+`name` in either set when building the `values` diff, so no
+`added_enum_value`/`removed_enum_value` change is ever constructed for a
+property whose presence itself just flipped in this same diff.
+
+**This is the same "reported once" principle `node_added`/`node_removed`
+already apply one level up** (see "WHY `node_added`/`node_removed` Are
+Reported Once, Never Decomposed" above) — a property that appears or
+disappears wholesale is one fact, not N. The precedent there was cited as
+the direction for this fix and holds up under inspection: both are cases
+where the outer fact (a whole node's presence, a whole property's presence)
+fully subsumes everything that could be said about its contents, and
+decomposing further multiplies one fact into several without adding
+information a consumer needs.
+
+**Scoped to the property that moved, not to every enum change in the same
+diff — verified, not assumed.**
+`test_new_property_enum_suppression_does_not_swallow_an_unrelated_widened_enum`
+in `tests/test_035_wire_diff.py` is the regression guard against
+over-correcting into silence, which would be strictly worse than the
+original over-reporting: a missed obligation breaks the consumer silently,
+a false one only wastes a round trip. The fixture puts a genuinely-widened
+enum on an EXISTING property (`a`) in the same diff as a brand-new property
+with its own enum (`b`) and asserts `a`'s widened value is still reported
+(and still affecting, per the unchanged `test_added_and_removed_enum_value_classify_oppositely`
+in `tests/test_035_wire_classify.py`) while `b`'s enum produces nothing.
+
+**Closed-node case, decided and tested — the suppression is NOT conditional
+on openness.** A new property on a CLOSED node makes `added_property` itself
+affecting (Rule 1: an undeclared key is rejected by
+`additionalProperties: false` outright), but its enum values are STILL
+suppressed
+(`test_new_property_with_enum_on_closed_node_still_collapses_to_added_property_only`).
+The reasoning is the same "who validates against this fact" test the rest
+of `classify` uses: a closed node's validator rejects an unknown key on
+PRESENCE alone, before validation would ever reach a value-level enum check
+against a key it doesn't declare. The enum contributes no fact beyond what
+`added_property` already carries, on an open node OR a closed one.
+
+**Removed-property case, decided and tested — same suppression, checked
+against the consumer's actual exposure rather than assumed as a mirror
+image.** A property removed outright takes its enum with it
+(`test_removed_property_with_enum_collapses_to_removed_property_only`).
+Removal and addition are NOT mirror images of each other in general on this
+wire (see `required_added` vs `required_removed` above, which classify
+oppositely) — so this was checked, not assumed. Checked and found genuinely
+symmetric here for a different reason than `required`'s asymmetry: whether
+the consumer's OLDER copy still has an enum declared for the removed
+property is irrelevant, because the field is now simply never emitted at
+all, and a document missing an optional field always validates regardless
+of what constraint an unvisited field's schema entry carries. Unlike
+`added_enum_value` (which was actually giving a WRONG answer for a new
+property), `removed_enum_value` was already classifying `False` in every
+case — this suppression removes redundant lines from the report, it does
+not correct a misclassification the way the added-side fix does. Both are
+included for the same "reported once" consistency, not because both were
+equally broken.
+
 ## WHY the Return Value Is the Nodes Map, Not the Manifest Entity
 
 The SDD's `ShapeManifest` entity carries `schema_version` and `source`

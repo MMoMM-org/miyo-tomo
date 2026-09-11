@@ -394,6 +394,107 @@ def test_node_missing_values_key_entirely_degrades_correctly():
     assert "open" in changes[0]["detail"]
 
 
+def test_new_property_with_enum_on_open_node_collapses_to_added_property_only():
+    # A property that did not exist before has no counterpart in the
+    # consumer's vendored schema at all -- there is no enum on their side
+    # for a value to violate. `added_property` (not affecting here, the
+    # node is open) already carries the whole fact; decomposing the new
+    # property's enum into per-value `added_enum_value` entries is not
+    # just redundant, it is WRONG -- it implies the consumer validates a
+    # property it has never heard of. Same "reported once" principle
+    # node_added/node_removed already apply one level up (see
+    # docs/tomo/scripts/lib/wire_shape.md).
+    recorded = {"": _node(closed=False, properties={"a": "string"})}
+    observed = {
+        "": _node(
+            closed=False,
+            properties={"a": "string", "b": "string"},
+            values={"b": ["x", "y"]},
+        ),
+    }
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "added_property"
+    assert not any(c["kind"] == "added_enum_value" for c in changes)
+
+
+def test_new_property_with_enum_on_closed_node_still_collapses_to_added_property_only():
+    # A closed node rejects an undeclared key on PRESENCE alone
+    # (additionalProperties: false) -- not on the value it holds. So even
+    # though `added_property` itself IS affecting here (unlike the open-node
+    # case above), the new property's enum values still add no incremental
+    # fact a consumer needs: rejection already happens before validation
+    # ever reaches the enum. The suppression is not conditional on openness.
+    recorded = {"": _node(closed=True, properties={"a": "string"})}
+    observed = {
+        "": _node(
+            closed=True,
+            properties={"a": "string", "b": "string"},
+            values={"b": ["x", "y"]},
+        ),
+    }
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "added_property"
+    assert not any(c["kind"] == "added_enum_value" for c in changes)
+
+
+def test_removed_property_with_enum_collapses_to_removed_property_only():
+    # Mirror of the added case: a property removed outright takes its enum
+    # with it. Nothing downstream can violate a constraint on a field that
+    # no longer exists at all on either side -- `removed_property` (and, if
+    # the field was required, the separate `required_removed` change)
+    # already carries the whole fact. Not a blind assumption of symmetry:
+    # `removed_enum_value` always classifies as not-affecting regardless
+    # (the producer now emits a subset of what the consumer's older,
+    # wider-enum copy already accepted), same as it would if left
+    # unsuppressed -- the fix here is about eliminating redundant noise,
+    # not about correcting a classification.
+    recorded = {
+        "": _node(
+            closed=False,
+            properties={"a": "string", "b": "string"},
+            values={"b": ["x", "y"]},
+        ),
+    }
+    observed = {"": _node(closed=False, properties={"a": "string"})}
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "removed_property"
+    assert not any(c["kind"] == "removed_enum_value" for c in changes)
+
+
+def test_new_property_enum_suppression_does_not_swallow_an_unrelated_widened_enum():
+    # The regression guard against over-correcting into silence: suppression
+    # must be scoped to the property that was actually added/removed in
+    # THIS diff, not to every added_enum_value present alongside it. `a`
+    # already existed on both sides and widens its own enum -- that must
+    # stay reported, with its value, exactly as before. `b` is brand new --
+    # its enum values must not appear at all.
+    recorded = {"": _node(closed=False, properties={"a": "string"}, values={"a": ["open"]})}
+    observed = {
+        "": _node(
+            closed=False,
+            properties={"a": "string", "b": "string"},
+            values={"a": ["closed", "open"], "b": ["x"]},
+        ),
+    }
+
+    changes = diff_shapes(recorded, observed)
+
+    kinds_and_details = [(c["kind"], c["detail"]) for c in changes]
+    assert ("added_enum_value", "a: added value 'closed'") in kinds_and_details
+    assert any(c["kind"] == "added_property" and "b" in c["detail"] for c in changes)
+    assert not any(c["kind"] == "added_enum_value" and c["detail"].startswith("b:") for c in changes)
+    assert len(changes) == 2
+
+
 def test_const_widened_to_enum_reports_only_the_added_values():
     # Phase 1 records `const: "open"` as `["open"]` (wire_shape.md, "WHY
     # enum/const Are Recorded"). Widening to `enum: ["open", "closed"]`

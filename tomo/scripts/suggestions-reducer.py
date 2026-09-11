@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.46.0
+# version: 1.46.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -2075,6 +2075,14 @@ def main() -> int:
                 daily_stem = _daily_note_stem(action.get("daily_note_path", "") or action.get("date", ""))
                 if daily_stem:
                     if daily_stem not in daily_groups:
+                        # One entry per daily_stem (a date is unique per run), and
+                        # every tracker/log_entry/log_link below is APPENDED, never
+                        # reordered or dropped. suggestions-render.py's
+                        # _join_daily_source_item_keys (spec 035 F9) depends on both
+                        # of those: it joins this list POSITIONALLY against
+                        # render_daily_notes_updates_block's rendering of it — a
+                        # reorder, a dedup, or a suppression skip here would
+                        # silently mis-pair an entry with the wrong source_item_key.
                         daily_groups[daily_stem] = {
                             "daily_note_stem": daily_stem,
                             "exists": True,

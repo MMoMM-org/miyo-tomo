@@ -361,33 +361,87 @@ A separate field lets identity and display coexist —
 `instructions-diff.derive_expected` prefers `item_key` and falls back to
 `source_path`, so the markdown path (which mints no `item_key`) is unaffected.
 
-## Daily-Entry Identity Is Recovered From the Doc, Never Carried in the Wire (spec 034 T5.0)
+## Daily-Entry Identity, Part 1: The Plain-Markdown Path Recovers From the Doc, By Content (spec 034 T5.0; narrowed spec 035 T4.2b)
 
-WHY `enrich_daily_updates_with_item_keys` exists, and why it runs on BOTH
-parser paths rather than the key simply riding in the wire:
+WHY `enrich_daily_updates_with_item_keys` exists, and why — as of spec 035
+F9 — it serves only the plain-markdown parse path now:
 
 A daily-only item — one whose content is fully captured in a daily note —
 produces no per-item section, so the rendered document shows it only as a
 daily-note entry with a bare display stem. Pass 2 nonetheless emits a
-`delete_source` for it, so its identity has to survive the round trip through
-markdown or that delete names a path composed from the inbox root.
+`delete_source` for it, so its identity has to survive somehow. Originally
+(spec 034 T5.0) the wire could not carry it at all: the wire's daily entries
+were `additionalProperties: false` and the wire is the Hashi Suggestions
+Editor's contract, so widening it needed a coordinated cross-repo change —
+that change is spec 035 F9, described in Part 2 below. Until then, the key
+was recovered from `suggestions-doc.json` (Tomo-owned) on BOTH parser paths:
+`main()` did it after `parse_daily_updates`, and the now-retired
+`_restore_daily_item_keys` did it after `build_from_wire` (see Part 2 for
+its retirement).
 
-The obvious fix — put `source_item_key` in the wire — is not available. The
-wire's daily entries are `additionalProperties: false` and the wire is the
-Hashi Suggestions Editor's contract, so widening it is a coordinated cross-repo
-change (MiYo Constitution: cross-component interface changes are recorded in
-Kokoro first). The key is therefore recovered from `suggestions-doc.json`,
-which is Tomo-owned, on both paths: `main()` does it after
-`parse_daily_updates`, and `_restore_daily_item_keys` does it after
-`build_from_wire`. One mechanism, no wire change.
+The recovery joins on daily-note stem + bucket + the entry's own
+discriminating field (tracker name / log content / link target), NOT on
+position — and this reasoning still holds for THIS mechanism, which is
+exactly why it survives F9 for the plain-markdown path: that path parses
+TEXT A HUMAN MAY HAVE HAND-EDITED. A user who deletes a line from the
+rendered document shifts every subsequent entry; a positional join across
+that edit boundary would silently rebind a surviving entry's key to the
+wrong note. Matching on content sidesteps that, because content survives a
+deletion elsewhere in the document while position does not. A discriminator
+that maps to more than one distinct key is left UNSET rather than guessed —
+an absent key falls back to the reconstruction, which may be wrong; a
+guessed key names a specific wrong note, which is worse.
 
-The join is on daily-note stem + bucket + the entry's own discriminating field
-(tracker name / log content / link target), not on position: a user who deletes
-a line from the document would shift every subsequent entry, and a positional
-join would then silently rebind keys to the wrong notes. A discriminator that
-maps to more than one distinct key is left UNSET rather than guessed — an
-absent key falls back to the reconstruction, which may be wrong; a guessed key
-names a specific wrong note, which is worse.
+## Daily-Entry Identity, Part 2: The Wire Now Carries It, By A Positional Join (spec 035 F9 / T4.2b)
+
+F9 widened the wire itself: `source_item_key` is now required on all three
+daily buckets, including `log_links` — the one bucket that had never
+carried any identity at all (it does now; see the separate WHY doc note on
+the `RE_DAILY_LOG_LINK_LINE` parsing fix this required).
+`suggestions-render.build_wire_payload` populates it with
+`_join_daily_source_item_keys`, which joins the parsed-markdown daily
+buckets **positionally** against the structured `daily_notes_updates` block
+that markdown was rendered from.
+
+WHY positional is safe HERE, when Part 1 just said positional is unsafe for
+the discriminator-recovery mechanism: the two mechanisms sit on opposite
+sides of a human-edit boundary. `_join_daily_source_item_keys` runs inside
+ONE render call, joining two things both freshly derived from the SAME
+`suggestions-doc.json` in that SAME call — the parsed markdown
+(`pm.parse_daily_updates(d["rendered_daily_updates_md"])`) and the
+structured source it was rendered from a moment earlier
+(`d["daily_notes_updates"]`). No human ever sees or edits either list in
+between. Verified by reading `suggestions-reducer.py`:
+`render_daily_notes_updates_block` (lines ~730-842) renders every tracker /
+log_entry / log_link of every day unconditionally, in list order — no
+filter, no dedup, no suppression skips one — and the loop building
+`daily_groups` (lines ~1873-2274; the `daily_groups[daily_stem] = {...}`
+construction around line 2078 carries its own cross-reference comment now)
+only ever appends, never reorders. `parse_daily_updates` recovers the same
+entries, from that same rendered text, in that same order. Two entries
+sharing an identical discriminating value in the same bucket on the same
+day — the exact case Part 1's recovery has to decline — still resolve
+correctly here, because position, not content, is what's compared, and
+position is exactly what the two sides agree on by construction.
+
+WHY this doesn't quietly reintroduce Part 1's failure mode: "position is an
+assumption" is still true here too — it depends on `daily_groups`'s
+construction never changing to drop, reorder, or dedup an entry. What
+changed is what happens when that assumption is violated.
+`_join_daily_source_item_keys` guards length and absence explicitly: a day
+or bucket missing from `daily_notes_updates` entirely, or shorter than the
+parsed list, raises `ValueError` — naming the day, the bucket, and a
+metadata-only locator (never `log_entries[].content`; MiYo Constitution L2)
+— instead of silently mis-pairing an entry with the wrong key or writing
+`None`. So the assumption's failure mode moved from "silent, possibly
+wrong" to "loud, at render time, before anything reaches the vault" — the
+same shift F9-AC4 made to the lossy recovery it retired.
+
+`_restore_daily_item_keys` — the wire-round-trip recovery this section used
+to also describe — is RETIRED. `build_from_wire`'s verbatim passthrough now
+reproduces `source_item_key` with no restore step, because the wire itself
+carries it. `enrich_daily_updates_with_item_keys` (Part 1) is unchanged and
+now has exactly one remaining caller: the plain-markdown parse path.
 
 ## `item_key` on `skipped_items` (spec 034 T5.0)
 
@@ -741,10 +795,11 @@ WHY the whole call site moved, not just the item-key lookup: `load_doc_anchor_ma
 (proposed-MOC members) and the daily-updates enrichment all read the SAME
 resolved path, so all four were binding a fan document against the primary
 document. One variable — renamed `_own_doc_path`, because it is no longer the
-primary one — fixes all four. `_restore_daily_item_keys` and the moc-proposal
-`_parent_marker_from_doc` branch are threaded the same way for uniformity;
-neither changes behaviour, since a moc-proposal document is absent from the
-table.
+primary one — fixes all four. `_restore_daily_item_keys` (since retired —
+spec 035 F9/T4.2b, see "Daily-Entry Identity, Part 2" above) and the
+moc-proposal `_parent_marker_from_doc` branch were threaded the same way for
+uniformity; neither changed behaviour at the time, since a moc-proposal
+document is absent from the table.
 
 WHY no defensive test for a WRONG key: both documents number their sections
 independently, so an `S01` can collide across them when a stale

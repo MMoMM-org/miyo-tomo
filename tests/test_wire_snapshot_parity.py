@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -667,10 +667,13 @@ class TestVendoredCopies:
         test exists to surface, per its own instruction the last time it
         was measured (then: zero changes) to update the assertion to the
         newly measured delta rather than treat the failure as a defect in
-        `snapshot_parity_delta`. The delta stays UNTIL Hashi re-vendors —
-        the owner's explicit decision (docs/XDD/specs/035-.../requirements.md
-        F9 note) was to land this now and suspend /inbox runs until they
-        confirm, not to make this comparison quietly agree in the meantime.
+        `snapshot_parity_delta` itself. The delta stays UNTIL Hashi re-vendors:
+        requirements.md's Rule 7 ("A consumer-affecting change is not emitted
+        until the consumer confirms") and the 2026-09-09 "one strict wire, no
+        compatibility window" decision (requirements.md's Won't-Have list —
+        the consumer declined a dual-emit path) are why this comparison must
+        not be made to quietly agree in the meantime; there is nothing to
+        fall back to if it did.
         """
         recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(

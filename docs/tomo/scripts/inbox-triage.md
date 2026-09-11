@@ -72,8 +72,15 @@ items surfaced in `build_from_wire`'s `pending_fan_resolutions` but nothing
 consumed them, so they were silently dropped (neither created nor resolved).
 
 `_load_edited_wire` mirrors `suggestion-parser.load_changed_wire` (present +
-schema_version "1" + digest mismatch) so triage and Pass-2 agree on whether the
-JSON is authoritative. When edited, `_extract_fan_items_from_wire` reads the
+current schema_version + digest mismatch) so triage and Pass-2 agree on
+whether the JSON is authoritative. "Current" is read from the schema itself
+via `wire_schema_version("suggestions-wire.schema.json")` (ADR-5), not a
+literal — both acceptors hardcoded `!= "1"` until spec 035 F9 moved the
+version to "2" and found it: T3.1 had moved every EMITTER off a
+schema_version literal but missed these two ACCEPTORS, which would have
+silently rejected every real edited wire as "unknown version" and fallen
+back to markdown the moment the version bump landed. When edited,
+`_extract_fan_items_from_wire` reads the
 force-atomic set from the JSON (suppressed `force_atomic` suggestions + daily
 `force_atomic_note` log entries, deduped by stem) and the markdown body is ignored
 entirely — the JSON flow behaves exactly like the markdown flow. Unedited/absent

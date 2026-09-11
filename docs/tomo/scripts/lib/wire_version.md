@@ -56,6 +56,36 @@ intent (a maintainer sees the same kind of error either way) without
 inheriting the import-time raise that would have made this module
 untestable.
 
+## WHY `const` Is Type-Checked Before It's Returned
+
+`schema["properties"]["schema_version"]["const"]` returns whatever JSON value
+sits there — code review (2026-09-11) pointed out that nothing stopped a
+schema declaring `"const": 2` or `"const": null` from flowing straight into
+a renderer's wire payload with no exception, despite the function's own
+docstring and `-> str` annotation. This cannot happen against any schema
+committed under `tomo/schemas/` today (every `const` there is a string), but
+the consequence if it ever did is specific rather than cosmetic: Hashi's
+validator enforces `schema_version` as a string const, so an integer or null
+on the wire is rejected at apply for the whole instruction set — the exact
+cross-repo divergence this spec exists to prevent, one layer below where the
+rest of spec 035 is looking. `wire_schema_version()` raises `TypeError`
+rather than coercing with `str(const)`: coercion would silently manufacture
+a value nobody declared and mask the schema authoring error instead of
+surfacing it.
+
+## WHY Malformed JSON Is Caught and Re-Raised, Not Left Bare
+
+A schema file that exists but isn't valid JSON used to raise a bare
+`json.JSONDecodeError` — a real exception, so nothing crashed silently, but
+its message (`"Expecting value: line 1 column 1 (char 0)"`) never names
+`schema_path`. Both of this function's other two failure modes (missing
+file, missing `properties.schema_version.const`) are caught and re-raised
+naming the resolved path; the JSON-decode step was the one link in the
+chain that didn't meet the module's own standard. Caught explicitly and
+re-raised as `ValueError` naming the schema filename and the resolved path,
+matching the others — a maintainer debugging a broken schema file sees the
+same kind of message regardless of which of the three ways it broke.
+
 ## WHY the Regression Guard Is a Source Scan, Not a Value Comparison
 
 An earlier test plan asserted "each renderer's emitted value equals its

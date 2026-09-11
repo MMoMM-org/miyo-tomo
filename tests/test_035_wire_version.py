@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_version.py — Behavioural tests for lib.wire_version (spec 035 T3.1).
 
 ADR-5: each of the three wire renderers (suggestions-render.py,
@@ -168,6 +168,49 @@ def test_missing_schema_raises_naming_the_resolved_path(monkeypatch, tmp_path):
     assert str(resolved_path) in message
     # Never a silent fallback to an empty string, None, or a stale literal —
     # the exception itself is the whole assertion; nothing was returned.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Code-quality follow-up (T3.1) — a non-string const, and malformed JSON
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_non_string_const_raises_instead_of_returning_it(monkeypatch, tmp_path):
+    """Hashi's validator requires schema_version to be a STRING const. A
+    schema declaring `"const": 2` (or null, etc.) must not reach a renderer's
+    wire payload silently — that divergence would only surface at apply,
+    which is exactly the failure class this module exists to prevent."""
+    scratch = tmp_path / "schemas"
+    scratch.mkdir()
+    (scratch / "suggestions-wire.schema.json").write_text(
+        json.dumps({"properties": {"schema_version": {"const": 2}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wire_version, "_default_schemas_dir", lambda: scratch)
+
+    with pytest.raises(TypeError) as excinfo:
+        wire_schema_version("suggestions-wire.schema.json")
+
+    message = str(excinfo.value)
+    assert "suggestions-wire.schema.json" in message
+    assert str(scratch / "suggestions-wire.schema.json") in message
+
+
+def test_malformed_json_raises_naming_the_resolved_path(monkeypatch, tmp_path):
+    """A schema file that exists but isn't valid JSON must raise naming the
+    resolved path — matching the treatment of the missing-file and
+    missing-const failures, not a bare json.JSONDecodeError with no path."""
+    scratch = tmp_path / "schemas"
+    scratch.mkdir()
+    schema_path = scratch / "suggestions-wire.schema.json"
+    schema_path.write_text("{ this is not valid json", encoding="utf-8")
+    monkeypatch.setattr(wire_version, "_default_schemas_dir", lambda: scratch)
+
+    with pytest.raises(ValueError) as excinfo:
+        wire_schema_version("suggestions-wire.schema.json")
+
+    message = str(excinfo.value)
+    assert "suggestions-wire.schema.json" in message
+    assert str(schema_path) in message
 
 
 if __name__ == "__main__":

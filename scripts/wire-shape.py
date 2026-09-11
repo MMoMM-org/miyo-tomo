@@ -54,9 +54,11 @@ WARNING — --regenerate is destructive and unrecoverable by this tool:
     - added_enum_value / removed_enum_value: the specific value is named,
       so a removed enum member's value IS reconstructable.
     - enum_constraint_added / enum_constraint_removed: the constraint's
-      full value set at the surviving side is named (see
-      lib/wire_shape.py's _diff_node), so a removed constraint's prior
-      enum IS reconstructable from the diff alone.
+      full value set is named — for an addition the set that appeared,
+      for a removal the set that VANISHED (see lib/wire_shape.py's
+      _diff_node). It is precisely because the vanished set is printed
+      that a removed constraint's prior enum IS reconstructable from the
+      diff alone; that set does not survive the write.
     - added_property / removed_property: only the property's NAME is
       printed — its prior type, required-ness and enum values are not.
     - node_added / node_removed: only the POINTER is printed — nothing

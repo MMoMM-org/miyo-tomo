@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_t4_2b_daily_source_identity.py — spec 035 Phase 4, T4.2b: the
 daily side gains its source identity.
 
@@ -41,6 +41,15 @@ versioning, but one F9-AC2 cannot be satisfied around). Fixed in
 (`RE_DAILY_LOG_LINK_LINE`) and a "- Position:" sub-field handler; guarded
 here (see the "log_links survive markdown round-trip" test) so it cannot
 regress silently a second time.
+
+**Follow-up (review round 1):** the first cut of `_join_daily_source_item_keys`
+silently wrote `source_item_key=None` when the structured source could not
+supply one (e.g. a `suggestions-doc.json` predating the reducer's
+2026-09-06 change) — producing an invalid-but-unvalidated wire with no
+signal at all until Hashi's editor rejected it downstream, with nothing
+pointing back at the cause. It now raises `ValueError` at render time
+instead, naming the day, bucket, discriminating value, and the likely
+cause — see the "fails loudly" tests below.
 
 Spec: docs/XDD/specs/035-wire-schema-versioning/
 Ref:  PRD Feature 9 (F9-AC1..AC5), ADR-5 (schema_version read via
@@ -244,6 +253,77 @@ def test_ambiguous_entries_still_resolve_to_their_own_key_by_construction():
     ], log_link_keys
 
     jsonschema.validate(instance=wire, schema=WIRE_SCHEMA)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Fails loudly when the field cannot be populated (review round 1). A
+# suggestions-doc.json from a reducer older than 2026-09-06 carries no
+# source_item_key on daily_notes_updates at all — the join must raise, never
+# write None, fall back to source_stem, or silently drop the entry.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _stale_daily(bucket: str) -> list[dict]:
+    """One day, one entry in `bucket`, with NO `source_item_key` on the
+    structured side — exactly what a pre-2026-09-06 reducer would emit."""
+    base = {
+        "daily_note_stem": "2026-09-11", "exists": True,
+        "trackers": [], "log_entries": [], "log_links": [],
+    }
+    if bucket == "trackers":
+        base["trackers"] = [{"field": "Sport", "value": True, "reason": "ran",
+                              "source_stem": "Dresden", "source_section": "S01"}]
+    elif bucket == "log_entries":
+        base["log_entries"] = [{"time": None, "position": "after_last_line",
+                                 "content": "wrote about Dresden", "reason": "r",
+                                 "source_stem": "Dresden", "source_section": "S01"}]
+    else:
+        base["log_links"] = [{"target_stem": "Frauenkirche", "time": None,
+                               "position": "after_last_line", "reason": "r",
+                               "source_stem": "Dresden", "source_section": "S01"}]
+    return [base]
+
+
+@pytest.mark.parametrize("bucket,discriminator_value", [
+    ("trackers", "field='Sport'"),
+    ("log_entries", "content='wrote about Dresden'"),
+    ("log_links", "target_stem='Frauenkirche'"),
+])
+def test_missing_source_item_key_raises_naming_bucket_and_stem(bucket, discriminator_value):
+    with pytest.raises(ValueError) as excinfo:
+        render.build_wire_payload(_doc(_stale_daily(bucket)))
+    message = str(excinfo.value)
+    assert bucket in message, message
+    assert "2026-09-11" in message, message
+    assert discriminator_value in message, message
+    assert "2026-09-06" in message, (
+        "the message must name the reducer-change date, so a maintainer can "
+        f"tell a stale doc from any other cause: {message}"
+    )
+    assert "re-run" in message.lower() and "reducer" in message.lower(), (
+        f"the message must say what to do: {message}"
+    )
+
+
+def test_missing_source_item_key_never_falls_back_to_source_stem():
+    """The failure mode this guards is specifically a document that LIES
+    about its own provenance — a silent fallback to source_stem (a
+    non-unique display name) would do exactly that."""
+    with pytest.raises(ValueError):
+        render.build_wire_payload(_doc(_stale_daily("trackers")))
+    # No wire is returned at all on this path — nothing to inspect for a
+    # smuggled-in source_stem value. The raise itself is the guarantee.
+
+
+def test_day_entirely_absent_from_structured_also_raises():
+    """Not just a falsy source_item_key on a matched entry — a day (or
+    bucket) missing from `structured` altogether must raise too, not
+    silently leave the field unset."""
+    daily = _stale_daily("log_entries")
+    doc = _doc(daily)
+    doc["daily_notes_updates"] = []  # structured side has nothing at all
+    with pytest.raises(ValueError) as excinfo:
+        render.build_wire_payload(doc)
+    assert "log_entries" in str(excinfo.value)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

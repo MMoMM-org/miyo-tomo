@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -320,6 +320,16 @@ def _wire_note(section: dict, action: dict) -> dict:
 
 _DAILY_BUCKETS = ("trackers", "log_entries", "log_links")
 
+# One discriminating field per bucket — used only to NAME the offending entry
+# in the error below (never to match against; matching-by-content is exactly
+# what the old, retired recovery did and the reason it had to decline
+# ambiguous cases). Mirrors suggestion-parser.py's _DAILY_DISCRIMINATOR.
+_DAILY_DISCRIMINATOR_FIELD = {
+    "trackers": "field",
+    "log_entries": "content",
+    "log_links": "target_stem",
+}
+
 
 def _join_daily_source_item_keys(daily_updates: list[dict], structured: list[dict]) -> None:
     """Attach `source_item_key` to each parsed daily entry, by construction (F9).
@@ -340,11 +350,18 @@ def _join_daily_source_item_keys(daily_updates: list[dict], structured: list[dic
     same day — the exact case the discriminator match refused to resolve —
     still join correctly here, because position, not content, is compared.
 
-    Mutates `daily_updates` in place. A day or bucket absent from `structured`
-    (e.g. a suggestions-doc.json predating this field) leaves those entries'
-    `source_item_key` at whatever `structured` provided — including `None` —
-    rather than inventing one; the wire schema's `required`/`minLength` then
-    surfaces that gap instead of silently guessing a key.
+    Mutates `daily_updates` in place. Raises `ValueError` — naming the day,
+    the bucket, the entry's own discriminating value, and the likely cause —
+    the moment a parsed entry cannot be given a non-empty `source_item_key`:
+    a day or bucket absent from `structured` entirely, a bucket shorter than
+    the parsed one, or a matched entry whose own `source_item_key` is falsy.
+    F9 made the field required; a `suggestions-doc.json` from a reducer older
+    than 2026-09-06 (before `source_item_key` was added to
+    `daily_notes_updates`) is the expected cause, and the fix is to re-run
+    the reducer against the current source items — never to fabricate a
+    placeholder, fall back to `source_stem`, or silently drop the entry here,
+    each of which would produce a document that lies about its own
+    provenance, the exact thing `source_item_key` exists to prevent.
     """
     by_stem = {
         day.get("daily_note_stem"): day
@@ -352,11 +369,29 @@ def _join_daily_source_item_keys(daily_updates: list[dict], structured: list[dic
         if day.get("daily_note_stem")
     }
     for day in daily_updates:
-        source_day = by_stem.get(day.get("date")) or {}
+        date = day.get("date")
+        source_day = by_stem.get(date) or {}
         for bucket in _DAILY_BUCKETS:
             source_entries = source_day.get(bucket) or []
-            for entry, source_entry in zip(day.get(bucket) or [], source_entries):
-                entry["source_item_key"] = source_entry.get("source_item_key")
+            entries = day.get(bucket) or []
+            discriminator_field = _DAILY_DISCRIMINATOR_FIELD[bucket]
+            for i, entry in enumerate(entries):
+                source_entry = source_entries[i] if i < len(source_entries) else None
+                key = source_entry.get("source_item_key") if source_entry else None
+                if not key:
+                    raise ValueError(
+                        f"suggestions-render: cannot populate source_item_key for "
+                        f"daily_updates[date={date!r}].{bucket}[{i}] "
+                        f"({discriminator_field}={entry.get(discriminator_field)!r}). "
+                        "The structured daily_notes_updates block this markdown was "
+                        "rendered from carries no identity for this entry — most "
+                        "likely because this suggestions-doc.json was produced by a "
+                        "reducer older than 2026-09-06, before source_item_key was "
+                        "added to daily_notes_updates. Re-run suggestions-reducer.py "
+                        "against the current source items; do not hand-edit this "
+                        "document to add the field."
+                    )
+                entry["source_item_key"] = key
 
 
 def build_wire_payload(d: dict) -> dict:

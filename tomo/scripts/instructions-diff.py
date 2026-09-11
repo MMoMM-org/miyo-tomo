@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.1
+# version: 0.20.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -245,7 +245,19 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                               "title": str,
                               "expected_links": [moc_stem, ...],
                               "item_key": str}},
-        "expected_daily_kinds": [{"kind", "date", "key", "source_stem"}],
+        "expected_daily_kinds": [
+            {"kind": "update_tracker", "date", "key", "value", "source_stem"},
+            {"kind": "update_log_entry", "date", "source_stem"},
+            {"kind": "update_log_link", "date", "key", "source_stem"},
+        ],
+        # "key" is a tracker FIELD NAME (update_tracker) or a note STEM
+        # (update_log_link) — both metadata, never read back (matching below
+        # is by "kind" alone; see _subtract_skipped_daily), kept only as a
+        # human-legible label. update_log_entry carried a 40-char slice of
+        # the note's own CONTENT under the same "key" name until 2026-09-11:
+        # unread, zero benefit, and note text in a data structure one debug
+        # dump away from a log (MiYo Constitution L2, Privacy & Security) —
+        # removed rather than kept for symmetry.
         "expected_deletions": [source_path],
         "expected_skips": [source_path_or_None],
       }
@@ -348,10 +360,14 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             if not le.get("accepted"):
                 continue
             counts["update_log_entry"] += 1
+            # No "key" here (unlike the two sibling appends below/above):
+            # matching is by "kind" alone (_subtract_skipped_daily), so a
+            # 40-char slice of the note's own content bought nothing but
+            # putting note text into a data structure one debug dump away
+            # from a log (MiYo Constitution L2). Removed 2026-09-11.
             expected_daily.append({
                 "kind": "update_log_entry",
                 "date": date,
-                "key": (le.get("content") or "")[:40],
                 "source_stem": _stem(le.get("source_stem")),
             })
         for ll in day.get("log_links") or []:

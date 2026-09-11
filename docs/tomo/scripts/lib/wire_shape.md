@@ -408,6 +408,166 @@ not correct a misclassification the way the added-side fix does. Both are
 included for the same "reported once" consistency, not because both were
 equally broken.
 
+## WHY `enum_constraint_added`/`enum_constraint_removed` Are Their Own Kinds (out-of-band fix, 2026-09-11, second pass)
+
+The suppression fix above closed a false positive. Probing the same code
+right after it landed found a second, worse defect one level down — worse
+because it points the OTHER way, a false negative, and the owner approved
+fixing it in the same session rather than letting it ride.
+
+**The defect.** `removed_enum_value` was firing once per departing value
+for two situations that are not the same fact:
+
+1. A value drops out of an enum that still exists: `[x, y, z]` → `[x, y]`.
+   We now emit a SUBSET of what the consumer's older, wider-enum copy
+   already accepts. Safe. Correctly `harmless`.
+2. The enum CONSTRAINT disappears entirely: `[x, y]` → no enum at all. We
+   may now emit ANYTHING, while the consumer's vendored copy still
+   enumerates and rejects anything outside the old set. This breaks them.
+   Was ALSO reporting `harmless`, once per formerly-listed value — wrong.
+
+Measured directly on a closed node (the shape that makes it worst, per Rule
+1 — an unknown value on a closed enum's property has nowhere else to be
+caught):
+
+```python
+BEFORE = {"type": "object", "additionalProperties": False,
+          "properties": {"check": {"type": "string", "enum": ["orphan", "stale_moc"]}}}
+AFTER  = {"type": "object", "additionalProperties": False,
+          "properties": {"check": {"type": "string"}}}
+```
+produced
+```
+harmless   removed_enum_value   check: removed value 'orphan'
+harmless   removed_enum_value   check: removed value 'stale_moc'
+```
+— a maintainer replacing a closed enum with a free string got total
+silence from the gate. Sharpened by how close this sits to the live
+`check`-enum drift this spec's own handoff carries: had someone removed
+that enum instead of adding a value to it, the mechanism built to catch
+exactly this would have said nothing at all.
+
+The mirror direction is a false POSITIVE, not a false negative, and was
+folded into the same fix pass rather than left half-done:
+
+3. A property with no constraint GAINS one: no enum → `[x, y]`. The
+   producer NARROWS what it sends — every value it now emits was already
+   valid for a consumer with no enum to violate. Safe. Was reporting
+   `AFFECTING` (via `added_enum_value`) — wrong, merely noisy this time
+   rather than dangerous, but wrong for the identical structural reason:
+   `added_enum_value`'s "the consumer's older, smaller set rejects this"
+   reasoning presupposes a set exists on their side to reject against.
+
+**Why a new pair of kinds, not a patch inside the existing ones.** The
+owner chose the model extension over threading a special case through
+`added_enum_value`/`removed_enum_value`, because `CHANGE_KINDS` already
+carries four-way exhaustiveness enforcement (the constant, `classify`
+raising on an unrecognised kind, the test iterating the constant, `_change`
+validating at construction — see "WHY `CHANGE_KINDS` Is Named Constants"
+and "WHY `classify` Raises on an Unregistered Kind" below) built precisely
+so that ADDING a kind is the supported, guarded path rather than a
+special-cased `if` buried inside an existing one that the exhaustiveness
+tests can't see is doing double duty. `ENUM_CONSTRAINT_REMOVED` and
+`ENUM_CONSTRAINT_ADDED` are the two new members; `CHANGE_KINDS` goes from
+ten to twelve.
+
+**The rule in `_diff_node`.** The `values` loop already computes, per
+property `name` in `sorted(set(old_values) | set(new_values))`, whether
+that name is a key in `old_values`/`new_values` at all (a `values` entry
+exists ONLY for a property declaring `enum`/`const` — never an empty list,
+per Phase 1). `had_constraint = name in old_values`; `has_constraint = name
+in new_values`. When exactly one is true, the constraint's PRESENCE itself
+moved: emit `ENUM_CONSTRAINT_REMOVED`/`ENUM_CONSTRAINT_ADDED` and `continue`
+— there is no "value that moved" to diff when one side has no values list
+for this name at all, so falling through to the per-value diff below would
+either crash on a missing key or (with a `.get(name, [])` fallback) produce
+a burst of spurious per-value entries for every value on the constrained
+side, which is the exact granularity mistake `node_added`/`node_removed`
+and the property-suppression fix above both already refuse to make. Only
+when BOTH are true does the loop fall through to the existing per-value
+diff — which is exactly the case that pair was originally reasoned about
+and is unchanged.
+
+**The classification, and why it is not the mirror of the per-value pair.**
+`added_enum_value`/`removed_enum_value` follow "adding a value the
+consumer's set doesn't have is dangerous, removing one is safe" — additive
+is the dangerous direction. `enum_constraint_removed`/`enum_constraint_added`
+invert that: REMOVING the constraint is the dangerous direction (the
+consumer's validator is still armed against a set the producer no longer
+respects), ADDING one is safe (the producer is narrowing). A reader who
+generalises "enum changes: added=affecting, removed=not" from the per-value
+pair to the constraint-presence pair gets it backwards — which is precisely
+why these are documented together, the same corrective the module's other
+counter-intuitive pairs (`required_added`/`required_removed`) already
+receive. Like `required_added`/`required_removed` and unlike
+`openness_changed`, `classify` does not read `observed` for direction here
+— the kind alone already encodes it, decided once in `_diff_node` where
+`old`/`new` still exist side by side.
+
+**Interaction with the property-add/remove suppression (the fix
+immediately above this section) — verified, not assumed compatible.** The
+`added_property_names`/`removed_property_names` check runs FIRST in the
+loop body, before `had_constraint`/`has_constraint` are even computed, so a
+property that is itself wholly new or wholly gone never reaches the
+constraint-presence branch at all — it stays fully suppressed, exactly as
+before this second fix. This matters because, absent that ordering, a
+newly-added property with an enum (`old_values` has no entry for it at
+all, `new_values` does) is INDISTINGUISHABLE at the `had_constraint`/
+`has_constraint` level from a property that existed all along and just
+gained a constraint — both would read as `has_constraint and not
+had_constraint`. The suppression check has to run first, and
+`test_new_property_with_enum_on_open_node_collapses_to_added_property_only`
+/ `..._on_closed_node_...` / `test_removed_property_with_enum_collapses_to_removed_property_only`
+were all strengthened (not just re-passed) to assert neither the per-value
+kind NOR the new constraint-presence kind leaks for a property whose
+presence itself moved.
+
+**The four `const`/`enum` transition cases, checked individually per ADR-2
+(`const: X` records identically to `enum: [X]`), not assumed from the
+enum-only case:**
+
+1. `const [x]` → `enum [x, y]`: both sides have a `values` entry for the
+   property — a constraint WIDENING, not a constraint appearing. Stays
+   `added_enum_value`, affecting.
+   (`test_const_widened_to_enum_reports_only_the_added_values`.)
+2. `enum [x, y]` → `const [x]`: both sides have an entry — a constraint
+   SHRINKING, not disappearing. Stays `removed_enum_value`, not affecting.
+   (`test_enum_narrowed_to_const_reports_only_the_removed_value`, new.)
+3. `const X` → no constraint: `old_values` has an entry, `new_values` does
+   not — `ENUM_CONSTRAINT_REMOVED`, affecting.
+4. No constraint → `const X`: `new_values` has an entry, `old_values` does
+   not — `ENUM_CONSTRAINT_ADDED`, not affecting.
+
+Cases 3 and 4 have no dedicated test fixture of their own distinct from the
+plain single-value-enum case, and that is not an oversight: `describe_shape`
+makes no representational distinction between "a property declares
+`const: X`" and "a property declares `enum: [X]`" (ADR-2's extension,
+`_property_values`) — both produce the identical `values` entry `[X]`. A
+`const` fixture and a one-member `enum` fixture are therefore the SAME test
+at the `diff_shapes`/`classify` layer; writing a second, structurally
+identical fixture under a different name would test nothing a reader
+couldn't already see from `test_property_gaining_enum_where_it_had_none_is_reported`
+/ `test_property_losing_its_entire_enum_is_reported`, which already cover
+cases 3/4 exactly because of that representational identity. A future
+reader looking for a `const`-specific regression test for these two cases
+should look there, not expect a separate one that cannot exist without
+first breaking the ADR-2 equivalence itself.
+
+**Live measurement, before and after this second fix (same real files as
+the property-suppression fix above — `garden-audit-wire.schema.json`
+against `hashi-garden-audit-wire.schema.json`).** Unchanged — 3 changes, 1
+affecting, both before and after: `up_source`'s values stay fully
+suppressed (it is a newly-added property, caught by the ordering guarantee
+above), and `check`'s added enum value stays `added_enum_value`/affecting
+because `check` carries a `values` entry on BOTH sides — it is squarely the
+per-value case, not a constraint-presence case. This was a predicted
+invariant, checked afterward, not assumed: the live wire happens to contain
+no example of a constraint vanishing or appearing outright, so this second
+fix could not have been proven correct by the live comparison alone — only
+`test_enum_constraint_removed_entirely_is_affecting` (built on the `check`
+enum's real closed-node shape, with its constraint removed) and its
+sibling actually exercise the new kinds end to end.
+
 ## WHY the Return Value Is the Nodes Map, Not the Manifest Entity
 
 The SDD's `ShapeManifest` entity carries `schema_version` and `source`

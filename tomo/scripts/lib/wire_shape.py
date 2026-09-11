@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.9.2
+# version: 0.9.3
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -26,7 +26,7 @@ __all__ = [
     "classify",
 ]
 
-# The ten ShapeChange kinds `diff_shapes` can emit — the single vocabulary
+# The twelve ShapeChange kinds `diff_shapes` can emit — the single vocabulary
 # `_change` validates against and `classify` must have a rule for every
 # member of, the same single-source rule `PUBLISHED_WIRES` follows above.
 # Named constants (not bare strings at each call site) so a kind used by
@@ -41,6 +41,17 @@ REQUIRED_REMOVED = "required_removed"
 OPENNESS_CHANGED = "openness_changed"
 ADDED_ENUM_VALUE = "added_enum_value"
 REMOVED_ENUM_VALUE = "removed_enum_value"
+# Distinct from ADDED_ENUM_VALUE/REMOVED_ENUM_VALUE (a value moving within a
+# constraint present on BOTH sides) — these two fire when the constraint
+# ITSELF appears or disappears on a property that exists on both sides.
+# Classify OPPOSITELY from what "removed"/"added" suggest at first glance,
+# same shape of surprise as required_added/required_removed and
+# added_enum_value/removed_enum_value above, but scoped one level up (the
+# constraint's presence, not a value within it) — see
+# docs/tomo/scripts/lib/wire_shape.md, "WHY enum_constraint_added/removed
+# Are Their Own Kinds".
+ENUM_CONSTRAINT_ADDED = "enum_constraint_added"
+ENUM_CONSTRAINT_REMOVED = "enum_constraint_removed"
 NODE_ADDED = "node_added"
 NODE_REMOVED = "node_removed"
 
@@ -53,6 +64,8 @@ CHANGE_KINDS = (
     OPENNESS_CHANGED,
     ADDED_ENUM_VALUE,
     REMOVED_ENUM_VALUE,
+    ENUM_CONSTRAINT_ADDED,
+    ENUM_CONSTRAINT_REMOVED,
     NODE_ADDED,
     NODE_REMOVED,
 )
@@ -418,16 +431,44 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
         # it has never heard of) — see docs/tomo/scripts/lib/wire_shape.md.
         if name in added_property_names or name in removed_property_names:
             continue
-        # Keyed on _value_sort_key, NOT on the raw values themselves. A
-        # bare `set(values)` uses Python equality/hash, where `1 == True`
-        # and `hash(1) == hash(True)` (bool is an int subtype) — an enum
-        # member flipping from the JSON number 1 to the JSON boolean true
-        # would then diff to nothing. _value_sort_key already separates
-        # them by `type(value).__name__`; reusing it here for MEMBERSHIP,
-        # not just the ordering it was built for, is what closes that gap.
-        # See docs/tomo/scripts/lib/wire_shape.md.
-        old_by_key = {_value_sort_key(v): v for v in old_values.get(name, [])}
-        new_by_key = {_value_sort_key(v): v for v in new_values.get(name, [])}
+        # The CONSTRAINT's own presence, on a property that exists on both
+        # sides, is a separate fact from a value moving within it — and the
+        # two directions classify OPPOSITELY from the per-value pair below,
+        # not in parallel with it. A constraint vanishing entirely leaves
+        # the consumer's older, still-enumerating copy exposed to any value
+        # the now-unconstrained producer emits (affecting); a constraint
+        # appearing where none existed is a narrowing of what the producer
+        # sends (not affecting). Emitted here, not folded into
+        # added_enum_value/removed_enum_value, and `continue`d past the
+        # per-value diff below — there is no "value that moved" when one
+        # side has no values at all for this name. See
+        # docs/tomo/scripts/lib/wire_shape.md, "WHY enum_constraint_added/
+        # removed Are Their Own Kinds".
+        had_constraint = name in old_values
+        has_constraint = name in new_values
+        if had_constraint and not has_constraint:
+            changes.append(_change(
+                pointer, ENUM_CONSTRAINT_REMOVED,
+                f"{name}: enum constraint removed (was {old_values[name]!r})",
+            ))
+            continue
+        if has_constraint and not had_constraint:
+            changes.append(_change(
+                pointer, ENUM_CONSTRAINT_ADDED,
+                f"{name}: enum constraint added ({new_values[name]!r})",
+            ))
+            continue
+        # Both sides declare a constraint for this property — diff the
+        # value SETS. Keyed on _value_sort_key, NOT on the raw values
+        # themselves. A bare `set(values)` uses Python equality/hash, where
+        # `1 == True` and `hash(1) == hash(True)` (bool is an int subtype)
+        # — an enum member flipping from the JSON number 1 to the JSON
+        # boolean true would then diff to nothing. _value_sort_key already
+        # separates them by `type(value).__name__`; reusing it here for
+        # MEMBERSHIP, not just the ordering it was built for, is what
+        # closes that gap. See docs/tomo/scripts/lib/wire_shape.md.
+        old_by_key = {_value_sort_key(v): v for v in old_values[name]}
+        new_by_key = {_value_sort_key(v): v for v in new_values[name]}
         for key in sorted(set(new_by_key) - set(old_by_key)):
             changes.append(_change(
                 pointer, ADDED_ENUM_VALUE, f"{name}: added value {new_by_key[key]!r}",
@@ -600,7 +641,32 @@ def classify(change: dict, observed: dict) -> bool:
       already-accepted set. (Their handling code may still switch on a
       value that stopped arriving; that is a prose obligation for the
       handover table, not something this validator-measured rule sees —
-      the same boundary ADR-2 draws for descriptions.)
+      the same boundary ADR-2 draws for descriptions.) These two ONLY fire
+      when the property carries a constraint on BOTH sides — see
+      `enum_constraint_added`/`enum_constraint_removed` next for when it
+      doesn't, and `wire_shape.md`'s "WHY enum_constraint_added/removed Are
+      Their Own Kinds" for the false-negative/false-positive pair this
+      split closes (found and fixed after `added_enum_value`/
+      `removed_enum_value` first shipped — not part of the original T2.2
+      rule set).
+    - `enum_constraint_removed` / `enum_constraint_added`: the CONSTRAINT's
+      own presence appearing or disappearing on a property that exists on
+      both sides — classify OPPOSITELY from the per-value pair's own
+      "additive is dangerous" intuition, in the OPPOSITE direction from
+      each other. `enum_constraint_removed` is always affecting: the
+      consumer's vendored copy still enumerates and rejects a value outside
+      the old set, and the now-unconstrained producer may emit anything —
+      this is the false-negative case, where `removed_enum_value` firing
+      once per departing value used to say "harmless" about a constraint
+      vanishing outright. `enum_constraint_added` is never affecting: a
+      producer that starts constraining what it emits, where the consumer
+      previously validated the property against no enum at all, is
+      narrowing — every value it now sends was already accepted before.
+      Neither branch reads `observed` for direction (unlike
+      `openness_changed`): the KIND alone already encodes which way the
+      constraint's presence moved, decided once in `_diff_node` where both
+      `old`/`new` `values` dicts still exist side by side, same reasoning
+      as `required_added`/`required_removed`.
     - `node_added` / `node_removed`: always affecting (Rule 9) — most new
       nodes arrive with an `added_property` on their parent that already
       carries the obligation, but a new `oneOf` branch (e.g. a new
@@ -642,6 +708,10 @@ def classify(change: dict, observed: dict) -> bool:
     if kind == ADDED_ENUM_VALUE:
         return True
     if kind == REMOVED_ENUM_VALUE:
+        return False
+    if kind == ENUM_CONSTRAINT_REMOVED:
+        return True
+    if kind == ENUM_CONSTRAINT_ADDED:
         return False
     if kind == NODE_ADDED:
         return True

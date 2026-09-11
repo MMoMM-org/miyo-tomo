@@ -214,6 +214,65 @@ def test_added_and_removed_enum_value_classify_oppositely():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# enum_constraint_removed / enum_constraint_added — the CONSTRAINT itself
+# appearing or disappearing, distinct from added_enum_value/removed_enum_value
+# (a value moving within a constraint present on both sides). Classify
+# OPPOSITELY from each other, same as the per-value pair above, but for the
+# OPPOSITE reason a naive reading would expect: losing a constraint is the
+# dangerous direction here (a false negative this split exists to close),
+# gaining one is the safe one (was previously misclassified as affecting).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_enum_constraint_removed_entirely_is_affecting():
+    # The false-negative this fix closes, replayed on a closed node (the
+    # live shape of the risk: the `check` enum on garden-audit-wire's
+    # findings, which the team just handed off a value-addition to). A
+    # maintainer who replaces a closed enum with a free-form string used
+    # to get `removed_enum_value` per departing member (harmless) and
+    # nothing at all about the constraint itself vanishing. The consumer's
+    # vendored copy still enumerates and rejects anything outside the old
+    # set; the producer may now emit ANY string.
+    recorded = {
+        "": _node(closed=True, properties={"check": "string"}, values={"check": ["orphan", "stale_moc"]}),
+    }
+    observed = {"": _node(closed=True, properties={"check": "string"})}
+
+    change = _only_change(recorded, observed)
+
+    assert change["kind"] == "enum_constraint_removed"
+    assert classify(change, observed) is True
+
+
+def test_enum_constraint_added_where_none_existed_is_not_affecting():
+    # Mirror: gaining a constraint where none existed before is a
+    # NARROWING of what the producer emits -- every value it sends was
+    # already valid for a consumer with no enum on this property to
+    # violate. Not affecting, unlike the removal direction above --
+    # previously misclassified (as added_enum_value, always affecting).
+    recorded = {"": _node(properties={"status": "string"})}
+    observed = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
+
+    change = _only_change(recorded, observed)
+
+    assert change["kind"] == "enum_constraint_added"
+    assert classify(change, observed) is False
+
+
+def test_enum_constraint_removed_and_added_classify_oppositely():
+    observed = {"/x": _node()}
+    removed_result = classify(
+        {"pointer": "/x", "kind": "enum_constraint_removed", "detail": "fixture"}, observed,
+    )
+    added_result = classify(
+        {"pointer": "/x", "kind": "enum_constraint_added", "detail": "fixture"}, observed,
+    )
+
+    assert removed_result is True
+    assert added_result is False
+    assert removed_result != added_result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # type_changed — always affecting, independent of openness (class 6)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -372,7 +431,13 @@ def test_prose_only_edit_produces_no_change():
 # Exhaustiveness mechanism (a-d in the task brief)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_change_kinds_has_exactly_the_ten_documented_kinds():
+def test_change_kinds_has_exactly_the_twelve_documented_kinds():
+    # Was ten; enum_constraint_removed/enum_constraint_added were added to
+    # close a false-negative in removed_enum_value (a constraint vanishing
+    # entirely used to report as harmless, per-value removals) and a false
+    # positive in added_enum_value (a constraint appearing where none
+    # existed used to report as affecting) -- see
+    # docs/tomo/scripts/lib/wire_shape.md.
     assert set(CHANGE_KINDS) == {
         "added_property",
         "removed_property",
@@ -382,6 +447,8 @@ def test_change_kinds_has_exactly_the_ten_documented_kinds():
         "openness_changed",
         "added_enum_value",
         "removed_enum_value",
+        "enum_constraint_added",
+        "enum_constraint_removed",
         "node_added",
         "node_removed",
     }

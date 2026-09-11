@@ -314,29 +314,58 @@ def test_removed_enum_value_reported():
 
 
 def test_property_gaining_enum_where_it_had_none_is_reported():
+    # A property with NO constraint on the recorded side gaining one is a
+    # NARROWING of what the producer emits, not the addition of a value to
+    # an existing constraint -- the consumer had nothing to violate before
+    # and still has nothing that rejects any value the producer sends now.
+    # Its own kind, enum_constraint_added, NOT decomposed into
+    # added_enum_value (which presupposes a constraint the consumer already
+    # validates against on both sides). See docs/tomo/scripts/lib/wire_shape.md,
+    # "WHY enum_constraint_added/removed Are Their Own Kinds".
     recorded = {"": _node(properties={"status": "string"})}  # no `values` entry at all
     observed = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
 
     changes = diff_shapes(recorded, observed)
 
     assert len(changes) == 1
-    assert changes[0]["kind"] == "added_enum_value"
+    assert changes[0]["kind"] == "enum_constraint_added"
     assert "open" in changes[0]["detail"]
 
 
 def test_property_losing_its_entire_enum_is_reported():
-    # Mirror of test_property_gaining_enum_where_it_had_none_is_reported:
-    # `new_values.get(name, [])` (the empty-set fallback) is only actually
-    # exercised when a property's enum entry disappears outright, not when
-    # it merely shrinks — the existing removed-value test only shrinks one.
+    # Mirror of test_property_gaining_enum_where_it_had_none_is_reported --
+    # but NOT the same classification, because losing a CONSTRAINT is not
+    # the mirror of gaining one on this wire: the consumer's vendored copy
+    # still enumerates and would reject a value the now-unconstrained
+    # producer might emit outside the old set. enum_constraint_removed, not
+    # removed_enum_value -- this is the false-negative this kind split
+    # exists to close (a maintainer replacing a closed enum with a free
+    # string used to get total silence from the gate).
     recorded = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
     observed = {"": _node(properties={"status": "string"})}  # no `values` entry at all
 
     changes = diff_shapes(recorded, observed)
 
     assert len(changes) == 1
-    assert changes[0]["kind"] == "removed_enum_value"
+    assert changes[0]["kind"] == "enum_constraint_removed"
     assert "open" in changes[0]["detail"]
+
+
+def test_enum_narrowed_to_const_reports_only_the_removed_value():
+    # Mirror of test_const_widened_to_enum_reports_only_the_added_values
+    # below, the fourth of the four const/enum transition cases: enum
+    # [x, y] narrowed to const x (recorded as [x], ADR-2) is a SHRINK of a
+    # constraint present on BOTH sides, not a constraint disappearing --
+    # `status` still has an entry in `values` on both sides, so this stays
+    # a per-value removed_enum_value (harmless), not enum_constraint_removed.
+    recorded = {"": _node(properties={"status": "string"}, values={"status": ["closed", "open"]})}
+    observed = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "removed_enum_value"
+    assert "closed" in changes[0]["detail"]
 
 
 def test_bool_and_int_enum_values_do_not_collide_as_equal():
@@ -390,7 +419,7 @@ def test_node_missing_values_key_entirely_degrades_correctly():
     changes = diff_shapes(recorded, observed)
 
     assert len(changes) == 1
-    assert changes[0]["kind"] == "added_enum_value"
+    assert changes[0]["kind"] == "enum_constraint_added"
     assert "open" in changes[0]["detail"]
 
 
@@ -417,7 +446,11 @@ def test_new_property_with_enum_on_open_node_collapses_to_added_property_only():
 
     assert len(changes) == 1
     assert changes[0]["kind"] == "added_property"
-    assert not any(c["kind"] == "added_enum_value" for c in changes)
+    # Neither the per-value kind NOR the constraint-presence kind may leak
+    # for a property that was itself wholly added -- the suppression check
+    # runs before either is decided, per property name, not just before
+    # the per-value one.
+    assert not any(c["kind"] in ("added_enum_value", "enum_constraint_added") for c in changes)
 
 
 def test_new_property_with_enum_on_closed_node_still_collapses_to_added_property_only():
@@ -440,7 +473,7 @@ def test_new_property_with_enum_on_closed_node_still_collapses_to_added_property
 
     assert len(changes) == 1
     assert changes[0]["kind"] == "added_property"
-    assert not any(c["kind"] == "added_enum_value" for c in changes)
+    assert not any(c["kind"] in ("added_enum_value", "enum_constraint_added") for c in changes)
 
 
 def test_removed_property_with_enum_collapses_to_removed_property_only():
@@ -467,7 +500,13 @@ def test_removed_property_with_enum_collapses_to_removed_property_only():
 
     assert len(changes) == 1
     assert changes[0]["kind"] == "removed_property"
-    assert not any(c["kind"] == "removed_enum_value" for c in changes)
+    # Without the added/removed-property-name suppression running BEFORE
+    # the constraint-presence check, `b` (values on the recorded side,
+    # none on the observed side because the property itself is gone) would
+    # look exactly like a property that kept existing but lost its
+    # constraint -- and misreport as enum_constraint_removed instead of
+    # being silent, which is precisely the regression this assertion guards.
+    assert not any(c["kind"] in ("removed_enum_value", "enum_constraint_removed") for c in changes)
 
 
 def test_new_property_enum_suppression_does_not_swallow_an_unrelated_widened_enum():
@@ -491,7 +530,10 @@ def test_new_property_enum_suppression_does_not_swallow_an_unrelated_widened_enu
     kinds_and_details = [(c["kind"], c["detail"]) for c in changes]
     assert ("added_enum_value", "a: added value 'closed'") in kinds_and_details
     assert any(c["kind"] == "added_property" and "b" in c["detail"] for c in changes)
-    assert not any(c["kind"] == "added_enum_value" and c["detail"].startswith("b:") for c in changes)
+    assert not any(
+        c["kind"] in ("added_enum_value", "enum_constraint_added") and c["detail"].startswith("b:")
+        for c in changes
+    )
     assert len(changes) == 2
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_shape_cli.py — Behavioural tests for scripts/wire-shape.py,
 the maintainer's CLI wrapping describe_shape/diff_shapes/classify via
 lib.wire_gate (spec 035 T4.1).
@@ -57,6 +57,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -363,7 +365,25 @@ def test_regenerate_names_the_document_when_a_schema_is_malformed(tmp_path, caps
 # Carry-forward (b): --regenerate writes with encoding="utf-8"
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_regenerate_round_trips_a_non_ascii_property_name_byte_identically(tmp_path, capsys):
+def test_regenerate_round_trips_a_non_ascii_property_name_byte_identically(tmp_path):
+    """Runs the REAL script as a subprocess under a pinned C locale
+    (`LC_ALL=C LANG=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0`), not through
+    `wire_shape_cli.main()` in-process.
+
+    On this machine (and most CI), the process's own locale is already
+    UTF-8 — `Path.write_text()` with no explicit `encoding=` would use the
+    locale's preferred encoding and this test would pass whether or not
+    `encoding="utf-8"` is actually present at the write site, which proves
+    nothing about carry-forward (b). Pinning the subprocess's locale to C
+    (`locale.getpreferredencoding(False)` == "US-ASCII" under it, measured
+    directly) makes the two cases actually diverge: `write_text(...,
+    encoding="utf-8")` still succeeds and round-trips byte-identically;
+    `write_text(...)` with no encoding argument would raise
+    `UnicodeEncodeError` on the café_source property name the moment it
+    tried to encode as US-ASCII. See the commit body for the revert-proof
+    (removing `encoding="utf-8"` from scripts/wire-shape.py and observing
+    THIS test fail under this same environment, before restoring it).
+    """
     schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
     non_ascii_name = "café_source"
     mutated = _rewrite_json(
@@ -371,15 +391,29 @@ def test_regenerate_round_trips_a_non_ascii_property_name_byte_identically(tmp_p
         lambda schema: _add_property_to_suggestions_items(schema, name=non_ascii_name),
     )
 
-    rc, _out = _run(["--regenerate", "--schemas-dir", str(schemas_dir), "--shapes-dir", str(shapes_dir)], capsys)
-    assert rc == 0
+    env = dict(os.environ)
+    env.update(LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_DIR / "wire-shape.py"),
+            "--regenerate",
+            "--schemas-dir", str(schemas_dir),
+            "--shapes-dir", str(shapes_dir),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
 
     manifest_path = shapes_dir / shape_manifest_filename(SUGGESTIONS_WIRE)
     written_bytes = manifest_path.read_bytes()
 
     # The raw UTF-8 bytes, not a "é" JSON escape — proves
     # ensure_ascii=False survived the write, and that the write used UTF-8
-    # rather than the platform default.
+    # rather than the (here, deliberately non-UTF-8) platform default.
     assert non_ascii_name.encode("utf-8") in written_bytes
     assert b"\\u00e9" not in written_bytes
 

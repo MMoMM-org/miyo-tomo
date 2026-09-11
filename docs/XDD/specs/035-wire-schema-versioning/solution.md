@@ -746,6 +746,17 @@ it had it been run against a complete requirement set.
   must be recorded, or the first reader learns to ignore it.
 - The existing drift check passes vacuously on a `$defs`-free schema and compares no root fields even
   where it does apply. It is replaced, not extended.
+- **`scripts/wire-shape.py --regenerate` is destructive with no built-in recovery.** It overwrites a
+  drifted manifest with a plain truncating write — no backup, no temp file, no atomic swap — and the
+  printed diff is display text, not a serialization of what was lost (a removed property's prior type
+  is not reconstructable from it; a removed node's contents are not printed at all). Git is the only
+  recovery path, and only if the manifest was committed first. Deliberate, per owner decision during
+  T4.1 review: a dirty-tree guard was considered and rejected — the tool runs against arbitrary
+  `--schemas-dir`/`--shapes-dir` trees (including plain, non-git scratch directories the test suite
+  depends on), and the schema is dirty by definition the moment this command is meant to run, so
+  neither a whole-tree nor a manifest-scoped git check would distinguish the hazard from the tool's own
+  ordinary edit-regenerate-inspect-edit loop. Documented at the point of use in the script's own module
+  docstring rather than gated in code.
 
 ### Technical Debt
 

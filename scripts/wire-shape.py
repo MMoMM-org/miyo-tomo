@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # wire-shape.py — The maintainer's CLI for the wire-shape manifests (spec 035 T4.1).
-# version: 0.1.0
+# version: 0.3.0
 """Check, regenerate, or explain the shape manifests under tomo/schemas/shapes/
 — the committed baseline `pytest` gates every published wire schema against
 (lib/wire_gate.py). Wraps describe_shape / diff_shapes / classify
@@ -36,6 +36,29 @@ Every printed line is pointer, change kind, a short structural detail
 filename, and version — the same metadata-only contract lib/wire_gate.py's
 `render_wire_gate_report` already keeps (MiYo Constitution L1: reports never
 carry schema descriptions, vault content, or credentials).
+
+WARNING — --regenerate is destructive and unrecoverable by this tool:
+  It overwrites each drifted manifest with a plain truncating write — no
+  backup, no temp file, no atomic swap. The instant the write returns, the
+  PRIOR bytes at that path are gone. This tool keeps no copy. Git is the
+  only recovery path, and only if the manifest was committed (or at least
+  staged/stashed) before you ran this — an uncommitted manifest edit, or
+  one left over from an earlier --regenerate you never committed, is lost
+  with no trace once a later run touches the same file.
+
+  The printed diff is NOT a recovery format — it is display text, built to
+  be read, not parsed back into a manifest. What it preserves varies by
+  change kind:
+    - type_changed / openness_changed: old -> new is printed inline, so
+      that one field IS reconstructable from the diff alone.
+    - added_enum_value / removed_enum_value: the specific value is named,
+      so a removed enum member's value IS reconstructable.
+    - added_property / removed_property: only the property's NAME is
+      printed — its prior type, required-ness and enum values are not.
+    - node_added / node_removed: only the POINTER is printed — nothing
+      about what the removed subtree contained.
+  If you need the prior manifest, `git show HEAD:<path>` before running
+  this, not the terminal scrollback afterward.
 """
 from __future__ import annotations
 
@@ -180,6 +203,20 @@ def cmd_obligations(schemas_dir: Path, shapes_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A regeneration diff can legitimately name a non-ASCII property or
+    # enum-value name (the manifest FILE write is already pinned to UTF-8 —
+    # see build_manifest/serialize_manifest). Without this, sys.stdout/
+    # sys.stderr encode with the platform default, which is not UTF-8
+    # everywhere (LC_ALL=C and friends) — found the hard way: under that
+    # locale, printing such a name after the file was ALREADY written
+    # raised UnicodeEncodeError mid-print, breaking ADR-3's "regeneration
+    # always prints the diff" precisely in the one locale where the write
+    # side's own UTF-8 pin mattered. Reconfigure explicitly rather than
+    # trust the process locale to already be UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         description="Check, regenerate, or explain the wire-shape manifests under "
         "tomo/schemas/shapes/ (spec 035).",

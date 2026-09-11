@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://miyo.tomo/schemas/instructions.schema.json",
-  "title": "Tomo Instructions",
-  "description": "Canonical, machine-readable instruction set produced by instruction-render.py. Consumed by Tomo Hashi (Obsidian plugin) for execution and rendered to a human-readable markdown view.",
+  "$id": "https://miyo.tomo/schemas/instructions-producer.schema.json",
+  "title": "Tomo Instructions (producer copy)",
+  "description": "Tomo's own producer copy of the instruction-set schema, used by render tests. Canonical, machine-readable instruction set produced by instruction-render.py. Consumed by Tomo Hashi (Obsidian plugin) for execution and rendered to a human-readable markdown view. The contract Hashi actually vendors is tomo/schemas/hashi-instructions.schema.json.",
   "type": "object",
   "required": ["schema_version", "type", "generated", "profile", "actions"],
   "additionalProperties": false,

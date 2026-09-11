@@ -127,7 +127,7 @@ from day one.
      - [ ] Unreachable upstream skips rather than fails `[ref: PRD/F8-AC2]`
      - [ ] The known garden-audit delta is reported `[ref: PRD/F8-AC1]`
 
-- [ ] **T4.2b The daily side gains its source identity** `[activity: data-architecture]`
+- [x] **T4.2b The daily side gains its source identity** `[activity: data-architecture]`
 
   The change this spec promised the consumer on 2026-09-09 and then lost when the PRD was drafted.
   It is a wire change like any other, so it goes through the mechanism the earlier phases built —

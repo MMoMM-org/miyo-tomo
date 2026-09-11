@@ -563,16 +563,26 @@ all.
 
 The result is deliberately **not** wired into `gate_one_wire`/`run_wire_gate`
 above, and deliberately never fails on a delta — it prints one
-(`_snapshot_parity_delta` + `_render_snapshot_parity_report`, both local to
-the test file). This is ADR-7, not an oversight: ADR-7 already ruled that a
-*vendored consumer copy* — which is what this snapshot is — is a report,
-never a gate, because it is *supposed* to lag ours between a cross-repo
-handoff going out and Hashi confirming it. The registry that used to carry
-this exemption by hand, `SNAPSHOT_AHEAD_OF_UPSTREAM` (three action names:
-`edit_note_text`, `resolve_dead_link`, `remove_up_link`), is deleted rather
-than re-keyed to the new comparison surface — a report needs no exemptions,
-only a delta, and keeping an exemption registry beside a mechanism that
-never fails would be dead weight with nothing left to exempt.
+(`snapshot_parity_delta` + `render_snapshot_parity_report`). This is ADR-7,
+not an oversight: ADR-7 already ruled that a *vendored consumer copy* —
+which is what this snapshot is — is a report, never a gate, because it is
+*supposed* to lag ours between a cross-repo handoff going out and Hashi
+confirming it. The registry that used to carry this exemption by hand,
+`SNAPSHOT_AHEAD_OF_UPSTREAM` (three action names: `edit_note_text`,
+`resolve_dead_link`, `remove_up_link`), is deleted rather than re-keyed to
+the new comparison surface — a report needs no exemptions, only a delta,
+and keeping an exemption registry beside a mechanism that never fails would
+be dead weight with nothing left to exempt.
+
+T4.2 (2026-09-11) moved `snapshot_parity_delta`/`render_snapshot_parity_report`
+out of the test file entirely, into their own sibling module,
+`lib/wire_snapshot_parity.py` — the same move this module made one phase
+earlier (T2.3, the paragraph above), for the identical reason: T4.2 wired up
+a second and third vendored copy (`hashi-suggestions-wire.schema.json`,
+`hashi-garden-audit-wire.schema.json`), so the T2.4-era "one caller, one
+document, keep it in the test file" reasoning no longer held — three
+documents, three callers, and production code must never import from a
+test module. See `docs/tomo/scripts/lib/wire_snapshot_parity.md`.
 
 This module's own gate (`gate_one_wire`/`run_wire_gate`) is unaffected and
 keeps its ADR-3 contract (any shape change fails) — it describes OUR OWN

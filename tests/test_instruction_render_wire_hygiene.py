@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
 
 Covers the producer-side hygiene that makes a Tomo instruction set appliable by
@@ -17,21 +17,34 @@ Hashi without hand-patching:
 Plus a cross-repo parity guard: Tomo's link_to_moc/move_note allowed-properties
 must match Hashi's schema (MiYo Constitution L2 — coordinated public interface).
 
-test_snapshot_matches_upstream_hashi requires network access — it skips
-automatically when the upstream GitHub URL is unreachable (offline runs).
+TestHashiSchemaParity's three test_*_snapshot_matches_upstream_hashi tests
+require network access — each skips automatically when its upstream GitHub
+URL is unreachable (offline runs), via `_fetch_or_skip`.
 
-**Spec 035 T2.4**: that test's comparison surface used to iterate `$defs`
+**Spec 035 T2.4**: the instructions comparison surface used to iterate `$defs`
 entries carrying an `action` property — 18 real comparisons on the
 instructions wire, but ZERO on a `$defs`-free schema (measured), and it never
 compared root-level fields on either document. It is now `describe_shape` +
-`diff_shapes` to full depth (`_snapshot_parity_delta`), and — per ADR-7, which
-already ruled a vendored consumer copy is a report, never a gate, because it
-is *supposed* to lag ours between a cross-repo handoff and confirmation — it
-never fails on a delta; it reports one. `SNAPSHOT_AHEAD_OF_UPSTREAM` is
-deleted, not re-keyed: a report needs no exemptions. TestSnapshotParityReport
-below carries the offline fixture tests that are the actual evidence for this
-— see its docstring for why the obvious "existing tests still pass" evidence
-does not prove anything here.
+`diff_shapes` to full depth (`lib.wire_snapshot_parity.snapshot_parity_delta`),
+and — per ADR-7, which already ruled a vendored consumer copy is a report,
+never a gate, because it is *supposed* to lag ours between a cross-repo
+handoff and confirmation — it never fails on a delta; it reports one.
+`SNAPSHOT_AHEAD_OF_UPSTREAM` is deleted, not re-keyed: a report needs no
+exemptions. TestSnapshotParityReport below carries the offline fixture tests
+that are the actual evidence for this — see its docstring for why the
+obvious "existing tests still pass" evidence does not prove anything here.
+
+**Spec 035 T4.2**: the same comparison is now vendored for all three
+published wires, not just instructions — `hashi-suggestions-wire.schema.json`
+and `hashi-garden-audit-wire.schema.json` join `hashi-instructions.schema.json`
+in `tomo/schemas/`. `snapshot_parity_delta`/`render_snapshot_parity_report`
+moved out of this file into `tomo/scripts/lib/wire_snapshot_parity.py`
+(production code must never import from a test module — three documents,
+three callers, no longer a single-caller exception). TestVendoredCopies
+below carries the OFFLINE comparison (our schema against the committed
+copy — ADR-7's first comparison, never the network) that is where the known
+garden-audit delta is actually asserted; see
+docs/tomo/scripts/lib/wire_snapshot_parity.md.
 """
 from __future__ import annotations
 
@@ -63,23 +76,32 @@ assert _ir_spec.loader is not None
 sys.modules["instruction_render"] = _ir
 _ir_spec.loader.exec_module(_ir)
 
-from lib.wire_shape import describe_shape, diff_shapes  # noqa: E402
+from lib.wire_snapshot_parity import (  # noqa: E402
+    render_snapshot_parity_report,
+    snapshot_parity_delta,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
-# Committed verbatim copy of Hashi's instructions.schema.json. The parity test
-# runs UNCONDITIONALLY against this snapshot so it never silently skips in CI /
-# containers without a co-located Hashi checkout. A separate network drift check
-# (test_snapshot_matches_upstream_hashi) pulls the live schema from GitHub and
+# Committed verbatim copies of Hashi's published-wire schemas (T4.2 vendors
+# all three; T2.4 vendored only the instructions copy). Each parity test
+# runs UNCONDITIONALLY against its snapshot so it never silently skips in CI /
+# containers without a co-located Hashi checkout. A separate network drift
+# check (TestUpstreamSnapshotDrift) pulls the live schema from GitHub and
 # verifies the snapshot is current — skips offline automatically.
 HASHI_SCHEMA_SNAPSHOT = SCHEMAS_DIR / "hashi-instructions.schema.json"
+HASHI_SUGGESTIONS_SNAPSHOT = SCHEMAS_DIR / "hashi-suggestions-wire.schema.json"
+HASHI_GARDEN_AUDIT_SNAPSHOT = SCHEMAS_DIR / "hashi-garden-audit-wire.schema.json"
 
-# Public GitHub raw URL for Hashi's live schema — no local checkout required.
-# test_snapshot_matches_upstream_hashi fetches this; all other tests use HASHI_SCHEMA_SNAPSHOT.
-_HASHI_UPSTREAM_URL = (
-    "https://raw.githubusercontent.com/MMoMM-org/miyo-tomo-hashi/main/"
-    "src/schema/instructions.schema.json"
+# Public GitHub raw URLs for Hashi's live schemas — no local checkout required.
+# TestUpstreamSnapshotDrift fetches these; every other test uses the snapshot
+# files above.
+_HASHI_RAW_BASE = (
+    "https://raw.githubusercontent.com/MMoMM-org/miyo-tomo-hashi/main/src/schema/"
 )
+_HASHI_UPSTREAM_URL = _HASHI_RAW_BASE + "instructions.schema.json"
+_HASHI_SUGGESTIONS_UPSTREAM_URL = _HASHI_RAW_BASE + "suggestions-wire.schema.json"
+_HASHI_GARDEN_AUDIT_UPSTREAM_URL = _HASHI_RAW_BASE + "garden-audit-wire.schema.json"
 
 # Spec 035 T2.4: the report used to carry SNAPSHOT_AHEAD_OF_UPSTREAM here — a
 # def-name-keyed exemption registry for the three actions Tomo's snapshot
@@ -88,41 +110,61 @@ _HASHI_UPSTREAM_URL = (
 # copy is a REPORT, never a gate, because it is *supposed* to lag ours
 # between a cross-repo handoff and Hashi's confirmation — and a report needs
 # no exemptions, only a delta. See docs/tomo/scripts/lib/wire_gate.md.
+#
+# `snapshot_parity_delta` / `render_snapshot_parity_report` moved to
+# `tomo/scripts/lib/wire_snapshot_parity.py` for T4.2 (code-quality
+# carry-forward from T2.4's review, 2026-09-10): three documents, three
+# callers, and production code must never import from a test module — see
+# that module's docstring and docs/tomo/scripts/lib/wire_snapshot_parity.md.
 
 
-def _snapshot_parity_delta(recorded_schema: dict, observed_schema: dict) -> list:
-    """The full-depth structural delta between two schema documents, via
-    `describe_shape` + `diff_shapes` (spec 035 T2.4) — replaces the old
-    `$defs`-entries-with-an-`action`-property intersection, which reported
-    NOTHING on a `$defs`-free schema (measured: suggestions-wire and
-    garden-audit-wire both have zero `$defs`) and never compared root-level
-    fields on either document.
-
-    `recorded_schema` / `observed_schema` follow `diff_shapes`'s own
-    direction convention (the module docstring above): "recorded" is the
-    baseline (here, the committed Hashi snapshot — what WE carry), "observed"
-    is the schema being compared against it (here, live upstream Hashi, or a
-    scratch copy standing in for it). A pointer only in `recorded` is
-    `node_removed` — read as "upstream does not have this yet", exactly what
-    SNAPSHOT_AHEAD_OF_UPSTREAM used to encode by hand.
+def _fetch_schema_json(url: str) -> dict:
+    """The ONE network call TestUpstreamSnapshotDrift makes — routed through
+    this single function so every skip test can patch exactly this seam
+    (`monkeypatch.setattr` on this name) instead of waiting for the network
+    to misbehave. Never returns partial data: a truncated transfer either
+    raises out of this function or is caught by `_fetch_or_skip`, and is
+    never mistaken for a smaller-but-valid schema.
     """
-    return diff_shapes(describe_shape(recorded_schema), describe_shape(observed_schema))
+    req = urllib.request.Request(url, headers={"User-Agent": "miyo-tomo-test/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        if resp.status != 200:
+            raise urllib.error.URLError(f"HTTP {resp.status}")
+        return json.loads(resp.read().decode("utf-8"))
 
 
-def _render_snapshot_parity_report(document: str, changes: list) -> str:
-    """Human text for a `_snapshot_parity_delta` result — a REPORT, never a
-    gate (ADR-7): the caller never fails on this, so it follows the same
-    display-only contract `wire_gate.py`'s `render_wire_gate_report` and
-    `wire_shape.py`'s `detail` field already carry — nothing parses this
-    back. Returns `""` for an empty delta, so a caller can skip printing
-    anything on the common case (no drift today).
+def _fetch_or_skip(url: str) -> dict:
+    """`_fetch_schema_json(url)`, treating any failed/partial/unreachable
+    fetch as "skip this test", never as "the schema changed". Three
+    observed failure shapes, all folded into the same skip:
+
+    - `urllib.error.URLError` / `TimeoutError` / `OSError` — the ordinary
+      "could not reach the host" family.
+    - `http.client.HTTPException` — covers `http.client.IncompleteRead`,
+      raised by `resp.read()` on a truncated transfer. Hit TWICE against
+      `garden-audit-wire.schema.json` specifically while building this
+      test, in the same run that fetched the other two documents fine
+      (T4.2 handoff). `IncompleteRead` does NOT inherit from `OSError`, so
+      it needs its own branch — an `IncompleteRead` is a PARTIAL response,
+      not an absent one: letting it reach `json.loads` risks either a
+      raise (the common case, handled below) or, worse, parsing as a
+      smaller-but-valid schema that reports the consumer removed
+      properties they never removed — a fabricated obligation, the exact
+      inverse of the failure this spec exists to prevent.
+    - `json.JSONDecodeError` — a truncated-but-parseable-looking body that
+      fails to decode. Same "network gave us garbage" class as a transport
+      failure, not genuine drift.
     """
-    if not changes:
-        return ""
-    lines = [f"{document}: snapshot vs upstream delta ({len(changes)} change(s), report only — ADR-7)"]
-    for change in changes:
-        lines.append(f"  {change['pointer']} {change['kind']}: {change['detail']}")
-    return "\n".join(lines)
+    try:
+        return _fetch_schema_json(url)
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+        json.JSONDecodeError,
+    ) as exc:
+        pytest.skip(f"upstream schema unreachable — offline ({exc})")
 
 
 @pytest.fixture(scope="module")
@@ -289,15 +331,55 @@ def _props(schema: dict, defname: str) -> set:
     return set(schema["$defs"][defname]["properties"].keys())
 
 
+def _check_upstream_drift(snapshot: dict, document_name: str, url: str) -> None:
+    """Upstream drift REPORT (spec 035 T2.4/T4.2, ADR-7) — NOT a gate: a
+    vendored consumer copy is *supposed* to lag ours between a cross-repo
+    handoff and the consumer's confirmation, so this never fails on a
+    delta. Fetches the live schema at `url` (`_fetch_or_skip`, which skips
+    rather than raising on any unreachable/partial/malformed response —
+    see its own docstring), computes the full-depth structural delta
+    against `snapshot` (`snapshot_parity_delta`), and prints it via
+    `render_snapshot_parity_report`.
+
+    One shared body for all three published wires (T4.2) — T2.4 built this
+    inline inside a single test method for the one document that existed
+    then; three documents with three near-identical method bodies is
+    exactly the kind of duplication `render_wire_gate_report`'s
+    multi-document form already avoids on the gate side.
+
+    The real evidence that this is not vacuous lives in the offline
+    fixture tests below (`TestVendoredCopies`, `TestUpstreamFetchSkip`),
+    not in this function actually reaching the network in CI — it skips
+    automatically when the upstream URL is unreachable, and this
+    environment may be offline at any given run.
+    """
+    live = _fetch_or_skip(url)
+    # REPORT, never a gate (ADR-7): no assertion on `changes` — producing
+    # and rendering the delta must never raise or fail on its own.
+    changes = snapshot_parity_delta(snapshot, live)
+    message = render_snapshot_parity_report([{"document": document_name, "changes": changes}])
+    if message:
+        print(f"\n{message}")
+
+
 class TestHashiSchemaParity:
-    """Parity guard against the COMMITTED Hashi snapshot — runs unconditionally so
-    CI / containers without a co-located Hashi checkout still exercise it. The
-    snapshot is a verbatim copy of Hashi's instructions.schema.json; a separate
-    drift check (below) catches the snapshot falling behind the live Hashi schema."""
+    """Parity guard against the COMMITTED Hashi snapshots — runs unconditionally so
+    CI / containers without a co-located Hashi checkout still exercise it. Each
+    snapshot is a verbatim copy of one of Hashi's three published-wire schemas; a
+    separate drift check (below) catches a snapshot falling behind its live
+    Hashi counterpart."""
 
     @pytest.fixture(scope="class")
     def hashi_snapshot(self) -> dict:
         return json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+
+    @pytest.fixture(scope="class")
+    def hashi_suggestions_snapshot(self) -> dict:
+        return json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
+
+    @pytest.fixture(scope="class")
+    def hashi_garden_audit_snapshot(self) -> dict:
+        return json.loads(HASHI_GARDEN_AUDIT_SNAPSHOT.read_text(encoding="utf-8"))
 
     def test_link_to_moc_props_match_snapshot(self, instructions_schema, hashi_snapshot):
         assert _props(instructions_schema, "link_to_moc") == _props(hashi_snapshot, "link_to_moc")
@@ -312,61 +394,41 @@ class TestHashiSchemaParity:
         assert "tomo" in instructions_schema["properties"]
 
     def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
-        """Upstream drift REPORT (spec 035 T2.4, ADR-7) — NOT a gate: a
-        vendored consumer copy is *supposed* to lag ours between a
-        cross-repo handoff and Hashi's confirmation, so this test never
-        fails on a delta. It fetches Hashi's live instructions.schema.json,
-        computes the full-depth structural delta against the committed
-        snapshot (`_snapshot_parity_delta`, `describe_shape` + `diff_shapes`
-        — not the old `$defs`-entries-with-an-`action`-property
-        intersection, which reported nothing on a `$defs`-free schema and
-        never compared root-level fields), and prints it.
+        """[ref: PRD/F8-AC1] instructions.schema.json's live-upstream drift
+        report — see `_check_upstream_drift`."""
+        _check_upstream_drift(hashi_snapshot, HASHI_SCHEMA_SNAPSHOT.name, _HASHI_UPSTREAM_URL)
 
-        Skips automatically when the upstream URL is unreachable so offline
-        runs and CI without network still pass — this environment is
-        offline right now. The real evidence that the replacement is not
-        vacuous the same way lives in TestSnapshotParityReport's offline
-        fixture tests below, not in this method actually running its
-        comparison in CI.
-        """
-        try:
-            req = urllib.request.Request(
-                _HASHI_UPSTREAM_URL,
-                headers={"User-Agent": "miyo-tomo-test/1.0"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status != 200:
-                    pytest.skip(
-                        f"upstream Hashi schema unreachable — HTTP {resp.status} — offline"
-                    )
-                live = json.loads(resp.read().decode("utf-8"))
-        except (
-            urllib.error.URLError, TimeoutError, OSError,
-            # http.client.IncompleteRead (raised by resp.read() on a partial
-            # transfer) is an HTTPException, not an OSError — a truncated
-            # read is the same "upstream unreachable" condition as the cases
-            # above, not a schema comparison to run.
-            http.client.HTTPException,
-            # A truncated-but-otherwise-well-formed-looking body can still
-            # fail to parse (e.g. cut off mid-string) — same "network gave
-            # us garbage" class as a transport failure, not genuine drift.
-            json.JSONDecodeError,
-        ):
-            pytest.skip("upstream Hashi schema unreachable — offline")
+    def test_suggestions_snapshot_matches_upstream_hashi(self, hashi_suggestions_snapshot):
+        """[ref: PRD/F8-AC1] suggestions-wire.schema.json's live-upstream
+        drift report — T4.2's second vendored copy. See
+        `_check_upstream_drift`."""
+        _check_upstream_drift(
+            hashi_suggestions_snapshot,
+            HASHI_SUGGESTIONS_SNAPSHOT.name,
+            _HASHI_SUGGESTIONS_UPSTREAM_URL,
+        )
 
-        # REPORT, never a gate (ADR-7): no assertion on `changes` — producing
-        # and rendering the delta must never raise or fail on its own.
-        changes = _snapshot_parity_delta(hashi_snapshot, live)
-        message = _render_snapshot_parity_report(HASHI_SCHEMA_SNAPSHOT.name, changes)
-        if message:
-            print(f"\n{message}")
+    def test_garden_audit_snapshot_matches_upstream_hashi(self, hashi_garden_audit_snapshot):
+        """[ref: PRD/F8-AC1] garden-audit-wire.schema.json's live-upstream
+        drift report — T4.2's third vendored copy, the one whose fetch was
+        observed flaky (`_fetch_or_skip`'s docstring). See
+        `_check_upstream_drift`."""
+        _check_upstream_drift(
+            hashi_garden_audit_snapshot,
+            HASHI_GARDEN_AUDIT_SNAPSHOT.name,
+            _HASHI_GARDEN_AUDIT_UPSTREAM_URL,
+        )
 
     def test_incomplete_read_during_fetch_skips_not_fails(self, hashi_snapshot, monkeypatch):
         """A partial network read (http.client.IncompleteRead, raised by
         resp.read() on a truncated transfer) must be treated the same as an
         unreachable upstream — skip, not fail. Fails if HTTPException is
         removed from the except tuple, since IncompleteRead does not inherit
-        from OSError."""
+        from OSError. Patches `urllib.request.urlopen` itself (rather than
+        the `_fetch_schema_json` seam TestUpstreamFetchSkip patches below) —
+        this is the end-to-end version, proving the real read call inside
+        `_fetch_schema_json` raises `IncompleteRead` the way the seam-level
+        tests assume it does."""
 
         class _TruncatedResponse:
             status = 200
@@ -386,6 +448,62 @@ class TestHashiSchemaParity:
 
         with pytest.raises(pytest.skip.Exception):
             self.test_snapshot_matches_upstream_hashi(hashi_snapshot)
+
+
+# ── Spec 035 T4.2 — the fetch seam, proven RED without waiting on the network ─
+#
+# The upstream fetch is genuinely flaky (T4.2 handoff: http.client.IncompleteRead
+# hit TWICE against garden-audit-wire.schema.json in one run, while the other two
+# documents succeeded). "Observed flaky in CI" is not a test — these inject each
+# failure at the one seam `_fetch_or_skip` calls (`_fetch_schema_json`) so the skip
+# path is provable on demand, and prove the OFFLINE comparison (Comparison A, ADR-7
+# — our schema against the committed vendored copy) is completely unaffected by a
+# failed fetch: it needs no network at all (CON-2).
+
+
+class TestUpstreamFetchSkip:
+    """[ref: PRD/F8-AC2] Each exception family gets its own case because
+    `http.client.IncompleteRead` specifically does NOT inherit from
+    `OSError` — a single collapsed case would not prove the `HTTPException`
+    branch is still in the `except` tuple."""
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            http.client.IncompleteRead(b"", 100),
+            urllib.error.URLError("simulated network failure"),
+            TimeoutError("simulated timeout"),
+        ],
+        ids=["incomplete_read", "url_error", "timeout"],
+    )
+    def test_fetch_failure_skips_and_offline_checks_still_run(self, exc, monkeypatch):
+        def _raise(url: str) -> dict:
+            raise exc
+
+        monkeypatch.setattr(sys.modules[__name__], "_fetch_schema_json", _raise)
+
+        with pytest.raises(pytest.skip.Exception):
+            _fetch_or_skip("https://example.invalid/schema.json")
+
+        # The offline comparison (Comparison A: our schema against the
+        # committed vendored copy) needs no network and must be completely
+        # unaffected by the patched seam above — proving the skip path
+        # above did not raise from, block, or otherwise taint the
+        # deterministic offline path CON-2 requires to keep working.
+        recorded = json.loads(HASHI_GARDEN_AUDIT_SNAPSHOT.read_text(encoding="utf-8"))
+        observed = json.loads(
+            (SCHEMAS_DIR / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
+        )
+        changes = snapshot_parity_delta(recorded, observed)
+        added_properties = {
+            c["detail"].removeprefix("added property: ")
+            for c in changes if c["kind"] == "added_property"
+        }
+        assert added_properties == {"up_source", "up_value"}, (
+            "the offline comparison must still produce its real delta after "
+            "a patched fetch seam skipped — a failed fetch must not leak "
+            "into or short-circuit the network-free path"
+        )
 
 
 # ── Spec 035 T2.4 — offline fixture tests for the parity REPORT ─────────────
@@ -420,7 +538,7 @@ class TestSnapshotParityReport:
             "type": "string",
         }
 
-        changes = _snapshot_parity_delta(original, mutated)
+        changes = snapshot_parity_delta(original, mutated)
 
         matches = [c for c in changes if "scratch_parity_probe" in c["detail"]]
         assert matches, "an added property on a $defs-free schema must be reported"
@@ -435,7 +553,7 @@ class TestSnapshotParityReport:
         mutated = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
         mutated["properties"]["scratch_root_probe"] = {"type": "string"}
 
-        changes = _snapshot_parity_delta(original, mutated)
+        changes = snapshot_parity_delta(original, mutated)
 
         root_matches = [
             c for c in changes if c["pointer"] == "" and "scratch_root_probe" in c["detail"]
@@ -472,7 +590,7 @@ class TestSnapshotParityReport:
             )
             del synthetic_upstream["$defs"][action]
 
-        changes = _snapshot_parity_delta(snapshot, synthetic_upstream)
+        changes = snapshot_parity_delta(snapshot, synthetic_upstream)
 
         node_removed_pointers = {c["pointer"] for c in changes if c["kind"] == "node_removed"}
         assert node_removed_pointers == {f"/$defs/{name}" for name in removed_actions}
@@ -522,6 +640,144 @@ class TestSnapshotParityReport:
         assert "resolve_dead_link" in printed
         assert "remove_up_link" in printed
         assert "scratch_root_probe" in printed
+
+
+# ── Spec 035 T4.2 — all three consumer copies are vendored ──────────────────
+#
+# ADR-7's FIRST comparison (our schema <-> the COMMITTED vendored copy — "does
+# the consumer accept what we emit?") runs entirely offline, hermetically, and
+# deterministically: the committed copy only moves when someone re-vendors it.
+# This is where the known garden-audit delta belongs — asserting it against the
+# LIVE remote file instead (TestHashiSchemaParity's network tests, above) would
+# make the suite go red whenever Hashi edits their schema, with no defect of
+# ours behind it. See docs/tomo/scripts/lib/wire_snapshot_parity.md.
+
+
+class TestVendoredCopies:
+    def test_a_vendored_copy_exists_for_each_published_wire(self):
+        """[ref: SDD/Architecture Decisions; ADR-7] Three published wires
+        (`lib.wire_shape.PUBLISHED_WIRES`), three committed consumer
+        copies. Each must parse as JSON and carry the same
+        `properties.schema_version.const` shape `wire_gate.py`'s own
+        validation requires — a stub or malformed vendored file would
+        otherwise pass this test by merely existing."""
+        from lib.wire_shape import PUBLISHED_WIRES
+
+        assert len(PUBLISHED_WIRES) == 3, (
+            "fixture sanity: this test enumerates exactly three snapshot "
+            "paths below because PUBLISHED_WIRES names exactly three wires "
+            "today — if that ever changes, add the fourth snapshot path too"
+        )
+        for snapshot_path in (
+            HASHI_SCHEMA_SNAPSHOT,
+            HASHI_SUGGESTIONS_SNAPSHOT,
+            HASHI_GARDEN_AUDIT_SNAPSHOT,
+        ):
+            assert snapshot_path.is_file(), f"missing vendored copy: {snapshot_path}"
+            schema = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            assert "const" in schema["properties"]["schema_version"], (
+                f"{snapshot_path.name}: not a usable schema shape"
+            )
+
+    def test_helpers_live_in_tomo_scripts_lib_not_a_test_module(self):
+        """[ref: MiYo Constitution; Code Quality] Production code must never
+        import from a test module — the T4.2 carry-forward this whole move
+        exists to satisfy. Two checks: the functions this file imports
+        report living under `tomo/scripts/lib/`, and neither name is
+        redefined anywhere under `tests/` (a regression guard against the
+        exact shape T2.4 originally built — a `def` back inside a test
+        file would slip past every other test here unnoticed, since they
+        all call through the module-level import)."""
+        import lib.wire_snapshot_parity as wire_snapshot_parity
+
+        lib_dir = (REPO_ROOT / "tomo" / "scripts" / "lib").resolve()
+        assert Path(wire_snapshot_parity.__file__).resolve().parent == lib_dir
+
+        this_file = Path(__file__).resolve()
+        tests_dir = this_file.parent
+        offenders = []
+        for path in tests_dir.glob("*.py"):
+            if path.resolve() == this_file:
+                # This file's own guard literals ("def snapshot_parity_delta(")
+                # are the search needles below, not a redefinition — scanning
+                # this file against itself would always self-match.
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "def snapshot_parity_delta(" in text or "def render_snapshot_parity_report(" in text:
+                offenders.append(path.name)
+        assert offenders == [], f"helper redefined inside a test module: {offenders}"
+
+    def test_garden_audit_comparison_a_reports_known_delta_offline(self):
+        """[ref: PRD/F8-AC1] Offline, hermetic, deterministic: OUR
+        garden-audit-wire.schema.json against the COMMITTED vendored copy
+        (never the live remote — see the section comment above). Measured
+        2026-09-11 against the vendored copy this task commits: the only
+        `added_property` changes are `up_source` and `up_value`, both on
+        `findings[].detail` — exactly the delta the T4.2 handoff's ground
+        truth named ("our eight properties on findings[].detail against
+        their six") — and both are reported UNCLASSIFIED
+        (`consumer_affecting: False`), never as obliging the consumer,
+        per ADR-7 (carry-forward b: this comparison never calls
+        `classify`). A same-run measurement also surfaces one more
+        genuine, benign, ours-only delta outside `detail` — the `check`
+        enum gaining `parent_not_moc` — which is not part of this
+        assertion because the ground truth's "exactly" claim was scoped
+        to the properties on `findings[].detail`, not the whole schema;
+        scoping the assertion to `kind == "added_property"` matches that
+        claim precisely without hardcoding a stronger one that was never
+        actually measured end-to-end.
+        """
+        recorded = json.loads(HASHI_GARDEN_AUDIT_SNAPSHOT.read_text(encoding="utf-8"))
+        observed = json.loads(
+            (SCHEMAS_DIR / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
+        )
+
+        changes = snapshot_parity_delta(recorded, observed)
+
+        added_properties = {
+            c["detail"].removeprefix("added property: ")
+            for c in changes if c["kind"] == "added_property"
+        }
+        assert added_properties == {"up_source", "up_value"}
+        assert all(c["consumer_affecting"] is False for c in changes), (
+            "the vendored-copy comparison is deliberately unclassified "
+            "(ADR-7 carry-forward b) — nothing here may claim a change "
+            "obliges the consumer"
+        )
+
+        # Guard: an empty report and a correct one must not be
+        # indistinguishable — the rendered text names the specific
+        # pointer AND property, not just a change count.
+        message = render_snapshot_parity_report(
+            [{"document": HASHI_GARDEN_AUDIT_SNAPSHOT.name, "changes": changes}]
+        )
+        assert "/properties/findings/items/properties/detail" in message
+        assert "up_source" in message
+        assert "up_value" in message
+
+    def test_suggestions_comparison_a_reports_measured_delta_offline(self):
+        """[ref: PRD/F8-AC1] Offline, hermetic: OUR suggestions-wire.schema.json
+        against the COMMITTED vendored copy. Measured 2026-09-11 against the
+        vendored copy this task commits: the shapes are structurally
+        identical (zero changes) — asserting the actual measured delta
+        rather than assuming one exists, per the T4.2 handoff's
+        instruction not to hardcode an expectation before looking. If a
+        future re-vendor introduces a real delta here, this test is
+        EXPECTED to start failing — that failure is the signal to update
+        this assertion to the newly measured delta, not evidence of a
+        defect in `snapshot_parity_delta` itself.
+        """
+        recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
+        observed = json.loads(
+            (SCHEMAS_DIR / "suggestions-wire.schema.json").read_text(encoding="utf-8")
+        )
+
+        changes = snapshot_parity_delta(recorded, observed)
+
+        assert changes == []
+        assert render_snapshot_parity_report(
+            [{"document": HASHI_SUGGESTIONS_SNAPSHOT.name, "changes": changes}]
+        ) == ""
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────

@@ -134,42 +134,19 @@ being touched anyway:
   present in the structured `ShapeChange` dict for any caller that needs
   to branch on it.
 
-## WHY the Fetch Is Routed Through One Function (`_fetch_schema_json`), and What `_fetch_or_skip` Treats as Unreachable
+## WHY This Module Never Touches the Network
 
-This module never touches the network itself — CON-2 requires the
-detection to pass offline, and `snapshot_parity_delta` is pure. The
-network side lives entirely in the test file
-(`tests/test_instruction_render_wire_hygiene.py`), in two small functions:
-`_fetch_schema_json(url)` makes the one `urllib.request.urlopen` call, and
-`_fetch_or_skip(url)` wraps it, turning any failure into `pytest.skip`
-rather than a failure or (worse) a fabricated delta.
-
-The fetch is genuinely flaky, not theoretically so: building this task hit
-`http.client.IncompleteRead` **twice** against
-`garden-audit-wire.schema.json` specifically, in the same run that fetched
-the other two documents fine. `IncompleteRead` is a **partial** response,
-not an absent one — it does NOT inherit from `OSError`, so it needs its
-own branch in `_fetch_or_skip`'s `except` tuple
-(`http.client.HTTPException`). Letting a partial read reach `json.loads`
-unguarded risks two outcomes: it raises (the common case, and still just
-"unreachable"), or — far worse — it parses as a smaller-but-valid schema,
-and the report then claims the consumer **removed** properties they never
-removed. That is a fabricated obligation, the exact inverse of the failure
-this spec exists to prevent. `json.JSONDecodeError` gets the same
-treatment for the same reason: a truncated-but-parseable-looking body is
-"network gave us garbage," not genuine drift.
-
-`TestUpstreamFetchSkip` proves the skip path is RED-provable without
-waiting on the network to misbehave: it monkeypatches
-`_fetch_schema_json` directly (not `urllib.request.urlopen` — that
-end-to-end variant is `test_incomplete_read_during_fetch_skips_not_fails`,
-kept alongside as the proof the real call raises what the seam-level tests
-assume), separately for `IncompleteRead`, `URLError`, and `TimeoutError`,
-and asserts BOTH that `_fetch_or_skip` skips AND that the offline
-comparison (this module's `snapshot_parity_delta` against the committed
-garden-audit copy) still produces its correct delta afterward — proving a
-patched, failing network seam cannot leak into or block the
-network-free path.
+CON-2 requires the detection to pass offline, and `snapshot_parity_delta`
+is pure — it takes two already-parsed schema dicts and never performs I/O.
+The network side (fetching Hashi's live schema, deciding what counts as
+"unreachable" vs. genuine drift, and the seam that makes the skip path
+RED-provable) lives entirely in `tests/test_wire_snapshot_parity.py`
+(`_fetch_schema_json`, `_fetch_or_skip`, `TestUpstreamFetchSkip`) — not
+here. See that file's module docstring for the fetch design, including why
+`http.client.IncompleteRead` needs its own `except` branch (observed
+TWICE against `garden-audit-wire.schema.json` while building T4.2) and why
+a partial read must never be mistaken for a schema that genuinely lost
+properties.
 
 ## WHY the Offline Comparison Asserts the Measured Delta, Not an Assumed One
 

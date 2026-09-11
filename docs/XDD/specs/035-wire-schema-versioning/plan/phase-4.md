@@ -77,7 +77,7 @@ from day one.
      only in the test helper `_manifest_path`. One place is not duplication, but this command needs
      the same convention — move it into `wire_shape.py` rather than writing it a second time.
 
-- [ ] **T4.2 All three consumer copies are vendored, and reported against** `[activity: data-architecture]`
+- [x] **T4.2 All three consumer copies are vendored, and reported against** `[activity: data-architecture]`
 
   **Carried forward from T2.4's code-quality review (2026-09-10) — do this BEFORE wiring the second
   and third copies, not after.**

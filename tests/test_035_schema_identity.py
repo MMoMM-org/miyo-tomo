@@ -27,10 +27,13 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
 PRODUCER_PATH = SCHEMAS_DIR / "instructions.schema.json"
 CONTRACT_PATH = SCHEMAS_DIR / "hashi-instructions.schema.json"
+SELF_PATH = Path(__file__).resolve().relative_to(REPO_ROOT)
 
 CANONICAL_ID = "https://miyo.tomo/schemas/instructions.schema.json"
 
@@ -108,6 +111,33 @@ def test_no_ref_resolves_the_canonical_url_to_the_producer_copy():
     consumer (tomo/scripts/lib/wire_shape.py, instruction-render.py,
     validate-result.py, the parity test) resolves the producer schema by
     its filename path, never by `$id`.
+
+    Exactly one exclusion, and it does real work: THIS FILE (by path, via
+    `__file__` so a rename keeps it correct) — the module docstring and the
+    `CANONICAL_ID` constant both quote the literal as test data, which is
+    not a call site that resolves anything. Nothing else is excluded: a
+    `$ref` anywhere in the repo (including in either schema's own `$id`
+    line — a `$id` value is not a `$ref`, so those lines were never going
+    to match this clause) or a `.py` call site anywhere else, including a
+    NEW test fixture, still trips this guard. (An earlier version of this
+    guard also carried a set of hardcoded schema-`$id`-line exclusions;
+    it was dead code — neither schema's `$id` line contains `$ref` or ends
+    in `.py`, so the predicate below was never going to flag them, exclusion
+    or not — and it was removed rather than left inert.)
+
+    The `.py`-filename clause is deliberately kept, not dropped, even
+    though it is the clause that flagged this very file before the
+    self-exclusion existed: it is the only thing here that would catch a
+    real future Python call site (a resolver registry, a `RefResolver`
+    keyed by this URL) binding the canonical URL to a file. Narrowing to
+    "contains `$ref`" alone would silently stop checking Python source for
+    that risk.
+
+    `git grep` contractually exits 1 for "no matches" (not an error) and
+    0 for "matches found"; anything else (missing git, no repo, bad
+    invocation) is a real search failure. A tripwire that treats a failed
+    search as "found nothing, therefore pass" cannot fire — so any other
+    exit code fails this test loudly instead of passing silently.
     """
     result = subprocess.run(
         ["git", "grep", "-n", "-F", CANONICAL_ID],
@@ -116,22 +146,24 @@ def test_no_ref_resolves_the_canonical_url_to_the_producer_copy():
         text=True,
         check=False,
     )
-    assert result.returncode in (0, 1), (
-        f"git grep failed unexpectedly: {result.stderr}"
-    )
-    hits = [line for line in result.stdout.splitlines() if line.strip()]
+    if result.returncode == 0:
+        hits = [line for line in result.stdout.splitlines() if line.strip()]
+    elif result.returncode == 1:
+        hits = []  # git grep's contractual "searched, found nothing" signal
+    else:
+        pytest.fail(
+            f"git grep exited {result.returncode} (not 0/1) — the search "
+            "itself failed, so this guard cannot confirm anything. "
+            f"stderr: {result.stderr!r}"
+        )
 
-    own_id_declarations = {
-        f'{SCHEMAS_DIR.joinpath("instructions.schema.json").relative_to(REPO_ROOT)}:3:  "$id": "{CANONICAL_ID}",',
-        f'{SCHEMAS_DIR.joinpath("hashi-instructions.schema.json").relative_to(REPO_ROOT)}:3:  "$id": "{CANONICAL_ID}",',
-    }
-    # Anything left over, once each schema's own (single) $id line is
-    # excluded, that IS a $ref or a .py call site is a binding: a
+    # Anything left over, once this guard's own test-data occurrences (this
+    # file) are excluded, that IS a $ref or a .py call site is a binding: a
     # $ref, a resolver registry entry, or a schema-loading call site.
     suspicious = [
         line
         for line in hits
-        if line not in own_id_declarations
+        if not line.startswith(f"{SELF_PATH}:")
         and ("$ref" in line.lower().replace(" ", "") or line.split(":", 1)[0].endswith(".py"))
     ]
     assert not suspicious, (

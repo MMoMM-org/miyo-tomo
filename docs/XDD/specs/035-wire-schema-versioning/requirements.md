@@ -184,9 +184,9 @@ than after a user reports it.
   checked against the version its schema declares, so that a bump cannot land in one and not the
   other.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] **F3-AC1** — Given a producer that writes a version literal, When that literal differs from the version its own schema declares, Then the suite fails naming both values
+  - [ ] **F3-AC1** — Given a producer that writes a version literal **at all**, When the suite runs, Then it fails naming the source location of that literal. *(Wording corrected 2026-09-11 during T3.3. The original required the suite to fail only when the literal **differs** from the schema's declared version, and to name both values. ADR-5 removed the literal instead of checking it, so under the shipped design a literal is itself the defect — whether or not it currently happens to agree. The guard is therefore strictly stronger than the original wording on the condition it fires on, and weaker on reporting: it names the offending source line rather than two values, because after ADR-5 there is no second value to name.)*
   - [ ] **F3-AC2** — Given every producer agreeing with its schema, When the suite runs, Then it passes
-  - [ ] **F3-AC3** — Given a version moved in the schema only, When the suite runs, Then it fails — the check must catch divergence in both directions
+  - [ ] **F3-AC3** — Given a version moved in the schema only, When the renderer next emits, Then the emitted value moves with it, with no code edit. *(Wording corrected 2026-09-11 during T3.3. The original said the suite must **fail** in this case, and that it must catch divergence in both directions. ADR-5 makes that wrong in both halves. A version moved in the schema alone is now correct behaviour, not a failure — the renderer follows its schema, which is the whole point of reading rather than declaring. And the reverse direction — code bumped, schema not — cannot occur, because the code no longer carries a version to bump; F3-AC1's guard covers the only way it could come back. The failure a stale version does still produce belongs to the wire gate and the manifest, which is F1, not F3.)*
 
 #### Feature 4: A wire change is handed over before it ships
 

@@ -7,7 +7,7 @@
   "required": ["schema_version", "generated", "run_id", "profile", "source_items", "emit_digest", "suggestions", "proposed_mocs", "daily_updates", "tag_handler_groups"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "1"},
+    "schema_version": {"const": "2"},
     "generated": {"type": "string"},
     "run_id": {"type": "string"},
     "profile": {"type": "string"},
@@ -27,22 +27,14 @@
         "properties": {
           "id": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"},
           "stem": {"type": "string", "description": "Source note stem (read-only)."},
-          "item_key": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Vault-relative path of the source note, verbatim (Tomo spec 034). Unique across inbox subfolders where `stem` is not. Required, matching Tomo verbatim: the two sides pin ONE schema, so a run without item_key is a Tomo older than this Hashi and must fail loud rather than half-open."
-          },
-          "attachments": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Vault-relative paths of files the source note embeds (Tomo spec 031). Read-only passthrough — the editor never edits it, but it must survive the save round-trip."
-          },
+          "item_key": {"type": "string", "minLength": 1, "description": "The item's identity: its vault-relative path, verbatim (e.g. '100 Inbox/Places/Dresden.md'). Used for joins, dict keys and set membership — unlike stem, it stays unique across subfolders."},
           "title": {"type": "string", "description": "Editable — the note name; the filename derives from it."},
           "summary": {"type": ["string", "null"], "description": "Read-only — one-sentence gist of the note's content (analyst-authored, display only). Lets the editor show what the note is about without opening it. Null/absent on legacy items."},
           "template": {"type": "string", "description": "Editable — template wikilink target."},
           "location": {"type": "string", "description": "Editable — destination folder."},
           "tags": {"type": "array", "items": {"type": "string"}, "description": "Editable — tags to add."},
           "audio_peer": {"type": ["string", "null"], "description": "Read-only — audio peer basename, when the source is an audio+transcript pair."},
+          "attachments": {"type": "array", "items": {"type": "string"}, "description": "Read-only — resolved vault-relative attachment paths (spec 031). Absent or empty means none."},
           "decision": {"type": "string", "enum": ["approve", "skip"], "description": "Editable — create the note (approve) or not (skip). Default mirrors the Approve pre-check (approve when worthiness >= 0.5)."},
           "keep_source": {"type": "boolean", "description": "Editable — when approved, keep the origin inbox note instead of deleting it. Default false (origin is consumed)."},
           "delete_source": {"type": "boolean", "description": "Editable — explicitly delete the origin. Default false."},
@@ -112,13 +104,14 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["field", "value", "reason", "source_stem", "accepted"],
+              "required": ["field", "value", "reason", "source_stem", "source_item_key", "accepted"],
               "additionalProperties": false,
               "properties": {
                 "field": {"type": "string", "description": "Read-only."},
                 "value": {"type": "string", "description": "Read-only."},
                 "reason": {"type": "string", "description": "Read-only."},
                 "source_stem": {"type": "string", "description": "Read-only — origin note."},
+                "source_item_key": {"type": "string", "minLength": 1, "description": "Read-only — the origin note's identity: its vault-relative path, verbatim (F9/ADR-1). source_stem stays display text."},
                 "accepted": {"type": "boolean", "description": "Editable — accept toggle."}
               }
             }
@@ -127,7 +120,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["time", "position", "content", "reason", "source_stem", "accepted", "force_atomic_note"],
+              "required": ["time", "position", "content", "reason", "source_stem", "source_item_key", "accepted", "force_atomic_note"],
               "additionalProperties": false,
               "properties": {
                 "time": {"type": ["string", "null"], "description": "Editable — HH:MM, only meaningful when position == at_time; null otherwise."},
@@ -135,6 +128,7 @@
                 "content": {"type": "string", "description": "Editable — the log-entry text."},
                 "reason": {"type": "string", "description": "Read-only."},
                 "source_stem": {"type": "string", "description": "Read-only — origin note."},
+                "source_item_key": {"type": "string", "minLength": 1, "description": "Read-only — the origin note's identity: its vault-relative path, verbatim (F9/ADR-1). source_stem stays display text."},
                 "accepted": {"type": "boolean", "description": "Editable — accept toggle."},
                 "force_atomic_note": {"type": "boolean", "description": "Editable — kept in sync per source-stem with suggestions[].force_atomic."}
               }
@@ -144,13 +138,14 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["target_stem", "time", "position", "reason", "accepted"],
+              "required": ["target_stem", "time", "position", "reason", "source_item_key", "accepted"],
               "additionalProperties": false,
               "properties": {
                 "target_stem": {"type": "string", "description": "Read-only — the atomic note the log links to."},
                 "time": {"type": ["string", "null"], "description": "Read-only."},
                 "position": {"type": "string", "enum": ["at_time", "after_last_line", "before_first_line"], "description": "Read-only."},
                 "reason": {"type": "string", "description": "Read-only."},
+                "source_item_key": {"type": "string", "minLength": 1, "description": "Read-only — the origin note's identity: its vault-relative path, verbatim (F9/ADR-1). The bucket that previously carried no source identity at all — only the wikilink target of the note the daily log points AT (target_stem), never the note that proposed the link."},
                 "accepted": {"type": "boolean", "description": "Editable — accept toggle."}
               }
             }

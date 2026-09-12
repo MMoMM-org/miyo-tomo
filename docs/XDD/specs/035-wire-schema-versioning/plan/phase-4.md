@@ -256,9 +256,40 @@ from day one.
   — verified by search. Their repository is outside our visibility, and a matcher keyed on `$id`
   rather than path is the only way this change could break something no test here covers.
 
-- [ ] **T4.4 After confirmation: refresh, prove clean, integrate** `[activity: validate]`
+- [x] **T4.4 After confirmation: refresh, prove clean, integrate** `[activity: validate]`
 
   **Blocked on the owner returning with the consumer's confirmation. Do not begin otherwise.**
+
+  **Unblocked and completed 2026-09-12.** Hashi's reply
+  (`_inbox/from-hashi/2026-09-12_hashi-to-tomo_both-wires-vendored-resume-emission.md`) discharged
+  §6: both wires vendored verbatim and merged to their `main` (PR #134, commit `f799588`), and every
+  row of the handoff's obligation table reproduced against their own compiled validators with no
+  correction. Verified here rather than taken on the reply's word — all three vendored copies were
+  refetched from their `main` and are **byte-identical** to what we sent, which is a stronger check
+  than the structural one their §7 explicitly limited itself to.
+
+  Two things the task did not anticipate:
+
+  - **The instructions wire is not at zero and never was.** Measured whole-document for the first
+    time (it had only targeted parity assertions before), it carries three differences, all standing
+    agreements rather than drift: the Tomo-owned `properties.tomo` block, which by the 2026-06-20
+    handoff (miyo-tomo#74) evolves without a round-trip and which Hashi ignores for execution, and
+    the contract-only `$defs/replace_section` definition that T3.2 gave the two documents distinct
+    `$id`s over. Owner decision: scope the comparison rather than baseline the noise —
+    `SANCTIONED_ASYMMETRIES` + `partition_sanctioned` in `wire_snapshot_parity.py`, a separate step
+    that returns what it excluded rather than swallowing it, so F6-AC3's "nothing across all three"
+    is reached honestly. The exclusion is pinned by three tests, because it is the one thing in that
+    module that can hide a real delta.
+  - **The vendored instructions copy was semantically current but not a literal mirror** — upstream
+    escapes five em-dashes as `—`, our copy carried them literally. `json.loads` makes them
+    identical, so the structural drift check read clean; re-vendored verbatim.
+
+  Five tests that asserted the *known delta* went red the moment the copies were refreshed, which is
+  the transition T4.5's closing condition describes. Rewritten to assert emptiness **with a mutation
+  control** — a scratch copy with one property dropped must still be detected — because
+  `reportable == []` alone passes just as well against a `snapshot_parity_delta` broken into always
+  returning nothing. Proven by sabotaging the function: 10 tests fail, including all three rewritten
+  ones.
 
   1. Prime: confirm the consumer has vendored — read their reply, do not infer it from elapsed time.
   2. Test — the whole mechanism, end to end:
@@ -271,10 +302,17 @@ from day one.
   3. Implement: refresh the vendored copy; begin emitting the new version `[ref: PRD/F4-AC5]`.
   4. Validate: full suite green including `-m integration`; ruff clean.
   5. Success:
-     - [ ] The garden-audit report is clean `[ref: PRD/F6-AC2]`
-     - [ ] The detection reports nothing across all three `[ref: PRD/F6-AC3]`
-     - [ ] The new version is emitted only after confirmation `[ref: PRD/F4-AC5]`
-     - [ ] Every published wire has a permitted and a refused test `[ref: SDD/Constraints; CON-5]`
+     - [x] The garden-audit report is clean `[ref: PRD/F6-AC2]`
+     - [x] The detection reports nothing across all three `[ref: PRD/F6-AC3]` — bare zero on the two
+       published wires; on instructions, zero reportable with three entries partitioned as
+       sanctioned and asserted by name
+     - [x] The new version is emitted only after confirmation `[ref: PRD/F4-AC5]` — the suspension
+       held from 2026-09-11 until the reply arrived, and nothing in code enforced it: it held
+       because it was written down and honoured
+     - [x] Every published wire has a permitted and a refused test `[ref: SDD/Constraints; CON-5]` —
+       already satisfied before this task: `test_gate_passes_silently_on_the_real_committed_tree`
+       covers all three permitted, and each wire has its own refused case in
+       `tests/test_035_wire_gate.py`. Verified rather than re-built.
 
 - [ ] **T4.5 Phase Validation** `[activity: validate]`
 

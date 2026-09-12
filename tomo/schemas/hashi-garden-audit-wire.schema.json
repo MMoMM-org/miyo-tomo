@@ -8,8 +8,8 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1",
-      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved) are additive."
+      "const": "2",
+      "description": "Schema version — moved to '2' (spec 035 T4.3, 2026-09-11) to disclose two fields already being emitted without ever being announced: decision.detail.up_source / up_value (since specs 032/033) and the 'parent_not_moc' check enum value (since commit 2111772). Both are read-only detail; nothing about the wire's shape or the producer's behaviour changed at the move — only the version now matches what was already on the wire. Everything from schema_version '1' (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved, top-level suggest_pending) remains additive."
     },
     "approved": {
       "type": "boolean",
@@ -17,7 +17,7 @@
     },
     "suggest_pending": {
       "type": "boolean",
-      "description": "Editor-set gate: true when the user requested '--suggest' on ≥1 finding that has not yet been enriched (decision.suggest_requested && !decision.suggested). Blocks /inbox approval until Tomo runs --suggest and clears it. Set false/absent when nothing is pending. EXCLUDED from emit_digest (a gate toggle, not an apply-decision edit) — like 'approved'. Additive; schema_version '1' survives."
+      "description": "Suggest-before-approve gate (2026-07-24). true = a finding requested LLM candidates (decision.suggest_requested) but '/garden-audit --suggest' has not fulfilled it yet → the Tomo-Editor MUST block approve while true; approve is allowed when false. Ownership: Tomo initialises it false at render and recomputes it false after --suggest (once every suggest_requested finding carries decision.suggested); the Tomo-Editor sets it true when the user requests suggestions. EXCLUDED from emit_digest (an editor/Tomo signal, not an apply edit). Optional — absent is treated as false for back-compat. Pass-2 also refuses to apply a doc while pending (also detected from the markdown for .md-only users)."
     },
     "generated": {
       "type": "string",
@@ -34,7 +34,7 @@
     "emit_digest": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
-      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, approved, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
+      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, top-level approved, top-level suggest_pending, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
     },
     "findings": {
       "type": "array",
@@ -50,17 +50,17 @@
           },
           "check": {
             "type": "string",
-            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"],
+            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc", "parent_not_moc"],
             "description": "Which check produced this finding."
           },
           "tier": {
             "type": "string",
             "enum": ["integrity", "structure", "advisory"],
-            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc}."
+            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc,parent_not_moc}."
           },
           "fixable": {
             "type": "boolean",
-            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-6."
+            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-7 (duplicate_stem,stale_moc,parent_not_moc)."
           },
           "target": {
             "type": "object",
@@ -93,6 +93,13 @@
               "up_target": {
                 "type": ["string", "null"],
                 "description": "broken_up: the broken up:: target stem."
+              },
+              "up_source": {
+                "enum": ["inline", "frontmatter", null],
+                "description": "broken_up: where the up:: declaration was read from. Absent when the cache entry predates spec 032 (ADR-3) — never defaulted."
+              },
+              "up_value": {
+                "description": "broken_up: the raw property value observed for the declaration, copied verbatim — a list, a scalar, or null. Unconstrained by design: a later phase uses it as a byte-exact guard. Absent when the cache entry predates spec 032 (ADR-3) — never defaulted."
               },
               "dead_target": {
                 "type": "string",

@@ -93,6 +93,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from lib.wire_snapshot_parity import (  # noqa: E402
+    SANCTIONED_ASYMMETRIES,
+    partition_sanctioned,
     render_snapshot_parity_report,
     snapshot_parity_delta,
 )
@@ -353,16 +355,27 @@ class TestUpstreamFetchSkip:
         observed = json.loads(
             (SCHEMAS_DIR / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
         )
-        changes = snapshot_parity_delta(recorded, observed)
-        added_properties = {
-            c["detail"].removeprefix("added property: ")
-            for c in changes if c["kind"] == "added_property"
-        }
-        assert added_properties == {"up_source", "up_value"}, (
-            "the offline comparison must still produce its real delta after "
+        assert snapshot_parity_delta(recorded, observed) == [], (
+            "the offline comparison must still produce its real result after "
             "a patched fetch seam skipped — a failed fetch must not leak "
             "into or short-circuit the network-free path"
         )
+
+        # Since 2026-09-12 that real result is EMPTY (the consumer vendored
+        # both wires), and an empty list is also what a short-circuited path
+        # would return — so emptiness alone can no longer distinguish
+        # "unaffected" from "never ran". A mutated scratch copy can: the
+        # offline path must still be live enough to find a dropped property.
+        mutated = json.loads(
+            (SCHEMAS_DIR / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
+        )
+        del mutated["properties"]["findings"]["items"]["properties"]["detail"][
+            "properties"
+        ]["up_source"]
+        assert any(
+            c["kind"] == "removed_property" and "up_source" in c["detail"]
+            for c in snapshot_parity_delta(recorded, mutated)
+        ), "the network-free path stopped discriminating after a fetch skip"
 
 
 # ── Spec 035 T2.4 — offline fixture tests for the parity REPORT ─────────────
@@ -610,25 +623,26 @@ class TestVendoredCopies:
                 offenders.append(path.name)
         assert offenders == [], f"helper redefined inside a test module: {offenders}"
 
-    def test_garden_audit_comparison_a_reports_known_delta_offline(self):
-        """[ref: PRD/F8-AC1] Offline, hermetic, deterministic: OUR
-        garden-audit-wire.schema.json against the COMMITTED vendored copy
-        (never the live remote — see the section comment above). Measured
-        2026-09-11 against the vendored copy this task commits: the only
-        `added_property` changes are `up_source` and `up_value`, both on
-        `findings[].detail` — exactly the delta the T4.2 handoff's ground
-        truth named ("our eight properties on findings[].detail against
-        their six") — and both are reported UNCLASSIFIED
-        (`consumer_affecting: False`), never as obliging the consumer,
-        per ADR-7 (carry-forward b: this comparison never calls
-        `classify`). A same-run measurement also surfaces one more
-        genuine, benign, ours-only delta outside `detail` — the `check`
-        enum gaining `parent_not_moc` — which is not part of this
-        assertion because the ground truth's "exactly" claim was scoped
-        to the properties on `findings[].detail`, not the whole schema;
-        scoping the assertion to `kind == "added_property"` matches that
-        claim precisely without hardcoding a stronger one that was never
-        actually measured end-to-end.
+    def test_garden_audit_comparison_a_is_clean_offline(self):
+        """[ref: PRD/F6-AC2] [ref: PRD/F6-AC3] Offline, hermetic,
+        deterministic: OUR garden-audit-wire.schema.json against the
+        COMMITTED vendored copy (never the live remote — see the section
+        comment above).
+
+        Re-measured 2026-09-12. This test previously asserted a delta —
+        `up_source`/`up_value` on `findings[].detail`, the `check` enum
+        gaining `parent_not_moc`, and the version const moving "1" -> "2".
+        Hashi vendored both wires verbatim and merged them to their main
+        (PR #134, commit `f799588`); T4.4 refreshed the committed copy from
+        it, so the consumer now carries all of it and the delta is gone.
+        Updating the assertion to the newly measured state is exactly what
+        the suggestions test beside this one instructed its next reader to
+        do rather than treat the change as a defect in the comparison.
+
+        Empty is F6-AC2's closing condition, which is why the assertion
+        cannot be `reportable == []` on its own: that passes just as well
+        if `snapshot_parity_delta` were broken into always returning
+        nothing. The mutation at the end is the discriminator.
         """
         recorded = json.loads(HASHI_GARDEN_AUDIT_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(
@@ -636,44 +650,60 @@ class TestVendoredCopies:
         )
 
         changes = snapshot_parity_delta(recorded, observed)
+        reportable, sanctioned = partition_sanctioned(
+            changes, HASHI_GARDEN_AUDIT_SNAPSHOT.name
+        )
 
-        added_properties = {
-            c["detail"].removeprefix("added property: ")
-            for c in changes if c["kind"] == "added_property"
-        }
-        assert added_properties == {"up_source", "up_value"}
+        assert reportable == [], (
+            "the consumer has vendored this wire, so anything here is drift "
+            f"they have not been told about: {reportable}"
+        )
+        assert sanctioned == [], (
+            "nothing is sanctioned on this wire — an entry means "
+            "SANCTIONED_ASYMMETRIES grew a prefix that is hiding a real delta"
+        )
         assert all(c["consumer_affecting"] is False for c in changes), (
             "the vendored-copy comparison is deliberately unclassified "
             "(ADR-7 carry-forward b) — nothing here may claim a change "
             "obliges the consumer"
         )
+        assert render_snapshot_parity_report(
+            [{"document": HASHI_GARDEN_AUDIT_SNAPSHOT.name, "changes": reportable}]
+        ) == "", "an in-sync document must render to nothing at all"
 
-        # Guard: an empty report and a correct one must not be
-        # indistinguishable — the rendered text names the specific
-        # pointer AND property, not just a change count.
-        message = render_snapshot_parity_report(
-            [{"document": HASHI_GARDEN_AUDIT_SNAPSHOT.name, "changes": changes}]
+        # Non-vacuity. A scratch copy — never the committed file — with one
+        # property dropped must still be detected. Without this, an
+        # always-empty comparison would satisfy every assertion above.
+        mutated = json.loads(
+            (SCHEMAS_DIR / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
         )
-        assert "/properties/findings/items/properties/detail" in message
-        assert "up_source" in message
-        assert "up_value" in message
+        del mutated["properties"]["findings"]["items"]["properties"]["detail"][
+            "properties"
+        ]["up_source"]
+        mutated_changes = snapshot_parity_delta(recorded, mutated)
+        assert any(
+            c["kind"] == "removed_property" and "up_source" in c["detail"]
+            for c in mutated_changes
+        ), f"the comparison stopped detecting a removed property: {mutated_changes}"
 
-    def test_suggestions_comparison_a_reports_measured_delta_offline(self):
-        """[ref: PRD/F8-AC1] Offline, hermetic: OUR suggestions-wire.schema.json
-        against the COMMITTED vendored copy. Re-measured 2026-09-11 after
-        spec 035 F9 (T4.2b): the vendored copy still pins schema_version
-        "1" and all three daily buckets closed, while ours moved to "2"
-        and gained `source_item_key` on each — exactly the drift this
-        test exists to surface, per its own instruction the last time it
-        was measured (then: zero changes) to update the assertion to the
-        newly measured delta rather than treat the failure as a defect in
-        `snapshot_parity_delta` itself. The delta stays UNTIL Hashi re-vendors:
-        requirements.md's Rule 7 ("A consumer-affecting change is not emitted
-        until the consumer confirms") and the 2026-09-09 "one strict wire, no
-        compatibility window" decision (requirements.md's Won't-Have list —
-        the consumer declined a dual-emit path) are why this comparison must
-        not be made to quietly agree in the meantime; there is nothing to
-        fall back to if it did.
+    def test_suggestions_comparison_a_is_clean_offline(self):
+        """[ref: PRD/F6-AC3] Offline, hermetic: OUR
+        suggestions-wire.schema.json against the COMMITTED vendored copy.
+
+        Re-measured 2026-09-12, the third measurement this test has
+        carried. It went zero (T2.4) -> eight (T4.2b, once F9 widened the
+        three daily buckets and the version const moved) -> zero again
+        here, because Hashi vendored the widened wire and merged it
+        (PR #134, `f799588`) and T4.4 refreshed the committed copy.
+
+        Its previous instruction — re-measure and update rather than treat
+        a changed delta as a defect in `snapshot_parity_delta` — is what
+        this revision follows, and it carries forward unchanged. So does
+        the reason the delta was allowed to stand in the meantime:
+        requirements.md's Rule 7 ("A consumer-affecting change is not
+        emitted until the consumer confirms") plus the 2026-09-09 "one
+        strict wire, no compatibility window" decision. Reaching zero here
+        is the confirmation arriving, not the rule weakening.
         """
         recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(
@@ -681,38 +711,138 @@ class TestVendoredCopies:
         )
 
         changes = snapshot_parity_delta(recorded, observed)
+        reportable, sanctioned = partition_sanctioned(
+            changes, HASHI_SUGGESTIONS_SNAPSHOT.name
+        )
 
+        assert reportable == [], (
+            "the consumer has vendored this wire, so anything here is drift "
+            f"they have not been told about: {reportable}"
+        )
+        assert sanctioned == [], (
+            "nothing is sanctioned on this wire — an entry means "
+            "SANCTIONED_ASYMMETRIES grew a prefix that is hiding a real delta"
+        )
         assert all(c["consumer_affecting"] is False for c in changes), (
             "the vendored-copy comparison is deliberately unclassified "
             "(ADR-7 carry-forward b) — nothing here may claim a change "
             "obliges the consumer"
         )
+        assert render_snapshot_parity_report(
+            [{"document": HASHI_SUGGESTIONS_SNAPSHOT.name, "changes": reportable}]
+        ) == "", "an in-sync document must render to nothing at all"
 
-        schema_version_changes = {
-            (c["kind"], c["detail"]) for c in changes if c["pointer"] == ""
-        }
-        assert schema_version_changes == {
-            ("added_enum_value", "schema_version: added value '2'"),
-            ("removed_enum_value", "schema_version: removed value '1'"),
-        }
-
-        daily_bucket_changes = {
-            (c["pointer"], c["kind"])
-            for c in changes if c["pointer"].startswith("/properties/daily_updates/")
-        }
-        assert daily_bucket_changes == {
-            (f"/properties/daily_updates/items/properties/{bucket}/items", kind)
-            for bucket in ("trackers", "log_entries", "log_links")
-            for kind in ("added_property", "required_added")
-        }
-        assert all(
-            "source_item_key" in c["detail"]
-            for c in changes if c["pointer"].startswith("/properties/daily_updates/")
+        # Non-vacuity, on the exact field this wire's release was about: a
+        # scratch copy — never the committed file — that drops
+        # `source_item_key` from one daily bucket must still be detected.
+        mutated = json.loads(
+            (SCHEMAS_DIR / "suggestions-wire.schema.json").read_text(encoding="utf-8")
         )
-        assert len(changes) == 8
+        trackers = mutated["properties"]["daily_updates"]["items"]["properties"][
+            "trackers"
+        ]["items"]
+        del trackers["properties"]["source_item_key"]
+        trackers["required"] = [
+            name for name in trackers["required"] if name != "source_item_key"
+        ]
+        mutated_changes = snapshot_parity_delta(recorded, mutated)
+        assert {c["kind"] for c in mutated_changes} >= {
+            "removed_property",
+            "required_removed",
+        }, f"the comparison stopped detecting a dropped field: {mutated_changes}"
 
-        message = render_snapshot_parity_report(
-            [{"document": HASHI_SUGGESTIONS_SNAPSHOT.name, "changes": changes}]
+    def test_instructions_comparison_a_is_clean_apart_from_sanctioned(self):
+        """[ref: PRD/F6-AC3] The third wire. F6-AC3 says the detection
+        reports nothing across all three, and until 2026-09-12 nobody had
+        measured this one whole-document — the instructions wire had only
+        targeted parity assertions (`link_to_moc`, `move_note`, the tomo
+        block's presence), so its full delta was never asserted either way.
+
+        Measured, it is three changes, and all three are standing
+        agreements rather than drift: the Tomo-owned `properties.tomo`
+        block (miyo-tomo#74, handoff 2026-06-20) and the contract-only
+        `$defs/replace_section` definition (spec 035 T3.2). Both are
+        `SANCTIONED_ASYMMETRIES` entries, so what F6-AC3 requires — nothing
+        the consumer has not been told about — holds here too.
+
+        This wire is deliberately NOT part of the PR #134 release; the
+        release handoff said so in as many words, and Hashi's reply singled
+        that row out as the useful one. So the assertion below is the
+        interesting half: `reportable` is empty, while `sanctioned` is
+        non-empty and named exactly.
+        """
+        recorded = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        observed = json.loads(
+            (SCHEMAS_DIR / "instructions.schema.json").read_text(encoding="utf-8")
         )
-        assert "source_item_key" in message
-        assert "/properties/daily_updates/items/properties/log_links/items" in message
+
+        changes = snapshot_parity_delta(recorded, observed)
+        reportable, sanctioned = partition_sanctioned(
+            changes, HASHI_SCHEMA_SNAPSHOT.name
+        )
+
+        assert reportable == [], (
+            "an entry here is drift on the instructions wire that no handoff "
+            f"has carried: {reportable}"
+        )
+        assert {(c["pointer"], c["kind"]) for c in sanctioned} == {
+            ("/$defs/replace_section", "node_removed"),
+            ("/properties/tomo", "added_property"),
+            ("/properties/tomo/properties/skipped_daily/items", "node_added"),
+        }, (
+            "the sanctioned set changed. That is not automatically wrong — "
+            "the tomo block is agreed to evolve without a round-trip — but "
+            "it must be re-read and re-asserted, never widened by accident"
+        )
+
+    def test_sanctioned_asymmetries_covers_only_what_was_agreed(self):
+        """The exclusion is the one thing in this module that can hide a
+        real delta, so its contents are pinned here rather than left to
+        whoever next finds the report noisy.
+
+        Two properties matter. Only the instructions wire has sanctioned
+        prefixes at all — the two published wires must stay at a bare zero,
+        because there the report IS the answer to "does the consumer accept
+        what we emit". And each prefix names a surface the consumer
+        provably does not read; that claim is what a reviewer should
+        re-check before this set grows.
+        """
+        assert set(SANCTIONED_ASYMMETRIES) == {"hashi-instructions.schema.json"}, (
+            "a published wire gained a sanctioned prefix — on suggestions or "
+            "garden-audit there is no surface Hashi does not read, so an "
+            "exclusion there hides drift instead of scoping the comparison"
+        )
+        assert SANCTIONED_ASYMMETRIES["hashi-instructions.schema.json"] == (
+            "/properties/tomo",
+            "/$defs/replace_section",
+        )
+
+    def test_sanctioning_matches_on_a_segment_boundary(self):
+        """A prefix must not swallow a sibling that merely starts with the
+        same characters — `/properties/tomo` covers its own subtree and
+        nothing else. Cheap to get wrong with a bare `startswith`, and the
+        failure mode is silent: a real change on a neighbouring property
+        would be filed as agreed-and-expected.
+        """
+        neighbour = {"pointer": "/properties/tomorrow", "detail": "added property: x"}
+        subtree = {
+            "pointer": "/properties/tomo/properties/skipped_daily",
+            "detail": "added property: y",
+        }
+        exact = {"pointer": "/properties/tomo", "detail": "added property: z"}
+
+        reportable, sanctioned = partition_sanctioned(
+            [neighbour, subtree, exact], "hashi-instructions.schema.json"
+        )
+
+        assert reportable == [neighbour]
+        assert sanctioned == [subtree, exact]
+
+    def test_an_unlisted_document_sanctions_nothing(self):
+        """`partition_sanctioned` is called with a filename. A typo in it
+        must not silently sanction everything — the safe direction is to
+        report too much, never too little.
+        """
+        changes = [{"pointer": "/properties/tomo", "detail": "added property: x"}]
+        reportable, sanctioned = partition_sanctioned(changes, "not-a-vendored-copy.json")
+        assert (reportable, sanctioned) == (changes, [])

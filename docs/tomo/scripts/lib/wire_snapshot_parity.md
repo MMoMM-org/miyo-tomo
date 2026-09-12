@@ -150,8 +150,18 @@ properties.
 
 ## WHY the Offline Comparison Asserts the Measured Delta, Not an Assumed One
 
+**Superseded in its facts by T4.4 (2026-09-12), not in its principle — see
+the next section.** Hashi vendored both wires and merged them (PR #134,
+`f799588`), the committed copies were refreshed from their `main`, and
+every delta below is now zero. The tests named here were renamed to
+`..._is_clean_offline` accordingly. The discipline the section describes
+is what governed that rewrite, so it is kept rather than deleted: assert
+what was measured, and re-measure rather than treat a changed delta as a
+defect in the comparison.
+
+The historical measurement, for the record:
 `TestVendoredCopies::test_garden_audit_comparison_a_reports_known_delta_offline`
-asserts the `added_property` changes are exactly `{"up_source",
+asserted the `added_property` changes are exactly `{"up_source",
 "up_value"}` — matching the ground truth measured for the T4.2 handoff
 ("our eight properties on `findings[].detail` against their six"). A
 fuller run of `snapshot_parity_delta` over the whole schema (not just
@@ -168,6 +178,60 @@ follows the same discipline in the other direction: the measured delta for
 suggestions-wire.schema.json against its vendored copy is empty, and the
 test asserts exactly that — an assumed non-empty delta would have been a
 guess dressed as a measurement.
+
+## WHY Some Asymmetries Are Sanctioned, and Why That Is Not the Same as Silencing Them
+
+`SANCTIONED_ASYMMETRIES` + `partition_sanctioned` exist because of what
+T4.4 found the moment the two published wires reached zero: the
+**instructions** wire has three permanent differences from its vendored
+copy, and none of them is drift.
+
+- `properties.tomo` is Tomo-owned. Its own schema description records the
+  agreement — kept permissive "so Tomo can evolve the block without a
+  coordinated round-trip" (tomo-to-hashi handoff 2026-06-20,
+  miyo-tomo#74) — and states that "Hashi ignores it for execution — Hashi
+  only runs `actions`."
+- `$defs/replace_section` exists in the contract and not in the producer
+  copy. That is the structural difference spec 035 T3.2 gave the two
+  documents distinct `$id`s over. Their carrying a definition we never
+  emit cannot make them reject anything of ours.
+
+Three options were on the table. Baselining the three entries (assert
+exactly them, read F6-AC3 as "no *unexpected* delta") was rejected because
+it is the precise failure the SDD's closing condition names: a report that
+always carries known noise teaches its readers that entries are normal,
+and then a real one arrives and reads as more of the same. Narrowing the
+acceptance criterion to the two published wires was rejected as changing
+the spec to fit the measurement.
+
+What was chosen instead treats the finding as a **scoping** question, not
+a noise question. This comparison asks "does the consumer accept what we
+emit?" — and `properties.tomo` is, by written agreement, not something the
+consumer reads at all. Counting it is closer to a category error than to
+tolerable noise, and removing it makes the report's emptiness mean
+something again.
+
+The risk is real and was accepted with it named: an exclusion is also a
+place a change can hide. A genuine change inside `properties.tomo` will
+not be reported. Four things keep that bounded:
+
+1. `partition_sanctioned` is a **separate step**, not an argument to
+   `snapshot_parity_delta`. That function's docstring asks the next reader
+   not to touch it — it is the ADR-7 primitive and every caller must keep
+   meaning the same thing.
+2. It **returns what it excluded**. The caller still holds `sanctioned`
+   and can render it; nothing is discarded inside the comparison.
+3. The set is **pinned by tests**, not left to whoever next finds the
+   report noisy: its exact contents, the fact that only the instructions
+   wire has entries at all, segment-boundary matching (`/properties/tomo`
+   must never swallow `/properties/tomorrow`), and an unlisted document
+   sanctioning nothing — a typo in the filename must report too much,
+   never too little.
+4. Each prefix must name a surface the consumer **provably does not
+   read**. That is the claim a reviewer should re-check before the set
+   grows, and it is why the two published wires have no entries: there,
+   the report *is* the answer, and an exclusion would hide drift rather
+   than scope the question.
 
 ## Who Notices When a Vendored Copy Goes Stale, and What "No Delta" Means on That Day
 

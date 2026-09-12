@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """wire_snapshot_parity.py — The snapshot-vs-upstream REPORT for a vendored
 consumer copy (spec 035 T2.4, generalised for T4.2's three vendored copies).
 
@@ -31,7 +31,37 @@ from __future__ import annotations
 
 from lib.wire_shape import describe_shape, diff_shapes
 
-__all__ = ["snapshot_parity_delta", "render_snapshot_parity_report"]
+__all__ = [
+    "SANCTIONED_ASYMMETRIES",
+    "partition_sanctioned",
+    "snapshot_parity_delta",
+    "render_snapshot_parity_report",
+]
+
+# Subtrees where our schema and a vendored consumer copy are AGREED to
+# differ — a standing cross-repo decision, not a lag awaiting a handoff.
+# Keyed by vendored-copy filename; values are JSON-pointer prefixes.
+#
+# Every entry needs the agreement that sanctions it named on the line, and
+# nothing goes in here to quiet a report. The test that fixes this mapping
+# is the place to argue with an entry.
+SANCTIONED_ASYMMETRIES = {
+    "hashi-instructions.schema.json": (
+        # `properties.tomo` is Tomo-owned. Its own schema description
+        # records the agreement: kept permissive "so Tomo can evolve the
+        # block without a coordinated round-trip" (tomo-to-hashi handoff
+        # 2026-06-20, miyo-tomo#74), and "Hashi ignores it for execution —
+        # Hashi only runs `actions`". A property we add here cannot reach
+        # their validator, so reporting it answers a question this
+        # comparison is not asking.
+        "/properties/tomo",
+        # The contract carries a `replace_section` definition the producer
+        # copy does not — the structural difference spec 035 T3.2 gave the
+        # two documents distinct `$id`s over. Theirs having a definition we
+        # never emit cannot make them reject anything of ours.
+        "/$defs/replace_section",
+    ),
+}
 
 
 def snapshot_parity_delta(recorded_schema: dict, observed_schema: dict) -> list:
@@ -60,6 +90,41 @@ def snapshot_parity_delta(recorded_schema: dict, observed_schema: dict) -> list:
     stay a report.
     """
     return diff_shapes(describe_shape(recorded_schema), describe_shape(observed_schema))
+
+
+def partition_sanctioned(changes: list, document: str) -> tuple:
+    """Split a `snapshot_parity_delta` result into `(reportable,
+    sanctioned)` using `SANCTIONED_ASYMMETRIES[document]`.
+
+    A separate step rather than an argument to `snapshot_parity_delta`,
+    for two reasons. That function's docstring asks the next reader not to
+    touch it, and the reason applies here too: it is the ADR-7 primitive
+    and every caller of it must keep meaning the same thing. And an
+    exclusion that returns what it excluded is not a place a change can
+    disappear — the caller still holds `sanctioned` and can render it.
+
+    The cost this buys down is the one the report exists to avoid: a
+    permanent, by-design entry teaches readers that entries are normal,
+    and then a real one arrives and reads as more of the same. The cost it
+    incurs is the mirror image — a genuine change inside a sanctioned
+    subtree is not reported. That trade is only sound while every prefix
+    names a surface the consumer provably does not read; see each entry's
+    comment in `SANCTIONED_ASYMMETRIES`, and re-check the agreement before
+    adding one.
+
+    Matching is pointer-prefix, on a path-segment boundary:
+    `/properties/tomo` covers `/properties/tomo/properties/skipped_daily`
+    but never `/properties/tomorrow`.
+    """
+    prefixes = SANCTIONED_ASYMMETRIES.get(document, ())
+    reportable, sanctioned = [], []
+    for change in changes:
+        pointer = change["pointer"]
+        is_sanctioned = any(
+            pointer == prefix or pointer.startswith(prefix + "/") for prefix in prefixes
+        )
+        (sanctioned if is_sanctioned else reportable).append(change)
+    return reportable, sanctioned
 
 
 def render_snapshot_parity_report(results: list) -> str:

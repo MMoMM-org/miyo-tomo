@@ -57,9 +57,16 @@ Removes two ways the mechanism could be defeated from underneath.
      rewrites that file, and two phases editing one file is how the independence claim would stop
      being true.
   5. Success:
-     - [ ] Each renderer emits its schema's declared version `[ref: PRD/F3-AC1]`
-     - [ ] Every producer agrees with its schema `[ref: PRD/F3-AC2]`
-     - [ ] Divergence in **either** direction is caught by the regression guard `[ref: PRD/F3-AC3]`
+     - [x] Each renderer emits its schema's declared version `[ref: PRD/F3-AC1]` — this box's
+       wording predates T3.3's correction of F3-AC1, which under ADR-5 makes a version literal the
+       defect rather than a disagreeing literal. Traced against the corrected wording in
+       `../close-out.md`
+     - [x] Every producer agrees with its schema `[ref: PRD/F3-AC2]`
+     - [x] ~~Divergence in **either** direction is caught by the regression guard~~ `[ref: PRD/F3-AC3]`
+       — **superseded.** T3.3 corrected F3-AC3: under ADR-5 the reverse direction cannot occur,
+       because the code carries no version to bump. Ticked against the corrected criterion (a
+       version moved in the schema alone is followed by the renderer with no code edit), not the
+       struck wording
 
 - [x] **T3.2 The two instruction documents stop sharing an identity** `[parallel: true]` `[activity: data-architecture]`
 
@@ -80,9 +87,10 @@ Removes two ways the mechanism could be defeated from underneath.
   3. Implement: give the producer copy a distinct `$id`; leave the contract's canonical.
   4. Validate: unit tests pass; ruff clean; full suite green.
   5. Success:
-     - [ ] The two identities differ `[ref: PRD/F5-AC1]`
-     - [ ] Each states its role `[ref: PRD/F5-AC2]`
-     - [ ] The parity check still passes `[ref: PRD/F5-AC3]`
+     - [x] The two identities differ `[ref: PRD/F5-AC1]`
+     - [x] Each states its role `[ref: PRD/F5-AC2]` — narrowed by owner decision to the producer
+       copy; T4.4's re-vendor would have erased an annotation in the mirror, as predicted
+     - [x] The parity check still passes `[ref: PRD/F5-AC3]`
 
 - [x] **T3.3 Phase Validation** `[activity: validate]`
 

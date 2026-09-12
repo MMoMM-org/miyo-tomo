@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The CLI, the consumer copies, and closing the live drift"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -123,9 +123,11 @@ from day one.
      network test to all three.
   4. Validate: unit tests pass; ruff clean; the suite passes **offline**.
   5. Success:
-     - [ ] Three consumer copies are vendored `[ref: SDD/Architecture Decisions; ADR-7]`
-     - [ ] Unreachable upstream skips rather than fails `[ref: PRD/F8-AC2]`
-     - [ ] The known garden-audit delta is reported `[ref: PRD/F8-AC1]`
+     - [x] Three consumer copies are vendored `[ref: SDD/Architecture Decisions; ADR-7]`
+     - [x] Unreachable upstream skips rather than fails `[ref: PRD/F8-AC2]`
+     - [x] The known garden-audit delta is reported `[ref: PRD/F8-AC1]` — satisfied as measured at
+       T4.2; T4.4 then drove that same delta to zero, which is the intended end state, not a
+       retraction of this box
 
 - [x] **T4.2b The daily side gains its source identity** `[activity: data-architecture]`
 
@@ -148,10 +150,10 @@ from day one.
      capture the printed diff; retire the recovery path.
   4. Validate: unit tests pass; ruff clean; full suite green.
   5. Success:
-     - [ ] All three buckets carry a required source identity `[ref: PRD/F9-AC1]`
-     - [ ] The bucket that had none now has one `[ref: PRD/F9-AC2]`
-     - [ ] The display field is unchanged `[ref: PRD/F9-AC3]`
-     - [ ] The lossy recovery is retired `[ref: PRD/F9-AC4]`
+     - [x] All three buckets carry a required source identity `[ref: PRD/F9-AC1]`
+     - [x] The bucket that had none now has one `[ref: PRD/F9-AC2]`
+     - [x] The display field is unchanged `[ref: PRD/F9-AC3]`
+     - [x] The lossy recovery is retired `[ref: PRD/F9-AC4]`
 
 - [x] **T4.3 One handoff for the whole release — then STOP** `[activity: validate]`
 
@@ -187,11 +189,11 @@ from day one.
   4. Validate: the attached file is byte-identical to the repository's; the obligation table matches
      the diff exactly; the handoff states it is a disclosure of an existing emission, not a new field.
   5. Success:
-     - [ ] The handover states the fields are already being emitted `[ref: PRD/F6-AC1]`
-     - [ ] The schema is attached, not described `[ref: PRD/F4-AC1]`
-     - [ ] Breaking-when is stated explicitly rather than left derivable `[ref: PRD/F4-AC3]`
-     - [ ] Emission of the new version waits for confirmation `[ref: PRD/F4-AC4]`
-     - [ ] One handover, one obligation table, covering every document in the release `[ref: PRD/F9-AC5]`
+     - [x] The handover states the fields are already being emitted `[ref: PRD/F6-AC1]`
+     - [x] The schema is attached, not described `[ref: PRD/F4-AC1]`
+     - [x] Breaking-when is stated explicitly rather than left derivable `[ref: PRD/F4-AC3]`
+     - [x] Emission of the new version waits for confirmation `[ref: PRD/F4-AC4]`
+     - [x] One handover, one obligation table, covering every document in the release `[ref: PRD/F9-AC5]`
 
   **Worth raising in the same handoff, unprompted**: the consumer's analysis of their namesake bug
   cites `forceAtomicSync.ts:31` and `:47` — of which only `:47` is a `source_stem` join (`:31` joins
@@ -314,7 +316,22 @@ from day one.
        covers all three permitted, and each wire has its own refused case in
        `tests/test_035_wire_gate.py`. Verified rather than re-built.
 
-- [ ] **T4.5 Phase Validation** `[activity: validate]`
+- [x] **T4.5 Phase Validation** `[activity: validate]`
+
+  **Completed 2026-09-12.** Written up in `../close-out.md` rather than inline, following spec 034's
+  precedent — it walks two tables this task only points at. Three things the task's own wording did
+  not anticipate:
+
+  - **"F1–F8" is stale.** There are F1–**F9**; F9 arrived with T4.2b, after this phase plan was
+    written. All 33 criteria are traced, not 28.
+  - **The two consumer-owned criteria are F4-AC5 and F6-AC2** — the two whose condition is an act by
+    Hashi. Both are now discharged, and F6-AC2 acquired a test in the process, so the exemption the
+    task reserved turned out to be needed for only one of them in the end.
+  - **Four more criteria have no test and never could** — F4-AC2, F4-AC3, F4-AC4 and F6-AC1 are
+    properties of the handoff document or of a suspension nothing in code enforced. They are
+    evidenced by the consumer's own reply quoting back the distinctions it needed, which is stronger
+    evidence than a test we would have written ourselves, and recorded as such rather than left to
+    look like coverage.
 
   - Full suite green including integration; ruff clean.
   - Every PRD criterion in F1–F8 traced to a passing test, except the two consumer-owned ones.

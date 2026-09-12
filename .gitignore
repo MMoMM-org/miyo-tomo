@@ -26,6 +26,10 @@ begin-tomo.sh
 .claude.json
 .credentials.json
 .claude/settings.local.json
+# Sidecars the tcs-helper observability setup writes beside the local
+# settings file (backup, lock, temp). The line above covers the settings
+# file itself but not these, so without this rule they are committable.
+.claude/settings.local.json.tcs-observability.*
 .claude/plans/
 .claude/.session-checkpoint*
 .claude/scheduled_tasks.lock

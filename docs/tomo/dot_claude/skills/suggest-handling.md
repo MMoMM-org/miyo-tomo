@@ -106,12 +106,27 @@ definition. The searching produced nothing that was not already available, and
 cost one to several calls per item.
 
 Naming a source without locating it reads as an instruction to go find it. The
-fix is two sentences — the definition is loaded, and do not search — and it
-earns a STRICT under this repo's rule (an unadorned imperative was observed
-producing runtime deviation, at 11/12). The related symptom in the same run:
-one subagent pretty-printed `shared-ctx.json` and `item-result.schema.json` into
-`tomo-tmp/` to read them, leaving two stray files behind in the pipeline's
-working directory.
+related symptom in the same run: one subagent pretty-printed `shared-ctx.json`
+and `item-result.schema.json` into `tomo-tmp/` to read them, leaving two stray
+files behind in the pipeline's working directory.
+
+**A `#` line inside an `Agent(prompt: |` block never reaches the subagent.** The
+first attempt at this fix wrote the instruction as a `# STRICT` comment inside
+the prompt template. The next run showed the dispatched prompt verbatim: the
+plain sentence above it came through, the `#` lines did not, and 11 of 12
+subagents searched exactly as before.
+
+That is the conductor behaving correctly. Everywhere else in these skills a `#`
+line is a directive to whoever is reading the skill — and inside a prompt
+template the reader is still the conductor, so it reads the line as a note to
+itself and leaves it out of the prompt body. The existing STRICTs in
+`force-atomic-handling`'s dispatch section sit *before* the template for exactly
+this reason.
+
+So an instruction meant for the subagent must be plain prompt text with no `#`
+prefix. The rule for anyone editing a dispatch template: `#` addresses the
+conductor, unprefixed lines address the subagent, and there is no marker that
+makes a comment travel.
 
 ## WHY There Is No Cost-Recording Step Here (spec 034 T6.1)
 

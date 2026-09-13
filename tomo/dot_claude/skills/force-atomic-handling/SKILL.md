@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.9.0
+# version: 0.10.0
 
 ## When to Activate
 
@@ -75,9 +75,15 @@ Agent(
       item_key        = "<item_key>"
       force_atomic    = true
 
-    Follow the IO Contract in your agent definition strictly. Write your
-    result to <items_dir>/<result_filename> (Step 10 derives <result_filename>
-    from item_key; never assemble it yourself) and update the state-file.
+    Your agent definition is ALREADY LOADED and its "IO Contract" section is
+    already in front of you. Follow it strictly. Do NOT run find, grep or ls
+    to locate your contract, your agent definition, or a schema: everything
+    you need is in this prompt or already loaded, so a search returns nothing
+    new and costs a call.
+
+    Write your result to <items_dir>/<result_filename> (Step 10 derives
+    <result_filename> from item_key; never assemble it yourself) and update
+    the state-file.
     Return one confirmation line, no prose.
 )
 ```

@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.8.0
+# version: 0.8.1
 
 ## When to Activate
 
@@ -84,12 +84,10 @@ Agent(
       force_atomic    = false
 
     Your agent definition is ALREADY LOADED and its "IO Contract" section is
-    already in front of you. Follow it strictly.
-
-    # STRICT — do NOT search the filesystem for your own contract, agent
-    # definition, or schema. Everything you need is in this prompt and in the
-    # definition you already have.
-    # Why: searching for an already-loaded document returns nothing new and costs a call per attempt.
+    already in front of you. Follow it strictly. Do NOT run find, grep or ls
+    to locate your contract, your agent definition, or a schema: everything
+    you need is in this prompt or already loaded, so a search returns nothing
+    new and costs a call.
 
     Write your result to <items_dir>/<result_filename> (Step 10 derives
     <result_filename> from item_key; never assemble it yourself) and update

@@ -77,3 +77,55 @@ layer up into the destination string itself instead of into a missing action.
 Every existing vault-config value happens to carry a single trailing slash by
 convention, which is exactly why this was easy to miss and worth normalising
 defensively rather than trusting the convention to hold.
+
+## Why the budget only sheds derived data (changed 2026-09-13)
+
+`enforce_budget` used to run seven passes. The first four trimmed tracker
+descriptions to 200 characters and then emptied `negative_keywords`,
+`positive_keywords` and `keywords` — **before touching a single MOC**. Only
+then did it start on `editable_callouts`, headings and topics.
+
+That ordering was backwards on every axis:
+
+- **What it shed.** Keyword lists are entered by a person through
+  `tomo-trackers-wizard` and are the entire basis of tracker matching. MOC
+  inventory is derived from the vault and rebuilt on the next
+  `/explore-vault`. Shedding the irreplaceable to protect the regenerable.
+- **Where the weight is.** Measured on the live instance 2026-09-13: `mocs`
+  held **77%** of a 38.6 KB context (29.7 KB across 64 entries) while every
+  tracker field together held 9.6%. The keyword lists inside that are a
+  rounding error — emptying all fifteen bought about 1.1 KB.
+- **How it failed.** Silently. Nothing logged, nothing validated, and the
+  analyst's fallback degrades without complaint. The observable effect was
+  that trackers stopped matching, which reads as a classification problem
+  rather than a configuration one.
+
+It was firing constantly, not at some rare extreme: untrimmed the same context
+was **42104 bytes** against a 40960 budget, so it emptied the keyword lists on
+every single run. The user's account — "the trackers worked and then the
+keywords were gone" — is exactly this crossing the threshold as the vault grew.
+
+The passes are now: `editable_callouts`, then headings greedily per MOC, then
+topics. All three are derived, so shedding them costs a re-derivation and
+nothing else. On the same live data the budget is met at 38935 bytes with all
+fifteen tracker fields keeping their keywords.
+
+**If the budget cannot be met** after shedding everything derived, the builder
+now says so on stderr instead of silently emitting an oversized file. That is
+the honest failure: `shared-ctx.json` is read by *every* subagent, so its bytes
+are multiplied by the fan-out — twelve times in a normal run — and the fix is
+either less MOC inventory or a deliberate `--max-bytes`, not quietly deleting
+someone's configuration.
+
+## Why `warn_unusable_trackers` keys on positive_keywords alone
+
+`_seed_keywords` derives `keywords` from the field name, so that list is never
+empty. But the analyst's matching rule reads `positive_keywords` and nothing
+else — `keywords` reaches the context and is read by no one. Counting it in the
+warning would silence the check on precisely the configuration it exists to
+report: fifteen fields with seeded keywords, no positive keywords, and no way
+to match anything.
+
+The warning stays quiet when `trackers_enabled` is false or a field's `active`
+is false. "I do not use trackers" is a configuration, not a gap, and a warning
+that fires on a deliberate choice is one people learn to ignore.

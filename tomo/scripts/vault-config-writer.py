@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -215,6 +215,7 @@ def _run_section_command(
     validator,
     renderer,
     summary_fn,
+    preserve_fn=None,
 ) -> int:
     input_path = Path(args.input)
     try:
@@ -227,13 +228,26 @@ def _run_section_command(
         return 1
 
     validator(data)
+
+    # A section write REPLACES its whole block, so any user-curated key the
+    # caller does not resupply is destroyed. `preserve_fn` carries those keys
+    # forward from the config on disk. It runs BEFORE the --stdout branch so
+    # the preview shows what would actually be written, not a version missing
+    # everything the preservation would have restored.
+    config_path = Path(args.config)
+    if preserve_fn is not None:
+        try:
+            existing = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except (FileNotFoundError, yaml.YAMLError):
+            existing = {}
+        preserve_fn(data, existing)
+
     new_block = renderer(data)
 
     if args.stdout:
         sys.stdout.write(new_block)
         return 0
 
-    config_path = Path(args.config)
     try:
         current = config_path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -395,7 +409,7 @@ def cmd_callouts(args: argparse.Namespace) -> int:
 
 TRACKER_FIELD_REQUIRED = {"name", "type", "syntax", "description"}
 TRACKER_FIELD_ALLOWED = TRACKER_FIELD_REQUIRED | {
-    "scale", "positive_keywords", "negative_keywords", "keywords",
+    "scale", "positive_keywords", "negative_keywords", "keywords", "active",
 }
 TRACKER_TYPES = {"boolean", "integer", "text", "duration", "time"}
 TRACKER_SYNTAXES = {"inline_field", "callout_body", "task_checkbox", "checkbox"}
@@ -425,6 +439,8 @@ def _validate_tracker_field(entry: dict, path: str) -> None:
             for kw in entry[key]:
                 if not isinstance(kw, str) or not kw.strip():
                     _fail(f"{path}.{key}: items must be non-empty strings")
+    if "active" in entry and not isinstance(entry["active"], bool):
+        _fail(f"{path}.active: must be true or false")
     if "scale" in entry and entry["scale"] is not None:
         if not isinstance(entry["scale"], str):
             _fail(f"{path}.scale: must be a string or null")
@@ -433,9 +449,11 @@ def _validate_tracker_field(entry: dict, path: str) -> None:
 def validate_trackers_input(data: dict) -> None:
     if not isinstance(data, dict):
         _fail("trackers input must be an object")
+    if "enabled" in data and not isinstance(data["enabled"], bool):
+        _fail("trackers.enabled: must be true or false")
     if "daily_note_trackers" not in data:
         _fail("trackers input missing required: daily_note_trackers")
-    extra = set(data) - {"daily_note_trackers", "end_of_day_fields"}
+    extra = set(data) - {"daily_note_trackers", "end_of_day_fields", "enabled"}
     if extra:
         _fail(f"trackers: unexpected top-level fields {sorted(extra)}")
 
@@ -483,6 +501,10 @@ def _render_tracker_field(entry: dict, indent: str) -> list[str]:
     if entry.get("scale"):
         lines.append(f"{child}scale: {_qstr(entry['scale'])}")
     lines.append(f"{child}description: {_qstr(entry['description'])}")
+    # Only written when explicitly false — absent means active, and emitting
+    # `active: true` on every field would add noise to a 15-field block.
+    if entry.get("active") is False:
+        lines.append(f"{child}active: false")
     for key in ("keywords", "positive_keywords", "negative_keywords"):
         vals = entry.get(key)
         if not vals:
@@ -494,6 +516,10 @@ def _render_tracker_field(entry: dict, indent: str) -> list[str]:
 
 def render_trackers_section(data: dict) -> str:
     lines = ["trackers:"]
+    # Written only when explicitly false, mirroring per-field `active`:
+    # absent means enabled, so an untouched config gains no new line.
+    if data.get("enabled") is False:
+        lines.append("  enabled: false")
     dnt = data["daily_note_trackers"]
     lines.append("  daily_note_trackers:")
     if dnt.get("section"):
@@ -523,6 +549,81 @@ def render_trackers_section(data: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Keys a person curates and a rediscovery pass does not know how to produce.
+# Absent from the incoming JSON means "not supplied", never "cleared" — the
+# writer carries the existing value forward instead of dropping it.
+TRACKER_CURATED_KEYS = ("keywords", "positive_keywords", "negative_keywords", "active")
+
+
+def _tracker_lists(block: dict):
+    """Yield (list_name, fields) for every tracker-field list in a block."""
+    dnt = (block.get("daily_note_trackers") or {}) if isinstance(block, dict) else {}
+    for key in ("today_fields", "yesterday_fields"):
+        fields = dnt.get(key)
+        if isinstance(fields, list):
+            yield f"daily_note_trackers.{key}", fields
+    eod = (block.get("end_of_day_fields") or {}) if isinstance(block, dict) else {}
+    fields = eod.get("fields")
+    if isinstance(fields, list):
+        yield "end_of_day_fields.fields", fields
+
+
+def preserve_curated_tracker_keys(data: dict, existing_config: dict) -> list[str]:
+    """Carry curated tracker keys from the config on disk into `data`, in place.
+
+    WHY this exists: `/explore-vault` rediscovers tracker fields by scanning
+    daily notes and emits name/type/syntax/description only. The writer then
+    replaces the whole `trackers:` block, so every keyword list a person had
+    entered through `tomo-trackers-wizard` was silently destroyed — and the
+    only visible symptom was that trackers quietly stopped matching, which
+    reads as "nothing matched" rather than "the configuration is gone".
+
+    Matching is by (list, field name). A renamed or removed field keeps
+    nothing: that is a real change the caller is making, not an omission.
+
+    Returns the "<list>.<name>.<key>" paths it restored, for reporting —
+    a preservation nobody is told about is only half a fix.
+    """
+    old_block = existing_config.get("trackers") or {}
+
+    # The master switch is curated the same way a keyword list is, and a
+    # rediscovery pass has no opinion about it — carry it forward unless the
+    # caller states one.
+    restored: list[str] = []
+    if "enabled" not in data and isinstance(old_block.get("enabled"), bool):
+        data["enabled"] = old_block["enabled"]
+        restored.append("trackers.enabled")
+
+    old_by_key: dict[tuple[str, str], dict] = {}
+    for list_name, fields in _tracker_lists(old_block):
+        for f in fields:
+            if isinstance(f, dict) and isinstance(f.get("name"), str):
+                old_by_key[(list_name, f["name"])] = f
+
+    for list_name, fields in _tracker_lists(data):
+        for f in fields:
+            if not isinstance(f, dict):
+                continue
+            old = old_by_key.get((list_name, f.get("name")))
+            if not old:
+                continue
+            for key in TRACKER_CURATED_KEYS:
+                if key not in f and key in old:
+                    f[key] = old[key]
+                    restored.append(f"{list_name}.{f['name']}.{key}")
+    return restored
+
+
+def _preserve_trackers(data: dict, existing_config: dict) -> None:
+    restored = preserve_curated_tracker_keys(data, existing_config)
+    if restored:
+        print(
+            f"vault-config-writer: preserved {len(restored)} curated tracker "
+            f"value(s) the input did not supply: {', '.join(restored)}",
+            file=sys.stderr,
+        )
+
+
 def cmd_trackers(args: argparse.Namespace) -> int:
     def _summary(d: dict) -> str:
         dnt = d["daily_note_trackers"]
@@ -535,6 +636,7 @@ def cmd_trackers(args: argparse.Namespace) -> int:
         validate_trackers_input,
         render_trackers_section,
         _summary,
+        preserve_fn=_preserve_trackers,
     )
 
 

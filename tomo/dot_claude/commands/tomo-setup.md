@@ -7,7 +7,7 @@ effort: medium
 ---
 
 # /tomo-setup — Post-install setup wizard
-# version: 0.2.3
+# version: 0.3.0
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral
@@ -172,23 +172,35 @@ flags (e.g. if the user says "don't propose `projects/*` either").
 
 ### Phase 3b — Daily-note configuration
 
-**Detect missing tracker descriptions:**
+**Detect unusable trackers:**
 
-Read `config/vault-config.yaml`. Check each entry under
-`trackers.daily_note_trackers.today_fields[]` and `trackers.end_of_day_fields.fields[]`
-for an empty or absent `description` field.
+Read `config/vault-config.yaml`. If `trackers.enabled` is `false`, skip this
+check entirely and report "✓ Trackers disabled" — that is a choice, not a gap.
 
-If any tracker field lacks a description, ask via **AskUserQuestion**:
+Otherwise check each entry under `trackers.daily_note_trackers.today_fields[]`,
+`trackers.daily_note_trackers.yesterday_fields[]` and
+`trackers.end_of_day_fields.fields[]` whose `active` is not `false`, for:
 
-- Question: "Some tracker fields have no description — Tomo uses these for inbox
-  classification accuracy."
+- an empty or absent `description`, AND
+- an empty or absent `positive_keywords`.
+
+# STRICT — report both, and never treat empty positive_keywords as acceptable on an active field.
+# Why: matching reads positive_keywords only, so a field without them can never fire, and the analyst degrades silently instead of failing.
+
+If any active field is missing either, ask via **AskUserQuestion**:
+
+- Question: "N tracker fields cannot match anything — they have no keywords.
+  Tomo will never file a tracker update for them."
 - Options:
   - `Run tracker wizard` (Recommended) — invoke the `tomo-trackers-wizard` skill
     (Claude runs the skill inline, walking the user through each field)
-  - `Skip` — proceed without configuring trackers
+  - `Disable those trackers` — set `active: false` on each, keeping their
+    definitions for later
+  - `Turn trackers off entirely` — set `trackers.enabled: false`
+  - `Skip` — proceed; the warning will repeat next run
 
-If no tracker fields are missing descriptions, skip silently (no question needed) and
-report: "✓ All tracker fields have descriptions."
+If every active field has a description and keywords, skip silently and report:
+"✓ All active tracker fields can match."
 
 **Detect missing daily_log section:**
 

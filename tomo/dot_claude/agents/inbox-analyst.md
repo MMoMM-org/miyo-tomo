@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.23.0
+# version: 0.24.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -412,7 +412,11 @@ All three run in one pass.
 
 **Evaluation 1 — Tracker matching:**
 
-For each field in `shared_ctx.daily_notes.tracker_fields[]`:
+If `shared_ctx.daily_notes.trackers_enabled` is false, SKIP this evaluation
+entirely and emit no tracker entries. Log eligibility (Evaluation 2) still runs.
+
+For each field in `shared_ctx.daily_notes.tracker_fields[]` whose `active` is
+not false:
 
 1. **Keyword check:** If `positive_keywords` is non-empty:
    - Check if ANY positive keyword appears as a whole word (case-insensitive)

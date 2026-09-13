@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.9.1
+# version: 1.10.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -529,6 +529,9 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
                 "description": description,
                 "positive_keywords": positive_keywords,
                 "negative_keywords": negative_keywords,
+                # Absent means active, so a config written before the switch
+                # existed keeps every field switched on.
+                "active": bool(f.get("active", True)),
             })
     return out
 
@@ -615,6 +618,11 @@ def build_daily_notes(vault_cfg: dict) -> dict | None:
             "D.M.YYYY", "D.M.",
             "DD/MM/YYYY", "DD/MM",
         ],
+        # Absent means enabled: an existing config that predates the switch
+        # must keep behaving exactly as it did.
+        "trackers_enabled": bool(
+            (vault_cfg.get("trackers") or {}).get("enabled", True)
+        ),
         "tracker_fields": build_tracker_fields(vault_cfg),
         "daily_log": build_daily_log(vault_cfg),
     }
@@ -626,59 +634,88 @@ def serialize(ctx: dict) -> bytes:
     return json.dumps(ctx, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def _tracker_fields_iter(ctx: dict):
-    """Yield (list_ref, index) for all tracker_fields entries across the ctx."""
-    tf = (ctx.get("daily_notes") or {}).get("tracker_fields") or []
-    for i in range(len(tf)):
-        yield tf, i
+def warn_unusable_trackers(ctx: dict) -> list[str]:
+    """Report active tracker fields that cannot match anything, on stderr.
+
+    A tracker with no `positive_keywords` is not merely weaker — in this vault
+    it is inert. The analyst's fallback splits the English `description` into
+    words and looks for them in the note body, so an English description
+    against German content has no overlap to find. The failure is silent at
+    every layer: the schema does not require keywords, the config validates,
+    the analyst degrades quietly, and the only symptom is that trackers never
+    fire — which reads as "nothing matched" rather than "nothing could".
+
+    Keys on `positive_keywords` ALONE, deliberately. The `keywords` field is
+    seeded from the field name by `_seed_keywords` and is therefore never
+    empty — but the analyst's matching rule reads `positive_keywords` and
+    nothing else, so a field with seeded keywords and no positive_keywords is
+    just as inert. Checking `keywords` too would silence this warning on
+    exactly the configuration it exists to report.
+
+    Returns the names it warned about, so callers can assert on them.
+    """
+    daily = ctx.get("daily_notes") or {}
+    if daily.get("trackers_enabled") is False:
+        return []
+    unusable = [
+        f.get("name", "?")
+        for f in (daily.get("tracker_fields") or [])
+        if isinstance(f, dict)
+        and f.get("active", True)
+        and not f.get("positive_keywords")
+    ]
+    if unusable:
+        print(
+            f"WARN: {len(unusable)} active tracker field(s) have no keywords and "
+            f"cannot match: {', '.join(unusable)}. "
+            f"Run /tomo-setup trackers to fill them, or set active: false on the "
+            f"ones you do not use.",
+            file=sys.stderr,
+        )
+    return unusable
 
 
 def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
     """Trim ctx to fit within max_bytes.
 
-    Budget pass order:
-    1. Trim each tracker description to 200 chars with ellipsis.
-    2. Drop negative_keywords from each tracker.
-    3. Drop positive_keywords from each tracker.
-    4. Drop auto-seeded keywords from each tracker (keeps name/type/section/syntax/description).
-    5. T3.2 (spec 022): Drop editable_callouts from mocs[] (cheapest inventory first).
-    6. T3.2 (spec 022): Greedily drop headings from mocs[] one MOC at a time
-       (heaviest first) until the ctx fits, before topics \u2014 still expensive.
-    7. Shorten mocs[].topics (original behaviour).
+    **Only derived data is shed. User configuration is never touched.**
 
-    Never drops description itself. Never trims placeholder_links.
-    Returns (ctx, moc_topics_dropped).
+    Budget pass order:
+    1. T3.2 (spec 022): Drop editable_callouts from mocs[] (cheapest inventory first).
+    2. T3.2 (spec 022): Greedily drop headings from mocs[] one MOC at a time
+       (heaviest first) until the ctx fits, before topics \u2014 still expensive.
+    3. Shorten mocs[].topics (original behaviour).
+
+    Everything above is rebuilt from the vault on the next run, so shedding it
+    costs a re-derivation and nothing else. `mocs` is also where the weight
+    actually is: measured 2026-09-13 on a real run, mocs held 77% of a 38.6 KB
+    ctx while every tracker field together held 9.6%.
+
+    WHAT THIS FUNCTION USED TO DO, and why it stopped: passes 1-4 trimmed
+    tracker descriptions to 200 chars and then emptied negative_keywords,
+    positive_keywords and keywords \u2014 before touching a single MOC. Those lists
+    are entered by a person through `tomo-trackers-wizard`, they are the entire
+    basis of tracker matching, and emptying them is silent: the analyst falls
+    back to the description with no complaint, so the only symptom is that
+    trackers stop matching. Shedding curated configuration to save bytes that
+    derived data is holding is the wrong trade in every direction, and it put
+    the cheapest-to-rebuild data last. Removed 2026-09-13.
+
+    Never trims placeholder_links. Returns (ctx, moc_topics_dropped).
     """
     data = serialize(ctx)
 
     if len(data) <= max_bytes:
         return ctx, 0
 
-    # Pass 1: trim tracker descriptions to 200 chars
-    for tf, i in _tracker_fields_iter(ctx):
-        desc = tf[i].get("description", "")
-        if len(desc) > 200:
-            tf[i]["description"] = desc[:200] + "\u2026"
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
-
-    # Passes 2-4: drop keyword lists in order of importance
-    for field_name in ("negative_keywords", "positive_keywords", "keywords"):
-        for tf, i in _tracker_fields_iter(ctx):
-            tf[i][field_name] = []
-        data = serialize(ctx)
-        if len(data) <= max_bytes:
-            return ctx, 0
-
-    # Pass 5 (T3.2): drop editable_callouts from all mocs[] before touching topics
+    # Pass 1 (T3.2): drop editable_callouts from all mocs[] before touching topics
     for moc in ctx["mocs"]:
         moc.pop("editable_callouts", None)
     data = serialize(ctx)
     if len(data) <= max_bytes:
         return ctx, 0
 
-    # Pass 6 (T3.2/H3): greedily drop headings one MOC at a time — heaviest
+    # Pass 2 (T3.2/H3): greedily drop headings one MOC at a time — heaviest
     # (most headings) first — re-checking the budget after each drop. This keeps
     # headings on as many MOCs as possible (the smallest-heading MOCs survive
     # longest) instead of an atomic all-MOC drop that defeats spec 022 tier-1.
@@ -693,7 +730,7 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
         if len(data) <= max_bytes:
             return ctx, 0
 
-    # Pass 7: shorten mocs[].topics (original behaviour)
+    # Pass 3: shorten mocs[].topics (original behaviour)
     dropped = 0
     while len(data) > max_bytes:
         victim = -1
@@ -819,8 +856,18 @@ def main() -> int:
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
 
+    warn_unusable_trackers(ctx)
+
     ctx, dropped = enforce_budget(ctx, args.max_bytes)
     data = serialize(ctx)
+    if len(data) > args.max_bytes:
+        print(
+            f"WARN: shared-ctx is {len(data)} bytes, over the {args.max_bytes} "
+            f"budget, and nothing derived is left to shed. Every subagent reads "
+            f"this file, so the cost is per-item. Reduce MOC inventory or raise "
+            f"--max-bytes deliberately.",
+            file=sys.stderr,
+        )
 
     ensure_parent(out_path)
     out_path.write_bytes(data)

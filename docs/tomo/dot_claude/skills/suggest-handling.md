@@ -35,6 +35,28 @@ file, and Kado's `operation=note` requires markdown (rejects non-`.md`). The
 `kado_client.write_file` so the write is deterministic instead of asking the
 model to base64-encode.
 
+WHY the **markdown** goes through the same script (changed 2026-09-13): the
+paragraph above is true and was read as narrower than it is. It explains why the
+JSON cannot use the note op — and left the impression that the `.md`, which
+*can*, should therefore be written inline. Step 6 did exactly that for a long
+time: Read the rendered file, then hand its content to `mcp__kado__kado-write`.
+
+The 2026-09-12 live run showed what that costs. 11055 characters of
+deterministic renderer output were relayed through the model's own tokens and
+back out as a literal. It came through byte-faithful — but that is only known
+because the run was diffed afterwards. Verbatim relay is unverifiable by
+construction: nothing in the pipeline distinguishes a faithful copy from a
+subtly altered one, and the artefact in question is the document the user reads
+and approves.
+
+`kado-write-file.py` already routes by extension (`.md` → note, other → file)
+and reads from disk, so the content never enters the model's context. Its own
+docstring gave the reason before this change was made: "the content is read from
+disk and pushed via this script's own Kado client, so it NEVER passes through
+the agent's output-token budget." Both artefacts now take that path, and the
+step carries a STRICT against the inline route — an unadorned imperative had
+already been observed producing the deviation.
+
 WHY the wire is a COMPLETE mirror of the review surface (not editable deltas):
 Marcus's rule is "if Hashi edited the JSON, use ONLY the JSON; otherwise ONLY the
 markdown — never a mix." Under that rule the changed JSON is the sole authority,
@@ -70,6 +92,26 @@ WHY `item_key` is passed even though it equals `path`: it is a declared input of
 the analyst's IO Contract (ADR-1 makes derivation the identity function), and
 the analyst must never reconstruct it from `stem` — two inbox items in different
 subfolders share a stem and would collide on one result file.
+
+WHY the prompt now says the contract is ALREADY LOADED, with a STRICT against
+searching for it (added 2026-09-13): the line "Follow the IO Contract in your
+agent definition strictly" names a document without saying where it is or that
+the subagent already holds it. In the 2026-09-12 run, **11 of 12 subagents went
+looking for it on disk** — `find … -path "*agents*" | xargs grep -l "IO
+Contract"`, `grep -rl "shared_ctx_path"`, `find … -iname "*inbox-analyst*"`.
+
+It was already in front of them: `inbox-analyst.md` carries `## IO Contract
+(STRICT — the orchestrator depends on this)` and is loaded as the subagent's own
+definition. The searching produced nothing that was not already available, and
+cost one to several calls per item.
+
+Naming a source without locating it reads as an instruction to go find it. The
+fix is two sentences — the definition is loaded, and do not search — and it
+earns a STRICT under this repo's rule (an unadorned imperative was observed
+producing runtime deviation, at 11/12). The related symptom in the same run:
+one subagent pretty-printed `shared-ctx.json` and `item-result.schema.json` into
+`tomo-tmp/` to read them, leaving two stray files behind in the pipeline's
+working directory.
 
 ## WHY There Is No Cost-Recording Step Here (spec 034 T6.1)
 

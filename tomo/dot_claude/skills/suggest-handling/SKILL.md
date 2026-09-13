@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.7.0
+# version: 0.8.0
 
 ## When to Activate
 
@@ -83,10 +83,17 @@ Agent(
       item_key        = "<path>"
       force_atomic    = false
 
-    Follow the IO Contract in your agent definition strictly. Write your
-    result to <items_dir>/<result_filename> (Step 10 derives <result_filename>
-    from item_key; never assemble it yourself) and update the state-file.
-    Return one confirmation line, no prose.
+    Your agent definition is ALREADY LOADED and its "IO Contract" section is
+    already in front of you. Follow it strictly.
+
+    # STRICT — do NOT search the filesystem for your own contract, agent
+    # definition, or schema. Everything you need is in this prompt and in the
+    # definition you already have.
+    # Why: searching for an already-loaded document returns nothing new and costs a call per attempt.
+
+    Write your result to <items_dir>/<result_filename> (Step 10 derives
+    <result_filename> from item_key; never assemble it yourself) and update
+    the state-file. Return one confirmation line, no prose.
 )
 ```
 
@@ -112,13 +119,15 @@ python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --ou
 
 ### 6. Write to vault + tag sources
 
-1. Read `tomo-tmp/suggestions-rendered.md` via the `Read` tool.
-2. Write via `mcp__kado__kado-write` with `operation: "note"` at
-   `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.md`.
-3. Publish the structured sibling (a JSON file, not a markdown note — the note op
-   would reject it), reusing the SAME `<YYYY-MM-DD_HHMM>` stem as the `.md`:
+Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem.
+It routes by extension on its own — `.md` to the note operation, `.json` to the
+file operation.
+
+# STRICT — never read the rendered markdown and pass it to `mcp__kado__kado-write`.
+# Why: content relayed through your own tokens cannot be checked against the file it came from, and the script reads it from disk.
 
 ```bash
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.md"
 python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.json"
 ```
 

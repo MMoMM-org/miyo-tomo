@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_tag_handler_group.py — Behavioural tests for tag-handler-group.py.
 
 Covers T3.1 (XDD 024 Phase 3):
@@ -452,6 +452,59 @@ class TestGroupHandled:
             "100 Inbox/second.md",
             "100 Inbox/third.md",
         ]
+
+
+# ===========================================================================
+# compose_mode — provenance, derived not decided
+# ===========================================================================
+
+
+class TestComposeModeIsDerived:
+    """`compose_mode` records whether an LLM produced the composed block.
+
+    It used to be a rule in the tag-handler-interpreter skill for the model to
+    apply while writing the group file. A live run on 2026-09-12 applied it
+    backwards — wrote `field_template` for an LLM-composed block — and
+    self-corrected. Nothing else would have: both values are in the schema's
+    enum, no production code reads the field, and it never reaches the wire.
+
+    These tests exist because that class of error is silent. They assert the
+    derivation both ways round, so an inverted mapping fails loudly here
+    instead of shipping a provenance record that says the opposite of what
+    happened.
+    """
+
+    def test_string_compose_is_an_llm_directive(self):
+        item = _handled_item("100 Inbox/a.md", compose="Synthesize the batch.")
+        assert group_handled([item])[0]["compose_mode"] == "llm_directive"
+
+    def test_array_compose_is_a_field_template(self):
+        item = _handled_item("100 Inbox/a.md", compose=["created", "category"])
+        assert group_handled([item])[0]["compose_mode"] == "field_template"
+
+    def test_the_two_shapes_do_not_collapse_to_one_value(self):
+        """The inversion the live run made: both shapes must not agree."""
+        directive = group_handled([_handled_item("a.md", compose="Do it.")])[0]
+        template = group_handled([_handled_item("b.md", compose=["created"])])[0]
+        assert directive["compose_mode"] != template["compose_mode"]
+
+    @pytest.mark.parametrize("compose", [None, 42, {"field": "created"}])
+    def test_an_unknown_compose_shape_records_no_provenance(self, compose):
+        """Absent is honest; a guessed provenance record is worse than none."""
+        item = _handled_item("100 Inbox/a.md", compose=compose)
+        assert "compose_mode" not in group_handled([item])[0]
+
+    def test_derived_value_satisfies_the_schema_enum(self):
+        """Whatever is derived must be a value the group schema accepts —
+        otherwise the skill copies a stub field that fails validation one
+        step later, which is a worse failure than the one this replaced."""
+        schema = json.loads(
+            (SCHEMA_DIR / "tag-handler-group.schema.json").read_text(encoding="utf-8")
+        )
+        allowed = set(schema["properties"]["compose_mode"]["enum"])
+        for compose in ("Synthesize the batch.", ["created", "category"]):
+            group = group_handled([_handled_item("a.md", compose=compose)])[0]
+            assert group["compose_mode"] in allowed
 
 
 # ===========================================================================

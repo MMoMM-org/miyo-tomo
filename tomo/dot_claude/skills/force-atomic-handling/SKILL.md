@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.8.0
+# version: 0.9.0
 
 ## When to Activate
 
@@ -96,14 +96,15 @@ python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json 
 
 ### 6. Write to vault
 
-Publish BOTH siblings at the same stem so the ADR-026 editor + Pass-2 pair them:
+Publish BOTH siblings at the same stem so the ADR-026 editor + Pass-2 pair them.
+The script routes by extension on its own — `.md` to the note operation, `.json`
+to the file operation.
 
-1. Read `tomo-tmp/suggestions-fan-rendered.md` via the `Read` tool.
-2. Write via `mcp__kado__kado-write` with `operation: "note"` at
-   `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md`.
-3. Publish the wire sibling (JSON needs the file op, not note):
+# STRICT — never read the rendered markdown and pass it to `mcp__kado__kado-write`.
+# Why: content relayed through your own tokens cannot be checked against the file it came from, and the script reads it from disk.
 
 ```bash
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-rendered.md --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md"
 python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.json"
 ```
 

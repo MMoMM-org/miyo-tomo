@@ -111,6 +111,37 @@ class TestSingleField:
         assert "no such field" in str(exc.value)
 
 
+class TestOutputSize:
+    """The helper must never be larger than the cat it replaces."""
+
+    def test_containers_are_compact_by_default(self, tmp_path, capsys):
+        """First version used indent=2 and measured 44 KB for `--field mocs`
+        against 40 KB for catting the whole file — the tool built to shrink a
+        subagent's context was inflating it."""
+        out = _run(capsys, "--ctx", str(_ctx(tmp_path)), "--field", "daily_notes")
+        assert "\n" not in out, "container output must be one compact line"
+        assert ", " not in out and ": " not in out, "compact separators expected"
+
+    def test_indent_is_opt_in(self, tmp_path, capsys):
+        p = str(_ctx(tmp_path))
+        compact = _run(capsys, "--ctx", p, "--field", "daily_notes")
+        pretty = _run(capsys, "--ctx", p, "--field", "daily_notes", "--indent", "2")
+        assert len(pretty) > len(compact)
+        assert json.loads(pretty) == json.loads(compact)
+
+    def test_loading_every_contract_key_stays_under_the_whole_file(self, tmp_path, capsys):
+        """Step 1 loads six named keys rather than catting. It must not cost
+        more than what it replaced, or the change is a regression dressed as a
+        refactor."""
+        ctx = _ctx(tmp_path)
+        whole = ctx.read_text()
+        batch = _run(
+            capsys, "--ctx", str(ctx), "--fields",
+            "mocs,daily_notes,placeholder_links,classification_keywords,tag_prefixes,asset_folder",
+        )
+        assert len(batch) <= len(whole)
+
+
 class TestBatch:
     def test_fields_returns_an_object_keyed_by_the_dotted_path(self, tmp_path, capsys):
         out = _run(

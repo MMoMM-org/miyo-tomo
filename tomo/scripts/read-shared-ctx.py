@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # read-shared-ctx.py — Read fields from shared-ctx.json without loading it whole.
-# version: 0.1.0
+# version: 0.2.0
 #
 # Every Phase-B subagent loads the shared context, and `cat` is the only way
 # the agent definition offers. Measured over four runs and 48 subagents: 45
@@ -71,13 +71,23 @@ def resolve(ctx: dict, dotted: str):
     return node
 
 
-def render(value) -> str:
+def render(value, indent: int | None = None) -> str:
+    """Containers serialize compact by default.
+
+    Pretty-printing inflates: `--field mocs` at indent=2 measures 44 KB against
+    the 40 KB of simply catting the whole file, because `mocs` is 72% of it and
+    indentation grows with nesting depth. The output of this script goes into a
+    subagent's context window, where every byte is carried; `--indent` exists
+    for the times a person is reading it.
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
         return "null"
     if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=False, indent=2)
+        if indent is None:
+            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(value, ensure_ascii=False, indent=indent)
     return str(value)
 
 
@@ -106,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--field", help="One dotted field, e.g. daily_notes.daily_log.enabled")
     parser.add_argument("--fields", help="Comma-separated dotted fields; prints a JSON object")
     parser.add_argument("--keys", action="store_true", help="Top-level keys with byte sizes")
+    parser.add_argument("--indent", type=int, default=None,
+                        help="Pretty-print containers for human reading (default: compact)")
     args = parser.parse_args(argv)
 
     if sum([bool(args.field), bool(args.fields), args.keys]) != 1:
@@ -118,14 +130,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.field:
-        print(render(resolve(ctx, args.field)))
+        print(render(resolve(ctx, args.field), args.indent))
         return 0
 
     names = [f.strip() for f in args.fields.split(",") if f.strip()]
     if not names:
         parser.error("--fields needs at least one field name")
     out = {name: resolve(ctx, name) for name in names}
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    print(render(out, args.indent))
     return 0
 
 

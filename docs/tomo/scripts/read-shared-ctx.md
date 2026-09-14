@@ -74,3 +74,39 @@ had not modelled; the builder does emit them. That is the test doing its job in
 the direction it was written for — a contract reference that no longer resolves
 is the thing it exists to catch, and a fixture that drifts from the builder is
 how that starts.
+
+## Why containers serialize compact
+
+The first version pretty-printed with `indent=2`. Measured against the live
+context, `--field mocs` came to **44 KB — larger than catting the whole 40 KB
+file**. Indentation grows with nesting depth, and `mocs` is 72% of the payload,
+so the helper built to shrink a subagent's context was inflating it.
+
+Containers now serialize with `separators=(",", ":")`. `--indent` exists for
+the times a person is reading the output; nothing in the pipeline passes it.
+
+## The saving that is available, and the one that is not
+
+Step 1 now loads all six keys the contract names, compact: 40705 bytes against
+40764 for the `cat`. That difference is `run_id` and `schema_version`, and it
+is not the point. The point is that the step goes through a tool that can also
+answer `--field`, which is what makes the inline-Python prohibition in the
+analyst's Never-list enforceable.
+
+The real saving is still on the table and was not taken. `candidate_mocs`
+appears **only** on `create_atomic_note` actions — verified across a full run's
+twelve result files, where the three pure `update_daily` items carry none. Those
+three loaded 29 KB of MOC inventory and read none of it.
+
+Capturing that requires the MOC match to run *after* the worthiness assessment,
+and today it runs before: Step 4 matches MOCs, Step 7 decides worthiness. That
+is a reorder of the documented step sequence, not a change to how a file is
+loaded, and it has a hazard worth naming before anyone attempts it — Step 7.5
+segments a long item into several threads, each scored on its own, and each
+surviving thread becomes an atomic note. If MOC matching belongs per-thread
+rather than per-item, then the current order may already be producing one match
+for an item that needs several, and the reorder is a correctness question
+wearing a performance question's clothes.
+
+Left as an open question deliberately. A byte saving is not worth guessing at
+that.

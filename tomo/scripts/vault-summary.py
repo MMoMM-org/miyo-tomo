@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -146,13 +146,24 @@ def _extract_callout_counts(config: dict | None) -> tuple[int | None, int | None
 
 
 def _extract_tracker_field_count(config: dict | None) -> int | None:
-    """Return total tracker field count from vault-config.yaml trackers."""
+    """Return total tracker field count from vault-config.yaml trackers.
+
+    `daily_note_trackers` and `end_of_day_fields` are objects holding a
+    `section` plus one or more field lists, so their own length is a count of
+    keys. The live config reported 3 for fifteen configured fields — its two
+    containers carry three keys and none, which reads as a plausible number
+    and had never been questioned.
+    """
     if config is None:
         return None
     trackers = config.get("trackers") or {}
-    daily = len(trackers.get("daily_note_trackers") or [])
-    eod = len(trackers.get("end_of_day_fields") or [])
-    return daily + eod
+    daily = trackers.get("daily_note_trackers") or {}
+    eod = trackers.get("end_of_day_fields") or {}
+    return (
+        len(daily.get("today_fields") or [])
+        + len(daily.get("yesterday_fields") or [])
+        + len(eod.get("fields") or [])
+    )
 
 
 def _extract_template_counts(config: dict | None) -> tuple[int | None, int | None]:
@@ -369,7 +380,7 @@ def render_markdown(summary: dict, config: dict | None, updated: str | None = No
     if tracker_count is not None:
         lines += ["", "## Trackers", ""]
         lines.append(
-            f"{tracker_count} tracker field group(s) detected — "
+            f"{tracker_count} tracker field(s) detected — "
             "see the `trackers:` section in `vault-config.yaml` for the full list."
         )
 

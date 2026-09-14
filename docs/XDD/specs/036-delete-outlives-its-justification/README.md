@@ -7,7 +7,7 @@
 | **Created** | 2026-09-09 |
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-09-10 |
+| **Last Updated** | 2026-09-14 |
 
 ## Documents
 
@@ -42,6 +42,7 @@
 | 2026-09-09 | **One release — the guards and the wire field ship together** | Owner decision, against the recommendation to ship guards first. The guards are prerequisites for the wire field rather than companions to it: a guard that drops a partner without amending the deletes naming it produces a dangling dependency id. **Amended 2026-09-10**: as first written this row said "the executor cannot detect one". That holds only for its *failure list*, which contains only ids that actually ran; the consumer confirmed on 2026-09-09 that their plan-time check does catch a dangling id and **skips** the delete. The constraint stands on its own — we do not lean on their catch for a case we can prevent — but the reason as written was wrong, and this row was the last place it survived after the PRD and SDD were corrected. Retitled from "One phase" for the same reason: it constrains the **release**, not the phase order, and the plan has four phases. |
 | 2026-09-09 | **Route 1 now, route 2 with spec 035 — routes chosen** | Route 1 is a one-line change to `validate_destinations`' claimant filter (`render_actions.py:989`): `create_moc` carries the same `destination` field as `move_note`, and `_paired_delete_candidates` returns `[]` for a claimant with no `source_inbox_item`, so the existing withdrawal machinery applies unmodified. It closes the data-loss path with no cross-repo dependency, which a data-loss path should not wait on. Route 2 generalises to sites 2 and 4 and is a wire change, so it rides spec 035's release alongside the daily-side `source_item_key` (spec 035's field — distinct from `item_key` on `suggestions[]`, which spec 034 shipped) — one re-vendor for Hashi instead of two. (Corrected 2026-09-09: this is two bumps on two documents, not one — the suggestions and instructions wires carry independent counters. One release, one changed-fields list; not one bump.) Route 3 is not rejected: route 2 supplies the data their `buildDependencies` would need, so it becomes their natural follow-on rather than a competing option. |
 | 2026-09-09 | **The Hashi handoff is written after the route is chosen, not before** | Whether Hashi needs a dependency edge at all depends on which side we close the gap on. Asking them now would be asking them to hold an opinion on a design that does not exist yet. |
+| 2026-09-14 | **No follow-up handoff for `depends_on` — it travels with the implementation** | Revisited during an outbox sweep. The 2026-09-11 release handoff already told Hashi the instructions wire is not included and, in its own words, that we are "not asking you to expect one yet". Spec 036 is still `Ready`: PRD, SDD and a 17-task plan exist, nothing is implemented, and the wire is byte-identical to what they vendored. A message now would say "still nothing", which is what the release handoff already says. The row goes out when the phase that owns it runs. |
 
 ## Context
 

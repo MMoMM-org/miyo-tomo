@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.11.0
+# version: 0.12.0
 
 ## When to Activate
 
@@ -64,9 +64,13 @@ Capture stdout as `PROFILE`.
 
 For each item in `force_atomic_items[]`, dispatch inbox-analyst.
 
+# STRICT — the key is `subagent_type`. `name` only labels the spawned agent.
+# Why: a dispatch without `subagent_type` silently runs general-purpose, which
+# has none of inbox-analyst's contract, tools or skills.
+
 ```
 Agent(
-  name: "inbox-analyst"
+  subagent_type: "inbox-analyst"
   prompt: |
     You are processing ONE inbox item under the fan-out pipeline.
 
@@ -80,11 +84,7 @@ Agent(
       item_key        = "<item_key>"
       force_atomic    = true
 
-    Your agent definition is ALREADY LOADED and its "IO Contract" section is
-    already in front of you. Follow it strictly. Do NOT run find, grep or ls
-    to locate your contract, your agent definition, or a schema: everything
-    you need is in this prompt or already loaded, so a search returns nothing
-    new and costs a call.
+    Follow your "IO Contract" section strictly.
 
     Write your result to <items_dir>/<result_filename> (Step 10 derives
     <result_filename> from item_key; never assemble it yourself) and update

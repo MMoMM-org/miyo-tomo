@@ -141,3 +141,65 @@ Do not re-add one. `inbox-triage.py` writes no entry for this action (the
 reducer's destination-folder counts do not exist when it finishes), so a second
 append here would double-record the run. See
 `docs/tomo/scripts/lib/cost_history.md`.
+
+## Why the dispatch template says `subagent_type`, not `name`
+
+The fan-out template used to read:
+
+    Agent(
+      name: "inbox-analyst"
+      prompt: | ...
+
+`name` labels the agent that gets spawned — it is what makes it addressable
+for a follow-up message. `subagent_type` is what chooses which definition it
+runs. A dispatch carrying only `name` spawns **general-purpose under an
+alias**: the call succeeds, the transcript shows an agent called
+"inbox-analyst", and none of that agent's contract, tool restrictions or
+skills are in play.
+
+The 2026-09-14 live run did this for all twelve items. The session metadata is
+unambiguous — twelve files reading `agentType: general-purpose, name:
+inbox-analyst`, and exactly one reading `agentType: inbox-analyst`, which was a
+nested dispatch a confused general-purpose agent made using the correct key.
+
+Everything previously filed as disobedience was this:
+
+- **The contract hunting.** Seven of twelve ran `ls .claude/agents/` or `find`
+  for `inbox-analyst.md`. The contract genuinely was not loaded. They searched
+  because they had to, and the eight that produced correct output are precisely
+  the ones that searched and read the file.
+- **The brute-forced filenames.** Three ran `md5sum`, `sha1sum`, `sha256sum`
+  and `cksum` over the item key trying to reproduce a result filename.
+  `scripts/item-result-filename.py` is named in the contract's Step 10, which
+  they had never seen.
+- **The hand-written state file.** Five bypassed `scripts/state-update.py`,
+  one of them replacing the whole file with a `Write` while four siblings were
+  appending to it. One `running` record was lost that way. Same cause.
+- **The nested dispatch.** A general-purpose agent has the full toolset, so one
+  of them loaded `Skill(inbox)` and re-dispatched its own item. `inbox-analyst`
+  declares `tools: Read, Bash, Write, mcp__kado__kado-read` — no `Agent`, no
+  `Skill`. Under its real definition that call is not available.
+
+**Why the prompt's reassurance made it worse.** The template used to tell the
+subagent *"Your agent definition is ALREADY LOADED … Do NOT run find, grep or
+ls to locate your contract"*. That sentence was added to stop the searching. It
+was false, and it was instructing agents not to fetch the one thing they were
+missing. It has been removed rather than corrected: with `subagent_type` in
+place the definition is loaded, so the reassurance has nothing left to do, and
+a prompt that describes its own context is a claim that can silently go stale.
+
+**Why nothing failed.** Every run still produced `done=12 failed=0` and a valid
+suggestions document. A capable general-purpose agent handed a detailed prompt
+reconstructs most of the pipeline from the filesystem. The cost was invisible:
+duplicated work, a lost state record, an item processed twice, and every
+tool-restriction in the agent definition quietly not applying.
+
+**Guard.** `tests/test_dispatch_templates.py` asserts that every `Agent( … )`
+block under `tomo/dot_claude/` names a `subagent_type`, that no template
+selects with `name` alone, and that each named type has a definition in
+`tomo/dot_claude/agents/`. It carries a non-vacuity test, because a shape-based
+regex that stops matching would pass every other assertion in the file.
+
+All four templates in the tree had the defect — both fan-out skills, plus
+`synthesis-conductor` and `voice-transcriber` in the `/inbox` command. Pass 2
+and transcription were dispatching general-purpose too.

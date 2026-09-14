@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.17.0
+# version: 0.18.0
 
 ## Arguments
 
@@ -54,13 +54,18 @@ Extract the `action` field from the JSON output.
 # workflow yourself. It applies to synthesis-conductor and voice-transcriber only.
 # Why: both are pure script runners, so dispatch keeps their context isolated.
 
+# STRICT — every Agent() call passes `subagent_type`. `name` only labels the
+# spawned agent and selects nothing.
+# Why: a dispatch without `subagent_type` silently runs general-purpose, which
+# has none of the named agent's contract, tools or skills.
+
 ### 3b. Synthesize (dispatch)
 
 When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
 
 ```
 Agent(
-  name: "synthesis-conductor"
+  subagent_type: "synthesis-conductor"
   prompt: "Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly."
 )
 ```
@@ -73,7 +78,7 @@ When action is `transcribe`:
 
 ```
 Agent(
-  name: "voice-transcriber"
+  subagent_type: "voice-transcriber"
   prompt: "Transcribe audio files in the inbox. inbox_path: <inbox_path from routing-plan.json>"
 )
 ```

@@ -129,3 +129,49 @@ to match anything.
 The warning stays quiet when `trackers_enabled` is false or a field's `active`
 is false. "I do not use trackers" is a configuration, not a gap, and a warning
 that fires on a deliberate choice is one people learn to ignore.
+
+## Why the keyword warning no longer says "cannot match"
+
+The warning shipped on 2026-09-13 claiming that a tracker field without
+`positive_keywords` "cannot match". The reasoning was sound on paper: the
+analyst's documented fallback splits the field's `description` into words and
+looks for them in the note body, and every shipped description is English while
+the vault this is tested against is German — no overlap exists to find.
+
+The live run on 2026-09-14 refuted it. All fifteen fields were keywordless, the
+warning fired, and the analyst filed three tracker updates anyway:
+
+    Sport      = true    "Laufrunde (5km run) matches Sport tracker"
+    HealthFood = true    "Haferbrei mit Beeren, ohne Zucker = healthy food"
+    ToBed      = "22:45" "Content states bedtime 22:45 (ins Bett)"
+
+`Sport`'s description is *"Did physical activity happen today?"*. No word of it
+appears in the note. The analyst is an LLM and matched semantically, ignoring
+the mechanical fallback its own definition prescribes.
+
+So the failure is not that nothing fires. It is that **what fires is
+unaccountable**: every match lands at a flat 0.5 confidence, and the
+negative-keyword suppression step is skipped entirely, because that step is
+reached only when a positive keyword hits. A field with keywords can say "yoga
+hits, but 'watched a video about' is in the same sentence — suppress". A field
+without them cannot. The wording now says that instead.
+
+The same false claim was in `/tomo-setup`'s phase-3b prompt ("Tomo will never
+file a tracker update for them") and is corrected there too. A warning that
+promises an absence the user then observes happening trains them to ignore it.
+
+## Why the skills must repeat the warning out loud
+
+The warning goes to stderr, the conductor sees it in its Bash result, and in
+the same live run it summarised the step as "Shared context built (64 MOCs, no
+drops)" — the WARN line never reached the user. Fifteen unusable fields were
+reported to nobody.
+
+Both `suggest-handling` and `force-atomic-handling` now carry a `STRICT` at the
+`shared-ctx-builder` call telling the runtime to repeat every `WARN:` line
+verbatim before dispatching. Nothing else in the pipeline reads stderr, so
+without that instruction the check exists only in the transcript.
+
+This is the gap the owner named directly: `/explore-vault` asks about two
+missing templates on every single run, while the missing keywords pass
+unmentioned.

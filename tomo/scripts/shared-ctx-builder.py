@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.10.0
+# version: 1.11.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -635,15 +635,16 @@ def serialize(ctx: dict) -> bytes:
 
 
 def warn_unusable_trackers(ctx: dict) -> list[str]:
-    """Report active tracker fields that cannot match anything, on stderr.
+    """Report active tracker fields with no keywords, on stderr.
 
-    A tracker with no `positive_keywords` is not merely weaker — in this vault
-    it is inert. The analyst's fallback splits the English `description` into
-    words and looks for them in the note body, so an English description
-    against German content has no overlap to find. The failure is silent at
+    A tracker with no `positive_keywords` falls back to the analyst's
+    description path, which the agent definition specifies as a word-split of
+    the English `description` against the note body — no overlap at all for a
+    German vault. In practice the analyst matches semantically instead and
+    does fire, but at a flat 0.5 confidence with no negative-keyword
+    suppression, so false positives are never caught. The gap is silent at
     every layer: the schema does not require keywords, the config validates,
-    the analyst degrades quietly, and the only symptom is that trackers never
-    fire — which reads as "nothing matched" rather than "nothing could".
+    and the analyst reports a match either way.
 
     Keys on `positive_keywords` ALONE, deliberately. The `keywords` field is
     seeded from the field name by `_seed_keywords` and is therefore never
@@ -666,8 +667,9 @@ def warn_unusable_trackers(ctx: dict) -> list[str]:
     ]
     if unusable:
         print(
-            f"WARN: {len(unusable)} active tracker field(s) have no keywords and "
-            f"cannot match: {', '.join(unusable)}. "
+            f"WARN: {len(unusable)} active tracker field(s) have no keywords; "
+            f"matching falls back to guesswork and cannot suppress false "
+            f"positives: {', '.join(unusable)}. "
             f"Run /tomo-setup trackers to fill them, or set active: false on the "
             f"ones you do not use.",
             file=sys.stderr,

@@ -7,7 +7,7 @@ effort: medium
 ---
 
 # /tomo-setup — Post-install setup wizard
-# version: 0.3.0
+# version: 0.4.0
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral
@@ -185,12 +185,12 @@ Otherwise check each entry under `trackers.daily_note_trackers.today_fields[]`,
 - an empty or absent `positive_keywords`.
 
 # STRICT — report both, and never treat empty positive_keywords as acceptable on an active field.
-# Why: matching reads positive_keywords only, so a field without them can never fire, and the analyst degrades silently instead of failing.
+# Why: matching reads positive_keywords only, so a field without them is decided by guesswork at a flat confidence with no negative-keyword suppression.
 
 If any active field is missing either, ask via **AskUserQuestion**:
 
-- Question: "N tracker fields cannot match anything — they have no keywords.
-  Tomo will never file a tracker update for them."
+- Question: "N tracker fields have no keywords. Tomo still guesses at them,
+  but at low confidence and with no way to suppress a false positive."
 - Options:
   - `Run tracker wizard` (Recommended) — invoke the `tomo-trackers-wizard` skill
     (Claude runs the skill inline, walking the user through each field)
@@ -200,7 +200,7 @@ If any active field is missing either, ask via **AskUserQuestion**:
   - `Skip` — proceed; the warning will repeat next run
 
 If every active field has a description and keywords, skip silently and report:
-"✓ All active tracker fields can match."
+"✓ All active tracker fields have keywords."
 
 **Detect missing daily_log section:**
 

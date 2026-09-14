@@ -19,7 +19,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.8.0
+# version: 0.9.0
 
 **Active agent: suggestion-conductor**
 
@@ -59,40 +59,7 @@ cat tomo-tmp/routing-plan.json
 Extract `action`, `inbox_path`, and action-specific fields.
 If `drift_indicators` is non-empty, surface each warning to the user but continue.
 
-### Step 2 — Common setup
-
-# STRICT — run ALL five commands below before dispatching ANY subagent.
-# Skipping shared-ctx-builder means analysts get no MOC/tag/config data.
-
-```bash
-mkdir -p tomo-tmp/items
-```
-
-```bash
-python3 scripts/run-id.py --out tomo-tmp/.run_id
-```
-
-Capture stdout as `RUN_ID`.
-
-```bash
-python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
-```
-
-If shared-ctx-builder fails, abort the run and surface the error.
-
-```bash
-python3 scripts/read-config-field.py --field tomo.suggestions.parallel --default 5
-```
-
-Capture stdout as `BATCH_SIZE` (integer).
-
-```bash
-python3 scripts/read-config-field.py --field profile --default miyo
-```
-
-Capture stdout as `PROFILE` (string).
-
-### Step 3 — Branch on action
+### Step 2 — Branch on action
 
 | action | Go to |
 |--------|-------|
@@ -100,6 +67,11 @@ Capture stdout as `PROFILE` (string).
 | fan-resolve | Follow the `force-atomic-handling` skill (already loaded) |
 
 The skill has the complete pipeline. Follow it now.
+
+# STRICT — run NO setup commands here. Do not create `tomo-tmp/items`, do not
+# call `run-id.py`, `shared-ctx-builder.py` or `read-config-field.py`.
+# Why: the skill runs all of them itself and starts by deleting `tomo-tmp/items`,
+# so a setup here is discarded and the RUN_ID captured from it is stale.
 
 Tag-handler compose (when `routing-plan.json` `handled[]` is non-empty) is handled
 **inside** `suggest-handling` (step 3b, before the reduce) — the `tag-handler-interpreter`

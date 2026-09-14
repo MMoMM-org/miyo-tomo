@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.8.1
+# version: 0.9.0
 
 ## When to Activate
 
@@ -42,6 +42,11 @@ python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vaul
 ```
 
 If this fails, abort and surface the error.
+
+# STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
+# before dispatching anything.
+# Why: it is the only report of unusable tracker configuration, and a run that
+# swallows it looks identical to a healthy one.
 
 ```bash
 python3 scripts/read-config-field.py --field tomo.suggestions.parallel --default 5

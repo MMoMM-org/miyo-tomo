@@ -203,3 +203,57 @@ regex that stops matching would pass every other assertion in the file.
 All four templates in the tree had the defect — both fan-out skills, plus
 `synthesis-conductor` and `voice-transcriber` in the `/inbox` command. Pass 2
 and transcription were dispatching general-purpose too.
+
+## Why step 1 reads the routing plan through a script
+
+The skill used to say `cat tomo-tmp/routing-plan.json`, then "Extract
+`fresh_sources[]` and `inbox_path`". In the 2026-09-14 12:34 run the conductor
+did the `cat`, and fifty records later — after the setup step, with the plan
+scrolled well back — it needed the source list to build its first dispatch
+batch and ran:
+
+    python3 -c "
+    import json
+    d = json.load(open('tomo-tmp/routing-plan.json'))
+    ...
+
+`suggestion-conductor.md` forbids exactly that in a `STRICT` block, and Claude
+Code's Bash validator flags such calls on their `#` characters. The model filed
+a bug against itself for it, and named its own cause accurately: it needed the
+exact list and there was no sanctioned way to get one.
+
+That is the shape of the defect. `cat` does not hand back a list; it hands back
+a document to re-derive a list from. Re-deriving is either inline Python — the
+forbidden thing — or retyping twelve paths from a scrolled-back tool result,
+which drops entries silently. The instruction "never do X" without a sanctioned
+Y is a trap, and the model walked into it on the only step that had no helper.
+
+`scripts/read-routing-plan.py` is that Y, following the precedent
+`read-config-field.py` set for `vault-config.yaml` — whose own header says it
+"replaces ad-hoc `python3 -c`". It also takes the batch arithmetic: the skill
+now asks for `--batch-count` once and then `--sources --batch N --size K`,
+instead of asking an LLM to slice twelve items into groups of five. The tail
+batch (two items, not five) is the case that arithmetic gets wrong.
+
+`cat` stays as the first step. Surfacing `drift_indicators` needs the whole
+document, and a conductor that never sees its own plan is harder to debug.
+
+## Why `INBOX_PATH` and not `inbox_path`
+
+The publish step read `--vault "<inbox_path>/<stem>_suggestions.md"`. The plan
+stores `inbox_path` as `"100 Inbox/"` — already terminated — so the template
+produced `100 Inbox//2026-09-14_1234_suggestions.md`. Kado normalises the
+double slash and the file landed correctly; the same run wrote the `.json`
+sibling with a single slash, so the two commands disagreed about the shape of
+the same path and both worked.
+
+`read-routing-plan.py --field inbox_path` strips the trailing slash, and the
+templates now name `<INBOX_PATH>` — a value with known shape, joined with `/`
+unconditionally. The rename is the point: `<inbox_path>` reads as "the field
+from the plan", which is the thing that carries the slash.
+
+`moc-architect` had already solved this the other way, joining with no
+separator and stating "it already ends in `/`". Both are correct in isolation;
+having both in one tree is what let the wrong one look right. `force-atomic-
+handling` carried the same defect on its own publish step and is converted to
+match — found by grepping the shape rather than the site the bug appeared in.

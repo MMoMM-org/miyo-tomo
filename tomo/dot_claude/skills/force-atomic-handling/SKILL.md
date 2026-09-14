@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.12.0
+# version: 0.13.0
 
 ## When to Activate
 
@@ -20,8 +20,13 @@ Load this skill when:
 cat tomo-tmp/routing-plan.json
 ```
 
-Extract `force_atomic_items[]`, `approved_suggestions[0].cache_path`,
-and `inbox_path`.
+Extract `force_atomic_items[]` and `approved_suggestions[0].cache_path`.
+
+```bash
+python3 scripts/read-routing-plan.py --field inbox_path
+```
+
+Capture stdout as `INBOX_PATH` (no trailing slash).
 
 ### 2. Common setup
 
@@ -115,8 +120,8 @@ to the file operation.
 # Why: content relayed through your own tokens cannot be checked against the file it came from, and the script reads it from disk.
 
 ```bash
-python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-rendered.md --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md"
-python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.json"
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-rendered.md --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions-fan.md"
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions-fan.json"
 ```
 
 ### 7. Report

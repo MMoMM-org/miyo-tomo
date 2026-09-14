@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.10.0
+# version: 0.11.0
 
 ## When to Activate
 
@@ -19,8 +19,18 @@ Load this skill when:
 cat tomo-tmp/routing-plan.json
 ```
 
-Extract `fresh_sources[]` and `inbox_path`.
 If `drift_indicators` is non-empty, surface each warning but continue.
+
+# STRICT — read every value the later steps need with `read-routing-plan.py`.
+# NEVER derive them from the `cat` output, and NEVER run `python3 -c`.
+# Why: inline Python is refused by the Bash validator on its `#` characters,
+# and a list retyped from a document drops or invents entries.
+
+```bash
+python3 scripts/read-routing-plan.py --field inbox_path
+```
+
+Capture stdout as `INBOX_PATH` (no trailing slash).
 
 ### 2. Common setup
 
@@ -66,9 +76,20 @@ Capture stdout as `PROFILE`.
 # ONE Agent call per message = sequential execution = 5x slower.
 # Claude Code runs all Agent calls in the same message concurrently.
 
-Split `fresh_sources[]` into batches of `BATCH_SIZE` items.
-For each batch, emit ALL Agent() calls in ONE response.
-Wait for the batch to complete before the next.
+Get the batch count once:
+
+```bash
+python3 scripts/read-routing-plan.py --batch-count --size <BATCH_SIZE>
+```
+
+Capture stdout as `BATCH_COUNT`. Then for each `<N>` from 1 to `BATCH_COUNT`:
+
+```bash
+python3 scripts/read-routing-plan.py --sources --batch <N> --size <BATCH_SIZE>
+```
+
+Each line is one item's `path`. Emit ALL Agent() calls for that batch in ONE
+response, then wait for the batch to complete before requesting the next.
 
 # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
 # STRICT — the key is `subagent_type`. `name` only labels the spawned agent.
@@ -129,8 +150,8 @@ file operation.
 # Why: content relayed through your own tokens cannot be checked against the file it came from, and the script reads it from disk.
 
 ```bash
-python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.md"
-python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.json"
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md"
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.json"
 ```
 
 # STRICT — mark-captured runs immediately after vault write succeeds. Do NOT skip or defer.

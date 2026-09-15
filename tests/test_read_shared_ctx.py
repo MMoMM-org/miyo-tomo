@@ -129,6 +129,22 @@ class TestOutputSize:
         assert len(pretty) > len(compact)
         assert json.loads(pretty) == json.loads(compact)
 
+    # Smallest tool-result spill observed in a container transcript. Above it,
+    # Claude Code writes the result to a file and hands the agent a 2 KB
+    # preview plus a path — which the analyst contract forbids it to parse,
+    # because parsing it means inline Python.
+    SPILL_FLOOR_BYTES = 37_700
+
+    def test_step_1_batch_stays_well_under_the_spill_floor(self, tmp_path, capsys):
+        """The 2026-09-15 run loaded six keys in one call: 39.8 KB, spilled,
+        and three subagents reached for inline Python to read the spill file."""
+        out = _run(
+            capsys, "--ctx", str(_ctx(tmp_path)), "--fields",
+            "daily_notes,classification_keywords,tag_prefixes,asset_folder",
+        )
+        assert "mocs" not in json.loads(out), "Step 1 must not carry the MOC keys"
+        assert len(out) < self.SPILL_FLOOR_BYTES
+
     def test_loading_every_contract_key_stays_under_the_whole_file(self, tmp_path, capsys):
         """Step 1 loads six named keys rather than catting. It must not cost
         more than what it replaced, or the change is a regression dressed as a

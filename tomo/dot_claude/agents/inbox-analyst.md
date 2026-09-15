@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.25.0
+# version: 0.26.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -63,11 +63,16 @@ python3 scripts/state-update.py \
 ### Step 1 — Load shared context
 
 ```bash
-python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --fields mocs,daily_notes,placeholder_links,classification_keywords,tag_prefixes,asset_folder
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --fields daily_notes,classification_keywords,tag_prefixes,asset_folder
 ```
 
-The output is a JSON object keyed by those names. It is what later steps call
-`shared_ctx`.
+The output is a JSON object keyed by those names. Step 4 adds `mocs` and
+`placeholder_links`; together they are what later steps call `shared_ctx`.
+
+# STRICT — do NOT add `mocs` or `placeholder_links` to this call.
+# Why: the six keys together exceed the tool-result size limit, so the result
+# is written to a file and you receive a 2 KB preview and a path — which you
+# then cannot read without the inline Python this contract forbids.
 
 # STRICT — read any further field with `read-shared-ctx.py --field <dotted.path>`.
 # NEVER `cat` the context file and NEVER run `python3 -c`.
@@ -122,6 +127,16 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 | `fleeting_note` | short, no structure, no URLs | +0.2 |
 
 ### Step 4 — Match MOCs
+
+Load the two MOC keys now, as separate calls:
+
+```bash
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field mocs
+```
+
+```bash
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field placeholder_links
+```
 
 For each MOC in `shared_ctx.mocs`:
 - Extract item topics by tokenising body + tags, lowercase, strip stopwords

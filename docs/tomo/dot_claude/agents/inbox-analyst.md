@@ -443,3 +443,41 @@ is inert to it.
 `wc` was chosen over a new script because it is already exact: on the German
 body that prompted this, `wc -w -m` and Python's `len(s.split())` /`len(s)` both
 return 55 words and 326 characters, em-dash and umlauts included.
+
+## Why Step 1 stops short of the MOC keys
+
+The first version of this change loaded all six contract keys in one
+`--fields` call. It measured 40705 bytes, and the 2026-09-15 run showed what
+that costs:
+
+    Output too large (39.8KB). Full output saved to: …/tool-results/bzyeclmrv.txt
+    Preview (first 2KB): {"mocs":[{"path":"000 Index.md",…
+
+The result spilled to a file. The agent received two kilobytes and a path, and
+three subagents then read that path with the inline Python this contract had
+just forbidden. The prohibition held for `shared-ctx.json` — zero `cat`s, down
+from 45 — and was defeated by a file the contract never anticipated.
+
+This was not a regression. The `cat` it replaced was 40764 bytes and spilled
+the same way; the change simply failed to fix it.
+
+The load is now split so no single call approaches the limit:
+
+    Step 1  daily_notes + classification_keywords + tag_prefixes + asset_folder   7975
+    Step 4  mocs                                                                 29456
+    Step 4  placeholder_links                                                     3247
+
+Smallest spill observed in any transcript: 37.7 KB.
+`tests/test_read_shared_ctx.py::TestOutputSize` pins that floor.
+
+**This is the deferral that was withdrawn a day earlier, adopted for a
+different reason.** It was proposed as a byte saving — load `mocs` only for
+items that produce an atomic note — and withdrawn because Step 4 matches MOCs
+before Step 7 assesses worthiness, so the agent cannot know in time. That
+objection still stands and this change does not answer it: `mocs` is still
+loaded for every item, including the three per run that never read it. What
+changed is that the fetch moved to its point of use, which requires no reorder
+and no behavioural change, and keeps every call under the spill threshold.
+
+The byte saving remains available and remains blocked on the same open
+question — see `docs/tomo/scripts/read-shared-ctx.md`.

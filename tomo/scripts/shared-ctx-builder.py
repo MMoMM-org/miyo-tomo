@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.11.0
+# version: 1.12.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -472,6 +472,20 @@ def _syntax_for(field_type: str) -> str:
     return "inline_field"
 
 
+def _field_syntax(field: dict, field_type: str) -> str:
+    """The configured `syntax` wins; the type-derived guess is the fallback.
+
+    `syntax` is a declared property of a tracker field — the schema calls it
+    "How the field is serialised in the daily note" — and only the config knows
+    it, because it describes the shape of the user's daily-note template rather
+    than anything about the value. Deriving it from the type reads a `text`
+    field as a callout, which is wrong for any vault writing `- Field:: value`
+    under a heading.
+    """
+    configured = (field.get("syntax") or "").strip()
+    return configured or _syntax_for(field_type)
+
+
 def _seed_keywords(name: str, extras: list[str] | None) -> list[str]:
     base = name.lower()
     # Split CamelCase into space-separated words so "WakeUpEnergy" → "wake up energy"
@@ -513,7 +527,7 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
                 continue
             seen_names.add(name)
             field_type = _schema_type(f.get("type") or "", f.get("scale"))
-            syntax = _syntax_for(field_type)
+            syntax = _field_syntax(f, field_type)
             keywords = _seed_keywords(name, f.get("keywords"))
             description = f.get("description", "")
             if not description:

@@ -175,3 +175,43 @@ without that instruction the check exists only in the transcript.
 This is the gap the owner named directly: `/explore-vault` asks about two
 missing templates on every single run, while the missing keywords pass
 unmentioned.
+
+## A Tracker Field's Configured `syntax` Wins (v1.12.0)
+
+WHY `_field_syntax` now sits between `build_tracker_fields` and `_syntax_for`:
+
+`syntax` is a declared property of a tracker field in
+`vault-config-trackers.schema.json` — *"How the field is serialised in the
+daily note"* — and `vault-config-writer.py` treats it as **required**,
+validating it against the same four-value enum. `build_tracker_fields` then
+discarded it, calling `_syntax_for(field_type)` unconditionally and writing a
+guess derived from the field's `type` into shared-ctx.
+
+The two rules disagree because they answer different questions. A field's
+`type` describes its value; `syntax` describes the shape of the user's
+daily-note template. Nothing about `type: text` implies a callout.
+
+Found by Hashi on the 2026-09-15 run, raised as a question rather than a bug
+report. From one source note Tomo emitted `Sport` and `HealthFood` as
+`inline_field` and `ToBed` as `callout_body` — the first two `type: boolean`,
+the third `type: text`. All three are configured `inline_field`, and the vault
+settles it: `Calendar/301 Daily/2026-09-08.md` carries
+
+    ## Habit
+    ### Yesterday
+    - ToBed:: 23:30
+
+an inline field under a heading, with no callout of that name anywhere in the
+note. Applying the emitted action against it is a hard `Section not found:
+Habit` — one of three tracker actions failing while the other two succeed.
+
+WHY this stayed invisible through a green run: Hashi's QA vault had no such
+callout either, so they added one to make our value work rather than reporting
+it. The run passed 28/28 and the defect travelled inside a success. It would
+have failed on the next vault that took the config at its word — including
+ours.
+
+WHY the derivation stays rather than being deleted: a config that omits
+`syntax` keeps the behaviour it has today. Only an explicit value overrides,
+and a blank string counts as omitted so an empty field never reaches the wire
+as a syntax value.

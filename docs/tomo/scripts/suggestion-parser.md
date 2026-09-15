@@ -873,3 +873,45 @@ type and the document it fell back to.
 WHY `None` and `""` stay silent: a document with no `tomo.doc_type` is a legacy
 document, and the primary doc is its correct answer, not a mistake. Warning on
 it would train the reader to ignore the line.
+
+## An Empty Wikilink Is Absence, Not a Value (v0.39.0)
+
+WHY `_wikilink_or_text` exists instead of the plain `wl or val` fallback it
+replaced at four sites (`parent` on both the markdown and the wire path,
+`destination`, `template`):
+
+The suggestions document renders an unset field as a placeholder the user is
+invited to fill in — `- **Parent:** [[]]    ← change parent MOC if needed`.
+`RE_WIKILINK` requires at least one character between the brackets, so that
+placeholder never matches, `_extract_wikilink` returns `None`, and the fallback
+keeps the literal `"[[]]"` as though the user had named a MOC by that name.
+
+Observed on the 2026-09-15 run. MOC01 parsed with `parent_moc: "[[]]"`, which
+travelled three further hops before anyone could see it:
+
+1. `instruction-render` tried to resolve it as a MOC path, could not, and
+   withheld the `link_to_moc`.
+2. The withheld-link notice then named a remedy nobody can act on — *"MOC not
+   found — create it"* for a MOC with an empty name, with the arrow pointing
+   away from the very MOC the same instruction set creates in `I01`.
+3. The placeholder reached the rendered note body, where the MOC template
+   wrapped it a second time: `> up:: [[[[]]]]`. That note was already in the
+   inbox awaiting a `move_note`, so the broken link would have been carried
+   into the Atlas verbatim.
+
+WHY the fix belongs in the parser rather than the renderer: leaving an optional
+field blank is the ordinary case — a top-level MOC has no parent — and only the
+parser knows that `[[]]` came from a placeholder rather than from a user who
+typed brackets around something. By the time the renderer sees a string it can
+only ask whether a note by that name exists, and "no" is the wrong answer to a
+question that should never have been asked.
+
+WHY `destination` and `template` were changed alongside a defect neither one
+exhibited: they carry the identical fallback shape. A placeholder in either
+becomes a note's target folder or its template lookup, and the shape is the
+defect — fixing only the site that happened to fire leaves the other three
+waiting for a document that renders a placeholder into them.
+
+WHY the `parent moc` field at the `Link to MOC` site needed no change: it is
+already written as `if wl:` and discards a non-matching value instead of
+falling back to it.

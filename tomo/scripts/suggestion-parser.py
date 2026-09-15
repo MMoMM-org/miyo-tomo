@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.38.0
+# version: 0.39.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -59,6 +59,9 @@ RE_FIELD = re.compile(r"^\s*\*\*([^*]+)\*\*[:\s]*(.*)")
 
 # Wikilink: [[Note Name]]  or  [[Note Name#anchor]]
 RE_WIKILINK = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
+
+# The placeholder the document writes for a field the user has not filled in.
+RE_EMPTY_WIKILINK = re.compile(r"\[\[\s*\]\]")
 
 # The same link, with its alias kept: group 1 = target, group 2 = alias or None.
 RE_WIKILINK_ALIASED = re.compile(
@@ -153,6 +156,25 @@ def _extract_wikilink(text: str) -> str | None:
     """Return the first wikilink target found, or None."""
     m = RE_WIKILINK.search(text)
     return m.group(1).strip() if m else None
+
+
+def _wikilink_or_text(text: str) -> str:
+    """Return the wikilink target, else the raw text — but never a bare `[[]]`.
+
+    The document renders an unset field as an empty wikilink for the user to
+    fill in (`- **Parent:** [[]]`). `RE_WIKILINK` needs a character inside the
+    brackets, so that placeholder never matches, and the plain `wl or text`
+    fallback keeps it as if it were a real value. Downstream it is a path: the
+    renderer looks for a MOC named `[[]]`, and the note template wraps it into
+    `up:: [[[[]]]]`.
+
+    An empty pair of brackets means the user left the field blank. Return "",
+    which every caller already treats as absent.
+    """
+    wl = _extract_wikilink(text)
+    if wl:
+        return wl
+    return "" if RE_EMPTY_WIKILINK.fullmatch(text.strip()) else text
 
 
 def _wikilink_display(text: str) -> str | None:
@@ -393,7 +415,7 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         name = (pm.get("name") or "").strip()
         if not name:
             continue
-        parent = pm.get("parent", "")
+        parent = _wikilink_or_text(pm.get("parent", "") or "")
         member_stems = [
             id_to_item_key[mid]
             for mid in pm.get("member_ids", [])
@@ -874,13 +896,11 @@ def parse_section(
         elif key in ("destination", "location", "move to"):
             # Strip wrapping backticks/brackets/wikilinks and edit hints
             cleaned = val.split("←")[0].strip().strip("`").strip()
-            wl = _extract_wikilink(cleaned)
-            result["destination"] = wl or cleaned
+            result["destination"] = _wikilink_or_text(cleaned)
 
         elif key == "template":
             cleaned = val.split("←")[0].strip().strip("`").strip()
-            wl = _extract_wikilink(cleaned)
-            result["template"] = wl or cleaned
+            result["template"] = _wikilink_or_text(cleaned)
 
         elif key == "summary":
             result["summary"] = val
@@ -1133,8 +1153,7 @@ def parse_proposed_mocs(
                 if key == "name":
                     name = val
                 elif key == "parent":
-                    wl = _extract_wikilink(val)
-                    parent = wl or val
+                    parent = _wikilink_or_text(val)
                 elif key in ("supporting items", "items"):
                     items_str = val
                 elif key in ("tags", "tag", "new tags", "suggested tags"):
@@ -1626,8 +1645,7 @@ def parse_moc_proposal_doc(
                 val = fm.group(2).strip()
                 if key == "template":
                     # Strip wikilink brackets and backticks
-                    wl = _extract_wikilink(val)
-                    template = (wl or val).strip("`").strip()
+                    template = _wikilink_or_text(val).strip("`").strip()
                     break
 
         # ── Parent section (#### Parent) — first [x] wins ────────────────────

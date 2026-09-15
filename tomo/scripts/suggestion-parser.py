@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.37.0
+# version: 0.38.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1941,32 +1941,58 @@ def item_keys_by_section_id(doc: dict) -> dict[str, tuple[str, str] | None]:
     the same id the heading shows (`### S01 — …`). So identity is recoverable
     without changing a byte of what the user reads.
 
-    Both the section id and each action's flat `suggestion_id` are registered:
-    F-41 gives a multi-atomic source several headings from one section, and the
-    heading shows the suggestion_id. Every atomic of one source shares that
-    source's key, so the two id spaces cannot disagree about the key.
+    The heading shows the action's flat `suggestion_id` (F-41), NOT the
+    section id. The two are different sequences over one namespace: the
+    reducer numbers every section it builds, the renderer numbers only the
+    headings it emits, and they diverge as soon as anything is skipped. On the
+    2026-09-15 document the reducer's S04 was the Elbsandstein plan while
+    heading S04 was Kai.
+
+    So `suggestion_id` is authoritative and `section.id` is a fallback, used
+    only for a section that carries no `suggestion_id` at all — a document
+    written before the flat counter, whose headings do show the section id.
+    Registering both as equals made them collide: six of eleven ids came back
+    ambiguous, every confirmed item lost its `item_key`, and Pass 2 fell back
+    to reconstructing paths from `inbox_path + stem` — which is wrong for
+    exactly the notes that live in a subfolder.
 
     An id that maps to two different keys is recorded as None — ambiguous, and
-    never guessed.
+    never guessed. That rule is what kept the live failure from filing Kai's
+    note out of Elbsandstein's source, and it applies within each tier.
     """
     lookup: dict[str, tuple[str, str] | None] = {}
+    fallback: dict[str, tuple[str, str] | None] = {}
 
-    def _register(sid: str | None, value: tuple[str, str]) -> None:
+    def _register(
+        target: dict[str, tuple[str, str] | None], sid: str | None, value: tuple[str, str]
+    ) -> None:
         if not sid:
             return
-        if sid in lookup and lookup[sid] != value:
-            lookup[sid] = None
+        if sid in target and target[sid] != value:
+            target[sid] = None
             return
-        lookup.setdefault(sid, value)
+        target.setdefault(sid, value)
 
     for section in (doc or {}).get("sections") or []:
         key = section.get("item_key")
         if not key:
             continue
         value = (key, section.get("stem") or "")
-        _register(section.get("id"), value)
-        for action in section.get("actions") or []:
-            _register(action.get("suggestion_id"), value)
+        suggestion_ids = [
+            a.get("suggestion_id")
+            for a in (section.get("actions") or [])
+            if a.get("suggestion_id")
+        ]
+        if suggestion_ids:
+            for sid in suggestion_ids:
+                _register(lookup, sid, value)
+        else:
+            _register(fallback, section.get("id"), value)
+
+    # A fallback id never displaces a heading id, and never makes one
+    # ambiguous — the heading is what the document actually shows.
+    for sid, value in fallback.items():
+        lookup.setdefault(sid, value)
     return lookup
 
 

@@ -47,7 +47,43 @@ When implementation requires changes from the specification:
 3. Update the SDD when the deviation improves the design.
 4. Record all deviations in this file for traceability.
 
-**Deviations recorded so far**: none.
+**Deviations recorded so far**:
+
+- **2026-09-16 — T3.1 executed inside Phase 1.** T1.3 carries an ORDERING GATE requiring T3.1
+  first, but T3.1 sits in Phase 3, so running Phase 1 as written would violate the plan's own
+  gate. The reason is semantic, not just a file collision: T1.3 alone gives the unresolvable-group
+  delete `depends_on: []`, which means "perform it", and Phase 4's audit would then certify a
+  data-loss delete as valid. Execution order for Phase 1 is therefore T1.1, T1.2, **T3.1**, T1.3,
+  T1.4. T3.1 is checked off in phase-3.md when it lands. Approved by the owner before dispatch.
+  Note for a future editor: phase-1.md's header still reads "Dependencies: None", which is true of
+  the phase but not of T1.3.
+
+- **2026-09-16 — T4.1's schema half executed inside Phase 1.** Discovered by execution, not review.
+  Phase 1 makes `depends_on` required at the emission site, which immediately fails 9 schema
+  validations and 3 shape-lock fixtures across specs 027/031/034 — while T1.4 demands that every
+  pre-existing test still pass. The plan cannot satisfy itself as written.
+  The resolution is the plan's own rule, stated in plan/README.md: *"The guards must be **released**
+  with the wire field, never before it … The constraint therefore binds the release, not the phase
+  order."* T4.1's own gate rationale agrees — spec 035's T2.4 turned the upstream drift check into a
+  report, so carrying the field ahead of Hashi "fails nothing". Only the **handoff** (T4.5) is
+  bound to Phase 4.
+  Pulled forward: `depends_on` added to both local schemas and `schema_version` bumped to `"3"`,
+  plus the three shape-lock fixtures updated. The version bump travels with the field deliberately —
+  a required field under an unchanged version number is the silent drift spec 035 exists to prevent.
+  **Operational consequence, accepted by the owner:** Tomo now emits wire version 3 while Hashi
+  still vendors 2, so Hashi runs are blocked until T4.5's handoff lands.
+  T4.1's remaining half (the upstream-drift assertion and the handoff sequencing) stays in Phase 4.
+
+- **2026-09-16 — `render_actions.py`'s `# version:` header is deliberately NOT bumped until T1.3.**
+  Raised by the T1.1 code-quality review, which observed the header sitting at `0.19.0` across a
+  real behaviour change and charitably assumed a deliberate call. It was not one — nobody had
+  decided it. Recording the decision now so it is one.
+  The reasoning the review supplied is sound and is adopted: `scripts/update-tomo.sh` gates
+  `tomo/scripts/lib/*.py` sync on this header, so bumping it now would ship a `render_actions.py`
+  to the live instance that emits `depends_on` at sites 1 and 3 only, alongside a schema that
+  requires it on all four. The instance would fail validation on any run touching site 2 or 4.
+  **The bump happens when T1.3 lands**, with all four sites emitting. Until then an unchanged header
+  is the correct state, not an oversight.
 
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. 035 sits at `Initialization` as

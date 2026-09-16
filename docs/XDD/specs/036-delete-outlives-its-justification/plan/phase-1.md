@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Declare — depends_on at every emission site"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -38,7 +38,7 @@ a pure behaviour change with the data already in place and independently tested.
 
 Establishes the dependency relation as data: every conditional delete knows what justifies it.
 
-- [ ] **T1.1 Site 3 and site 1 declare their dependencies** `[activity: domain-modeling]`
+- [x] **T1.1 Site 3 and site 1 declare their dependencies** `[activity: domain-modeling]`
 
   Site 3 (`move_note` origin plus audio peer) already has the partner ids in hand — the completion
   gate buckets the actual move action dicts. Site 1 (user-requested deletion) has no partner and

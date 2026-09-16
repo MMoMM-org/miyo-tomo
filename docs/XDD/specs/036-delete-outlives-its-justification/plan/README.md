@@ -67,11 +67,18 @@ When implementation requires changes from the specification:
   order."* T4.1's own gate rationale agrees — spec 035's T2.4 turned the upstream drift check into a
   report, so carrying the field ahead of Hashi "fails nothing". Only the **handoff** (T4.5) is
   bound to Phase 4.
-  Pulled forward: `depends_on` added to both local schemas and `schema_version` bumped to `"3"`,
-  plus the three shape-lock fixtures updated. The version bump travels with the field deliberately —
-  a required field under an unchanged version number is the silent drift spec 035 exists to prevent.
-  **Operational consequence, accepted by the owner:** Tomo now emits wire version 3 while Hashi
-  still vendors 2, so Hashi runs are blocked until T4.5's handoff lands.
+  Pulled forward: `depends_on` added to both local schemas as a required property, plus the three
+  shape-lock fixtures updated. `schema_version` stays at `"2"`.
+  **Correction, same day.** The field first shipped with `schema_version` bumped to `"3"`, on the
+  reasoning that a required field under an unchanged version is exactly the silent drift spec 035
+  exists to prevent. That reasoning was wrong about the mechanism: `delete_source` carries
+  `additionalProperties: false`, so Hashi rejects an unrecognised `depends_on` on the **field**,
+  whatever the version says. The bump bought no protection that the field did not already provide,
+  and it cost 16 failures across eight unrelated specs whose fixtures assert version `"2"`.
+  Reverted at the owner's decision. The version moves when the wire contract is released to Hashi
+  (T4.5), not when the producer starts emitting.
+  **Operational consequence, unchanged by the revert:** Tomo emits a `depends_on` that Hashi's
+  vendored schema does not know, so Hashi runs stay blocked until T4.5's handoff lands.
   T4.1's remaining half (the upstream-drift assertion and the handoff sequencing) stays in Phase 4.
 
 - **2026-09-16 — `render_actions.py`'s `# version:` header is deliberately NOT bumped until T1.3.**
@@ -86,9 +93,11 @@ When implementation requires changes from the specification:
   is the correct state, not an oversight.
 
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
-committed so one changed-fields list can cover both wire documents. 035 sits at `Initialization` as
-of 2026-09-10. If it has not landed when Phase 4 completes, send the instruction-wire half alone and
-say so — a data-loss fix does not wait behind a versioning spec.
+committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
+reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering
+both wires. (Superseded: "035 sits at `Initialization` as of 2026-09-10. If it has not landed when
+Phase 4 completes, send the instruction-wire half alone and say so — a data-loss fix does not wait
+behind a versioning spec.")
 
 **Terminology, fixed by validation**: "drop site" means one of the five action-removing passes;
 "guard" is reserved for the reducer's group annotations. The three data-loss paths are **P1, P2, P3**

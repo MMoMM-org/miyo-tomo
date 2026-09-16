@@ -1,4 +1,4 @@
-# version: 0.21.0
+# version: 0.22.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -958,10 +958,16 @@ def _drop_moves_with_paired_deletes(
 def validate_destinations(
     actions: list[dict], folder_listing=None
 ) -> tuple[list[dict], list[dict]]:
-    """Drop every move whose destination is contested; report what was dropped.
+    """Drop every action whose destination is contested; report what was dropped.
 
     Returns ``(kept_actions, clashes)``. Runs after ``build_actions``, over the
     whole assembled list, so it sees every claim at once (ADR-4).
+
+    ``move_note`` and ``create_moc`` are both claimants (spec 036 T2.2,
+    ADR-3): each carries ``destination`` under the same key, so a
+    ``create_moc`` and a ``move_note`` targeting one path contest it exactly
+    as two ``move_note``s would — one would otherwise ship invisibly and
+    silently overwrite the other's destination.
 
     **Both** claimants are dropped, not the second one. This follows the
     reporting shape of ``_build_move_asset_actions`` and deliberately inverts
@@ -990,7 +996,7 @@ def validate_destinations(
     groups: dict[str, list[dict]] = {}
     order: list[str] = []
     for action in actions:
-        if action.get("action") != "move_note":
+        if action.get("action") not in ("move_note", "create_moc"):
             continue
         destination = action.get("destination") or ""
         if not destination:
@@ -1043,9 +1049,19 @@ def validate_destinations(
             "dropped": [
                 {
                     "id": c.get("id"),
+                    "action": c.get("action"),
                     "title": c.get("title"),
                     "destination": c.get("destination"),
                     "source_inbox_item": c.get("source_inbox_item"),
+                    # `source` is the staging note this claimant moves FROM —
+                    # present on both kinds. A move_note also carries the
+                    # richer source_inbox_item (the original inbox note it
+                    # derived from); a create_moc has no such origin, so the
+                    # renderer falls back to this field for a MOC claimant
+                    # (spec 036 T2.2). Never repurpose source_inbox_item to
+                    # hold a MOC's staging path — the two keys mean different
+                    # things and overloading one is what this spec is fixing.
+                    "source": c.get("source"),
                 }
                 for c in claimants
             ],

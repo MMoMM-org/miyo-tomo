@@ -1,4 +1,4 @@
-# version: 0.16.1
+# version: 0.17.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -611,7 +611,12 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for clash in destination_clashes:
             body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
             for d in clash.get("dropped") or []:
-                origin = d.get("source_inbox_item") or "?"
+                # A move_note's origin lives under source_inbox_item (the
+                # inbox note it came from); a create_moc has no such origin —
+                # its own source is the staging note the run itself produced
+                # (spec 036 T2.2). Falling back to source_inbox_item only
+                # would show the user `?` for a dropped MOC.
+                origin = d.get("source_inbox_item") or d.get("source") or "?"
                 body_parts.append(
                     f"    - `{d.get('id')}` **{d.get('title')}** "
                     f"— source note `{origin}`"

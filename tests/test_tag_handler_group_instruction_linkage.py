@@ -53,13 +53,8 @@ _reducer_mod = _load("suggestions_reducer", "suggestions-reducer.py")
 _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 _render_mod = _load("instruction_render", "instruction-render.py")
 _diff_mod = _load("instructions_diff", "instructions-diff.py")
-# instruction-render.py does `from lib.render_actions import (...)`, which
-# registers the real module under this sys.modules key. The two call sites
-# for tag_handler_group_is_appliable are DEFINED in render_actions.py, so a
-# monkeypatch must target this module's attribute — patching the name
-# re-exported on _render_mod would not affect render_actions.py's own
-# global lookups.
-_render_actions_mod = sys.modules["lib.render_actions"]
+
+import lib.render_actions as _render_actions_mod  # noqa: E402
 
 group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
@@ -664,7 +659,7 @@ def test_both_sites_move_together_when_the_predicate_says_no(monkeypatch):
     emits, it is not consulting the shared predicate (ADR-5)."""
     g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
     monkeypatch.setattr(
-        _render_actions_mod, "tag_handler_group_is_appliable", lambda group: False
+        _render_actions_mod, "_tag_handler_group_has_resolvable_target", lambda group: False
     )
     actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG,

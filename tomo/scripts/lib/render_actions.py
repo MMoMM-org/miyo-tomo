@@ -1582,12 +1582,12 @@ def _origin_key(resolved_path: str | None) -> str:
     return resolved_path[:-3] if resolved_path.endswith(".md") else resolved_path
 
 
-def tag_handler_group_is_appliable(group: dict) -> bool:
+def _tag_handler_group_has_resolvable_target(group: dict) -> bool:
     """Target-resolvability gate for a tag-handler group (spec 036 T3.1/ADR-5).
 
-    Covers ONLY whether the group's `target_path` resolved to something
-    non-empty — the sole condition that must agree between the insert
-    builder and the delete loop (site 4) below. Approval and
+    Tests the sole condition that must agree between the insert builder
+    (line ~1913) and the delete loop (site 4, line ~1799): whether the
+    group's `target_path` resolved to something non-empty. Approval and
     "Keep source files" filtering are NOT part of this predicate; each call
     site keeps that filtering exactly where it already lives, since the two
     sites' approval/keep filters are not identical (the delete loop also
@@ -1796,9 +1796,9 @@ def _build_delete_source_actions(
         gid = group_id(group)
         if gid not in approved_groups or gid in kept_groups:
             continue
-        if not tag_handler_group_is_appliable(group):
-            # Unresolved target (null) — never delete sources for a group
-            # whose consolidated content has nowhere to land (spec 036 T3.1).
+        if not _tag_handler_group_has_resolvable_target(group):
+            # Shared gate with insert builder (line ~1913, ADR-5): both must
+            # agree that target_path is resolvable before proceeding.
             continue
         target = group.get("target_path") or ""
         handler = group.get("handler") or ""
@@ -1908,8 +1908,9 @@ def _build_insert_under_marker_actions(
     for group in groups:
         if group_id(group) not in approved:
             continue
-        if not tag_handler_group_is_appliable(group):
-            # Unresolved target (null) — never emit a path-less instruction.
+        if not _tag_handler_group_has_resolvable_target(group):
+            # Shared gate with delete loop (site 4, line ~1799, ADR-5): both
+            # must agree that target_path is resolvable before proceeding.
             continue
         target_path = group.get("target_path")
 

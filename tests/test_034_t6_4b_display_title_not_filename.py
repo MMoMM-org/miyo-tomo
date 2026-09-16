@@ -274,7 +274,7 @@ def test_stripped_actions_validate_against_hashis_schema():
     _strip_internal_link_fields(actions)
     validate(
         instance={
-            "schema_version": "3", "type": "tomo-instructions",
+            "schema_version": "2", "type": "tomo-instructions",
             "generated": "2026-09-09T10:00:00Z", "profile": "miyo",
             "action_count": len(actions), "actions": actions,
         },

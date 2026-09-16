@@ -1004,6 +1004,10 @@ def test_dropped_move_note_with_empty_source_inbox_item_still_renders_question_m
                 "destination": f"{NOTES}Dresden.md",
                 "source_inbox_item": None,
                 "source": f"{INBOX}2026-09-07_1001_dresden.md",
+                # Hand-built, bypassing validate_destinations (spec 036 T2.2
+                # finding 2) — a move_note's resolved origin is its (empty)
+                # source_inbox_item, never its own staging `source`.
+                "origin": None,
             },
         ],
         "withdrawn_deletes": [],

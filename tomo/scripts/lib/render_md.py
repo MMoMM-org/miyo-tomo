@@ -1,4 +1,4 @@
-# version: 0.17.1
+# version: 0.18.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -611,18 +611,11 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for clash in destination_clashes:
             body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
             for d in clash.get("dropped") or []:
-                # A move_note's origin lives under source_inbox_item (the
-                # inbox note it came from); a create_moc has no such origin —
-                # its own source is the staging note the run itself produced
-                # (spec 036 T2.2). The `source` fallback is kind-scoped to
-                # create_moc only: a move_note's `source` is its own staging
-                # path (see _build_move_note_actions), never its origin — a
-                # move_note with an empty source_inbox_item must still show
-                # `?`, not that staging path.
-                origin = (
-                    d.get("source") if d.get("action") == "create_moc"
-                    else d.get("source_inbox_item")
-                ) or "?"
+                # The kind-scoped mapping (source_inbox_item for a move_note,
+                # source for a create_moc — spec 036 T2.2) is resolved once,
+                # in validate_destinations, where each claimant's own fields
+                # are built; this renderer just reads the result.
+                origin = d.get("origin") or "?"
                 body_parts.append(
                     f"    - `{d.get('id')}` **{d.get('title')}** "
                     f"— source note `{origin}`"

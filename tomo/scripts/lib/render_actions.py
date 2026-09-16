@@ -1,4 +1,4 @@
-# version: 0.22.0
+# version: 0.23.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -882,13 +882,39 @@ def _orphaned_link_titles(actions: list[dict], dropped_ids: set[str]) -> set[str
     return orphaned - surviving
 
 
+def _orphaned_link_targets(actions: list[dict], dropped_ids: set[str]) -> set[str]:
+    """The titles of dropped `create_moc` actions, keyed for `target_moc`.
+
+    A `link_to_moc` bullet is written INTO the MOC named by its `target_moc`,
+    not by the note that authors it. If the `create_moc` that would have
+    created that MOC was dropped, the MOC does not exist — the bullet has
+    nowhere to land regardless of how many surviving actions still write it.
+    That is why this has no subtraction against survivors, unlike
+    `_orphaned_link_titles`: the two rules answer different questions (did
+    *this bullet's author* survive vs. did *this bullet's destination*
+    survive), and the subtraction correct for one would be wrong for the
+    other — a second create_moc of the same title surviving elsewhere does
+    not make a dropped one's destination exist.
+    """
+    orphaned: set[str] = set()
+    for action in actions:
+        if action.get("action") != "create_moc" or action.get("id") not in dropped_ids:
+            continue
+        title = sanitize_stem(action.get("title") or "")
+        if title:
+            orphaned.add(title)
+    return orphaned
+
+
 def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
     """The share of one run's withdrawn bullets that belongs to one report.
 
     Both post-passes may withhold in the same run, and each renders its own
     section. A bullet is attributed to the withholding whose dropped moves
     carry its title — the same key `_orphaned_link_titles` withdrew it under,
-    so the two cannot disagree about which bullet belongs to which report.
+    so the two cannot disagree about which bullet belongs to which report. A
+    bullet withdrawn by `_orphaned_link_targets` instead is attributed the
+    same way: its `target_moc` is the dropped title, not its author's.
     """
     titles = {
         sanitize_stem(d.get("title") or "")
@@ -897,6 +923,7 @@ def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
     return [
         link for link in removed_moc_links
         if sanitize_stem(link.get("source_note_title") or "") in titles
+        or sanitize_stem(link.get("target_moc") or "") in titles
     ]
 
 
@@ -916,7 +943,10 @@ def _drop_moves_with_paired_deletes(
     add a bullet pointing at a path that will hold nothing — the dead link the
     guard exists to prevent, written by the guard itself. T5.3 shipped with
     "a `link_to_moc` for a dropped note is harmless" as its named unverified
-    assumption; the T5.5 document disproved it.
+    assumption; the T5.5 document disproved it. Spec 036 T2.2 widened the
+    claimant filter to include `create_moc`, which reopened the same risk
+    from the other side: a bullet whose `target_moc` names a dropped
+    `create_moc` also has nowhere to land (`_orphaned_link_targets`).
 
     Shared by both post-passes over the built action list
     (``validate_destinations`` and ``suppress_moves_for_unfiled_attachments``).
@@ -925,6 +955,7 @@ def _drop_moves_with_paired_deletes(
     T5.0c one module over.
     """
     orphaned_titles = _orphaned_link_titles(actions, dropped_ids)
+    orphaned_targets = _orphaned_link_targets(actions, dropped_ids)
     removed_deletes: set[str] = set()
     removed_moc_links: list[dict] = []
     kept: list[dict] = []
@@ -937,15 +968,18 @@ def _drop_moves_with_paired_deletes(
         ):
             removed_deletes.add(action.get("source_path"))
             continue
-        if (
-            action.get("action") == "link_to_moc"
-            and (action.get("source_note_stem") or "") in orphaned_titles
+        if action.get("action") == "link_to_moc" and (
+            (action.get("source_note_stem") or "") in orphaned_titles
+            or sanitize_stem(action.get("target_moc") or "") in orphaned_targets
         ):
             # Join on the stem (what the vault resolves by), report the title
             # (what the user reads) — spec 034 T6.4b. The record carries the
             # display title only: it is serialised into instructions.json's
             # `tomo` block, and `_links_for` derives the key from it the same
             # way the dropped side does, so both halves agree by construction.
+            # The second disjunct is spec 036 T2.2: `target_moc` is the raw
+            # title the user approved, not a stem, so it is sanitised here to
+            # meet `orphaned_targets` on the same basis.
             removed_moc_links.append({
                 "source_note_title": action.get("source_note_title"),
                 "target_moc": action.get("target_moc"),
@@ -967,7 +1001,9 @@ def validate_destinations(
     ADR-3): each carries ``destination`` under the same key, so a
     ``create_moc`` and a ``move_note`` targeting one path contest it exactly
     as two ``move_note``s would — one would otherwise ship invisibly and
-    silently overwrite the other's destination.
+    silently overwrite the other's destination. The same widening also
+    subjects a **lone** ``create_moc`` to ``vault_collision``: a destination
+    already occupied in the vault drops it too, with no second claimant.
 
     **Both** claimants are dropped, not the second one. This follows the
     reporting shape of ``_build_move_asset_actions`` and deliberately inverts
@@ -983,9 +1019,11 @@ def validate_destinations(
     exists to prevent. The withdrawal joins on the origin's resolved path
     (ADR-1), so a namesake in another inbox folder keeps its own delete.
 
-    It takes its ``link_to_moc`` bullets too, on the title key those were
-    minted under — see ``_orphaned_link_titles``. A bullet naming a note the
-    guard refused to file is an instruction to create a dead link.
+    It takes its ``link_to_moc`` bullets too: those authored by a dropped note
+    (``_orphaned_link_titles``) and, since a ``create_moc`` can now be the
+    thing dropped, those merely *naming* a dropped ``create_moc`` as
+    ``target_moc`` (``_orphaned_link_targets``). Either way the bullet is an
+    instruction to write into, or point at, a note that will never exist.
 
     ``folder_listing`` is the vault view from ``make_folder_listing``; ``None``
     skips the vault half and leaves the run-internal half working.
@@ -1057,11 +1095,23 @@ def validate_destinations(
                     # present on both kinds. A move_note also carries the
                     # richer source_inbox_item (the original inbox note it
                     # derived from); a create_moc has no such origin, so the
-                    # renderer falls back to this field for a MOC claimant
-                    # (spec 036 T2.2). Never repurpose source_inbox_item to
-                    # hold a MOC's staging path — the two keys mean different
-                    # things and overloading one is what this spec is fixing.
+                    # `origin` fallback below reads this field for a MOC
+                    # claimant (spec 036 T2.2). Never repurpose
+                    # source_inbox_item to hold a MOC's staging path — the
+                    # two keys mean different things and overloading one is
+                    # what this spec is fixing.
                     "source": c.get("source"),
+                    # The one resolved origin the renderer displays, computed
+                    # here rather than in render_md.py: the kind-scoped rule
+                    # (`source` for a create_moc, `source_inbox_item`
+                    # otherwise) is a domain fact about what each claimant
+                    # kind carries, not a rendering choice, and belongs where
+                    # the claimant's own fields are built. `None` here reads
+                    # as "?" at render time, same as before.
+                    "origin": (
+                        c.get("source") if c.get("action") == "create_moc"
+                        else c.get("source_inbox_item")
+                    ),
                 }
                 for c in claimants
             ],

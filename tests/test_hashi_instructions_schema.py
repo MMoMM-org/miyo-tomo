@@ -46,7 +46,7 @@ def producer_schema() -> dict:
 def _make_instructions(actions: list) -> dict:
     """Return a minimal valid instruction-set envelope wrapping the given actions."""
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-06-23T14:00:00Z",
         "profile": "miyo",
@@ -314,3 +314,42 @@ def test_move_asset_present_in_producer_schema_oneof(tomo_producer_schema):
         for entry in tomo_producer_schema["properties"]["actions"]["items"]["oneOf"]
     }
     assert "move_asset" in action_refs
+
+
+# ---------------------------------------------------------------------------
+# delete_source.depends_on (spec 036 T1.1/T4.1) — required, not just present.
+# ---------------------------------------------------------------------------
+
+def _make_delete_source(**overrides) -> dict:
+    """Return a minimal valid delete_source action with all required fields."""
+    base = {
+        "id": "I01",
+        "action": "delete_source",
+        "source_path": "100 Inbox/dresden.md",
+        "reason": "Origin consumed by 1 atomic.",
+        "depends_on": [],
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize("schema_name", ["schema", "producer_schema"])
+def test_delete_source_with_depends_on_validates(request, schema_name):
+    """A well-formed delete_source, carrying depends_on, validates against
+    both the mirror and the producer schema."""
+    target = request.getfixturevalue(schema_name)
+    validate(instance=_make_instructions([_make_delete_source()]), schema=target)
+
+
+@pytest.mark.parametrize("schema_name", ["schema", "producer_schema"])
+def test_delete_source_missing_depends_on_fails(request, schema_name):
+    """depends_on is REQUIRED, not merely an accepted property: an otherwise
+    valid delete_source that omits it must fail validation. This is the test
+    that distinguishes 'required' from 'present in the schema' — a schema
+    that only added depends_on as an optional property would pass every
+    other test in this file yet let this one through undetected."""
+    target = request.getfixturevalue(schema_name)
+    action = _make_delete_source()
+    del action["depends_on"]
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=target)

@@ -92,6 +92,27 @@ When implementation requires changes from the specification:
   **The bump happens when T1.3 lands**, with all four sites emitting. Until then an unchanged header
   is the correct state, not an oversight.
 
+- **2026-09-16 — T1.2's third success criterion is unsatisfiable as written.** It reads
+  "`_build_daily_update_actions`' existing return value is unchanged for all current callers", but
+  step 3 of the same task instructs the function to return the id map. The return value therefore
+  had to change shape, and two direct test callers
+  (`tests/test_162_tracker_syntax_and_section.py`, `tests/test_suggestions_wire_golden.py`) were
+  updated for it. The criterion is struck through in phase-1.md rather than ticked, with the true
+  property recorded in its place: the *actions* the function returns are unchanged in content and
+  count, and `build_actions` is the only production caller. A third plan self-contradiction found by
+  execution rather than review — the same pattern as the two above.
+
+- **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
+  `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
+  so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per
+  `[ref: SDD/Complex Logic]` asserts *"nothing conditions this delete; perform it"*, the opposite of
+  the truth for an origin whose content lives in a daily note. Not a live defect: `build_actions` is
+  the sole production path and always threads the real map. But two pre-existing tests
+  (`test_034_t5_0b_delete_bookkeeping_item_key.py`, `test_034_t5_0c_diff_daily_only_item_key.py`)
+  already call the builder without the map and pass only because they do not assert on `depends_on`.
+  A WHY comment now guards the parameter. Phase 4's audit must not treat those fixtures as evidence
+  that an empty list on this path is correct.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering

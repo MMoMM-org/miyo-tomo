@@ -58,7 +58,7 @@ Establishes the dependency relation as data: every conditional delete knows what
      - [ ] The user-requested case is `[]`, not absent `[ref: PRD/F5-AC2]`
      - [ ] The audio-peer delete names the same ids as its origin delete `[ref: SDD/Implementation Gotchas]`
 
-- [ ] **T1.2 Site 2 receives daily action ids** `[activity: backend-api]`
+- [x] **T1.2 Site 2 receives daily action ids** `[activity: backend-api]`
 
   Site 2 does not have partner ids today: `_build_delete_source_actions` receives the *suggestion
   entries*, not the emitted daily actions. `build_actions` builds those separately and never passes
@@ -79,7 +79,12 @@ Establishes the dependency relation as data: every conditional delete knows what
   5. Success:
      - [ ] Site 2 deletes carry the ids of every daily action for that origin `[ref: PRD/F2-AC2]`
      - [ ] The join is on the resolved path, not the display stem `[ref: SDD/Implementation Gotchas]`
-     - [ ] `_build_daily_update_actions`' existing return value is unchanged for all current callers
+     - [ ] ~~`_build_daily_update_actions`' existing return value is unchanged for all current callers~~
+       **Unsatisfiable as written — see Deviations.** Step 3 of this same task requires the function
+       to return the id map, so its return value necessarily changed shape. What is true, and what
+       this criterion was reaching for, is that the *actions* it returns are unchanged in content and
+       count. Two direct test callers were updated for the new shape; no production caller other than
+       `build_actions` exists.
 
 - [ ] **T1.3 Site 4 receives the insert action id** `[activity: backend-api]`
 

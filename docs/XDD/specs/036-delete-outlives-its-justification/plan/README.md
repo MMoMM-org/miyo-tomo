@@ -144,6 +144,26 @@ When implementation requires changes from the specification:
   observable; verified empirically that Python's `lastResort` handler surfaces it on stderr even
   though no caller configures logging.
 
+- **2026-09-16 — T2.1's single-pass argument rests on ordering, not on any site's logic.** Worth
+  recording because it is stronger than the SDD states and settles a question the implementer raised.
+  The SDD justifies one pass with *"nothing declares a dependency on a delete"*. The implementer's
+  precondition test exercised delete sites 1, 3 and 4 but not site 2, and argued site 2 adds no new
+  risk because its mechanism is identical. Spec compliance accepted the conclusion on a **better**
+  ground: every id in the set is minted from one shared counter, and `_build_delete_source_actions`
+  runs after every builder whose output a `depends_on` could name. Deletes are therefore always last,
+  and **no action can name a delete's id regardless of which site emitted it**. The invariant is
+  structural, not per-site — so the precondition test is complete as written rather than short by one
+  site. If a future change ever emits a delete before another builder, this is the assumption that
+  breaks, and `test_no_cascade_needed_single_pass_semantics` is the named tripwire.
+
+- **2026-09-16 — one T2.1 code-quality advisory deliberately not applied.** The review suggested
+  `if "id" in a` in place of `if a.get("id")` when building the surviving-id set, and marked it
+  optional. Not applied: the change is not clearly better — the current form excludes falsy ids, the
+  proposed one would admit `None` into the set — and the present failure direction is the safe one,
+  since an unresolvable reference withdraws the delete and the note survives. The docstring's promise
+  about hand-built dicts covers `depends_on`, not `id`, so no gap exists between what it states and
+  what it does. Editing a safety-critical pure function for tidiness carries risk without return.
+
 - **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
   `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
   so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per

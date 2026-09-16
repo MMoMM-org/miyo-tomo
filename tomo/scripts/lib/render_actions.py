@@ -1812,12 +1812,16 @@ def _build_delete_source_actions(
         handler = group.get("handler") or ""
         # depends_on names the insert_under_marker built for THIS group — the
         # id _build_insert_under_marker_actions bucketed under the same gid.
-        # This gate (approved + resolvable target) is a subset of the insert
-        # builder's own gate, so the map always has an entry here; an empty
-        # depends_on would mean this delete outlived its justification, which
-        # spec 036 exists to prevent (SDD/Complex Logic).
+        # This gate (approved + resolvable target) mirrors the insert builder's
+        # own gate, so the map is expected to have an entry here. If it doesn't
+        # — a refactor, a partial-groups call, anything that breaks the mirror
+        # — this delete has lost its justification and must be withheld, not
+        # emitted with an empty depends_on (fail-safe, matching the audio-peer
+        # branch above).
         insert_id = insert_action_ids_by_group.get(gid)
-        depends_on = [insert_id] if insert_id else []
+        if not insert_id:
+            continue
+        depends_on = [insert_id]
         for sp in group.get("source_paths") or []:
             # Group source_paths are vault-relative by contract (they come from
             # triage's `item["path"]`), so this resolves to `sp` untouched. It
@@ -1983,6 +1987,9 @@ def _build_insert_under_marker_actions(
             "placement": placement,
             "content": content,
         })
+        # Last-write-wins on gid collision: an upstream duplicate group id
+        # would silently route a delete to a sibling group's insert. Nothing
+        # in this pipeline de-duplicates group ids, so this is not guarded.
         insert_action_ids_by_group[gid] = action_id
     return out, insert_action_ids_by_group
 

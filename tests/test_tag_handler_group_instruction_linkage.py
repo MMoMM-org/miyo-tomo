@@ -776,6 +776,24 @@ def test_site4_two_groups_do_not_share_insert_ids():
     assert all(d["depends_on"] == [id2] for d in deletes_g2)
 
 
+def test_site4_withholds_delete_when_insert_id_is_missing():
+    """An approved, resolvable group whose gid has NO entry in
+    insert_action_ids_by_group (the invariant site 4's own comment claims
+    always holds) must emit ZERO deletes for that group — never a delete
+    with depends_on: []. Falsifies the fail-open fallback (PRD/spec 036)."""
+    srcs = ["100 Inbox/a.md", "100 Inbox/b.md"]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    counter = [0]
+    deletes = _build_delete_source_actions(
+        [], [], [], [], "100 Inbox/", counter,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+        keep_source_group_ids=[],
+        insert_action_ids_by_group={},  # simulates a missed/mismatched lookup
+    )
+    assert deletes == []
+
+
 # ── 10. parser extracts Keep-origin; reducer renders the checkbox ────────────
 
 

@@ -116,6 +116,34 @@ When implementation requires changes from the specification:
   shipped name per the Deviation Protocol; `README.md`'s classifier row keeps the old name because it
   records what was counted on 2026-09-10.
 
+- **2026-09-16 — T1.3's cost estimate was wrong, and its test list was too weak to ship.** Two
+  findings, both from execution.
+  The task calls itself *"a cheaper version of T1.2"*. It is the opposite: `_build_daily_update_actions`
+  had two callers, `_build_insert_under_marker_actions` has about thirty across three test files, all
+  unpacking a plain list. Every one needed a mechanical `actions, _ = ...`. Recorded because a reader
+  planning effort from the task text would plan it backwards.
+  The TDD guardian **BLOCKed** the plan's three-test list: it described behaviour but named no
+  assertion that falsifies a wrong implementation, and three would have passed — `depends_on: []`,
+  a wrong id, and per-source ids where one shared id is correct. The revised list derives ids from
+  both builders against one shared counter (never hardcoded) and adds a fourth case proving two
+  groups cannot receive each other's insert id. Also folded in: the existing `_delete_sources` test
+  helper called the delete builder with no map, so after T1.3 every pre-existing site-4 test would
+  have silently carried `depends_on: []` and stayed green. That is the same shape as the site-2 trap
+  recorded below — caught this time rather than recorded.
+
+- **2026-09-16 — T1.3 shipped fail-open and was corrected before the task closed.** The first
+  implementation read `depends_on = [insert_id] if insert_id else []`, directly under a comment
+  asserting the lookup could never miss. Under this spec's semantics `[]` means *"perform this
+  delete unconditionally"*, so a broken invariant would have emitted the most dangerous possible
+  value on a vault-deleting action, silently. Spec compliance caught it and supplied the decisive
+  evidence: the **same function already fails closed** at the audio-peer branch (*"Empty set → no
+  audio delete (fail-safe)"*). Site 4 now withholds the delete for the whole group — the group is
+  the unit of justification, since one insert backs all of its deletes. A bare `assert` was
+  rejected: Python strips assertions under `-O`, and a safety invariant must not depend on a flag.
+  A `logger.warning` naming `gid` and `target_path` (metadata only, L2-clean) makes the break
+  observable; verified empirically that Python's `lastResort` handler surfaces it on stderr even
+  though no caller configures logging.
+
 - **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
   `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
   so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per
@@ -194,7 +222,7 @@ context), **Test** (red), **Implement** (green), **Validate** (refactor + verify
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the
 > method, not separate tracked items.
 
-- [ ] [Phase 1: Declare — depends_on at every emission site](phase-1.md)
+- [x] [Phase 1: Declare — depends_on at every emission site](phase-1.md)
 - [ ] [Phase 2: Collect — the withdrawal pass](phase-2.md)
 - [ ] [Phase 3: The cases the pass cannot reach](phase-3.md)
 - [ ] [Phase 4: Contract, audit, reporting and integration](phase-4.md)

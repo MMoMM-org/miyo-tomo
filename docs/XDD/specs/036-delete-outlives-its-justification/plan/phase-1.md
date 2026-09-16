@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Declare — depends_on at every emission site"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -86,9 +86,12 @@ Establishes the dependency relation as data: every conditional delete knows what
        count. Two direct test callers were updated for the new shape; no production caller other than
        `build_actions` exists.
 
-- [ ] **T1.3 Site 4 receives the insert action id** `[activity: backend-api]`
+- [x] **T1.3 Site 4 receives the insert action id** `[activity: backend-api]`
 
-  A cheaper version of T1.2: both loops iterate the same groups, so the map is a return-shape change
+  ~~A cheaper version of T1.2~~ — **it was not; see Deviations.** `_build_daily_update_actions`
+  (T1.2) had two callers; `_build_insert_under_marker_actions` has about thirty across three test
+  files, all unpacking a plain list. The return-shape change was the more expensive of the two.
+  Both loops iterate the same groups, so the map is a return-shape change
   rather than a re-plumb. Note the filters are **not** identical — site 4 applies approval **and**
   `keep_source_group_ids`, the insert builder applies approval only. The conclusion still holds
   (every delete site 4 emits has a corresponding insert), but do not assume the two filters can be
@@ -116,7 +119,7 @@ Establishes the dependency relation as data: every conditional delete knows what
   exists to name. That is T3.1, and it is a design boundary rather than an omission
   `[ref: SDD/The boundary this design does NOT cross]`.
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
 
   - Run the full suite: `./venv/bin/python -m pytest`. Every pre-existing test must still pass —
     Phase 1 changes emitted *content*, never emitted *counts* or ordering.
@@ -124,3 +127,24 @@ Establishes the dependency relation as data: every conditional delete knows what
   - Confirm by inspection of a rendered instruction set that **every** `delete_source` carries
     `depends_on`, and that no id in any of them is absent from the set. The audit that enforces this
     lands in Phase 4; here it is a manual check that the data is right before anything consumes it.
+
+  **Result, 2026-09-16.** Suite **4100 passed, 0 failed**; `ruff` clean. The phase's long-standing
+  red (`test_tag_handler_delete_source_validates_against_schema`) closed with T1.3, as predicted.
+
+  Inspection ran against both golden action sets — real `build_actions` output, not fixtures written
+  by hand:
+
+  | Set | delete_source | missing `depends_on` | dangling ids | empty `[]` |
+  |---|---|---|---|---|
+  | `034-t5-3-actions-golden` | 6 | none | none | `I12` — correct |
+  | `034-t5-4-duplicate-reference-golden` | 4 | none | none | none |
+
+  `I12`'s empty list is the **right** value, not a gap: it is site 1, a user-requested deletion with
+  no partner action, where `[]` is the positive assertion PRD/F5-AC2 requires. The audio-peer delete
+  `I16` names the same ids as its origin `I15` (`['I03']`), satisfying the SDD gotcha that naming
+  only one leaves the other unguarded.
+
+  **Before/after evidence.** `tomo-instance/tomo-tmp/rendered/instructions.json`, the artifact of the
+  live run on 2026-09-15 (pre-change), carries **7 `delete_source` actions and not one `depends_on`**
+  — the defect this spec closes, in real output. It is deliberately left unregenerated: refreshing it
+  needs a live run, which belongs to Phase 4.

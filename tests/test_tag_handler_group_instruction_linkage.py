@@ -526,18 +526,13 @@ def _delete_sources(group, *, approved, kept=None):
     T1.3) through the same counter, mirroring how build_actions calls the two
     builders in sequence. Omitting the map would silently give every emitted
     delete `depends_on: []` — the wrong-but-passing state this task closes.
+
+    Thin wrapper over _inserts_and_deletes (defined below in this file; Python
+    resolves the call at call time, so the forward reference is fine) — same
+    two builders, same counter, same arguments, just discarding the inserts.
     """
-    counter = [0]
-    _inserts, insert_ids_by_group = _build_insert_under_marker_actions(
-        [group], approved, counter,
-    )
-    return _build_delete_source_actions(
-        [], [], [], [], "100 Inbox/", counter,
-        tag_handler_groups=[group],
-        approved_tag_handler_group_ids=approved,
-        keep_source_group_ids=kept or [],
-        insert_action_ids_by_group=insert_ids_by_group,
-    )
+    _inserts, deletes = _inserts_and_deletes(group, approved=approved, kept=kept)
+    return deletes
 
 
 def test_approved_group_emits_delete_source_per_source_path():
@@ -790,6 +785,28 @@ def test_site4_withholds_delete_when_insert_id_is_missing():
         approved_tag_handler_group_ids=[group_id(g)],
         keep_source_group_ids=[],
         insert_action_ids_by_group={},  # simulates a missed/mismatched lookup
+    )
+    assert deletes == []
+
+
+def test_site4_withholds_delete_for_mismatched_nonempty_map():
+    """An approved, resolvable group whose gid is ABSENT from a non-empty
+    insert_action_ids_by_group (another group's id present, not this one's) must
+    also emit ZERO deletes for this group. The realistic partial-groups-call
+    scenario, as opposed to the empty-map case above.
+
+    Same production path as the empty-map test: dict.get(gid) is falsy either
+    way, so this documents the scenario rather than covering a distinct branch.
+    """
+    srcs = ["100 Inbox/a.md", "100 Inbox/b.md"]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    counter = [0]
+    deletes = _build_delete_source_actions(
+        [], [], [], [], "100 Inbox/", counter,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+        keep_source_group_ids=[],
+        insert_action_ids_by_group={"th-some-other-gid": "I01"},
     )
     assert deletes == []
 

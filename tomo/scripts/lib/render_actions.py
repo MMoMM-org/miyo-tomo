@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -34,6 +35,8 @@ from lib.supporting_items import (
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
 )
+
+logger = logging.getLogger(__name__)
 
 # tag-handler-group.py is a hyphenated top-level script in the scripts dir (not a
 # lib module); load it via importlib for the stable group_id slug (spec 024 T4.1).
@@ -1820,6 +1823,12 @@ def _build_delete_source_actions(
         # branch above).
         insert_id = insert_action_ids_by_group.get(gid)
         if not insert_id:
+            logger.warning(
+                "tag-handler group %s has no insert action (target_path=%s); "
+                "withholding its delete_source actions",
+                gid,
+                target,
+            )
             continue
         depends_on = [insert_id]
         for sp in group.get("source_paths") or []:

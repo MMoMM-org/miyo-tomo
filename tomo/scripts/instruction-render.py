@@ -51,6 +51,7 @@ from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
 from lib.render_actions import (  # noqa: E402,F401
     _build_create_moc_actions,
+    _build_daily_update_actions,
     _build_delete_source_actions,
     _build_insert_under_marker_actions,
     _build_link_to_moc_actions,

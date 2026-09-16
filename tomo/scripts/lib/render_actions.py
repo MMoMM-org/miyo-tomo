@@ -1471,8 +1471,16 @@ def _build_daily_update_actions(
     daily_updates: list[dict],
     cfg: dict,
     counter: list[int],
-) -> list[dict]:
-    """Emit tracker / log_entry / log_link actions for accepted daily updates."""
+    inbox_path: str,
+) -> tuple[list[dict], dict[str, list[str]]]:
+    """Emit tracker / log_entry / log_link actions for accepted daily updates.
+
+    Returns (actions, ids_by_origin). `ids_by_origin` maps each origin's
+    `_origin_key` (the resolved-path join spec 034 T5.0b established) to the
+    ids of every accepted daily action built from that origin, across every
+    bucket and day — site 2 of `_build_delete_source_actions` uses this to
+    populate `depends_on` on its daily-only deletes (spec 036 T1.2).
+    """
     daily_path_cfg = cfg["concepts.calendar.granularities.daily.path"]
     heading = cfg["daily_log.heading"]
     heading_level = cfg["daily_log.heading_level"]
@@ -1483,6 +1491,15 @@ def _build_daily_update_actions(
     # `.get` and the per-field fallbacks below keep an absent map a no-op.
     tracker_fields = cfg.get("daily_notes.tracker_fields") or {}
     out: list[dict] = []
+    ids_by_origin: dict[str, list[str]] = {}
+
+    def _remember(entry: dict, action_id: str) -> None:
+        key = _origin_key(resolve_source_path(
+            entry.get("source_item_key"), entry.get("source_stem"), inbox_path
+        ))
+        if key:
+            ids_by_origin.setdefault(key, []).append(action_id)
+
     for day in daily_updates:
         date = day.get("date", "")
         note_path = _resolve_daily_path(daily_path_cfg, date, day.get("daily_note_path"))
@@ -1490,8 +1507,9 @@ def _build_daily_update_actions(
             if not tr.get("accepted"):
                 continue
             configured = tracker_fields.get(tr.get("field", "")) or {}
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_tracker",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1504,11 +1522,13 @@ def _build_daily_update_actions(
                 "source_stem": _stem(tr.get("source_stem")) or None,
                 "reason": tr.get("reason") or None,
             })
+            _remember(tr, action_id)
         for le in day.get("log_entries", []) or []:
             if not le.get("accepted"):
                 continue
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_log_entry",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1520,11 +1540,13 @@ def _build_daily_update_actions(
                 "source_stem": _stem(le.get("source_stem")) or None,
                 "reason": le.get("reason") or None,
             })
+            _remember(le, action_id)
         for ll in day.get("log_links", []) or []:
             if not ll.get("accepted"):
                 continue
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_log_link",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1535,7 +1557,8 @@ def _build_daily_update_actions(
                 "target_stem": _stem(ll.get("target_stem")) or "",
                 "reason": ll.get("reason") or None,
             })
-    return out
+            _remember(ll, action_id)
+    return out, ids_by_origin
 
 
 def _origin_key(resolved_path: str | None) -> str:
@@ -1569,6 +1592,7 @@ def _build_delete_source_actions(
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
     keep_source_group_ids: list[str] | None = None,
+    daily_action_ids_by_origin: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -1576,7 +1600,11 @@ def _build_delete_source_actions(
        (disposition == "delete_source").
     2. Daily-only items — origins that appear in accepted daily_updates but
        have no matching confirmed_item (content fully captured in the daily
-       note, no atomic note will be created).
+       note, no atomic note will be created). Each such delete carries
+       `depends_on` (spec 036 T1.2): the ids of every accepted daily action
+       built from that origin, looked up in `daily_action_ids_by_origin` (the
+       map `_build_daily_update_actions` returns) by the same `_origin_key`
+       this site already computes.
     3. move_note origins — for every move_note action whose corresponding
        confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
@@ -1633,6 +1661,7 @@ def _build_delete_source_actions(
         })
 
     # (2) Daily-only origins
+    daily_ids_by_origin = daily_action_ids_by_origin or {}
     seen: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
@@ -1653,11 +1682,17 @@ def _build_delete_source_actions(
                 full = _ensure_md_extension(resolve_source_path(
                     entry.get("source_item_key"), entry.get("source_stem"), inbox_path
                 ))
+                # depends_on names every daily action built from this origin —
+                # the ids _build_daily_update_actions already bucketed under
+                # the same key. Populated here, before any guard runs
+                # (SDD/Implementation Gotchas): a builder that adds it
+                # afterwards reintroduces the ordering bug spec 036 fixes.
                 out.append({
                     "id": _next_id(counter),
                     "action": "delete_source",
                     "source_path": full,
                     "reason": "Content fully captured in daily note.",
+                    "depends_on": list(daily_ids_by_origin.get(key, [])),
                 })
 
     # (3) move_note origins — completion gate: emit one delete per origin note
@@ -2300,7 +2335,10 @@ def build_actions(
     )
     out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
-    out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
+    daily_actions, daily_action_ids_by_origin = _build_daily_update_actions(
+        daily_updates, cfg, counter, inbox_path
+    )
+    out.extend(daily_actions)
     out.extend(_build_insert_under_marker_actions(
         tag_handler_groups or [], approved_tag_handler_group_ids or [], counter,
     ))
@@ -2309,6 +2347,7 @@ def build_actions(
         tag_handler_groups=tag_handler_groups or [],
         approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
         keep_source_group_ids=tag_handler_keep_source_group_ids or [],
+        daily_action_ids_by_origin=daily_action_ids_by_origin,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,

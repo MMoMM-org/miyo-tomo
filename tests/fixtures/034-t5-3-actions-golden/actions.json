@@ -181,6 +181,9 @@
       "action": "delete_source",
       "source_path": "100 Inbox/Reise/Tagebuch.md",
       "reason": "Content fully captured in daily note.",
+      "depends_on": [
+        "I11"
+      ],
       "applied": false
     },
     {

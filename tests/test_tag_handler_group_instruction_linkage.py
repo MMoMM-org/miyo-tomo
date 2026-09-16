@@ -233,7 +233,7 @@ def test_marker_to_anchor_value_strip():
 def test_render_emits_insert_under_marker():
     """An approved group → one insert_under_marker with the expected shape."""
     g = _group()
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert len(actions) == 1
     a = actions[0]
     assert a["action"] == "insert_under_marker"
@@ -247,7 +247,7 @@ def test_render_emits_insert_under_marker():
 def test_render_emits_validates_against_schema():
     """An emitted insert_under_marker action validates against the Hashi schema."""
     g = _group()
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     for a in actions:
         a["applied"] = False  # build_actions stamps this; mirror it here
     _validate(instance=_wrap_instructions(actions), schema=INSTRUCTIONS_SCHEMA)
@@ -256,10 +256,10 @@ def test_render_emits_validates_against_schema():
 def test_skipped_group_no_instruction():
     """A group NOT in the approved set produces NO instruction."""
     g = _group()
-    actions = _build_insert_under_marker_actions([g], [], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [], [0])
     assert actions == []
     # Approved set names a DIFFERENT id → still nothing.
-    actions = _build_insert_under_marker_actions([g], ["th-other-x"], [0])
+    actions, _ = _build_insert_under_marker_actions([g], ["th-other-x"], [0])
     assert actions == []
 
 
@@ -267,7 +267,7 @@ def test_content_is_composed_block_multiline():
     """content equals composed_block verbatim — embedded newlines preserved."""
     block = "### 2026-06-23\n\n- line one\n- line two\n\n- after blank"
     g = _group(composed_block=block)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["content"] == block
     assert "\n" in actions[0]["content"]
 
@@ -275,7 +275,7 @@ def test_content_is_composed_block_multiline():
 def test_placement_default_inside():
     """A group with no placement defaults to 'inside'."""
     g = _group(placement=None)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["placement"] == "inside"
 
 
@@ -287,7 +287,7 @@ def test_placement_after_prepends_blank_line():
     """
     block = "### 2026-06-24\n\n- Shipped Z"
     g = _group(placement="after", composed_block=block)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["placement"] == "after"
     assert actions[0]["content"] == "\n" + block
 
@@ -296,7 +296,7 @@ def test_placement_after_no_double_blank_when_already_leading_newline():
     """Idempotent: content already starting with a newline is not doubled."""
     block = "\n### 2026-06-24\n\n- Shipped Z"
     g = _group(placement="after", composed_block=block)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["content"] == block
 
 
@@ -304,14 +304,14 @@ def test_placement_inside_content_verbatim():
     """placement='inside' leaves content verbatim — no blank-line prepend."""
     block = "### 2026-06-24\n\n- Shipped Z"
     g = _group(placement="inside", composed_block=block)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["content"] == block
 
 
 def test_null_target_group_no_instruction():
     """An approved group with a null target_path emits no path-less instruction."""
     g = _group(target_path=None)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions == []
 
 
@@ -323,7 +323,7 @@ def test_end_to_end_approved_then_render():
     g = _group()
     md = _render_section([g])
     approved = parse_tag_handler_groups(md)
-    actions = _build_insert_under_marker_actions([g], approved, [0])
+    actions, _ = _build_insert_under_marker_actions([g], approved, [0])
     assert len(actions) == 1
     assert actions[0]["target_path"] == g["target_path"]
     assert actions[0]["content"] == g["composed_block"]
@@ -382,7 +382,7 @@ def _group_with_output_format(
 def test_block_anchor_emitted_for_table_newest_first():
     """table_row + newest_first → anchor.type=block, value byte-identical, placement=after."""
     g = _group_with_output_format()
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert len(actions) == 1
     a = actions[0]
     assert a["action"] == "insert_under_marker"
@@ -396,7 +396,7 @@ def test_block_anchor_value_byte_exact():
     to resolved_anchor.value including embedded newlines and whitespace."""
     custom_value = "| A | B |\n| -- | -- |"
     g = _group_with_output_format(resolved_anchor_value=custom_value)
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["anchor"]["value"] == custom_value
 
 
@@ -409,7 +409,7 @@ def test_block_anchor_no_leading_blank_line_in_content():
     Markdown table. The block-anchor path must skip the '\\n' prepend entirely.
     """
     g = _group_with_output_format(composed_block=_TABLE_ROW, placement="after")
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     content = actions[0]["content"]
     assert not content.startswith("\n"), (
         f"Block-anchor content must NOT start with a blank line; got: {content!r}"
@@ -427,7 +427,7 @@ def test_heading_anchor_emitted_for_append_order():
         resolved_anchor_placement="inside",
         placement="inside",
     )
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     a = actions[0]
     assert a["anchor"]["type"] == "heading"
     assert a["anchor"]["value"] == "Captures"
@@ -450,7 +450,7 @@ def test_heading_anchor_emitted_for_list_item():
         resolved_anchor_placement="after",
         placement="after",
     )
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     a = actions[0]
     assert a["anchor"]["type"] == "heading"
     assert a["anchor"]["value"] == "Captures"
@@ -471,7 +471,7 @@ def test_heading_anchor_after_structured_no_double_blank():
         placement="after",
         composed_block=already_prefixed,
     )
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     assert actions[0]["content"] == already_prefixed
 
 
@@ -486,7 +486,7 @@ def test_no_output_format_unchanged_heading_path():
     g = _group(composed_block=block, placement="inside")
     # Confirm no output_format key present.
     assert "output_format" not in g
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     a = actions[0]
     assert a["anchor"]["type"] == "heading"
     assert a["anchor"]["value"] == "Captures"
@@ -505,7 +505,7 @@ def test_block_anchor_validates_against_instructions_schema():
     producer contract specifically.
     """
     g = _group_with_output_format()
-    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     for a in actions:
         a["applied"] = False
     # Producer-side contract: instructions.schema.json (not hashi-instructions.schema.json).
@@ -520,12 +520,23 @@ def test_block_anchor_validates_against_instructions_schema():
 
 def _delete_sources(group, *, approved, kept=None):
     """Run _build_delete_source_actions for a single tag-handler group in isolation
-    (no atomic/daily/skip inputs) and return the emitted delete_source actions."""
+    (no atomic/daily/skip inputs) and return the emitted delete_source actions.
+
+    Threads the insert-id map from _build_insert_under_marker_actions (spec 036
+    T1.3) through the same counter, mirroring how build_actions calls the two
+    builders in sequence. Omitting the map would silently give every emitted
+    delete `depends_on: []` — the wrong-but-passing state this task closes.
+    """
+    counter = [0]
+    _inserts, insert_ids_by_group = _build_insert_under_marker_actions(
+        [group], approved, counter,
+    )
     return _build_delete_source_actions(
-        [], [], [], [], "100 Inbox/", [0],
+        [], [], [], [], "100 Inbox/", counter,
         tag_handler_groups=[group],
         approved_tag_handler_group_ids=approved,
         keep_source_group_ids=kept or [],
+        insert_action_ids_by_group=insert_ids_by_group,
     )
 
 
@@ -670,6 +681,99 @@ def test_both_sites_move_together_when_the_predicate_says_no(monkeypatch):
     deletes = [a for a in actions if a["action"] == "delete_source"]
     assert inserts == []
     assert deletes == []
+
+
+# ── 9c. site 4 depends_on names its group's insert id (spec 036 T1.3) ────────
+# The unresolvable-target case is covered above (9b) — no insert is built there,
+# so no id exists to name, and that gap is already closed. Here every group DOES
+# have a resolvable target, so an insert is always built; these tests pin the
+# id relation between that insert and the group's deletes.
+
+
+def _inserts_and_deletes(group, *, approved, kept=None):
+    """Both builders, one counter — the id relation is real, not stipulated."""
+    counter = [0]
+    inserts, insert_ids_by_group = _build_insert_under_marker_actions(
+        [group], approved, counter,
+    )
+    deletes = _build_delete_source_actions(
+        [], [], [], [], "100 Inbox/", counter,
+        tag_handler_groups=[group],
+        approved_tag_handler_group_ids=approved,
+        keep_source_group_ids=kept or [],
+        insert_action_ids_by_group=insert_ids_by_group,
+    )
+    return inserts, deletes
+
+
+def test_site4_delete_names_its_group_insert_id():
+    """One approved group, resolvable target, one source → the delete's
+    depends_on names the insert's own id (PRD/F5-AC1). Falsifies depends_on
+    == [] and any depends_on not equal to the insert's actual id."""
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
+    inserts, deletes = _inserts_and_deletes(g, approved=[group_id(g)])
+    assert len(inserts) == 1
+    assert len(deletes) == 1
+    insert_id = inserts[0]["id"]
+    assert deletes[0]["depends_on"] == [insert_id]
+
+
+def test_site4_three_sources_share_one_insert_id():
+    """A group of three sources → three deletes, all naming the SAME insert id
+    (SDD/Complex Logic). Falsifies per-source ids [[id1],[id2],[id3]]."""
+    srcs = [
+        "100 Inbox/202606242049_a.md",
+        "100 Inbox/202606260908_b.md",
+        "100 Inbox/202606261644_c.md",
+    ]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    inserts, deletes = _inserts_and_deletes(g, approved=[group_id(g)])
+    insert_id = inserts[0]["id"]
+    assert len(deletes) == 3
+    assert [d["depends_on"] for d in deletes] == [[insert_id]] * 3
+
+
+def test_site4_depends_on_is_never_empty_for_an_emitted_delete():
+    """Every emitted delete for a resolvable, approved group carries a non-empty
+    depends_on. Falsifies the [] default leaking through a missed lookup."""
+    srcs = ["100 Inbox/a.md", "100 Inbox/b.md"]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    _inserts, deletes = _inserts_and_deletes(g, approved=[group_id(g)])
+    assert deletes
+    assert all(d["depends_on"] for d in deletes)
+
+
+def test_site4_two_groups_do_not_share_insert_ids():
+    """Two approved groups with different targets → each group's deletes name
+    its OWN insert id, never the other's. Falsifies a lookup keyed too coarsely
+    (first-insert-wins, or a scalar instead of a per-group map)."""
+    g1 = _group(
+        target_path="Efforts/A.md",
+        source_paths=["100 Inbox/a1.md", "100 Inbox/a2.md"],
+    )
+    g2 = _group(
+        target_path="Efforts/B.md",
+        source_paths=["100 Inbox/b1.md", "100 Inbox/b2.md"],
+    )
+    counter = [0]
+    inserts, insert_ids_by_group = _build_insert_under_marker_actions(
+        [g1, g2], [group_id(g1), group_id(g2)], counter,
+    )
+    deletes = _build_delete_source_actions(
+        [], [], [], [], "100 Inbox/", counter,
+        tag_handler_groups=[g1, g2],
+        approved_tag_handler_group_ids=[group_id(g1), group_id(g2)],
+        keep_source_group_ids=[],
+        insert_action_ids_by_group=insert_ids_by_group,
+    )
+    id1 = next(a["id"] for a in inserts if a["target_path"] == "Efforts/A.md")
+    id2 = next(a["id"] for a in inserts if a["target_path"] == "Efforts/B.md")
+    assert id1 != id2
+    deletes_g1 = [d for d in deletes if d["source_path"] in ("100 Inbox/a1.md", "100 Inbox/a2.md")]
+    deletes_g2 = [d for d in deletes if d["source_path"] in ("100 Inbox/b1.md", "100 Inbox/b2.md")]
+    assert len(deletes_g1) == 2 and len(deletes_g2) == 2
+    assert all(d["depends_on"] == [id1] for d in deletes_g1)
+    assert all(d["depends_on"] == [id2] for d in deletes_g2)
 
 
 # ── 10. parser extracts Keep-origin; reducer renders the checkbox ────────────

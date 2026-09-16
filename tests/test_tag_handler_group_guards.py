@@ -273,7 +273,8 @@ def _approved_then_actions(groups: list[dict]) -> list[dict]:
     """Run the gate chain: render section → parse approved ids → build actions."""
     md = render_tag_handler_updates_block(groups)
     approved = parse_tag_handler_groups(md)
-    return _build_insert_under_marker_actions(groups, approved, [0])
+    actions, _ = _build_insert_under_marker_actions(groups, approved, [0])
+    return actions
 
 
 def test_e2e_target_missing_emits_no_instruction():

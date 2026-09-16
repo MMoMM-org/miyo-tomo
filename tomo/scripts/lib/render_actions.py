@@ -1,4 +1,4 @@
-# version: 0.19.0
+# version: 0.20.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1607,6 +1607,7 @@ def _build_delete_source_actions(
     approved_tag_handler_group_ids: list[str] | None = None,
     keep_source_group_ids: list[str] | None = None,
     daily_action_ids_by_origin: dict[str, list[str]] | None = None,
+    insert_action_ids_by_group: dict[str, str] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -1633,6 +1634,12 @@ def _build_delete_source_actions(
        insert_under_marker (emitted earlier) copies the captures into the
        target note, so the inbox sources are now redundant. Parity with (3),
        but keyed by group_id rather than origin note.
+       Every delete from site 4 carries `depends_on` (spec 036 T1.3): the id
+       of that group's insert_under_marker action, looked up in
+       `insert_action_ids_by_group` (the map `_build_insert_under_marker_actions`
+       returns) by `group_id(group)`. A group reaches this loop only after
+       passing `_tag_handler_group_has_resolvable_target` (the same gate the
+       insert builder applies), so the map always has an entry here.
     """
     out: list[dict] = []
     confirmed_keys: set[str] = set()
@@ -1791,6 +1798,7 @@ def _build_delete_source_actions(
     # APPROVED group, unless the group opted out via "Keep source files".
     approved_groups = set(approved_tag_handler_group_ids or [])
     kept_groups = set(keep_source_group_ids or [])
+    insert_action_ids_by_group = insert_action_ids_by_group or {}
     emitted: set[str] = {a["source_path"] for a in out}
     for group in (tag_handler_groups or []):
         gid = group_id(group)
@@ -1802,6 +1810,14 @@ def _build_delete_source_actions(
             continue
         target = group.get("target_path") or ""
         handler = group.get("handler") or ""
+        # depends_on names the insert_under_marker built for THIS group — the
+        # id _build_insert_under_marker_actions bucketed under the same gid.
+        # This gate (approved + resolvable target) is a subset of the insert
+        # builder's own gate, so the map always has an entry here; an empty
+        # depends_on would mean this delete outlived its justification, which
+        # spec 036 exists to prevent (SDD/Complex Logic).
+        insert_id = insert_action_ids_by_group.get(gid)
+        depends_on = [insert_id] if insert_id else []
         for sp in group.get("source_paths") or []:
             # Group source_paths are vault-relative by contract (they come from
             # triage's `item["path"]`), so this resolves to `sp` untouched. It
@@ -1816,6 +1832,7 @@ def _build_delete_source_actions(
                 "action": "delete_source",
                 "source_path": full,
                 "reason": f"Source consolidated into {target} by {handler} handler.",
+                "depends_on": list(depends_on),
             })
 
     return out
@@ -1879,7 +1896,7 @@ def _build_insert_under_marker_actions(
     groups: list[dict],
     approved_group_ids: list[str],
     counter: list[int],
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, str]]:
     """Emit one insert_under_marker action per APPROVED tag-handler group (T4.1).
 
     A group is emitted only when its `group_id` is in `approved_group_ids` (the
@@ -1900,13 +1917,22 @@ def _build_insert_under_marker_actions(
       placement = group.placement (default "inside");
       content = composed_block, with a single blank-line prepend when
       placement="after" (top-of-section readability for heading anchors).
+
+    Returns `(actions, insert_action_ids_by_group)` (spec 036 T1.3): the second
+    element maps each emitted group's `group_id(group)` to the id of the
+    insert_under_marker action built for it. The delete loop (site 4) is the
+    consumer — it names this id in `depends_on` so a delete never outlives the
+    insert that justifies it. A group that produces no action (not approved, or
+    unresolvable target) has no entry in the map.
     """
     if not groups or not approved_group_ids:
-        return []
+        return [], {}
     approved = set(approved_group_ids)
     out: list[dict] = []
+    insert_action_ids_by_group: dict[str, str] = {}
     for group in groups:
-        if group_id(group) not in approved:
+        gid = group_id(group)
+        if gid not in approved:
             continue
         if not _tag_handler_group_has_resolvable_target(group):
             # Shared gate with delete loop (site 4, line ~1799, ADR-5): both
@@ -1948,15 +1974,17 @@ def _build_insert_under_marker_actions(
             if placement == "after" and content and not content.startswith("\n"):
                 content = "\n" + content
 
+        action_id = _next_id(counter)
         out.append({
-            "id": _next_id(counter),
+            "id": action_id,
             "action": "insert_under_marker",
             "target_path": target_path,
             "anchor": anchor,
             "placement": placement,
             "content": content,
         })
-    return out
+        insert_action_ids_by_group[gid] = action_id
+    return out, insert_action_ids_by_group
 
 
 def _build_up_preservation_actions(
@@ -2365,15 +2393,17 @@ def build_actions(
         daily_updates, cfg, counter, inbox_path
     )
     out.extend(daily_actions)
-    out.extend(_build_insert_under_marker_actions(
+    insert_actions, insert_action_ids_by_group = _build_insert_under_marker_actions(
         tag_handler_groups or [], approved_tag_handler_group_ids or [], counter,
-    ))
+    )
+    out.extend(insert_actions)
     out.extend(_build_delete_source_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
         tag_handler_groups=tag_handler_groups or [],
         approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
         keep_source_group_ids=tag_handler_keep_source_group_ids or [],
         daily_action_ids_by_origin=daily_action_ids_by_origin,
+        insert_action_ids_by_group=insert_action_ids_by_group,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,

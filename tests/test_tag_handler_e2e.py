@@ -399,7 +399,7 @@ class TestAC2UserAuthoredHandler:
         g = _group(guard="ok")
         approved_ids = [group_id(g)]
         counter = [0]
-        actions = _build_insert_under_marker_actions([g], approved_ids, counter)
+        actions, _ = _build_insert_under_marker_actions([g], approved_ids, counter)
 
         assert len(actions) == 1
         doc = _wrap_instructions(actions)
@@ -477,7 +477,7 @@ class TestAC3ThreeCapturesOneGroup:
         )
         approved_ids = [group_id(g)]
         counter = [0]
-        actions = _build_insert_under_marker_actions([g], approved_ids, counter)
+        actions, _ = _build_insert_under_marker_actions([g], approved_ids, counter)
 
         assert len(actions) == 1, (
             f"Expected exactly ONE instruction for the merged group; got {len(actions)}"
@@ -509,7 +509,7 @@ class TestAC4Guards:
         # Run the render→parse→build chain
         md = render_tag_handler_updates_block([g])
         approved = parse_tag_handler_groups(md)
-        actions = _build_insert_under_marker_actions([g], approved, [0])
+        actions, _ = _build_insert_under_marker_actions([g], approved, [0])
 
         assert actions == [], "No instruction must be emitted for target_missing guard"
 
@@ -533,7 +533,7 @@ class TestAC4Guards:
         # parser never extracts this group → no action
         md = render_tag_handler_updates_block([g])
         approved = parse_tag_handler_groups(md)
-        actions = _build_insert_under_marker_actions([g], approved, [0])
+        actions, _ = _build_insert_under_marker_actions([g], approved, [0])
 
         assert actions == [], "No instruction must be emitted for marker_missing guard"
 
@@ -567,7 +567,7 @@ class TestAC4Guards:
 
         md = render_tag_handler_updates_block([g])
         approved = parse_tag_handler_groups(md)
-        actions = _build_insert_under_marker_actions([g], approved, [0])
+        actions, _ = _build_insert_under_marker_actions([g], approved, [0])
         assert len(actions) == 1
         assert actions[0]["action"] == "insert_under_marker"
 
@@ -652,7 +652,7 @@ class TestRenderToHashiSchema:
         g = _group(guard="ok")
         approved_ids = [group_id(g)]
         counter = [0]
-        actions = _build_insert_under_marker_actions([g], approved_ids, counter)
+        actions, _ = _build_insert_under_marker_actions([g], approved_ids, counter)
 
         assert len(actions) == 1
         action = actions[0]
@@ -668,14 +668,14 @@ class TestRenderToHashiSchema:
     def test_anchor_value_marker_stripped(self):
         """'## Captures' → 'Captures' in the emitted anchor (SDD §5 transform)."""
         g = _group(marker="## Captures", guard="ok")
-        actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+        actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
         assert actions[0]["anchor"]["value"] == "Captures"
 
     def test_content_is_composed_block_verbatim(self):
         """content equals composed_block exactly — embedded newlines preserved."""
         composed = "### 2026-06-23\n\n- Line one\n- Line two\n\n- After blank"
         g = _group(composed_block=composed, guard="ok")
-        actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+        actions, _ = _build_insert_under_marker_actions([g], [group_id(g)], [0])
         assert actions[0]["content"] == composed
         assert "\n" in actions[0]["content"]
 

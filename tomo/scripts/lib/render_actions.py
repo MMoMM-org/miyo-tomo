@@ -1,4 +1,4 @@
-# version: 0.23.0
+# version: 0.23.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -906,25 +906,40 @@ def _orphaned_link_targets(actions: list[dict], dropped_ids: set[str]) -> set[st
     return orphaned
 
 
-def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
+def _links_for(
+    withholding: dict, removed_moc_links: list[dict], claimed_links: set[int]
+) -> list[dict]:
     """The share of one run's withdrawn bullets that belongs to one report.
 
     Both post-passes may withhold in the same run, and each renders its own
     section. A bullet is attributed to the withholding whose dropped moves
-    carry its title — the same key `_orphaned_link_titles` withdrew it under,
-    so the two cannot disagree about which bullet belongs to which report. A
-    bullet withdrawn by `_orphaned_link_targets` instead is attributed the
-    same way: its `target_moc` is the dropped title, not its author's.
+    carry its title (`_orphaned_link_titles`'s key) or whose dropped
+    `create_moc` it names as `target_moc` (`_orphaned_link_targets`'s key).
+
+    The two keys can both point at the *same* bullet within one run: one
+    clash drops the bullet's author, an independent clash drops its target
+    MOC. `claimed_links` (keyed by ``id()``, since ``removed_moc_links``
+    entries are plain dicts with no identity of their own) accumulates
+    across every clash in call order — the same claim-once shape
+    `_paired_delete_candidates` uses for `withdrawn_paths` — so the first
+    clash able to claim a bullet owns it and no later clash can re-claim it.
+    One withdrawal is reported once.
     """
     titles = {
         sanitize_stem(d.get("title") or "")
         for d in withholding.get("dropped") or []
     }
-    return [
-        link for link in removed_moc_links
-        if sanitize_stem(link.get("source_note_title") or "") in titles
-        or sanitize_stem(link.get("target_moc") or "") in titles
-    ]
+    claimed: list[dict] = []
+    for link in removed_moc_links:
+        if id(link) in claimed_links:
+            continue
+        if (
+            sanitize_stem(link.get("source_note_title") or "") in titles
+            or sanitize_stem(link.get("target_moc") or "") in titles
+        ):
+            claimed_links.add(id(link))
+            claimed.append(link)
+    return claimed
 
 
 def _drop_moves_with_paired_deletes(
@@ -1128,9 +1143,10 @@ def validate_destinations(
     kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
+    claimed_links: set[int] = set()
     for clash, candidates in pending:
         clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
-        clash["withdrawn_moc_links"] = _links_for(clash, removed_moc_links)
+        clash["withdrawn_moc_links"] = _links_for(clash, removed_moc_links, claimed_links)
     return kept, [clash for clash, _candidates in pending]
 
 
@@ -1332,12 +1348,13 @@ def suppress_moves_for_unfiled_attachments(
     kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
+    claimed_links: set[int] = set()
     for suppression, candidates in pending:
         suppression["withdrawn_deletes"] = [
             c for c in candidates if c in removed_deletes
         ]
         suppression["withdrawn_moc_links"] = _links_for(
-            suppression, removed_moc_links
+            suppression, removed_moc_links, claimed_links
         )
     return kept, [suppression for suppression, _candidates in pending]
 

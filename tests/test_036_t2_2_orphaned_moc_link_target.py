@@ -165,3 +165,47 @@ def test_a_run_collision_dropped_create_moc_orphans_a_surviving_link_to_moc():
         "both the move_note and create_moc claiming `Travel` were dropped; "
         f"the surviving Elbe bullet naming Travel must go with them: {_links(kept)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 3. Two INDEPENDENT clashes in the same run can each claim the same bullet —
+#    one drops the bullet's author (_orphaned_link_titles), the other drops
+#    its target MOC (_orphaned_link_targets). The bullet must be withdrawn
+#    exactly once across the whole clash list, not once per clash that could
+#    claim it. Reproduces the code-quality finding on e456030.
+# ---------------------------------------------------------------------------
+
+def test_a_bullet_orphaned_two_ways_is_withdrawn_by_exactly_one_clash():
+    ELBE_1 = "100 Inbox/Elbe-1.md"
+    ELBE_2 = "100 Inbox/Elbe-2.md"
+    kado = FakeKado(occupied={f"{NOTES}Travel.md"})
+    pairs = [
+        # Run collision: two atomics named "Elbe" contest Elbe.md — both
+        # dropped, both authoring the one deduped "Elbe" -> "Travel" bullet.
+        _atomic(ELBE_1, "Elbe", idx=1, parents=["Travel"]),
+        _atomic(ELBE_2, "Elbe", idx=2, parents=["Travel"]),
+        # Vault collision: the lone create_moc "Travel" is dropped because
+        # `Travel.md` already exists in the vault — the same bullet's
+        # target_moc.
+        _moc("Travel", idx=3),
+    ]
+    actions, _skipped = _build(pairs)
+    kept, clashes = validate_destinations(actions, make_folder_listing(kado))
+    assert _links(kept) == [], "the orphaned bullet must not survive either way"
+
+    kinds = {c["kind"] for c in clashes}
+    assert kinds == {"run_collision", "vault_collision"}, (
+        f"expected exactly one clash of each kind, got: {clashes}"
+    )
+
+    all_withdrawn = [
+        link for c in clashes for link in c["withdrawn_moc_links"]
+    ]
+    assert all_withdrawn == [{"source_note_title": "Elbe", "target_moc": "Travel"}], (
+        f"the bullet must be withdrawn once, not zero or twice: {all_withdrawn}"
+    )
+    per_clash_counts = {c["kind"]: len(c["withdrawn_moc_links"]) for c in clashes}
+    assert sorted(per_clash_counts.values()) == [0, 1], (
+        "exactly one clash should carry the withdrawal, the other none: "
+        f"{per_clash_counts}"
+    )

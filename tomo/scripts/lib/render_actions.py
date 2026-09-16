@@ -1661,7 +1661,14 @@ def _build_delete_source_actions(
         })
 
     # (2) Daily-only origins
-    daily_ids_by_origin = daily_action_ids_by_origin or {}
+    # WHY: daily_action_ids_by_origin is the map _build_daily_update_actions
+    # returns, bucketing action ids by origin key. Omitting it (None → {})
+    # silently produces depends_on: [] for site-2 deletes — which asserts
+    # "delete unconditionally". That is safe ONLY because build_actions (the
+    # sole production path) always threads the real map. Direct callers
+    # exercising daily-only deletes must supply it; two test callers omit it
+    # and pass only because they do not assert on depends_on.
+    daily_action_ids_by_origin = daily_action_ids_by_origin or {}
     seen: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
@@ -1692,7 +1699,7 @@ def _build_delete_source_actions(
                     "action": "delete_source",
                     "source_path": full,
                     "reason": "Content fully captured in daily note.",
-                    "depends_on": list(daily_ids_by_origin.get(key, [])),
+                    "depends_on": list(daily_action_ids_by_origin.get(key, [])),
                 })
 
     # (3) move_note origins — completion gate: emit one delete per origin note

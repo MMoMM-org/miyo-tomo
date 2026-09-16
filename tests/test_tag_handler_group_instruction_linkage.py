@@ -53,6 +53,13 @@ _reducer_mod = _load("suggestions_reducer", "suggestions-reducer.py")
 _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 _render_mod = _load("instruction_render", "instruction-render.py")
 _diff_mod = _load("instructions_diff", "instructions-diff.py")
+# instruction-render.py does `from lib.render_actions import (...)`, which
+# registers the real module under this sys.modules key. The two call sites
+# for tag_handler_group_is_appliable are DEFINED in render_actions.py, so a
+# monkeypatch must target this module's attribute — patching the name
+# re-exported on _render_mod would not affect render_actions.py's own
+# global lookups.
+_render_actions_mod = sys.modules["lib.render_actions"]
 
 group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
@@ -594,6 +601,80 @@ def test_build_actions_keep_source_suppresses_delete():
         tag_handler_keep_source_group_ids=[group_id(g)],
     )
     assert not any(a["action"] == "delete_source" for a in actions)
+
+
+# ── 9b. shared appliability predicate (spec 036 T3.1) ─────────────────────────
+# A "tag-handler group" whose target_path is unresolvable must produce ZERO
+# insert_under_marker AND ZERO delete_source — the two loops must agree. Today
+# they don't: the insert builder skips, the delete loop (site 4) doesn't. See
+# docs/XDD/specs/036-delete-outlives-its-justification/plan/phase-3.md T3.1.
+
+
+def test_unresolvable_target_group_emits_zero_insert_and_zero_delete():
+    """An approved group with NO resolvable target_path emits zero
+    insert_under_marker AND zero delete_source — the insert and delete loops
+    must agree (PRD/F3-AC1)."""
+    g = _group(target_path=None, source_paths=["100 Inbox/x.md"])
+    actions, _skipped_assets = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+    )
+    inserts = [a for a in actions if a["action"] == "insert_under_marker"]
+    deletes = [a for a in actions if a["action"] == "delete_source"]
+    assert inserts == []
+    assert deletes == []
+
+
+def test_unresolvable_target_three_sources_emits_zero_deletes():
+    """A group of three sources with no target emits ZERO deletes — not one,
+    not two (PRD/F3-AC3): the count attributable to an unresolvable group is
+    exactly zero."""
+    srcs = [
+        "100 Inbox/202606242049_a.md",
+        "100 Inbox/202606260908_b.md",
+        "100 Inbox/202606261644_c.md",
+    ]
+    g = _group(target_path=None, source_paths=srcs)
+    actions = _delete_sources(g, approved=[group_id(g)])
+    assert len(actions) == 0
+
+
+def test_resolvable_target_group_unaffected_one_insert_one_delete_per_source():
+    """A group WITH a resolvable target behaves exactly as before: one insert
+    and one delete per source (PRD/F3-AC2 — regression guard, unchanged
+    behaviour)."""
+    srcs = ["100 Inbox/a.md", "100 Inbox/b.md"]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    actions, _skipped_assets = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+    )
+    inserts = [a for a in actions if a["action"] == "insert_under_marker"]
+    deletes = [a for a in actions if a["action"] == "delete_source"]
+    assert len(inserts) == 1
+    assert len(deletes) == len(srcs)
+
+
+def test_both_sites_move_together_when_the_predicate_says_no(monkeypatch):
+    """Monkeypatch the shared predicate to return False for a group that would
+    otherwise be fully appliable (resolvable target, approved) — both outputs
+    must move together: zero inserts AND zero deletes. If either site still
+    emits, it is not consulting the shared predicate (ADR-5)."""
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
+    monkeypatch.setattr(
+        _render_actions_mod, "tag_handler_group_is_appliable", lambda group: False
+    )
+    actions, _skipped_assets = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+    )
+    inserts = [a for a in actions if a["action"] == "insert_under_marker"]
+    deletes = [a for a in actions if a["action"] == "delete_source"]
+    assert inserts == []
+    assert deletes == []
 
 
 # ── 10. parser extracts Keep-origin; reducer renders the checkbox ────────────

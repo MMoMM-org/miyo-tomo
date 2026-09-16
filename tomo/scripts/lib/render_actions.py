@@ -1582,6 +1582,20 @@ def _origin_key(resolved_path: str | None) -> str:
     return resolved_path[:-3] if resolved_path.endswith(".md") else resolved_path
 
 
+def tag_handler_group_is_appliable(group: dict) -> bool:
+    """Target-resolvability gate for a tag-handler group (spec 036 T3.1/ADR-5).
+
+    Covers ONLY whether the group's `target_path` resolved to something
+    non-empty — the sole condition that must agree between the insert
+    builder and the delete loop (site 4) below. Approval and
+    "Keep source files" filtering are NOT part of this predicate; each call
+    site keeps that filtering exactly where it already lives, since the two
+    sites' approval/keep filters are not identical (the delete loop also
+    honors keep_source_group_ids; the insert builder does not).
+    """
+    return bool(group.get("target_path"))
+
+
 def _build_delete_source_actions(
     confirmed: list[dict],
     move_notes: list[dict],
@@ -1782,6 +1796,10 @@ def _build_delete_source_actions(
         gid = group_id(group)
         if gid not in approved_groups or gid in kept_groups:
             continue
+        if not tag_handler_group_is_appliable(group):
+            # Unresolved target (null) — never delete sources for a group
+            # whose consolidated content has nowhere to land (spec 036 T3.1).
+            continue
         target = group.get("target_path") or ""
         handler = group.get("handler") or ""
         for sp in group.get("source_paths") or []:
@@ -1890,10 +1908,10 @@ def _build_insert_under_marker_actions(
     for group in groups:
         if group_id(group) not in approved:
             continue
-        target_path = group.get("target_path")
-        if not target_path:
+        if not tag_handler_group_is_appliable(group):
             # Unresolved target (null) — never emit a path-less instruction.
             continue
+        target_path = group.get("target_path")
 
         resolved_anchor = group.get("resolved_anchor")
         content = group.get("composed_block") or ""

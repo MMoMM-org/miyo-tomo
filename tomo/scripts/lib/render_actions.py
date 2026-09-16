@@ -1580,8 +1580,12 @@ def _build_delete_source_actions(
     3. move_note origins — for every move_note action whose corresponding
        confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
-       pairs are NOT included here (they're independent upstream artifacts);
-       only the origin from which Tomo derived the rendered atomic note.
+       pairs ARE included here: one paired delete_source per unique audio
+       peer, naming the same move ids as the origin delete.
+       Every delete from sites 1 and 3 carries `depends_on` (spec 036 T1.1):
+       site 1 has no partner action and declares `depends_on: []`; site 3
+       names the ids of every move_note for that origin, and the audio-peer
+       delete names the same id set as its origin delete.
     4. Tag-handler group sources — for every APPROVED group not opted out via
        "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
@@ -1625,6 +1629,7 @@ def _build_delete_source_actions(
             "action": "delete_source",
             "source_path": full,
             "reason": "User marked source for deletion (no atomic note created).",
+            "depends_on": [],
         })
 
     # (2) Daily-only origins
@@ -1696,17 +1701,26 @@ def _build_delete_source_actions(
         has_daily = origin_key in daily_keys
         daily_suffix = " + daily" if has_daily else ""
         reason = f"Origin consumed by {n} atomic{'s' if n > 1 else ''}{daily_suffix}."
+        # depends_on names every move_note for this origin — the ids the
+        # completion gate above already bucketed. Populated here, before any
+        # guard runs (SDD/Implementation Gotchas): a builder that adds it
+        # afterwards reintroduces the ordering bug spec 036 fixes.
+        move_ids = [mn["id"] for mn in moves]
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
             "source_path": origin_path,
             "reason": reason,
+            "depends_on": move_ids,
         })
         # Paired audio peer delete — one delete per unique audio peer for this
         # origin note. Normally 0 or 1 peer; set deduplicates the multi-atomic
         # case (two atomics from one transcript share the same peer path).
         # keep_source_keys and the gate both apply above, so arriving here
         # means both deletes are appropriate. Empty set → no audio delete (fail-safe).
+        # The audio-peer delete names the SAME move ids as the origin delete —
+        # they are separate actions hanging off the same move set; naming
+        # only one leaves the other unguarded (SDD/Implementation Gotchas).
         audio_peers = {mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}
         for ap in sorted(audio_peers):
             out.append({
@@ -1714,6 +1728,7 @@ def _build_delete_source_actions(
                 "action": "delete_source",
                 "source_path": ap,
                 "reason": "Audio peer of consumed origin.",
+                "depends_on": list(move_ids),
             })
 
     # (4) Tag-handler group sources — one delete per source_path of each

@@ -159,7 +159,7 @@ def test_audio_peer_stripped_from_move_note_before_wire():
         (Path(__file__).resolve().parents[1] / "tomo" / "schemas" / "instructions.schema.json").read_text()
     )
     doc = {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-07-01T00:00:00Z",
         "profile": "miyo",

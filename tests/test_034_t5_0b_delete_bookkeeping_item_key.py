@@ -452,6 +452,6 @@ def test_emitted_action_shape_is_unchanged():
     )
 
     for action in _deletes(out):
-        assert set(action) == {"id", "action", "source_path", "reason"}, (
+        assert set(action) == {"id", "action", "source_path", "reason", "depends_on"}, (
             f"unexpected fields on {action}"
         )

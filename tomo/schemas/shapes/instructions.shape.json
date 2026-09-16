@@ -32,7 +32,7 @@
       ],
       "values": {
         "schema_version": [
-          "2"
+          "3"
         ],
         "type": [
           "tomo-instructions"
@@ -131,12 +131,14 @@
       "properties": {
         "action": "any",
         "applied": "boolean",
+        "depends_on": "array",
         "id": "string",
         "reason": "string",
         "source_path": "string"
       },
       "required": [
         "action",
+        "depends_on",
         "id",
         "reason",
         "source_path"
@@ -587,6 +589,6 @@
       "values": {}
     }
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "source": "tomo/schemas/instructions.schema.json"
 }

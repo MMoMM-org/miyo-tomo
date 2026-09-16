@@ -7,7 +7,7 @@
   "required": ["schema_version", "type", "generated", "profile", "actions"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "2"},
+    "schema_version": {"const": "3"},
     "type": {"const": "tomo-instructions"},
     "source_suggestions": {
       "type": ["string", "null"],
@@ -240,13 +240,18 @@
     },
     "delete_source": {
       "type": "object",
-      "required": ["id", "action", "source_path", "reason"],
+      "required": ["id", "action", "source_path", "reason", "depends_on"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "delete_source"},
         "source_path": {"type": "string"},
         "reason": {"type": "string"},
+        "depends_on": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Action ids (move_note/move_asset) this delete must not outlive — Hashi withholds the delete unless every id here is applied. Empty array for a user-requested deletion with no partner action (spec 036 F5-AC2)."
+        },
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

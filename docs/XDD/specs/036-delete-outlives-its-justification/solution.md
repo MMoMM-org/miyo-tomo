@@ -429,7 +429,7 @@ There is no id for the delete to name, so `depends_on` cannot express the depend
 that both loops must agree on the skip condition — extracted as one predicate so they cannot drift:
 
 ```python
-def tag_handler_group_is_appliable(group: dict) -> bool:
+def _tag_handler_group_has_resolvable_target(group: dict) -> bool:
     """A group whose target did not resolve produces neither an insert nor a delete."""
     return bool(group.get("target_path"))
 ```
@@ -595,7 +595,7 @@ OUTPUT: instruction set in which every delete's justification is present
   - User confirmed: **Yes, 2026-09-09**
 
 - [x] **ADR-5 The tag-handler skip condition is one shared predicate** — both the insert builder and
-      the delete loop call `tag_handler_group_is_appliable(group)`.
+      the delete loop call `_tag_handler_group_has_resolvable_target(group)`.
   - Rationale: P3 cannot use ADR-1's pass, because the insert is never built and so has no id to
     name. Two independent `if` statements is how the sites diverged in the first place.
   - Trade-offs: none material; it is an extraction of a condition one site already has.
@@ -619,7 +619,7 @@ behaviour. Run literally, not by eye — two owners is overlap, zero is a gap.
 |---|---|---|---|
 | F1 | Contested destination drops both claimants | `validate_destinations` (ADR-3) | `withdraw_unjustified_deletes` removes the orphaned delete |
 | F2 | Withheld daily action withdraws its delete | `withdraw_unjustified_deletes` (ADR-1/2) | — it *is* the enforcement |
-| F3 | Unresolvable group emits no delete | `tag_handler_group_is_appliable` (ADR-5) | shared predicate; ADR-1's pass cannot reach this case |
+| F3 | Unresolvable group emits no delete | `_tag_handler_group_has_resolvable_target` (ADR-5) | shared predicate; ADR-1's pass cannot reach this case |
 | F4 | Unresolvable group is not pre-approved | `annotate_tag_handler_group_guards` | existing Approve-suppression path, once a guard is set |
 | F5 | Every delete names its justification | the four emission sites in `_build_delete_source_actions` | `assert_no_dangling_dependencies` (ADR-6) |
 | F6 | Document explains a withdrawn delete | `render_md.py` + the `tomo` report block | acceptance criteria below |

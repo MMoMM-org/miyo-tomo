@@ -102,6 +102,20 @@ When implementation requires changes from the specification:
   count, and `build_actions` is the only production caller. A third plan self-contradiction found by
   execution rather than review — the same pattern as the two above.
 
+- **2026-09-16 — T3.1's predicate shipped under a different name.** The plan and SDD called for
+  `tag_handler_group_is_appliable(group)`; it shipped as `_tag_handler_group_has_resolvable_target`.
+  Two reasons, both raised by the T3.1 code-quality review and adopted. First, "appliable" promises a
+  full applicability check while the function tests exactly one condition, so its docstring had to
+  *disclaim* that approval and `keep_source_group_ids` are excluded — a name needing a disclaimer to
+  avoid misleading is an open invitation to fold those filters in, which would re-merge two call
+  sites the plan explicitly requires to filter differently. Second, every sibling helper consulted
+  from inside a `_build_*_actions` function in this module is underscore-prefixed; the unprefixed
+  names are the module's orchestration entry points. Underscore does not gate cross-file use here —
+  `_build_delete_source_actions` is itself imported by `instruction-render.py` — so the prefix is a
+  role marker, and this predicate belongs to the internal family. `solution.md` was updated to the
+  shipped name per the Deviation Protocol; `README.md`'s classifier row keeps the old name because it
+  records what was counted on 2026-09-10.
+
 - **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
   `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
   so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per

@@ -42,7 +42,11 @@ phase: 3
 
 Closes the third data-loss path and the consent defect that makes it dangerous.
 
-- [ ] **T3.1 One appliability predicate, two call sites** `[activity: domain-modeling]`
+- [x] **T3.1 One appliability predicate, two call sites** `[activity: domain-modeling]`
+
+  **Executed inside Phase 1 on 2026-09-16**, ahead of T1.3, per the approved deviation in
+  `plan/README.md`. Shipped as `_tag_handler_group_has_resolvable_target` — renamed from the
+  `tag_handler_group_is_appliable` this task names, see Deviations. Commits `4efcc03`, `ff5d149`.
 
   Today `_build_insert_under_marker_actions` skips a group whose `target_path` is falsy, while the
   site-4 delete loop reads `target` only to interpolate a reason string and never skips. The result

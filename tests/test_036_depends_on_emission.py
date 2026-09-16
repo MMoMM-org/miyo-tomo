@@ -47,6 +47,16 @@ assert _ir_spec.loader is not None
 sys.modules["instruction_render_t036"] = ir
 _ir_spec.loader.exec_module(ir)
 
+# Load lib.render_actions directly.
+def _load(mod_name: str, rel: str):
+    spec = importlib.util.spec_from_file_location(mod_name, SCRIPTS_DIR / rel)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+render_actions = _load("render_actions_t036", "lib/render_actions.py")
+
 INBOX = "100 Inbox"
 ORIGIN_BASENAME = "2026-04-08-meeting-notes.md"
 ORIGIN_FULL = f"{INBOX}/{ORIGIN_BASENAME}"
@@ -147,7 +157,7 @@ def _day(date: str, trackers=None, log_entries=None, log_links=None) -> dict:
 def _build_daily_and_deletes(daily_updates: list[dict]):
     """Mirrors build_actions' wiring: the daily builder's id map feeds site 2."""
     counter = [0]
-    daily_actions, ids_by_origin = ir._build_daily_update_actions(
+    daily_actions, ids_by_origin = render_actions._build_daily_update_actions(
         daily_updates, DAILY_CFG, counter, INBOX
     )
     deletes = _deletes(ir._build_delete_source_actions(

@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-09-10 |
+| **Last Updated** | 2026-09-16 |
 
 ## Documents
 
@@ -50,6 +50,7 @@
 | 2026-09-09 | **No run has ever emitted a `log_link` — the daily-side widening ships without live coverage of one third of it** | Searched every `_suggestions.json` and `_suggestions-fan.json` still in existence: 0 runs with any `log_links[]` entry, 1 run with any daily content at all (pre-034, 0 of 21 suggestions carrying `item_key`), and 4 current-shape runs all with empty daily buckets. The intersection needed for a real fixture is empty. Declined to hand-build one — a fixture assembled from the schema agrees with our assumptions and nothing else. Recorded as a coverage gap rather than hidden: `log_links[]` is a code path neither repo has observed carrying data. **Cause corrected 2026-09-11 during T4.2b: this was not a coverage gap, it was a defect.** `parse_daily_updates` had no matcher for a log-link line — the renderer emits a bare wikilink with `Position:` on a sub-field line, while the only available matcher required the em dash of a log *entry* — so every `log_links[]` bucket came back empty from the markdown round trip, on every path, since the bucket was introduced. Measured by rendering a real log_link through `render_daily_notes_updates_block` and parsing it back: `[]` before the fix, the entry recovered after. The search that found zero entries was reading the output of the thing that was dropping them. F9-AC2 was unprovable until this was fixed, because there was nothing in the array to carry a key. |
 | 2026-09-09 | **The versioning mechanism is per-document, not global** | Measured, not assumed: the suggestions wire and the instructions wire already carry different `schema_version` values, so a single repo-wide version number cannot describe either of them without lying about the other. Any mechanism this spec lands has to version each wire document on its own counter and say which document a changed-fields list belongs to. This was discovered by 036's integration research; it is a requirement, not a preference. |
 | 2026-09-09 | **Every wire change ships the schema as a file plus a changed-fields list** | Hashi asked for both. The file removes the retyping step that already made them diff the wrong one of our two instruction schemas; the changed-fields list is the part a `schema_version` bump alone does not carry. This is the concrete candidate answer to question 5 — the enforceable artifact, not a rule. |
+| 2026-09-16 | Implementation complete | All 4 phases / 17 tasks done; `close-out.md` traces all **33** PRD criteria (F1-F9 — not the 28 the plan said; F9 arrived with T4.2b). Detection at zero across all three wires, the spec's own closing condition. Full suite 3960 tests / 116 s; the offline path proven under a dead proxy. One **L2 privacy violation caught and fixed in flight** during T4.2b, recorded rather than hidden. Consumer copies refreshed against Hashi's `main` (T4.4) and independently confirmed by Hashi's reply — 28/28 applied on the 2026-09-15 run. Rides `spec/035-wire-schema-versioning`, ~64 commits. **Implemented refers to the work, not the merge**: the merge stays withheld by owner decision until Tomo runs cleanly end to end. |
 
 ## Context
 

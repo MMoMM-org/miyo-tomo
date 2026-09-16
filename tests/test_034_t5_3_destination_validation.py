@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_034_t5_3_destination_validation.py — spec 034 T5.3.
 
 The Pass-2 half of PRD Feature 7. Pass 1 (T5.2) proposes a distinct name on a
@@ -966,3 +966,79 @@ def test_rendered_clash_names_the_mocs_staging_note_not_a_question_mark():
     assert not any("source note `?`" in ln for ln in block), (
         f"a dropped create_moc must not render as an unresolved origin: {block}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 12. compliance review of spec 036 T2.2 (commit 81675a9) — two findings
+#
+#     Finding 1: the origin fallback added for create_moc was not kind-scoped,
+#     so a move_note with an empty/absent source_inbox_item (documented
+#     nullable, _OPTIONAL_PATH_FIELDS) now falls through to its own `source`
+#     field — the move's staging path, not its origin — instead of `?`.
+#
+#     Finding 2: create_moc becoming a destination claimant also subjects it
+#     to vault_collision (a destination already occupied in the vault), which
+#     T2.2's task text never named or tested. Covered here to make the
+#     inferred behaviour explicit and pinned.
+# ---------------------------------------------------------------------------
+
+def test_dropped_move_note_with_empty_source_inbox_item_still_renders_question_mark():
+    """A move_note's source_inbox_item can legitimately be empty (both
+    item_key and source_path absent — resolve_source_path returns ""). The
+    origin fallback must not repurpose the move's own `source` (its staging
+    path) as a stand-in origin: that field means something different for a
+    move_note than it does for a create_moc, and showing it here is a wrong
+    basis for the user's approval under CON-2.
+    """
+    clash = {
+        "kind": "run_collision",
+        "destination": f"{NOTES}Dresden.md",
+        "case_only": False,
+        "vault_note": None,
+        "reason": "two notes",
+        "dropped": [
+            {
+                "id": "I01",
+                "action": "move_note",
+                "title": "Dresden",
+                "destination": f"{NOTES}Dresden.md",
+                "source_inbox_item": None,
+                "source": f"{INBOX}2026-09-07_1001_dresden.md",
+            },
+        ],
+        "withdrawn_deletes": [],
+        "withdrawn_moc_links": [],
+    }
+    md = render_instructions_md(
+        [],
+        {"generated": "2026-09-07T10:00:00+02:00", "destination_clashes": [clash]},
+        CFG,
+    )
+    block = _clash_block(md)
+    joined = "\n".join(block)
+    assert "source note `?`" in joined, (
+        f"an empty source_inbox_item must still render `?`: {block}"
+    )
+    assert "2026-09-07_1001_dresden.md" not in joined, (
+        f"a move_note's staging path (its own `source`) must never stand in "
+        f"for its origin: {block}"
+    )
+
+
+def test_a_moc_destination_occupied_in_the_vault_is_dropped():
+    """Mirrors test_a_destination_occupied_in_the_vault_is_not_emitted, but
+    for a create_moc claimant — spec 036 T2.2 widened the claimant filter,
+    which also subjects create_moc to the vault_collision half of this guard.
+    """
+    kado = FakeKado(occupied={f"{NOTES}Dresden.md"})
+    actions = _actions([
+        _moc("Dresden", idx=1),
+        _atomic(ROOT_NOTE, "Root note takeaway", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions, make_folder_listing(kado))
+    assert _mocs(kept) == [], (
+        "a create_moc claiming an already-occupied vault path must be dropped"
+    )
+    assert len(_moves(kept)) == 1
+    assert len(clashes) == 1 and clashes[0]["kind"] == "vault_collision", clashes
+    assert clashes[0]["vault_note"] == f"{NOTES}Dresden.md"

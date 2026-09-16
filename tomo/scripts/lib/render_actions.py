@@ -1,4 +1,4 @@
-# version: 0.20.0
+# version: 0.21.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -2349,6 +2349,48 @@ def build_garden_audit_actions(
     for a in out:
         a["applied"] = False
     return out
+
+
+def withdraw_unjustified_deletes(
+    actions: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop every delete whose declared justification did not survive the guards.
+
+    Runs ONCE, after every drop site (spec 036 T2.1; wiring into build is
+    T2.3, not this function). A single pass is sufficient because a
+    ``delete_source`` never justifies another action — nothing declares a
+    dependency on a delete, so removing one cannot orphan anything else. If a
+    future action kind ever declares a dependency on a delete, this becomes a
+    fixpoint loop; ``test_no_cascade_needed_single_pass_semantics`` is the
+    tripwire that must change first.
+
+    Only ``delete_source`` actions are governed — every other action, even one
+    carrying its own (irrelevant) ``depends_on``, passes through untouched.
+    An empty ``depends_on`` is an assertion that nothing conditions the
+    delete, not an absence of information — it survives unconditionally. A
+    missing ``depends_on`` key reads as ``[]`` (unreachable from the builder
+    since Phase 1, but a hand-built dict or an older artifact may omit it).
+
+    Pure: no I/O, does not mutate ``actions`` or any action dict in it.
+    """
+    surviving = {a.get("id") for a in actions if a.get("id")}
+    kept: list[dict] = []
+    withdrawn: list[dict] = []
+    for action in actions:
+        if action.get("action") != "delete_source":
+            kept.append(action)
+            continue
+        missing = [d for d in action.get("depends_on") or [] if d not in surviving]
+        if missing:
+            withdrawn.append({
+                "id": action.get("id"),
+                "source_path": action.get("source_path"),
+                "reason": action.get("reason"),
+                "missing_dependencies": missing,
+            })
+            continue
+        kept.append(action)
+    return kept, withdrawn
 
 
 def build_actions(

@@ -164,6 +164,49 @@ When implementation requires changes from the specification:
   about hand-built dicts covers `depends_on`, not `id`, so no gap exists between what it states and
   what it does. Editing a safety-critical pure function for tidiness carries risk without return.
 
+- **2026-09-16 — T2.2 widened one line and had to close three consequences the plan does not name.**
+  The task is "widen the claimant filter to `{move_note, create_moc}`". That is `render_actions.py:998`,
+  one line. Making a `create_moc` droppable then reached three places the plan never mentions, each
+  found by review rather than by the suite — all four commits were green throughout.
+
+  1. **The clash report could not describe a MOC.** A `move_note` keeps its origin under
+     `source_inbox_item`; a `create_moc` keeps its staging path under `source`. The renderer read only
+     the former, so a dropped MOC would have shown the owner `— source note ?`. The `dropped` entry
+     gained `action` (the plan's own test bullet asks the report to name the claimants' kinds, and it
+     did not) and a resolved `origin`. **`source_inbox_item` was deliberately NOT overloaded** to
+     carry a staging path: one key with two meanings is how the site-2 and site-4 divergences this
+     spec is fixing began.
+  2. **The first fix was not kind-scoped and silently changed `move_note`.** The fallback
+     `source_inbox_item or source or "?"` applied to every claimant, and `move_note`'s
+     `source_inbox_item` is documented nullable — so a move with an empty one began rendering its
+     staging path labelled "source note" where it had honestly shown `?`. Corrected, and the origin
+     resolution moved out of the renderer into the builder so the rule lives in one place.
+  3. **A dropped MOC left live bullets pointing at it.** `link_to_moc` withdrawal keyed only on the
+     bullet's *author* (`_orphaned_link_titles`). Nothing checked its `target_moc`. Once a
+     `create_moc` could be dropped, a surviving bullet could instruct the executor to write into a
+     MOC that will never exist — verbatim the failure `filter_unresolvable_moc_links`' docstring
+     exists to prevent, and no downstream guard catches it, because that filter is a pure function
+     over a marker stamped at *emission* time, before any drop. Closed by `_orphaned_link_targets`,
+     kept deliberately separate from the author rule: it has **no survivor subtraction**, because a
+     second `create_moc` of the same title surviving elsewhere does not make a dropped one's
+     destination exist.
+  4. **That fix in turn double-counted.** With two independent withdrawal reasons feeding one report,
+     a bullet whose author fell to clash A and whose target fell to clash B appeared in **both**
+     clashes' `withdrawn_moc_links` — reproduced live against the real builder, not a fixture. Wrong
+     data in `instructions.json`, inert in today's markdown only by accident of the renderer. Fixed
+     with the claim-once accumulator this same function already uses for deletes
+     (`_paired_delete_candidates`/`withdrawn_paths`), rather than a second mechanism.
+
+  **Also widened without being asked:** `create_moc` is now subject to `vault_collision`, not only
+  the run collision the task text and all three success criteria describe. It is the right outcome —
+  the guard exists to stop Tomo writing over a file already there — but it arrived as an inferred
+  side effect and is now pinned by a test rather than by inference.
+
+  **Open, deliberately:** when two clashes could each claim a bullet, the first in iteration order
+  owns it. That follows input order, not a semantic preference. Both attributions are true and the
+  count is now correct, so this is a report-quality nuance rather than a defect — recorded so the
+  next reader knows it was seen and not decided.
+
 - **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
   `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
   so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per

@@ -67,7 +67,13 @@ Turns the relation from Phase 1 into enforcement.
      - [ ] An origin whose daily actions all survive keeps its delete `[ref: PRD/F2-AC3]`
      - [ ] An empty `depends_on` is never withdrawn `[ref: SDD/Edge Case Criteria]`
 
-- [ ] **T2.2 `create_moc` becomes a claimant** `[activity: backend-api]`
+- [x] **T2.2 `create_moc` becomes a claimant** `[activity: backend-api]`
+
+  Four commits — `81675a9`, `5bebab6`, `e456030`, `6a5afe4`. The filter widening is one line; the
+  three consequences the plan does not name took the rest. See Deviations: a renderer fallback that
+  was not kind-scoped and silently changed `move_note` output; a newly reachable `create_moc` vault
+  collision with no test; and `link_to_moc` bullets left pointing at a MOC that will never be built.
+  `render_actions.py` `0.21.0` → `0.23.1`, `render_md.py` `0.16.1` → `0.18.0`.
 
   1. Prime: read `validate_destinations`' grouping loop and the T5.3 both-claimants rationale
      `[ref: SDD/Architecture Decisions; ADR-3]`. Note that `create_moc` carries `destination` under

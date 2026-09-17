@@ -72,19 +72,19 @@ def _move_note(field_name: str = "source_inbox_item") -> dict:
 # T4.1 — new field (source_inbox_item) + current wire version validates
 # ---------------------------------------------------------------------------
 
-class TestNewFieldAndVersionV2:
+class TestNewFieldAndCurrentSchemaVersion:
     """source_inbox_item + schema_version:"3" must validate against both schemas.
 
     Spec 036 T4.1 bumped the instruction wire "2" -> "3"; this fixture tracks
     the current const rather than the "2" spec 027 originally introduced.
     """
 
-    def test_source_inbox_item_v2_validates_tomo_schema(self, tomo_schema):
+    def test_source_inbox_item_validates_tomo_schema(self, tomo_schema):
         """A move_note with source_inbox_item + current schema_version validates (Tomo schema)."""
         doc = _envelope([_move_note("source_inbox_item")])
         validate(instance=doc, schema=tomo_schema)  # must not raise
 
-    def test_source_inbox_item_v2_validates_hashi_schema(self, hashi_schema):
+    def test_source_inbox_item_validates_hashi_schema(self, hashi_schema):
         """A move_note with source_inbox_item + current schema_version validates (Hashi schema)."""
         doc = _envelope([_move_note("source_inbox_item")])
         validate(instance=doc, schema=hashi_schema)  # must not raise

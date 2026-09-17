@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.57.0
+# version: 0.58.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -78,6 +78,7 @@ from lib.render_actions import (  # noqa: E402,F401
     withdraw_unjustified_deletes,
 )
 from lib.render_helpers import (  # noqa: E402,F401
+    WITHDRAWAL_GUARDS,
     _moc_stem,
     _stem,
     build_delete_withdrawal_reports,
@@ -782,6 +783,17 @@ def main() -> int:
         "filter_missing_daily_notes": [a.get("id") for a in skipped_daily],
         "filter_unappliable_relationships": [a.get("id") for a in skipped_rel],
     }
+    # `drop_sources`' keys must cover WITHDRAWAL_GUARDS (render_helpers.py,
+    # the documented SSoT for the five guard names) exactly — every guard's
+    # drops must be attributable, unlike render_md.py's _INLINE_WITHDRAWAL_
+    # GUARDS subset. Nothing previously validated the two against each other
+    # (code-quality review advisory, 2026-09-17): a sixth guard added here
+    # without updating WITHDRAWAL_GUARDS, or vice versa, was caught by
+    # nothing.
+    assert set(drop_sources) == set(WITHDRAWAL_GUARDS), (
+        "drop_sources guard keys drifted from render_helpers.WITHDRAWAL_"
+        "GUARDS — keep the two lists in sync"
+    )
     delete_withdrawals = build_delete_withdrawal_reports(withdrawn_deletes, drop_sources)
     if delete_withdrawals:
         print(

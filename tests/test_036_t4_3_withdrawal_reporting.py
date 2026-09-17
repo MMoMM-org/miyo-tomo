@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_036_t4_3_withdrawal_reporting.py — spec 036 / T4.3 withdrawal reporting.
 
 Covers the T4.3 join and its three report surfaces (plan/phase-4.md T4.3;
@@ -62,11 +62,12 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.render_helpers import (  # noqa: E402
+    WITHDRAWAL_GUARDS,
     attribute_withdrawal_causes,
     build_delete_withdrawal_reports,
     describe_withdrawal_cause,
 )
-from lib.render_md import render_instructions_md  # noqa: E402
+from lib.render_md import _INLINE_WITHDRAWAL_GUARDS, render_instructions_md  # noqa: E402
 
 _ir_spec = importlib.util.spec_from_file_location(
     "instruction_render_t036_t43", SCRIPTS_DIR / "instruction-render.py"
@@ -76,13 +77,10 @@ assert _ir_spec.loader is not None
 sys.modules["instruction_render_t036_t43"] = _ir
 _ir_spec.loader.exec_module(_ir)
 
-ALL_GUARDS = (
-    "validate_destinations",
-    "suppress_moves_for_unfiled_attachments",
-    "filter_unresolvable_moc_links",
-    "filter_missing_daily_notes",
-    "filter_unappliable_relationships",
-)
+# Sourced from render_helpers.WITHDRAWAL_GUARDS (the documented SSoT),
+# not re-typed, so this alias can never silently drift from it (code-quality
+# review advisory: ALL_GUARDS used to be an independent hardcoded tuple).
+ALL_GUARDS = WITHDRAWAL_GUARDS
 
 CFG = {"concepts.inbox": "100 Inbox/", "profile": "miyo"}
 
@@ -298,6 +296,39 @@ def _client(note_exists: bool) -> MagicMock:
     return client
 
 
+# ── Code-quality review advisory: WITHDRAWAL_GUARDS is the documented SSoT
+#    for the five guard names, but nothing previously imported or validated
+#    against it — a sixth guard added to one copy would be caught by none of
+#    the others. Three call sites now validate: this file's ALL_GUARDS alias
+#    (see import above), render_md.py's module-level subset assertion, and
+#    instruction-render.py's module-level equality assertion. ───────────────
+
+
+class TestWithdrawalGuardsStaySynced:
+    def test_inline_withdrawal_guards_is_a_proper_subset_of_withdrawal_guards(self):
+        """`_INLINE_WITHDRAWAL_GUARDS` (render_md.py) is legitimately a
+        SUBSET, not the full set — only the three guards whose own report
+        already renders a bullet inside "## Skipped" nest inline;
+        `validate_destinations` and `suppress_moves_for_unfiled_attachments`
+        render under their own "## Not filed" headings and are deliberately
+        excluded, so the relation is subset, not equality."""
+        assert _INLINE_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_GUARDS)
+        assert _INLINE_WITHDRAWAL_GUARDS < set(WITHDRAWAL_GUARDS)
+
+    def test_drop_sources_keys_match_withdrawal_guards_exactly(self, monkeypatch, tmp_path):
+        """`drop_sources` (instruction-render.py, built inside `main`) must
+        cover every guard in `WITHDRAWAL_GUARDS` and no others — unlike
+        `_INLINE_WITHDRAWAL_GUARDS`'s subset, every one of the five guards'
+        drops must be attributable, so the relation is equality.
+        `main()` only returns 0 here (rather than raising) if
+        instruction-render.py's own `assert set(drop_sources) ==
+        set(WITHDRAWAL_GUARDS)` held — this test names that invariant
+        directly rather than leaving it implied by "nothing crashed"."""
+        actions = [dict(DAILY_ACTION), dict(WITHDRAWN_DELETE)]
+        _stub_pipeline(monkeypatch, tmp_path, actions, _client(note_exists=False))
+        assert _ir.main() == 0
+
+
 # ── 6-7. stderr ──────────────────────────────────────────────────────────
 
 
@@ -470,6 +501,80 @@ class TestMarkdownSkippedSection:
             "the withdrawal must not read as adjacent to an unrelated skip "
             "bullet that happens to share no id with it"
         )
+
+    def test_multi_cause_same_guard_withdrawal_renders_under_both_daily_bullets(self):
+        """Code-quality review Warning: a withdrawal whose `causes` name two
+        missing ids from the SAME guard — reachable today via
+        `_build_daily_update_actions`'s `ids_by_origin` accumulating one
+        origin's daily-action ids across two different missing daily notes
+        (`tomo/scripts/lib/render_actions.py`) — must nest under BOTH
+        matching skip bullets, not just `causes[0]`'s. A user whose note
+        survived because two daily notes were missing must see that fact at
+        both bullets. Positional, mirroring
+        `test_f2_ac4_daily_skip_and_delete_withdrawal_are_structurally_grouped`.
+        """
+        lines = render_instructions_md([], _md_metadata(
+            skipped_daily=[
+                {
+                    "id": "I05", "action": "update_log_entry",
+                    "daily_note_path": "Calendar/301 Daily/2026-09-17.md",
+                },
+                {
+                    "id": "I06", "action": "update_tracker",
+                    "daily_note_path": "Calendar/301 Daily/2026-09-18.md",
+                },
+            ],
+            delete_withdrawals=[{
+                "id": "D1", "action": "delete_source",
+                "source_path": "100 Inbox/Origin.md",
+                "reason": "Content fully captured in daily note.",
+                "causes": [
+                    {"missing_id": "I05", "guard": "filter_missing_daily_notes"},
+                    {"missing_id": "I06", "guard": "filter_missing_daily_notes"},
+                ],
+            }],
+        ), CFG).splitlines()
+
+        first_daily_idx = next(
+            i for i, line in enumerate(lines) if line.startswith("- `update_log_entry`")
+        )
+        second_daily_idx = next(
+            i for i, line in enumerate(lines) if line.startswith("- `update_tracker`")
+        )
+        withdrawal_idxs = [i for i, line in enumerate(lines) if "withdrawn: `D1`" in line]
+
+        assert len(withdrawal_idxs) == 2, (
+            "a withdrawal whose causes span two missing daily notes (same "
+            "guard) must appear at BOTH skip bullets, not just the first "
+            "cause's:\n" + "\n".join(lines)
+        )
+        assert first_daily_idx + 1 in withdrawal_idxs, (
+            "withdrawal must sit immediately under the FIRST daily bullet "
+            "sharing its missing id (I05):\n" + "\n".join(lines)
+        )
+        assert second_daily_idx + 1 in withdrawal_idxs, (
+            "withdrawal must sit immediately under the SECOND daily bullet "
+            "sharing its missing id (I06) — not shown only at the first:\n"
+            + "\n".join(lines)
+        )
+
+    def test_single_cause_withdrawal_still_renders_exactly_once(self):
+        """No-regression guard for the multi-cause fix above: a withdrawal
+        with exactly one cause must still render exactly once, not
+        duplicated by the same-missing-id dedup logic."""
+        md = render_instructions_md([], _md_metadata(
+            skipped_daily=[{
+                "id": "I05", "action": "update_log_entry",
+                "daily_note_path": "Calendar/301 Daily/2026-09-17.md",
+            }],
+            delete_withdrawals=[{
+                "id": "D1", "action": "delete_source",
+                "source_path": "100 Inbox/Origin.md",
+                "reason": "Content fully captured in daily note.",
+                "causes": [{"missing_id": "I05", "guard": "filter_missing_daily_notes"}],
+            }],
+        ), CFG)
+        assert md.count("withdrawn: `D1`") == 1
 
     def test_no_withdrawal_produces_no_withdrawal_subblock(self):
         """Regression guard: `delete_withdrawals` defaults to `[]`, so

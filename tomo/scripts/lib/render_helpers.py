@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -74,12 +74,21 @@ def resolve_sibling_path(
 
 
 # ── Withdrawal cause attribution (spec 036 T4.3) ─────────────────────────────
-# Lives here, not in render_actions.py or render_md.py: render_actions.py
-# already imports FROM render_md.py (`bare_stem`), so a join needed by both
-# instruction-render.py's stderr block and render_md.py's markdown section
-# cannot live in either without a cycle. This module is the one place in the
-# render_* graph documented as importable by all three (module docstring
-# above) — see docs/tomo/scripts/lib/render_helpers.md for the full ADR.
+# Grouped here as a cohesion choice, not because the DAG forces it for all
+# three functions: render_actions.py imports FROM render_md.py (`bare_stem`,
+# one-directional), and render_md.py imports nothing from render_actions.py.
+# The one real cycle constraint is narrower — `describe_withdrawal_cause` is
+# the only one of the three render_md.py itself calls (its markdown "##
+# Skipped" section), so it cannot live in render_actions.py: render_md.py
+# would then have to import it back from render_actions.py, completing the
+# cycle render_md -> render_actions -> render_md. `attribute_withdrawal_
+# causes` and `build_delete_withdrawal_reports` are consumed solely by
+# instruction-render.py, which already imports from both render_actions.py
+# and render_md.py without cycle risk, so either of them could equally live
+# in render_actions.py next to `withdraw_unjustified_deletes`. Keeping all
+# three together here is a cohesion choice — one module owns the whole
+# withdrawal-cause join — not an unavoidable one; see
+# docs/tomo/scripts/lib/render_helpers.md for the full rationale.
 
 WITHDRAWAL_GUARDS = (
     "validate_destinations",

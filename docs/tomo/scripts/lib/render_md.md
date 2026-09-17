@@ -274,14 +274,15 @@ exists to catch.
 (`filter_missing_daily_notes`, `filter_unappliable_relationships`,
 `filter_unresolvable_moc_links`) are the three guards whose OWN report
 already renders a bullet inside THIS heading. For those three,
-`_group_delete_withdrawals` buckets each withdrawal under its primary
-cause's `missing_id`, and the existing `skipped_daily` / `skipped_rel` /
-`unresolvable_links` loops print the withdrawal bullet immediately after the
-matching bullet — same visual block, one indent deeper, the same nested-bullet
-shape `destination_clashes`/`attachment_suppressions` already use for their
-own `dropped` sub-lists (`- `id`` under `- destination`). A separate list
-naming the same id would put a reader's eye two sections apart to confirm
-the connection this criterion asks to be immediate.
+`_group_delete_withdrawals` buckets each withdrawal under EVERY cause's
+`missing_id` that names one of these guards (not just the first cause — see
+below), and the existing `skipped_daily` / `skipped_rel` /
+`unresolvable_links` loops print the withdrawal bullet immediately after
+each matching bullet — same visual block, one indent deeper, the same
+nested-bullet shape `destination_clashes`/`attachment_suppressions` already
+use for their own `dropped` sub-lists (`- `id`` under `- destination`). A
+separate list naming the same id would put a reader's eye two sections apart
+to confirm the connection this criterion asks to be immediate.
 
 **WHY `validate_destinations` / `suppress_moves_for_unfiled_attachments`
 attributions, `unattributed`, and undeclared withdrawals fall to a catch-all
@@ -303,8 +304,14 @@ all for the catch-all block to sit under. F6-AC1 requires the withdrawal be
 reported; test 10's second half (`test_withdrawn_only_run_still_renders_
 skipped_heading`) pins this directly.
 
-**The one-guard-per-withdrawal assumption `_group_delete_withdrawals` makes**
-(reading only `causes[0]`) is documented at the join's own definition —
+**Every cause is joined, not just the first** — a withdrawal whose `depends_
+on` names ids from two different missing daily notes (reachable today via
+`ids_by_origin`'s multi-day accumulation in `render_actions.py`, not a
+future-only case) nests under both matching bullets, deduplicated per
+missing id. The full history of that correction — the code-quality review
+that reproduced the defect, and why `causes[0]`-only was wrong to begin with
+— is documented at the join's own definition,
 `docs/tomo/scripts/lib/render_helpers.md`, "`render_md.py`'s Adjacency
-Grouping Assumes One Withdrawal, One Guard" — since the assumption is a
-property of the DATA the join receives, not of this file's rendering choice.
+Grouping Joins on Every Cause, Not Just the First", since the data shape the
+join receives is a property of that module's contract, not of this file's
+rendering choice.

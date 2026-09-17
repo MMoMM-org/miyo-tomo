@@ -1,4 +1,4 @@
-# version: 0.19.0
+# version: 0.20.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -15,7 +15,12 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
-from lib.render_helpers import _moc_stem, _stem, describe_withdrawal_cause
+from lib.render_helpers import (
+    WITHDRAWAL_GUARDS,
+    _moc_stem,
+    _stem,
+    describe_withdrawal_cause,
+)
 from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
 
@@ -549,51 +554,80 @@ def _withdrawn_links_note(withholdings: list[dict]) -> str:
 
 # Guards whose own report already renders a bullet inside the "## Skipped —
 # un-appliable actions" heading (spec 036 T4.3, PRD F2-AC4). A withdrawal
-# whose primary cause names one of these nests directly under that guard's
-# own bullet instead of repeating in a separate list — the adjacency the
-# criterion asks for. `validate_destinations` and `suppress_moves_for_
-# unfiled_attachments` render under their OWN "## Not filed" headings, not
-# this one (see the two blocks above `render_instructions_md`'s section
-# loop), so a withdrawal attributed to either of those, or one that is
-# unattributed or never declared a dependency, falls to the catch-all block.
+# whose causes name one of these nests directly under that guard's own
+# bullet(s) instead of repeating in a separate list — the adjacency the
+# criterion asks for; a withdrawal may nest under more than one bullet when
+# its causes span more than one missing id (see `_group_delete_withdrawals`).
+# `validate_destinations` and `suppress_moves_for_unfiled_attachments` render
+# under their OWN "## Not filed" headings, not this one (see the two blocks
+# above `render_instructions_md`'s section loop), so a withdrawal attributed
+# entirely to either of those, or one that is unattributed or never declared
+# a dependency, falls to the catch-all block.
+#
+# A proper SUBSET of `WITHDRAWAL_GUARDS` (render_helpers.py, the documented
+# SSoT for the five guard names) — not all five render inline, only the
+# three whose own report already lives under THIS heading. Asserted, not
+# just commented, so a sixth guard added to `WITHDRAWAL_GUARDS` without a
+# decision about inline placement is caught here rather than silently
+# defaulting to the catch-all (code-quality review advisory, 2026-09-17:
+# nothing previously validated the four independent copies of this list
+# against each other).
 _INLINE_WITHDRAWAL_GUARDS = frozenset({
     "filter_missing_daily_notes",
     "filter_unappliable_relationships",
     "filter_unresolvable_moc_links",
 })
+assert _INLINE_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_GUARDS), (
+    "_INLINE_WITHDRAWAL_GUARDS names a guard absent from "
+    "render_helpers.WITHDRAWAL_GUARDS — keep the two lists in sync"
+)
 
 
 def _group_delete_withdrawals(
     delete_withdrawals: list[dict],
 ) -> tuple[dict[str, list[dict]], list[dict]]:
-    """Bucket withdrawals by the missing id of their PRIMARY cause.
+    """Bucket withdrawals by EVERY missing id their causes name.
 
-    A withdrawal's `causes` share one guard in practice: every
-    `_build_delete_source_actions` emission site names ids from exactly one
-    guard's action kind (SDD Complex Logic; site 2 names daily-action ids,
-    site 3 names move ids, site 4 names one insert id), so `causes[0]`
-    stands in for the whole withdrawal rather than being one of several
-    independent joins. Documented as the one assumption this function makes,
-    not verified per-call: a withdrawal whose causes actually span two
-    guards would render only at its first cause's location, not split
-    across two.
+    A withdrawal's `causes` are NOT guaranteed to share one guard-and-id:
+    `_build_daily_update_actions`'s `ids_by_origin`
+    (`tomo/scripts/lib/render_actions.py`) accumulates one origin's
+    daily-action ids across every day that origin touches, so one
+    `delete_source`'s `depends_on` can legitimately name two different
+    `update_tracker`/`update_log_entry` ids for two different missing daily
+    notes — the SAME guard (`filter_missing_daily_notes`), two different
+    `missing_id`s. That case is reachable today, not a future-only
+    possibility (code-quality review, code-review 2026-09-17): reading only
+    `causes[0]` would nest the withdrawal under one daily bullet and leave
+    the second bullet silent about it, exactly the F2-AC4 adjacency failure
+    this function exists to prevent. So every cause is joined, not just the
+    first — a withdrawal whose causes name ids at two inline-guard bullets
+    nests under both. A missing id repeated across two causes (unreachable
+    today per the "structurally disjoint" note on `WITHDRAWAL_GUARDS`, but
+    guarded regardless) contributes the withdrawal to that bucket once, not
+    twice.
 
     Returns `(by_missing_id, leftover)`: `by_missing_id` maps a missing id to
-    the withdrawals whose primary cause names it, for a guard rendered
-    inside "## Skipped" (`_INLINE_WITHDRAWAL_GUARDS`); `leftover` holds every
-    other withdrawal — attributed to `validate_destinations` or
-    `suppress_moves_for_unfiled_attachments` (rendered under a different
-    heading), `unattributed` (the T4.3 tripwire), or never declared at all.
+    the withdrawals that name it in any cause, for a guard rendered inside
+    "## Skipped" (`_INLINE_WITHDRAWAL_GUARDS`); `leftover` holds every
+    withdrawal with NO cause naming an inline-guard id — attributed entirely
+    to `validate_destinations` or `suppress_moves_for_unfiled_attachments`
+    (rendered under a different heading), `unattributed` (the T4.3
+    tripwire), or never declared at all.
     """
     by_missing_id: dict[str, list[dict]] = {}
     leftover: list[dict] = []
     for withdrawal in delete_withdrawals:
         causes = withdrawal.get("causes") or []
-        primary = causes[0] if causes else None
-        guard = primary.get("guard") if primary else None
-        missing_id = primary.get("missing_id") if primary else None
-        if guard in _INLINE_WITHDRAWAL_GUARDS and missing_id:
-            by_missing_id.setdefault(missing_id, []).append(withdrawal)
+        inline_missing_ids: list[str] = []
+        for cause in causes:
+            guard = cause.get("guard")
+            missing_id = cause.get("missing_id")
+            if guard in _INLINE_WITHDRAWAL_GUARDS and missing_id:
+                if missing_id not in inline_missing_ids:
+                    inline_missing_ids.append(missing_id)
+        if inline_missing_ids:
+            for missing_id in inline_missing_ids:
+                by_missing_id.setdefault(missing_id, []).append(withdrawal)
         else:
             leftover.append(withdrawal)
     return by_missing_id, leftover

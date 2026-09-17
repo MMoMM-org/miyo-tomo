@@ -10,19 +10,32 @@
 The module docstring already states the design goal: "no dependency on any
 other render module (keeps the module graph a DAG)." `render_actions.py`
 imports `bare_stem` from `render_md.py` (`from lib.render_md import
-bare_stem`), which means `render_md.py` cannot import anything from
-`render_actions.py` without completing a cycle. `render_helpers.py` imports
-from neither, and both of the others already import from it — it is the one
-place in the render_* graph that is safely importable by every sibling.
+bare_stem`) — one-directional; `render_md.py` imports nothing from
+`render_actions.py`. `render_helpers.py` imports from neither, and both of
+the others already import from it — it is the one place in the render_*
+graph that is safely importable by every sibling.
 
-That constraint is what put the spec 036 T4.3 withdrawal-cause join here
-instead of next to `withdraw_unjustified_deletes` in `render_actions.py`
-(where it conceptually reads more naturally, as the join over that
-function's own output): `instruction-render.py`'s stderr block and
-`render_md.py`'s markdown "## Skipped" section both need to format the same
-cause, and only this module can be imported by both without restructuring
-the render_actions/render_md relationship — a change out of scope for a
-reporting task.
+**Corrected 2026-09-17 (code-quality review):** an earlier version of this
+note claimed the withdrawal-cause join "cannot live in either"
+`render_actions.py` or `render_md.py`. That overstated the constraint. Only
+`describe_withdrawal_cause` is called directly by `render_md.py` itself
+(its markdown "## Skipped" section) — so ONLY that one function cannot live
+in `render_actions.py`: `render_md.py` would then have to import it back
+from `render_actions.py`, completing the cycle `render_md -> render_actions
+-> render_md`. `attribute_withdrawal_causes` and
+`build_delete_withdrawal_reports` are consumed solely by
+`instruction-render.py` (never called from inside `render_md.py` or
+`render_actions.py` themselves), and `instruction-render.py` already
+imports from both files without cycle risk — so either of those two could
+equally have lived in `render_actions.py`, next to
+`withdraw_unjustified_deletes`, where the join conceptually reads more
+naturally as the join over that function's own output.
+
+Grouping all three in `render_helpers.py` is therefore a **cohesion
+choice** — one module owns the whole withdrawal-cause join, so
+`instruction-render.py`'s stderr block and `render_md.py`'s markdown
+section format the same cause from the same place — not a placement the DAG
+left no other option for.
 
 ## `attribute_withdrawal_causes` Takes Pre-Normalised `drop_sources`, Not the Five Guards' Raw Reports
 
@@ -75,17 +88,51 @@ wins) exists for defensive determinism only — there is no reachable input
 that exercises the "second guard" branch, and no test asserts one (see
 `tests/test_036_t4_3_withdrawal_reporting.py`'s "NOT a test" comment).
 
-## `render_md.py`'s Adjacency Grouping Assumes One Withdrawal, One Guard
+## `render_md.py`'s Adjacency Grouping Joins on Every Cause, Not Just the First
 
-`render_md.py._group_delete_withdrawals` (PRD F2-AC4) reads only
-`causes[0]` — the first cause — to decide where a withdrawal nests. This is
-sound only because every `_build_delete_source_actions` emission site names
-ids from exactly ONE guard's action kind (SDD "Complex Logic": site 2 names
-only daily-action ids, site 3 names only move ids, site 4 names exactly one
-insert id), so a withdrawal's `causes` share one guard in every reachable
-case today. If a future emission site ever declared `depends_on` mixing ids
-from two different guards' action kinds on one delete, that withdrawal would
-render only at its first cause's location, not split across two — a
-narrowing this module accepts explicitly rather than leaves implicit; see
+`render_md.py._group_delete_withdrawals` (PRD F2-AC4) originally read only
+`causes[0]` — the first cause — to decide where a withdrawal nests, on the
+claimed grounds that a withdrawal's `causes` always share one guard. That
+claim was wrong: `_build_daily_update_actions`'s `ids_by_origin`
+(`tomo/scripts/lib/render_actions.py`) accumulates one origin's
+daily-action ids across every day that origin touches, so a single
+`delete_source`'s `depends_on` can legitimately name two different
+`update_tracker`/`update_log_entry` ids for two different missing daily
+notes — the SAME guard (`filter_missing_daily_notes`), two different
+`missing_id`s. That case is reachable through the code shipped today, not
+merely a hypothetical future emission site mixing two guards' ids — a
+code-quality review (2026-09-17) reproduced it: a delete withdrawn because
+two daily notes were both missing rendered nested under only the first
+daily bullet, leaving the second silent about it, exactly the F2-AC4
+adjacency failure this task exists to prevent. `_group_delete_withdrawals`
+now joins on EVERY cause naming an inline-guard id, nesting the withdrawal
+under every matching bullet (deduplicated per missing id, so a cause
+repeating an id already seen does not double-render); see
 `docs/tomo/scripts/lib/render_md.md` for the rendering-side half of this
 decision.
+
+## `WITHDRAWAL_GUARDS` Is Now Validated at Its Three Duplicate Sites, Not Just Documented
+
+`WITHDRAWAL_GUARDS` reads as the single source of truth for the five guard
+names — the "unattributed" tripwire above points readers at it — but until
+2026-09-17 nothing actually imported or checked against it. The same five
+names were independently duplicated three times: `drop_sources`' dict keys
+(`instruction-render.py`), `_INLINE_WITHDRAWAL_GUARDS` (`render_md.py`), and
+`ALL_GUARDS` (`tests/test_036_t4_3_withdrawal_reporting.py`). A sixth guard
+added to one copy without updating the other two was caught by nothing
+(code-quality review advisory). Fixed by making all three import
+`WITHDRAWAL_GUARDS` and validate against it:
+
+- `tests/test_036_t4_3_withdrawal_reporting.py`'s `ALL_GUARDS` is now
+  `WITHDRAWAL_GUARDS` itself (an alias, not a re-typed copy) — equality by
+  construction.
+- `render_md.py` asserts `_INLINE_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_
+  GUARDS)` at module load — a SUBSET relation, deliberately, not equality:
+  only the three guards whose own report already renders inside "## Skipped"
+  belong here; `validate_destinations` and `suppress_moves_for_unfiled_
+  attachments` render under their own "## Not filed" headings and are
+  correctly absent.
+- `instruction-render.py` asserts `set(drop_sources) == set(WITHDRAWAL_
+  GUARDS)` right after building the dict — equality, not subset: every one
+  of the five guards' drops must be attributable to a report, so none may be
+  missing and none extra.

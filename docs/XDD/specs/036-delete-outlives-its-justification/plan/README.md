@@ -387,6 +387,59 @@ When implementation requires changes from the specification:
   Recorded now because the diff is evidence with a shelf life: it is true of `3da9654` and must be
   re-run immediately before the handoff actually goes out.
 
+- **2026-09-17 - T4.3's task text names two report surfaces; the SDD mandates three.** The task says
+  withdrawals are reported "in both the stderr summary and the rendered markdown", reflecting the
+  Quality Requirements paragraph. But **System-Wide Patterns -> Logging / Auditing**
+  (`solution.md:575-576`) is separately normative and explicit: withdrawals are reported on stderr
+  "**and into the `tomo` block of `instructions.json`** alongside the existing clash and suppression
+  reports", with the Runtime View (`:476`) agreeing. Implemented across all three. The `tomo` block
+  carries no `additionalProperties: false`, so the new key needed no schema-version bump.
+  **The key is named `delete_withdrawals`, not `withdrawn_deletes`** - that name is already taken, as
+  a key nested inside `destination_clashes[]`/`attachment_suppressions[]` holding *paths*, read by
+  `instructions-diff.py` at `:848`/`:1107`/`:1121`. A top-level key of the same name holding records
+  would be one name with two meanings at two levels, which is precisely what T2.2 declined for
+  `source_inbox_item`.
+
+- **2026-09-17 - T4.3 shipped a live F2-AC4 defect that 21 tests and a passing spec-compliance review
+  both missed; code quality found it by construction.** The implementation read only `causes[0]` when
+  deciding where to nest a withdrawal, and its docstring - repeated into two `docs/tomo/` files, and
+  relayed onward by the orchestrator - justified this as safe because a multi-cause withdrawal could
+  only arise "if a future emission site mixed ids from two different guards' action kinds".
+  **That framing was wrong and the case is reachable today.** `_build_daily_update_actions`'
+  `ids_by_origin` accumulates daily-action ids for one origin **across multiple distinct days**, so a
+  single `delete_source` can name two ids for two missing daily notes - same guard, two
+  `missing_id`s, two skip bullets. Reproduced: the withdrawal nested under the first daily bullet
+  only, and the second rendered with no sign that a delete had been withdrawn because of it too.
+  That is exactly the adjacency failure F2-AC4 exists to prevent, and no test exercised
+  `len(causes) > 1`.
+  Corrected in `fe9fc32`: nest under every cause's matching bullet, deduped per missing id, with a
+  positional RED-then-GREEN test (`assert 1 == 2` before) and a no-duplication guard. The false
+  framing was corrected in the docstring and both docs files, naming `ids_by_origin`'s multi-day
+  accumulation as the real trigger.
+  **Two process notes.** First, this is the fourth defect this spec has shipped past a green suite
+  and found only by a reviewer reading code. Second, spec compliance explicitly deferred this to the
+  orchestrator as a judgment call rather than a compliance failure - correct by its own remit, but it
+  means "PASS" from that stage never implied the code was right, only that it matched the task text.
+
+- **2026-09-17 - T4.3 found a real pre-existing gap in `instructions-diff.py`, logged rather than
+  fixed.** Checking the paired consumer (this repo has previously lost a pass to a producer/consumer
+  coverage mismatch) turned up that `derive_expected`'s daily-only and tag-handler
+  `expected_deletions` are built from the suggestions document alone, and nothing subtracts a
+  daily- or tag-handler-caused withdrawal the way `_subtract_withheld_moves` already does for the two
+  guards the nested `withdrawn_deletes` covers. A live daily-note-missing or unresolvable-group run
+  can therefore show a **false coverage-audit FAIL**. Outside T4.3's four success criteria, which are
+  all about the three report surfaces, so it went to `docs/XDD/backlog.md` and
+  `docs/tomo/scripts/instruction-render.md` rather than being fixed in scope.
+
+- **2026-09-17 - `wire-shape.py --obligations` does not answer T4.5's question.** Recorded before it
+  traps someone: `--obligations` reports drift against the **committed manifest**, so once T4.1
+  regenerated `instructions.shape.json` it prints "no shape drift against any committed manifest".
+  T4.5 needs "what must Hashi vendor" - a comparison against **their** vendored copy - which is a
+  different question. An implementer reaching for `--obligations` to build the obligation table would
+  get silence and reasonably conclude there is nothing to hand off, while Hashi's schema still sits at
+  `"2"` with no `depends_on`. The obligation table must come from a structural diff against
+  `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering

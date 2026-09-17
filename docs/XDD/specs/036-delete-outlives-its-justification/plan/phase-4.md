@@ -39,7 +39,22 @@ phase: 4
 
 Makes the contract real, proves the producer invariant, and validates the whole thing end to end.
 
-- [ ] **T4.1 The wire contract** `[activity: data-architecture]`
+- [x] **T4.1 The wire contract** `[activity: data-architecture]`
+
+  Landed `e1fd0e3`. **Half of step 3 was already done** — `depends_on` went into both schemas
+  during Phase 1 — so only the `"2" -> "3"` bump remained. The ordering gate was overridden by
+  the owner (see Deviations): T4.1 ran FIRST, not after T4.5.
+  The real work was the file split. `"schema_version": "2"` appears in 27 tracked files across
+  **three independent wires**; only the instruction wire moves. A pattern sweep is what cost the
+  first attempt 16 failures across eight specs. Two files mislead by name —
+  `test_garden_audit_hashi_example.py` validates against `hashi-instructions.schema.json`, and
+  `test-resolve-section-names.py` gives no hint it touches schemas at all. Both were in the
+  MUST-CHANGE set. Two others carry three different wire versions in one file.
+  **A required step appears in none of the plan's seven items**: `shapes/instructions.shape.json`
+  is a generated manifest, and `tests/test_035_wire_gate.py` fails if a `const` moves without
+  `scripts/wire-shape.py --regenerate`. Code quality later ran `--check` (not `--regenerate`) to
+  prove the committed manifest is what the tool produces, unmassaged.
+
 
   **SEQUENCING GATE — T4.5's handoff goes out and Hashi vendors BEFORE this task lands.**
 
@@ -90,7 +105,19 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] The producer copy and the contract copy agree `[ref: SDD/Cross-Component Boundaries]`
      - [ ] The upstream drift test passes without an exemption entry `[ref: SDD/CON-2]`
 
-- [ ] **T4.2 The dangling-id audit** `[activity: backend-api]`
+- [x] **T4.2 The dangling-id audit** `[activity: backend-api]`
+
+  Landed `a62032d`, docs at `e35d4ea`. `assert_no_dangling_dependencies` sits between the
+  withdrawal pass and the write, aborting exit 2 and writing nothing.
+  **Both of its failure modes are unreachable through the real pipeline** — the withdrawal pass
+  removes every delete it would catch, missing-key ones included since the fail-closed
+  correction. ADR-6 says as much. So a pipeline test asserting "no violations" is a tautology
+  that passes whether or not the audit exists, and the test construction was the whole task.
+  The two abort tests patch `_ir.withdraw_unjustified_deletes` — the binding in
+  `instruction-render`'s own namespace, never `lib.render_actions`' — and each carries an
+  **unpatched control run** asserting exit 0 and a written file. Without it, a patch bound to
+  the wrong namespace leaves both runs identical and the test passes proving nothing.
+
 
   1. Prime: read `_validate_action_paths`' abort shape — this audit matches it `[ref: SDD/Error Handling]`.
   2. Test: a set in which every named id is present passes with an empty violation list; a set with
@@ -106,7 +133,16 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] A violation aborts with exit 2 and writes nothing `[ref: SDD/Error Handling Criteria]`
      - [ ] A missing field aborts identically to a dangling id `[ref: SDD/Error Handling Criteria]`
 
-- [ ] **T4.3 Report withdrawals where the user reads them** `[activity: frontend-ui]`
+- [x] **T4.3 Report withdrawals where the user reads them** `[activity: frontend-ui]`
+
+  Landed `9dddceb`, corrected `fe9fc32`. **Three surfaces, not the two the task text names** —
+  the SDD's System-Wide Patterns also mandates the `tomo` block of `instructions.json`.
+  Key named `delete_withdrawals`, deliberately NOT `withdrawn_deletes`: that name is already
+  taken as a nested key holding paths, read by `instructions-diff.py`, and one key with two
+  meanings is the antipattern T2.2 already declined once.
+  **Code quality FAILED the first cut on a live defect** the 21 tests missed and spec compliance
+  passed over — see Deviations. Corrected to nest a withdrawal under every cause's bullet.
+
 
   1. Prime: read how existing guards report — stderr summary plus the `tomo` block — and how
      `render_md.py` surfaces the skipped-actions section `[ref: SDD/Quality Requirements]`.

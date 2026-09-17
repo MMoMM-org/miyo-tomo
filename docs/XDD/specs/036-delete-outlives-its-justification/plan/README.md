@@ -273,6 +273,45 @@ When implementation requires changes from the specification:
   "must not need editing" instruction, rather than leaving the suite red or reverting the settled
   ADR-4 retirement. Flagged in the T2.3 completion report for the owner to confirm.
 
+- **2026-09-17 - T3.2's step 3a names one early return; there are two, and it names the wrong one.**
+  Found by reading the target before dispatch, not by the suite. Step 3a says *"set
+  `guard = "target_unresolved"` before the early return"*, and the task's own prose describes the
+  null-target `continue` inside the loop. But `annotate_tag_handler_group_guards` has a **second**
+  early return above it - `if client is None: return tally` - which returns *before the `for` loop
+  exists*. The TDD guardian confirmed against the source that this makes the literal instruction
+  unimplementable at any placement: the loop body is unreachable whenever there is no client, so a
+  guard set inside it could never fire on an offline / `--no-kado` run, and PRD/F4-AC1 would have
+  held only when Kado happened to be reachable.
+  **Ruling**: a null `target_path` is local data already present on the group, not something a Kado
+  read determines, so it is **not a fail-open case at all** - the surrounding fail-open philosophy
+  ("never block when marker presence cannot be determined") does not apply where nothing is
+  indeterminate. The null-target annotation therefore runs in its own pass **above** the client
+  check, unconditionally, while every Kado-dependent branch keeps its fail-open behaviour unchanged.
+  `test_guard_null_target_sets_target_unresolved_no_client` is the named tripwire: it fails both
+  against the pre-fix code and against the naive in-loop implementation.
+
+- **2026-09-17 - T3.2's test list, as written in the plan, would have shipped a defect and broken a
+  correct implementation.** The TDD guardian BLOCKed it; four corrections, two load-bearing.
+  (1) The plan's *"the reason is visible in the group"* is satisfied just as well by the
+  `target_missing` message the task **explicitly forbids reusing** - an implementer taking that
+  shortcut would have passed it. Strengthened to assert the block does **not** contain
+  `"is not in the vault"` nor the empty-link artifact `[[]]`.
+  (2) Step 3c grows the tally dict to four keys, but `test_guard_fail_open_none_client` asserts tally
+  **equality** - so a *correct* implementation turns it red. The plan said existing reducer tests
+  pass unchanged; that one cannot. Updated to carry `"target_unresolved": 0`.
+  (3) The task text itself flags that the fallback branch runs before the Approve append, yet the
+  plan's test list had no null-target-**plus**-`fallback` case forcing the new branch to `return`
+  first. Added.
+  (4) The byte-identical healthy-case check only guards anything if the expected value is a **frozen
+  string literal**; recomputing it at test time compares the new output against itself and passes
+  even against blanket suppression. Spec compliance verified `_FROZEN_HEALTHY_BLOCK` is a real
+  module-level constant, and code quality verified it actually contains `- [x] Approve` - without
+  that second check it would have been a no-op guard on a block that never had an Approve box.
+  Also confirmed before dispatch, closing the guardian's parting assumption: `guard` is typed by **no**
+  schema (the `marker_missing` enum in `tag-handler-group.schema.json` belongs to `fallback.reason`,
+  a different field sharing the literal), no runtime skill reads it, and a repo-wide scan of the
+  Hashi checkout finds no reference. The closed-set risk is real but has no consumer.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering

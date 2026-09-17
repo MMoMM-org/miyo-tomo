@@ -71,6 +71,11 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
 
 - [x] **T3.2 An unresolvable group is not pre-approved** `[parallel: true]` `[activity: frontend-ui]`
 
+  Landed `4d1f329`. `suggestions-reducer.py` `1.46.1` -> `1.47.0`. Seven new tests, two inverted in
+  place. The plan's step 3a is **unimplementable as written** — see Deviations: there are two early
+  returns, not one, and the `client is None` return skips the loop entirely, so no placement inside
+  the loop could have worked.
+
   `annotate_tag_handler_group_guards` returns early on a null target **before** it can set a guard,
   so the guards that would suppress the Approve control are never set and the control renders
   pre-checked — on a group whose own target line reads "(unresolved — check handler config)".
@@ -100,9 +105,9 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
   4. Validate: unit tests pass, including a new third case in
      `tests/test_tag_handler_group_guards.py`; ruff clean; existing reducer tests unchanged.
   5. Success:
-     - [ ] An unresolvable group carries a guard and is not pre-selected `[ref: PRD/F4-AC1]`
-     - [ ] A healthy group renders unchanged `[ref: PRD/F4-AC2]`
-     - [ ] The reason is visible in the group `[ref: PRD/F4-AC3]`
+     - [x] An unresolvable group carries a guard and is not pre-selected `[ref: PRD/F4-AC1]`
+     - [x] A healthy group renders unchanged `[ref: PRD/F4-AC2]`
+     - [x] The reason is visible in the group `[ref: PRD/F4-AC3]`
 
   **Pairing note**: the healthy-case criterion is not padding. Blanket-suppressing the control would
   pass the first criterion and fail the second, and that is the only thing separating this fix from

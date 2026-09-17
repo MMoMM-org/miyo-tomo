@@ -1297,3 +1297,50 @@ same step `instruction-render.py` already takes in production. None of the
 assertions changed shape — "this delete is gone" is still asserted — only the
 setup was completed to match the two-step pipeline these tests now run
 against.
+
+### `assert_no_dangling_dependencies` Is a Tripwire, Not a Live Filter (T4.2, ADR-6)
+
+`withdraw_unjustified_deletes` (T2.1/T2.3, above) already withdraws every
+`delete_source` this audit would catch — both a missing/`None` `depends_on`
+and one naming an id absent from the surviving set. So on every real run
+`assert_no_dangling_dependencies` returns `[]`, and that is the expected
+state, not a sign it is dead code: ADR-6 records that "under ADR-1 the audit
+should be vacuous, so a violation means an unknown-shaped bug" upstream of
+it, not in it.
+
+**Why it exists anyway, given the filter already covers the same ground.** A
+set whose delete semantics cannot be trusted is worse than no set at all, so
+a violation aborts the run with exit 2 and writes nothing — matching
+`_validate_action_paths`' own abort shape. The executor deletes via
+`vault.trash`; where the user has configured permanent deletion, a wrong
+delete is unrecoverable, and that asymmetry is what justifies a second,
+independent check over trusting the filter to have worked.
+
+**Why it is `delete_source`-scoped**, even though PRD F5-AC4 reads
+generically ("every id in every `depends_on`"): Feature 5's title and all its
+ACs are delete-scoped, as is the SDD's Error Handling Criteria. The separate
+record that Hashi "will read the field on any action kind" describes
+*their* consumption policy, not our producer-side audit scope — no builder
+populates `depends_on` on any other action kind today.
+
+**Why self-reference and cycles are NOT checked** — a deliberate non-goal.
+The audit tests existence only, not semantic well-formedness.
+
+**Why `depends_on: []` is never a violation** while a missing key is: `[]`
+is a positive assertion ("nothing conditions this delete"), and conflating
+the two is exactly the fail-open the owner decision closed on 2026-09-17
+(`withdraw_unjustified_deletes Fails Closed on an Absent Declaration`,
+above). The audit mirrors that same missing-vs-empty-list distinction.
+
+**Why the two failure modes are untestable through the real pipeline, and
+how the tests work instead.** `assert_no_dangling_dependencies` cannot see
+a dangling id or a missing `depends_on` in a live run, because
+`withdraw_unjustified_deletes` has already removed it upstream. The tests
+therefore patch `_ir.withdraw_unjustified_deletes` — the binding in
+`instruction-render`'s own namespace, never `lib.render_actions`'s — to
+make the offending delete survive to the audit. Each abort test carries an
+**unpatched control run** asserting exit 0 and a written file: if a refactor
+ever changes the import shape, the patch silently stops intercepting, and
+without the control the test would quietly revert to a tautology (asserting
+exit 2 against a fixture that was never going to trigger it) instead of
+failing loudly.

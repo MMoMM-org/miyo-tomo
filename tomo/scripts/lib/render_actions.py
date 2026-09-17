@@ -1,4 +1,4 @@
-# version: 0.26.0
+# version: 0.26.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -471,10 +471,6 @@ def assert_no_dangling_dependencies(actions: list[dict]) -> list[str]:
 
     Existence only — not well-formedness. A `depends_on` naming its own
     delete's id, or forming a cycle, is not checked (deliberate non-goal).
-
-    Nothing between here and the JSON write removes an action —
-    `_validate_action_paths` only checks path shape — so an id confirmed
-    present here stays present when `instructions.json` is written.
 
     Returns a list of violation messages (one per offending `delete_source`;
     empty means the invariant holds), each self-contained like

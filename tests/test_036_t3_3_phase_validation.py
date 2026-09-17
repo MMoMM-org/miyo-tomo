@@ -310,7 +310,10 @@ def test_d_parser_yields_healthy_withholds_unresolved():
         f"a resolvable-target group must not be hard-guarded; got "
         f"guard={healthy.get('guard')!r}"
     )
-    assert unresolved["guard"] == "target_unresolved"
+    assert unresolved["guard"] == "target_unresolved", (
+        f"expected guard='target_unresolved' for a null target_path; got "
+        f"{unresolved.get('guard')!r}"
+    )
 
     rendered = render_tag_handler_updates_block([healthy, unresolved])
     approved_ids = parse_tag_handler_groups(rendered)
@@ -334,7 +337,10 @@ def test_e_positive_control_healthy_group_emits_insert_and_deletes():
     )
     rendered = render_tag_handler_updates_block([g])
     approved_ids = parse_tag_handler_groups(rendered)
-    assert approved_ids == [group_id(g)]
+    assert approved_ids == [group_id(g)], (
+        f"expected only the healthy group's id {group_id(g)!r} to be "
+        f"approved; got {approved_ids}"
+    )
 
     actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG, kado_client=None,
@@ -347,8 +353,16 @@ def test_e_positive_control_healthy_group_emits_insert_and_deletes():
     assert len(deletes) == 2, (
         f"expected exactly one delete_source per source_path (2); got {deletes}"
     )
-    assert deletes[0]["depends_on"] == [inserts[0]["id"]]
-    assert deletes[1]["depends_on"] == [inserts[0]["id"]]
+    assert deletes[0]["depends_on"] == [inserts[0]["id"]], (
+        f"each delete_source must declare the insert it depends on; expected "
+        f"depends_on=[{inserts[0]['id']!r}], got deletes[0].depends_on="
+        f"{deletes[0].get('depends_on')!r}"
+    )
+    assert deletes[1]["depends_on"] == [inserts[0]["id"]], (
+        f"each delete_source must declare the insert it depends on; expected "
+        f"depends_on=[{inserts[0]['id']!r}], got deletes[1].depends_on="
+        f"{deletes[1].get('depends_on')!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

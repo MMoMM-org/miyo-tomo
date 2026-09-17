@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.55.0
+# version: 0.56.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -62,6 +62,7 @@ from lib.render_actions import (  # noqa: E402,F401
     _marker_to_anchor_value,
     _validate_action_paths,
     _wikilink,
+    assert_no_dangling_dependencies,
     build_actions,
     build_garden_audit_actions,
     contested_note_names,
@@ -774,6 +775,24 @@ def main() -> int:
             file=sys.stderr,
         )
         for v in path_violations:
+            print(f"  • {v}", file=sys.stderr)
+        return 2
+
+    # ── Dangling-dependency audit (spec 036 T4.2, PRD F5-AC4) ────────────
+    # Producer-side tripwire, not a live filter: withdraw_unjustified_deletes
+    # (above) already withdraws every delete_source this would catch, so a
+    # violation here means an unknown-shaped bug upstream (ADR-6). Runs after
+    # every drop site (including _validate_action_paths, which only checks
+    # path shape and removes nothing) and before any write, matching
+    # _validate_action_paths' own abort shape.
+    dangling_violations = assert_no_dangling_dependencies(actions)
+    if dangling_violations:
+        print(
+            "instruction-render: aborting — dangling delete_source "
+            f"dependencies ({len(dangling_violations)}):",
+            file=sys.stderr,
+        )
+        for v in dangling_violations:
             print(f"  • {v}", file=sys.stderr)
         return 2
 

@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
 
 Covers the producer-side hygiene that makes a Tomo instruction set appliable by
@@ -34,6 +34,7 @@ import json
 import sys
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -52,6 +53,8 @@ _ir = importlib.util.module_from_spec(_ir_spec)
 assert _ir_spec.loader is not None
 sys.modules["instruction_render"] = _ir
 _ir_spec.loader.exec_module(_ir)
+
+from lib.render_actions import assert_no_dangling_dependencies  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
@@ -384,3 +387,206 @@ class TestFitConfidenceTelemetry:
         assert link["fit_confidence"] == 0.9
         # anchor no-leak: the wire anchor stays {type, value}
         assert set(link["anchor"].keys()) == {"type", "value"}
+
+
+# ── T4.2 — the dangling-id audit (spec 036 Phase 4, PRD F5-AC4) ─────────────
+#
+# Producer-side tripwire matching `_validate_action_paths`' abort shape: every
+# id a `delete_source` names in `depends_on` must exist in the same action
+# set. Scoped to `delete_source` only (settled ruling 1). Both failure modes
+# this audits are UNREACHABLE through the real pipeline — `withdraw_unjustified_
+# deletes` already withdraws a delete whose justification did not survive —
+# so a violation here means an unknown-shaped bug (ADR-6), and the test
+# construction below (a patched pipeline that lets a dangling delete through,
+# PLUS a control run proving the patch target is live) is the whole task.
+
+
+def _delete_action(**over) -> dict:
+    base = {
+        "id": "D01",
+        "action": "delete_source",
+        "source_path": "100 Inbox/note.md",
+        "reason": "moved",
+        "depends_on": ["M01"],
+        "applied": False,
+    }
+    base.update(over)
+    return base
+
+
+class TestAssertNoDanglingDependencies:
+    """Unit coverage — calls the audit directly on hand-built action sets."""
+
+    def test_every_named_id_present_is_vacuous(self):
+        actions = [
+            _delete_action(id="D01", depends_on=["M01"]),
+            {"id": "M01", "action": "move_note", "destination": "x"},
+        ]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_one_dangling_id_produces_one_violation_naming_both_ids(self):
+        actions = [_delete_action(id="D01", depends_on=["GHOST01"])]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 1
+        assert "D01" in violations[0]
+        assert "GHOST01" in violations[0]
+
+    def test_missing_depends_on_key_is_a_violation_distinct_from_dangling_id(self):
+        """No `depends_on` key at all is a fault of equal severity to a
+        dangling id, but a different fault — the wording must not collide."""
+        action = _delete_action(id="D02")
+        del action["depends_on"]
+        violations = assert_no_dangling_dependencies([action])
+        assert len(violations) == 1
+        assert "D02" in violations[0]
+        assert "missing" in violations[0]
+        assert "unknown id" not in violations[0]
+
+    def test_empty_depends_on_list_is_not_a_violation(self):
+        """`depends_on: []` is a positive assertion ("nothing conditions this
+        delete") — never conflated with the missing-key case."""
+        actions = [_delete_action(id="D03", depends_on=[])]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_multiple_offending_deletes_all_reported(self):
+        actions = [
+            _delete_action(id="D04", depends_on=["GHOST04"]),
+            _delete_action(id="D05", depends_on=["GHOST05"]),
+        ]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 2
+        joined = "\n".join(violations)
+        assert "D04" in joined and "GHOST04" in joined
+        assert "D05" in joined and "GHOST05" in joined
+
+    def test_non_delete_action_with_dangling_depends_on_is_out_of_scope(self):
+        """The audit is delete_source-scoped (settled ruling 1) — an
+        add_relationship's own (irrelevant) depends_on is never checked."""
+        actions = [{
+            "id": "R01", "action": "add_relationship", "depends_on": ["GHOST06"],
+        }]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_delete_naming_its_own_id_is_not_a_violation(self):
+        """Existence only, not well-formedness — a self-referencing depends_on
+        is a semantic oddity this audit deliberately does not flag (settled
+        ruling 2: no cycle/well-formedness check)."""
+        actions = [_delete_action(id="D06", depends_on=["D06"])]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_duplicate_missing_id_in_one_depends_on_yields_one_violation(self):
+        actions = [_delete_action(id="D07", depends_on=["GHOST07", "GHOST07"])]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 1
+        assert "GHOST07" in violations[0]
+
+
+def _dangling_audit_suggestions() -> dict:
+    # daily_updates non-empty only to clear main()'s "nothing to do" early
+    # return (instruction-render.py ~line 322) — content is never read,
+    # build_actions is stubbed below and ignores it.
+    return {"confirmed_items": [], "daily_updates": [{"id": "dummy"}], "skipped": []}
+
+
+def _stub_dangling_audit_pipeline(monkeypatch, base_dir: Path, fixture_actions: list[dict]) -> Path:
+    """Stub every dependency so main() exercises only the T4.2 audit + write path.
+
+    Mirrors the `_stub_pipeline` pattern in
+    test_instruction_render_rendered_note_stamp.py: confirmed_items stays
+    empty so no KadoClient connection is attempted, and build_actions is
+    replaced outright so *fixture_actions* reaches withdraw_unjustified_deletes
+    (real or patched, per the calling test) unchanged — every filter pass
+    between build_actions and withdraw_unjustified_deletes is kind-scoped
+    (move_note/create_moc destinations, link_to_moc, daily-note, add_relationship)
+    and passes delete_source/move_note actions through untouched.
+    """
+    base_dir.mkdir(parents=True, exist_ok=True)
+    suggestions_file = base_dir / "suggestions.json"
+    suggestions_file.write_text(json.dumps(_dangling_audit_suggestions()), encoding="utf-8")
+    cfg_file = base_dir / "vault-config.yaml"
+    cfg_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        _ir, "load_config",
+        lambda _path: {
+            "concepts.inbox": "100 Inbox",
+            "profile": "miyo",
+            "callouts.editable": ["NOTE", "IDEAS"],
+        },
+    )
+    monkeypatch.setattr(_ir, "KadoClient", lambda: MagicMock())
+    monkeypatch.setattr(_ir, "build_actions", lambda *_a, **_kw: (fixture_actions, []))
+    monkeypatch.setattr(_ir, "resolve_target_moc_paths", lambda _actions, _client: 0)
+    monkeypatch.setattr(_ir, "resolve_section_names", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(_ir, "_validate_action_paths", lambda _actions: [])
+    monkeypatch.setattr(_ir, "render_instructions_md", lambda *_a, **_kw: "")
+    monkeypatch.setattr(_ir, "backfill_supporting_items_parents", lambda _items: None)
+
+    out_dir = base_dir / "out"
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "instruction-render.py",
+            "--suggestions", str(suggestions_file),
+            "--output-dir", str(out_dir),
+            "--config", str(cfg_file),
+        ],
+    )
+    return out_dir
+
+
+class TestAssertNoDanglingDependenciesIntegration:
+    """At the `_ir` module seam (`main()`).
+
+    `_ir.withdraw_unjustified_deletes` is the live binding — instruction-
+    render.py does `from lib.render_actions import (..., withdraw_unjustified_
+    deletes)`, so the caller re-resolves the name in ITS OWN module namespace,
+    never `lib.render_actions`'s (settled ruling 4). Patching the latter would
+    silently no-op.
+    """
+
+    def test_dangling_id_aborts_exit_2_no_file_with_unpatched_control(self, monkeypatch, tmp_path):
+        actions = [_delete_action(id="D_INT01", depends_on=["GHOST_INT01"])]
+
+        # Control FIRST, completely unpatched: withdraw_unjustified_deletes
+        # withdraws the dangling delete_source before the audit ever sees it
+        # (this failure mode is unreachable through the real pipeline —
+        # settled ruling 3), so this run must succeed. If it didn't, the
+        # patched assertion below would prove nothing about the patch target
+        # being live rather than about something else in the stub.
+        control_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "control", actions)
+        assert _ir.main() == 0
+        assert (control_out / "instructions.json").exists()
+
+        # Patched: withdraw_unjustified_deletes replaced with a pass-through,
+        # so the dangling delete_source survives to reach the new audit.
+        patched_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "patched", actions)
+        monkeypatch.setattr(_ir, "withdraw_unjustified_deletes", lambda a: (a, []))
+        assert _ir.main() == 2
+        assert not (patched_out / "instructions.json").exists()
+
+    def test_missing_depends_on_key_aborts_exit_2_no_file_with_unpatched_control(self, monkeypatch, tmp_path):
+        action = _delete_action(id="D_INT02")
+        del action["depends_on"]
+
+        control_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "control", [action])
+        assert _ir.main() == 0
+        assert (control_out / "instructions.json").exists()
+
+        patched_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "patched", [action])
+        monkeypatch.setattr(_ir, "withdraw_unjustified_deletes", lambda a: (a, []))
+        assert _ir.main() == 2
+        assert not (patched_out / "instructions.json").exists()
+
+    def test_healthy_run_through_real_unpatched_pipeline_exits_0_and_writes_file(self, monkeypatch, tmp_path):
+        actions = [
+            _delete_action(id="D_INT03", depends_on=["M_INT03"]),
+            {
+                "id": "M_INT03", "action": "move_note", "destination": "200 Notes/x.md",
+                "source_path": "100 Inbox/x.md", "applied": False,
+            },
+        ]
+        out_dir = _stub_dangling_audit_pipeline(monkeypatch, tmp_path, actions)
+
+        assert _ir.main() == 0
+        assert (out_dir / "instructions.json").exists()

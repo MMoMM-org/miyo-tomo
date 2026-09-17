@@ -1,4 +1,4 @@
-# version: 0.25.1
+# version: 0.26.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -447,6 +447,58 @@ def _validate_action_paths(actions: list[dict]) -> list[str]:
                 violations.append(
                     f"{action_id} ({kind}): '{field}'={value!r} — {err}"
                 )
+    return violations
+
+
+def assert_no_dangling_dependencies(actions: list[dict]) -> list[str]:
+    """Audit that every id a `delete_source` names in `depends_on` exists in
+    this same action set (spec 036 Feature 5, PRD F5-AC4).
+
+    Producer-side tripwire, not a live filter: under ADR-1,
+    `withdraw_unjustified_deletes` already withdraws any `delete_source` whose
+    `depends_on` is missing/``None`` or names an id absent from the surviving
+    set (SDD Error Handling Criteria), so this audit is expected to be vacuous
+    on every real run — a violation here means an unknown-shaped bug upstream
+    (ADR-6), and the caller is expected to abort rather than ship.
+
+    Scoped to `delete_source` ONLY (Feature 5 and its ACs are delete-scoped;
+    no builder populates `depends_on` on any other action kind today). A
+    missing `depends_on` key (or an explicit ``None``) is a violation of equal
+    severity to, but distinguishable wording from, a dangling id — mirroring
+    `withdraw_unjustified_deletes`' own missing-vs-empty-list distinction.
+    ``depends_on: []`` is a positive assertion ("nothing conditions this
+    delete") and is never a violation.
+
+    Existence only — not well-formedness. A `depends_on` naming its own
+    delete's id, or forming a cycle, is not checked (deliberate non-goal).
+
+    Nothing between here and the JSON write removes an action —
+    `_validate_action_paths` only checks path shape — so an id confirmed
+    present here stays present when `instructions.json` is written.
+
+    Returns a list of violation messages (one per offending `delete_source`;
+    empty means the invariant holds), each self-contained like
+    `_validate_action_paths`'s: it names both the offending delete's id and
+    the fault. Caller is expected to abort on a non-empty result.
+    """
+    existing_ids = {a.get("id") for a in actions if a.get("id")}
+    violations: list[str] = []
+    for action in actions:
+        if action.get("action") != "delete_source":
+            continue
+        action_id = action.get("id", "<no-id>")
+        if "depends_on" not in action or action.get("depends_on") is None:
+            violations.append(
+                f"{action_id} (delete_source): missing required 'depends_on' "
+                f"field — a delete_source must declare the id(s) that justify it"
+            )
+            continue
+        missing = sorted({d for d in action["depends_on"] if d not in existing_ids})
+        if missing:
+            violations.append(
+                f"{action_id} (delete_source): depends_on names unknown id(s) "
+                f"{missing!r} — not present in this action set"
+            )
     return violations
 
 

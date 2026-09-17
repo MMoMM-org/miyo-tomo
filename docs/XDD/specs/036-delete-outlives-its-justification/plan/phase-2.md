@@ -89,9 +89,36 @@ Turns the relation from Phase 1 into enforcement.
      - [ ] Case-only difference is one contest `[ref: PRD/F1-AC2]`
      - [ ] An uncontested `create_moc` is emitted unchanged `[ref: PRD/F1-AC3]`
 
-- [ ] **T2.3 Place the pass, and retire the path-keyed delete withdrawal** `[activity: backend-api]`
+- [x] **T2.3 Place the pass, and retire the path-keyed delete withdrawal** `[activity: backend-api]`
 
   The riskiest task in the plan: it removes code stabilised by T5.3 and T5.5.
+
+  **Plan wording correction (step 3.c)**: "remove ... and its now-unused helpers" is wrong.
+  `_paired_delete_candidates` and the `withdrawn_paths` claim-once accumulator stay — they compute
+  `withdrawn_deletes`, the report field `instructions-diff.py`'s `_subtract_withheld_moves` reads and
+  six-plus existing tests pin. Only the removal `continue` inside `_drop_moves_with_paired_deletes`
+  retires; the report bookkeeping (`removed_deletes.add(...)`) was already a separate statement
+  sharing the same `if`, so no restructuring was needed to keep it. See
+  `docs/tomo/scripts/lib/render_actions.md`, "What Stays, and Why".
+
+  **Found beyond the retirement, both owner-approved and both recorded in this file's Deviations**:
+  the pre-existing `test_the_clash_never_reaches_the_wire` fixture predates spec 036 and carries a
+  `delete_source` with no `depends_on` key at all — T2.1's `or []` reading kept it, so it reached the
+  wire, the exact outcome the guard exists to prevent. Corrected to fail closed: an absent or `None`
+  `depends_on` now withdraws the delete, `depends_on: []` is unchanged (kept). Six pre-existing tests
+  (three in `test_034_t5_3_destination_validation.py`, two in
+  `test_034_t5_4_attachment_clash_suppression.py`, plus their `_diff()` helpers) needed the same
+  one-line fix — call `withdraw_unjustified_deletes` on `kept` before checking or comparing it, since
+  removal moved one step later than where those tests looked. A seventh,
+  `test_034_t5_5_orphaned_moc_link.py::test_the_withdrawal_reconciles_with_the_coverage_audit`, had
+  the identical gap and got the identical fix, despite step 2's instruction that its file's tests
+  "still pass untouched" — judged a test-harness gap predating the T2.1/T2.3 split, not a retirement
+  regression; verified against a clean worktree at the pre-T2.3 commit that the test passes there.
+  `render_actions.py` `0.23.1` → `0.24.0` (retirement) → `0.25.0` (fail-closed reading).
+  `instruction-render.py` `0.54.0` → `0.55.0`. New file
+  `tests/test_036_t2_3_paired_delete_report_equivalence.py` proves the path-keyed report and the
+  id-keyed removal agree by construction (over-report and under-report, both directions) rather than
+  assumes it.
 
   1. Prime: read `_drop_moves_with_paired_deletes` in full, including the docstring's account of the
      T5.0c drift `[ref: SDD/Architecture Decisions; ADR-4]`. Identify precisely which half is the
@@ -112,12 +139,12 @@ Turns the relation from Phase 1 into enforcement.
   4. Validate: **full suite green** — this task's real gate is the pre-existing tests, not the new
      ones. Ruff clean.
   5. Success:
-     - [ ] A contested move still withdraws its paired delete `[ref: PRD/F1-AC1]`
-     - [ ] An audio peer's delete is withdrawn with its origin's `[ref: PRD/F1-AC4]`
-     - [ ] A withheld clash still does not upload its staging note `[ref: PRD/F1-AC5]`
-     - [ ] `link_to_moc` orphan withdrawal is untouched `[ref: SDD/Implementation Boundaries]`
-     - [ ] Exactly one delete-withdrawal mechanism remains in the module `[ref: SDD/ADR-4]`
-     - [ ] The T5.0c rationale survives in `docs/tomo/` before the docstring is removed `[ref: SDD/Directory Map]`
+     - [x] A contested move still withdraws its paired delete `[ref: PRD/F1-AC1]`
+     - [x] An audio peer's delete is withdrawn with its origin's `[ref: PRD/F1-AC4]`
+     - [x] A withheld clash still does not upload its staging note `[ref: PRD/F1-AC5]`
+     - [x] `link_to_moc` orphan withdrawal is untouched `[ref: SDD/Implementation Boundaries]`
+     - [x] Exactly one delete-withdrawal mechanism remains in the module `[ref: SDD/ADR-4]`
+     - [x] The T5.0c rationale survives in `docs/tomo/` before the docstring is removed `[ref: SDD/Directory Map]`
 
 - [ ] **T2.4 Phase Validation** `[activity: validate]`
 

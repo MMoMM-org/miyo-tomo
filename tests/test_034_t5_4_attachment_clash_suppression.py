@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t5_4_attachment_clash_suppression.py — spec 034 T5.4.
 
 PRD Feature 8 / ADR-6. Two different files sharing a basename cannot both be
@@ -24,7 +24,12 @@ What each block pins:
   3. A suppressed move takes its paired `delete_source` with it — the origin's
      and the audio peer's. The note stays in the inbox, so deleting its source
      would destroy the note the suppression exists to protect. A `keep_source`
-     item has no paired delete and must report none.
+     item has no paired delete and must report none. Since spec 036 T2.3, the
+     removal itself happens one step later in `withdraw_unjustified_deletes`
+     (id-keyed, ADR-1); this guard only drops the move and reports the delete
+     as a withdrawal candidate. Tests below call `withdraw_unjustified_deletes`
+     after `suppress_moves_for_unfiled_attachments`, exactly as
+     `instruction-render.py` does.
   4. The join is on `item_key`, through `resolve_source_path` — the same helper
      `_build_move_note_actions` derives `source_inbox_item` with. Asserted on
      subfolder notes, where an inbox-root composition matches nothing, and
@@ -57,6 +62,7 @@ from lib.render_actions import (  # noqa: E402
     build_actions,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
 from lib.render_md import render_instructions_md  # noqa: E402
 
@@ -253,6 +259,7 @@ def test_the_suppression_pass_is_a_no_op_on_a_duplicate_reference():
 
 def test_the_suppressed_notes_origin_delete_is_withdrawn():
     kept, suppressions = _suppressed(CLASHING_PAIR)
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert ELBE_REISE not in _deletes(kept), (
         "the note stays in the inbox — deleting its source destroys it "
         "outright, which is strictly worse than filing it incompletely"
@@ -262,6 +269,7 @@ def test_the_suppressed_notes_origin_delete_is_withdrawn():
 
 def test_the_suppressed_notes_audio_peer_delete_is_withdrawn_too():
     kept, suppressions = _suppressed(CLASHING_PAIR)
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert "100 Inbox/Reise/Elbe.m4a" not in _deletes(kept), (
         "the audio peer's delete is paired with the same move; leaving it "
         "deletes the recording of a note that never moved"
@@ -691,6 +699,10 @@ def _diff(pairs, **kw) -> tuple[int, list[str]]:
     kept, suppressions = suppress_moves_for_unfiled_attachments(
         kept, skipped_assets
     )
+    # instruction-render.py runs withdraw_unjustified_deletes once, after
+    # every drop site (spec 036 T2.1/T2.3), before writing instructions.json —
+    # so the audit's input must be the actions AFTER that pass.
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     instrs = {
         "actions": kept,
         "action_count": len(kept),

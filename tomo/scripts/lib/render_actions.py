@@ -1,4 +1,4 @@
-# version: 0.23.1
+# version: 0.25.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -945,13 +945,27 @@ def _links_for(
 def _drop_moves_with_paired_deletes(
     actions: list[dict], dropped_ids: set[str], withdrawn_paths: set[str]
 ) -> tuple[list[dict], set[str], list[dict]]:
-    """Remove the dropped moves, the deletes paired with them, and their links.
+    """Remove the dropped moves and their links; report the deletes they justified.
 
     Returns ``(kept, removed_deletes, removed_moc_links)``. `removed_deletes`
     names the deletes that actually existed, not every path a dropped move
     touched: an item the user marked "Keep source files" has no paired delete,
     so listing its origin would have the report and the coverage audit both
     claim a withdrawal that never happened.
+
+    `removed_deletes` is report-only (spec 036 T2.3, ADR-4): this function no
+    longer removes a `delete_source` action from `kept` on that basis. The
+    actual removal is `withdraw_unjustified_deletes`, run once after every drop
+    site (`instruction-render.py`, between `filter_unappliable_relationships`
+    and `_validate_action_paths`) — a delete whose `depends_on` names an id
+    this pass just dropped is withdrawn there, by id, not here, by path. Path
+    equality was a second, independent read of a relationship
+    `_build_delete_source_actions` already declares once at build time
+    (`depends_on`); keeping two readings in step by discipline rather than by
+    construction is the shape that drifted in T5.0c (see
+    `docs/tomo/scripts/lib/render_actions.md`). The path-based computation
+    stays here only because the report — read by `instructions-diff.py`'s
+    coverage audit and rendered to the user — is keyed by path, not by id.
 
     `removed_moc_links` is the same discipline one action kind over. A
     `link_to_moc` for a note this run refused to file instructs the user to
@@ -981,8 +995,12 @@ def _drop_moves_with_paired_deletes(
             action.get("action") == "delete_source"
             and action.get("source_path") in withdrawn_paths
         ):
+            # Report-only (spec 036 T2.3): no `continue` here. The action is
+            # NOT dropped from `kept` on this basis any more —
+            # `withdraw_unjustified_deletes` does that, by id, once after
+            # every drop site. See this function's docstring and
+            # docs/tomo/scripts/lib/render_actions.md.
             removed_deletes.add(action.get("source_path"))
-            continue
         if action.get("action") == "link_to_moc" and (
             (action.get("source_note_stem") or "") in orphaned_titles
             or sanitize_stem(action.get("target_moc") or "") in orphaned_targets
@@ -2449,10 +2467,23 @@ def withdraw_unjustified_deletes(
 
     Only ``delete_source`` actions are governed — every other action, even one
     carrying its own (irrelevant) ``depends_on``, passes through untouched.
-    An empty ``depends_on`` is an assertion that nothing conditions the
-    delete, not an absence of information — it survives unconditionally. A
-    missing ``depends_on`` key reads as ``[]`` (unreachable from the builder
-    since Phase 1, but a hand-built dict or an older artifact may omit it).
+
+    ``depends_on: []`` and a missing ``depends_on`` key are NOT the same
+    reading (spec 036 T2.3, owner decision 2026-09-17 — fail closed). A
+    destructive action must justify itself; ``[]`` is a positive assertion
+    that nothing conditions this delete ("perform it unconditionally"), while
+    an absent key declares nothing at all. Reading the absence the same way
+    as the assertion is fail-**open** on a delete: it tells the executor to
+    remove a note whose justification cannot be established. This also
+    matches T1.3's stance — a delete whose partner id could not be resolved
+    is withheld, not shipped.
+
+    - ``depends_on: []`` → kept unconditionally.
+    - ``depends_on`` missing, or explicitly ``None`` → withdrawn. ``None`` is
+      treated identically to a missing key: both mean "nothing declared",
+      not "nothing required".
+    - ``depends_on: [ids...]`` → kept only if every named id survived
+      (AND semantics); withdrawn, naming the missing ones, otherwise.
 
     Pure: no I/O, does not mutate ``actions`` or any action dict in it.
     """
@@ -2463,13 +2494,23 @@ def withdraw_unjustified_deletes(
         if action.get("action") != "delete_source":
             kept.append(action)
             continue
-        missing = [d for d in action.get("depends_on") or [] if d not in surviving]
+        if "depends_on" not in action or action.get("depends_on") is None:
+            withdrawn.append({
+                "id": action.get("id"),
+                "source_path": action.get("source_path"),
+                "reason": action.get("reason"),
+                "missing_dependencies": None,
+                "depends_on_declared": False,
+            })
+            continue
+        missing = [d for d in action["depends_on"] if d not in surviving]
         if missing:
             withdrawn.append({
                 "id": action.get("id"),
                 "source_path": action.get("source_path"),
                 "reason": action.get("reason"),
                 "missing_dependencies": missing,
+                "depends_on_declared": True,
             })
             continue
         kept.append(action)

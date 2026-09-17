@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_036_withdraw_unjustified_deletes.py — spec 036 / T2.1 enforcement pass.
 
 Covers `withdraw_unjustified_deletes(actions) -> (kept, withdrawn)` in
@@ -17,16 +17,23 @@ plan/phase-2.md T2.1):
   present.
 - `depends_on: []` is a positive assertion ("nothing conditions this
   delete") — never withdrawn.
-- A missing `depends_on` key reads as `[]` — kept. Unreachable from the
-  builder since Phase 1 (schema-required), but reachable from a hand-built
-  dict or an older artifact — the defensive reading is deliberate.
+- A missing `depends_on` key, or an explicit `depends_on: None`, is NOT the
+  same reading as `[]` — it is withdrawn (spec 036 T2.3, owner decision
+  2026-09-17, fail-closed on a destructive action). `[]` is a declared
+  assertion; absence declares nothing, so it does not survive.
 - Each withdrawal record carries id, source_path, reason, and
-  missing_dependencies.
+  missing_dependencies (the named ids that did not survive) — a delete
+  withdrawn for lacking `depends_on` entirely instead carries
+  `missing_dependencies: None` and `depends_on_declared: False`, so the
+  report does not claim a specific id went missing when none was ever named.
 
 Tests are RED against current code (no `withdraw_unjustified_deletes` in
-lib/render_actions.py) and GREEN after T2.1.
+lib/render_actions.py) and GREEN after T2.1. The missing-key / explicit-None /
+divergence tests (added T2.3) are RED against the T2.1 reading
+(`action.get("depends_on") or []`, which collapses missing-key into `[]`) and
+GREEN after the T2.3 fail-closed change.
 
-Spec: docs/XDD/specs/036-delete-outlives-its-justification/ Phase 2, T2.1.
+Spec: docs/XDD/specs/036-delete-outlives-its-justification/ Phase 2, T2.1/T2.3.
 """
 from __future__ import annotations
 
@@ -188,20 +195,64 @@ def test_all_three_present_is_kept():
     assert withdrawn == []
 
 
-# ── 6. Missing depends_on key reads as [] ────────────────────────────────────
+# ── 6. Missing depends_on key is withdrawn — fail closed ─────────────────────
 
 
-def test_delete_with_no_depends_on_key_is_kept():
-    """A delete missing the `depends_on` key entirely (unreachable from the
-    builder since Phase 1, but reachable from a hand-built dict or an older
-    artifact) is read defensively as `[]` — kept, not withdrawn."""
+def test_delete_with_no_depends_on_key_is_withdrawn():
+    """A delete missing the `depends_on` key entirely (reachable from a
+    hand-built dict or an older artifact) declares no justification at all,
+    and must not be read as `[]` — a destructive action fails closed on an
+    absent declaration (spec 036 T2.3, owner decision 2026-09-17)."""
     d1 = _delete("D1", with_key=False)
     assert "depends_on" not in d1
 
     kept, withdrawn = render_actions.withdraw_unjustified_deletes([d1])
 
-    assert [a["id"] for a in kept] == ["D1"]
-    assert withdrawn == []
+    assert kept == [], f"expected D1 withdrawn, not kept; got {kept!r}"
+    assert [w["id"] for w in withdrawn] == ["D1"]
+    record = withdrawn[0]
+    assert record["missing_dependencies"] is None, (
+        "missing_dependencies names ids that were declared but absent — "
+        "nothing was declared here, so stuffing a synthetic id into that "
+        f"field would misreport why: {record!r}"
+    )
+    assert record["depends_on_declared"] is False
+
+
+def test_delete_with_explicit_none_depends_on_is_withdrawn():
+    """`depends_on: None` (explicitly present, not merely absent) behaves
+    identically to a missing key — both mean "nothing declared", not "[]"."""
+    d1 = _delete("D1", with_key=False)
+    d1["depends_on"] = None
+
+    kept, withdrawn = render_actions.withdraw_unjustified_deletes([d1])
+
+    assert kept == []
+    assert [w["id"] for w in withdrawn] == ["D1"]
+    assert withdrawn[0]["depends_on_declared"] is False
+
+
+def test_missing_key_and_empty_list_are_different_outcomes():
+    """The crux of T2.3: these two `depends_on` states were previously
+    collapsed into one reading and are now different. A future
+    implementation that re-collapses them (e.g. `action.get("depends_on") or
+    []`) makes this test fail, because D_MISSING would be kept alongside
+    D_EMPTY instead of withdrawn."""
+    d_missing = _delete("D_MISSING", with_key=False)
+    d_empty = _delete("D_EMPTY", depends_on=[])
+    assert "depends_on" not in d_missing
+    assert d_empty["depends_on"] == []
+
+    kept, withdrawn = render_actions.withdraw_unjustified_deletes(
+        [d_missing, d_empty]
+    )
+
+    assert [a["id"] for a in kept] == ["D_EMPTY"], (
+        f"depends_on=[] must survive, depends_on absent must not: {kept!r}"
+    )
+    assert [w["id"] for w in withdrawn] == ["D_MISSING"], (
+        f"only the undeclared one may be withdrawn: {withdrawn!r}"
+    )
 
 
 # ── 7. Purity — input list and its dicts are not mutated ────────────────────

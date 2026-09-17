@@ -349,8 +349,19 @@ FUNCTION: assert_no_dangling_dependencies (NEW)
 
 #### Example: The one withdrawal pass
 
-**Why this example**: it is the whole architecture in twenty lines, and its correctness argument —
-why one pass suffices, with no iteration — is not obvious from the signature.
+**Why this example**: it is the whole architecture in twenty-five lines, and its correctness
+argument — why one pass suffices, with no iteration, and why a missing declaration is not the same
+fact as an empty one — is not obvious from the signature.
+
+**Updated 2026-09-17 (spec 036 T2.3, owner decision)**: the reference implementation below is the
+fail-closed reading actually shipped. The version first written here read
+`action.get("depends_on") or []`, which collapsed "no `depends_on` key" and "`depends_on: []`" into
+one outcome (kept). `test_the_clash_never_reaches_the_wire`'s fixture — predating spec 036, no
+`depends_on` key at all on its `delete_source` — caught the consequence: that delete survived under
+the collapsed reading and reached the wire, the exact outcome this guard exists to prevent. `[]` on a
+destructive action is a positive assertion ("perform it unconditionally"); an absent key asserts
+nothing, and treating the two alike is fail-open. See `docs/tomo/scripts/lib/render_actions.md` for
+the full account, including the report-shape decision for the undeclared case.
 
 ```python
 def withdraw_unjustified_deletes(
@@ -364,8 +375,10 @@ def withdraw_unjustified_deletes(
     future action kind ever declares a dependency on a delete, this becomes a
     fixpoint loop and the test that proves it is `test_no_cascade_needed`.
 
-    An empty ``depends_on`` is an assertion that nothing conditions the delete,
-    not an absence of information — it survives unconditionally.
+    ``depends_on: []`` and a missing ``depends_on`` key are NOT the same
+    reading. ``[]`` is an assertion that nothing conditions the delete — it
+    survives unconditionally. A missing key, or an explicit ``None``, declares
+    nothing at all and fails closed: withdrawn, not kept.
     """
     surviving = {a.get("id") for a in actions if a.get("id")}
     kept: list[dict] = []
@@ -374,13 +387,23 @@ def withdraw_unjustified_deletes(
         if action.get("action") != "delete_source":
             kept.append(action)
             continue
-        missing = [d for d in action.get("depends_on") or [] if d not in surviving]
+        if "depends_on" not in action or action.get("depends_on") is None:
+            withdrawn.append({
+                "id": action.get("id"),
+                "source_path": action.get("source_path"),
+                "reason": action.get("reason"),
+                "missing_dependencies": None,
+                "depends_on_declared": False,
+            })
+            continue
+        missing = [d for d in action["depends_on"] if d not in surviving]
         if missing:
             withdrawn.append({
                 "id": action.get("id"),
                 "source_path": action.get("source_path"),
                 "reason": action.get("reason"),
                 "missing_dependencies": missing,
+                "depends_on_declared": True,
             })
             continue
         kept.append(action)
@@ -410,6 +433,13 @@ The unconditional case, which must **not** be withdrawn:
 |---|---|---|
 | After `build_actions` | `depends_on: []` | site 1, `disposition == "delete_source"` |
 | After the pass | **kept** | `[]` is an assertion, not an absence |
+
+The undeclared case, which **must** be withdrawn (T2.3, distinct from the row above on purpose):
+
+| Stage | I06 delete_source (hand-built or pre-036 artifact) | Notes |
+|---|---|---|
+| After `build_actions` | `depends_on` key absent entirely | unreachable from the current builder (every site populates it), reachable from a hand-built dict or an artifact rendered before spec 036 |
+| After the pass | **withdrawn**, `depends_on_declared: False` | absence declares nothing; a destructive action does not get the benefit of that ambiguity |
 
 #### Example: Why P3 cannot use the pass
 

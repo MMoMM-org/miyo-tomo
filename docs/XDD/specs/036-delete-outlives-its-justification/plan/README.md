@@ -218,6 +218,61 @@ When implementation requires changes from the specification:
   A WHY comment now guards the parameter. Phase 4's audit must not treat those fixtures as evidence
   that an empty list on this path is correct.
 
+- **2026-09-17 — T2.3 (Phase 2) corrected `withdraw_unjustified_deletes` to fail closed on an
+  undeclared `depends_on`, owner decision.** T2.3's own task text retires the delete-removal half of
+  `_drop_moves_with_paired_deletes` (ADR-4) and runs the full suite to prove equivalence. That run
+  surfaced `test_the_clash_never_reaches_the_wire` failing for a reason unrelated to the retirement:
+  its fixture (`_CLASHING_MOVES`, predates spec 036) carries a `delete_source` with no `depends_on`
+  key, and T2.1's reading (`action.get("depends_on") or []`) collapsed that absence into the same
+  outcome as `depends_on: []` — kept. The delete then reached the wire, the exact outcome the guard
+  exists to prevent. This is the same fail-open shape corrected once already at T1.3 (see the
+  2026-09-16 entry above), one level up: there, an unresolvable partner id at build time was
+  corrected to withhold the delete rather than emit `depends_on: []`; here, an unresolvable
+  declaration at withdrawal time is corrected to withdraw the delete rather than read it as `[]`.
+  **Decision**: `depends_on` absent entirely, or explicitly `None`, now withdraws the delete;
+  `depends_on: []` is unchanged — kept unconditionally, a declared assertion, not silence. Both
+  states were previously identical outcomes and are now different, asserted directly by
+  `tests/test_036_withdraw_unjustified_deletes.py::test_missing_key_and_empty_list_are_different_outcomes`
+  (new) rather than left implied. `withdraw_unjustified_deletes` (`render_actions.py:2455`),
+  its docstring, `solution.md`'s reference implementation and traced walkthrough, and
+  `docs/tomo/scripts/lib/render_actions.md` were all updated to state the corrected rule — the
+  deviation protocol's "update the SDD when the deviation improves the design" step, since the SDD's
+  reference implementation had shipped the now-superseded reading. The withdrawal record for the
+  undeclared case carries `missing_dependencies: None` and `depends_on_declared: False` rather than a
+  synthetic entry in `missing_dependencies` — that field names ids that were declared and absent, and
+  the undeclared case has no id to name, only a missing declaration. `render_actions.py` bumped
+  `0.24.0 -> 0.25.0` for this semantic change, on top of the `0.23.1 -> 0.24.0` retirement bump.
+
+- **2026-09-17 — T2.3 also fixed `test_034_t5_5_orphaned_moc_link.py`, one test beyond the plan's
+  named "must not need editing" list.** T2.3's task text names six tests across
+  `test_034_t5_3_destination_validation.py` and `test_034_t5_4_attachment_clash_suppression.py` as
+  routine fallout of the ADR-4 retirement (each calls `validate_destinations` or
+  `suppress_moves_for_unfiled_attachments` directly, or builds an `instructions-diff.py` input from
+  their `kept`, without running the now-separate `withdraw_unjustified_deletes` pass) and separately
+  names `test_034_t5_5_orphaned_moc_link.py` as a canary that must pass unchanged — if it needed
+  editing, that was to be read as evidence the retirement is not behaviourally equivalent and the run
+  should stop rather than proceed.
+  Running the full suite after the T2.1-precedent fix above still showed
+  `test_034_t5_5_orphaned_moc_link.py::test_the_withdrawal_reconciles_with_the_coverage_audit`
+  failing, for the identical structural reason as the six named tests: it hand-assembles
+  `instrs["actions"]` from `validate_destinations` + `suppress_moves_for_unfiled_attachments`'s
+  `kept` without running `withdraw_unjustified_deletes`, so `instructions-diff.py`'s coverage audit
+  saw the still-present delete while the path-keyed `withdrawn_deletes` report claimed it gone.
+  Verified against a clean worktree at this spec's pre-T2.3 commit (`551949a`) that this exact test
+  passes there — confirming the failure is caused by ADR-4's retirement reaching a fixture this test
+  predates, not by any change made in this task.
+  **Judged a test-harness gap, not a retirement regression**, on the SDD's own authority: the ADR-1
+  traced walkthrough (`solution.md`, "Example: The one withdrawal pass") shows the identical two-step
+  sequence — a path-keyed guard drops the move, `withdraw_unjustified_deletes` withdraws the delete
+  one step later — as the intended, designed pipeline shape. A test that only calls the first step and
+  expects the second step's effect was correct only by accident, while the single mechanism that
+  removed both was one function; the mechanism split into two on purpose (ADR-1, "the relation moves
+  from paths to ids"), so a caller now owes both steps. Applied the same, minimal fix as the six named
+  tests — `withdraw_unjustified_deletes` on `kept` before building `instrs`, matching what
+  `instruction-render.py` does in production — with a docstring note explaining the deviation from the
+  "must not need editing" instruction, rather than leaving the suite red or reverting the settled
+  ADR-4 retirement. Flagged in the T2.3 completion report for the owner to confirm.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_034_t5_3_destination_validation.py — spec 034 T5.3.
 
 The Pass-2 half of PRD Feature 7. Pass 1 (T5.2) proposes a distinct name on a
@@ -22,7 +22,13 @@ What it must do, and what each block below pins:
   4. A dropped move takes its paired `delete_source` with it. Emitting the
      delete without the move would delete the user's inbox note while
      refusing to file it — the guard would cause the loss it exists to
-     prevent.
+     prevent. Since spec 036 T2.3, the removal itself happens one step later
+     in `withdraw_unjustified_deletes` (id-keyed, ADR-1) — this guard only
+     drops the move and reports the delete as a withdrawal candidate
+     (`_drop_moves_with_paired_deletes` is report-only for deletes now). The
+     tests below call `withdraw_unjustified_deletes` after `validate_
+     destinations`, exactly as `instruction-render.py` does, so "absent from
+     kept" still means what it always meant.
   5. The guard is stateless: clashing input then corrected input, and the
      reverse. Nothing may outlive the input that caused it.
   6. A run with no clash emits the recorded baseline, whole-list.
@@ -53,6 +59,7 @@ from lib.render_actions import (  # noqa: E402
     build_actions,
     make_folder_listing,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
 from lib.render_md import render_instructions_md  # noqa: E402
 
@@ -346,6 +353,7 @@ def test_folding_uses_casefold_not_lower():
 
 def test_a_dropped_move_withdraws_the_delete_of_its_origin():
     kept, _clashes = validate_destinations(_actions(TWO_NAMESAKES))
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     remaining = _deletes(kept)
     assert DRESDEN_PLACES not in remaining and DRESDEN_REISE not in remaining, (
         "emitting the delete without the move deletes the user's inbox note "
@@ -364,6 +372,7 @@ def test_a_dropped_move_withdraws_its_audio_peer_delete():
     ])
     assert peer in _deletes(actions), "fixture no longer emits the peer delete"
     kept, _clashes = validate_destinations(actions)
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert peer not in _deletes(kept), (
         "the audio peer of an unfiled origin must stay in the inbox with it"
     )
@@ -383,6 +392,7 @@ def test_a_partially_dropped_origin_keeps_its_surviving_atomic_and_loses_its_del
     assert DRESDEN_PLACES in _deletes(actions), "fixture no longer emits the delete"
     kept, _clashes = validate_destinations(actions)
     assert [m["destination"] for m in _moves(kept)] == [f"{NOTES}Dresden Elbufer.md"]
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert DRESDEN_PLACES not in _deletes(kept), (
         "an origin whose atomics are not all filed must keep its source"
     )
@@ -808,6 +818,12 @@ def _diff(pairs, **kw) -> tuple[int, list[str]]:
     confirmed = [c for _, c in pairs]
     actions = _actions(pairs, **kw)
     kept, clashes = validate_destinations(actions)
+    # instruction-render.py runs withdraw_unjustified_deletes once, after
+    # every drop site (spec 036 T2.1/T2.3), before writing instructions.json —
+    # so the audit's input must be the actions AFTER that pass, not straight
+    # from validate_destinations. Skipping it here would compare instructions-
+    # diff against a set the real pipeline never emits.
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     instrs = {
         "actions": kept,
         "action_count": len(kept),

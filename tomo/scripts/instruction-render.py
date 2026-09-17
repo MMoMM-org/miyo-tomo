@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.54.0
+# version: 0.55.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -74,6 +74,7 @@ from lib.render_actions import (  # noqa: E402,F401
     qualify_contested_moc_links,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
 from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
@@ -739,6 +740,27 @@ def main() -> int:
                 f"[{a.get('error')}]",
                 file=sys.stderr,
             )
+
+    # ── Withdraw deletes whose declared justification did not survive ────
+    # (spec 036 T2.1/T2.3, ADR-2/ADR-4). Runs ONCE, here, after every drop
+    # site above (filter_missing_daily_notes, filter_unappliable_relationships,
+    # and the two render_actions guards — validate_destinations,
+    # suppress_moves_for_unfiled_attachments). Supersedes the path-keyed
+    # delete withdrawal those two guards used to perform inline: a
+    # `delete_source` now declares the ids that justify it (`depends_on`) and
+    # is withdrawn here if any of them did not survive. See
+    # docs/tomo/scripts/lib/render_actions.md for why the id-keyed pass
+    # replaces the path-keyed one.
+    actions, withdrawn_deletes = withdraw_unjustified_deletes(actions)
+    if withdrawn_deletes:
+        print(
+            f"  [skip] {len(withdrawn_deletes)} delete_source action(s) withdrawn — "
+            "declared justification did not survive:",
+            file=sys.stderr,
+        )
+        for w in withdrawn_deletes:
+            print(f"    • {w.get('id')} delete_source → {w.get('source_path')}",
+                  file=sys.stderr)
 
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
     # Catch non-conforming paths before they reach the JSON. Hashi fails

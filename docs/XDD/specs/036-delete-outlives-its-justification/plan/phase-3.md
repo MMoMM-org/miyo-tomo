@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: The cases the pass cannot reach"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -113,10 +113,40 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
   pass the first criterion and fail the second, and that is the only thing separating this fix from
   a new defect.
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean.
   - Reproduce **Bug B** end to end through the real reducer render, real parser and real
     `build_actions`: an approved group with a null target now yields zero deletes and zero inserts,
     where it previously yielded N deletes.
   - Confirm the Approve control for that same group is unticked and carries its reason.
+
+  **Result, 2026-09-17** — `tests/test_036_t3_3_phase_validation.py`, commit `41595ef`. Suite
+  **4146 passed, 5 skipped, 0 failed**; `ruff` clean.
+
+  Bug B reproduced through the real chain — `annotate_tag_handler_group_guards` ->
+  `render_tag_handler_updates_block` -> `parse_tag_handler_groups` -> `build_actions` — with a
+  three-source null-target group (not one source; N=1 would hide the shape of the damage):
+
+  | | Real Pass-2 gate (Test A) | Bypassed gate, real predicate (Test B) | Bypassed gate, patched predicate (Test B) |
+  |---|---|---|---|
+  | Approved ids | `[]` (no Approve box rendered) | `[gid]` passed directly — simulates a doc confirmed before T3.2 | `[gid]` |
+  | `insert_under_marker` | 0 | 0 | **1**, `target_path: None` |
+  | `delete_source` | 0 | 0 | **3** (one per source) |
+
+  Test B's patched column is the one honest deviation from the task brief's prediction, found by
+  running the real code rather than assuming it: the brief expected 0 inserts / 3 deletes under the
+  patch (the original pre-T3.1 asymmetry). Checked against the T3.1 commit (`4efcc03`) itself, the
+  insert builder's old standalone `if not target_path: continue` was **replaced** by the call to the
+  shared predicate, not kept alongside it — so today both call sites hang off that one predicate and
+  nothing else. Forcing it open reopens both sites symmetrically (a path-less insert **and** 3
+  deletes), which is actually the stronger proof of ADR-5's "one shared predicate, not two `if`
+  statements": break the one gate, both sites break together.
+
+  Test C confirms the consent half on the same fixture: no `- [x] Approve` and no `- [ ] Approve` in
+  the rendered block, `"Target unresolved"` present. Test D confirms the parser mechanism directly —
+  a healthy sibling's id is yielded, the unresolved group's is not. Test E is the positive control
+  (one insert + one delete per source for a normal approved group — without it, blanket suppression
+  would pass A–D). Test F runs one unresolved and one healthy group through a single `build_actions`
+  call to prove neither the unresolved group's 3 sources nor its absence leak into the healthy
+  group's count (1 insert, 2 deletes, both attributable to the healthy group).

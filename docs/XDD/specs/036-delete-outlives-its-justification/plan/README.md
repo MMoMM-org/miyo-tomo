@@ -350,6 +350,43 @@ When implementation requires changes from the specification:
   *"Source consolidated into  by tsukai handler."* with an empty gap where the target should be.
   HEAD gives `target_unresolved`, no Approve box, no approved ids, 0 and 0. Recorded in phase-3.md.
 
+- **2026-09-17 - Phase 4's ordering gate is overridden by the owner: T4.1 runs FIRST, T4.5 LAST.**
+  T4.1 carries a SEQUENCING GATE reading "T4.5's handoff goes out and Hashi vendors BEFORE this task
+  lands", and T4.5 calls itself "the *first* thing in Phase 4 chronologically, despite its number".
+  Both rest on a release rule written for an uncoordinated release, and I compounded it by framing
+  the un-vendored field as a live outage: Hashi's vendored `delete_source` carries
+  `additionalProperties: false` and has no `depends_on`, so an instruction set containing any delete
+  is rejected outright today - measured, not inferred.
+  **Owner ruling**: Tomo/Hashi handoffs are personally orchestrated, and dependencies are resolved
+  before any user can use a version. There is therefore no such thing as "Hashi runs are broken right
+  now" - nobody is running a half-released wire, and the only real risk is bugs found afterwards,
+  which is also orchestrated. **Finish the Tomo side completely, then hand off once, with the
+  finished schema attached; the updated plugin comes back from there.**
+  Phase 4 therefore executes T4.1 -> T4.2 -> T4.3 -> T4.4 -> T4.5 -> T4.6, its natural order. The
+  handoff still ends in a wait, per the standing cross-repo rule.
+
+- **2026-09-17 - T4.5's "one handoff, two documents" is stale, and its success criterion is
+  unsatisfiable as written.** Corrected on 2026-09-10 to "supply its half to spec 035's handoff
+  rather than sending one of its own", with the criterion "One handoff, two documents, two counters,
+  one release". That was right while both were pending. 035 has since shipped **and been vendored**:
+  Hashi's `src/schema/suggestions-wire.schema.json` reads `"2"` and carries `source_item_key`, and
+  its `garden-audit-wire.schema.json` reads `"2"`. Only the instruction wire is outstanding. So 036
+  sends its own handoff after all - one document, one counter - which is what the superseded
+  instruction said before the correction. Same shape as T1.2's struck-through criterion: the task's
+  own later step invalidates its earlier promise.
+
+- **2026-09-17 - T4.1's structural diff ran clean before the handoff, and half of its step 3 was
+  already done.** `depends_on` landed in both local schemas during Phase 1 (see the T4.1-schema-half
+  deviation above), so only the `"2" -> "3"` bump remains. The recursive structural diff T4.5 step 2
+  demands - every object's property set, `required` list and `additionalProperties`, compared against
+  the consumer's vendored copy - was run early, against
+  `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`, and reported **exactly three
+  findings, all one fact**: `depends_on` present only in Tomo, required only in Tomo, and the
+  resulting `required` length delta. Nothing beyond the intended change, so the schema has not
+  drifted elsewhere and the obligation table has a measured basis rather than an asserted one.
+  Recorded now because the diff is evidence with a shelf life: it is true of `3da9654` and must be
+  re-run immediately before the handoff actually goes out.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering

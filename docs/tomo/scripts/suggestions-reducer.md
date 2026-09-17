@@ -176,6 +176,53 @@ target note must exist before this update can be applied": the old phrasing
 named Hashi (an executor internal). The new phrasing is executor-neutral and
 states the constraint directly without naming the mechanism.
 
+## target_unresolved guard: a third value, and why it runs unconditionally (spec 036 T3.2)
+
+WHY a third guard value instead of reusing `target_missing`: `annotate_tag_handler_group_guards`
+had an early return — `if client is None: return tally` — that ran BEFORE the
+loop that would set a guard, so a group whose `target_path` was already null
+(the handler config never resolved a target) fell through with no `guard` key
+at all. `render_tag_handler_group`'s default is `group.get("guard") or "ok"`,
+so an unset guard renders as `"ok"` — full Approve box, pre-checked — on a
+block whose own `**Target:**` line already reads "*(unresolved — check handler
+config)*". One insert covers a whole group; one delete is emitted per source,
+so approving that pre-checked box deleted every source note in the group and
+inserted nothing (PRD F4 problem statement; severity ceiling: `vault.trash`,
+unrecoverable under permanent deletion). Reusing `target_missing` was
+considered and rejected: its message interpolates `link`, which is `""` when
+`target_path` is null, producing "Target note doesn't exist — [[]] is not in
+the vault" — a literal empty wikilink leaking into user-facing text. A new
+value was needed, so `target_unresolved` was added as a third branch in the
+render suppression path (`render_tag_handler_group` branches on the guard
+string; an unregistered third value falls through to the Approve line, so the
+new value could not be introduced without also adding its branch) and
+registered in the `tally` dict literal-initialised in
+`annotate_tag_handler_group_guards` (an unregistered key survives `tally.get`
+silently but never appears in the three-key stderr summary line — it would
+tally correctly but never print).
+
+WHY the null-target annotation runs BEFORE the `client is None` early return,
+unconditionally of whether a client exists — this is the part a future editor
+is most likely to "simplify" back into the Kado-dependent loop, so the
+reasoning is spelled out here: a null `target_path` is data already present on
+the group (it came from the tag-handler-interpreter skill's group-result JSON,
+not from a vault read) — there is nothing indeterminate about it, so it is NOT
+a fail-open case. The existing fail-open philosophy in this function ("never
+block when marker presence cannot be determined") exists because marker
+presence genuinely requires a Kado read that might not be possible (offline,
+`--no-kado`, transient error). A null target needs no such read. Setting the
+guard only inside the Kado-dependent loop would make F4-AC1 hold only when
+Kado happens to be reachable — every offline / `--no-kado` run (the common
+case for `/inbox` when running the reducer standalone or in tests) would still
+render the unresolvable group pre-approved, reproducing the exact defect this
+fix closes. So the null-target pass is a small loop that runs first,
+independent of `client`, and the existing Kado-dependent loop `continue`s past
+groups it already annotated.
+
+No schema types the `guard` field (it is reducer-internal, read only by
+`render_tag_handler_group`), and Hashi has no reference to it — so this value
+needed no registration anywhere outside this file and its test.
+
 ## Tag-handler "Keep source files" checkbox (v1.19.0 → renamed v1.21.0)
 
 WHY the tag-handler decision block carries a Keep-source option: approving a

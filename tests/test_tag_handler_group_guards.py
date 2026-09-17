@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""test_tag_handler_group_guards.py — T4.2 (spec 024 Phase 4).
+# version: 0.3.0
+"""test_tag_handler_group_guards.py — T4.2 (spec 024 Phase 4) + T3.2 (spec 036 Phase 3).
 
-The two Pass-1 guards (FR-11 / FR-12) that stop an unappliable tag-handler group
-from reaching a Hashi instruction:
+The three Pass-1 guards that stop an unappliable tag-handler group from reaching
+a Hashi instruction:
   - FR-11 target note missing on disk  → "create it first" checkbox, no Approve.
   - FR-12 marker absent in an existing target → error item, no Approve.
+  - spec 036 F4 target_path is null (unresolvable handler config) → unresolved
+    notice, no Approve — set independently of whether a Kado client exists,
+    because a null target is local data, not something a vault read resolves.
   - happy path (target + marker present) → normal approvable block → instruction.
 
 Marker-existence is a filesystem-access path (Constitution L1 denial-path
@@ -18,10 +21,12 @@ insert_under_marker. The end-to-end test proves that chain.
 
 Fixtures conform to tomo/schemas/tag-handler-group.schema.json.
 Spec: docs/XDD/specs/024-tag-handler-framework/solution.md §5; requirements FR-11/FR-12/AC-4.
+Spec: docs/XDD/specs/036-delete-outlives-its-justification/plan/phase-3.md T3.2; PRD F4-AC1/AC2/AC3.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -172,6 +177,29 @@ def test_guard_marker_missing():
     assert tally["marker_missing"] == 1
 
 
+def test_guard_null_target_sets_target_unresolved_with_client():
+    """spec 036 F4: a null target_path is resolved from local data alone — no
+    Kado read is involved, so a live client changes nothing about the outcome."""
+    g = _group(target_path=None)
+    client = FakeKado({})
+    tally = annotate_tag_handler_group_guards([g], client)
+    assert g["guard"] == "target_unresolved"
+    assert tally["target_unresolved"] == 1
+    assert client.reads == []  # no read — null target needs no vault lookup
+
+
+def test_guard_null_target_sets_target_unresolved_no_client():
+    """Load-bearing: a null target_path must be annotated even when client is
+    None (offline / --no-kado). This is NOT a fail-open case — nothing here is
+    indeterminate, so the annotation must not live behind the `client is None`
+    early return. Fails today (guard left unset) AND against a naive fix that
+    only sets the guard inside the Kado-dependent loop."""
+    g = _group(target_path=None)
+    tally = annotate_tag_handler_group_guards([g], None)
+    assert g["guard"] == "target_unresolved"
+    assert tally["target_unresolved"] == 1
+
+
 def test_guard_reads_md_normalised_path():
     """An extensionless target_path is read as .md (Kado note read is .md-only)."""
     g = _group(target_path="Efforts/400 On/Tomo Dev Log")  # no extension
@@ -182,11 +210,19 @@ def test_guard_reads_md_normalised_path():
 
 
 def test_guard_fail_open_none_client():
-    """No Kado client (offline/test) → guard stays unset, never blocks (fail-open)."""
+    """No Kado client (offline/test) → guard stays unset, never blocks (fail-open).
+    This group has a resolvable (non-null) target_path, so the spec 036
+    target_unresolved annotation does not apply — the fail-open assertion is
+    unaffected; the tally dict just carries the fourth key at zero."""
     g = _group()
     tally = annotate_tag_handler_group_guards([g], None)
     assert "guard" not in g
-    assert tally == {"ok": 0, "target_missing": 0, "marker_missing": 0}
+    assert tally == {
+        "ok": 0,
+        "target_missing": 0,
+        "marker_missing": 0,
+        "target_unresolved": 0,
+    }
 
 
 def test_guard_fail_open_transient_error():
@@ -213,12 +249,15 @@ def test_guard_fail_open_empty_response():
     assert g["guard"] == "ok"
 
 
-def test_guard_null_target_untouched():
-    """A group whose target_path is already null is left for the unresolved path."""
+def test_guard_null_target_gets_target_unresolved():
+    """spec 036 F4: a group whose target_path is already null is NOT left
+    untouched — it must carry guard='target_unresolved' so the render path
+    can suppress the Approve control. (This inverts the pre-spec-036 rule,
+    which left the guard unset and let the group render pre-approved.)"""
     g = _group(target_path=None)
     client = FakeKado({})
     annotate_tag_handler_group_guards([g], client)
-    assert "guard" not in g
+    assert g["guard"] == "target_unresolved"
 
 
 def test_guard_dedup_one_read_per_target():
@@ -264,6 +303,75 @@ def test_render_absent_guard_keeps_approve_box():
     g = _group()  # no "guard"
     block = render_tag_handler_group(g)
     assert "- [x] Approve" in block
+
+
+# ── Render: target_unresolved (spec 036 F4 / T3.2) ────────────────────────────
+
+
+def test_render_target_unresolved_no_approve_box():
+    """F4-AC1: an unresolvable group is not pre-selected — no Approve control
+    at all, checked or unchecked."""
+    g = _group(target_path=None)
+    g["guard"] = "target_unresolved"
+    block = render_tag_handler_group(g)
+    assert "- [x] Approve" not in block
+    assert "- [ ] Approve" not in block
+
+
+def test_render_target_unresolved_reason_message():
+    """F4-AC3: the reason is visible in the group, phrased to match the
+    already-rendered '*(unresolved — check handler config)*' target line —
+    and NOT by reusing target_missing's wording (which would read '[[]] is
+    not in the vault' for a null link, an internals leak of an empty wikilink)."""
+    g = _group(target_path=None)
+    g["guard"] = "target_unresolved"
+    block = render_tag_handler_group(g)
+    assert "unresolved" in block
+    assert "check handler config" in block
+    assert "is not in the vault" not in block
+    assert "[[]]" not in block
+
+
+_FROZEN_HEALTHY_BLOCK = (
+    "**Group:** `th-tsukai-efforts-400-on-tomo-dev-log-md`\n"
+    "**Target:** [[Efforts/400 On/Tomo Dev Log]]\n"
+    "**Marker:** `## Captures`\n"
+    "**Handler:** `tsukai`\n"
+    "**Sources (1):** [[100 Inbox/MiYo-Tsukai-Tomo-cap-1]]\n"
+    "\n"
+    "### 2026-06-23\n"
+    "\n"
+    "- Shipped X (feature)\n"
+    "\n"
+    "**Decision (tag-handler update):**\n"
+    "- [x] Approve\n"
+    "- [ ] Keep source files (leave the captured inbox notes in place after consolidating)"
+)
+
+
+def test_render_healthy_group_byte_identical_to_frozen_literal():
+    """F4-AC2 (the pairing criterion): a healthy group must render byte-for-byte
+    unchanged. This is a FROZEN string literal, captured by running
+    render_tag_handler_group against this exact fixture before the T3.2 change —
+    it is NOT recomputed here, because comparing new output against itself would
+    also pass a blanket Approve-box suppression bug."""
+    g = _group()
+    g["guard"] = "ok"
+    block = render_tag_handler_group(g)
+    assert block == _FROZEN_HEALTHY_BLOCK
+
+
+def test_render_target_unresolved_with_fallback_does_not_leak():
+    """A null-target group that also carries a fallback dict must still return
+    before the fallback/Approve code path runs — no Approve box AND no ⚠️
+    Fallback line leaking through underneath the unresolved notice."""
+    g = _group(target_path=None)
+    g["guard"] = "target_unresolved"
+    g["fallback"] = {"reason": "cell_count_mismatch"}
+    block = render_tag_handler_group(g)
+    assert "- [x] Approve" not in block
+    assert "- [ ] Approve" not in block
+    assert "Fallback" not in block
 
 
 # ── End-to-end: guarded group → no instruction ────────────────────────────────
@@ -329,6 +437,45 @@ def test_full_chain_ok_via_fake_vault():
     assert g["guard"] == "ok"
     actions = _approved_then_actions([g])
     assert len(actions) == 1
+
+
+# ── Tally + stderr summary (spec 036 F4 / T3.2 step 3c) ───────────────────────
+
+
+def test_target_unresolved_tallied_and_logged(tmp_path, capsys):
+    """target_unresolved is counted in the tally dict AND printed in the
+    stderr summary line — an unregistered value would survive tally.get but
+    never appear there (the summary uses three literal f-string keys)."""
+    state_path = tmp_path / "state.jsonl"
+    state_path.write_text("\n", encoding="utf-8")
+    items_dir = tmp_path / "items"
+    items_dir.mkdir()
+    groups_dir = tmp_path / "groups"
+    groups_dir.mkdir()
+    out_path = tmp_path / "doc.json"
+
+    g = _group(target_path=None)
+    (groups_dir / "g1.json").write_text(json.dumps(g), encoding="utf-8")
+
+    argv = [
+        "suggestions-reducer.py",
+        "--state", str(state_path),
+        "--items-dir", str(items_dir),
+        "--run-id", "test-run",
+        "--profile", "miyo",
+        "--output", str(out_path),
+        "--no-kado",
+        "--tag-handler-groups-dir", str(groups_dir),
+    ]
+    old_argv = sys.argv
+    sys.argv = argv
+    try:
+        _reducer_mod.main()
+    finally:
+        sys.argv = old_argv
+
+    captured = capsys.readouterr()
+    assert "target_unresolved:1" in captured.err
 
 
 if __name__ == "__main__":

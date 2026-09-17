@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: The cases the pass cannot reach"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -69,7 +69,7 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
      - [ ] A resolvable group behaves exactly as before `[ref: PRD/F3-AC2]`
      - [ ] The count attributable to an unresolvable group is zero `[ref: PRD/F3-AC3]`
 
-- [ ] **T3.2 An unresolvable group is not pre-approved** `[parallel: true]` `[activity: frontend-ui]`
+- [x] **T3.2 An unresolvable group is not pre-approved** `[parallel: true]` `[activity: frontend-ui]`
 
   `annotate_tag_handler_group_guards` returns early on a null target **before** it can set a guard,
   so the guards that would suppress the Approve control are never set and the control renders

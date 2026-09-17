@@ -334,7 +334,7 @@ def check_schema_validity(actions):
     ir._strip_internal_link_fields(wire_actions)
 
     doc = {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "source_suggestions": "test.json",
         "generated": "2026-04-21T12:00:00Z",

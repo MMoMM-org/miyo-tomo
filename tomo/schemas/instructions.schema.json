@@ -7,7 +7,7 @@
   "required": ["schema_version", "type", "generated", "profile", "actions"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "2"},
+    "schema_version": {"const": "3"},
     "type": {"const": "tomo-instructions"},
     "source_suggestions": {
       "type": ["string", "null"],

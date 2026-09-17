@@ -44,7 +44,7 @@ def hashi_schema() -> dict:
 # Helpers — minimal valid envelope + move_note fixture builders
 # ---------------------------------------------------------------------------
 
-def _envelope(actions: list, schema_version: str = "2") -> dict:
+def _envelope(actions: list, schema_version: str = "3") -> dict:
     """Return a minimal valid instruction-set envelope wrapping the given actions."""
     return {
         "schema_version": schema_version,
@@ -69,19 +69,23 @@ def _move_note(field_name: str = "source_inbox_item") -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T4.1 — new field (source_inbox_item) + v2 validates
+# T4.1 — new field (source_inbox_item) + current wire version validates
 # ---------------------------------------------------------------------------
 
 class TestNewFieldAndVersionV2:
-    """source_inbox_item + schema_version:"2" must validate against both schemas."""
+    """source_inbox_item + schema_version:"3" must validate against both schemas.
+
+    Spec 036 T4.1 bumped the instruction wire "2" -> "3"; this fixture tracks
+    the current const rather than the "2" spec 027 originally introduced.
+    """
 
     def test_source_inbox_item_v2_validates_tomo_schema(self, tomo_schema):
-        """A move_note with source_inbox_item + schema_version:'2' validates (Tomo schema)."""
+        """A move_note with source_inbox_item + current schema_version validates (Tomo schema)."""
         doc = _envelope([_move_note("source_inbox_item")])
         validate(instance=doc, schema=tomo_schema)  # must not raise
 
     def test_source_inbox_item_v2_validates_hashi_schema(self, hashi_schema):
-        """A move_note with source_inbox_item + schema_version:'2' validates (Hashi schema)."""
+        """A move_note with source_inbox_item + current schema_version validates (Hashi schema)."""
         doc = _envelope([_move_note("source_inbox_item")])
         validate(instance=doc, schema=hashi_schema)  # must not raise
 

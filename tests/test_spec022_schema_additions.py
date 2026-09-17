@@ -104,7 +104,7 @@ def _make_instructions_link_to_moc(extra: dict | None = None) -> dict:
     if extra:
         action.update(extra)
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-06-15T10:00:00Z",
         "profile": "miyo",

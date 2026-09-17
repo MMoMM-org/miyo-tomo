@@ -202,7 +202,7 @@ def test_edit_frontmatter_expected_matches_observed_value_order_intact():
 def _instructions_envelope(parsed: dict, actions: list[dict]) -> dict:
     """Wrap actions exactly as instruction-render.py does for garden-audit."""
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "source_suggestions": "garden-audit-report",
         "generated": "2026-09-02T10:05:00Z",

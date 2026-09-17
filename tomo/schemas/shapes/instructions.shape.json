@@ -32,7 +32,7 @@
       ],
       "values": {
         "schema_version": [
-          "2"
+          "3"
         ],
         "type": [
           "tomo-instructions"
@@ -589,6 +589,6 @@
       "values": {}
     }
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "source": "tomo/schemas/instructions.schema.json"
 }

@@ -114,7 +114,7 @@ class TestInternalFieldStrip:
         _ir._serialize_new_sections([action])
         _ir._strip_internal_link_fields([action])
         doc = {
-            "schema_version": "2",
+            "schema_version": "3",
             "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z",
             "profile": "miyo",
@@ -134,7 +134,7 @@ class TestInternalFieldStrip:
         # otherwise the test would pass even if the new_section rejection regressed
         # (review H9).
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z", "profile": "miyo",
             "actions": [action],
         }
@@ -160,7 +160,7 @@ class TestInstructionsJsonTomoBlock:
         assert block is not None
         assert block["sources"][0]["path"].endswith("_suggestions.md")
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo",
             "actions": [], "tomo": block,
         }
@@ -169,7 +169,7 @@ class TestInstructionsJsonTomoBlock:
     def test_doc_without_tomo_block_still_validates(self, instructions_schema):
         """Backward-compat: tomo is not in required — omitting it stays valid."""
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo", "actions": [],
         }
         validate(instance=doc, schema=instructions_schema)  # must not raise

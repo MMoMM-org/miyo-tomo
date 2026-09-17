@@ -69,7 +69,7 @@ def _confirmed_entry(*, source_path) -> dict:
 
 def _instructions_envelope(actions: list[dict]) -> dict:
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-09-05T12:00:00Z",
         "profile": "miyo",
@@ -96,7 +96,7 @@ def test_move_asset_instruction_set_validates_against_the_schema():
 
 def test_schema_version_is_unchanged():
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    assert schema["properties"]["schema_version"] == {"const": "2"}
+    assert schema["properties"]["schema_version"] == {"const": "3"}
 
 
 def test_zero_delete_source_actions_reference_an_attachment_path():

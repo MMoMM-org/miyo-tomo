@@ -127,7 +127,7 @@ class TestRendererMoveNoteKeyRename:
 
 
 class TestRendererSchemaVersionBump:
-    """The instructions doc header must emit schema_version:'2' (not '1').
+    """The instructions doc header must emit schema_version:'3' (not '2').
 
     Spec 035 T3.1 / ADR-5: instruction-render.py no longer declares
     schema_version as a free string literal — it reads
@@ -138,21 +138,22 @@ class TestRendererSchemaVersionBump:
     tests/test_035_wire_shape.py::test_no_renderer_hardcodes_schema_version,
     which now guards against that literal's reintroduction). Spec 027's
     actual claim was never about source text, though — it was that the
-    RENDERED instructions.json carries "2" — so this test now drives
-    instruction-render.py's main() end to end (reusing the harness from
-    tests/test_035_wire_version.py, not duplicating it) and reads the value
-    off the emitted document, exactly as it would if a live run produced it.
-    The assertion stays pinned to the literal "2" spec 027 fixed, not to
-    whatever the schema currently says — comparing the renderer's output to
-    the same schema it read from would hold even if both drifted together.
+    RENDERED instructions.json carries the current instruction-wire version
+    — so this test now drives instruction-render.py's main() end to end
+    (reusing the harness from tests/test_035_wire_version.py, not
+    duplicating it) and reads the value off the emitted document, exactly as
+    it would if a live run produced it. Spec 036 T4.1 bumped the instruction
+    wire to "3"; the assertion tracks that bump, not whatever the schema
+    happens to say — comparing the renderer's output to the same schema it
+    read from would hold even if both drifted together.
     """
 
-    def test_schema_version_const_is_2_in_source(self, monkeypatch, tmp_path):
-        """instructions.json, rendered end to end, carries schema_version:'2'."""
+    def test_schema_version_const_is_3_in_source(self, monkeypatch, tmp_path):
+        """instructions.json, rendered end to end, carries schema_version:'3'."""
         out_dir = wire_version_tests._drive_instruction_render(monkeypatch, tmp_path)
         doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
-        assert doc["schema_version"] == "2", (
-            "instructions_doc must emit schema_version:'2' (T4.2 bump)"
+        assert doc["schema_version"] == "3", (
+            "instructions_doc must emit schema_version:'3' (T4.1 bump)"
         )
 
 
@@ -293,9 +294,9 @@ class TestDiffMatchesSourceInboxItem:
         }
 
     def _instrs(self, move_note: dict) -> dict:
-        """Minimal instructions doc wrapping the given move_note (schema_version 2)."""
+        """Minimal instructions doc wrapping the given move_note (schema_version 3)."""
         return {
-            "schema_version": "2",
+            "schema_version": "3",
             "type": "tomo-instructions",
             "generated": "2026-06-30T12:00:00Z",
             "profile": "miyo",

@@ -142,7 +142,7 @@ def test_full_doc_with_skipped_daily_validates():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(open(REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"))
     doc = {
-        "schema_version": "2", "type": "tomo-instructions",
+        "schema_version": "3", "type": "tomo-instructions",
         "generated": "2026-07-09T08:00:00Z", "profile": "miyo",
         "action_count": 0, "actions": [],
         "tomo": {"run_id": "r1", "skipped_daily": [

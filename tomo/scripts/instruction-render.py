@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.56.0
+# version: 0.57.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -77,7 +77,13 @@ from lib.render_actions import (  # noqa: E402,F401
     validate_destinations,
     withdraw_unjustified_deletes,
 )
-from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
+from lib.render_helpers import (  # noqa: E402,F401
+    _moc_stem,
+    _stem,
+    build_delete_withdrawal_reports,
+    describe_withdrawal_cause,
+    resolve_source_path,
+)
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
 from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.render_md import (  # noqa: E402,F401
@@ -753,15 +759,45 @@ def main() -> int:
     # docs/tomo/scripts/lib/render_actions.md for why the id-keyed pass
     # replaces the path-keyed one.
     actions, withdrawn_deletes = withdraw_unjustified_deletes(actions)
-    if withdrawn_deletes:
+    # Attribute each withdrawal to the guard that dropped its missing id
+    # (spec 036 T4.3, PRD F2-AC4/F6-AC1): the five ids-dropping guards run
+    # above this line — validate_destinations, suppress_moves_for_unfiled_
+    # attachments, filter_unresolvable_moc_links, filter_missing_daily_notes,
+    # filter_unappliable_relationships — so their reports are all in scope
+    # here. Report shapes differ (a `dropped` list of dicts nested in a
+    # clash/suppression record vs. a flat list of skipped action dicts); this
+    # normalises all five to id lists before the join.
+    drop_sources = {
+        "validate_destinations": [
+            d.get("id")
+            for c in destination_clashes
+            for d in (c.get("dropped") or [])
+        ],
+        "suppress_moves_for_unfiled_attachments": [
+            d.get("id")
+            for s in attachment_suppressions
+            for d in (s.get("dropped") or [])
+        ],
+        "filter_unresolvable_moc_links": [r.get("id") for r in unresolvable_links],
+        "filter_missing_daily_notes": [a.get("id") for a in skipped_daily],
+        "filter_unappliable_relationships": [a.get("id") for a in skipped_rel],
+    }
+    delete_withdrawals = build_delete_withdrawal_reports(withdrawn_deletes, drop_sources)
+    if delete_withdrawals:
         print(
-            f"  [skip] {len(withdrawn_deletes)} delete_source action(s) withdrawn — "
+            f"  [skip] {len(delete_withdrawals)} delete_source action(s) withdrawn — "
             "declared justification did not survive:",
             file=sys.stderr,
         )
-        for w in withdrawn_deletes:
-            print(f"    • {w.get('id')} delete_source → {w.get('source_path')}",
-                  file=sys.stderr)
+        for w in delete_withdrawals:
+            causes_text = "; ".join(
+                describe_withdrawal_cause(c) for c in (w.get("causes") or [])
+            ) or "no dependency was ever declared (depends_on missing)"
+            print(
+                f"    • {w.get('id')} delete_source → {w.get('source_path')} "
+                f"[{causes_text}]",
+                file=sys.stderr,
+            )
 
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
     # Catch non-conforming paths before they reach the JSON. Hashi fails
@@ -917,6 +953,23 @@ def main() -> int:
             instructions_doc["tomo"] = tomo_block
         tomo_block["unresolvable_moc_links"] = unresolvable_links
 
+    # Record deletes withdrawn because their declared justification did not
+    # survive (spec 036 T4.3, PRD F6-AC1/F6-AC2). NOT "withdrawn_deletes" —
+    # that key already exists, NESTED inside a destination_clashes/
+    # attachment_suppressions entry, holding PATHS (instructions-diff's
+    # coverage join). This is a distinct, TOP-LEVEL key holding full
+    # RECORDS (id, source_path, reason, attributed cause) for every guard,
+    # not just those two — same name at a different level with a different
+    # shape is exactly the drift spec 036 T2.2 already declined once (see
+    # docs/tomo/scripts/lib/render_helpers.md). Emitted only when non-empty,
+    # matching every other guard report above — never an empty list.
+    if delete_withdrawals:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["delete_withdrawals"] = delete_withdrawals
+
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path
     # probed, and why — never note content. Nested under the permissive `tomo`
@@ -962,6 +1015,7 @@ def main() -> int:
             "attachment_suppressions": attachment_suppressions,
             "merged_moc_proposals": merged_moc_proposals,
             "unresolvable_moc_links": unresolvable_links,
+            "delete_withdrawals": delete_withdrawals,
         },
         cfg,
     )

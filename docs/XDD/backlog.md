@@ -912,3 +912,37 @@ from its own instruction set.
 mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2026 (MOC)` in the
 failure line. That was a rendering artefact of its own terminal — no `&amp;` exists anywhere in
 the artefacts or the vault. Reproducing the audit directly is what showed the real cause.
+
+## OPEN — `instructions-diff.py`'s coverage audit doesn't reconcile spec 036's daily/tag-handler withdrawals
+
+**Recorded 2026-09-17** during spec 036 T4.3 (withdrawal reporting), as the required
+`instructions-diff.py` paired-consumer check for the new `tomo.delete_withdrawals` key. Not fixed
+in T4.3 — out of that task's scope (its success criteria are the three report surfaces: stderr,
+the `tomo` block, and markdown; none is the coverage audit) and not caused by it.
+
+`derive_expected` builds `expected_deletions` for a daily-only origin (an accepted daily entry
+naming no confirmed note) and for a tag-handler group's sources from the **suggestions document
+alone** (Pass 1) — before the renderer ever runs a guard. Before spec 036, that was safe: a
+daily-only delete whose daily note turned out missing was still **emitted** (the Problem
+Statement's P2/Bug A), so the audit's expectation and the renderer's output agreed, if wrongly —
+the bug was silent data loss, not a false audit FAIL. Spec 036 Phase 2/3 fixed the emission
+(`withdraw_unjustified_deletes` now withdraws that delete), which is correct, but nothing
+subtracts the newly-withdrawn delete from `expected_deletions`/`counts["delete_source"]` the way
+`_subtract_withheld_moves` already does for `destination_clashes`/`attachment_suppressions`
+(reading the pre-existing nested `withdrawn_deletes` path list). The same gap applies to F3
+(a tag-handler group with an unresolvable `target_path` now emits zero deletes, per T3.1/ADR-5,
+but `derive_expected`'s tag-handler block still expects one per source unconditionally).
+
+**Net effect**: a live `/inbox` run that hits a daily-note-missing or unresolvable-tag-handler-group
+case can show `RESULT: FAIL — count or coverage mismatch` on an instruction set that is actually
+correct — the same failure class `_subtract_withheld_moves`'s own docstring describes for the
+guard it does cover ("the conductor's STRICT stop halts the run with a message that misdiagnoses
+the guard as drift").
+
+**What closing this needs**: a subtraction reading `tomo.delete_withdrawals` (spec 036 T4.3) —
+generically, by `source_path`, across every cause — to prune `expected_deletions` the same way
+`_subtract_withheld_moves` does today for the two guards it already covers; likely one function
+replacing (or added beside) `_subtract_withheld_moves`, since `delete_withdrawals` already
+generalises across all five drop-causing guards where the nested `withdrawn_deletes` only ever
+covered two. See `docs/tomo/scripts/instruction-render.md`'s "T4.3 —
+`tomo.delete_withdrawals`" entry for the full shape of the new key.

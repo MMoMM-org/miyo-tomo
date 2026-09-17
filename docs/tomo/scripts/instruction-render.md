@@ -499,3 +499,64 @@ filtered file answers a different question, namely which of them `upload-rendere
 should write. Keeping the two apart preserves both.
 
 Full rationale in `docs/tomo/scripts/lib/render_actions.md` (T6.4c).
+
+## T4.3 — `tomo.delete_withdrawals`, a Top-Level Key Distinct From the Existing Nested `withdrawn_deletes`
+
+**WHY the top-level key is `delete_withdrawals`, not `withdrawn_deletes`**:
+`withdrawn_deletes` already exists — nested inside a `destination_clashes` or
+`attachment_suppressions` entry, holding a **list of paths**
+(`lib/render_actions.py`'s `_drop_moves_with_paired_deletes`), read by
+`instructions-diff.py`'s `_subtract_withheld_moves` (`for path in
+clash.get("withdrawn_deletes")`). Spec 036 T2.2's own deviation record
+already rejected exactly this shape of collision once, for a different key
+(`source_inbox_item`): "one key with two meanings is how the site-2 and
+site-4 divergences this spec is fixing began." A new top-level
+`tomo.withdrawn_deletes` holding full **records** (id, source_path, reason,
+attributed cause) would repeat that mistake one key over — same name, two
+levels, two shapes, in the SAME `tomo` block. `delete_withdrawals` names the
+same fact (a delete was withdrawn) with no lexical overlap.
+
+**WHY the record covers all five drop-causing guards, not just the two
+`withdrawn_deletes` already covers**: `withdrawn_deletes` (nested) only ever
+reports a delete orphaned by `validate_destinations` or
+`suppress_moves_for_unfiled_attachments` — the two guards that report in the
+`{clash/suppression: {dropped: [...], withdrawn_deletes: [...]}}` shape.
+`withdraw_unjustified_deletes` (T2.1) withdraws on **any** guard's drop,
+including `filter_missing_daily_notes` (Bug A, the headline case this spec
+exists to close) and `filter_unappliable_relationships` /
+`filter_unresolvable_moc_links`, none of which populate the old nested key at
+all. A reader relying only on the nested key would never learn a Bug-A-shaped
+withdrawal happened.
+
+**WHY the join (`attribute_withdrawal_causes`, `describe_withdrawal_cause`,
+`build_delete_withdrawal_reports`) lives in `lib/render_helpers.py`, not
+`lib/render_actions.py` or `lib/render_md.py`**: `render_actions.py` already
+does `from lib.render_md import bare_stem`, so a helper needed by BOTH this
+file's stderr block and `render_md.py`'s markdown section cannot live in
+either of those two without completing a cycle. `render_helpers.py` is the
+one module in the render_* graph documented as a DAG leaf, importable by all
+three siblings — see `docs/tomo/scripts/lib/render_helpers.md`.
+
+**WHY the caller (here, not the join) normalises the five guards' three
+report shapes into `drop_sources: dict[str, list[str]]`**: `destination_clashes`
+and `attachment_suppressions` nest a `dropped` list of dicts inside each
+clash/suppression record; `filter_unresolvable_moc_links` and
+`filter_missing_daily_notes` and `filter_unappliable_relationships` each
+return a flat list of skipped action dicts. Normalising at the call site
+(where all five reports already exist as local variables, right before the
+withdrawal pass) keeps the join itself a pure `dict[str, list[str]] ->
+list[dict]` function that never needs to know these three shapes, or that
+there are three of them.
+
+**instructions-diff.py finding (checked, not wired)**: `delete_withdrawals`
+is NOT read by `instructions-diff.py`. `derive_expected`'s daily-only and
+tag-handler `expected_deletions` are built from the suggestions document
+alone (Pass 1), before the renderer ever runs a guard — so a daily-note-
+missing or unresolvable-tag-handler-group run can, independent of this task,
+still show a coverage mismatch in `instructions-diff.py`'s audit, the same
+class of gap `_subtract_withheld_moves` closed for `destination_clashes`/
+`attachment_suppressions` (nested `withdrawn_deletes`) but that no
+`_subtract_*` closes for `skipped_daily` / `unresolvable_moc_links` /
+`skipped_rel`. This is a pre-existing gap T4.3 did not create — T4.3's own
+success criteria are the three report surfaces, not the coverage audit — and
+is logged in `docs/XDD/backlog.md` rather than left to be rediscovered.

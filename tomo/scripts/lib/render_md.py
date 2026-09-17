@@ -1,4 +1,4 @@
-# version: 0.18.0
+# version: 0.19.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
-from lib.render_helpers import _moc_stem, _stem
+from lib.render_helpers import _moc_stem, _stem, describe_withdrawal_cause
 from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
 
@@ -547,6 +547,74 @@ def _withdrawn_links_note(withholdings: list[dict]) -> str:
     return ""
 
 
+# Guards whose own report already renders a bullet inside the "## Skipped —
+# un-appliable actions" heading (spec 036 T4.3, PRD F2-AC4). A withdrawal
+# whose primary cause names one of these nests directly under that guard's
+# own bullet instead of repeating in a separate list — the adjacency the
+# criterion asks for. `validate_destinations` and `suppress_moves_for_
+# unfiled_attachments` render under their OWN "## Not filed" headings, not
+# this one (see the two blocks above `render_instructions_md`'s section
+# loop), so a withdrawal attributed to either of those, or one that is
+# unattributed or never declared a dependency, falls to the catch-all block.
+_INLINE_WITHDRAWAL_GUARDS = frozenset({
+    "filter_missing_daily_notes",
+    "filter_unappliable_relationships",
+    "filter_unresolvable_moc_links",
+})
+
+
+def _group_delete_withdrawals(
+    delete_withdrawals: list[dict],
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Bucket withdrawals by the missing id of their PRIMARY cause.
+
+    A withdrawal's `causes` share one guard in practice: every
+    `_build_delete_source_actions` emission site names ids from exactly one
+    guard's action kind (SDD Complex Logic; site 2 names daily-action ids,
+    site 3 names move ids, site 4 names one insert id), so `causes[0]`
+    stands in for the whole withdrawal rather than being one of several
+    independent joins. Documented as the one assumption this function makes,
+    not verified per-call: a withdrawal whose causes actually span two
+    guards would render only at its first cause's location, not split
+    across two.
+
+    Returns `(by_missing_id, leftover)`: `by_missing_id` maps a missing id to
+    the withdrawals whose primary cause names it, for a guard rendered
+    inside "## Skipped" (`_INLINE_WITHDRAWAL_GUARDS`); `leftover` holds every
+    other withdrawal — attributed to `validate_destinations` or
+    `suppress_moves_for_unfiled_attachments` (rendered under a different
+    heading), `unattributed` (the T4.3 tripwire), or never declared at all.
+    """
+    by_missing_id: dict[str, list[dict]] = {}
+    leftover: list[dict] = []
+    for withdrawal in delete_withdrawals:
+        causes = withdrawal.get("causes") or []
+        primary = causes[0] if causes else None
+        guard = primary.get("guard") if primary else None
+        missing_id = primary.get("missing_id") if primary else None
+        if guard in _INLINE_WITHDRAWAL_GUARDS and missing_id:
+            by_missing_id.setdefault(missing_id, []).append(withdrawal)
+        else:
+            leftover.append(withdrawal)
+    return by_missing_id, leftover
+
+
+def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
+    """One withdrawal, as a bullet naming the delete, its source and cause(s).
+
+    Metadata only (Constitution L2): id, source_path and the cause phrases
+    from `describe_withdrawal_cause` — never note content.
+    """
+    causes = withdrawal.get("causes") or []
+    detail = "; ".join(describe_withdrawal_cause(c) for c in causes) or (
+        "no dependency was ever declared (depends_on missing)"
+    )
+    return (
+        f"{indent}- withdrawn: `{withdrawal.get('id')}` `delete_source` → "
+        f"`{withdrawal.get('source_path')}` — {detail}"
+    )
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -697,8 +765,19 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_assets = metadata.get("skipped_assets") or []
     dropped_sources = metadata.get("dropped_sources") or []
     unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    # spec 036 T4.3 (PRD F6-AC1/F6-AC2): a withdrawn delete_source is reported
+    # in this same section — never a new top-level heading — so its presence
+    # alone (even when every other skip key here is empty) must still open
+    # "## Skipped". `by_missing_id` carries the withdrawals whose primary
+    # cause is one of THIS section's own guards, nested under the matching
+    # bullet below (PRD F2-AC4 adjacency); `leftover_withdrawals` carries
+    # every other withdrawal (attributed to a guard reported under a
+    # different heading, unattributed, or never declared) in its own
+    # sub-block at the end of this section.
+    delete_withdrawals = metadata.get("delete_withdrawals") or []
+    withdrawals_by_id, leftover_withdrawals = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
-            or unresolvable_links):
+            or unresolvable_links or delete_withdrawals):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -710,6 +789,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 stem = _stem(a.get("daily_note_path")) or a.get("date", "?")
                 detail = a.get("content") or a.get("field") or a.get("target_stem") or ""
                 body_parts.append(f"- `{a.get('action')}` → [[{stem}]] — {detail}".rstrip(" —"))
+                for w in withdrawals_by_id.get(a.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_rel:
             body_parts.append(
@@ -722,6 +803,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 error = a.get("error") or "?"
                 line = a.get("line") or ""
                 body_parts.append(f"- `add_relationship` → `{target}` [{error}] — {line}".rstrip(" —"))
+                for w in withdrawals_by_id.get(a.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_assets:
             body_parts.append(
@@ -821,6 +904,25 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                         "render_md.py)"
                     )
                 body_parts.append(f"- [[{moc}]] ← [[{src}]] — {remedy}.")
+                for w in withdrawals_by_id.get(r.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
+            body_parts.append("")
+        if leftover_withdrawals:
+            # Catch-all for a withdrawal this section cannot nest under one
+            # of its own bullets: attributed to validate_destinations or
+            # suppress_moves_for_unfiled_attachments (whose own report
+            # renders under a different "## Not filed" heading above),
+            # `unattributed` (the T4.3 tripwire — no guard reported dropping
+            # the missing id), or never declared a dependency at all. Still
+            # inside "## Skipped" (test 8) — a new top-level heading here
+            # would be the very omission-reads-as-bug failure this task
+            # exists to close.
+            body_parts.append(
+                "**Delete withdrawn** — the origin's declared justification "
+                "did not survive this run:")
+            body_parts.append("")
+            for w in leftover_withdrawals:
+                body_parts.append(_render_withdrawal_bullet(w, indent=""))
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

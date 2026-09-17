@@ -261,3 +261,50 @@ pre-existing and shared with four other blocks, and "un-appliable" is likewise
 true only for the confirmed-absent cause — the other two may be perfectly
 appliable once Kado answers. Changing a heading four other blocks sit under is a
 separate change.
+
+## T4.3 — A Withdrawal Nests Under Its Own Guard's Bullet, or Falls to a Catch-All
+
+PRD F2-AC4 requires a withheld daily action (or a similarly-skipped
+`add_relationship` / `link_to_moc`) and the delete it withdrew to read as
+**structurally grouped**, not merely both present somewhere in the document —
+`assert "I05" in md` twice would pass on the exact defect the criterion
+exists to catch.
+
+**WHY nesting, not a single unified list**: `_INLINE_WITHDRAWAL_GUARDS`
+(`filter_missing_daily_notes`, `filter_unappliable_relationships`,
+`filter_unresolvable_moc_links`) are the three guards whose OWN report
+already renders a bullet inside THIS heading. For those three,
+`_group_delete_withdrawals` buckets each withdrawal under its primary
+cause's `missing_id`, and the existing `skipped_daily` / `skipped_rel` /
+`unresolvable_links` loops print the withdrawal bullet immediately after the
+matching bullet — same visual block, one indent deeper, the same nested-bullet
+shape `destination_clashes`/`attachment_suppressions` already use for their
+own `dropped` sub-lists (`- `id`` under `- destination`). A separate list
+naming the same id would put a reader's eye two sections apart to confirm
+the connection this criterion asks to be immediate.
+
+**WHY `validate_destinations` / `suppress_moves_for_unfiled_attachments`
+attributions, `unattributed`, and undeclared withdrawals fall to a catch-all
+block instead of nesting**: those two guards render under their OWN
+`## Not filed —` headings above this one, not under `## Skipped`. Nesting a
+withdrawal there would contradict T4.3's own test 8 ("inside the existing
+`## Skipped` heading, not a new top-level section") in the other direction —
+a withdrawal attributed to them still needs a home INSIDE `## Skipped`, so
+`leftover_withdrawals` collects everything `_INLINE_WITHDRAWAL_GUARDS`
+cannot claim (including the tripwire and undeclared cases, which have no
+bullet to nest under by definition) into one `**Delete withdrawn**`
+sub-block at the end of the section — inside the heading, never a sibling
+heading of its own.
+
+**WHY the "## Skipped" guard condition grew to include `delete_withdrawals`
+in its `or`**: without it, a run that withdraws a delete but skips nothing
+else (e.g. every cause routes to the catch-all) would open no heading at
+all for the catch-all block to sit under. F6-AC1 requires the withdrawal be
+reported; test 10's second half (`test_withdrawn_only_run_still_renders_
+skipped_heading`) pins this directly.
+
+**The one-guard-per-withdrawal assumption `_group_delete_withdrawals` makes**
+(reading only `causes[0]`) is documented at the join's own definition —
+`docs/tomo/scripts/lib/render_helpers.md`, "`render_md.py`'s Adjacency
+Grouping Assumes One Withdrawal, One Guard" — since the assumption is a
+property of the DATA the join receives, not of this file's rendering choice.

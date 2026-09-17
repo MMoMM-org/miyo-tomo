@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -71,3 +71,105 @@ def resolve_sibling_path(
     if item_key and "/" in item_key:
         folder = item_key.rsplit("/", 1)[0]
     return f"{(folder or '').rstrip('/')}/{basename}"
+
+
+# ── Withdrawal cause attribution (spec 036 T4.3) ─────────────────────────────
+# Lives here, not in render_actions.py or render_md.py: render_actions.py
+# already imports FROM render_md.py (`bare_stem`), so a join needed by both
+# instruction-render.py's stderr block and render_md.py's markdown section
+# cannot live in either without a cycle. This module is the one place in the
+# render_* graph documented as importable by all three (module docstring
+# above) — see docs/tomo/scripts/lib/render_helpers.md for the full ADR.
+
+WITHDRAWAL_GUARDS = (
+    "validate_destinations",
+    "suppress_moves_for_unfiled_attachments",
+    "filter_unresolvable_moc_links",
+    "filter_missing_daily_notes",
+    "filter_unappliable_relationships",
+)
+
+
+def attribute_withdrawal_causes(
+    withdrawal: dict, drop_sources: dict[str, list[str]]
+) -> list[dict]:
+    """Join one `withdraw_unjustified_deletes` record to the guard(s) that
+    dropped its missing id(s) (spec 036 T4.3, PRD F2-AC4 / F6-AC1).
+
+    `drop_sources` maps each of the five action-dropping guards' name (see
+    `WITHDRAWAL_GUARDS`) to the ids it removed this run. The five are
+    structurally disjoint — each governs its own action kind (SDD ADR-2), so
+    an id dropped by one guard is never also dropped by another; this
+    function does not need to detect or resolve a collision.
+
+    Returns one "cause" dict per missing id, `{"missing_id": ..., "guard":
+    ...}`:
+
+    - `depends_on_declared is False` -> a single cause `{"missing_id": None,
+      "guard": None}`. The delete never named a justification, so there is
+      nothing to join on — distinct wording from an unresolved join below,
+      which DID name something.
+    - a missing id present in exactly one guard's dropped-id list -> `guard`
+      names that guard.
+    - a missing id present in NO guard's list -> `guard: "unattributed"`.
+      Structurally unreachable today: `withdraw_unjustified_deletes` runs
+      after all five guards (SDD ADR-2), so every id it can name either was
+      dropped by one of them or never existed in the set at all. Kept as a
+      tripwire against a future sixth drop site that removes an action
+      without reporting what it removed — a withdrawal must never go
+      silently unexplained.
+    """
+    if not withdrawal.get("depends_on_declared", True):
+        return [{"missing_id": None, "guard": None}]
+    id_to_guard: dict[str, str] = {}
+    for guard, ids in drop_sources.items():
+        for dropped_id in ids:
+            id_to_guard.setdefault(dropped_id, guard)
+    return [
+        {
+            "missing_id": missing_id,
+            "guard": id_to_guard.get(missing_id, "unattributed"),
+        }
+        for missing_id in withdrawal.get("missing_dependencies") or []
+    ]
+
+
+def describe_withdrawal_cause(cause: dict) -> str:
+    """Render one `attribute_withdrawal_causes` entry as a metadata-only phrase.
+
+    Shared by stderr (instruction-render.py) and markdown (render_md.py) so
+    the two surfaces never drift into different wording for the same cause
+    (spec 036 T4.3, PRD F6-AC1). Reads only the id and guard name this module
+    already carries — never note content (Constitution L2).
+    """
+    guard = cause.get("guard")
+    if guard is None:
+        return "no dependency was ever declared (depends_on missing)"
+    if guard == "unattributed":
+        return (
+            f"missing id {cause.get('missing_id')} (cause unattributed — no "
+            "guard reported dropping it)"
+        )
+    return f"missing id {cause.get('missing_id')} (dropped by {guard})"
+
+
+def build_delete_withdrawal_reports(
+    withdrawn_deletes: list[dict], drop_sources: dict[str, list[str]]
+) -> list[dict]:
+    """Shape `withdraw_unjustified_deletes`' output for the three report
+    surfaces — stderr, the `tomo` block, markdown (spec 036 T4.3).
+
+    One record per withdrawal: id, action kind, source_path, the builder's
+    own reason template (never re-derived or re-worded — Constitution L2 /
+    PRD F6-AC1), and `causes` from `attribute_withdrawal_causes`.
+    """
+    return [
+        {
+            "id": w.get("id"),
+            "action": "delete_source",
+            "source_path": w.get("source_path"),
+            "reason": w.get("reason"),
+            "causes": attribute_withdrawal_causes(w, drop_sources),
+        }
+        for w in withdrawn_deletes
+    ]

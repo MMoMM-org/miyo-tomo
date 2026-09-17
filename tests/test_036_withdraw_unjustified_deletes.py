@@ -178,6 +178,7 @@ def test_one_missing_of_three_withdraws():
     assert [a["id"] for a in kept] == ["A1", "A2"]
     assert [w["id"] for w in withdrawn] == ["D1"]
     assert withdrawn[0]["missing_dependencies"] == ["A3"]
+    assert withdrawn[0]["depends_on_declared"] is True
 
 
 def test_all_three_present_is_kept():
@@ -311,6 +312,7 @@ def test_withdrawal_record_carries_missing_id_source_path_and_reason():
     assert record["source_path"] == "100 Inbox/Origin.md"
     assert record["reason"] == "Content fully captured in daily note."
     assert record["missing_dependencies"] == ["A2"]
+    assert record["depends_on_declared"] is True
 
 
 # ── 10. Single-pass semantics — no cascade ───────────────────────────────────

@@ -718,8 +718,13 @@ _CLASHING_MOVES = [
         "parent_mocs": [], "tags": [],
     },
     {
+        # depends_on restores the id-linkage this fixture is meant to
+        # exercise (I01 owns DRESDEN_PLACES) — every real run has carried
+        # this key since Phase 1; without it the delete is withdrawn by the
+        # fail-closed absent-declaration branch instead (spec 036 T2.3).
         "id": "I03", "action": "delete_source", "applied": False,
         "source_path": DRESDEN_PLACES, "reason": "Origin consumed by 1 atomic.",
+        "depends_on": ["I01"],
     },
 ]
 

@@ -1,4 +1,4 @@
-# version: 0.25.0
+# version: 0.25.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -2494,7 +2494,7 @@ def withdraw_unjustified_deletes(
         if action.get("action") != "delete_source":
             kept.append(action)
             continue
-        if "depends_on" not in action or action.get("depends_on") is None:
+        if action.get("depends_on") is None:
             withdrawn.append({
                 "id": action.get("id"),
                 "source_path": action.get("source_path"),

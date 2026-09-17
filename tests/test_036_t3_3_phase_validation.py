@@ -122,9 +122,17 @@ def test_a_unresolved_group_through_real_gate_emits_nothing():
 
     Runs the real chain: annotate guards -> render -> parse -> build_actions.
     Asserts the parser yields no approved id for this group (T3.2's job), and
-    that build_actions — even if somehow fed that empty approved-id list —
-    emits zero insert_under_marker and zero delete_source (T3.1's job, since
-    the group is not even in the approved set here).
+    that build_actions, fed that empty approved-id list, emits zero
+    insert_under_marker and zero delete_source.
+
+    This zero is T3.2's result, not T3.1's: with approved_tag_handler_group_ids
+    == [], both builders short-circuit on the approval check itself —
+    `if not approved_group_ids: return [], {}` in the insert builder, `if gid
+    not in approved_groups: continue` at delete site 4 — before
+    `_tag_handler_group_has_resolvable_target` is ever called.
+    `_tag_handler_group_has_resolvable_target` is T3.1's predicate; it is not
+    reached in this test. Test B below forces a non-empty approved set to get
+    past the approval gate, which is what actually exercises T3.1.
     """
     g = _group(target_path=None, source_paths=[
         "100 Inbox/cap-1.md", "100 Inbox/cap-2.md", "100 Inbox/cap-3.md",
@@ -180,23 +188,32 @@ def test_b_t3_1_gate_is_independent_of_the_render_parse_gate():
     NOT a re-export through instruction-render.py, which would silently
     no-op).
 
-    Verified against the T3.1 commit (4efcc03) itself: pre-fix, the insert
-    builder had its OWN standalone `if not target_path: continue` check,
-    independent of anything the delete loop did — that standalone check is
-    what produced Bug B's asymmetry (0 inserts / N deletes). T3.1 REPLACED
-    that standalone check with a call to the new shared predicate (it did
-    not add the predicate alongside the original check) — see the diff:
-    `- if not target_path:` / `+ if not tag_handler_group_is_appliable(group):`.
-    So today, both loops are gated by the SAME predicate and nothing else;
-    forcing that one predicate open reopens BOTH sites, not just the delete
-    site. Re-running with the patch live therefore reproduces exactly 3
+    Measured, not read from a diff: the orchestrator ran the real pipeline
+    chain (annotate_tag_handler_group_guards -> render_tag_handler_updates_
+    block -> parse_tag_handler_groups -> build_actions) against a checkout of
+    the pre-T3.1 commit, using the same three-source null-target fixture this
+    file uses. Pre-fix: guard after annotate unset, Approve box present,
+    parser approved id ['th-tsukai-none'], insert_under_marker 0,
+    delete_source 3 (each with reason "Source consolidated into  by tsukai
+    handler." — note the empty gap where the target should be, i.e. the
+    delete loop interpolated a target that did not exist and emitted anyway).
+    At HEAD, the same probe: guard after annotate 'target_unresolved',
+    Approve box absent, parser approved ids [], insert_under_marker 0,
+    delete_source 0.
+
+    Per ADR-5, T3.1 replaced the insert builder's own standalone null-target
+    check with the same shared predicate the delete loop already used (one
+    predicate, not two `if`s). That is why forcing the predicate open today
+    reopens BOTH sites symmetrically: patching it live reproduces exactly 3
     delete_source (one per source_path — the N-deletes half of Bug B) AND 1
     insert_under_marker carrying `target_path: None` (a path-less, unappliable
     instruction — the emission T3.1's gate exists to prevent on the insert
-    side too). This is the live proof that T3.1 is one shared gate covering
-    both sites, not two independent ones that happen to agree: forcing it
-    open breaks both symmetrically. It also proves the patch binding is
-    live — a no-op patch would keep showing 0/0.
+    side too). The original pre-fix shape — 3 deletes with zero inserts — is
+    no longer reproducible by patching one thing, because there is no longer
+    a second, independent check to leave unpatched; that asymmetry is the
+    fix working as designed, not a weakness in this test. The 3/1 split
+    below also proves the patch binding is live — a no-op patch would keep
+    showing 0/0.
     """
     g = _group(target_path=None, source_paths=[
         "100 Inbox/cap-1.md", "100 Inbox/cap-2.md", "100 Inbox/cap-3.md",

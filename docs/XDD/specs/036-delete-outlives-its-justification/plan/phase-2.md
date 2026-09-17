@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Collect — the withdrawal pass"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -146,7 +146,7 @@ Turns the relation from Phase 1 into enforcement.
      - [x] Exactly one delete-withdrawal mechanism remains in the module `[ref: SDD/ADR-4]`
      - [x] The T5.0c rationale survives in `docs/tomo/` before the docstring is removed `[ref: SDD/Directory Map]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean.
   - Reproduce **P1** end to end with the real builder and real guards: assert the delete is absent
@@ -154,3 +154,31 @@ Turns the relation from Phase 1 into enforcement.
   - Reproduce **Bug A** the same way: a daily action dropped for a missing daily note leaves no
     delete behind.
   - Confirm no emitted set contains a `delete_source` naming an id absent from that set.
+
+  **Result, 2026-09-17** — `tests/test_036_t2_4_phase_validation.py`, commit `1325d77`. Suite
+  **4132 passed, 0 failed**; `ruff` clean.
+
+  Both paths reproduced through the real builder and the real guards, with the before/after inside
+  one test rather than asserted about the past:
+
+  | | P1 — contested destination | Bug A — missing daily note |
+  |---|---|---|
+  | After `build_actions` | `I03 delete_source depends_on: ["I02"]` | `I02 delete_source depends_on: ["I01"]` |
+  | Guard drops | `validate_destinations` drops **both** claimants | `filter_missing_daily_notes` drops `I01` |
+  | Before the pass | delete still present, still naming the dropped id | delete still present, still naming the dropped id |
+  | After the pass | **withdrawn**, `missing_dependencies: ["I02"]` | **withdrawn**, `missing_dependencies: ["I01"]` |
+
+  Both match the SDD's traced walkthroughs id for id.
+
+  **The proof the tests can fail.** With `withdraw_unjustified_deletes` bypassed, both tests fail on
+  the surviving delete — *"P1 must not reproduce: delete_source is absent from the emitted set; got
+  [{'id': 'I03', … 'depends_on': ['I02'] …}]"* and the matching one for Bug A. A phase validation
+  that still passed with the phase's own mechanism disabled would prove nothing.
+
+  **One honest limitation**, reported rather than hidden: the dangling-id assertion holds **trivially**
+  in both scenarios, because each final set contains no `delete_source` at all. The assertion is real
+  and would fire, but these two fixtures do not exercise it. It was therefore also run against both
+  golden action sets, which carry **ten** real deletes between them — `034-t5-3-actions-golden` and
+  `034-t5-4-duplicate-reference-golden` — with zero dangling ids and zero missing `depends_on`. The
+  enforcing audit (`assert_no_dangling_dependencies`) belongs to Phase 4 and was deliberately not
+  built here.

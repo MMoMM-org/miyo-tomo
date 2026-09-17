@@ -1,4 +1,4 @@
-# version: 0.26.1
+# version: 0.26.2
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1615,7 +1615,13 @@ def _resolve_daily_path(daily_path_cfg: str, date: str, daily_note_path: str | N
         if p and not p.endswith(".md"):
             p += ".md"
         return p
-    base = (daily_path_cfg or "Calendar/301 Daily/").rstrip("/")
+    # Defensive: vault-config values are not trusted (established by
+    # shared-ctx-builder.py's same-key read). A trailing space after a
+    # trailing slash survives a bare .rstrip("/"), leaving the slash in
+    # place and producing a double-separator path that never matches a
+    # real note. Strip whitespace first, then strip any run of trailing
+    # slashes/spaces — order matters, see docs/tomo counterpart.
+    base = (daily_path_cfg or "Calendar/301 Daily/").strip().rstrip("/ ")
     return f"{base}/{date}.md"
 
 

@@ -1344,3 +1344,51 @@ ever changes the import shape, the patch silently stops intercepting, and
 without the control the test would quietly revert to a tautology (asserting
 exit 2 against a fixture that was never going to trigger it) instead of
 failing loudly.
+
+## `_resolve_daily_path`'s Fallback Does Not Trust the Config Value (standalone fix, 2026-09-17)
+
+WHY the fallback branch of `_resolve_daily_path` normalises
+`daily_path_cfg` with `.strip().rstrip("/ ")` instead of the bare
+`.rstrip("/")` it carried before: a vault-config value for
+`concepts.calendar.granularities.daily.path` can carry trailing
+whitespace after its trailing slash (confirmed live —
+`"Calendar/301 Daily/ "` in the owner's instance config, real folder
+`301 Daily` with no trailing space). `.rstrip("/")` alone leaves the
+slash in place because a space sits after it, producing a
+double-separator path (`Calendar/301 Daily/ /2026-09-15.md`) that never
+matches a real note — every daily note then reads as missing, which
+downstream (spec 036 `filter_missing_daily_notes`) drops every daily
+action and withdraws the paired deletes: a config typo silently firing a
+data-loss-adjacent guard.
+
+**The intent was already established elsewhere, just not here.**
+`shared-ctx-builder.py` reads the same `daily.path` config key and
+already treats it as untrusted (`raw_path.strip().rstrip("/").strip()`
+composed into `+ "/"`). `_resolve_daily_path` read the identical key but
+never got the same treatment — this fix brings it in line with that
+established intent, not a new policy.
+
+**Why `.strip().rstrip("/ ")` and not `.rstrip("/").strip()`.** Order
+matters. `.rstrip("/").strip()` passes a single `"trailing space after
+slash"` case but fails a value with slashes and spaces interleaved at the
+end (e.g. `"Calendar/301 Daily / / "`) — a single `.rstrip("/")` pass
+stops at the first non-`/` character (a space) and never removes the
+slash behind it. Stripping whitespace first, then stripping any run of
+trailing `/` or space characters in one pass, handles both orders.
+
+**What the test matrix pins** (`tests/test_resolve_daily_path.py`), so a
+future "simplification" back to bare `.rstrip("/")` fails loudly: the
+happy path (`"Calendar/301 Daily/"`), no trailing slash, the live bug
+(trailing space after slash), trailing space with no slash, leading AND
+trailing whitespace, a doubled trailing slash, mixed trailing
+slashes-and-spaces, and both `""` and `None` falling back to the default
+without crashing. A ninth row pins the *other* branch
+(`daily_note_path`, already `.strip()`ed) as a regression guard, not a
+fix.
+
+**Other sites reading the same class of config value were found but
+deliberately not touched** (out of scope for this fix — see the task
+that produced it): `_inbox_join` (`lib/render_actions.py`) reads
+`cfg["concepts.inbox"]` and joins it with the same bare `.rstrip('/')`,
+with no leading `.strip()` — the identical defect shape, unconfirmed
+live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.

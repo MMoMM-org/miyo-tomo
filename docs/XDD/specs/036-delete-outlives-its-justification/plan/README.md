@@ -312,6 +312,44 @@ When implementation requires changes from the specification:
   a different field sharing the literal), no runtime skill reads it, and a repo-wide scan of the
   Hashi checkout finds no reference. The closed-set risk is real but has no consumer.
 
+- **2026-09-17 - T3.3's first test plan would have proven nothing, because the approval gate sits
+  upstream of the predicate it meant to test.** The plan was: run the real chain, then monkeypatch
+  `_tag_handler_group_has_resolvable_target` to reproduce the pre-fix behaviour. The TDD guardian
+  read the builders and BLOCKed it. `_build_insert_under_marker_actions` opens with
+  `if not groups or not approved_group_ids: return [], {}`, and site 4 with
+  `if gid not in approved_groups or gid in kept_groups: continue` - both **above** the predicate
+  call. Fed the real parse output for an unresolved group that list is `[]`, so both builders exit at
+  the approval check and **the predicate is never called at all**; patching it changes nothing and
+  the test shows 0/0 before and after, green and worthless. Split into Test A (real chain, proves
+  T3.2 closes the Pass-2 path) and Test B (approval list forced directly, proves T3.1 is an
+  independent second gate). The monkeypatch must bind on the `lib.render_actions` module object,
+  since the builders resolve the bare name at call time; a patch on `instruction-render.py`'s
+  re-export is a different binding and silently no-ops. The test carries an explicit liveness flag so
+  a no-op patch fails loudly instead of reading as success.
+  **Test B is not a hypothetical bypass.** `build_actions` has exactly one production caller
+  (`instruction-render.py:541`), which takes `approved_tag_handler_group_ids` from
+  `suggestions.get(...)` - a **JSON file on disk**, produced by `suggestion-parser.py:2817`. A
+  suggestions doc confirmed *before* T3.2 landed still carries an approved id for a now-unresolved
+  group. That stale-replay case is exactly what T3.1's in-builder gate defends.
+  The guardian also added the case the plan missed: a **mixed run**, one unresolved and one healthy
+  group through a single `build_actions` call with shared loop bookkeeping, asserting attribution by
+  path set rather than by count - a count-only assertion would pass even if the wrong group's sources
+  were the survivors.
+
+- **2026-09-17 - the pre-fix asymmetry is no longer reproducible by patching one thing, so it was
+  reproduced by running the pre-fix code.** The T3.3 brief predicted Test B's patched branch would
+  show 3 deletes and 0 inserts. It shows 3 deletes and **1** path-less insert. The implementer
+  reported the discrepancy rather than bending the test to the prediction, and the cause is ADR-5
+  working: T3.1 **replaced** the insert builder's standalone `if not target_path: continue` with the
+  shared predicate instead of keeping both, so forcing the one predicate open reopens both sites
+  together. Spec compliance confirmed from current code that no second standalone check exists at
+  either site.
+  Rather than soften the claim in prose, the historical shape was measured: the same fixture through
+  the same real chain against a checkout of the pre-T3.1 commit gave `<UNSET>` guard, Approve box
+  **present**, parser approved `['th-tsukai-none']`, **0 inserts and 3 deletes**, each reading
+  *"Source consolidated into  by tsukai handler."* with an empty gap where the target should be.
+  HEAD gives `target_unresolved`, no Approve box, no approved ids, 0 and 0. Recorded in phase-3.md.
+
 **Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
 committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
 reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering
@@ -381,7 +419,7 @@ context), **Test** (red), **Implement** (green), **Validate** (refactor + verify
 
 - [x] [Phase 1: Declare — depends_on at every emission site](phase-1.md)
 - [x] [Phase 2: Collect — the withdrawal pass](phase-2.md)
-- [ ] [Phase 3: The cases the pass cannot reach](phase-3.md)
+- [x] [Phase 3: The cases the pass cannot reach](phase-3.md)
 - [ ] [Phase 4: Contract, audit, reporting and integration](phase-4.md)
 
 ### Phase dependency graph

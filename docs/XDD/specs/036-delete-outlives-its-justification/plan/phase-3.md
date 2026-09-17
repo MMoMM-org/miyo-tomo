@@ -65,9 +65,9 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
   3. Implement: extract `tag_handler_group_is_appliable(group)` and call it from both loops.
   4. Validate: unit tests pass; ruff clean; existing tag-handler tests unchanged.
   5. Success:
-     - [ ] No delete is emitted for an unresolvable group `[ref: PRD/F3-AC1]`
-     - [ ] A resolvable group behaves exactly as before `[ref: PRD/F3-AC2]`
-     - [ ] The count attributable to an unresolvable group is zero `[ref: PRD/F3-AC3]`
+     - [x] No delete is emitted for an unresolvable group `[ref: PRD/F3-AC1]`
+     - [x] A resolvable group behaves exactly as before `[ref: PRD/F3-AC2]`
+     - [x] The count attributable to an unresolvable group is zero `[ref: PRD/F3-AC3]`
 
 - [x] **T3.2 An unresolvable group is not pre-approved** `[parallel: true]` `[activity: frontend-ui]`
 
@@ -121,8 +121,15 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
     where it previously yielded N deletes.
   - Confirm the Approve control for that same group is unticked and carries its reason.
 
-  **Result, 2026-09-17** — `tests/test_036_t3_3_phase_validation.py`, commit `41595ef`. Suite
-  **4146 passed, 5 skipped, 0 failed**; `ruff` clean.
+  **Result, 2026-09-17** — `tests/test_036_t3_3_phase_validation.py`, commits `41595ef`,
+  `9adc673` and the docstring correction that followed. Suite **4147 passed, 4 skipped, 0
+  failed** (4151 collected, exactly +6 on the phase's baseline of 4145); `ruff` clean.
+
+  Spec compliance FAILED this task once, on the rule the brief itself set: four assertions
+  shipped as bare `assert` with no message, on a path where a wrong outcome sends the user's
+  only copy of a note to `vault.trash`. Fixed in `9adc673` and re-verified — the fix was
+  proven message-only by diff (every removed line reappears byte-identical up to the added
+  `, (`), so no comparison was widened or narrowed while adding prose.
 
   Bug B reproduced through the real chain — `annotate_tag_handler_group_guards` ->
   `render_tag_handler_updates_block` -> `parse_tag_handler_groups` -> `build_actions` — with a
@@ -134,14 +141,38 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
   | `insert_under_marker` | 0 | 0 | **1**, `target_path: None` |
   | `delete_source` | 0 | 0 | **3** (one per source) |
 
+  **The before state was measured, not inferred.** The same three-source null-target fixture was run
+  through the same real chain against a checkout of the pre-T3.1 commit, and against HEAD:
+
+  | | pre-T3.1 (`3d52c1f`) | HEAD (T3.1 + T3.2) |
+  |---|---|---|
+  | `guard` after annotate | `<UNSET>` | `target_unresolved` |
+  | Approve box present | **True** — pre-ticked | False |
+  | parser approved ids | `['th-tsukai-none']` | `[]` |
+  | `insert_under_marker` | 0 | 0 |
+  | `delete_source` | **3** | **0** |
+
+  Each pre-fix delete carried the reason *"Source consolidated into  by tsukai handler."* — note the
+  empty gap where the target should be. The delete loop interpolated a target that did not exist and
+  emitted anyway, once per source. Three notes to `vault.trash`, the consolidated content written
+  nowhere, and the user shown the group already approved.
+
   Test B's patched column is the one honest deviation from the task brief's prediction, found by
   running the real code rather than assuming it: the brief expected 0 inserts / 3 deletes under the
-  patch (the original pre-T3.1 asymmetry). Checked against the T3.1 commit (`4efcc03`) itself, the
-  insert builder's old standalone `if not target_path: continue` was **replaced** by the call to the
-  shared predicate, not kept alongside it — so today both call sites hang off that one predicate and
-  nothing else. Forcing it open reopens both sites symmetrically (a path-less insert **and** 3
-  deletes), which is actually the stronger proof of ADR-5's "one shared predicate, not two `if`
-  statements": break the one gate, both sites break together.
+  patch. Today both call sites hang off the one shared predicate and nothing else — T3.1 **replaced**
+  the insert builder's standalone `if not target_path: continue` rather than keeping it alongside
+  (ADR-5: "one shared predicate; two independent `if` statements is how these sites diverged in the
+  first place"). Forcing that predicate open therefore reopens both sites symmetrically, a path-less
+  insert **and** 3 deletes. The original asymmetry is no longer reproducible by patching one thing,
+  which is the fix working as designed — and is why the pre-fix run above, not Test B, is what
+  establishes the historical N-deletes-with-zero-inserts shape.
+
+  **One attribution error caught in review and corrected**: Test A's docstring originally credited its
+  zero result to T3.1. It is T3.2's. With nothing approved, both builders short-circuit on the
+  approval check *before* `_tag_handler_group_has_resolvable_target` is ever called — the same
+  upstream-gate trap the TDD guardian caught in this task's first test plan, resurfacing as prose.
+  T3.1 is reached only by Test B, which forces a non-empty approved set precisely to get past that
+  gate.
 
   Test C confirms the consent half on the same fixture: no `- [x] Approve` and no `- [ ] Approve` in
   the rendered block, `"Target unresolved"` present. Test D confirms the parser mechanism directly —

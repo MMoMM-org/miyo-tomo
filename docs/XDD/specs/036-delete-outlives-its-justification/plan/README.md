@@ -510,7 +510,7 @@ context), **Test** (red), **Implement** (green), **Validate** (refactor + verify
 - [x] [Phase 1: Declare — depends_on at every emission site](phase-1.md)
 - [x] [Phase 2: Collect — the withdrawal pass](phase-2.md)
 - [x] [Phase 3: The cases the pass cannot reach](phase-3.md)
-- [ ] [Phase 4: Contract, audit, reporting and integration](phase-4.md)
+- [x] [Phase 4: Contract, audit, reporting and integration](phase-4.md)
 
 ### Phase dependency graph
 

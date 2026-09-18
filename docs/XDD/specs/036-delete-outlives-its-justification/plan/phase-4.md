@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Contract, audit, reporting and integration"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -181,7 +181,22 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] A healthy run is unchanged apart from the new field `[ref: SDD/Edge Case Criteria]`
      - [ ] Every vault-mutating path has both a permitted and a refused test `[ref: SDD/CON-5]`
 
-- [ ] **T4.5 Release handoff to the consumer** `[activity: validate]`
+- [x] **T4.5 Release handoff to the consumer** `[activity: validate]`
+
+  Sent 2026-09-18 as
+  `_outbox/for-hashi/2026-09-18_tomo-to-hashi_depends-on-the-row-we-said-was-not-in-the-last-release.md`,
+  both schema files attached and `cmp`-verified byte-identical at `bc3eff0`.
+  **One document, not the two this task assumes.** Hashi vendored spec 035 before this went out
+  (`96f1b22` on their `main`), so the suggestions and garden-audit wires now diff to zero and only
+  the instruction wire carries a row. The structural diff, re-run immediately before attaching,
+  reported exactly three differences and nothing else.
+  Two things the task text does not anticipate. **We are already emitting `"3"`** — the renderer
+  reads the const from the schema file at run time (`instruction-render.py:933`), so T4.1 moving it
+  put every generated set on the new version; their validator answers
+  `Schema version mismatch — expected 2, got 3` and refuses the whole document. And the diff that
+  gates this handoff is **blind to prose**: it found nothing wrong with a `depends_on` description
+  that named action kinds the field never carries and omitted three it does (fixed `96c1778`
+  before sending).
 
   Not a code task. The wire cannot ship one-sided: the consumer rejects unknown fields, so they
   vendor **first or simultaneously, never after** `[ref: SDD/Deployment View]`.

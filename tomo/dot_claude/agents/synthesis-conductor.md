@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.18.0
+# version: 0.19.0
 
 **Active agent: synthesis-conductor**
 
@@ -203,9 +203,10 @@ Check for a run-level withheld-delete relay:
 ```bash
 cat tomo-tmp/withheld-deletes.md
 ```
-If the file exists, its lines are already-sanitized user-facing notices —
-one per withheld delete across every entry processed this run. If the
-command errors (no such file), there is nothing to relay.
+If the file exists, every line in it IS an already-sanitized user-facing
+notice — one per withheld delete across every entry processed this run. The
+file never contains anything else (no run id, no header, no internals). If
+the command errors (no such file), there is nothing to relay.
 
 > Pass 2 complete — instructions rendered for N source doc(s).
 >

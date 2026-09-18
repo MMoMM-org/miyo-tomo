@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.59.0
+# version: 0.60.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -255,36 +255,47 @@ def sync_withheld_deletes_file(path: Path, run_id: str | None, notices: list[str
     N-entry run. *notices* are `_render_withdrawn_delete_notice` strings —
     already identical, by construction, to what `instructions.md` renders.
 
-    Append-across-entries, truncate-across-runs: *path*'s first line is an
-    HTML-comment header naming *run_id*. A call whose run_id matches that
-    header appends (this is entry 2..N of the SAME Pass-2 run). A call whose
-    run_id does not match is the first call of a NEW run: with notices to
-    write, the file is rewritten from scratch (old content, old header,
-    gone); with none, the stale file is deleted outright rather than left for
-    a later entry in this run to misattribute. `run_id is None` is a no-op —
-    without a run identity there is no way to tell "same run" from "new run".
+    *path*'s content is ONLY notice lines — never a run marker — so a
+    consumer that `cat`s it relays exactly what a user should see. The run
+    identity that used to live as *path*'s first line instead lives in a
+    sidecar file next to it, `path.with_suffix(".run_id")` (e.g.
+    `withheld-deletes.run_id`): read and written alongside *path*, but never
+    itself relayed anywhere.
+
+    Same-run (entry 2..N of the SAME Pass-2 run): *path* AND its sidecar both
+    exist AND the sidecar's content equals *run_id* — *notices* are appended
+    to *path*, sidecar untouched. Anything else — either file missing, both
+    missing, or the sidecar naming a different run — is staleness, i.e. the
+    first call of a NEW run: with notices to write, both files are rewritten
+    from scratch together (old content gone); with none, both are removed
+    together rather than left for a later entry in this run to misattribute.
+    A half-present state (only one of the two files exists) is always
+    staleness, never "same run, safe to append." `run_id is None` is a
+    no-op — without a run identity there is no way to tell "same run" from
+    "new run".
 
     See docs/tomo/scripts/instruction-render.md for the full rationale.
     """
     if not run_id:
         return
-    header = f"<!-- run_id: {run_id} -->"
-    same_run = False
-    if path.exists():
-        lines = path.read_text(encoding="utf-8").splitlines()
-        same_run = bool(lines) and lines[0] == header
+    sidecar = path.with_suffix(".run_id")
+    same_run = (
+        path.exists()
+        and sidecar.exists()
+        and sidecar.read_text(encoding="utf-8").strip() == run_id
+    )
     if not notices:
-        if path.exists() and not same_run:
-            path.unlink()
+        if not same_run:
+            path.unlink(missing_ok=True)
+            sidecar.unlink(missing_ok=True)
         return
     if same_run:
         with path.open("a", encoding="utf-8") as fh:
             for notice in notices:
                 fh.write(notice + "\n")
     else:
-        path.write_text(
-            header + "\n" + "\n".join(notices) + "\n", encoding="utf-8"
-        )
+        sidecar.write_text(run_id + "\n", encoding="utf-8")
+        path.write_text("\n".join(notices) + "\n", encoding="utf-8")
 
 
 def main() -> int:

@@ -561,7 +561,14 @@ class of gap `_subtract_withheld_moves` closed for `destination_clashes`/
 success criteria are the three report surfaces, not the coverage audit — and
 is logged in `docs/XDD/backlog.md` rather than left to be rediscovered.
 
-## `sync_withheld_deletes_file` — a Run-Level Relay That Survives Being Called N Times (2026-09-18)
+## `sync_withheld_deletes_file` — a Run-Level Relay That Survives Being Called N Times (v0.18.0, 2026-09-18; superseded v0.19.0, 2026-09-18)
+
+Superseded in part: the "header inside the file" mechanism this section
+describes below shipped a Critical (relayed `<!-- run_id: ... -->` into the
+user-facing chat report). v0.19.0 moves the run marker out of the file
+entirely — see "Run Marker Moved to a Sidecar" below for what changed and
+why. Everything else in this section (why the relay is a file, why it lives
+one level above `--output-dir`, why append-across-entries) is unchanged.
 
 WHY this exists: `3c8170c` (spec 036/035, "withheld delete no longer fails
 coverage or stays silent to the user") taught `synthesis-conductor.md` to
@@ -644,3 +651,60 @@ what Step 4 acts on. So a run with nothing to report must leave NO file, not
 an empty one and not someone else's: `sync_withheld_deletes_file` deletes on
 sight the moment it detects the file is not this run's (see above), even on
 a call that itself has zero notices to add.
+
+## Run Marker Moved to a Sidecar — the In-File Header Leaked Into Chat (v0.19.0, 2026-09-18)
+
+WHY this exists: code-quality review of v0.18.0 found a Critical. The
+run-level relay file's first line was `<!-- run_id: <RUN_ID> -->` — an
+implementation detail, deliberately placed there so the next call could tell
+"same run" from "new run" with a cheap string compare. But
+`synthesis-conductor.md` Step 4 does `cat tomo-tmp/withheld-deletes.md` and
+was told (in that same commit) that "its lines are already-sanitized
+user-facing notices" and to "append the file's lines verbatim … one per
+line." Both claims are false for line 1. Every run with a withheld delete
+therefore relayed `<!-- run_id: 2026-09-18T10-00-00Z-aaaaaa -->` into the
+user's chat report — exactly the internal-implementation leak (ADR-11) the
+v0.17.0 → v0.18.0 change existed to prevent, reintroduced by the fix itself.
+
+WHY the fix moves the marker out rather than telling Step 4 to skip line 1:
+the review offered both. Telling Step 4 to `tail -n +2` (or the conductor to
+remember "skip the first line") leaves a file whose correctness depends on
+an LLM reading it with the right offset — the same class of fragility this
+whole relay was built to eliminate ("prefer deterministic rendering over LLM
+assembly," "an agent definition's rules are not what the LLM actually
+does"). An agent that reaches for a plain `cat` out of habit — which is
+exactly what the leak already proved happens — reintroduces the leak
+silently, with no test able to catch it short of grepping the conductor's
+own chat output. Moving the marker to a sidecar file makes the failure
+structurally impossible: `tomo-tmp/withheld-deletes.md` contains nothing but
+notice lines, so `cat`-and-relay is correct BY CONSTRUCTION, and the doc's
+claim that "its lines are already-sanitized user-facing notices" is now
+literally true rather than true-except-line-1.
+
+WHAT changed: the run identity moves to `path.with_suffix(".run_id")` —
+`tomo-tmp/withheld-deletes.run_id` — a plain-text file holding only the run
+id, read and written alongside `tomo-tmp/withheld-deletes.md` but never
+itself relayed anywhere. "Same run" now means BOTH files exist AND the
+sidecar's content equals the incoming `--run-id`; anything else (either
+file missing, both missing, or the sidecar naming a different run) is
+staleness, exactly as before. The two files are always created, appended
+to, and removed together — never independently — so a half-present state
+(sidecar without `.md`, or `.md` without sidecar, e.g. from a prior version
+of this script, a partial write, or manual tampering) can never be
+misattributed to "same run, safe to append." It is treated as stale like
+every other non-match: rewritten together (if this entry has notices) or
+deleted together (if it does not).
+
+WHY half-present is stale, not an error: `sync_withheld_deletes_file` has no
+way to know WHY only one file exists — a crash mid-write, an old run's
+leftover, or a hand-edited directory all look identical from here. Treating
+it as stale is the same conservative choice `run_id is None` already makes
+elsewhere in this function: when same-run cannot be positively established,
+the safe default is "this is not my run," never "assume it's mine."
+
+NOT addressed: atomic writes (temp file + rename) so a crash between writing
+the sidecar and writing `.md` can't itself produce a half-present state.
+Declined as out of scope for this fix — low probability, no vault write
+involved, and the half-present state that would result is already handled
+correctly (as stale) by the logic above, so the failure mode is "one entry's
+notice is treated as a new run" rather than data corruption or a leak.

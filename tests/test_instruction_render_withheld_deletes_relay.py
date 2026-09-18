@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_instruction_render_withheld_deletes_relay.py — the run-level withheld-
 delete relay file (`sync_withheld_deletes_file`, `instruction-render.py`).
 
@@ -29,6 +29,21 @@ N Times".
 
 Tests are RED against `3c8170c` (no `sync_withheld_deletes_file`, no
 `tomo-tmp/withheld-deletes.md` at all) and GREEN after this change.
+
+**v0.19.0 update**: code-quality review of the mechanism above found a
+Critical — the relay file's first line was an HTML-comment run-id header,
+and `synthesis-conductor.md` Step 4 relayed it verbatim into the user's chat
+report (the exact internal-implementation leak this relay exists to
+prevent). The fix moves the run id out of `tomo-tmp/withheld-deletes.md`
+entirely, into a sidecar file, `tomo-tmp/withheld-deletes.run_id`
+(`path.with_suffix(".run_id")`), read/written alongside the relay file but
+never itself relayed. `tomo-tmp/withheld-deletes.md` now contains ONLY
+notice lines — never a header — by construction. The append/rewrite/delete
+staleness semantics are unchanged; "same run" now requires BOTH files to
+exist AND the sidecar to name the current `run_id`, so a half-present state
+(one file without the other) is staleness, never "same run." Full
+rationale: docs/tomo/scripts/instruction-render.md, "Run Marker Moved to a
+Sidecar — the In-File Header Leaked Into Chat".
 """
 from __future__ import annotations
 
@@ -167,6 +182,14 @@ class TestSingleEntryWritesSanitizedSentence:
         assert "I05" not in content
         assert "filter_missing_daily_notes" not in content
         assert "100 Inbox/Origin.md" not in content
+        # No run marker either (the Critical this section guards against):
+        # the sidecar carries run identity, never the relay file itself.
+        assert "<!--" not in content
+        assert RUN_A not in content
+
+        sidecar_path = out_dir.parent / "withheld-deletes.run_id"
+        assert sidecar_path.exists()
+        assert sidecar_path.read_text(encoding="utf-8").strip() == RUN_A
 
 
 # ── 2. Two entries in sequence: append, never erase (the defect fixed) ────
@@ -194,9 +217,19 @@ class TestTwoEntriesAppendAcrossTheSameRun:
         )
         assert _ir.main() == 0
 
-        content = (out_dir.parent / "withheld-deletes.md").read_text(encoding="utf-8")
+        relay_path = out_dir.parent / "withheld-deletes.md"
+        content = relay_path.read_text(encoding="utf-8")
         assert "[[Origin]] was **not** deleted — its daily note does not exist" in content
         assert "[[Second]] was **not** deleted — its daily note does not exist" in content
+        # Two entries, still no header line anywhere in the relay file — the
+        # append path must never re-introduce a run marker into *path* itself.
+        assert not any(line.startswith("<!--") for line in content.splitlines())
+        assert RUN_A not in content
+        # Sidecar (untouched by the append) still names this run exactly once.
+        sidecar_content = (out_dir.parent / "withheld-deletes.run_id").read_text(
+            encoding="utf-8"
+        )
+        assert sidecar_content.strip() == RUN_A
 
 
 # ── 3. Nothing withheld: no file, not an empty one ─────────────────────────
@@ -212,20 +245,27 @@ class TestNoWithdrawalLeavesNoFile:
         )
         assert _ir.main() == 0
         assert not (out_dir.parent / "withheld-deletes.md").exists()
+        assert not (out_dir.parent / "withheld-deletes.run_id").exists()
 
 
 # ── 4. Staleness rule: a previous run's notice never survives into a new one
 
 
 class TestStalenessRuleAcrossRuns:
-    def test_new_run_with_a_notice_replaces_the_stale_one(self, monkeypatch, tmp_path):
+    """Ported from the header-in-file design to the sidecar design (v0.19.0):
+    the pre-existing run's identity now lives in the sidecar file, not as a
+    first line inside `withheld-deletes.md`."""
+
+    def _write_stale_run(self, tmp_path: Path) -> None:
         tmp_path.mkdir(parents=True, exist_ok=True)
-        relay_path = tmp_path / "withheld-deletes.md"
-        relay_path.write_text(
-            "<!-- run_id: " + RUN_A + " -->\n"
+        (tmp_path / "withheld-deletes.md").write_text(
             "- [[Stale Old Run Note]] was **not** deleted — its daily note does not exist\n",
             encoding="utf-8",
         )
+        (tmp_path / "withheld-deletes.run_id").write_text(RUN_A + "\n", encoding="utf-8")
+
+    def test_new_run_with_a_notice_replaces_the_stale_one(self, monkeypatch, tmp_path):
+        self._write_stale_run(tmp_path)
 
         actions = [_daily_action(id_="I09"), _withdrawn_delete(
             id_="D9", source_path="100 Inbox/Fresh.md", depends_on=("I09",)
@@ -239,15 +279,13 @@ class TestStalenessRuleAcrossRuns:
         assert "Stale Old Run Note" not in content
         assert RUN_A not in content
         assert "[[Fresh]] was **not** deleted — its daily note does not exist" in content
+        sidecar_content = (out_dir.parent / "withheld-deletes.run_id").read_text(
+            encoding="utf-8"
+        )
+        assert sidecar_content.strip() == RUN_B
 
     def test_new_run_with_nothing_withheld_deletes_the_stale_file(self, monkeypatch, tmp_path):
-        tmp_path.mkdir(parents=True, exist_ok=True)
-        relay_path = tmp_path / "withheld-deletes.md"
-        relay_path.write_text(
-            "<!-- run_id: " + RUN_A + " -->\n"
-            "- [[Stale Old Run Note]] was **not** deleted — its daily note does not exist\n",
-            encoding="utf-8",
-        )
+        self._write_stale_run(tmp_path)
 
         actions = [_daily_action(), _withdrawn_delete()]
         out_dir = _stub_pipeline(
@@ -256,6 +294,83 @@ class TestStalenessRuleAcrossRuns:
         assert _ir.main() == 0
 
         assert not (out_dir.parent / "withheld-deletes.md").exists()
+        assert not (out_dir.parent / "withheld-deletes.run_id").exists()
+
+
+# ── 4b. Both files always move together: created, appended to, and removed ──
+#       as a pair; a half-present state is stale, never "same run."
+
+
+class TestBothFilesLifecycleTogether:
+    def test_notices_create_both_files_together(self, tmp_path):
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
+        assert path.exists()
+        assert sidecar.exists()
+        assert sidecar.read_text(encoding="utf-8").strip() == RUN_A
+
+    def test_new_run_with_no_notices_deletes_both_files_together(self, tmp_path):
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
+        assert path.exists() and sidecar.exists()
+
+        _ir.sync_withheld_deletes_file(path, RUN_B, [])
+        assert not path.exists()
+        assert not sidecar.exists()
+
+    def test_sidecar_without_relay_file_is_treated_as_stale(self, tmp_path):
+        """Only the sidecar exists (e.g. a prior crash mid-write). A call
+        for the SAME run_id must not treat this as "same run, safe to
+        append" — it must rewrite both files from scratch."""
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        sidecar.write_text(RUN_A + "\n", encoding="utf-8")
+        assert not path.exists()
+
+        _ir.sync_withheld_deletes_file(path, RUN_A, ["- fresh notice"])
+
+        content = path.read_text(encoding="utf-8")
+        assert content.splitlines() == ["- fresh notice"]
+
+    def test_relay_file_without_sidecar_is_treated_as_stale(self, tmp_path):
+        """Only the relay file exists (e.g. an older version of this script,
+        or a hand-deleted sidecar). A call for the SAME run_id must not
+        append — it must rewrite both files from scratch."""
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        path.write_text("- leftover notice from an unmatched state\n", encoding="utf-8")
+        assert not sidecar.exists()
+
+        _ir.sync_withheld_deletes_file(path, RUN_A, ["- fresh notice"])
+
+        content = path.read_text(encoding="utf-8")
+        assert "leftover notice from an unmatched state" not in content
+        assert content.splitlines() == ["- fresh notice"]
+        assert sidecar.read_text(encoding="utf-8").strip() == RUN_A
+
+    def test_sidecar_without_relay_file_and_zero_notices_removes_the_sidecar(self, tmp_path):
+        """Half-present + nothing to write this call: the orphan must not be
+        left behind for a later entry in this run to misattribute."""
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        sidecar.write_text(RUN_A + "\n", encoding="utf-8")
+
+        _ir.sync_withheld_deletes_file(path, RUN_A, [])
+
+        assert not path.exists()
+        assert not sidecar.exists()
+
+    def test_relay_file_without_sidecar_and_zero_notices_removes_the_relay_file(self, tmp_path):
+        path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
+        path.write_text("- leftover notice\n", encoding="utf-8")
+
+        _ir.sync_withheld_deletes_file(path, RUN_A, [])
+
+        assert not path.exists()
+        assert not sidecar.exists()
 
 
 # ── 5. Identical to the instructions.md sentence — never re-derived ────────
@@ -288,24 +403,35 @@ class TestSentenceIdenticalToInstructionsMd:
 class TestSyncWithheldDeletesFileUnit:
     def test_no_run_id_is_a_no_op(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
         _ir.sync_withheld_deletes_file(path, None, ["- [[X]] was **not** deleted — reason"])
         assert not path.exists()
+        assert not sidecar.exists()
 
-    def test_same_run_id_appends_without_rewriting_header_twice(self, tmp_path):
+    def test_same_run_id_appends_without_duplicating_the_sidecar(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
         _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
         _ir.sync_withheld_deletes_file(path, RUN_A, ["- second notice"])
+
         lines = path.read_text(encoding="utf-8").splitlines()
-        assert lines.count(f"<!-- run_id: {RUN_A} -->") == 1
         assert "- first notice" in lines
         assert "- second notice" in lines
+        # The relay file itself never carries a run marker of any kind.
+        assert not any(line.startswith("<!--") for line in lines)
+        assert RUN_A not in path.read_text(encoding="utf-8")
+        # The sidecar names this run exactly once — appending never rewrites it.
+        assert sidecar.read_text(encoding="utf-8").strip() == RUN_A
 
     def test_same_run_zero_notices_does_not_delete_prior_entries(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
+        sidecar = tmp_path / "withheld-deletes.run_id"
         _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
         _ir.sync_withheld_deletes_file(path, RUN_A, [])
         assert path.exists()
         assert "- first notice" in path.read_text(encoding="utf-8")
+        assert sidecar.exists()
+        assert sidecar.read_text(encoding="utf-8").strip() == RUN_A
 
 
 if __name__ == "__main__":

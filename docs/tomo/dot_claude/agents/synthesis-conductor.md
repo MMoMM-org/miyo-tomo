@@ -84,7 +84,7 @@ the field, and the parser uses the markdown path. The JSON-only path is gated to
 the primary flow (`--fan-resolve-file` absent) so the XDD-012 fan-resolve path is
 untouched.
 
-## Step 4 Relays the Sanitized Markdown Notice for a Withheld Delete, Never Stderr (v0.17.0, 2026-09-18; superseded v0.18.0, 2026-09-18)
+## Step 4 Relays the Sanitized Markdown Notice for a Withheld Delete, Never Stderr (v0.17.0, 2026-09-18; superseded v0.18.0, 2026-09-18; v0.18.0's own relay file superseded v0.19.0, 2026-09-18 — see below)
 
 WHY: a live run on 2026-09-18 exposed two problems in the same withdrawal. The
 user ticked "Delete [[Laufrunde Elbufer]]"; the daily note it depended on did
@@ -159,6 +159,37 @@ Per this repo's CLAUDE.md ordering rule ("docs/tomo/<mirrored-path>.md is the
 WHY-persistence layer... write to docs/tomo first, strip/add to runtime
 second"), this section was rewritten before the Step 3e/Step 4 edit it
 documents.
+
+## Step 4's `cat` Was Relaying a Header Line Into Chat (v0.19.0, 2026-09-18)
+
+WHY this exists: code-quality review of v0.18.0 caught a Critical. Step 4's
+own prose (above) claimed `tomo-tmp/withheld-deletes.md`'s "lines are
+already-sanitized user-facing notices" and told the conductor to "append the
+file's lines verbatim … one per line." Both statements were false for line
+1: `instruction-render.py` wrote the run-scoping marker,
+`<!-- run_id: <RUN_ID> -->`, as that file's first line. A `cat` followed by
+"relay every line" therefore put a raw internal identifier into the user's
+chat report on every run with a withheld delete — the exact ADR-11 leak this
+whole Step 4 change exists to prevent, reintroduced by the fix itself.
+
+WHY the fix is not "tell Step 4 to skip line 1": that was the review's other
+option, and it was rejected. A `tail -n +2` instruction (or "remember the
+file has a header") makes the file correct only if the reader follows that
+instruction — and Step 4 already proved, by shipping `cat` without it, that
+an instruction is not a strong enough guarantee for a haiku-tier agent that
+has no reason to suspect its input needs trimming. The chosen fix instead
+moves the run marker out of `tomo-tmp/withheld-deletes.md` into a sidecar
+file (`instruction-render.py`'s `sync_withheld_deletes_file` — full mechanism
+in `docs/tomo/scripts/instruction-render.md`, "Run Marker Moved to a
+Sidecar"). `tomo-tmp/withheld-deletes.md` now contains ONLY notice lines, so
+Step 4's `cat` is correct by construction and its own prose claim is true
+without qualification — no reader discipline required.
+
+WHAT changed in Step 4 itself: nothing about the `cat` command or the
+relay-verbatim instruction — those were already correct, given a file that
+actually contained only notices. What changed is which file that is: the
+run identity that Step 4 never needed to read now lives entirely in
+`tomo-tmp/withheld-deletes.run_id`, a file Step 4 does not touch.
 
 ## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)
 

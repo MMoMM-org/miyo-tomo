@@ -913,7 +913,7 @@ mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2
 failure line. That was a rendering artefact of its own terminal — no `&amp;` exists anywhere in
 the artefacts or the vault. Reproducing the audit directly is what showed the real cause.
 
-## OPEN — `instructions-diff.py`'s coverage audit doesn't reconcile spec 036's daily/tag-handler withdrawals
+## CLOSED — `instructions-diff.py`'s coverage audit doesn't reconcile spec 036's daily/tag-handler withdrawals
 
 **Recorded 2026-09-17** during spec 036 T4.3 (withdrawal reporting), as the required
 `instructions-diff.py` paired-consumer check for the new `tomo.delete_withdrawals` key. Not fixed
@@ -946,3 +946,9 @@ replacing (or added beside) `_subtract_withheld_moves`, since `delete_withdrawal
 generalises across all five drop-causing guards where the nested `withdrawn_deletes` only ever
 covered two. See `docs/tomo/scripts/instruction-render.md`'s "T4.3 —
 `tomo.delete_withdrawals`" entry for the full shape of the new key.
+
+**Closed 2026-09-18** by `3c8170c`, which added `_subtract_withdrawn_deletes` to
+`instructions-diff.py` — the generic, `source_path`-keyed subtraction across every cause that the
+paragraph above asks for, guarded against double-subtracting the clash/suppression withdrawals
+`_subtract_withheld_moves` already removed. Found still marked OPEN during spec 036 T4.6
+traceability; the fix shipped, the entry was never re-marked.

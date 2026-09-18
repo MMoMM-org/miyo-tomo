@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_036_t2_4_phase_validation.py — spec 036 / T2.4 Phase 2 validation.
 
 Phase 2 ("Collect — the withdrawal pass") claims this is where P1 and Bug A
@@ -30,6 +30,17 @@ A third property, checked over both scenarios' FINAL emitted actions: no
 set. This is the dangling-id invariant Phase 4's `assert_no_dangling_
 dependencies` will enforce for real; here it is a per-scenario assertion,
 not that audit.
+
+A fourth test (F2-AC2, added T4.6 traceability) closes a composition gap:
+neither the Bug A scenario above (one daily action, one target note) nor
+`test_036_depends_on_emission.py` (proves the naming, not the withdrawal)
+nor `test_036_withdraw_unjustified_deletes.py` (proves the AND semantics on
+synthetic actions, not through the real daily-note guard) drives a real
+multi-bucket, multi-day daily-only origin through `filter_missing_daily_
+notes` with only ONE of its target daily notes absent, then through
+`withdraw_unjustified_deletes`. That composition is what F2-AC2 actually
+promises; the new test proves it end to end, the same way P1 and Bug A are
+proven above.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -124,13 +135,30 @@ def _log_entry(source_item_key: str, source_stem: str) -> dict:
     }
 
 
-def _day(date: str, daily_note_path: str, log_entries: list[dict]) -> dict:
+def _tracker_entry(source_item_key: str, source_stem: str) -> dict:
+    return {
+        "field": "Sleep", "value": "23:00", "accepted": True,
+        "source_item_key": source_item_key, "source_stem": source_stem,
+    }
+
+
+def _log_link_entry(source_item_key: str, source_stem: str) -> dict:
+    return {
+        "target_stem": "SomeTarget", "accepted": True,
+        "source_item_key": source_item_key, "source_stem": source_stem,
+    }
+
+
+def _day(
+    date: str, daily_note_path: str, log_entries: list[dict],
+    *, trackers: list[dict] | None = None, log_links: list[dict] | None = None,
+) -> dict:
     return {
         "date": date,
         "daily_note_path": daily_note_path,
-        "trackers": [],
+        "trackers": trackers or [],
         "log_entries": log_entries,
-        "log_links": [],
+        "log_links": log_links or [],
     }
 
 
@@ -145,6 +173,23 @@ class FakeKadoMissingDaily:
     def note_exists(self, path: str) -> bool:
         self.calls.append(path)
         return False
+
+
+class FakeKadoOneMissingDaily:
+    """`note_exists` reports False for exactly one configured path and True
+    for every other — models a daily-only origin whose entries land in more
+    than one bucket and more than one day, where only ONE target daily note
+    is absent (PRD F2-AC2). Distinct from `FakeKadoMissingDaily` (every path
+    missing, the all-missing case): this fake is what makes the withheld
+    note a partial-withholding test."""
+
+    def __init__(self, missing_path: str):
+        self.missing_path = missing_path
+        self.calls: list[str] = []
+
+    def note_exists(self, path: str) -> bool:
+        self.calls.append(path)
+        return path != self.missing_path
 
 
 def _deletes(actions: list[dict]) -> list[dict]:
@@ -294,6 +339,124 @@ def test_bug_a_missing_daily_note_leaves_no_delete_behind():
     )
     assert len(withdrawn) == 1
     assert withdrawn[0]["missing_dependencies"] == [log_entry_id]
+
+    _assert_no_dangling_deletes(final_kept)
+
+
+# ---------------------------------------------------------------------------
+# F2-AC2 — one withheld daily note of several must still withdraw the delete
+# ---------------------------------------------------------------------------
+
+def test_bug_a_one_of_several_daily_notes_missing_still_withdraws_the_delete():
+    """PRD F2-AC2: a daily-only origin whose content produced entries across
+    SEVERAL buckets AND several days — if ANY ONE of those target daily
+    notes is absent, the delete is still withdrawn (AND semantics on
+    `depends_on`), even though the daily actions for the OTHER, present days
+    survive `filter_missing_daily_notes` untouched.
+
+    `test_bug_a_missing_daily_note_leaves_no_delete_behind` cannot prove
+    this: it has exactly one daily action, so "some missing" and "all
+    missing" coincide there. This fixture has three (a tracker and a log
+    entry on 2026-04-08, a log link on 2026-04-09) with only the 04-09 daily
+    note absent — 1-of-3 missing, not 3-of-3.
+
+    THE MUTATION THIS TEST KILLS: `withdraw_unjustified_deletes`'s AND
+    check —
+        missing = [d for d in action["depends_on"] if d not in surviving]
+        if missing:
+            withdrawn.append(...)
+    — changed to OR semantics, e.g.
+        if len(missing) == len(action["depends_on"]):
+            withdrawn.append(...)
+    Under that mutant, 1-of-3 missing no longer satisfies "all missing", so
+    the delete is kept instead of withdrawn — this test's final assertion
+    (`_deletes(final_kept) == []`) fails while
+    `test_bug_a_missing_daily_note_leaves_no_delete_behind` (1-of-1 missing)
+    still passes, which is exactly the gap this test closes. Verified by a
+    local production mutation (git worktree, discarded after): red then,
+    green on the unmodified pass.
+    `[ref: solution.md "Bug A, same pass, different guard"; PRD F2-AC2]`.
+    """
+    origin_key = f"{INBOX}meeting-notes.md"
+    day1_path = "Calendar/301 Daily/2026-04-08.md"
+    day2_path = "Calendar/301 Daily/2026-04-09.md"
+    daily_updates = [
+        _day(
+            "2026-04-08", day1_path, [_log_entry(origin_key, "meeting-notes")],
+            trackers=[_tracker_entry(origin_key, "meeting-notes")],
+        ),
+        _day(
+            "2026-04-09", day2_path, [],
+            log_links=[_log_link_entry(origin_key, "meeting-notes")],
+        ),
+    ]
+
+    # 1. BUILD (real builder): three daily actions (tracker, log entry, log
+    #    link — three buckets, two days) and one delete naming all three.
+    actions, _skipped_assets = build_actions(
+        [], [], daily_updates, [], CFG, kado_client=None,
+    )
+    trackers = [a for a in actions if a.get("action") == "update_tracker"]
+    log_entries = [a for a in actions if a.get("action") == "update_log_entry"]
+    log_links = [a for a in actions if a.get("action") == "update_log_link"]
+    deletes = _deletes(actions)
+    assert len(trackers) == 1 and len(log_entries) == 1 and len(log_links) == 1, actions
+    assert len(deletes) == 1, actions
+    tracker_id, log_entry_id, log_link_id = (
+        trackers[0]["id"], log_entries[0]["id"], log_links[0]["id"]
+    )
+    assert sorted(deletes[0]["depends_on"]) == sorted([tracker_id, log_entry_id, log_link_id]), (
+        f"expected the delete to name all three daily action ids; got {deletes[0]}"
+    )
+
+    # 2. GUARD (real guard): only the 04-09 daily note (the log link's
+    #    target) is reported absent — the 04-08 note (tracker + log entry's
+    #    target) is present. "Before this phase" state: the delete is still
+    #    here, and — this is the partial-withholding property — the OTHER
+    #    two daily actions are untouched.
+    client = FakeKadoOneMissingDaily(missing_path=day2_path)
+    after_daily_filter, skipped_daily = filter_missing_daily_notes(actions, client)
+    surviving_daily_ids = {
+        a["id"] for a in after_daily_filter
+        if a.get("action") in {"update_tracker", "update_log_entry", "update_log_link"}
+    }
+    assert surviving_daily_ids == {tracker_id, log_entry_id}, (
+        "the 04-08 tracker and log-entry actions must survive untouched — "
+        f"only the 04-09 log link's target note is absent; got {surviving_daily_ids}"
+    )
+    assert [s["id"] for s in skipped_daily] == [log_link_id]
+    deletes_before_withdrawal = _deletes(after_daily_filter)
+    assert len(deletes_before_withdrawal) == 1, (
+        "F2-AC2 precondition: the delete must still be present right after "
+        f"the daily-note filter that dropped one of its three justifications; "
+        f"got {after_daily_filter}"
+    )
+    assert sorted(deletes_before_withdrawal[0]["depends_on"]) == sorted(
+        [tracker_id, log_entry_id, log_link_id]
+    ), "the delete's depends_on is untouched by the daily-note filter itself"
+
+    after_rel_filter, skipped_rel = filter_unappliable_relationships(after_daily_filter)
+    assert skipped_rel == []
+
+    # 3. WITHDRAW (the pass under test): one of the delete's three named ids
+    #    (the log link's) is gone — AND semantics withdraws the delete, and
+    #    the withdrawal record names exactly that one missing id, not all
+    #    three.
+    final_kept, withdrawn = withdraw_unjustified_deletes(after_rel_filter)
+    assert _deletes(final_kept) == [], (
+        f"F2-AC2 must hold: delete_source is absent from the emitted set "
+        f"even though only 1 of its 3 dependencies is missing; got {final_kept}"
+    )
+    final_daily_ids = {
+        a["id"] for a in final_kept
+        if a.get("action") in {"update_tracker", "update_log_entry", "update_log_link"}
+    }
+    assert final_daily_ids == {tracker_id, log_entry_id}, (
+        "the surviving 04-08 daily actions must still be present after the "
+        f"withdrawal pass — it governs delete_source only; got {final_daily_ids}"
+    )
+    assert len(withdrawn) == 1
+    assert withdrawn[0]["missing_dependencies"] == [log_link_id]
 
     _assert_no_dangling_deletes(final_kept)
 

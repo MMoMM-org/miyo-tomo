@@ -160,7 +160,7 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] No withdrawal produces no section `[ref: PRD/F6-AC2]`
      - [ ] Reports are metadata only `[ref: SDD/System-Wide Patterns; Constitution L1]`
 
-- [ ] **T4.4 Integration and end-to-end validation** `[activity: validate]`
+- [x] **T4.4 Integration and end-to-end validation** `[activity: validate]`
 
   The Constitution requires a permitted case **and** a refused case for every vault-mutating path.
   This task is where all three refused cases are proven together.

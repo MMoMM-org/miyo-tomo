@@ -595,7 +595,7 @@ at all: Step 4 reads one file once, after every entry has rendered.
 
 WHY the sentence is `_render_withdrawn_delete_notice(w)` called again, not
 re-derived: that private helper (`lib/render_md.py`) is already the sole
-place the "`[[Note]] was **not** deleted — <reason>`" bullet is composed for
+place the "`⚠️ **Not deleted:** [[Note]] — <reason>`" bullet is composed for
 `instructions.md`'s "## Source Deletions" section. Calling the same pure
 function a second time, over the same `delete_withdrawals` list already
 computed in `main()`, yields a byte-identical string by construction — there

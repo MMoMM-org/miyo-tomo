@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_036_t4_3_withdrawal_reporting.py — spec 036 / T4.3 withdrawal reporting.
 
 Covers the T4.3 join and its three report surfaces (plan/phase-4.md T4.3;
@@ -59,6 +59,25 @@ withdrawn delete no longer reads as a coverage mismatch, and
 `render_instructions_md` now states a withdrawn delete under "## Source
 Deletions" itself, not only cross-referenced from "## Skipped" — see the new
 `TestSourceDeletionsWithdrawalNotice` class below.
+
+Follow-up 2 (live Pass-2 run, 2026-09-18): the same run surfaced two more
+defects. First, a withdrawal whose two causes both named
+`filter_missing_daily_notes` rendered its reason clause TWICE, joined by the
+`_withdrawal_detail` phrase-join — the two causes carried distinct
+`missing_id`s, but `describe_withdrawal_cause_for_user` drops the id (ADR-11),
+so the same guard produced the identical phrase twice.
+`TestWithdrawalDetailDeduplicatesIdenticalCauses` below pins the fix:
+`_withdrawal_detail` now deduplicates identical phrases, preserving
+first-appearance order, while two phrases from genuinely different guards
+both still survive. Second, the owner asked that this notice — "you approved
+a deletion and it did not happen" — carry the same `⚠️ **<label>:**` marker
+`suggestions-reducer.py` already uses for a Pass-1 hard-guard notice, so it
+reads as a warning rather than an ordinary bullet. The anchor above becomes
+"⚠️ **Delete withheld:**" (nested, under "## Skipped") and "⚠️ **Not
+deleted:**" (`_render_withdrawn_delete_notice`, under "## Source
+Deletions") — every assertion below that pinned the old unmarked wording is
+updated to the new anchor, positional assertions changing only their anchor
+string, never their position check.
 """
 from __future__ import annotations
 
@@ -267,6 +286,52 @@ class TestUserFacingWithdrawalWording:
         assert describe_withdrawal_cause(cause) == (
             "missing id I05 (dropped by filter_missing_daily_notes)"
         )
+
+
+# ── _withdrawal_detail dedup (live Pass-2 run, 2026-09-18) ─────────────────
+
+
+class TestWithdrawalDetailDeduplicatesIdenticalCauses:
+    """A withdrawal whose `causes` hold two entries from the SAME guard must
+    render its reason ONCE, not doubled by the phrase-join — the user-facing
+    wording drops the `missing_id` that made the two causes distinct
+    (ADR-11), so two causes from one guard produce the identical phrase.
+    Live output before this fix: "[[Laufrunde Elbufer]] was **not** deleted —
+    its daily note does not exist; its daily note does not exist" (two
+    `filter_missing_daily_notes` causes, `I03`/`I04`). Two causes from
+    DIFFERENT guards must still both appear — only exact duplicates collapse.
+    """
+
+    def test_two_causes_same_guard_render_the_reason_once(self):
+        md = render_instructions_md([], _md_metadata(delete_withdrawals=[{
+            "id": "D1", "action": "delete_source",
+            "source_path": "100 Inbox/Origin.md",
+            "reason": "Content fully captured in daily note.",
+            "causes": [
+                {"missing_id": "I05", "guard": "filter_missing_daily_notes"},
+                {"missing_id": "I06", "guard": "filter_missing_daily_notes"},
+            ],
+        }]), CFG)
+        notice = next(
+            line for line in md.splitlines() if "⚠️ **Not deleted:**" in line
+        )
+        assert notice.count("its daily note does not exist") == 1
+
+    def test_two_causes_different_guards_both_render(self):
+        md = render_instructions_md([], _md_metadata(delete_withdrawals=[{
+            "id": "D1", "action": "delete_source",
+            "source_path": "100 Inbox/Origin.md",
+            "reason": "Content fully captured in daily note.",
+            "causes": [
+                {"missing_id": "I05", "guard": "filter_missing_daily_notes"},
+                {"missing_id": "M01", "guard": "filter_unresolvable_moc_links"},
+            ],
+        }]), CFG)
+        notice = next(
+            line for line in md.splitlines() if "⚠️ **Not deleted:**" in line
+        )
+        assert "its daily note does not exist" in notice
+        assert "the target MOC could not be confirmed" in notice
 
 
 # ── build_delete_withdrawal_reports — reason threaded verbatim ─────────────
@@ -550,7 +615,7 @@ class TestMarkdownSkippedSection:
             i for i, line in enumerate(lines) if line.startswith("- `update_log_entry`")
         )
         withdrawal_idx = next(
-            i for i, line in enumerate(lines) if "a delete was withheld:" in line
+            i for i, line in enumerate(lines) if "⚠️ **Delete withheld:**" in line
         )
         rel_idx = next(
             i for i, line in enumerate(lines) if line.startswith("- `add_relationship`")
@@ -606,7 +671,7 @@ class TestMarkdownSkippedSection:
             i for i, line in enumerate(lines) if line.startswith("- `update_tracker`")
         )
         withdrawal_idxs = [
-            i for i, line in enumerate(lines) if "a delete was withheld:" in line
+            i for i, line in enumerate(lines) if "⚠️ **Delete withheld:**" in line
         ]
 
         assert len(withdrawal_idxs) == 2, (
@@ -640,7 +705,7 @@ class TestMarkdownSkippedSection:
                 "causes": [{"missing_id": "I05", "guard": "filter_missing_daily_notes"}],
             }],
         ), CFG)
-        assert md.count("a delete was withheld:") == 1
+        assert md.count("⚠️ **Delete withheld:**") == 1
 
     def test_no_withdrawal_produces_no_withdrawal_subblock(self):
         """Regression guard: `delete_withdrawals` defaults to `[]`, so
@@ -670,13 +735,13 @@ class TestMarkdownSkippedSection:
             }],
         ), CFG)
         assert "## Skipped — un-appliable actions" in md
-        assert "a delete was withheld:" in md
+        assert "⚠️ **Delete withheld:**" in md
         assert "no reason was ever recorded for this delete" in md
         assert "D2" not in md
         # "## Source Deletions" is created solely to carry this withdrawal's
         # own notice too (Change 3b) — no delete_source action survived.
         assert "## Source Deletions" in md
-        assert "[[Other]] was **not** deleted" in md
+        assert "⚠️ **Not deleted:** [[Other]]" in md
 
 
 # ── 12-13. "## Source Deletions" carries a visible statement (Change 3b) ──
@@ -710,9 +775,9 @@ class TestSourceDeletionsWithdrawalNotice:
         )
         assert md.count("## Source Deletions") == 1
         assert "### D9 — Delete source note: Kept" in md
-        assert "[[Origin]] was **not** deleted — its daily note does not exist" in md
+        assert "⚠️ **Not deleted:** [[Origin]] — its daily note does not exist" in md
         # The surviving entry's own block precedes the notice.
-        assert md.index("### D9") < md.index("[[Origin]] was **not** deleted")
+        assert md.index("### D9") < md.index("⚠️ **Not deleted:** [[Origin]]")
 
     def test_heading_created_solely_to_carry_the_notice(self):
         """No delete_source action survived this run at all — the heading
@@ -729,7 +794,7 @@ class TestSourceDeletionsWithdrawalNotice:
             CFG,
         )
         assert "## Source Deletions" in md
-        assert "[[Origin]] was **not** deleted — its daily note does not exist" in md
+        assert "⚠️ **Not deleted:** [[Origin]] — its daily note does not exist" in md
         assert "### D9" not in md
 
     def test_no_withdrawals_source_deletions_byte_identical(self):
@@ -745,4 +810,4 @@ class TestSourceDeletionsWithdrawalNotice:
             "- **Action:** Delete the note from the inbox — Origin consumed by 1 atomic."
         )
         assert expected in md
-        assert "was **not** deleted" not in md
+        assert "⚠️ **Not deleted:**" not in md

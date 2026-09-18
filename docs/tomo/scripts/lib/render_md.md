@@ -315,3 +315,50 @@ that reproduced the defect, and why `causes[0]`-only was wrong to begin with
 Grouping Joins on Every Cause, Not Just the First", since the data shape the
 join receives is a property of that module's contract, not of this file's
 rendering choice.
+
+## `_withdrawal_detail` Deduplicates — Identical Causes, Not Identical `missing_id`s
+
+A live Pass-2 run (2026-09-18) surfaced a doubled sentence: `[[Laufrunde
+Elbufer]] was **not** deleted — its daily note does not exist; its daily
+note does not exist`. The withdrawal had two `causes`, `I03` and `I04`, both
+`filter_missing_daily_notes` — two distinct missing daily notes, correctly
+two distinct entries in `causes`. `_withdrawal_detail`'s old unconditional
+`"; ".join(...)` over every cause was correct by the id: `I03 != I04`. It
+was wrong by the SENTENCE, because `describe_withdrawal_cause_for_user`
+(`render_helpers.py`) deliberately drops the `missing_id` (ADR-11, "no
+executor internals in the rendered text") — the one field that made the two
+causes distinguishable lives only in the technical sibling,
+`describe_withdrawal_cause`, which stays id-bearing for stderr on purpose.
+So two causes from the SAME guard collapse to the IDENTICAL user-facing
+phrase, and joining them unconditionally states one fact twice instead of
+once.
+
+The fix keeps the join (a withdrawal whose causes span two DIFFERENT guards —
+e.g. a missing daily note AND an unresolvable MOC link — must still show
+both reasons; the user needs to fix both, not just the first one reported)
+but deduplicates identical phrases, preserving first-appearance order. This
+is a phrase-level dedup, not an id-level one: it lives in `render_md.py`,
+downstream of `describe_withdrawal_cause_for_user`, precisely because the
+loss of information that causes the collision (the id) already happened one
+function earlier. Deduplicating by `missing_id` instead would have been a
+no-op — the ids were never equal — and deduplicating in
+`describe_withdrawal_cause_for_user` itself is impossible: that function
+sees one cause at a time and has no way to know a sibling cause exists.
+
+## The `⚠️` Marker — Matching Pass 1's Own Hard-Guard Convention
+
+Both withdrawal renderers (`_render_withdrawal_bullet` under "## Skipped",
+`_render_withdrawn_delete_notice` under "## Source Deletions") now lead with
+`⚠️ **<label>:**` — `⚠️ **Delete withheld:**` and `⚠️ **Not deleted:**`
+respectively. Before this change `render_md.py` used no `⚠️` marker
+anywhere; `suggestions-reducer.py` (Pass 1) already had the convention for
+its own hard-guard notices (`⚠️ **Target note doesn't exist** — …`, `⚠️
+**Marker not found** — …`) and this file's withdrawal notice is the same
+CLASS of fact in Pass 2's vocabulary: the user ticked an approval — here, a
+delete — and the run did not carry it out. An unmarked bullet reads
+identically to every applied-action bullet around it, so a user skimming the
+document has no visual signal that this line is the one place where
+"approved" and "happened" diverged. Matching the established register
+(`⚠️` + bold lead-in + em-dash + explanation) rather than inventing a new
+shape keeps the whole document's warning vocabulary in one place instead of
+two.

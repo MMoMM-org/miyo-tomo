@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_instruction_render_withheld_deletes_relay.py — the run-level withheld-
 delete relay file (`sync_withheld_deletes_file`, `instruction-render.py`).
 
@@ -44,6 +44,15 @@ exist AND the sidecar to name the current `run_id`, so a half-present state
 (one file without the other) is staleness, never "same run." Full
 rationale: docs/tomo/scripts/instruction-render.md, "Run Marker Moved to a
 Sidecar — the In-File Header Leaked Into Chat".
+
+**v0.3.0 update**: `_render_withdrawn_delete_notice` (`lib/render_md.py`,
+whose output this relay carries verbatim — see `sync_withheld_deletes_file`'s
+call site) now leads with `⚠️ **Not deleted:**` instead of the bare `was
+**not** deleted` phrase, matching `suggestions-reducer.py`'s Pass-1
+hard-guard-notice convention. This relay is a pure pass-through of that
+function's output, so the wording change reaches `withheld-deletes.md`
+automatically — the tests below only had their own literal-string
+assertions updated to the new anchor; no relay logic changed.
 """
 from __future__ import annotations
 
@@ -175,7 +184,7 @@ class TestSingleEntryWritesSanitizedSentence:
         relay_path = out_dir.parent / "withheld-deletes.md"
         assert relay_path.exists()
         content = relay_path.read_text(encoding="utf-8")
-        assert "[[Origin]] was **not** deleted — its daily note does not exist" in content
+        assert "⚠️ **Not deleted:** [[Origin]] — its daily note does not exist" in content
         # No executor internals (ADR-11) — same standard as instructions.md.
         assert "D1" not in content
         assert "delete_source" not in content
@@ -219,8 +228,8 @@ class TestTwoEntriesAppendAcrossTheSameRun:
 
         relay_path = out_dir.parent / "withheld-deletes.md"
         content = relay_path.read_text(encoding="utf-8")
-        assert "[[Origin]] was **not** deleted — its daily note does not exist" in content
-        assert "[[Second]] was **not** deleted — its daily note does not exist" in content
+        assert "⚠️ **Not deleted:** [[Origin]] — its daily note does not exist" in content
+        assert "⚠️ **Not deleted:** [[Second]] — its daily note does not exist" in content
         # Two entries, still no header line anywhere in the relay file — the
         # append path must never re-introduce a run marker into *path* itself.
         assert not any(line.startswith("<!--") for line in content.splitlines())
@@ -278,7 +287,7 @@ class TestStalenessRuleAcrossRuns:
         content = (out_dir.parent / "withheld-deletes.md").read_text(encoding="utf-8")
         assert "Stale Old Run Note" not in content
         assert RUN_A not in content
-        assert "[[Fresh]] was **not** deleted — its daily note does not exist" in content
+        assert "⚠️ **Not deleted:** [[Fresh]] — its daily note does not exist" in content
         sidecar_content = (out_dir.parent / "withheld-deletes.run_id").read_text(
             encoding="utf-8"
         )
@@ -386,13 +395,13 @@ class TestSentenceIdenticalToInstructionsMd:
 
         md_lines = (out_dir / "instructions.md").read_text(encoding="utf-8").splitlines()
         md_notice = next(
-            line for line in md_lines if "was **not** deleted" in line
+            line for line in md_lines if "⚠️ **Not deleted:**" in line
         )
         relay_lines = (out_dir.parent / "withheld-deletes.md").read_text(
             encoding="utf-8"
         ).splitlines()
         relay_notice = next(
-            line for line in relay_lines if "was **not** deleted" in line
+            line for line in relay_lines if "⚠️ **Not deleted:**" in line
         )
         assert relay_notice == md_notice
 

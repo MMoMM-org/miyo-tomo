@@ -1,4 +1,4 @@
-# version: 0.21.0
+# version: 0.22.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -641,11 +641,24 @@ def _withdrawal_note_ref(withdrawal: dict) -> str:
 
 def _withdrawal_detail(withdrawal: dict) -> str:
     """The plain-language reason clause shared by both withdrawal renderings
-    below — `describe_withdrawal_cause_for_user`'s join across every cause."""
+    below — `describe_withdrawal_cause_for_user`'s join across every cause.
+
+    Deduplicates identical phrases, preserving first-appearance order. The
+    user-facing form (ADR-11) deliberately drops the `missing_id` that the
+    technical sibling `describe_withdrawal_cause` embeds, so two causes from
+    the SAME guard (e.g. two missing daily notes, both
+    `filter_missing_daily_notes`) collapse to the identical sentence — joining
+    them unconditionally doubled the sentence instead of stating it once
+    (live Pass-2 run, 2026-09-18). Two causes from DIFFERENT guards still
+    produce two distinct phrases and both survive the dedup.
+    """
     causes = withdrawal.get("causes") or []
-    return "; ".join(
-        describe_withdrawal_cause_for_user(c) for c in causes
-    ) or "no reason was ever recorded for this delete"
+    phrases: list[str] = []
+    for c in causes:
+        phrase = describe_withdrawal_cause_for_user(c)
+        if phrase not in phrases:
+            phrases.append(phrase)
+    return "; ".join(phrases) or "no reason was ever recorded for this delete"
 
 
 def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
@@ -659,9 +672,16 @@ def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
     sibling, so the two surfaces now legitimately differ — see
     docs/tomo/scripts/lib/render_helpers.md. Metadata only (Constitution L2):
     the note's own stem and the cause phrase — never note content.
+
+    Leads with `⚠️ **Delete withheld:**` — the owner's own request, matching
+    the `⚠️ **<label>:**` convention `suggestions-reducer.py` already uses for
+    a hard-guard notice (Pass 1). This bullet states the same class of fact —
+    an approved action was NOT performed — so it earns the same visual
+    weight, not a plain unmarked bullet indistinguishable from the applied
+    actions around it.
     """
     return (
-        f"{indent}- a delete was withheld: {_withdrawal_note_ref(withdrawal)} "
+        f"{indent}- ⚠️ **Delete withheld:** {_withdrawal_note_ref(withdrawal)} "
         f"— {_withdrawal_detail(withdrawal)}"
     )
 
@@ -675,8 +695,14 @@ def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
     difference. Same plain-language register as `_render_withdrawal_bullet`
     (ADR-11) — no action id, no guard function name; metadata only
     (Constitution L2).
+
+    Leads with `⚠️ **Not deleted:**` — see `_render_withdrawal_bullet`'s
+    docstring for why this notice carries the same marker.
     """
-    return f"- {_withdrawal_note_ref(withdrawal)} was **not** deleted — {_withdrawal_detail(withdrawal)}"
+    return (
+        f"- ⚠️ **Not deleted:** {_withdrawal_note_ref(withdrawal)} "
+        f"— {_withdrawal_detail(withdrawal)}"
+    )
 
 
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:

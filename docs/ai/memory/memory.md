@@ -17,6 +17,7 @@
 - archive/2026-06/ — resolved troubleshooting + context bug-fix entries (cleanup 2026-06-29); R11/R13 resolved + 2026-05 open blocks relocated (cleanup 2026-06-30)
 
 ## Critical Documentation
+- [Spec 036 close-out](../../XDD/specs/036-delete-outlives-its-justification/close-out.md) — all 23 PRD criteria in F1–F6 traced to a test that was executed rather than quoted; the two consumer-owned criteria named as an OPEN obligation (T4.5 never went out); the three measured data-loss paths closed in one end-to-end run, with P3 recorded as a build-time guard that would pass even with the withdrawal pass gutted.
 - [Spec 035 close-out](../../XDD/specs/035-wire-schema-versioning/close-out.md) — all 33 PRD criteria traced (the plan said 28; F9 arrived mid-phase), which six are evidenced by the consumer's reply rather than a test and why that is stronger, the L2 violation caught in flight, and the closing condition reached: detection at zero across all three wires.
 - [Spec 034 close-out](../../XDD/specs/034-recursive-inbox-discovery/close-out.md) — the SDD quality table and all 40 PRD acceptance criteria mapped to named green tests or to the live run, plus the two live-coverage gaps recorded rather than hidden (audio namesake, per-item token cost).
 <!-- Add important docs here when created — Claude loads these on demand -->

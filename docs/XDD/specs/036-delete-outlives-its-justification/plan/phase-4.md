@@ -229,10 +229,33 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] The obligation table matches the measured diff exactly `[ref: SDD/CON-2]`
      - [ ] The consumer confirms F5-AC5 and F5-AC6 against their own suite `[ref: PRD/F5-AC5]` `[ref: PRD/F5-AC6]`
 
-- [ ] **T4.6 Phase Validation** `[activity: validate]`
+- [x] **T4.6 Phase Validation** `[activity: validate]`
 
   - Full suite green including `-m integration`; ruff clean.
   - Every PRD acceptance criterion in F1–F6 traced to a passing test.
   - Confirm the spec's close-out position: three measured data-loss paths, all three closed, with
     the two deferred items (F7 rendering, staging-residue detection) recorded as decisions rather
     than gaps.
+
+  **Result, 2026-09-18** — `close-out.md`, measured on `ce3eead`. Suite **4235 passed, 3 skipped**
+  in 103.77 s; `-m integration` **20 passed**; `ruff check tomo/ tests/` clean. Every criterion in
+  F1–F6 traced to a test that was **executed**, not quoted from a plan file; 87 test items re-run by
+  node id across 14 files, all green.
+
+  **21 of 23 carry a Tomo-side test. 2 (F5-AC5, F5-AC6) are consumer-owned and NOT yet confirmed** —
+  T4.5 has not gone out, and 035's release handoff told Hashi explicitly that `depends_on` was not
+  in that release. The boundary is mapped; the obligation is open.
+
+  Three findings, none of them a code defect:
+  - **F2-AC2 is covered by composition, not by one test** — the naming half and the withdrawal half
+    live in two files over two fixtures, and no test drives a multi-bucket origin through a guard
+    that drops one of its daily actions. Sound, but written down rather than assumed.
+  - **P3's e2e assertions would pass with the withdrawal pass gutted** — it is a build-time guard
+    that emits nothing, so it never reaches the withdrawal report. Stated in the test's own
+    docstring; recorded here so P3 is not read as borrowing P1's and P2's evidence.
+  - **`docs/XDD/backlog.md`'s coverage-audit entry still reads `OPEN`** although `3c8170c` closed it
+    with `_subtract_withdrawn_deletes` and 8 green tests. Stale bookkeeping.
+
+  Both deferrals are recorded as decisions in two places each — F7 in the spec `README.md` decisions
+  log (2026-09-10) and `plan/README.md`'s coverage table; staging-residue detection in the same
+  decisions log (2026-09-09) and the PRD's `Won't Have`, with the rejected design attached.

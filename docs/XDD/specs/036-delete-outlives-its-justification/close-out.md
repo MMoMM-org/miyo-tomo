@@ -52,7 +52,7 @@ that construction is worth.
 |---|---|---|---|
 | F2-AC1 | Daily note absent → daily action withheld → that origin's `delete_source` is not emitted | `tests/test_036_t2_4_phase_validation.py::test_bug_a_missing_daily_note_leaves_no_delete_behind` — asserts the **pre-phase** state explicitly (the delete is still present immediately after the guard that removed its justification) before asserting it is gone after the pass | ✅ |
 | | | End to end through `instruction-render.py:main()` against a cloned vault slice: `tests/integration/test_036_delete_justification_e2e.py::test_all_three_data_loss_paths_in_one_run_emit_no_delete` (P2) | ✅ |
-| F2-AC2 | Entries across several buckets or days: any one withheld → no delete | **Covered by composition, not by one test** — `tests/test_036_depends_on_emission.py::test_origin_with_entries_across_several_buckets_and_several_days_names_all_of_them` (the delete names all three ids across two days and three buckets) plus `tests/test_036_withdraw_unjustified_deletes.py::test_one_missing_of_three_withdraws` (AND semantics: one of three missing withdraws). See the gap list | ✅ (composed) |
+| F2-AC2 | Entries across several buckets or days: any one withheld → no delete | `tests/test_036_t2_4_phase_validation.py::test_bug_a_one_of_several_daily_notes_missing_still_withdraws_the_delete` — three daily actions over three buckets and two days, real `filter_missing_daily_notes` drops exactly one, delete withdrawn naming that one id. Closed 2026-09-18 (`4a25c86`). The two composing halves remain: `test_036_depends_on_emission.py::test_origin_with_entries_across_several_buckets_and_several_days_names_all_of_them` and `test_036_withdraw_unjustified_deletes.py::test_one_missing_of_three_withdraws` | ✅ |
 | F2-AC3 | All daily actions emitted → the delete is emitted unchanged | `tests/test_036_withdraw_unjustified_deletes.py::test_all_three_present_is_kept`; the run-level form is `tests/integration/test_036_delete_justification_e2e.py::test_healthy_run_emits_its_deletes_and_withdraws_nothing`, which asserts four justified deletes ship and the `delete_source` key set is unchanged apart from the new field | ✅ |
 | F2-AC4 | The withheld action and the withdrawn delete are reported together, not in unrelated sections | `tests/test_036_t4_3_withdrawal_reporting.py::TestMarkdownSkippedSection::test_f2_ac4_daily_skip_and_delete_withdrawal_are_structurally_grouped` — **structural** adjacency, not co-occurrence in one document. `::test_multi_cause_same_guard_withdrawal_renders_under_both_daily_bullets` is the regression pin for the live defect T4.3 shipped and code quality caught | ✅ |
 
@@ -118,10 +118,10 @@ discharged, and this document does not pretend otherwise.
 
 ## Gaps
 
-One, and it is a shape gap rather than a coverage gap. Stated plainly rather than smoothed over,
-because this spec has already shown five defects reaching a fully green suite.
+**None at close-out.** The one gap this document originally recorded was closed the same day; it is
+kept below with its resolution rather than deleted, because the reasoning is what made it findable.
 
-- **F2-AC2 has no single test.** The criterion is "several buckets or several days, **any one**
+- **~~F2-AC2 has no single test.~~ Closed 2026-09-18 by `4a25c86`.** The original finding: The criterion is "several buckets or several days, **any one**
   withheld → no delete". What exists is the naming half (a multi-bucket, multi-day origin's delete
   names all three ids) and the withdrawal half (a delete naming three ids of which one is missing is
   withdrawn) in two different files, over two different fixtures. The composition is sound — the
@@ -130,7 +130,13 @@ because this spec has already shown five defects reaching a fully green suite.
   drops one of its daily actions. The end-to-end P2 case (`test_all_three_data_loss_paths_in_one_run_emit_no_delete`)
   is single-bucket. What would close it: one case in `test_036_t2_4_phase_validation.py` building a
   three-action daily origin and running `filter_missing_daily_notes` with only one of the three
-  target daily notes absent. Recorded rather than fixed, because T4.6 does not change tests.
+  target daily notes absent.
+
+  That is exactly what shipped, and the gap proved worth closing rather than arguing away: under a
+  mutant that swaps `withdraw_unjustified_deletes` to OR semantics (withdraw only when **every**
+  dependency is missing) the new test goes red while all three pre-existing tests in the same file
+  stay green — including the single-bucket Bug A case, where AND and OR coincide. The shipped code
+  was already correct; nothing had been holding it upright.
 
 No criterion in F1–F6 is untested. No criterion is carried by a test stretched from an unrelated
 concern.
@@ -210,6 +216,22 @@ The suite has grown from 4147 at Phase 3's close to 4235 — +88, all of it Phas
   item was fixed nine commits later and never re-marked. A reader planning follow-up work from the
   backlog would schedule work that is already done.
 
+## Found while preparing the handoff, after this document was first written
+
+**The contract's `depends_on` description named the wrong action kinds** (`96c1778`). It told the
+consumer the field carries "Action ids (move_note/move_asset)". `move_asset` ids never appear —
+site 3 filters on `action == "move_note"` (`render_actions.py:1904`) before collecting — and three
+of the five emission sites name something else entirely: site 2 names the origin's daily actions
+(`update_tracker` / `update_log_entry` / `update_log_link`, `:1881`), site 4 the tag-handler's
+`insert_under_marker` (`:2003`). A consumer implementing "withhold unless every named move is
+applied" would not recognise a daily-action id as the thing it must wait for — and a daily-only
+origin's delete is precisely the P2 case this spec exists to close.
+
+**The lesson is about the gate, not the typo.** T4.5's own step 2 is a structural diff — property
+sets, `required` lists, `additionalProperties`, recursively. It compares shape and is blind to
+prose, so it reported "3 differences, exactly the intended change" over a description that would
+have misled the implementer. A contract's prose is part of the contract; read it, do not diff it.
+
 ## Still open at close-out
 
 - **T4.5, the release handoff.** Not sent. Carries F5-AC5 and F5-AC6, and gates the release of the
@@ -217,6 +239,6 @@ The suite has grown from 4147 at Phase 3's close to 4235 — +88, all of it Phas
   simultaneously, never after. Note the mirror schema edit (T4.1) **already landed**, by owner
   override of the plan's sequencing gate; the gate now survives on the release rule alone and
   nothing in the test suite enforces it.
-- **F2-AC2's single-test form**, as described in the gap list.
-- **The `OPEN` marker on the `instructions-diff.py` coverage-audit backlog entry**, which the code
-  has already overtaken.
+- ~~**The `OPEN` marker on the `instructions-diff.py` coverage-audit backlog entry.**~~ Re-marked
+  CLOSED 2026-09-18 (`195c32d`); the entry's own "what closing this needs" paragraph describes
+  precisely what `3c8170c` shipped.

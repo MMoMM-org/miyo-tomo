@@ -37,7 +37,7 @@ WHY: The state-promoter requires the exact doc_type as a positional argument bec
 
 ## Coverage-mismatch STRICT Guard (v0.8.2)
 
-WHY: The coverage audit (`instructions-diff.py`, step 3e) is a hard gate — exit 1
+WHY: The coverage audit (`instructions-diff.py`, the coverage audit step) is a hard gate — exit 1
 means the rendered instructions do not reconcile with the approved suggestions.
 On the 2026-06-27 capture-delete live walk the conductor hit a real exit-1
 mismatch (the coverage checker had not yet learned about tag-handler
@@ -249,6 +249,15 @@ and `determine_action` fell through to `idle` with reason "All approved
 items already covered by existing instructions" — literally true (an
 instructions doc existed) and completely misleading (the run had reported
 failure). The reorder turns a silent dead end into an automatic retry.
+
+Note on step letters in this file: this reorder is commit `4350ddd`
+(2026-09-18), which moved the coverage audit from step 3e to step 3c (and
+upload/flip from 3c/3d to 3d/3e). Sections above this one that were written
+before that commit — e.g. "Coverage-mismatch STRICT Guard (v0.8.2)",
+"Step 4 Relays the Sanitized Markdown Notice…" — describe the mechanism
+using the step letters in force at the time of writing and are historical
+records, not present-tense claims; do not read a "step 3e" in those
+sections as today's coverage audit.
 
 ## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)
 

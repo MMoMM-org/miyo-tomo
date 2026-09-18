@@ -417,7 +417,7 @@ item and an expected `delete_source` per non-kept origin. A withheld move is
 neither, so before `_subtract_destination_clashes` the audit reported
 `RESULT: FAIL — count or coverage mismatch` on a **correct** instruction set:
 `move_note 2 → 0`, `delete_source 2 → 0`, and `file=[MISSING]` against both
-items. `synthesis-conductor.md` step 3e makes that fatal — STRICT, stop, report
+items. `synthesis-conductor.md`'s coverage audit step makes that fatal — STRICT, stop, report
 the diff verbatim — so a clash would have halted the run with a message
 blaming Tomo for drift instead of naming the clash.
 
@@ -558,8 +558,8 @@ while `_build_move_asset_actions` deliberately emits none for a refused one
 (`move_asset expected=2 actual=1 [DIFF]`). That gap dates to spec 031 and was
 unreachable until recursion made a basename clash possible. It is closed here
 by `_subtract_skipped_assets`, not because T5.4 caused it, but because T5.4
-makes the clash a normal outcome and `synthesis-conductor.md` step 3e halts the
-run on a diff mismatch — a guard whose own audit stops the run is not
+makes the clash a normal outcome and `synthesis-conductor.md`'s coverage audit
+step halts the run on a diff mismatch — a guard whose own audit stops the run is not
 shippable.
 
 ### Found While Sweeping, Deliberately Not Fixed
@@ -889,8 +889,8 @@ route to it reachable; neither created it. Tracked as its own task, **T6.0d**.
 confirmed item and does no destination comparison, so two confirmed proposals
 named `Travel (MOC)` and `travel (MOC)` expected two actions where the folded
 builder emits one. The audit reported `create_moc expected=2 actual=1 [DIFF]`
-plus a `[MISSING]` coverage row for the merged item, and `synthesis-conductor.md`
-step 3e makes a diff mismatch fatal.
+plus a `[MISSING]` coverage row for the merged item, and `synthesis-conductor.md`'s
+coverage audit step makes a diff mismatch fatal.
 
 That was a change in failure mode, not a new data loss: before the fold the run
 completed and dropped the merged proposal's children on apply; after it, the run

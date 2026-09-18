@@ -215,7 +215,7 @@ WHY: `filter_missing_daily_notes` legitimately drops `update_tracker` /
 exist — Hashi *modifies* daily notes, it never *creates* them (#37/I38). Those
 drops were surfaced only in `instructions.md` (human "Skipped" section) and on
 stderr, never in the machine `instructions.json`. `instructions-diff` (the Pass-2
-coverage audit, conductor step 3e) derives `expected` from the parsed suggestions
+coverage audit, invoked as the conductor's coverage audit step) derives `expected` from the parsed suggestions
 — which still count every accepted daily entry — so it saw `expected=N` vs
 `actual=N-dropped` and failed with a **false** coverage mismatch. Per the
 synthesis-conductor contract a mismatch = STOP, so any run with a missing daily

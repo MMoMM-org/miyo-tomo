@@ -587,8 +587,8 @@ WHY that mattered enough to be its own task: `derive_expected`
 (`instructions-diff.py`) counts one expected `create_moc` per confirmed item and
 does no destination comparison, so it expected two where one was emitted. The
 audit printed `create_moc expected=2 actual=1 [DIFF]` plus a `[MISSING]`
-per-item row, both of which set `hard_fail`, and `synthesis-conductor.md`
-step 3e is STRICT: stop and report the diff verbatim. The user read that as Tomo
+per-item row, both of which set `hard_fail`, and `synthesis-conductor.md`'s
+coverage audit step is STRICT: stop and report the diff verbatim. The user read that as Tomo
 drifting from its own instruction set and could not finish the run without
 renaming a proposal. Before T6.0 the same input completed and dropped the merged
 proposal's children on apply — a change in failure mode, not new data loss, but

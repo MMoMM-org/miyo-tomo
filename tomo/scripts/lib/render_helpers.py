@@ -1,4 +1,4 @@
-# version: 0.3.1
+# version: 0.4.0
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -75,18 +75,20 @@ def resolve_sibling_path(
 
 # ── Withdrawal cause attribution (spec 036 T4.3) ─────────────────────────────
 # Grouped here as a cohesion choice, not because the DAG forces it for all
-# three functions: render_actions.py imports FROM render_md.py (`bare_stem`,
+# four functions: render_actions.py imports FROM render_md.py (`bare_stem`,
 # one-directional), and render_md.py imports nothing from render_actions.py.
-# The one real cycle constraint is narrower — `describe_withdrawal_cause` is
-# the only one of the three render_md.py itself calls (its markdown "##
-# Skipped" section), so it cannot live in render_actions.py: render_md.py
-# would then have to import it back from render_actions.py, completing the
-# cycle render_md -> render_actions -> render_md. `attribute_withdrawal_
-# causes` and `build_delete_withdrawal_reports` are consumed solely by
+# The one real cycle constraint is narrower — `describe_withdrawal_cause_for_
+# user` is the only one of the four render_md.py itself calls (its markdown
+# "## Skipped" and "## Source Deletions" sections), so it cannot live in
+# render_actions.py: render_md.py would then have to import it back from
+# render_actions.py, completing the cycle render_md -> render_actions ->
+# render_md. `attribute_withdrawal_causes`, `describe_withdrawal_cause` (its
+# stderr/technical sibling — spec 035 T-delete-reaches-user split, ADR-11) and
+# `build_delete_withdrawal_reports` are consumed solely by
 # instruction-render.py, which already imports from both render_actions.py
-# and render_md.py without cycle risk, so either of them could equally live
-# in render_actions.py next to `withdraw_unjustified_deletes`. Keeping all
-# three together here is a cohesion choice — one module owns the whole
+# and render_md.py without cycle risk, so any of them could equally live in
+# render_actions.py next to `withdraw_unjustified_deletes`. Keeping all four
+# together here is a cohesion choice — one module owns the whole
 # withdrawal-cause join — not an unavoidable one; see
 # docs/tomo/scripts/lib/render_helpers.md for the full rationale.
 
@@ -146,9 +148,17 @@ def attribute_withdrawal_causes(
 def describe_withdrawal_cause(cause: dict) -> str:
     """Render one `attribute_withdrawal_causes` entry as a metadata-only phrase.
 
-    Shared by stderr (instruction-render.py) and markdown (render_md.py) so
-    the two surfaces never drift into different wording for the same cause
-    (spec 036 T4.3, PRD F6-AC1). Reads only the id and guard name this module
+    STDERR / technical surface ONLY (instruction-render.py) — for a
+    maintainer debugging a run, so it names the missing action id and the
+    guard function that dropped it. Until spec 035 T-delete-reaches-user this
+    was ALSO the markdown surface's wording, on the premise that one function
+    keeps the two from drifting apart. That premise broke: the rendered
+    instructions document is what the user approves (ADR-11, "no executor
+    internals in the rendered text"), and a guard's Python function name or an
+    internal action id has no business there. `describe_withdrawal_cause_for_
+    user`, below, is now render_md.py's sibling — the two surfaces
+    legitimately differ on purpose; see docs/tomo/scripts/lib/render_helpers.md
+    for the full rationale. Reads only the id and guard name this module
     already carries — never note content (Constitution L2).
     """
     guard = cause.get("guard")
@@ -160,6 +170,41 @@ def describe_withdrawal_cause(cause: dict) -> str:
             "guard reported dropping it)"
         )
     return f"missing id {cause.get('missing_id')} (dropped by {guard})"
+
+
+# Guard -> plain-language reason, for describe_withdrawal_cause_for_user. Never
+# the guard's own function name (ADR-11) — one short clause a non-technical
+# reader can act on, matching the register of the rest of instructions.md
+# (e.g. "target MOC could not be confirmed" in _unresolvable_link_notes).
+_USER_FACING_WITHDRAWAL_REASONS: dict[str, str] = {
+    "validate_destinations": "the destination note was claimed by another approved item",
+    "suppress_moves_for_unfiled_attachments": "an attachment it carries could not be filed",
+    "filter_unresolvable_moc_links": "the target MOC could not be confirmed",
+    "filter_missing_daily_notes": "its daily note does not exist",
+    "filter_unappliable_relationships": "the related note could not be found",
+}
+
+
+def describe_withdrawal_cause_for_user(cause: dict) -> str:
+    """Render one `attribute_withdrawal_causes` entry in plain language, for
+    the rendered instructions document (spec 035 T-delete-reaches-user; ADR-11
+    "no executor internals in the rendered text").
+
+    `describe_withdrawal_cause`'s markdown sibling — same input shape, never
+    a guard function name or an internal action id in the output, so a
+    non-technical reader (the actual audience for instructions.md, per
+    CON-2) can tell what happened without knowing what a "guard" is. Reads
+    only the guard name this module already carries — never note content
+    (Constitution L2).
+    """
+    guard = cause.get("guard")
+    if guard is None:
+        return "no reason was ever recorded for this delete"
+    if guard == "unattributed":
+        return "the reason could not be determined"
+    return _USER_FACING_WITHDRAWAL_REASONS.get(
+        guard, "it depended on an action that was withdrawn"
+    )
 
 
 def build_delete_withdrawal_reports(

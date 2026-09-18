@@ -1,4 +1,4 @@
-# version: 0.20.0
+# version: 0.21.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -19,7 +19,7 @@ from lib.render_helpers import (
     WITHDRAWAL_GUARDS,
     _moc_stem,
     _stem,
-    describe_withdrawal_cause,
+    describe_withdrawal_cause_for_user,
 )
 from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
@@ -633,20 +633,50 @@ def _group_delete_withdrawals(
     return by_missing_id, leftover
 
 
-def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
-    """One withdrawal, as a bullet naming the delete, its source and cause(s).
+def _withdrawal_note_ref(withdrawal: dict) -> str:
+    """The `[[…]]` for a withdrawal's source note, or a plain fallback."""
+    stem = _stem(withdrawal.get("source_path") or "")
+    return f"[[{stem}]]" if stem else "this note"
 
-    Metadata only (Constitution L2): id, source_path and the cause phrases
-    from `describe_withdrawal_cause` — never note content.
-    """
+
+def _withdrawal_detail(withdrawal: dict) -> str:
+    """The plain-language reason clause shared by both withdrawal renderings
+    below — `describe_withdrawal_cause_for_user`'s join across every cause."""
     causes = withdrawal.get("causes") or []
-    detail = "; ".join(describe_withdrawal_cause(c) for c in causes) or (
-        "no dependency was ever declared (depends_on missing)"
-    )
+    return "; ".join(
+        describe_withdrawal_cause_for_user(c) for c in causes
+    ) or "no reason was ever recorded for this delete"
+
+
+def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
+    """One withdrawal, in plain language, under "## Skipped": which note it
+    kept and why.
+
+    User-facing (ADR-11, "no executor internals in the rendered text") — no
+    action id, no wire action name (`delete_source`), no guard function name.
+    `describe_withdrawal_cause` (render_helpers.py) stays technical for
+    stderr; this reads `describe_withdrawal_cause_for_user`, its markdown
+    sibling, so the two surfaces now legitimately differ — see
+    docs/tomo/scripts/lib/render_helpers.md. Metadata only (Constitution L2):
+    the note's own stem and the cause phrase — never note content.
+    """
     return (
-        f"{indent}- withdrawn: `{withdrawal.get('id')}` `delete_source` → "
-        f"`{withdrawal.get('source_path')}` — {detail}"
+        f"{indent}- a delete was withheld: {_withdrawal_note_ref(withdrawal)} "
+        f"— {_withdrawal_detail(withdrawal)}"
     )
+
+
+def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
+    """One withdrawn delete, stated where its absence would otherwise be
+    silent: under "## Source Deletions" itself, not only cross-referenced
+    from "## Skipped" (spec 035 T-delete-reaches-user). A user who ticked a
+    delete and sees no entry for its note under this heading has no way to
+    tell "withheld on purpose" from "the run forgot it" — this bullet is the
+    difference. Same plain-language register as `_render_withdrawal_bullet`
+    (ADR-11) — no action id, no guard function name; metadata only
+    (Constitution L2).
+    """
+    return f"- {_withdrawal_note_ref(withdrawal)} was **not** deleted — {_withdrawal_detail(withdrawal)}"
 
 
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
@@ -686,6 +716,12 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # over every source-display site at once, because a name is ambiguous to
     # the reader of the whole document, not of one section.
     ambiguous_sources = colliding_names(_source_display_paths(actions, metadata))
+
+    # Every delete_source the run withdrew (spec 036 T4.3 join). Read once,
+    # here, because it drives two things below: whether "## Source Deletions"
+    # carries a withdrawn-delete notice (spec 035 T-delete-reaches-user), and
+    # the "## Skipped" adjacency grouping further down.
+    delete_withdrawals = metadata.get("delete_withdrawals") or []
 
     # Destination clashes (spec 034 F7 / ADR-4) lead the document. Every other
     # report in this file is a skip the user can act on later; this one is the
@@ -783,12 +819,22 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
 
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
-        if not bucket:
+        # "Source Deletions" carries a notice for every withdrawn delete
+        # (spec 035 T-delete-reaches-user) even when no delete_source action
+        # survived — the heading is then created SOLELY to carry it, so a
+        # ticked delete's absence never reads as silent. Every other section
+        # is unaffected: withdrawn_here is empty for them.
+        withdrawn_here = delete_withdrawals if key == "deletions" else []
+        if not bucket and not withdrawn_here:
             continue
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
             body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
+            body_parts.append("")
+        for w in withdrawn_here:
+            body_parts.append(_render_withdrawn_delete_notice(w))
+        if withdrawn_here:
             body_parts.append("")
 
     # Skipped daily-note actions (#37/I38): surfaced so the user knows a log
@@ -807,8 +853,9 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # bullet below (PRD F2-AC4 adjacency); `leftover_withdrawals` carries
     # every other withdrawal (attributed to a guard reported under a
     # different heading, unattributed, or never declared) in its own
-    # sub-block at the end of this section.
-    delete_withdrawals = metadata.get("delete_withdrawals") or []
+    # sub-block at the end of this section. `delete_withdrawals` itself was
+    # already read above — before the section loop — so "## Source
+    # Deletions" and this section agree on the same withdrawal list.
     withdrawals_by_id, leftover_withdrawals = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
             or unresolvable_links or delete_withdrawals):

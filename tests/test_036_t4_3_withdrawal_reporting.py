@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_036_t4_3_withdrawal_reporting.py — spec 036 / T4.3 withdrawal reporting.
 
 Covers the T4.3 join and its three report surfaces (plan/phase-4.md T4.3;
@@ -42,6 +42,23 @@ docs/XDD/backlog.md rather than silently left for the next reader to
 rediscover.
 
 Spec: docs/XDD/specs/036-delete-outlives-its-justification/ Phase 4, T4.3.
+
+Follow-up (spec 035 T-delete-reaches-user, live run 2026-09-18): the markdown
+and stderr surfaces described above turned out to be the WRONG pair to share
+one wording function. `describe_withdrawal_cause` stayed technical for stderr;
+`render_md.py` now calls `describe_withdrawal_cause_for_user`, its plain-
+language sibling (no action id, no wire action name, no guard function name —
+ADR-11, "no executor internals in the rendered text"). The three
+`TestMarkdownSkippedSection` tests that asserted the OLD technical wording
+(`D1`, `delete_source`, `I05`, `filter_missing_daily_notes`) are rewritten
+below to assert its ABSENCE instead, with a stable non-id anchor
+("a delete was withheld:") replacing the "withdrawn: `D1`" positional
+anchor. `instructions-diff.py` also gained `_subtract_withdrawn_deletes`
+(tested separately, tests/test_036_t4_4_withdrawn_delete_coverage.py) so a
+withdrawn delete no longer reads as a coverage mismatch, and
+`render_instructions_md` now states a withdrawn delete under "## Source
+Deletions" itself, not only cross-referenced from "## Skipped" — see the new
+`TestSourceDeletionsWithdrawalNotice` class below.
 """
 from __future__ import annotations
 
@@ -66,6 +83,7 @@ from lib.render_helpers import (  # noqa: E402
     attribute_withdrawal_causes,
     build_delete_withdrawal_reports,
     describe_withdrawal_cause,
+    describe_withdrawal_cause_for_user,
 )
 from lib.render_md import _INLINE_WITHDRAWAL_GUARDS, render_instructions_md  # noqa: E402
 
@@ -214,6 +232,41 @@ class TestUnattributedTripwire:
 # appear in two guards' lists in the same run. `attribute_withdrawal_causes`'
 # `setdefault` (first match wins) exists for defensive determinism only, not
 # because a collision is reachable.
+
+
+# ── 9-10. describe_withdrawal_cause_for_user vs. its technical sibling ─────
+
+
+class TestUserFacingWithdrawalWording:
+    """spec 035 T-delete-reaches-user: the markdown surface must lose the
+    internals (ADR-11) while stderr stays technical — tests 9/10 of that
+    task's plan, proving the two functions now genuinely differ."""
+
+    @pytest.mark.parametrize("guard", ALL_GUARDS)
+    def test_user_facing_wording_names_no_guard_or_id(self, guard):
+        cause = {"missing_id": "I05", "guard": guard}
+        text = describe_withdrawal_cause_for_user(cause)
+        assert guard not in text
+        assert "I05" not in text
+        assert "missing id" not in text
+
+    def test_user_facing_wording_covers_undeclared_and_unattributed_too(self):
+        undeclared = describe_withdrawal_cause_for_user({"missing_id": None, "guard": None})
+        unattributed = describe_withdrawal_cause_for_user(
+            {"missing_id": "GHOST", "guard": "unattributed"}
+        )
+        assert "GHOST" not in unattributed
+        assert "unattributed" not in unattributed
+        assert undeclared != unattributed
+
+    def test_technical_sibling_is_unchanged_and_still_carries_the_guard_name(self):
+        """describe_withdrawal_cause (stderr) must stay exactly as it was —
+        this is the sibling test_daily_withdrawal_reports_missing_id_and_
+        guard_on_stderr already pins end-to-end; this pins the unit directly."""
+        cause = {"missing_id": "I05", "guard": "filter_missing_daily_notes"}
+        assert describe_withdrawal_cause(cause) == (
+            "missing id I05 (dropped by filter_missing_daily_notes)"
+        )
 
 
 # ── build_delete_withdrawal_reports — reason threaded verbatim ─────────────
@@ -433,6 +486,15 @@ def _md_metadata(**over):
 
 class TestMarkdownSkippedSection:
     def test_withdrawal_renders_inside_existing_skipped_heading(self):
+        """Inverted 2026-09-18 (spec 035 T-delete-reaches-user): the markdown
+        must lose the internals ADR-11 forbids — no action id, no wire action
+        name, no guard function name. Two headings now, not one:
+        "## Skipped" (this withdrawal's cross-reference under its matching
+        daily bullet) AND "## Source Deletions" (the same withdrawal's own
+        visible statement, Change 3b) — the latter is asserted by
+        TestSourceDeletionsWithdrawalNotice below in more detail; here it is
+        only the heading count that must account for it.
+        """
         delete_withdrawals = [{
             "id": "D1", "action": "delete_source",
             "source_path": "100 Inbox/Origin.md",
@@ -447,13 +509,15 @@ class TestMarkdownSkippedSection:
             delete_withdrawals=delete_withdrawals,
         ), CFG)
         assert "## Skipped — un-appliable actions" in md
-        # Not a NEW top-level section: exactly one "## " heading in the
-        # whole document (no actions, no other metadata keys set here).
-        assert md.count("\n## ") == 1
-        assert "D1" in md and "delete_source" in md
-        assert "100 Inbox/Origin.md" in md
-        assert "I05" in md
-        assert "filter_missing_daily_notes" in md
+        assert "## Source Deletions" in md
+        assert md.count("\n## ") == 2
+        assert "D1" not in md
+        assert "delete_source" not in md
+        assert "I05" not in md
+        assert "filter_missing_daily_notes" not in md
+        assert "100 Inbox/Origin.md" not in md
+        assert "[[Origin]]" in md
+        assert "its daily note does not exist" in md
 
     def test_f2_ac4_daily_skip_and_delete_withdrawal_are_structurally_grouped(self):
         """PRD F2-AC4: the withheld daily action and the delete it withdrew
@@ -486,7 +550,7 @@ class TestMarkdownSkippedSection:
             i for i, line in enumerate(lines) if line.startswith("- `update_log_entry`")
         )
         withdrawal_idx = next(
-            i for i, line in enumerate(lines) if "withdrawn: `D1`" in line
+            i for i, line in enumerate(lines) if "a delete was withheld:" in line
         )
         rel_idx = next(
             i for i, line in enumerate(lines) if line.startswith("- `add_relationship`")
@@ -541,7 +605,9 @@ class TestMarkdownSkippedSection:
         second_daily_idx = next(
             i for i, line in enumerate(lines) if line.startswith("- `update_tracker`")
         )
-        withdrawal_idxs = [i for i, line in enumerate(lines) if "withdrawn: `D1`" in line]
+        withdrawal_idxs = [
+            i for i, line in enumerate(lines) if "a delete was withheld:" in line
+        ]
 
         assert len(withdrawal_idxs) == 2, (
             "a withdrawal whose causes span two missing daily notes (same "
@@ -574,7 +640,7 @@ class TestMarkdownSkippedSection:
                 "causes": [{"missing_id": "I05", "guard": "filter_missing_daily_notes"}],
             }],
         ), CFG)
-        assert md.count("withdrawn: `D1`") == 1
+        assert md.count("a delete was withheld:") == 1
 
     def test_no_withdrawal_produces_no_withdrawal_subblock(self):
         """Regression guard: `delete_withdrawals` defaults to `[]`, so
@@ -604,5 +670,79 @@ class TestMarkdownSkippedSection:
             }],
         ), CFG)
         assert "## Skipped — un-appliable actions" in md
-        assert "withdrawn: `D2`" in md
-        assert "no dependency was ever declared" in md
+        assert "a delete was withheld:" in md
+        assert "no reason was ever recorded for this delete" in md
+        assert "D2" not in md
+        # "## Source Deletions" is created solely to carry this withdrawal's
+        # own notice too (Change 3b) — no delete_source action survived.
+        assert "## Source Deletions" in md
+        assert "[[Other]] was **not** deleted" in md
+
+
+# ── 12-13. "## Source Deletions" carries a visible statement (Change 3b) ──
+
+
+def _delete_action(source_path="100 Inbox/Kept.md"):
+    return {
+        "id": "D9", "action": "delete_source", "source_path": source_path,
+        "reason": "Origin consumed by 1 atomic.",
+    }
+
+
+class TestSourceDeletionsWithdrawalNotice:
+    """spec 035 T-delete-reaches-user, test-plan items 12-13: a ticked delete
+    the run withheld must never be silent under "## Source Deletions" — its
+    own section, not only the "## Skipped" cross-reference."""
+
+    def test_heading_already_open_appends_the_notice(self):
+        """One delete_source action survives (heading already renders) and a
+        second delete was withdrawn — the notice appends after the surviving
+        entry, in the SAME section, not a duplicate heading."""
+        md = render_instructions_md(
+            [_delete_action()],
+            _md_metadata(delete_withdrawals=[{
+                "id": "D1", "action": "delete_source",
+                "source_path": "100 Inbox/Origin.md",
+                "reason": "Content fully captured in daily note.",
+                "causes": [{"missing_id": "I05", "guard": "filter_missing_daily_notes"}],
+            }]),
+            CFG,
+        )
+        assert md.count("## Source Deletions") == 1
+        assert "### D9 — Delete source note: Kept" in md
+        assert "[[Origin]] was **not** deleted — its daily note does not exist" in md
+        # The surviving entry's own block precedes the notice.
+        assert md.index("### D9") < md.index("[[Origin]] was **not** deleted")
+
+    def test_heading_created_solely_to_carry_the_notice(self):
+        """No delete_source action survived this run at all — the heading
+        does not exist yet in `by_section`, and must be created from nothing
+        just to carry the withdrawn-delete statement."""
+        md = render_instructions_md(
+            [],
+            _md_metadata(delete_withdrawals=[{
+                "id": "D1", "action": "delete_source",
+                "source_path": "100 Inbox/Origin.md",
+                "reason": "Content fully captured in daily note.",
+                "causes": [{"missing_id": "I05", "guard": "filter_missing_daily_notes"}],
+            }]),
+            CFG,
+        )
+        assert "## Source Deletions" in md
+        assert "[[Origin]] was **not** deleted — its daily note does not exist" in md
+        assert "### D9" not in md
+
+    def test_no_withdrawals_source_deletions_byte_identical(self):
+        """No `delete_withdrawals` at all — "## Source Deletions" must render
+        exactly as it did before Change 3b: the surviving action's own block,
+        nothing appended."""
+        md = render_instructions_md([_delete_action()], _md_metadata(), CFG)
+        expected = (
+            "## Source Deletions\n\n"
+            "### D9 — Delete source note: Kept\n"
+            "- [ ] Applied\n"
+            "- **Source:** [[Kept]]\n"
+            "- **Action:** Delete the note from the inbox — Origin consumed by 1 atomic."
+        )
+        assert expected in md
+        assert "was **not** deleted" not in md

@@ -84,6 +84,48 @@ the field, and the parser uses the markdown path. The JSON-only path is gated to
 the primary flow (`--fan-resolve-file` absent) so the XDD-012 fan-resolve path is
 untouched.
 
+## Step 4 Relays the Sanitized Markdown Notice for a Withheld Delete, Never Stderr (v0.17.0, 2026-09-18)
+
+WHY: a live run on 2026-09-18 exposed two problems in the same withdrawal. The
+user ticked "Delete [[Laufrunde Elbufer]]"; the daily note it depended on did
+not exist, `filter_missing_daily_notes` dropped the paired daily actions, and
+`withdraw_unjustified_deletes` correctly withdrew the delete (spec 036 working
+exactly as designed — the note survives). Two things then went wrong: (1) the
+coverage audit halted on a false `delete_source expected=2 actual=1 [DIFF]` —
+fixed separately by `instructions-diff.py`'s `_subtract_withdrawn_deletes`
+(tests/test_036_t4_4_withdrawn_delete_coverage.py); (2) **the user never
+learned the delete was withheld.** They apply via the Hashi plugin and no
+longer read the instructions markdown — the conductor's chat summary is their
+only surface, and Step 4 said nothing about withdrawals.
+
+The first fix considered was wrong: relay `instruction-render.py`'s stderr
+withdrawal block (or the raw `tomo.delete_withdrawals` JSON) into Step 4's
+report. Both carry action ids and guard function names
+(`filter_missing_daily_notes`, `I05`) by design — that surface is for a
+maintainer debugging the run, not the user. Relaying it verbatim into chat
+would reproduce the exact ADR-11 leak ("no executor internals in the rendered
+text") through a different door.
+
+The fix landed one layer down instead: `render_md.py` now renders a
+withdrawn delete as a plain-language bullet under BOTH "## Skipped" (Change 2)
+AND "## Source Deletions" itself (Change 3b) — "[[Note]] was **not** deleted
+— <plain reason>", sourced from `describe_withdrawal_cause_for_user`
+(render_helpers.py), which by construction never emits an id or a guard name.
+Step 4 does not compose new wording or read `tomo.delete_withdrawals` — it
+greps the ALREADY-sanitized markdown line and relays it. This follows two
+standing rules at once: "docs in the script, not the agent" (the plain-
+language sentence is a script's deterministic output, not something a
+haiku-tier conductor improvises at report time) and "deterministic rendering
+over LLM assembly" (the agent's whole design is script-runner, not
+content-processor — STRICT block at the top of this file). Grepping the
+rendered file instead of the JSON also means Step 3e's per-entry loop can
+capture the fact before the next entry's 3b overwrites `tomo-tmp/rendered/`.
+
+Per this repo's CLAUDE.md ordering rule ("docs/tomo/<mirrored-path>.md is the
+WHY-persistence layer... write to docs/tomo first, strip/add to runtime
+second"), this section was written before the Step 3e/Step 4 edit it
+documents.
+
 ## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)
 
 WHY the conductor's garden-audit invocation (and only this invocation) carries

@@ -239,7 +239,7 @@
         "depends_on": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Action ids (move_note/move_asset) this delete must not outlive — Hashi withholds the delete unless every id here is applied. Empty array for a user-requested deletion with no partner action (spec 036 F5-AC2)."
+          "description": "Action ids this delete must not outlive — Hashi withholds the delete unless every id here is applied (AND semantics). The ids name whichever actions captured this source's content: move_note for a filed atomic, update_tracker/update_log_entry/update_log_link for a daily-only origin, insert_under_marker for a tag-handler consolidation. Empty array for a user-requested deletion with no partner action (spec 036 F5-AC2); absent is not the same as empty and must be rejected."
         },
         "applied": {"$ref": "#/$defs/applied_field"}
       }

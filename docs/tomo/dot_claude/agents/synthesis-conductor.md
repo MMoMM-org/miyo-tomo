@@ -191,6 +191,65 @@ actually contained only notices. What changed is which file that is: the
 run identity that Step 4 never needed to read now lives entirely in
 `tomo-tmp/withheld-deletes.run_id`, a file Step 4 does not touch.
 
+## Coverage Audit Moved Before Upload and State Flip (v0.20.0, 2026-09-18)
+
+WHY: Step 3's order was 3a parse → 3b render → 3c upload → 3d flip source
+state → 3e coverage audit. The STRICT stop on a mismatch ("do not continue
+to the next doc") only ever protected documents AFTER the one that failed —
+by the time 3e ran, 3c had already uploaded the rendered instructions into
+the vault and 3d had already flipped the source doc to its terminal state.
+A gate that runs after delivery has already happened is not a gate; it is a
+complaint filed after the fact.
+
+This was observed live on 2026-09-18: a run halted on a coverage mismatch
+(later found to be a false positive) and the container agent reported "it
+did not write instructions." The instructions were, in fact, already
+uploaded to the vault at `state: pending-apply` — reachable by the Hashi
+plugin before the user ever read the stop message. Nothing in the pipeline
+required this order: the audit reads `tomo-tmp/parsed-suggestions.json`
+(3a's output), `tomo-tmp/rendered/instructions.json` (3b's output), and the
+run-level `tomo-tmp/tag-handler-groups` — it has no dependency on the
+upload or the state flip.
+
+The fix reorders Step 3 to 3a parse → 3b render → 3c coverage audit → 3d
+upload → 3e flip source state. Content and STRICT language of each step are
+unchanged — only the position and the letters moved. Because the audit now
+runs first, its STOP naturally prevents 3d and 3e from ever running for the
+current entry: nothing is uploaded, and the source doc's frontmatter stays
+at `FROM_STATE` (e.g. `pending-approval`) instead of being flipped to
+`TO_STATE` (`approved`).
+
+WHY the STOP still bypasses Step 4 entirely, unchanged by the reorder: the
+STRICT instruction ("you STOP and report the diff verbatim ... and stop —
+do not continue to the next doc") is a terminal action inside the Step 3
+loop, not a condition Step 4 checks. Step 4 ("Report") is only reached after
+"Repeat 3a–3e for the next entry in the work list" runs out of entries — a
+halted run never gets there. This was already true before the reorder; what
+changes is what has (and has not) happened by the time it fires. One
+consequence worth naming explicitly: `instruction-render.py`'s
+`sync_withheld_deletes_file` (called inside 3b, unconditionally, for every
+entry that renders a withdrawn delete) writes to the run-level
+`tomo-tmp/withheld-deletes.md` BEFORE 3c's audit runs. So on a halt that
+file can already exist — but because Step 4 is never reached, its "relay
+every line" instruction never fires either. Nothing about a halted, only
+partially-rendered run gets surfaced as if it were a completed one.
+
+WHY the retry behaviour is an improvement, not just a side effect: with the
+state flip now gated behind the audit, a halted entry's source doc keeps
+its pre-synthesis frontmatter state (`pending-approval` for suggestions,
+`pending-accept` for MOC/garden-audit docs) with the user's approval marker
+still ticked in the body. `inbox-triage.py`'s pending-approval query
+(`tomo.state=pending-approval`) and `_RE_APPROVED` check re-admit that doc
+into `approved_suggestions` on the very next `/inbox` run; since no
+instructions were uploaded, `compute_coverage`'s `covered_paths` does not
+include it, so it lands back in `to_process` and `determine_action` returns
+`synthesize` again. Before this fix, the same halt still left the doc
+flipped to `approved` (3d had already run), so `to_process` came back empty
+and `determine_action` fell through to `idle` with reason "All approved
+items already covered by existing instructions" — literally true (an
+instructions doc existed) and completely misleading (the run had reported
+failure). The reorder turns a silent dead end into an automatic retry.
+
 ## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)
 
 WHY the conductor's garden-audit invocation (and only this invocation) carries

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_034_t5_3_destination_validation.py — spec 034 T5.3.
 
 The Pass-2 half of PRD Feature 7. Pass 1 (T5.2) proposes a distinct name on a
@@ -805,8 +805,8 @@ def test_the_clash_reaches_the_rendered_document(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 # 10. The paired consumer — instructions-diff must not read a deliberate
 #     withholding as coverage drift. The conductor STOPs on a diff mismatch
-#     (synthesis-conductor.md step 3e), so a stale expectation would halt the
-#     run with a message that misdiagnoses the guard.
+#     (synthesis-conductor.md step 3c, the coverage audit), so a stale
+#     expectation would halt the run with a message that misdiagnoses the guard.
 # ---------------------------------------------------------------------------
 
 def _diff_module():

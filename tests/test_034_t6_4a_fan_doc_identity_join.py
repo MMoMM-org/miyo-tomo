@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t6_4a_fan_doc_identity_join.py — a fan document owns its own identity map.
 
 Spec 034 (recursive inbox discovery), Phase 6 T6.4a. Found by the T6.4 live
@@ -28,7 +28,8 @@ What this file pins:
     shape this spec has been bitten by repeatedly;
   * both branches of the resolution: the sibling next to the markdown, and the
     cwd-relative `tomo-tmp/` fallback the standalone-fan invocation
-    (`synthesis-conductor.md:117`, which passes no `--suggestions-doc`) takes;
+    (`synthesis-conductor.md` Step 3a's standalone-fan branch, which passes
+    no `--suggestions-doc`) takes;
   * a PRIMARY document still binds from the primary document, unchanged;
   * a fan document parsed beside a stale primary document does not bind a
     key from it.
@@ -203,9 +204,9 @@ class TestFanDocumentBindsItsOwnIdentity:
     def test_subfolder_note_keeps_its_key_via_the_tomo_tmp_fallback(
         self, fan_work, tmp_path
     ):
-        """`synthesis-conductor.md:117` runs the parser on a vault CACHE copy
-        with no doc beside it, so the cwd-relative fallback is the branch the
-        live run actually took."""
+        """`synthesis-conductor.md` Step 3a's standalone-fan branch runs the
+        parser on a vault CACHE copy with no doc beside it, so the
+        cwd-relative fallback is the branch the live run actually took."""
         cache = tmp_path / "cache"
         cache.mkdir()
         shutil.copy(
@@ -313,7 +314,8 @@ class TestThePrimaryDocumentIsUnchanged:
 
 # ===========================================================================
 # The companion path — `--fan-resolve-file`, the invocation a Force-Atomic run
-# with an approved primary actually takes (synthesis-conductor.md:111).
+# with an approved primary actually takes (synthesis-conductor.md Step 3a's
+# fan-companion branch, which passes --fan-resolve-file and --suggestions-doc).
 # ===========================================================================
 
 FAN_ANCHOR = {"kind": "heading", "heading": "Fotos", "new_section": False}

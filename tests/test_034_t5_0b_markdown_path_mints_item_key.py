@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t5_0b_markdown_path_mints_item_key.py — the path users actually take.
 
 Spec 034 (recursive inbox discovery), Phase 5, follow-on to T5.0.
 
 T5.0 made the Pass-2 render stage address items by `item_key`, which fixed the
 ADR-026 wire path. The markdown path — `suggestion-parser.py main()`, which
-`synthesis-conductor.md:105` invokes as the normal flow — minted no key at any
+`synthesis-conductor.md` Step 3a's no-fan-companion invocation (passes
+`--suggestions-doc`) invokes as the normal flow — minted no key at any
 of its `confirmed_items.append` sites, so every subfolder note carrying a
 template was still dropped there.
 
@@ -29,8 +30,9 @@ only for same-filename groups, so a globally unique subfolder note keeps its
 bare `[[Bohnen]]` link and would still have been dropped after T5.1 landed.
 
 WHAT MUST STILL HOLD: the doc is not passed on every invocation
-(`synthesis-conductor.md:117` runs the parser bare), so the join has to fail
-safe — no doc means the pre-existing behaviour, unchanged.
+(`synthesis-conductor.md` Step 3a's standalone-fan branch runs the parser
+bare, with no `--suggestions-doc`), so the join has to fail safe — no doc
+means the pre-existing behaviour, unchanged.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -171,7 +173,8 @@ def _isolated_markdown(run: dict, tmp_path: Path) -> Path:
 
 
 class TestNoDocFallsBackToTodaysBehaviour:
-    """`synthesis-conductor.md:117` runs the parser without --suggestions-doc."""
+    """`synthesis-conductor.md` Step 3a's standalone-fan branch runs the
+    parser without --suggestions-doc."""
 
     def test_parser_still_succeeds_and_mints_no_key(self, run, tmp_path):
         work = _isolated_markdown(run, tmp_path)

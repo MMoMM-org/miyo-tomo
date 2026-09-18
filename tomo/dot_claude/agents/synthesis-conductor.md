@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.19.0
+# version: 0.20.0
 
 **Active agent: synthesis-conductor**
 
@@ -152,29 +152,7 @@ python3 scripts/instruction-render.py \
 
 Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
 
-#### 3c — Upload rendered files
-
-```bash
-python3 scripts/upload-rendered.py \
-  --rendered-dir tomo-tmp/rendered \
-  --inbox "<inbox_path>"
-```
-
-Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
-do not retry batch). Exit 2 = bad input, stop.
-
-#### 3d — Flip source doc state
-
-```bash
-python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>" "<MODIFIED>"
-```
-
-`MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
-
-Exit 0 = success. Exit 1 = transition rejected (report and continue).
-Exit 2 = concurrency conflict (report and continue).
-
-#### 3e — Coverage audit
+#### 3c — Coverage audit
 
 ```bash
 python3 scripts/instructions-diff.py \
@@ -192,6 +170,28 @@ the audit pass. Diagnosing or fixing the pipeline is out of scope for this run �
 that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
+
+#### 3d — Upload rendered files
+
+```bash
+python3 scripts/upload-rendered.py \
+  --rendered-dir tomo-tmp/rendered \
+  --inbox "<inbox_path>"
+```
+
+Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
+do not retry batch). Exit 2 = bad input, stop.
+
+#### 3e — Flip source doc state
+
+```bash
+python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>" "<MODIFIED>"
+```
+
+`MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
+
+Exit 0 = success. Exit 1 = transition rejected (report and continue).
+Exit 2 = concurrency conflict (report and continue).
 
 Repeat 3a–3e for the next entry in the work list.
 

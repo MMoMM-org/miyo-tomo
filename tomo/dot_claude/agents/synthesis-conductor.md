@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.17.0
+# version: 0.18.0
 
 **Active agent: synthesis-conductor**
 
@@ -193,30 +193,30 @@ that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
 
-After a passing audit (exit 0), check this entry's rendered instructions.md for
-a withheld-delete notice:
-```bash
-grep 'was \*\*not\*\* deleted' tomo-tmp/rendered/instructions.md
-```
-Record every matching line verbatim, for every entry, before moving to the
-next — `tomo-tmp/rendered/` is overwritten by the next entry's 3b.
-
 Repeat 3a–3e for the next entry in the work list.
 
 ### Step 4 — Report
 
 Count the total number of approved docs processed across all buckets.
 
+Check for a run-level withheld-delete relay:
+```bash
+cat tomo-tmp/withheld-deletes.md
+```
+If the file exists, its lines are already-sanitized user-facing notices —
+one per withheld delete across every entry processed this run. If the
+command errors (no such file), there is nothing to relay.
+
 > Pass 2 complete — instructions rendered for N source doc(s).
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
-> <one line per notice recorded in 3e, exactly as it read in instructions.md>
+> <every line from tomo-tmp/withheld-deletes.md, if it exists>
 
-If you recorded any withheld-delete notices in 3e, append them verbatim as
-the last lines of the report, one per line. Never substitute the stderr
-withdrawal block or the raw `tomo.delete_withdrawals` JSON for this — relay
-only the matching `instructions.md` lines you recorded.
+Append the file's lines verbatim as the last lines of the report, one per
+line, only when the file exists. Never substitute the stderr withdrawal
+block or the raw `tomo.delete_withdrawals` JSON for this — relay only the
+lines read from `tomo-tmp/withheld-deletes.md`.
 
 ## What you never do
 

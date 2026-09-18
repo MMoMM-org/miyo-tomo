@@ -84,7 +84,7 @@ the field, and the parser uses the markdown path. The JSON-only path is gated to
 the primary flow (`--fan-resolve-file` absent) so the XDD-012 fan-resolve path is
 untouched.
 
-## Step 4 Relays the Sanitized Markdown Notice for a Withheld Delete, Never Stderr (v0.17.0, 2026-09-18)
+## Step 4 Relays the Sanitized Markdown Notice for a Withheld Delete, Never Stderr (v0.17.0, 2026-09-18; superseded v0.18.0, 2026-09-18)
 
 WHY: a live run on 2026-09-18 exposed two problems in the same withdrawal. The
 user ticked "Delete [[Laufrunde Elbufer]]"; the daily note it depended on did
@@ -106,24 +106,58 @@ maintainer debugging the run, not the user. Relaying it verbatim into chat
 would reproduce the exact ADR-11 leak ("no executor internals in the rendered
 text") through a different door.
 
-The fix landed one layer down instead: `render_md.py` now renders a
-withdrawn delete as a plain-language bullet under BOTH "## Skipped" (Change 2)
-AND "## Source Deletions" itself (Change 3b) — "[[Note]] was **not** deleted
-— <plain reason>", sourced from `describe_withdrawal_cause_for_user`
-(render_helpers.py), which by construction never emits an id or a guard name.
-Step 4 does not compose new wording or read `tomo.delete_withdrawals` — it
-greps the ALREADY-sanitized markdown line and relays it. This follows two
-standing rules at once: "docs in the script, not the agent" (the plain-
-language sentence is a script's deterministic output, not something a
-haiku-tier conductor improvises at report time) and "deterministic rendering
-over LLM assembly" (the agent's whole design is script-runner, not
-content-processor — STRICT block at the top of this file). Grepping the
-rendered file instead of the JSON also means Step 3e's per-entry loop can
-capture the fact before the next entry's 3b overwrites `tomo-tmp/rendered/`.
+`render_md.py` renders a withdrawn delete as a plain-language bullet under
+BOTH "## Skipped" (Change 2) AND "## Source Deletions" itself (Change 3b) —
+"[[Note]] was **not** deleted — <plain reason>", sourced from
+`describe_withdrawal_cause_for_user` (render_helpers.py), which by
+construction never emits an id or a guard name. That much is unchanged.
+
+**v0.17.0's relay mechanism was wrong, and its own commit message named the
+weakness**: Step 3e grepped `tomo-tmp/rendered/instructions.md` for the
+sanitized line after each entry and told the conductor to "record every
+matching line verbatim, for every entry, before moving to the next" —
+because `instruction-render.py` is always invoked with the fixed
+`--output-dir tomo-tmp/rendered`, so that file is overwritten by the NEXT
+entry's 3b. A Pass 2 run processing N approved docs therefore made the
+notices from entries 1..N-1 survive only in the conductor's own
+conversational memory, on a haiku-tier agent, across an arbitrary number of
+intervening tool calls. That is the "works in today's single-entry run" trap
+this repo has hit before: "prefer deterministic rendering over LLM assembly"
+and "an agent definition's rules are not what the LLM actually does" both
+apply here, and a memory-dependent relay across iterations is precisely the
+thing the user's original requirement ("otherwise it might get lost") was
+naming.
+
+**v0.18.0 makes the relay deterministic instead of mnemonic**:
+`instruction-render.py` now writes each entry's already-sanitized notices
+(the exact same `_render_withdrawn_delete_notice` string, called a second
+time — not re-derived, so the two surfaces cannot drift) to
+`tomo-tmp/withheld-deletes.md`, a RUN-LEVEL file living one directory above
+`--output-dir` so it is never touched by the per-entry overwrite that broke
+v0.17.0. It is append-only across the several `instruction-render.py`
+invocations one Pass 2 run makes (entry 2 does not erase entry 1), keyed on
+the `--run-id` every 3b call already threads: a call whose run-id matches
+what the file's own header (its invisible first line) already carries
+appends; a call whose run-id does not match starts the file over, because
+that means a NEW `/inbox` run has begun and the previous run's notices must
+not leak into it — deleting the file outright when the new run's own entry
+has nothing to add, so Step 4 never finds an empty or a stale file. Full
+mechanism and the staleness rule's reasoning: `sync_withheld_deletes_file` in
+`docs/tomo/scripts/instruction-render.md`.
+
+Step 3e's grep-and-remember instruction is gone entirely — there is nothing
+left for it to do, and nothing left for the conductor to hold in memory
+across entries. Step 4 reads `tomo-tmp/withheld-deletes.md` exactly once,
+after the whole work list has processed, and relays it if present. This
+follows the same two standing rules v0.17.0 invoked, better satisfied: "docs
+in the script, not the agent" (the file itself, not a remembered grep
+result, is now the script's deterministic output) and "deterministic
+rendering over LLM assembly" (the conductor now needs no cross-iteration
+memory of this fact at all — a single stateless read at the end).
 
 Per this repo's CLAUDE.md ordering rule ("docs/tomo/<mirrored-path>.md is the
 WHY-persistence layer... write to docs/tomo first, strip/add to runtime
-second"), this section was written before the Step 3e/Step 4 edit it
+second"), this section was rewritten before the Step 3e/Step 4 edit it
 documents.
 
 ## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)

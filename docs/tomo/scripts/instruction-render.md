@@ -560,3 +560,87 @@ class of gap `_subtract_withheld_moves` closed for `destination_clashes`/
 `skipped_rel`. This is a pre-existing gap T4.3 did not create — T4.3's own
 success criteria are the three report surfaces, not the coverage audit — and
 is logged in `docs/XDD/backlog.md` rather than left to be rediscovered.
+
+## `sync_withheld_deletes_file` — a Run-Level Relay That Survives Being Called N Times (2026-09-18)
+
+WHY this exists: `3c8170c` (spec 036/035, "withheld delete no longer fails
+coverage or stays silent to the user") taught `synthesis-conductor.md` to
+`grep 'was **not** deleted'` out of `tomo-tmp/rendered/instructions.md` after
+each entry's 3b, on the premise that Step 4's report needed those lines. That
+premise had a hole its own author named: `instruction-render.py` is always
+invoked with the fixed `--output-dir tomo-tmp/rendered`, so a Pass 2 run
+processing N approved docs overwrites that file N times. The grep captured
+entry K's notice into the conductor's own conversational memory before entry
+K+1's 3b erased it — meaning the ONLY copy of entry K's notice, from entry
+K+1 onward, was a haiku-tier agent's recollection of its own prior tool
+output. Fragile in exactly the way this repo has already learned about
+twice: "prefer deterministic rendering over LLM assembly" and "an agent
+definition's rules are not what the LLM actually does." The user's original
+requirement was "otherwise it might get lost" — a memory-dependent relay
+across iterations is the very thing that gets lost.
+
+WHY the fix is a file, not a bigger prompt: `instruction-render.py` already
+owns every other Pass-2 artifact (`manifest.json`, `instructions.json`,
+`instructions.md`) — it is the deterministic producer, the conductor is a
+script-runner (STRICT block, top of `synthesis-conductor.md`). Moving the
+relay into the producer means the conductor needs no cross-iteration memory
+at all: Step 4 reads one file once, after every entry has rendered.
+
+WHY the sentence is `_render_withdrawn_delete_notice(w)` called again, not
+re-derived: that private helper (`lib/render_md.py`) is already the sole
+place the "`[[Note]] was **not** deleted — <reason>`" bullet is composed for
+`instructions.md`'s "## Source Deletions" section. Calling the same pure
+function a second time, over the same `delete_withdrawals` list already
+computed in `main()`, yields a byte-identical string by construction — there
+is no second wording to drift out of sync with the first, the way there
+would be if this new call site had its own template. `instruction-render.py`
+already imports several of `render_md.py`'s underscore-prefixed helpers this
+way (`_render_action_md`, `_compute_sha256`, …); this is one more.
+
+WHY the file lives one level above `--output-dir`
+(`tomo-tmp/withheld-deletes.md`, i.e. `out_dir.parent`, not inside
+`tomo-tmp/rendered/`): the whole problem being fixed is that `--output-dir`
+is overwritten per entry. A run-level artifact that must survive every
+entry's 3b cannot sit inside the directory that IS overwritten each time.
+`out_dir.parent` needs no new CLI flag — the sole caller always passes
+`--output-dir tomo-tmp/rendered`, so `out_dir.parent` is always `tomo-tmp/`,
+matching the path the requirement named directly. Tests that pass an
+arbitrary `--output-dir` still get a well-defined sibling path; nothing about
+the convention depends on the literal string `"rendered"`.
+
+WHY the staleness rule is a header inside the file, not an external "has this
+run started" flag the conductor manages: the requirement was explicit that a
+notice from a PREVIOUS `/inbox` run must never appear in a LATER run's file
+— worse than emitting nothing, per the brief ("a stale notice from a
+previous run reported as current would be worse than none"). `--run-id` is
+already threaded into every 3b call for exactly this kind of run-scoping
+(F-47 T2.3's `tomo:` block uses it the same way). The chosen mechanism: the
+file's first line is an HTML comment, `<!-- run_id: <RUN_ID> -->` — invisible
+if the file is ever rendered as markdown, but a plain, cheap string compare
+for the next call to check. A call whose `run_id` matches that header is
+entry 2..N of the SAME run and appends (never truncates — entry 1's notice
+must survive entry 2's call, the defect `3c8170c` shipped). A call whose
+`run_id` does NOT match (file absent, or the header names an older run) is
+the FIRST call of a NEW run: if this entry has notices, the file is
+rewritten from scratch (new header, new content, old content gone); if it
+has none, the stale file is deleted outright rather than left behind for a
+later entry in this same new run to find and misattribute. `run_id is None`
+(no run-id available — a caller that never threads one) makes the whole
+function a no-op: without a run identity there is nothing to compare against
+`same_run`, so the only two honest choices are "never write" or "always
+truncate", and truncating the FIRST call of every invocation would silently
+break the append behavior that makes this fix work at all. The one caller
+that matters (`synthesis-conductor.md`, Step 2) always generates and threads
+a `run_id`, so this path exists only for callers this module has no control
+over (tests, or a future direct invocation), and staying silent is strictly
+safer than guessing.
+
+WHY "no file when nothing was withheld" is not merely "don't create one":
+Step 4 was rewritten to read the file unconditionally after the work list is
+processed. If a stale run's file were left behind — even correctly
+attributed to an OLDER `run_id` the current run's header check would reject
+— nothing downstream re-checks that header; the file's mere existence is
+what Step 4 acts on. So a run with nothing to report must leave NO file, not
+an empty one and not someone else's: `sync_withheld_deletes_file` deletes on
+sight the moment it detects the file is not this run's (see above), even on
+a call that itself has zero notices to add.

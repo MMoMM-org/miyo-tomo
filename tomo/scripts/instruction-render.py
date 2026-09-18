@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.58.0
+# version: 0.59.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -94,6 +94,7 @@ from lib.render_md import (  # noqa: E402,F401
     _compute_sha256,
     _md_section_for,
     _render_action_md,
+    _render_withdrawn_delete_notice,
     backfill_supporting_items_parents,
     render_instructions_md,
 )
@@ -245,6 +246,45 @@ def render_via_script(template_path: str, tokens_path: str, config_path: str) ->
     except subprocess.TimeoutExpired:
         print("  [error] token-render.py timed out", file=sys.stderr)
         return None
+
+
+def sync_withheld_deletes_file(path: Path, run_id: str | None, notices: list[str]) -> None:
+    """Relay this entry's withdrawn-delete notices into the run-level file at
+    *path*, surviving the per-entry overwrite of `--output-dir` that made the
+    prior (grep-and-remember) relay mechanism lose entries 1..N-1 of an
+    N-entry run. *notices* are `_render_withdrawn_delete_notice` strings —
+    already identical, by construction, to what `instructions.md` renders.
+
+    Append-across-entries, truncate-across-runs: *path*'s first line is an
+    HTML-comment header naming *run_id*. A call whose run_id matches that
+    header appends (this is entry 2..N of the SAME Pass-2 run). A call whose
+    run_id does not match is the first call of a NEW run: with notices to
+    write, the file is rewritten from scratch (old content, old header,
+    gone); with none, the stale file is deleted outright rather than left for
+    a later entry in this run to misattribute. `run_id is None` is a no-op —
+    without a run identity there is no way to tell "same run" from "new run".
+
+    See docs/tomo/scripts/instruction-render.md for the full rationale.
+    """
+    if not run_id:
+        return
+    header = f"<!-- run_id: {run_id} -->"
+    same_run = False
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        same_run = bool(lines) and lines[0] == header
+    if not notices:
+        if path.exists() and not same_run:
+            path.unlink()
+        return
+    if same_run:
+        with path.open("a", encoding="utf-8") as fh:
+            for notice in notices:
+                fh.write(notice + "\n")
+    else:
+        path.write_text(
+            header + "\n" + "\n".join(notices) + "\n", encoding="utf-8"
+        )
 
 
 def main() -> int:
@@ -843,6 +883,20 @@ def main() -> int:
         for v in dangling_violations:
             print(f"  • {v}", file=sys.stderr)
         return 2
+
+    # ── Relay withheld-delete notices to the run-level file (Step 4's ────
+    # only source, replacing the v0.17.0 grep-and-remember relay — see
+    # docs/tomo/scripts/instruction-render.md). Same strings
+    # render_instructions_md below writes into "## Source Deletions" — this
+    # calls the same function a second time rather than re-deriving them, so
+    # the two surfaces cannot drift apart. Placed after both fatal-abort
+    # guards above (return 2), matching every other artifact write in this
+    # function: a run that aborts before this point writes nothing.
+    sync_withheld_deletes_file(
+        out_dir.parent / "withheld-deletes.md",
+        args.run_id,
+        [_render_withdrawn_delete_notice(w) for w in delete_withdrawals],
+    )
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
     generated_iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")

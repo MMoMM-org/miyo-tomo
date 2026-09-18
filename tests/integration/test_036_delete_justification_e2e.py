@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_036_delete_justification_e2e.py — spec 036 / T4.4 end-to-end validation.
 
 Spec 036 is "a delete must not outlive the action that justified it". Its three
@@ -455,6 +455,10 @@ def test_all_three_data_loss_paths_in_one_run_emit_no_delete(monkeypatch, tmp_pa
     # group, so `parse_tag_handler_groups` cannot yield its id. The id fed to
     # the run below is therefore one no current Pass 1 would have produced —
     # which is exactly what makes the replay the right adversarial case.
+    # The three assertions below deliberately restate test_036_t3_3_phase_
+    # validation.py's A/C/D — they justify this fixture rather than prove new
+    # ground. Dropping them would leave `unresolved_gid` looking like an
+    # arbitrary id instead of a demonstrably unapprovable one.
     suggestions_reducer_mod.annotate_tag_handler_group_guards(
         [unresolved_group], None
     )

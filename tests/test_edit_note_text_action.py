@@ -44,7 +44,7 @@ def instructions_schema() -> dict:
 def _make_minimal_doc(actions: list[dict]) -> dict:
     """Build the minimal valid instructions document wrapping `actions`."""
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-07-20T00:00:00Z",
         "profile": None,

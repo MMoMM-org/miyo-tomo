@@ -4,33 +4,78 @@
   "title": "Shared Context",
   "description": "Distilled classifier context shared across all Phase-B subagents in one /inbox run.",
   "type": "object",
-  "required": ["schema_version", "run_id", "mocs", "tag_prefixes", "classification_keywords"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "mocs",
+    "tag_prefixes",
+    "classification_keywords"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "1"},
-    "run_id": {"type": "string", "minLength": 1},
+    "schema_version": {
+      "const": "1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "mocs": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "title", "topics", "is_classification"],
+        "required": [
+          "path",
+          "title",
+          "topics",
+          "is_classification"
+        ],
         "additionalProperties": false,
         "properties": {
-          "path": {"type": "string", "minLength": 1},
-          "title": {"type": "string", "minLength": 1},
-          "topics": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
-          "is_classification": {"type": "boolean"},
-          "has_footer": {"type": "boolean", "description": "True when the MOC body contains a footer callout (video/calendar/puzzle/compass). Absent in pre-spec-023 cache entries — consumer treats absent as true (footer-aware tier)."},
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "is_classification": {
+            "type": "boolean"
+          },
+          "has_footer": {
+            "type": "boolean",
+            "description": "True when the MOC body contains a footer callout (video/calendar/puzzle/compass). Absent in pre-spec-023 cache entries — consumer treats absent as true (footer-aware tier)."
+          },
           "headings": {
             "type": "array",
             "description": "Ordered list of headings present in the MOC body, extracted by shared-ctx-builder for LLM insertion-point resolution.",
             "items": {
               "type": "object",
-              "required": ["text", "level"],
+              "required": [
+                "text",
+                "level"
+              ],
               "additionalProperties": false,
               "properties": {
-                "text": {"type": "string", "description": "Heading text without leading # characters."},
-                "level": {"type": "integer", "minimum": 1, "maximum": 6, "description": "Heading level (1=H1 … 6=H6)."}
+                "text": {
+                  "type": "string",
+                  "description": "Heading text without leading # characters."
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "description": "Heading level (1=H1 … 6=H6)."
+                }
               }
             }
           },
@@ -38,7 +83,10 @@
             "type": "array",
             "description": "Opening lines of callouts present in the MOC body that Tomo is permitted to insert into (e.g. '[!blocks] Key Concepts'). Extracted by shared-ctx-builder for LLM anchor resolution.",
             "maxItems": 4,
-            "items": {"type": "string", "minLength": 1}
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }
@@ -47,12 +95,26 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "wildcard", "known_values"],
+        "required": [
+          "name",
+          "wildcard",
+          "known_values"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "minLength": 1},
-          "wildcard": {"type": "boolean"},
-          "known_values": {"type": "array", "items": {"type": "string"}}
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "wildcard": {
+            "type": "boolean"
+          },
+          "known_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -61,11 +123,20 @@
       "description": "Wikilink targets in MOC bodies that don't resolve to any known note. Phase-B subagents use these as Condition C triggers (Mental Squeeze Point §2.C): when an item's topics match a placeholder name, propose creating a thematic MOC to resolve the dead link.",
       "items": {
         "type": "object",
-        "required": ["target", "referenced_by"],
+        "required": [
+          "target",
+          "referenced_by"
+        ],
         "additionalProperties": false,
         "properties": {
-          "target": {"type": "string", "minLength": 1},
-          "referenced_by": {"type": "string", "minLength": 1}
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "referenced_by": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -73,7 +144,9 @@
       "type": "object",
       "additionalProperties": {
         "type": "array",
-        "items": {"type": "string"}
+        "items": {
+          "type": "string"
+        }
       }
     },
     "asset_folder": {
@@ -83,66 +156,183 @@
     },
     "daily_notes": {
       "type": "object",
-      "required": ["enabled", "path_pattern", "date_formats", "tracker_fields"],
+      "required": [
+        "enabled",
+        "path_pattern",
+        "date_formats",
+        "tracker_fields"
+      ],
       "additionalProperties": false,
       "properties": {
-        "enabled": {"type": "boolean"},
-        "path_pattern": {"type": "string"},
-        "date_formats": {"type": "array", "items": {"type": "string"}},
+        "enabled": {
+          "type": "boolean"
+        },
+        "path_pattern": {
+          "type": "string"
+        },
+        "date_formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "tracker_fields": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "type", "section", "syntax", "keywords", "description", "positive_keywords", "negative_keywords"],
+            "required": [
+              "name",
+              "type",
+              "section",
+              "syntax",
+              "keywords",
+              "description",
+              "positive_keywords",
+              "negative_keywords"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": {"type": "string"},
-              "type": {"type": "string", "enum": ["bool", "rating_1_5", "text", "number", "duration"]},
-              "section": {"type": "string"},
-              "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
-              "keywords": {"type": "array", "items": {"type": "string"}},
-              "description": {"type": "string"},
-              "positive_keywords": {"type": "array", "items": {"type": "string"}},
-              "negative_keywords": {"type": "array", "items": {"type": "string"}}
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "bool",
+                  "rating_1_5",
+                  "text",
+                  "number",
+                  "duration"
+                ]
+              },
+              "section": {
+                "type": "string"
+              },
+              "syntax": {
+                "type": "string",
+                "enum": [
+                  "inline_field",
+                  "callout_body",
+                  "checkbox"
+                ]
+              },
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              },
+              "positive_keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "negative_keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "active": {
+                "type": "boolean",
+                "description": "Whether this field participates in matching. Absent or true means yes. Lets an unused tracker be switched off without deleting its keywords."
+              }
             }
           }
         },
         "daily_log": {
           "type": "object",
-          "required": ["section", "heading_level", "date_sources", "time_extraction", "link_format", "cutoff_days", "auto_create_if_missing"],
+          "required": [
+            "section",
+            "heading_level",
+            "date_sources",
+            "time_extraction",
+            "link_format",
+            "cutoff_days",
+            "auto_create_if_missing"
+          ],
           "additionalProperties": false,
           "properties": {
-            "section": {"type": "string"},
-            "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+            "section": {
+              "type": "string"
+            },
+            "heading_level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6
+            },
             "date_sources": {
               "type": "array",
-              "items": {"type": "string", "enum": ["content", "frontmatter", "filename"]},
+              "items": {
+                "type": "string",
+                "enum": [
+                  "content",
+                  "frontmatter",
+                  "filename"
+                ]
+              },
               "minItems": 1,
               "uniqueItems": true
             },
             "time_extraction": {
               "type": "object",
-              "required": ["enabled", "sources", "fallback"],
+              "required": [
+                "enabled",
+                "sources",
+                "fallback"
+              ],
               "additionalProperties": false,
               "properties": {
-                "enabled": {"type": "boolean"},
-                "sources": {"type": "array", "items": {"type": "string"}},
-                "fallback": {"type": "string"}
+                "enabled": {
+                  "type": "boolean"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "fallback": {
+                  "type": "string"
+                }
               }
             },
-            "link_format": {"type": "string"},
-            "cutoff_days": {"type": "integer", "minimum": 1},
+            "link_format": {
+              "type": "string"
+            },
+            "cutoff_days": {
+              "type": "integer",
+              "minimum": 1
+            },
             "auto_create_if_missing": {
               "type": "object",
-              "required": ["past", "today", "future"],
+              "required": [
+                "past",
+                "today",
+                "future"
+              ],
               "additionalProperties": false,
               "properties": {
-                "past": {"type": "boolean"},
-                "today": {"type": "boolean"},
-                "future": {"type": "boolean"}
+                "past": {
+                  "type": "boolean"
+                },
+                "today": {
+                  "type": "boolean"
+                },
+                "future": {
+                  "type": "boolean"
+                }
               }
             }
           }
+        },
+        "trackers_enabled": {
+          "type": "boolean",
+          "description": "Master switch for tracker matching, from vault-config trackers.enabled. Absent or true means the analyst evaluates trackers; false means it skips Evaluation 1 entirely."
         }
       }
     }

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.23.0
+# version: 0.26.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -42,8 +42,11 @@ structured output. You never narrate — your job is to emit data, not prose.
 
 **Never:**
 - Write narrative prose as your "output" — the orchestrator ignores it
-- Write anywhere except `<items_dir>/<result_filename>`
+- Write anywhere except `<items_dir>/` — the result file, and scratch you
+  create there yourself
 - Process items other than the one passed to you
+- Run `python3 -c` or a `python3` heredoc. Read JSON with
+  `scripts/read-shared-ctx.py`, count text with `wc`.
 
 ## Workflow
 
@@ -60,11 +63,21 @@ python3 scripts/state-update.py \
 ### Step 1 — Load shared context
 
 ```bash
-cat "<shared_ctx_path>"
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --fields daily_notes,classification_keywords,tag_prefixes,asset_folder
 ```
 
-The output is the JSON object you reference in later steps as
-`shared_ctx`. Parse the fields each step names explicitly when you reach it.
+The output is a JSON object keyed by those names. Step 4 adds `mocs` and
+`placeholder_links`; together they are what later steps call `shared_ctx`.
+
+# STRICT — do NOT add `mocs` or `placeholder_links` to this call.
+# Why: the six keys together exceed the tool-result size limit, so the result
+# is written to a file and you receive a 2 KB preview and a path — which you
+# then cannot read without the inline Python this contract forbids.
+
+# STRICT — read any further field with `read-shared-ctx.py --field <dotted.path>`.
+# NEVER `cat` the context file and NEVER run `python3 -c`.
+# Why: inline Python is refused by the Bash validator on its `#` characters,
+# and `--field` names the available siblings when a path is wrong.
 
 ### Step 2 — Read the item via Kado
 
@@ -114,6 +127,16 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 | `fleeting_note` | short, no structure, no URLs | +0.2 |
 
 ### Step 4 — Match MOCs
+
+Load the two MOC keys now, as separate calls:
+
+```bash
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field mocs
+```
+
+```bash
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field placeholder_links
+```
 
 For each MOC in `shared_ctx.mocs`:
 - Extract item topics by tokenising body + tags, lowercase, strip stopwords
@@ -280,6 +303,17 @@ FAN tick is the governing intent.
 Decide how many atomic threads this item carries, then score each thread on its own.
 
 **Word-count gate.** Count the words in the item's full original body.
+
+When the count is near a threshold, do not estimate. Write the body to
+`tomo-tmp/items/<stem>.body.txt` with the `Write` tool and run:
+
+```bash
+wc -w -m "tomo-tmp/items/<stem>.body.txt"
+```
+
+# STRICT — NEVER put the body text inside a Bash command.
+# Why: a command line is recorded verbatim in the transcript and shown in
+# approval prompts, and note content does not belong in either.
 - ≤ 200 words → `threads = [one default thread]` (the entire body); skip the rest of
   this step. The Step 7 score you already computed IS this thread's worthiness.
   (Short items behave exactly as before.)
@@ -412,7 +446,11 @@ All three run in one pass.
 
 **Evaluation 1 — Tracker matching:**
 
-For each field in `shared_ctx.daily_notes.tracker_fields[]`:
+If `shared_ctx.daily_notes.trackers_enabled` is false, SKIP this evaluation
+entirely and emit no tracker entries. Log eligibility (Evaluation 2) still runs.
+
+For each field in `shared_ctx.daily_notes.tracker_fields[]` whose `active` is
+not false:
 
 1. **Keyword check:** If `positive_keywords` is non-empty:
    - Check if ANY positive keyword appears as a whole word (case-insensitive)

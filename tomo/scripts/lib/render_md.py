@@ -1,4 +1,4 @@
-# version: 0.16.1
+# version: 0.22.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -15,7 +15,12 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
-from lib.render_helpers import _moc_stem, _stem
+from lib.render_helpers import (
+    WITHDRAWAL_GUARDS,
+    _moc_stem,
+    _stem,
+    describe_withdrawal_cause_for_user,
+)
 from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
 
@@ -547,6 +552,159 @@ def _withdrawn_links_note(withholdings: list[dict]) -> str:
     return ""
 
 
+# Guards whose own report already renders a bullet inside the "## Skipped —
+# un-appliable actions" heading (spec 036 T4.3, PRD F2-AC4). A withdrawal
+# whose causes name one of these nests directly under that guard's own
+# bullet(s) instead of repeating in a separate list — the adjacency the
+# criterion asks for; a withdrawal may nest under more than one bullet when
+# its causes span more than one missing id (see `_group_delete_withdrawals`).
+# `validate_destinations` and `suppress_moves_for_unfiled_attachments` render
+# under their OWN "## Not filed" headings, not this one (see the two blocks
+# above `render_instructions_md`'s section loop), so a withdrawal attributed
+# entirely to either of those, or one that is unattributed or never declared
+# a dependency, falls to the catch-all block.
+#
+# A proper SUBSET of `WITHDRAWAL_GUARDS` (render_helpers.py, the documented
+# SSoT for the five guard names) — not all five render inline, only the
+# three whose own report already lives under THIS heading. Asserted, not
+# just commented, so a sixth guard added to `WITHDRAWAL_GUARDS` without a
+# decision about inline placement is caught here rather than silently
+# defaulting to the catch-all (code-quality review advisory, 2026-09-17:
+# nothing previously validated the four independent copies of this list
+# against each other).
+_INLINE_WITHDRAWAL_GUARDS = frozenset({
+    "filter_missing_daily_notes",
+    "filter_unappliable_relationships",
+    "filter_unresolvable_moc_links",
+})
+assert _INLINE_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_GUARDS), (
+    "_INLINE_WITHDRAWAL_GUARDS names a guard absent from "
+    "render_helpers.WITHDRAWAL_GUARDS — keep the two lists in sync"
+)
+
+
+def _group_delete_withdrawals(
+    delete_withdrawals: list[dict],
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Bucket withdrawals by EVERY missing id their causes name.
+
+    A withdrawal's `causes` are NOT guaranteed to share one guard-and-id:
+    `_build_daily_update_actions`'s `ids_by_origin`
+    (`tomo/scripts/lib/render_actions.py`) accumulates one origin's
+    daily-action ids across every day that origin touches, so one
+    `delete_source`'s `depends_on` can legitimately name two different
+    `update_tracker`/`update_log_entry` ids for two different missing daily
+    notes — the SAME guard (`filter_missing_daily_notes`), two different
+    `missing_id`s. That case is reachable today, not a future-only
+    possibility (code-quality review, code-review 2026-09-17): reading only
+    `causes[0]` would nest the withdrawal under one daily bullet and leave
+    the second bullet silent about it, exactly the F2-AC4 adjacency failure
+    this function exists to prevent. So every cause is joined, not just the
+    first — a withdrawal whose causes name ids at two inline-guard bullets
+    nests under both. A missing id repeated across two causes (unreachable
+    today per the "structurally disjoint" note on `WITHDRAWAL_GUARDS`, but
+    guarded regardless) contributes the withdrawal to that bucket once, not
+    twice.
+
+    Returns `(by_missing_id, leftover)`: `by_missing_id` maps a missing id to
+    the withdrawals that name it in any cause, for a guard rendered inside
+    "## Skipped" (`_INLINE_WITHDRAWAL_GUARDS`); `leftover` holds every
+    withdrawal with NO cause naming an inline-guard id — attributed entirely
+    to `validate_destinations` or `suppress_moves_for_unfiled_attachments`
+    (rendered under a different heading), `unattributed` (the T4.3
+    tripwire), or never declared at all.
+    """
+    by_missing_id: dict[str, list[dict]] = {}
+    leftover: list[dict] = []
+    for withdrawal in delete_withdrawals:
+        causes = withdrawal.get("causes") or []
+        inline_missing_ids: list[str] = []
+        for cause in causes:
+            guard = cause.get("guard")
+            missing_id = cause.get("missing_id")
+            if guard in _INLINE_WITHDRAWAL_GUARDS and missing_id:
+                if missing_id not in inline_missing_ids:
+                    inline_missing_ids.append(missing_id)
+        if inline_missing_ids:
+            for missing_id in inline_missing_ids:
+                by_missing_id.setdefault(missing_id, []).append(withdrawal)
+        else:
+            leftover.append(withdrawal)
+    return by_missing_id, leftover
+
+
+def _withdrawal_note_ref(withdrawal: dict) -> str:
+    """The `[[…]]` for a withdrawal's source note, or a plain fallback."""
+    stem = _stem(withdrawal.get("source_path") or "")
+    return f"[[{stem}]]" if stem else "this note"
+
+
+def _withdrawal_detail(withdrawal: dict) -> str:
+    """The plain-language reason clause shared by both withdrawal renderings
+    below — `describe_withdrawal_cause_for_user`'s join across every cause.
+
+    Deduplicates identical phrases, preserving first-appearance order. The
+    user-facing form (ADR-11) deliberately drops the `missing_id` that the
+    technical sibling `describe_withdrawal_cause` embeds, so two causes from
+    the SAME guard (e.g. two missing daily notes, both
+    `filter_missing_daily_notes`) collapse to the identical sentence — joining
+    them unconditionally doubled the sentence instead of stating it once
+    (live Pass-2 run, 2026-09-18). Two causes from DIFFERENT guards still
+    produce two distinct phrases and both survive the dedup.
+    """
+    causes = withdrawal.get("causes") or []
+    phrases: list[str] = []
+    for c in causes:
+        phrase = describe_withdrawal_cause_for_user(c)
+        if phrase not in phrases:
+            phrases.append(phrase)
+    return "; ".join(phrases) or "no reason was ever recorded for this delete"
+
+
+def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
+    """One withdrawal, in plain language, under "## Skipped": which note it
+    kept and why.
+
+    User-facing (ADR-11, "no executor internals in the rendered text") — no
+    action id, no wire action name (`delete_source`), no guard function name.
+    `describe_withdrawal_cause` (render_helpers.py) stays technical for
+    stderr; this reads `describe_withdrawal_cause_for_user`, its markdown
+    sibling, so the two surfaces now legitimately differ — see
+    docs/tomo/scripts/lib/render_helpers.md. Metadata only (Constitution L2):
+    the note's own stem and the cause phrase — never note content.
+
+    Leads with `⚠️ **Delete withheld:**` — the owner's own request, matching
+    the `⚠️ **<label>:**` convention `suggestions-reducer.py` already uses for
+    a hard-guard notice (Pass 1). This bullet states the same class of fact —
+    an approved action was NOT performed — so it earns the same visual
+    weight, not a plain unmarked bullet indistinguishable from the applied
+    actions around it.
+    """
+    return (
+        f"{indent}- ⚠️ **Delete withheld:** {_withdrawal_note_ref(withdrawal)} "
+        f"— {_withdrawal_detail(withdrawal)}"
+    )
+
+
+def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
+    """One withdrawn delete, stated where its absence would otherwise be
+    silent: under "## Source Deletions" itself, not only cross-referenced
+    from "## Skipped" (spec 035 T-delete-reaches-user). A user who ticked a
+    delete and sees no entry for its note under this heading has no way to
+    tell "withheld on purpose" from "the run forgot it" — this bullet is the
+    difference. Same plain-language register as `_render_withdrawal_bullet`
+    (ADR-11) — no action id, no guard function name; metadata only
+    (Constitution L2).
+
+    Leads with `⚠️ **Not deleted:**` — see `_render_withdrawal_bullet`'s
+    docstring for why this notice carries the same marker.
+    """
+    return (
+        f"- ⚠️ **Not deleted:** {_withdrawal_note_ref(withdrawal)} "
+        f"— {_withdrawal_detail(withdrawal)}"
+    )
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -585,6 +743,12 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # the reader of the whole document, not of one section.
     ambiguous_sources = colliding_names(_source_display_paths(actions, metadata))
 
+    # Every delete_source the run withdrew (spec 036 T4.3 join). Read once,
+    # here, because it drives two things below: whether "## Source Deletions"
+    # carries a withdrawn-delete notice (spec 035 T-delete-reaches-user), and
+    # the "## Skipped" adjacency grouping further down.
+    delete_withdrawals = metadata.get("delete_withdrawals") or []
+
     # Destination clashes (spec 034 F7 / ADR-4) lead the document. Every other
     # report in this file is a skip the user can act on later; this one is the
     # only place where an item the user APPROVED was deliberately not filed, so
@@ -611,7 +775,11 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for clash in destination_clashes:
             body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
             for d in clash.get("dropped") or []:
-                origin = d.get("source_inbox_item") or "?"
+                # The kind-scoped mapping (source_inbox_item for a move_note,
+                # source for a create_moc — spec 036 T2.2) is resolved once,
+                # in validate_destinations, where each claimant's own fields
+                # are built; this renderer just reads the result.
+                origin = d.get("origin") or "?"
                 body_parts.append(
                     f"    - `{d.get('id')}` **{d.get('title')}** "
                     f"— source note `{origin}`"
@@ -677,12 +845,22 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
 
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
-        if not bucket:
+        # "Source Deletions" carries a notice for every withdrawn delete
+        # (spec 035 T-delete-reaches-user) even when no delete_source action
+        # survived — the heading is then created SOLELY to carry it, so a
+        # ticked delete's absence never reads as silent. Every other section
+        # is unaffected: withdrawn_here is empty for them.
+        withdrawn_here = delete_withdrawals if key == "deletions" else []
+        if not bucket and not withdrawn_here:
             continue
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
             body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
+            body_parts.append("")
+        for w in withdrawn_here:
+            body_parts.append(_render_withdrawn_delete_notice(w))
+        if withdrawn_here:
             body_parts.append("")
 
     # Skipped daily-note actions (#37/I38): surfaced so the user knows a log
@@ -693,8 +871,20 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_assets = metadata.get("skipped_assets") or []
     dropped_sources = metadata.get("dropped_sources") or []
     unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    # spec 036 T4.3 (PRD F6-AC1/F6-AC2): a withdrawn delete_source is reported
+    # in this same section — never a new top-level heading — so its presence
+    # alone (even when every other skip key here is empty) must still open
+    # "## Skipped". `by_missing_id` carries the withdrawals whose primary
+    # cause is one of THIS section's own guards, nested under the matching
+    # bullet below (PRD F2-AC4 adjacency); `leftover_withdrawals` carries
+    # every other withdrawal (attributed to a guard reported under a
+    # different heading, unattributed, or never declared) in its own
+    # sub-block at the end of this section. `delete_withdrawals` itself was
+    # already read above — before the section loop — so "## Source
+    # Deletions" and this section agree on the same withdrawal list.
+    withdrawals_by_id, leftover_withdrawals = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
-            or unresolvable_links):
+            or unresolvable_links or delete_withdrawals):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -706,6 +896,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 stem = _stem(a.get("daily_note_path")) or a.get("date", "?")
                 detail = a.get("content") or a.get("field") or a.get("target_stem") or ""
                 body_parts.append(f"- `{a.get('action')}` → [[{stem}]] — {detail}".rstrip(" —"))
+                for w in withdrawals_by_id.get(a.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_rel:
             body_parts.append(
@@ -718,6 +910,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 error = a.get("error") or "?"
                 line = a.get("line") or ""
                 body_parts.append(f"- `add_relationship` → `{target}` [{error}] — {line}".rstrip(" —"))
+                for w in withdrawals_by_id.get(a.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_assets:
             body_parts.append(
@@ -817,6 +1011,25 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                         "render_md.py)"
                     )
                 body_parts.append(f"- [[{moc}]] ← [[{src}]] — {remedy}.")
+                for w in withdrawals_by_id.get(r.get("id")) or []:
+                    body_parts.append(_render_withdrawal_bullet(w, indent="    "))
+            body_parts.append("")
+        if leftover_withdrawals:
+            # Catch-all for a withdrawal this section cannot nest under one
+            # of its own bullets: attributed to validate_destinations or
+            # suppress_moves_for_unfiled_attachments (whose own report
+            # renders under a different "## Not filed" heading above),
+            # `unattributed` (the T4.3 tripwire — no guard reported dropping
+            # the missing id), or never declared a dependency at all. Still
+            # inside "## Skipped" (test 8) — a new top-level heading here
+            # would be the very omission-reads-as-bug failure this task
+            # exists to close.
+            body_parts.append(
+                "**Delete withdrawn** — the origin's declared justification "
+                "did not survive this run:")
+            body_parts.append("")
+            for w in leftover_withdrawals:
+                body_parts.append(_render_withdrawal_bullet(w, indent=""))
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

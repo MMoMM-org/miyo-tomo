@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """tag-handler-group.py — Deterministic grouping helper for tag-handler results.
 
 Groups routing-plan handled[] items by (handler, target_path) and provides a
@@ -46,7 +46,24 @@ def group_handled(handled_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
         then target_path (None sorts after non-None strings under the same
         handler). Each dict carries:
         - handler, target_path, marker, placement, compose  (from item config)
+        - compose_mode  (derived from the type of ``compose``, see below)
         - source_paths  (all paths in this group, in handled_list order)
+
+    ``compose_mode`` is derived here rather than decided downstream. It is a
+    PROVENANCE field — it records whether the group's ``composed_block`` came
+    from an LLM merge call or from a mechanical field join — and the answer is
+    a function of one thing this function already holds: whether ``compose`` is
+    a string (a directive, needs an LLM) or an array (field names, joined by
+    ``compose_field_template`` with no LLM).
+
+    It used to be restated as a rule in the tag-handler-interpreter skill for
+    the model to apply while writing the group file. A live run on 2026-09-12
+    got it backwards on the first attempt and self-corrected — and nothing
+    would have caught it if it had not: both values are in the schema's enum,
+    no production code reads the field, and it never reaches the wire. A
+    provenance record that claims "no LLM touched this" while an LLM wrote it
+    is exactly the kind of claim someone later relies on, so it is computed
+    from the data instead of restated as an instruction.
     """
     # Build an ordered dict keyed by (handler, target_path) to accumulate groups.
     # We use a plain dict (insertion-ordered in Python 3.7+) and sort at the end.
@@ -58,15 +75,25 @@ def group_handled(handled_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = (handler, target_path)
 
         if key not in groups:
-            groups[key] = {
+            compose = item.get("compose")
+            group = {
                 "handler": handler,
                 "target_path": target_path,
                 "marker": item.get("marker"),
                 "placement": item.get("placement"),
-                "compose": item.get("compose"),
+                "compose": compose,
                 "output_format": item.get("output_format"),
                 "source_paths": [],
             }
+            # Only the two shapes that actually determine a path get a mode.
+            # A missing or oddly-typed `compose` leaves the key out entirely
+            # rather than guessing: an absent provenance record is honest,
+            # a wrong one is worse than none.
+            if isinstance(compose, str):
+                group["compose_mode"] = "llm_directive"
+            elif isinstance(compose, list):
+                group["compose_mode"] = "field_template"
+            groups[key] = group
 
         groups[key]["source_paths"].append(item["path"])
 

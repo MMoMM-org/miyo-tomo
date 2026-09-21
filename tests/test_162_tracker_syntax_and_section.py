@@ -78,7 +78,10 @@ def _build(daily_updates, tracker_fields=None) -> list[dict]:
     cfg = dict(BASE_CFG)
     if tracker_fields is not None:
         cfg["daily_notes.tracker_fields"] = tracker_fields
-    return ra._build_daily_update_actions(daily_updates, cfg, [0])
+    actions, _ids_by_origin = ra._build_daily_update_actions(
+        daily_updates, cfg, [0], cfg["concepts.inbox"]
+    )
+    return actions
 
 
 # ── the feature ───────────────────────────────────────────────────────────

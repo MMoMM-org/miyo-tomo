@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.37.0
+# version: 0.38.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -54,6 +54,7 @@ from lib.kado_client import (  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 from lib.run_id import generate as generate_run_id  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
+from lib.wire_version import wire_schema_version  # noqa: E402
 
 # tag-handler-resolve.py is hyphenated — load it as a module via importlib so its
 # load_registry/resolve_item are importable (house pattern for hyphenated scripts).
@@ -685,16 +686,22 @@ def _extract_fan_items(
 def _load_edited_wire(wire_cache_path: str) -> "dict | None":
     """Return the cached _suggestions.json wire iff it was EDITED (ADR-026 D1).
 
-    Edited = present, schema_version "1", and the recomputed digest no longer matches
-    the embedded emit_digest. Returns None when absent / unparseable / unedited — in
-    which case the markdown stays authoritative. Mirrors suggestion-parser.load_changed_wire
-    so triage and Pass-2 agree on whether the JSON drives this doc.
+    Edited = present, the CURRENT schema version, and the recomputed digest no
+    longer matches the embedded emit_digest. Returns None when absent /
+    unparseable / unedited — in which case the markdown stays authoritative.
+    Mirrors suggestion-parser.load_changed_wire so triage and Pass-2 agree on
+    whether the JSON drives this doc — including reading the accepted version
+    from the schema (`wire_schema_version`, ADR-5) rather than a literal, so
+    the two acceptors cannot drift apart on a future schema_version bump the
+    way this one did (spec 035 F9).
     """
     try:
         wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    if not isinstance(wire, dict) or wire.get("schema_version") != "1":
+    if not isinstance(wire, dict) or wire.get("schema_version") != wire_schema_version(
+        "suggestions-wire.schema.json"
+    ):
         return None
     stored = wire.get("emit_digest")
     if not stored or compute_payload_digest(wire) == stored:

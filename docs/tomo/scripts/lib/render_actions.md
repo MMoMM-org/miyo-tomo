@@ -417,7 +417,7 @@ item and an expected `delete_source` per non-kept origin. A withheld move is
 neither, so before `_subtract_destination_clashes` the audit reported
 `RESULT: FAIL — count or coverage mismatch` on a **correct** instruction set:
 `move_note 2 → 0`, `delete_source 2 → 0`, and `file=[MISSING]` against both
-items. `synthesis-conductor.md` step 3e makes that fatal — STRICT, stop, report
+items. `synthesis-conductor.md`'s coverage audit step makes that fatal — STRICT, stop, report
 the diff verbatim — so a clash would have halted the run with a message
 blaming Tomo for drift instead of naming the clash.
 
@@ -558,8 +558,8 @@ while `_build_move_asset_actions` deliberately emits none for a refused one
 (`move_asset expected=2 actual=1 [DIFF]`). That gap dates to spec 031 and was
 unreachable until recursion made a basename clash possible. It is closed here
 by `_subtract_skipped_assets`, not because T5.4 caused it, but because T5.4
-makes the clash a normal outcome and `synthesis-conductor.md` step 3e halts the
-run on a diff mismatch — a guard whose own audit stops the run is not
+makes the clash a normal outcome and `synthesis-conductor.md`'s coverage audit
+step halts the run on a diff mismatch — a guard whose own audit stops the run is not
 shippable.
 
 ### Found While Sweeping, Deliberately Not Fixed
@@ -889,8 +889,8 @@ route to it reachable; neither created it. Tracked as its own task, **T6.0d**.
 confirmed item and does no destination comparison, so two confirmed proposals
 named `Travel (MOC)` and `travel (MOC)` expected two actions where the folded
 builder emits one. The audit reported `create_moc expected=2 actual=1 [DIFF]`
-plus a `[MISSING]` coverage row for the merged item, and `synthesis-conductor.md`
-step 3e makes a diff mismatch fatal.
+plus a `[MISSING]` coverage row for the merged item, and `synthesis-conductor.md`'s
+coverage audit step makes a diff mismatch fatal.
 
 That was a change in failure mode, not a new data loss: before the fold the run
 completed and dropped the merged proposal's children on apply; after it, the run
@@ -1165,3 +1165,230 @@ it.
 vanished. A withheld-clash run always uploads `instructions.md` and
 `instructions.json`, so `state.instructions_hits` is non-empty and the detector
 returns `[]` by design. Different case, not a gap in that detector.
+
+## The Path-Keyed Delete Withdrawal Retires (spec 036 T2.3, ADR-4)
+
+`_drop_moves_with_paired_deletes` used to do the delete withdrawal itself: a
+dropped move's origin and audio-peer paths went into `withdrawn_paths`
+(`_paired_delete_candidates`), and any `delete_source` whose `source_path`
+matched one of those paths was dropped from the list right there, in the same
+loop that removes the moves and the orphaned `link_to_moc` bullets.
+
+### WHY That Was the T5.0c Drift Risk, Not Just a Style Choice
+
+That join is a **second, independent implementation** of "which delete belongs
+to which move" — the first is `_build_delete_source_actions`, which already
+knows the relationship when it builds the delete (site 3's `origin_path` /
+`audio_peers` come straight from the same `moves` list). Path equality is how
+the withdrawal side re-derives a relationship the build side already had by
+construction, and re-deriving a relation instead of declaring it once is
+exactly the shape that drifted in T5.0c: `backlog.md` records that spec as "an
+emitter moved and its paired consumer did not" — two independent copies of one
+relation, kept in step by discipline rather than by structure, until one task
+edited one copy and not the other. `_drop_moves_with_paired_deletes`'s own
+docstring names the same risk for the `link_to_moc` half it still owns ("a
+second copy is what drifted apart in T5.0c one module over"); the delete half
+carried an identical risk one relation earlier — path-equality is itself a
+re-derivation, not a declaration, even with only one copy of the join.
+
+### WHY an Id-Keyed Pass Supersedes It
+
+Spec 036 changes the declaration side: every `delete_source` now carries
+`depends_on`, the ids of the actions that justify it, populated once at build
+time (T1.1/T1.2/T1.3) by the same code that already knows the relationship.
+`withdraw_unjustified_deletes` (T2.1) then asks one question — "are this
+delete's declared ids still present in the action set?" — instead of
+re-deriving the relationship from path equality. The dangling-id invariant
+holds **by construction**: the pass cannot leave behind a delete naming an
+absent id, because that is exactly what it removes (SDD ADR-1 for spec 036).
+Wired once, after every drop site (ADR-2) — `instruction-render.py`, between
+`filter_unappliable_relationships` and `_validate_action_paths` — so it is the
+single place a delete can be withdrawn for having outlived its justification,
+covering drop sites the path-keyed join never reached (`filter_missing_daily_notes`
+and `filter_unappliable_relationships` drop actions site-2 and site-4 deletes
+depend on, and neither guard in this module ever saw those drops).
+
+### What Stays, and Why
+
+Only the removal `continue` retires. `_paired_delete_candidates`, the
+`withdrawn_paths` claim-once accumulator, and the per-clash fill in
+`validate_destinations` and `suppress_moves_for_unfiled_attachments` all stay:
+`withdrawn_deletes` is a **report** field — read by
+`instructions-diff.py`'s `_subtract_withheld_moves` (the paired consumer) and
+by the six-plus existing tests pinning that report — and reporting which
+candidate paths actually had a `delete_source` is a different job from
+removing that action from the list. The two now agree by construction rather
+than by one shared join: site 3 emits each origin/audio-peer delete with
+`depends_on = move_ids`, and `_paired_delete_candidates` derives its candidate
+paths from that same `moves` list — same input, two independent readings, and
+the equivalence is what `tests/test_036_t2_3_paired_delete_report_equivalence.py`
+proves rather than assumes.
+
+`_drop_moves_with_paired_deletes` keeps computing `removed_deletes` exactly as
+before (the `.add()` call was never inside the branch that retires) — it just
+no longer `continue`s past appending the action to `kept`. That is the
+"cleanest shape" for keeping the report populated without removing the action:
+no restructuring, because the report bookkeeping and the removal were already
+two separate statements sharing one `if`.
+
+The `link_to_moc` withdrawal (`_orphaned_link_titles` / `_orphaned_link_targets`
+/ `_links_for`) is untouched — it is genuinely different in kind: nothing
+declares a `depends_on` for a MOC bullet, there is no id to check, and the
+title/target join it uses is the only mechanism it has ever had.
+
+### `withdraw_unjustified_deletes` Fails Closed on an Absent Declaration (T2.3, owner decision 2026-09-17)
+
+T2.1 shipped `withdraw_unjustified_deletes` reading `action.get("depends_on")
+or []` — a missing `depends_on` key and an explicit `depends_on: []` both
+collapsed to the same outcome, kept. That collapse is what
+`test_the_clash_never_reaches_the_wire` caught: its fixture (`_CLASHING_MOVES`,
+predating spec 036) carries a `delete_source` with no `depends_on` key at all,
+and under the `or []` reading that delete survived `validate_destinations`'
+move drop and reached the wire — the exact outcome the guard exists to
+prevent, because `[]` on a *destructive* action means "perform it
+unconditionally," and reading an *absence* of information the same way as
+that positive assertion is fail-**open**.
+
+The owner's decision inverts the reading for the undeclared case only:
+
+- `depends_on: []` (or, equivalently, every named id present) → **kept**.
+  Unchanged — this is a declared assertion, not silence.
+- `depends_on` absent, or explicitly `None` → **withdrawn**. Absence of a
+  declaration is not the same fact as a declaration of nothing, and a
+  destructive action does not get the benefit of that ambiguity. `None` is
+  read identically to a missing key — an artifact that explicitly nulled the
+  field declared nothing more than one that omitted it.
+
+This matches the stance already taken at T1.3, one level down: a delete whose
+partner id could not be *resolved* (site 4, no `insert_under_marker` built) is
+withheld at build time rather than emitted with a guessed `depends_on: []`.
+T2.3 extends the same fail-closed posture to the *reading* side — an artifact
+that never declared its justification is treated exactly like one whose
+declared justification evaporated, not like one that declared none was
+needed.
+
+**Report shape.** The withdrawal record for a dangling-id delete keeps
+`missing_dependencies: [ids...]` — it names what was declared and did not
+survive. Stuffing a synthetic entry into that same field to represent "nothing
+was ever declared" would misreport the cause (there is no missing *id* to
+name, only a missing *declaration*), so the undeclared case instead carries
+`missing_dependencies: None` and a separate `depends_on_declared: False`. Both
+outcomes remain in `withdrawn`, both still carry `id`, `source_path`, and
+`reason` — only the shape of "why" differs, on purpose, so a reader of the
+withdrawal report (or a future consumer keying off `missing_dependencies`)
+cannot mistake "declared but gone" for "never declared."
+
+**Test-harness fallout, not a design regression.** Three existing tests in
+`tests/test_034_t5_3_destination_validation.py` and two in
+`tests/test_034_t5_4_attachment_clash_suppression.py` called
+`validate_destinations` / `suppress_moves_for_unfiled_attachments` directly
+and asserted a paired delete absent from the returned `kept` — a check that
+held for free while removal happened inline, and stopped holding once removal
+moved to `withdraw_unjustified_deletes` one step later. Each `_diff()` helper
+in those two files had the same gap one level up: it built `instrs["actions"]`
+straight from `kept`, never running the id-keyed pass, so the coverage audit
+subtracted a withdrawal via the path-keyed report while the emitted set it was
+comparing against still carried the delete. `tests/test_034_t5_5_orphaned_moc_link.py`'s
+`test_the_withdrawal_reconciles_with_the_coverage_audit` had the identical gap
+— it predates the T2.1/T2.3 split and hand-assembles `instrs` the same
+incomplete way. All six were fixed identically: call
+`withdraw_unjustified_deletes` on `kept` before checking or comparing it, the
+same step `instruction-render.py` already takes in production. None of the
+assertions changed shape — "this delete is gone" is still asserted — only the
+setup was completed to match the two-step pipeline these tests now run
+against.
+
+### `assert_no_dangling_dependencies` Is a Tripwire, Not a Live Filter (T4.2, ADR-6)
+
+`withdraw_unjustified_deletes` (T2.1/T2.3, above) already withdraws every
+`delete_source` this audit would catch — both a missing/`None` `depends_on`
+and one naming an id absent from the surviving set. So on every real run
+`assert_no_dangling_dependencies` returns `[]`, and that is the expected
+state, not a sign it is dead code: ADR-6 records that "under ADR-1 the audit
+should be vacuous, so a violation means an unknown-shaped bug" upstream of
+it, not in it.
+
+**Why it exists anyway, given the filter already covers the same ground.** A
+set whose delete semantics cannot be trusted is worse than no set at all, so
+a violation aborts the run with exit 2 and writes nothing — matching
+`_validate_action_paths`' own abort shape. The executor deletes via
+`vault.trash`; where the user has configured permanent deletion, a wrong
+delete is unrecoverable, and that asymmetry is what justifies a second,
+independent check over trusting the filter to have worked.
+
+**Why it is `delete_source`-scoped**, even though PRD F5-AC4 reads
+generically ("every id in every `depends_on`"): Feature 5's title and all its
+ACs are delete-scoped, as is the SDD's Error Handling Criteria. The separate
+record that Hashi "will read the field on any action kind" describes
+*their* consumption policy, not our producer-side audit scope — no builder
+populates `depends_on` on any other action kind today.
+
+**Why self-reference and cycles are NOT checked** — a deliberate non-goal.
+The audit tests existence only, not semantic well-formedness.
+
+**Why `depends_on: []` is never a violation** while a missing key is: `[]`
+is a positive assertion ("nothing conditions this delete"), and conflating
+the two is exactly the fail-open the owner decision closed on 2026-09-17
+(`withdraw_unjustified_deletes Fails Closed on an Absent Declaration`,
+above). The audit mirrors that same missing-vs-empty-list distinction.
+
+**Why the two failure modes are untestable through the real pipeline, and
+how the tests work instead.** `assert_no_dangling_dependencies` cannot see
+a dangling id or a missing `depends_on` in a live run, because
+`withdraw_unjustified_deletes` has already removed it upstream. The tests
+therefore patch `_ir.withdraw_unjustified_deletes` — the binding in
+`instruction-render`'s own namespace, never `lib.render_actions`'s — to
+make the offending delete survive to the audit. Each abort test carries an
+**unpatched control run** asserting exit 0 and a written file: if a refactor
+ever changes the import shape, the patch silently stops intercepting, and
+without the control the test would quietly revert to a tautology (asserting
+exit 2 against a fixture that was never going to trigger it) instead of
+failing loudly.
+
+## `_resolve_daily_path`'s Fallback Does Not Trust the Config Value (standalone fix, 2026-09-17)
+
+WHY the fallback branch of `_resolve_daily_path` normalises
+`daily_path_cfg` with `.strip().rstrip("/ ")` instead of the bare
+`.rstrip("/")` it carried before: a vault-config value for
+`concepts.calendar.granularities.daily.path` can carry trailing
+whitespace after its trailing slash (confirmed live —
+`"Calendar/301 Daily/ "` in the owner's instance config, real folder
+`301 Daily` with no trailing space). `.rstrip("/")` alone leaves the
+slash in place because a space sits after it, producing a
+double-separator path (`Calendar/301 Daily/ /2026-09-15.md`) that never
+matches a real note — every daily note then reads as missing, which
+downstream (spec 036 `filter_missing_daily_notes`) drops every daily
+action and withdraws the paired deletes: a config typo silently firing a
+data-loss-adjacent guard.
+
+**The intent was already established elsewhere, just not here.**
+`shared-ctx-builder.py` reads the same `daily.path` config key and
+already treats it as untrusted (`raw_path.strip().rstrip("/").strip()`
+composed into `+ "/"`). `_resolve_daily_path` read the identical key but
+never got the same treatment — this fix brings it in line with that
+established intent, not a new policy.
+
+**Why `.strip().rstrip("/ ")` and not `.rstrip("/").strip()`.** Order
+matters. `.rstrip("/").strip()` passes a single `"trailing space after
+slash"` case but fails a value with slashes and spaces interleaved at the
+end (e.g. `"Calendar/301 Daily / / "`) — a single `.rstrip("/")` pass
+stops at the first non-`/` character (a space) and never removes the
+slash behind it. Stripping whitespace first, then stripping any run of
+trailing `/` or space characters in one pass, handles both orders.
+
+**What the test matrix pins** (`tests/test_resolve_daily_path.py`), so a
+future "simplification" back to bare `.rstrip("/")` fails loudly: the
+happy path (`"Calendar/301 Daily/"`), no trailing slash, the live bug
+(trailing space after slash), trailing space with no slash, leading AND
+trailing whitespace, a doubled trailing slash, mixed trailing
+slashes-and-spaces, and both `""` and `None` falling back to the default
+without crashing. A ninth row pins the *other* branch
+(`daily_note_path`, already `.strip()`ed) as a regression guard, not a
+fix.
+
+**Other sites reading the same class of config value were found but
+deliberately not touched** (out of scope for this fix — see the task
+that produced it): `_inbox_join` (`lib/render_actions.py`) reads
+`cfg["concepts.inbox"]` and joins it with the same bare `.rstrip('/')`,
+with no leading `.strip()` — the identical defect shape, unconfirmed
+live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.

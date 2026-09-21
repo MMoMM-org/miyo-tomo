@@ -10,7 +10,7 @@ Coverage:
     sections omitted, index-lag + ACL caveats near top, fixable findings carry
     a checkbox with best-fix pre-selected, advisory read-only (no checkbox);
     zero-findings → "vault healthy"
-  - build_wire_payload: schema_version "1", emit_digest present + valid, stable
+  - build_wire_payload: schema_version "2", emit_digest present + valid, stable
     finding IDs match report, decision block present on fixable / absent on advisory
   - parity: findings in the report and wire share the same IDs (F01, F02, …)
   - reappeared_exclusions: shown in preamble when present
@@ -363,10 +363,15 @@ class TestReportStructure:
 # ---------------------------------------------------------------------------
 
 class TestWirePayload:
-    def test_schema_version_is_one(self):
+    def test_schema_version_is_two(self):
+        # Moved "1" -> "2" by spec 035 T4.3 (disclosure of already-emitted
+        # up_source/up_value and parent_not_moc). The non-hardcoded version of
+        # this property — proving the renderer reads the schema rather than a
+        # literal — lives in
+        # tests/test_035_wire_version.py::test_garden_audit_render_emits_its_schemas_declared_version.
         d = _make_doc()
         wire = _build_wire(d)
-        assert wire["schema_version"] == "1"
+        assert wire["schema_version"] == "2"
 
     def test_emit_digest_present_and_sha256_format(self):
         d = _make_doc()

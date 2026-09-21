@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.53.0
+# version: 0.60.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -62,6 +62,7 @@ from lib.render_actions import (  # noqa: E402,F401
     _marker_to_anchor_value,
     _validate_action_paths,
     _wikilink,
+    assert_no_dangling_dependencies,
     build_actions,
     build_garden_audit_actions,
     contested_note_names,
@@ -74,9 +75,18 @@ from lib.render_actions import (  # noqa: E402,F401
     qualify_contested_moc_links,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
-from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
+from lib.render_helpers import (  # noqa: E402,F401
+    WITHDRAWAL_GUARDS,
+    _moc_stem,
+    _stem,
+    build_delete_withdrawal_reports,
+    describe_withdrawal_cause,
+    resolve_source_path,
+)
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
+from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.render_md import (  # noqa: E402,F401
     SECTION_TITLES,
     _UPSTREAM_TYPES,
@@ -84,6 +94,7 @@ from lib.render_md import (  # noqa: E402,F401
     _compute_sha256,
     _md_section_for,
     _render_action_md,
+    _render_withdrawn_delete_notice,
     backfill_supporting_items_parents,
     render_instructions_md,
 )
@@ -235,6 +246,56 @@ def render_via_script(template_path: str, tokens_path: str, config_path: str) ->
     except subprocess.TimeoutExpired:
         print("  [error] token-render.py timed out", file=sys.stderr)
         return None
+
+
+def sync_withheld_deletes_file(path: Path, run_id: str | None, notices: list[str]) -> None:
+    """Relay this entry's withdrawn-delete notices into the run-level file at
+    *path*, surviving the per-entry overwrite of `--output-dir` that made the
+    prior (grep-and-remember) relay mechanism lose entries 1..N-1 of an
+    N-entry run. *notices* are `_render_withdrawn_delete_notice` strings —
+    already identical, by construction, to what `instructions.md` renders.
+
+    *path*'s content is ONLY notice lines — never a run marker — so a
+    consumer that `cat`s it relays exactly what a user should see. The run
+    identity that used to live as *path*'s first line instead lives in a
+    sidecar file next to it, `path.with_suffix(".run_id")` (e.g.
+    `withheld-deletes.run_id`): read and written alongside *path*, but never
+    itself relayed anywhere.
+
+    Same-run (entry 2..N of the SAME Pass-2 run): *path* AND its sidecar both
+    exist AND the sidecar's content equals *run_id* — *notices* are appended
+    to *path*, sidecar untouched. Anything else — either file missing, both
+    missing, or the sidecar naming a different run — is staleness, i.e. the
+    first call of a NEW run: with notices to write, both files are rewritten
+    from scratch together (old content gone); with none, both are removed
+    together rather than left for a later entry in this run to misattribute.
+    A half-present state (only one of the two files exists) is always
+    staleness, never "same run, safe to append." `run_id is None` is a
+    no-op — without a run identity there is no way to tell "same run" from
+    "new run".
+
+    See docs/tomo/scripts/instruction-render.md for the full rationale.
+    """
+    if not run_id:
+        return
+    sidecar = path.with_suffix(".run_id")
+    same_run = (
+        path.exists()
+        and sidecar.exists()
+        and sidecar.read_text(encoding="utf-8").strip() == run_id
+    )
+    if not notices:
+        if not same_run:
+            path.unlink(missing_ok=True)
+            sidecar.unlink(missing_ok=True)
+        return
+    if same_run:
+        with path.open("a", encoding="utf-8") as fh:
+            for notice in notices:
+                fh.write(notice + "\n")
+    else:
+        sidecar.write_text(run_id + "\n", encoding="utf-8")
+        path.write_text("\n".join(notices) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -739,6 +800,68 @@ def main() -> int:
                 file=sys.stderr,
             )
 
+    # ── Withdraw deletes whose declared justification did not survive ────
+    # (spec 036 T2.1/T2.3, ADR-2/ADR-4). Runs ONCE, here, after every drop
+    # site above (filter_missing_daily_notes, filter_unappliable_relationships,
+    # and the two render_actions guards — validate_destinations,
+    # suppress_moves_for_unfiled_attachments). Supersedes the path-keyed
+    # delete withdrawal those two guards used to perform inline: a
+    # `delete_source` now declares the ids that justify it (`depends_on`) and
+    # is withdrawn here if any of them did not survive. See
+    # docs/tomo/scripts/lib/render_actions.md for why the id-keyed pass
+    # replaces the path-keyed one.
+    actions, withdrawn_deletes = withdraw_unjustified_deletes(actions)
+    # Attribute each withdrawal to the guard that dropped its missing id
+    # (spec 036 T4.3, PRD F2-AC4/F6-AC1): the five ids-dropping guards run
+    # above this line — validate_destinations, suppress_moves_for_unfiled_
+    # attachments, filter_unresolvable_moc_links, filter_missing_daily_notes,
+    # filter_unappliable_relationships — so their reports are all in scope
+    # here. Report shapes differ (a `dropped` list of dicts nested in a
+    # clash/suppression record vs. a flat list of skipped action dicts); this
+    # normalises all five to id lists before the join.
+    drop_sources = {
+        "validate_destinations": [
+            d.get("id")
+            for c in destination_clashes
+            for d in (c.get("dropped") or [])
+        ],
+        "suppress_moves_for_unfiled_attachments": [
+            d.get("id")
+            for s in attachment_suppressions
+            for d in (s.get("dropped") or [])
+        ],
+        "filter_unresolvable_moc_links": [r.get("id") for r in unresolvable_links],
+        "filter_missing_daily_notes": [a.get("id") for a in skipped_daily],
+        "filter_unappliable_relationships": [a.get("id") for a in skipped_rel],
+    }
+    # `drop_sources`' keys must cover WITHDRAWAL_GUARDS (render_helpers.py,
+    # the documented SSoT for the five guard names) exactly — every guard's
+    # drops must be attributable, unlike render_md.py's _INLINE_WITHDRAWAL_
+    # GUARDS subset. Nothing previously validated the two against each other
+    # (code-quality review advisory, 2026-09-17): a sixth guard added here
+    # without updating WITHDRAWAL_GUARDS, or vice versa, was caught by
+    # nothing.
+    assert set(drop_sources) == set(WITHDRAWAL_GUARDS), (
+        "drop_sources guard keys drifted from render_helpers.WITHDRAWAL_"
+        "GUARDS — keep the two lists in sync"
+    )
+    delete_withdrawals = build_delete_withdrawal_reports(withdrawn_deletes, drop_sources)
+    if delete_withdrawals:
+        print(
+            f"  [skip] {len(delete_withdrawals)} delete_source action(s) withdrawn — "
+            "declared justification did not survive:",
+            file=sys.stderr,
+        )
+        for w in delete_withdrawals:
+            causes_text = "; ".join(
+                describe_withdrawal_cause(c) for c in (w.get("causes") or [])
+            ) or "no dependency was ever declared (depends_on missing)"
+            print(
+                f"    • {w.get('id')} delete_source → {w.get('source_path')} "
+                f"[{causes_text}]",
+                file=sys.stderr,
+            )
+
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
     # Catch non-conforming paths before they reach the JSON. Hashi fails
     # closed on these with non-actionable error messages — catching upstream
@@ -753,6 +876,38 @@ def main() -> int:
         for v in path_violations:
             print(f"  • {v}", file=sys.stderr)
         return 2
+
+    # ── Dangling-dependency audit (spec 036 T4.2, PRD F5-AC4) ────────────
+    # Producer-side tripwire, not a live filter: withdraw_unjustified_deletes
+    # (above) already withdraws every delete_source this would catch, so a
+    # violation here means an unknown-shaped bug upstream (ADR-6). Runs after
+    # every drop site (including _validate_action_paths, which only checks
+    # path shape and removes nothing) and before any write, matching
+    # _validate_action_paths' own abort shape.
+    dangling_violations = assert_no_dangling_dependencies(actions)
+    if dangling_violations:
+        print(
+            "instruction-render: aborting — dangling delete_source "
+            f"dependencies ({len(dangling_violations)}):",
+            file=sys.stderr,
+        )
+        for v in dangling_violations:
+            print(f"  • {v}", file=sys.stderr)
+        return 2
+
+    # ── Relay withheld-delete notices to the run-level file (Step 4's ────
+    # only source, replacing the v0.17.0 grep-and-remember relay — see
+    # docs/tomo/scripts/instruction-render.md). Same strings
+    # render_instructions_md below writes into "## Source Deletions" — this
+    # calls the same function a second time rather than re-deriving them, so
+    # the two surfaces cannot drift apart. Placed after both fatal-abort
+    # guards above (return 2), matching every other artifact write in this
+    # function: a run that aborts before this point writes nothing.
+    sync_withheld_deletes_file(
+        out_dir.parent / "withheld-deletes.md",
+        args.run_id,
+        [_render_withdrawn_delete_notice(w) for w in delete_withdrawals],
+    )
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
     generated_iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -775,7 +930,7 @@ def main() -> int:
         "run_id": args.run_id,
     })
     instructions_doc = {
-        "schema_version": "2",
+        "schema_version": wire_schema_version("instructions.schema.json"),
         "type": "tomo-instructions",
         "source_suggestions": source_suggestions,
         "generated": generated_iso,
@@ -875,6 +1030,23 @@ def main() -> int:
             instructions_doc["tomo"] = tomo_block
         tomo_block["unresolvable_moc_links"] = unresolvable_links
 
+    # Record deletes withdrawn because their declared justification did not
+    # survive (spec 036 T4.3, PRD F6-AC1/F6-AC2). NOT "withdrawn_deletes" —
+    # that key already exists, NESTED inside a destination_clashes/
+    # attachment_suppressions entry, holding PATHS (instructions-diff's
+    # coverage join). This is a distinct, TOP-LEVEL key holding full
+    # RECORDS (id, source_path, reason, attributed cause) for every guard,
+    # not just those two — same name at a different level with a different
+    # shape is exactly the drift spec 036 T2.2 already declined once (see
+    # docs/tomo/scripts/lib/render_helpers.md). Emitted only when non-empty,
+    # matching every other guard report above — never an empty list.
+    if delete_withdrawals:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["delete_withdrawals"] = delete_withdrawals
+
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path
     # probed, and why — never note content. Nested under the permissive `tomo`
@@ -920,6 +1092,7 @@ def main() -> int:
             "attachment_suppressions": attachment_suppressions,
             "merged_moc_proposals": merged_moc_proposals,
             "unresolvable_moc_links": unresolvable_links,
+            "delete_withdrawals": delete_withdrawals,
         },
         cfg,
     )

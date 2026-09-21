@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.6.0
 """test_034_t5_3_destination_validation.py — spec 034 T5.3.
 
 The Pass-2 half of PRD Feature 7. Pass 1 (T5.2) proposes a distinct name on a
@@ -22,7 +22,13 @@ What it must do, and what each block below pins:
   4. A dropped move takes its paired `delete_source` with it. Emitting the
      delete without the move would delete the user's inbox note while
      refusing to file it — the guard would cause the loss it exists to
-     prevent.
+     prevent. Since spec 036 T2.3, the removal itself happens one step later
+     in `withdraw_unjustified_deletes` (id-keyed, ADR-1) — this guard only
+     drops the move and reports the delete as a withdrawal candidate
+     (`_drop_moves_with_paired_deletes` is report-only for deletes now). The
+     tests below call `withdraw_unjustified_deletes` after `validate_
+     destinations`, exactly as `instruction-render.py` does, so "absent from
+     kept" still means what it always meant.
   5. The guard is stateless: clashing input then corrected input, and the
      reverse. Nothing may outlive the input that caused it.
   6. A run with no clash emits the recorded baseline, whole-list.
@@ -49,9 +55,11 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.item_key import to_filename  # noqa: E402
 from lib.render_actions import (  # noqa: E402
+    _paired_delete_candidates,
     build_actions,
     make_folder_listing,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
 from lib.render_md import render_instructions_md  # noqa: E402
 
@@ -129,6 +137,26 @@ def _atomic(item_key: str, title: str, *, idx: int, keep_source: bool = False,
     return manifest, confirmed
 
 
+def _moc(title: str, *, idx: int, location: str = NOTES) -> tuple[dict, dict]:
+    """A `create_moc` manifest entry, as a (manifest, confirmed) pair.
+
+    `create_moc` has no confirmed-item counterpart (it is not an atomic note
+    the user reviewed one-by-one), so the confirmed half is empty — the
+    builders that read `confirmed` tolerate a dict with no `id`.
+    """
+    manifest = {
+        "action": "create_moc",
+        "title": title,
+        "rendered_file": f"2026-09-07_20{idx:02d}_{title.lower().replace(' ', '-')}.md",
+        "destination": location,
+        "parent_moc": None,
+        "template": None,
+        "tags": [],
+        "supporting_items": None,
+    }
+    return manifest, {}
+
+
 def _actions(pairs: list[tuple[dict, dict]], **kw) -> list[dict]:
     manifest = [m for m, _ in pairs]
     confirmed = [c for _, c in pairs]
@@ -141,6 +169,10 @@ def _actions(pairs: list[tuple[dict, dict]], **kw) -> list[dict]:
 
 def _moves(actions: list[dict]) -> list[dict]:
     return [a for a in actions if a.get("action") == "move_note"]
+
+
+def _mocs(actions: list[dict]) -> list[dict]:
+    return [a for a in actions if a.get("action") == "create_moc"]
 
 
 def _deletes(actions: list[dict]) -> list[str]:
@@ -321,6 +353,7 @@ def test_folding_uses_casefold_not_lower():
 
 def test_a_dropped_move_withdraws_the_delete_of_its_origin():
     kept, _clashes = validate_destinations(_actions(TWO_NAMESAKES))
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     remaining = _deletes(kept)
     assert DRESDEN_PLACES not in remaining and DRESDEN_REISE not in remaining, (
         "emitting the delete without the move deletes the user's inbox note "
@@ -339,6 +372,7 @@ def test_a_dropped_move_withdraws_its_audio_peer_delete():
     ])
     assert peer in _deletes(actions), "fixture no longer emits the peer delete"
     kept, _clashes = validate_destinations(actions)
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert peer not in _deletes(kept), (
         "the audio peer of an unfiled origin must stay in the inbox with it"
     )
@@ -358,6 +392,7 @@ def test_a_partially_dropped_origin_keeps_its_surviving_atomic_and_loses_its_del
     assert DRESDEN_PLACES in _deletes(actions), "fixture no longer emits the delete"
     kept, _clashes = validate_destinations(actions)
     assert [m["destination"] for m in _moves(kept)] == [f"{NOTES}Dresden Elbufer.md"]
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     assert DRESDEN_PLACES not in _deletes(kept), (
         "an origin whose atomics are not all filed must keep its source"
     )
@@ -683,8 +718,13 @@ _CLASHING_MOVES = [
         "parent_mocs": [], "tags": [],
     },
     {
+        # depends_on restores the id-linkage this fixture is meant to
+        # exercise (I01 owns DRESDEN_PLACES) — every real run has carried
+        # this key since Phase 1; without it the delete is withdrawn by the
+        # fail-closed absent-declaration branch instead (spec 036 T2.3).
         "id": "I03", "action": "delete_source", "applied": False,
         "source_path": DRESDEN_PLACES, "reason": "Origin consumed by 1 atomic.",
+        "depends_on": ["I01"],
     },
 ]
 
@@ -765,8 +805,8 @@ def test_the_clash_reaches_the_rendered_document(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 # 10. The paired consumer — instructions-diff must not read a deliberate
 #     withholding as coverage drift. The conductor STOPs on a diff mismatch
-#     (synthesis-conductor.md step 3e), so a stale expectation would halt the
-#     run with a message that misdiagnoses the guard.
+#     (synthesis-conductor.md step 3c, the coverage audit), so a stale
+#     expectation would halt the run with a message that misdiagnoses the guard.
 # ---------------------------------------------------------------------------
 
 def _diff_module():
@@ -783,6 +823,12 @@ def _diff(pairs, **kw) -> tuple[int, list[str]]:
     confirmed = [c for _, c in pairs]
     actions = _actions(pairs, **kw)
     kept, clashes = validate_destinations(actions)
+    # instruction-render.py runs withdraw_unjustified_deletes once, after
+    # every drop site (spec 036 T2.1/T2.3), before writing instructions.json —
+    # so the audit's input must be the actions AFTER that pass, not straight
+    # from validate_destinations. Skipping it here would compare instructions-
+    # diff against a set the real pipeline never emits.
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     instrs = {
         "actions": kept,
         "action_count": len(kept),
@@ -845,3 +891,179 @@ def test_the_audit_reconciles_a_withdrawn_audio_peer_delete(capsys):
     rc, _obs = _diff(pairs)
     capsys.readouterr()
     assert rc == 0, "the peer's expected delete must be withdrawn with its origin"
+
+
+# ---------------------------------------------------------------------------
+# 11. `create_moc` becomes a claimant (spec 036 T2.2, ADR-3)
+#
+#     A `create_moc` claims a destination the same way a `move_note` does —
+#     both carry `destination` under the same key — so the grouping loop must
+#     see it too. Before this, a `create_moc` and a `move_note` targeting one
+#     path both shipped, and one silently overwrote the other's destination.
+# ---------------------------------------------------------------------------
+
+def test_create_moc_and_move_note_on_one_destination_drop_both():
+    actions = _actions([
+        _atomic(DRESDEN_PLACES, "Dresden", idx=1),
+        _moc("Dresden", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions)
+    assert _moves(kept) == [], (
+        "the move must not survive a create_moc claiming its destination"
+    )
+    assert _mocs(kept) == [], (
+        "the create_moc must not survive a move claiming its destination"
+    )
+    assert len(clashes) == 1, clashes
+    assert clashes[0]["kind"] == "run_collision"
+
+
+def test_create_moc_alone_on_a_destination_is_untouched():
+    actions = _actions([
+        _moc("Dresden", idx=1),
+        _atomic(ROOT_NOTE, "Root note takeaway", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions)
+    assert len(_mocs(kept)) == 1, "an uncontested create_moc must be emitted unchanged"
+    assert len(_moves(kept)) == 1
+    assert clashes == []
+
+
+def test_create_moc_and_move_note_case_only_difference_is_one_contest():
+    actions = _actions([
+        _atomic(DRESDEN_PLACES, "Dresden", idx=1),
+        _moc("dresden", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions)
+    assert _moves(kept) == [] and _mocs(kept) == []
+    assert len(clashes) == 1, (
+        "a case-only difference across the two kinds must still fold into one "
+        f"contest, not two: {clashes}"
+    )
+    assert clashes[0]["case_only"] is True
+
+
+def test_paired_delete_candidates_contributes_nothing_for_a_moc_claimant():
+    actions = _actions([_moc("Dresden", idx=1)])
+    moc = _mocs(actions)[0]
+    result = _paired_delete_candidates(moc, set())
+    assert result == [], (
+        "a create_moc carries neither source_inbox_item nor audio_peer, so it "
+        f"must contribute no paired delete: {result}"
+    )
+
+
+def test_clash_report_names_both_claimants_and_their_kinds():
+    actions = _actions([
+        _atomic(DRESDEN_PLACES, "Dresden", idx=1),
+        _moc("Dresden", idx=2),
+    ])
+    _kept, clashes = validate_destinations(actions)
+    dropped = clashes[0]["dropped"]
+    assert len(dropped) == 2, dropped
+    kinds = sorted(d["action"] for d in dropped)
+    assert kinds == ["create_moc", "move_note"], (
+        f"the report must name both claimants' kinds: {dropped}"
+    )
+
+
+def test_rendered_clash_names_the_mocs_staging_note_not_a_question_mark():
+    actions = _actions([
+        _atomic(DRESDEN_PLACES, "Dresden", idx=1),
+        _moc("Dresden", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions)
+    assert len(clashes) == 1, clashes
+    moc_source = next(a["source"] for a in actions if a.get("action") == "create_moc")
+    md = render_instructions_md(
+        kept,
+        {"generated": "2026-09-07T10:00:00+02:00", "destination_clashes": clashes},
+        CFG,
+    )
+    block = _clash_block(md)
+    assert moc_source in "\n".join(block), (
+        f"the MOC's own staging-note path must appear in the report: {block}"
+    )
+    assert not any("source note `?`" in ln for ln in block), (
+        f"a dropped create_moc must not render as an unresolved origin: {block}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 12. compliance review of spec 036 T2.2 (commit 81675a9) — two findings
+#
+#     Finding 1: the origin fallback added for create_moc was not kind-scoped,
+#     so a move_note with an empty/absent source_inbox_item (documented
+#     nullable, _OPTIONAL_PATH_FIELDS) now falls through to its own `source`
+#     field — the move's staging path, not its origin — instead of `?`.
+#
+#     Finding 2: create_moc becoming a destination claimant also subjects it
+#     to vault_collision (a destination already occupied in the vault), which
+#     T2.2's task text never named or tested. Covered here to make the
+#     inferred behaviour explicit and pinned.
+# ---------------------------------------------------------------------------
+
+def test_dropped_move_note_with_empty_source_inbox_item_still_renders_question_mark():
+    """A move_note's source_inbox_item can legitimately be empty (both
+    item_key and source_path absent — resolve_source_path returns ""). The
+    origin fallback must not repurpose the move's own `source` (its staging
+    path) as a stand-in origin: that field means something different for a
+    move_note than it does for a create_moc, and showing it here is a wrong
+    basis for the user's approval under CON-2.
+    """
+    clash = {
+        "kind": "run_collision",
+        "destination": f"{NOTES}Dresden.md",
+        "case_only": False,
+        "vault_note": None,
+        "reason": "two notes",
+        "dropped": [
+            {
+                "id": "I01",
+                "action": "move_note",
+                "title": "Dresden",
+                "destination": f"{NOTES}Dresden.md",
+                "source_inbox_item": None,
+                "source": f"{INBOX}2026-09-07_1001_dresden.md",
+                # Hand-built, bypassing validate_destinations (spec 036 T2.2
+                # finding 2) — a move_note's resolved origin is its (empty)
+                # source_inbox_item, never its own staging `source`.
+                "origin": None,
+            },
+        ],
+        "withdrawn_deletes": [],
+        "withdrawn_moc_links": [],
+    }
+    md = render_instructions_md(
+        [],
+        {"generated": "2026-09-07T10:00:00+02:00", "destination_clashes": [clash]},
+        CFG,
+    )
+    block = _clash_block(md)
+    joined = "\n".join(block)
+    assert "source note `?`" in joined, (
+        f"an empty source_inbox_item must still render `?`: {block}"
+    )
+    assert "2026-09-07_1001_dresden.md" not in joined, (
+        f"a move_note's staging path (its own `source`) must never stand in "
+        f"for its origin: {block}"
+    )
+
+
+def test_a_moc_destination_occupied_in_the_vault_is_dropped():
+    """Mirrors test_a_destination_occupied_in_the_vault_is_not_emitted, but
+    for a create_moc claimant — spec 036 T2.2 widened the claimant filter,
+    which also subjects create_moc to the vault_collision half of this guard.
+    """
+    kado = FakeKado(occupied={f"{NOTES}Dresden.md"})
+    actions = _actions([
+        _moc("Dresden", idx=1),
+        _atomic(ROOT_NOTE, "Root note takeaway", idx=2),
+    ])
+    kept, clashes = validate_destinations(actions, make_folder_listing(kado))
+    assert _mocs(kept) == [], (
+        "a create_moc claiming an already-occupied vault path must be dropped"
+    )
+    assert len(_moves(kept)) == 1
+    assert len(clashes) == 1 and clashes[0]["kind"] == "vault_collision", clashes
+    assert clashes[0]["vault_note"] == f"{NOTES}Dresden.md"

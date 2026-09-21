@@ -35,6 +35,28 @@ file, and Kado's `operation=note` requires markdown (rejects non-`.md`). The
 `kado_client.write_file` so the write is deterministic instead of asking the
 model to base64-encode.
 
+WHY the **markdown** goes through the same script (changed 2026-09-13): the
+paragraph above is true and was read as narrower than it is. It explains why the
+JSON cannot use the note op — and left the impression that the `.md`, which
+*can*, should therefore be written inline. Step 6 did exactly that for a long
+time: Read the rendered file, then hand its content to `mcp__kado__kado-write`.
+
+The 2026-09-12 live run showed what that costs. 11055 characters of
+deterministic renderer output were relayed through the model's own tokens and
+back out as a literal. It came through byte-faithful — but that is only known
+because the run was diffed afterwards. Verbatim relay is unverifiable by
+construction: nothing in the pipeline distinguishes a faithful copy from a
+subtly altered one, and the artefact in question is the document the user reads
+and approves.
+
+`kado-write-file.py` already routes by extension (`.md` → note, other → file)
+and reads from disk, so the content never enters the model's context. Its own
+docstring gave the reason before this change was made: "the content is read from
+disk and pushed via this script's own Kado client, so it NEVER passes through
+the agent's output-token budget." Both artefacts now take that path, and the
+step carries a STRICT against the inline route — an unadorned imperative had
+already been observed producing the deviation.
+
 WHY the wire is a COMPLETE mirror of the review surface (not editable deltas):
 Marcus's rule is "if Hashi edited the JSON, use ONLY the JSON; otherwise ONLY the
 markdown — never a mix." Under that rule the changed JSON is the sole authority,
@@ -71,6 +93,41 @@ the analyst's IO Contract (ADR-1 makes derivation the identity function), and
 the analyst must never reconstruct it from `stem` — two inbox items in different
 subfolders share a stem and would collide on one result file.
 
+WHY the prompt now says the contract is ALREADY LOADED, with a STRICT against
+searching for it (added 2026-09-13): the line "Follow the IO Contract in your
+agent definition strictly" names a document without saying where it is or that
+the subagent already holds it. In the 2026-09-12 run, **11 of 12 subagents went
+looking for it on disk** — `find … -path "*agents*" | xargs grep -l "IO
+Contract"`, `grep -rl "shared_ctx_path"`, `find … -iname "*inbox-analyst*"`.
+
+It was already in front of them: `inbox-analyst.md` carries `## IO Contract
+(STRICT — the orchestrator depends on this)` and is loaded as the subagent's own
+definition. The searching produced nothing that was not already available, and
+cost one to several calls per item.
+
+Naming a source without locating it reads as an instruction to go find it. The
+related symptom in the same run: one subagent pretty-printed `shared-ctx.json`
+and `item-result.schema.json` into `tomo-tmp/` to read them, leaving two stray
+files behind in the pipeline's working directory.
+
+**A `#` line inside an `Agent(prompt: |` block never reaches the subagent.** The
+first attempt at this fix wrote the instruction as a `# STRICT` comment inside
+the prompt template. The next run showed the dispatched prompt verbatim: the
+plain sentence above it came through, the `#` lines did not, and 11 of 12
+subagents searched exactly as before.
+
+That is the conductor behaving correctly. Everywhere else in these skills a `#`
+line is a directive to whoever is reading the skill — and inside a prompt
+template the reader is still the conductor, so it reads the line as a note to
+itself and leaves it out of the prompt body. The existing STRICTs in
+`force-atomic-handling`'s dispatch section sit *before* the template for exactly
+this reason.
+
+So an instruction meant for the subagent must be plain prompt text with no `#`
+prefix. The rule for anyone editing a dispatch template: `#` addresses the
+conductor, unprefixed lines address the subagent, and there is no marker that
+makes a comment travel.
+
 ## WHY There Is No Cost-Recording Step Here (spec 034 T6.1)
 
 A `suggest` run's cost-history entry is written by `suggestions-reducer.py` in
@@ -84,3 +141,119 @@ Do not re-add one. `inbox-triage.py` writes no entry for this action (the
 reducer's destination-folder counts do not exist when it finishes), so a second
 append here would double-record the run. See
 `docs/tomo/scripts/lib/cost_history.md`.
+
+## Why the dispatch template says `subagent_type`, not `name`
+
+The fan-out template used to read:
+
+    Agent(
+      name: "inbox-analyst"
+      prompt: | ...
+
+`name` labels the agent that gets spawned — it is what makes it addressable
+for a follow-up message. `subagent_type` is what chooses which definition it
+runs. A dispatch carrying only `name` spawns **general-purpose under an
+alias**: the call succeeds, the transcript shows an agent called
+"inbox-analyst", and none of that agent's contract, tool restrictions or
+skills are in play.
+
+The 2026-09-14 live run did this for all twelve items. The session metadata is
+unambiguous — twelve files reading `agentType: general-purpose, name:
+inbox-analyst`, and exactly one reading `agentType: inbox-analyst`, which was a
+nested dispatch a confused general-purpose agent made using the correct key.
+
+Everything previously filed as disobedience was this:
+
+- **The contract hunting.** Seven of twelve ran `ls .claude/agents/` or `find`
+  for `inbox-analyst.md`. The contract genuinely was not loaded. They searched
+  because they had to, and the eight that produced correct output are precisely
+  the ones that searched and read the file.
+- **The brute-forced filenames.** Three ran `md5sum`, `sha1sum`, `sha256sum`
+  and `cksum` over the item key trying to reproduce a result filename.
+  `scripts/item-result-filename.py` is named in the contract's Step 10, which
+  they had never seen.
+- **The hand-written state file.** Five bypassed `scripts/state-update.py`,
+  one of them replacing the whole file with a `Write` while four siblings were
+  appending to it. One `running` record was lost that way. Same cause.
+- **The nested dispatch.** A general-purpose agent has the full toolset, so one
+  of them loaded `Skill(inbox)` and re-dispatched its own item. `inbox-analyst`
+  declares `tools: Read, Bash, Write, mcp__kado__kado-read` — no `Agent`, no
+  `Skill`. Under its real definition that call is not available.
+
+**Why the prompt's reassurance made it worse.** The template used to tell the
+subagent *"Your agent definition is ALREADY LOADED … Do NOT run find, grep or
+ls to locate your contract"*. That sentence was added to stop the searching. It
+was false, and it was instructing agents not to fetch the one thing they were
+missing. It has been removed rather than corrected: with `subagent_type` in
+place the definition is loaded, so the reassurance has nothing left to do, and
+a prompt that describes its own context is a claim that can silently go stale.
+
+**Why nothing failed.** Every run still produced `done=12 failed=0` and a valid
+suggestions document. A capable general-purpose agent handed a detailed prompt
+reconstructs most of the pipeline from the filesystem. The cost was invisible:
+duplicated work, a lost state record, an item processed twice, and every
+tool-restriction in the agent definition quietly not applying.
+
+**Guard.** `tests/test_dispatch_templates.py` asserts that every `Agent( … )`
+block under `tomo/dot_claude/` names a `subagent_type`, that no template
+selects with `name` alone, and that each named type has a definition in
+`tomo/dot_claude/agents/`. It carries a non-vacuity test, because a shape-based
+regex that stops matching would pass every other assertion in the file.
+
+All four templates in the tree had the defect — both fan-out skills, plus
+`synthesis-conductor` and `voice-transcriber` in the `/inbox` command. Pass 2
+and transcription were dispatching general-purpose too.
+
+## Why step 1 reads the routing plan through a script
+
+The skill used to say `cat tomo-tmp/routing-plan.json`, then "Extract
+`fresh_sources[]` and `inbox_path`". In the 2026-09-14 12:34 run the conductor
+did the `cat`, and fifty records later — after the setup step, with the plan
+scrolled well back — it needed the source list to build its first dispatch
+batch and ran:
+
+    python3 -c "
+    import json
+    d = json.load(open('tomo-tmp/routing-plan.json'))
+    ...
+
+`suggestion-conductor.md` forbids exactly that in a `STRICT` block, and Claude
+Code's Bash validator flags such calls on their `#` characters. The model filed
+a bug against itself for it, and named its own cause accurately: it needed the
+exact list and there was no sanctioned way to get one.
+
+That is the shape of the defect. `cat` does not hand back a list; it hands back
+a document to re-derive a list from. Re-deriving is either inline Python — the
+forbidden thing — or retyping twelve paths from a scrolled-back tool result,
+which drops entries silently. The instruction "never do X" without a sanctioned
+Y is a trap, and the model walked into it on the only step that had no helper.
+
+`scripts/read-routing-plan.py` is that Y, following the precedent
+`read-config-field.py` set for `vault-config.yaml` — whose own header says it
+"replaces ad-hoc `python3 -c`". It also takes the batch arithmetic: the skill
+now asks for `--batch-count` once and then `--sources --batch N --size K`,
+instead of asking an LLM to slice twelve items into groups of five. The tail
+batch (two items, not five) is the case that arithmetic gets wrong.
+
+`cat` stays as the first step. Surfacing `drift_indicators` needs the whole
+document, and a conductor that never sees its own plan is harder to debug.
+
+## Why `INBOX_PATH` and not `inbox_path`
+
+The publish step read `--vault "<inbox_path>/<stem>_suggestions.md"`. The plan
+stores `inbox_path` as `"100 Inbox/"` — already terminated — so the template
+produced `100 Inbox//2026-09-14_1234_suggestions.md`. Kado normalises the
+double slash and the file landed correctly; the same run wrote the `.json`
+sibling with a single slash, so the two commands disagreed about the shape of
+the same path and both worked.
+
+`read-routing-plan.py --field inbox_path` strips the trailing slash, and the
+templates now name `<INBOX_PATH>` — a value with known shape, joined with `/`
+unconditionally. The rename is the point: `<inbox_path>` reads as "the field
+from the plan", which is the thing that carries the slash.
+
+`moc-architect` had already solved this the other way, joining with no
+separator and stating "it already ends in `/`". Both are correct in isolation;
+having both in one tree is what let the wrong one look right. `force-atomic-
+handling` carried the same defect on its own publish step and is converted to
+match — found by grepping the shape rather than the site the bug appeared in.

@@ -2,7 +2,7 @@
 
 > Rationale for decisions in `tomo/scripts/instructions-diff.py`.
 > Pass-2 coverage audit: parsed-suggestions.json vs instructions.json — the
-> conductor's mandatory step 3e.
+> conductor's mandatory coverage audit step.
 
 ## Version 0.7.0 — dedicated garden-audit mode (2026-07-23)
 
@@ -11,7 +11,7 @@ WHY garden-shaped envelopes (confirmed_items carrying `garden_action`) route to
 `item.action == "create_moc"` else counts a move_note — garden items carry
 `garden_action`, not `action`, so EVERY garden fix was miscounted as an expected
 move_note and the audit hard-failed (`move_note expected=N actual=0`) on any
-garden-audit doc with confirmed items. Since the conductor's 3e is mandatory
+garden-audit doc with confirmed items. Since the conductor's coverage audit step is mandatory
 ("NEVER skip the coverage audit"), this pre-existing gap blocked every real
 garden apply. The garden mode mirrors `render_actions.build_garden_audit_actions`
 count math (edit_note_text→1, remove_up_link→1, add_relationship→1, file_note→
@@ -98,8 +98,8 @@ T5.0c one module over.
 the Pass-2 destination guard withheld and the paired deletes it withdrew with
 them. Without it the audit reported `RESULT: FAIL — count or coverage mismatch`
 on a **correct** instruction set — `move_note 2 → 0`, `delete_source 2 → 0`,
-`file=[MISSING]` on both items — and `synthesis-conductor.md` step 3e makes a
-mismatch fatal, so a destination clash would have halted the run with a message
+`file=[MISSING]` on both items — and `synthesis-conductor.md`'s coverage audit
+step makes a mismatch fatal, so a destination clash would have halted the run with a message
 blaming Tomo for drift rather than naming the clash.
 
 Two details the shape does not make obvious:
@@ -134,7 +134,7 @@ refused one, so the audit reported `move_asset expected=2 actual=1 [DIFF]` and
 `RESULT: FAIL` on a correct instruction set. It dates to spec 031 and was
 unreachable until recursive discovery let two files share a basename. It is
 fixed here rather than backlogged because T5.4 makes the clash a normal outcome
-and step 3e of `synthesis-conductor.md` halts the run on a mismatch.
+and the coverage audit step of `synthesis-conductor.md` halts the run on a mismatch.
 
 The subtraction is per skipped entry rather than per path lookup because
 `expected` keeps only the count, and `_build_move_asset_actions`' global `seen`
@@ -148,8 +148,8 @@ bullets, because until T5.5 the emitter did not withdraw them — it emitted a
 bullet naming a note it had just refused to file. Now that
 `_drop_moves_with_paired_deletes` withdraws them, the subtraction is owed, or
 the audit reports `RESULT: FAIL — count or coverage mismatch` on a correct
-instruction set and `synthesis-conductor.md` step 3e halts the run blaming Tomo
-for its own guard.
+instruction set and `synthesis-conductor.md`'s coverage audit step halts the run
+blaming Tomo for its own guard.
 
 ### The Subtraction Is Derived, Not Reported
 
@@ -180,7 +180,7 @@ WHY the count table subtracts for **all three** causes even though the causes ar
 not equivalent: the count table answers one question — did the renderer emit what
 the document promised — and under every cause the renderer withheld the link. A
 raw `[DIFF]` for two of the three would misdiagnose a deliberate withholding as
-drift, halt the run at `synthesis-conductor.md` step 3e, and tell the user Tomo
+drift, halt the run at `synthesis-conductor.md`'s coverage audit step, and tell the user Tomo
 lost an instruction it in fact refused to write.
 
 WHY the distinction is kept in `observations` instead: that channel is

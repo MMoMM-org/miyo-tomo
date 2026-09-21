@@ -61,3 +61,36 @@ target_path gives a canonical order independent of the triage traversal sequence
 (unresolved target) sorts after non-None strings within the same handler — consistent with
 the expectation that unresolved groups are an edge case that sorts to the end, not mixed
 into the middle.
+
+## Why `compose_mode` is derived here rather than decided by the skill
+
+WHY: `compose_mode` is a PROVENANCE field — it records whether a group's
+`composed_block` came from an LLM merge call or from a mechanical field join.
+Until 2026-09-13 the tag-handler-interpreter skill carried it as a rule for the
+model to apply while writing the group file: *"llm_directive if compose was a
+string; field_template if compose was an array."*
+
+The 2026-09-12 live run applied that rule backwards. It wrote `field_template`
+for a block an LLM had just composed, then noticed and corrected itself in a
+second edit. Nothing else would have caught it:
+
+- both values are in the schema's `enum`, so validation passes either way;
+- **no production code reads the field** — a repo-wide grep finds it only in
+  the two schemas and in test fixtures;
+- it never reaches the wire (`suggestions-wire.schema.json` does not declare it
+  on `tag_handler_groups[]`, and that node is `additionalProperties: false`).
+
+A provenance record that survives every automated check while asserting the
+opposite of what happened is worse than no record: it is the kind of claim
+someone later cites as evidence. And the answer was never a judgement call —
+`group_handled` already holds `compose` and can see its type.
+
+So the derivation moved into this function and the skill copies the value
+verbatim. An unrecognised `compose` shape (absent, or neither string nor list)
+omits the key rather than guessing — the schema does not require it, and an
+absent provenance record is honest where a fabricated one is not.
+
+Guarded by `TestComposeModeIsDerived` in `tests/test_tag_handler_group.py`,
+which asserts both directions. The pair is what catches an inversion; a single
+"the two shapes differ" assertion would stay green through exactly the mistake
+the live run made.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_triage_fan_from_wire.py — ADR-026: fan-resolve triggers from an edited wire.
 
 Under JSON-only (Hashi edited the _suggestions.json), the markdown body is a minimal
@@ -45,7 +45,7 @@ INBOX_INDEX = {"Sapporo.md": [INBOX + "Sapporo.md"]}
 
 def _wire(**over) -> dict:
     w = {
-        "schema_version": "1",
+        "schema_version": "2",
         "suggestions": [
             {"id": "S01", "stem": "Asahikawa", "item_key": INBOX + "Asahikawa.md",
              "suppressed": True, "force_atomic": True},
@@ -124,7 +124,11 @@ def test_missing_digest_returns_none(tmp_path):
 
 def test_wrong_schema_version_returns_none(tmp_path):
     w = _sealed(_wire())
-    w["schema_version"] = "2"
+    # "1" was the accepted version before spec 035 F9 moved it to "2" — now a
+    # stale/wrong value, same as any other version this consumer doesn't
+    # recognize (the accepted version is read from the schema, not a
+    # literal here — see _load_edited_wire).
+    w["schema_version"] = "1"
     p = tmp_path / "w.json"
     p.write_text(__import__("json").dumps(w), encoding="utf-8")
     assert _triage._load_edited_wire(str(p)) is None

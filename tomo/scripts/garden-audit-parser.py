@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.14.1
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -67,6 +67,7 @@ from lib.render_md import (
     unwrap_list_repr,
     up_line,
 )
+from lib.wire_version import wire_schema_version
 
 
 def _up_link_stem(up_target) -> str:
@@ -154,7 +155,8 @@ def _wire_is_json_approved(wire: dict) -> bool:
 
 
 def _is_wire_edited(wire: dict) -> bool:
-    """True iff an already-loaded wire dict is schema-v1 AND the JSON is authoritative.
+    """True iff an already-loaded wire dict matches the CURRENT garden-audit
+    schema version AND the JSON is authoritative.
 
     Authoritative = the user changed an apply decision (the recomputed garden-audit
     digest over selected/repoint/replace/file_under differs from the stored
@@ -165,10 +167,12 @@ def _is_wire_edited(wire: dict) -> bool:
     approved gate additionally forces the JSON path so an all-default editor
     approval still applies fixes. Operates on a dict already in memory — no file
     read — so main() decides routing from the single _load_raw_wire result without
-    a second open() (TOCTOU-free). Unknown schema version → not authoritative
-    (unedited wire supplies structure via build_from_report).
+    a second open() (TOCTOU-free). The expected version is read from the schema
+    itself (spec 035 ADR-5), never a literal here, so a version move never has to
+    touch this comparison a second time. Unknown/stale schema version → not
+    authoritative (unedited wire supplies structure via build_from_report).
     """
-    if wire.get("schema_version") != "1":
+    if wire.get("schema_version") != wire_schema_version("garden-audit-wire.schema.json"):
         return False
     if _wire_is_json_approved(wire):
         return True
@@ -177,7 +181,8 @@ def _is_wire_edited(wire: dict) -> bool:
 
 
 def load_changed_wire(path: str | None) -> dict | None:
-    """Return the garden-audit wire iff present, parseable, schema_version=="1", AND authoritative.
+    """Return the garden-audit wire iff present, parseable, at the CURRENT
+    schema version, AND authoritative.
 
     Authoritative = an apply decision changed (garden-audit digest mismatch over
     selected/repoint/replace/file_under) OR the wire is JSON-approved. Unchanged /
@@ -199,10 +204,11 @@ def load_changed_wire(path: str | None) -> dict | None:
         return None
     if not isinstance(wire, dict):
         return None
-    if wire.get("schema_version") != "1":
+    expected_version = wire_schema_version("garden-audit-wire.schema.json")
+    if wire.get("schema_version") != expected_version:
         print(
             f"warning: garden-audit-wire schema_version {wire.get('schema_version')!r} "
-            "!= '1' — routing to build_from_report (wire+markdown join)",
+            f"!= {expected_version!r} — routing to build_from_report (wire+markdown join)",
             file=sys.stderr,
         )
         return None

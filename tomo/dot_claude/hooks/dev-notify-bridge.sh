@@ -1,7 +1,7 @@
 #!/bin/bash
 # Notification hook — forwards Claude Code events to dev-notify-bridge on host.
 # dev-notify-bridge must be running on host (started by begin-tomo.sh).
-# version: 0.2.0
+# version: 0.3.0
 
 INPUT=$(cat)
 BASE_TITLE=$(echo "$INPUT" | jq -r '.title // "Tomo"')
@@ -26,9 +26,17 @@ fi
 # dev-notify-bridge listens on host port (default 9999, configurable via env)
 PORT="${DEV_NOTIFY_PORT:-9999}"
 
-curl -s -X POST "http://host.docker.internal:${PORT}/notify" \
+# Build the body with jq, not string interpolation: $MESSAGE comes from Claude
+# and a double quote or backslash in it produces malformed JSON, which the
+# bridge rejects with HTTP 400. The `|| true` below then swallows the failure
+# silently, so the notification is simply lost with nothing recording it.
+BODY=$(jq -n --arg t "$TITLE" --arg m "$MESSAGE" '{title: $t, message: $m}')
+
+# --max-time bounds a reachable-but-wedged bridge; stdout is discarded because
+# `curl -s` still prints the response body into the hook's output.
+curl -s --max-time 3 -X POST "http://host.docker.internal:${PORT}/notify" \
   -H "Content-Type: application/json" \
-  -d "{\"title\": \"${TITLE}\", \"message\": \"${MESSAGE}\"}" \
-  2>/dev/null || true
+  -d "$BODY" \
+  > /dev/null 2>&1 || true
 
 exit 0

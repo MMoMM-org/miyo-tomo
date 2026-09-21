@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.0
+# version: 1.1.0
 """test_034_t5_5_orphaned_moc_link.py — spec 034 T5.5.
 
 A `link_to_moc` outlived the move it described. Both Dresden moves were
@@ -23,6 +23,22 @@ What each block below pins:
   4. The report records what it withdrew, the document says so, and the
      coverage audit reconciles instead of halting the run.
 
+Deviation (spec 036 T2.3, 2026-09-17): `test_the_withdrawal_reconciles_with_
+the_coverage_audit` hand-assembles `instrs["actions"]` straight from
+`validate_destinations` + `suppress_moves_for_unfiled_attachments`'s `kept`,
+the same shape the class-1 `_diff()` fixes in test_034_t5_3 and test_034_t5_4
+were breaking on — since T2.3 retired the delete-removal half of
+`_drop_moves_with_paired_deletes` (ADR-4), that `kept` no longer has the
+paired delete removed; removal now happens one step later, in
+`withdraw_unjustified_deletes` (ADR-1), which `instruction-render.py` runs
+once after every drop site before writing `instructions.json`. This test's
+hand-built pipeline predates that split and omitted the step, so it no
+longer reflects what the real pipeline emits. Fixed identically to the
+class-1 tests: `withdraw_unjustified_deletes` is called on `kept` before
+`instrs` is built. See docs/tomo/scripts/lib/render_actions.md and the T2.3
+report for why this was judged a test-harness gap, not a retirement
+regression.
+
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
 from __future__ import annotations
@@ -42,6 +58,7 @@ from lib.render_actions import (  # noqa: E402
     build_garden_audit_actions,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
+    withdraw_unjustified_deletes,
 )
 from lib.render_md import render_instructions_md  # noqa: E402
 
@@ -304,6 +321,11 @@ def test_the_withdrawal_reconciles_with_the_coverage_audit(capsys):
     kept, suppressions = suppress_moves_for_unfiled_attachments(
         kept, skipped_assets
     )
+    # instruction-render.py runs withdraw_unjustified_deletes once, after
+    # every drop site (spec 036 T2.1/T2.3), before writing instructions.json —
+    # so the audit's input must be the actions AFTER that pass (deviation
+    # note above).
+    kept, _withdrawn = withdraw_unjustified_deletes(kept)
     instrs = {
         "actions": kept,
         "action_count": len(kept),

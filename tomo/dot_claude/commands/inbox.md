@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.16.0
+# version: 0.18.0
 
 ## Arguments
 
@@ -45,13 +45,27 @@ Extract the `action` field from the JSON output.
 | transcribe | Dispatch voice-transcriber directly (see Step 4) |
 | idle | Surface status to user (see Step 5) |
 
+# STRICT — IMPERSONATE means: read `.claude/agents/suggestion-conductor.md`
+# and execute its workflow as yourself. NEVER call `Agent()` for it.
+# Why: a dispatched subagent cannot use the Agent tool, so the conductor
+# would be unable to dispatch its inbox-analyst leaves.
+
+# STRICT — DISPATCH means the opposite: call `Agent()` and do not run the
+# workflow yourself. It applies to synthesis-conductor and voice-transcriber only.
+# Why: both are pure script runners, so dispatch keeps their context isolated.
+
+# STRICT — every Agent() call passes `subagent_type`. `name` only labels the
+# spawned agent and selects nothing.
+# Why: a dispatch without `subagent_type` silently runs general-purpose, which
+# has none of the named agent's contract, tools or skills.
+
 ### 3b. Synthesize (dispatch)
 
 When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
 
 ```
 Agent(
-  name: "synthesis-conductor"
+  subagent_type: "synthesis-conductor"
   prompt: "Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly."
 )
 ```
@@ -64,7 +78,7 @@ When action is `transcribe`:
 
 ```
 Agent(
-  name: "voice-transcriber"
+  subagent_type: "voice-transcriber"
   prompt: "Transcribe audio files in the inbox. inbox_path: <inbox_path from routing-plan.json>"
 )
 ```
@@ -89,9 +103,3 @@ If `drift_indicators` is non-empty, surface those as warnings.
 For any drift indicator with `type` == `orphaned_state`, surface its `detail` prominently as its own line (not buried in the warning list) and recommend running `/inbox --recover`.
 
 Exit.
-
-# STRICT — IMPERSONATE suggestion-conductor (needs Agent tool for leaf dispatch).
-# STRICT — DISPATCH synthesis-conductor (pure script runner, no Agent tool needed).
-# Why: dispatched subagents cannot use Agent tool. suggestion-conductor dispatches
-# inbox-analyst leaf agents so it must be impersonated. synthesis-conductor only
-# calls Bash scripts so dispatch is safe and keeps its context isolated.

@@ -163,8 +163,35 @@ def _make_vault_config(tmp_path: Path) -> Path:
             "editable": ["note", "tip", "info", "example", "quote", "summary", "connect"],
         },
         "trackers": {
-            "daily_note_trackers": ["mood", "energy", "focus"],
-            "end_of_day_fields": ["highlight", "intention"],
+            # Real shape per tomo/schemas/vault-config-trackers.schema.json:
+            # nested objects, not flat lists. A fixture that flattens them
+            # makes len() look like a field count when it counts dict keys.
+            "daily_note_trackers": {
+                "section": "Habit",
+                "today_fields": [
+                    {"name": "mood", "type": "integer", "syntax": "inline_field",
+                     "description": "Mood 1-5."},
+                    {"name": "energy", "type": "integer", "syntax": "inline_field",
+                     "description": "Energy 1-5."},
+                    {"name": "sport", "type": "boolean", "syntax": "inline_field",
+                     "description": "Exercised today."},
+                    {"name": "reading", "type": "boolean", "syntax": "inline_field",
+                     "description": "Read today."},
+                ],
+                "yesterday_fields": [
+                    {"name": "focus", "type": "boolean", "syntax": "inline_field",
+                     "description": "Focused yesterday."},
+                ],
+            },
+            "end_of_day_fields": {
+                "section": "End of the Day",
+                "fields": [
+                    {"name": "highlight", "type": "text", "syntax": "inline_field",
+                     "description": "Highlight of the day."},
+                    {"name": "intention", "type": "text", "syntax": "inline_field",
+                     "description": "Intention for tomorrow."},
+                ],
+            },
         },
         "templates": {
             "base_path": "X/930 Templater/",
@@ -430,8 +457,45 @@ class TestTrackerAndCalloutStats:
             config_path=str(config_path),
         )
 
-        # Fixture: 3 daily_note_trackers + 2 end_of_day_fields = 5
-        assert result["tracker_field_count"] == 5
+        # Fixture: 4 today + 1 yesterday + 2 end_of_day = 7.
+        # Deliberately not 5 — `len()` over the two container dicts also
+        # yields 5 (3 keys + 2 keys), so an implementation counting keys
+        # instead of fields passes any fixture where those happen to agree.
+        assert result["tracker_field_count"] == 7
+
+    def test_tracker_count_ignores_the_section_key(self, tmp_path):
+        """The live shape: one container, one section key, no end_of_day block.
+
+        `len(daily_note_trackers)` returns 2 here and 15 fields are configured.
+        The production config produced 3 against fifteen, which is why this
+        went unnoticed — a wrong count that looks like a right one.
+        """
+        moc_path = _make_moc_output(tmp_path)
+        scan_path = _make_scan_output(tmp_path)
+        cache_path = _make_discovery_cache(tmp_path)
+        config_path = _make_vault_config(tmp_path)
+
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        config["trackers"] = {
+            "daily_note_trackers": {
+                "section": "Habit",
+                "today_fields": [
+                    {"name": f"field{i}", "type": "boolean",
+                     "syntax": "inline_field", "description": "x"}
+                    for i in range(15)
+                ],
+            }
+        }
+        config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+        result = aggregate_summary(
+            scan_path=str(scan_path),
+            mocs_path=str(moc_path),
+            cache_path=str(cache_path),
+            config_path=str(config_path),
+        )
+
+        assert result["tracker_field_count"] == 15
 
     def test_callout_protected_count(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)

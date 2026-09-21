@@ -72,7 +72,7 @@ def _wire_finding(fid, check, tier, fixable, path, stem, detail, decision=None):
     return f
 
 
-def _make_wire(findings, schema_version="1", run_id="run-test-001",
+def _make_wire(findings, schema_version="2", run_id="run-test-001",
                generated="2026-07-20T10:00:00Z", profile="miyo"):
     """Build a wire dict WITHOUT computing emit_digest (for raw shape tests)."""
     return {
@@ -259,7 +259,7 @@ class TestLoadChangedWire:
 
     def test_wrong_schema_version_returns_none(self, tmp_path):
         wire = _make_real_wire([])
-        wire["schema_version"] = "2"
+        wire["schema_version"] = "3"  # not the current version ("2")
         wire["emit_digest"] = "sha256:" + "b" * 64  # force "edited"
         p = tmp_path / "wire.json"
         _write_wire(p, wire)
@@ -278,7 +278,7 @@ class TestLoadChangedWire:
         _write_wire(p, wire)
         result = load_changed_wire(str(p))
         assert result is not None
-        assert result["schema_version"] == "1"
+        assert result["schema_version"] == "2"
 
 
 # ---------------------------------------------------------------------------
@@ -1532,7 +1532,7 @@ class TestIsWireEdited:
 
     def test_wrong_schema_version_is_not_edited(self):
         wire = _make_real_wire([_unparented(selected=True)])
-        wire["schema_version"] = "2"
+        wire["schema_version"] = "3"  # not the current version ("2")
         assert gap._is_wire_edited(wire) is False
 
     def test_missing_digest_is_edited(self):

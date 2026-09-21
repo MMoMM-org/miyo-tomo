@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.22.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -25,6 +25,7 @@ import yaml
 from lib.doc_frontmatter import build_tomo_block
 from lib.profile_conventions import ensure_suffix
 from lib.render_md import compute_payload_digest
+from lib.wire_version import wire_schema_version
 
 
 def render_frontmatter(d: dict) -> list[str]:
@@ -317,6 +318,92 @@ def _wire_note(section: dict, action: dict) -> dict:
     }
 
 
+_DAILY_BUCKETS = ("trackers", "log_entries", "log_links")
+
+# One METADATA-ONLY field per bucket — used only to help a human LOCATE the
+# offending entry in the error below (never to match against; that is what
+# the old, retired recovery did, and the reason it had to decline ambiguous
+# cases). Deliberately NOT suggestion-parser.py's _DAILY_DISCRIMINATOR,
+# which maps log_entries -> "content": that field is the note's own text,
+# and the MiYo Constitution (L2, Privacy & Security) requires operation
+# traces — an exception message is one — to carry metadata only (paths,
+# operations, timestamps, decisions), never note content. "field" (a
+# tracker name) and "target_stem" (a note stem) are both metadata;
+# log_entries uses its `source_stem` instead of `content` for the same
+# reason. The index in the raised message already narrows the entry within
+# its bucket/day; this is a supplementary hint, not required to be unique.
+_DAILY_LOCATOR_FIELD = {
+    "trackers": "field",
+    "log_entries": "source_stem",
+    "log_links": "target_stem",
+}
+
+
+def _join_daily_source_item_keys(daily_updates: list[dict], structured: list[dict]) -> None:
+    """Attach `source_item_key` to each parsed daily entry, by construction (F9).
+
+    `daily_updates` is parsed from our OWN freshly-rendered markdown (parity —
+    see `_parser_mod`), which never carries `source_item_key`: the rendered
+    text names only a display stem/link. `structured` — `d["daily_notes_updates"]`,
+    the block the markdown was rendered FROM — already carries it per entry
+    (reducer, since 2026-09-06): the item's own item_key, not a guess from
+    matching content.
+
+    Joined POSITIONALLY, not by matching a discriminating field (tracker name /
+    log content / link target) — the old recovery's approach, and the reason it
+    had to decline ambiguous matches. `render_daily_notes_updates_block` renders
+    every entry of every bucket, for every day, in list order, dropping none;
+    `parse_daily_updates` recovers the same entries in the same order from that
+    text. So two entries sharing identical content in the same bucket on the
+    same day — the exact case the discriminator match refused to resolve —
+    still join correctly here, because position, not content, is compared.
+
+    Mutates `daily_updates` in place. Raises `ValueError` — naming the day,
+    the bucket, and a METADATA-ONLY locator for the entry (see
+    `_DAILY_LOCATOR_FIELD`; never the log_entries note text) — the moment a
+    parsed entry cannot be given a non-empty `source_item_key`: a day or
+    bucket absent from `structured` entirely, a bucket shorter than the
+    parsed one, or a matched entry whose own `source_item_key` is falsy.
+    F9 made the field required; a `suggestions-doc.json` from a reducer older
+    than 2026-09-06 (before `source_item_key` was added to
+    `daily_notes_updates`) is the expected cause, and the fix is to re-run
+    the reducer against the current source items — never to fabricate a
+    placeholder for `source_item_key` itself, fall back to `source_stem` AS
+    that value, or silently drop the entry here, each of which would produce
+    a document that lies about its own provenance, the exact thing
+    `source_item_key` exists to prevent.
+    """
+    by_stem = {
+        day.get("daily_note_stem"): day
+        for day in (structured or [])
+        if day.get("daily_note_stem")
+    }
+    for day in daily_updates:
+        date = day.get("date")
+        source_day = by_stem.get(date) or {}
+        for bucket in _DAILY_BUCKETS:
+            source_entries = source_day.get(bucket) or []
+            entries = day.get(bucket) or []
+            locator_field = _DAILY_LOCATOR_FIELD[bucket]
+            for i, entry in enumerate(entries):
+                source_entry = source_entries[i] if i < len(source_entries) else None
+                key = source_entry.get("source_item_key") if source_entry else None
+                if not key:
+                    raise ValueError(
+                        f"suggestions-render: cannot populate source_item_key for "
+                        f"daily_updates[date={date!r}].{bucket}[{i}] "
+                        f"({locator_field}={entry.get(locator_field)!r}). "
+                        "The structured daily_notes_updates block this markdown was "
+                        "rendered from carries no identity for this entry — most "
+                        "likely because this suggestions-doc.json was produced by a "
+                        "reducer older than 2026-09-06, before source_item_key was "
+                        "added to daily_notes_updates. Re-run suggestions-reducer.py "
+                        "against the current source items; do not hand-edit this "
+                        "document to add the field."
+                    )
+                entry["source_item_key"] = key
+
+
 def build_wire_payload(d: dict) -> dict:
     """Project suggestions-doc.json to the full-mirror suggestions-wire + emit_digest.
 
@@ -376,6 +463,9 @@ def build_wire_payload(d: dict) -> dict:
     # rendered markdown, so build_from_wire reproduces them verbatim (parity).
     pm = _parser_mod()
     daily_updates = pm.parse_daily_updates(d.get("rendered_daily_updates_md") or "")
+    # F9: source_item_key travels by construction, from the structured block
+    # the markdown was rendered from — see _join_daily_source_item_keys.
+    _join_daily_source_item_keys(daily_updates, d.get("daily_notes_updates") or [])
     # Tag-handler: decisions (approved/keep_source) come from parsing our own
     # rendered markdown; descriptive context (Hashi flag 3) is joined from the
     # doc's tag_handler_updates by the stable group_id so the editor card can
@@ -399,7 +489,7 @@ def build_wire_payload(d: dict) -> dict:
         })
 
     payload = {
-        "schema_version": "1",
+        "schema_version": wire_schema_version("suggestions-wire.schema.json"),
         "generated": d["generated"],
         "run_id": d["run_id"],
         "profile": d["profile"],

@@ -35,6 +35,8 @@ SCRIPTS = REPO / "tomo" / "scripts"
 SCHEMA = REPO / "tomo" / "schemas" / "hashi-instructions.schema.json"
 sys.path.insert(0, str(SCRIPTS))
 
+from lib.wire_version import wire_schema_version  # noqa: E402
+
 
 def _load(name: str, filename: str):
     spec = importlib.util.spec_from_file_location(name, SCRIPTS / filename)
@@ -149,10 +151,11 @@ def main() -> int:
     # -> Hashi actions (the same builder instruction-render uses for garden-audit).
     actions = build_garden_audit_actions(confirmed)
 
-    # Wrap the envelope exactly as instruction-render.py does (schema_version "2").
+    # Wrap the envelope exactly as instruction-render.py does: schema_version
+    # is read from instructions.schema.json (ADR-5), never hardcoded.
     now = datetime.now(timezone.utc).replace(microsecond=0)
     instructions = {
-        "schema_version": "2",
+        "schema_version": wire_schema_version("instructions.schema.json"),
         "type": "tomo-instructions",
         "source_suggestions": "garden-audit-report",
         "generated": now.isoformat().replace("+00:00", "Z"),

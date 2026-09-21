@@ -1,4 +1,4 @@
-# version: 0.19.0
+# version: 0.26.2
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -34,6 +35,8 @@ from lib.supporting_items import (
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
 )
+
+logger = logging.getLogger(__name__)
 
 # tag-handler-group.py is a hyphenated top-level script in the scripts dir (not a
 # lib module); load it via importlib for the stable group_id slug (spec 024 T4.1).
@@ -444,6 +447,54 @@ def _validate_action_paths(actions: list[dict]) -> list[str]:
                 violations.append(
                     f"{action_id} ({kind}): '{field}'={value!r} — {err}"
                 )
+    return violations
+
+
+def assert_no_dangling_dependencies(actions: list[dict]) -> list[str]:
+    """Audit that every id a `delete_source` names in `depends_on` exists in
+    this same action set (spec 036 Feature 5, PRD F5-AC4).
+
+    Producer-side tripwire, not a live filter: under ADR-1,
+    `withdraw_unjustified_deletes` already withdraws any `delete_source` whose
+    `depends_on` is missing/``None`` or names an id absent from the surviving
+    set (SDD Error Handling Criteria), so this audit is expected to be vacuous
+    on every real run — a violation here means an unknown-shaped bug upstream
+    (ADR-6), and the caller is expected to abort rather than ship.
+
+    Scoped to `delete_source` ONLY (Feature 5 and its ACs are delete-scoped;
+    no builder populates `depends_on` on any other action kind today). A
+    missing `depends_on` key (or an explicit ``None``) is a violation of equal
+    severity to, but distinguishable wording from, a dangling id — mirroring
+    `withdraw_unjustified_deletes`' own missing-vs-empty-list distinction.
+    ``depends_on: []`` is a positive assertion ("nothing conditions this
+    delete") and is never a violation.
+
+    Existence only — not well-formedness. A `depends_on` naming its own
+    delete's id, or forming a cycle, is not checked (deliberate non-goal).
+
+    Returns a list of violation messages (one per offending `delete_source`;
+    empty means the invariant holds), each self-contained like
+    `_validate_action_paths`'s: it names both the offending delete's id and
+    the fault. Caller is expected to abort on a non-empty result.
+    """
+    existing_ids = {a.get("id") for a in actions if a.get("id")}
+    violations: list[str] = []
+    for action in actions:
+        if action.get("action") != "delete_source":
+            continue
+        action_id = action.get("id", "<no-id>")
+        if "depends_on" not in action or action.get("depends_on") is None:
+            violations.append(
+                f"{action_id} (delete_source): missing required 'depends_on' "
+                f"field — a delete_source must declare the id(s) that justify it"
+            )
+            continue
+        missing = sorted({d for d in action["depends_on"] if d not in existing_ids})
+        if missing:
+            violations.append(
+                f"{action_id} (delete_source): depends_on names unknown id(s) "
+                f"{missing!r} — not present in this action set"
+            )
     return violations
 
 
@@ -879,28 +930,70 @@ def _orphaned_link_titles(actions: list[dict], dropped_ids: set[str]) -> set[str
     return orphaned - surviving
 
 
-def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
+def _orphaned_link_targets(actions: list[dict], dropped_ids: set[str]) -> set[str]:
+    """The titles of dropped `create_moc` actions, keyed for `target_moc`.
+
+    A `link_to_moc` bullet is written INTO the MOC named by its `target_moc`,
+    not by the note that authors it. If the `create_moc` that would have
+    created that MOC was dropped, the MOC does not exist — the bullet has
+    nowhere to land regardless of how many surviving actions still write it.
+    That is why this has no subtraction against survivors, unlike
+    `_orphaned_link_titles`: the two rules answer different questions (did
+    *this bullet's author* survive vs. did *this bullet's destination*
+    survive), and the subtraction correct for one would be wrong for the
+    other — a second create_moc of the same title surviving elsewhere does
+    not make a dropped one's destination exist.
+    """
+    orphaned: set[str] = set()
+    for action in actions:
+        if action.get("action") != "create_moc" or action.get("id") not in dropped_ids:
+            continue
+        title = sanitize_stem(action.get("title") or "")
+        if title:
+            orphaned.add(title)
+    return orphaned
+
+
+def _links_for(
+    withholding: dict, removed_moc_links: list[dict], claimed_links: set[int]
+) -> list[dict]:
     """The share of one run's withdrawn bullets that belongs to one report.
 
     Both post-passes may withhold in the same run, and each renders its own
     section. A bullet is attributed to the withholding whose dropped moves
-    carry its title — the same key `_orphaned_link_titles` withdrew it under,
-    so the two cannot disagree about which bullet belongs to which report.
+    carry its title (`_orphaned_link_titles`'s key) or whose dropped
+    `create_moc` it names as `target_moc` (`_orphaned_link_targets`'s key).
+
+    The two keys can both point at the *same* bullet within one run: one
+    clash drops the bullet's author, an independent clash drops its target
+    MOC. `claimed_links` (keyed by ``id()``, since ``removed_moc_links``
+    entries are plain dicts with no identity of their own) accumulates
+    across every clash in call order — the same claim-once shape
+    `_paired_delete_candidates` uses for `withdrawn_paths` — so the first
+    clash able to claim a bullet owns it and no later clash can re-claim it.
+    One withdrawal is reported once.
     """
     titles = {
         sanitize_stem(d.get("title") or "")
         for d in withholding.get("dropped") or []
     }
-    return [
-        link for link in removed_moc_links
-        if sanitize_stem(link.get("source_note_title") or "") in titles
-    ]
+    claimed: list[dict] = []
+    for link in removed_moc_links:
+        if id(link) in claimed_links:
+            continue
+        if (
+            sanitize_stem(link.get("source_note_title") or "") in titles
+            or sanitize_stem(link.get("target_moc") or "") in titles
+        ):
+            claimed_links.add(id(link))
+            claimed.append(link)
+    return claimed
 
 
 def _drop_moves_with_paired_deletes(
     actions: list[dict], dropped_ids: set[str], withdrawn_paths: set[str]
 ) -> tuple[list[dict], set[str], list[dict]]:
-    """Remove the dropped moves, the deletes paired with them, and their links.
+    """Remove the dropped moves and their links; report the deletes they justified.
 
     Returns ``(kept, removed_deletes, removed_moc_links)``. `removed_deletes`
     names the deletes that actually existed, not every path a dropped move
@@ -908,12 +1001,29 @@ def _drop_moves_with_paired_deletes(
     so listing its origin would have the report and the coverage audit both
     claim a withdrawal that never happened.
 
+    `removed_deletes` is report-only (spec 036 T2.3, ADR-4): this function no
+    longer removes a `delete_source` action from `kept` on that basis. The
+    actual removal is `withdraw_unjustified_deletes`, run once after every drop
+    site (`instruction-render.py`, between `filter_unappliable_relationships`
+    and `_validate_action_paths`) — a delete whose `depends_on` names an id
+    this pass just dropped is withdrawn there, by id, not here, by path. Path
+    equality was a second, independent read of a relationship
+    `_build_delete_source_actions` already declares once at build time
+    (`depends_on`); keeping two readings in step by discipline rather than by
+    construction is the shape that drifted in T5.0c (see
+    `docs/tomo/scripts/lib/render_actions.md`). The path-based computation
+    stays here only because the report — read by `instructions-diff.py`'s
+    coverage audit and rendered to the user — is keyed by path, not by id.
+
     `removed_moc_links` is the same discipline one action kind over. A
     `link_to_moc` for a note this run refused to file instructs the user to
     add a bullet pointing at a path that will hold nothing — the dead link the
     guard exists to prevent, written by the guard itself. T5.3 shipped with
     "a `link_to_moc` for a dropped note is harmless" as its named unverified
-    assumption; the T5.5 document disproved it.
+    assumption; the T5.5 document disproved it. Spec 036 T2.2 widened the
+    claimant filter to include `create_moc`, which reopened the same risk
+    from the other side: a bullet whose `target_moc` names a dropped
+    `create_moc` also has nowhere to land (`_orphaned_link_targets`).
 
     Shared by both post-passes over the built action list
     (``validate_destinations`` and ``suppress_moves_for_unfiled_attachments``).
@@ -922,6 +1032,7 @@ def _drop_moves_with_paired_deletes(
     T5.0c one module over.
     """
     orphaned_titles = _orphaned_link_titles(actions, dropped_ids)
+    orphaned_targets = _orphaned_link_targets(actions, dropped_ids)
     removed_deletes: set[str] = set()
     removed_moc_links: list[dict] = []
     kept: list[dict] = []
@@ -932,17 +1043,24 @@ def _drop_moves_with_paired_deletes(
             action.get("action") == "delete_source"
             and action.get("source_path") in withdrawn_paths
         ):
+            # Report-only (spec 036 T2.3): no `continue` here. The action is
+            # NOT dropped from `kept` on this basis any more —
+            # `withdraw_unjustified_deletes` does that, by id, once after
+            # every drop site. See this function's docstring and
+            # docs/tomo/scripts/lib/render_actions.md.
             removed_deletes.add(action.get("source_path"))
-            continue
-        if (
-            action.get("action") == "link_to_moc"
-            and (action.get("source_note_stem") or "") in orphaned_titles
+        if action.get("action") == "link_to_moc" and (
+            (action.get("source_note_stem") or "") in orphaned_titles
+            or sanitize_stem(action.get("target_moc") or "") in orphaned_targets
         ):
             # Join on the stem (what the vault resolves by), report the title
             # (what the user reads) — spec 034 T6.4b. The record carries the
             # display title only: it is serialised into instructions.json's
             # `tomo` block, and `_links_for` derives the key from it the same
             # way the dropped side does, so both halves agree by construction.
+            # The second disjunct is spec 036 T2.2: `target_moc` is the raw
+            # title the user approved, not a stem, so it is sanitised here to
+            # meet `orphaned_targets` on the same basis.
             removed_moc_links.append({
                 "source_note_title": action.get("source_note_title"),
                 "target_moc": action.get("target_moc"),
@@ -955,10 +1073,18 @@ def _drop_moves_with_paired_deletes(
 def validate_destinations(
     actions: list[dict], folder_listing=None
 ) -> tuple[list[dict], list[dict]]:
-    """Drop every move whose destination is contested; report what was dropped.
+    """Drop every action whose destination is contested; report what was dropped.
 
     Returns ``(kept_actions, clashes)``. Runs after ``build_actions``, over the
     whole assembled list, so it sees every claim at once (ADR-4).
+
+    ``move_note`` and ``create_moc`` are both claimants (spec 036 T2.2,
+    ADR-3): each carries ``destination`` under the same key, so a
+    ``create_moc`` and a ``move_note`` targeting one path contest it exactly
+    as two ``move_note``s would — one would otherwise ship invisibly and
+    silently overwrite the other's destination. The same widening also
+    subjects a **lone** ``create_moc`` to ``vault_collision``: a destination
+    already occupied in the vault drops it too, with no second claimant.
 
     **Both** claimants are dropped, not the second one. This follows the
     reporting shape of ``_build_move_asset_actions`` and deliberately inverts
@@ -974,9 +1100,11 @@ def validate_destinations(
     exists to prevent. The withdrawal joins on the origin's resolved path
     (ADR-1), so a namesake in another inbox folder keeps its own delete.
 
-    It takes its ``link_to_moc`` bullets too, on the title key those were
-    minted under — see ``_orphaned_link_titles``. A bullet naming a note the
-    guard refused to file is an instruction to create a dead link.
+    It takes its ``link_to_moc`` bullets too: those authored by a dropped note
+    (``_orphaned_link_titles``) and, since a ``create_moc`` can now be the
+    thing dropped, those merely *naming* a dropped ``create_moc`` as
+    ``target_moc`` (``_orphaned_link_targets``). Either way the bullet is an
+    instruction to write into, or point at, a note that will never exist.
 
     ``folder_listing`` is the vault view from ``make_folder_listing``; ``None``
     skips the vault half and leaves the run-internal half working.
@@ -987,7 +1115,7 @@ def validate_destinations(
     groups: dict[str, list[dict]] = {}
     order: list[str] = []
     for action in actions:
-        if action.get("action") != "move_note":
+        if action.get("action") not in ("move_note", "create_moc"):
             continue
         destination = action.get("destination") or ""
         if not destination:
@@ -1040,9 +1168,31 @@ def validate_destinations(
             "dropped": [
                 {
                     "id": c.get("id"),
+                    "action": c.get("action"),
                     "title": c.get("title"),
                     "destination": c.get("destination"),
                     "source_inbox_item": c.get("source_inbox_item"),
+                    # `source` is the staging note this claimant moves FROM —
+                    # present on both kinds. A move_note also carries the
+                    # richer source_inbox_item (the original inbox note it
+                    # derived from); a create_moc has no such origin, so the
+                    # `origin` fallback below reads this field for a MOC
+                    # claimant (spec 036 T2.2). Never repurpose
+                    # source_inbox_item to hold a MOC's staging path — the
+                    # two keys mean different things and overloading one is
+                    # what this spec is fixing.
+                    "source": c.get("source"),
+                    # The one resolved origin the renderer displays, computed
+                    # here rather than in render_md.py: the kind-scoped rule
+                    # (`source` for a create_moc, `source_inbox_item`
+                    # otherwise) is a domain fact about what each claimant
+                    # kind carries, not a rendering choice, and belongs where
+                    # the claimant's own fields are built. `None` here reads
+                    # as "?" at render time, same as before.
+                    "origin": (
+                        c.get("source") if c.get("action") == "create_moc"
+                        else c.get("source_inbox_item")
+                    ),
                 }
                 for c in claimants
             ],
@@ -1059,9 +1209,10 @@ def validate_destinations(
     kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
+    claimed_links: set[int] = set()
     for clash, candidates in pending:
         clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
-        clash["withdrawn_moc_links"] = _links_for(clash, removed_moc_links)
+        clash["withdrawn_moc_links"] = _links_for(clash, removed_moc_links, claimed_links)
     return kept, [clash for clash, _candidates in pending]
 
 
@@ -1263,12 +1414,13 @@ def suppress_moves_for_unfiled_attachments(
     kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
+    claimed_links: set[int] = set()
     for suppression, candidates in pending:
         suppression["withdrawn_deletes"] = [
             c for c in candidates if c in removed_deletes
         ]
         suppression["withdrawn_moc_links"] = _links_for(
-            suppression, removed_moc_links
+            suppression, removed_moc_links, claimed_links
         )
     return kept, [suppression for suppression, _candidates in pending]
 
@@ -1463,7 +1615,13 @@ def _resolve_daily_path(daily_path_cfg: str, date: str, daily_note_path: str | N
         if p and not p.endswith(".md"):
             p += ".md"
         return p
-    base = (daily_path_cfg or "Calendar/301 Daily/").rstrip("/")
+    # Defensive: vault-config values are not trusted (established by
+    # shared-ctx-builder.py's same-key read). A trailing space after a
+    # trailing slash survives a bare .rstrip("/"), leaving the slash in
+    # place and producing a double-separator path that never matches a
+    # real note. Strip whitespace first, then strip any run of trailing
+    # slashes/spaces — order matters, see docs/tomo counterpart.
+    base = (daily_path_cfg or "Calendar/301 Daily/").strip().rstrip("/ ")
     return f"{base}/{date}.md"
 
 
@@ -1471,8 +1629,16 @@ def _build_daily_update_actions(
     daily_updates: list[dict],
     cfg: dict,
     counter: list[int],
-) -> list[dict]:
-    """Emit tracker / log_entry / log_link actions for accepted daily updates."""
+    inbox_path: str,
+) -> tuple[list[dict], dict[str, list[str]]]:
+    """Emit tracker / log_entry / log_link actions for accepted daily updates.
+
+    Returns (actions, ids_by_origin). `ids_by_origin` maps each origin's
+    `_origin_key` (the resolved-path join spec 034 T5.0b established) to the
+    ids of every accepted daily action built from that origin, across every
+    bucket and day — site 2 of `_build_delete_source_actions` uses this to
+    populate `depends_on` on its daily-only deletes (spec 036 T1.2).
+    """
     daily_path_cfg = cfg["concepts.calendar.granularities.daily.path"]
     heading = cfg["daily_log.heading"]
     heading_level = cfg["daily_log.heading_level"]
@@ -1483,6 +1649,15 @@ def _build_daily_update_actions(
     # `.get` and the per-field fallbacks below keep an absent map a no-op.
     tracker_fields = cfg.get("daily_notes.tracker_fields") or {}
     out: list[dict] = []
+    ids_by_origin: dict[str, list[str]] = {}
+
+    def _remember(entry: dict, action_id: str) -> None:
+        key = _origin_key(resolve_source_path(
+            entry.get("source_item_key"), entry.get("source_stem"), inbox_path
+        ))
+        if key:
+            ids_by_origin.setdefault(key, []).append(action_id)
+
     for day in daily_updates:
         date = day.get("date", "")
         note_path = _resolve_daily_path(daily_path_cfg, date, day.get("daily_note_path"))
@@ -1490,8 +1665,9 @@ def _build_daily_update_actions(
             if not tr.get("accepted"):
                 continue
             configured = tracker_fields.get(tr.get("field", "")) or {}
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_tracker",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1504,11 +1680,13 @@ def _build_daily_update_actions(
                 "source_stem": _stem(tr.get("source_stem")) or None,
                 "reason": tr.get("reason") or None,
             })
+            _remember(tr, action_id)
         for le in day.get("log_entries", []) or []:
             if not le.get("accepted"):
                 continue
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_log_entry",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1520,11 +1698,13 @@ def _build_daily_update_actions(
                 "source_stem": _stem(le.get("source_stem")) or None,
                 "reason": le.get("reason") or None,
             })
+            _remember(le, action_id)
         for ll in day.get("log_links", []) or []:
             if not ll.get("accepted"):
                 continue
+            action_id = _next_id(counter)
             out.append({
-                "id": _next_id(counter),
+                "id": action_id,
                 "action": "update_log_link",
                 "daily_note_path": note_path,
                 "date": date,
@@ -1535,7 +1715,8 @@ def _build_daily_update_actions(
                 "target_stem": _stem(ll.get("target_stem")) or "",
                 "reason": ll.get("reason") or None,
             })
-    return out
+            _remember(ll, action_id)
+    return out, ids_by_origin
 
 
 def _origin_key(resolved_path: str | None) -> str:
@@ -1559,6 +1740,20 @@ def _origin_key(resolved_path: str | None) -> str:
     return resolved_path[:-3] if resolved_path.endswith(".md") else resolved_path
 
 
+def _tag_handler_group_has_resolvable_target(group: dict) -> bool:
+    """Target-resolvability gate for a tag-handler group (spec 036 T3.1/ADR-5).
+
+    Tests the sole condition that must agree between the insert builder
+    (line ~1913) and the delete loop (site 4, line ~1799): whether the
+    group's `target_path` resolved to something non-empty. Approval and
+    "Keep source files" filtering are NOT part of this predicate; each call
+    site keeps that filtering exactly where it already lives, since the two
+    sites' approval/keep filters are not identical (the delete loop also
+    honors keep_source_group_ids; the insert builder does not).
+    """
+    return bool(group.get("target_path"))
+
+
 def _build_delete_source_actions(
     confirmed: list[dict],
     move_notes: list[dict],
@@ -1569,6 +1764,8 @@ def _build_delete_source_actions(
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
     keep_source_group_ids: list[str] | None = None,
+    daily_action_ids_by_origin: dict[str, list[str]] | None = None,
+    insert_action_ids_by_group: dict[str, str] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -1576,17 +1773,31 @@ def _build_delete_source_actions(
        (disposition == "delete_source").
     2. Daily-only items — origins that appear in accepted daily_updates but
        have no matching confirmed_item (content fully captured in the daily
-       note, no atomic note will be created).
+       note, no atomic note will be created). Each such delete carries
+       `depends_on` (spec 036 T1.2): the ids of every accepted daily action
+       built from that origin, looked up in `daily_action_ids_by_origin` (the
+       map `_build_daily_update_actions` returns) by the same `_origin_key`
+       this site already computes.
     3. move_note origins — for every move_note action whose corresponding
        confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
-       pairs are NOT included here (they're independent upstream artifacts);
-       only the origin from which Tomo derived the rendered atomic note.
+       pairs ARE included here: one paired delete_source per unique audio
+       peer, naming the same move ids as the origin delete.
+       Every delete from sites 1 and 3 carries `depends_on` (spec 036 T1.1):
+       site 1 has no partner action and declares `depends_on: []`; site 3
+       names the ids of every move_note for that origin, and the audio-peer
+       delete names the same id set as its origin delete.
     4. Tag-handler group sources — for every APPROVED group not opted out via
        "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
        target note, so the inbox sources are now redundant. Parity with (3),
        but keyed by group_id rather than origin note.
+       Every delete from site 4 carries `depends_on` (spec 036 T1.3): the id
+       of that group's insert_under_marker action, looked up in
+       `insert_action_ids_by_group` (the map `_build_insert_under_marker_actions`
+       returns) by `group_id(group)`. A group reaches this loop only after
+       passing `_tag_handler_group_has_resolvable_target` (the same gate the
+       insert builder applies), so the map always has an entry here.
     """
     out: list[dict] = []
     confirmed_keys: set[str] = set()
@@ -1625,9 +1836,18 @@ def _build_delete_source_actions(
             "action": "delete_source",
             "source_path": full,
             "reason": "User marked source for deletion (no atomic note created).",
+            "depends_on": [],
         })
 
     # (2) Daily-only origins
+    # WHY: daily_action_ids_by_origin is the map _build_daily_update_actions
+    # returns, bucketing action ids by origin key. Omitting it (None → {})
+    # silently produces depends_on: [] for site-2 deletes — which asserts
+    # "delete unconditionally". That is safe ONLY because build_actions (the
+    # sole production path) always threads the real map. Direct callers
+    # exercising daily-only deletes must supply it; two test callers omit it
+    # and pass only because they do not assert on depends_on.
+    daily_action_ids_by_origin = daily_action_ids_by_origin or {}
     seen: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
@@ -1648,11 +1868,17 @@ def _build_delete_source_actions(
                 full = _ensure_md_extension(resolve_source_path(
                     entry.get("source_item_key"), entry.get("source_stem"), inbox_path
                 ))
+                # depends_on names every daily action built from this origin —
+                # the ids _build_daily_update_actions already bucketed under
+                # the same key. Populated here, before any guard runs
+                # (SDD/Implementation Gotchas): a builder that adds it
+                # afterwards reintroduces the ordering bug spec 036 fixes.
                 out.append({
                     "id": _next_id(counter),
                     "action": "delete_source",
                     "source_path": full,
                     "reason": "Content fully captured in daily note.",
+                    "depends_on": list(daily_action_ids_by_origin.get(key, [])),
                 })
 
     # (3) move_note origins — completion gate: emit one delete per origin note
@@ -1696,17 +1922,26 @@ def _build_delete_source_actions(
         has_daily = origin_key in daily_keys
         daily_suffix = " + daily" if has_daily else ""
         reason = f"Origin consumed by {n} atomic{'s' if n > 1 else ''}{daily_suffix}."
+        # depends_on names every move_note for this origin — the ids the
+        # completion gate above already bucketed. Populated here, before any
+        # guard runs (SDD/Implementation Gotchas): a builder that adds it
+        # afterwards reintroduces the ordering bug spec 036 fixes.
+        move_ids = [mn["id"] for mn in moves]
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
             "source_path": origin_path,
             "reason": reason,
+            "depends_on": move_ids,
         })
         # Paired audio peer delete — one delete per unique audio peer for this
         # origin note. Normally 0 or 1 peer; set deduplicates the multi-atomic
         # case (two atomics from one transcript share the same peer path).
         # keep_source_keys and the gate both apply above, so arriving here
         # means both deletes are appropriate. Empty set → no audio delete (fail-safe).
+        # The audio-peer delete names the SAME move ids as the origin delete —
+        # they are separate actions hanging off the same move set; naming
+        # only one leaves the other unguarded (SDD/Implementation Gotchas).
         audio_peers = {mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}
         for ap in sorted(audio_peers):
             out.append({
@@ -1714,19 +1949,43 @@ def _build_delete_source_actions(
                 "action": "delete_source",
                 "source_path": ap,
                 "reason": "Audio peer of consumed origin.",
+                "depends_on": list(move_ids),
             })
 
     # (4) Tag-handler group sources — one delete per source_path of each
     # APPROVED group, unless the group opted out via "Keep source files".
     approved_groups = set(approved_tag_handler_group_ids or [])
     kept_groups = set(keep_source_group_ids or [])
+    insert_action_ids_by_group = insert_action_ids_by_group or {}
     emitted: set[str] = {a["source_path"] for a in out}
     for group in (tag_handler_groups or []):
         gid = group_id(group)
         if gid not in approved_groups or gid in kept_groups:
             continue
+        if not _tag_handler_group_has_resolvable_target(group):
+            # Shared gate with insert builder (line ~1913, ADR-5): both must
+            # agree that target_path is resolvable before proceeding.
+            continue
         target = group.get("target_path") or ""
         handler = group.get("handler") or ""
+        # depends_on names the insert_under_marker built for THIS group — the
+        # id _build_insert_under_marker_actions bucketed under the same gid.
+        # This gate (approved + resolvable target) mirrors the insert builder's
+        # own gate, so the map is expected to have an entry here. If it doesn't
+        # — a refactor, a partial-groups call, anything that breaks the mirror
+        # — this delete has lost its justification and must be withheld, not
+        # emitted with an empty depends_on (fail-safe, matching the audio-peer
+        # branch above).
+        insert_id = insert_action_ids_by_group.get(gid)
+        if not insert_id:
+            logger.warning(
+                "tag-handler group %s has no insert action (target_path=%s); "
+                "withholding its delete_source actions",
+                gid,
+                target,
+            )
+            continue
+        depends_on = [insert_id]
         for sp in group.get("source_paths") or []:
             # Group source_paths are vault-relative by contract (they come from
             # triage's `item["path"]`), so this resolves to `sp` untouched. It
@@ -1741,6 +2000,7 @@ def _build_delete_source_actions(
                 "action": "delete_source",
                 "source_path": full,
                 "reason": f"Source consolidated into {target} by {handler} handler.",
+                "depends_on": list(depends_on),
             })
 
     return out
@@ -1804,7 +2064,7 @@ def _build_insert_under_marker_actions(
     groups: list[dict],
     approved_group_ids: list[str],
     counter: list[int],
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, str]]:
     """Emit one insert_under_marker action per APPROVED tag-handler group (T4.1).
 
     A group is emitted only when its `group_id` is in `approved_group_ids` (the
@@ -1825,18 +2085,28 @@ def _build_insert_under_marker_actions(
       placement = group.placement (default "inside");
       content = composed_block, with a single blank-line prepend when
       placement="after" (top-of-section readability for heading anchors).
+
+    Returns `(actions, insert_action_ids_by_group)` (spec 036 T1.3): the second
+    element maps each emitted group's `group_id(group)` to the id of the
+    insert_under_marker action built for it. The delete loop (site 4) is the
+    consumer — it names this id in `depends_on` so a delete never outlives the
+    insert that justifies it. A group that produces no action (not approved, or
+    unresolvable target) has no entry in the map.
     """
     if not groups or not approved_group_ids:
-        return []
+        return [], {}
     approved = set(approved_group_ids)
     out: list[dict] = []
+    insert_action_ids_by_group: dict[str, str] = {}
     for group in groups:
-        if group_id(group) not in approved:
+        gid = group_id(group)
+        if gid not in approved:
+            continue
+        if not _tag_handler_group_has_resolvable_target(group):
+            # Shared gate with delete loop (site 4, line ~1799, ADR-5): both
+            # must agree that target_path is resolvable before proceeding.
             continue
         target_path = group.get("target_path")
-        if not target_path:
-            # Unresolved target (null) — never emit a path-less instruction.
-            continue
 
         resolved_anchor = group.get("resolved_anchor")
         content = group.get("composed_block") or ""
@@ -1872,15 +2142,20 @@ def _build_insert_under_marker_actions(
             if placement == "after" and content and not content.startswith("\n"):
                 content = "\n" + content
 
+        action_id = _next_id(counter)
         out.append({
-            "id": _next_id(counter),
+            "id": action_id,
             "action": "insert_under_marker",
             "target_path": target_path,
             "anchor": anchor,
             "placement": placement,
             "content": content,
         })
-    return out
+        # Last-write-wins on gid collision: an upstream duplicate group id
+        # would silently route a delete to a sibling group's insert. Nothing
+        # in this pipeline de-duplicates group ids, so this is not guarded.
+        insert_action_ids_by_group[gid] = action_id
+    return out, insert_action_ids_by_group
 
 
 def _build_up_preservation_actions(
@@ -2231,6 +2506,71 @@ def build_garden_audit_actions(
     return out
 
 
+def withdraw_unjustified_deletes(
+    actions: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop every delete whose declared justification did not survive the guards.
+
+    Runs ONCE, after every drop site (spec 036 T2.1; wiring into build is
+    T2.3, not this function). A single pass is sufficient because a
+    ``delete_source`` never justifies another action — nothing declares a
+    dependency on a delete, so removing one cannot orphan anything else. If a
+    future action kind ever declares a dependency on a delete, this becomes a
+    fixpoint loop; ``test_no_cascade_needed_single_pass_semantics`` is the
+    tripwire that must change first.
+
+    Only ``delete_source`` actions are governed — every other action, even one
+    carrying its own (irrelevant) ``depends_on``, passes through untouched.
+
+    ``depends_on: []`` and a missing ``depends_on`` key are NOT the same
+    reading (spec 036 T2.3, owner decision 2026-09-17 — fail closed). A
+    destructive action must justify itself; ``[]`` is a positive assertion
+    that nothing conditions this delete ("perform it unconditionally"), while
+    an absent key declares nothing at all. Reading the absence the same way
+    as the assertion is fail-**open** on a delete: it tells the executor to
+    remove a note whose justification cannot be established. This also
+    matches T1.3's stance — a delete whose partner id could not be resolved
+    is withheld, not shipped.
+
+    - ``depends_on: []`` → kept unconditionally.
+    - ``depends_on`` missing, or explicitly ``None`` → withdrawn. ``None`` is
+      treated identically to a missing key: both mean "nothing declared",
+      not "nothing required".
+    - ``depends_on: [ids...]`` → kept only if every named id survived
+      (AND semantics); withdrawn, naming the missing ones, otherwise.
+
+    Pure: no I/O, does not mutate ``actions`` or any action dict in it.
+    """
+    surviving = {a.get("id") for a in actions if a.get("id")}
+    kept: list[dict] = []
+    withdrawn: list[dict] = []
+    for action in actions:
+        if action.get("action") != "delete_source":
+            kept.append(action)
+            continue
+        if action.get("depends_on") is None:
+            withdrawn.append({
+                "id": action.get("id"),
+                "source_path": action.get("source_path"),
+                "reason": action.get("reason"),
+                "missing_dependencies": None,
+                "depends_on_declared": False,
+            })
+            continue
+        missing = [d for d in action["depends_on"] if d not in surviving]
+        if missing:
+            withdrawn.append({
+                "id": action.get("id"),
+                "source_path": action.get("source_path"),
+                "reason": action.get("reason"),
+                "missing_dependencies": missing,
+                "depends_on_declared": True,
+            })
+            continue
+        kept.append(action)
+    return kept, withdrawn
+
+
 def build_actions(
     manifest: list[dict],
     confirmed: list[dict],
@@ -2285,15 +2625,21 @@ def build_actions(
     )
     out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
-    out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
-    out.extend(_build_insert_under_marker_actions(
+    daily_actions, daily_action_ids_by_origin = _build_daily_update_actions(
+        daily_updates, cfg, counter, inbox_path
+    )
+    out.extend(daily_actions)
+    insert_actions, insert_action_ids_by_group = _build_insert_under_marker_actions(
         tag_handler_groups or [], approved_tag_handler_group_ids or [], counter,
-    ))
+    )
+    out.extend(insert_actions)
     out.extend(_build_delete_source_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
         tag_handler_groups=tag_handler_groups or [],
         approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
         keep_source_group_ids=tag_handler_keep_source_group_ids or [],
+        daily_action_ids_by_origin=daily_action_ids_by_origin,
+        insert_action_ids_by_group=insert_action_ids_by_group,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,

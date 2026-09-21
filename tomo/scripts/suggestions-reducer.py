@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.46.0
+# version: 1.47.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -914,6 +914,13 @@ def render_tag_handler_group(group: dict) -> str:
     extracting the group id, so Pass-2 emits no instruction until the user fixes
     the vault. "ok" or an absent guard renders the normal approvable block.
 
+    spec 036 T3.2 guard: when group["guard"] is "target_unresolved" (F4), the
+    block also renders WITHOUT an Approve box — a null target_path means the
+    handler config itself never resolved a target, so there is nothing to
+    delete-and-insert against. This branch returns before the fallback block
+    (below), so a fallback dict set alongside an unresolved target never leaks
+    a ⚠️ Fallback line or an Approve box underneath the unresolved notice.
+
     spec 025 T6.1: when group["output_format"] is present a one-line mode descriptor
     is added (structure · order · granularity) using human-readable labels — no
     executor internals in the rendered text (ADR-11, no-executor-internals rule).
@@ -970,7 +977,8 @@ def render_tag_handler_group(group: dict) -> str:
     lines.append(composed_block)
     lines.append("")
 
-    # ── Hard guards (FR-11 / FR-12) — no Approve box; take priority over fallback ──
+    # ── Hard guards (FR-11 / FR-12 / spec 036 F4) — no Approve box; take
+    # priority over fallback ──
     if guard == "target_missing":
         lines.append(
             f"⚠️ **Target note doesn't exist** — [[{link}]] is not in the vault. "
@@ -984,6 +992,14 @@ def render_tag_handler_group(group: dict) -> str:
             f"⚠️ **Marker not found** — the heading `{marker}` is missing from "
             f"[[{link}]]. Add the heading to the note (no content was inserted) "
             "and re-run `/inbox`."
+        )
+        return "\n".join(lines)
+
+    if guard == "target_unresolved":
+        lines.append(
+            "⚠️ **Target unresolved** — check handler config; the handler could "
+            "not resolve a target note for this group. Fix the handler "
+            "configuration and re-run `/inbox`."
         )
         return "\n".join(lines)
 
@@ -1551,7 +1567,8 @@ def annotate_tag_handler_group_guards(
     groups: list[dict],
     client,
 ) -> dict[str, int]:
-    """Set group["guard"] to "ok" | "target_missing" | "marker_missing" per FR-11/FR-12.
+    """Set group["guard"] to "ok" | "target_missing" | "marker_missing" |
+    "target_unresolved" per FR-11 / FR-12 / spec 036 F4.
 
     For each group with a non-null target_path, one deduplicated Kado read of the
     target note:
@@ -1561,12 +1578,29 @@ def annotate_tag_handler_group_guards(
     Fail-open: a None client (offline/test), any non-not-found error, OR an
     empty/anomalous read response (e.g. read_note returns {} without raising)
     keeps guard="ok" — never block a group when marker presence can't actually
-    be determined. A group whose target_path is already null is left untouched
-    (the render surfaces it as unresolved; T4.1 emits no instruction for it).
+    be determined.
+
+    A group whose target_path is already null gets guard="target_unresolved"
+    (spec 036 F4) — set in a pass BEFORE the `client is None` early return
+    below, and unconditionally of whether `client` exists. This is deliberately
+    NOT part of the fail-open behaviour above: a null target_path is local data
+    already present on the group, not something a Kado read would determine, so
+    there is nothing indeterminate to fail open about. Leaving this inside the
+    Kado-dependent loop (guarded by the `client is None` return) would mean an
+    offline / `--no-kado` run never sets the guard at all, and the group would
+    render pre-approved exactly like the defect this fix closes — see
+    docs/tomo/scripts/suggestions-reducer.md for the full rationale.
 
     Returns a {guard_value: count} tally for logging.
     """
-    tally = {"ok": 0, "target_missing": 0, "marker_missing": 0}
+    tally = {"ok": 0, "target_missing": 0, "marker_missing": 0, "target_unresolved": 0}
+
+    # Null-target annotation runs independently of `client` — see docstring above.
+    for group in groups:
+        if not group.get("target_path"):
+            group["guard"] = "target_unresolved"
+            tally["target_unresolved"] += 1
+
     if client is None:
         return tally
     # Cache the guard outcome per (target_path, marker) so two groups sharing a
@@ -1576,7 +1610,7 @@ def annotate_tag_handler_group_guards(
     for group in groups:
         target_path = group.get("target_path")
         if not target_path:
-            continue  # null target — leave for the unresolved render path
+            continue  # null target — already annotated target_unresolved above
         marker = group.get("marker") or ""
         key = (target_path, marker)
         if key not in cache:
@@ -2075,6 +2109,14 @@ def main() -> int:
                 daily_stem = _daily_note_stem(action.get("daily_note_path", "") or action.get("date", ""))
                 if daily_stem:
                     if daily_stem not in daily_groups:
+                        # One entry per daily_stem (a date is unique per run), and
+                        # every tracker/log_entry/log_link below is APPENDED, never
+                        # reordered or dropped. suggestions-render.py's
+                        # _join_daily_source_item_keys (spec 035 F9) depends on both
+                        # of those: it joins this list POSITIONALLY against
+                        # render_daily_notes_updates_block's rendering of it — a
+                        # reorder, a dedup, or a suppression skip here would
+                        # silently mis-pair an entry with the wrong source_item_key.
                         daily_groups[daily_stem] = {
                             "daily_note_stem": daily_stem,
                             "exists": True,
@@ -2290,7 +2332,8 @@ def main() -> int:
         tag_handler_updates, kado_client
     )
     # spec 024 T4.2: guard each group — target_missing (FR-11) / marker_missing
-    # (FR-12) render without an Approve box, so Pass-2 emits no instruction.
+    # (FR-12) / target_unresolved (spec 036 F4) render without an Approve box,
+    # so Pass-2 emits no instruction.
     # Fail-open via the shared kado_client; --no-kado / fan-resolve → all "ok".
     guard_tally = annotate_tag_handler_group_guards(tag_handler_updates, kado_client)
     rendered_tag_handler_updates_md = render_tag_handler_updates_block(tag_handler_updates)
@@ -2404,7 +2447,8 @@ def main() -> int:
         f"tag_handler_stale_dropped={stale_dropped} "
         f"tag_handler_guards=ok:{guard_tally['ok']}/"
         f"target_missing:{guard_tally['target_missing']}/"
-        f"marker_missing:{guard_tally['marker_missing']} "
+        f"marker_missing:{guard_tally['marker_missing']}/"
+        f"target_unresolved:{guard_tally['target_unresolved']} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )

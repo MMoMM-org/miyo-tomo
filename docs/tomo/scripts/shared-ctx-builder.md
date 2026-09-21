@@ -77,3 +77,141 @@ layer up into the destination string itself instead of into a missing action.
 Every existing vault-config value happens to carry a single trailing slash by
 convention, which is exactly why this was easy to miss and worth normalising
 defensively rather than trusting the convention to hold.
+
+## Why the budget only sheds derived data (changed 2026-09-13)
+
+`enforce_budget` used to run seven passes. The first four trimmed tracker
+descriptions to 200 characters and then emptied `negative_keywords`,
+`positive_keywords` and `keywords` — **before touching a single MOC**. Only
+then did it start on `editable_callouts`, headings and topics.
+
+That ordering was backwards on every axis:
+
+- **What it shed.** Keyword lists are entered by a person through
+  `tomo-trackers-wizard` and are the entire basis of tracker matching. MOC
+  inventory is derived from the vault and rebuilt on the next
+  `/explore-vault`. Shedding the irreplaceable to protect the regenerable.
+- **Where the weight is.** Measured on the live instance 2026-09-13: `mocs`
+  held **77%** of a 38.6 KB context (29.7 KB across 64 entries) while every
+  tracker field together held 9.6%. The keyword lists inside that are a
+  rounding error — emptying all fifteen bought about 1.1 KB.
+- **How it failed.** Silently. Nothing logged, nothing validated, and the
+  analyst's fallback degrades without complaint. The observable effect was
+  that trackers stopped matching, which reads as a classification problem
+  rather than a configuration one.
+
+It was firing constantly, not at some rare extreme: untrimmed the same context
+was **42104 bytes** against a 40960 budget, so it emptied the keyword lists on
+every single run. The user's account — "the trackers worked and then the
+keywords were gone" — is exactly this crossing the threshold as the vault grew.
+
+The passes are now: `editable_callouts`, then headings greedily per MOC, then
+topics. All three are derived, so shedding them costs a re-derivation and
+nothing else. On the same live data the budget is met at 38935 bytes with all
+fifteen tracker fields keeping their keywords.
+
+**If the budget cannot be met** after shedding everything derived, the builder
+now says so on stderr instead of silently emitting an oversized file. That is
+the honest failure: `shared-ctx.json` is read by *every* subagent, so its bytes
+are multiplied by the fan-out — twelve times in a normal run — and the fix is
+either less MOC inventory or a deliberate `--max-bytes`, not quietly deleting
+someone's configuration.
+
+## Why `warn_unusable_trackers` keys on positive_keywords alone
+
+`_seed_keywords` derives `keywords` from the field name, so that list is never
+empty. But the analyst's matching rule reads `positive_keywords` and nothing
+else — `keywords` reaches the context and is read by no one. Counting it in the
+warning would silence the check on precisely the configuration it exists to
+report: fifteen fields with seeded keywords, no positive keywords, and no way
+to match anything.
+
+The warning stays quiet when `trackers_enabled` is false or a field's `active`
+is false. "I do not use trackers" is a configuration, not a gap, and a warning
+that fires on a deliberate choice is one people learn to ignore.
+
+## Why the keyword warning no longer says "cannot match"
+
+The warning shipped on 2026-09-13 claiming that a tracker field without
+`positive_keywords` "cannot match". The reasoning was sound on paper: the
+analyst's documented fallback splits the field's `description` into words and
+looks for them in the note body, and every shipped description is English while
+the vault this is tested against is German — no overlap exists to find.
+
+The live run on 2026-09-14 refuted it. All fifteen fields were keywordless, the
+warning fired, and the analyst filed three tracker updates anyway:
+
+    Sport      = true    "Laufrunde (5km run) matches Sport tracker"
+    HealthFood = true    "Haferbrei mit Beeren, ohne Zucker = healthy food"
+    ToBed      = "22:45" "Content states bedtime 22:45 (ins Bett)"
+
+`Sport`'s description is *"Did physical activity happen today?"*. No word of it
+appears in the note. The analyst is an LLM and matched semantically, ignoring
+the mechanical fallback its own definition prescribes.
+
+So the failure is not that nothing fires. It is that **what fires is
+unaccountable**: every match lands at a flat 0.5 confidence, and the
+negative-keyword suppression step is skipped entirely, because that step is
+reached only when a positive keyword hits. A field with keywords can say "yoga
+hits, but 'watched a video about' is in the same sentence — suppress". A field
+without them cannot. The wording now says that instead.
+
+The same false claim was in `/tomo-setup`'s phase-3b prompt ("Tomo will never
+file a tracker update for them") and is corrected there too. A warning that
+promises an absence the user then observes happening trains them to ignore it.
+
+## Why the skills must repeat the warning out loud
+
+The warning goes to stderr, the conductor sees it in its Bash result, and in
+the same live run it summarised the step as "Shared context built (64 MOCs, no
+drops)" — the WARN line never reached the user. Fifteen unusable fields were
+reported to nobody.
+
+Both `suggest-handling` and `force-atomic-handling` now carry a `STRICT` at the
+`shared-ctx-builder` call telling the runtime to repeat every `WARN:` line
+verbatim before dispatching. Nothing else in the pipeline reads stderr, so
+without that instruction the check exists only in the transcript.
+
+This is the gap the owner named directly: `/explore-vault` asks about two
+missing templates on every single run, while the missing keywords pass
+unmentioned.
+
+## A Tracker Field's Configured `syntax` Wins (v1.12.0)
+
+WHY `_field_syntax` now sits between `build_tracker_fields` and `_syntax_for`:
+
+`syntax` is a declared property of a tracker field in
+`vault-config-trackers.schema.json` — *"How the field is serialised in the
+daily note"* — and `vault-config-writer.py` treats it as **required**,
+validating it against the same four-value enum. `build_tracker_fields` then
+discarded it, calling `_syntax_for(field_type)` unconditionally and writing a
+guess derived from the field's `type` into shared-ctx.
+
+The two rules disagree because they answer different questions. A field's
+`type` describes its value; `syntax` describes the shape of the user's
+daily-note template. Nothing about `type: text` implies a callout.
+
+Found by Hashi on the 2026-09-15 run, raised as a question rather than a bug
+report. From one source note Tomo emitted `Sport` and `HealthFood` as
+`inline_field` and `ToBed` as `callout_body` — the first two `type: boolean`,
+the third `type: text`. All three are configured `inline_field`, and the vault
+settles it: `Calendar/301 Daily/2026-09-08.md` carries
+
+    ## Habit
+    ### Yesterday
+    - ToBed:: 23:30
+
+an inline field under a heading, with no callout of that name anywhere in the
+note. Applying the emitted action against it is a hard `Section not found:
+Habit` — one of three tracker actions failing while the other two succeed.
+
+WHY this stayed invisible through a green run: Hashi's QA vault had no such
+callout either, so they added one to make our value work rather than reporting
+it. The run passed 28/28 and the defect travelled inside a success. It would
+have failed on the next vault that took the config at its word — including
+ours.
+
+WHY the derivation stays rather than being deleted: a config that omits
+`syntax` keeps the behaviour it has today. Only an explicit value overrides,
+and a blank string counts as omitted so an empty field never reaches the wire
+as a syntax value.

@@ -232,7 +232,7 @@ def _voice_confirmed_item() -> dict:
 # T6.2 — instruction set (actions list) byte-identity
 # ---------------------------------------------------------------------------
 
-# Fields added to link_to_moc AFTER spec 031, each by a later spec with its own
+# Fields added to an action AFTER spec 031, each by a later spec with its own
 # reason. This guard asks "did spec 031 change anything for an attachment-free
 # item", so a field a later spec added deliberately is not the drift it hunts —
 # but dropping the comparison altogether would hollow it out. Each entry is
@@ -243,7 +243,9 @@ def _voice_confirmed_item() -> dict:
 #   join on, split out of source_note_title so that field can go back to being
 #   the display text the coverage audit joins on. Tomo-internal, stripped
 #   before the wire.
-_POST_031_LINK_FIELDS = {"source_note_stem"}
+#   depends_on — spec 036 T1.1: every delete_source now names the move_note
+#   ids it must not outlive (empty list for a delete with no partner action).
+_POST_031_ADDED_FIELDS = {"source_note_stem", "depends_on"}
 
 
 def _assert_identical_but_for_later_fields(new_actions, old_actions):
@@ -253,11 +255,12 @@ def _assert_identical_but_for_later_fields(new_actions, old_actions):
     assert len(new_actions) == len(old_actions), (
         f"action count changed: {len(old_actions)} -> {len(new_actions)}"
     )
+    new_move_note_ids = [a["id"] for a in new_actions if a["action"] == "move_note"]
     for new, old in zip(new_actions, old_actions):
         added = set(new) - set(old)
-        assert added <= _POST_031_LINK_FIELDS, (
+        assert added <= _POST_031_ADDED_FIELDS, (
             f"{new.get('id')}: spec 031 must add no field to an "
-            f"attachment-free item; unexpected {added - _POST_031_LINK_FIELDS}"
+            f"attachment-free item; unexpected {added - _POST_031_ADDED_FIELDS}"
         )
         assert set(old) - set(new) == set(), (
             f"{new.get('id')}: a field was removed: {set(old) - set(new)}"
@@ -270,6 +273,12 @@ def _assert_identical_but_for_later_fields(new_actions, old_actions):
             assert new["source_note_stem"] == sanitize_stem(
                 new.get("source_note_title") or ""
             ), new
+        if new.get("action") == "delete_source":
+            assert "depends_on" in new, f"{new.get('id')}: delete_source missing depends_on"
+            assert new["depends_on"] == new_move_note_ids, (
+                f"{new.get('id')}: depends_on should name every move_note id "
+                f"{new_move_note_ids!r}, got {new['depends_on']!r}"
+            )
 
 
 class TestActionsListByteIdentical:

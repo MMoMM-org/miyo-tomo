@@ -1,0 +1,603 @@
+---
+title: "A delete must not outlive the action that justified it"
+status: draft
+version: "1.0"
+---
+
+# Implementation Plan
+
+## Validation Checklist
+
+### CRITICAL GATES (Must Pass)
+
+- [x] All `[NEEDS CLARIFICATION: ...]` markers have been addressed
+- [x] All specification file paths are correct and exist
+- [x] Each phase follows TDD: Prime → Test → Implement → Validate
+- [x] Every task has verifiable success criteria
+- [x] A developer could follow this plan independently
+
+### QUALITY CHECKS (Should Pass)
+
+- [x] Context priming section is complete
+- [x] All implementation phases are defined with linked phase files
+- [x] Dependencies between phases are clear (no circular dependencies)
+- [x] Parallel work is properly tagged with `[parallel: true]`
+- [x] Activity hints provided for specialist selection `[activity: type]`
+- [x] Every phase references relevant SDD sections
+- [x] Every test references PRD acceptance criteria
+- [x] Integration & E2E tests defined in final phase
+- [x] Project commands match actual project setup
+
+---
+
+## Specification Compliance Guidelines
+
+### How to Ensure Specification Adherence
+
+1. **Before Each Phase**: read the phase's Specification References gate.
+2. **During Implementation**: reference the named SDD section in each task.
+3. **After Each Task**: run the task's Success criteria against the PRD reference.
+4. **Phase Completion**: run the phase validation task.
+
+### Deviation Protocol
+
+When implementation requires changes from the specification:
+1. Document the deviation with clear rationale.
+2. Obtain approval before proceeding.
+3. Update the SDD when the deviation improves the design.
+4. Record all deviations in this file for traceability.
+
+**Deviations recorded so far**:
+
+- **2026-09-16 — T3.1 executed inside Phase 1.** T1.3 carries an ORDERING GATE requiring T3.1
+  first, but T3.1 sits in Phase 3, so running Phase 1 as written would violate the plan's own
+  gate. The reason is semantic, not just a file collision: T1.3 alone gives the unresolvable-group
+  delete `depends_on: []`, which means "perform it", and Phase 4's audit would then certify a
+  data-loss delete as valid. Execution order for Phase 1 is therefore T1.1, T1.2, **T3.1**, T1.3,
+  T1.4. T3.1 is checked off in phase-3.md when it lands. Approved by the owner before dispatch.
+  Note for a future editor: phase-1.md's header still reads "Dependencies: None", which is true of
+  the phase but not of T1.3.
+
+- **2026-09-16 — T4.1's schema half executed inside Phase 1.** Discovered by execution, not review.
+  Phase 1 makes `depends_on` required at the emission site, which immediately fails 9 schema
+  validations and 3 shape-lock fixtures across specs 027/031/034 — while T1.4 demands that every
+  pre-existing test still pass. The plan cannot satisfy itself as written.
+  The resolution is the plan's own rule, stated in plan/README.md: *"The guards must be **released**
+  with the wire field, never before it … The constraint therefore binds the release, not the phase
+  order."* T4.1's own gate rationale agrees — spec 035's T2.4 turned the upstream drift check into a
+  report, so carrying the field ahead of Hashi "fails nothing". Only the **handoff** (T4.5) is
+  bound to Phase 4.
+  Pulled forward: `depends_on` added to both local schemas as a required property, plus the three
+  shape-lock fixtures updated. `schema_version` stays at `"2"`.
+  **Correction, same day.** The field first shipped with `schema_version` bumped to `"3"`, on the
+  reasoning that a required field under an unchanged version is exactly the silent drift spec 035
+  exists to prevent. That reasoning was wrong about the mechanism: `delete_source` carries
+  `additionalProperties: false`, so Hashi rejects an unrecognised `depends_on` on the **field**,
+  whatever the version says. The bump bought no protection that the field did not already provide,
+  and it cost 16 failures across eight unrelated specs whose fixtures assert version `"2"`.
+  Reverted at the owner's decision. The version moves when the wire contract is released to Hashi
+  (T4.5), not when the producer starts emitting.
+  **Operational consequence, unchanged by the revert:** Tomo emits a `depends_on` that Hashi's
+  vendored schema does not know, so Hashi runs stay blocked until T4.5's handoff lands.
+  T4.1's remaining half (the upstream-drift assertion and the handoff sequencing) stays in Phase 4.
+
+- **2026-09-16 — `render_actions.py`'s `# version:` header is deliberately NOT bumped until T1.3.**
+  Raised by the T1.1 code-quality review, which observed the header sitting at `0.19.0` across a
+  real behaviour change and charitably assumed a deliberate call. It was not one — nobody had
+  decided it. Recording the decision now so it is one.
+  The reasoning the review supplied is sound and is adopted: `scripts/update-tomo.sh` gates
+  `tomo/scripts/lib/*.py` sync on this header, so bumping it now would ship a `render_actions.py`
+  to the live instance that emits `depends_on` at sites 1 and 3 only, alongside a schema that
+  requires it on all four. The instance would fail validation on any run touching site 2 or 4.
+  **The bump happens when T1.3 lands**, with all four sites emitting. Until then an unchanged header
+  is the correct state, not an oversight.
+
+- **2026-09-16 — T1.2's third success criterion is unsatisfiable as written.** It reads
+  "`_build_daily_update_actions`' existing return value is unchanged for all current callers", but
+  step 3 of the same task instructs the function to return the id map. The return value therefore
+  had to change shape, and two direct test callers
+  (`tests/test_162_tracker_syntax_and_section.py`, `tests/test_suggestions_wire_golden.py`) were
+  updated for it. The criterion is struck through in phase-1.md rather than ticked, with the true
+  property recorded in its place: the *actions* the function returns are unchanged in content and
+  count, and `build_actions` is the only production caller. A third plan self-contradiction found by
+  execution rather than review — the same pattern as the two above.
+
+- **2026-09-16 — T3.1's predicate shipped under a different name.** The plan and SDD called for
+  `tag_handler_group_is_appliable(group)`; it shipped as `_tag_handler_group_has_resolvable_target`.
+  Two reasons, both raised by the T3.1 code-quality review and adopted. First, "appliable" promises a
+  full applicability check while the function tests exactly one condition, so its docstring had to
+  *disclaim* that approval and `keep_source_group_ids` are excluded — a name needing a disclaimer to
+  avoid misleading is an open invitation to fold those filters in, which would re-merge two call
+  sites the plan explicitly requires to filter differently. Second, every sibling helper consulted
+  from inside a `_build_*_actions` function in this module is underscore-prefixed; the unprefixed
+  names are the module's orchestration entry points. Underscore does not gate cross-file use here —
+  `_build_delete_source_actions` is itself imported by `instruction-render.py` — so the prefix is a
+  role marker, and this predicate belongs to the internal family. `solution.md` was updated to the
+  shipped name per the Deviation Protocol; `README.md`'s classifier row keeps the old name because it
+  records what was counted on 2026-09-10.
+
+- **2026-09-16 — T1.3's cost estimate was wrong, and its test list was too weak to ship.** Two
+  findings, both from execution.
+  The task calls itself *"a cheaper version of T1.2"*. It is the opposite: `_build_daily_update_actions`
+  had two callers, `_build_insert_under_marker_actions` has about thirty across three test files, all
+  unpacking a plain list. Every one needed a mechanical `actions, _ = ...`. Recorded because a reader
+  planning effort from the task text would plan it backwards.
+  The TDD guardian **BLOCKed** the plan's three-test list: it described behaviour but named no
+  assertion that falsifies a wrong implementation, and three would have passed — `depends_on: []`,
+  a wrong id, and per-source ids where one shared id is correct. The revised list derives ids from
+  both builders against one shared counter (never hardcoded) and adds a fourth case proving two
+  groups cannot receive each other's insert id. Also folded in: the existing `_delete_sources` test
+  helper called the delete builder with no map, so after T1.3 every pre-existing site-4 test would
+  have silently carried `depends_on: []` and stayed green. That is the same shape as the site-2 trap
+  recorded below — caught this time rather than recorded.
+
+- **2026-09-16 — T1.3 shipped fail-open and was corrected before the task closed.** The first
+  implementation read `depends_on = [insert_id] if insert_id else []`, directly under a comment
+  asserting the lookup could never miss. Under this spec's semantics `[]` means *"perform this
+  delete unconditionally"*, so a broken invariant would have emitted the most dangerous possible
+  value on a vault-deleting action, silently. Spec compliance caught it and supplied the decisive
+  evidence: the **same function already fails closed** at the audio-peer branch (*"Empty set → no
+  audio delete (fail-safe)"*). Site 4 now withholds the delete for the whole group — the group is
+  the unit of justification, since one insert backs all of its deletes. A bare `assert` was
+  rejected: Python strips assertions under `-O`, and a safety invariant must not depend on a flag.
+  A `logger.warning` naming `gid` and `target_path` (metadata only, L2-clean) makes the break
+  observable; verified empirically that Python's `lastResort` handler surfaces it on stderr even
+  though no caller configures logging.
+
+- **2026-09-16 — T2.1's single-pass argument rests on ordering, not on any site's logic.** Worth
+  recording because it is stronger than the SDD states and settles a question the implementer raised.
+  The SDD justifies one pass with *"nothing declares a dependency on a delete"*. The implementer's
+  precondition test exercised delete sites 1, 3 and 4 but not site 2, and argued site 2 adds no new
+  risk because its mechanism is identical. Spec compliance accepted the conclusion on a **better**
+  ground: every id in the set is minted from one shared counter, and `_build_delete_source_actions`
+  runs after every builder whose output a `depends_on` could name. Deletes are therefore always last,
+  and **no action can name a delete's id regardless of which site emitted it**. The invariant is
+  structural, not per-site — so the precondition test is complete as written rather than short by one
+  site. If a future change ever emits a delete before another builder, this is the assumption that
+  breaks, and `test_no_cascade_needed_single_pass_semantics` is the named tripwire.
+
+- **2026-09-16 — one T2.1 code-quality advisory deliberately not applied.** The review suggested
+  `if "id" in a` in place of `if a.get("id")` when building the surviving-id set, and marked it
+  optional. Not applied: the change is not clearly better — the current form excludes falsy ids, the
+  proposed one would admit `None` into the set — and the present failure direction is the safe one,
+  since an unresolvable reference withdraws the delete and the note survives. The docstring's promise
+  about hand-built dicts covers `depends_on`, not `id`, so no gap exists between what it states and
+  what it does. Editing a safety-critical pure function for tidiness carries risk without return.
+
+- **2026-09-16 — T2.2 widened one line and had to close three consequences the plan does not name.**
+  The task is "widen the claimant filter to `{move_note, create_moc}`". That is `render_actions.py:998`,
+  one line. Making a `create_moc` droppable then reached three places the plan never mentions, each
+  found by review rather than by the suite — all four commits were green throughout.
+
+  1. **The clash report could not describe a MOC.** A `move_note` keeps its origin under
+     `source_inbox_item`; a `create_moc` keeps its staging path under `source`. The renderer read only
+     the former, so a dropped MOC would have shown the owner `— source note ?`. The `dropped` entry
+     gained `action` (the plan's own test bullet asks the report to name the claimants' kinds, and it
+     did not) and a resolved `origin`. **`source_inbox_item` was deliberately NOT overloaded** to
+     carry a staging path: one key with two meanings is how the site-2 and site-4 divergences this
+     spec is fixing began.
+  2. **The first fix was not kind-scoped and silently changed `move_note`.** The fallback
+     `source_inbox_item or source or "?"` applied to every claimant, and `move_note`'s
+     `source_inbox_item` is documented nullable — so a move with an empty one began rendering its
+     staging path labelled "source note" where it had honestly shown `?`. Corrected, and the origin
+     resolution moved out of the renderer into the builder so the rule lives in one place.
+  3. **A dropped MOC left live bullets pointing at it.** `link_to_moc` withdrawal keyed only on the
+     bullet's *author* (`_orphaned_link_titles`). Nothing checked its `target_moc`. Once a
+     `create_moc` could be dropped, a surviving bullet could instruct the executor to write into a
+     MOC that will never exist — verbatim the failure `filter_unresolvable_moc_links`' docstring
+     exists to prevent, and no downstream guard catches it, because that filter is a pure function
+     over a marker stamped at *emission* time, before any drop. Closed by `_orphaned_link_targets`,
+     kept deliberately separate from the author rule: it has **no survivor subtraction**, because a
+     second `create_moc` of the same title surviving elsewhere does not make a dropped one's
+     destination exist.
+  4. **That fix in turn double-counted.** With two independent withdrawal reasons feeding one report,
+     a bullet whose author fell to clash A and whose target fell to clash B appeared in **both**
+     clashes' `withdrawn_moc_links` — reproduced live against the real builder, not a fixture. Wrong
+     data in `instructions.json`, inert in today's markdown only by accident of the renderer. Fixed
+     with the claim-once accumulator this same function already uses for deletes
+     (`_paired_delete_candidates`/`withdrawn_paths`), rather than a second mechanism.
+
+  **Also widened without being asked:** `create_moc` is now subject to `vault_collision`, not only
+  the run collision the task text and all three success criteria describe. It is the right outcome —
+  the guard exists to stop Tomo writing over a file already there — but it arrived as an inferred
+  side effect and is now pinned by a test rather than by inference.
+
+  **Open, deliberately:** when two clashes could each claim a bullet, the first in iteration order
+  owns it. That follows input order, not a semantic preference. Both attributions are true and the
+  count is now correct, so this is a report-quality nuance rather than a defect — recorded so the
+  next reader knows it was seen and not decided.
+
+- **2026-09-16 — a latent trap recorded for Phase 4, not fixed here.**
+  `_build_delete_source_actions`' new `daily_action_ids_by_origin` parameter defaults to `None → {}`,
+  so a direct caller that omits it gets `depends_on: []` on a site-2 delete — which per
+  `[ref: SDD/Complex Logic]` asserts *"nothing conditions this delete; perform it"*, the opposite of
+  the truth for an origin whose content lives in a daily note. Not a live defect: `build_actions` is
+  the sole production path and always threads the real map. But two pre-existing tests
+  (`test_034_t5_0b_delete_bookkeeping_item_key.py`, `test_034_t5_0c_diff_daily_only_item_key.py`)
+  already call the builder without the map and pass only because they do not assert on `depends_on`.
+  A WHY comment now guards the parameter. Phase 4's audit must not treat those fixtures as evidence
+  that an empty list on this path is correct.
+
+- **2026-09-17 — T2.3 (Phase 2) corrected `withdraw_unjustified_deletes` to fail closed on an
+  undeclared `depends_on`, owner decision.** T2.3's own task text retires the delete-removal half of
+  `_drop_moves_with_paired_deletes` (ADR-4) and runs the full suite to prove equivalence. That run
+  surfaced `test_the_clash_never_reaches_the_wire` failing for a reason unrelated to the retirement:
+  its fixture (`_CLASHING_MOVES`, predates spec 036) carries a `delete_source` with no `depends_on`
+  key, and T2.1's reading (`action.get("depends_on") or []`) collapsed that absence into the same
+  outcome as `depends_on: []` — kept. The delete then reached the wire, the exact outcome the guard
+  exists to prevent. This is the same fail-open shape corrected once already at T1.3 (see the
+  2026-09-16 entry above), one level up: there, an unresolvable partner id at build time was
+  corrected to withhold the delete rather than emit `depends_on: []`; here, an unresolvable
+  declaration at withdrawal time is corrected to withdraw the delete rather than read it as `[]`.
+  **Decision**: `depends_on` absent entirely, or explicitly `None`, now withdraws the delete;
+  `depends_on: []` is unchanged — kept unconditionally, a declared assertion, not silence. Both
+  states were previously identical outcomes and are now different, asserted directly by
+  `tests/test_036_withdraw_unjustified_deletes.py::test_missing_key_and_empty_list_are_different_outcomes`
+  (new) rather than left implied. `withdraw_unjustified_deletes` (`render_actions.py:2455`),
+  its docstring, `solution.md`'s reference implementation and traced walkthrough, and
+  `docs/tomo/scripts/lib/render_actions.md` were all updated to state the corrected rule — the
+  deviation protocol's "update the SDD when the deviation improves the design" step, since the SDD's
+  reference implementation had shipped the now-superseded reading. The withdrawal record for the
+  undeclared case carries `missing_dependencies: None` and `depends_on_declared: False` rather than a
+  synthetic entry in `missing_dependencies` — that field names ids that were declared and absent, and
+  the undeclared case has no id to name, only a missing declaration. `render_actions.py` bumped
+  `0.24.0 -> 0.25.0` for this semantic change, on top of the `0.23.1 -> 0.24.0` retirement bump.
+
+- **2026-09-17 — T2.3 also fixed `test_034_t5_5_orphaned_moc_link.py`, one test beyond the plan's
+  named "must not need editing" list.** T2.3's task text names six tests across
+  `test_034_t5_3_destination_validation.py` and `test_034_t5_4_attachment_clash_suppression.py` as
+  routine fallout of the ADR-4 retirement (each calls `validate_destinations` or
+  `suppress_moves_for_unfiled_attachments` directly, or builds an `instructions-diff.py` input from
+  their `kept`, without running the now-separate `withdraw_unjustified_deletes` pass) and separately
+  names `test_034_t5_5_orphaned_moc_link.py` as a canary that must pass unchanged — if it needed
+  editing, that was to be read as evidence the retirement is not behaviourally equivalent and the run
+  should stop rather than proceed.
+  Running the full suite after the T2.1-precedent fix above still showed
+  `test_034_t5_5_orphaned_moc_link.py::test_the_withdrawal_reconciles_with_the_coverage_audit`
+  failing, for the identical structural reason as the six named tests: it hand-assembles
+  `instrs["actions"]` from `validate_destinations` + `suppress_moves_for_unfiled_attachments`'s
+  `kept` without running `withdraw_unjustified_deletes`, so `instructions-diff.py`'s coverage audit
+  saw the still-present delete while the path-keyed `withdrawn_deletes` report claimed it gone.
+  Verified against a clean worktree at this spec's pre-T2.3 commit (`551949a`) that this exact test
+  passes there — confirming the failure is caused by ADR-4's retirement reaching a fixture this test
+  predates, not by any change made in this task.
+  **Judged a test-harness gap, not a retirement regression**, on the SDD's own authority: the ADR-1
+  traced walkthrough (`solution.md`, "Example: The one withdrawal pass") shows the identical two-step
+  sequence — a path-keyed guard drops the move, `withdraw_unjustified_deletes` withdraws the delete
+  one step later — as the intended, designed pipeline shape. A test that only calls the first step and
+  expects the second step's effect was correct only by accident, while the single mechanism that
+  removed both was one function; the mechanism split into two on purpose (ADR-1, "the relation moves
+  from paths to ids"), so a caller now owes both steps. Applied the same, minimal fix as the six named
+  tests — `withdraw_unjustified_deletes` on `kept` before building `instrs`, matching what
+  `instruction-render.py` does in production — with a docstring note explaining the deviation from the
+  "must not need editing" instruction, rather than leaving the suite red or reverting the settled
+  ADR-4 retirement. Flagged in the T2.3 completion report for the owner to confirm.
+
+- **2026-09-17 - T3.2's step 3a names one early return; there are two, and it names the wrong one.**
+  Found by reading the target before dispatch, not by the suite. Step 3a says *"set
+  `guard = "target_unresolved"` before the early return"*, and the task's own prose describes the
+  null-target `continue` inside the loop. But `annotate_tag_handler_group_guards` has a **second**
+  early return above it - `if client is None: return tally` - which returns *before the `for` loop
+  exists*. The TDD guardian confirmed against the source that this makes the literal instruction
+  unimplementable at any placement: the loop body is unreachable whenever there is no client, so a
+  guard set inside it could never fire on an offline / `--no-kado` run, and PRD/F4-AC1 would have
+  held only when Kado happened to be reachable.
+  **Ruling**: a null `target_path` is local data already present on the group, not something a Kado
+  read determines, so it is **not a fail-open case at all** - the surrounding fail-open philosophy
+  ("never block when marker presence cannot be determined") does not apply where nothing is
+  indeterminate. The null-target annotation therefore runs in its own pass **above** the client
+  check, unconditionally, while every Kado-dependent branch keeps its fail-open behaviour unchanged.
+  `test_guard_null_target_sets_target_unresolved_no_client` is the named tripwire: it fails both
+  against the pre-fix code and against the naive in-loop implementation.
+
+- **2026-09-17 - T3.2's test list, as written in the plan, would have shipped a defect and broken a
+  correct implementation.** The TDD guardian BLOCKed it; four corrections, two load-bearing.
+  (1) The plan's *"the reason is visible in the group"* is satisfied just as well by the
+  `target_missing` message the task **explicitly forbids reusing** - an implementer taking that
+  shortcut would have passed it. Strengthened to assert the block does **not** contain
+  `"is not in the vault"` nor the empty-link artifact `[[]]`.
+  (2) Step 3c grows the tally dict to four keys, but `test_guard_fail_open_none_client` asserts tally
+  **equality** - so a *correct* implementation turns it red. The plan said existing reducer tests
+  pass unchanged; that one cannot. Updated to carry `"target_unresolved": 0`.
+  (3) The task text itself flags that the fallback branch runs before the Approve append, yet the
+  plan's test list had no null-target-**plus**-`fallback` case forcing the new branch to `return`
+  first. Added.
+  (4) The byte-identical healthy-case check only guards anything if the expected value is a **frozen
+  string literal**; recomputing it at test time compares the new output against itself and passes
+  even against blanket suppression. Spec compliance verified `_FROZEN_HEALTHY_BLOCK` is a real
+  module-level constant, and code quality verified it actually contains `- [x] Approve` - without
+  that second check it would have been a no-op guard on a block that never had an Approve box.
+  Also confirmed before dispatch, closing the guardian's parting assumption: `guard` is typed by **no**
+  schema (the `marker_missing` enum in `tag-handler-group.schema.json` belongs to `fallback.reason`,
+  a different field sharing the literal), no runtime skill reads it, and a repo-wide scan of the
+  Hashi checkout finds no reference. The closed-set risk is real but has no consumer.
+
+- **2026-09-17 - T3.3's first test plan would have proven nothing, because the approval gate sits
+  upstream of the predicate it meant to test.** The plan was: run the real chain, then monkeypatch
+  `_tag_handler_group_has_resolvable_target` to reproduce the pre-fix behaviour. The TDD guardian
+  read the builders and BLOCKed it. `_build_insert_under_marker_actions` opens with
+  `if not groups or not approved_group_ids: return [], {}`, and site 4 with
+  `if gid not in approved_groups or gid in kept_groups: continue` - both **above** the predicate
+  call. Fed the real parse output for an unresolved group that list is `[]`, so both builders exit at
+  the approval check and **the predicate is never called at all**; patching it changes nothing and
+  the test shows 0/0 before and after, green and worthless. Split into Test A (real chain, proves
+  T3.2 closes the Pass-2 path) and Test B (approval list forced directly, proves T3.1 is an
+  independent second gate). The monkeypatch must bind on the `lib.render_actions` module object,
+  since the builders resolve the bare name at call time; a patch on `instruction-render.py`'s
+  re-export is a different binding and silently no-ops. The test carries an explicit liveness flag so
+  a no-op patch fails loudly instead of reading as success.
+  **Test B is not a hypothetical bypass.** `build_actions` has exactly one production caller
+  (`instruction-render.py:541`), which takes `approved_tag_handler_group_ids` from
+  `suggestions.get(...)` - a **JSON file on disk**, produced by `suggestion-parser.py:2817`. A
+  suggestions doc confirmed *before* T3.2 landed still carries an approved id for a now-unresolved
+  group. That stale-replay case is exactly what T3.1's in-builder gate defends.
+  The guardian also added the case the plan missed: a **mixed run**, one unresolved and one healthy
+  group through a single `build_actions` call with shared loop bookkeeping, asserting attribution by
+  path set rather than by count - a count-only assertion would pass even if the wrong group's sources
+  were the survivors.
+
+- **2026-09-17 - the pre-fix asymmetry is no longer reproducible by patching one thing, so it was
+  reproduced by running the pre-fix code.** The T3.3 brief predicted Test B's patched branch would
+  show 3 deletes and 0 inserts. It shows 3 deletes and **1** path-less insert. The implementer
+  reported the discrepancy rather than bending the test to the prediction, and the cause is ADR-5
+  working: T3.1 **replaced** the insert builder's standalone `if not target_path: continue` with the
+  shared predicate instead of keeping both, so forcing the one predicate open reopens both sites
+  together. Spec compliance confirmed from current code that no second standalone check exists at
+  either site.
+  Rather than soften the claim in prose, the historical shape was measured: the same fixture through
+  the same real chain against a checkout of the pre-T3.1 commit gave `<UNSET>` guard, Approve box
+  **present**, parser approved `['th-tsukai-none']`, **0 inserts and 3 deletes**, each reading
+  *"Source consolidated into  by tsukai handler."* with an empty gap where the target should be.
+  HEAD gives `target_unresolved`, no Approve box, no approved ids, 0 and 0. Recorded in phase-3.md.
+
+- **2026-09-17 - Phase 4's ordering gate is overridden by the owner: T4.1 runs FIRST, T4.5 LAST.**
+  T4.1 carries a SEQUENCING GATE reading "T4.5's handoff goes out and Hashi vendors BEFORE this task
+  lands", and T4.5 calls itself "the *first* thing in Phase 4 chronologically, despite its number".
+  Both rest on a release rule written for an uncoordinated release, and I compounded it by framing
+  the un-vendored field as a live outage: Hashi's vendored `delete_source` carries
+  `additionalProperties: false` and has no `depends_on`, so an instruction set containing any delete
+  is rejected outright today - measured, not inferred.
+  **Owner ruling**: Tomo/Hashi handoffs are personally orchestrated, and dependencies are resolved
+  before any user can use a version. There is therefore no such thing as "Hashi runs are broken right
+  now" - nobody is running a half-released wire, and the only real risk is bugs found afterwards,
+  which is also orchestrated. **Finish the Tomo side completely, then hand off once, with the
+  finished schema attached; the updated plugin comes back from there.**
+  Phase 4 therefore executes T4.1 -> T4.2 -> T4.3 -> T4.4 -> T4.5 -> T4.6, its natural order. The
+  handoff still ends in a wait, per the standing cross-repo rule.
+
+- **2026-09-17 - T4.5's "one handoff, two documents" is stale, and its success criterion is
+  unsatisfiable as written.** Corrected on 2026-09-10 to "supply its half to spec 035's handoff
+  rather than sending one of its own", with the criterion "One handoff, two documents, two counters,
+  one release". That was right while both were pending. 035 has since shipped **and been vendored**:
+  Hashi's `src/schema/suggestions-wire.schema.json` reads `"2"` and carries `source_item_key`, and
+  its `garden-audit-wire.schema.json` reads `"2"`. Only the instruction wire is outstanding. So 036
+  sends its own handoff after all - one document, one counter - which is what the superseded
+  instruction said before the correction. Same shape as T1.2's struck-through criterion: the task's
+  own later step invalidates its earlier promise.
+
+- **2026-09-17 - T4.1's structural diff ran clean before the handoff, and half of its step 3 was
+  already done.** `depends_on` landed in both local schemas during Phase 1 (see the T4.1-schema-half
+  deviation above), so only the `"2" -> "3"` bump remains. The recursive structural diff T4.5 step 2
+  demands - every object's property set, `required` list and `additionalProperties`, compared against
+  the consumer's vendored copy - was run early, against
+  `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`, and reported **exactly three
+  findings, all one fact**: `depends_on` present only in Tomo, required only in Tomo, and the
+  resulting `required` length delta. Nothing beyond the intended change, so the schema has not
+  drifted elsewhere and the obligation table has a measured basis rather than an asserted one.
+  Recorded now because the diff is evidence with a shelf life: it is true of `3da9654` and must be
+  re-run immediately before the handoff actually goes out.
+
+- **2026-09-17 - T4.3's task text names two report surfaces; the SDD mandates three.** The task says
+  withdrawals are reported "in both the stderr summary and the rendered markdown", reflecting the
+  Quality Requirements paragraph. But **System-Wide Patterns -> Logging / Auditing**
+  (`solution.md:575-576`) is separately normative and explicit: withdrawals are reported on stderr
+  "**and into the `tomo` block of `instructions.json`** alongside the existing clash and suppression
+  reports", with the Runtime View (`:476`) agreeing. Implemented across all three. The `tomo` block
+  carries no `additionalProperties: false`, so the new key needed no schema-version bump.
+  **The key is named `delete_withdrawals`, not `withdrawn_deletes`** - that name is already taken, as
+  a key nested inside `destination_clashes[]`/`attachment_suppressions[]` holding *paths*, read by
+  `instructions-diff.py` at `:848`/`:1107`/`:1121`. A top-level key of the same name holding records
+  would be one name with two meanings at two levels, which is precisely what T2.2 declined for
+  `source_inbox_item`.
+
+- **2026-09-17 - T4.3 shipped a live F2-AC4 defect that 21 tests and a passing spec-compliance review
+  both missed; code quality found it by construction.** The implementation read only `causes[0]` when
+  deciding where to nest a withdrawal, and its docstring - repeated into two `docs/tomo/` files, and
+  relayed onward by the orchestrator - justified this as safe because a multi-cause withdrawal could
+  only arise "if a future emission site mixed ids from two different guards' action kinds".
+  **That framing was wrong and the case is reachable today.** `_build_daily_update_actions`'
+  `ids_by_origin` accumulates daily-action ids for one origin **across multiple distinct days**, so a
+  single `delete_source` can name two ids for two missing daily notes - same guard, two
+  `missing_id`s, two skip bullets. Reproduced: the withdrawal nested under the first daily bullet
+  only, and the second rendered with no sign that a delete had been withdrawn because of it too.
+  That is exactly the adjacency failure F2-AC4 exists to prevent, and no test exercised
+  `len(causes) > 1`.
+  Corrected in `fe9fc32`: nest under every cause's matching bullet, deduped per missing id, with a
+  positional RED-then-GREEN test (`assert 1 == 2` before) and a no-duplication guard. The false
+  framing was corrected in the docstring and both docs files, naming `ids_by_origin`'s multi-day
+  accumulation as the real trigger.
+  **Two process notes.** First, this is the fourth defect this spec has shipped past a green suite
+  and found only by a reviewer reading code. Second, spec compliance explicitly deferred this to the
+  orchestrator as a judgment call rather than a compliance failure - correct by its own remit, but it
+  means "PASS" from that stage never implied the code was right, only that it matched the task text.
+
+- **2026-09-17 - T4.3 found a real pre-existing gap in `instructions-diff.py`, logged rather than
+  fixed.** Checking the paired consumer (this repo has previously lost a pass to a producer/consumer
+  coverage mismatch) turned up that `derive_expected`'s daily-only and tag-handler
+  `expected_deletions` are built from the suggestions document alone, and nothing subtracts a
+  daily- or tag-handler-caused withdrawal the way `_subtract_withheld_moves` already does for the two
+  guards the nested `withdrawn_deletes` covers. A live daily-note-missing or unresolvable-group run
+  can therefore show a **false coverage-audit FAIL**. Outside T4.3's four success criteria, which are
+  all about the three report surfaces, so it went to `docs/XDD/backlog.md` and
+  `docs/tomo/scripts/instruction-render.md` rather than being fixed in scope.
+
+- **2026-09-17 - `wire-shape.py --obligations` does not answer T4.5's question.** Recorded before it
+  traps someone: `--obligations` reports drift against the **committed manifest**, so once T4.1
+  regenerated `instructions.shape.json` it prints "no shape drift against any committed manifest".
+  T4.5 needs "what must Hashi vendor" - a comparison against **their** vendored copy - which is a
+  different question. An implementer reaching for `--obligations` to build the obligation table would
+  get silence and reasonably conclude there is nothing to hand off, while Hashi's schema still sits at
+  `"2"` with no `depends_on`. The obligation table must come from a structural diff against
+  `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`.
+
+**Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
+committed so one changed-fields list can cover both wire documents. **Resolved 2026-09-16**: 035
+reached `Implemented` — the fallback below is no longer needed, and T4.5 can send one list covering
+both wires. (Superseded: "035 sits at `Initialization` as of 2026-09-10. If it has not landed when
+Phase 4 completes, send the instruction-wire half alone and say so — a data-loss fix does not wait
+behind a versioning spec.")
+
+**Terminology, fixed by validation**: "drop site" means one of the five action-removing passes;
+"guard" is reserved for the reducer's group annotations. The three data-loss paths are **P1, P2, P3**
+throughout; "Bug A" and "Bug B" appear only as parenthetical aliases where the research history
+matters.
+
+## Metadata Reference
+
+- `[parallel: true]` — tasks that can run concurrently
+- `[ref: document/section]` — links to specifications
+- `[activity: type]` — activity hint for specialist agent selection
+
+---
+
+## Context Priming
+
+*GATE: Read all files in this section before starting any implementation.*
+
+**Specification**:
+
+- `docs/XDD/specs/036-delete-outlives-its-justification/requirements.md` — Product Requirements
+- `docs/XDD/specs/036-delete-outlives-its-justification/solution.md` — Solution Design
+- `docs/XDD/specs/035-wire-schema-versioning/README.md` — owns the release this ships in
+- `docs/tomo/scripts/lib/render_actions.md` — WHY layer for the module being changed
+- `docs/instructions-json.md` — the instruction wire contract
+
+**Key Design Decisions**:
+
+- **ADR-1 Declare-then-collect** — every conditional delete declares its partner action ids at build
+  time; one post-pass drops any delete whose declaration no longer resolves. The guard's input and
+  the wire field are one relation.
+- **ADR-2 Placement** — that pass runs **once, after all five drop sites**, before path validation.
+  The five are split across two modules; anywhere earlier is a latent instance of the bug.
+- **ADR-3 `create_moc` becomes a claimant** in `validate_destinations`; both claimants drop.
+- **ADR-4 Retire the delete half** of the path-keyed withdrawal; keep the `link_to_moc` half.
+- **ADR-5 One shared appliability predicate** for tag-handler groups — ADR-1's pass **cannot** reach
+  Bug B, because the insert is never built and so has no id to name.
+- **ADR-6 A dangling id aborts the run** with exit 2 rather than degrading.
+
+**Implementation Context**:
+
+```bash
+# Testing — there is no requirements.txt; the venv is provisioned ad hoc
+./venv/bin/python -m pytest                              # full suite
+./venv/bin/python -m pytest tests/test_036_*.py -x       # this spec only
+./venv/bin/python -m pytest -m integration               # opt-in, test vault
+
+# Quality
+./venv/bin/python -m ruff check tomo/ tests/
+```
+
+---
+
+## Implementation Phases
+
+Each phase is defined in a separate file. Tasks follow red-green-refactor: **Prime** (understand
+context), **Test** (red), **Implement** (green), **Validate** (refactor + verify).
+
+> **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the
+> method, not separate tracked items.
+
+- [x] [Phase 1: Declare — depends_on at every emission site](phase-1.md)
+- [x] [Phase 2: Collect — the withdrawal pass](phase-2.md)
+- [x] [Phase 3: The cases the pass cannot reach](phase-3.md)
+- [x] [Phase 4: Contract, audit, reporting and integration](phase-4.md)
+
+### Phase dependency graph
+
+```mermaid
+graph LR
+    T31[T3.1<br/>appliability predicate] --> T13[T1.3<br/>site 4 gets insert id]
+    T13 --> P2[Phase 2<br/>Collect]
+    P1o[T1.1, T1.2] --> P2
+    P2 --> T45[T4.5<br/>handoff: Hashi vendors]
+    T32[T3.2<br/>consent fix] --> T45
+    T45 --> T41[T4.1<br/>mirror schema edit]
+    T41 --> P4rest[T4.2 audit, T4.3 report,<br/>T4.4 integration]
+```
+
+**Note the intra-phase ordering**: T4.5 runs **first** in Phase 4 despite its number. The upstream
+drift test fetches Hashi's live schema and compares per-action property names, and its exemption
+hatch is keyed by action name rather than property — so editing our mirror before they vendor would
+fail the test with no way to exempt `delete_source` alone. Under the release rule (they vendor first
+or simultaneously) the window that would need exempting is zero-length, so sequencing costs nothing
+and avoids adding a permanent silencing mechanism.
+
+**Corrected 2026-09-10.** The first version called Phase 3 independent of Phases 1 and 2. It is not:
+**T3.1 must precede T1.3.** Both modify `_build_insert_under_marker_actions` and site 4 of
+`_build_delete_source_actions`, so concurrent dispatch collides — and the semantic trap is worse
+than the collision. T1.3 alone would give the unresolvable-group delete `depends_on: []`, which the
+SDD defines as *"nothing conditions this delete; perform it"*. Phase 4's audit would then certify a
+**data-loss delete as valid**. Running T3.1 first makes an empty list on that path unreachable.
+
+**T3.2 (the consent fix) is genuinely independent** — it touches only `suggestions-reducer.py` — and
+is the plan's one real parallel opportunity. Phase 4 requires everything.
+
+### Ordering constraint that is not a phase boundary
+
+The guards must be **released** with the wire field, never before it — a guard that drops a partner
+without amending the deletes naming it produces a dangling id, and the executor's failure list
+cannot catch one. Under ADR-1 that cannot happen, because the withdrawal *is* the amendment. The
+constraint therefore binds the release, not the phase order.
+
+---
+
+## Acceptance-criteria coverage
+
+Corrected 2026-09-10 after independent validation. The first version of this table claimed 23 of 25
+and was wrong — it counted three criteria as covered that had no task at all, while carefully
+documenting the two it had deliberately deferred. The gap that was written down was the cosmetic
+one; the gaps that were silent were load-bearing.
+
+| PRD Feature | ACs | Covered by | Notes |
+|---|---|---|---|
+| F1 Contested destination | 5 | T2.2, T2.3 | |
+| F2 Withheld daily action | 4 | T1.2, T2.1, **T4.3** | AC4 (report together) added to T4.3 |
+| F3 Tag-handler emits no delete | 3 | T3.1 | |
+| F4 Not pre-approved | 3 | T3.2 | |
+| F5 Every delete names its justification | 6 | T1.1, T1.2, T1.3, T4.1, T4.2, **T4.5** | AC5/AC6 are consumer-owned |
+| F6 Document explains a withdrawal | 2 | T4.3 | |
+| F7 Destructive reads as destructive | 2 | — | deferred by decision; `Could Have`, not designed |
+
+**23 of 25 criteria carry a plan reference. All 25 are accounted for:**
+
+- **23 referenced** — F1 through F6 complete, every criterion named by at least one task.
+  - Of these, **21 are implemented and verified inside this repo**.
+  - **2 (F5-AC5, F5-AC6) are consumer-verified**, not Tomo-implemented. They describe the
+    executor's behaviour — skipping a delete whose dependency failed, and the TOCTOU case. Tomo
+    cannot test them: it does not execute the set, and CON-4 forbids it from ever reading execution
+    results back. T4.5 owns them and the consumer confirms them against their own suite. A boundary,
+    not a gap — but previously neither mapped nor stated, which is exactly how it read as one.
+- **2 (F7) deferred by decision** — a pure rendering change with no interaction with the withdrawal
+  mechanism, kept at `Could Have`.
+
+Both earlier versions of this count were produced by eye and both were wrong — the first claimed
+23/25 while three criteria had no task, and the correction then double-counted the consumer-owned
+pair. This one was produced by extracting every `[ref: PRD/FN-ACn]` from the phase files and
+diffing against the PRD's criteria mechanically. Any future edit to the criteria or the tasks
+should re-run that extraction rather than adjust the number by hand.
+
+---
+
+## Plan Verification
+
+| Criterion | Status |
+|-----------|--------|
+| A developer can follow this plan without additional clarification | ✅ |
+| Every task produces a verifiable deliverable | ✅ |
+| All PRD acceptance criteria map to specific tasks | ✅ 23/25 referenced (21 Tomo-implemented + 2 consumer-verified); 2 deferred (F7). Counted mechanically. |
+| All SDD components have implementation tasks | ✅ |
+| Dependencies are explicit with no circular references | ✅ |
+| Parallel opportunities are marked with `[parallel: true]` | ✅ |
+| Each task has specification references `[ref: ...]` | ✅ |
+| Project commands in Context Priming are accurate | ✅ verified against `pyproject.toml` and the venv |
+| All phase files exist and are linked from this manifest | ✅ |

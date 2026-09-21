@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.14.1
+# version: 0.15.0
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -523,6 +523,32 @@ placeholder, e.g. `"Detected from daily notes."`).
 
 4. On non-zero exit: **stop and report**. The schema validator will tell you
    exactly which field/path is wrong.
+
+5. The writer prints a `preserved N curated tracker value(s)` line on stderr when
+   it carried keywords, `active` or `enabled` forward from the config. Surface
+   that line verbatim — it tells the user their configuration survived a
+   rediscovery.
+
+# STRICT — never put positive_keywords, negative_keywords, active or enabled in the JSON you write.
+# Why: rediscovery cannot know them, and supplying a value suppresses the writer's preservation of the real one.
+
+6. **Keyword check.** Re-read `config/vault-config.yaml` after the write. Unless
+   `trackers.enabled` is `false`, collect every tracker field whose `active` is
+   not `false` and whose `positive_keywords` is empty or absent.
+
+   For each such field the matching rule can never fire — it reads
+   `positive_keywords` and nothing else. Report them the same way Step 8 reports
+   a missing template, with **AskUserQuestion**:
+
+   - Question: "N tracker fields have no keywords and can never match."
+   - Options:
+     - **Run the tracker wizard** — invoke `tomo-trackers-wizard` to fill them.
+     - **Switch those fields off** — set `active: false`, keeping the definitions.
+     - **Turn trackers off entirely** — set `trackers.enabled: false`.
+     - **Skip** — leave as is; the check repeats on the next run.
+
+   If every active field has keywords, log `trackers OK: N active, all matchable`
+   and ask nothing.
 
 ### Step 8 — Template Check
 

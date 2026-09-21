@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.1
+# version: 0.23.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -39,6 +39,7 @@ import yaml
 from lib.doc_frontmatter import build_tomo_block
 from lib.profile_conventions import marker_word, resolve_conventions
 from lib.render_md import compute_garden_audit_digest, unwrap_list_repr
+from lib.wire_version import wire_schema_version
 from lib.target_suggest import (
     suggest_dead_link_targets,
     suggest_file_under_mocs,
@@ -1280,7 +1281,7 @@ def build_wire_payload(d: dict) -> dict:
         wire_findings.append(wf)
 
     payload: dict = {
-        "schema_version": "1",
+        "schema_version": wire_schema_version("garden-audit-wire.schema.json"),
         "generated": d["generated"],
         "run_id": d["run_id"],
         "profile": d.get("profile"),

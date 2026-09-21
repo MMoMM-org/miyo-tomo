@@ -1,6 +1,6 @@
 #!/bin/bash
 # reset-tomo-tmp.sh — Reset the tomo-tmp/ working directory in an instance.
-# version: 0.3.0
+# version: 0.4.0
 #
 # tomo-tmp/ accumulates state across /inbox phases. This script resets
 # to a clean state before a specific phase, so you can re-run from that
@@ -170,6 +170,10 @@ reset_pass1() {
     # prior run would otherwise leak into the next suggestions doc)
     remove "$INSTANCE_TMP/tag-handler-groups"
     remove "$INSTANCE_TMP/tag-handler-group-stubs.json"
+    remove_glob "$INSTANCE_TMP/compose-payload-*.json"
+
+    # Attachment resolution (per-run, keyed on the inbox as it was)
+    remove "$INSTANCE_TMP/resolved-attachments.json"
 
     # Suggestions docs (local copies)
     remove "$INSTANCE_TMP/suggestions.md"

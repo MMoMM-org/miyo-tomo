@@ -69,7 +69,7 @@ def _confirmed_entry(*, source_path) -> dict:
 
 def _instructions_envelope(actions: list[dict]) -> dict:
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-09-05T12:00:00Z",
         "profile": "miyo",
@@ -94,9 +94,17 @@ def test_move_asset_instruction_set_validates_against_the_schema():
     validate(instance=_instructions_envelope(actions), schema=schema)
 
 
-def test_schema_version_is_unchanged():
+def test_schema_version_const_matches_current_wire_version():
+    """Pins the schema's schema_version const to the current instruction wire version.
+
+    Spec 031 originally asserted this stayed "2" — that "unchanged" guarantee
+    was local to spec 031's own scope, not a permanent freeze. Spec 036 T4.1
+    has since bumped the instruction wire schema_version "2" -> "3" for an
+    unrelated reason (delete_source's new required depends_on), so this test
+    tracks the current const rather than asserting it never moves again.
+    """
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    assert schema["properties"]["schema_version"] == {"const": "2"}
+    assert schema["properties"]["schema_version"] == {"const": "3"}
 
 
 def test_zero_delete_source_actions_reference_an_attachment_path():

@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.2.3
+# version: 0.3.0
 
 ## When to Activate
 
@@ -77,7 +77,7 @@ For each stub at index `<i>`:
   - `composed_block`: the merged block from step 3
 - Optional (include when the group stub supplies them / when known):
   - `placement`: from stub
-  - `compose_mode`: `"llm_directive"` if compose was a string; `"field_template"` if compose was an array
+  - `compose_mode`: from stub, verbatim. # STRICT — copy it; never derive it yourself. Why: both values pass the schema and nothing reads the field, so a wrong one is never caught.
   - `output_format`: from stub, when the stub had one
   - `resolved_anchor`: the `{type, value, placement}` from the compose output, verbatim, when its `status` was `"ok"`
   - `fallback`: `{ "reason": <reason> }`, ONLY when the compose output `status` was `"fallback"`

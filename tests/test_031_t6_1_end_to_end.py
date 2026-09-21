@@ -262,7 +262,7 @@ def _manifest_from_confirmed(confirmed: list[dict]) -> list[dict]:
 
 def _instructions_envelope(actions: list[dict]) -> dict:
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-09-06T12:00:00Z",
         "profile": "miyo",

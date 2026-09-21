@@ -912,3 +912,105 @@ from its own instruction set.
 mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2026 (MOC)` in the
 failure line. That was a rendering artefact of its own terminal — no `&amp;` exists anywhere in
 the artefacts or the vault. Reproducing the audit directly is what showed the real cause.
+
+## CLOSED — `instructions-diff.py`'s coverage audit doesn't reconcile spec 036's daily/tag-handler withdrawals
+
+**Recorded 2026-09-17** during spec 036 T4.3 (withdrawal reporting), as the required
+`instructions-diff.py` paired-consumer check for the new `tomo.delete_withdrawals` key. Not fixed
+in T4.3 — out of that task's scope (its success criteria are the three report surfaces: stderr,
+the `tomo` block, and markdown; none is the coverage audit) and not caused by it.
+
+`derive_expected` builds `expected_deletions` for a daily-only origin (an accepted daily entry
+naming no confirmed note) and for a tag-handler group's sources from the **suggestions document
+alone** (Pass 1) — before the renderer ever runs a guard. Before spec 036, that was safe: a
+daily-only delete whose daily note turned out missing was still **emitted** (the Problem
+Statement's P2/Bug A), so the audit's expectation and the renderer's output agreed, if wrongly —
+the bug was silent data loss, not a false audit FAIL. Spec 036 Phase 2/3 fixed the emission
+(`withdraw_unjustified_deletes` now withdraws that delete), which is correct, but nothing
+subtracts the newly-withdrawn delete from `expected_deletions`/`counts["delete_source"]` the way
+`_subtract_withheld_moves` already does for `destination_clashes`/`attachment_suppressions`
+(reading the pre-existing nested `withdrawn_deletes` path list). The same gap applies to F3
+(a tag-handler group with an unresolvable `target_path` now emits zero deletes, per T3.1/ADR-5,
+but `derive_expected`'s tag-handler block still expects one per source unconditionally).
+
+**Net effect**: a live `/inbox` run that hits a daily-note-missing or unresolvable-tag-handler-group
+case can show `RESULT: FAIL — count or coverage mismatch` on an instruction set that is actually
+correct — the same failure class `_subtract_withheld_moves`'s own docstring describes for the
+guard it does cover ("the conductor's STRICT stop halts the run with a message that misdiagnoses
+the guard as drift").
+
+**What closing this needs**: a subtraction reading `tomo.delete_withdrawals` (spec 036 T4.3) —
+generically, by `source_path`, across every cause — to prune `expected_deletions` the same way
+`_subtract_withheld_moves` does today for the two guards it already covers; likely one function
+replacing (or added beside) `_subtract_withheld_moves`, since `delete_withdrawals` already
+generalises across all five drop-causing guards where the nested `withdrawn_deletes` only ever
+covered two. See `docs/tomo/scripts/instruction-render.md`'s "T4.3 —
+`tomo.delete_withdrawals`" entry for the full shape of the new key.
+
+**Closed 2026-09-18** by `3c8170c`, which added `_subtract_withdrawn_deletes` to
+`instructions-diff.py` — the generic, `source_path`-keyed subtraction across every cause that the
+paragraph above asks for, guarded against double-subtracting the clash/suppression withdrawals
+`_subtract_withheld_moves` already removed. Found still marked OPEN during spec 036 T4.6
+traceability; the fix shipped, the entry was never re-marked.
+
+## CLOSED — an `after-<action>` hook fires on a FAILED action and mutates an innocent note
+
+**Found 2026-09-21** during the spec 036 live validation, run `tomo-hashi-run-log_2026-09-21T1150`.
+
+`I01 move_note` failed against an occupied destination (Hashi's collision guard, correctly refusing
+to clobber). The run log nonetheless records on that same failed row:
+
+```
+hook note: after-info: alias -> "Zettelkasten-Nummerierung kodiert Verzweigung, nicht Chronologie (HASHI)"
+```
+
+The occupant — a note that merely happened to sit at the destination, with no relationship to the
+run — came out of it with an `aliases:` entry naming a note that was never moved there. Its body was
+untouched, so Hashi's F5-AC6 guarantee ("the squatter's content ... unchanged") holds as written;
+the frontmatter is outside that wording.
+
+**Originally recorded as "two separable causes, one ours" — that apportionment was wrong, and the
+consumer corrected it in our favour.** Their `docs/hooks.md` has stated since v0.1 that
+`after-<action>.cjs` *"runs after the action's handler **succeeds**"*. Our hook was written to that
+published contract; the contract was right and their executor did not honour it. Nor was there a
+field we ignored — `HookContext` is `{action, app, logger}`, with no outcome, documented or
+otherwise, so no author could have guarded on it even suspecting the truth.
+
+Their own account of how it survived review is worth keeping: a handler that **threw** hit a
+`continue` and never reached the after-hook, while one that **returned** `{kind: "failed"}` fell
+through and fired it — two failure modes, two behaviours, neither pinned by a test, under a comment
+reading "runs regardless of handler outcome" that looked like intent.
+
+**Closed 2026-09-21 by the consumer** (`7f0f079`, PR #137). After-hooks are now gated on the same
+condition that graduates an action to `applied: true`: they run for `applied` and `skipped-already`,
+are skipped for `failed`, and never dispatch for `skipped-dependency` or `skipped-cancelled`. The
+invariant is now **"if a hook ran, the change is on disk"**, so a hook never needs an outcome guard.
+
+**Do NOT add an outcome guard** to `tomo/dot_claude/skills/hashi-hook-author/` or to the vault's
+`.tomo-hashi/hooks/*.cjs`. The consumer asked for this explicitly: such guidance would document
+their bug as a rule for our authors, and the guard would be dead code against a contract that once
+again holds. They declined to add an `outcome` field to the hook context for the same reason — it
+would leave every hook already in a vault a footgun. If a hook that deliberately observes failures
+is ever wanted, it is an explicit request to them, not a side effect to rely on.
+
+## OPEN — run logs are kept out of Pass 1 by a prompt line, not by the triage
+
+**Found 2026-09-21** while checking whether a known trap was still live. It is.
+
+Hashi's run logs carry `tomo_skip_inbox_analysis: true`, and `tomo/dot_claude/agents/
+inbox-analyst.md:97` honours it. But `inbox-triage.py` has no knowledge of the flag — a repo-wide
+grep finds it only in `garden-audit-render.py`, `suggestions-reducer.py` and that one agent line.
+Triage selects Tomo documents with `search_by_frontmatter("tomo.doc_type=...")`, and a run log
+carries no `tomo.doc_type` at all, so it is not recognised as a Tomo document and lands in
+`fresh_sources` like any ordinary note.
+
+**Net effect**: the only thing standing between a run log and being analysed as a source note is an
+LLM following one line of its agent definition. It has failed before — two Pass 1 runs were
+previously polluted with `unreadable_result` from exactly this. Two run logs are sitting in the test
+vault's inbox as of this entry.
+
+**What closing this needs**: teach `inbox-triage.py` the flag so the exclusion is deterministic,
+rather than leaving a data-quality guard to prompt adherence. Directly relevant to
+[#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue
+is about, caught doing real work.
+

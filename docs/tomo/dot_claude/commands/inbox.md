@@ -43,3 +43,27 @@ WHY: `--pass2` re-runs the synthesize phase but only for approved docs that are 
 Implementation: `determine_action` checks `--pass2` BEFORE the bare-`--force` branch, so `--pass2 --force` synthesizes (does not divert to suggest even when new sources exist); the captured-fold in `discover` is gated `force_all and not force_pass2` so `--pass2 --force` never re-intakes captured sources; and the work-list trim is skipped whenever `force_all` is set so all approved docs survive. `--recover` remains as a named convenience equivalent to `--pass1 --force`. The split exists because predictable recovery must be autonomous — the user picks "redo what changed" vs "redo all of a phase" vs "full rebuild" without Tomo having to ask.
 
 WHY (drift baseline): drift is detected by comparing a recorded source checksum against the current doc. Both sides hash the doc BODY only (`lib.doc_frontmatter.body_after_frontmatter`), because `state-promoter` mutates the doc's `tomo:` frontmatter (state → approved, updated_at) after rendering. A frontmatter-inclusive hash would make every covered doc read as drifted on the next run, defeating coverage. Hashing the body means "drift" reflects a real content edit (approval, placement, item changes). This was inert until coverage came alive (#74) — empty `tomo.sources` meant detect_drift never ran.
+
+## Why IMPERSONATE is defined at the routing table
+
+The routing table has always said `IMPERSONATE suggestion-conductor`, and the
+rule explaining what that word means sat at the very bottom of the file, past
+the `Exit.` of the idle branch — roughly seventy lines after the decision it
+governs.
+
+A runtime file is read line by line as the work proceeds. On 2026-09-14 the
+command reached the table, saw an unfamiliar verb next to an agent name, and
+did the obvious thing: `Agent(subagent_type: "suggestion-conductor")`. Four
+records later it caught itself — *"the routing table calls for impersonating
+… let me stop that dispatch"* — and killed the task. By then the subagent had
+loaded all seven of its skills, deleted `tomo-tmp/items` and drawn a RUN_ID.
+
+The definition now sits directly under the table, with its counterpart for
+DISPATCH beside it. The trailing block was deleted rather than left in place:
+two statements of the same rule in one file is the state that let this one go
+stale at a distance from what it governs.
+
+Both halves are stated, not just the one that failed. A rule that names only
+the exception reads as a special case; naming both makes `Agent()` for the
+conductor and no-`Agent()` for the synthesis path a single distinction the
+reader can apply.

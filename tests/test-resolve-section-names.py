@@ -749,7 +749,7 @@ def test_before_multiline_validates_against_schema():
         (REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text()
     )
     doc = {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-06-13T00:00:00Z",
         "profile": "miyo",
@@ -1115,7 +1115,7 @@ def test_honored_anchor_schema_compliance():
 
     # The full instruction document must pass jsonschema validation.
     doc = {
-        "schema_version": "2",
+        "schema_version": "3",
         "type": "tomo-instructions",
         "generated": "2026-06-15T00:00:00Z",
         "profile": "miyo",

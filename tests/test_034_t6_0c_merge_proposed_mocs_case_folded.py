@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t6_0c_merge_proposed_mocs_case_folded.py — spec 034 T6.0c.
 
 `_merge_proposed_mocs_by_name` collapses approved Proposed MOCs that resolve to
@@ -11,8 +11,9 @@ parent kept). It keyed `merged[name]` on the EXACT title, so `Travel (MOC)` and
 That mismatch is what this module pins. `derive_expected` counts one expected
 create_moc per confirmed item with no destination comparison, so the audit read
 `expected=2 actual=1 [DIFF]` plus a `[MISSING]` per-item row, both of which set
-`hard_fail` — and `synthesis-conductor.md` step 3e is STRICT about stopping on a
-diff. Folding the merge key removes the case-only pair before any consumer sees
+`hard_fail` — and `synthesis-conductor.md` step 3c (the coverage audit) is
+STRICT about stopping on a diff. Folding the merge key removes the case-only
+pair before any consumer sees
 it, so `by_dest`'s fold becomes the defence-in-depth its own comment claims and
 the audit completes.
 
@@ -375,8 +376,8 @@ def test_derive_expected_counts_one_create_moc_and_the_audit_completes(tmp_path)
     report = buf.getvalue()
 
     assert rc == 0, (
-        "the audit must complete, not hard-fail — synthesis-conductor step 3e "
-        f"is STRICT about stopping on a diff.\n{report}"
+        "the audit must complete, not hard-fail — synthesis-conductor step "
+        f"3c (the coverage audit) is STRICT about stopping on a diff.\n{report}"
     )
     assert "[DIFF]" not in report, report
     assert "[MISSING]" not in report, report

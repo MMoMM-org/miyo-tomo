@@ -393,3 +393,91 @@ four `state-update.py` call sites, and the per-item output filename. Contract-sh
 change (new required input, new required output-path helper) → minor bump.
 `update-tomo.sh` skips unchanged versions silently — the bump is required for the
 edit to ship to the Docker instance.
+
+## Why Step 1 no longer cats the shared context
+
+Step 1 read `cat "<shared_ctx_path>"`. Measured across four runs and 48
+subagents, that produced 45 whole-file reads of a 40 KB document, plus 9
+inline-Python reaches for a single field and 4 whole-file `Read` calls.
+
+The inline reaches are the tell. They asked for `daily_notes`, `tag_prefixes`,
+`placeholder_links`, `classification_keywords` and `asset_folder` — under 12 KB
+of the 40. Subagents were trying to avoid carrying the whole file and had only
+`python3 -c` to do it with, which the conductor forbids and the Bash validator
+refuses on its `#` characters. A prohibition without an alternative is a trap;
+this agent had neither, so it improvised.
+
+Step 1 now calls `scripts/read-shared-ctx.py --fields` with the six keys the
+contract actually names. The byte difference is small — 40705 against 40764,
+being `run_id` and `schema_version` — and that is not what the change buys. It
+buys a sanctioned way to ask for one field, which is what lets the Never-list
+forbid `python3 -c` without stranding the agent.
+
+**What was NOT done, and why.** `candidate_mocs` appears only on
+`create_atomic_note` actions; a run's three pure `update_daily` items carried
+none, having loaded 29 KB of MOC inventory for nothing. Deferring `mocs` to the
+point of use would capture that — but Step 4 matches MOCs *before* Step 7
+assesses worthiness, so the agent cannot yet know. Moving it is a reorder of the
+step sequence with a correctness question inside it (Step 7.5 splits long items
+into threads that are each scored separately, so MOC matching may belong
+per-thread). See `docs/tomo/scripts/read-shared-ctx.md` for the full reasoning.
+
+## Why the word-count gate writes a file first
+
+The gates at 100 and 200 words are thresholds, and an item near one needs a real
+count. In the 2026-09-14 14:31 run a subagent obtained it by embedding the note
+body in a `python3 -c` string.
+
+The count was correct. The problem is where the body went: a Bash command is
+recorded verbatim in the transcript and shown in approval prompts, and note
+content belongs in neither (Constitution L2 — traces carry metadata, not
+content).
+
+Writing the body to `tomo-tmp/items/<stem>.body.txt` and running `wc -w -m` on
+it costs one extra tool call and puts the text nowhere it was not already going:
+`items/*.result.json` carries note content by design, and `reset-tomo-tmp.sh
+--pass1` removes the whole `items/` directory. The reducer resolves each result
+by its expected filename rather than globbing the directory, so the scratch file
+is inert to it.
+
+`wc` was chosen over a new script because it is already exact: on the German
+body that prompted this, `wc -w -m` and Python's `len(s.split())` /`len(s)` both
+return 55 words and 326 characters, em-dash and umlauts included.
+
+## Why Step 1 stops short of the MOC keys
+
+The first version of this change loaded all six contract keys in one
+`--fields` call. It measured 40705 bytes, and the 2026-09-15 run showed what
+that costs:
+
+    Output too large (39.8KB). Full output saved to: …/tool-results/bzyeclmrv.txt
+    Preview (first 2KB): {"mocs":[{"path":"000 Index.md",…
+
+The result spilled to a file. The agent received two kilobytes and a path, and
+three subagents then read that path with the inline Python this contract had
+just forbidden. The prohibition held for `shared-ctx.json` — zero `cat`s, down
+from 45 — and was defeated by a file the contract never anticipated.
+
+This was not a regression. The `cat` it replaced was 40764 bytes and spilled
+the same way; the change simply failed to fix it.
+
+The load is now split so no single call approaches the limit:
+
+    Step 1  daily_notes + classification_keywords + tag_prefixes + asset_folder   7975
+    Step 4  mocs                                                                 29456
+    Step 4  placeholder_links                                                     3247
+
+Smallest spill observed in any transcript: 37.7 KB.
+`tests/test_read_shared_ctx.py::TestOutputSize` pins that floor.
+
+**This is the deferral that was withdrawn a day earlier, adopted for a
+different reason.** It was proposed as a byte saving — load `mocs` only for
+items that produce an atomic note — and withdrawn because Step 4 matches MOCs
+before Step 7 assesses worthiness, so the agent cannot know in time. That
+objection still stands and this change does not answer it: `mocs` is still
+loaded for every item, including the three per run that never read it. What
+changed is that the fetch moved to its point of use, which requires no reorder
+and no behavioural change, and keeps every call under the spill threshold.
+
+The byte saving remains available and remains blocked on the same open
+question — see `docs/tomo/scripts/read-shared-ctx.md`.

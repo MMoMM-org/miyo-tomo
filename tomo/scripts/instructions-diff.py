@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.22.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -50,6 +50,23 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.item_key import derive as _item_key  # noqa: E402
+from lib.render_helpers import WITHDRAWAL_GUARDS  # noqa: E402
+
+# Guards whose withdrawal is already accounted for via destination_clashes[]/
+# attachment_suppressions[]'s own `withdrawn_deletes` list — see
+# _subtract_withdrawn_deletes. A PROPER SUBSET of WITHDRAWAL_GUARDS
+# (render_helpers.py, the documented SSoT for the five guard names), asserted
+# the same way render_md.py validates its own inline-guard subset — a sixth
+# guard added to WITHDRAWAL_GUARDS without a decision here is caught rather
+# than silently falling through the subtraction it needs.
+_CLASH_WITHDRAWAL_GUARDS = frozenset({
+    "validate_destinations",
+    "suppress_moves_for_unfiled_attachments",
+})
+assert _CLASH_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_GUARDS), (
+    "_CLASH_WITHDRAWAL_GUARDS names a guard absent from render_helpers."
+    "WITHDRAWAL_GUARDS — keep the two lists in sync"
+)
 
 # tag-handler-group.py is a hyphenated top-level script; load it via importlib
 # for the stable group_id slug (spec 024 T4.1) — the SAME id the renderer keys
@@ -176,10 +193,12 @@ def _daily_key(entry: dict) -> str:
     """Identity of a daily-update entry for the delete-coverage join (ADR-1).
 
     `_confirmed_key`'s counterpart on the daily side. `source_item_key` is the
-    entry's vault-relative path, restored on BOTH parser paths by
+    entry's vault-relative path: on the wire path it travels on the wire
+    itself (spec 035 F9), on the markdown path it is restored by
     `suggestion-parser.enrich_daily_updates_with_item_keys`; `source_stem` is
-    display text (ADR-2) and is the fallback when the recovery found the
-    discriminator ambiguous and declined to guess.
+    display text (ADR-2) and is the fallback when no key is available — on
+    the markdown path specifically, when the recovery found the discriminator
+    ambiguous and declined to guess.
     """
     return _item_key(entry.get("source_item_key") or entry.get("source_stem") or "")
 
@@ -243,7 +262,21 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                               "title": str,
                               "expected_links": [moc_stem, ...],
                               "item_key": str}},
-        "expected_daily_kinds": [{"kind", "date", "key", "source_stem"}],
+        "expected_daily_kinds": [
+            {"kind": "update_tracker", "date", "value", "source_stem"},
+            {"kind": "update_log_entry", "date", "source_stem"},
+            {"kind": "update_log_link", "date", "source_stem"},
+        ],
+        # No "key" on any of the three (removed 2026-09-11): matching below
+        # is by "kind" alone (_subtract_skipped_daily) — "key"'s value was
+        # never read on any of them, whether it held a tracker field name
+        # (update_tracker), a note stem (update_log_link), or 40 characters
+        # of the note's own content (update_log_entry — the one with an
+        # actual privacy concern, MiYo Constitution L2). Removed uniformly
+        # rather than only the risky one: leaving two "key"s present and one
+        # absent would be an inconsistently populated structure with no
+        # reason a future reader could reconstruct, for a field that carried
+        # zero benefit in any of the three cases.
         "expected_deletions": [source_path],
         "expected_skips": [source_path_or_None],
       }
@@ -338,7 +371,6 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             expected_daily.append({
                 "kind": "update_tracker",
                 "date": date,
-                "key": t.get("field"),
                 "value": t.get("value"),
                 "source_stem": _stem(t.get("source_stem")),
             })
@@ -346,10 +378,12 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             if not le.get("accepted"):
                 continue
             counts["update_log_entry"] += 1
+            # No "key" on this or its two sibling appends — see derive_expected's
+            # docstring ("expected_daily_kinds"): unread on all three, and this
+            # one held the note's own content (MiYo Constitution L2).
             expected_daily.append({
                 "kind": "update_log_entry",
                 "date": date,
-                "key": (le.get("content") or "")[:40],
                 "source_stem": _stem(le.get("source_stem")),
             })
         for ll in day.get("log_links") or []:
@@ -359,7 +393,6 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             expected_daily.append({
                 "kind": "update_log_link",
                 "date": date,
-                "key": _stem(ll.get("target_stem")),
                 "source_stem": _stem(ll.get("source_stem", "")),
             })
 
@@ -839,6 +872,53 @@ def _subtract_withheld_moves(expected: dict, withholdings: list[dict]) -> int:
     return removed
 
 
+def _subtract_withdrawn_deletes(expected: dict, delete_withdrawals: list[dict]) -> int:
+    """Remove T4.3-reported delete withdrawals from expected["expected_deletions"].
+
+    `tomo.delete_withdrawals` (spec 036 T4.3) is the full record of every
+    withdrawn `delete_source`, independent of *why* it was withdrawn — unlike
+    `destination_clashes[]`/`attachment_suppressions[]`'s own `withdrawn_
+    deletes`, which only lists the ones THEY caused. T2.3 kept both reports
+    (retired only the path-keyed *removal*), so a clash- or suppression-
+    caused withdrawal is ALREADY subtracted by `_subtract_withheld_moves`
+    before this runs, and the SAME delete also appears here.
+
+    Subtracting both double-counts and drives `expected` below `actual` — the
+    same halt `_subtract_withheld_moves` exists to prevent, with the opposite
+    sign and a harder cause to find. So this filters by GUARD, not by path: an
+    entry is skipped in full when ANY of its `causes` names
+    `validate_destinations` or `suppress_moves_for_unfiled_attachments`
+    (`_CLASH_WITHDRAWAL_GUARDS`) — already accounted for — and subtracted
+    otherwise. `causes` is not guaranteed single-guard (a delete can depend on
+    both a move id and a daily id), so every cause is checked, not just the
+    first; a path-based dedup collapses exactly this mixed case, which is why
+    it is not used here.
+
+    Matches `source_path` first, then its bare stem — mirroring
+    `_subtract_withheld_moves` and `derive_expected`'s own append convention
+    (`expected_deletions` holds bare stems). A `source_path` absent from
+    `expected_deletions` (already removed, or naming something this
+    derivation never expected) is a no-op — never a negative count.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for withdrawal in delete_withdrawals or []:
+        causes = withdrawal.get("causes") or []
+        if any(c.get("guard") in _CLASH_WITHDRAWAL_GUARDS for c in causes):
+            continue
+        path = withdrawal.get("source_path") or ""
+        if not path:
+            continue
+        for candidate in (path, _stem(path)):
+            if candidate in expected["expected_deletions"]:
+                expected["expected_deletions"].remove(candidate)
+                expected["counts"]["delete_source"] -= 1
+                removed += 1
+                break
+    return removed
+
+
 def _subtract_skipped_assets(expected: dict, skipped_assets: list[dict]) -> int:
     """Remove attachments the renderer could not file from expected move_asset.
 
@@ -990,6 +1070,13 @@ def run_diff(
     _subtract_withheld_moves(expected, destination_clashes)
     _subtract_withheld_moves(expected, attachment_suppressions)
     n_assets_skipped = _subtract_skipped_assets(expected, skipped_assets)
+
+    # Reconcile deletes withdrawn for a reason the clash/suppression reports
+    # above do not already cover (missing daily note, unresolvable MOC link,
+    # unappliable relationship, or an undeclared dependency) — see
+    # _subtract_withdrawn_deletes for why this must filter by guard.
+    delete_withdrawals = tomo_block.get("delete_withdrawals") or []
+    _subtract_withdrawn_deletes(expected, delete_withdrawals)
 
     # Reconcile the MOC links withheld because their target could not be
     # confirmed — see _subtract_unresolvable_links.

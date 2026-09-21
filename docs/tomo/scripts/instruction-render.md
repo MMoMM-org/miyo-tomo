@@ -215,7 +215,7 @@ WHY: `filter_missing_daily_notes` legitimately drops `update_tracker` /
 exist — Hashi *modifies* daily notes, it never *creates* them (#37/I38). Those
 drops were surfaced only in `instructions.md` (human "Skipped" section) and on
 stderr, never in the machine `instructions.json`. `instructions-diff` (the Pass-2
-coverage audit, conductor step 3e) derives `expected` from the parsed suggestions
+coverage audit, invoked as the conductor's coverage audit step) derives `expected` from the parsed suggestions
 — which still count every accepted daily entry — so it saw `expected=N` vs
 `actual=N-dropped` and failed with a **false** coverage mismatch. Per the
 synthesis-conductor contract a mismatch = STOP, so any run with a missing daily
@@ -499,3 +499,212 @@ filtered file answers a different question, namely which of them `upload-rendere
 should write. Keeping the two apart preserves both.
 
 Full rationale in `docs/tomo/scripts/lib/render_actions.md` (T6.4c).
+
+## T4.3 — `tomo.delete_withdrawals`, a Top-Level Key Distinct From the Existing Nested `withdrawn_deletes`
+
+**WHY the top-level key is `delete_withdrawals`, not `withdrawn_deletes`**:
+`withdrawn_deletes` already exists — nested inside a `destination_clashes` or
+`attachment_suppressions` entry, holding a **list of paths**
+(`lib/render_actions.py`'s `_drop_moves_with_paired_deletes`), read by
+`instructions-diff.py`'s `_subtract_withheld_moves` (`for path in
+clash.get("withdrawn_deletes")`). Spec 036 T2.2's own deviation record
+already rejected exactly this shape of collision once, for a different key
+(`source_inbox_item`): "one key with two meanings is how the site-2 and
+site-4 divergences this spec is fixing began." A new top-level
+`tomo.withdrawn_deletes` holding full **records** (id, source_path, reason,
+attributed cause) would repeat that mistake one key over — same name, two
+levels, two shapes, in the SAME `tomo` block. `delete_withdrawals` names the
+same fact (a delete was withdrawn) with no lexical overlap.
+
+**WHY the record covers all five drop-causing guards, not just the two
+`withdrawn_deletes` already covers**: `withdrawn_deletes` (nested) only ever
+reports a delete orphaned by `validate_destinations` or
+`suppress_moves_for_unfiled_attachments` — the two guards that report in the
+`{clash/suppression: {dropped: [...], withdrawn_deletes: [...]}}` shape.
+`withdraw_unjustified_deletes` (T2.1) withdraws on **any** guard's drop,
+including `filter_missing_daily_notes` (Bug A, the headline case this spec
+exists to close) and `filter_unappliable_relationships` /
+`filter_unresolvable_moc_links`, none of which populate the old nested key at
+all. A reader relying only on the nested key would never learn a Bug-A-shaped
+withdrawal happened.
+
+**WHY the join (`attribute_withdrawal_causes`, `describe_withdrawal_cause`,
+`build_delete_withdrawal_reports`) lives in `lib/render_helpers.py`, not
+`lib/render_actions.py` or `lib/render_md.py`**: `render_actions.py` already
+does `from lib.render_md import bare_stem`, so a helper needed by BOTH this
+file's stderr block and `render_md.py`'s markdown section cannot live in
+either of those two without completing a cycle. `render_helpers.py` is the
+one module in the render_* graph documented as a DAG leaf, importable by all
+three siblings — see `docs/tomo/scripts/lib/render_helpers.md`.
+
+**WHY the caller (here, not the join) normalises the five guards' three
+report shapes into `drop_sources: dict[str, list[str]]`**: `destination_clashes`
+and `attachment_suppressions` nest a `dropped` list of dicts inside each
+clash/suppression record; `filter_unresolvable_moc_links` and
+`filter_missing_daily_notes` and `filter_unappliable_relationships` each
+return a flat list of skipped action dicts. Normalising at the call site
+(where all five reports already exist as local variables, right before the
+withdrawal pass) keeps the join itself a pure `dict[str, list[str]] ->
+list[dict]` function that never needs to know these three shapes, or that
+there are three of them.
+
+**instructions-diff.py finding (checked, not wired)**: `delete_withdrawals`
+is NOT read by `instructions-diff.py`. `derive_expected`'s daily-only and
+tag-handler `expected_deletions` are built from the suggestions document
+alone (Pass 1), before the renderer ever runs a guard — so a daily-note-
+missing or unresolvable-tag-handler-group run can, independent of this task,
+still show a coverage mismatch in `instructions-diff.py`'s audit, the same
+class of gap `_subtract_withheld_moves` closed for `destination_clashes`/
+`attachment_suppressions` (nested `withdrawn_deletes`) but that no
+`_subtract_*` closes for `skipped_daily` / `unresolvable_moc_links` /
+`skipped_rel`. This is a pre-existing gap T4.3 did not create — T4.3's own
+success criteria are the three report surfaces, not the coverage audit — and
+is logged in `docs/XDD/backlog.md` rather than left to be rediscovered.
+
+## `sync_withheld_deletes_file` — a Run-Level Relay That Survives Being Called N Times (v0.18.0, 2026-09-18; superseded v0.19.0, 2026-09-18)
+
+Superseded in part: the "header inside the file" mechanism this section
+describes below shipped a Critical (relayed `<!-- run_id: ... -->` into the
+user-facing chat report). v0.19.0 moves the run marker out of the file
+entirely — see "Run Marker Moved to a Sidecar" below for what changed and
+why. Everything else in this section (why the relay is a file, why it lives
+one level above `--output-dir`, why append-across-entries) is unchanged.
+
+WHY this exists: `3c8170c` (spec 036/035, "withheld delete no longer fails
+coverage or stays silent to the user") taught `synthesis-conductor.md` to
+`grep 'was **not** deleted'` out of `tomo-tmp/rendered/instructions.md` after
+each entry's 3b, on the premise that Step 4's report needed those lines. That
+premise had a hole its own author named: `instruction-render.py` is always
+invoked with the fixed `--output-dir tomo-tmp/rendered`, so a Pass 2 run
+processing N approved docs overwrites that file N times. The grep captured
+entry K's notice into the conductor's own conversational memory before entry
+K+1's 3b erased it — meaning the ONLY copy of entry K's notice, from entry
+K+1 onward, was a haiku-tier agent's recollection of its own prior tool
+output. Fragile in exactly the way this repo has already learned about
+twice: "prefer deterministic rendering over LLM assembly" and "an agent
+definition's rules are not what the LLM actually does." The user's original
+requirement was "otherwise it might get lost" — a memory-dependent relay
+across iterations is the very thing that gets lost.
+
+WHY the fix is a file, not a bigger prompt: `instruction-render.py` already
+owns every other Pass-2 artifact (`manifest.json`, `instructions.json`,
+`instructions.md`) — it is the deterministic producer, the conductor is a
+script-runner (STRICT block, top of `synthesis-conductor.md`). Moving the
+relay into the producer means the conductor needs no cross-iteration memory
+at all: Step 4 reads one file once, after every entry has rendered.
+
+WHY the sentence is `_render_withdrawn_delete_notice(w)` called again, not
+re-derived: that private helper (`lib/render_md.py`) is already the sole
+place the "`⚠️ **Not deleted:** [[Note]] — <reason>`" bullet is composed for
+`instructions.md`'s "## Source Deletions" section. Calling the same pure
+function a second time, over the same `delete_withdrawals` list already
+computed in `main()`, yields a byte-identical string by construction — there
+is no second wording to drift out of sync with the first, the way there
+would be if this new call site had its own template. `instruction-render.py`
+already imports several of `render_md.py`'s underscore-prefixed helpers this
+way (`_render_action_md`, `_compute_sha256`, …); this is one more.
+
+WHY the file lives one level above `--output-dir`
+(`tomo-tmp/withheld-deletes.md`, i.e. `out_dir.parent`, not inside
+`tomo-tmp/rendered/`): the whole problem being fixed is that `--output-dir`
+is overwritten per entry. A run-level artifact that must survive every
+entry's 3b cannot sit inside the directory that IS overwritten each time.
+`out_dir.parent` needs no new CLI flag — the sole caller always passes
+`--output-dir tomo-tmp/rendered`, so `out_dir.parent` is always `tomo-tmp/`,
+matching the path the requirement named directly. Tests that pass an
+arbitrary `--output-dir` still get a well-defined sibling path; nothing about
+the convention depends on the literal string `"rendered"`.
+
+WHY the staleness rule is a header inside the file, not an external "has this
+run started" flag the conductor manages: the requirement was explicit that a
+notice from a PREVIOUS `/inbox` run must never appear in a LATER run's file
+— worse than emitting nothing, per the brief ("a stale notice from a
+previous run reported as current would be worse than none"). `--run-id` is
+already threaded into every 3b call for exactly this kind of run-scoping
+(F-47 T2.3's `tomo:` block uses it the same way). The chosen mechanism: the
+file's first line is an HTML comment, `<!-- run_id: <RUN_ID> -->` — invisible
+if the file is ever rendered as markdown, but a plain, cheap string compare
+for the next call to check. A call whose `run_id` matches that header is
+entry 2..N of the SAME run and appends (never truncates — entry 1's notice
+must survive entry 2's call, the defect `3c8170c` shipped). A call whose
+`run_id` does NOT match (file absent, or the header names an older run) is
+the FIRST call of a NEW run: if this entry has notices, the file is
+rewritten from scratch (new header, new content, old content gone); if it
+has none, the stale file is deleted outright rather than left behind for a
+later entry in this same new run to find and misattribute. `run_id is None`
+(no run-id available — a caller that never threads one) makes the whole
+function a no-op: without a run identity there is nothing to compare against
+`same_run`, so the only two honest choices are "never write" or "always
+truncate", and truncating the FIRST call of every invocation would silently
+break the append behavior that makes this fix work at all. The one caller
+that matters (`synthesis-conductor.md`, Step 2) always generates and threads
+a `run_id`, so this path exists only for callers this module has no control
+over (tests, or a future direct invocation), and staying silent is strictly
+safer than guessing.
+
+WHY "no file when nothing was withheld" is not merely "don't create one":
+Step 4 was rewritten to read the file unconditionally after the work list is
+processed. If a stale run's file were left behind — even correctly
+attributed to an OLDER `run_id` the current run's header check would reject
+— nothing downstream re-checks that header; the file's mere existence is
+what Step 4 acts on. So a run with nothing to report must leave NO file, not
+an empty one and not someone else's: `sync_withheld_deletes_file` deletes on
+sight the moment it detects the file is not this run's (see above), even on
+a call that itself has zero notices to add.
+
+## Run Marker Moved to a Sidecar — the In-File Header Leaked Into Chat (v0.19.0, 2026-09-18)
+
+WHY this exists: code-quality review of v0.18.0 found a Critical. The
+run-level relay file's first line was `<!-- run_id: <RUN_ID> -->` — an
+implementation detail, deliberately placed there so the next call could tell
+"same run" from "new run" with a cheap string compare. But
+`synthesis-conductor.md` Step 4 does `cat tomo-tmp/withheld-deletes.md` and
+was told (in that same commit) that "its lines are already-sanitized
+user-facing notices" and to "append the file's lines verbatim … one per
+line." Both claims are false for line 1. Every run with a withheld delete
+therefore relayed `<!-- run_id: 2026-09-18T10-00-00Z-aaaaaa -->` into the
+user's chat report — exactly the internal-implementation leak (ADR-11) the
+v0.17.0 → v0.18.0 change existed to prevent, reintroduced by the fix itself.
+
+WHY the fix moves the marker out rather than telling Step 4 to skip line 1:
+the review offered both. Telling Step 4 to `tail -n +2` (or the conductor to
+remember "skip the first line") leaves a file whose correctness depends on
+an LLM reading it with the right offset — the same class of fragility this
+whole relay was built to eliminate ("prefer deterministic rendering over LLM
+assembly," "an agent definition's rules are not what the LLM actually
+does"). An agent that reaches for a plain `cat` out of habit — which is
+exactly what the leak already proved happens — reintroduces the leak
+silently, with no test able to catch it short of grepping the conductor's
+own chat output. Moving the marker to a sidecar file makes the failure
+structurally impossible: `tomo-tmp/withheld-deletes.md` contains nothing but
+notice lines, so `cat`-and-relay is correct BY CONSTRUCTION, and the doc's
+claim that "its lines are already-sanitized user-facing notices" is now
+literally true rather than true-except-line-1.
+
+WHAT changed: the run identity moves to `path.with_suffix(".run_id")` —
+`tomo-tmp/withheld-deletes.run_id` — a plain-text file holding only the run
+id, read and written alongside `tomo-tmp/withheld-deletes.md` but never
+itself relayed anywhere. "Same run" now means BOTH files exist AND the
+sidecar's content equals the incoming `--run-id`; anything else (either
+file missing, both missing, or the sidecar naming a different run) is
+staleness, exactly as before. The two files are always created, appended
+to, and removed together — never independently — so a half-present state
+(sidecar without `.md`, or `.md` without sidecar, e.g. from a prior version
+of this script, a partial write, or manual tampering) can never be
+misattributed to "same run, safe to append." It is treated as stale like
+every other non-match: rewritten together (if this entry has notices) or
+deleted together (if it does not).
+
+WHY half-present is stale, not an error: `sync_withheld_deletes_file` has no
+way to know WHY only one file exists — a crash mid-write, an old run's
+leftover, or a hand-edited directory all look identical from here. Treating
+it as stale is the same conservative choice `run_id is None` already makes
+elsewhere in this function: when same-run cannot be positively established,
+the safe default is "this is not my run," never "assume it's mine."
+
+NOT addressed: atomic writes (temp file + rename) so a crash between writing
+the sidecar and writing `.md` can't itself produce a half-present state.
+Declined as out of scope for this fix — low probability, no vault write
+involved, and the half-present state that would result is already handled
+correctly (as stale) by the logic above, so the failure mode is "one entry's
+notice is treated as a new run" rather than data corruption or a leak.

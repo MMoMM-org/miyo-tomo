@@ -175,10 +175,16 @@ def test_edit_frontmatter_registered_in_actions_oneof():
 
 
 def test_schema_version_unchanged():
-    """CON-2: schema_version stays '2' — this task does not bump it."""
+    """CON-2: spec 032 T4.1 did not bump schema_version — it stayed '2'.
+
+    Spec 036 T4.1 has since bumped the instruction wire "2" -> "3" for an
+    unrelated reason (delete_source's new required depends_on). This test
+    tracks the current const so it keeps proving both schemas agree, not
+    that no later spec is ever allowed to bump the version.
+    """
     for label, path in SCHEMA_PATHS.items():
         schema = _load(path)
-        assert schema["properties"]["schema_version"] == {"const": "2"}, label
+        assert schema["properties"]["schema_version"] == {"const": "3"}, label
 
 
 def test_edit_frontmatter_def_structurally_identical_across_tomo_schemas():

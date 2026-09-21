@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """test_027_t4_2_3_renderer_diff_rename.py — TDD for T4.2 (renderer) + T4.3 (diff).
 
 T4.2: instruction-render.py emits source_inbox_item (not origin_inbox_item) in
@@ -15,6 +15,7 @@ ADR-3: hard-cutover, no alias — origin_inbox_item must not appear in output.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ if Path(_DEPS).is_dir() and _DEPS not in sys.path:
     sys.path.insert(0, _DEPS)
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(TESTS_DIR))
 
 # Load instruction-render.py via importlib (hyphen in name).
 _ir_spec = importlib.util.spec_from_file_location("ir_t42", SCRIPTS_DIR / "instruction-render.py")
@@ -34,6 +36,11 @@ ir = importlib.util.module_from_spec(_ir_spec)
 assert _ir_spec.loader is not None
 sys.modules["ir_t42"] = ir
 _ir_spec.loader.exec_module(ir)
+
+# Spec 035 T3.1's end-to-end instruction-render.main() harness — reused here
+# (not duplicated) per the cross-test-file import convention already used by
+# test_034_t5_0b_markdown_path_mints_item_key.py's `import ... as T5`.
+import test_035_wire_version as wire_version_tests  # noqa: E402
 
 # Load instructions-diff.py via importlib.
 _diff_spec = importlib.util.spec_from_file_location(
@@ -120,22 +127,34 @@ class TestRendererMoveNoteKeyRename:
 
 
 class TestRendererSchemaVersionBump:
-    """The instructions doc header must emit schema_version:'2' (not '1')."""
+    """The instructions doc header must emit schema_version:'3' (not '2').
 
-    def test_schema_version_const_is_2_in_source(self):
-        """Source code contract: instructions_doc uses schema_version:'2' (not '1').
+    Spec 035 T3.1 / ADR-5: instruction-render.py no longer declares
+    schema_version as a free string literal — it reads
+    lib.wire_version.wire_schema_version("instructions.schema.json") at its
+    emission site. This test's original mechanism (grepping the source for a
+    literal `"2"`) stopped being meaningful the moment that literal was
+    removed by design (see
+    tests/test_035_wire_shape.py::test_no_renderer_hardcodes_schema_version,
+    which now guards against that literal's reintroduction). Spec 027's
+    actual claim was never about source text, though — it was that the
+    RENDERED instructions.json carries the current instruction-wire version
+    — so this test now drives instruction-render.py's main() end to end
+    (reusing the harness from tests/test_035_wire_version.py, not
+    duplicating it) and reads the value off the emitted document, exactly as
+    it would if a live run produced it. Spec 036 T4.1 bumped the instruction
+    wire to "3"; the assertion tracks that bump, not whatever the schema
+    happens to say — comparing the renderer's output to the same schema it
+    read from would hold even if both drifted together.
+    """
 
-        Reads the renderer source to guard against regression. RED = source still
-        has '1'; GREEN = source updated to '2'.
-        """
-        source = (SCRIPTS_DIR / "instruction-render.py").read_text(encoding="utf-8")
-        # The instructions_doc dict is built in main(); find the emitted constant.
-        assert '"schema_version": "2"' in source, (
-            "instructions_doc must emit schema_version:'2' (T4.2 bump)"
+    def test_schema_version_const_is_3_in_source(self, monkeypatch, tmp_path):
+        """instructions.json, rendered end to end, carries schema_version:'3'."""
+        out_dir = wire_version_tests._drive_instruction_render(monkeypatch, tmp_path)
+        doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
+        assert doc["schema_version"] == "3", (
+            "instructions_doc must emit schema_version:'3' (T4.1 bump)"
         )
-        # And confirm '1' is gone from the emit site (not the schema itself)
-        # We check that the old emit '1' is absent from the instructions_doc block.
-        # NOTE: the schema files themselves no longer contain const "1" either.
 
 
 class TestRendererDisplayRename:
@@ -275,9 +294,9 @@ class TestDiffMatchesSourceInboxItem:
         }
 
     def _instrs(self, move_note: dict) -> dict:
-        """Minimal instructions doc wrapping the given move_note (schema_version 2)."""
+        """Minimal instructions doc wrapping the given move_note (schema_version 3)."""
         return {
-            "schema_version": "2",
+            "schema_version": "3",
             "type": "tomo-instructions",
             "generated": "2026-06-30T12:00:00Z",
             "profile": "miyo",

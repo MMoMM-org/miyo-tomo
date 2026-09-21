@@ -6,6 +6,32 @@
 > machine STRUCTURE (always read), joined by the F-id in each `### F<id>` heading.
 > The result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
+## Version 0.14.1 — `_is_wire_edited`/`load_changed_wire` read the schema's own version, not a literal (spec 035 T4.3, 2026-09-11)
+
+WHY these two acceptors hardcoded `!= "1"` until spec 035 T4.3 moved the garden-audit wire's
+`schema_version` to `"2"`: ADR-5's original sweep (spec 035 Phase 3, T3.1) retired every EMITTER's
+`schema_version` literal — `build_wire_payload` in `garden-audit-render.py` — but never touched
+ACCEPTORS, the functions that gate on the version to decide whether a wire is even readable.
+`_is_wire_edited` and `load_changed_wire` are exactly that: both compared
+`wire.get("schema_version")` against the bare literal `"1"`. Left alone, the moment a live run
+emitted `schema_version:"2"` (this same spec's version move), both would have silently treated
+every real, edited wire as "unknown version" and fallen back to `build_from_report` — the
+markdown-decisions path — discarding whatever the Tomo-Editor's JSON channel actually carried, with
+no crash and no visible error beyond a stderr warning line nobody watches routinely.
+
+This is the THIRD such acceptor spec 035 has found and fixed, not the first. T4.2b already found and
+fixed the same shape in `suggestion-parser.load_changed_wire` and `inbox-triage.py`'s
+`_load_edited_wire` (see `docs/tomo/scripts/inbox-triage.md`, "Fan-resolve trigger reads the edited
+wire") — both compared against a hardcoded `"1"` for the suggestions wire before that task. This
+file's twin functions were the one pair the earlier sweep missed, surfaced only when this spec's own
+version move (T4.3) broke the previously-green test suite and forced the question.
+
+Fixed by reading the expected version from the schema itself —
+`wire_schema_version("garden-audit-wire.schema.json")` (`lib/wire_version.py`, ADR-5) — instead of a
+literal, mirroring the emitter. This is what makes a future version move a no-op here: the
+comparison always agrees with whatever the schema currently declares, so nobody has to remember to
+come back and bump this file's literal a second time.
+
 ## Version 0.14.0 — broken_up routes by declaration site, never falls back (spec 032, 2026-09-02)
 
 WHY `_route_broken_up` exists as a discrete gate ahead of the existing repoint/remove branching
@@ -128,7 +154,8 @@ ONCE (`_load_raw_wire`, digest-independent) and then decides the path with `_is_
 on that already-loaded dict — NO second file read. This is deliberate: on the Docker
 bind-mount the file could change between two reads, so routing on read-1's dict while building
 from read-2's would be a TOCTOU bug (and a redundant parse). `_is_wire_edited` returns True for
-an EDITED wire (schema-v1 + digest mismatch) → the Hashi-authored path `build_from_wire` (wire
+an EDITED wire (matches the schema's own CURRENT version, read at runtime — not a hardcoded
+literal, see Version 0.14.1 below — + digest mismatch) → the Hashi-authored path `build_from_wire` (wire
 fully authoritative, markdown decisions ignored); an unedited / unknown-schema wire supplies
 structure to the markdown decisions → `build_from_report`. A missing/unreadable wire degrades
 gracefully to empty `confirmed_items` (warn to stderr, never crash) — Tomo still does not assume

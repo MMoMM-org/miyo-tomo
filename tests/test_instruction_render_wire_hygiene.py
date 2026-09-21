@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.5.0
 """test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
 
 Covers the producer-side hygiene that makes a Tomo instruction set appliable by
@@ -16,21 +16,25 @@ Hashi without hand-patching:
 
 Plus a cross-repo parity guard: Tomo's link_to_moc/move_note allowed-properties
 must match Hashi's schema (MiYo Constitution L2 — coordinated public interface).
-
-test_snapshot_matches_upstream_hashi requires network access — it skips
-automatically when the upstream GitHub URL is unreachable (offline runs).
+That guard, and the rest of the cross-repo wire-schema parity machinery
+(TestHashiSchemaParity, TestUpstreamFetchSkip, TestSnapshotParityReport,
+TestVendoredCopies, and their shared fetch/report helpers), moved to
+`tests/test_wire_snapshot_parity.py` (code-quality review, 2026-09-11): it
+grew into a self-contained concern needing nothing from the fixtures below,
+the same "does not belong inside a module written for something else"
+reasoning that put `snapshot_parity_delta`/`render_snapshot_parity_report`
+into `tomo/scripts/lib/wire_snapshot_parity.py` one step earlier. See that
+file's module docstring for the full ADR-7 / T2.4 / T4.2 history.
 """
 from __future__ import annotations
 
-import http.client
 import importlib.util
 import io
 import json
 import sys
-import urllib.error
-import urllib.request
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -50,47 +54,10 @@ assert _ir_spec.loader is not None
 sys.modules["instruction_render"] = _ir
 _ir_spec.loader.exec_module(_ir)
 
+from lib.render_actions import assert_no_dangling_dependencies  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
-# Committed verbatim copy of Hashi's instructions.schema.json. The parity test
-# runs UNCONDITIONALLY against this snapshot so it never silently skips in CI /
-# containers without a co-located Hashi checkout. A separate network drift check
-# (test_snapshot_matches_upstream_hashi) pulls the live schema from GitHub and
-# verifies the snapshot is current — skips offline automatically.
-HASHI_SCHEMA_SNAPSHOT = SCHEMAS_DIR / "hashi-instructions.schema.json"
-
-# Public GitHub raw URL for Hashi's live schema — no local checkout required.
-# test_snapshot_matches_upstream_hashi fetches this; all other tests use HASHI_SCHEMA_SNAPSHOT.
-_HASHI_UPSTREAM_URL = (
-    "https://raw.githubusercontent.com/MMoMM-org/miyo-tomo-hashi/main/"
-    "src/schema/instructions.schema.json"
-)
-
-# Actions that Tomo's snapshot intentionally carries ahead of the live upstream Hashi
-# schema. Each entry is a pending cross-repo handoff — the action is example-driven:
-# Tomo emits it now; Hashi implements against our wire example in the Phase 6 handoff.
-# Remove an action from this set once the upstream Hashi schema ships the definition.
-#
-# Format: action-def-name → reason string (cited in assertion message).
-SNAPSHOT_AHEAD_OF_UPSTREAM: dict[str, str] = {
-    "edit_note_text": (
-        "ADR-3 (spec 030-garden-audit): generic text-edit surface Tomo carries for "
-        "Hashi to implement. No longer garden-emitted — resolve_dead_link and "
-        "remove_up_link superseded it for the dead-link / up:: paths. Remove once "
-        "miyo-tomo-hashi ships the def."
-    ),
-    "resolve_dead_link": (
-        "spec 030-garden-audit: alias/embed-aware dead-link fix (unlink or repoint). "
-        "Pending handoff _outbox/for-hashi/2026-07-24_...resolve-dead-link-alias-aware. "
-        "Remove once miyo-tomo-hashi ships the def."
-    ),
-    "remove_up_link": (
-        "spec 030-garden-audit: broken-up link-only removal — drops the dead link, "
-        "keeps the up:: field. Pending handoff "
-        "_outbox/for-hashi/2026-07-23_...remove-up-link-shipped. "
-        "Remove once miyo-tomo-hashi ships the def."
-    ),
-}
 
 
 @pytest.fixture(scope="module")
@@ -150,7 +117,7 @@ class TestInternalFieldStrip:
         _ir._serialize_new_sections([action])
         _ir._strip_internal_link_fields([action])
         doc = {
-            "schema_version": "2",
+            "schema_version": "3",
             "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z",
             "profile": "miyo",
@@ -170,7 +137,7 @@ class TestInternalFieldStrip:
         # otherwise the test would pass even if the new_section rejection regressed
         # (review H9).
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z", "profile": "miyo",
             "actions": [action],
         }
@@ -196,7 +163,7 @@ class TestInstructionsJsonTomoBlock:
         assert block is not None
         assert block["sources"][0]["path"].endswith("_suggestions.md")
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo",
             "actions": [], "tomo": block,
         }
@@ -205,7 +172,7 @@ class TestInstructionsJsonTomoBlock:
     def test_doc_without_tomo_block_still_validates(self, instructions_schema):
         """Backward-compat: tomo is not in required — omitting it stays valid."""
         doc = {
-            "schema_version": "2", "type": "tomo-instructions",
+            "schema_version": "3", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo", "actions": [],
         }
         validate(instance=doc, schema=instructions_schema)  # must not raise
@@ -248,150 +215,6 @@ def test_footer_callouts_match_across_modules():
     assert _mtb_spec.loader is not None
     _mtb_spec.loader.exec_module(_mtb)
     assert set(_ir.FOOTER_CALLOUTS) == set(_mtb.FOOTER_CALLOUTS)
-
-
-# ── Cross-repo parity (Constitution L2) ─────────────────────────────────────
-
-
-def _props(schema: dict, defname: str) -> set:
-    return set(schema["$defs"][defname]["properties"].keys())
-
-
-class TestHashiSchemaParity:
-    """Parity guard against the COMMITTED Hashi snapshot — runs unconditionally so
-    CI / containers without a co-located Hashi checkout still exercise it. The
-    snapshot is a verbatim copy of Hashi's instructions.schema.json; a separate
-    drift check (below) catches the snapshot falling behind the live Hashi schema."""
-
-    @pytest.fixture(scope="class")
-    def hashi_snapshot(self) -> dict:
-        return json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
-
-    def test_link_to_moc_props_match_snapshot(self, instructions_schema, hashi_snapshot):
-        assert _props(instructions_schema, "link_to_moc") == _props(hashi_snapshot, "link_to_moc")
-
-    def test_move_note_props_match_snapshot(self, instructions_schema, hashi_snapshot):
-        assert _props(instructions_schema, "move_note") == _props(hashi_snapshot, "move_note")
-
-    def test_snapshot_carries_tomo_block(self, hashi_snapshot, instructions_schema):
-        """Snapshot refreshed from Hashi v0.11.0 — the optional top-level tomo
-        block must be present in both Hashi's snapshot and Tomo's own schema (#74)."""
-        assert "tomo" in hashi_snapshot["properties"]
-        assert "tomo" in instructions_schema["properties"]
-
-    def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
-        """Network drift guard: the committed snapshot must match the live Hashi
-        schema published on GitHub for every action $def (not just link_to_moc/
-        move_note — catches insert_under_marker-style whole-action drift too).
-
-        Skips automatically when the upstream URL is unreachable so offline runs
-        and CI without network still pass. When network is available this test RUNS
-        and verifies no action def has drifted required fields or property names.
-
-        A failure here means the snapshot is stale — refresh
-        tomo/schemas/hashi-instructions.schema.json from upstream Hashi.
-        """
-        try:
-            req = urllib.request.Request(
-                _HASHI_UPSTREAM_URL,
-                headers={"User-Agent": "miyo-tomo-test/1.0"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status != 200:
-                    pytest.skip(
-                        f"upstream Hashi schema unreachable — HTTP {resp.status} — offline"
-                    )
-                live = json.loads(resp.read().decode("utf-8"))
-        except (
-            urllib.error.URLError, TimeoutError, OSError,
-            # http.client.IncompleteRead (raised by resp.read() on a partial
-            # transfer) is an HTTPException, not an OSError — a truncated
-            # read is the same "upstream unreachable" condition as the cases
-            # above, not a schema comparison to run.
-            http.client.HTTPException,
-            # A truncated-but-otherwise-well-formed-looking body can still
-            # fail to parse (e.g. cut off mid-string) — same "network gave
-            # us garbage" class as a transport failure, not genuine drift.
-            json.JSONDecodeError,
-        ):
-            pytest.skip("upstream Hashi schema unreachable — offline")
-
-        # Compare every action def's required fields and property names.
-        def _action_defs(schema: dict) -> set[str]:
-            return {
-                name
-                for name, defn in schema.get("$defs", {}).items()
-                if "properties" in defn and "action" in defn["properties"]
-            }
-
-        snap_defs = _action_defs(hashi_snapshot)
-        live_defs = _action_defs(live)
-        # Strip intentional pending-handoff actions before comparing action sets.
-        # These are example-driven: Tomo carries them in the snapshot ahead of Hashi;
-        # Hashi will implement against Tomo's wire example in the Phase 6 handoff.
-        # Entries are documented in SNAPSHOT_AHEAD_OF_UPSTREAM above.
-        known_ahead = set(SNAPSHOT_AHEAD_OF_UPSTREAM)
-        only_in_snap = (snap_defs - live_defs) - known_ahead
-        only_in_live = live_defs - snap_defs
-
-        assert not only_in_snap and not only_in_live, (
-            "Action set differs between snapshot and upstream Hashi.\n"
-            f"  Only in snapshot (unexpected): {sorted(only_in_snap)}\n"
-            f"  Only in upstream:              {sorted(only_in_live)}\n"
-            "Fix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi,\n"
-            "or add to SNAPSHOT_AHEAD_OF_UPSTREAM if this is an intentional pending handoff."
-        )
-
-        mismatches: list[str] = []
-        for defname in sorted(snap_defs & live_defs):
-            snap_req = frozenset(hashi_snapshot["$defs"][defname].get("required", []))
-            live_req = frozenset(live["$defs"][defname].get("required", []))
-            snap_props = _props(hashi_snapshot, defname)
-            live_props = _props(live, defname)
-            if snap_req != live_req:
-                mismatches.append(
-                    f"  {defname}: required mismatch\n"
-                    f"    snap only:  {sorted(snap_req - live_req)}\n"
-                    f"    live only:  {sorted(live_req - snap_req)}"
-                )
-            if snap_props != live_props:
-                mismatches.append(
-                    f"  {defname}: property-name mismatch\n"
-                    f"    snap only:  {sorted(snap_props - live_props)}\n"
-                    f"    live only:  {sorted(live_props - snap_props)}"
-                )
-
-        assert not mismatches, (
-            "Action $def structure drifted from upstream Hashi:\n"
-            + "\n".join(mismatches)
-            + "\nFix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
-        )
-
-    def test_incomplete_read_during_fetch_skips_not_fails(self, hashi_snapshot, monkeypatch):
-        """A partial network read (http.client.IncompleteRead, raised by
-        resp.read() on a truncated transfer) must be treated the same as an
-        unreachable upstream — skip, not fail. Fails if HTTPException is
-        removed from the except tuple, since IncompleteRead does not inherit
-        from OSError."""
-
-        class _TruncatedResponse:
-            status = 200
-
-            def read(self):
-                raise http.client.IncompleteRead(b"", 100)
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc_info):
-                return False
-
-        monkeypatch.setattr(
-            urllib.request, "urlopen", lambda *a, **kw: _TruncatedResponse()
-        )
-
-        with pytest.raises(pytest.skip.Exception):
-            self.test_snapshot_matches_upstream_hashi(hashi_snapshot)
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────
@@ -564,3 +387,206 @@ class TestFitConfidenceTelemetry:
         assert link["fit_confidence"] == 0.9
         # anchor no-leak: the wire anchor stays {type, value}
         assert set(link["anchor"].keys()) == {"type", "value"}
+
+
+# ── T4.2 — the dangling-id audit (spec 036 Phase 4, PRD F5-AC4) ─────────────
+#
+# Producer-side tripwire matching `_validate_action_paths`' abort shape: every
+# id a `delete_source` names in `depends_on` must exist in the same action
+# set. Scoped to `delete_source` only (settled ruling 1). Both failure modes
+# this audits are UNREACHABLE through the real pipeline — `withdraw_unjustified_
+# deletes` already withdraws a delete whose justification did not survive —
+# so a violation here means an unknown-shaped bug (ADR-6), and the test
+# construction below (a patched pipeline that lets a dangling delete through,
+# PLUS a control run proving the patch target is live) is the whole task.
+
+
+def _delete_action(**over) -> dict:
+    base = {
+        "id": "D01",
+        "action": "delete_source",
+        "source_path": "100 Inbox/note.md",
+        "reason": "moved",
+        "depends_on": ["M01"],
+        "applied": False,
+    }
+    base.update(over)
+    return base
+
+
+class TestAssertNoDanglingDependencies:
+    """Unit coverage — calls the audit directly on hand-built action sets."""
+
+    def test_every_named_id_present_is_vacuous(self):
+        actions = [
+            _delete_action(id="D01", depends_on=["M01"]),
+            {"id": "M01", "action": "move_note", "destination": "x"},
+        ]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_one_dangling_id_produces_one_violation_naming_both_ids(self):
+        actions = [_delete_action(id="D01", depends_on=["GHOST01"])]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 1
+        assert "D01" in violations[0]
+        assert "GHOST01" in violations[0]
+
+    def test_missing_depends_on_key_is_a_violation_distinct_from_dangling_id(self):
+        """No `depends_on` key at all is a fault of equal severity to a
+        dangling id, but a different fault — the wording must not collide."""
+        action = _delete_action(id="D02")
+        del action["depends_on"]
+        violations = assert_no_dangling_dependencies([action])
+        assert len(violations) == 1
+        assert "D02" in violations[0]
+        assert "missing" in violations[0]
+        assert "unknown id" not in violations[0]
+
+    def test_empty_depends_on_list_is_not_a_violation(self):
+        """`depends_on: []` is a positive assertion ("nothing conditions this
+        delete") — never conflated with the missing-key case."""
+        actions = [_delete_action(id="D03", depends_on=[])]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_multiple_offending_deletes_all_reported(self):
+        actions = [
+            _delete_action(id="D04", depends_on=["GHOST04"]),
+            _delete_action(id="D05", depends_on=["GHOST05"]),
+        ]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 2
+        joined = "\n".join(violations)
+        assert "D04" in joined and "GHOST04" in joined
+        assert "D05" in joined and "GHOST05" in joined
+
+    def test_non_delete_action_with_dangling_depends_on_is_out_of_scope(self):
+        """The audit is delete_source-scoped (settled ruling 1) — an
+        add_relationship's own (irrelevant) depends_on is never checked."""
+        actions = [{
+            "id": "R01", "action": "add_relationship", "depends_on": ["GHOST06"],
+        }]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_delete_naming_its_own_id_is_not_a_violation(self):
+        """Existence only, not well-formedness — a self-referencing depends_on
+        is a semantic oddity this audit deliberately does not flag (settled
+        ruling 2: no cycle/well-formedness check)."""
+        actions = [_delete_action(id="D06", depends_on=["D06"])]
+        assert assert_no_dangling_dependencies(actions) == []
+
+    def test_duplicate_missing_id_in_one_depends_on_yields_one_violation(self):
+        actions = [_delete_action(id="D07", depends_on=["GHOST07", "GHOST07"])]
+        violations = assert_no_dangling_dependencies(actions)
+        assert len(violations) == 1
+        assert "GHOST07" in violations[0]
+
+
+def _dangling_audit_suggestions() -> dict:
+    # daily_updates non-empty only to clear main()'s "nothing to do" early
+    # return (instruction-render.py ~line 322) — content is never read,
+    # build_actions is stubbed below and ignores it.
+    return {"confirmed_items": [], "daily_updates": [{"id": "dummy"}], "skipped": []}
+
+
+def _stub_dangling_audit_pipeline(monkeypatch, base_dir: Path, fixture_actions: list[dict]) -> Path:
+    """Stub every dependency so main() exercises only the T4.2 audit + write path.
+
+    Mirrors the `_stub_pipeline` pattern in
+    test_instruction_render_rendered_note_stamp.py: confirmed_items stays
+    empty so no KadoClient connection is attempted, and build_actions is
+    replaced outright so *fixture_actions* reaches withdraw_unjustified_deletes
+    (real or patched, per the calling test) unchanged — every filter pass
+    between build_actions and withdraw_unjustified_deletes is kind-scoped
+    (move_note/create_moc destinations, link_to_moc, daily-note, add_relationship)
+    and passes delete_source/move_note actions through untouched.
+    """
+    base_dir.mkdir(parents=True, exist_ok=True)
+    suggestions_file = base_dir / "suggestions.json"
+    suggestions_file.write_text(json.dumps(_dangling_audit_suggestions()), encoding="utf-8")
+    cfg_file = base_dir / "vault-config.yaml"
+    cfg_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        _ir, "load_config",
+        lambda _path: {
+            "concepts.inbox": "100 Inbox",
+            "profile": "miyo",
+            "callouts.editable": ["NOTE", "IDEAS"],
+        },
+    )
+    monkeypatch.setattr(_ir, "KadoClient", lambda: MagicMock())
+    monkeypatch.setattr(_ir, "build_actions", lambda *_a, **_kw: (fixture_actions, []))
+    monkeypatch.setattr(_ir, "resolve_target_moc_paths", lambda _actions, _client: 0)
+    monkeypatch.setattr(_ir, "resolve_section_names", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(_ir, "_validate_action_paths", lambda _actions: [])
+    monkeypatch.setattr(_ir, "render_instructions_md", lambda *_a, **_kw: "")
+    monkeypatch.setattr(_ir, "backfill_supporting_items_parents", lambda _items: None)
+
+    out_dir = base_dir / "out"
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "instruction-render.py",
+            "--suggestions", str(suggestions_file),
+            "--output-dir", str(out_dir),
+            "--config", str(cfg_file),
+        ],
+    )
+    return out_dir
+
+
+class TestAssertNoDanglingDependenciesIntegration:
+    """At the `_ir` module seam (`main()`).
+
+    `_ir.withdraw_unjustified_deletes` is the live binding — instruction-
+    render.py does `from lib.render_actions import (..., withdraw_unjustified_
+    deletes)`, so the caller re-resolves the name in ITS OWN module namespace,
+    never `lib.render_actions`'s (settled ruling 4). Patching the latter would
+    silently no-op.
+    """
+
+    def test_dangling_id_aborts_exit_2_no_file_with_unpatched_control(self, monkeypatch, tmp_path):
+        actions = [_delete_action(id="D_INT01", depends_on=["GHOST_INT01"])]
+
+        # Control FIRST, completely unpatched: withdraw_unjustified_deletes
+        # withdraws the dangling delete_source before the audit ever sees it
+        # (this failure mode is unreachable through the real pipeline —
+        # settled ruling 3), so this run must succeed. If it didn't, the
+        # patched assertion below would prove nothing about the patch target
+        # being live rather than about something else in the stub.
+        control_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "control", actions)
+        assert _ir.main() == 0
+        assert (control_out / "instructions.json").exists()
+
+        # Patched: withdraw_unjustified_deletes replaced with a pass-through,
+        # so the dangling delete_source survives to reach the new audit.
+        patched_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "patched", actions)
+        monkeypatch.setattr(_ir, "withdraw_unjustified_deletes", lambda a: (a, []))
+        assert _ir.main() == 2
+        assert not (patched_out / "instructions.json").exists()
+
+    def test_missing_depends_on_key_aborts_exit_2_no_file_with_unpatched_control(self, monkeypatch, tmp_path):
+        action = _delete_action(id="D_INT02")
+        del action["depends_on"]
+
+        control_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "control", [action])
+        assert _ir.main() == 0
+        assert (control_out / "instructions.json").exists()
+
+        patched_out = _stub_dangling_audit_pipeline(monkeypatch, tmp_path / "patched", [action])
+        monkeypatch.setattr(_ir, "withdraw_unjustified_deletes", lambda a: (a, []))
+        assert _ir.main() == 2
+        assert not (patched_out / "instructions.json").exists()
+
+    def test_healthy_run_through_real_unpatched_pipeline_exits_0_and_writes_file(self, monkeypatch, tmp_path):
+        actions = [
+            _delete_action(id="D_INT03", depends_on=["M_INT03"]),
+            {
+                "id": "M_INT03", "action": "move_note", "destination": "200 Notes/x.md",
+                "source_path": "100 Inbox/x.md", "applied": False,
+            },
+        ]
+        out_dir = _stub_dangling_audit_pipeline(monkeypatch, tmp_path, actions)
+
+        assert _ir.main() == 0
+        assert (out_dir / "instructions.json").exists()

@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.16.0
+# version: 0.20.0
 
 **Active agent: synthesis-conductor**
 
@@ -152,29 +152,7 @@ python3 scripts/instruction-render.py \
 
 Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
 
-#### 3c — Upload rendered files
-
-```bash
-python3 scripts/upload-rendered.py \
-  --rendered-dir tomo-tmp/rendered \
-  --inbox "<inbox_path>"
-```
-
-Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
-do not retry batch). Exit 2 = bad input, stop.
-
-#### 3d — Flip source doc state
-
-```bash
-python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>" "<MODIFIED>"
-```
-
-`MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
-
-Exit 0 = success. Exit 1 = transition rejected (report and continue).
-Exit 2 = concurrency conflict (report and continue).
-
-#### 3e — Coverage audit
+#### 3c — Coverage audit
 
 ```bash
 python3 scripts/instructions-diff.py \
@@ -193,16 +171,53 @@ that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
 
+#### 3d — Upload rendered files
+
+```bash
+python3 scripts/upload-rendered.py \
+  --rendered-dir tomo-tmp/rendered \
+  --inbox "<inbox_path>"
+```
+
+Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
+do not retry batch). Exit 2 = bad input, stop.
+
+#### 3e — Flip source doc state
+
+```bash
+python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>" "<MODIFIED>"
+```
+
+`MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
+
+Exit 0 = success. Exit 1 = transition rejected (report and continue).
+Exit 2 = concurrency conflict (report and continue).
+
 Repeat 3a–3e for the next entry in the work list.
 
 ### Step 4 — Report
 
 Count the total number of approved docs processed across all buckets.
 
+Check for a run-level withheld-delete relay:
+```bash
+cat tomo-tmp/withheld-deletes.md
+```
+If the file exists, every line in it IS an already-sanitized user-facing
+notice — one per withheld delete across every entry processed this run. The
+file never contains anything else (no run id, no header, no internals). If
+the command errors (no such file), there is nothing to relay.
+
 > Pass 2 complete — instructions rendered for N source doc(s).
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
+> <every line from tomo-tmp/withheld-deletes.md, if it exists>
+
+Append the file's lines verbatim as the last lines of the report, one per
+line, only when the file exists. Never substitute the stderr withdrawal
+block or the raw `tomo.delete_withdrawals` JSON for this — relay only the
+lines read from `tomo-tmp/withheld-deletes.md`.
 
 ## What you never do
 

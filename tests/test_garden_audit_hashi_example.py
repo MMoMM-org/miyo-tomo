@@ -51,7 +51,7 @@ def _build_instructions() -> dict:
     actions = build_garden_audit_actions(confirmed)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     return {
-        "schema_version": "2", "type": "tomo-instructions",
+        "schema_version": "3", "type": "tomo-instructions",
         "source_suggestions": "garden-audit-report",
         "generated": now.isoformat().replace("+00:00", "Z"),
         "profile": doc["profile"], "tomo_version": None,

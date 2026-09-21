@@ -93,6 +93,9 @@
       "action": "delete_source",
       "source_path": "100 Inbox/Places/Dresden.md",
       "reason": "Origin consumed by 1 atomic.",
+      "depends_on": [
+        "I01"
+      ],
       "applied": false
     },
     {
@@ -100,6 +103,9 @@
       "action": "delete_source",
       "source_path": "100 Inbox/Reise/Elbe.md",
       "reason": "Origin consumed by 1 atomic.",
+      "depends_on": [
+        "I02"
+      ],
       "applied": false
     },
     {
@@ -107,6 +113,9 @@
       "action": "delete_source",
       "source_path": "100 Inbox/Reise/Elbe.m4a",
       "reason": "Audio peer of consumed origin.",
+      "depends_on": [
+        "I02"
+      ],
       "applied": false
     },
     {
@@ -114,6 +123,9 @@
       "action": "delete_source",
       "source_path": "100 Inbox/Kaffee.md",
       "reason": "Origin consumed by 1 atomic.",
+      "depends_on": [
+        "I03"
+      ],
       "applied": false
     }
   ],

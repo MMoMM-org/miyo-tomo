@@ -42,6 +42,20 @@ match — the interpreter reads it rather than re-inspecting the original handle
 Surfacing it in the group-result schema keeps the interpreter decoupled from the
 registry read.
 
+**The runtime instruction had drifted from this paragraph, and was corrected on
+2026-09-13.** The paragraph above describes the design accurately: the value is
+*declared upstream and read*. But SKILL.md step 4 asked the model to work it out
+itself — "`llm_directive` if compose was a string; `field_template` if compose
+was an array" — which is re-inspecting by another name. Nothing surfaced the
+contradiction, because the stub did not carry the key at all, so there was
+nothing for the interpreter to read and the rule was the only thing left.
+
+The 2026-09-12 run applied that rule backwards and self-corrected. The fix
+restores what this section already described: `tag-handler-group.py` (0.5.0)
+emits `compose_mode` in each stub, and step 4 copies it verbatim under a STRICT.
+See `docs/tomo/scripts/tag-handler-group.md` for why an unread provenance field
+made the error invisible to every automated check.
+
 ## Cold-Path / AC-5 Byte-Identity Note
 
 WHY: The `If handled[] is absent or empty, do NOT load this skill` gate in the runtime file is the only mechanism needed for AC-5 compliance from the skill side. The conductor's Step 3a mirrors this gate. When the tag-handler registry is empty or no item matched, `routing-plan.json` omits the `handled` key entirely (triage emits nothing rather than an empty array — SDD §5 schema-change note). Both absent-key and empty-array are guarded by the same `do NOT load` condition, so a zero-handler run never enters the interpreter code path.

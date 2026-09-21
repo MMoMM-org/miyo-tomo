@@ -138,7 +138,9 @@ def _doc_with_sections() -> dict:
     daily = [{
         "daily_note_stem": "2026-07-04", "exists": True,
         "trackers": [{"field": "Sport", "value": True, "reason": "ran 5k",
-                      "source_stem": "first-principles", "source_section": "S01"}],
+                      "source_stem": "first-principles",
+                      "source_item_key": "100 Inbox/first-principles.md",
+                      "source_section": "S01"}],
         "log_entries": [], "log_links": [],
     }]
     doc["daily_notes_updates"] = daily
@@ -301,7 +303,9 @@ def test_edited_daily_reaches_the_update_log_entry_action():
         "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
         "daily_log.heading": "Log", "daily_log.heading_level": 2,
     }
-    actions = render_actions._build_daily_update_actions(out["daily_updates"], cfg, [0])
+    actions, _ids_by_origin = render_actions._build_daily_update_actions(
+        out["daily_updates"], cfg, [0], "100 Inbox/"
+    )
     le_action = next(a for a in actions if a["action"] == "update_log_entry")
     assert le_action["content"] == "EDITED reflection"
     assert le_action["position"] == "after_last_line"

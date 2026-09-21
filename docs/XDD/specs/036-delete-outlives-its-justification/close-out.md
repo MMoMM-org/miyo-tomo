@@ -85,8 +85,8 @@ input still looks resolvable.
 | F5-AC2 | A delete nothing justifies carries an explicitly empty field, not an absent one | `tests/test_036_depends_on_emission.py::test_user_requested_deletion_emits_empty_depends_on`, with `tests/test_036_withdraw_unjustified_deletes.py::test_missing_key_and_empty_list_are_different_outcomes` proving the two are not conflated downstream — absent withdraws, `[]` is kept | ✅ |
 | F5-AC3 | An origin consumed by three atomics names all three move ids | `tests/test_036_depends_on_emission.py::test_three_atomic_origin_names_all_three_move_ids`; `::test_audio_peer_delete_names_same_move_id_set_as_origin_delete` closes the gotcha that naming only one leaves the peer unguarded | ✅ |
 | F5-AC4 | Every id in every dependency field is present in the same set | `tests/test_instruction_render_wire_hygiene.py::TestAssertNoDanglingDependencies::test_one_dangling_id_produces_one_violation_naming_both_ids`, and at run level `::TestAssertNoDanglingDependenciesIntegration::test_dangling_id_aborts_exit_2_no_file_with_unpatched_control`. `::test_missing_depends_on_key_is_a_violation_distinct_from_dangling_id` covers the absent-key mode separately | ✅ |
-| F5-AC5 | The executor skips a delete whose named dependency failed | **Consumer-owned** — see below | ⏳ |
-| F5-AC6 | A destination taken between generation and application leaves the original intact | **Consumer-owned** — see below | ⏳ |
+| F5-AC5 | The executor skips a delete whose named dependency failed | **Consumer-owned — confirmed 2026-09-21** by Hashi's reply, and then observed live: run log `tomo-hashi-run-log_2026-09-21T1150`, `I05 delete_source → skipped-dependency (dependsOn: I01)` | ✅ |
+| F5-AC6 | A destination taken between generation and application leaves the original intact | **Consumer-owned — confirmed 2026-09-21** by Hashi's reply, and then observed live: the occupant kept its own body, the staged file stayed in the inbox, the origin survived | ✅ |
 
 ### F6 — The instruction document explains a withheld delete (2)
 
@@ -109,12 +109,27 @@ mechanism behaves as its source indicates — it was read, not executed, from th
 | F5-AC5 — a delete whose named dependency failed is skipped and recorded as skipped-due-to-dependency | Hashi | Their reply to the T4.5 release handoff |
 | F5-AC6 — a destination occupied after generation fails the move, the paired delete is skipped, the original survives | Hashi | Their reply to the T4.5 release handoff |
 
-**Status at close-out: not yet confirmed.** T4.5 is still `[ ]`. Spec 035's release handoff went out
-on 2026-09-11 and told Hashi explicitly that `depends_on` was **not** part of that release — so the
-handoff carrying this spec's instruction-wire row (`schema_version "2" → "3"`) has not been sent,
-and `_outbox/for-hashi/` holds no 036 attachment. This is a **boundary with an open obligation**,
-not a gap in the traceability: the two criteria are mapped, owned and scheduled. They are not yet
-discharged, and this document does not pretend otherwise.
+**Status: both discharged 2026-09-21.** The handoff went out 2026-09-18; Hashi vendored wire 3,
+merged it (PR #136, `44cb031`, released 0.25.1) and confirmed both criteria against their own suite,
+each new test first run against the old behaviour and confirmed failing.
+
+**Then both were observed live, which the plan did not ask for and which is worth more than the
+reply.** Hashi's own reply declined to claim the withholding path: *"The withholding path has not
+run in Obsidian. `skipped-dependency: 0` in the real run — the gate never had to block."* Their QA
+vault had been backfilled with `2026-09-15`, so nothing in it could fail. Ours still has the gap, so
+it could. Two runs of the **same** instruction set against the test vault, differing only in whether
+`I01`'s destination was occupied:
+
+| Run | I01 | I05 (`depends_on: ["I01"]`) | Totals |
+|---|---|---|---|
+| `2026-09-21T1150` — destination occupied | `failed` (collision guard) | **`skipped-dependency (dependsOn: I01)`** | 6 applied, 1 skipped-dependency, 1 failed |
+| `2026-09-21T1247` — destination free | `applied` | `applied` | 2 applied, 0 skipped-dependency, 0 failed |
+
+The same delete, withheld and then performed, with its dependency's outcome as the only variable —
+so the gate is selective, not a blanket refusal, and it is not the run aborting. Across **both** runs
+`100 Inbox/Laufrunde Elbufer.md` survived: its delete was withdrawn at the producer and never
+reached the wire at all. Producer and executor each withheld exactly what they should, at their own
+layer.
 
 ## Gaps
 
@@ -234,11 +249,14 @@ have misled the implementer. A contract's prose is part of the contract; read it
 
 ## Still open at close-out
 
-- **T4.5, the release handoff.** Not sent. Carries F5-AC5 and F5-AC6, and gates the release of the
-  instruction wire `"2" → "3"` — the consumer rejects unknown fields, so they vendor first or
-  simultaneously, never after. Note the mirror schema edit (T4.1) **already landed**, by owner
-  override of the plan's sequencing gate; the gate now survives on the release rule alone and
-  nothing in the test suite enforces it.
+- ~~**T4.5, the release handoff.**~~ Sent 2026-09-18, answered 2026-09-21. Wire 3 is vendored and
+  merged on the consumer side (0.25.1); emission is unblocked and both consumer-owned criteria are
+  discharged above.
+- ~~**The sanitisation-ownership question**~~ carried since the 2026-09-15 handoff. Closed by
+  measurement on the consumer's side, not by assertion: `vault.create` exists in exactly three
+  places, all of them their own documents at paths they compute, and `action.title` is read nowhere
+  in `src/actions/`. The only path that can create a note from a stem passes the sanitised
+  `target_stem`. No divergent-title path exists.
 - ~~**The `OPEN` marker on the `instructions-diff.py` coverage-audit backlog entry.**~~ Re-marked
   CLOSED 2026-09-18 (`195c32d`); the entry's own "what closing this needs" paragraph describes
   precisely what `3c8170c` shipped.

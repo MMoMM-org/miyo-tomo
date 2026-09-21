@@ -952,3 +952,52 @@ covered two. See `docs/tomo/scripts/instruction-render.md`'s "T4.3 —
 paragraph above asks for, guarded against double-subtracting the clash/suppression withdrawals
 `_subtract_withheld_moves` already removed. Found still marked OPEN during spec 036 T4.6
 traceability; the fix shipped, the entry was never re-marked.
+
+## OPEN — an `after-<action>` hook fires on a FAILED action and mutates an innocent note
+
+**Found 2026-09-21** during the spec 036 live validation, run `tomo-hashi-run-log_2026-09-21T1150`.
+
+`I01 move_note` failed against an occupied destination (Hashi's collision guard, correctly refusing
+to clobber). The run log nonetheless records on that same failed row:
+
+```
+hook note: after-info: alias -> "Zettelkasten-Nummerierung kodiert Verzweigung, nicht Chronologie (HASHI)"
+```
+
+The occupant — a note that merely happened to sit at the destination, with no relationship to the
+run — came out of it with an `aliases:` entry naming a note that was never moved there. Its body was
+untouched, so Hashi's F5-AC6 guarantee ("the squatter's content ... unchanged") holds as written;
+the frontmatter is outside that wording.
+
+**Two separable causes, one ours.** The vault-side hook `.tomo-hashi/hooks/after-move_note.cjs:55`
+sets `fm.aliases` unconditionally — it has no outcome check, so it writes whenever it is invoked.
+That hook is user-authored and lives only in the vault; it has no copy in this repo, and
+`tomo/dot_claude/skills/hashi-hook-author/` does not currently tell an author to guard on outcome.
+The other half is the consumer's: whether `after-move_note` should be invoked at all for a move that
+did not happen. A hook author reading the name will assume it did.
+
+**What closing this needs**: an outcome guard in the hook-authoring skill's guidance (and in the
+vault's own hook), plus the consumer's answer on invocation semantics. Raised to them in the reply
+to their 2026-09-21 handoff.
+
+## OPEN — run logs are kept out of Pass 1 by a prompt line, not by the triage
+
+**Found 2026-09-21** while checking whether a known trap was still live. It is.
+
+Hashi's run logs carry `tomo_skip_inbox_analysis: true`, and `tomo/dot_claude/agents/
+inbox-analyst.md:97` honours it. But `inbox-triage.py` has no knowledge of the flag — a repo-wide
+grep finds it only in `garden-audit-render.py`, `suggestions-reducer.py` and that one agent line.
+Triage selects Tomo documents with `search_by_frontmatter("tomo.doc_type=...")`, and a run log
+carries no `tomo.doc_type` at all, so it is not recognised as a Tomo document and lands in
+`fresh_sources` like any ordinary note.
+
+**Net effect**: the only thing standing between a run log and being analysed as a source note is an
+LLM following one line of its agent definition. It has failed before — two Pass 1 runs were
+previously polluted with `unreadable_result` from exactly this. Two run logs are sitting in the test
+vault's inbox as of this entry.
+
+**What closing this needs**: teach `inbox-triage.py` the flag so the exclusion is deterministic,
+rather than leaving a data-quality guard to prompt adherence. Directly relevant to
+[#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue
+is about, caught doing real work.
+

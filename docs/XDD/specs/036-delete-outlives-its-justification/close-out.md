@@ -129,7 +129,11 @@ The same delete, withheld and then performed, with its dependency's outcome as t
 so the gate is selective, not a blanket refusal, and it is not the run aborting. Across **both** runs
 `100 Inbox/Laufrunde Elbufer.md` survived: its delete was withdrawn at the producer and never
 reached the wire at all. Producer and executor each withheld exactly what they should, at their own
-layer.
+layer, for different causes, neither masking the other.
+
+Hashi withdrew their non-claim on this evidence the same day and now claims the path, recording it
+as ours. They also asked, unprompted, that the test vault's `2026-09-15` gap be kept: they had
+backfilled theirs and thereby lost the ability to observe this at all.
 
 ## Gaps
 

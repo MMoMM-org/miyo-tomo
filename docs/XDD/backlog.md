@@ -953,7 +953,7 @@ paragraph above asks for, guarded against double-subtracting the clash/suppressi
 `_subtract_withheld_moves` already removed. Found still marked OPEN during spec 036 T4.6
 traceability; the fix shipped, the entry was never re-marked.
 
-## OPEN — an `after-<action>` hook fires on a FAILED action and mutates an innocent note
+## CLOSED — an `after-<action>` hook fires on a FAILED action and mutates an innocent note
 
 **Found 2026-09-21** during the spec 036 live validation, run `tomo-hashi-run-log_2026-09-21T1150`.
 
@@ -969,16 +969,29 @@ run — came out of it with an `aliases:` entry naming a note that was never mov
 untouched, so Hashi's F5-AC6 guarantee ("the squatter's content ... unchanged") holds as written;
 the frontmatter is outside that wording.
 
-**Two separable causes, one ours.** The vault-side hook `.tomo-hashi/hooks/after-move_note.cjs:55`
-sets `fm.aliases` unconditionally — it has no outcome check, so it writes whenever it is invoked.
-That hook is user-authored and lives only in the vault; it has no copy in this repo, and
-`tomo/dot_claude/skills/hashi-hook-author/` does not currently tell an author to guard on outcome.
-The other half is the consumer's: whether `after-move_note` should be invoked at all for a move that
-did not happen. A hook author reading the name will assume it did.
+**Originally recorded as "two separable causes, one ours" — that apportionment was wrong, and the
+consumer corrected it in our favour.** Their `docs/hooks.md` has stated since v0.1 that
+`after-<action>.cjs` *"runs after the action's handler **succeeds**"*. Our hook was written to that
+published contract; the contract was right and their executor did not honour it. Nor was there a
+field we ignored — `HookContext` is `{action, app, logger}`, with no outcome, documented or
+otherwise, so no author could have guarded on it even suspecting the truth.
 
-**What closing this needs**: an outcome guard in the hook-authoring skill's guidance (and in the
-vault's own hook), plus the consumer's answer on invocation semantics. Raised to them in the reply
-to their 2026-09-21 handoff.
+Their own account of how it survived review is worth keeping: a handler that **threw** hit a
+`continue` and never reached the after-hook, while one that **returned** `{kind: "failed"}` fell
+through and fired it — two failure modes, two behaviours, neither pinned by a test, under a comment
+reading "runs regardless of handler outcome" that looked like intent.
+
+**Closed 2026-09-21 by the consumer** (`7f0f079`, PR #137). After-hooks are now gated on the same
+condition that graduates an action to `applied: true`: they run for `applied` and `skipped-already`,
+are skipped for `failed`, and never dispatch for `skipped-dependency` or `skipped-cancelled`. The
+invariant is now **"if a hook ran, the change is on disk"**, so a hook never needs an outcome guard.
+
+**Do NOT add an outcome guard** to `tomo/dot_claude/skills/hashi-hook-author/` or to the vault's
+`.tomo-hashi/hooks/*.cjs`. The consumer asked for this explicitly: such guidance would document
+their bug as a rule for our authors, and the guard would be dead code against a contract that once
+again holds. They declined to add an `outcome` field to the hook context for the same reason — it
+would leave every hook already in a vault a footgun. If a hook that deliberately observes failures
+is ever wanted, it is an explicit request to them, not a side effect to rely on.
 
 ## OPEN — run logs are kept out of Pass 1 by a prompt line, not by the triage
 

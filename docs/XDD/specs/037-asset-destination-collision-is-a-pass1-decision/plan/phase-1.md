@@ -63,11 +63,43 @@ file already there is the same one.
 
 - [ ] **T1.2 An occupied destination becomes a recorded conflict** `[activity: domain-modeling]`
 
-  1. Prime: Read `_build_move_asset_actions` for how attachments are deduplicated globally and how `owner_source_items` is accumulated `[ref: render_actions.py:640-728]`; read `load_asset_folder` `[ref: suggestions-reducer.py:1363]`
-  2. Test: a free destination raises nothing and leaves the run byte-identical to today `[ref: PRD/F1-AC1]`; an occupied destination produces one conflict naming source, destination and every owning note `[ref: PRD/F1-AC2]`; an attachment embedded by three notes produces **one** conflict carrying three owners; no Kado client produces no conflicts and no error `[ref: PRD/F1-AC5]`; a listing failure produces no conflicts and the run proceeds `[ref: SDD/Error Handling]`
+  1. Prime: Read `_build_move_asset_actions` for how attachments are deduplicated globally and how `owner_source_items` is accumulated `[ref: render_actions.py:691-782]`; read `load_asset_folder` `[ref: suggestions-reducer.py:1462]`. **Both refs corrected 2026-09-22** — the plan's originals (`640-728`, `1363`) predate specs 034–036 and point at neighbouring code.
+  2. Test:
+     - **A free destination leaves the emitted document unchanged**, anchored: render a
+       zero-conflict fixture, and assert the resulting document equals the one the pre-change
+       reducer emits for the same input `[ref: PRD/F1-AC1]`. Decide and state which shape the
+       key takes when empty — **absent**, like `tag_handler_updates`, rather than an empty list —
+       because an unconditional `attachment_conflicts: []` is itself a change to every document
+       and would make "unchanged" false by construction.
+     - **An occupied destination produces one conflict** naming source, destination and every
+       owning note `[ref: PRD/F1-AC2]`.
+     - **Dedup is by DESTINATION, not by path**: one attachment embedded by three notes yields
+       **one** conflict carrying three owners. The mutation this must catch is the plausible wrong
+       one — accumulating per source path and emitting three conflicts with one owner each.
+     - **No Kado client, and a listing that raises, each produce no conflicts and no error**
+       `[ref: PRD/F1-AC5]` `[ref: SDD/Error Handling]`. **Both are already true of shipped code**
+       — `_vault_folder_lookup` is `None` without a client (`suggestions-reducer.py:2078`) and
+       `_VaultFolderLookup._entries` already fails open to `[]` (T1.1). They are therefore written
+       as **regression pins with a named mutation each**: "call `.assets()` unconditionally,
+       without the `is not None` guard" and "let `_entries` propagate instead of returning `[]`".
+       A fail-open assertion that names no mutation is a restatement of T1.1, not coverage of this
+       task.
   3. Implement: compute each distinct attachment's destination through `_asset_dest_join` — the same helper Pass 2 uses — and record `attachment_conflicts[]` entries into the suggestions-doc structure
   4. Validate: full suite; `ruff`; assert on a fixture with zero conflicts that the emitted document is unchanged from the pre-change render
   5. Success: every PRD F1 criterion has a named test; the destination is computed by the same helper as Pass 2, so the two cannot disagree `[ref: SDD/Runtime View, step 3]`
+
+  **Scope boundary settled 2026-09-22 — two adjacent collision kinds are NOT this task's.**
+  A *vault* collision is what 037 exists for: the destination is occupied by something already in
+  the vault. Two neighbours look similar and are out of scope, recorded here so the implementer
+  does not discover them mid-task and guess:
+  - **Intra-run collision** — two different inbox attachments whose source paths resolve to one
+    destination basename. Already handled, in Pass 2, by `_build_move_asset_actions`' `claimed`
+    dict (`render_actions.py:761-774`), which emits a skip entry of `kind: "collision"`. The PRD
+    does not mention it. Do not merge it into `attachment_conflicts[]`; two mechanisms reporting
+    one concept under two names is the drift this repo keeps designing out.
+  - **Self-collision** — a source that already sits at its own destination. Not reachable through
+    the inbox→asset-folder move this builder performs, so no test is owed. Stated rather than left
+    silent, because "we did not test it" and "it cannot happen" look identical in a diff.
 
 - [ ] **T1.3 The conflict knows whether it is the same file** `[activity: domain-modeling]` `[parallel: true]`
 

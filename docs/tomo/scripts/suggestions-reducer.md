@@ -1292,30 +1292,48 @@ the current task.
 
 WHY the cost bound changed, and why that is accepted rather than patched
 around: `same_file` is computed once per entry, at entry-creation time
-(unchanged since T1.2/T1.3) — but an entry is now keyed by source, so two
-sources colliding on the same destination are two entries, each running its
-own `_same_file(path, destination, content_reader)` call. The destination
-side of that comparison is therefore read TWICE, once per source, where the
-pre-T1.5 destination-keyed code read it once. `SDD/Cost` is amended
-alongside the code (`solution.md`, "Content reads are bounded by the number
-of distinct colliding SOURCE paths") rather than left describing a bound the
-code no longer produces. A shared destination-side read cache was considered
-and rejected: each entry is a genuine, separate comparison (different source
-bytes against the same destination bytes), and building a cache to save one
-read in what is structurally a two-element case is the wrong fix.
+(unchanged since T1.2/T1.3) — but an entry is now keyed by source, so N
+distinct source paths colliding on the same destination are N entries, each
+running its own `_same_file(path, destination, content_reader)` call, which
+reads BOTH sides. The group therefore costs 2N reads — N source reads plus N
+destination reads — against 2 total for the pre-T1.5 destination-keyed code,
+which read one source and the destination once, regardless of N. N is
+bounded only by the run's attachment count, and N > 2 is a realistic shape,
+not a hypothetical one: spec 034 shipped recursive inbox discovery, and
+camera/scanner default filenames repeat across folders. `SDD/Cost` is
+amended alongside the code (`solution.md`, "Content reads are bounded by the
+number of distinct colliding SOURCE paths") rather than left describing a
+bound the code no longer produces. A shared destination-side read cache was
+considered and rejected — not because N is usually small, but because it
+would be WRONG at any N: `same_file` answers a question about the (SOURCE,
+destination) PAIR, not about the destination alone, so caching one verdict
+per destination would hand every source after the first another source's
+answer.
 `test_two_sources_colliding_on_one_destination_read_it_twice` asserts the
-exact call count, not just "reads happened."
+exact call count at N=2; `test_three_sources_colliding_on_one_destination_read_it_three_times`
+does the same at N=3, which is what pins the bound as scaling with N rather
+than merely holding at N=2.
 
 WHY entries are still built by appending at first occurrence in the owners
-list, not by iterating a grouping dict afterward: Phase 2's T2.1 renders
-`attachment_conflicts[]` straight into document order. Splitting one
-destination-keyed entry into several source-keyed ones moves entries
-relative to OTHER destinations' entries if the ordering mechanism ever
-changes — an unstated contract in the reducer becomes an unstated one in the
-renderer. `test_entry_order_follows_first_occurrence` fixes the order with a
-fixture that interleaves two independent destination collisions with a
-two-source split, so the ordering claim is pinned against a concrete
-multi-collision shape, not inferred from a single-collision test.
+list: Phase 2's T2.1 renders `attachment_conflicts[]` straight into document
+order. Splitting one destination-keyed entry into several source-keyed ones
+moves entries relative to OTHER destinations' entries if the ordering
+mechanism ever changes — an unstated contract in the reducer becomes an
+unstated one in the renderer. The mutation that actually falsifies this is
+sorting the returned list by case-folded destination before returning it —
+verified by hand in a disposable copy, it turns
+`test_entry_order_follows_first_occurrence` red (1 failed, 7 passed) and
+nothing else. Building the entries by iterating the grouping dict at the end
+instead of appending at first occurrence does NOT falsify it: Python dict
+insertion order already equals first-occurrence order here (the grouping
+dict is only ever appended to, never reordered), so that swap is
+observationally identical to the shipped code — measured, by the same
+hand-applied check, to leave the test GREEN (8 passed). A future reader
+should not mistake that silence for permission to make the swap.
+`test_entry_order_follows_first_occurrence` fixes the order with a fixture
+that interleaves two independent destination collisions with a two-source
+split, so the ordering claim is pinned against a concrete multi-collision
+shape, not inferred from a single-collision test.
 
 WHY the entry's field set is asserted exactly, not just its content: the
 loop this task rewrites is the one place a grouping key could leak onto the

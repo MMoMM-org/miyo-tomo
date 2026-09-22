@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.53.0
+# version: 1.53.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -586,9 +586,10 @@ def detect_attachment_conflicts(
     attachments checked `[ref: SDD/Cost]`. The exact bound: for N distinct
     source paths that all collide on the SAME destination, each gets its
     own entry and its own `_same_file` call, and `_same_file` reads BOTH
-    sides — so that one destination is read N times (2N reads total for
-    the group), where the pre-T1.5 destination-keyed code read it twice
-    regardless of N. Nothing in this function caps N but the run's
+    sides — so the group costs 2N reads total (N source reads plus N
+    destination reads), against 2 total for the pre-T1.5 destination-keyed
+    code, which read one source and the destination once, regardless of N.
+    Nothing in this function caps N but the run's
     attachment count, and N > 2 is a realistic shape, not a hypothetical
     one: spec 034 shipped recursive inbox discovery, and camera/scanner
     default filenames repeat across folders. A shared destination-side

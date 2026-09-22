@@ -33,6 +33,29 @@ phase: 2
 
 ---
 
+## Named risk carried in from Phase 1 — read before designing the render
+
+**A conflict entry's `owner_source_items` may name a note whose attachment is not the entry's
+`source`.** Recorded 2026-09-22 from T1.2's compliance review; T1.2 itself is correct and passed.
+
+`detect_attachment_conflicts` groups by case-folded **destination**. That is the right key — it is
+what makes one attachment embedded by three notes a single conflict with three owners. But when two
+*different* inbox attachments share a basename (`100 Inbox/A/karte.png` and `100 Inbox/B/karte.png`)
+and the vault already holds that name, both land in the **same** entry: `source` keeps whichever
+path was seen first, and `owner_source_items` accumulates the owners of both.
+
+For detection this is harmless — the destination genuinely is occupied, which is all Phase 1 claims.
+It stops being harmless here. If this phase renders `owner_source_items` as "the notes that embed
+this file", and Phase 3 applies a rename with an embed rewrite, **the second file's owning note is
+told its embed was retargeted to a file it never owned.** The user approves a remedy for one file
+and a different note is modified.
+
+The intra-run half of this is deliberately Pass 2's (`_build_move_asset_actions`' `claimed` dict,
+`render_actions.py:761-774`), and that boundary stands — this is not a request to detect it here.
+What this phase owes is that its rendering and its remedies cannot mislead when an entry carries
+owners of more than one source. Decide it explicitly: render per-source rather than per-destination,
+split the entry, or state why the shape cannot reach a user.
+
 ## Tasks
 
 Establishes the surface the owner reads and the tick the pipeline reads back.

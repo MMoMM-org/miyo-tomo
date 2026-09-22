@@ -1036,3 +1036,26 @@ in the middle of three tasks that all touch it. Revisit after spec 037 closes.
 
 Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different file.
 
+
+## OPEN — a folder occupying an attachment destination produces no Pass-1 signal (spec 037)
+
+**Recorded 2026-09-22** by the spec-compliance review of `838b185` (spec 037 T1.3).
+
+`SDD/Error Handling` in spec 037 promises that a destination occupied by a **folder** raises a
+conflict with rename as the default remedy. It does not. T1.1's `_VaultFolderLookup._map`
+(`suggestions-reducer.py:348-363`) filters out every listing entry whose `type` is not `"file"`
+before the asset map exists, so `detect_attachment_conflicts` never learns the name is taken and
+emits no entry at all — not a conflict with `same_file: false`, and not a degraded one either.
+
+**Why it was not closed in T1.3**: the fix is in T1.1's code, not T1.3's. `_map` would have to carry
+entry type through to its callers, changing a contract that T1.2 and T1.3 both consume, mid-phase.
+
+**What it costs today**: Pass 2 emits the move, and Hashi refuses it at apply time. So the user is
+not silently wrong — they are told late, which is the exact failure mode spec 037 exists to remove,
+for this one sub-case. The case is rare: it needs a folder whose name matches an incoming
+attachment's filename, extension included, inside the attachment folder.
+
+**What closing it needs**: decide first whether the SDD row or the code is authoritative. If the row
+stands, widen `_map` to distinguish "no such name" from "a non-file holds this name" and let the
+conflict carry `same_file: false`. If the code stands, the SDD row should be struck rather than left
+as a promise the implementation does not keep.

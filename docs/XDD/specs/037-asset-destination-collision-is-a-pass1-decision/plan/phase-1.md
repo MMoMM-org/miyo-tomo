@@ -139,3 +139,24 @@ file already there is the same one.
 > (4) The multi-owner bound is new, for the reason the guardian gave: dedup is by destination, so an
 > implementation looping over `owner_source_items` passes every other case while quietly breaking
 > the cost claim.
+
+> **Deviation recorded 2026-09-22 — T1.3 cannot honour the folder row, and the SDD is wrong, not the code.**
+> The plan asked that a destination occupied by a **folder** set `same_file: false`; `SDD/Error
+> Handling` asks for the same thing in stronger terms — *"Conflict; rename remains the default."*
+> **Neither is reachable.** T1.1's `_VaultFolderLookup._map` drops every entry with
+> `type != "file"` (`suggestions-reducer.py:348-363`) before the asset map is built, so a
+> folder-occupied name is never seen as occupied at all: there is no conflict entry for
+> `same_file` to sit on. The shipped behaviour is **no signal**, which is weaker than the SDD's
+> stated fallback, not merely different from it.
+> Implemented as documented-not-faked, deliberately: `test_folder_occupied_destination_never_becomes
+> _a_conflict` drives the real `_VaultFolderLookup` and pins the actual outcome, and its docstring
+> says it pins *"no conflict"*, not *"sets false"*. A test asserting `false` here could only be
+> written by fabricating an `asset_listing` shape the production code cannot produce — coverage of
+> a fiction.
+> **Left open on purpose.** Closing it means widening `_map`'s contract to carry entry type through
+> to `detect_attachment_conflicts`, which is T1.1's code and would land a contract change in the
+> middle of the phase that consumes it. The decision of whether to close it at all belongs to the
+> phase boundary: the sub-case is rare (a folder named `karte.png` inside the attachment folder),
+> and Hashi still refuses the move at apply time — late, which is precisely what 037 exists to fix,
+> but not silent. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
+> `docs/tomo/scripts/suggestions-reducer.md:1172`.

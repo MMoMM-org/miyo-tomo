@@ -1036,6 +1036,19 @@ in the middle of three tasks that all touch it. Revisit after spec 037 closes.
 
 Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different file.
 
+**Second seam, added 2026-09-22** by the code-quality review of T1.4: `detect_attachment_conflicts`
+now takes five parameters, two of them optional callables (`asset_listing`, `folder_listing`) that
+**come from the same `_VaultFolderLookup` instance at every call site** — `main()` and all tests
+pass `lookup.assets` and `lookup.occupied_by_folder` together, never independently. A single
+`folder_lookup: _VaultFolderLookup | None` parameter would drop the count to four and remove one
+`is None` branch without losing the "no Kado client means no capability" semantics, which are real
+production states rather than test scaffolding. `content_reader` stays separate — it genuinely comes
+from a different object (`kado_client`).
+
+**Not done mid-phase deliberately**: the signature is consumed by T1.2's, T1.3's and T1.4's test
+files. Changing it while Phase 2 renders from the same structure would put a signature churn between
+the tasks that produce the data and the tasks that display it. Revisit with the extraction above.
+
 
 ## RESOLVED — a folder occupying an attachment destination (spec 037)
 

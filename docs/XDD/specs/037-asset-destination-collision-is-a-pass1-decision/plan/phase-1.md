@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Detection in the reducer"
-status: completed
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -228,3 +228,53 @@ file already there is the same one.
   5. Success: Scenario 7 has a named test `[ref: PRD/Edge Case Scenario 7]`; the folder
      verdict costs no read `[ref: SDD/Cost]`; the note path is behaviourally identical
      `[ref: SDD/Constraints, additive only]`
+
+- [ ] **T1.5 One entry describes one file** `[activity: domain-modeling]`
+
+  Added 2026-09-22, after Phase 1 was closed a second time. Phase 2's own context section
+  carried this forward from T1.2's review as a risk to decide *before* designing the render;
+  the owner decided it in the data, not the display. See `plan/phase-2.md`, "Named risk
+  carried in from Phase 1".
+
+  **The defect**: `detect_attachment_conflicts` groups by case-folded DESTINATION. Two
+  *different* inbox attachments sharing a basename (`100 Inbox/A/karte.png` and
+  `100 Inbox/B/karte.png`) therefore land in ONE entry — `source` keeps whichever path was
+  seen first and `owner_source_items` accumulates the owners of both. Harmless for
+  detection, which only claims the destination is occupied. Not harmless downstream: a
+  rename with an embed rewrite would tell the second file's owning note that its embed was
+  retargeted to a file it never owned — **a note the owner never approved gets modified.**
+
+  1. Prime: Read `detect_attachment_conflicts`' `by_dest` loop and the docstring paragraph
+     that argues for the destination key `[ref: suggestions-reducer.py:~600-630]`. That
+     argument is not wrong about what it claims — it is about the wrong key. Read
+     `_asset_dest_join` `[ref: render_actions.py:560-575]`: the destination is the asset
+     folder plus the source's basename, which is exactly why two sources can share one.
+  2. Test:
+     - **Two different sources sharing a basename yield TWO entries**, each naming only its
+       own owning notes, both carrying the same `destination`. Mutation: restore the
+       case-folded destination as the grouping key — one entry appears, carrying both
+       owners, and the second note's ownership is silently attributed to the first file.
+     - **One attachment embedded by three notes still yields ONE entry with three owners**
+       `[ref: PRD/F2-AC3]`. Mutation: group by `(source, item_key)` — three entries with one
+       owner each, which breaks the criterion the destination key was chosen to satisfy.
+     - **Occupancy is still decided case-folded on the DESTINATION** while grouping is exact
+       on the source. Two sources whose basenames differ only in case both collide with the
+       one vault file and yield two entries. Mutation: casefold the source for grouping —
+       they merge back into one entry and the defect returns in a narrower form.
+     - **The cost bound is restated, not silently broken**: two sources colliding on one
+       destination now produce two entries and therefore read that destination **twice**.
+       Assert the exact count. This is a real increase over the pre-T1.5 behaviour and is
+       accepted deliberately — each entry is a genuine, separate comparison, and a shared
+       destination cache would be the wrong fix for a two-element case. Mutation: compute
+       `same_file` once per destination and reuse it across entries — the count drops and
+       two different files are handed one verdict.
+     - **A zero-conflict run still emits no `attachment_conflicts` key at all** — regression
+       pin on T1.2's settled decision. Mutation: emit an unconditional `[]`.
+  3. Implement: group by the exact source path; keep the case-folded destination as the
+     occupancy test against `vault_assets` and `occupied_folders`
+  4. Validate: full suite; `ruff`; T1.2, T1.3 and T1.4's own tests updated only where the
+     entry COUNT legitimately changes — any test whose expectations change for another
+     reason is a signal the change went too far
+  5. Success: every entry's `owner_source_items` names only notes embedding that entry's
+     `source` `[ref: PRD/F2-AC1]`; F2-AC3 still holds `[ref: PRD/F2-AC3]`; the cost change is
+     measured and stated rather than discovered `[ref: SDD/Cost]`

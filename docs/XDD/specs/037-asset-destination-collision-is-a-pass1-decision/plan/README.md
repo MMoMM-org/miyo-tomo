@@ -34,7 +34,7 @@ version: "1.0"
 |-------|-------|
 | specId | 037-asset-destination-collision-is-a-pass1-decision |
 | phases | 4 |
-| tasks | 14 |
+| tasks | 15 |
 | status | pending |
 
 ### PhaseStatus
@@ -103,7 +103,7 @@ bash scripts/reset-tomo-tmp.sh --pass1 --instance <path>/tomo-tmp
 
 ## Implementation Phases
 
-- [x] [Phase 1: Detection in the reducer](phase-1.md)
+- [ ] [Phase 1: Detection in the reducer](phase-1.md)
 - [ ] [Phase 2: The decision in the document](phase-2.md)
 - [ ] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
 - [ ] [Phase 4: Integration and the live path](phase-4.md)

@@ -56,6 +56,15 @@ What this phase owes is that its rendering and its remedies cannot mislead when 
 owners of more than one source. Decide it explicitly: render per-source rather than per-destination,
 split the entry, or state why the shape cannot reach a user.
 
+**Decided 2026-09-22 — in the data, not the display. This phase owes nothing further.**
+The third option was checked and refuted rather than assumed: `_asset_dest_join`
+(`render_actions.py:571-575`) builds the destination from the asset folder plus the source's
+basename, and spec 034 shipped recursive inbox discovery, so two attachments sharing a filename in
+different inbox subfolders genuinely reach one entry. The owner chose to fix the key rather than
+teach the renderer a special case — **Phase 1 T1.5** groups by exact source path, keeping the
+case-folded destination only as the occupancy test. An entry therefore describes exactly one file
+by the time this phase reads it, and `owner_source_items` names only notes embedding that file.
+
 ## Tasks
 
 Establishes the surface the owner reads and the tick the pipeline reads back.

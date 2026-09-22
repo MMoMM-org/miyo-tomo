@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Detection in the reducer"
-status: completed
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -165,3 +165,48 @@ file already there is the same one.
 > PRD and SDD are revised to accept no-signal here. A task-level deviation note is not the place
 > that gets settled. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
 > `docs/tomo/scripts/suggestions-reducer.md:1172`.
+
+- [ ] **T1.4 A folder holding the name is a conflict too** `[activity: domain-modeling]`
+
+  Added 2026-09-22, after Phase 1 was first closed. T1.3's spec-compliance review
+  established that `requirements.md` Edge Case Scenario 7 — *"The destination is occupied
+  by a folder → Expected: conflict, rename remains the sensible default"* — is unmet, and
+  the owner decided the **code gives way, not the PRD**. This task closes it.
+
+  1. Prime: Read `_VaultFolderLookup._map` `[ref: suggestions-reducer.py:348-363]` — the
+     `entry.get("type") != "file"` guard is what drops a folder before any caller sees it —
+     and `detect_attachment_conflicts`' `dest_key not in vault_assets` test. Read T1.1's
+     deviation block above: the raw-listing cache is load-bearing and must not be
+     restructured.
+  2. Test:
+     - **A folder occupying the destination produces one conflict with `same_file: false`**
+       `[ref: PRD/Edge Case Scenario 7]` `[ref: SDD/Error Handling]`. Mutation: restore the
+       unconditional `type != "file"` drop — the destination reads as free and no conflict
+       is emitted at all.
+     - **That conflict costs ZERO content reads.** `false` here is a fact about kinds, not a
+       comparison result: a folder cannot be byte-identical to a file, and reading one would
+       raise. Assert the reader was never called for it. Mutation: route the folder
+       destination through `_same_file` — the read raises, `same_file` becomes `null`, and
+       the read count goes to two. This assertion is what separates a correct `false` from a
+       `false` that is really a swallowed error.
+     - **A `.md` note in the asset folder is still NOT an attachment collision** — regression
+       pin on T1.1's decision. Mutation: widen the new path to admit every non-file entry
+       *and* `.md` files, which makes a note sharing the attachment folder look like an
+       attachment clash.
+     - **`notes()` is unaffected**: a subfolder inside a note destination folder does not
+       become a note clash. Mutation: apply the folder-admitting change inside `_map` itself
+       rather than in the asset path, which leaks it into the note caller and breaks spec
+       034 T5.2.
+     - **Mixed run**: one folder-occupied destination and one file-occupied destination yield
+       two entries — `false` with no reads for the folder, the computed verdict with two
+       reads for the file. Mutation: any implementation that treats the two occupancy kinds
+       through one branch.
+  3. Implement: expose the occupied-by-a-non-file case additively — existing callers of
+     `notes()` and `assets()` must keep their current signatures and results — and let
+     `detect_attachment_conflicts` raise the conflict with `same_file` set to `false`
+     without consulting `content_reader`
+  4. Validate: full suite; `ruff`; the spec 034 T5.2 and spec 037 T1.1/T1.2/T1.3 tests stay
+     green untouched
+  5. Success: Scenario 7 has a named test `[ref: PRD/Edge Case Scenario 7]`; the folder
+     verdict costs no read `[ref: SDD/Cost]`; the note path is behaviourally identical
+     `[ref: SDD/Constraints, additive only]`

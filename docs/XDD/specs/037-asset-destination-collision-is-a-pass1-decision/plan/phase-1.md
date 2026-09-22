@@ -140,9 +140,12 @@ file already there is the same one.
 > implementation looping over `owner_source_items` passes every other case while quietly breaking
 > the cost claim.
 
-> **Deviation recorded 2026-09-22 — T1.3 cannot honour the folder row, and the SDD is wrong, not the code.**
-> The plan asked that a destination occupied by a **folder** set `same_file: false`; `SDD/Error
-> Handling` asks for the same thing in stronger terms — *"Conflict; rename remains the default."*
+> **Deviation recorded 2026-09-22 — T1.3 cannot honour the folder case; which artifact gives way is undecided.**
+> The plan asked that a destination occupied by a **folder** set `same_file: false`. `SDD/Error
+> Handling` asks for more — *"Conflict; rename remains the default"* — and it asks for it because
+> **`requirements.md` Edge Case Scenario 7 does**: *"The destination is occupied by a folder →
+> Expected: conflict, rename remains the sensible default."* What is unmet is a numbered PRD
+> acceptance scenario, not a design-doc detail, and nothing below decides against it.
 > **Neither is reachable.** T1.1's `_VaultFolderLookup._map` drops every entry with
 > `type != "file"` (`suggestions-reducer.py:348-363`) before the asset map is built, so a
 > folder-occupied name is never seen as occupied at all: there is no conflict entry for
@@ -158,5 +161,7 @@ file already there is the same one.
 > middle of the phase that consumes it. The decision of whether to close it at all belongs to the
 > phase boundary: the sub-case is rare (a folder named `karte.png` inside the attachment folder),
 > and Hashi still refuses the move at apply time — late, which is precisely what 037 exists to fix,
-> but not silent. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
+> but not silent. **The fork itself is open**: either the code widens to satisfy Scenario 7, or the
+> PRD and SDD are revised to accept no-signal here. A task-level deviation note is not the place
+> that gets settled. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
 > `docs/tomo/scripts/suggestions-reducer.md:1172`.

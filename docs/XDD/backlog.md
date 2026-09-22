@@ -1041,8 +1041,13 @@ Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different f
 
 **Recorded 2026-09-22** by the spec-compliance review of `838b185` (spec 037 T1.3).
 
-`SDD/Error Handling` in spec 037 promises that a destination occupied by a **folder** raises a
-conflict with rename as the default remedy. It does not. T1.1's `_VaultFolderLookup._map`
+**The open question, first**: should `_map`'s contract widen so Tomo can satisfy PRD Edge Case
+Scenario 7, or should the PRD and SDD be revised to accept no-signal as the folder-occupied
+behaviour? Everything below argues why it was left alone for now; none of it answers this.
+
+`requirements.md` Edge Case Scenario 7 — a numbered PRD acceptance scenario, not a design detail —
+says a destination occupied by a **folder** is *"a conflict, rename remains the sensible default"*,
+and `SDD/Error Handling` restates it. The implementation does neither. T1.1's `_VaultFolderLookup._map`
 (`suggestions-reducer.py:348-363`) filters out every listing entry whose `type` is not `"file"`
 before the asset map exists, so `detect_attachment_conflicts` never learns the name is taken and
 emits no entry at all — not a conflict with `same_file: false`, and not a degraded one either.
@@ -1055,7 +1060,8 @@ not silently wrong — they are told late, which is the exact failure mode spec 
 for this one sub-case. The case is rare: it needs a folder whose name matches an incoming
 attachment's filename, extension included, inside the attachment folder.
 
-**What closing it needs**: decide first whether the SDD row or the code is authoritative. If the row
-stands, widen `_map` to distinguish "no such name" from "a non-file holds this name" and let the
-conflict carry `same_file: false`. If the code stands, the SDD row should be struck rather than left
-as a promise the implementation does not keep.
+**What each branch of the fork costs**: satisfying Scenario 7 means widening `_map` to distinguish
+"no such name" from "a non-file holds this name", so the conflict can carry `same_file: false` — a
+contract change in T1.1's code that T1.2 and T1.3 both consume. Accepting the weaker behaviour means
+editing the PRD scenario and the SDD row together, rather than leaving both standing as promises the
+implementation does not keep.

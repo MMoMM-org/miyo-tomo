@@ -982,6 +982,47 @@ already runs on both paths, already holds the folder counts, and
 `routing-plan.json` — carrying triage's own metrics — already sits in the
 `tomo-tmp/` it writes into. The wrapper script the skills called was retired.
 
+## The Folder Cache Caches the Raw Listing, Not the Derived Map (spec 037 T1.1)
+
+Spec 037 needs the same per-folder `list_dir` cache T5.2 built to also answer
+an attachment lookup — "is this destination already occupied" has to hold for
+assets, not just notes. `_vault_folder_notes`'s body did two things in one
+step: fetch-or-reuse the listing, and derive a `.md`-only `{destination:
+path}` map from it. Generalising by parameterising that combined step (file
+predicate + destination-join, still cached keyed on folder) would have cached
+the *derived* map — so a folder the note caller primes first would hand the
+attachment caller a `.md`-only dict for the rest of the run, and the
+attachment lookup would find nothing. **Silently**: no exception, no second
+`list_dir` call to notice, just an empty result exactly like "not occupied."
+That is the failure mode this spec exists to remove, reintroduced by the
+refactor meant to prevent it.
+
+`_VaultFolderLookup` (module-level class, replacing the closure nested in
+`main()`) splits the two steps instead: `_entries(folder)` is the only thing
+that touches the cache, keyed on folder, storing the raw `list_dir` result
+list. `notes()` and `assets()` both call it and then derive their own map —
+`.md`-only via `_dest_join`, non-`.md` via `_asset_dest_join` — fresh, every
+call, from whatever is in the cache. A second call for the same folder still
+costs zero extra `list_dir` round trips (the entries are already cached); it
+just costs a re-filter over an already-in-memory list, which is not a cost
+`folder_listing_calls` was ever meant to count.
+
+Hoisted to module level (it was a closure over `main()`'s locals — `kado_client`,
+the cache dict, `folder_listing_calls`) so spec 037's test can drive it
+directly, the same way `resolve_destination_clashes` already is, instead of
+needing to run the whole reducer to exercise a lookup. `main()` now
+instantiates one `_VaultFolderLookup(kado_client)` (or `None` when Kado is
+absent/unreachable/`--fan-resolve`, unchanged from before) and reads
+`folder_listing_calls` / `distinct_destination_folders` off it at the two
+existing sites — behaviour unchanged, only where the state lives.
+
+The note path is unchanged in output: `notes()` is the same filter
+(`type == "file"` and lowercased name ends `.md`) and the same join
+(`_dest_join(folder, name[:-3]).casefold()`) the pre-generalisation body used,
+verified in `tests/test_037_t1_1_folder_cache_serves_attachments.py` against a
+reproduction of that exact body, and against the spec 034 T5.2 suite passing
+unmodified.
+
 WHY `--routing-plan` defaults to a sibling of `--output` rather than a literal
 `tomo-tmp/routing-plan.json`: both are artefacts of one run in one directory,
 and both skills put them there. A cwd-relative literal would silently pick up a

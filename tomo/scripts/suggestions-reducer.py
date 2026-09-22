@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.47.0
+# version: 1.48.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -37,6 +37,7 @@ import copy
 import json
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
@@ -65,8 +66,9 @@ from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
 )
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
-from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash
+from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash; spec 037 T1.1
     DEFAULT_ASSET_FOLDER,
+    _asset_dest_join,
     _dest_join,
 )
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
@@ -303,6 +305,87 @@ def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
         f"{where} `{holder}`, which differs from `{claimed_dest}` only in case "
         "— the filesystem may treat the two as one file"
     )
+
+
+class _VaultFolderLookup:
+    """One `list_dir` per destination folder, served to every caller.
+
+    Caches the RAW listing per folder — not a caller-derived map. A folder
+    primed by `notes()` (which reads only `.md` entries) still answers a
+    later `assets()` call from the same cached listing, because the cache
+    holds the listing itself and each call derives its own map from it. A
+    cache keyed on the derived map would serve the second caller a map
+    built for the first — silently empty for every attachment [ref: spec 037
+    T1.1; see docs/tomo/scripts/suggestions-reducer.md].
+
+    Fails open on a listing error — an error is not a collision, matching
+    the pre-generalisation behaviour — and still charges the round trip to
+    `folder_listing_calls` (spec 034 T6.1 / F9).
+    """
+
+    def __init__(self, kado_client) -> None:
+        self._kado_client = kado_client
+        self.folders: dict[str, list[dict]] = {}
+        self.folder_listing_calls = 0
+
+    def _entries(self, folder: str) -> list[dict]:
+        if folder in self.folders:
+            return self.folders[folder]
+        calls_before = observed_call_count(self._kado_client)
+        try:
+            entries = list(self._kado_client.list_dir(folder, depth=1))
+        except Exception:  # noqa: BLE001 — an error is not a collision
+            entries = []
+        calls_after = observed_call_count(self._kado_client)
+        self.folder_listing_calls += (
+            calls_after - calls_before
+            if calls_before is not None and calls_after is not None
+            else 1
+        )
+        self.folders[folder] = entries
+        return entries
+
+    def _map(
+        self,
+        location: str,
+        *,
+        file_predicate: Callable[[str], bool],
+        join: Callable[[str, str], str],
+    ) -> dict[str, str]:
+        folder = (location or "").rstrip("/") + "/"
+        found: dict[str, str] = {}
+        for entry in self._entries(folder):
+            path = entry.get("path") or ""
+            name = path.rsplit("/", 1)[-1]
+            if entry.get("type") != "file" or not file_predicate(name):
+                continue
+            found[join(folder, name).casefold()] = path
+        return found
+
+    def notes(self, location: str) -> dict[str, str]:
+        """The `.md` notes in `location`, keyed as `_dest_join` builds them.
+
+        Unchanged from the pre-generalisation `_vault_folder_notes` body:
+        same filter, same join, recomposed through `_dest_join` so both
+        sides of a comparison are built by the same helper (spec 034 T5.2).
+        """
+        return self._map(
+            location,
+            file_predicate=lambda name: name.lower().endswith(".md"),
+            join=lambda folder, name: _dest_join(folder, name[:-3]),
+        )
+
+    def assets(self, location: str) -> dict[str, str]:
+        """The non-`.md` attachments in `location`, keyed by `_asset_dest_join`.
+
+        `.md` entries are excluded — a note sharing an attachment folder is
+        not an attachment collision.
+        """
+        return self._map(
+            location,
+            file_predicate=lambda name: not name.lower().endswith(".md"),
+            join=_asset_dest_join,
+        )
 
 
 def resolve_destination_clashes(
@@ -1989,46 +2072,10 @@ def main() -> int:
     # destination: a folded comparison needs the folder's real filenames, and
     # an existence probe would only answer the question Kado's own case
     # semantics decide — which CON-7 forbids this spec from measuring.
-    _folder_cache: dict[str, dict[str, str]] = {}
-    # spec 034 T6.1 / F9: what those listings actually cost. One listing per
-    # cache MISS, so this is not the claim count — and it is read off the
-    # client's own round-trip counter where the client keeps one, so a paged
-    # listing is not undercounted as a single call. Carried in the output
-    # document below: the step that appends the run's cost-history entry runs in
-    # a later process and has no other way to receive it.
-    folder_listing_calls = 0
-
-    def _vault_folder_notes(location: str) -> dict[str, str]:
-        nonlocal folder_listing_calls
-        # Key on the folder _dest_join derives, not on the raw string: two
-        # claims whose location differs only by a trailing slash name one
-        # folder, and a raw key would list it twice. The cost of that is a
-        # doubled Kado call and nothing else, so it fails silently — and F9
-        # measures exactly this number.
-        folder = (location or "").rstrip("/") + "/"
-        if folder not in _folder_cache:
-            found: dict[str, str] = {}
-            calls_before = observed_call_count(kado_client)
-            try:
-                for entry in kado_client.list_dir(folder, depth=1):
-                    path = entry.get("path") or ""
-                    name = path.rsplit("/", 1)[-1]
-                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
-                        continue
-                    # Recompose through _dest_join so both sides of the
-                    # comparison are built by the same helper.
-                    found[_dest_join(folder, name[:-3]).casefold()] = path
-            except Exception:  # noqa: BLE001 — an error is not a collision
-                found = {}
-            # After the except: a listing that raised still spent its round trip.
-            calls_after = observed_call_count(kado_client)
-            folder_listing_calls += (
-                calls_after - calls_before
-                if calls_before is not None and calls_after is not None
-                else 1
-            )
-            _folder_cache[folder] = found
-        return _folder_cache[folder]
+    # spec 037 T1.1: the same cache also answers an attachment lookup — see
+    # _VaultFolderLookup, and docs/tomo/scripts/suggestions-reducer.md for
+    # why it caches the raw listing rather than a caller-derived map.
+    _vault_folder_lookup = _VaultFolderLookup(kado_client) if kado_client else None
 
     clash_claims: list[tuple[str, str, str]] = []
     claim_actions: dict[str, dict] = {}
@@ -2046,7 +2093,7 @@ def main() -> int:
                 (action.get("suggested_title") or "").strip() or stem,
             ))
     for claim_id, (adjusted_title, reason) in resolve_destination_clashes(
-        clash_claims, _vault_folder_notes if kado_client else None
+        clash_claims, _vault_folder_lookup.notes if _vault_folder_lookup else None
     ).items():
         claim_actions[claim_id]["suggested_title"] = adjusted_title
         claim_actions[claim_id]["clash_reason"] = reason
@@ -2405,8 +2452,12 @@ def main() -> int:
         # that scales with content, reported as its own line rather than folded
         # into the base — a single number mixing a fixed pipeline cost with a
         # content-scaling one tells a later reader nothing about either.
-        "folder_listing_calls": folder_listing_calls,
-        "distinct_destination_folders": len(_folder_cache),
+        "folder_listing_calls": (
+            _vault_folder_lookup.folder_listing_calls if _vault_folder_lookup else 0
+        ),
+        "distinct_destination_folders": (
+            len(_vault_folder_lookup.folders) if _vault_folder_lookup else 0
+        ),
     }
     # spec 024 T3.3: omit-when-empty — a no-groups run is byte-identical to pre-T3.3.
     # render.py reads rendered_tag_handler_updates_md via .get() so absent is fine.
@@ -2433,8 +2484,12 @@ def main() -> int:
     record_run(
         run_id=args.run_id,
         routing_plan_path=routing_plan_path,
-        folder_listing_calls=folder_listing_calls,
-        distinct_destination_folders=len(_folder_cache),
+        folder_listing_calls=(
+            _vault_folder_lookup.folder_listing_calls if _vault_folder_lookup else 0
+        ),
+        distinct_destination_folders=(
+            len(_vault_folder_lookup.folders) if _vault_folder_lookup else 0
+        ),
         history_path=args.cost_history,
     )
 

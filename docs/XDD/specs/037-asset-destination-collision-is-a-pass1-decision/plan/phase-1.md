@@ -38,13 +38,28 @@ phase: 1
 Establishes the capability to know that a destination is taken, and whether the
 file already there is the same one.
 
-- [ ] **T1.1 The folder cache serves attachments as well as notes** `[activity: domain-modeling]`
+- [x] **T1.1 The folder cache serves attachments as well as notes** `[activity: domain-modeling]`
 
   1. Prime: Read `tomo/scripts/suggestions-reducer.py:1966-1996` — `_vault_folder_notes`, its `_folder_cache`, the case-folded keys recomposed through `_dest_join`, and `folder_listing_calls` `[ref: SDD/Required Context Sources]`
-  2. Test: a folder listed once serves two lookups without a second call; an attachment name is found in a folder whose `.md` files are ignored; a note lookup keeps its current behaviour unchanged; a name differing only in case is found `[ref: PRD/F1-AC4]`; a listing that raises yields an empty map and still counts its round trip
+  2. Test: **the cache-reuse sequence in one test** — prime a folder through the NOTE caller (whose map holds only `.md` entries), then look the SAME folder up through the ATTACHMENT caller and find the attachment, with `folder_listing_calls` incremented exactly once across both `[ref: PRD/F1-AC3]` `[ref: PRD/F1-AC4]`. This ordering is the test, not a detail: a cache that stores the *derived* map instead of the raw listing serves the second lookup from a `.md`-only map and finds nothing — **silently**, which is the failure mode this spec exists to remove. A test that exercises the attachment caller on a fresh folder passes under that implementation and proves nothing.
+     Also: a name differing only in case is found `[ref: PRD/F1-AC4]`; and the note path is unchanged **against a concrete anchor** — assert the generalised helper called with the note caller's arguments returns a dict equal to the one the pre-change hardcoded body produces for the same listing, and confirm the spec 034 T5.2 tests are green by node id. "Unchanged" with no anchor is an intention, not an assertion.
   3. Implement: parameterise the helper on the file predicate and the join, so the attachment caller passes `_asset_dest_join` and keeps non-`.md` names, while the note caller's arguments are unchanged
   4. Validate: `./venv/bin/python -m pytest tests/ -q`; `ruff` clean; the spec 034 T5.2 tests still pass untouched
   5. Success: one listing per folder regardless of caller `[ref: PRD/F1-AC3]`; the note path is behaviourally identical `[ref: SDD/Constraints, additive only]`; `folder_listing_calls` counts the asset folder `[ref: SDD/Cost]`
+
+> **Deviation recorded 2026-09-22 — T1.1's test list sharpened before implementation.**
+> The TDD guardian blocked the task as written. Three findings, all upheld:
+> (1) *"a folder listed once serves two lookups without a second call"* counts Kado calls and
+> never inspects the cache, so it passes under the derived-map implementation while attachment
+> lookups silently return nothing — the fork the task text left open;
+> (2) *"a note lookup keeps its current behaviour unchanged"* carried no anchor and was therefore
+> unfalsifiable;
+> (3) *"a listing that raises yields an empty map and still counts its round trip"* is **already
+> true today** — `suggestions-reducer.py:2021-2029` sets `found = {}` in the `except` and
+> increments through the `else 1` fallback — so it is evidence of existing error handling, not of
+> this task, and was removed rather than kept as false coverage.
+> The design fork itself is deliberately left to the implementer; the test now detects the wrong
+> branch instead of the plan mandating the right one.
 
 - [ ] **T1.2 An occupied destination becomes a recorded conflict** `[activity: domain-modeling]`
 

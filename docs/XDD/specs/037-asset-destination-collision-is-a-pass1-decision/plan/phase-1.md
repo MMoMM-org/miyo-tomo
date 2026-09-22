@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Detection in the reducer"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -229,7 +229,7 @@ file already there is the same one.
      verdict costs no read `[ref: SDD/Cost]`; the note path is behaviourally identical
      `[ref: SDD/Constraints, additive only]`
 
-- [ ] **T1.5 One entry describes one file** `[activity: domain-modeling]`
+- [x] **T1.5 One entry describes one file** `[activity: domain-modeling]`
 
   Added 2026-09-22, after Phase 1 was closed a second time. Phase 2's own context section
   carried this forward from T1.2's review as a risk to decide *before* designing the render;
@@ -267,10 +267,16 @@ file already there is the same one.
      - **The cost bound is restated, not silently broken**: two sources colliding on one
        destination now produce two entries and therefore read that destination **twice**.
        Assert the exact count. This is a real increase over the pre-T1.5 behaviour and is
-       accepted deliberately — each entry is a genuine, separate comparison, and a shared
-       destination cache would be the wrong fix for a two-element case. Mutation: compute
-       `same_file` once per destination and reuse it across entries — the count drops and
-       two different files are handed one verdict.
+       accepted deliberately. **Corrected 2026-09-22 after the code-quality review** — the
+       original wording here said a shared destination cache "would be the wrong fix for a
+       two-element case", which defends only N=2. The real bound is **2N reads for N sources
+       colliding on one destination**, N capped only by the run's attachment count, and a
+       shared cache is wrong at **any** N: `same_file` is a property of the (source,
+       destination) PAIR, so one cached verdict per destination hands every source after the
+       first another source's answer. Mutation: compute `same_file` once per destination and
+       reuse it across entries — the count drops and different files are handed one verdict.
+       Pin it at N=3, not only N=2, or the test proves the bound holds without proving it
+       scales.
      - **An entry's field set is exactly the four the schema requires** —
        `source`, `destination`, `same_file`, `owner_source_items` — asserted on an entry from
        the two-different-sources fixture. The loop that builds the dict is what this task
@@ -282,8 +288,12 @@ file already there is the same one.
        destinations' entries, and Phase 2's T2.1 renders `attachment_conflicts[]` in list
        order straight into document order — an unstated contract here becomes an unstated one
        there. Fixture: two separate destination collisions interleaved with a two-source
-       split. Mutation: build the entries by iterating a grouping dict at the end instead of
-       appending at first occurrence.
+       split. Mutation: **sort the returned list by case-folded destination before returning
+       it** — measured, this turns exactly that one test red. **The mutation originally named
+       here — building the entries by iterating the grouping dict at the end — was measured
+       and is a NO-OP**: Python dict insertion order already equals first-occurrence order, so
+       every test stays green under it. Recorded rather than silently swapped, so the next
+       reader does not mistake that silence for permission to make the swap.
      - **A zero-conflict run still emits no `attachment_conflicts` key at all** — regression
        pin on T1.2's settled decision. Mutation: emit an unconditional `[]`.
   3. Implement: group by the exact source path; keep the case-folded destination as the
@@ -313,3 +323,10 @@ file already there is the same one.
 > (4) ordering was unstated here and is consumed verbatim by Phase 2's renderer;
 > (5) "updated only where the entry COUNT legitimately changes" defined nothing — replaced by a
 > rule naming what may be edited and requiring each edit to be reported.
+> (6) **Added 2026-09-22 after the code-quality review of `4930039`.** Two of the bullets above
+> were wrong in ways the guardian could not have caught, because both only become false once the
+> code exists: the cost justification defended N=2 while the mechanism is 2N, and the ordering
+> bullet named a mutation that leaves every test green. Both are corrected in place with the
+> superseded wording quoted, not deleted — the plan is the artifact a future implementer reads,
+> and this phase has now produced five separate instances of a rationale outliving the code it
+> described.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t1_2_attachment_vault_collision.py — spec 037 T1.2.
 
 An attachment's computed destination (`_asset_dest_join` — the same helper
@@ -52,6 +52,33 @@ for the disposable-mutation output) for the two that matter:
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
+# Regeneration recipe for `tests/fixtures/037-t1-2/pre-change-free-doc.json`
+# (the "captured AT `16f64de`" fixture named in bullet 1 above): check out
+# that commit in a disposable worktree, copy THIS file's harness into it
+# (`_reduce`/`_atomic_result`/`FakeKado` are unchanged since — they only
+# drive `main()`, they never call `detect_attachment_conflicts` directly),
+# and run it against the OLD `suggestions-reducer.py`:
+#
+#   git worktree add /tmp/tomo-16f64de 16f64de
+#   cp tests/test_037_t1_2_attachment_vault_collision.py \
+#       /tmp/tomo-16f64de/tests/_fixture_capture.py
+#   cd /tmp/tomo-16f64de && ./venv/bin/python -c "
+#       import sys, json, tempfile
+#       sys.path.insert(0, 'tests')
+#       from pathlib import Path
+#       from _fixture_capture import _reduce, _atomic_result, FakeKado, ITEM_KEY, ASSET_SOURCE
+#       with tempfile.TemporaryDirectory() as tmp:
+#           doc = _reduce(
+#               Path(tmp),
+#               {ITEM_KEY: _atomic_result(ITEM_KEY, ASSET_SOURCE, 'Karte')},
+#               't037-t1-2-fixture',
+#               {ITEM_KEY: {'attachments': [ASSET_SOURCE], 'unresolved_embeds': []}},
+#               kado=FakeKado(occupied=set()),
+#           )
+#           print(json.dumps(doc, ensure_ascii=False, indent=2))
+#   " > /tmp/tomo-16f64de-fixture.json
+#   cp /tmp/tomo-16f64de-fixture.json tests/fixtures/037-t1-2/pre-change-free-doc.json  # from repo root
+#   git worktree remove /tmp/tomo-16f64de
 from __future__ import annotations
 
 import importlib.util
@@ -360,6 +387,32 @@ def test_unit_no_asset_listing_short_circuits_without_calling_it():
         [(ITEM_KEY, actions)], ASSET_FOLDER, None,
     )
     assert result == []
+
+
+def test_unit_no_attachments_short_circuits_without_calling_listing():
+    """`owners` empty (no attachments on the run's surviving actions) must
+    short-circuit on `not owners` BEFORE `asset_listing` is even consulted —
+    independently of the `asset_listing is None` guard exercised above, since
+    `asset_listing` here is a real, non-None, call-recording callable.
+    Mutation: weaken the guard from `if not owners or asset_listing is None`
+    to `if asset_listing is None` (dropping the `not owners` half) — the
+    listing below would then be invoked despite zero attachments in the run,
+    and `calls` would be non-empty. `[ref: SDD/Cost]`."""
+    actions = [{
+        "kind": "create_atomic_note", "suppressed": False,
+        "attachments": [],
+    }]
+    calls: list[str] = []
+
+    def listing(folder: str) -> dict:
+        calls.append(folder)
+        return {}
+
+    result = REDUCER.detect_attachment_conflicts(
+        [(ITEM_KEY, actions)], ASSET_FOLDER, listing,
+    )
+    assert result == []
+    assert calls == [], "a run with zero attachments must never pay for a folder listing"
 
 
 def test_unit_suppressed_atomics_claim_no_attachment():

@@ -1014,3 +1014,25 @@ rather than leaving a data-quality guard to prompt adherence. Directly relevant 
 [#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue
 is about, caught doing real work.
 
+## OPEN — `suggestions-reducer.py` is 2514 LOC, and spec 037 T1.1 made its extraction seam visible
+
+**Recorded 2026-09-22** by the code-quality review of `a082b7c`, as an advisory finding on a task
+that otherwise passed clean.
+
+The file is well past the Constitution L2 guidance (~300–500 LOC of dense logic). That on its own
+has been true for a while and is not news. What changed is that T1.1 hoisted the old `main()`-nested
+`_vault_folder_notes` closure into a module-level class `_VaultFolderLookup`
+(`suggestions-reducer.py:310-389`) which has **zero remaining coupling to `main()`'s locals** — it is
+constructed with nothing but a `kado_client`, and the new test already loads it standalone via
+`importlib`.
+
+So the seam the size guidance points at is now an actual, named, dependency-free unit rather than a
+general wish that the file were smaller. `tomo/scripts/lib/` is where it would go, beside
+`render_actions.py`'s own join helpers that it calls.
+
+**Not done here deliberately**: T1.1's mandate was to generalise the helper, and T1.2/T1.3 wire the
+new `.assets()` method into a real collision check. Moving the class mid-phase would put a file move
+in the middle of three tasks that all touch it. Revisit after spec 037 closes.
+
+Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different file.
+

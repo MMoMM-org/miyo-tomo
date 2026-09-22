@@ -164,7 +164,12 @@ file already there is the same one.
 > but not silent. **The fork itself is open**: either the code widens to satisfy Scenario 7, or the
 > PRD and SDD are revised to accept no-signal here. A task-level deviation note is not the place
 > that gets settled. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
-> `docs/tomo/scripts/suggestions-reducer.md:1172`.
+> `docs/tomo/scripts/suggestions-reducer.md`.
+>
+> **Settled 2026-09-22, same day: the code gave way.** The owner chose to satisfy Scenario 7 rather
+> than revise the PRD, and **T1.4 below** closes it — additively, so `notes()` and `assets()` are
+> untouched. This block is kept as the record of how the gap was found (T1.3's compliance review,
+> not Phase 1's own tests) rather than deleted.
 
 - [x] **T1.4 A folder holding the name is a conflict too** `[activity: domain-modeling]`
 

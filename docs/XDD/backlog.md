@@ -1037,31 +1037,25 @@ in the middle of three tasks that all touch it. Revisit after spec 037 closes.
 Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different file.
 
 
-## OPEN — a folder occupying an attachment destination produces no Pass-1 signal (spec 037)
+## RESOLVED — a folder occupying an attachment destination (spec 037)
 
-**Recorded 2026-09-22** by the spec-compliance review of `838b185` (spec 037 T1.3).
+**Recorded 2026-09-22, resolved the same day by spec 037 T1.4.** Kept rather than deleted because
+the shape of the mistake is worth having on record.
 
-**The open question, first**: should `_map`'s contract widen so Tomo can satisfy PRD Edge Case
-Scenario 7, or should the PRD and SDD be revised to accept no-signal as the folder-occupied
-behaviour? Everything below argues why it was left alone for now; none of it answers this.
+`requirements.md` Edge Case Scenario 7 asked that a destination held by a **folder** become a
+conflict. It did not, and the cause was one line of a sibling task: T1.1's `_VaultFolderLookup._map`
+drops every listing entry whose `type` is not `"file"`, so the name never read as occupied. T1.3
+shipped with the row unmet, and its spec-compliance review is what surfaced it.
 
-`requirements.md` Edge Case Scenario 7 — a numbered PRD acceptance scenario, not a design detail —
-says a destination occupied by a **folder** is *"a conflict, rename remains the sensible default"*,
-and `SDD/Error Handling` restates it. The implementation does neither. T1.1's `_VaultFolderLookup._map`
-(`suggestions-reducer.py:348-363`) filters out every listing entry whose `type` is not `"file"`
-before the asset map exists, so `detect_attachment_conflicts` never learns the name is taken and
-emits no entry at all — not a conflict with `same_file: false`, and not a degraded one either.
+**How it was closed**: additively. `_map`, `notes()` and `assets()` are untouched — widening them
+would have leaked folder-admission into the note path and broken spec 034 T5.2. Instead
+`_VaultFolderLookup.occupied_by_folder()` reads the same cached raw listing and returns only what
+that filter drops, and `detect_attachment_conflicts` takes it as a fifth injected callable. The
+folder verdict is `same_file: false` decided from `entry.get("type")`, with **no content read** —
+pinned by a test, because a `false` derived from a caught read error is indistinguishable in the
+output from a correct one.
 
-**Why it was not closed in T1.3**: the fix is in T1.1's code, not T1.3's. `_map` would have to carry
-entry type through to its callers, changing a contract that T1.2 and T1.3 both consume, mid-phase.
-
-**What it costs today**: Pass 2 emits the move, and Hashi refuses it at apply time. So the user is
-not silently wrong — they are told late, which is the exact failure mode spec 037 exists to remove,
-for this one sub-case. The case is rare: it needs a folder whose name matches an incoming
-attachment's filename, extension included, inside the attachment folder.
-
-**What each branch of the fork costs**: satisfying Scenario 7 means widening `_map` to distinguish
-"no such name" from "a non-file holds this name", so the conflict can carry `same_file: false` — a
-contract change in T1.1's code that T1.2 and T1.3 both consume. Accepting the weaker behaviour means
-editing the PRD scenario and the SDD row together, rather than leaving both standing as promises the
-implementation does not keep.
+**The lesson worth keeping**: the gap was invisible to Phase 1's own tests because the filter that
+caused it lived in a task that had already passed review. A requirement can be unmet by code nobody
+in the current task is looking at. Mechanism written up at
+`docs/tomo/scripts/suggestions-reducer.md:1183`.

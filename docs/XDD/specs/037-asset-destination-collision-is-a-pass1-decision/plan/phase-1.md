@@ -255,8 +255,11 @@ file already there is the same one.
        case-folded destination as the grouping key — one entry appears, carrying both
        owners, and the second note's ownership is silently attributed to the first file.
      - **One attachment embedded by three notes still yields ONE entry with three owners**
-       `[ref: PRD/F2-AC3]`. Mutation: group by `(source, item_key)` — three entries with one
-       owner each, which breaks the criterion the destination key was chosen to satisfy.
+       `[ref: PRD/F2-AC3]`. **Already true of shipped code** — both keys agree when the source
+       path is literally the same, so this is NOT evidence the owner-mixing defect is fixed
+       (bullets 1 and 3 carry that). It is a regression pin against a wrong redesign the key
+       change newly makes possible. Mutation: group by `(source, item_key)` — three entries
+       with one owner each, breaking the criterion the destination key was chosen to satisfy.
      - **Occupancy is still decided case-folded on the DESTINATION** while grouping is exact
        on the source. Two sources whose basenames differ only in case both collide with the
        one vault file and yield two entries. Mutation: casefold the source for grouping —
@@ -268,13 +271,45 @@ file already there is the same one.
        destination cache would be the wrong fix for a two-element case. Mutation: compute
        `same_file` once per destination and reuse it across entries — the count drops and
        two different files are handed one verdict.
+     - **An entry's field set is exactly the four the schema requires** —
+       `source`, `destination`, `same_file`, `owner_source_items` — asserted on an entry from
+       the two-different-sources fixture. The loop that builds the dict is what this task
+       rewrites. Mutation: leave the grouping key (`dest_key`, or the new source key) on the
+       entry for convenience — every other assertion in this list still passes, and
+       `additionalProperties: false` in the schema would only fail later, at validation.
+     - **Entry order follows first occurrence in the owners list.** Splitting one
+       destination-keyed entry into several source-keyed ones moves entries relative to OTHER
+       destinations' entries, and Phase 2's T2.1 renders `attachment_conflicts[]` in list
+       order straight into document order — an unstated contract here becomes an unstated one
+       there. Fixture: two separate destination collisions interleaved with a two-source
+       split. Mutation: build the entries by iterating a grouping dict at the end instead of
+       appending at first occurrence.
      - **A zero-conflict run still emits no `attachment_conflicts` key at all** — regression
        pin on T1.2's settled decision. Mutation: emit an unconditional `[]`.
   3. Implement: group by the exact source path; keep the case-folded destination as the
-     occupancy test against `vault_assets` and `occupied_folders`
-  4. Validate: full suite; `ruff`; T1.2, T1.3 and T1.4's own tests updated only where the
-     entry COUNT legitimately changes — any test whose expectations change for another
-     reason is a signal the change went too far
+     occupancy test against `vault_assets` and `occupied_folders`. **Amend `SDD/Cost` in the
+     same commit**: its sentence *"Content reads are bounded by actual collisions, not by
+     attachment count"* was written for destination-keyed grouping and no longer describes
+     the code. Restate the bound in terms of colliding SOURCE paths. Do not leave the old
+     wording standing beside code it no longer describes.
+  4. Validate: full suite; `ruff`. A T1.2/T1.3/T1.4 test may be edited **only** if this
+     task's key change alters the entry count for the fixture that test ALREADY uses — never
+     by adding sources, notes or collisions to the fixture. Report every such edit as
+     `<test name>: count <before> -> <after>, required by <which success criterion>`. A test
+     whose assertion changes for any other reason is out of scope: raise it, do not fix it.
   5. Success: every entry's `owner_source_items` names only notes embedding that entry's
      `source` `[ref: PRD/F2-AC1]`; F2-AC3 still holds `[ref: PRD/F2-AC3]`; the cost change is
      measured and stated rather than discovered `[ref: SDD/Cost]`
+
+> **Deviation recorded 2026-09-22 — T1.5's test plan sharpened before implementation.**
+> The TDD guardian blocked the task I had written. All five findings upheld:
+> (1) the F2-AC3 bullet is **already true of shipped code** and said so nowhere, though T1.2 and
+> T1.3 both established the convention of disclosing exactly that;
+> (2) the cost change makes `SDD/Cost`'s sentence false as written — the bound was expressed per
+> occupied destination and is now per colliding source, so the SDD is amended alongside the code
+> rather than left contradicting it;
+> (3) no assertion pinned the entry's field set, and the task rewrites the very loop that builds
+> the dict — a leaked grouping key would pass every other bullet;
+> (4) ordering was unstated here and is consumed verbatim by Phase 2's renderer;
+> (5) "updated only where the entry COUNT legitimately changes" defined nothing — replaced by a
+> rule naming what may be edited and requiring each edit to be reported.

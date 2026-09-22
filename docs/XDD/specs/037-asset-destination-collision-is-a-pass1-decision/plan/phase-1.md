@@ -177,18 +177,29 @@ file already there is the same one.
      `entry.get("type") != "file"` guard is what drops a folder before any caller sees it —
      and `detect_attachment_conflicts`' `dest_key not in vault_assets` test. Read T1.1's
      deviation block above: the raw-listing cache is load-bearing and must not be
-     restructured.
+     restructured. `folder_listing_calls` is not at risk: it increments in `_entries`
+     (`suggestions-reducer.py:337-343`), which this task does not touch — only `_map`'s
+     per-entry filter changes. `list_dir` returns exactly two kinds, `'file'` and
+     `'folder'` (`kado_client.py:255-258`), so there is no third kind owed a test.
   2. Test:
      - **A folder occupying the destination produces one conflict with `same_file: false`**
        `[ref: PRD/Edge Case Scenario 7]` `[ref: SDD/Error Handling]`. Mutation: restore the
        unconditional `type != "file"` drop — the destination reads as free and no conflict
        is emitted at all.
-     - **That conflict costs ZERO content reads.** `false` here is a fact about kinds, not a
-       comparison result: a folder cannot be byte-identical to a file, and reading one would
-       raise. Assert the reader was never called for it. Mutation: route the folder
-       destination through `_same_file` — the read raises, `same_file` becomes `null`, and
-       the read count goes to two. This assertion is what separates a correct `false` from a
-       `false` that is really a swallowed error.
+     - **That conflict costs ZERO content reads — asserted on the SAME fixture and the same
+       entry as the bullet above**, not in a standalone test, so an assertion that never
+       inspects `same_file` cannot pass by accident. `false` here is a fact about kinds, not
+       a comparison result: a folder cannot be byte-identical to a file. Mutation: **decide
+       the verdict by attempting a read and catching any exception as `false`** — conflating
+       "unreadable" with "different" instead of deciding from `entry.get("type")`. That
+       produces output identical to the correct implementation and is therefore invisible to
+       every value assertion; only the read count catches it. (Routing through `_same_file`
+       to get `null` is NOT the mutation this bullet exists for — the bullet above already
+       kills that one.)
+     - **A folder whose name differs only in case from the destination is still recognised as
+       occupied** `[ref: PRD/F1-AC4]` — mirrors T1.1's case-fold pin for `notes()`. `_map`'s
+       casefold is shared and unconditional, so this *should* follow for free; this phase's
+       standard is to pin it rather than infer it from shared code.
      - **A `.md` note in the asset folder is still NOT an attachment collision** — regression
        pin on T1.1's decision. Mutation: widen the new path to admit every non-file entry
        *and* `.md` files, which makes a note sharing the attachment folder look like an
@@ -199,8 +210,10 @@ file already there is the same one.
        034 T5.2.
      - **Mixed run**: one folder-occupied destination and one file-occupied destination yield
        two entries — `false` with no reads for the folder, the computed verdict with two
-       reads for the file. Mutation: any implementation that treats the two occupancy kinds
-       through one branch.
+       reads for the file. Mutation: **drop the kind check and send every occupied
+       destination through `_same_file`** — the file entry still comes out right, so only the
+       folder entry's `null`-instead-of-`false` and the read count of four rather than two
+       expose it.
   3. Implement: expose the occupied-by-a-non-file case additively — existing callers of
      `notes()` and `assets()` must keep their current signatures and results — and let
      `detect_attachment_conflicts` raise the conflict with `same_file` set to `false`

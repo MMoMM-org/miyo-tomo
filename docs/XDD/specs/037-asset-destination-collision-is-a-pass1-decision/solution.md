@@ -253,11 +253,17 @@ gives them two copies of one image.
   cost-history entry, so the increase appears where the existing numbers do.
 - **Content reads are bounded by the number of distinct colliding SOURCE
   paths**, not by attachment count. Phase 1 T1.5 groups conflict entries by
-  the exact source path rather than the case-folded destination, so two
-  different sources that collide on the same destination are two
-  comparisons, not one — that destination is read twice, once per source.
-  A shared destination-side cache was considered and rejected as the wrong
-  fix for what is genuinely a two-element case.
+  the exact source path rather than the case-folded destination, so N
+  distinct sources that collide on the same destination are N separate
+  comparisons, each reading both sides — 2N reads for that destination,
+  against 2 for the pre-T1.5 destination-keyed code. N is bounded only by
+  the run's attachment count; spec 034's recursive inbox discovery plus
+  repeat camera/scanner default filenames make N > 2 realistic, not a
+  two-element edge case. A shared destination-side cache was considered and
+  rejected — not because N is usually small, but because it would be wrong
+  at any N: `same_file` is a property of the (source, destination) pair,
+  and caching one verdict per destination would hand every source after
+  the first another source's answer.
 
 ### Fail direction
 

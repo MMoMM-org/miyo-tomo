@@ -1055,19 +1055,15 @@ WHY the dedup key was ORIGINALLY the case-folded destination, and why that
 was wrong: T1.2 keyed on destination because PRD/F1-AC2 is stated in
 destination terms — "one attachment embedded by three notes yields one
 conflict carrying three owners" — and destination is the thing a second
-occurrence of the SAME attachment always agrees on. What T1.2 missed is that
-destination is also the thing two DIFFERENT attachments can agree on, once
-spec 034 shipped recursive inbox discovery: `100 Inbox/A/karte.png` and
-`100 Inbox/B/karte.png` compute the identical destination through
-`_asset_dest_join` (asset folder + source basename) without being the same
-file. Keying the accumulator on that shared destination silently attributed
-the second file's ownership to the first. See "Grouping Is By Exact Source
-Path" (spec 037 T1.5), below, for the fix — this paragraph is kept as the
-record of why the original choice looked right and was not. The in-run
-collision (two incoming files fighting over one name before either reaches
-the vault) is a separate question, stays Pass 2's `claimed` dict in
-`_build_move_asset_actions`, and remains out of scope here regardless of
-which key `detect_attachment_conflicts` groups by.
+occurrence of the SAME attachment always agrees on. What T1.2 missed, and
+how it was fixed, is told in full under "Grouping Is By Exact Source Path"
+(spec 037 T1.5), below — this paragraph is kept only as the record of why
+the original choice looked right at the time it was made, not as a second
+telling of the story. The in-run collision (two incoming files fighting
+over one name before either reaches the vault) is a separate question,
+stays Pass 2's `claimed` dict in `_build_move_asset_actions`, and remains
+out of scope here regardless of which key `detect_attachment_conflicts`
+groups by.
 
 WHY `owner_source_items` holds `item_key` directly, not
 `resolve_source_path(item_key, source_path, inbox_path)` the way

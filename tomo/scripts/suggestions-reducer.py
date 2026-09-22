@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.52.0
+# version: 1.53.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -554,7 +554,15 @@ def detect_attachment_conflicts(
     destination now yield two — each naming only its own owners. The
     occupancy test stays on the case-folded DESTINATION (`dest_key`, below)
     since that is what the vault actually has stored; only the accumulator
-    moved. This is still not the in-run collision (two incoming files fighting
+    moved. Keying on the exact string is safe because of an upstream
+    invariant, not a coincidence: every `path` reaching `owners` is the
+    literal `resolved_path` `build_inbox_index` placed in the one shared
+    index `resolve_inbox_attachments` builds once per run
+    (`inbox-triage.py`'s `resolve_inbox_attachments`, via
+    `lib/attachment_index.py`'s `build_inbox_index`/`narrow_candidates`) —
+    so the same physical file always yields the identical string here, and
+    two differently-cased strings can only name two different files. This
+    is still not the in-run collision (two incoming files fighting
     over one name before either reaches the vault) — that stays Pass 2's
     `claimed` dict and is out of scope here.
 
@@ -575,11 +583,23 @@ def detect_attachment_conflicts(
     `owner_source_items`, so a source several notes embed is still one
     comparison, not one per owner. Reads are therefore bounded by the
     number of distinct colliding SOURCE PATHS, not by the number of
-    attachments checked `[ref: SDD/Cost]`. This is a real increase over the
-    pre-T1.5 bound: two different sources colliding on the SAME destination
-    now read that destination TWICE — once per source's own comparison —
-    because each is a genuine, separate comparison and a shared
-    destination-side cache would be the wrong fix for a two-element case.
+    attachments checked `[ref: SDD/Cost]`. The exact bound: for N distinct
+    source paths that all collide on the SAME destination, each gets its
+    own entry and its own `_same_file` call, and `_same_file` reads BOTH
+    sides — so that one destination is read N times (2N reads total for
+    the group), where the pre-T1.5 destination-keyed code read it twice
+    regardless of N. Nothing in this function caps N but the run's
+    attachment count, and N > 2 is a realistic shape, not a hypothetical
+    one: spec 034 shipped recursive inbox discovery, and camera/scanner
+    default filenames repeat across folders. A shared destination-side
+    cache is not a smaller-N-only shortcut skipped here for simplicity — it
+    would be WRONG at any N, because `same_file` answers a question about
+    the (SOURCE, destination) PAIR, not about the destination alone: source
+    A can be byte-identical to the destination while source B is not, so
+    caching one verdict and handing it to every source sharing that
+    destination would silently mis-report every source after the first.
+    The 2N reads are the honest price of a genuinely per-source comparison,
+    not an unoptimised two-element special case.
 
     `folder_listing(asset_folder)` — normally `_VaultFolderLookup
     .occupied_by_folder` — answers the other way a destination can be taken

@@ -31,6 +31,9 @@ occupancy stays decided on the case-folded destination.
   4. The cost bound is restated, not silently broken: two sources colliding
      on one destination read that destination TWICE — the exact count is
      asserted. This is a real, deliberate increase over the pre-T1.5 bound.
+     A third test pins the same bound at N=3 (six reads, three per-source
+     reads of the shared destination) so the bound is proven to scale with
+     N, not just hold at N=2.
   5. An entry's field set is exactly `source`, `destination`, `same_file`,
      `owner_source_items` — no grouping key leaks onto it.
   6. Entry order follows first occurrence in the owners list, pinned against
@@ -222,6 +225,35 @@ def test_two_sources_colliding_on_one_destination_read_it_twice():
     )
 
 
+def test_three_sources_colliding_on_one_destination_read_it_three_times():
+    """N=3, not N=2 (SDD/Cost, amended again): the two-source case above
+    could not distinguish "reads scale with N" from "reads are always 2" —
+    a third distinct source colliding on the same destination is what
+    actually proves the bound is 2N. Mutation: reuse one `same_file`
+    verdict across entries sharing a destination — the count drops to 2
+    and three different files are handed one verdict."""
+    source_c = "100 Inbox/C/karte.png"
+    reader = RecordingReader({
+        SOURCE_A: b"source A bytes",
+        SOURCE_B: b"source B bytes",
+        source_c: b"source C bytes",
+        DEST_SHARED: b"vault bytes",
+    })
+    result = REDUCER.detect_attachment_conflicts(
+        [
+            (ITEM_KEY_A, _owner_actions([SOURCE_A])),
+            (ITEM_KEY_B, _owner_actions([SOURCE_B])),
+            (ITEM_KEY_C, _owner_actions([source_c])),
+        ],
+        ASSET_FOLDER, lambda folder: _occupied("karte.png"), reader,
+    )
+    assert len(result) == 3
+    assert len(reader.calls) == 6, reader.calls
+    assert reader.calls.count(DEST_SHARED) == 3, (
+        f"the shared destination must be read once per colliding source: {reader.calls}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 5. An entry's field set is exactly the four the schema requires.
 # ---------------------------------------------------------------------------
@@ -252,11 +284,22 @@ def test_entry_field_set_is_exactly_the_schema_four():
 def test_entry_order_follows_first_occurrence():
     """Two independent destination collisions (`einzel1.png`, `einzel2.png`)
     interleaved with a two-source split (`foto.png`, embedded by two
-    different sources under the same item). Mutation: build the entries by
-    iterating a grouping dict at the end instead of appending at first
-    occurrence in the owners list — Phase 2's T2.1 renders
-    `attachment_conflicts[]` straight into document order, so an ordering
-    slip here becomes an unstated contract there."""
+    different sources under the same item). Mutation: sort the returned
+    list by case-folded destination before returning it — Phase 2's T2.1
+    renders `attachment_conflicts[]` straight into document order, so an
+    ordering slip here becomes an unstated contract there.
+
+    Measured, not assumed: the mutation this docstring previously named —
+    "build the entries by iterating a grouping dict at the end instead of
+    appending at first occurrence in the owners list" — was applied by hand
+    in a disposable copy and left this test GREEN (8 passed). Python dict
+    insertion order already equals first-occurrence order here (the
+    grouping dict is only ever appended to, never reordered), so swapping
+    the append-based build for `list(by_source.values())` is observationally
+    identical to the shipped code — it does not exercise the property this
+    test claims to pin. The sort-based mutation above was verified in the
+    same way: it turns exactly this test red (1 failed, 7 passed) and
+    leaves every other test in this file green."""
     source_d1 = "100 Inbox/X/einzel1.png"
     source_d2_a = "100 Inbox/Y/foto.png"
     source_d2_b = "100 Inbox/Z/foto.png"

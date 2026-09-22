@@ -223,13 +223,20 @@ def test_notes_is_unaffected_by_folder_occupied_detection():
     """Mutation: implement T1.4 by widening `_map`'s shared
     `entry.get("type") != "file"` guard itself (instead of adding the
     separate `occupied_by_folder` method) — that would leak
-    folder-admission into `notes()` too, and a subfolder named `Dresden`
-    would start showing up in `lookup.notes(FOLDER)`, corrupting spec 034
-    T5.2's note-destination-clash proposal for any note that happens to
-    share a folder's stem."""
+    folder-admission into `notes()` too, corrupting spec 034 T5.2's
+    note-destination-clash proposal for any note sharing a folder's stem.
+
+    **The fixture folder is named `Dresden.md`, and the suffix is
+    load-bearing.** `notes()` filters on BOTH the entry type and a
+    `.md` extension. A folder named plainly `Dresden` is excluded by the
+    extension predicate no matter what the type guard does, so it cannot
+    detect the mutation — this test passed under it, measured, before the
+    fixture was corrected (2026-09-22, code-quality review of `f1eb257`).
+    Only a folder named like a note leaves the type guard as the single
+    thing standing between it and `notes()`'s map."""
     folder = "100 Inbox/Places/"
     kado = FakeKado([
-        {"path": f"{folder}Dresden", "type": "folder", "modified": 1, "size": 0},
+        {"path": f"{folder}Dresden.md", "type": "folder", "modified": 1, "size": 0},
     ])
     lookup = REDUCER._VaultFolderLookup(kado)
 

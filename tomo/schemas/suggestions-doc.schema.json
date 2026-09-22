@@ -243,11 +243,15 @@
       "description": "Attachments whose computed vault destination is already occupied (spec 037 T1.2, PRD F1). Absent — not an empty array — when the run has none, so a conflict-free run stays byte-identical to a pre-spec-037 document.",
       "items": {
         "type": "object",
-        "required": ["source", "destination", "owner_source_items"],
+        "required": ["source", "destination", "same_file", "owner_source_items"],
         "additionalProperties": false,
         "properties": {
           "source": {"type": "string", "description": "The incoming attachment's vault-relative source path."},
           "destination": {"type": "string", "description": "The computed, occupied destination (via _asset_dest_join — the same helper Pass 2 uses)."},
+          "same_file": {
+            "type": ["boolean", "null"],
+            "description": "Whether source and destination are byte-identical (spec 037 T1.3). null when the comparison could not be made (no Kado client, or a read failed on either side) — never a digest, size, or other content derivative."
+          },
           "owner_source_items": {
             "type": "array",
             "items": {"type": "string"},

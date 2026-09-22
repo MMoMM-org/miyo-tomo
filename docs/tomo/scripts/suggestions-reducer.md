@@ -1108,3 +1108,92 @@ is `test_037_t1_1_folder_cache_serves_attachments.py`'s job) but "wiring
 closed off." See
 `tests/test_037_t1_2_attachment_vault_collision.py` for the named mutation
 each pin catches.
+
+## `same_file` — The Conflict Knows Whether It Is the Same File (spec 037 T1.3)
+
+T1.2 flags an occupied destination but never says whether the occupant IS
+the incoming file or a different one. T1.3 adds `content_reader` — a second
+injected callable, normally `KadoClient.read_file_bytes` — and a private
+`_same_file(source, destination, content_reader)` helper that reads both
+sides and compares bytes, only for a destination `detect_attachment_conflicts`
+has just determined is taken.
+
+WHY content, never size: the spec exists because of a live failure — two
+69-byte PNGs, same size, different pictures. A size check would have called
+them identical and steered the owner toward the one remedy (rename) that
+actually gives them two copies of one image `[ref: SDD/Complex Logic]`.
+`tests/test_037_t1_3_same_file.py::test_equal_size_different_content_sets_same_file_false`
+pins this with a same-size, different-content pair and is the one test that
+a size-based comparator gets wrong rather than merely under-tests.
+
+WHY `content_reader` is a second parameter alongside `asset_listing`, not a
+field threaded through it: the two questions are independent — "is the name
+taken" (asset_listing) and "if so, is it the same bytes" (content_reader) —
+and the function already has a precedent for "a capability the caller may
+not have" being `None` rather than a sentinel object (`asset_listing` itself
+works the same way). `None` — no Kado client, or a caller/test double that
+does not implement `read_file_bytes` — sets `same_file: null` for every
+conflict without an attempted read: a missing CAPABILITY is not evidence
+either way, the same posture the SDD gives a read that raises.
+
+WHY a raising read is caught PER ENTRY, not around the whole function: the
+alternative (letting the exception propagate out of
+`detect_attachment_conflicts`) would lose every conflict in the run, not
+just the one whose comparison failed — exactly the trap
+`test_raising_read_sets_null_for_its_conflict_and_leaves_the_other_intact`
+exists to catch. A single-conflict version of that test cannot tell "caught
+the exception" from "the run aborted and every conflict vanished"; it needs
+a second, unrelated conflict in the same call to prove the difference.
+
+WHY the source is read before the destination, and a source-side failure is
+not distinguished from a destination-side one: the SDD's Error Handling row
+says only "`read_file_bytes` raises → `same_file: null`" — it does not
+split by which side failed, and there is no requirement to. Reading source
+first means a raising source read never even attempts the destination read
+(one fewer round trip on the failure path); either failure means the same
+thing downstream: this particular comparison did not happen.
+
+WHY `same_file` is computed once, at entry-creation time, not per owner: the
+Cost section requires a destination shared by several owning notes to still
+cost one comparison. Placing the `_same_file` call inside the
+`if item_key not in entry["owner_source_items"]` branch (or anywhere
+re-entered per owner) would multiply reads with the owner count instead;
+`test_shared_destination_across_owners_is_one_comparison` pins the call
+count directly rather than trusting the placement by inspection.
+
+WHY reads are bounded by COLLISIONS, not by attachments: `_same_file` is
+only ever called from inside the `entry is None` branch, which is only
+reached once `dest_key not in vault_assets` has already been checked false
+— an attachment whose destination is free never reaches a content read at
+all. `test_reads_bounded_by_collisions_not_attachments` mixes colliding and
+non-colliding attachments in one call and asserts the free one's path never
+appears in the reader's call log, not just that the total count is small.
+
+### The folder row this task cannot honour
+
+SDD/Error Handling lists "destination is a folder → conflict, rename stays
+the default" as a case `same_file` should resolve to `false`. It cannot, as
+currently wired: `_VaultFolderLookup._map` (T1.1) filters
+`entry.get("type") != "file"` before building the `{destination: path}` map
+`asset_listing` returns — a folder entry never survives into `vault_assets`,
+so `dest_key not in vault_assets` is true for it and
+`detect_attachment_conflicts` never learns the name is occupied at all. No
+exception is raised to catch, and the design constraint that ruled out
+sniffing exception messages leaves no other signal available at this
+function's boundary — the type information that WOULD distinguish a folder
+from a file is discarded one layer upstream, in `_map`, before this function
+ever sees the destination.
+
+`test_folder_occupied_destination_never_becomes_a_conflict` pins this
+directly, through the real `_VaultFolderLookup`, rather than fabricate an
+`asset_listing` shape (a folder entry surviving into the destination map)
+that the real system can never produce — a test built on an input the
+production code path cannot generate would prove nothing about production
+behaviour, only about the test's own fixture. Closing this gap for real
+would mean widening `asset_listing`'s contract to carry `type` through
+`_map`, which is out of scope for T1.3 and not something this task's
+constraints authorized. Left as a known, documented limitation rather than
+implemented or silently dropped.
+
+See `tests/test_037_t1_3_same_file.py` for the named mutation each test
+catches, including the size-comparison kill test.

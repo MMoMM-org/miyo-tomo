@@ -101,7 +101,7 @@ file already there is the same one.
     the inbox→asset-folder move this builder performs, so no test is owed. Stated rather than left
     silent, because "we did not test it" and "it cannot happen" look identical in a diff.
 
-- [ ] **T1.3 The conflict knows whether it is the same file** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T1.3 The conflict knows whether it is the same file** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: Read `KadoClient.read_file_bytes` `[ref: kado_client.py:176]` and the live probe recorded in `README.md` — two 69-byte PNGs with different digests
   2. Test:

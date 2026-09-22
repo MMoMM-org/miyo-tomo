@@ -290,6 +290,11 @@ def test_a_free_destination_leaves_the_emitted_document_unchanged(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_an_occupied_destination_names_source_destination_and_owner(tmp_path):
+    """`same_file` is `null` here (spec 037 T1.3): `FakeKado` does not
+    implement `read_file_bytes`, so `main()`'s `getattr(kado_client,
+    "read_file_bytes", None)` wiring degrades to "no reader" rather than
+    crashing — see test_037_t1_3_same_file.py for `same_file`'s own
+    coverage (true/false/null, bounded reads)."""
     doc = _reduce(
         tmp_path,
         {ITEM_KEY: _atomic_result(ITEM_KEY, ASSET_SOURCE, "Karte")},
@@ -301,6 +306,7 @@ def test_an_occupied_destination_names_source_destination_and_owner(tmp_path):
         {
             "source": ASSET_SOURCE,
             "destination": f"{ASSET_FOLDER}karte.png",
+            "same_file": None,
             "owner_source_items": [ITEM_KEY],
         }
     ], doc.get("attachment_conflicts")

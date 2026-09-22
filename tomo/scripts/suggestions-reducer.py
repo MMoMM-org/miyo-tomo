@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.49.0
+# version: 1.50.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -451,13 +451,51 @@ def resolve_destination_clashes(
     return adjustments
 
 
+def _same_file(
+    source: str,
+    destination: str,
+    content_reader: Callable[[str], bytes] | None,
+) -> bool | None:
+    """Whether `source` and `destination` hold byte-identical content
+    (spec 037 T1.3, PRD S1).
+
+    Compares CONTENT, never size — two files of equal size are not
+    necessarily the same file (the 2026-09-15 live pair: two different
+    69-byte PNGs). Reading both fully and comparing bytes is the only
+    comparison this function performs; nothing shorter (size, a digest) ever
+    substitutes for it `[ref: SDD/Complex Logic]`.
+
+    `content_reader` is normally `KadoClient.read_file_bytes`. `None` (no
+    reader — no Kado client, or a caller that does not offer one) returns
+    `None` without attempting a read: a missing comparison CAPABILITY is not
+    evidence either way, just like a comparison that was attempted and
+    failed. A read that raises, on EITHER side, also returns `None` — the
+    source is read first, so a raising source read never even reaches the
+    destination read, and either failure carries the same meaning: this
+    particular comparison did not happen `[ref: SDD/Error Handling]`.
+
+    Nothing derived from the content is returned or retained beyond this
+    `True`/`False`/`None` verdict — not the bytes, not a digest, not a size
+    `[ref: SDD/Security and privacy]`.
+    """
+    if content_reader is None:
+        return None
+    try:
+        source_bytes = content_reader(source)
+        destination_bytes = content_reader(destination)
+    except Exception:  # noqa: BLE001 — a failed read is not evidence either way
+        return None
+    return source_bytes == destination_bytes
+
+
 def detect_attachment_conflicts(
     items: list[tuple[str, list[dict]]],
     asset_folder: str,
     asset_listing: Callable[[str], dict[str, str]] | None,
+    content_reader: Callable[[str], bytes] | None = None,
 ) -> list[dict]:
     """Attachments whose computed vault destination is already occupied
-    (spec 037 T1.2, PRD F1).
+    (spec 037 T1.2, PRD F1; `same_file` added T1.3, PRD S1).
 
     `items` is (item_key, actions) pairs. Only `create_atomic_note` actions
     that are not `suppressed` contribute — a sub-worthy atomic stays in the
@@ -484,6 +522,21 @@ def detect_attachment_conflicts(
     before any call is made — the `is None` guard is load-bearing, not
     defensive: `asset_listing` really is `None` on every run without a Kado
     client, and calling it unconditionally would raise `TypeError` there.
+
+    `content_reader(path) -> bytes` — normally `KadoClient.read_file_bytes` —
+    decides `same_file` for a taken destination via `_same_file`, above. It
+    is consulted ONLY for a destination this function has just determined is
+    occupied, and only ONCE per distinct destination: `same_file` is computed
+    when a destination's entry is first created, before a later owner is
+    folded into `owner_source_items`, so a destination several notes embed is
+    still one comparison, not one per owner. Reads are therefore bounded by
+    the number of COLLISIONS, not by the number of attachments checked
+    `[ref: SDD/Cost]`. `asset_listing` alone still decides whether a
+    destination is occupied — a folder occupying a destination name is
+    already excluded from `vault_assets` upstream, by `_VaultFolderLookup
+    ._map`'s `type != "file"` filter (see docs/tomo/scripts/suggestions
+    -reducer.md), so it never reaches this function as a conflict to begin
+    with; `content_reader` plays no part in recognising it.
     """
     owners: list[tuple[str, str]] = []
     for item_key, actions in items:
@@ -513,6 +566,7 @@ def detect_attachment_conflicts(
             entry = {
                 "source": path,
                 "destination": destination,
+                "same_file": _same_file(path, destination, content_reader),
                 "owner_source_items": [],
             }
             by_dest[dest_key] = entry
@@ -2171,10 +2225,15 @@ def main() -> int:
 
     # spec 037 T1.2: the same "is the destination already occupied" question,
     # asked of attachments instead of notes, through the same folder cache.
+    # T1.3: `getattr(..., None)` rather than a bare attribute access — a test
+    # double (or any future kado_client shape) that does not implement
+    # `read_file_bytes` must degrade to "no reader" (same_file: null), not
+    # crash the run; the real KadoClient always has this method.
     attachment_conflicts = detect_attachment_conflicts(
         [(item_key, actions) for _idx, _stem, item_key, actions in prepared],
         asset_folder,
         _vault_folder_lookup.assets if _vault_folder_lookup else None,
+        getattr(kado_client, "read_file_bytes", None) if kado_client else None,
     )
 
     for idx, stem, item_key, actions in prepared:

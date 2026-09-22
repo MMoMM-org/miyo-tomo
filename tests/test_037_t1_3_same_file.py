@@ -114,9 +114,11 @@ class RecordingReader:
 
 def test_byte_identical_files_set_same_file_true():
     """Mutation: hard-code `_same_file` to return `False` (or anything other
-    than the actual byte comparison) once both reads succeed — this is the
-    only test asserting `true`, so it alone catches an always-`False` (or
-    always-`None`-when-no-exception) stand-in for the comparison."""
+    than the actual byte comparison) once both reads succeed — an
+    always-`False` (or always-`None`-when-no-exception) stand-in for the
+    comparison turns this red. It is not the only test asserting `true`
+    (the raising-read and `main()`-wiring tests do too), so the mutation
+    takes down three; this is the one that isolates the cause."""
     reader = RecordingReader({SOURCE_A: b"same bytes", DEST_A: b"same bytes"})
     result = REDUCER.detect_attachment_conflicts(
         [(ITEM_KEY_A, _owner_actions([SOURCE_A]))],

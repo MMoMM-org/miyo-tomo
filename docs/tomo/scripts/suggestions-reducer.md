@@ -1051,18 +1051,23 @@ reducer) for the sibling note-clash pass, and the two checks are close enough
 in shape that a second closure buried in `main()` would read as a
 justification-free divergence.
 
-WHY the dedup key is the CASE-FOLDED DESTINATION, not the raw source path
-`[ref: PRD/F1-AC2]`: the requirement is stated in destination terms — "one
-attachment embedded by three notes yields one conflict carrying three
-owners" — and the destination is the thing a second occurrence of the same
-attachment always agrees on. Keying on destination also means the accumulator
-and the occupancy check share one vocabulary (both case-folded destinations),
-so there is no second translation step that could disagree with the first.
-Two DIFFERENT source paths colliding with EACH OTHER on one destination is a
-different question — the in-run collision `_build_move_asset_actions`
-already answers in Pass 2 — and is out of scope here (see the plan's scope
-boundary, settled 2026-09-22): this pass only asks "is the vault in the way,"
-never "do two inbox files fight over one name."
+WHY the dedup key was ORIGINALLY the case-folded destination, and why that
+was wrong: T1.2 keyed on destination because PRD/F1-AC2 is stated in
+destination terms — "one attachment embedded by three notes yields one
+conflict carrying three owners" — and destination is the thing a second
+occurrence of the SAME attachment always agrees on. What T1.2 missed is that
+destination is also the thing two DIFFERENT attachments can agree on, once
+spec 034 shipped recursive inbox discovery: `100 Inbox/A/karte.png` and
+`100 Inbox/B/karte.png` compute the identical destination through
+`_asset_dest_join` (asset folder + source basename) without being the same
+file. Keying the accumulator on that shared destination silently attributed
+the second file's ownership to the first. See "Grouping Is By Exact Source
+Path" (spec 037 T1.5), below, for the fix — this paragraph is kept as the
+record of why the original choice looked right and was not. The in-run
+collision (two incoming files fighting over one name before either reaches
+the vault) is a separate question, stays Pass 2's `claimed` dict in
+`_build_move_asset_actions`, and remains out of scope here regardless of
+which key `detect_attachment_conflicts` groups by.
 
 WHY `owner_source_items` holds `item_key` directly, not
 `resolve_source_path(item_key, source_path, inbox_path)` the way
@@ -1245,3 +1250,89 @@ inferred silently: file-occupied still wins if it ever happens.
 Cost accounting is untouched: `folder_listing_calls` increments inside
 `_entries`, which `occupied_by_folder` reuses rather than reimplements —
 this task added no new counter and no new `list_dir` call shape.
+
+## Grouping Is By Exact Source Path, Not Destination (spec 037 T1.5)
+
+T1.2's compliance review (carried into `plan/phase-2.md`, "Named risk carried
+in from Phase 1") found that `detect_attachment_conflicts` grouped conflict
+entries by case-folded DESTINATION, not by source path. Harmless for
+detection, which only claims a destination is occupied. Not harmless
+downstream: `_asset_dest_join` builds the destination from the asset folder
+plus the source's basename, and spec 034 shipped recursive inbox discovery,
+so two DIFFERENT inbox attachments sharing a filename —
+`100 Inbox/A/karte.png` and `100 Inbox/B/karte.png` — compute the identical
+destination without being the same file. Destination-keyed dedup folded them
+into one entry: `source` kept whichever path was seen first, and
+`owner_source_items` accumulated the owners of both. Phase 3 applies a
+rename with an embed rewrite, so the second file's owning note would be told
+its embed was retargeted to a file it never owned — a note the owner never
+approved gets modified. The owner chose to fix this in the data (T1.5),
+rather than teach Phase 2's renderer a per-source special case.
+
+WHY the key moved to the exact source path rather than a case-folded one:
+occupancy is a question about the VAULT, which is case-insensitive on the
+platforms Tomo targets, so `dest_key` stays case-folded for the `vault_assets`
+/ `occupied_folders` membership tests. Grouping is a question about how many
+DISTINCT incoming files there are, and two inbox paths differing only in
+case are still two different files on a case-sensitive inbox filesystem — so
+the source key is exact, never folded. Folding it would re-merge exactly the
+pair this task exists to split, in a narrower, case-only form.
+`test_occupancy_stays_case_folded_while_grouping_is_exact_on_source` pins
+both halves in one fixture: two sources whose basenames differ only in case
+both collide with the one vault file and still yield two entries.
+
+WHY one attachment embedded by three notes still yields one entry — and why
+that is NOT new evidence the fix works: when the source path is literally
+the same string, the old (destination) key and the new (source) key agree,
+so this case was already passing before T1.5 touched anything. It is kept as
+a regression pin against a plausible wrong redesign — grouping by
+`(source, item_key)` instead of `source` alone — which would pass every
+other T1.5 bullet while silently reintroducing three one-owner entries for a
+single shared attachment, breaking PRD F2-AC3.
+`test_one_attachment_three_owners_still_one_entry`'s docstring says so
+explicitly, because T1.2 and T1.3 both established the convention of
+disclosing an "already true" case rather than presenting it as coverage of
+the current task.
+
+WHY the cost bound changed, and why that is accepted rather than patched
+around: `same_file` is computed once per entry, at entry-creation time
+(unchanged since T1.2/T1.3) — but an entry is now keyed by source, so two
+sources colliding on the same destination are two entries, each running its
+own `_same_file(path, destination, content_reader)` call. The destination
+side of that comparison is therefore read TWICE, once per source, where the
+pre-T1.5 destination-keyed code read it once. `SDD/Cost` is amended
+alongside the code (`solution.md`, "Content reads are bounded by the number
+of distinct colliding SOURCE paths") rather than left describing a bound the
+code no longer produces. A shared destination-side read cache was considered
+and rejected: each entry is a genuine, separate comparison (different source
+bytes against the same destination bytes), and building a cache to save one
+read in what is structurally a two-element case is the wrong fix.
+`test_two_sources_colliding_on_one_destination_read_it_twice` asserts the
+exact call count, not just "reads happened."
+
+WHY entries are still built by appending at first occurrence in the owners
+list, not by iterating a grouping dict afterward: Phase 2's T2.1 renders
+`attachment_conflicts[]` straight into document order. Splitting one
+destination-keyed entry into several source-keyed ones moves entries
+relative to OTHER destinations' entries if the ordering mechanism ever
+changes — an unstated contract in the reducer becomes an unstated one in the
+renderer. `test_entry_order_follows_first_occurrence` fixes the order with a
+fixture that interleaves two independent destination collisions with a
+two-source split, so the ordering claim is pinned against a concrete
+multi-collision shape, not inferred from a single-collision test.
+
+WHY the entry's field set is asserted exactly, not just its content: the
+loop this task rewrites is the one place a grouping key could leak onto the
+entry dict for developer convenience (`dest_key`, or a new source key) and
+every other T1.5 assertion would still pass — only `additionalProperties:
+false` in the schema would catch it, and only at validation, later than this
+test suite runs. `test_entry_field_set_is_exactly_the_schema_four` asserts
+`set(entry.keys()) == {"source", "destination", "same_file",
+"owner_source_items"}` directly.
+
+See `tests/test_037_t1_5_one_entry_one_file.py` for the named mutation each
+test catches, and the module docstring for the full list plus which of
+T1.2/T1.3/T1.4's existing tests were checked for an entry-count change and
+found unaffected (none needed editing: every existing fixture's colliding
+sources share either the SAME source path or already-distinct basenames, so
+none crosses the destination-vs-source grouping boundary this task moved).

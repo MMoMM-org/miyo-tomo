@@ -251,7 +251,13 @@ gives them two copies of one image.
 - **`folder_listing_calls` gains at most one**, and only on a cache miss for the
   asset folder. It is already carried in the output document for the
   cost-history entry, so the increase appears where the existing numbers do.
-- **Content reads are bounded by actual collisions**, not by attachment count.
+- **Content reads are bounded by the number of distinct colliding SOURCE
+  paths**, not by attachment count. Phase 1 T1.5 groups conflict entries by
+  the exact source path rather than the case-folded destination, so two
+  different sources that collide on the same destination are two
+  comparisons, not one — that destination is read twice, once per source.
+  A shared destination-side cache was considered and rejected as the wrong
+  fix for what is genuinely a two-element case.
 
 ### Fail direction
 

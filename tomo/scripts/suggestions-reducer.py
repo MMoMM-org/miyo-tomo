@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.51.0
+# version: 1.52.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -538,13 +538,25 @@ def detect_attachment_conflicts(
     Pass 2's `_build_move_asset_actions` uses `[ref: render_actions.py:691-782]`,
     so the two cannot disagree about what "the same place" means.
 
-    Dedup key is the CASE-FOLDED DESTINATION, not the raw source path: one
-    attachment embedded by several notes shares one destination and yields
-    one entry naming every owning note in `owner_source_items` — mirroring
-    `_build_move_asset_actions`'s owner accumulation, for the opposite
-    question ("does this collide with the vault", not "do two incoming files
-    collide with each other" — that in-run case is Pass 2's `claimed` dict
-    and out of scope here).
+    Dedup key is the EXACT SOURCE PATH, not the case-folded destination
+    (spec 037 T1.5). A destination-keyed dedup was the original design and is
+    wrong: `_asset_dest_join`, above, builds the destination from the asset
+    folder plus the source's basename, and spec 034 shipped recursive inbox
+    discovery, so two DIFFERENT attachments — `100 Inbox/A/karte.png` and
+    `100 Inbox/B/karte.png` — genuinely share one destination without being
+    the same file. Keying on destination folded them into one entry: `source`
+    kept whichever path was seen first, and `owner_source_items` accumulated
+    the owners of both — so the second file's owning note would be told, at
+    apply time, that its embed was retargeted to a file it never owned.
+    Keying on the source path instead means one attachment embedded by
+    several notes still yields one entry (they share the same source path),
+    while two different attachments that merely collide on the same
+    destination now yield two — each naming only its own owners. The
+    occupancy test stays on the case-folded DESTINATION (`dest_key`, below)
+    since that is what the vault actually has stored; only the accumulator
+    moved. This is still not the in-run collision (two incoming files fighting
+    over one name before either reaches the vault) — that stays Pass 2's
+    `claimed` dict and is out of scope here.
 
     `asset_listing(asset_folder)` — normally `_VaultFolderLookup.assets` —
     is called at most once, and only when there is at least one attachment to
@@ -558,12 +570,16 @@ def detect_attachment_conflicts(
     decides `same_file` for a destination occupied by a FILE, via
     `_same_file`, above. It is consulted ONLY for a destination this
     function has just determined is occupied by a file, and only ONCE per
-    distinct destination: `same_file` is computed when a destination's
-    entry is first created, before a later owner is folded into
-    `owner_source_items`, so a destination several notes embed is still one
+    distinct SOURCE PATH (spec 037 T1.5): `same_file` is computed when a
+    source's entry is first created, before a later owner is folded into
+    `owner_source_items`, so a source several notes embed is still one
     comparison, not one per owner. Reads are therefore bounded by the
-    number of file COLLISIONS, not by the number of attachments checked
-    `[ref: SDD/Cost]`.
+    number of distinct colliding SOURCE PATHS, not by the number of
+    attachments checked `[ref: SDD/Cost]`. This is a real increase over the
+    pre-T1.5 bound: two different sources colliding on the SAME destination
+    now read that destination TWICE — once per source's own comparison —
+    because each is a genuine, separate comparison and a shared
+    destination-side cache would be the wrong fix for a two-element case.
 
     `folder_listing(asset_folder)` — normally `_VaultFolderLookup
     .occupied_by_folder` — answers the other way a destination can be taken
@@ -598,7 +614,7 @@ def detect_attachment_conflicts(
     vault_assets = asset_listing(asset_folder)
     occupied_folders = folder_listing(asset_folder) if folder_listing is not None else set()
     conflicts: list[dict] = []
-    by_dest: dict[str, dict] = {}
+    by_source: dict[str, dict] = {}
     for item_key, path in owners:
         try:
             destination = _asset_dest_join(asset_folder, path)
@@ -609,7 +625,7 @@ def detect_attachment_conflicts(
         occupied_by_folder = dest_key in occupied_folders
         if not occupied_by_file and not occupied_by_folder:
             continue
-        entry = by_dest.get(dest_key)
+        entry = by_source.get(path)
         if entry is None:
             same_file = (
                 _same_file(path, destination, content_reader)
@@ -622,7 +638,7 @@ def detect_attachment_conflicts(
                 "same_file": same_file,
                 "owner_source_items": [],
             }
-            by_dest[dest_key] = entry
+            by_source[path] = entry
             conflicts.append(entry)
         if item_key not in entry["owner_source_items"]:
             entry["owner_source_items"].append(item_key)

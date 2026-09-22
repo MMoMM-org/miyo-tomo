@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.48.0
+# version: 1.49.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -449,6 +449,77 @@ def resolve_destination_clashes(
             claimed.setdefault(key, base)
 
     return adjustments
+
+
+def detect_attachment_conflicts(
+    items: list[tuple[str, list[dict]]],
+    asset_folder: str,
+    asset_listing: Callable[[str], dict[str, str]] | None,
+) -> list[dict]:
+    """Attachments whose computed vault destination is already occupied
+    (spec 037 T1.2, PRD F1).
+
+    `items` is (item_key, actions) pairs. Only `create_atomic_note` actions
+    that are not `suppressed` contribute — a sub-worthy atomic stays in the
+    inbox (#88) and Pass 2 moves nothing for it, so its attachments claim no
+    destination either; same filter the clash-claims loop above applies to
+    notes.
+
+    The destination is computed through `_asset_dest_join` — the SAME helper
+    Pass 2's `_build_move_asset_actions` uses `[ref: render_actions.py:691-782]`,
+    so the two cannot disagree about what "the same place" means.
+
+    Dedup key is the CASE-FOLDED DESTINATION, not the raw source path: one
+    attachment embedded by several notes shares one destination and yields
+    one entry naming every owning note in `owner_source_items` — mirroring
+    `_build_move_asset_actions`'s owner accumulation, for the opposite
+    question ("does this collide with the vault", not "do two incoming files
+    collide with each other" — that in-run case is Pass 2's `claimed` dict
+    and out of scope here).
+
+    `asset_listing(asset_folder)` — normally `_VaultFolderLookup.assets` —
+    is called at most once, and only when there is at least one attachment to
+    check: a run with none must not pay for a folder listing it has no use
+    for `[ref: SDD/Cost]`. `None` (no Kado client) short-circuits to `[]`
+    before any call is made — the `is None` guard is load-bearing, not
+    defensive: `asset_listing` really is `None` on every run without a Kado
+    client, and calling it unconditionally would raise `TypeError` there.
+    """
+    owners: list[tuple[str, str]] = []
+    for item_key, actions in items:
+        for action in actions:
+            if action.get("kind") != "create_atomic_note" or action.get("suppressed"):
+                continue
+            for path in action.get("attachments") or []:
+                if path:
+                    owners.append((item_key, path))
+
+    if not owners or asset_listing is None:
+        return []
+
+    vault_assets = asset_listing(asset_folder)
+    conflicts: list[dict] = []
+    by_dest: dict[str, dict] = {}
+    for item_key, path in owners:
+        try:
+            destination = _asset_dest_join(asset_folder, path)
+        except ValueError:
+            continue
+        dest_key = destination.casefold()
+        if dest_key not in vault_assets:
+            continue
+        entry = by_dest.get(dest_key)
+        if entry is None:
+            entry = {
+                "source": path,
+                "destination": destination,
+                "owner_source_items": [],
+            }
+            by_dest[dest_key] = entry
+            conflicts.append(entry)
+        if item_key not in entry["owner_source_items"]:
+            entry["owner_source_items"].append(item_key)
+    return conflicts
 
 
 def _template_link(template: str) -> str:
@@ -2098,6 +2169,14 @@ def main() -> int:
         claim_actions[claim_id]["suggested_title"] = adjusted_title
         claim_actions[claim_id]["clash_reason"] = reason
 
+    # spec 037 T1.2: the same "is the destination already occupied" question,
+    # asked of attachments instead of notes, through the same folder cache.
+    attachment_conflicts = detect_attachment_conflicts(
+        [(item_key, actions) for _idx, _stem, item_key, actions in prepared],
+        asset_folder,
+        _vault_folder_lookup.assets if _vault_folder_lookup else None,
+    )
+
     for idx, stem, item_key, actions in prepared:
         section_id = f"S{idx:02d}"
         source_link = resolve_source_link(source_links, item_key, stem)
@@ -2464,6 +2543,11 @@ def main() -> int:
     if tag_handler_updates:
         doc["tag_handler_updates"] = tag_handler_updates
         doc["rendered_tag_handler_updates_md"] = rendered_tag_handler_updates_md
+    # spec 037 T1.2: omit-when-empty, same reasoning as tag_handler_updates
+    # above — a run with no conflicts must render byte-identically to a
+    # pre-T1.2 run, which an unconditional [] would break by construction.
+    if attachment_conflicts:
+        doc["attachment_conflicts"] = attachment_conflicts
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(

@@ -1033,3 +1033,78 @@ own working tree before the flag existed.
 WHY a missing routing plan warns instead of failing: measurement must never
 fail a run `[ref: SDD/Error Handling]`. The document is already written by then;
 losing the cost line is the cheaper failure.
+
+## `attachment_conflicts[]` — An Occupied Destination Becomes a Pass-1 Decision (spec 037 T1.2)
+
+T1.1 built `_VaultFolderLookup.assets()` and shipped it with no production
+caller. T1.2 is that caller: for every distinct attachment on the run's
+surviving `create_atomic_note` actions, compute the destination through
+`_asset_dest_join` — the SAME helper Pass 2's `_build_move_asset_actions` uses
+— and ask the same per-folder cache T5.2 built for notes whether that name is
+already occupied. A taken name becomes one `attachment_conflicts[]` entry;
+Phase 2 (F2) turns it into a rendered decision. T1.2 stops at detection —
+`same_file` is T1.3's, `remedy`/rendering is Phase 2's.
+
+WHY a pure function, not inline in `main()`: `resolve_destination_clashes`
+already set the precedent (module-level, testable without running the whole
+reducer) for the sibling note-clash pass, and the two checks are close enough
+in shape that a second closure buried in `main()` would read as a
+justification-free divergence.
+
+WHY the dedup key is the CASE-FOLDED DESTINATION, not the raw source path
+`[ref: PRD/F1-AC2]`: the requirement is stated in destination terms — "one
+attachment embedded by three notes yields one conflict carrying three
+owners" — and the destination is the thing a second occurrence of the same
+attachment always agrees on. Keying on destination also means the accumulator
+and the occupancy check share one vocabulary (both case-folded destinations),
+so there is no second translation step that could disagree with the first.
+Two DIFFERENT source paths colliding with EACH OTHER on one destination is a
+different question — the in-run collision `_build_move_asset_actions`
+already answers in Pass 2 — and is out of scope here (see the plan's scope
+boundary, settled 2026-09-22): this pass only asks "is the vault in the way,"
+never "do two inbox files fight over one name."
+
+WHY `owner_source_items` holds `item_key` directly, not
+`resolve_source_path(item_key, source_path, inbox_path)` the way
+`_build_move_asset_actions` computes it: `resolve_source_path` returns
+`item_key` verbatim whenever `item_key` is present (spec 034 ADR-1 — the key
+IS the path), and the reducer's `prepared` loop always has `item_key` in
+hand. Calling the three-argument helper here would be the same value
+reached through an unnecessary indirection.
+
+WHY suppressed atomics contribute no attachments: a sub-worthy atomic stays
+in the inbox with everything it owns (#88) — Pass 2 never files it and
+therefore never moves what it embeds. The clash-claims loop just above
+already filters `action.get("kind") != "create_atomic_note" or
+action.get("suppressed")` for exactly this reason; the attachment pass reuses
+the same filter rather than inventing a second opinion about which actions
+are live.
+
+WHY the vault listing is fetched lazily, only when there is at least one
+attachment path to check: `_VaultFolderLookup.assets()` is not free — a cache
+miss costs a real `list_dir` round trip, counted in `folder_listing_calls`.
+Calling it unconditionally on a run with zero attachments would charge every
+run in the fleet (most runs carry none) for a lookup nothing will ever
+consult, which is exactly the "per-attachment probe creeping in" the SDD's
+Cost section says the design must not produce.
+
+WHY `attachment_conflicts` is OMITTED, not an empty list, when there are no
+conflicts: `tag_handler_updates` already set this precedent (T3.3, above) —
+an unconditional `attachment_conflicts: []` would itself be a diff on every
+document a run with zero collisions produces, and "a run with no conflicts
+behaves identically" `[ref: SDD/Constraints, additive only]` would be false
+by construction if the key always appeared. The schema
+(`suggestions-doc.schema.json`) lists it as optional, not required, for the
+same reason.
+
+Two regressions are pinned rather than re-derived, because both properties
+already exist and predate this task: no Kado client means
+`_vault_folder_lookup` is `None` (unchanged since `main()` built it, spec 034
+T5.2 era), and `_VaultFolderLookup._entries` already fails open to `[]` on a
+raised listing (T1.1). T1.2's tests exercise both failure shapes THROUGH the
+new attachment path specifically — the assertion is not "T1.1 behaves" (that
+is `test_037_t1_1_folder_cache_serves_attachments.py`'s job) but "wiring
+`.assets()` into the attachment pass did not reintroduce a crash T1.1 already
+closed off." See
+`tests/test_037_t1_2_attachment_vault_collision.py` for the named mutation
+each pin catches.

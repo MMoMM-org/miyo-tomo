@@ -1,0 +1,48 @@
+{
+  "attachments_preamble": "Attachments will be filed to `Atlas/290 Assets/295 Attachments/`.",
+  "conventions": {
+    "moc_suffix": " (MOC)",
+    "parent_marker": "up::",
+    "peer_marker": "related::"
+  },
+  "daily_notes_updates": [],
+  "decision_precedence_note": "Daily-note decisions (trackers, log entries, log links) live in the Daily Notes Updates block above. Per-item Suggestion sections only cover the atomic-note decision. Use **Force Atomic Note** on a log entry to create a standalone note even when the item was only proposed for the daily log.",
+  "distinct_destination_folders": 1,
+  "doc_variant": "primary",
+  "folder_listing_calls": 1,
+  "needs_attention": [],
+  "profile": "miyo",
+  "proposed_mocs": [],
+  "rendered_daily_updates_md": "",
+  "run_id": "t037-t1-2-fixture",
+  "schema_version": "1",
+  "sections": [
+    {
+      "actions": [
+        {
+          "item": {
+            "attachments": [
+              "100 Inbox/Scans/karte.png"
+            ],
+            "audio_peer": null,
+            "force_atomic": false,
+            "location": "Atlas/202 Notes/",
+            "summary": null,
+            "suppressed": false,
+            "tags": [],
+            "template": "Atomic Note.md",
+            "title": "Karte",
+            "worthiness": 0.85
+          },
+          "kind": "create_atomic_note",
+          "rendered_md": "**Source:** [[karte]]\n**Suggested name:** Karte\n**Template:** [[Atomic Note]]    ← change if you want a different template\n**Location:** [[Atlas/202 Notes/]]    ← change if you want a different folder\n**Attachments:** `100 Inbox/Scans/karte.png`\n\n**Why:** atomic-worthiness 85%.\n\n**Decision (atomic note):**\n- [x] Approve\n- [ ] Keep source files\n      (don't delete the original(s) after the note is created — you may still need them)",
+          "suggestion_id": "S01"
+        }
+      ],
+      "id": "S01",
+      "item_key": "100 Inbox/Scans/karte.md",
+      "stem": "karte"
+    }
+  ],
+  "source_items": 1
+}

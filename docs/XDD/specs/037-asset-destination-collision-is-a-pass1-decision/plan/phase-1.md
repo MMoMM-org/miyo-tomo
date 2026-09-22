@@ -61,7 +61,7 @@ file already there is the same one.
 > The design fork itself is deliberately left to the implementer; the test now detects the wrong
 > branch instead of the plan mandating the right one.
 
-- [ ] **T1.2 An occupied destination becomes a recorded conflict** `[activity: domain-modeling]`
+- [x] **T1.2 An occupied destination becomes a recorded conflict** `[activity: domain-modeling]`
 
   1. Prime: Read `_build_move_asset_actions` for how attachments are deduplicated globally and how `owner_source_items` is accumulated `[ref: render_actions.py:691-782]`; read `load_asset_folder` `[ref: suggestions-reducer.py:1462]`. **Both refs corrected 2026-09-22** — the plan's originals (`640-728`, `1363`) predate specs 034–036 and point at neighbouring code.
   2. Test:

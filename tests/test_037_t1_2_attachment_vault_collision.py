@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_037_t1_2_attachment_vault_collision.py — spec 037 T1.2.
 
 An attachment's computed destination (`_asset_dest_join` — the same helper
@@ -397,7 +397,19 @@ def test_unit_no_attachments_short_circuits_without_calling_listing():
     Mutation: weaken the guard from `if not owners or asset_listing is None`
     to `if asset_listing is None` (dropping the `not owners` half) — the
     listing below would then be invoked despite zero attachments in the run,
-    and `calls` would be non-empty. `[ref: SDD/Cost]`."""
+    and `calls` would be non-empty. `[ref: SDD/Cost]`.
+
+    Added to close a code-quality finding that claimed this mutation "would
+    pass all 8 tests unchanged". **That claim was measured and is false** —
+    `test_unit_suppressed_atomics_claim_no_attachment` already fails under it,
+    because a suppressed atomic leaves `owners` empty while a listing IS
+    supplied, which is precisely the shape the finding said no test reached.
+    So this test closed no hole. It earns its place for a different reason: it
+    pins the guarantee directly, on the plainest input that expresses it,
+    instead of leaving `[ref: SDD/Cost]` resting on a test whose subject is
+    suppression. Do not delete it as redundant — and do not read it as the
+    only thing holding the guard up either.
+    """
     actions = [{
         "kind": "create_atomic_note", "suppressed": False,
         "attachments": [],

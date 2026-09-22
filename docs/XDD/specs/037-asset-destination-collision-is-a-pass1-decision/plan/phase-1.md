@@ -104,7 +104,38 @@ file already there is the same one.
 - [ ] **T1.3 The conflict knows whether it is the same file** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: Read `KadoClient.read_file_bytes` `[ref: kado_client.py:176]` and the live probe recorded in `README.md` — two 69-byte PNGs with different digests
-  2. Test: byte-identical files set `same_file: true`; differing files set `false`; **two files of identical size and different content set `false`** — the regression that a size check would fail `[ref: SDD/Complex Logic]`; a read that raises sets `null` and does not abort `[ref: PRD/S1-AC3]`; a destination occupied by a folder sets `false` `[ref: SDD/Error Handling]`
+  2. Test:
+     - **Byte-identical files set `same_file: true`**, differing files set `false` `[ref: PRD/S1-AC1]` `[ref: PRD/S1-AC2]`.
+     - **Two files of identical size and different content set `false`** — the live 2026-09-15 pair, and the regression a size check would fail `[ref: SDD/Complex Logic]`.
+     - **A raising read sets `null` for ITS conflict and leaves the others intact**: a run with two
+       colliding destinations where `read_file_bytes` raises for one returns entries for **both**;
+       the raising one carries `same_file: null`, the other its own computed `true`/`false` — not
+       `null`, not omitted `[ref: PRD/S1-AC3]`. The single-conflict form of this test cannot tell a
+       caught exception from one that abandons the rest of the run.
+     - **A destination occupied by a folder sets `false`**, not `null` `[ref: SDD/Error Handling]`.
+     - **Reads are bounded by collisions, not attachments**: with N attachments of which K collide,
+       `read_file_bytes` is called **at most 2·K** times — source side plus destination side per
+       entry — and never for the N−K that do not collide; K=0 performs none `[ref: SDD/Cost]`.
+     - **A destination shared by several owning notes is still one comparison**: two notes embedding
+       one attachment yield one entry and at most two content reads, not one read per owner
+       `[ref: SDD/Cost]`.
   3. Implement: read both sides only for a name already known to be taken, compare content, set `same_file`
-  4. Validate: full suite; `ruff`; assert that a run with no collisions performs **zero** content reads
+  4. Validate: full suite; `ruff`; the read-count assertions in step 2 carry the cost claim — a bare "zero reads when there are no collisions" does not, because the shipped code reads no content under **any** input
   5. Success: content decides, never size `[ref: PRD/S1]`; reads are bounded by collisions, not attachments `[ref: SDD/Cost]`; nothing derived from the content is persisted anywhere `[ref: SDD/Security and privacy]`
+
+> **Deviation recorded 2026-09-22 — T1.3's test list sharpened before implementation.**
+> The TDD guardian blocked the task. Two findings upheld, one corrected, one case added:
+> (1) *"a read that raises sets `null` and does not abort"* bundled a checkable claim with an
+> unanchored one. "Sets `null`" alone already forces a `try`/`except`, but an implementation that
+> catches the exception and abandons the remaining conflicts still passes it. The two-conflict
+> fixture is the test; the single-conflict form is not.
+> (2) *"a run with no collisions performs zero content reads"* is **already true today** under every
+> input, not merely the no-collision one — `detect_attachment_conflicts` reads no content at all,
+> so the assertion cannot turn red on any plausible T1.3 implementation. Replaced by the
+> discriminating form: N attachments, K collisions, reads bounded by K.
+> (3) **The guardian's replacement was itself wrong** — it said "exactly K calls". The comparison
+> has two sides (`SDD/Runtime View` step 5 reads *both* files), so K would be the wrong bound and
+> the test would fail a correct implementation. Corrected to **at most 2·K**.
+> (4) The multi-owner bound is new, for the reason the guardian gave: dedup is by destination, so an
+> implementation looping over `owner_source_items` passes every other case while quietly breaking
+> the cost claim.

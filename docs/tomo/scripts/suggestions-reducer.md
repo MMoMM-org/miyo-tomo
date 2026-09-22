@@ -1169,31 +1169,79 @@ all. `test_reads_bounded_by_collisions_not_attachments` mixes colliding and
 non-colliding attachments in one call and asserts the free one's path never
 appears in the reader's call log, not just that the total count is small.
 
-### The folder row this task cannot honour
-
-SDD/Error Handling lists "destination is a folder → conflict, rename stays
-the default" as a case `same_file` should resolve to `false`. It cannot, as
-currently wired: `_VaultFolderLookup._map` (T1.1) filters
-`entry.get("type") != "file"` before building the `{destination: path}` map
-`asset_listing` returns — a folder entry never survives into `vault_assets`,
-so `dest_key not in vault_assets` is true for it and
-`detect_attachment_conflicts` never learns the name is occupied at all. No
-exception is raised to catch, and the design constraint that ruled out
-sniffing exception messages leaves no other signal available at this
-function's boundary — the type information that WOULD distinguish a folder
-from a file is discarded one layer upstream, in `_map`, before this function
-ever sees the destination.
-
-`test_folder_occupied_destination_never_becomes_a_conflict` pins this
-directly, through the real `_VaultFolderLookup`, rather than fabricate an
-`asset_listing` shape (a folder entry surviving into the destination map)
-that the real system can never produce — a test built on an input the
-production code path cannot generate would prove nothing about production
-behaviour, only about the test's own fixture. Closing this gap for real
-would mean widening `asset_listing`'s contract to carry `type` through
-`_map`, which is out of scope for T1.3 and not something this task's
-constraints authorized. Left as a known, documented limitation rather than
-implemented or silently dropped.
-
 See `tests/test_037_t1_3_same_file.py` for the named mutation each test
 catches, including the size-comparison kill test.
+`test_folder_occupied_destination_never_becomes_a_conflict` in that same
+file still pins the narrower claim its name makes: given ONLY
+`_VaultFolderLookup.assets` (no `folder_listing`), a folder-occupied
+destination stays invisible to `detect_attachment_conflicts` — accurate
+before and after T1.4, because that narrower call shape is exactly what a
+caller opts OUT of the folder check by using. It is not evidence that the
+gap below was left open; T1.4 closes it through a path that test never
+exercises.
+
+## A Folder Holding the Name Is a Conflict Too (spec 037 T1.4)
+
+T1.3's spec-compliance review reopened `requirements.md` Edge Case
+Scenario 7 — "the destination is occupied by a folder → conflict, rename
+stays the sensible default" — as unmet, not merely undocumented. T1.3's own
+deviation block (above) had traced the cause to `_VaultFolderLookup._map`'s
+`entry.get("type") != "file"` filter, which discards a folder entry before
+either `notes()` or `assets()` ever sees it: the destination read as free,
+and `detect_attachment_conflicts` was never even told the name was taken.
+The owner decided the code gives way, not the PRD. T1.4 closes it.
+
+WHY a new method (`occupied_by_folder`), not a widened `_map`: `_map` is the
+SHARED body behind both `notes()` and `assets()` — widening its filter to
+admit non-file entries would leak folder-admission into the note path too,
+turning an unrelated subfolder into a phantom note clash and breaking spec
+034 T5.2 (`test_notes_is_unaffected_by_folder_occupied_detection` pins
+exactly this). `occupied_by_folder` reads the same cached raw listing
+`_entries` fills — a folder already primed by `notes()` or `assets()` for
+the same location costs no second `list_dir` round trip — but keys its
+result with `_asset_dest_join`, the attachment join, because a
+folder-occupied name only ever matters on the attachment side. `notes()`
+and `assets()` keep their exact pre-T1.4 filter, join, and return shape:
+this is an addition beside them, not a change inside them.
+
+WHY `detect_attachment_conflicts` gets a fifth parameter (`folder_listing`)
+rather than folding folder-occupancy into `asset_listing`'s existing dict:
+the two questions the function already keeps separate — "is the name taken"
+vs. "if so, is it the same bytes" (T1.3's `content_reader`) — gain a third,
+"taken by what kind of thing", and the same pattern applies: a capability
+the caller may not have is `None`, not a sentinel folded into an existing
+shape. `main()` wires `_vault_folder_lookup.occupied_by_folder` alongside
+`.assets`, so both are `None` together exactly when there is no Kado client
+— the existing `asset_listing is None` short-circuit needed no change.
+
+WHY the folder verdict is decided from `entry.get("type")`, never a read: a
+folder cannot be byte-identical to a file, so the comparison `_same_file`
+exists to make has nothing to compare — calling it anyway (or approximating
+it by reading the destination and treating any resulting exception as
+`false`) would spend a real `read_file_bytes` round trip for an answer
+already implied by the entry's kind. `content_reader` is consulted only
+when `occupied_by_file` is true; the folder branch sets `same_file: false`
+directly. `tests/test_037_t1_4_folder_occupied_destination.py`'s case
+1+2 test asserts this on ONE fixture and ONE entry — the value (`false`)
+and the read count (`0`) together — specifically because a mutation that
+decides `false` via a caught read exception produces the identical value
+and is invisible to any test that checks the value alone; only the read
+count exposes it. That mutation was applied and run by hand during
+implementation: it turned the read-count assertions in three of this file's
+tests red while every value assertion (`same_file is False`) stayed green,
+confirming the claim rather than merely asserting it.
+
+WHY a destination present in both the file map and the folder set is
+decided as a file, never downgraded: `vault_assets` membership is checked
+first, and when true, drives the verdict through `_same_file` regardless of
+whether `occupied_by_folder` also names the same casefolded key. This
+matters only for a case-sensitive vault filesystem holding both, e.g.,
+`Photo.PNG/` (a folder) and `photo.png` (a file) — a shape one `list_dir`
+listing is vanishingly unlikely to produce and this function has no way to
+confirm from the entries it receives, since `_map` already collapses same
+name to a single last-writer-wins path. Documented as an assumption, not
+inferred silently: file-occupied still wins if it ever happens.
+
+Cost accounting is untouched: `folder_listing_calls` increments inside
+`_entries`, which `occupied_by_folder` reuses rather than reimplements —
+this task added no new counter and no new `list_dir` call shape.

@@ -166,7 +166,7 @@ file already there is the same one.
 > that gets settled. Tracked in `docs/XDD/backlog.md`; the mechanism is written up in
 > `docs/tomo/scripts/suggestions-reducer.md:1172`.
 
-- [ ] **T1.4 A folder holding the name is a conflict too** `[activity: domain-modeling]`
+- [x] **T1.4 A folder holding the name is a conflict too** `[activity: domain-modeling]`
 
   Added 2026-09-22, after Phase 1 was first closed. T1.3's spec-compliance review
   established that `requirements.md` Edge Case Scenario 7 — *"The destination is occupied

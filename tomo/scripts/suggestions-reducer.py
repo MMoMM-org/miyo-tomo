@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.50.0
+# version: 1.51.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -387,6 +387,35 @@ class _VaultFolderLookup:
             join=_asset_dest_join,
         )
 
+    def occupied_by_folder(self, location: str) -> set[str]:
+        """Casefolded ATTACHMENT-destination keys held by a FOLDER entry in
+        `location` (spec 037 T1.4, PRD Edge Case Scenario 7).
+
+        Additive sibling to `assets()`, not a change to it: `_map`'s
+        `type != "file"` guard keeps dropping non-file entries from
+        `notes()` and `assets()` exactly as before — this method reads the
+        same cached raw listing `_entries` fills and picks up only what
+        that guard drops, keyed with `_asset_dest_join` because a
+        folder-occupied name only matters to the attachment side
+        (`detect_attachment_conflicts`); `notes()`'s `.md`-keyed results are
+        untouched by this method's existence.
+
+        A folder primed by an earlier `notes()` or `assets()` call for the
+        same `location` costs no second `list_dir` round trip — `_entries`
+        is the shared cache (spec 037 T1.1).
+        """
+        folder = (location or "").rstrip("/") + "/"
+        found: set[str] = set()
+        for entry in self._entries(folder):
+            if entry.get("type") == "file":
+                continue
+            path = entry.get("path") or ""
+            name = path.rsplit("/", 1)[-1]
+            if not name:
+                continue
+            found.add(_asset_dest_join(folder, name).casefold())
+        return found
+
 
 def resolve_destination_clashes(
     claims: list[tuple[str, str, str]],
@@ -493,9 +522,11 @@ def detect_attachment_conflicts(
     asset_folder: str,
     asset_listing: Callable[[str], dict[str, str]] | None,
     content_reader: Callable[[str], bytes] | None = None,
+    folder_listing: Callable[[str], set[str]] | None = None,
 ) -> list[dict]:
     """Attachments whose computed vault destination is already occupied
-    (spec 037 T1.2, PRD F1; `same_file` added T1.3, PRD S1).
+    (spec 037 T1.2, PRD F1; `same_file` added T1.3, PRD S1; a destination
+    held by a FOLDER added T1.4, PRD Edge Case Scenario 7).
 
     `items` is (item_key, actions) pairs. Only `create_atomic_note` actions
     that are not `suppressed` contribute — a sub-worthy atomic stays in the
@@ -524,19 +555,33 @@ def detect_attachment_conflicts(
     client, and calling it unconditionally would raise `TypeError` there.
 
     `content_reader(path) -> bytes` — normally `KadoClient.read_file_bytes` —
-    decides `same_file` for a taken destination via `_same_file`, above. It
-    is consulted ONLY for a destination this function has just determined is
-    occupied, and only ONCE per distinct destination: `same_file` is computed
-    when a destination's entry is first created, before a later owner is
-    folded into `owner_source_items`, so a destination several notes embed is
-    still one comparison, not one per owner. Reads are therefore bounded by
-    the number of COLLISIONS, not by the number of attachments checked
-    `[ref: SDD/Cost]`. `asset_listing` alone still decides whether a
-    destination is occupied — a folder occupying a destination name is
-    already excluded from `vault_assets` upstream, by `_VaultFolderLookup
-    ._map`'s `type != "file"` filter (see docs/tomo/scripts/suggestions
-    -reducer.md), so it never reaches this function as a conflict to begin
-    with; `content_reader` plays no part in recognising it.
+    decides `same_file` for a destination occupied by a FILE, via
+    `_same_file`, above. It is consulted ONLY for a destination this
+    function has just determined is occupied by a file, and only ONCE per
+    distinct destination: `same_file` is computed when a destination's
+    entry is first created, before a later owner is folded into
+    `owner_source_items`, so a destination several notes embed is still one
+    comparison, not one per owner. Reads are therefore bounded by the
+    number of file COLLISIONS, not by the number of attachments checked
+    `[ref: SDD/Cost]`.
+
+    `folder_listing(asset_folder)` — normally `_VaultFolderLookup
+    .occupied_by_folder` — answers the other way a destination can be taken
+    (spec 037 T1.4, PRD Edge Case Scenario 7): `_VaultFolderLookup._map`'s
+    `type != "file"` filter keeps a folder entry OUT of `vault_assets`, so
+    `asset_listing` alone still cannot see it. `folder_listing` is what
+    makes it visible, called at most once under the same `not owners` cost
+    guard as `asset_listing`. When a destination is occupied by a folder,
+    `same_file` is set to `False` from `entry.get("type")` alone —
+    `content_reader` is never consulted for it, because a folder cannot be
+    byte-identical to a file and reading one to find that out would spend a
+    call this spec exists to avoid. A destination present in BOTH maps (a
+    file and a folder differing only by case, on a case-sensitive vault
+    filesystem — vanishingly rare, and not a shape `_map`'s single-listing
+    construction can itself produce) is decided as a file: `vault_assets`
+    membership is checked first and, when true, always drives the verdict
+    through `_same_file`, never downgraded to `False` for the folder sharing
+    the same casefolded key.
     """
     owners: list[tuple[str, str]] = []
     for item_key, actions in items:
@@ -551,6 +596,7 @@ def detect_attachment_conflicts(
         return []
 
     vault_assets = asset_listing(asset_folder)
+    occupied_folders = folder_listing(asset_folder) if folder_listing is not None else set()
     conflicts: list[dict] = []
     by_dest: dict[str, dict] = {}
     for item_key, path in owners:
@@ -559,14 +605,21 @@ def detect_attachment_conflicts(
         except ValueError:
             continue
         dest_key = destination.casefold()
-        if dest_key not in vault_assets:
+        occupied_by_file = dest_key in vault_assets
+        occupied_by_folder = dest_key in occupied_folders
+        if not occupied_by_file and not occupied_by_folder:
             continue
         entry = by_dest.get(dest_key)
         if entry is None:
+            same_file = (
+                _same_file(path, destination, content_reader)
+                if occupied_by_file
+                else False
+            )
             entry = {
                 "source": path,
                 "destination": destination,
-                "same_file": _same_file(path, destination, content_reader),
+                "same_file": same_file,
                 "owner_source_items": [],
             }
             by_dest[dest_key] = entry
@@ -2229,11 +2282,13 @@ def main() -> int:
     # double (or any future kado_client shape) that does not implement
     # `read_file_bytes` must degrade to "no reader" (same_file: null), not
     # crash the run; the real KadoClient always has this method.
+    # T1.4: a destination held by a FOLDER is a conflict too — Scenario 7.
     attachment_conflicts = detect_attachment_conflicts(
         [(item_key, actions) for _idx, _stem, item_key, actions in prepared],
         asset_folder,
         _vault_folder_lookup.assets if _vault_folder_lookup else None,
         getattr(kado_client, "read_file_bytes", None) if kado_client else None,
+        _vault_folder_lookup.occupied_by_folder if _vault_folder_lookup else None,
     )
 
     for idx, stem, item_key, actions in prepared:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.55.0
+# version: 1.55.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1481,10 +1481,10 @@ def render_attachment_conflicts_block(conflicts: list[dict], asset_folder: str) 
             lines.append(f"- [x] Rename to `{rename_target}`")
             lines.append("- [ ] Keep in inbox")
         else:
-            lines.append("- [ ] Rename — no free name found within 99 attempts")
+            lines.append("- [ ] Rename — no free name available")
             lines.append("- [x] Keep in inbox")
         lines.append(
-            "- [ ] Ignore (the move goes out unchanged; Hashi refuses it and reports it)"
+            "- [ ] Ignore (the move is sent as-is and will fail — the attachment stays in the inbox)"
         )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

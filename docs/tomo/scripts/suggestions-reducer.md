@@ -1544,11 +1544,29 @@ exception, not the ADR-4 rule.** ADR-4's general rule (a cleared box resolves
 to *ignore*) governs the parser (T2.4), not this renderer. This renderer's
 own job under the exception is narrower: when no free name was found, tick
 *keep in inbox* instead of rename, and still render the rename line —
-unticked, stating plainly that no free name was found within 99 attempts —
-so the owner can see WHY the usual default is missing rather than being
-shown two ordinary-looking remedies with no explanation for the gap. T2.4
-must read this exact tick pattern; the two tasks were required not to
-disagree about what it means.
+unticked, stating plainly that no free name is available — so the owner can
+see WHY the usual default is missing rather than being shown two
+ordinary-looking remedies with no explanation for the gap. T2.4 must read
+this exact tick pattern; the two tasks were required not to disagree about
+what it means.
+
+**Correction (fix/037, `# version: 1.55.1`): the T2.2 commit (`092e420`)
+shipped two lines that broke the no-executor-internals rule this same file
+states at lines 141-143 and 174-177 — the rename line read "no free name
+found within 99 attempts", naming the reducer's internal retry budget
+(`range(2, 101)` in the destination-name search), and the ignore line read
+"the move goes out unchanged; Hashi refuses it and reports it", naming the
+executor by name. Both are now mechanism-free: the rename line reads "no
+free name available" (the owner cannot act on the number 99, and does not
+need it); the ignore line reads "the move is sent as-is and will fail — the
+attachment stays in the inbox" (per the SDD Runtime View, Pass 2: *ignore*
+emits the move normally, and it is the resulting failure — not who performs
+it — that matters to the owner; *keep in inbox* is the remedy that emits
+nothing). This paragraph previously narrated the "99 attempts" wording as
+deliberate ("so the owner can see WHY"); it was not a deliberate choice, it
+was the leak, and this file documented the rule that forbids it roughly
+1,400 lines above the section that violated it — worth recording as a gap in
+review, not smoothing over.
 
 **Deliberately out of scope here, owned by siblings:** the `same_file`
 sentence (T2.3) and the S2 "here is what happens if you leave this

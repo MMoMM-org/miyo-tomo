@@ -79,6 +79,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -323,6 +324,31 @@ def test_null_proposed_name_pre_ticks_keep_in_inbox_not_rename():
     assert "no free name" in rename_line.lower(), rename_line
     assert keep_line.startswith("- [x]"), keep_line
     assert len(checkboxes) == 3, checkboxes
+
+
+# ---------------------------------------------------------------------------
+# 5b. No executor-internal name leaks into the reader-facing block (fix/037)
+# ---------------------------------------------------------------------------
+
+def test_no_executor_internals_in_rendered_block():
+    """Mutation: restore either original spec-037 T2.2 string this fix
+    replaced — `- [ ] Rename — no free name found within 99 attempts` (names
+    the reducer's internal retry budget) or `- [ ] Ignore (the move goes out
+    unchanged; Hashi refuses it and reports it)` (names the executor). The
+    reader of a suggestions document is doing PKM, not debugging a pipeline —
+    tell them the effect, never the mechanism (owner ruling 2026-06-13).
+
+    Scoped to the remedy checkbox lines, not the whole block: the
+    `**Destination:**` line legitimately carries Johnny-Decimal folder
+    numbers (e.g. `290 Assets`), so a whole-block digit check would flag
+    real path content instead of the leaked retry-budget number.
+    """
+    md = REDUCER.render_attachment_conflicts_block(
+        [_conflict(proposed_name=None)], ASSET_FOLDER
+    )
+    assert "hashi" not in md.lower(), md
+    for line in _checkbox_lines(md):
+        assert not re.search(r"\d", line), line
 
 
 # ---------------------------------------------------------------------------

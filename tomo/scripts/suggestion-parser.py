@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.0
+# version: 0.40.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -35,6 +35,7 @@ from lib.supporting_items import (  # noqa: E402
 from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 from lib.wire_version import wire_schema_version  # noqa: E402
+from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2327,7 +2328,7 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
 
         if label.startswith("rename"):
             rename_ticked = checked
-            rename_impossible = "no free name available" in label
+            rename_impossible = RENAME_IMPOSSIBLE_MARKER in label
         elif label.startswith("keep in inbox"):
             keep_ticked = checked
         elif label.startswith("ignore"):

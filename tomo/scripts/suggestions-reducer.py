@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.57.1
+# version: 1.57.2
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -76,6 +76,7 @@ from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — s
 # spec 034 T5.1, moved to lib at T5.5 when the instruction document needed
 # the same collision rule and the same link form at three more sites.
 from lib.source_link import resolve_source_link, source_link_targets  # noqa: E402
+from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -1517,7 +1518,7 @@ def render_attachment_conflicts_block(
             lines.append(f"- [x] Rename to `{rename_target}`")
             lines.append("- [ ] Keep in inbox")
         else:
-            lines.append("- [ ] Rename — no free name available")
+            lines.append(f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}")
             lines.append("- [x] Keep in inbox")
         lines.append(
             "- [ ] Ignore (the move is sent as-is and will fail — the attachment stays in the inbox)"

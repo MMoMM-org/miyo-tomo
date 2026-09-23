@@ -1636,6 +1636,33 @@ scanned. Parametrized the test over `same_file in (True, False, None)`
 all three branches pass through the same whole-block digit/executor-name
 scan.
 
+**Fifth correction (fix/037, `# version: 1.57.2`): the "no free name
+available" wording was a bare literal duplicated in this file and in
+`suggestion-parser.py`'s `rename_impossible = "no free name available" in
+label` check — no shared constant tied the two together.** The wording had
+already been reworded twice in this phase for unrelated reasons (the two
+corrections above); a third reword would have passed every test in this
+file — none of which exercise the parser — while silently breaking the
+parser's detection of the state, letting a ticked-but-impossible rename
+resolve to `remedy: rename` with `proposed_name: null` (the Rule 6
+violation the owner decision of 2026-09-23 exists to prevent). Extracted
+the marker to `lib/attachment_conflict_states.RENAME_IMPOSSIBLE_MARKER`;
+this renderer now builds the line as `f"- [ ] Rename — {
+RENAME_IMPOSSIBLE_MARKER}"` instead of the bare string. Rendered output is
+unchanged — this is a refactor of where the string lives, not of what the
+owner reads, pinned by the unchanged golden file and the unchanged
+`test_null_proposed_name_pre_ticks_keep_in_inbox_not_rename` assertion.
+`tests/test_037_fix_render_parse_round_trip.py` adds the coverage the
+constant does not provide: it runs this renderer's real output through the
+real parser and pins the SEMANTIC mapping (rename-impossible-and-ticked →
+`ignore`), which a wording constant cannot protect since it lives in the
+parser's `_resolve_attachment_remedy`, not in the marker text.
+
+The same "renderer builds English text, parser matches a substring of it"
+shape also exists, unconsolidated, for the "Rename"/"Keep in inbox"/
+"Ignore" remedy-label prefixes and for the `## Attachment Conflicts`
+heading itself — noted during this fix, left alone as out of scope.
+
 ## `same_file` wording in `render_attachment_conflicts_block` (spec 037 T2.3)
 
 T1.3 computes `same_file` (`True` / `False` / `None`) once per conflict entry

@@ -939,3 +939,30 @@ the move target as `_asset_dest_join(asset_folder, proposed_name)`. With
 `proposed_name: null` that call has no basename to join, and the SDD's Rule 6
 promises the strongest outcome this feature can produce is a move to a free
 name — never a write with no destination.
+
+**Correction (fix/037, v0.40.1): `"no free name available"` was a bare
+literal, duplicated in this file's `rename_impossible = "no free name
+available" in label` check and in `suggestions-reducer.py`'s rendered line —
+no shared symbol tied the detection to the wording it detects.** The
+rendered line had already been reworded twice in this phase for reasons
+unrelated to this check (dropping an internal retry count, dropping an
+executor name — see `docs/tomo/scripts/suggestions-reducer.md`'s
+corrections). Neither reword happened to touch this exact substring, but
+nothing would have caught it if one had: this parser has no test that
+renders through the reducer, so a drift here would have kept every test in
+this file green while every real "no free name" document silently stopped
+being detected. Now reads `RENAME_IMPOSSIBLE_MARKER` from
+`lib/attachment_conflict_states.py`, imported by both files, so the two can
+no longer say different things about what this state looks like on the
+page — a wording change to one is a compile-time-visible change to the
+other's import, not a silent divergence.
+
+This constant fixes the WORDING coupling only. The semantic mapping this
+section documents above — impossible-and-ticked resolves to `ignore`, never
+`rename` — still lives entirely in `_resolve_attachment_remedy` and is not
+protected by the constant at all; a change to that function's logic would
+pass with the constant untouched. `tests/test_037_fix_render_parse_round_
+trip.py` closes that gap by running the reducer's real rendered output
+through this parser and asserting the resolved remedy, rather than adding
+another hand-typed fixture like this file's own `test_037_t2_4_parse_
+remedy.py` (which pins the same mapping, but never via a real render).

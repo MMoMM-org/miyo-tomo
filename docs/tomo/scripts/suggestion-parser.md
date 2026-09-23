@@ -915,3 +915,27 @@ waiting for a document that renders a placeholder into them.
 WHY the `parent moc` field at the `Link to MOC` site needed no change: it is
 already written as `if wl:` and discards a non-matching value instead of
 falling back to it.
+
+## An Impossible Rename Resolves to `ignore`, Not `keep_in_inbox` (spec 037 T2.4, v0.40.0)
+
+WHY `_resolve_attachment_remedy` treats a ticked-but-impossible rename (the
+"Rename — no free name available" line, rendered when `proposed_name` is
+`null`) as `ignore` rather than falling back to the safe-looking
+`keep_in_inbox`, even though `keep_in_inbox` is what the SAME line ships
+pre-ticked with by `render_attachment_conflicts_block` (SDD ADR-4 exception):
+
+The two states look identical at a glance — both leave the file where it is —
+but they are reached by different owners. The pre-tick is *nobody's* decision;
+`keep_in_inbox` is correct there because it is what ADR-4's own rule says a
+safe, unread default should be. A ticked-but-impossible rename is the
+opposite: the owner actively cleared a box that told them clearing it does
+nothing, or ticked a box that was never meant to move. That is a deliberate,
+malformed instruction, and ADR-4's rule for a deliberate override is the
+loudest of the three outcomes, not the quietest — `keep_in_inbox` would
+silently discard the tick with no trace that anything was overridden.
+
+WHY passing `remedy: rename` through was never on the table: Pass 2 composes
+the move target as `_asset_dest_join(asset_folder, proposed_name)`. With
+`proposed_name: null` that call has no basename to join, and the SDD's Rule 6
+promises the strongest outcome this feature can produce is a move to a free
+name — never a write with no destination.

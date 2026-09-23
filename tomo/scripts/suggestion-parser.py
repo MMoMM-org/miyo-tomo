@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.0
+# version: 0.40.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -2212,6 +2212,144 @@ def parse_tag_handler_keep_source(text: str) -> list[str]:
     harmless downstream. Returns ids in document order.
     """
     return [gid for gid, _, keep in _walk_tag_handler_decisions(text) if keep]
+
+
+# ── Attachment Conflicts (spec 037 T2.4) ─────────────────────────────────────
+
+# Entry delimiter rendered by `render_attachment_conflicts_block`: `### `<source>` `.
+RE_ATTACHMENT_CONFLICT_SOURCE = re.compile(r"^###\s+`([^`]+)`")
+
+REMEDY_RENAME = "rename"
+REMEDY_KEEP_IN_INBOX = "keep_in_inbox"
+REMEDY_IGNORE = "ignore"
+
+
+def _resolve_attachment_remedy(
+    rename_ticked: bool,
+    rename_impossible: bool,
+    keep_ticked: bool,
+    ignore_ticked: bool,
+) -> str:
+    """Apply PRD Business Rules 2-4 and the ADR-4 null-proposal exception to
+    one conflict entry's three ticks. Exhaustive — always returns one of the
+    three remedy strings, never None (SDD/Interface Specifications).
+
+    Exactly one tick settles the entry to that remedy (Rule 2), unless it is
+    the "Rename — no free name available" line (`rename_impossible`):
+    passing `rename` through with no `proposed_name` would hand Pass 2
+    `_asset_dest_join(asset_folder, None)`, a move with no destination,
+    breaking Rule 6. Owner decision 2026-09-23 resolves that state to
+    `ignore` instead — ADR-4's own reasoning, an override of the pre-selected
+    answer gets the loudest outcome, not the quietest, and `keep_in_inbox`
+    would discard the tick with no signal that it was discarded.
+
+    Zero ticks (Rule 3) or two-or-more ticks in ANY combination — including
+    one where the pre-ticked rename box is still ticked alongside another
+    (Rule 4) — resolve to `ignore`. The pre-tick carries no special weight
+    once a second box is also ticked; it is not sticky.
+    """
+    ticks = (rename_ticked, keep_ticked, ignore_ticked)
+    if sum(ticks) == 1:
+        if rename_ticked:
+            return REMEDY_IGNORE if rename_impossible else REMEDY_RENAME
+        if keep_ticked:
+            return REMEDY_KEEP_IN_INBOX
+        return REMEDY_IGNORE
+    return REMEDY_IGNORE
+
+
+def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
+    """Walk the ## Attachment Conflicts section, one record per `### `source`` block.
+
+    Mirrors `_walk_tag_handler_decisions`: a new entry starts at each
+    ``### `<source>` `` heading and the checkbox state seen before the next
+    entry (or the section's end) resolves it via `_resolve_attachment_remedy`.
+    A checkbox line absent from the text is simply never seen, so it
+    contributes an unticked (False) state like any other unticked line — no
+    line is required for an entry to resolve.
+
+    Returns ``[(source, remedy), ...]`` in document order; empty when the
+    section is absent (mirrors T1.2's absent-not-empty decision — no
+    invented entry).
+    """
+    lines = text.splitlines()
+    in_section = False
+    records: list[tuple[str, str]] = []
+    current_source: str | None = None
+    rename_ticked = False
+    rename_impossible = False
+    keep_ticked = False
+    ignore_ticked = False
+
+    def _flush() -> None:
+        nonlocal current_source, rename_ticked, rename_impossible
+        nonlocal keep_ticked, ignore_ticked
+        if current_source is not None:
+            records.append((
+                current_source,
+                _resolve_attachment_remedy(
+                    rename_ticked, rename_impossible, keep_ticked, ignore_ticked
+                ),
+            ))
+        current_source = None
+        rename_ticked = False
+        rename_impossible = False
+        keep_ticked = False
+        ignore_ticked = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == "## Attachment Conflicts":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            _flush()
+            break
+        if not in_section:
+            continue
+
+        sm = RE_ATTACHMENT_CONFLICT_SOURCE.match(stripped)
+        if sm:
+            _flush()
+            current_source = sm.group(1).strip()
+            continue
+
+        if current_source is None:
+            continue
+
+        cb_checked = RE_CHECKED.match(stripped)
+        cb_unchecked = RE_UNCHECKED.match(stripped)
+        if not (cb_checked or cb_unchecked):
+            continue
+        checked = bool(cb_checked)
+        label = (cb_checked or cb_unchecked).group(1).strip().lower()
+
+        if label.startswith("rename"):
+            rename_ticked = checked
+            rename_impossible = "no free name available" in label
+        elif label.startswith("keep in inbox"):
+            keep_ticked = checked
+        elif label.startswith("ignore"):
+            ignore_ticked = checked
+
+    _flush()
+    return records
+
+
+def parse_attachment_conflict_remedies(text: str) -> list[dict]:
+    """Return `[{"source": ..., "remedy": ...}, ...]` for every
+    `## Attachment Conflicts` entry, in document order.
+
+    `remedy` is always `rename` / `keep_in_inbox` / `ignore` — never None —
+    because `_resolve_attachment_remedy` is exhaustive over the tick states
+    (PRD Business Rules 2-4; SDD `remedy is never null after parsing`).
+    Empty when the section is absent — not a fabricated entry.
+    """
+    return [
+        {"source": source, "remedy": remedy}
+        for source, remedy in _walk_attachment_conflicts(text)
+    ]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

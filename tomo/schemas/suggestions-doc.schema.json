@@ -260,6 +260,11 @@
           "proposed_name": {
             "type": ["string", "null"],
             "description": "The first free basename a rename remedy would use — {stem} ({n}){ext}, mirroring resolve_destination_clashes' scheme with the counter before the extension (spec 037 T2.1, PRD C1). Checked, case-folded, against the asset folder's file listing, the folder-occupancy set, and every proposed_name already handed out this run. null when no candidate is free within 99 attempts; the conflict is still emitted."
+          },
+          "remedy": {
+            "type": "string",
+            "enum": ["rename", "keep_in_inbox", "ignore"],
+            "description": "Filled by suggestion-parser.py (spec 037 T2.4), never by the reducer — this field is absent from every Pass-1 document, including one the owner never opens Pass 2 on. NOT in `required`: requiring it would reject the reducer's own output, which is what this schema validates before a parse ever runs. The parser resolves it exhaustively (PRD Business Rules 2-4, SDD ADR-4) once it does run, so a document that reaches Pass 2's render_actions.py always carries it."
           }
         }
       }

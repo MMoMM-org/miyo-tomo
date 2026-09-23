@@ -277,6 +277,13 @@ def test_exactly_three_remedies_with_rename_ticked():
     assert checkboxes[0].startswith("- [x] Rename"), checkboxes[0]
     assert checkboxes[1] == "- [ ] Keep in inbox", checkboxes[1]
     assert checkboxes[2].startswith("- [ ] Ignore"), checkboxes[2]
+    # PRD/S2-AC1: the entry must state what will happen when rename is not
+    # ticked. Re-homed here from T2.4 (spec 037 plan/phase-2.md) — S2-AC1 is
+    # a rendering criterion T2.2 already discharges via this static clause,
+    # but no test asserted it until now. Mutation: drop the consequence
+    # clause from the Ignore line, leaving only its label.
+    assert "the move is sent as-is and will fail" in checkboxes[2], checkboxes[2]
+    assert "the attachment stays in the inbox" in checkboxes[2], checkboxes[2]
 
 
 # ---------------------------------------------------------------------------

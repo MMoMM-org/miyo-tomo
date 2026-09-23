@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: The decision in the document"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -241,7 +241,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
      that is proven by two named bullets rather than asserted in prose
      `[ref: SDD/Complex Logic]`
 
-- [ ] **T2.4 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
+- [x] **T2.4 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
 
   1. Prime: Read `tomo/scripts/suggestion-parser.py`'s checkbox parsing for an existing
      decision block and **confirm it matches lines by text, not by position** — several

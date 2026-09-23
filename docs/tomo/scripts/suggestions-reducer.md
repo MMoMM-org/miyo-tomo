@@ -1497,3 +1497,61 @@ code-quality-review fix above: removing the `stem == ""` guard was verified
 live, in a disposable copy of the module, to turn it red with
 `proposed_name == " (2).hidden"` — the exact leading-space, no-longer-a-
 dotfile candidate the guard exists to prevent.
+
+## `render_attachment_conflicts_block` — The Conflict Becomes a Decision the Owner Reads (spec 037 T2.2)
+
+Phase 1 (T1.2-T1.5) detects an occupied destination and, as of T2.1, proposes
+a free name for it — all data, none of it visible to the owner until this
+task. `render_attachment_conflicts_block(conflicts, asset_folder) -> str`
+renders `attachment_conflicts[]` into the `## Attachment Conflicts` markdown
+section, following the exact split `render_tag_handler_updates_block` and
+`render_daily_notes_updates_block` already established: the reducer renders
+markdown into a `rendered_*_md` doc field (`rendered_attachment_conflicts_md`
+here), gated inside the same `if attachment_conflicts:` block that already
+gates `doc["attachment_conflicts"]` itself — so a conflict-free run adds
+neither key, and stays byte-identical to a pre-spec-037 document. That
+byte-identity is pinned by a committed golden file,
+`tests/fixtures/037-t2-2/pre-change-no-conflicts-doc.json`, captured by
+running the reducer at the commit before this task
+(`04829d2`) — same anchoring approach as T1.2's own fixture, and for the same
+reason: "byte-compare against the pre-change render" without a committed
+fixture is unanchored and was rejected twice already in this spec's Phase 1.
+
+**One block per CONFLICT, not per owner.** Phase 1 already dedups by exact
+source path (T1.5), so an entry whose `owner_source_items` names several
+notes is still one occupancy — the render loop iterates `conflicts`, once
+each, and lists every owner inside that one block. The plan's own guardian
+review flagged that a renderer iterating `owner_source_items` and emitting a
+block per owner would pass every OTHER test in the file, because the default
+test fixture carries only one owner — verified live: with that exact
+mutation applied, 8 of the 9 tests in
+`tests/test_037_t2_2_render_conflicts.py` still pass, and only
+`test_one_block_per_conflict_not_per_owner` (built on a three-owner fixture)
+catches it. That is why the test suite deliberately carries a three-owner
+case rather than relying on the single-owner default everywhere.
+
+**The rename target is composed, not the bare basename.** `proposed_name`
+(T2.1) is a basename only; the folder lives in the entry's `destination`.
+This function is handed `asset_folder` directly (its own parameter, not
+re-derived per entry) and composes the two with `_asset_dest_join` — the
+same helper Pass 2's `_build_move_asset_actions` and T1.2's detector both use
+to build every other attachment destination in this module. Rendering
+`proposed_name` alone would pass a substring check while showing the owner a
+name with no folder — the exact regression the task text calls out by name.
+
+**`proposed_name: null` pre-ticks *keep in inbox*, not rename — the ADR-4
+exception, not the ADR-4 rule.** ADR-4's general rule (a cleared box resolves
+to *ignore*) governs the parser (T2.4), not this renderer. This renderer's
+own job under the exception is narrower: when no free name was found, tick
+*keep in inbox* instead of rename, and still render the rename line —
+unticked, stating plainly that no free name was found within 99 attempts —
+so the owner can see WHY the usual default is missing rather than being
+shown two ordinary-looking remedies with no explanation for the gap. T2.4
+must read this exact tick pattern; the two tasks were required not to
+disagree about what it means.
+
+**Deliberately out of scope here, owned by siblings:** the `same_file`
+sentence (T2.3) and the S2 "here is what happens if you leave this
+unresolved" statement (T2.4, tied to the parsed `remedy`) are not rendered by
+this function. Adding either here would have this task guess at wording its
+sibling tasks are specifically chartered to decide.

@@ -263,6 +263,10 @@
           }
         }
       }
+    },
+    "rendered_attachment_conflicts_md": {
+      "type": "string",
+      "description": "Pre-rendered ## Attachment Conflicts markdown section (spec 037 T2.2). Present only alongside attachment_conflicts — a conflict-free run carries neither key, so it stays byte-identical to a pre-spec-037 document."
     }
   }
 }

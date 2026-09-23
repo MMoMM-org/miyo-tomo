@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.54.1
+# version: 1.55.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1434,6 +1434,62 @@ def render_tag_handler_updates_block(groups: list[dict]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_attachment_conflicts_block(conflicts: list[dict], asset_folder: str) -> str:
+    """Render the ## Attachment Conflicts section from attachment_conflicts[]
+    (spec 037 T2.2, PRD F2).
+
+    Mirrors render_tag_handler_updates_block / render_daily_notes_updates_block:
+    returns "" when empty so the caller omits the section cleanly — a
+    conflict-free run must render byte-identically to a pre-spec-037 document
+    (PRD F2-AC4).
+
+    One block per CONFLICT (one array element), never per owner: Phase 1
+    (T1.2, re-keyed T1.5) already dedups by exact source path, so an entry
+    whose `owner_source_items` names several notes still renders as ONE
+    decision that settles it for all of them (PRD F2-AC3).
+
+    Rename ships ticked (SDD ADR-4) unless `proposed_name` is null, in which
+    case *keep in inbox* is pre-ticked instead and the rename line still
+    renders, unticked, stating that no free name was found (ADR-4 exception,
+    owner decision 2026-09-23 — T2.4 parses this state explicitly).
+
+    The rename target is the FULLY COMPOSED destination: the asset folder
+    plus `proposed_name`, joined with `_asset_dest_join` — the same helper
+    every other attachment destination in this module is built with — not a
+    bare basename, which would show the owner a name with no folder (PRD C1).
+    """
+    if not conflicts:
+        return ""
+    lines: list[str] = ["## Attachment Conflicts", ""]
+    for entry in conflicts:
+        source = entry["source"]
+        destination = entry["destination"]
+        proposed_name = entry.get("proposed_name")
+        owners = entry.get("owner_source_items") or []
+
+        lines.append(f"### `{source}`")
+        lines.append("")
+        lines.append(f"- **Destination:** `{destination}` (already occupied)")
+        lines.append("- **Embedded by:**")
+        for owner in owners:
+            link = owner[:-3] if owner.endswith(".md") else owner
+            lines.append(f"  - [[{link}]]")
+        lines.append("")
+        lines.append("**Remedy — choose one:**")
+        if proposed_name is not None:
+            rename_target = _asset_dest_join(asset_folder, proposed_name)
+            lines.append(f"- [x] Rename to `{rename_target}`")
+            lines.append("- [ ] Keep in inbox")
+        else:
+            lines.append("- [ ] Rename — no free name found within 99 attempts")
+            lines.append("- [x] Keep in inbox")
+        lines.append(
+            "- [ ] Ignore (the move goes out unchanged; Hashi refuses it and reports it)"
+        )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 # ── MOC Proposal rendering (F-43 T3.1) ───────────────────────────────────────
 
 
@@ -2404,6 +2460,12 @@ def main() -> int:
         getattr(kado_client, "read_file_bytes", None) if kado_client else None,
         _vault_folder_lookup.occupied_by_folder if _vault_folder_lookup else None,
     )
+    # spec 037 T2.2: pre-rendered here, alongside detection, so the doc-build
+    # block below only has to gate its inclusion — same split as
+    # rendered_tag_handler_updates_md/rendered_daily_updates_md.
+    rendered_attachment_conflicts_md = render_attachment_conflicts_block(
+        attachment_conflicts, asset_folder
+    )
 
     for idx, stem, item_key, actions in prepared:
         section_id = f"S{idx:02d}"
@@ -2776,6 +2838,7 @@ def main() -> int:
     # pre-T1.2 run, which an unconditional [] would break by construction.
     if attachment_conflicts:
         doc["attachment_conflicts"] = attachment_conflicts
+        doc["rendered_attachment_conflicts_md"] = rendered_attachment_conflicts_md
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(

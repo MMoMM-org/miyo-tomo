@@ -153,7 +153,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
      second C1 criterion (the proposal itself occupied at Pass 2) stays Phase 3's
      `[ref: SDD/Runtime View, Pass 2]`
 
-- [ ] **T2.2 The conflict renders as a decision with three remedies** `[activity: frontend-ui]`
+- [x] **T2.2 The conflict renders as a decision with three remedies** `[activity: frontend-ui]`
 
   1. Prime: Read `render_tag_handler_updates_block` and `render_daily_notes_updates_block`
      — both return `""` when empty so the caller omits the section — and their consumers in

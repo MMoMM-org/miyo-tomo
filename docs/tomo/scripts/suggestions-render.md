@@ -79,3 +79,16 @@ behavioural difference. The reducer decides WHETHER to include the line at all
 doc); this renderer's job is only the generic "if present, blockquote it" splat —
 same division of responsibility `rendered_daily_updates_md` /
 `render_daily_updates` already establish elsewhere in this file.
+
+## `render_attachment_conflicts` reads `rendered_attachment_conflicts_md` verbatim (spec 037 T2.2)
+
+WHY this consumer is a copy of `render_tag_handler_updates`'s shape rather than a
+new pattern: the reducer, not this file, owns every decision about what a
+conflict entry says and how its checkboxes tick (see `suggestions-reducer.md`'s
+T2.2 entry) — this function's only job is "if the field is present and
+non-empty, splat it in and add a trailing blank line", the same
+divide-responsibility rule `render_daily_updates` and `render_tag_handler_updates`
+already establish. Placed in `main()`'s `parts.extend(...)` chain right after
+`render_tag_handler_updates` and before `render_suggestions`: it is a run-level
+decision block like daily-notes and tag-handler updates, so it belongs beside
+them, ahead of the per-item Suggestions sections — not interleaved with them.

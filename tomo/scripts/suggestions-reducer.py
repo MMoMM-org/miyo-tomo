@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.54.0
+# version: 1.54.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -545,24 +545,35 @@ def _propose_asset_name(
     file listing), `occupied_folders` (T1.4's folder-occupancy set, so a
     candidate cannot be rejected as free just because no FILE holds it),
     and `proposed` (the destinations this run has already handed to other
-    conflicts, mutated in place — two conflicts in one run must not both
-    walk to the same first-free name and collide with each other, the way
-    T1.5 already keeps their ownership from doing the same).
+    conflicts — two conflicts in one run must not both walk to the same
+    first-free name and collide with each other, the way T1.5 already keeps
+    their ownership from doing the same). This function only reads
+    `proposed`; it does not add to it. Recording the accepted candidate is
+    the caller's job, mirroring how `resolve_destination_clashes` does its
+    own claiming inline in its caller loop (`claimed[dest_key] = dest`)
+    rather than inside a callee (owner decision 2026-09-23).
 
     Gives up after 99 taken variants (`range(2, 101)`), mirroring
     `resolve_destination_clashes`: 99 taken names is not a situation a
     rename can rescue. Returns `None` in that case; the conflict itself is
     still real and still emitted by the caller.
+
+    A basename whose only dot is the LEADING one (`.hidden`) is not split
+    there: that dot is not an extension separator, it is part of the name.
+    `rpartition(".")` still finds it and would otherwise leave an empty
+    stem, producing `" (2).hidden"` — a leading space, and no longer a
+    dotfile. Treating an empty stem the same as "no dot at all" makes
+    `.hidden` propose `.hidden (2)`, keeping the leading dot as part of the
+    name and the counter at the very end (owner decision 2026-09-23).
     """
     stem, sep, ext = basename.rpartition(".")
-    if not sep:
-        stem, ext = basename, ""
+    if not sep or not stem:
+        stem, sep, ext = basename, "", ""
     for n in range(2, 101):
         candidate = f"{stem} ({n}).{ext}" if sep else f"{stem} ({n})"
         key = _asset_dest_join(asset_folder, candidate).casefold()
         if key in vault_assets or key in occupied_folders or key in proposed:
             continue
-        proposed.add(key)
         return candidate
     return None
 
@@ -690,7 +701,10 @@ def detect_attachment_conflicts(
     # Case-folded destinations this run has already handed out as a
     # `proposed_name` for an earlier conflict (spec 037 T2.1) — shared
     # across every entry below so two conflicts in one run cannot both walk
-    # to the same first-free name.
+    # to the same first-free name. This loop is the sole writer: it records
+    # each accepted candidate right after `_propose_asset_name` returns it,
+    # the same ownership split `resolve_destination_clashes` uses for
+    # `claimed` above (owner decision 2026-09-23).
     proposed_names: set[str] = set()
     for item_key, path in owners:
         try:
@@ -713,6 +727,8 @@ def detect_attachment_conflicts(
             proposed_name = _propose_asset_name(
                 asset_folder, basename, vault_assets, occupied_folders, proposed_names
             )
+            if proposed_name is not None:
+                proposed_names.add(_asset_dest_join(asset_folder, proposed_name).casefold())
             entry = {
                 "source": path,
                 "destination": destination,

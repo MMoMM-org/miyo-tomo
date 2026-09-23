@@ -18,6 +18,9 @@ otherwise (`karte.png (2)` is no longer a PNG).
   2. The stem is everything before the LAST dot: `karte.tar.gz` ->
      `karte.tar (2).gz`, not `karte (2).tar.gz`.
   3. No dot at all: `README` -> `README (2)`.
+  3b. A leading dot with no other dot is not an extension separator:
+      `.hidden` -> `.hidden (2)`, not `" (2).hidden"` (owner decision
+      2026-09-23, code-quality review advisory).
   4. An occupied proposal advances: `karte.png` AND `karte (2).png` both
      taken -> `karte (3).png`.
   5. The occupancy check folds case (strengthened from the plan's loose
@@ -149,6 +152,27 @@ def test_name_with_no_dot_takes_the_counter_at_the_end():
         ASSET_FOLDER, lambda folder: _occupied("README"),
     )
     assert result[0]["proposed_name"] == "README (2)"
+
+
+# ---------------------------------------------------------------------------
+# 3b. A leading dot with no other dot is not an extension separator.
+# ---------------------------------------------------------------------------
+
+def test_leading_dot_with_no_other_dot_stays_a_dotfile():
+    """`.hidden`, occupied, proposes `.hidden (2)` — the leading dot is part
+    of the name, not an extension separator, so it must not be split off.
+
+    Mutation: remove the `stem == ""` guard (i.e. treat `.hidden` like any
+    other name with a dot). `basename.rpartition(".")` on `.hidden` yields
+    `("", ".", "hidden")` — an empty stem — so without the guard the
+    candidate becomes `" (2).hidden"`: a leading space, and a name that is
+    no longer hidden."""
+    source = "100 Inbox/A/.hidden"
+    result = REDUCER.detect_attachment_conflicts(
+        [(ITEM_KEY_A, _owner_actions([source]))],
+        ASSET_FOLDER, lambda folder: _occupied(".hidden"),
+    )
+    assert result[0]["proposed_name"] == ".hidden (2)"
 
 
 # ---------------------------------------------------------------------------

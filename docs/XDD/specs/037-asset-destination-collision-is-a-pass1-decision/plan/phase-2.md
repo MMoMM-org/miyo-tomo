@@ -97,7 +97,13 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
        correct for single-suffix names, so only a multi-dot fixture separates the two.
      - **A name with no dot takes the suffix at the end**: `README` proposes `README (2)`.
        Mutation: index into a missing extension and raise, or emit `README (2).` with a
-       trailing dot.
+       trailing dot. **Covers the leading-dot case too** (code-quality review advisory, owner
+       decision 2026-09-23): a basename whose only dot is the LEADING one — `.hidden` — is not
+       an extension separator, it is part of the name, so `.hidden` must take the same "no
+       dot" path and propose `.hidden (2)`. `str.rpartition(".")` on `.hidden` yields an empty
+       stem (`"", ".", "hidden"`), so the implementation must treat an empty stem the same as
+       no separator at all — otherwise the candidate reassembles as `" (2).hidden"`, a leading
+       space, and a name that is no longer hidden.
      - **An occupied proposal advances**: with `karte.png` AND `karte (2).png` both in the
        vault, the proposal is `karte (3).png`. Mutation: always propose `(2)` without
        testing the listing.

@@ -1379,6 +1379,20 @@ splits the basename itself with `str.rpartition(".")` — the LAST dot, so
 final suffix — and reassembles `{stem} ({n}).{ext}`, falling back to
 `{stem} ({n})` when there is no dot at all (`README` → `README (2)`).
 
+WHY a basename whose only dot is the LEADING one falls back the same way
+(code-quality review advisory, owner decision 2026-09-23, fixed alongside
+T2.1's original ship): `rpartition(".")` on `.hidden` returns `("", ".",
+"hidden")` — a non-empty separator but an EMPTY stem. Treating that as an
+ordinary split (as first shipped) reassembles `f"{stem} ({n}).{ext}"` with
+an empty `stem`, producing `" (2).hidden"` — a leading space, and a name
+that is no longer a dotfile, because the leading dot is not an extension
+separator at all, it is part of the name. `_propose_asset_name` now checks
+`not sep or not stem` before falling back, so an empty stem is treated
+exactly like "no dot at all": `.hidden` proposes `.hidden (2)`, keeping the
+leading dot in the name and the counter at the very end. `karte.` (a
+trailing, not leading, dot) is unaffected — its stem is `karte`, non-empty,
+so it still proposes `karte (2).` as before.
+
 WHY a candidate is checked against THREE sets, not the one
 `detect_attachment_conflicts` already had at hand: `vault_assets` (the file
 listing) is necessary but not sufficient — T1.4 exists precisely because a
@@ -1388,12 +1402,35 @@ T1.4's fixed defect one level down, in the rename candidate instead of the
 initial destination — silently, because every fixture that does not put a
 folder at a candidate position would still pass. The third set, `proposed`,
 is new at this task: it is not vault state at all, but the case-folded
-destinations THIS RUN has already handed out to earlier conflicts, mutated
-in place across the whole `detect_attachment_conflicts` call. Without it,
-two different attachments colliding on the same vault name would both walk
-the vault listing independently, both find `(2)` first-free, and both
+destinations THIS RUN has already handed out to earlier conflicts. Without
+it, two different attachments colliding on the same vault name would both
+walk the vault listing independently, both find `(2)` first-free, and both
 propose it — the rename would collide with itself, reintroducing in naming
 the exact defect T1.5 removed from ownership.
+
+WHY `_propose_asset_name` only READS `proposed` and never writes to it
+(code-quality review advisory, owner decision 2026-09-23, fixed alongside
+T2.1's original ship): the helper originally called `proposed.add(key)` on
+the caller-owned set itself before returning, making the recording side
+effect invisible at the call site — a reader of `detect_attachment_conflicts`
+would not see, from that call alone, that its own `proposed_names` set had
+just grown. The sibling function `resolve_destination_clashes`, right above
+in this file, does not have this problem: it claims a destination with
+`claimed[dest_key] = dest` inline in ITS OWN caller loop, not inside a
+callee. `_propose_asset_name` now matches that split: it computes and
+returns the candidate only, and `detect_attachment_conflicts` records the
+accepted name into `proposed_names` itself, right after the call, mirroring
+`resolve_destination_clashes`'s own claiming line. The caller has only a
+basename (`proposed_name`), not the case-folded destination KEY the set
+actually stores — rather than re-deriving that join by hand a second time
+(which would put the join expression in two places), the caller calls the
+same `_asset_dest_join(asset_folder, proposed_name).casefold()` the helper
+already calls internally on every candidate it tries. `_asset_dest_join`
+is the one place the join logic lives; both sites merely call it, the same
+way every other occupancy check in this module does. This is a pure
+refactor — `_propose_asset_name`'s return value and every observable
+outcome of `detect_attachment_conflicts` are unchanged, and no existing
+test needed editing.
 
 WHY the occupancy comparison folds case at the CANDIDATE level, not only at
 the entry level: `detect_attachment_conflicts`'s own `dest_key =
@@ -1454,3 +1491,9 @@ merely asserted in the docstring, after two earlier reviews on this spec
 reported a mutation result for a mutation other than the one named. Every
 T1.2-T1.5 exact-dict assertion that now includes `proposed_name` was a pure
 field addition; nothing else about those tests changed.
+
+`test_leading_dot_with_no_other_dot_stays_a_dotfile` (bullet 3b) covers the
+code-quality-review fix above: removing the `stem == ""` guard was verified
+live, in a disposable copy of the module, to turn it red with
+`proposed_name == " (2).hidden"` — the exact leading-space, no-longer-a-
+dotfile candidate the guard exists to prevent.

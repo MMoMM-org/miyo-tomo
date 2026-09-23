@@ -101,6 +101,18 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
      - **An occupied proposal advances**: with `karte.png` AND `karte (2).png` both in the
        vault, the proposal is `karte (3).png`. Mutation: always propose `(2)` without
        testing the listing.
+     - **The occupancy check FOLDS CASE**, matching `resolve_destination_clashes`'
+       `dest.casefold()` comparison and the case-folded occupancy test T1.5 records: with
+       `Karte.png` already in the vault, `karte.png` proposes `karte (2).png`, not itself
+       unchanged. Mutation: compare candidates as literal strings — it passes every
+       same-case fixture above and fails only this one, which is why the fixture has to
+       differ in case deliberately.
+     - **A candidate is checked against the FOLDER set too**, not only the file listing
+       `[ref: spec 037 T1.4]`: if `karte (2).png` names an existing subfolder rather than a
+       file, it is rejected like any other taken name and the search advances to
+       `karte (3).png`. Mutation: gate the candidate on `asset_listing` alone — that
+       reproduces exactly the defect T1.4 fixed for the initial destination, one level down
+       in the rename candidate, and every other bullet here still passes.
      - **Two conflicts in ONE run get DIFFERENT proposals** — `(2)` and `(3)`, never the
        same. Mutation: derive each proposal from the vault listing alone, ignoring what this
        run has already proposed; both get `(2)` and the rename collides with itself, which
@@ -112,12 +124,22 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
      - **Schema**: `proposed_name` is required and typed `["string", "null"]`, matching how
        `same_file` was added in T1.3. Mutation: leave it out of `required` — every existing
        document still validates and the field silently becomes optional.
-  3. Implement: compute `proposed_name` per conflict entry in the reducer, testing both the
-     vault listing and the names this run has already proposed; extend the schema
+  3. Implement: compute `proposed_name` per conflict entry in the reducer. A candidate is
+     free only when it is absent, case-folded, from ALL THREE of: the asset folder's file
+     listing, the folder-occupancy set (T1.4), and the names this run has already proposed.
+     Extend the schema.
+
+     **Out of scope, stated so its absence is not read as an oversight**: a source whose
+     basename already matches `{stem} ({n}){ext}` — `karte (2).png` colliding — proposes
+     `karte (2) (2).png`. That quirk is inherited verbatim from
+     `resolve_destination_clashes`, which does the same to note titles today. Mirroring
+     shipped behaviour is the decision; changing it would be a new one, and not this task's.
   4. Validate: full suite; `ruff`; the T1.2-T1.5 suites stay green — a new required field
      changes every conflict entry's exact-dict assertions, so report each edited assertion
      as `<test name>: field added, no other change`
-  5. Success: PRD C1's first criterion has a named test `[ref: PRD/C1]`; the scheme matches
+  5. Success: PRD C1's first criterion has a named test `[ref: PRD/C1]`; a rename candidate
+     is tested against everything the initial destination is tested against, so T1.4's fix
+     is not undone one level down; the scheme matches
      `resolve_destination_clashes`' so the repo has one rename convention, not two; the
      second C1 criterion (the proposal itself occupied at Pass 2) stays Phase 3's
      `[ref: SDD/Runtime View, Pass 2]`
@@ -145,3 +167,15 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   3. Implement: parse the three boxes into `remedy`, applying Rules 3 and 4 in the parser
   4. Validate: full suite; `ruff`; prove the cleared-default test RED by inverting the resolution to `keep_in_inbox`
   5. Success: an unresolved entry is loud, not quiet `[ref: SDD/ADR-4 rationale]`; S2's statement in the entry names what will happen `[ref: PRD/S2-AC1]`
+
+> **Deviation recorded 2026-09-23 — T2.1's test list sharpened before implementation.**
+> The TDD guardian blocked the task I had written. Two findings upheld, one confirmed as-is:
+> (1) **the candidate check never folded case.** Every fixture I listed used same-case names,
+> so a literal string comparison would have passed all of them while being wrong — the repo
+> folds case in `resolve_destination_clashes` and in T1.5's occupancy test.
+> (2) **the candidate was gated on the file listing only.** T1.4 exists because a destination
+> can be held by a FOLDER; a rename candidate that ignores the folder set re-creates that
+> exact defect one level down, invisibly to every other bullet.
+> (3) The stem rule — counter before the LAST dot, `karte.tar (2).gz` — was challenged and
+> held: it is what `os.path.splitext` does, and the file's real type is its final suffix.
+> Recorded because it was a one-line decision that is cheap to reverse now and expensive later.

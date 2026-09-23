@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.56.0
+# version: 1.57.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1467,6 +1467,12 @@ def render_attachment_conflicts_block(
     owner's link here matches the SAME note's own per-item section exactly,
     rather than a parallel inline `.md`-strip disagreeing with it. Falls back
     to a clean basename (mirroring `_key_link` above), never the full path.
+
+    `same_file` (spec 037 T2.3, PRD S1) adds one sentence — same file /
+    different file / could not be compared — independent of `proposed_name`
+    and the tick logic above: it informs, it never changes a remedy or a
+    default (SDD Complex Logic). The two are separate conditionals so both
+    can fire together (e.g. an identical file AND no free name available).
     """
     if not conflicts:
         return ""
@@ -1489,6 +1495,18 @@ def render_attachment_conflicts_block(
         lines.append("- **Embedded by:**")
         for owner in owners:
             lines.append(f"  - [[{_owner_link(owner)}]]")
+        same_file = entry.get("same_file")
+        if same_file is True:
+            lines.append(
+                "- **File comparison:** This is the same file already in the "
+                "vault — renaming would create a second copy of it."
+            )
+        elif same_file is False:
+            lines.append(
+                "- **File comparison:** A different file already holds this name."
+            )
+        else:
+            lines.append("- **File comparison:** The files could not be compared.")
         lines.append("")
         lines.append("**Remedy — choose one:**")
         if proposed_name is not None:

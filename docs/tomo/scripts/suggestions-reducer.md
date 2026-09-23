@@ -1568,11 +1568,11 @@ was the leak, and this file documented the rule that forbids it roughly
 1,400 lines above the section that violated it — worth recording as a gap in
 review, not smoothing over.
 
-**Deliberately out of scope here, owned by siblings:** the `same_file`
-sentence (T2.3) and the S2 "here is what happens if you leave this
-unresolved" statement (T2.4, tied to the parsed `remedy`) are not rendered by
-this function. Adding either here would have this task guess at wording its
-sibling tasks are specifically chartered to decide.
+**Deliberately out of scope here, owned by a sibling:** the S2 "here is what
+happens if you leave this unresolved" statement (T2.4, tied to the parsed
+`remedy`) is not rendered by this function. Adding it here would have this
+task guess at wording T2.4 is specifically chartered to decide. (`same_file`
+wording shipped in T2.3, below.)
 
 **Second correction (fix/037, `# version: 1.56.0`): the owner wikilinks
 bypassed `lib/source_link.py` and disagreed with the rest of the document.**
@@ -1626,3 +1626,59 @@ source/owner (`Inbox/Scans/karte.png` / `.md`, no leading Johnny-Decimal
 number) so the widened scan has no other legitimate digit to special-case —
 the fix stays "exclude the one line that legitimately carries digits," not
 "exclude every non-checkbox line" (the same narrowing mistake, just moved).
+
+## `same_file` wording in `render_attachment_conflicts_block` (spec 037 T2.3)
+
+T1.3 computes `same_file` (`True` / `False` / `None`) once per conflict entry
+at detection time; this task adds the one sentence in the rendered block that
+tells the owner which it is. A `- **File comparison:**` bullet, placed right
+after the `**Embedded by:**` owner list and before `**Remedy — choose
+one:**`, so the owner reads it immediately before deciding.
+
+**Why the default does not change when the files are identical.** It is
+tempting to read "this is the same picture" as a reason to steer the owner
+away from rename — untick it, or pre-tick *keep in inbox* instead, the way
+`proposed_name: null` does. The SDD is explicit that this is wrong:
+`same_file` "changes no remedy and no default. It changes one sentence in the
+document." Two reasons this holds even though it reads as under-reactive:
+
+1. **Rename is still the safe, correct action for a duplicate.** An
+   identical file at the destination is exactly the case rename resolves
+   cleanly — the owner ends up with one canonical copy under a
+   disambiguated name, not a broken embed. Suppressing the default here
+   would make the one case where `same_file: true` is *most* actionable the
+   one case the pipeline second-guesses the owner on.
+2. **The sentence is the intervention.** ADR-4's whole model is: ship the
+   obvious default, but make the document loud enough that an owner who
+   should deviate, does. A sentence the owner reads before ticking anything
+   already does that job; a silently-changed default would remove the
+   owner's chance to *decide* differently, replacing it with the pipeline
+   deciding for them — the opposite of what a Pass-1 decision means in this
+   spec.
+
+The wording is intentionally digit-free and names no executor
+(`tests/test_037_t2_2_render_conflicts.py::test_no_executor_internals_in_
+rendered_block` scans the whole block, this bullet included) and introduces
+no content-derived value — `_same_file` (T1.3) already returns only
+`True`/`False`/`None`, so there is no digest to leak in the first place
+(SDD/Security and privacy).
+
+**Implemented as a conditional fully separate from the `proposed_name` tick
+logic**, not folded into it, specifically so the two fields stay independent
+in the rendered output the way they already are in the data (T1.3 sets
+`same_file`, T2.1 sets `proposed_name`; nothing ties their values together).
+An entry can be `same_file: true` AND `proposed_name: null` at once — an
+attachment identical to an occupant that also happens to be the 100th
+colliding name — and both statements must render: the duplicate-file
+sentence, and the "no free name available" rename line with *keep in inbox*
+pre-ticked. Verified live: merging the two into one `if/elif` keyed on
+"what's special about this entry" (null proposal takes priority, `same_file`
+checked only when a name was found) drops the duplicate-file sentence
+whenever both conditions hold, and among the full T2.3 test file only
+`test_same_file_true_and_no_proposed_name_render_both` catches it — the
+other five tests in the file, and the entire rest of the suite, stayed
+green under that exact mutation.
+
+See `tests/test_037_t2_3_same_file_wording.py` for the named mutation each
+test kills, each verified red by applying that exact mutation before this
+task closed.

@@ -196,7 +196,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   5. Success: every F2 rendering criterion has a named test AND a named mutation; the owner
      can act without opening JSON `[ref: PRD/Personas, primary]`
 
-- [ ] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]`
+- [x] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]`
 
   `[parallel: true]` removed 2026-09-23 — it was written when T2.2 and T2.3 were assumed
   independent. Both write into `render_attachment_conflicts_block`.

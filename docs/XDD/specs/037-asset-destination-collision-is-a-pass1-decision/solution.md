@@ -356,6 +356,17 @@ rename the owner did not think about. S1's warning on an identical file is the
 mitigation, and the outcome is in any case reversible — a renamed copy beside
 the original, never an overwrite.
 
+**Exception added 2026-09-23 — when `proposed_name` is `null`, *keep in inbox*
+is pre-ticked instead.** After 99 taken variants there is no name to rename to,
+so the rename remedy is rendered but unavailable and cannot be the default. The
+rule above says a cleared entry resolves to *ignore*, and that rule is right for
+an owner who cleared it deliberately — but nobody cleared this one, and *ignore*
+would send out a move Hashi is certain to refuse, which is exactly the late
+failure this spec exists to remove. Pre-ticking follows ADR-4's own reason:
+tick when a safe obvious answer exists. Here that answer is *keep in inbox* —
+the file and its note stay where they are and nothing moves. T2.4 parses this
+state explicitly rather than inferring it.
+
 ### ADR-5 — No wire field, no Hashi change, no instructions-document change
 
 **Choice:** Pass 2 emits ordinary actions. The instructions document is

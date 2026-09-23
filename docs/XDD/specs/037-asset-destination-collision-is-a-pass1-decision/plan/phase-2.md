@@ -155,11 +155,46 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
 
 - [ ] **T2.2 The conflict renders as a decision with three remedies** `[activity: frontend-ui]`
 
-  1. Prime: Read `render_attachments_preamble` `[ref: suggestions-reducer.py:1452]` for the document's existing attachment voice, and a rendered suggestions document for how other decisions present their checkboxes
-  2. Test: one conflict renders an entry naming source, destination and every owning note `[ref: PRD/F2-AC1]`; exactly three remedies appear — rename, keep in inbox, ignore — with rename ticked `[ref: PRD/F2-AC2]`; an attachment embedded by three notes renders **one** entry `[ref: PRD/F2-AC3]`; a run with no conflicts renders **no section at all** `[ref: PRD/F2-AC4]`; the rename remedy names the destination it would use `[ref: PRD/C1]`
-  3. Implement: render the section from `attachment_conflicts[]`, including `proposed_name`
-  4. Validate: full suite; `ruff`; byte-compare a zero-conflict document against the pre-change render
-  5. Success: every F2 rendering criterion has a named test; the owner can act without opening JSON `[ref: PRD/Personas, primary]`
+  1. Prime: Read `render_tag_handler_updates_block` and `render_daily_notes_updates_block`
+     — both return `""` when empty so the caller omits the section — and their consumers in
+     `tomo/scripts/suggestions-render.py`, which read the `rendered_*_md` field verbatim.
+     That is the precedent: the reducer renders markdown into a doc field, the render script
+     places it. Read `render_attachments_preamble` for the document's attachment voice.
+  2. Test — **every bullet names the mutation it kills; T2.2 as first written named none:**
+     - **The positive and negative cases are ONE red/green pair, not two bullets.** One
+       conflict renders a section naming source, destination and every owning note
+       `[ref: PRD/F2-AC1]`; zero conflicts render **no section at all** `[ref: PRD/F2-AC4]`.
+       Mutation: a stub that unconditionally returns `""` must fail the first; a stub that
+       unconditionally emits the header must fail the second. **Alone, the zero-conflict
+       assertion is true of today's code** — nothing renders this section yet — so it proves
+       nothing unless the positive case is asserted beside it.
+     - **Exactly three remedies — rename, keep in inbox, ignore — with rename ticked**
+       `[ref: PRD/F2-AC2]` `[ref: SDD/ADR-4]`. Mutation: render two remedies, or tick none.
+     - **One entry per CONFLICT, not per owner** `[ref: PRD/F2-AC3]`. The reducer already
+       dedups (T1.2, re-keyed in T1.5), so a renderer that emits one block per array element
+       passes trivially — the fixture did the work, not the code. Mutation: iterate
+       `owner_source_items` and emit one decision block per owner. The test must use an entry
+       with THREE owners and assert one block carrying three names, not three blocks.
+     - **The rename remedy names the FULLY COMPOSED destination** `[ref: PRD/C1]`:
+       `proposed_name` is a basename, the folder comes from `destination`. Mutation: render
+       `proposed_name` alone — a substring assertion on the basename passes while the owner
+       is shown a name with no folder.
+     - **`proposed_name: null` pre-ticks *keep in inbox*, not rename** `[ref: SDD/ADR-4,
+       exception]`. The rename line still renders, unticked, saying no free name was found.
+       Mutation: keep rename ticked — the owner accepts a rename that cannot happen; or drop
+       the rename line entirely — the owner cannot see why the usual default is absent.
+       **Owner decision 2026-09-23**; T2.4 must parse this state explicitly, so the two
+       tasks cannot disagree about what a tick means here.
+  3. Implement: `render_attachment_conflicts_block(conflicts, asset_folder) -> str` in the
+     reducer, returning `""` when empty; a `rendered_attachment_conflicts_md` doc field; its
+     consumer in `suggestions-render.py`; the schema entry for the new field
+  4. Validate: full suite; `ruff`. The zero-conflict guarantee is a **committed golden file**
+     for a named fixture, diffed byte-for-byte inside a test — not a manual pre/post
+     comparison done once during implementation. "Byte-compare against the pre-change render"
+     as first written named no fixture, no baseline location and no mechanism; it is the same
+     unanchored shape the guardian rejected twice in Phase 1.
+  5. Success: every F2 rendering criterion has a named test AND a named mutation; the owner
+     can act without opening JSON `[ref: PRD/Personas, primary]`
 
 - [ ] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]` `[parallel: true]`
 
@@ -188,3 +223,19 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
 > (3) The stem rule — counter before the LAST dot, `karte.tar (2).gz` — was challenged and
 > held: it is what `os.path.splitext` does, and the file's real type is its final suffix.
 > Recorded because it was a one-line decision that is cheap to reverse now and expensive later.
+
+> **Deviation recorded 2026-09-23 — T2.2's test list rewritten before implementation.**
+> The guardian blocked it, and the root finding is structural: **T2.2 named zero mutations**,
+> where its sibling T2.1 names one per bullet. Every specific defect followed from that.
+> (1) "a run with no conflicts renders no section" is **already true of shipped code** — the
+> section does not exist — so it is evidence of nothing unless paired with the positive case
+> as one red/green pair.
+> (2) "an attachment embedded by three notes renders one entry" is decided by the REDUCER
+> (T1.2/T1.5), not the renderer; as written the fixture proves it, not the code. Reworded to
+> target render-time iteration granularity.
+> (3) **`proposed_name: null` was unhandled**, and rename ships pre-ticked. The owner decided
+> *keep in inbox* is pre-ticked instead; `SDD/ADR-4` carries the exception so T2.4 cannot
+> contradict it.
+> (4) The C1 bullet would have passed on a bare basename, showing the owner a name with no
+> folder.
+> (5) The zero-conflict byte-compare was prose, not a test.

@@ -1315,7 +1315,7 @@ does the same at N=3, which is what pins the bound as scaling with N rather
 than merely holding at N=2.
 
 WHY entries are still built by appending at first occurrence in the owners
-list: Phase 2's T2.1 renders `attachment_conflicts[]` straight into document
+list: Phase 2's T2.2 renders `attachment_conflicts[]` straight into document
 order. Splitting one destination-keyed entry into several source-keyed ones
 moves entries relative to OTHER destinations' entries if the ordering
 mechanism ever changes — an unstated contract in the reducer becomes an

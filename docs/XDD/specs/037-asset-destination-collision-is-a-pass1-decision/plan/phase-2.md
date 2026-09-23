@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: The decision in the document"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -69,7 +69,60 @@ by the time this phase reads it, and `owner_source_items` names only notes embed
 
 Establishes the surface the owner reads and the tick the pipeline reads back.
 
-- [ ] **T2.1 The conflict renders as a decision with three remedies** `[activity: frontend-ui]`
+- [ ] **T2.1 The rename proposal is part of the data** `[activity: domain-modeling]`
+
+  Added 2026-09-23. `SDD/Interface Specifications` lists `proposed_name` as a field of
+  `attachment_conflicts[]` and `SDD/Open Questions` left its scheme undecided, noting it
+  "does not block implementation" — which stopped being true the moment T2.2 was asked to
+  render it. Nothing in Phases 1-4 computed it, and the schema's `additionalProperties:
+  false` would have rejected it. **Owner decision 2026-09-23**: mirror the scheme already
+  shipped for note clashes — `{stem} ({n}){ext}`, n from 2, first free name wins.
+
+  It belongs in the reducer, not the renderer: `SDD/Runtime View, Pass 2` has Phase 3 move
+  the file to `proposed_name`, so the parser would otherwise have to recover it from
+  rendered prose.
+
+  1. Prime: Read `resolve_destination_clashes`' candidate loop — `f"{title} ({n})"`,
+     `range(2, 101)`, first free wins, and the recorded decision that 99 taken names is not
+     a situation a rename can rescue `[ref: suggestions-reducer.py:~466-478]`. Read
+     `_asset_dest_join` `[ref: render_actions.py:560-575]`: an attachment's basename
+     survives verbatim, extension included, or the embed stops resolving.
+  2. Test:
+     - **The counter goes before the extension**: `karte.png` proposes
+       `karte (2).png` `[ref: PRD/C1]`. Mutation: append after the basename —
+       `karte.png (2)` — which is no longer a PNG and whose embed cannot resolve. This is
+       the single difference from the note scheme, where `_dest_join` appends `.md` itself.
+     - **The stem is everything before the LAST dot**: `karte.tar.gz` proposes
+       `karte.tar (2).gz`, not `karte (2).tar.gz`. Mutation: split on the first dot —
+       correct for single-suffix names, so only a multi-dot fixture separates the two.
+     - **A name with no dot takes the suffix at the end**: `README` proposes `README (2)`.
+       Mutation: index into a missing extension and raise, or emit `README (2).` with a
+       trailing dot.
+     - **An occupied proposal advances**: with `karte.png` AND `karte (2).png` both in the
+       vault, the proposal is `karte (3).png`. Mutation: always propose `(2)` without
+       testing the listing.
+     - **Two conflicts in ONE run get DIFFERENT proposals** — `(2)` and `(3)`, never the
+       same. Mutation: derive each proposal from the vault listing alone, ignoring what this
+       run has already proposed; both get `(2)` and the rename collides with itself, which
+       is the defect T1.5 removed from ownership re-appearing in naming.
+     - **After 99 taken variants `proposed_name` is `null`**, and the conflict is still
+       emitted. Mirrors the note scheme's give-up branch. Mutation: emit the 100th candidate
+       unchecked, or drop the conflict entirely — the occupancy is real either way and the
+       owner still needs to see it.
+     - **Schema**: `proposed_name` is required and typed `["string", "null"]`, matching how
+       `same_file` was added in T1.3. Mutation: leave it out of `required` — every existing
+       document still validates and the field silently becomes optional.
+  3. Implement: compute `proposed_name` per conflict entry in the reducer, testing both the
+     vault listing and the names this run has already proposed; extend the schema
+  4. Validate: full suite; `ruff`; the T1.2-T1.5 suites stay green — a new required field
+     changes every conflict entry's exact-dict assertions, so report each edited assertion
+     as `<test name>: field added, no other change`
+  5. Success: PRD C1's first criterion has a named test `[ref: PRD/C1]`; the scheme matches
+     `resolve_destination_clashes`' so the repo has one rename convention, not two; the
+     second C1 criterion (the proposal itself occupied at Pass 2) stays Phase 3's
+     `[ref: SDD/Runtime View, Pass 2]`
+
+- [ ] **T2.2 The conflict renders as a decision with three remedies** `[activity: frontend-ui]`
 
   1. Prime: Read `render_attachments_preamble` `[ref: suggestions-reducer.py:1452]` for the document's existing attachment voice, and a rendered suggestions document for how other decisions present their checkboxes
   2. Test: one conflict renders an entry naming source, destination and every owning note `[ref: PRD/F2-AC1]`; exactly three remedies appear — rename, keep in inbox, ignore — with rename ticked `[ref: PRD/F2-AC2]`; an attachment embedded by three notes renders **one** entry `[ref: PRD/F2-AC3]`; a run with no conflicts renders **no section at all** `[ref: PRD/F2-AC4]`; the rename remedy names the destination it would use `[ref: PRD/C1]`
@@ -77,7 +130,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   4. Validate: full suite; `ruff`; byte-compare a zero-conflict document against the pre-change render
   5. Success: every F2 rendering criterion has a named test; the owner can act without opening JSON `[ref: PRD/Personas, primary]`
 
-- [ ] **T2.2 The entry says whether it is the same file** `[activity: frontend-ui]` `[parallel: true]`
+- [ ] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]` `[parallel: true]`
 
   1. Prime: Read `same_file` in `[ref: SDD/Interface Specifications]` and the three S1 criteria
   2. Test: `same_file: true` renders the sentence saying so **and** the warning that renaming creates a second copy `[ref: PRD/S1-AC1]`; `false` renders that a different file holds the name `[ref: PRD/S1-AC2]`; `null` renders that the files could not be compared, with the remedies unchanged `[ref: PRD/S1-AC3]`
@@ -85,7 +138,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   4. Validate: full suite; `ruff`; grep the rendered fixture output for any hex digest and assert none
   5. Success: the wording changes, the remedies and the default do not `[ref: SDD/Complex Logic]`
 
-- [ ] **T2.3 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
+- [ ] **T2.4 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
 
   1. Prime: Read `tomo/scripts/suggestion-parser.py` checkbox parsing for an existing decision block; read Business Rules 3 and 4 `[ref: PRD/Detailed Feature Specifications]`
   2. Test: rename left ticked yields `rename`; keep-in-inbox ticked alone yields `keep_in_inbox`; ignore ticked alone yields `ignore`; **rename cleared with nothing else ticked yields `ignore`** `[ref: PRD/F2-AC5, ADR-4]`; **two remedies ticked yields `ignore`** `[ref: PRD/Rule 4]`; `remedy` is never null after parsing `[ref: SDD/Interface Specifications]`; an entry where rename stays ticked and the owner also ticks ignore is a contradiction, not a rename

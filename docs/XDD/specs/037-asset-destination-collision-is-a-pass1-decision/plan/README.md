@@ -34,7 +34,7 @@ version: "1.0"
 |-------|-------|
 | specId | 037-asset-destination-collision-is-a-pass1-decision |
 | phases | 4 |
-| tasks | 15 |
+| tasks | 16 |
 | status | pending |
 
 ### PhaseStatus

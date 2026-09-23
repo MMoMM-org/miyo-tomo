@@ -373,7 +373,12 @@ resolved. That is the intended behaviour and the second journey in the PRD.
 
 Carried from the PRD; neither blocks implementation.
 
-- [ ] The rename scheme for `proposed_name` (C1).
+- [x] The rename scheme for `proposed_name` (C1). **Decided 2026-09-23**: `{stem} ({n}){ext}`,
+      n from 2, first free name wins — the scheme `resolve_destination_clashes` already ships
+      for note clashes, with the counter moved before the extension because an attachment's
+      basename carries its own suffix. Computed in the reducer (Phase 2 T2.1), not the
+      renderer. The note that this question "does not block implementation" was wrong: T2.2
+      renders the field.
 - [ ] Whether *keep in inbox* should also suppress the owning note's filing. The
       owner has ruled it need not, on the scoping principle; recorded because it
       is the question most likely to return after living with it.

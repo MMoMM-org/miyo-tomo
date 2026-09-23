@@ -196,13 +196,50 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   5. Success: every F2 rendering criterion has a named test AND a named mutation; the owner
      can act without opening JSON `[ref: PRD/Personas, primary]`
 
-- [ ] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]` `[parallel: true]`
+- [ ] **T2.3 The entry says whether it is the same file** `[activity: frontend-ui]`
 
-  1. Prime: Read `same_file` in `[ref: SDD/Interface Specifications]` and the three S1 criteria
-  2. Test: `same_file: true` renders the sentence saying so **and** the warning that renaming creates a second copy `[ref: PRD/S1-AC1]`; `false` renders that a different file holds the name `[ref: PRD/S1-AC2]`; `null` renders that the files could not be compared, with the remedies unchanged `[ref: PRD/S1-AC3]`
-  3. Implement: branch the entry's wording on `same_file`; never render a digest `[ref: SDD/Security and privacy]`
-  4. Validate: full suite; `ruff`; grep the rendered fixture output for any hex digest and assert none
-  5. Success: the wording changes, the remedies and the default do not `[ref: SDD/Complex Logic]`
+  `[parallel: true]` removed 2026-09-23 — it was written when T2.2 and T2.3 were assumed
+  independent. Both write into `render_attachment_conflicts_block`.
+
+  1. Prime: Read `same_file` in `[ref: SDD/Interface Specifications]`, the three S1 criteria,
+     and `render_attachment_conflicts_block`'s current tick logic — it keys on
+     `proposed_name` ALONE and does not read `same_file` at all
+     `[ref: suggestions-reducer.py:~1480-1503]`. Read the executor-internals guard test in
+     `tests/test_037_t2_2_render_conflicts.py`: every sentence you add is subject to it.
+  2. Test — **every bullet names the mutation it kills; T2.3 as first written named none.**
+     Each branch asserts its OWN text present **and the other two branches' text absent** —
+     three separate `in` assertions all pass against a stub that always emits one fixed
+     sentence.
+     - **`same_file: true`** renders the "same file" statement AND the second-copy warning
+       `[ref: PRD/S1-AC1]`. Mutation: emit only one of the two clauses.
+     - **`same_file: false`** renders that a different file holds the name
+       `[ref: PRD/S1-AC2]`. Mutation: swap in the `true`-branch wording.
+     - **`same_file: null`** renders that the files could not be compared
+       `[ref: PRD/S1-AC3]`. Mutation: fall through silently, emitting no sentence.
+     - **The remedies are byte-identical to the `same_file`-free baseline.** Diff the three
+       checkbox lines against T2.2's existing fixture for the same `proposed_name`; only the
+       new sentence may differ. Replaces "with the remedies unchanged", which named no
+       comparison and was therefore unfalsifiable.
+     - **`same_file: true` still ships rename TICKED** `[ref: SDD/Complex Logic]`. Mutation:
+       untick rename, or pre-tick keep-in-inbox, when the file is identical. This is the
+       bullet most likely to be "helpfully" broken: the warning exists to steer the owner
+       away from rename, and the new sentence is written physically beside the tick logic.
+       The SDD is explicit — `same_file` changes no remedy and no default. It informs; the
+       owner decides.
+     - **`same_file: true` AND `proposed_name: null` together** render BOTH the duplicate
+       warning AND the "no free name available" line with keep-in-inbox pre-ticked; neither
+       suppresses the other. The fields are independent (T1.3 and T2.1) and the combination
+       is reachable. Mutation: one `if/elif` chain treating "what is special about this
+       entry" as mutually exclusive, dropping a sentence when both hold.
+  3. Implement: branch the entry's wording on `same_file`; introduce no digest and no
+     content-derived value into the render path `[ref: SDD/Security and privacy]`
+  4. Validate: full suite; `ruff`. **No digest grep** — nothing in this module computes one
+     (`_same_file` returns only `True`/`False`/`None`), so "assert no hex digest appears"
+     cannot fail under any implementation of this task, correct or broken. The constraint
+     stays stated in step 3 as a design boundary, not as false coverage.
+  5. Success: the wording changes with `same_file`; the remedies and the default do not, and
+     that is proven by two named bullets rather than asserted in prose
+     `[ref: SDD/Complex Logic]`
 
 - [ ] **T2.4 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
 
@@ -239,3 +276,18 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
 > (4) The C1 bullet would have passed on a bare basename, showing the owner a name with no
 > folder.
 > (5) The zero-conflict byte-compare was prose, not a test.
+
+> **Deviation recorded 2026-09-23 — T2.3's test list rewritten before implementation.**
+> Blocked for the same structural reason as T2.2: **every bullet named an outcome, none named
+> a mutation.** Four findings beyond that, all upheld:
+> (1) *"grep the rendered output for a hex digest and assert none"* is **already true of
+> shipped code** — no digest exists anywhere in the call graph — so it could not fail under
+> any implementation. Dropped rather than kept as false coverage.
+> (2) *"with the remedies unchanged"* named no comparison target. Anchored to T2.2's fixture.
+> (3) **`same_file: true` must still ship rename TICKED**, and nothing pinned it. The SDD says
+> `same_file` changes no default, but the new sentence lands beside the tick logic and an
+> implementer could reasonably "help". Now a named bullet with a named mutation.
+> (4) **`same_file: true` + `proposed_name: null`** is reachable and was untested. The risk is
+> not reader confusion but an `if/elif` treating the two independent fields as exclusive.
+> Also: `[parallel: true]` retired — it assumed T2.2 and T2.3 touch different code, which is
+> false; both write `render_attachment_conflicts_block`.

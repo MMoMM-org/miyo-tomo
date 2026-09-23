@@ -243,11 +243,64 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
 
 - [ ] **T2.4 The parser reads the tick back, and resolves the awkward cases** `[activity: domain-modeling]`
 
-  1. Prime: Read `tomo/scripts/suggestion-parser.py` checkbox parsing for an existing decision block; read Business Rules 3 and 4 `[ref: PRD/Detailed Feature Specifications]`
-  2. Test: rename left ticked yields `rename`; keep-in-inbox ticked alone yields `keep_in_inbox`; ignore ticked alone yields `ignore`; **rename cleared with nothing else ticked yields `ignore`** `[ref: PRD/F2-AC5, ADR-4]`; **two remedies ticked yields `ignore`** `[ref: PRD/Rule 4]`; `remedy` is never null after parsing `[ref: SDD/Interface Specifications]`; an entry where rename stays ticked and the owner also ticks ignore is a contradiction, not a rename
-  3. Implement: parse the three boxes into `remedy`, applying Rules 3 and 4 in the parser
-  4. Validate: full suite; `ruff`; prove the cleared-default test RED by inverting the resolution to `keep_in_inbox`
-  5. Success: an unresolved entry is loud, not quiet `[ref: SDD/ADR-4 rationale]`; S2's statement in the entry names what will happen `[ref: PRD/S2-AC1]`
+  1. Prime: Read `tomo/scripts/suggestion-parser.py`'s checkbox parsing for an existing
+     decision block and **confirm it matches lines by text, not by position** — several
+     bullets below rely on that; if it matches positionally, say so rather than assuming.
+     Read Business Rules 2-4 `[ref: PRD/Detailed Feature Specifications]` and **ADR-4's
+     exception paragraph**, which assigns this task the null-`proposed_name` state by name.
+  2. Test — **every bullet names the mutation it kills; T2.4 as first written named none,
+     the same state T2.2 and T2.3 were blocked in.**
+     - **Rename left ticked, nothing else** yields `rename`. Mutation: resolve the
+       document's own default to `ignore`, making Rule 2 unreachable.
+     - **Keep-in-inbox ticked alone** yields `keep_in_inbox`. Mutation: fold it into Rule 3's
+       ignore branch.
+     - **Ignore ticked alone** yields `ignore`. Mutation: return `None` for an explicit tick,
+       relying on the caller's fallback.
+     - **Rename cleared with nothing else ticked** yields `ignore` `[ref: PRD/F2-AC5]`
+       `[ref: SDD/ADR-4]`. Mutation: resolve to `keep_in_inbox` — the quiet outcome ADR-4
+       argues against, and the inversion step 4 names.
+     - **Two remedies ticked — using keep-in-inbox + ignore, NOT a pair involving rename** —
+       yields `ignore` `[ref: PRD/Rule 4]`. Mutation: first-wins instead of contradiction.
+     - **Rename stays ticked AND ignore is also ticked** yields `ignore`, not `rename`. This
+       is NOT a duplicate of the bullet above: it kills a different implementation — one that
+       treats the pre-ticked rename as sticky, default-wins over a later contradiction. A
+       two-tick test using a pair without rename cannot catch that.
+     - **`proposed_name` is `null` and rename is ticked alone** yields **`ignore`**.
+       **Owner decision 2026-09-23.** Passing `rename` through is not an option: Pass 2 would
+       reach `_asset_dest_join(asset_folder, None)` with no name to move to, breaking Rule 6
+       ("the strongest outcome it produces is a move to a free name"). Between the two
+       survivors, `ignore` follows ADR-4's own reasoning — an owner who overrides the
+       pre-selected answer gets the loudest of the three outcomes, not the quietest, and
+       `keep_in_inbox` would discard a deliberate tick with no signal that it was discarded.
+       Mutation: pass `remedy: rename` through with a null proposal.
+     - **A conflict entry missing one or more checkbox lines** still yields one of the three
+       strings, never `None`. This is where "`remedy` is never null after parsing"
+       `[ref: SDD/Interface Specifications]` becomes falsifiable — stated alone it is true by
+       construction of the exhaustive tick cases above and proves nothing. Mutation: leave
+       `remedy` unset when a line is absent. A deleted line parses as an unticked line.
+     - **No `## Attachment Conflicts` section at all** yields an empty list — not an invented
+       entry, not an error. Mirrors T1.2's settled absent-not-empty decision. Mutation:
+       fabricate a single empty entry when the section is missing.
+     - **Out of scope, stated so its absence is not read as an oversight**: an owner who edits
+       the proposed filename in the rendered rename line changes nothing. Pass 2 reads
+       `proposed_name` from the Pass-1 conflict data, never from parsed markdown
+       `[ref: SDD/Runtime View, Pass 2]`. The rendered name is display, not input.
+  3. Implement: parse the three boxes into `remedy`, applying Rules 3 and 4 and the
+     null-proposal resolution decided above
+  4. Validate: full suite; `ruff`; prove the cleared-default test RED by inverting the
+     resolution to `keep_in_inbox`
+  5. Success: an unresolved entry is loud, not quiet `[ref: SDD/ADR-4 rationale]`.
+
+     **`[ref: PRD/S2-AC1]` struck from this task and re-homed.** S2-AC1 is a RENDERING
+     criterion — the entry must state what will happen when rename is not ticked — and a
+     parser cannot render a sentence into a document it only reads. It is discharged by
+     T2.2's static remedy text (the Ignore line's consequence clause and the keep-in-inbox
+     label, present in every entry regardless of tick state), **but it is not currently
+     asserted**: `test_exactly_three_remedies_with_rename_ticked` checks only
+     `checkboxes[2].startswith("- [ ] Ignore")`, never the clause that names the outcome.
+     Phase 2 must not close with a PRD criterion pinned by nothing, so **this task adds that
+     assertion to `tests/test_037_t2_2_render_conflicts.py`** — the one piece of T2.4's work
+     that lands in a sibling task's file, done here because T2.4 is the phase's last task.
 
 > **Deviation recorded 2026-09-23 — T2.1's test list sharpened before implementation.**
 > The TDD guardian blocked the task I had written. Two findings upheld, one confirmed as-is:
@@ -291,3 +344,21 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
 > not reader confusion but an `if/elif` treating the two independent fields as exclusive.
 > Also: `[parallel: true]` retired — it assumed T2.2 and T2.3 touch different code, which is
 > false; both write `render_attachment_conflicts_block`.
+
+> **Deviation recorded 2026-09-23 — T2.4's test list rewritten before implementation.**
+> Blocked for the third time in this phase on the same structural defect: **zero bullets named
+> a mutation.** T2.4 sat unrevised in exactly the state T2.2 and T2.3 were pulled out of.
+> Findings beyond that, all upheld:
+> (1) **The ADR-4 exception was unparsed.** The SDD says in as many words that T2.4 parses the
+> null-`proposed_name` state — and the task, written before that exception existed, never
+> mentioned it. The owner decided the open case (rename ticked alone with no name available →
+> `ignore`); passing `rename` through would have handed Pass 2 a move with no destination.
+> (2) The two-tick bullets are NOT duplicates and now say why: one kills first-wins, the other
+> kills a sticky pre-ticked rename. A single test cannot do both.
+> (3) *"`remedy` is never null after parsing"* was true by construction and therefore dead
+> weight; it is now anchored to a malformed entry, the only input that can falsify it.
+> (4) An absent section was untested — the parse-side mirror of T1.2's absent-not-empty rule.
+> (5) **`PRD/S2-AC1` was misattributed to this task.** It is a rendering criterion, discharged
+> by T2.2's static text, and — found while checking — **asserted by no test at all**. Re-homed
+> with the assertion added here rather than left as the one PRD criterion Phase 2 closes
+> without coverage.

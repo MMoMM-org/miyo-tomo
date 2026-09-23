@@ -36,6 +36,11 @@ Every bullet below names the mutation it kills:
      exclusive, dropping a sentence when `same_file: true` and
      `proposed_name: null` both hold (T1.3 and T2.1 are independent fields;
      the combination is reachable).
+  7. `test_file_comparison_bullet_precedes_remedy_block` — every assertion
+     above checks substring presence/absence, never position. Mutation: move
+     the `- **File comparison:**` append below the `**Remedy — choose
+     one:**` line (or above `**Embedded by:**`) — the owner must read the
+     comparison sentence BEFORE the checkboxes it informs, not after.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -178,3 +183,33 @@ def test_same_file_true_and_no_proposed_name_render_both():
     assert rename_line.startswith("- [ ]"), rename_line
     assert "no free name" in rename_line.lower(), rename_line
     assert keep_line.startswith("- [x]"), keep_line
+
+
+# ---------------------------------------------------------------------------
+# 7. The bullet's POSITION, not just its presence (owner reads top to bottom)
+# ---------------------------------------------------------------------------
+
+def test_file_comparison_bullet_precedes_remedy_block():
+    """Mutation: move the `- **File comparison:**` append below the
+    `**Remedy — choose one:**` line. Every other test in this file (and in
+    `test_037_t2_2_render_conflicts.py`) checks substring presence/absence
+    only — none pins WHERE the bullet lands. This is a document a person
+    reads top to bottom to make a decision: the sentence telling them a
+    rename would create a duplicate must render BEFORE the checkboxes they
+    tick, not after. Asserts the line index of the `File comparison:` bullet
+    falls strictly between the `**Embedded by:**` block and the `**Remedy —
+    choose one:**` line for all three `same_file` values.
+    """
+    for same_file_value in (True, False, None):
+        md = REDUCER.render_attachment_conflicts_block(
+            [_conflict(same_file=same_file_value)], ASSET_FOLDER
+        )
+        lines = md.splitlines()
+        embedded_idx = next(i for i, ln in enumerate(lines) if ln.startswith("- **Embedded by:**"))
+        comparison_idx = next(
+            i for i, ln in enumerate(lines) if ln.startswith("- **File comparison:**")
+        )
+        remedy_idx = next(i for i, ln in enumerate(lines) if ln == "**Remedy — choose one:**")
+        assert embedded_idx < comparison_idx < remedy_idx, (
+            same_file_value, embedded_idx, comparison_idx, remedy_idx
+        )

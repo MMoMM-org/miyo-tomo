@@ -1627,6 +1627,15 @@ number) so the widened scan has no other legitimate digit to special-case —
 the fix stays "exclude the one line that legitimately carries digits," not
 "exclude every non-checkbox line" (the same narrowing mistake, just moved).
 
+**Fourth correction (fix/037, `# version: 1.57.1`): the guard was still
+parametrized over only one of the three `same_file` branches.** The fixture
+this test builds never set `same_file`, so it always fell through to the
+`null` sentence — the `true` and `false` sentences added by T2.3 were never
+scanned. Parametrized the test over `same_file in (True, False, None)`
+(`pytest.mark.parametrize`, the established pattern in this test suite) so
+all three branches pass through the same whole-block digit/executor-name
+scan.
+
 ## `same_file` wording in `render_attachment_conflicts_block` (spec 037 T2.3)
 
 T1.3 computes `same_file` (`True` / `False` / `None`) once per conflict entry
@@ -1682,3 +1691,26 @@ green under that exact mutation.
 See `tests/test_037_t2_3_same_file_wording.py` for the named mutation each
 test kills, each verified red by applying that exact mutation before this
 task closed.
+
+**Position, not just presence (fix/037, `# version: 1.57.1`).** Every
+assertion above this correction checked substring presence or absence —
+none pinned WHERE the `- **File comparison:**` bullet lands relative to the
+rest of the block. `test_file_comparison_bullet_precedes_remedy_block` now
+asserts its line index falls strictly between `**Embedded by:**` and
+`**Remedy — choose one:**`, for all three `same_file` values. This matters
+because the block is a document a person reads top to bottom to decide: the
+sentence that tells them a rename would create a duplicate has to land
+before the checkboxes it informs, not after — the code already placed it
+there, but nothing proved it stayed there.
+
+**The `null` sentence now carries guidance, not just a fact (fix/037,
+`# version: 1.57.1`).** The `true` and `false` branches told the owner what
+the comparison meant for their choice; `null` stated only that the
+comparison could not be made, with no next step. Changed to "The files could
+not be compared — check manually before accepting the rename." `PRD/S1-AC3`
+requires only that the document say the files could not be compared, which
+this still says — the addition is guidance appended after the required
+statement, not a changed meaning, so no acceptance criterion moved. It stays
+subject to the same no-executor-internals, digit-free guard as the other two
+sentences, and changes no remedy or default — `same_file` still governs one
+sentence only (SDD/Complex Logic), unchanged by this wording edit.

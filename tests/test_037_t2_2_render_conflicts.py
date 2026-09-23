@@ -84,6 +84,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
@@ -363,7 +365,8 @@ def test_null_proposed_name_pre_ticks_keep_in_inbox_not_rename():
 # 5b. No executor-internal name leaks into the reader-facing block (fix/037)
 # ---------------------------------------------------------------------------
 
-def test_no_executor_internals_in_rendered_block():
+@pytest.mark.parametrize("same_file", [True, False, None])
+def test_no_executor_internals_in_rendered_block(same_file):
     """Mutation: restore either original spec-037 T2.2 string this fix
     replaced — `- [ ] Rename — no free name found within 99 attempts` (names
     the reducer's internal retry budget) or `- [ ] Ignore (the move goes out
@@ -381,11 +384,21 @@ def test_no_executor_internals_in_rendered_block():
     digit-free (unlike the module-level `ASSET_SOURCE`/`ITEM_KEY`) so the rest
     of the block is a clean surface and the test does not have to special-case
     any other line.
+
+    Parametrized over all three `same_file` values (spec 037 T2.3 coverage
+    gap): the `**File comparison:**` bullet has three mutually-exclusive
+    sentences, one per `same_file` branch, and only the `null` sentence was
+    ever scanned before this fix — `same_file` defaulted to `None` in every
+    call and was never overridden. Mutation: introduce an executor name or a
+    digit into the `true`- or `false`-branch sentence in
+    `render_attachment_conflicts_block` — undetected before this fix, because
+    no parametrized case exercised those branches.
     """
     entry = _conflict(
         proposed_name=None,
         source="Inbox/Scans/karte.png",
         owner_source_items=["Inbox/Scans/karte.md"],
+        same_file=same_file,
     )
     md = REDUCER.render_attachment_conflicts_block([entry], ASSET_FOLDER)
     assert "hashi" not in md.lower(), md

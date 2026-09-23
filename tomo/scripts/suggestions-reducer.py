@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.57.0
+# version: 1.57.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1506,7 +1506,10 @@ def render_attachment_conflicts_block(
                 "- **File comparison:** A different file already holds this name."
             )
         else:
-            lines.append("- **File comparison:** The files could not be compared.")
+            lines.append(
+                "- **File comparison:** The files could not be compared — "
+                "check manually before accepting the rename."
+            )
         lines.append("")
         lines.append("**Remedy — choose one:**")
         if proposed_name is not None:

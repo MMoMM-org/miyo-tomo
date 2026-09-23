@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.53.1
+# version: 1.54.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -517,6 +517,56 @@ def _same_file(
     return source_bytes == destination_bytes
 
 
+def _propose_asset_name(
+    asset_folder: str,
+    basename: str,
+    vault_assets: dict[str, str],
+    occupied_folders: set[str],
+    proposed: set[str],
+) -> str | None:
+    """The first free rename this attachment's `destination` basename could
+    take, mirroring `resolve_destination_clashes`' `{title} ({n})` scheme
+    (spec 037 T2.1, PRD C1; owner decision 2026-09-23).
+
+    The counter goes BEFORE the extension, not after: `_asset_dest_join`
+    preserves an attachment's basename verbatim, so `resolve_destination_clashes`'
+    own trick — appending `(n)` then letting `_dest_join` append `.md` — has
+    no equivalent here. `karte.png` proposes `karte (2).png`, never
+    `karte.png (2)`, which is no longer a PNG and whose embed cannot resolve.
+
+    The stem is everything before the LAST dot (`str.rpartition(".")`), so
+    a multi-suffix name keeps its real type as the final suffix:
+    `karte.tar.gz` proposes `karte.tar (2).gz`. A name with no dot at all
+    takes the counter at the very end: `README` proposes `README (2)`.
+
+    A candidate is free only when its case-folded destination — built with
+    `_asset_dest_join`, the same join every occupancy test in this module
+    uses — is absent from ALL THREE of: `vault_assets` (the asset folder's
+    file listing), `occupied_folders` (T1.4's folder-occupancy set, so a
+    candidate cannot be rejected as free just because no FILE holds it),
+    and `proposed` (the destinations this run has already handed to other
+    conflicts, mutated in place — two conflicts in one run must not both
+    walk to the same first-free name and collide with each other, the way
+    T1.5 already keeps their ownership from doing the same).
+
+    Gives up after 99 taken variants (`range(2, 101)`), mirroring
+    `resolve_destination_clashes`: 99 taken names is not a situation a
+    rename can rescue. Returns `None` in that case; the conflict itself is
+    still real and still emitted by the caller.
+    """
+    stem, sep, ext = basename.rpartition(".")
+    if not sep:
+        stem, ext = basename, ""
+    for n in range(2, 101):
+        candidate = f"{stem} ({n}).{ext}" if sep else f"{stem} ({n})"
+        key = _asset_dest_join(asset_folder, candidate).casefold()
+        if key in vault_assets or key in occupied_folders or key in proposed:
+            continue
+        proposed.add(key)
+        return candidate
+    return None
+
+
 def detect_attachment_conflicts(
     items: list[tuple[str, list[dict]]],
     asset_folder: str,
@@ -526,7 +576,8 @@ def detect_attachment_conflicts(
 ) -> list[dict]:
     """Attachments whose computed vault destination is already occupied
     (spec 037 T1.2, PRD F1; `same_file` added T1.3, PRD S1; a destination
-    held by a FOLDER added T1.4, PRD Edge Case Scenario 7).
+    held by a FOLDER added T1.4, PRD Edge Case Scenario 7; `proposed_name`
+    added T2.1, PRD C1, via `_propose_asset_name`, above).
 
     `items` is (item_key, actions) pairs. Only `create_atomic_note` actions
     that are not `suppressed` contribute — a sub-worthy atomic stays in the
@@ -636,6 +687,11 @@ def detect_attachment_conflicts(
     occupied_folders = folder_listing(asset_folder) if folder_listing is not None else set()
     conflicts: list[dict] = []
     by_source: dict[str, dict] = {}
+    # Case-folded destinations this run has already handed out as a
+    # `proposed_name` for an earlier conflict (spec 037 T2.1) — shared
+    # across every entry below so two conflicts in one run cannot both walk
+    # to the same first-free name.
+    proposed_names: set[str] = set()
     for item_key, path in owners:
         try:
             destination = _asset_dest_join(asset_folder, path)
@@ -653,11 +709,16 @@ def detect_attachment_conflicts(
                 if occupied_by_file
                 else False
             )
+            basename = destination.rsplit("/", 1)[-1]
+            proposed_name = _propose_asset_name(
+                asset_folder, basename, vault_assets, occupied_folders, proposed_names
+            )
             entry = {
                 "source": path,
                 "destination": destination,
                 "same_file": same_file,
                 "owner_source_items": [],
+                "proposed_name": proposed_name,
             }
             by_source[path] = entry
             conflicts.append(entry)

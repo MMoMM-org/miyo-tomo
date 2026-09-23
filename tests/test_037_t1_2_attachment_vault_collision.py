@@ -308,6 +308,7 @@ def test_an_occupied_destination_names_source_destination_and_owner(tmp_path):
             "destination": f"{ASSET_FOLDER}karte.png",
             "same_file": None,
             "owner_source_items": [ITEM_KEY],
+            "proposed_name": "karte (2).png",
         }
     ], doc.get("attachment_conflicts")
 

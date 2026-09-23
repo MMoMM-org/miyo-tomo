@@ -1342,7 +1342,9 @@ every other T1.5 assertion would still pass — only `additionalProperties:
 false` in the schema would catch it, and only at validation, later than this
 test suite runs. `test_entry_field_set_is_exactly_the_schema_four` asserts
 `set(entry.keys()) == {"source", "destination", "same_file",
-"owner_source_items"}` directly.
+"owner_source_items"}` directly (T2.1 below added a fifth field,
+`proposed_name`, and updated this assertion's expected set accordingly —
+the test's name and its own reasoning above are otherwise unchanged).
 
 See `tests/test_037_t1_5_one_entry_one_file.py` for the named mutation each
 test catches, and the module docstring for the full list plus which of
@@ -1350,3 +1352,105 @@ T1.2/T1.3/T1.4's existing tests were checked for an entry-count change and
 found unaffected (none needed editing: every existing fixture's colliding
 sources share either the SAME source path or already-distinct basenames, so
 none crosses the destination-vs-source grouping boundary this task moved).
+
+## `proposed_name` — The Rename Candidate Is Computed Where the Data Lives (spec 037 T2.1)
+
+`attachment_conflicts[]` said a destination was occupied but never said what
+a rename remedy would actually be called. `SDD/Interface Specifications`
+listed `proposed_name` as a field and left its scheme an open question that
+"does not block implementation" — until Phase 2's T2.2 was asked to render
+it. Owner decision 2026-09-23: mirror the scheme `resolve_destination_clashes`
+already ships for note-title clashes — `{stem} ({n})`, n from 2, first free
+wins, give up after 99 — computed in the reducer (`_propose_asset_name`,
+called from `detect_attachment_conflicts` at entry-creation time, the same
+point `same_file` is computed) rather than recovered by the parser from
+rendered prose, per `SDD/Runtime View, Pass 2`.
+
+WHY the counter goes BEFORE the extension, the one deliberate difference
+from the note scheme: `resolve_destination_clashes` appends `(n)` to the
+title and lets `_dest_join` append `.md` afterward, so the counter always
+lands before the extension by construction. `_asset_dest_join` has no such
+step — it preserves an attachment's basename VERBATIM, extension included,
+because Obsidian resolves an embed by exact filename. Appending after the
+whole basename (`karte.png (2)`) would produce a file no longer recognised
+as a PNG and an embed that stops resolving. `_propose_asset_name` therefore
+splits the basename itself with `str.rpartition(".")` — the LAST dot, so
+`karte.tar.gz` proposes `karte.tar (2).gz` and keeps its real type as the
+final suffix — and reassembles `{stem} ({n}).{ext}`, falling back to
+`{stem} ({n})` when there is no dot at all (`README` → `README (2)`).
+
+WHY a candidate is checked against THREE sets, not the one
+`detect_attachment_conflicts` already had at hand: `vault_assets` (the file
+listing) is necessary but not sufficient — T1.4 exists precisely because a
+destination can be held by a FOLDER, invisible to the file listing alone. A
+candidate-generation loop that checked only `vault_assets` would re-create
+T1.4's fixed defect one level down, in the rename candidate instead of the
+initial destination — silently, because every fixture that does not put a
+folder at a candidate position would still pass. The third set, `proposed`,
+is new at this task: it is not vault state at all, but the case-folded
+destinations THIS RUN has already handed out to earlier conflicts, mutated
+in place across the whole `detect_attachment_conflicts` call. Without it,
+two different attachments colliding on the same vault name would both walk
+the vault listing independently, both find `(2)` first-free, and both
+propose it — the rename would collide with itself, reintroducing in naming
+the exact defect T1.5 removed from ownership.
+
+WHY the occupancy comparison folds case at the CANDIDATE level, not only at
+the entry level: `detect_attachment_conflicts`'s own `dest_key =
+destination.casefold()` check (T1.1/T1.2, unchanged by this task) already
+proves the INITIAL destination is matched case-insensitively. That is a
+different comparison from the one `_propose_asset_name` performs on each
+generated candidate, and a fixture built only around the initial
+destination (vault holds `Karte.png`, incoming is `karte.png`) cannot
+exercise the candidate-level fold at all: `karte.png` and `karte (2).png`
+are different strings under ANY comparison, so occupying only the former
+proves nothing about how the latter is checked. `_propose_asset_name` folds
+by calling `_asset_dest_join(asset_folder, candidate).casefold()` before
+every membership test — the same join every other occupancy test in this
+module uses, so the fold behaviour cannot silently diverge between the
+initial check and the candidate check.
+Verified live, in a disposable copy of the module, both readings this
+task's own tests support:
+- Dropping `.casefold()` from ONLY the folder-check line (leaving the
+  candidate-level fold intact) is Bullet 6's mutation, not this one, and is
+  isolated by exactly `test_candidate_checked_against_folder_set_too` — 1
+  failed, 8 passed.
+- Dropping `.casefold()` from the candidate join ENTIRELY does NOT isolate
+  to one test: because `ASSET_FOLDER` itself carries uppercase
+  (`"Atlas/290 Assets/295 Attachments/"`), an unfolded candidate join never
+  matches ANY folded listing entry, occupied or not — it fails
+  `test_an_occupied_proposal_advances`, `test_occupancy_check_folds_case`,
+  `test_candidate_checked_against_folder_set_too`, and
+  `test_99_taken_variants_gives_up_but_still_emits_the_conflict` together (4
+  failed, 5 passed), not just the one test named for case-folding. The
+  case-folding test (`test_occupancy_check_folds_case`) therefore does not
+  claim exclusive isolation of a wholesale "no casefold at all" mutation —
+  only that folding the join is necessary, alongside the other three tests
+  that would also catch its removal. Its fixture (`Karte.png` AND
+  `Karte (2).png` occupied, `karte.png` incoming, expects `karte (3).png`)
+  was strengthened past the task list's own illustrative fixture — occupying
+  a case-different spelling of the CANDIDATE, not just the original name —
+  specifically because the weaker fixture cannot distinguish folded from
+  literal comparison at all, for the reason given above.
+
+WHY the give-up threshold mirrors `resolve_destination_clashes` exactly
+(`range(2, 101)`, `None` after 99 taken variants): the note scheme already
+made this call — 99 taken names is not a situation a rename can rescue — and
+the owner's decision was to have one rename convention in the repo, not two.
+`proposed_name: null` does not remove the conflict entry; the occupancy is
+real regardless of whether a rename can name it, and Phase 2 still renders
+the other two remedies (keep in inbox, ignore).
+
+Out of scope, by owner decision, not oversight: a source whose OWN basename
+already matches `{stem} ({n}){ext}` — `karte (2).png` colliding — proposes
+`karte (2) (2).png`. `resolve_destination_clashes` does the same to a note
+titled `Something (2)` today; mirroring shipped behaviour was the decision,
+changing it would be a new one and belongs to a future task if it ever
+matters.
+
+See `tests/test_037_t2_1_proposed_name.py` for the named mutation each test
+catches — each was verified live in a disposable copy of the module, not
+merely asserted in the docstring, after two earlier reviews on this spec
+reported a mutation result for a mutation other than the one named. Every
+T1.2-T1.5 exact-dict assertion that now includes `proposed_name` was a pure
+field addition; nothing else about those tests changed.

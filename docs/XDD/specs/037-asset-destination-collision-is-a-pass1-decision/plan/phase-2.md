@@ -69,7 +69,7 @@ by the time this phase reads it, and `owner_source_items` names only notes embed
 
 Establishes the surface the owner reads and the tick the pipeline reads back.
 
-- [ ] **T2.1 The rename proposal is part of the data** `[activity: domain-modeling]`
+- [x] **T2.1 The rename proposal is part of the data** `[activity: domain-modeling]`
 
   Added 2026-09-23. `SDD/Interface Specifications` lists `proposed_name` as a field of
   `attachment_conflicts[]` and `SDD/Open Questions` left its scheme undecided, noting it

@@ -152,6 +152,7 @@ def test_folder_occupied_destination_is_one_conflict_with_zero_reads():
     assert result == [{
         "source": SOURCE_A, "destination": DEST_A,
         "same_file": False, "owner_source_items": [ITEM_KEY_A],
+        "proposed_name": "karte (2).png",
     }]
     assert reader.calls == [], (
         "the folder verdict must be decided from entry.get('type') alone — "

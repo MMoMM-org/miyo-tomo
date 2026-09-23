@@ -1072,3 +1072,36 @@ output from a correct one.
 caused it lived in a task that had already passed review. A requirement can be unmet by code nobody
 in the current task is looking at. Mechanism written up at
 `docs/tomo/scripts/suggestions-reducer.md:1183`.
+
+## OPEN — the suggestions renderer and parser still agree by duplicated English literal
+
+**Recorded 2026-09-23** while fixing one instance of it in spec 037 T2.4.
+
+`suggestions-reducer.py` writes the decision section's English text; `suggestion-parser.py`
+recognises it by matching substrings of that same text. Neither shares a constant with the other,
+so the agreement is a convention nothing enforces.
+
+**One instance is fixed**: the rename-impossible marker now lives in
+`tomo/scripts/lib/attachment_conflict_states.py` and is imported by both. That one was fixed
+because it was live-dangerous — the phase had already reworded that exact line twice, and a third
+reword would have resolved a ticked rename to `remedy: rename` with no destination, breaking PRD
+Rule 6 with every test still green.
+
+**Two more of the identical shape remain**, deliberately not fixed in that task to keep a fix from
+becoming a refactor:
+- The three remedy labels. The parser matches `label.startswith("rename" / "keep in inbox" /
+  "ignore")` (`suggestion-parser.py:~2328-2334`) against the reducer's own bare literals
+  `"Rename to"` / `"Rename — …"` / `"Keep in inbox"` / `"Ignore ("`
+  (`suggestions-reducer.py:~1517-1524`).
+- The section heading. `"## Attachment Conflicts"` is built at `suggestions-reducer.py:~1480` and
+  matched by exact string equality at `suggestion-parser.py:~2304`.
+
+**Why it is not urgent**: these labels have no reason to change, and a reword would break loudly —
+the parser would find no checkbox at all and the entry would resolve to `ignore` by Rule 3, which
+is the safe direction. The fixed instance was different precisely because its failure was silent
+and produced an action with no destination.
+
+**What closing it needs**: move the three labels and the heading into
+`attachment_conflict_states.py` beside the marker, and decide whether a round-trip test per label
+is worth more than the constants alone. The round-trip test added for the marker
+(`tests/test_037_fix_render_parse_round_trip.py`) is the pattern.

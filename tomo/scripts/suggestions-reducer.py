@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.55.1
+# version: 1.56.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1434,7 +1434,11 @@ def render_tag_handler_updates_block(groups: list[dict]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_attachment_conflicts_block(conflicts: list[dict], asset_folder: str) -> str:
+def render_attachment_conflicts_block(
+    conflicts: list[dict],
+    asset_folder: str,
+    source_links: dict[str, str] | None = None,
+) -> str:
     """Render the ## Attachment Conflicts section from attachment_conflicts[]
     (spec 037 T2.2, PRD F2).
 
@@ -1457,10 +1461,22 @@ def render_attachment_conflicts_block(conflicts: list[dict], asset_folder: str) 
     plus `proposed_name`, joined with `_asset_dest_join` — the same helper
     every other attachment destination in this module is built with — not a
     bare basename, which would show the owner a name with no folder (PRD C1).
+
+    `owner_source_items` are raw `item_key`s (full vault-relative paths), not
+    display stems — routed through `resolve_source_link` (fix/037) so an
+    owner's link here matches the SAME note's own per-item section exactly,
+    rather than a parallel inline `.md`-strip disagreeing with it. Falls back
+    to a clean basename (mirroring `_key_link` above), never the full path.
     """
     if not conflicts:
         return ""
     lines: list[str] = ["## Attachment Conflicts", ""]
+
+    def _owner_link(owner: str) -> str:
+        basename = owner.rsplit("/", 1)[-1]
+        stem = basename[:-3] if basename.endswith(".md") else basename
+        return resolve_source_link(source_links, owner, stem)
+
     for entry in conflicts:
         source = entry["source"]
         destination = entry["destination"]
@@ -1472,8 +1488,7 @@ def render_attachment_conflicts_block(conflicts: list[dict], asset_folder: str) 
         lines.append(f"- **Destination:** `{destination}` (already occupied)")
         lines.append("- **Embedded by:**")
         for owner in owners:
-            link = owner[:-3] if owner.endswith(".md") else owner
-            lines.append(f"  - [[{link}]]")
+            lines.append(f"  - [[{_owner_link(owner)}]]")
         lines.append("")
         lines.append("**Remedy — choose one:**")
         if proposed_name is not None:
@@ -2464,7 +2479,7 @@ def main() -> int:
     # block below only has to gate its inclusion — same split as
     # rendered_tag_handler_updates_md/rendered_daily_updates_md.
     rendered_attachment_conflicts_md = render_attachment_conflicts_block(
-        attachment_conflicts, asset_folder
+        attachment_conflicts, asset_folder, source_links
     )
 
     for idx, stem, item_key, actions in prepared:

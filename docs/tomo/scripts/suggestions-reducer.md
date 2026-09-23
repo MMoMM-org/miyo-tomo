@@ -1573,3 +1573,56 @@ sentence (T2.3) and the S2 "here is what happens if you leave this
 unresolved" statement (T2.4, tied to the parsed `remedy`) are not rendered by
 this function. Adding either here would have this task guess at wording its
 sibling tasks are specifically chartered to decide.
+
+**Second correction (fix/037, `# version: 1.56.0`): the owner wikilinks
+bypassed `lib/source_link.py` and disagreed with the rest of the document.**
+The `owners` loop built each link with an inline
+`owner[:-3] if owner.endswith(".md") else owner` — `owner` is a raw
+`item_key`, the note's full vault-relative path — never routed through
+`source_link_targets`/`resolve_source_link`. A note that is BOTH a conflict
+owner and the source of its own per-item section rendered two different link
+texts for the same note in the same document: the owner list showed the full
+path (`[[100 Inbox/Scans/karte]]`), the per-item section showed whatever
+`resolve_source_link` produces (`[[karte]]`, or `[[<path>|karte]]` once a
+stem collides — spec 034). `source_link.py`'s own module docstring says its
+two prior consumers "have been bitten twice by parallel copies of a shared
+shape"; this inline slice was the third. Fixed by threading
+`source_links: dict[str, str] | None = None` through the function signature
+(mirroring `render_daily_notes_updates_block`) and adding a local
+`_owner_link` helper that mirrors the in-file `_key_link` precedent — falls
+back to a clean basename, never the full path, when the key is absent — via
+`resolve_source_link`. The call site passes the same
+`source_links = source_link_targets(done_items)` already computed for the
+per-item sections, so the two renderings are now one computation instead of
+two copies of it. The shared helper is used here, rather than a local strip
+fixed in place, precisely because a local strip is what caused the drift in
+the first place — patching this copy without routing through the shared
+module would have made a fourth parallel copy, not closed the pattern.
+
+This changes rendered output for the single-owner test fixtures that
+hard-coded the old full-path form: `render_attachment_conflicts_block`'s new
+default (`source_links=None`) exercises the same `_key_link`-style basename
+fallback, a clean basename rather than the raw `item_key` path the old inline
+slice produced. `tests/test_037_t2_2_render_conflicts.py`'s three affected
+assertions were updated to match (`[[100 Inbox/Scans/karte]]` → `[[karte]]`,
+and the three-owner test's three full paths → three bare basenames). A new
+test, `test_owner_link_matches_same_notes_own_section_link`, pins the
+consistency the fix exists to guarantee: two items sharing one stem force the
+qualified `<path>|stem` form, and the test asserts the owner-list link and
+the per-item `**Source:**` link resolve to the identical string.
+
+**Third correction (fix/037, same version): the no-executor-internals guard
+test had an uncovered reintroduction path.** `test_no_executor_internals_in_
+rendered_block` scanned digits only across checkbox lines, because the
+`**Destination:**` line legitimately carries Johnny-Decimal folder numbers
+(e.g. `290 Assets`) and a whole-block scan against the module's own
+`ASSET_SOURCE`/`ITEM_KEY` fixtures (which carry a `100` inbox-tier number in
+the path itself) would flag that real path content too. A code-quality
+reviewer showed live that this scoping left a hole: a leaked mechanism detail
+planted as PROSE under the `### <source>` heading — not a checkbox — passed
+both of the test's assertions undetected. Widened the scan to every line
+except `**Destination:**`, and gave this one test its own digit-free
+source/owner (`Inbox/Scans/karte.png` / `.md`, no leading Johnny-Decimal
+number) so the widened scan has no other legitimate digit to special-case —
+the fix stays "exclude the one line that legitimately carries digits," not
+"exclude every non-checkbox line" (the same narrowing mistake, just moved).

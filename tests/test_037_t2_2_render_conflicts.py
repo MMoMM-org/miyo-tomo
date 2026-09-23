@@ -258,7 +258,7 @@ def test_one_conflict_renders_section_zero_conflicts_render_nothing():
     assert md.startswith("## Attachment Conflicts")
     assert ASSET_SOURCE in md, "the incoming source path must be named"
     assert f"{ASSET_FOLDER}karte.png" in md, "the occupied destination must be named"
-    assert "[[100 Inbox/Scans/karte]]" in md, "the owning note must be named as a link"
+    assert "[[karte]]" in md, "the owning note must be named as a link"
 
     empty = REDUCER.render_attachment_conflicts_block([], ASSET_FOLDER)
     assert empty == "", "a run with no conflicts must render no section at all"
@@ -291,9 +291,42 @@ def test_one_block_per_conflict_not_per_owner():
     assert md.count("## Attachment Conflicts") == 1
     assert md.count("### `") == 1, "three owners must still be ONE decision block"
     assert md.count("**Remedy") == 1
-    assert "[[100 Inbox/A/note-a]]" in md
-    assert "[[100 Inbox/B/note-b]]" in md
-    assert "[[100 Inbox/C/note-c]]" in md
+    assert "[[note-a]]" in md
+    assert "[[note-b]]" in md
+    assert "[[note-c]]" in md
+
+
+# ---------------------------------------------------------------------------
+# 3b. Owner link agrees with the SAME note's own per-item section (fix/037)
+# ---------------------------------------------------------------------------
+
+def test_owner_link_matches_same_notes_own_section_link():
+    """Mutation: revert the owner loop to the inline `owner[:-3] if
+    owner.endswith(".md") else owner` slice, bypassing `source_links`. Two
+    items share the stem "karte" (different subfolders), so
+    `source_link_targets` qualifies both as `<path>|karte` (spec 034 collision
+    rule, `lib/source_link.py`). The inline slice ignores `source_links`
+    entirely and renders the owner as its raw, unqualified item_key path —
+    disagreeing with the SAME note's own per-item `**Source:**` line, which
+    always resolves through `resolve_source_link`. This is the exact drift
+    fix/037 exists to kill (reviewer-measured live on a real fixture).
+    """
+    other_key = "100 Inbox/Other/karte.md"
+    done_items = [
+        ("karte", ITEM_KEY, {}),
+        ("karte", other_key, {}),
+    ]
+    source_links = REDUCER.source_link_targets(done_items)
+
+    conflict = _conflict(owner_source_items=[ITEM_KEY])
+    md = REDUCER.render_attachment_conflicts_block([conflict], ASSET_FOLDER, source_links)
+    owner_line = next(ln for ln in md.splitlines() if ln.strip().startswith("- [["))
+    owner_link_text = owner_line.strip()[len("- [["):-len("]]")]
+
+    own_section_link_text = REDUCER.resolve_source_link(source_links, ITEM_KEY, "karte")
+
+    assert owner_link_text == own_section_link_text, (owner_link_text, own_section_link_text)
+    assert "|karte" in owner_link_text, "the collision must actually qualify the link"
 
 
 # ---------------------------------------------------------------------------
@@ -338,16 +371,27 @@ def test_no_executor_internals_in_rendered_block():
     reader of a suggestions document is doing PKM, not debugging a pipeline —
     tell them the effect, never the mechanism (owner ruling 2026-06-13).
 
-    Scoped to the remedy checkbox lines, not the whole block: the
-    `**Destination:**` line legitimately carries Johnny-Decimal folder
-    numbers (e.g. `290 Assets`), so a whole-block digit check would flag
-    real path content instead of the leaked retry-budget number.
+    Scans the WHOLE block for digits, not just the remedy checkboxes: a
+    checkbox-only scan has an uncovered reintroduction path — the reviewer
+    demonstrated it live by planting "The reducer already tried up to 99
+    candidate names before giving up." as prose under the `### <source>`
+    heading, which a checkbox-only scan never visits. The `**Destination:**`
+    line is the one exclusion — it legitimately carries Johnny-Decimal folder
+    numbers (e.g. `290 Assets`); this fixture's source/owner are deliberately
+    digit-free (unlike the module-level `ASSET_SOURCE`/`ITEM_KEY`) so the rest
+    of the block is a clean surface and the test does not have to special-case
+    any other line.
     """
-    md = REDUCER.render_attachment_conflicts_block(
-        [_conflict(proposed_name=None)], ASSET_FOLDER
+    entry = _conflict(
+        proposed_name=None,
+        source="Inbox/Scans/karte.png",
+        owner_source_items=["Inbox/Scans/karte.md"],
     )
+    md = REDUCER.render_attachment_conflicts_block([entry], ASSET_FOLDER)
     assert "hashi" not in md.lower(), md
-    for line in _checkbox_lines(md):
+    for line in md.splitlines():
+        if line.strip().startswith("- **Destination:**"):
+            continue
         assert not re.search(r"\d", line), line
 
 

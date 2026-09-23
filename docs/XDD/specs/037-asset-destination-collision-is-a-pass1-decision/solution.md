@@ -176,7 +176,7 @@ Written by the reducer; read by the renderer and the parser.
 | `destination` | The computed, occupied destination |
 | `same_file` | `true` · `false` · `null` when the comparison could not be made (S1) |
 | `owner_source_items` | Every note embedding this attachment, as resolved paths |
-| `proposed_name` | The free destination the rename remedy would use (C1) |
+| `proposed_name` | The free **basename** a rename remedy would use — not a path (C1). The folder is invariant and already carried in `destination`; a consumer composes the two with `_asset_dest_join`. `null` when no candidate is free within 99 attempts. |
 | `remedy` | Filled by the parser: `rename` · `keep_in_inbox` · `ignore` |
 
 `owner_source_items` deliberately matches the field `_build_move_asset_actions`
@@ -212,7 +212,9 @@ and the audit counts it as any other move. Only Hashi later refuses it.
 
 1. The parser reads the ticks into `remedy`, applying Rule 3 and Rule 4.
 2. `_build_move_asset_actions` consults `remedy` before claiming a destination:
-   - `rename` → move to `proposed_name`, rewriting every owning note's embed
+   - `rename` → move to `_asset_dest_join(asset_folder, proposed_name)`, rewriting every
+     owning note's embed. `proposed_name` is a BASENAME: using it directly as a path would
+     write to the vault root.
    - `keep_in_inbox` → emit nothing, record `kind: vault_collision_held`
    - `ignore` → emit the move unchanged against the occupied destination
 3. The coverage audit subtracts held entries through the existing path.

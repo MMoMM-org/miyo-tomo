@@ -101,12 +101,15 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
      - **An occupied proposal advances**: with `karte.png` AND `karte (2).png` both in the
        vault, the proposal is `karte (3).png`. Mutation: always propose `(2)` without
        testing the listing.
-     - **The occupancy check FOLDS CASE**, matching `resolve_destination_clashes`'
-       `dest.casefold()` comparison and the case-folded occupancy test T1.5 records: with
-       `Karte.png` already in the vault, `karte.png` proposes `karte (2).png`, not itself
-       unchanged. Mutation: compare candidates as literal strings — it passes every
-       same-case fixture above and fails only this one, which is why the fixture has to
-       differ in case deliberately.
+     - **The occupancy check FOLDS CASE.** **Fixture corrected 2026-09-23** — the version
+       first written here ("`Karte.png` in the vault, `karte.png` proposes `karte (2).png`")
+       cannot test this at all: `karte (2).png` differs from `Karte.png` under *any*
+       comparison, so it only re-proves T1.2's initial-destination fold. The fixture must
+       occupy a case-variant of the **candidate**: with `Karte.png` AND `Karte (2).png` in
+       the vault, `karte.png` proposes `karte (3).png`. Mutation: drop `.casefold()` from the
+       candidate key. Note it is NOT isolated to this test — `ASSET_FOLDER` itself carries
+       uppercase, so an unfolded join matches nothing and four tests fail. Recorded rather
+       than claimed as a single kill.
      - **A candidate is checked against the FOLDER set too**, not only the file listing
        `[ref: spec 037 T1.4]`: if `karte (2).png` names an existing subfolder rather than a
        file, it is rejected like any other taken name and the search advances to

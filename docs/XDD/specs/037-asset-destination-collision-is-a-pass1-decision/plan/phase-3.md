@@ -28,6 +28,10 @@ phase: 3
   move. A rename that does not rewrite is a failed criterion, not a partial one.
 - ADR-3's claim that the paired consumer needs no change is **proven here**, not
   assumed. The repo has already lost a Pass 2 to a coverage mismatch.
+- `_walk_attachment_conflicts` reads only the FIRST `## Attachment Conflicts`
+  section in the document — a deliberate contract (T2.4), not a bug. A document
+  with a duplicated section yields a partial result silently, with no error.
+  Decide here whether this phase's consumer needs to notice that.
 
 **Dependencies**: Phase 2 (`remedy` must be parseable before it can be honoured).
 

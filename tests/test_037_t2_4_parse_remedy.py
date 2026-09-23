@@ -50,6 +50,14 @@ rendered text verbatim (`tomo/scripts/suggestions-reducer.py:~1514-1524`):
      leave `remedy` unset when a line is absent.
   9. `test_no_attachment_conflicts_section_yields_empty_list` — mutation:
      fabricate a single empty entry when the section is missing.
+  10. `test_two_attachment_conflicts_sections_only_parses_first` — pins a
+      DELIBERATE contract (see the test's own docstring), not a bug:
+      mutation: in `_walk_attachment_conflicts`, replace the terminating
+      `break` with a continue-style re-entry (drop back to `in_section =
+      False` and `continue` instead of breaking the loop) so a second
+      `## Attachment Conflicts` section further down the document is also
+      scanned. Do NOT apply that change to the parser — this test exists to
+      keep it out.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -215,3 +223,58 @@ def test_entry_missing_checkbox_lines_still_yields_a_string():
 def test_no_attachment_conflicts_section_yields_empty_list():
     text = "## Some Other Section\n\nNothing here.\n"
     assert PARSER.parse_attachment_conflict_remedies(text) == []
+
+
+# ---------------------------------------------------------------------------
+# 10. Two `## Attachment Conflicts` sections in one document — the walker
+#     stops at the first non-matching `## ` heading and never resumes, so
+#     only the first section's entries are returned.
+#
+#     This is a DELIBERATE, stated contract (see `_walk_attachment_
+#     conflicts`'s docstring and `docs/tomo/scripts/suggestion-parser.md`),
+#     not a bug being pinned by accident: the renderer only ever emits one
+#     such section, so two can only arrive via a hand edit or a bad merge,
+#     and which one carries the owner's intent is genuinely ambiguous.
+#     First-section-wins was chosen over silently merging two sections that
+#     may contradict each other. A future reader must NOT "fix" this by
+#     making the walker resume into a later section.
+# ---------------------------------------------------------------------------
+
+def test_two_attachment_conflicts_sections_only_parses_first():
+    text = (
+        "## Attachment Conflicts\n"
+        "\n"
+        "### `a.png`\n"
+        "\n"
+        "- **Destination:** `Atlas/290 Assets/295 Attachments/a.png` (already occupied)\n"
+        "- **Embedded by:**\n"
+        "  - [[owner-a]]\n"
+        "- **File comparison:** A different file already holds this name.\n"
+        "\n"
+        "**Remedy — choose one:**\n"
+        "- [x] Rename to `Atlas/290 Assets/295 Attachments/a (2).png`\n"
+        "- [ ] Keep in inbox\n"
+        "- [ ] Ignore (the move is sent as-is and will fail — "
+        "the attachment stays in the inbox)\n"
+        "\n"
+        "## Some Other Section\n"
+        "\n"
+        "Unrelated content that separates the two sections.\n"
+        "\n"
+        "## Attachment Conflicts\n"
+        "\n"
+        "### `c.png`\n"
+        "\n"
+        "- **Destination:** `Atlas/290 Assets/295 Attachments/c.png` (already occupied)\n"
+        "- **Embedded by:**\n"
+        "  - [[owner-c]]\n"
+        "- **File comparison:** A different file already holds this name.\n"
+        "\n"
+        "**Remedy — choose one:**\n"
+        "- [ ] Rename to `Atlas/290 Assets/295 Attachments/c (2).png`\n"
+        "- [x] Keep in inbox\n"
+        "- [ ] Ignore (the move is sent as-is and will fail — "
+        "the attachment stays in the inbox)\n"
+    )
+    entries = PARSER.parse_attachment_conflict_remedies(text)
+    assert entries == [{"source": "a.png", "remedy": "rename"}]

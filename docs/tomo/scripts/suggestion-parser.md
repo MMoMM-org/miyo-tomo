@@ -966,3 +966,38 @@ trip.py` closes that gap by running the reducer's real rendered output
 through this parser and asserting the resolved remedy, rather than adding
 another hand-typed fixture like this file's own `test_037_t2_4_parse_
 remedy.py` (which pins the same mapping, but never via a real render).
+
+## `_walk_attachment_conflicts` Reads Only the First Section (spec 037 T2.4, v0.40.2)
+
+WHY the walker stops at the first `## ` heading that isn't `## Attachment
+Conflicts` and never resumes, rather than skipping past an interstitial
+heading to pick up a second `## Attachment Conflicts` section further down:
+a code-quality review found the loop shape did this by accident — `break`
+exits the whole scan the first time it meets a non-matching `## ` line
+after entering the section, so a document with two such sections silently
+returns only the first section's entries, with no error and no signal.
+
+The decision, once surfaced, is to keep the behaviour and state it on
+purpose. The renderer (`suggestions-reducer.py`) emits at most one
+`## Attachment Conflicts` section per document, so a second one can only
+arrive via a hand edit or a bad merge. At that point which section carries
+the owner's actual intent is genuinely ambiguous — scanning on and merging
+both risks combining two sections that contradict each other, which is a
+worse failure than dropping the second one outright. First-section-wins is
+the defensible contract for an out-of-band input; it is documented in the
+function's own docstring so it reads as a decision, not as leftover loop
+shape.
+
+Pinned by `tests/test_037_t2_4_parse_remedy.py::
+test_two_attachment_conflicts_sections_only_parses_first` — a fixture with
+two `## Attachment Conflicts` sections separated by an unrelated `##`
+heading. Named mutation: replacing the terminating `break` with a
+continue-style re-entry (drop `in_section` back to `False` and `continue`
+instead of breaking) so the second section is also scanned — this pins the
+CURRENT contract against exactly the "fix" a well-meaning reader would
+otherwise apply.
+
+Phase 3 (Pass 2's consumer of this parser's output) is left a note in its
+Phase Context to decide, with this in hand, whether its consumer needs to
+notice a partial result — not resolved here, since the parser's contract
+does not change.

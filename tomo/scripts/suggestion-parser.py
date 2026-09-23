@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.1
+# version: 0.40.2
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -2272,6 +2272,14 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
     Returns ``[(source, remedy), ...]`` in document order; empty when the
     section is absent (mirrors T1.2's absent-not-empty decision — no
     invented entry).
+
+    Reads exactly ONE `## Attachment Conflicts` section — the first. A
+    second such section later in the document is not merged in; the walk
+    stops at the first non-matching `## ` heading it meets. Deliberate:
+    the renderer emits at most one, so a second can only come from a hand
+    edit or a bad merge, and which one reflects the owner's intent is
+    genuinely ambiguous — silently combining them risks merging two
+    sections that contradict each other.
     """
     lines = text.splitlines()
     in_section = False

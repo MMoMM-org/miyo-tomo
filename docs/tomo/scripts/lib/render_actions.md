@@ -1392,3 +1392,23 @@ that produced it): `_inbox_join` (`lib/render_actions.py`) reads
 `cfg["concepts.inbox"]` and joins it with the same bare `.rstrip('/')`,
 with no leading `.strip()` — the identical defect shape, unconfirmed
 live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.
+
+## A Parameter Accepted and Deliberately Ignored (spec 037 T3.0, v0.26.3)
+
+`_build_move_asset_actions` gained `attachment_conflict_remedies` and does not
+read it. `build_actions` forwards it and does not read it either.
+
+This is deliberate and scoped. T3.0's whole job was the transport — proving the
+owner's remedy travels from the reviewed markdown all the way to the function
+that will act on it. T3.1 is the task that consults it, to pick a `rename`
+destination, withhold a `keep_in_inbox` move, or leave an `ignore` move
+unchanged. Splitting them means the wiring is proven green before any behaviour
+depends on it, so a later failure is unambiguously about the decision logic and
+never about whether the data arrived.
+
+The parameter is pinned by a test asserting this function's output is identical
+with and without it, which is the assertion that would fail the moment someone
+implements T3.1 — at which point that test is meant to be replaced, not
+weakened. An unused parameter is normally a smell; here it is a seam with a
+named successor and a dated one. If T3.1 is ever abandoned, this parameter goes
+with it rather than being left as decoration.

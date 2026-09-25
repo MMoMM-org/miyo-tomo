@@ -199,6 +199,32 @@ already records, so both collision sources describe residue the same way.
 `remedy` is never null after parsing — Rule 3 resolves an empty or contradictory
 entry to `ignore` in the parser, so no downstream consumer has to re-derive it.
 
+#### `attachment_conflict_remedies[]` — the parser's output key (T3.0)
+
+The transport between the two passes. Written by `suggestion-parser.py`'s
+`main()` onto its JSON output; read by `instruction-render.py` and forwarded
+through `build_actions` to `_build_move_asset_actions`.
+
+| Field | Meaning |
+|---|---|
+| `source` | The incoming attachment's vault path — the join key, matching T1.5's grouping key |
+| `remedy` | `rename` · `keep_in_inbox` · `ignore`, from the owner's ticks. Never null |
+| `proposed_name` | The rename **basename**, joined from `attachment_conflicts[]` in the structured doc. `null` when no free name exists, or when the markdown names a `source` the structured doc does not carry |
+
+**The key is always present, and always a list** — `[]` when the document has no
+`## Attachment Conflicts` section, so a conflict-free run's output has the same
+*shape* as a conflicted one and no consumer needs a presence guard.
+`build_from_wire` emits `[]` unconditionally: the ADR-026 wire carries no
+conflicts data at all, and CON-5 pins its output equal to the markdown parse's.
+
+**The name is recorded here because three components must agree on it and none
+of them owns it.** `instruction-render.py` reads it with `.get(key, [])`, so a
+mismatched name does not raise — it yields `[]`, no remedy is found for any
+conflict, and every conflict silently falls through to `ignore`'s behaviour.
+The owner's decision would be discarded without a word, which is the quiet
+outcome ADR-4 exists to prevent. Added 2026-09-25, after T3.0 chose the name
+and no specification document held it.
+
 #### `skipped_assets[]` — one new `kind`
 
 Existing shape, unchanged fields. `kind` gains `vault_collision_held`: the owner

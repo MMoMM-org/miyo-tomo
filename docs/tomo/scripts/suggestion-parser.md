@@ -1001,3 +1001,49 @@ Phase 3 (Pass 2's consumer of this parser's output) is left a note in its
 Phase Context to decide, with this in hand, whether its consumer needs to
 notice a partial result — not resolved here, since the parser's contract
 does not change.
+
+## The Remedy Reaches Pass 2 by Joining Two Sources, Not by Re-Reading One (spec 037 T3.0, v0.40.3)
+
+T2.4 shipped `parse_attachment_conflict_remedies` and nothing called it. The
+function reads the owner's ticks correctly, returns `{source, remedy}` per
+entry, and its result went nowhere: `main()` never invoked it and the `output`
+dict never carried it. T3.0 built the missing edge.
+
+**Why the join, and why from the JSON.** A remedy alone is not actionable.
+`rename` needs the name to rename *to*, and that name — `proposed_name` — is
+computed by the reducer in Pass 1 and lives in the structured
+`suggestions-doc.json`'s `attachment_conflicts[]`. It is also rendered into the
+markdown, on the rename checkbox line. Reading it back off that line would have
+worked, and it was rejected: the backlog already carries two render/parse
+couplings, where the reducer writes a string one way and the parser must keep
+matching it. A third would have been the cheapest to add and the most expensive
+to keep. `main()` already loads the structured doc (`_own_doc_path`), so
+`_join_attachment_conflict_remedies` joins there instead, on `source` — T1.5's
+grouping key, so the join agrees with whatever rendered the entry.
+
+**Why a missing source joins to `None` rather than raising.** The markdown is
+the authority on `remedy`; the JSON is the authority on `proposed_name`. A
+hand-edited or stale document can carry a `### ` entry whose source the JSON
+does not know. Raising there would abort a whole Pass 2 over one unmatched name
+in a document the owner is allowed to edit by hand. `None` is what the reducer
+itself writes when no free name exists within 99 attempts, so the downstream
+already has to handle it — the unmatched case reuses a path that must work
+anyway rather than inventing a second one.
+
+## The Wire Path Emits the Key Empty, Because the Wire Has Nothing to Say (spec 037 T3.0, v0.40.3)
+
+`build_from_wire` (ADR-026, the JSON-only parse path) also emits
+`attachment_conflict_remedies`, always `[]`.
+
+The `_suggestions.json` wire carries no Attachment-Conflicts data at all — that
+block exists only in the structured `suggestions-doc.json` the markdown path
+reads. So `[]` here is not a placeholder for data that failed to arrive; it is
+the honest and complete answer for a path where the question does not apply.
+
+It is also load-bearing. CON-5 pins `build_from_wire`'s output equal to the
+markdown parse's for the same input, and three golden tests in
+`tests/test_suggestions_wire_golden.py` enforce it. Emitting the key on one path
+and not the other breaks all three — measured, by reverting this line alone.
+The alternative shape — omit the key on both paths when empty — was rejected
+because it makes a conflict-free run's output a different *shape* from a
+conflicted one, which every consumer would then have to guard.

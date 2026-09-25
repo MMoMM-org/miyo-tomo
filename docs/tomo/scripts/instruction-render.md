@@ -708,3 +708,31 @@ Declined as out of scope for this fix — low probability, no vault write
 involved, and the half-present state that would result is already handled
 correctly (as stale) by the logic above, so the failure mode is "one entry's
 notice is treated as a new run" rather than data corruption or a leak.
+
+## The Remedy Is Read AND Forwarded — Both, or It Is a No-Op (spec 037 T3.0, v0.60.1)
+
+`instruction-render.py` pulls `attachment_conflict_remedies` off the parsed
+suggestions JSON and passes it to `build_actions`, which forwards it to
+`_build_move_asset_actions`.
+
+This is the same shape as `merged_moc_proposals` (spec 034 T6.0c) and fails the
+same way: a read without a forward compiles, runs, passes every test that
+inspects the parser's output, and does nothing. The whole point of the field is
+what happens at the far end of the chain, so both halves are asserted — one test
+checks what `build_actions` was actually called with, and one runs a real parser
+`main()` into a real `instruction-render` `main()` end to end. A parser-side
+assertion alone cannot see a missing forward.
+
+**Why `.get(key, [])` rather than a required key.** It matches how every other
+field is pulled from `suggestions` in this file, and both producers — the
+markdown `main()` and `build_from_wire` — always emit the key explicitly. The
+default is reached only by a `suggestions.json` cached before spec 037 existed.
+
+That default is worth naming precisely, because its failure mode is quiet: a
+missing key yields `[]`, which means no remedy is found for any conflict, which
+means every conflict falls through to the behaviour of `ignore` — the move is
+emitted against the occupied destination and refused downstream. The owner's
+choice is discarded without a word. That is an acceptable posture for a
+stale-cache edge case and an unacceptable one for a typo in a key name, which is
+why the name is now fixed in the SDD's Interface Specifications rather than
+living only in three files that happen to agree.

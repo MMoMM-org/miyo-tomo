@@ -66,7 +66,7 @@ T3.0 blocks T3.1 and T3.3. T3.2 depends on T3.1.
 > reads the ticks into `remedy`"* straight to *"`_build_move_asset_actions` consults
 > `remedy`"*, and its component table named no component between them. In the code there
 > is no such edge at all. T2.4 shipped a function nobody calls. Added as T3.0, and the
-> SDD component table gained `instruction-render.py` as a fourth changed component.
+> SDD component table gained `instruction-render.py` as a changed component (5 touched).
 > (2) **T3.3 pointed at the wrong file.** It said to rewrite embeds in `render_actions.py`,
 > which only builds action dicts. Re-homed to `instruction-render.py`.
 > (3) **`keep_in_inbox` would have held the owning note by accident.**

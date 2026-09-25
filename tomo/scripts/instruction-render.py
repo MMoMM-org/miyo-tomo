@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.60.0
+# version: 0.60.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -366,6 +366,13 @@ def main() -> int:
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
     )
+    # spec 037 T3.0: {source, remedy, proposed_name} per Attachment-Conflicts
+    # entry the owner resolved in Pass 2 (suggestion-parser.py). Forwarded to
+    # build_actions -> _build_move_asset_actions, which for now accepts it
+    # and ignores it — T3.1 is the task that consults it.
+    attachment_conflict_remedies = suggestions.get(
+        "attachment_conflict_remedies", []
+    )
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
     cfg = load_config(args.config)
@@ -604,6 +611,7 @@ def main() -> int:
             tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
             parent_marker=conventions.parent_marker,
             peer_marker=conventions.peer_marker,
+            attachment_conflict_remedies=attachment_conflict_remedies,
         )
 
     # The staging notes the action list claims before any guard runs. Paired

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.2
+# version: 0.40.3
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -484,6 +484,12 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         "tag_handler_keep_source_group_ids": [
             g["group_id"] for g in tag_groups if g.get("keep_source")
         ],
+        # spec 037 T3.0: the ADR-026 wire (_suggestions.json) carries no
+        # Attachment-Conflicts data at all — that lives only in the
+        # structured suggestions-doc.json the markdown path reads via
+        # --suggestions-doc. Always [], never fabricated, so an unedited
+        # wire keeps CON-5 parity with the markdown parse.
+        "attachment_conflict_remedies": [],
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),
@@ -2361,6 +2367,31 @@ def parse_attachment_conflict_remedies(text: str) -> list[dict]:
     ]
 
 
+def _join_attachment_conflict_remedies(
+    remedies: list[dict], doc: dict
+) -> list[dict]:
+    """Join each `{source, remedy}` record from `parse_attachment_conflict_
+    remedies` to its `proposed_name`, read from the structured suggestions-
+    doc's `attachment_conflicts[]` (spec 037 T3.0). The join is on `source`
+    — T1.5's grouping key, so it agrees with what rendered the entry in the
+    first place.
+
+    A `source` present in the markdown but absent from the doc's
+    `attachment_conflicts[]` (a hand-edited or stale doc) joins to
+    `proposed_name: None` rather than raising — the doc supplies the name,
+    the markdown ticks stay authoritative for `remedy` regardless.
+    """
+    proposed_names = {
+        c.get("source"): c.get("proposed_name")
+        for c in (doc.get("attachment_conflicts") or [])
+        if c.get("source")
+    }
+    return [
+        {**r, "proposed_name": proposed_names.get(r["source"])}
+        for r in remedies
+    ]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2948,6 +2979,16 @@ def main() -> int:
     # output dict below.
     merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
+    # spec 037 T3.0: the owner's Attachment-Conflicts remedy, joined to its
+    # proposed rename basename from the structured doc already loaded above
+    # (_own_doc_path). Empty list when the document carries no ## Attachment
+    # Conflicts section — instruction-render.py forwards this key to
+    # build_actions -> _build_move_asset_actions, which for now accepts it
+    # and ignores it (T3.1 consumes it).
+    attachment_conflict_remedies = _join_attachment_conflict_remedies(
+        parse_attachment_conflict_remedies(text), _load_json_doc(_own_doc_path)
+    )
+
     output = {
         "confirmed_items": confirmed_items,
         # spec 034 T6.0c — see the wire path's note. Same record, same shape;
@@ -2965,6 +3006,7 @@ def main() -> int:
         # Group ids the user opted out of source-deletion via "Keep source files".
         # instruction-render suppresses the paired delete_source for these.
         "tag_handler_keep_source_group_ids": tag_handler_keep_source_group_ids,
+        "attachment_conflict_remedies": attachment_conflict_remedies,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

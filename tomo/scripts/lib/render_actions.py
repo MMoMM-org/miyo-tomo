@@ -1,4 +1,4 @@
-# version: 0.26.2
+# version: 0.26.3
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -693,6 +693,7 @@ def _build_move_asset_actions(
     inbox_path: str,
     asset_folder: str,
     counter: list[int],
+    attachment_conflict_remedies: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Emit move_asset actions for every unique attachment path across the
     whole manifest, deduplicated globally (not per item) on the resolved path.
@@ -721,6 +722,11 @@ def _build_move_asset_actions(
     `source_inbox_item` — that is what lets a caller keep such a note in the
     inbox with its file (spec 034 ADR-6). It is a list because the global
     `seen` dedup examines each path once while several notes may embed it.
+
+    `attachment_conflict_remedies` (spec 037 T3.0) is accepted and currently
+    ignored — the transport this parameter completes, not the consuming
+    logic. T3.1 is the task that reads it to decide a `rename` destination,
+    withhold a `keep_in_inbox` move, or leave an `ignore` move unchanged.
     """
     out: list[dict] = []
     skipped: list[dict] = []
@@ -2583,6 +2589,7 @@ def build_actions(
     tag_handler_keep_source_group_ids: list[str] | None = None,
     parent_marker: str = "up::",
     peer_marker: str = "related::",
+    attachment_conflict_remedies: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Assemble the full ordered action list.
 
@@ -2605,6 +2612,9 @@ def build_actions(
       7. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
       8. delete_source      — incl. approved tag-handler group sources (after their insert)
       9. skip
+
+    `attachment_conflict_remedies` (spec 037 T3.0) is forwarded verbatim to
+    `_build_move_asset_actions`, which currently accepts and ignores it.
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -2621,7 +2631,8 @@ def build_actions(
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
     move_assets, skipped_assets = _build_move_asset_actions(
-        manifest, inbox_path, asset_folder, counter
+        manifest, inbox_path, asset_folder, counter,
+        attachment_conflict_remedies=attachment_conflict_remedies,
     )
     out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))

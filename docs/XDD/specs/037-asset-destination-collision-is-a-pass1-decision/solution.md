@@ -42,7 +42,7 @@ version: "2.0"
 |-------|-------|
 | specId | 037-asset-destination-collision-is-a-pass1-decision |
 | status | COMPLETE |
-| components | 4 touched, 0 new files |
+| components | 5 touched, 0 new files |
 | adrs | 5, none open |
 | newWireFields | 0 |
 | externalComponentsChanged | 0 (Hashi untouched) |
@@ -102,7 +102,7 @@ without touching the paired consumer.
 | `tomo/scripts/suggestions-reducer.py:1946-2016` | The Kado client opened once for Pass-1 vault checks; `_folder_cache`, `_vault_folder_notes`, `folder_listing_calls`, and the T5.2 clash pass for notes |
 | `tomo/scripts/suggestions-reducer.py:1363` | `load_asset_folder(shared_ctx_path)` — the reducer already reads the configured destination |
 | `tomo/scripts/suggestions-reducer.py:1452` | `render_attachments_preamble` — the document already has an attachments voice to extend |
-| `tomo/scripts/lib/render_actions.py:640-728` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
+| `tomo/scripts/lib/render_actions.py:691-782` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
 | `tomo/scripts/lib/render_actions.py:509` | `_asset_dest_join` — the only place a destination is computed |
 | `tomo/scripts/instructions-diff.py:858-883` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
 | `tomo/scripts/lib/kado_client.py:313,176` | `path_exists`, `read_file_bytes` — probed live on a PNG, 2026-09-15 |
@@ -110,10 +110,13 @@ without touching the paired consumer.
 ### Implementation Boundaries
 
 **In scope:** attachment destinations; the suggestions document's new decision
-section; the parser reading those ticks; `render_actions` honouring the remedy.
+section; the parser reading those ticks and carrying them onto its output;
+`instruction-render.py` transporting them into Pass 2 and rewriting the embed on
+a rename; `render_actions` honouring the remedy.
 
 **Out of scope:** note destinations (T5.2 owns them); the instructions document;
-Hashi; any wire-format change; overwrite as a remedy; note-holding.
+Hashi; any wire-format change; overwrite as a remedy; note-holding — a filed note
+keeps its move even when its attachment is held (`requirements.md:374-382`).
 
 ### External Interfaces
 
@@ -156,13 +159,24 @@ subtraction in the audit.
 |---|---|---|
 | `suggestions-reducer.py` | Detect the occupied destination, classify it, put the decision in the document | extended |
 | Suggestions document (Markdown + JSON) | Carry the conflict and the owner's tick | extended |
-| `suggestion-parser.py` | Read the tick back off the reviewed document | extended |
+| `suggestion-parser.py` | Read the tick back off the reviewed document **and emit it on the parsed output, joined to its `proposed_name`** | extended |
+| `instruction-render.py` | **Carry the remedies from the parsed output into `build_actions`; rewrite the embed on a rename** | extended |
 | `render_actions.py` | Honour the remedy; record a withheld move in `skipped_assets` | extended |
 | `instructions-diff.py` | Account for the withheld move | **none** — ADR-3 |
 
 The MECE split follows what each component already owns: detection needs config
-and Kado (reducer), reading ticks is parsing (parser), emitting actions is
-rendering (render_actions).
+and Kado (reducer), reading ticks is parsing (parser), moving the result between
+the two passes and assembling note bodies is `instruction-render.py`, emitting
+actions is rendering (render_actions).
+
+**`instruction-render.py` was added to this table on 2026-09-25**, before Phase 3
+was dispatched. The original table named no transport between the parser and
+`_build_move_asset_actions`, and the Pass-2 flow below jumped straight from one to
+the other. In the code there is no such edge: `parse_attachment_conflict_remedies`
+(T2.4) had no production caller at all, and `_build_move_asset_actions` is reached
+only through `instruction-render.py:600`. The embed rewrite lands here for the same
+reason — `render_actions.py` assembles action dicts and never touches a note body,
+while the rendered body is built at `instruction-render.py:550-610`.
 
 ### Interface Specifications
 
@@ -211,13 +225,39 @@ and the audit counts it as any other move. Only Hashi later refuses it.
 ### Primary Flow — Pass 2
 
 1. The parser reads the ticks into `remedy`, applying Rule 3 and Rule 4.
-2. `_build_move_asset_actions` consults `remedy` before claiming a destination:
-   - `rename` → move to `_asset_dest_join(asset_folder, proposed_name)`, rewriting every
-     owning note's embed. `proposed_name` is a BASENAME: using it directly as a path would
-     write to the vault root.
+2. The parser joins each remedy to its `proposed_name` from `attachment_conflicts[]`
+   in the structured suggestions-doc JSON it already loads (`--suggestions-doc`,
+   with `_default_doc_path` as fallback) and emits the pairs on its output. The
+   join is on `source`, matching T1.5's grouping key. `proposed_name` is **not**
+   re-read from the rendered markdown: that would be a third render/parse coupling,
+   and the backlog already carries two.
+3. `instruction-render.py` reads that key off the parsed suggestions JSON and passes
+   it to `build_actions`, which forwards it to `_build_move_asset_actions`.
+4. `_build_move_asset_actions` consults `remedy` before claiming a destination:
+   - `rename` → move to `_asset_dest_join(asset_folder, proposed_name)`. `proposed_name`
+     is a BASENAME: using it directly as a path would write to the vault root.
    - `keep_in_inbox` → emit nothing, record `kind: vault_collision_held`
    - `ignore` → emit the move unchanged against the occupied destination
-3. The coverage audit subtracts held entries through the existing path.
+5. On a rename, `instruction-render.py` rewrites the embed target in every owning
+   note's rendered body, so no filed note names a file the run did not file.
+6. The coverage audit subtracts held entries through the existing path.
+
+#### `vault_collision_held` does not hold the owning note
+
+`suppress_moves_for_unfiled_attachments` (`render_actions.py:1331`) keeps an owning
+note in the inbox for **every** `skipped_assets` entry, so a new `kind` is held back
+by default rather than by choice. `vault_collision_held` is excluded from that pass:
+the note is filed and only the file stays behind.
+
+This is the standing ruling, recorded in `requirements.md:374-382` before
+implementation began — *keep in inbox* names the attachment, not the note, and the
+scoping principle puts the residue with Hashi rather than widening the remedy. The
+exclusion is therefore written deliberately and asserted by a test; it is not the
+absence of a behaviour. Re-confirmed by the owner on 2026-09-25 when the interaction
+with ADR-6 was measured rather than assumed.
+
+The accepted cost is the one the PRD's Context section opens with: a filed note whose
+embed reaches back into the inbox. F3-AC2 still holds — nothing *fails* at apply.
 
 ### Error Handling
 

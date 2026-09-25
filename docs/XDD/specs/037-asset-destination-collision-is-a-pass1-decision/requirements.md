@@ -367,12 +367,19 @@ rename pre-ticked.
 
 ## Open Questions
 
-- [ ] The rename scheme — numeric suffix (`karte-1.png`), run date, or owning
-      note's stem. Affects C1 only.
-- [ ] Whether *keep in inbox* should also suppress the owning note's filing, so
+- [x] The rename scheme — numeric suffix (`karte-1.png`), run date, or owning
+      note's stem. Affects C1 only. **Settled in T2.1 (2026-09-22):**
+      `{stem} ({n}){ext}`, the counter before the extension, mirroring
+      `resolve_destination_clashes` so the two cannot drift apart.
+- [x] Whether *keep in inbox* should also suppress the owning note's filing, so
       note and file stay together. The owner has ruled that it need not, on the
       scoping principle; recorded here because it is the question most likely to
-      come back after living with it.
+      come back after living with it. **Re-confirmed 2026-09-25**, when the
+      interaction was measured instead of assumed: `suppress_moves_for_unfiled_attachments`
+      holds the owning note for *every* `skipped_assets` entry, so the ruling is
+      not free — `vault_collision_held` must be excluded from that pass explicitly.
+      That exclusion is Phase 3 work and carries its own test
+      `[ref: SDD/Runtime View; vault_collision_held does not hold the owning note]`.
 
 ---
 

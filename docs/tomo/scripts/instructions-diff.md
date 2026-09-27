@@ -212,3 +212,54 @@ withholding independently — without that, withholding a garden link turns
 `link_to_moc expected=2 actual=0 [DIFF]` plus two `[MISSING]` items out of a
 correct instruction set. Pinned by a garden-shaped case in
 `tests/test_034_t6_0d_unresolvable_moc_links.py`.
+
+## No New Arithmetic for spec 037's Asset-Collision Remedies (T3.2, proven not assumed)
+
+Spec 037 gave Pass 1 three attachment-collision remedies (`rename`,
+`keep_in_inbox`, `ignore`) plus a degraded-rename fallback, all consulted by
+`_build_move_asset_actions` (`render_actions.py:691-845`). ADR-3 claimed this
+file needed no change to account for any of them. `tests/test_037_t3_2_audit_
+needs_no_new_arithmetic.py` demonstrates that claim instead of asserting it —
+`git diff main...HEAD -- '*instructions-diff*'` for spec 037 is empty, and the
+test file runs all four outcomes, mixed and isolated, through the real
+`run_diff` unmodified.
+
+WHY no change was needed: `derive_expected`'s `move_asset` count
+(`:481-493`) keys on the attachment's SOURCE path from the confirmed item and
+counts with `len()`; `summarize_actual` (`:520-523`) is a raw per-kind tally
+over `instructions.json["actions"]`. Neither reads a `move_asset`'s
+`destination`. A `rename`'s new basename — successful or degraded — is
+therefore invisible to both sides of the audit: `ignore` and a successful
+`rename` are counted exactly like a conflict-free attachment, because from
+this file's perspective there is no difference. Only `keep_in_inbox` and a
+degraded `rename` change anything the audit can see, and both change it the
+same way: they add a `skipped_assets` entry, and `_subtract_skipped_assets`
+(`:922-946`) already decrements expected `move_asset` for every entry it
+finds there — regardless of `kind`. `instruction-render.py` (`:980-984`)
+does not even project `kind` into `instructions.json`; the subtraction was
+never keyed on it and could not be even if a future edit tried.
+
+WHY the test file's sixth case is the one that matters: the first five only
+show today's numbers reconciling — a subtraction that was accidentally a
+no-op (e.g. dead code, or `_subtract_skipped_assets` never actually being
+called for this shape of entry) would pass every one of them just as
+happily. It takes the `keep_in_inbox` fixture's own `instructions.json`
+projection and strips the `skipped_assets` entry — the fixture-level
+equivalent of a code mutation, on a task with no production code to mutate —
+and asserts the audit reports `RESULT: FAIL` with `move_asset` specifically
+mismatched (expected 1, actual 0). That is the only assertion in the file
+that would fail if `_subtract_skipped_assets`'s loop were removed, proving
+the reconciliation is load-bearing rather than coincidentally agreeing.
+
+WHY this could have gone the other way: the mechanism holds because both
+`derive_expected` and `_subtract_skipped_assets` are generic — one counts
+confirmed attachments by source path, the other subtracts one expected
+`move_asset` per `skipped_assets` entry, neither aware of *why* an entry
+exists. A future remedy that changes the **count** of `move_asset` actions
+per attachment (e.g. splitting one attachment into several destination
+candidates before settling on one) would break this silently, because
+`attachments_seen` on the expected side is built from the confirmed item's
+attachment list, one entry per listed path — it has no way to expect more or
+fewer `move_asset` actions than attachments listed. The audit is safe today
+because every spec 037 remedy still resolves to *at most one* `move_asset`
+per attachment (filed, renamed-and-filed, or withheld) — never more.

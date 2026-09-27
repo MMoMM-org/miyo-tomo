@@ -105,14 +105,23 @@ expensive one: it reads as a considered decision and closes the question.
 `_fence_spans` scans lines and tracks the opening run, because CommonMark's
 closing rule is not expressible as a Python pattern — a fence closes only on a
 run of the same character at least as long as the one that opened it, and `re`
-has no variable-length backreference comparison. Three faults closed at once,
-each pinned by its own test:
+has no variable-length backreference comparison.
 
-| Fault | Old behaviour | Now |
-|---|---|---|
-| Closing run shorter than opening | fence ended early, interior embed rewritten | fence stays open |
-| Unclosed fence | matched nothing; everything after a dangling fence treated as live body | runs to end of note, as Obsidian renders it |
-| CRLF closing line | `\r` defeated the `$` anchor; fence never closed and swallowed the rest of the note, so a later real embed was missed | closes normally |
+| Fault | Old behaviour | Now | Closed by |
+|---|---|---|---|
+| Closing run shorter than opening | fence ended early, interior embed rewritten | fence stays open | the line scan |
+| CRLF closing line | `\r` defeated the `$` anchor; fence never closed and swallowed the rest of the note, so a later real embed was missed | closes normally | the line scan |
+| Unclosed fence | matched nothing; everything after a dangling fence treated as live body | runs to end of note, as Obsidian renders it | **the previous commit**, preserved here |
+
+The last row's attribution matters and the first version of this table got it
+wrong: it listed all three as "closed at once" by the line scan, when the
+unclosed-fence fix was a `|\Z` alternative added to the old regex one commit
+earlier. The line scan preserves that behaviour rather than introducing it.
+Recorded because a WHY doc is also the history a future reader trusts, and
+crediting the wrong change makes `git log` and the prose disagree.
+
+Tilde support is a third change but not a fault the old regex *had* — it never
+claimed `~~~` at all.
 
 Tilde fences (`~~~`) are recognised too. CommonMark allows them, and a note
 discussing backtick syntax is exactly where one appears — the same reachability

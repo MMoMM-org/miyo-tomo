@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
 from __future__ import annotations
 
@@ -26,11 +26,17 @@ def _fence_spans(body: str) -> list[tuple[int, int]]:
     inverse of the defect T3.3 exists to fix: instead of a stale reference
     surviving, a fenced example was silently corrupted.
 
-    Three faults the regex had, all closed here and each pinned by a test:
-    a closing run shorter than the opening one; an unclosed fence, which
-    matched nothing at all so everything after a dangling fence was treated
-    as live body text; and a CRLF closing line, whose `\r` defeated the
-    end-of-line anchor and swallowed the rest of the note as fenced.
+    Two faults closed HERE, each pinned by a test: a closing run shorter than
+    the opening one, and a CRLF closing line whose `\r` defeated the
+    end-of-line anchor and swallowed the rest of the note as fenced. Tilde
+    (`~~~`) fences are newly recognised, which is a third change but not a
+    fault the regex had — it never claimed them.
+
+    A third fault, an unclosed fence matching nothing at all so everything
+    after a dangling fence was treated as live body text, was fixed one commit
+    earlier and is PRESERVED here, not fixed here. Stated precisely because
+    the first version of this docstring folded it in as "three faults closed
+    at once", which credited this change with the previous one's work.
 
     Tilde fences (`~~~`) are recognised too — CommonMark allows them and a
     note discussing backtick syntax is exactly where one appears.

@@ -41,9 +41,9 @@ version: "1.0"
 
 | Phase | Title | Status |
 |-------|-------|--------|
-| 1 | Detection in the reducer | pending |
-| 2 | The decision in the document | pending |
-| 3 | Honouring the remedy in Pass 2 | pending |
+| 1 | Detection in the reducer | completed |
+| 2 | The decision in the document | completed |
+| 3 | Honouring the remedy in Pass 2 | completed |
 | 4 | Integration and the live path | pending |
 
 ---
@@ -105,7 +105,7 @@ bash scripts/reset-tomo-tmp.sh --pass1 --instance <path>/tomo-tmp
 
 - [x] [Phase 1: Detection in the reducer](phase-1.md)
 - [x] [Phase 2: The decision in the document](phase-2.md)
-- [ ] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
+- [x] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
 - [ ] [Phase 4: Integration and the live path](phase-4.md)
 
 ## Plan Verification

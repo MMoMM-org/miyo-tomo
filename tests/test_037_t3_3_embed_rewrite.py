@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_037_t3_3_embed_rewrite.py — spec 037 T3.3.
 
 T3.1 made `_build_move_asset_actions` recompute a renamed attachment's
@@ -185,13 +185,25 @@ def test_a_rename_with_null_proposed_name_leaves_the_body_unchanged():
     `_replace`'s `if new_basename is None` check — the embed then becomes the
     literal `![[None]]`.
 
-    Both, deliberately, because neither alone bites: measured 2026-09-27, each
-    guard is covered by the other, so removing either one on its own leaves
-    this assertion green. That is belt-and-braces rather than redundancy worth
-    deleting — the early guard is what keeps the rename map's declared
-    `dict[str, str]` type honest, and the late check is what protects a map
-    built by some future caller. Recorded so the next reader does not "simplify"
-    one of them on the evidence of a green suite."""
+    Both, deliberately, because neither alone bites *for this body*: measured
+    2026-09-27, each guard is covered by the other here, so removing either one
+    on its own leaves this assertion green.
+
+    Neither is redundant, and the late check is the more load-bearing of the
+    two — an earlier version of this docstring called it protection for "a map
+    built by some future caller", which undersells it. `renames.get(...)`
+    returns `None` for any embed whose basename is not in the map at all, which
+    is the ORDINARY case of a note embedding one renamed attachment and one
+    untouched one. Measured with the late check removed and two attachments,
+    one renamed:
+
+        '![[karte (2).png]] and ![[None]]'
+
+    So the late check guards today's multi-attachment path, and the early guard
+    keeps the rename map's declared `dict[str, str]` type honest. Recorded so
+    the next reader does not "simplify" either one on the evidence of a green
+    suite — and `test_untouched_attachment_in_the_same_note_is_left_verbatim`
+    is the test that actually fails when the late check goes."""
     body = "![[Scans/karte.png]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", proposed_name=None)}
     assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body

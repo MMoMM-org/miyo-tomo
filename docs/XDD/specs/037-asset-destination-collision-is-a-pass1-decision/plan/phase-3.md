@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Honouring the remedy in Pass 2"
-status: in_progress
+status: completed
 version: "2.0"
 phase: 3
 ---

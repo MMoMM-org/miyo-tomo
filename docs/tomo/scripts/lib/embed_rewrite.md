@@ -77,16 +77,46 @@ before the first separator identifies which file is embedded.
 
 ## Fenced-Code Guard Is a Regex Span Check, Not a Line-By-Line State Machine
 
-WHY fenced-code detection is one `re.finditer` pass producing `(start, end)`
-spans, checked with a simple containment test per embed match, rather than a
-line-by-line "am I inside a fence" state machine: the two fences this module
-needs to distinguish are "opening backtick-run line" and "the next backtick-
-run line", and a single `DOTALL`/`MULTILINE` regex captures exactly that
-without maintaining parse state across the whole body. It does not attempt to
-handle nested or differently-fenced (backtick vs. tilde, mismatched length)
-constructs — none of that is reachable from a Tomo-rendered template body, and
-handling it would add a real state machine for markdown edge cases no
-production template produces.
+WHY fenced-code detection is a line scan (`_fence_spans`) and not a regex —
+**and why the original claim here was wrong.**
+
+The first version of this module used one `DOTALL`/`MULTILINE` regex and this
+section asserted that nested or mismatched-length fences were "not reachable
+from a Tomo-rendered template body". That was false, and the T3.3
+code-quality review measured it. The body is not template output: it is
+`read_note_body(client, full_path)` at `instruction-render.py:483` — verbatim,
+unmodified user vault content. A PKM note *about* markdown or code syntax
+routinely opens a 4-backtick fence containing a bare 3-backtick line, and the
+regex closed on the first run of 3+ backticks whatever the opening length. The
+fence span ended early, `_in_fence` returned false for an embed still inside
+the outer fence, and it was **rewritten**:
+
+    Doc example:
+    ````
+    ```
+    ![[Scans/karte.png]]     <- rewritten to karte (2).png
+    ````
+
+That is the inverse of the defect this whole task exists to close. T3.3 fixes a
+stale reference surviving into a filed note; this silently corrupted a fenced
+example the owner wrote. The wrong direction of an unreachability claim is the
+expensive one: it reads as a considered decision and closes the question.
+
+`_fence_spans` scans lines and tracks the opening run, because CommonMark's
+closing rule is not expressible as a Python pattern — a fence closes only on a
+run of the same character at least as long as the one that opened it, and `re`
+has no variable-length backreference comparison. Three faults closed at once,
+each pinned by its own test:
+
+| Fault | Old behaviour | Now |
+|---|---|---|
+| Closing run shorter than opening | fence ended early, interior embed rewritten | fence stays open |
+| Unclosed fence | matched nothing; everything after a dangling fence treated as live body | runs to end of note, as Obsidian renders it |
+| CRLF closing line | `\r` defeated the `$` anchor; fence never closed and swallowed the rest of the note, so a later real embed was missed | closes normally |
+
+Tilde fences (`~~~`) are recognised too. CommonMark allows them, and a note
+discussing backtick syntax is exactly where one appears — the same reachability
+argument that the original claim got backwards.
 
 ## `_EMBED_RE` Reused Verbatim — Regression Insurance on a Plain Link, Not New Coverage
 

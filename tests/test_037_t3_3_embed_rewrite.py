@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_037_t3_3_embed_rewrite.py — spec 037 T3.3.
 
 T3.1 made `_build_move_asset_actions` recompute a renamed attachment's
@@ -179,7 +179,19 @@ def test_non_rename_remedies_leave_the_body_unchanged():
 def test_a_rename_with_null_proposed_name_leaves_the_body_unchanged():
     """A `rename` whose `proposed_name` is `None` (the markdown/JSON desync
     route, T3.1) degrades to `keep_in_inbox` at the move-action layer — the
-    attachment is never actually renamed, so the body must not be either."""
+    attachment is never actually renamed, so the body must not be either.
+
+    Mutation: remove BOTH the early `if not new_name: continue` guard and
+    `_replace`'s `if new_basename is None` check — the embed then becomes the
+    literal `![[None]]`.
+
+    Both, deliberately, because neither alone bites: measured 2026-09-27, each
+    guard is covered by the other, so removing either one on its own leaves
+    this assertion green. That is belt-and-braces rather than redundancy worth
+    deleting — the early guard is what keeps the rename map's declared
+    `dict[str, str]` type honest, and the late check is what protects a map
+    built by some future caller. Recorded so the next reader does not "simplify"
+    one of them on the evidence of a green suite."""
     body = "![[Scans/karte.png]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", proposed_name=None)}
     assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
@@ -380,3 +392,76 @@ def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten
         assert "Scans/karte.png" not in written, (
             f"{entry['rendered_file']} still names the vacated path: {written!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Fence faults the original single-regex guard had. All three measured against
+# the old `_FENCE_RE` on 2026-09-27 (T3.3 code-quality review) before the line
+# scanner replaced it.
+# ---------------------------------------------------------------------------
+
+def test_a_shorter_closing_run_does_not_end_a_longer_fence():
+    """Mutation: close a fence on the first run of 3+ backticks regardless of
+    the opening run's length — i.e. the single-regex guard this replaced.
+
+    A 4-backtick fence containing a bare 3-backtick line (how a PKM note
+    *about* markdown is written) then ended early, and the real embed still
+    inside the outer fence was REWRITTEN. Measured under the old regex:
+    `![[karte (2).png]]` came back inside the code block. That is the inverse
+    of the defect T3.3 exists to fix — not a stale reference surviving, but a
+    fenced example silently corrupted. CommonMark closes a fence only on a run
+    of the same character at least as long as the opening one, which is why
+    this is a line scan and not a pattern (`re` has no variable-length
+    backreference comparison)."""
+    body = "Doc example:\n````\n```\n![[Scans/karte.png]]\n````\nEnd.\n"
+    remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
+    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+
+
+def test_a_crlf_closing_fence_still_closes_the_fence():
+    """Mutation: anchor the closing-fence match on `[ \\t]*$` against the raw
+    line, so a `\\r\\n` line ending defeats it.
+
+    The fence then never closed, the unclosed-fence fallback swallowed the
+    rest of the note, and a real embed AFTER the code block was silently left
+    alone — a missed rewrite rather than a corruption, but the same class.
+    Measured under the old regex: the trailing embed was not rewritten."""
+    body = "Intro.\r\n```\r\ncode\r\n```\r\nAfter ![[Scans/karte.png]]\r\n"
+    remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
+    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    assert "![[karte (2).png]]" in result, (
+        f"an embed after a CRLF-closed fence must still be rewritten: {result!r}"
+    )
+
+
+def test_a_tilde_fence_is_recognised_too():
+    """Mutation: match only backtick fences. CommonMark allows `~~~`, and a
+    note discussing backtick syntax is precisely where one is used — so the
+    embed inside would be rewritten as if it were a live dependency."""
+    body = "~~~\n![[Scans/karte.png]]\n~~~\n"
+    remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
+    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+
+
+def test_a_non_rename_remedy_carrying_a_proposed_name_changes_nothing():
+    """Mutation: drop the `remedy != "rename"` filter (`embed_rewrite.py`),
+    keeping only the falsy-`proposed_name` guard.
+
+    This is the case that filter exists for, and nothing tested it before
+    2026-09-27. `_join_attachment_conflict_remedies` (`suggestion-parser.py`)
+    joins `proposed_name` onto EVERY remedy record from the structured doc,
+    not only renames — so `{remedy: "keep_in_inbox", proposed_name: "karte
+    (2).png"}` is the ordinary production shape, not a contrived one. The
+    owner said keep it in the inbox; the name Pass 1 *would* have used is
+    still carried alongside. Rewriting the body to it would point the note at
+    a file the run deliberately did not file.
+
+    Measured: with both this and `test_a_rename_with_null_proposed_name_...`
+    as they stood before, removing either guard left every assertion green —
+    each was covered by the other guard downstream."""
+    remedies = {SOURCE: _remedy(SOURCE, "keep_in_inbox", PROPOSED_NAME)}
+    body = "![[Scans/karte.png]]"
+    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+
+    remedies_ignore = {SOURCE: _remedy(SOURCE, "ignore", PROPOSED_NAME)}
+    assert rewrite_renamed_embeds(body, [SOURCE], remedies_ignore) == body

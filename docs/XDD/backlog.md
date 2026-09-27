@@ -1105,3 +1105,43 @@ and produced an action with no destination.
 `attachment_conflict_states.py` beside the marker, and decide whether a round-trip test per label
 is worth more than the constants alone. The round-trip test added for the marker
 (`tests/test_037_fix_render_parse_round_trip.py`) is the pattern.
+
+## OPEN — an embed rewrite cannot tell two attachments apart when they share a basename
+
+Spec 037 T3.3 rewrites `![[...]]` embed targets when the owner renames an
+attachment. `rewrite_renamed_embeds` (`tomo/scripts/lib/embed_rewrite.py`)
+matches the literal body text to a renamed attachment **by basename**, and that
+is the finest matching the data allows.
+
+**Where it breaks.** Two attachments in different inbox folders sharing one
+basename — `100 Inbox/Scans/karte.png` and `100 Inbox/Fotos/karte.png` — both on
+one note's `attachments[]`, both embedded as a bare `![[karte.png]]`. If only
+the first is renamed, the rename map is keyed `"karte.png" → "karte (2).png"`, so
+**both** occurrences are rewritten. The second now names a file the run never
+filed, which is the defect class spec 037 exists to close, reached by a different
+route.
+
+**Why basename is the only handle.** `item["attachments"]` carries resolved paths
+only. `inbox-triage.py` keeps the as-typed `embed_target` for **unresolved**
+references (`:325,340`) and discards it for resolved ones (`:321`), so by the time
+the rewrite runs there is no per-occurrence text left to disambiguate against. A
+bare `![[karte.png]]` in the body has no path component to compare either.
+
+**What a real fix needs.** Per-occurrence link metadata threaded from Kado
+(`list_notes(fields=["links"])`, the source `attachment_index.md` records the
+read path as having moved to) through triage to render time, replacing the flat
+`attachments[]` list — or triage preserving `embed_target` for resolved refs too.
+Both are wire changes across a pass boundary, well outside T3.3's scope.
+
+**Why it was accepted rather than fixed.** The shape is narrow: the same basename
+must exist in two different inbox folders, both be embedded in one note, and be
+embedded identically. Obsidian cannot distinguish them typographically either —
+it resolves by its own shortest-path rule — so the note as written is already
+ambiguous about which file it means. `_build_move_asset_actions`'s own
+`claimed`/`collision` machinery already treats this shape as a naming problem on
+the filing side and reports it, just not in a form the rewrite can consume.
+
+Documented at three sites so a future reader meeting it in a real vault can
+recognise it: `rewrite_renamed_embeds`'s docstring,
+`docs/tomo/scripts/lib/embed_rewrite.md` ("Basename Matching, Not Full-Path
+Matching"), and `docs/tomo/scripts/instruction-render.md`'s T3.3 section.

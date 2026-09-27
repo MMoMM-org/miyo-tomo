@@ -401,6 +401,54 @@ the existing loop's `no_basename`/`collision` cases too — would make the new
 sentence true of kinds that were never a conflict `ignore`/`keep_in_inbox`
 choice to begin with.
 
+### Two Different Questions, Then Two Different Sentences (owner ruling 2026-09-27)
+
+T4.2 shipped the design above but not its consequence in the rendered text:
+`_render_unresolved_conflict_bullet`'s `vault_collision_held` branch reused
+`entry.get("reason")` verbatim — the exact string "Attachment not filed"
+already renders for the same source — so "Conflicts not resolved by rename"
+read as "Attachment not filed" minus its remedy clause. For
+`100 Inbox/Scans/keep.jpg` / `Atlas/keep.jpg` that produced:
+
+```
+- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'
+- ⚠️ **Attachment not filed:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'. no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all.
+```
+
+Owner ruling: keep both blocks — the design above still holds — but stop
+repeating the sentence. Each bullet states only the facts its own question
+needs:
+
+- **"Conflict remains"** — the decision the owner made and its consequence.
+  For a `vault_collision_held` source (`keep_in_inbox` or a degraded rename
+  alike — the finer distinction between the two stays `reason`'s, told only
+  by "Attachment not filed"): they declined to file it over the occupied
+  destination, named by path, and it stays unmoved. For an `ignore`d
+  conflict: the move goes out unchanged against the occupied destination and
+  will be refused when the run is applied.
+- **"Attachment not filed"** — unchanged: where the file is now (`reason`)
+  and what, if anything, to do about it (the `remedy` clause).
+
+The same fixture now renders:
+
+```
+- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — the owner declined to file it over the occupied destination `Atlas/keep.jpg`, so it stays unmoved
+- ⚠️ **Attachment not filed:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'. no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all.
+```
+
+Both sources are still named in both blocks — nothing was removed from
+either loop, and `vault_collision_held` stays in the "Attachment not filed"
+loop so a reader scanning what did not get filed still finds it there — but
+no sentence is now common to both. `test_conflict_remains_never_repeats_
+attachment_not_filed` (`tests/test_037_t4_2_unresolved_summary.py`) pins
+this by splitting each rendered bullet into sentences and asserting the two
+blocks' sentence sets do not intersect, rather than comparing whole lines —
+a whole-line comparison would miss a repeated clause sitting inside a longer
+"Attachment not filed" line. It also pins that neither bullet lost the fact
+only it carries: the remedy clause ("no action needed …") stays exclusive to
+"Attachment not filed", and the destination path stays visible in "Conflict
+remains".
+
 ### Two Source Lists, Not One Filter
 
 `unresolved_conflicts` is `[s for s in skipped_assets if kind ==

@@ -1,4 +1,4 @@
-# version: 0.23.0
+# version: 0.24.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -694,20 +694,38 @@ def _render_unresolved_conflict_bullet(entry: dict) -> str:
 
     Two distinct shapes reach here (see `unresolved_conflicts`'s own
     docstring above): a `skipped_assets` entry (has `kind`, always
-    `vault_collision_held` by construction) already carries a full `reason`
-    from `_build_move_asset_actions` — reused verbatim, never re-derived.
-    An `attachment_conflict_remedies` entry (`ignore`) carries none — Pass 2
-    emitted its move unchanged and nothing built a sentence for it before now,
-    so this is that sentence's only home.
+    `vault_collision_held` by construction), and an `attachment_conflict_
+    remedies` entry (`ignore`), which carries no `reason` at all — Pass 2
+    emitted its move unchanged and nothing built a sentence for it before
+    T4.2, so this bullet is that sentence's only home.
+
+    Owner ruling 2026-09-27: a `vault_collision_held` source is deliberately
+    named in BOTH this block and "Attachment not filed" (see the module
+    docstring and docs/tomo/scripts/lib/render_md.md:384-402) — but the two
+    bullets must not state the same SENTENCE. "Attachment not filed" reused
+    `reason` (`_build_move_asset_actions`'s own words) plus a remedy clause;
+    this block used to reuse that exact `reason` string too, so the second
+    bullet read as the first minus the remedy. This block instead states the
+    decision and its consequence in its own words — "Attachment not filed"
+    is left to answer where the file is and what to do about it, and stays
+    the only place a `reason` clause or the remedy clause appears.
     """
     source = entry.get("source") or "?"
     if "kind" in entry:
-        detail = entry.get("reason") or "the owner chose to keep it in the inbox"
+        # Both `keep_in_inbox` and a degraded rename land here as one kind
+        # (spec 037 T3.1) and are described the same way: whichever path led
+        # here, the owner is left having declined to file over the occupied
+        # name — `reason`'s finer distinction between the two belongs to
+        # "Attachment not filed" alone.
+        destination = entry.get("destination") or "?"
+        detail = (
+            f"the owner declined to file it over the occupied destination "
+            f"`{destination}`, so it stays unmoved"
+        )
     else:
         detail = (
-            "the owner chose to leave the move unchanged against the "
-            "occupied destination — Hashi will refuse this move when the "
-            "run is applied"
+            "the move goes out unchanged against the occupied destination — "
+            "it will be refused when the run is applied"
         )
     return f"- ⚠️ **Conflict remains:** `{source}` — {detail}"
 

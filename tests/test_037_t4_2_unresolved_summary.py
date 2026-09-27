@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t4_2_unresolved_summary.py — spec 037 T4.2: Pass 2's summary
 names what it did not resolve.
 
@@ -26,6 +26,18 @@ un-appliable actions" section:
 ADR-11 (`render_md.py:668`, owner ruling 2026-09-27): no rendered line in
 either report names a wire action (`move_asset`) — both use the `⚠️
 **<label>:**` convention `_withdrawn_links_note` and Pass 1 already share.
+
+Second owner ruling, same date: a `vault_collision_held` source appears in
+BOTH reports by design (see the module docstring in `render_md.py` and
+`docs/tomo/scripts/lib/render_md.md:384-402`), but the two bullets rendered
+the same `reason` sentence twice — "Conflicts not resolved by rename" was
+built as "Attachment not filed" plus a remedy clause, not as its own answer.
+The ruling: keep both blocks, stop repeating the sentence. "Conflict
+remains" states the decision and its consequence; "Attachment not filed"
+states where the file is and what to do about it. Neither may lose a fact
+it alone carries. `test_conflict_remains_never_repeats_attachment_not_filed`
+below pins this mechanically — by sentence, not by a vaguer "different
+wording somewhere" check.
 """
 from __future__ import annotations
 
@@ -239,3 +251,62 @@ def test_no_conflicts_renders_no_new_block_at_all():
 def test_no_conflicts_and_no_other_skips_opens_no_skipped_heading():
     md = render_instructions_md([], BASE_METADATA, {})
     assert "## Skipped" not in md
+
+
+# ---------------------------------------------------------------------------
+# 7. Owner ruling 2026-09-27: the two blocks answer different questions in
+#    the rendered TEXT too, not only by design — no sentence appears twice
+# ---------------------------------------------------------------------------
+
+def _bullet_sentences(line: str) -> set[str]:
+    """The clause(s) after the leading `` `source` — `` of one rendered
+    bullet, as a set of trimmed sentences. Splitting on ". " (rather than
+    diffing whole lines) is what lets this catch a REPEATED CLAUSE inside a
+    longer line, not just two identical lines — "Attachment not filed"
+    always carries two clauses (reason + remedy) where "Conflict remains"
+    carries one, so a whole-line comparison would never find the overlap
+    this section is built to prevent."""
+    detail = line.split(" — ", 1)[1]
+    return {s.strip().rstrip(".") for s in detail.split(". ") if s.strip()}
+
+
+def test_conflict_remains_never_repeats_attachment_not_filed():
+    """A `vault_collision_held` source (KEEP_SOURCE here) renders under BOTH
+    "Attachment not filed" and "Conflicts not resolved by rename" by design
+    (docs/tomo/scripts/lib/render_md.md:384-402) — that duplication of WHICH
+    sources are named is intentional. What must NOT happen is the two
+    bullets stating the same sentence: pre-ruling, "Conflict remains" used
+    `entry.get("reason")` verbatim, which is exactly "Attachment not filed"'s
+    own first clause.
+
+    Mutation: in `_render_unresolved_conflict_bullet`, replace the
+    `vault_collision_held` branch's `detail` with `entry.get("reason")` (the
+    pre-ruling code) — this test goes red because `sentences_remains` then
+    contains the exact clause `sentences_filed` already carries.
+    """
+    md = render_instructions_md([], _three_remedy_metadata(), {})
+    lines = md.splitlines()
+    filed_lines = [ln for ln in lines if ln.startswith("- ⚠️ **Attachment not filed:**")]
+    remains_lines = [ln for ln in lines if ln.startswith("- ⚠️ **Conflict remains:**")]
+    assert filed_lines and remains_lines, md
+
+    sentences_filed: set[str] = set()
+    for ln in filed_lines:
+        sentences_filed |= _bullet_sentences(ln)
+    sentences_remains: set[str] = set()
+    for ln in remains_lines:
+        sentences_remains |= _bullet_sentences(ln)
+
+    overlap = sentences_filed & sentences_remains
+    assert not overlap, f"a sentence appears in both blocks: {overlap}"
+
+    # Neither bullet may lose the fact it alone carries: "Attachment not
+    # filed" is the only place the remedy ("no action needed ...") is
+    # stated, and "Conflict remains" is the only place naming the decision's
+    # consequence for the KEEP_SOURCE entry without also restating the
+    # remedy instruction.
+    filed_line = next(ln for ln in filed_lines if KEEP_SOURCE in ln)
+    remains_line = next(ln for ln in remains_lines if KEEP_SOURCE in ln)
+    assert "no action needed" in filed_line, filed_line
+    assert "no action needed" not in remains_line, remains_line
+    assert "Atlas/keep.jpg" in remains_line, remains_line

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
 from __future__ import annotations
 
@@ -8,11 +8,19 @@ import re
 from lib.attachment_index import _EMBED_RE
 
 # A fenced code block: an opening line of 3+ backticks (with an optional
-# info string), through the next line that is itself a run of 3+ backticks.
-# A `![[...]]` inside one is example text in the note body, not a dependency
-# of it, and must survive a rewrite untouched.
+# info string), through the next line that is itself a run of 3+ backticks —
+# or through end-of-body if the fence is never closed. A `![[...]]` inside one
+# is example text in the note body, not a dependency of it, and must survive a
+# rewrite untouched.
+#
+# The `|\Z` alternative was added 2026-09-27 after the T3.3 compliance review
+# measured the gap: without it, an UNCLOSED fence matched nothing at all, so
+# every embed after a dangling ``` was rewritten as if it were live body text.
+# Obsidian renders an unclosed fence as code to the end of the note, so the
+# permissive reading is also the correct one.
 _FENCE_RE = re.compile(
-    r"^[ \t]*`{3,}[^\n]*\n.*?^[ \t]*`{3,}[ \t]*$", re.DOTALL | re.MULTILINE
+    r"^[ \t]*`{3,}[^\n]*\n.*?(?:^[ \t]*`{3,}[ \t]*$|\Z)",
+    re.DOTALL | re.MULTILINE,
 )
 
 

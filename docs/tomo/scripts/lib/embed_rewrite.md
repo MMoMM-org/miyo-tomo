@@ -99,3 +99,38 @@ means a plain `[[...]]` link is left alone by construction — the same
 The corresponding test (`test_plain_link_without_the_bang_is_left_alone`) is
 regression insurance on borrowed reader logic, not coverage of new rewrite
 behaviour.
+
+## An Unclosed Fence Runs to the End of the Note (v0.2.0, 2026-09-27)
+
+`_FENCE_RE` originally required a closing run of backticks. The T3.3 compliance
+review measured what that meant for a dangling fence: an unclosed ``` matched
+**nothing at all**, so every `![[...]]` after it was treated as live body text
+and rewritten.
+
+The `|\Z` alternative closes it. Obsidian renders an unclosed fence as code to
+the end of the note, so extending the fence to end-of-body is not the cautious
+reading — it is the correct one, and it agrees with what the owner sees.
+
+Pinned by `test_an_embed_after_an_unclosed_fence_is_left_alone`, whose named
+mutation is removing that alternative. Closed-fence behaviour is byte-identical
+either way, verified before the change: the two regexes return the same span for
+a well-formed fence.
+
+## Why the Two-Owner Assertion Lives in the Render Loop, Not Here (v0.2.0)
+
+The plan requires that two different confirmed items embedding one renamed
+attachment are both rewritten. The first test written for it called
+`rewrite_renamed_embeds` twice with two bodies and asserted both came back
+rewritten — and **could not fail**. This function is stateless: it rebuilds its
+rename map from its arguments on every call, so "rewrite only the first owner"
+is not expressible against it. The named mutation could never bite, which the
+T3.3 compliance review spotted and measurement confirmed.
+
+Being several owners is a property of the *loop*, not of this function —
+`owner_source_items` (`render_actions.py:720`) is a list precisely because
+several confirmed items can embed one attachment. So the assertion moved to
+`test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten`,
+which runs the real render loop over two items and reads both files off disk.
+Its mutation — hoisting the call out of the per-item loop — fails that test and
+**only** that test (measured 2026-09-27); the single-item end-to-end anchor stays
+green under it, which is why the loop-level test was needed at all.

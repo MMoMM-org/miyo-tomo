@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t3_3_embed_rewrite.py — spec 037 T3.3.
 
 T3.1 made `_build_move_asset_actions` recompute a renamed attachment's
@@ -85,17 +85,19 @@ def test_note_embedding_it_twice_has_both_rewritten():
     )
 
 
-def test_two_different_owning_notes_are_both_rewritten():
-    """Mutation: rewrite only the first owner — `owner_source_items`
-    (`render_actions.py:720`) exists precisely because several different
-    notes can embed one attachment. Each note's body is rewritten
-    independently (the function carries no state across calls), so two
-    separate owners of the same renamed attachment both come out rewritten."""
+def test_an_embed_after_an_unclosed_fence_is_left_alone():
+    """Mutation: drop the `|\Z` alternative from `_FENCE_RE`, so a fence is
+    only recognised when a CLOSING run of backticks exists. An unclosed fence
+    then matches nothing at all and every embed after a dangling ``` is
+    rewritten as if it were live body text.
+
+    Measured 2026-09-27 (T3.3 compliance review, then again before this fix):
+    under the old regex this exact body came back with the embed rewritten.
+    Obsidian renders an unclosed fence as code to the end of the note, so
+    leaving it alone is the correct reading, not merely the cautious one."""
+    body = "Intro.\n```\ncode\n![[Scans/karte.png]]\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    body_a = rewrite_renamed_embeds("Note A: ![[Scans/karte.png]]", [SOURCE], remedies)
-    body_b = rewrite_renamed_embeds("Note B: ![[Scans/karte.png]]", [SOURCE], remedies)
-    assert body_a == "Note A: ![[karte (2).png]]"
-    assert body_b == "Note B: ![[karte (2).png]]"
+    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
 
 
 def test_untouched_attachment_in_the_same_note_is_left_verbatim():
@@ -302,3 +304,79 @@ def test_end_to_end_written_file_agrees_with_the_emitted_move_asset(
     assert "Scans/karte.png" not in written, (
         f"written note still references the vacated inbox path: {written!r}"
     )
+
+
+def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten(
+    monkeypatch, tmp_path
+):
+    """Two DIFFERENT confirmed items in one run, both embedding the same
+    renamed attachment — both written bodies must name the new basename.
+
+    Mutation: hoist the `rewrite_renamed_embeds(...)` call out of the
+    per-item loop so it runs once, on the first item only. The second note
+    is then written with the vacated `Scans/karte.png` still in it.
+
+    This test replaces an earlier one that called `rewrite_renamed_embeds`
+    twice with two separate bodies and asserted both came back rewritten.
+    That could not fail: the function is stateless and rebuilds its rename
+    map from its arguments on every call, so "rewrite only the first owner"
+    is not expressible against it — the named mutation could never bite.
+    Measured 2026-09-27. The plan bullet is a property of the RENDER LOOP
+    (`owner_source_items`, `render_actions.py:720`, is a list because several
+    confirmed items can embed one attachment), so it is asserted here,
+    through the loop, against both files on disk.
+    """
+    def _item(item_id, title, source_path):
+        return {
+            "id": item_id, "action": None, "title": title,
+            "template": "templates/atomic.md", "source_path": source_path,
+            "tags": [], "parent_moc": "", "parent_mocs": [],
+            "destination": "Atlas/202 Notes/", "summary": "",
+            "attachments": [SOURCE], "candidate_mocs": [],
+        }
+
+    suggestions = {
+        "confirmed_items": [
+            _item("S01", "Kai", "kai.md"),
+            _item("S02", "Zwei", "zwei.md"),
+        ],
+        "daily_updates": [],
+        "skipped": [],
+        "attachment_conflict_remedies": [
+            {"source": SOURCE, "remedy": "rename", "proposed_name": PROPOSED_NAME},
+        ],
+    }
+    suggestions_file = tmp_path / "suggestions.json"
+    suggestions_file.write_text(json.dumps(suggestions), encoding="utf-8")
+    cfg_file = tmp_path / "vault-config.yaml"
+    cfg_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(ir, "load_config", lambda _path: dict(_IR_CFG))
+    monkeypatch.setattr(ir, "KadoClient", lambda: MagicMock())
+    monkeypatch.setattr(ir, "read_template", lambda _c, _r: "# {{title}}\n{{body}}\n")
+    monkeypatch.setattr(ir, "read_note_body", lambda *_a, **_kw: "")
+    monkeypatch.setattr(
+        ir, "render_via_script",
+        lambda *_a, **_kw: "Both notes embed it: ![[Scans/karte.png]]\n",
+    )
+
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "instruction-render.py",
+        "--suggestions", str(suggestions_file),
+        "--output-dir", str(out_dir),
+        "--config", str(cfg_file),
+    ])
+    assert ir.main() == 0
+
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest) == 2, f"both items must render: {manifest}"
+
+    for entry in manifest:
+        written = (out_dir / entry["rendered_file"]).read_text(encoding="utf-8")
+        assert f"![[{PROPOSED_NAME}]]" in written, (
+            f"{entry['rendered_file']} was not rewritten: {written!r}"
+        )
+        assert "Scans/karte.png" not in written, (
+            f"{entry['rendered_file']} still names the vacated path: {written!r}"
+        )

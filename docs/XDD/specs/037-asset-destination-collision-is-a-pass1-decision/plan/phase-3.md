@@ -100,10 +100,10 @@ Establishes that the owner's tick is what the vault actually receives.
 
 - [ ] **T3.2 The coverage audit needs no new arithmetic — proven** `[activity: testing]`
 
-  1. Prime: Read `_subtract_skipped_assets` and its docstring `[ref: instructions-diff.py:858-883]`, and `derive_expected`'s `move_asset` count `[ref: instructions-diff.py:465-476]`
-  2. Test: a run with one `keep_in_inbox` conflict passes the audit with expected == actual `[ref: PRD/F3-AC5]`; a run with one `ignore` conflict passes, the move counted as any other `[ref: SDD/Interface Specifications]`; a run with one `rename` passes — **and asserts the audit counts the RENAMED destination**, not the original, which is the one arithmetic ADR-3 could plausibly have missed; a run mixing all three passes; **`instructions-diff.py` is byte-identical to its pre-change version** — the assertion that ADR-3 held
+  1. Prime: Read `_subtract_skipped_assets` and its docstring `[ref: instructions-diff.py:922-946]`, and `derive_expected`'s `move_asset` count `[ref: instructions-diff.py:481-493]` — note it keys on the SOURCE path and counts by `len()`; read `summarize_actual`'s raw per-kind tally `[ref: instructions-diff.py:520-523]`. **Neither side ever reads a `move_asset`'s `destination`.** Confirm that yourself before writing anything: it is the fact the whole task turns on
+  2. Test: a run with one `keep_in_inbox` conflict passes the audit with expected == actual `[ref: PRD/F3-AC5]`; a run with one `ignore` conflict passes, the move counted as any other `[ref: SDD/Interface Specifications]`; a run with one **successful** `rename` passes — like `ignore` it produces no `skipped_assets` entry and is counted as any other move, because the audit is **destination-agnostic** and needs no visibility into the new basename `[ref: SDD solution.md:234-235]`; a run with a **degraded** `rename` (`proposed_name: null`) passes — this is the load-bearing rename variant, since it DOES add a `vault_collision_held` entry `[ref: SDD/Runtime View — A rename that lost its name]`; a run mixing all of them passes `[ref: PRD/F3-AC5]`; **the audit FAILS when the withheld move is unaccounted** — take the `keep_in_inbox` fixture, strip its `vault_collision_held` entry from `tomo.skipped_assets`, and assert `RESULT: FAIL` with a `move_asset` count mismatch. This is the fixture-level mutation that stands in for a code mutation on a task with no production code, and it is the only bullet here that proves `_subtract_skipped_assets`'s loop is load-bearing rather than coincidentally agreeing
   3. Implement: nothing in `instructions-diff.py`. If a change proves necessary, that is a deviation: stop, record it, and revisit ADR-3 before proceeding `[ref: plan/README.md; Deviation Protocol]`
-  4. Validate: run `instructions-diff.py` against fixtures for all three remedies and assert exit 0
+  4. Validate: run `instructions-diff.py` against fixtures for every remedy and assert exit 0; separately confirm `git diff main...HEAD -- '*instructions-diff*'` is empty — labelled as *"confirms no edit was made"*, NOT as proof of ADR-3, which it is not
   5. Success: ADR-3 is demonstrated rather than asserted `[ref: SDD/ADR-3]`; the paired-consumer trap that aborted Pass 2 on 2026-09-15 is closed by evidence
 
 - [ ] **T3.3 A renamed attachment takes its embeds with it** `[activity: backend-api]`
@@ -145,3 +145,31 @@ Establishes that the owner's tick is what the vault actually receives.
 > names exactly that, and the bullet requires asserting the move's absence in `actions`.
 > Also anchored the in-run-collision bullet to two named precedent test files, both verified
 > present — the same correction T3.0 took.
+
+> **Deviation recorded 2026-09-27 — T3.2 rewritten before dispatch; it proved nothing as written.**
+> The guardian blocked it. Four findings, all factual corrections rather than open questions,
+> and all verified against the code before applying:
+> (1) **"asserts the audit counts the RENAMED destination" described a mechanism that does not
+> exist.** `derive_expected` keys `move_asset` on the SOURCE path and counts by `len()`
+> (`instructions-diff.py:481-493`); `summarize_actual` is a raw per-kind tally
+> (`:520-523`). Neither side ever reads a `move_asset`'s `destination`. Worse than wrong: an
+> implementer chasing that wording could have added destination-aware code to
+> `instructions-diff.py` — precisely the deviation this task's own Implement step forbids. The
+> load-bearing rename variant is the DEGRADED one, which adds a `vault_collision_held` entry;
+> a successful rename is audited exactly like `ignore`.
+> (2) **"`instructions-diff.py` is byte-identical to its pre-change version" was vacuous.**
+> `git diff main...HEAD -- '*instructions-diff*'` is empty by construction — nothing in Phase 3
+> touches the file — so the assertion proved only that nobody typed in it. It also named no
+> comparison target, the same defect T3.0 was blocked for; unlike T3.0's version, which compares
+> a captured pre-change *runtime output*, this compared source bytes. Demoted to a Validate
+> check labelled as what it actually is.
+> (3) **The plan was happy-path only.** Not acceptable for a task whose Success line claims to
+> close a trap by evidence: every bullet confirmed today's numbers add up and none would notice
+> if the reconciliation were missing. With no production code to mutate, the honest equivalent
+> is a FIXTURE mutation — strip the `vault_collision_held` entry and assert the audit reports
+> `RESULT: FAIL`. Added as the sixth bullet, and it is the only one that proves
+> `_subtract_skipped_assets` is load-bearing rather than coincidentally agreeing.
+> (4) Two stale line references in Prime, inherited from `solution.md:107`'s context table —
+> `_subtract_skipped_assets` is at 922-946, not 858-883 (which lands inside
+> `_subtract_withheld_moves`'s docstring), and `derive_expected`'s attachment block is at
+> 481-493, not 465-476. Corrected here, in the SDD, and in `plan/README.md`.

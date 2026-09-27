@@ -91,7 +91,7 @@ Read before starting any phase:
   spec extends; read it before writing anything, because the shape to follow is
   already there
 - `tomo/scripts/lib/render_actions.py:691-782` — `_build_move_asset_actions`
-- `tomo/scripts/instructions-diff.py:858-883` — `_subtract_skipped_assets`
+- `tomo/scripts/instructions-diff.py:922-946` — `_subtract_skipped_assets`
 
 Project commands:
 

@@ -104,7 +104,7 @@ without touching the paired consumer.
 | `tomo/scripts/suggestions-reducer.py:1452` | `render_attachments_preamble` — the document already has an attachments voice to extend |
 | `tomo/scripts/lib/render_actions.py:691-782` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
 | `tomo/scripts/lib/render_actions.py:509` | `_asset_dest_join` — the only place a destination is computed |
-| `tomo/scripts/instructions-diff.py:858-883` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
+| `tomo/scripts/instructions-diff.py:922-946` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
 | `tomo/scripts/lib/kado_client.py:313,176` | `path_exists`, `read_file_bytes` — probed live on a PNG, 2026-09-15 |
 
 ### Implementation Boundaries

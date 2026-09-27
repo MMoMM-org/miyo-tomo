@@ -1,4 +1,4 @@
-# version: 0.26.4
+# version: 0.26.5
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -2665,7 +2665,9 @@ def build_actions(
       9. skip
 
     `attachment_conflict_remedies` (spec 037 T3.0) is forwarded verbatim to
-    `_build_move_asset_actions`, which currently accepts and ignores it.
+    `_build_move_asset_actions`, which consults it per attachment (T3.1) to
+    choose a renamed destination, withhold a held move, or leave an ignored
+    one unchanged.
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]

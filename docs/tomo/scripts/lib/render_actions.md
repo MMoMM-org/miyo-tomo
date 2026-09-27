@@ -1439,14 +1439,20 @@ casefold())` is ever read. That ordering is load-bearing, not incidental:
   exact same `claimed.get(...)` / `claimed[...] = ...` lines every other
   attachment uses — no separate code path, no separate collision logic.
 
-**What breaks if a future task moves the lookup below the claimed check:**
-the claimed-destination test in this file
-(`test_a_remedys_destination_still_goes_through_the_claimed_check`) would
-still pass by accident for a `rename` (its recomputed destination would just
-never get compared against `claimed` at all, so a collision would silently
-overwrite instead of being reported) — the test asserts the SKIP, not the
-ordering, so a regression here needs the destination-collision fixture, not a
-narrower unit test on lookup placement. **What breaks if it moves above the
+**What breaks if a future task moves the lookup below the claimed check:** a
+`rename`'s recomputed destination would never be compared against `claimed`, so
+two renames landing on the same new name would both be emitted and the second
+would overwrite the first on apply. `test_a_remedys_destination_still_goes_through_the_claimed_check`
+catches exactly this — **measured, 2026-09-27**, by moving the whole remedy
+block below the claimed check and registration: the test fails on
+`assert len(actions) == 1`, seeing two moves both bound for `orig.png`.
+
+The implementer's own report claimed this test "would pass by accident" because
+it asserts the skip rather than the ordering, and the first version of this
+paragraph repeated that. Both were wrong: the test asserts an action *count*
+alongside the skip, and the count is what bites. Recorded rather than quietly
+deleted, because a WHY doc that claims a test is weaker than it is invites
+someone to bolt on a redundant one. **What breaks if it moves above the
 basename guard:** a malformed `path` with a coincidentally-matching remedy
 record would need `_asset_dest_join` to succeed on `path` before the remedy
 branch could even ask about `proposed_name`, which it cannot — the ValueError

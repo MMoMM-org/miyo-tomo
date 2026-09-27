@@ -1,4 +1,4 @@
-# version: 0.22.0
+# version: 0.23.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -686,6 +686,32 @@ def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
     )
 
 
+def _render_unresolved_conflict_bullet(entry: dict) -> str:
+    """One attachment conflict the owner did NOT resolve by rename (spec 037
+    T4.2, PRD C2/S2): named individually under "## Skipped", same `⚠️
+    **<label>:**` register as `_render_withdrawal_bullet` — an approved item
+    is not fully settled, the same class of fact.
+
+    Two distinct shapes reach here (see `unresolved_conflicts`'s own
+    docstring above): a `skipped_assets` entry (has `kind`, always
+    `vault_collision_held` by construction) already carries a full `reason`
+    from `_build_move_asset_actions` — reused verbatim, never re-derived.
+    An `attachment_conflict_remedies` entry (`ignore`) carries none — Pass 2
+    emitted its move unchanged and nothing built a sentence for it before now,
+    so this is that sentence's only home.
+    """
+    source = entry.get("source") or "?"
+    if "kind" in entry:
+        detail = entry.get("reason") or "the owner chose to keep it in the inbox"
+    else:
+        detail = (
+            "the owner chose to leave the move unchanged against the "
+            "occupied destination — Hashi will refuse this move when the "
+            "run is applied"
+        )
+    return f"- ⚠️ **Conflict remains:** `{source}` — {detail}"
+
+
 def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
     """One withdrawn delete, stated where its absence would otherwise be
     silent: under "## Source Deletions" itself, not only cross-referenced
@@ -871,6 +897,23 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_assets = metadata.get("skipped_assets") or []
     dropped_sources = metadata.get("dropped_sources") or []
     unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    # spec 037 T4.2 (PRD C2/S2): every attachment conflict Pass 2 did NOT
+    # resolve by rename, from the two places that carry one half each —
+    # `skipped_assets` already unifies `keep_in_inbox` and a degraded rename
+    # (both land as `kind: vault_collision_held`, spec 037 T3.1) under
+    # "**Attachment not filed**" below, but `ignore` never reaches
+    # `skipped_assets` at all: `_build_move_asset_actions` emits its move
+    # unchanged and reports nothing (render_actions.py:819-823), so an
+    # `ignore` source is invisible everywhere else in this document. Filtering
+    # `attachment_conflict_remedies` on `remedy != "rename"` looks like a
+    # one-list shortcut and is wrong: a degraded rename's OWN remedy field
+    # still reads "rename" (only its `proposed_name` is null), so that filter
+    # drops it — it must come from `skipped_assets`, which already carries the
+    # degrade, not from re-deriving it off `remedy` a second time.
+    attachment_conflict_remedies = metadata.get("attachment_conflict_remedies") or []
+    unresolved_conflicts = [
+        s for s in skipped_assets if s.get("kind") == "vault_collision_held"
+    ] + [r for r in attachment_conflict_remedies if r.get("remedy") == "ignore"]
     # spec 036 T4.3 (PRD F6-AC1/F6-AC2): a withdrawn delete_source is reported
     # in this same section — never a new top-level heading — so its presence
     # alone (even when every other skip key here is empty) must still open
@@ -884,9 +927,22 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # Deletions" and this section agree on the same withdrawal list.
     withdrawals_by_id, leftover_withdrawals = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
-            or unresolvable_links or delete_withdrawals):
+            or unresolvable_links or delete_withdrawals or unresolved_conflicts):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
+        if unresolved_conflicts:
+            # Named individually, never counted (PRD/C2 — "names each one
+            # rather than counting them"): a count above bullets that already
+            # name every source is redundant when right and misleading the
+            # moment the two drift, which a bare `f"{n} conflicts remain"`
+            # gives no test any way to catch.
+            body_parts.append(
+                "**Conflicts not resolved by rename** — the owner chose "
+                "otherwise, and Pass 2 did not resolve these:")
+            body_parts.append("")
+            for entry in unresolved_conflicts:
+                body_parts.append(_render_unresolved_conflict_bullet(entry))
+            body_parts.append("")
         if skipped_daily:
             body_parts.append(
                 "**Daily note missing** — Create the daily note in Obsidian "
@@ -926,12 +982,21 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 elif kind == "collision":
                     destination = s.get("destination") or "?"
                     remedy = f"rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                elif kind == "vault_collision_held":
+                    # spec 037 T3.1/T4.2: the owner's own choice (keep-in-inbox
+                    # or a rename that degraded to it) — `reason` above already
+                    # says why; there is nothing left for the user to do unless
+                    # they change their mind.
+                    remedy = "no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all"
                 else:
                     # A missing or unrecognized kind must never silently fall
                     # back to either remedy above — that is how a third skip
                     # reason would quietly inherit the wrong instruction.
                     remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
-                body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
+                # ADR-11 (render_md.py:668): no executor internals in the
+                # rendered text — `move_asset` is a wire action name, not a
+                # word the owner should ever need to know.
+                body_parts.append(f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}.")
             body_parts.append("")
         if dropped_sources:
             body_parts.append(

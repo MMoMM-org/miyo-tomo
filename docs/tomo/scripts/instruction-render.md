@@ -802,3 +802,23 @@ the inbox with its attachment, and the run reports the collision. Re-running
 Pass 2 after the reported collision is resolved files everything correctly —
 this pass holds no memo of the earlier clash. See SDD/Runtime View, "A renamed
 embed is written before the move is known to survive."
+
+## `attachment_conflict_remedies` Reaches The Renderer's Metadata Dict Too (spec 037 T4.2)
+
+`main()` has read `attachment_conflict_remedies` since T3.0 and forwarded it
+to `build_actions` (see "The Remedy Is Read AND Forwarded" above), but the
+`render_instructions_md` metadata dict never got a copy — the SAME shape as
+that section describes, one level further down the chain: a transport with
+one leg missing compiles, runs, and quietly does nothing at the end that
+needed it. Nothing needed it there until T4.2's `## Skipped` addition
+(`## Skipped` Gains a Second, Independent Report, `docs/tomo/scripts/lib/
+render_md.md`) needed to see which sources were `ignore`d — `skipped_assets`
+alone cannot say that; `ignore` never produces an entry there.
+
+Deliberately NOT projected into `instructions.json`'s `tomo` block, unlike
+`skipped_assets`, `destination_clashes`, and friends: `instructions-diff`
+does not need it (an `ignore`d move is still a normal, counted `move_asset`
+action — the audit already reconciles it correctly, same as `merged_moc_
+proposals`'s "not an audit input" reasoning above), and nothing else reads
+`instructions.json` for this. The renderer's dict is the only consumer this
+task has.

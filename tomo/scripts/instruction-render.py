@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.61.0
+# version: 0.62.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1120,6 +1120,11 @@ def main() -> int:
             "merged_moc_proposals": merged_moc_proposals,
             "unresolvable_moc_links": unresolvable_links,
             "delete_withdrawals": delete_withdrawals,
+            # spec 037 T4.2: reaches `main()` at line ~374 already, but was
+            # used only for the embed rewrite (render_actions.py:439-441) and
+            # never forwarded to the renderer — the same missing-transport gap
+            # T3.0 fixed for suggestion-parser -> instruction-render.
+            "attachment_conflict_remedies": attachment_conflict_remedies,
         },
         cfg,
     )

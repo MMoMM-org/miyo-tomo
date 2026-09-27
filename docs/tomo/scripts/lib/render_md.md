@@ -362,3 +362,83 @@ document has no visual signal that this line is the one place where
 (`⚠️` + bold lead-in + em-dash + explanation) rather than inventing a new
 shape keeps the whole document's warning vocabulary in one place instead of
 two.
+
+## `vault_collision_held` Was Live On HEAD With No Renderer (spec 037 T4.2)
+
+Phase 3 (spec 037) taught `_build_move_asset_actions` to emit `skipped_assets`
+entries with `kind: "vault_collision_held"` for a `keep_in_inbox` remedy and
+for a `rename` that degraded to one (`proposed_name: null` — SDD:292, "a
+rename that lost its name"). Every Phase 3 test asserted on that `skipped_
+assets` list as DATA. None of them rendered it, so the `## Skipped` loop's
+`if "no_basename" / elif "collision" / else <loud placeholder>` branch — see
+"The `kind` Discriminator" above — fell through to `else` for the one kind
+that ships most often (rename is the ticked default; `keep_in_inbox` is what
+an owner picks INSTEAD of it). A live `keep_in_inbox` conflict rendered `(no
+remedy defined for skip kind 'vault_collision_held' — check render_md.py)` —
+correct behaviour by the branch's own design (an unrecognised kind must not
+silently inherit a wrong remedy), wrong by omission: `vault_collision_held`
+was never unrecognised, just never given an `elif`. Fixed by adding the
+branch; its remedy text says nothing needs doing — `reason` (already built by
+`_build_move_asset_actions`) is what explains why.
+
+## `## Skipped` Gains a Second, Independent Report For The Same Attachments (spec 037 T4.2, PRD C2/S2)
+
+"**Attachment not filed**" (the `skipped_assets` loop above) and
+"**Conflicts not resolved by rename**" (`_render_unresolved_conflict_bullet`)
+both render under `## Skipped`, and a `vault_collision_held` source appears in
+BOTH. That is not an oversight of the union computed for the second block —
+it is drawing from a different question. The first answers "what happened to
+this file" with full detail (`_build_move_asset_actions`'s own `reason`
+string). The second answers "which approved conflicts did Pass 2 NOT resolve
+by rename", a strictly narrower and reader-facing question the PRD (C2/S2)
+asks for by name, and the ONLY place an `ignore`d conflict is reported at
+all — `ignore` never touches `skipped_assets` (`render_actions.py:819-823`
+emits its move unchanged and records nothing), so before this task an
+`ignore`d source appeared nowhere in the rendered document. Two overlapping
+answers to two different questions is not duplication in the sense CON-2
+would object to; the alternative — folding "conflict remains" language into
+the existing loop's `no_basename`/`collision` cases too — would make the new
+sentence true of kinds that were never a conflict `ignore`/`keep_in_inbox`
+choice to begin with.
+
+### Two Source Lists, Not One Filter
+
+`unresolved_conflicts` is `[s for s in skipped_assets if kind ==
+"vault_collision_held"] + [r for r in attachment_conflict_remedies if remedy
+== "ignore"]` — reading from BOTH transports the metadata dict carries,
+not one. The single-list shortcut, `[r for r in attachment_conflict_remedies
+if remedy != "rename"]`, reads as equivalent and is not: a degraded rename's
+OWN `attachment_conflict_remedies` entry still says `"remedy": "rename"` —
+only its `proposed_name` came back null. `_build_move_asset_actions` is what
+performs the degrade (`render_actions.py:780-784`), and it performs it INTO
+`skipped_assets`, not back onto the `attachment_conflict_remedies` record
+that caused it. Filtering the latter on `remedy != "rename"` silently drops
+every degraded rename from this report — the exact class of loss `remedy:
+"rename", proposed_name: null` exists to make visible to a downstream
+consumer, and this file is one. `skipped_assets` already carries the degrade
+correctly (that is what the `kind == "vault_collision_held"` branch above
+this one renders), so this block reads it from there instead of re-deriving
+it a second way.
+
+### Names, Never Counts (PRD/C2)
+
+The intro sentence above the bullets states no number. C2's own words are
+"names each one rather than counting them" — a count sentence
+(`f"{n} conflicts remain: ..."`) is redundant the moment it agrees with the
+bullets beneath it and misleading the moment it does not, and nothing forces
+the two to move together the way a hand-written intro and a computed list
+never do reliably. `test_no_sentence_counts_the_conflicts`
+(`tests/test_037_t4_2_unresolved_summary.py`) pins this with a regex over the
+whole document, not a per-sentence check, since the count could as easily
+have leaked into a different sentence than the one under test.
+
+### ADR-11 Reaches the Existing Loop Too
+
+Fixing `vault_collision_held` touched the same bullet the other two kinds
+(`no_basename`, `collision`) share, and the owner's 2026-09-27 ruling was that
+ADR-11 ("no executor internals in the rendered text") applies to all three at
+once: the bullet dropped its `` `move_asset` → `` prefix — a wire action name
+that told the reader nothing they needed — for the `⚠️ **Attachment not
+filed:**` lead-in, matching the convention above. `attachment_conflict_
+remedies` entries never carried a wire action name to begin with, so the new
+block's bullets (`⚠️ **Conflict remains:**`) started clean.

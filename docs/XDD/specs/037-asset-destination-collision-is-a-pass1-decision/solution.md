@@ -304,6 +304,39 @@ worth stating rather than relying on — the first is decided in the renderer an
 the parser, the second in `_build_move_asset_actions`, and a change to either
 does not carry to the other.
 
+#### A renamed embed is written before the move is known to survive
+
+The embed rewrite happens at **render time** — `instruction-render.py` between
+line 518, where the body is produced, and 551, where it is written. The move
+actions are not built until line 607. So the rewrite cannot know what
+`_build_move_asset_actions` will decide, and one case exists where they
+disagree: a renamed destination still goes through the in-run `claimed` check,
+and can be dropped as `kind: collision` if another attachment in the same run
+claimed that exact name first.
+
+**The outcome is a held note, not a mis-filed one.** Only
+`vault_collision_held` is excluded from `suppress_moves_for_unfiled_attachments`
+(`render_actions.py:1447`); a `collision` entry still suppresses the owning
+note's move. So the note stays in the inbox **with its attachment**, and the
+collision is reported. There is no cross-folder dangling embed and no data loss
+— the 2026-09-15 failure mode is not reachable this way.
+
+The residue is narrower: the held inbox note's body now names the basename the
+rename intended, while the file beside it still carries its original name. Both
+are in the inbox, together, and the run reported why.
+
+**Owner ruling 2026-09-27: accepted and documented rather than engineered out.**
+Two alternatives were considered. Moving the write-to-disk after `build_actions`
+would make the rewrite consult the actions actually emitted — strictly correct,
+and a restructuring of the loop every Pass 2 runs through, for a corner case
+that loses nothing. Pre-checking the run's proposed names against each other
+before rendering would be narrower, but it duplicates the `claimed` rule in a
+second place, and two implementations of one rule are how they drift apart.
+
+Re-running Pass 2 after resolving the reported collision files everything
+correctly; the pass holds no memo of the earlier clash
+(`suppress_moves_for_unfiled_attachments`'s own stated posture).
+
 #### `vault_collision_held` does not hold the owning note
 
 `suppress_moves_for_unfiled_attachments` (`render_actions.py:1331`) keeps an owning

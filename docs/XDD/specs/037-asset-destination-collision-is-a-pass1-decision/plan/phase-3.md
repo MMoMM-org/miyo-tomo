@@ -108,11 +108,11 @@ Establishes that the owner's tick is what the vault actually receives.
 
 - [ ] **T3.3 A renamed attachment takes its embeds with it** `[activity: backend-api]`
 
-  1. Prime: Read where the rendered note body is assembled `[ref: instruction-render.py:550-610]` and how `![[...]]` is recognised today `[ref: lib/attachment_index.py:24-40]` — it only reads, there is no rewriter to extend; read the 2026-09-15 end state — `![[Scans/karte.png]]` in an Atlas note `[ref: README.md; Context]`
-  2. Test: a renamed attachment's owning note embeds the **new** basename — **mutation: emit the move without the rewrite**, leaving the note pointing at a name the run did not file; a note embedding it twice has **both** rewritten — **mutation: `str.replace` with `count=1`**; a note embedding two attachments, one renamed and one not, keeps the untouched one verbatim — **mutation: rewrite every embed in the body rather than the matched target**; an embed carrying an alias or an anchor survives with alias and anchor intact — **mutation: replace the whole `![[...]]` span rather than its target portion**; a `![[...]]` inside a fenced code block is left alone — **mutation: rewrite without the fence guard** `[ref: attachment_index.py:24]`; a plain `[[...]]` link is left alone — **mutation: drop the `!` from the match** `[ref: attachment_index.py:24]`
+  1. Prime: Read the per-item render loop in `instruction-render.py` — `attachment_conflict_remedies` is read at **line 373**, before the loop, in scope throughout; the loop runs **434-588**; `rendered` is produced at **518**; `rendered_path.write_text(rendered, ...)` at **551** is the last point the body can still change. **Rewrite between 518 and 551.** Match `item.get("attachments", [])` (line 452, already full inbox-relative paths) against the remedies by `source`. Do NOT read `550-610` as body assembly — that span is the write (551), `manifest.append` (582) and the `build_actions` dispatch (607). `_build_move_asset_actions` (`render_actions.py:691`, invoked from 607) computes the final move/skip outcome only after this loop has written every file to disk, so the rewrite must recompute the renamed basename itself from `remedy_entry["proposed_name"]` rather than consulting it. Read how `![[...]]` is recognised today `[ref: lib/attachment_index.py:24-40]` — it only READS, and it has no fence handling either, so bullets 5 and 6 below are new logic rather than an extension. Read the 2026-09-15 end state in **this spec's own** `README.md` Context section (`![[Scans/karte.png]]`), not the repo-root README
+  2. Test: a renamed attachment's owning note embeds the **new** basename — **mutation: emit the move without the rewrite**, leaving the note pointing at a name the run did not file; **a path-prefixed original embed `![[Scans/karte.png]]` becomes the BARE basename `![[karte (2).png]]`** — owner ruling 2026-09-27, and this is the literal 2026-09-15 artifact — **mutation: keep the original folder prefix (`Scans/karte (2).png`)**, which points at a folder the file has left, and **mutation: emit the full new path**, which hard-codes `concepts.asset` into every rewritten body; a note embedding it twice has **both** rewritten — **mutation: `str.replace` with `count=1`**; **two different confirmed items both embedding the same renamed attachment are both rewritten** — **mutation: rewrite only the first owner**, which `owner_source_items` (`render_actions.py:720`) exists precisely because it can be several; a note embedding two attachments, one renamed and one not, keeps the untouched one verbatim — **mutation: rewrite every embed in the body rather than the matched target**; **an attachment is matched to its literal embed text by basename** — `item["attachments"]` holds resolved paths while the body holds whatever the owner typed, and `inbox-triage.py` keeps `embed_target` only for UNRESOLVED refs (`:325,340`), never for resolved ones (`:321`) — **mutation: match on the full resolved path**, which finds nothing for a bare `![[karte.png]]`; an embed carrying an alias or an anchor survives with alias and anchor intact — **mutation: replace the whole `![[...]]` span rather than its target portion**; a `![[...]]` inside a fenced code block is left alone — **mutation: rewrite without the fence guard**; a plain `[[...]]` link is left alone — **mutation: drop the `!` from the match** (`attachment_index.py:24`'s `_EMBED_RE` is the shape to reuse; this bullet is regression insurance on borrowed reader logic, not coverage of new behaviour, and should say so)
   3. Implement: rewrite the embed target for every owning note when the remedy is `rename`, in `instruction-render.py`
-  4. Validate: full suite; `ruff`; prove RED by emitting the move without the rewrite and asserting the note points at a name that no longer exists
-  5. Success: no rendered note references a name the run did not file `[ref: PRD/F3-AC1]`; the basename survives verbatim where unchanged `[ref: render_actions.py:509 docstring]`
+  4. Validate: full suite; `ruff`; prove RED by emitting the move without the rewrite and asserting the note points at a name that no longer exists. **End-to-end anchor:** render a fixture whose item embeds a renamed attachment, then read the WRITTEN file back off disk and assert its embed and the emitted `move_asset`'s destination basename agree — not that the body matches `proposed_name` re-typed by the test
+  5. Success: no rendered note references a name the run did not file, **asserted against the emitted actions rather than against the test's own expectation** `[ref: PRD/F3-AC1]`; the basename survives verbatim where unchanged — by analogy with `_disambiguate_filename`'s CON-2 posture (`render_actions.py:505-509`), which is a precedent for the pattern and NOT the site of embed behaviour
 
 ---
 
@@ -173,3 +173,39 @@ Establishes that the owner's tick is what the vault actually receives.
 > `_subtract_skipped_assets` is at 922-946, not 858-883 (which lands inside
 > `_subtract_withheld_moves`'s docstring), and `derive_expected`'s attachment block is at
 > 481-493, not 465-476. Corrected here, in the SDD, and in `plan/README.md`.
+
+> **Deviation recorded 2026-09-27 — T3.3 rewritten before dispatch; nine findings, two owner rulings.**
+> The guardian blocked it. The structural finding is that the task pointed at the wrong window:
+> `[ref: instruction-render.py:550-610]`, cited as "where the rendered note body is assembled",
+> actually spans the file write (551), `manifest.append` (582) and the `build_actions` dispatch
+> (607). The body is produced at 518 and written at 551, and `attachment_conflict_remedies` is in
+> scope from 373 — so the rewrite has a single legal window, 518-551, and the old reference would
+> have steered an implementer into a post-pass over written files or into `build_actions`, where
+> note bodies do not exist.
+>
+> **Owner ruling 1 — a path-prefixed embed becomes the BARE basename.** `![[Scans/karte.png]]` →
+> `![[karte (2).png]]`. Obsidian resolves by shortest unique path, `voice_render.py:112` already
+> writes bare names, and a full path would hard-code `concepts.asset` into every rewritten body.
+> No bullet had tested the path-prefixed case at all — the literal 2026-09-15 artifact — so two
+> implementers could have passed all six bullets with divergently wrong output.
+>
+> **Owner ruling 2 — the render-time rewrite may outrun the move, and that is accepted.** A
+> renamed destination still passes through the in-run `claimed` check and can be dropped as
+> `kind: collision`. The rewrite has already happened by then. The guardian read this as the
+> spec's own bug class recurring; measured, it is not: only `vault_collision_held` is excluded
+> from `suppress_moves_for_unfiled_attachments` (`render_actions.py:1447`), so a `collision`
+> still holds the owning note, and note and attachment stay in the inbox together with the
+> collision reported. The residue is a held note naming the intended new basename beside a file
+> still carrying the old one. Reordering the write after `build_actions` was rejected as a
+> restructuring of every Pass 2 for a case that loses nothing; a second pre-check was rejected as
+> a duplicate of the `claimed` rule. Recorded in `SDD/Runtime View`.
+>
+> Three coverage gaps closed in the task text: the path-prefixed embed (above); **basename
+> matching between `item["attachments"]`'s resolved paths and the literal body text**, which
+> nothing specified — `inbox-triage.py` keeps `embed_target` only for UNRESOLVED refs (`:325,340`),
+> never resolved ones (`:321`); and **two confirmed items both embedding one renamed attachment**,
+> which is why `owner_source_items` is a list. Two misleading refs corrected: `attachment_index.py`
+> has no fence handling to extend, and `render_actions.py:505-509` is `_disambiguate_filename`'s
+> docstring about note filenames, an analogy rather than the site. The Success line, a whole-run
+> property asserted by six unit checks, gained an end-to-end anchor reading the written file back
+> off disk and comparing it to the emitted action.

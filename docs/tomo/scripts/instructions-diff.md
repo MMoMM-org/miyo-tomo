@@ -239,17 +239,32 @@ finds there — regardless of `kind`. `instruction-render.py` (`:980-984`)
 does not even project `kind` into `instructions.json`; the subtraction was
 never keyed on it and could not be even if a future edit tried.
 
-WHY the test file's sixth case is the one that matters: the first five only
-show today's numbers reconciling — a subtraction that was accidentally a
-no-op (e.g. dead code, or `_subtract_skipped_assets` never actually being
-called for this shape of entry) would pass every one of them just as
-happily. It takes the `keep_in_inbox` fixture's own `instructions.json`
-projection and strips the `skipped_assets` entry — the fixture-level
-equivalent of a code mutation, on a task with no production code to mutate —
-and asserts the audit reports `RESULT: FAIL` with `move_asset` specifically
-mismatched (expected 1, actual 0). That is the only assertion in the file
-that would fail if `_subtract_skipped_assets`'s loop were removed, proving
-the reconciliation is load-bearing rather than coincidentally agreeing.
+WHY the six cases split into two kinds of evidence, which the first version of
+this paragraph got backwards.
+
+**The subtraction's loop is pinned by three of the five happy-path tests** —
+`keep_in_inbox`, the degraded `rename`, and the mixed run. Each carries a real
+`skipped_assets` entry from the render pipeline through the unmodified
+subtraction, so gutting `_subtract_skipped_assets` to `return 0` fails exactly
+those three. **Measured 2026-09-27** in a worktree, twice: by the T3.2
+code-quality review and again independently. `ignore` and a successful `rename`
+produce no entry at all, so they are untouched by that mutation — correctly, as
+the audit is meant to treat them like any other move.
+
+**The sixth test pins something else, and is still worth having.** It takes the
+`keep_in_inbox` fixture's own `instructions.json` projection and strips the
+`skipped_assets` entry, then asserts `RESULT: FAIL` with `move_asset`
+specifically mismatched (expected 1, actual 0). That is a DATA-OMISSION fault —
+a renderer bug, a truncated write, a hand edit — and it is independent of
+whether the subtraction code is intact. It cannot detect a gutted loop, because
+it empties the list the loop would have iterated.
+
+This paragraph originally claimed the sixth test was *the only* one sensitive to
+removing the loop. That was false in both halves: the sixth is insensitive to it
+and three of the others are sensitive. The wrong claim entered in the task text
+that commissioned the test, and was copied into the test file and this document
+before anyone ran the mutation. Recorded rather than quietly rewritten, because
+a reader who trusts it would protect the wrong test.
 
 WHY this could have gone the other way: the mechanism holds because both
 `derive_expected` and `_subtract_skipped_assets` are generic — one counts

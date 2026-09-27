@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t3_2_audit_needs_no_new_arithmetic.py — spec 037 T3.2.
 
 ADR-3 claims `instructions-diff.py` (the Pass-2 coverage audit) needs no new
@@ -28,8 +28,13 @@ reconcile — five tests below run the real Pass-2 pipeline
 (`build_actions` -> `validate_destinations` ->
 `suppress_moves_for_unfiled_attachments` -> `withdraw_unjustified_deletes`,
 `instruction-render.py:607-821`'s own order) through the real, unmodified
-`run_diff` and assert `RESULT: OK`. The sixth — the point of this file — proves
-the reconciliation is load-bearing rather than coincidentally agreeing: it
+`run_diff` and assert `RESULT: OK`. THREE of those five — `keep_in_inbox`,
+the degraded `rename`, and the mixed run — carry a real `skipped_assets`
+entry through the unmodified subtraction, and they are what pin
+`_subtract_skipped_assets`'s loop: replacing its body with `return 0` fails
+exactly those three (measured 2026-09-27). The sixth proves a different and
+complementary fault — that the audit still reports drift when an expected
+entry is ABSENT from the JSON, whatever the cause: it
 takes the `keep_in_inbox` fixture's own `instructions.json` projection and
 strips the `skipped_assets` entry that accounts for the withheld move (a
 fixture-level mutation, standing in for a code mutation on a task with no
@@ -288,9 +293,14 @@ def test_mixing_every_remedy_in_one_run_passes_the_audit(capsys):
 def test_audit_fails_when_the_withheld_move_is_unaccounted(capsys):
     """`[ref: plan/phase-3.md T3.2 bullet 6]` This is the fixture-level
     mutation that stands in for a code mutation on a task with no production
-    code, and it is the only test in this file that proves
-    `_subtract_skipped_assets`'s loop is load-bearing rather than
-    coincidentally agreeing. Mutation: take the `keep_in_inbox` fixture's
+    code. It pins a DATA-OMISSION fault: the audit still reports drift when
+    an expected `skipped_assets` entry is missing from the JSON, whatever the
+    cause. It does NOT pin the presence of `_subtract_skipped_assets`'s loop
+    — this fixture empties that list before the audit runs, so an intact loop
+    and a no-op loop both iterate nothing and this test passes either way
+    (measured 2026-09-27). The loop is pinned by the three tests that carry a
+    real entry through it: `keep_in_inbox`, the degraded `rename`, and the
+    mixed run. Mutation: take the `keep_in_inbox` fixture's
     real `instructions.json` projection and strip its `skipped_assets` entry
     — as a hand edit or a truncated write would. `derive_expected` still
     counts one `move_asset` for Karte's attachment (from the CONFIRMED

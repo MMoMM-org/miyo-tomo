@@ -1461,6 +1461,23 @@ moving the lookup earlier would need it to catch and re-decide on the same
 exception the guard already handles, duplicating that logic rather than
 sequencing it.
 
+**One outcome, two reasons, deliberately not told as one.** `keep_in_inbox`
+and a `rename` that arrived with no name share a branch — both withhold the
+move and both record `kind: vault_collision_held` — but they do NOT share their
+`reason` string, and the split is the point rather than an inconsistency.
+
+A held attachment is the owner's own instruction: they ticked *keep in inbox*.
+A degraded rename is the opposite — they asked for the file to be filed, under
+a name this run could not recover. Reporting the second with the first's "the
+owner chose not to file" wording tells them they decided something they never
+decided, in the one place they find out which file stayed behind.
+
+Every other assertion about these two cases stays green if the strings are
+merged, because the outcome really is identical; only
+`test_a_degraded_rename_is_not_reported_as_the_owners_choice` separates them.
+Found by the T3.1 code-quality review, which read the string rather than only
+the control flow.
+
 **Why `ignore` and "no remedy" are the same branch, not two.** Semantically
 they answer different questions Pass 1 asked — one is an owner's explicit
 choice, the other is "no conflict was ever recorded for this path" — but

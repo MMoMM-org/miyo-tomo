@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t3_1_remedy_outcomes.py — spec 037 T3.1.
 
 T3.0 built the transport: `_build_move_asset_actions` accepts
@@ -310,3 +310,53 @@ def test_a_remedys_destination_still_goes_through_the_claimed_check():
     assert skipped[0]["source"] == "100 Inbox/B/other.png"
     assert skipped[0]["kind"] == "collision"
     assert skipped[0]["destination"] == "Atlas/290 Assets/295 Attachments/orig.png"
+
+
+def test_a_degraded_rename_is_not_reported_as_the_owners_choice():
+    """Mutation: collapse the two `reason` strings back into one, so the
+    degraded-rename case reuses the held case's "the owner chose not to
+    file" wording. Both outcomes are `vault_collision_held` and both
+    withhold the move, so every other assertion in this file stays green
+    under that mutation — only the reported reason distinguishes them.
+
+    The distinction is not cosmetic. A held attachment is the owner's own
+    instruction. A degraded rename is the owner asking to file it under a
+    name this run could not recover, and telling them they *chose* to keep
+    it in the inbox reports a decision they never made.
+    """
+    def _held(remedy, proposed_name):
+        manifest = [
+            _manifest_entry(
+                source_path="karte.md",
+                rendered_file="2026-01-01_0900_karte.md",
+                attachments=["100 Inbox/Scans/karte.png"],
+            ),
+        ]
+        remedies = [
+            _remedy("100 Inbox/Scans/karte.png", remedy, proposed_name=proposed_name)
+        ]
+        _, skipped = _build_move_asset_actions(
+            manifest, INBOX, ASSET_FOLDER, [0],
+            attachment_conflict_remedies=remedies,
+        )
+        assert len(skipped) == 1
+        assert skipped[0]["kind"] == "vault_collision_held"
+        return skipped[0]["reason"]
+
+    chosen = _held("keep_in_inbox", None)
+    degraded = _held("rename", None)
+
+    assert chosen != degraded, (
+        "one outcome, two routes — the owner's own instruction and a rename "
+        f"this run could not honour must not read alike: {chosen!r}"
+    )
+    assert "the owner chose" in chosen
+    assert "the owner chose" not in degraded, (
+        "a degraded rename must never be reported as a choice the owner made: "
+        f"{degraded!r}"
+    )
+    # Both still name the attachment and the occupied destination — the
+    # reason is the one place the owner learns which file stayed put.
+    for reason in (chosen, degraded):
+        assert "100 Inbox/Scans/karte.png" in reason
+        assert "Atlas/290 Assets/295 Attachments/karte.png" in reason

@@ -1,4 +1,4 @@
-# version: 0.26.5
+# version: 0.26.6
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -784,10 +784,25 @@ def _build_move_asset_actions(
             ):
                 # `destination` here is the occupied one Pass 1 found — the
                 # attachment stays put, so nothing is ever claimed for it.
-                reason = (
-                    f"kept in inbox: the owner chose not to file {path!r} "
-                    f"over the occupied destination {destination!r}"
-                )
+                #
+                # One outcome, two reasons, and they must not be told as one:
+                # a held attachment is the owner's own instruction, while a
+                # degraded rename is the owner asking to file it under a name
+                # this run could not recover. Reporting the second as a choice
+                # would tell them they decided something they did not.
+                if remedy == "keep_in_inbox":
+                    reason = (
+                        f"kept in inbox: the owner chose not to file {path!r} "
+                        f"over the occupied destination {destination!r}"
+                    )
+                else:
+                    reason = (
+                        f"kept in inbox: {path!r} was to be filed under a new "
+                        f"name beside the occupied destination "
+                        f"{destination!r}, and that name is no longer "
+                        f"available to this run — it stays in the inbox rather "
+                        f"than being filed under a name the owner did not choose"
+                    )
                 entry = {
                     "source": path, "destination": destination, "reason": reason,
                     "kind": "vault_collision_held", "owner_source_items": owners,

@@ -33,7 +33,7 @@ phase: 4
 
 Establishes that the chain works end to end and that nothing outside Tomo moved.
 
-- [ ] **T4.1 Nothing outside Tomo changed** `[activity: testing]` `[parallel: true]`
+- [x] **T4.1 Nothing outside Tomo changed** `[activity: testing]` `[parallel: true]`
 
   1. Prime: Read `[ref: SDD/External Interfaces]`, `[ref: SDD/Cross-Component Boundaries]` and ADR-5. Read `tomo/schemas/hashi-instructions.schema.json:35` — `properties.tomo` deliberately carries **no** `additionalProperties: false`, and `tests/test_wire_snapshot_parity.py`'s `SANCTIONED_ASYMMETRIES` excludes `/properties/tomo` by name for that reason. Hashi's vendored copy is `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`; its validator is `src/schema/validator.ts` (Ajv2020). **Read-only across that boundary — never edit anything under `Hashi/`**
   2. Test (hermetic, pytest): **no emitted action carries a field absent from the strict action schema** — **mutation: append `"remedy": remedy` (or any stray key) to the `move_asset` dict at `[ref: render_actions.py:838-843]`**, which `additionalProperties: false` at `[ref: hashi-instructions.schema.json:105-116]` rejects. This is the ONE assertion in this task with a reachable mutation; validate a rendered three-remedy instruction set against our own copy of the schema with Python `jsonschema`, the way the repo's existing schema tests do

@@ -35,11 +35,12 @@ Establishes that the chain works end to end and that nothing outside Tomo moved.
 
 - [ ] **T4.1 Nothing outside Tomo changed** `[activity: testing]` `[parallel: true]`
 
-  1. Prime: Read `[ref: SDD/External Interfaces]` and `[ref: SDD/Cross-Component Boundaries]`; locate Hashi's vendored wire schema copy
-  2. Test: `tomo/schemas/hashi-instructions.schema.json` is byte-identical to its pre-change version; no emitted action carries a field absent from that schema; running Hashi's own validator on a fixture instruction set containing all three remedies passes `[ref: memory: check the consumer's VENDORED schema copy]`
-  3. Implement: nothing. A change needed here is a deviation against ADR-5 — stop and revisit it
-  4. Validate: diff the schema against `main`; run the consumer's validator on a real rendered file, never reason from ours
+  1. Prime: Read `[ref: SDD/External Interfaces]`, `[ref: SDD/Cross-Component Boundaries]` and ADR-5. Read `tomo/schemas/hashi-instructions.schema.json:35` — `properties.tomo` deliberately carries **no** `additionalProperties: false`, and `tests/test_wire_snapshot_parity.py`'s `SANCTIONED_ASYMMETRIES` excludes `/properties/tomo` by name for that reason. Hashi's vendored copy is `/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json`; its validator is `src/schema/validator.ts` (Ajv2020). **Read-only across that boundary — never edit anything under `Hashi/`**
+  2. Test (hermetic, pytest): **no emitted action carries a field absent from the strict action schema** — **mutation: append `"remedy": remedy` (or any stray key) to the `move_asset` dict at `[ref: render_actions.py:838-843]`**, which `additionalProperties: false` at `[ref: hashi-instructions.schema.json:105-116]` rejects. This is the ONE assertion in this task with a reachable mutation; validate a rendered three-remedy instruction set against our own copy of the schema with Python `jsonschema`, the way the repo's existing schema tests do
+  3. Implement: nothing. A change needed in `tomo/schemas/hashi-instructions.schema.json` is a deviation against ADR-5 — stop, record it, revisit ADR-5 before proceeding `[ref: plan/README.md; Deviation Protocol]`
+  4. Validate (environment-dependent, recorded in the close-out rather than pinned as a test, since a sibling repo may not be checked out elsewhere): (a) `git diff main...HEAD -- tomo/schemas/` touches only `suggestions-doc.schema.json` — label it *"confirms no edit was made"*, NOT proof of ADR-5; (b) `diff` our copy against Hashi's checked-out copy and record the result — the existing parity tests do offline producer↔mirror parity and a network fetch of upstream, but **never a direct filesystem comparison against the sibling working tree**, so this is the one genuinely new check here; (c) run **Hashi's own Ajv2020** over a real rendered three-remedy instruction set, from `cd /Volumes/Moon/Coding/MiYo/Hashi` against their installed `node_modules`, writing nothing under `Hashi/`. Its value is proof-by-execution against the consumer's real compiled validator rather than our Python `jsonschema` — not new coverage: it can only fail on the same stray-key mutation as bullet 2
   5. Success: Hashi receives no new field and needs no change `[ref: SDD/ADR-5]`; the contrast with spec 036's consumerless `depends_on` is preserved
+
 
 - [ ] **T4.2 Pass 2's summary names what it did not resolve** `[activity: backend-api]` `[parallel: true]`
 
@@ -67,6 +68,48 @@ Establishes that the chain works end to end and that nothing outside Tomo moved.
   5. Success: all three remedies are demonstrated against a live vault `[ref: PRD/F3]`; the fixture is restored afterwards so the next run starts from the same state `[ref: scratchpad/restore-trigger-notes.sh]`
 
 ---
+
+> **Deviation recorded 2026-09-27 — T4.1 rewritten before dispatch. ADR-5 holds, measured, and for a better reason than the plan gave.**
+> The guardian blocked it. The headline is a clean result rather than a defect:
+> **there is no ADR-5 violation, and it was consequence-free by design.**
+> `skipped_assets` — the field carrying spec 037's new `kind: vault_collision_held`
+> — is not a named property in `hashi-instructions.schema.json` at all. It lives
+> under `properties.tomo`, which deliberately carries no `additionalProperties:
+> false` (`:35`, *"kept permissive so Tomo can evolve the block without a
+> coordinated round-trip"*), and `tests/test_wire_snapshot_parity.py`'s
+> `SANCTIONED_ASYMMETRIES` excludes `/properties/tomo` by name. Hashi's checked-out
+> copy is byte-identical to ours. Someone paid this cost in advance so a spec like
+> this one would need no cross-repo handshake — the same shape as ADR-3 reusing
+> `skipped_assets` rather than adding a records list.
+>
+> That result also hollowed out most of the task. Three findings:
+> (1) **Bullet 1 was vacuous** — `git diff main...HEAD -- tomo/schemas/` touches only
+> `suggestions-doc.schema.json`, so "byte-identical to its pre-change version" was
+> true before any test ran, and named no comparison target. Third instance of the
+> defect `plan/phase-1.md:45` names, after T3.0 and T3.2. Demoted to a Validate
+> check labelled as what it is.
+> (2) **The `keep_in_inbox` half of the validator bullet cannot fail.** Because
+> `properties.tomo` is permissive, a `vault_collision_held` entry cannot make
+> Hashi's validator reject anything, whatever shape it takes — unfalsifiable by
+> design, not by oversight. And a successful `rename` and an `ignore` are
+> *wire-identical* (`render_actions.py:838`, SDD:234), so the fixture exercises two
+> shapes, not three. The task had implied three independent checks.
+> (3) **One real mutation exists** and the plan never named it: append a stray key
+> to the `move_asset` dict at `render_actions.py:838-843`, which the action schema's
+> `additionalProperties: false` (`:105-116`) rejects. That is now bullet 2, the only
+> hermetic test in the task.
+>
+> The split matters: the pytest assertion is hermetic and uses our own schema copy,
+> while the two environment-dependent proofs — a direct filesystem `diff` against
+> Hashi's working tree, and running Hashi's real Ajv2020 — move to Validate and the
+> close-out, because a sibling repo may not be checked out elsewhere. The direct
+> filesystem diff is the one genuinely new check: existing parity tests compare
+> producer to mirror offline and fetch upstream over the network, but never the
+> sibling working tree. Running Hashi's own compiled validator adds no coverage —
+> it can only fail on the same stray-key mutation — but it is proof by execution
+> against the consumer's real validator instead of our Python `jsonschema`, which
+> is worth recording once. Verified runnable read-only: their Ajv2020 compiles their
+> schema from their own `node_modules`, writing nothing under `Hashi/`.
 
 > **Deviation recorded 2026-09-27 — T4.2 rewritten before dispatch, and it uncovered a shipped defect.**
 > The guardian blocked it. Five findings, one owner ruling, and one live bug.

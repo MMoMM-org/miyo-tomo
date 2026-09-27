@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t3_0_remedy_transport.py — spec 037 T3.0.
 
 Before this file, `parse_attachment_conflict_remedies` (T2.4) had ZERO
@@ -48,10 +48,13 @@ assert exact equality, rather than merely asserting the run does not raise.
 
 Deliberately OUT of scope (T3.1/T3.3, not this file):
   - `_build_move_asset_actions` consulting `remedy` to choose a
-    destination, withhold a move, or leave one unchanged.
+    destination, withhold a move, or leave one unchanged for a MATCHED
+    source — shipped in T3.1, covered by
+    `tests/test_037_t3_1_remedy_outcomes.py`.
   - Any embed rewrite.
 `_build_move_asset_actions` is exercised here only to prove it ACCEPTS the
-new argument without raising — its behaviour must be unchanged by it.
+new argument without raising, and that a source the argument does not name
+is unaffected by it (T3.1's "conflict gone by Pass 2" case).
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -404,17 +407,25 @@ def test_conflict_free_run_manifest_and_instructions_are_byte_identical(
 
 # ---------------------------------------------------------------------------
 # _build_move_asset_actions accepts the new keyword without raising or
-# changing its output — T3.0's scope boundary made concrete: the argument
-# is accepted and ignored here, never consulted.
+# changing its output for a source the argument does not name — T3.0's own
+# scope boundary was "accepted and ignored, never consulted"; T3.1
+# (tests/test_037_t3_1_remedy_outcomes.py) made a MATCHED source's remedy
+# change the outcome, so this now anchors only the unmatched-source case —
+# the plain move a conflict gone by Pass 2 still gets.
 # ---------------------------------------------------------------------------
 
-def test_build_move_asset_actions_accepts_and_ignores_the_new_argument():
+def test_build_move_asset_actions_ignores_an_unmatched_remedy():
     manifest = [{
         "item_key": "100 Inbox/Scans/karte.md",
         "source_path": "100 Inbox/Scans/karte.md",
         "attachments": [SOURCE],
     }]
-    remedies = [{"source": SOURCE, "remedy": "rename", "proposed_name": PROPOSED_NAME}]
+    # Names a DIFFERENT source than the one this manifest attaches — must
+    # have no effect on it (T3.1's "conflict gone by Pass 2" case).
+    remedies = [{
+        "source": "100 Inbox/Scans/unrelated.png",
+        "remedy": "rename", "proposed_name": PROPOSED_NAME,
+    }]
 
     without_arg, skipped_without = RENDER_ACTIONS._build_move_asset_actions(
         manifest, "100 Inbox/", "Atlas/290 Assets/295 Attachments/", [0]

@@ -1412,3 +1412,73 @@ implements T3.1 — at which point that test is meant to be replaced, not
 weakened. An unused parameter is normally a smell; here it is a seam with a
 named successor and a dated one. If T3.1 is ever abandoned, this parameter goes
 with it rather than being left as decoration.
+
+**Superseded by T3.1 below.** The identity assertion above now holds only for
+a source `attachment_conflict_remedies` does not name — a matched source
+changes the outcome, by design. `tests/test_037_t3_0_remedy_transport.py`'s
+test was narrowed to the unmatched case rather than deleted, since it still
+anchors something real (T3.1's own "conflict gone by Pass 2" rule).
+
+## The Remedy Lookup Sits Between the Basename Guard and the Claimed Check (spec 037 T3.1, v0.26.4)
+
+`_build_move_asset_actions` now consults `remedy` at one specific point in the
+loop: after `_asset_dest_join(asset_folder, path)` has already succeeded (the
+no-basename skip is unconditional — a malformed inbox path is a defect in
+`path` itself, orthogonal to any remedy), and before `claimed.get(destination.
+casefold())` is ever read. That ordering is load-bearing, not incidental:
+
+- **After the basename guard** — a remedy can only apply to an attachment
+  that resolved to a real destination. There is no `remedy` case for a path
+  with no basename; conflating the two would need a second reason string
+  vocabulary for the same failure.
+- **Before the claimed check** — `rename` and the degraded-`keep_in_inbox`
+  cases replace `destination` (or skip claiming it at all) BEFORE the
+  collision guard runs, so the guard always sees the destination that will
+  actually be requested, never the pre-Pass-1 one. `ignore` and "no remedy at
+  all" leave `destination` as computed from `path` and fall through to the
+  exact same `claimed.get(...)` / `claimed[...] = ...` lines every other
+  attachment uses — no separate code path, no separate collision logic.
+
+**What breaks if a future task moves the lookup below the claimed check:**
+the claimed-destination test in this file
+(`test_a_remedys_destination_still_goes_through_the_claimed_check`) would
+still pass by accident for a `rename` (its recomputed destination would just
+never get compared against `claimed` at all, so a collision would silently
+overwrite instead of being reported) — the test asserts the SKIP, not the
+ordering, so a regression here needs the destination-collision fixture, not a
+narrower unit test on lookup placement. **What breaks if it moves above the
+basename guard:** a malformed `path` with a coincidentally-matching remedy
+record would need `_asset_dest_join` to succeed on `path` before the remedy
+branch could even ask about `proposed_name`, which it cannot — the ValueError
+path has no destination to hand to a `rename` or `keep_in_inbox` branch, so
+moving the lookup earlier would need it to catch and re-decide on the same
+exception the guard already handles, duplicating that logic rather than
+sequencing it.
+
+**Why `ignore` and "no remedy" are the same branch, not two.** Semantically
+they answer different questions Pass 1 asked — one is an owner's explicit
+choice, the other is "no conflict was ever recorded for this path" — but
+Pass 2 never re-checks the live vault (`SDD/Error Handling`: the asset-folder
+listing is a Pass-1-only read), so there is no destination Pass 2 could
+compute that would differ between them. Two branches producing identical code
+would be a maintenance seam for no behavioural reason; the docstring names
+both explicitly instead so a reader does not have to infer their equivalence
+from the fall-through.
+
+**`rename` with `proposed_name: None` degrades to `keep_in_inbox`, not
+`ignore`** — owner ruling 2026-09-25 (`SDD/Runtime View`, "A rename that lost
+its name"). This is checked in the SAME branch as `keep_in_inbox` itself
+(`remedy == "keep_in_inbox" or (remedy == "rename" and not proposed_name)`)
+rather than as a separate `elif`, because the two cases are the same outcome
+by the owner's ruling, not a coincidence a future refactor should undo.
+
+**`vault_collision_held` excluded from `suppress_moves_for_unfiled_
+attachments`.** That pass holds an owning note for every OTHER
+`skipped_assets` `kind` by default — it was written before this `kind`
+existed, so a new kind inherits "hold the note" unless it opts out. The
+exclusion is a single `continue` keyed on `entry.get("kind")`, placed as the
+FIRST statement in the `for entry in skipped_assets` loop, so the entry never
+reaches `moves_by_source` lookup, `dropped_ids`, or `pending` — it produces no
+suppression record at all, not an empty or no-op one. `requirements.md:374-
+382` records this as the owner's standing ruling: *keep in inbox* names the
+attachment, not the note.

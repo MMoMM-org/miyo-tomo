@@ -268,6 +268,42 @@ and the audit counts it as any other move. Only Hashi later refuses it.
    note's rendered body, so no filed note names a file the run did not file.
 6. The coverage audit subtracts held entries through the existing path.
 
+#### A `rename` that lost its name degrades to `keep_in_inbox`
+
+There are **two** ways a rename can have no name, and only one of them was
+decided before implementation began.
+
+The first is ADR-4's exception: Pass 1 tries 99 variants, finds none free, and
+writes `proposed_name: null` into the document. Pass 1 then renders *keep in
+inbox* pre-ticked instead of rename, and T2.4's parser resolves a
+ticked-anyway rename to `ignore`. That path is closed, at render time and again
+at parse time.
+
+The second was not. Pass 1 computes a name normally, the document shows it, the
+owner ticks rename having read it — and by Pass 2 the structured
+`suggestions-doc.json` no longer carries that `source`. A stale `--suggestions-doc`,
+a hand edit, a re-run of Pass 1 between review and render. The markdown carries
+no impossibility marker, so `_resolve_attachment_remedy` correctly returns
+`rename`; `_join_attachment_conflict_remedies` then finds no matching entry and
+yields `proposed_name: None`. The state arrives at `_build_move_asset_actions`
+as `{remedy: "rename", proposed_name: None}`, and until 2026-09-25 nothing in
+this spec said what to do with it.
+
+**It degrades to `keep_in_inbox`** — no move, `kind: vault_collision_held`, the
+owning note filed as usual. The owner asked for a rename to a specific name that
+has since been lost; not acting is the closest available thing to their
+instruction. Emitting the move instead (the `ignore` behaviour, which the sibling
+impossible-rename case uses) would send out a move certain to be refused, and
+ADR-4's exception already names that *"the late failure this spec exists to
+remove"*. Failing the run outright was considered and rejected: it contradicts
+the standing degrade-gracefully posture and turns one attachment's problem into
+a stopped Pass 2.
+
+The two cases reach the same outcome by different routes, which is a coincidence
+worth stating rather than relying on — the first is decided in the renderer and
+the parser, the second in `_build_move_asset_actions`, and a change to either
+does not carry to the other.
+
 #### `vault_collision_held` does not hold the owning note
 
 `suppress_moves_for_unfiled_attachments` (`render_actions.py:1331`) keeps an owning
@@ -294,6 +330,7 @@ embed reaches back into the inbox. F3-AC2 still holds — nothing *fails* at app
 | `read_file_bytes` raises | `same_file: null`; remedies unchanged | A comparison that did not happen is not evidence either way |
 | Destination is a folder | Conflict; rename remains the default | The only remedy that can succeed |
 | No remedy ticked / rename cleared | `ignore` | ADR-4 |
+| `remedy: rename` arrives with `proposed_name: null` | Degrades to `keep_in_inbox` — no move, `kind: vault_collision_held`, the owning note still filed | Owner ruling 2026-09-25. **Not** the ADR-4 exception's case — see below |
 | Two remedies ticked | `ignore` | Rule 4 — a contradiction is not a first-wins race |
 | The conflict is gone by Pass 2 | The plain move is emitted | A stale conflict changes nothing |
 | A conflict appears only at apply | Hashi refuses and reports | Not modelled, by the scoping principle |

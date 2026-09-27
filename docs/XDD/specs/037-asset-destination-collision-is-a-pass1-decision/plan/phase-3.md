@@ -93,7 +93,7 @@ Establishes that the owner's tick is what the vault actually receives.
 - [ ] **T3.1 Each remedy produces its own outcome** `[activity: backend-api]`
 
   1. Prime: Read `_build_move_asset_actions` end to end `[ref: render_actions.py:691-782]` — the global `seen` dedup, the `claimed` map, the skip entries and their `kind`; read `suppress_moves_for_unfiled_attachments` `[ref: render_actions.py:1331-1362]`; the remedies arrive on the `attachment_conflict_remedies` parameter T3.0 added — records of `{source, remedy, proposed_name}`, always a list `[ref: SDD/Interface Specifications; attachment_conflict_remedies]`
-  2. Test: `rename` emits a move to `_asset_dest_join(asset_folder, proposed_name)` — **mutation: use `proposed_name` as the destination directly**, which writes to the vault root and is the defect `SDD:215` was corrected for `[ref: PRD/F3-AC1, Rule 5]`; `keep_in_inbox` emits no move and one `skipped_assets` entry with `kind: vault_collision_held` `[ref: PRD/F3-AC2]`; **the owning note is still filed** — **mutation: omit the `vault_collision_held` exclusion from `suppress_moves_for_unfiled_attachments`**, which holds the note and is the behaviour the owner ruled against `[ref: requirements.md:374-382]`; `ignore` emits the move unchanged against the occupied destination and records **nothing** in `skipped_assets` — **mutation: make it behave like `keep_in_inbox`** `[ref: PRD/F3-AC3]`; a `rename` whose `proposed_name` is `null` cannot be emitted — assert which of the three it degrades to and why `[ref: SDD/ADR-4 exception]`; a conflict gone by Pass 2 emits the plain move — **mutation: treat an unmatched source as `keep_in_inbox`** `[ref: PRD/Scenario 5]`; the in-run collision path is untouched — **mutation: let a remedy short-circuit the `claimed` check** `[ref: PRD/F3-AC4]`
+  2. Test: `rename` emits a move to `_asset_dest_join(asset_folder, proposed_name)` — **mutation: use `proposed_name` as the destination directly**, which writes to the vault root and is the defect `SDD:215` was corrected for `[ref: PRD/F3-AC1, Rule 5]`; `keep_in_inbox` emits no move and one `skipped_assets` entry with `kind: vault_collision_held` — **mutation: build the skip entry but omit the `continue`**, so the move is emitted *as well as* recorded, which a test inspecting only `skipped` cannot see; assert the absence of the move in `actions`, not merely the presence of the skip entry `[ref: PRD/F3-AC2]`; **the owning note is still filed** — **mutation: omit the `vault_collision_held` exclusion from `suppress_moves_for_unfiled_attachments`**, which holds the note and is the behaviour the owner ruled against `[ref: requirements.md:374-382]`; `ignore` emits the move unchanged against the occupied destination and records **nothing** in `skipped_assets` — **mutation: make it behave like `keep_in_inbox`** `[ref: PRD/F3-AC3]`; a `rename` arriving with `proposed_name: null` degrades to `keep_in_inbox` — no move, `kind: vault_collision_held`, the owning note still filed — **mutation: degrade to `ignore` instead**, which emits a move certain to be refused and is the late failure this spec exists to remove. Reachable only via the markdown/JSON desync route, NOT via ADR-4's 99-variants case, which the renderer and T2.4's parser already close `[ref: SDD/Error Handling; SDD/Runtime View — A rename that lost its name]`; a conflict gone by Pass 2 emits the plain move — **mutation: treat an unmatched source as `keep_in_inbox`** `[ref: PRD/Scenario 5]`; the in-run collision path is untouched — **mutation: let a remedy short-circuit the `claimed` check**, which also lets a second in-run duplicate with no remedy through; anchor it by running `tests/test_031_t2_4_destination_collision_guard.py` and `tests/test_034_t6_0_case_folded_destination_keys.py` green, unmodified `[ref: PRD/F3-AC4]`
   3. Implement: consult `remedy` before claiming a destination; exclude `vault_collision_held` from the ADR-6 suppression pass; keep the in-run collision path untouched
   4. Validate: full suite; `ruff`; prove the `ignore` test RED by making it behave like `keep_in_inbox`
   5. Success: the strongest outcome any remedy produces is a move to a free name `[ref: PRD/Rule 6]`; the in-run collision behaviour is unchanged `[ref: SDD/Constraints, additive only]`
@@ -126,3 +126,22 @@ Establishes that the owner's tick is what the vault actually receives.
 > mutation of its own and two precedent tests named, both verified to exist. The guardian
 > also confirmed the other four mutations turn their assertions red and found no no-op
 > among them.
+
+> **Deviation recorded 2026-09-25 — T3.1's test list sharpened, and one bullet turned out
+> to be undecided policy rather than a test.**
+> The guardian blocked it. Two findings, one of which had to go to the owner:
+> (1) **"a `rename` whose `proposed_name` is `null` … assert which of the three it degrades
+> to and why" was asking the implementer to invent policy**, and its `[ref: SDD/ADR-4
+> exception]` citation was wrong. ADR-4's exception covers the *99-variants* case, which the
+> renderer and T2.4's parser already close at two separate points. The state is reachable by
+> a different route entirely — a markdown/JSON desync, where the owner ticks a rename whose
+> name the structured doc later cannot supply — and no document decided it. Both candidate
+> outcomes were defensible by analogy, which is the signature of invented policy. **Owner
+> ruled: degrade to `keep_in_inbox`.** Written into `SDD/Error Handling` and a new
+> `SDD/Runtime View` section that keeps the two routes distinct, because they reach the same
+> outcome through different code and a change to one does not carry to the other.
+> (2) **The `keep_in_inbox` bullet named no mutation.** A test inspecting only `skipped`
+> would pass an implementation that records the skip *and* emits the move. The mutation now
+> names exactly that, and the bullet requires asserting the move's absence in `actions`.
+> Also anchored the in-run-collision bullet to two named precedent test files, both verified
+> present — the same correction T3.0 took.

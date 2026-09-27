@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.60.1
+# version: 0.61.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -47,6 +47,7 @@ from lib.doc_frontmatter import (  # noqa: E402
     build_tomo_block,
     merge_tomo_block_into_markdown,
 )
+from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
 from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
 from lib.render_actions import (  # noqa: E402,F401
@@ -431,6 +432,14 @@ def main() -> int:
     used_filenames: set[str] = set()
     errors = 0
 
+    # spec 037 T3.3: source -> remedy dict, so a renamed attachment's owning
+    # note(s) get their embed rewritten to the new bare basename. Built once,
+    # read per item below — a note can embed more than one attachment, and
+    # the same attachment can be embedded by more than one note.
+    attachment_remedies_by_source = {
+        r["source"]: r for r in attachment_conflict_remedies
+    }
+
     for item in confirmed:
         item_id = item.get("id", "?")
         # Render any item that has a template — that means it needs a file.
@@ -536,6 +545,16 @@ def main() -> int:
                 "note may be re-ingested by triage before apply",
                 file=sys.stderr,
             )
+
+        # 4c. Rewrite embed targets for attachments this run's owner renamed
+        # (spec 037 T3.3). Must happen before the write below (551) — that is
+        # the last point the body can still change. `_build_move_asset_actions`
+        # computes the actual move only after every file in this loop has
+        # already been written to disk, so the new basename is recomputed
+        # here from `proposed_name` rather than read back from a move action.
+        rendered = rewrite_renamed_embeds(
+            rendered, attachments, attachment_remedies_by_source
+        )
 
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)

@@ -736,3 +736,69 @@ choice is discarded without a word. That is an acceptable posture for a
 stale-cache edge case and an unacceptable one for a typo in a key name, which is
 why the name is now fixed in the SDD's Interface Specifications rather than
 living only in three files that happen to agree.
+
+## The Embed Rewrite Lives Between the Render and the Write, Not in `render_actions.py` (spec 037 T3.3)
+
+The 2026-09-15 failure this spec exists to close (README.md Context) left an
+Atlas note filed correctly while its body still embedded
+`![[Scans/karte.png]]` — an inbox path the attachment had never actually left,
+because nothing renamed that attachment in that run. T3.1 taught
+`_build_move_asset_actions` to recompute a renamed attachment's destination.
+This task is the other half of a rename: the file moves under a new name and
+the note that embeds it has to say so.
+
+**Why here, and why this window.** `_build_move_asset_actions` runs from
+`build_actions`, which is called (instruction-render.py:~614) only after every
+item in the per-item loop has already rendered its body and written it to
+disk. By the time a move action exists, the body it would need to correct is
+already on disk under the old embed. The rewrite therefore cannot consult the
+move action — it has to recompute the new basename itself, straight from
+`attachment_conflict_remedies[source].proposed_name`, the same source data
+`_build_move_asset_actions` reads. The call sits between the render
+(`rendered = render_via_script(...)`) and the write
+(`rendered_path.write_text(rendered, ...)`) for the same reason C5's filename
+disambiguation and the tomo: block stamp do — it is the last point in the loop
+the body can still change before it becomes a fact on disk.
+
+**Why a separate module (`lib/embed_rewrite.py`) instead of inlining the regex
+here.** The rewrite reuses `attachment_index._EMBED_RE` — the one place this
+repo already parses `![[...]]` vs `[[...]]` — but needs to WRITE, not just
+read: preserve an alias/anchor tail, skip fenced code blocks, and rebuild the
+bare new basename. None of that belongs mixed into the per-item render loop's
+control flow, and attachment_index.py is a reader with no fence-handling of
+its own to extend.
+
+**Why basename matching, accepted rather than engineered around.** A
+confirmed item's `attachments[]` holds resolved, inbox-relative paths;
+`inbox-triage.py` only keeps the owner's as-typed `embed_target` for
+UNRESOLVED references (`:325,340`) — a resolved one is only ever a path. But
+the note body holds whatever the owner actually typed: bare, path-qualified,
+aliased, anchored, or none of those if the attachment isn't embedded at all.
+Basename is the only handle common to both sides. This breaks, in principle,
+when one note embeds two different attachments from different inbox folders
+that happen to share a basename and only one of them is renamed — the rewrite
+cannot tell which literal embed text (if both are bare, e.g. two
+`![[karte.png]]`) belongs to which source path, and could rewrite the wrong
+one or both. This case is accepted, not handled: it requires the SAME basename
+to collide twice in one run from two different folders, which the destination
+`claimed` check in `_build_move_asset_actions` already treats as a naming
+conflict on the FILING side, so it is already a rare, reported situation
+before the embed rewrite ever runs.
+
+**Why the render-time rewrite may outrun the move (owner ruling
+2026-09-27).** A renamed destination still passes through the in-run
+`claimed` check in `_build_move_asset_actions`, which runs after every body in
+this loop is already written. A second attachment in the same run can claim
+that exact renamed destination first, dropping the first as `kind: collision`
+— after its owning note's embed has already been rewritten to the name that
+lost the race. Two fixes were considered and rejected: moving the write-to-
+disk after `build_actions` (correct, but restructures a loop every Pass 2 run
+goes through, for a corner case that loses nothing), and pre-checking proposed
+names against each other before rendering (duplicates the `claimed` rule in a
+second place). The accepted outcome is a held note, not a mis-filed one:
+`kind: collision` (unlike `vault_collision_held`) still suppresses the owning
+note's move via `suppress_moves_for_unfiled_attachments`, so the note stays in
+the inbox with its attachment, and the run reports the collision. Re-running
+Pass 2 after the reported collision is resolved files everything correctly —
+this pass holds no memo of the earlier clash. See SDD/Runtime View, "A renamed
+embed is written before the move is known to survive."

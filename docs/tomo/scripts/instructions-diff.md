@@ -257,9 +257,20 @@ confirmed attachments by source path, the other subtracts one expected
 `move_asset` per `skipped_assets` entry, neither aware of *why* an entry
 exists. A future remedy that changes the **count** of `move_asset` actions
 per attachment (e.g. splitting one attachment into several destination
-candidates before settling on one) would break this silently, because
+candidates before settling on one) would desync this counting, because
 `attachments_seen` on the expected side is built from the confirmed item's
 attachment list, one entry per listed path — it has no way to expect more or
-fewer `move_asset` actions than attachments listed. The audit is safe today
+fewer `move_asset` actions than attachments listed.
+
+Not *silently*, though, and the first draft of this paragraph said so wrongly.
+A single such fault surfaces as a visible `[DIFF]`: over- or under-subtracting
+from `expected` without a matching change on the `actual` side always leaves a
+detectable imbalance. Going quiet takes **two** independent faults of opposite
+sign cancelling across different attachments — which is a pre-existing
+limitation of counting `move_asset` in aggregate rather than per item, not
+something spec 037 introduced. Corrected 2026-09-27 after the T3.2 compliance
+review traced the concrete violation scenarios instead of accepting the
+wording; a WHY doc that calls a detectable failure silent invites someone to
+build a guard against a problem the audit already catches. The audit is safe today
 because every spec 037 remedy still resolves to *at most one* `move_asset`
 per attachment (filed, renamed-and-filed, or withheld) — never more.

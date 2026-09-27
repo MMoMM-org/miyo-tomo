@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_037_t4_2_unresolved_summary.py — spec 037 T4.2: Pass 2's summary
 names what it did not resolve.
 
@@ -288,7 +288,17 @@ def test_conflict_remains_never_repeats_attachment_not_filed():
     lines = md.splitlines()
     filed_lines = [ln for ln in lines if ln.startswith("- ⚠️ **Attachment not filed:**")]
     remains_lines = [ln for ln in lines if ln.startswith("- ⚠️ **Conflict remains:**")]
-    assert filed_lines and remains_lines, md
+    # Counts, not just presence. The sentence-set comparison below unions
+    # each block's lines with `|=`, so a bullet rendered TWICE contributes an
+    # identical set and passes silently — the whole additive-duplication class
+    # is invisible to a presence-only assertion. This fixture has exactly one
+    # `vault_collision_held` entry and two unresolved conflicts (that entry
+    # plus the `ignore`d one).
+    # Mutation: append any `unresolved_conflicts` entry to the list twice in
+    # `render_instructions_md`, or drop the `kind` filter so a `no_basename`
+    # entry joins them — the set comparison stays green, this does not.
+    assert len(filed_lines) == 1, f"expected exactly one filed bullet: {filed_lines}"
+    assert len(remains_lines) == 2, f"expected exactly two remains bullets: {remains_lines}"
 
     sentences_filed: set[str] = set()
     for ln in filed_lines:

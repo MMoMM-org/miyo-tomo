@@ -1,4 +1,4 @@
-# version: 0.24.0
+# version: 0.24.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -712,14 +712,24 @@ def _render_unresolved_conflict_bullet(entry: dict) -> str:
     """
     source = entry.get("source") or "?"
     if "kind" in entry:
-        # Both `keep_in_inbox` and a degraded rename land here as one kind
-        # (spec 037 T3.1) and are described the same way: whichever path led
-        # here, the owner is left having declined to file over the occupied
-        # name — `reason`'s finer distinction between the two belongs to
-        # "Attachment not filed" alone.
+        # Both `keep_in_inbox` and a degraded rename land here under one
+        # `kind` (spec 037 T3.1), and this sentence must be true of BOTH.
+        #
+        # It is therefore PASSIVE, deliberately. An earlier version read
+        # "the owner declined to file it" — true of a held attachment, false
+        # of a degraded rename, where the owner asked for a rename and this
+        # run could not recover the name. `render_actions.py`'s own comment
+        # at the site that creates this kind says so in as many words:
+        # "Reporting the second as a choice would tell them they decided
+        # something they did not." Corrected 2026-09-27 after a code-quality
+        # review caught the regression.
+        #
+        # The distinction is not lost, only relocated: `reason` states which
+        # of the two happened, and "Attachment not filed" is the block that
+        # carries `reason`. This block says only that the conflict remains.
         destination = entry.get("destination") or "?"
         detail = (
-            f"the owner declined to file it over the occupied destination "
+            f"it was not filed over the occupied destination "
             f"`{destination}`, so it stays unmoved"
         )
     else:

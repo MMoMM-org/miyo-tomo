@@ -419,20 +419,39 @@ Owner ruling: keep both blocks — the design above still holds — but stop
 repeating the sentence. Each bullet states only the facts its own question
 needs:
 
-- **"Conflict remains"** — the decision the owner made and its consequence.
-  For a `vault_collision_held` source (`keep_in_inbox` or a degraded rename
-  alike — the finer distinction between the two stays `reason`'s, told only
-  by "Attachment not filed"): they declined to file it over the occupied
-  destination, named by path, and it stays unmoved. For an `ignore`d
-  conflict: the move goes out unchanged against the occupied destination and
-  will be refused when the run is applied.
+- **"Conflict remains"** — that the conflict is unresolved, and what follows
+  from it. For a `vault_collision_held` source (`keep_in_inbox` or a degraded
+  rename alike): **it was not filed** over the occupied destination, named by
+  path, and stays unmoved. For an `ignore`d conflict: the move goes out
+  unchanged against the occupied destination and will be refused when the run
+  is applied.
+
+  **That sentence is passive on purpose, and the first version of this section
+  got it wrong.** It read *"they declined to file it"* — and was corrected
+  2026-09-27 after a code-quality review. "Declined" is true of a held
+  attachment and **false of a degraded rename**, where the owner asked for a
+  rename and this run could not recover the name. `render_actions.py`, at the
+  site that creates this very `kind`, already said so:
+
+  > One outcome, two reasons, and they must not be told as one: a held
+  > attachment is the owner's own instruction, while a degraded rename is the
+  > owner asking to file it under a name this run could not recover.
+  > **Reporting the second as a choice would tell them they decided something
+  > they did not.**
+
+  The fix for the duplication had collapsed the two back into one claim about
+  owner intent — trading a duplication defect for an accuracy one, on the
+  sub-case its own tests did not render. The distinction is not lost, only
+  relocated: `reason` says which of the two happened, and "Attachment not
+  filed" is the block that carries `reason`. This block asserts nothing about
+  intent, which is the only thing it cannot know from `kind` alone.
 - **"Attachment not filed"** — unchanged: where the file is now (`reason`)
   and what, if anything, to do about it (the `remedy` clause).
 
 The same fixture now renders:
 
 ```
-- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — the owner declined to file it over the occupied destination `Atlas/keep.jpg`, so it stays unmoved
+- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — it was not filed over the occupied destination `Atlas/keep.jpg`, so it stays unmoved
 - ⚠️ **Attachment not filed:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'. no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all.
 ```
 

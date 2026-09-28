@@ -46,10 +46,20 @@ rewrite should produce the bare basename `![[karte (2).png]]`.
 bash scripts/spec037-fixture.sh snapshot
 ```
 
-Already taken on 2026-09-28; it lives at `$TMPDIR/spec037-fixture-baseline`
-and refuses to overwrite itself. `status` shows drift, `restore` puts the vault
-back. Round-trip tested against an isolated replica — it removes only what a run
-created and leaves pre-existing files alone.
+**This is genuinely your first action** — run it before anything else, in your
+own terminal. The baseline lands at `~/.tomo-spec037-fixture-baseline`, a fixed
+path rather than `$TMPDIR`, because `$TMPDIR` differs between a Claude session
+and a login shell and a baseline taken in one would be invisible to the other.
+
+I could not take it for you: the sandbox blocks writes to `$HOME`, and it should
+be taken by whoever runs the test, on the state they are actually about to test.
+
+The script refuses to overwrite an existing baseline. `status` shows drift,
+`restore` puts the vault back. Round-trip tested on 2026-09-28 against an
+isolated replica of this exact layout: a simulated run-plus-apply (note filed,
+source deleted, asset renamed, new documents written) was detected in full, and
+restore removed exactly the created files, left the pre-existing stale documents
+alone, and returned all three fixture files byte-identical.
 
 The plan's Success line cites `scratchpad/restore-trigger-notes.sh`. **That
 script does not exist anywhere in the repo.** This replaces it.
@@ -190,7 +200,7 @@ Capture the run log. Assert the failure count is exactly 1.
 ## Step 5 — restore
 
 ```bash
-bash scripts/spec037-fixture.sh restore && spec037-fixture.sh status
+bash scripts/spec037-fixture.sh restore && bash scripts/spec037-fixture.sh status
 ```
 
 Must end with **"Vault matches the baseline."** T4.4's Success line requires the

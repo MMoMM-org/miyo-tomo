@@ -8,9 +8,9 @@
 # Snapshot BEFORE the first run. Restore between runs, and after the last one,
 # so every run starts from identical vault state — T4.4 explicitly requires it.
 #
-#   ./spec037-fixture.sh snapshot    # take the baseline (do this first)
-#   ./spec037-fixture.sh status      # what differs from the baseline right now
-#   ./spec037-fixture.sh restore     # put the vault back to the baseline
+#   bash scripts/spec037-fixture.sh snapshot   # take the baseline (do this first)
+#   bash scripts/spec037-fixture.sh status     # what differs from the baseline now
+#   bash scripts/spec037-fixture.sh restore    # put the vault back to the baseline
 #
 # Touches ONLY the paths this fixture owns. It never writes to tomo-privat,
 # never touches the rest of the vault, and refuses to run if the baseline is
@@ -18,7 +18,9 @@
 set -euo pipefail
 
 VAULT="/Volumes/Moon/Coding/MiYo/temp/Privat-Test"
-SNAP="${TMPDIR:-/tmp}/spec037-fixture-baseline"
+# NOT under $TMPDIR: that differs between a Claude session and a login shell,
+# so a baseline taken in one would be invisible to the other. Fixed path.
+SNAP="$HOME/.tomo-spec037-fixture-baseline"
 
 # Everything a T4.3/T4.4 run can create, move, modify or delete.
 FIXTURE_FILES=(

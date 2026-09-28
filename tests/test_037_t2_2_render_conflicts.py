@@ -282,7 +282,14 @@ def test_exactly_three_remedies_with_rename_ticked():
     # a rendering criterion T2.2 already discharges via this static clause,
     # but no test asserted it until now. Mutation: drop the consequence
     # clause from the Ignore line, leaving only its label.
-    assert "the move is sent as-is and will fail" in checkboxes[2], checkboxes[2]
+    assert "send the move unchanged" in checkboxes[2], checkboxes[2]
+    # The consequence must stay CONDITIONAL (owner catch, 2026-09-28). Occupancy
+    # was observed in Pass 1 and nothing re-checks it before Hashi applies, and
+    # freeing the name yourself is a plausible reason to pick this remedy — so
+    # "will fail" asserted an outcome this document cannot know. Mutation:
+    # restore "the move is sent as-is and will fail".
+    assert "if the name is still taken" in checkboxes[2], checkboxes[2]
+    assert "and will fail" not in checkboxes[2], checkboxes[2]
     assert "the attachment stays in the inbox" in checkboxes[2], checkboxes[2]
 
 

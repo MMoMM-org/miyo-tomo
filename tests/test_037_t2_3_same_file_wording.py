@@ -84,7 +84,7 @@ NULL_TEXT = "The files could not be compared"
 BASELINE_CHECKBOXES = [
     f"- [x] Rename to `{ASSET_FOLDER}karte (2).png`",
     "- [ ] Keep in inbox",
-    "- [ ] Ignore (the move is sent as-is and will fail — the attachment stays in the inbox)",
+    "- [ ] Ignore (send the move unchanged — if the name is still taken when you apply, the move fails and the attachment stays in the inbox)",
 ]
 
 

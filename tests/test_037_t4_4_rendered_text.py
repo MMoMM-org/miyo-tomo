@@ -204,3 +204,112 @@ def test_the_attachments_block_heading_is_not_the_bullet_label():
     attach_heading = next(ln for ln in headings if "inbox" in ln.lower())
     assert not attach_heading.startswith("**Attachment not filed**"), attach_heading
     assert _filed_bullets(md), "no bullets rendered, so the heading check is vacuous"
+
+
+# ---------------------------------------------------------------------------
+# 5. Neither document may assert an outcome it cannot know (owner catch)
+# ---------------------------------------------------------------------------
+#
+# Owner, 2026-09-28: "das sollte MIGHT fail lesen (vielleicht hat der nutzer ja
+# das ziel gelöscht wenn er das ignorieren will)". Exactly right, and it applied
+# to TWO sites, not one. Occupancy is observed in Pass 1 and re-checked nowhere
+# — `path_exists` appears in neither `instruction-render.py` nor
+# `render_actions.py` — so between Pass 1 and the apply the owner may well have
+# freed the name, which is itself a plausible reason to choose `ignore`. In that
+# case the move succeeds, and BOTH halves of "will fail — the attachment stays
+# in the inbox" are wrong.
+#
+# Same family as defects 1-4 above: the document asserting something it is not
+# in a position to know.
+
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location(
+    "suggestions_reducer_t037_t4_4", SCRIPTS_DIR / "suggestions-reducer.py")
+REDUCER = importlib.util.module_from_spec(_spec)
+sys.modules["suggestions_reducer_t037_t4_4"] = REDUCER
+_spec.loader.exec_module(REDUCER)
+
+_pspec = importlib.util.spec_from_file_location(
+    "suggestion_parser_t037_t4_4", SCRIPTS_DIR / "suggestion-parser.py")
+PARSER = importlib.util.module_from_spec(_pspec)
+sys.modules["suggestion_parser_t037_t4_4"] = PARSER
+_pspec.loader.exec_module(PARSER)
+
+LEGACY_IGNORE_LINE = (
+    "- [x] Ignore (the move is sent as-is and will fail — "
+    "the attachment stays in the inbox)"
+)
+
+
+def test_the_pass1_ignore_label_does_not_promise_a_failure():
+    """Mutation: restore "the move is sent as-is and will fail — the attachment
+    stays in the inbox" as the Ignore checkbox label."""
+    md = REDUCER.render_attachment_conflicts_block(
+        [{
+            "source": HELD,
+            "destination": f"{ASSET_FOLDER}karte.png",
+            "same_file": False,
+            "owner_source_items": ["100 Inbox/Dresden.md"],
+            "proposed_name": "karte (2).png",
+        }],
+        ASSET_FOLDER, {},
+    )
+    ignore_line = next(ln for ln in md.splitlines()
+                       if ln.strip().lower().startswith("- [ ] ignore"))
+    assert "will fail" not in ignore_line, ignore_line
+    assert "if the name is still taken" in ignore_line, ignore_line
+
+
+def test_the_pass2_ignore_bullet_does_not_promise_a_refusal():
+    """Mutation: restore "it will be refused when the run is applied" in
+    `_render_unresolved_conflict_bullet`'s `else` branch.
+
+    Distinct from the test above: that one covers the Pass-1 suggestions
+    document, this one the Pass-2 instruction document. Both made the claim and
+    fixing one would have left the other.
+    """
+    md = render_instructions_md([], {
+        **BASE_METADATA,
+        "attachment_conflict_remedies": [
+            {"source": HELD, "remedy": "ignore", "proposed_name": None},
+        ],
+    }, {})
+    bullet = next(ln for ln in md.splitlines()
+                  if ln.startswith("- ⚠️ **Conflict remains:**"))
+    assert "unless that name has since been freed" in bullet, bullet
+    assert "will be refused when the run is applied" not in bullet, bullet
+
+
+def test_a_document_rendered_before_the_wording_changed_still_parses():
+    """A suggestions document rendered by reducer 1.57.2 can be sitting
+    unapplied in the vault right now. The parser keys on the label PREFIX
+    (`label.startswith("ignore")`), not on the parenthetical, so the old
+    wording still resolves.
+
+    Mutation: `elif label == "ignore":`.
+
+    The fixture ticks RENAME **and** the legacy Ignore line, and that is the
+    whole point. A document ticking only Ignore cannot test this at all: an
+    unseen tick leaves all four flags False, and `_resolve_attachment_remedy`
+    resolves zero ticks to `ignore` by Rule 3 — the same answer a working
+    matcher gives, so the mutation is invisible. Measured 2026-09-28: the
+    single-tick version of this test stayed GREEN under the mutation.
+
+    With two ticks the outcomes diverge. Seen: two ticks, Rule 4, `ignore`.
+    Not seen: one tick on rename, Rule 2, `rename` — and the owner's override
+    is silently discarded, which is the actual failure this guards.
+    """
+    text = (
+        "## Attachment Conflicts\n"
+        "\n"
+        f"### `{HELD}`\n"
+        "\n"
+        "**Remedy — choose one:**\n"
+        "- [x] Rename to `x.png`\n"
+        "- [ ] Keep in inbox\n"
+        f"{LEGACY_IGNORE_LINE}\n"
+    )
+    assert PARSER.parse_attachment_conflict_remedies(text) == [
+        {"source": HELD, "remedy": "ignore"},
+    ], "the legacy Ignore label was not recognised, so the rename tick won"

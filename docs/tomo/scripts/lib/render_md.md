@@ -562,3 +562,47 @@ fixture supplying its own reason cannot reach them at all.
 `tests/test_037_t4_4_rendered_text.py` builds through `_build_move_asset_actions`
 instead, and its five mutations were measured 2026-09-28: each turns red
 exactly the test that names it, and only that test.
+
+## Neither Pass May Promise an Outcome It Cannot Know (v0.26.0, 2026-09-28)
+
+Owner catch during T4.4: the Pass-1 `Ignore` checkbox read *"the move is sent
+as-is and **will fail** — the attachment stays in the inbox"*, and the Pass-2
+"Conflict remains" bullet read *"it **will be refused** when the run is
+applied"*.
+
+Both assert an outcome neither document is in a position to know. Occupancy is
+observed once, in Pass 1's reducer, and re-checked nowhere: `path_exists`
+appears in neither `instruction-render.py` nor `render_actions.py`. Between
+Pass 1 and the Hashi apply the owner may have deleted or renamed the occupying
+file — and doing exactly that is a plausible *reason* to choose `ignore` in the
+first place. In that case the move succeeds, and both halves of the Pass-1
+sentence are wrong: it does not fail, and the attachment does not stay in the
+inbox.
+
+Both are now conditional, and the Pass-2 bullet also says *when* the observation
+was made ("the destination that was occupied in Pass 1"), because a claim about
+vault state is only as good as its timestamp.
+
+This is the same family as the four defects above: the document asserting
+something it cannot know. It is recorded separately because it was found by the
+owner reading the text rather than by a test, and because it sat in **two**
+places — fixing the one that was noticed would have left the other.
+
+## The Legacy Ignore Label Still Parses, and the Test for It Had to Be Rebuilt
+
+A suggestions document rendered by reducer 1.57.2 can be sitting unapplied in a
+vault. `suggestion-parser.py` matches `label.startswith("ignore")`, so the old
+parenthetical still resolves — asserted rather than left to luck.
+
+The first version of that test could not fail, and measurement is the only
+reason it was caught. It ticked only the legacy `Ignore` line and asserted
+`remedy == "ignore"`. Under the mutation (`label == "ignore"`) the tick is not
+seen, all four flags stay False, and `_resolve_attachment_remedy` resolves zero
+ticks to `ignore` by Rule 3 — the same answer. The test was measured GREEN under
+the mutation it named.
+
+The fixture now ticks **rename and the legacy Ignore line together**, where the
+outcomes diverge: seen means two ticks and Rule 4's `ignore`; not seen means one
+tick and Rule 2's `rename`, silently discarding the owner's override. That is
+the ninth unbiteable test this spec produced, and the count is itself the
+argument for measuring every named mutation rather than reasoning about it.

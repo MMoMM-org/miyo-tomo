@@ -109,8 +109,8 @@ _CONFLICT_MD = (
     "**Remedy — choose one:**\n"
     f"- [x] Rename to `{RENAME_TARGET}`\n"
     "- [ ] Keep in inbox\n"
-    "- [ ] Ignore (the move is sent as-is and will fail — "
-    "the attachment stays in the inbox)\n"
+    "- [ ] Ignore (send the move unchanged — if the name is still taken "
+    "when you apply, the move fails and the attachment stays in the inbox)\n"
 )
 
 _CONFLICT_FREE_MD = "# Inbox Suggestions\n\nNothing here.\n"

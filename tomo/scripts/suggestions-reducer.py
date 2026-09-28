@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.57.2
+# version: 1.58.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1521,7 +1521,15 @@ def render_attachment_conflicts_block(
             lines.append(f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}")
             lines.append("- [x] Keep in inbox")
         lines.append(
-            "- [ ] Ignore (the move is sent as-is and will fail — the attachment stays in the inbox)"
+            # NOT "will fail": occupancy was observed in Pass 1 and nothing
+            # re-checks it before Hashi applies (`path_exists` appears nowhere
+            # in instruction-render.py or render_actions.py). Freeing the name
+            # yourself is a plausible REASON to pick this remedy, and then the
+            # move succeeds and the attachment does not stay in the inbox —
+            # so both halves of the old sentence were wrong in that case.
+            # Owner catch, 2026-09-28.
+            "- [ ] Ignore (send the move unchanged — if the name is still taken "
+            "when you apply, the move fails and the attachment stays in the inbox)"
         )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

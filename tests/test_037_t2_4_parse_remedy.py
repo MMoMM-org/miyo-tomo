@@ -28,7 +28,7 @@ rendered text verbatim (`tomo/scripts/suggestions-reducer.py:~1514-1524`):
     **Remedy — choose one:**
     - [x] Rename to `<destination-folder><proposed_name>`
     - [ ] Keep in inbox
-    - [ ] Ignore (the move is sent as-is and will fail — the attachment stays in the inbox)
+    - [ ] Ignore (send the move unchanged — if the name is still taken when you apply, the move fails and the attachment stays in the inbox)
 
   1. `test_rename_ticked_alone_yields_rename` — mutation: resolve the
      document's own default to `ignore`, making Rule 2 unreachable.
@@ -116,12 +116,12 @@ RENAME_IMPOSSIBLE_UNTICKED = "- [ ] Rename — no free name available"
 KEEP_TICKED = "- [x] Keep in inbox"
 KEEP_UNTICKED = "- [ ] Keep in inbox"
 IGNORE_TICKED = (
-    "- [x] Ignore (the move is sent as-is and will fail — "
-    "the attachment stays in the inbox)"
+    "- [x] Ignore (send the move unchanged — if the name is still taken "
+    "when you apply, the move fails and the attachment stays in the inbox)"
 )
 IGNORE_UNTICKED = (
-    "- [ ] Ignore (the move is sent as-is and will fail — "
-    "the attachment stays in the inbox)"
+    "- [ ] Ignore (send the move unchanged — if the name is still taken "
+    "when you apply, the move fails and the attachment stays in the inbox)"
 )
 
 
@@ -254,8 +254,8 @@ def test_two_attachment_conflicts_sections_only_parses_first():
         "**Remedy — choose one:**\n"
         "- [x] Rename to `Atlas/290 Assets/295 Attachments/a (2).png`\n"
         "- [ ] Keep in inbox\n"
-        "- [ ] Ignore (the move is sent as-is and will fail — "
-        "the attachment stays in the inbox)\n"
+        "- [ ] Ignore (send the move unchanged — if the name is still taken "
+        "when you apply, the move fails and the attachment stays in the inbox)\n"
         "\n"
         "## Some Other Section\n"
         "\n"
@@ -273,8 +273,8 @@ def test_two_attachment_conflicts_sections_only_parses_first():
         "**Remedy — choose one:**\n"
         "- [ ] Rename to `Atlas/290 Assets/295 Attachments/c (2).png`\n"
         "- [x] Keep in inbox\n"
-        "- [ ] Ignore (the move is sent as-is and will fail — "
-        "the attachment stays in the inbox)\n"
+        "- [ ] Ignore (send the move unchanged — if the name is still taken "
+        "when you apply, the move fails and the attachment stays in the inbox)\n"
     )
     entries = PARSER.parse_attachment_conflict_remedies(text)
     assert entries == [{"source": "a.png", "remedy": "rename"}]

@@ -1,4 +1,4 @@
-# version: 0.25.0
+# version: 0.26.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -733,9 +733,15 @@ def _render_unresolved_conflict_bullet(entry: dict) -> str:
             f"`{destination}`, so it stays unmoved"
         )
     else:
+        # Conditional for the same reason the Pass-1 checkbox label is: this
+        # document knows only what Pass 1 saw. Saying "it will be refused"
+        # asserts an outcome that depends on vault state nobody has looked at
+        # since, and the owner may well have freed the name — which is a
+        # reason to choose `ignore` in the first place.
         detail = (
-            "the move goes out unchanged against the occupied destination — "
-            "it will be refused when the run is applied"
+            "the move goes out unchanged against the destination that was "
+            "occupied in Pass 1 — it will be refused unless that name has "
+            "since been freed"
         )
     return f"- ⚠️ **Conflict remains:** `{source}` — {detail}"
 

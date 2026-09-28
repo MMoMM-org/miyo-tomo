@@ -32,11 +32,29 @@ The owning note is **`100 Inbox/Dresden.md`**, which embeds:
 A **path-prefixed** embed, so this run exercises T3.3's path-prefix branch. The
 rewrite should produce the bare basename `![[karte (2).png]]`.
 
-> Dresden.md's body text says the file exists twice in the inbox, "einmal unter
-> Images/, einmal unter Scans/". **That is stale** — `100 Inbox/Images/karte.png`
-> no longer exists; only the two above do. The note reads as an ambiguity
-> fixture and is now a clean single-embed collision fixture. Harmless, but do
-> not be misled by its own description.
+> **Dresden.md's body was rewritten on 2026-09-28, and this is load-bearing.**
+>
+> The original body read: *"Diese Karte gibt es zweimal im Inbox — einmal unter
+> Images/, einmal unter Scans/. Erwartung: als `ambiguous` gemeldet, keine
+> Aktion."* An earlier version of this runbook called that text "stale …
+> harmless." **It was not harmless.** The 11:39 run measured what it does: the
+> classifier scored the item `worthiness: 0.2, suppressed: true`, and
+> `detect_attachment_conflicts` deliberately skips suppressed items
+> (`suggestions-reducer.py:596-600`) — a sub-worthy atomic stays in the inbox,
+> so its attachments claim no destination and there is no collision to report.
+> The run produced no `attachment_conflicts` at all. Every component was
+> correct; the fixture told the classifier not to act.
+>
+> The replacement body is a note *about the scanned map*, deliberately not
+> about Dresden travel planning: `Atlas/202 Notes/Dresden.md` already exists as
+> a genuine 40 KB travel-planning note covering Frauenkirche, Zwinger and the
+> Fürstenzug, and a body overlapping it invites a second sub-worthy score for
+> redundancy. The embed stays path-prefixed so T3.3's path-prefix branch is
+> still exercised. Frontmatter was never touched.
+>
+> The baseline was retaken after the rewrite, so `restore` between T4.4's runs
+> preserves the working fixture instead of reverting it. The pre-rewrite
+> baseline is kept at `~/.tomo-spec037-fixture-baseline-pre-bodyfix`.
 
 ---
 
@@ -214,12 +232,51 @@ fixture restored so the next run starts from the same state.
 - Forgetting `--yolo` — the instance silently keeps old scripts.
 - Editing either `karte.png`, or deleting one.
 - `base_kado_calls` ≠ 2 — a cost regression, not a pass.
+- **Dresden coming back `suppressed: true`.** Check this first in
+  `suggestions-doc.json` before reading anything else — a suppressed item
+  claims no destination, so an empty `attachment_conflicts` is the correct
+  output and proves nothing. Ticking Force Atomic Note does **not** rescue the
+  run: detection already ran and skipped the item (see the open item below).
+  The fix is the note body, not the tick.
 
-## Known, not a problem
+## Stale generated documents — removed, and why "harmless" was wrong
 
-Four stale documents from 2026-09-18 sit in `100 Inbox/`
-(`*_suggestions.{md,json}`, `*_instructions.{md,json}`). They carry
-`tomo.doc_type`, so triage buckets them as documents rather than sources, and
-`--pass1 --force` overrides routing regardless. The baseline records them as
-pre-existing, so `restore` leaves them alone. Clear them only if the triage
-output actually complains.
+An earlier version of this section said the stale 2026-09-18 documents in
+`100 Inbox/` were harmless because `--pass1 --force` overrides routing. That is
+true of **routing** and false of **input**. The 11:35 routing plan listed
+`2026-09-18_1124_suggestions.md` under `approved_suggestions` — it was live
+Pass-2 input, and synthesizing it would have produced instructions for a
+ten-day-old eight-item run alongside the one under test. The 11:39 run then
+added a second `pending-approval` suggestions document built from the
+suppressed classification, with no Attachment Conflicts section.
+
+All six files were moved out of the vault on 2026-09-28 (moved, not deleted —
+they are at `scratchpad/stale-inbox-docs/` in that session's directory) and the
+baseline retaken against the clean inbox.
+
+Two files still match the `Atlas/202 Notes/Dresden*.md` glob and are correctly
+recorded as pre-existing: `Dresden.md` and `Dresden Elbland.md`. Both are
+genuine user notes created 2025-11-19, unrelated to the 2026-09-15 incident.
+`restore` leaves them alone. Note that `Atlas/202 Notes/Dresden.md` being
+occupied means the filed note will hit `resolve_destination_clashes` and be
+retitled — expected, and independent of the attachment conflict, whose
+destination comes from `_asset_dest_join(asset_folder, basename)` and not from
+the note's title.
+
+## Open: force_atomic bypasses conflict detection entirely
+
+Found while diagnosing the 11:39 run; **traced in code, not yet measured.**
+
+`detect_attachment_conflicts` runs in the reducer, in Pass 1, and skips
+suppressed items. Ticking **Force Atomic Note** un-suppresses the item in Pass
+2, so the note is filed and its attachment moves — but the conflict scan has
+already run and skipped it. `_build_move_asset_actions`'s docstring is explicit
+that a source absent from `attachment_conflict_remedies` *"is treated as a
+plain attachment — same as `ignore`"*, and there is no occupancy check anywhere
+in Pass 2 (`rg 'path_exists' tomo/scripts/instruction-render.py
+tomo/scripts/lib/render_actions.py` returns nothing).
+
+So a sub-worthy note whose attachment collides can still reach Hashi with no
+remedy and no warning — the 2026-09-15 failure, reachable through a supported
+owner action that spec 037 does not cover. Not in this spec's scope; recorded
+here and in `docs/XDD/backlog.md` rather than fixed in flight.

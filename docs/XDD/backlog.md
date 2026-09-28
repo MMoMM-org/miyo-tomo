@@ -1145,3 +1145,41 @@ Documented at three sites so a future reader meeting it in a real vault can
 recognise it: `rewrite_renamed_embeds`'s docstring,
 `docs/tomo/scripts/lib/embed_rewrite.md` ("Basename Matching, Not Full-Path
 Matching"), and `docs/tomo/scripts/instruction-render.md`'s T3.3 section.
+
+## OPEN — Force Atomic Note bypasses attachment conflict detection entirely
+
+**Recorded 2026-09-28**, found while diagnosing why spec 037's first live T4.3
+run produced no conflict. **Traced in code; not yet measured against a live
+run.**
+
+`detect_attachment_conflicts` (`suggestions-reducer.py:582`) contributes only
+`create_atomic_note` actions that are **not suppressed** — documented and
+deliberate: a sub-worthy atomic stays in the inbox, Pass 2 moves nothing for it,
+so its attachments claim no destination. The same filter the note clash-claims
+loop applies.
+
+The gap is that suppression is not final. **Force Atomic Note** is a supported
+Pass-1 owner action that un-suppresses the item, and by the time it is ticked
+the conflict scan has already run and skipped that item. Nothing re-checks.
+`_build_move_asset_actions`'s docstring is explicit that a source absent from
+`attachment_conflict_remedies` is "treated as a plain attachment — same as
+`ignore`", and there is no occupancy check anywhere in Pass 2: `path_exists`
+does not appear in `instruction-render.py` or `render_actions.py`.
+
+So a sub-worthy note whose attachment collides with an occupied vault
+destination can still be filed with a bare `move_asset`, no remedy offered, no
+warning rendered — the exact 2026-09-15 failure spec 037 exists to close,
+reached through a path the spec does not cover.
+
+**Why it was not fixed in flight.** Spec 037's PRD scopes conflict detection to
+Pass 1's reducer, and the force-atomic tick arrives after that. Closing it means
+either re-running detection after parsing the ticks (a second Kado folder
+listing, against the SDD's cost budget) or carrying occupancy into Pass 2 (a
+wire field, which ADR-5 deliberately rejected). Both are design decisions, not
+fixes.
+
+**How to measure it.** Take a sub-worthy inbox note embedding an attachment
+whose basename already exists in the asset folder, tick Force Atomic Note in the
+suggestions document, and apply Pass 2. Expect one `move_asset` into the
+occupied destination and a Hashi refusal, with no Attachment Conflicts section
+anywhere in either document.

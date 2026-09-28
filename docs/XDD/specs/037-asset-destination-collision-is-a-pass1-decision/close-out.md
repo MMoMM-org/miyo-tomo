@@ -186,6 +186,61 @@ be measured in T4.4 step 4 rather than asserted here.
 
 ---
 
+### T4.4 (a) — keep-in-inbox
+
+Run 2026-09-28. Metadata only.
+
+**Behaviour, first attempt:** Pass 1 raised the conflict again
+(`worthiness: 0.7`, not suppressed — the repaired fixture is stable across
+runs), `base_kado_calls` **2**, `folder_listing_calls` 1 → 2. A read-only dry
+run of the parser against the ticked document returned `remedy:
+"keep_in_inbox"` — worth recording because the owner's checkbox plugin appends
+`✅ 2026-09-28` to a ticked line, and the label match survived it. Pass 2
+emitted **zero `move_asset` actions**.
+
+**Then the rendered text was read, and four defects were in it** — in shipped
+output, with the suite green. They are described in
+`docs/tomo/scripts/lib/render_md.md` and fixed in `b82f70d`; in short: the
+section heading claimed *"the owner chose otherwise"*, which is the exact claim
+T4.2 made the bullet passive to avoid and which is false for a degraded rename;
+every remedy opened a sentence in lower case after a full stop; the skipped path
+rendered twice on one line in two quoting styles, in all three skip kinds; and
+the block heading was the bullet's own label verbatim.
+
+None of these removes an expected substring, which is why every existing
+assertion stayed true. `tests/test_037_t4_4_rendered_text.py` pins them with
+five mutations, each **measured** on 2026-09-28: every one turns red exactly the
+test that names it, and only that test.
+
+**Re-run after the fix**, instance at `render_md` 0.25.0 / `render_actions`
+0.26.7. The live document matched the offline preview exactly, and a sweep of
+the whole instruction document found no lowercase sentence start, no repr-quoted
+path, and no path named twice in a bullet.
+
+**Hashi apply — 5 of 5 actions applied, `failed: 0`.**
+
+| Path | sha256 (12) | Verdict |
+|---|---|---|
+| `100 Inbox/Scans/karte.png` | `fa86a6e447ff` | held in the inbox, as instructed |
+| `Atlas/290 Assets/295 Attachments/karte.png` | `0fb588dae23c` | untouched |
+| `100 Inbox/Dresden.md` | absent | source consumed — the note WAS filed |
+
+The note being filed while its attachment stays put is the owner's ruling of
+2026-09-27 (requirements.md:374-382): keep-in-inbox names the attachment, not
+the note.
+
+**The consequence of that ruling, measured rather than assumed.** The filed note
+embeds `![[100 Inbox/Scans/karte.png]]` — unrewritten, because keep-in-inbox
+triggers no rename and therefore no embed rewrite. The reference resolves, since
+the file is still there. This is the same *shape* as the 2026-09-15 damage — an
+Atlas note reaching back into the inbox — and it is not the same defect: on
+2026-09-15 nobody chose it, a move was emitted and refused, and the document
+reported nothing. Here the owner chose it, and both blocks of the instruction
+document say so in their own words. Recorded because the shape alone will look
+like a regression to anyone who meets it without this note.
+
+---
+
 ## PRD criteria — filled in as Phase 4 completes
 
 _(F1, F2, F3, S1, S2, C1, C2 traced by node id once T4.2-T4.4 land.)_

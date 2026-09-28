@@ -606,3 +606,42 @@ outcomes diverge: seen means two ticks and Rule 4's `ignore`; not seen means one
 tick and Rule 2's `rename`, silently discarding the owner's override. That is
 the ninth unbiteable test this spec produced, and the count is itself the
 argument for measuring every named mutation rather than reasoning about it.
+
+## An Ignored Conflict Is Annotated on Its Own Action (v0.27.0, 2026-09-28)
+
+Owner request during T4.4: *"können wir bei conflict remains auf den
+entsprechenden IXX verweisen? oder vielleicht sogar bei IXX das anmerken und
+nicht am ende des dokumentes?"*
+
+The second form was built, and the first was declined for a reason worth
+recording: **the end-of-document bullet renders for three routes and only
+`ignore` has an action to point at.** `keep_in_inbox` and a degraded rename
+withhold the move entirely, so there is no `I0x` in the document for them. A
+reference inside the bullet would therefore appear for one route and be missing
+for the other two, with nothing in the text explaining the difference. An
+annotation *on the action* exists exactly where an action exists, and says
+nothing where none does.
+
+`ADR-11`'s "no action id in rendered text" is not in tension with this. That rule
+lives only in `_render_withdrawal_bullet`'s docstring here — it is not defined in
+the SDD, and the plan cites it three times as the literal character `n` — and it
+means "no executor handle dropped into prose". Action ids are already the H3
+headings of this document; they are how the owner ticks "Applied" per action.
+The annotation is a line inside the block that already carries its own id.
+
+**The two sites carry different sentences, by the same 2026-09-27 ruling that
+governs the two "Skipped" blocks.** The annotation states the DECISION and how to
+revisit it and claims no outcome at all; the end-of-document bullet states what
+applying will do. Claiming an outcome at the action would have repeated the
+mistake corrected the day before, since nothing re-checks the destination between
+Pass 1 and the apply.
+
+`ignored_conflict_sources` is computed before the action loop rather than beside
+the "Skipped" block that reads the same remedies, because the `move_asset` block
+is rendered first.
+
+Three mutations, measured 2026-09-28. The second one matters more than it looks:
+dropping the membership test annotates EVERY `move_asset`, and the first test
+passes under that mutation because its only move is the ignored one. Without a
+second fixture, "annotate the right move" and "annotate every move" are
+indistinguishable.

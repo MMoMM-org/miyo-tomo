@@ -313,3 +313,88 @@ def test_a_document_rendered_before_the_wording_changed_still_parses():
     assert PARSER.parse_attachment_conflict_remedies(text) == [
         {"source": HELD, "remedy": "ignore"},
     ], "the legacy Ignore label was not recognised, so the rename tick won"
+
+
+# ---------------------------------------------------------------------------
+# 6. An ignored conflict is annotated at its own action (owner request)
+# ---------------------------------------------------------------------------
+#
+# Owner, 2026-09-28: "können wir bei conflict remains auf den entsprechenden
+# IXX verweisen? oder vielleicht sogar bei IXX das anmerken und nicht am ende
+# des dokumentes?" — the second form, because the end-of-document bullet
+# renders for THREE routes and only `ignore` has an action to point at:
+# keep_in_inbox and a degraded rename withhold the move entirely. A reference
+# in the bullet would therefore be present sometimes and absent otherwise; an
+# annotation on the action exists exactly where an action does.
+
+IGNORED_MOVE = {
+    "id": "I02", "action": "move_asset",
+    "source": HELD, "destination": f"{ASSET_FOLDER}karte.png",
+}
+ANNOTATION = "- ⚠️ **Destination was occupied:**"
+
+
+def _render_with_remedy(remedy):
+    return render_instructions_md([IGNORED_MOVE], {
+        **BASE_METADATA,
+        "attachment_conflict_remedies": [
+            {"source": HELD, "remedy": remedy, "proposed_name": None},
+        ],
+    }, {})
+
+
+def _action_block(md):
+    lines = md.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("### I02"))
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("### ") or lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end])
+
+
+def test_an_ignored_conflict_is_annotated_on_its_own_move_action():
+    """Mutation: drop the `ignored_conflict_sources` argument from the
+    `_render_action_md` call, so the annotation never renders."""
+    block = _action_block(_render_with_remedy("ignore"))
+    assert ANNOTATION in block, block
+    assert "you chose Ignore" in block, block
+
+
+def test_a_move_with_no_ignored_conflict_is_not_annotated():
+    """Mutation: drop the `action.get("source") in ignored_conflict_sources`
+    membership test, annotating every move_asset.
+
+    Needed as its own test: the test above passes under that mutation, since
+    its one move IS the ignored one. Without this, "annotate the right move"
+    and "annotate every move" are indistinguishable.
+    """
+    md = render_instructions_md([IGNORED_MOVE], {
+        **BASE_METADATA,
+        "attachment_conflict_remedies": [
+            {"source": "100 Inbox/Other/x.png", "remedy": "ignore",
+             "proposed_name": None},
+        ],
+    }, {})
+    assert ANNOTATION not in _action_block(md), md
+
+
+def test_the_annotation_and_the_summary_bullet_share_no_sentence():
+    """The owner ruling of 2026-09-27 — a source may appear in two places, but
+    no SENTENCE may be repeated — applied to this third site.
+
+    Mutation: give the annotation the summary bullet's own wording.
+    """
+    md = _render_with_remedy("ignore")
+    block = _action_block(md)
+    bullet = next(ln for ln in md.splitlines()
+                  if ln.startswith("- ⚠️ **Conflict remains:**"))
+
+    def sentences(text):
+        return {s.strip().lower() for s in re.split(r"(?<=[.])\s+", text)
+                if len(s.strip()) > 25}
+
+    overlap = sentences(block) & sentences(bullet)
+    assert not overlap, f"a sentence appears in both places: {overlap}"
+    # The annotation must claim no OUTCOME — nothing re-checks the destination
+    # between Pass 1 and the apply, which is the correction made 2026-09-28.
+    assert "will be refused" not in block, block
+    assert "will fail" not in block, block

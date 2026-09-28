@@ -1,4 +1,4 @@
-# version: 0.26.0
+# version: 0.27.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -69,9 +69,22 @@ def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
 
 
 def _render_action_md(
-    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None
+    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None,
+    ignored_conflict_sources: set[str] | None = None,
 ) -> str:
-    """Render a single action as an H3 block with a checkbox + structured fields."""
+    """Render a single action as an H3 block with a checkbox + structured fields.
+
+    `ignored_conflict_sources` names the attachments whose Pass-1 destination
+    conflict the owner resolved with `ignore` (owner request 2026-09-28). Such
+    a move is emitted against a destination Pass 1 saw occupied, and until now
+    the only sign of that was a bullet at the far end of the document — the
+    owner had to correlate it back to an action by hand. The note now sits in
+    the block it is about.
+
+    Only `ignore` reaches here: `keep_in_inbox` and a degraded rename withhold
+    the move entirely, so they have no action to annotate, which is why the
+    end-of-document block stays the place that lists all three.
+    """
     aid = action["id"]
     kind = action["action"]
     heading_prefix = f"### {aid} — "
@@ -99,6 +112,19 @@ def _render_action_md(
             lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
+        if ignored_conflict_sources and action.get("source") in ignored_conflict_sources:
+            # States the DECISION and how to revisit it — never an outcome.
+            # The end-of-document bullet is the one that says what applying
+            # will do, so the two carry different sentences (owner ruling
+            # 2026-09-27, extended here); and an outcome claim would repeat
+            # the mistake corrected the day before, since nothing re-checks
+            # the destination between Pass 1 and the apply.
+            lines.append(
+                "- ⚠️ **Destination was occupied:** Pass 1 found this name "
+                "already taken and you chose Ignore, so the move is sent "
+                "unchanged. Re-run `/inbox` and pick Rename or Keep in inbox "
+                "to resolve it instead."
+            )
         return "\n".join(lines)
 
     if kind == "create_moc":
@@ -903,6 +929,16 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 )
         body_parts.append("")
 
+    # Computed before the action loop, not beside the "Skipped" block that
+    # also reads these remedies further down: the move_asset block is rendered
+    # here, and an `ignore`d conflict is annotated in the block it belongs to
+    # rather than only at the end of the document (owner request 2026-09-28).
+    ignored_conflict_sources = {
+        r.get("source")
+        for r in (metadata.get("attachment_conflict_remedies") or [])
+        if r.get("remedy") == "ignore" and r.get("source")
+    }
+
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
         # "Source Deletions" carries a notice for every withdrawn delete
@@ -916,7 +952,9 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
-            body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
+            body_parts.append(
+                _render_action_md(a, cfg, ambiguous_sources, ignored_conflict_sources)
+            )
             body_parts.append("")
         for w in withdrawn_here:
             body_parts.append(_render_withdrawn_delete_notice(w))

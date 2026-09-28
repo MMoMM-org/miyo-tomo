@@ -1,4 +1,4 @@
-# version: 0.24.1
+# version: 0.25.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -964,9 +964,19 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             # name every source is redundant when right and misleading the
             # moment the two drift, which a bare `f"{n} conflicts remain"`
             # gives no test any way to catch.
+            # The heading states the OUTCOME, never the reason — for the same
+            # reason `_render_unresolved_conflict_bullet` is passive. An
+            # earlier version read "the owner chose otherwise", which is false
+            # for a degraded rename: `skipped_assets` unifies keep-in-inbox and
+            # a degraded rename under one `vault_collision_held` kind (see
+            # below), so both render here, and in the second case the owner
+            # chose `rename` and this run lost the name. Found in T4.4's live
+            # keep-in-inbox run, where the claim happened to be true — the
+            # bullet had been made passive in T4.2 and the heading above it
+            # was never revisited.
             body_parts.append(
-                "**Conflicts not resolved by rename** — the owner chose "
-                "otherwise, and Pass 2 did not resolve these:")
+                "**Conflicts not resolved by rename** — Pass 2 did not file "
+                "these over their occupied destinations:")
             body_parts.append("")
             for entry in unresolved_conflicts:
                 body_parts.append(_render_unresolved_conflict_bullet(entry))
@@ -998,32 +1008,39 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_assets:
+            # Deliberately NOT the bullet's own label: the bullets below each
+            # begin "**Attachment not filed:**", and repeating that verbatim as
+            # the heading made the block read as an echo of itself. The
+            # "Conflicts not resolved by rename" block above never did this.
             body_parts.append(
-                "**Attachment not filed** — these attachments were left in the inbox:")
+                "**Attachments still in the inbox** — none of these were filed:")
             body_parts.append("")
             for s in skipped_assets:
                 source = s.get("source") or "?"
                 reason = s.get("reason") or "?"
                 kind = s.get("kind")
                 if kind == "no_basename":
-                    remedy = "the inbox entry has no filename — inspect that inbox path directly, this is not a naming conflict"
+                    remedy = "Inspect that inbox path directly — this is not a naming conflict"
                 elif kind == "collision":
                     destination = s.get("destination") or "?"
-                    remedy = f"rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                    remedy = f"Rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
                 elif kind == "vault_collision_held":
                     # spec 037 T3.1/T4.2: the owner's own choice (keep-in-inbox
                     # or a rename that degraded to it) — `reason` above already
                     # says why; there is nothing left for the user to do unless
                     # they change their mind.
-                    remedy = "no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all"
+                    remedy = "No action needed unless you change your mind; rename the file and re-run `/inbox` to file it after all"
                 else:
                     # A missing or unrecognized kind must never silently fall
                     # back to either remedy above — that is how a third skip
                     # reason would quietly inherit the wrong instruction.
-                    remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
+                    remedy = f"(No remedy defined for skip kind {kind!r} — check render_md.py)"
                 # ADR-11 (render_md.py:668): no executor internals in the
                 # rendered text — `move_asset` is a wire action name, not a
                 # word the owner should ever need to know.
+                # `remedy` is joined on after a full stop, so each branch above starts
+                # with a capital: T4.4 rendered "...karte.png'. no action
+                # needed", a sentence opening in lower case.
                 body_parts.append(f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}.")
             body_parts.append("")
         if dropped_sources:

@@ -509,3 +509,56 @@ that told the reader nothing they needed — for the `⚠️ **Attachment not
 filed:**` lead-in, matching the convention above. `attachment_conflict_
 remedies` entries never carried a wire action name to begin with, so the new
 block's bullets (`⚠️ **Conflict remains:**`) started clean.
+
+## Four Text Defects a Green Suite Could Not See (v0.25.0, spec 037 T4.4)
+
+T4.4's live keep-in-inbox run put this document's "## Skipped — un-appliable
+actions" section in front of an owner for the first time. Four defects were in
+shipped output, and the whole suite was green through all of them. They share
+one cause: every assertion checked that an expected substring was **present**,
+and not one of these defects removes a substring.
+
+### The heading asserted an intent the bullet refuses to assert
+
+The heading read *"**Conflicts not resolved by rename** — the owner chose
+otherwise, and Pass 2 did not resolve these:"*.
+
+`_render_unresolved_conflict_bullet` was made passive in T4.2 for a specific
+reason, recorded above: "the owner declined to file it" is **false for a
+degraded rename**, where the owner chose `rename` and this run lost the name.
+`skipped_assets` unifies keep-in-inbox and a degraded rename under one
+`vault_collision_held` kind, so both render under this heading — and the heading
+made exactly the claim the bullet beneath it had been rewritten to avoid.
+
+The bullet was fixed; the heading one line above it was never revisited. It now
+states the outcome only: *"Pass 2 did not file these over their occupied
+destinations."* True for all three routes — held, degraded, and ignored.
+
+This is worth naming as a shape rather than an incident: a decision applied at
+the level it was raised, while the same claim survived one level up, where
+nobody was looking.
+
+### `reason` + `remedy` is two sentences, and the second began in lower case
+
+The bullet template is `f"... — {reason}. {remedy}."`. Every remedy string
+started lower case, so the rendered line read *"...karte.png'. no action
+needed"*. All four branches now start with a capital, and the template carries a
+comment saying why, because the requirement is invisible at the definition site.
+
+### The block heading was the bullet's own label
+
+*"**Attachment not filed** — these attachments were left in the inbox:"* above
+bullets that each open *"**Attachment not filed:**"*. The sibling block never
+did this ("Conflicts not resolved by rename" → "Conflict remains"), so the
+convention already existed and only this block broke it. Now "**Attachments
+still in the inbox**".
+
+### Why the T4.2 tests were blind to all of this
+
+`tests/test_037_t4_2_unresolved_summary.py` hand-writes its `skipped_assets`
+entries, including `reason`. Defects two and three live in the **seam** between
+the reason (built in `render_actions.py`) and the remedy (built here), so a
+fixture supplying its own reason cannot reach them at all.
+`tests/test_037_t4_4_rendered_text.py` builds through `_build_move_asset_actions`
+instead, and its five mutations were measured 2026-09-28: each turns red
+exactly the test that names it, and only that test.

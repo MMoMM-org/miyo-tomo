@@ -683,10 +683,19 @@ def test_the_skipped_attachment_report_is_unchanged_by_the_new_link():
     assert len(bullets) == 1, bullets
     assert bullets[0] == (
         f"- ⚠️ **Attachment not filed:** `{UFER_REISE}` — destination collision: "
-        f"'{UFER_REISE}' also resolves to '{ASSETS}Ufer.jpg', already claimed "
-        f"by '{UFER_PLACES}'. rename one of the two files so they no longer "
+        f"it also resolves to `{ASSETS}Ufer.jpg`, already claimed by "
+        f"`{UFER_PLACES}`. Rename one of the two files so they no longer "
         f"share `{ASSETS}Ufer.jpg`, then re-run `/inbox`."
     ), bullets[0]
+    # spec 037 T4.4, measured on this very line: the skipped source appeared
+    # twice — once backticked in the lead, once as a repr inside the reason —
+    # and the remedy opened a sentence in lower case after a full stop.
+    assert bullets[0].count(UFER_REISE) == 1, (
+        f"the skipped source is named more than once: {bullets[0]}"
+    )
+    assert "'" not in bullets[0], (
+        f"paths render in backticks, never repr quotes: {bullets[0]}"
+    )
 
 
 # ---------------------------------------------------------------------------

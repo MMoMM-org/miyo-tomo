@@ -1,4 +1,4 @@
-# version: 0.26.6
+# version: 0.26.7
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -770,8 +770,13 @@ def _build_move_asset_actions(
                 destination = _asset_dest_join(asset_folder, path)
             except ValueError as exc:
                 print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
+                # NOT str(exc): the exception message names the path because
+                # an exception can surface anywhere, while `reason` has exactly
+                # one consumer — render_md.py's bullet, which already opens with
+                # the path in backticks. Rendering both put it twice on one line.
                 entry = {
-                    "source": path, "destination": None, "reason": str(exc),
+                    "source": path, "destination": None,
+                    "reason": "the inbox path has no filename",
                     "kind": "no_basename", "owner_source_items": owners,
                 }
                 skipped.append(entry)
@@ -790,18 +795,25 @@ def _build_move_asset_actions(
                 # degraded rename is the owner asking to file it under a name
                 # this run could not recover. Reporting the second as a choice
                 # would tell them they decided something they did not.
+                #
+                # Neither reason repeats `path`: the only consumer
+                # (render_md.py's "Attachment not filed" bullet) already opens
+                # with it in backticks, and T4.4's live run rendered it twice in
+                # one line — once backticked, once as a repr. Paths are spelled
+                # in backticks here for the same reason, since `!r` produced
+                # straight quotes beside the renderer's backticks.
                 if remedy == "keep_in_inbox":
                     reason = (
-                        f"kept in inbox: the owner chose not to file {path!r} "
-                        f"over the occupied destination {destination!r}"
+                        f"kept in inbox: the owner chose not to file it over "
+                        f"the occupied destination `{destination}`"
                     )
                 else:
                     reason = (
-                        f"kept in inbox: {path!r} was to be filed under a new "
-                        f"name beside the occupied destination "
-                        f"{destination!r}, and that name is no longer "
-                        f"available to this run — it stays in the inbox rather "
-                        f"than being filed under a name the owner did not choose"
+                        f"kept in inbox: it was to be filed under a new name "
+                        f"beside the occupied destination `{destination}`, and "
+                        f"that name is no longer available to this run — it "
+                        f"stays in the inbox rather than being filed under a "
+                        f"name the owner did not choose"
                     )
                 entry = {
                     "source": path, "destination": destination, "reason": reason,
@@ -823,9 +835,13 @@ def _build_move_asset_actions(
             # never whether it is examined.
             claimant = claimed.get(destination.casefold())
             if claimant is not None:
+                # Paths in backticks, and the colliding source named once:
+                # the bullet that renders this already leads with it. The
+                # stderr line below appends it separately, so the log entry
+                # stays self-contained.
                 reason = (
-                    f"destination collision: {path!r} also resolves to "
-                    f"{destination!r}, already claimed by {claimant!r}"
+                    f"destination collision: it also resolves to "
+                    f"`{destination}`, already claimed by `{claimant}`"
                 )
                 print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
                 entry = {

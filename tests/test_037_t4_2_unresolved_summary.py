@@ -317,6 +317,6 @@ def test_conflict_remains_never_repeats_attachment_not_filed():
     # remedy instruction.
     filed_line = next(ln for ln in filed_lines if KEEP_SOURCE in ln)
     remains_line = next(ln for ln in remains_lines if KEEP_SOURCE in ln)
-    assert "no action needed" in filed_line, filed_line
-    assert "no action needed" not in remains_line, remains_line
+    assert "No action needed" in filed_line, filed_line
+    assert "No action needed" not in remains_line, remains_line
     assert "Atlas/keep.jpg" in remains_line, remains_line

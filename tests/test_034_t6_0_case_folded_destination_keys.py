@@ -295,9 +295,16 @@ def test_case_only_attachment_collision_records_a_skip(capsys):
     assert skipped[0]["kind"] == "collision"
     assert skipped[0]["source"] == "100 Inbox/Bilder/ufer.jpg"
     assert skipped[0]["owner_source_items"] == ["100 Inbox/bilder.md"]
-    # The user reads both spellings as their authors wrote them.
-    assert "100 Inbox/Bilder/ufer.jpg" in skipped[0]["reason"]
+    # The user reads both spellings as their authors wrote them. The skipped
+    # source is carried by `source` (asserted above) and NOT repeated in
+    # `reason`: its only consumer is render_md.py's bullet, which already opens
+    # with it in backticks, and rendering both put one path twice on one line
+    # (spec 037 T4.4). The CLAIMANT has no other field, so it stays in `reason`.
     assert "100 Inbox/Reise/Ufer.jpg" in skipped[0]["reason"]
+    assert "100 Inbox/Bilder/ufer.jpg" not in skipped[0]["reason"], (
+        "the skipped source must not be restated in the reason: "
+        f"{skipped[0]['reason']!r}"
+    )
     assert "collision" in capsys.readouterr().err.lower()
 
 

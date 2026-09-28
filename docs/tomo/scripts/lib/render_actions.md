@@ -1505,3 +1505,42 @@ reaches `moves_by_source` lookup, `dropped_ids`, or `pending` — it produces no
 suppression record at all, not an empty or no-op one. `requirements.md:374-
 382` records this as the owner's standing ruling: *keep in inbox* names the
 attachment, not the note.
+
+## `reason` Is Rendered Text, Not a Self-Contained Record (v0.26.7, spec 037 T4.4)
+
+WHY the three `skipped_assets` reasons no longer name the skipped attachment,
+and spell paths in backticks rather than through `!r`.
+
+T4.4's live run rendered this line:
+
+    - ⚠️ **Attachment not filed:** `100 Inbox/Scans/karte.png` — kept in inbox:
+      the owner chose not to file '100 Inbox/Scans/karte.png' over the occupied
+      destination 'Atlas/290 Assets/295 Attachments/karte.png'. no action needed…
+
+One path, twice, in two quoting styles, inside twenty words. All three kinds did
+it — `no_basename` also said "has no filename" in both the reason and the
+remedy, telling the owner one fact in a two-clause sentence.
+
+**Why removing the path is safe, and how that was established rather than
+assumed.** `reason` has exactly one consumer: `render_md.py`'s "Attachment not
+filed" bullet, which opens with `` `{source}` `` for every kind. The path is
+also carried structurally in the entry's own `source` field. Hashi does not read
+`skipped_assets` at all — checked across its source tree on 2026-09-28, zero
+references. So nothing renders `reason` without the path beside it.
+
+A test asserted the opposite contract — *"the reason is the one place the owner
+learns which file stayed put"* — and that premise was simply wrong about the
+rendered document. It was corrected rather than honoured, with the measurement
+recorded in the test.
+
+**What stays.** A collision's CLAIMANT has no field of its own, so it remains in
+`reason`. And `_asset_dest_join`'s `ValueError` message still names the path: an
+exception can surface anywhere, so it must stand alone. The `no_basename` entry
+now builds its own user-facing reason instead of reusing `str(exc)` — the two
+have different audiences and only one of them has a bullet lead.
+
+Pinned by `tests/test_037_t4_4_rendered_text.py`'s
+`test_a_skipped_attachment_is_named_exactly_once_in_its_bullet`, a **count**
+assertion. The pre-existing tests asserted presence, which stays true when a
+path appears twice — which is how four reason strings carried a duplicate
+across three specs without one test noticing.

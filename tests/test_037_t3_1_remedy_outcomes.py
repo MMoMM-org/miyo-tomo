@@ -355,8 +355,19 @@ def test_a_degraded_rename_is_not_reported_as_the_owners_choice():
         "a degraded rename must never be reported as a choice the owner made: "
         f"{degraded!r}"
     )
-    # Both still name the attachment and the occupied destination — the
-    # reason is the one place the owner learns which file stayed put.
+    # Both still name the occupied destination — that is the fact neither the
+    # entry's other fields nor the rendered bullet's lead carries.
+    #
+    # Neither names the ATTACHMENT any more, and the earlier version of this
+    # test asserted the opposite on a premise that was measurably wrong: it
+    # claimed "the reason is the one place the owner learns which file stayed
+    # put". It is not. `skipped_assets[].source` carries it structurally, the
+    # only renderer opens its bullet with it in backticks, and Hashi does not
+    # read `skipped_assets` at all (checked 2026-09-28) — so the path was
+    # rendered twice on one line, in two quoting styles (spec 037 T4.4).
     for reason in (chosen, degraded):
-        assert "100 Inbox/Scans/karte.png" in reason
         assert "Atlas/290 Assets/295 Attachments/karte.png" in reason
+        assert "100 Inbox/Scans/karte.png" not in reason, (
+            "the attachment path belongs to `source` and the bullet's lead, "
+            f"not to the reason: {reason!r}"
+        )

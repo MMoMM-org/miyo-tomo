@@ -15,6 +15,13 @@
 # Touches ONLY the paths this fixture owns. It never writes to tomo-privat,
 # never touches the rest of the vault, and refuses to run if the baseline is
 # missing or the vault path is wrong.
+#
+# KNOWN BENIGN DRIFT: with Obsidian open, `status` can report Dresden.md as
+# CHANGED shortly after a restore. Observed 2026-09-28 — the only difference was
+# the frontmatter `Updated:` line, which Obsidian rewrites when the file
+# reappears; body and embed were byte-identical. Diff the file before concluding
+# the restore failed. The comparison deliberately does NOT skip that line: one
+# ignored frontmatter key is also where a real regression would hide.
 set -euo pipefail
 
 VAULT="/Volumes/Moon/Coding/MiYo/temp/Privat-Test"
@@ -29,14 +36,29 @@ FIXTURE_FILES=(
   "Atlas/290 Assets/295 Attachments/karte.png"
 )
 # Paths a run may CREATE that the baseline must not contain. Restore removes
-# any that appeared. Globs are expanded at restore time, not now.
+# any that appeared, EXCEPT those recorded in preexisting.txt at snapshot time —
+# so a broad glob is safe here and a narrow one is not.
+#
+# The note glob is deliberately the whole folder rather than a name pattern.
+# T4.3 measured why: the filed note was titled "Historische Stadtkarte Dresden
+# (vor 1945) im Vergleich zum heutigen Stadtplan", which the earlier
+# "Atlas/202 Notes/Dresden*.md" did not match. Atomic titles come from the
+# classifier, so no name pattern can predict them; only the destination folder
+# is knowable in advance. Two filed notes survived a restore because of this and
+# would have occupied destinations in the next run.
 CREATED_GLOBS=(
   "Atlas/290 Assets/295 Attachments/karte (*).png"
-  "Atlas/202 Notes/Dresden*.md"
+  "Atlas/202 Notes/*.md"
   "100 Inbox/*_suggestions.md"
   "100 Inbox/*_suggestions.json"
   "100 Inbox/*_instructions.md"
   "100 Inbox/*_instructions.json"
+  # Rendered atomics awaiting their move — these linger when an apply fails,
+  # which is the expected outcome of T4.4's `ignore` run.
+  "100 Inbox/20??-??-??_*.md"
+  # Hashi writes one per apply. Carries tomo_skip_inbox_analysis, so triage
+  # ignores it, but it still accumulates across runs.
+  "100 Inbox/tomo-hashi-run-log_*.md"
 )
 
 die() { printf 'spec037-fixture: %s\n' "$1" >&2; exit 1; }

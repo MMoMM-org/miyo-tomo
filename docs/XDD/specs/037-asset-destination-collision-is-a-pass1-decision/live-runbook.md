@@ -171,6 +171,20 @@ the filed note embeds `![[karte (2).png]]`, not the vacated inbox path.
 bash scripts/spec037-fixture.sh restore
 ```
 
+Two things learned from T4.3's restore, both now handled by the script:
+
+- **Filed notes are not named after their source.** The note filed from
+  `Dresden.md` was titled *"Historische Stadtkarte Dresden (vor 1945) im
+  Vergleich zum heutigen Stadtplan"*, which the old `Atlas/202 Notes/Dresden*.md`
+  glob did not match, so it survived the restore and would have occupied a
+  destination in the next run. Atomic titles come from the classifier and no
+  name pattern can predict them, so the glob is now the whole folder; the 308
+  notes recorded in `preexisting.txt` are what keeps `restore` from touching
+  anything real.
+- **`status` can report Dresden.md CHANGED right after a restore.** With
+  Obsidian open, only the frontmatter `Updated:` line differs — body and embed
+  byte-identical. Diff before concluding the restore failed.
+
 ```
 /inbox --pass1 --force
 ```

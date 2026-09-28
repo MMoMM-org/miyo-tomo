@@ -115,6 +115,77 @@ key to the `move_asset` dict (`render_actions.py:839-844`) and the consumer's
 
 ---
 
+### T4.3 — the 2026-09-15 case, reproduced and resolved live
+
+Run 2026-09-28, instance `tomo-instance`, vault `temp/Privat-Test`.
+Metadata only — no vault content is recorded here (Constitution L2, and this
+repo is public).
+
+**The fixture had to be repaired first, and that is itself a finding.** The
+first attempt produced no `attachment_conflicts` at all. Not a code defect:
+`Dresden.md` scored `worthiness: 0.2, suppressed: true`, and
+`detect_attachment_conflicts` deliberately skips suppressed items
+(`suggestions-reducer.py:596-600`) because a sub-worthy atomic stays in the
+inbox and its attachments claim no destination. The cause was the note body —
+*"Erwartung: als `ambiguous` gemeldet, keine Aktion"* — which the runbook had
+called "stale ... harmless". It was the thing producing the 20% score. Body
+rewritten, baseline retaken; see `live-runbook.md`.
+
+**Pass 1** (`/inbox --pass1 --force`, run `2026-09-28T10-55-48Z-9f0c4d`):
+
+| Check | Measured |
+|---|---|
+| `attachment_conflicts` entries | exactly 1, source `100 Inbox/Scans/karte.png` |
+| `same_file` | `false` — the byte comparison distinguished the two 69-byte PNGs |
+| `proposed_name` | `karte (2).png` — a basename |
+| Rename pre-ticked | yes |
+| `owner_source_items` | `100 Inbox/Dresden.md`, rendered `[[Dresden]]` |
+| `base_kado_calls` | **2** — the spec 034 T6.4 baseline, unchanged |
+| `folder_listing_calls` | 1 → 2, a rise of exactly one |
+
+**The parser join, verified on live data rather than reasoned about.** The
+rendered remedy line displays a full path (`Atlas/290 Assets/295
+Attachments/karte (2).png`) while `proposed_name` must remain a basename. A
+read-only dry run of `suggestion-parser.py` against the vault document returned
+`{"source": "100 Inbox/Scans/karte.png", "remedy": "rename", "proposed_name":
+"karte (2).png"}` — a basename. The full path in the markdown cannot leak into
+the field, because `_join_attachment_conflict_remedies` joins on `source`
+against the structured doc and never reads the rendered text. Worth pinning:
+the vault-side `*_suggestions.json` is the **wire**, whose `attachment_conflicts`
+is `null`; the join resolves to `tomo-tmp/suggestions-doc.json` through
+`_default_doc_path`'s fallback, since no sibling `suggestions-doc.json` exists
+next to the markdown.
+
+**Pass 2** (`2026-09-28_1106_instructions.json`): `I03 move_asset`, source
+`100 Inbox/Scans/karte.png`, destination `Atlas/290 Assets/295 Attachments/karte
+(2).png`. The dict carried `{id, action, source, destination}` and no internal
+fields. The rendered note's embed was rewritten from the path-prefixed
+`![[100 Inbox/Scans/karte.png]]` to the bare basename `![[karte (2).png]]` —
+T3.3's path-prefix branch, exercised live. No `⚠️` entry was rendered for this
+attachment, correctly: it was resolved, not withheld.
+
+**Hashi apply — 10 of 10 actions applied, `error: None` on every one.**
+
+| Path | sha256 (12) | Verdict |
+|---|---|---|
+| `Atlas/290 Assets/295 Attachments/karte (2).png` | `fa86a6e447ff` | the inbox file, filed under the new name |
+| `Atlas/290 Assets/295 Attachments/karte.png` | `0fb588dae23c` | pre-existing vault file, **untouched** |
+| `100 Inbox/Scans/karte.png` | absent | inbox drained |
+| `100 Inbox/Dresden.md` | absent | source consumed |
+
+The filed note embeds `![[karte (2).png]]`, which resolves to the renamed asset
+and does **not** reach back into the inbox. **Zero `move_asset` failures** — the
+row that was red on 2026-09-15 is green, end to end, through the same vault
+shape that produced the original defect.
+
+**Carried into T4.4.** `I05 delete_source` for `Dresden.md` declares
+`depends_on: ["I01"]` — the note move — and **not** `I03`, the asset move. Under
+the `rename` remedy this is immaterial, since the move succeeds. Under `ignore`,
+where the move is expected to fail, the source deletion is not gated on it. To
+be measured in T4.4 step 4 rather than asserted here.
+
+---
+
 ## PRD criteria — filled in as Phase 4 completes
 
 _(F1, F2, F3, S1, S2, C1, C2 traced by node id once T4.2-T4.4 land.)_

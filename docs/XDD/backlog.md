@@ -1293,18 +1293,31 @@ offers, so they can mirror it? Audited by reading their source (read-only;
 | Tag-handler group | `approved`, `keep_source` | ✅ |
 | **Attachment-conflict remedy** | **none** | ❌ (this entry) |
 
-So there are **two** gaps, not one, and they are different in kind:
+So there are **two** gaps, not one — and our first classification of the second
+one was **wrong**. Corrected 2026-09-29 by Hashi, with evidence:
 
 - The **remedy** has no wire field, so a value set in the markdown is
   *destroyed* on write-back. Data loss.
-- **Delete source** has a wire field and rides through their model, so a value
-  set in the markdown survives; the editor simply offers no way to *set* it. A
-  capability gap, and it predates spec 037.
+- **Delete source** has a wire field — and it is **the same data loss**, not a
+  milder capability gap. We reasoned that presence on the wire meant a markdown
+  tick rides through their model. Presence is necessary and not sufficient:
+  what rides through is the **JSON's** value. `ObsidianSuggestionsDoc.load()`
+  reads the `.json` only and never opens the `.md`, and `composeCourtesyMarkdown`
+  regenerates a body carrying no per-item checkboxes at all — so the tick never
+  reaches their model, and `build_from_wire` then reads `delete_source: false`.
+  Same five-step chain as the remedy, same silence: the owner chose delete and
+  both channels say keep.
 
-The second is theirs to close and we should tell them rather than file it.
-Caveat on our own evidence: we verified the missing call site, not their load
-path, so "it round-trips" is inference from the field existing in their schema
-and types.
+We had flagged "it round-trips" as inference rather than a claim, correctly —
+the inference was the wrong half. What *is* verified: `save()` writes
+`JSON.stringify(model.doc)` whole, so fields the editor never touches are
+preserved byte-for-byte **when a save happens at all**.
+
+The difference that matters is sequencing, and it is better news than our
+framing: `delete_source` already has its field, so closing it needs **no wire
+change**. It is a control, and it is theirs — their issue
+[#140](https://github.com/MMoMM-org/miyo-tomo-hashi/issues/140), which was
+blocked only on our flag-semantics answer (below).
 
 **The larger answer is no, and structurally so.** Nothing tells Hashi what the
 suggestions markdown offers. Every feature has reached them through a handoff
@@ -1315,9 +1328,75 @@ a single table of the markdown's editable decisions with their wire field and
 their status, owned here and sent on change. It is the artefact that would have
 made 037's gap visible at design time rather than on merge day.
 
-**Interim truth for users:** tick the remedy in the markdown, run Pass 2, and do
-not open the Hashi editor in between. Not documented for users — it is an
-unpleasant instruction and the fix is cheap enough that it should not outlive
-one spec.
+**Interim truth for users** — corrected 2026-09-29, because both sides first
+stated it more alarmingly than it is. Hashi's `save()` is dirty-gated
+(`if (!model.dirty) return;`), so an editor **opened, read and closed writes
+nothing** and both files stay byte-identical. The trigger is one *saved edit*,
+anywhere in the document. Accurate sentence: *tick the remedy in the markdown,
+then do not save an edit in Hashi before Pass 2 — reading in Hashi is safe.*
+
+Still not documented for users — it is an unpleasant instruction and the fix is
+cheap enough that it should not outlive one spec. But if it is ever said out
+loud, it should be the accurate version.
+
+### The flag semantics their control was blocked on — measured, not read
+
+Hashi asked which `(decision, keep_source, delete_source)` combinations Pass 2
+honours, and declined to infer it from the field names: *"we have coupled two
+wire fields on a plausible reading before and got it wrong twice in a row."*
+Answered by execution — `tests/test_delete_source_flag_triple.py`, 8 passing,
+driving `build_from_wire` into the real `_build_delete_source_actions`:
+
+| `decision` | `keep_source` | `delete_source` | origin note |
+|---|---|---|---|
+| approve | false | false | **deleted** — paired with the `move_note` (site 3) |
+| approve | false | **true** | **deleted** — identical; the flag changes nothing |
+| approve | true | false | kept |
+| approve | true | **true** | **kept** — `keep_source` wins |
+| skip | false | false | kept (no action at all) |
+| skip | false | **true** | **deleted** — site 1, the explicit user delete |
+| skip | **true** | **true** | **deleted** — `keep_source` is never consulted |
+
+Their inference was right: `delete_source` is the **skip** leg, inert under
+`approve`. Two things fall out that they did not ask about:
+
+- **`(skip, keep_source=true, delete_source=true)` is contradictory and the
+  delete wins** — not by precedence, but because `build_from_wire` never copies
+  `keep_source` into a skipped entry, so the builder cannot see it. A control
+  offering both would let the owner tick "keep" and lose the file.
+- **The two Pass-2 paths normalise `delete_source` differently.** The markdown
+  parser forces it to `False` on an approved item
+  (`suggestion-parser.py:932` — *"If Accept is checked, Delete is irrelevant"*);
+  `build_from_wire` copies it through unchanged. Inert only because no consumer
+  reads a confirmed item's copy of the flag. The wire can hold a state the
+  markdown cannot express, and the invariant holds on one path only — the same
+  shape as everything else in this entry, caught before it cost anything.
+
+Both mutations that the table's load-bearing rows depend on were run and did
+turn the right tests red (site 1 disabled, site 3's `keep_source` check
+removed), so "these tests measure the table" is measured rather than asserted.
+
+### The inventory: Hashi wants it as a vendored file, not prose
+
+Answering our proposal, they asked for it in a shape they can **execute**: one
+JSON file in this repo, one row per editable decision (`markdown_control`,
+`wire_field`, `editable`, optional `note`), vendored on their side exactly as
+they vendor `hashi-instructions.schema.json`. They keep a coverage map (wire
+field → the control that edits it, or an explicit "deliberately not covered"),
+and a test joins the two — **a vendored row their map does not mention fails
+their build.** The field that earns its keep is `wire_field: null`: the 037
+state, stated at design time by whoever adds the markdown control.
+
+Excluded by their request: anything read-only (drift is harmless if they never
+write it) and per-field docs (the description already lives in our schema).
+
+**Owner decision 2026-09-29: adopt the vendored-file shape, exactly as they
+asked, as part of spec 038.** So 038 owes three artefacts, not one: the wire
+field, the editable rename target, and this file. The remedy's row is written
+against the field 038 defines rather than added as `wire_field: null` and
+edited again a week later — with the standing offer that if the ordering blocks
+their #140 or their coverage map, we ship the file first and the row starts as
+`null`, which is the state the format exists to express.
 
 Handoff: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_037-remedy-cannot-survive-the-editor.md`
+Reply and correction: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_delete-source-loses-a-tick-and-yes-to-the-inventory.md`

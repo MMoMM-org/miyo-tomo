@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-29 |
-| **Current Phase** | Initialization |
+| **Current Phase** | PRD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-09-29 |
 
@@ -13,7 +13,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | pending | |
+| requirements.md | in_progress | Research complete — five perspectives, findings in Context below |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -27,6 +27,10 @@
 |------|----------|-----------|
 | 2026-09-29 | Spec opened | Spec 037 shipped an editable decision that reaches no wire. Its consumer found the resulting data-loss path on merge day, and a second instance (`delete_source`) surfaced in the same week. The fix is consumer-coordinated, so it gets its own spec rather than a fix branch. |
 | 2026-09-29 | Scope is three artefacts, not one | Owner rulings 2026-09-29: the wire must carry the attachment-conflict remedy; the rename target must be editable on both surfaces; and the parity inventory ships as a vendored JSON file rather than as prose in handoffs. |
+| 2026-09-29 | An unusable typed name is **rejected and reported**, never sanitised | Owner, after research showed the only existing helper (`sanitize_stem`) *substitutes* rather than rejects — including `/` → `-`. Rejection covers the silent truncation `_asset_dest_join` performs today (`../../x/passwd` → `passwd`, with nothing reported) and is the only reading that fits "no silent substitution". Cost accepted: a typo costs another run. |
+| 2026-09-29 | The "no free name available" line becomes typeable too | Owner. Pass 1 only searches the ` (n)` pattern, so "no free `(n)` name" does not mean no free name exists. Leaving it read-only would make the case that most needs a rename the only case without one. |
+| 2026-09-29 | Wire-over-markdown precedence is **documented, not changed** | Owner. ADR-026 already makes an edited wire authoritative for every editable field; 038 adds one more field, it does not create the rule. Detecting divergence would require reading the markdown on the wire path, which is precisely what ADR-026 forbids. Goes into `usage.md` and the inventory file as a stated rule. |
+| 2026-09-29 | The conflict row is keyed by `source`, not `item_key` | Research finding, not a reversal: the `item_key` agreement with Hashi concerns **note** identity after the spec 034 namesake collision. An attachment conflict is keyed by **attachment** identity — `_build_move_asset_actions` already builds `remedies_by_source`, and `detect_attachment_conflicts` dedups by exact source path so one attachment keeps one decision across several owning notes. Must be said explicitly to Hashi, since "item_key agreed" was written to them in plain language. |
 
 ## Context
 
@@ -52,9 +56,10 @@ consumer side of this work.
 2. **An editable rename target, on both surfaces.** Today neither surface can
    rename; ours is worse, because it renders the computed name inside a checkbox
    label and then discards anything typed over it
-   (`tests/test_037_typed_rename_target_is_ignored.py`). Needs sanitisation, a
-   freeness check, and a defined answer when the typed name is also taken.
-   Explicitly forbidden: falling back to the computed name.
+   (`tests/test_037_typed_rename_target_is_ignored.py`). Needs validation that
+   **rejects and reports** rather than sanitises, a freeness check, and a defined
+   answer when the typed name is also taken. Explicitly forbidden: falling back
+   to the computed name.
 3. **The parity inventory, as a vendored file.** One row per editable markdown
    decision with its wire field — or `null`. Hashi vendors it and joins it to
    their own coverage map in CI, so a row their map does not mention fails their
@@ -66,7 +71,7 @@ consumer side of this work.
 |---|---|
 | Validation is split: Hashi validates in the editor for immediate feedback; Pass 2 checks, surfaces, and **records in the instruction document — nothing more**. No repair, no substitution, no blocking. | Owner 2026-09-29; Hashi agreed, same reasoning as their destination check |
 | Pass 2 must **never** fall back to the computed name when the typed one is unusable | Owner 2026-09-29 — that is the defect being fixed, wearing a different hat |
-| Join on `item_key`, not on a stem | Hashi, after the spec 034 namesake collision |
+| Join on `item_key`, not on a stem — **for note identity**. The attachment-conflict row is keyed by `source` instead; see the decisions log. | Hashi, after the spec 034 namesake collision |
 | The remedy enum defaults the way the markdown pre-ticks it | Hashi's shape, accepted |
 | The inventory excludes read-only fields and per-field docs | Hashi's request, accepted |
 
@@ -82,6 +87,48 @@ consumer side of this work.
   because nothing reads a confirmed item's copy.
 - An absent remedy source is byte-identical to an explicit `ignore`
   (`_build_move_asset_actions`), which is why the loss is silent on both sides.
+
+### Research findings that are load-bearing (2026-09-29, five parallel agents)
+
+**The release is coordinated and cannot be split.** Hashi's vendored suggestions
+schema sets `additionalProperties: false` at the root and every nested object,
+compiled with ajv and fatal on failure: `ObsidianSuggestionsDoc.load()` throws
+and `SuggestionsEditorView.loadAndRender()` drops the document to an error
+screen. Their copy also pins `schema_version` to `"2"`. So both the new field
+**and** the version bump would break their editor — and only on runs that have a
+conflict, which is the case this spec exists to serve.
+
+**The version bump is a gate, not paperwork.** `load_changed_wire`
+(`suggestion-parser.py:270-278`) *rejects* a wire whose `schema_version` does
+not match and silently falls back to the markdown. `wire_gate.classify()` treats
+an added property on a **closed** node as consumer-affecting, and
+`/properties/suggestions/items` and the top level are both closed — so this is
+`ACTION_MOVE_VERSION` + `ACTION_HANDOVER`: suggestions wire **2 → 3**, both
+schema copies, a regenerated `shapes/suggestions-wire.shape.json`, and a handoff.
+
+**This is the first owner-typed string to become a vault write destination
+anywhere in the codebase.** `_asset_dest_join` (`render_actions.py:560-575`)
+deliberately does *not* sanitise — correct while `proposed_name` could only ever
+be Tomo-computed, and reachable for the first time once it is typed. Known gaps
+at that point: `/` and `../` are truncated silently rather than refused;
+`: * ? " < > |` and `\` pass through untouched; `" "` slips the existing
+emptiness guard (`not " "` is `False`); no length cap, no Unicode normalisation.
+
+**Extend the existing trust model rather than adding one.** The markdown's ticks
+are already authoritative over the JSON; the *name* should be read the same way.
+On an untouched document the backtick text **is** the computed name, so the
+common case stays byte-identical and no "was this edited?" flag is needed.
+
+**Deferred to the SDD, deliberately:** the wire field's shape (with or without
+read-only context for Hashi's card) and the markdown layout (inline backticks
+vs. a split parameter line). The open question behind the first is one only
+Hashi can answer — whether their editor can derive `destination`,
+`owner_source_items` and `same_file` itself — and it rides the next handoff.
+
+**`instructions-diff.py` needs no change.** Verified: it consumes
+`instructions.tomo.skipped_assets`, the *output* of remedy processing, never the
+remedies list. It is paired with `render_actions.py`'s output, not with this wire
+field.
 
 ### Full brief
 

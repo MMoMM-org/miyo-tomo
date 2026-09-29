@@ -164,7 +164,8 @@ concern.
 `instructions-diff.py`'s coverage audit doesn't reconcile spec 036's daily/tag-handler withdrawals"
 (recorded 2026-09-17 during T4.3) was **closed by `3c8170c`**, which added
 `_subtract_withdrawn_deletes` to `instructions-diff.py` and `tests/test_036_t4_4_withdrawn_delete_coverage.py`
-(8 cases, all green). The backlog entry still reads `OPEN`. Stale bookkeeping, not a defect.
+(8 cases, all green). The backlog entry read `OPEN` when this was written and now reads
+`CLOSED` (`docs/XDD/backlog.md`) — the bookkeeping caught up.
 
 ## The close-out position: three measured paths, three closed
 
@@ -184,8 +185,11 @@ pass were gutted. That is stated in the test's own docstring rather than left fo
 discover — a close-out that let P3 borrow P1's and P2's evidence would be overclaiming.
 
 The fourth class — a destination taken **after** generation — is structurally outside build-time
-checking and is covered only by F5's wire dependency. It remains open until the consumer confirms
-F5-AC5/AC6.
+checking and is covered only by F5's wire dependency. **That confirmation arrived on 2026-09-21**
+(`_inbox/from-hashi/2026-09-21_hashi-to-tomo_wire-v3-vendored-both-criteria-confirmed.md`): Hashi
+vendored wire 3, reproduced the obligation table independently, and confirmed F5-AC5 and F5-AC6
+against their own suite with each regression test verified red against the old behaviour. The rows
+for both criteria above carry it; this sentence did not, and said the opposite for eight days.
 
 **Falsification, run and reverted, recorded in `9157f9c`:** withdrawal pass to a no-op → Test 1 red;
 withdrawal pass *and* the dangling audit gutted → Test 1 red on the P1 assertion itself; daily

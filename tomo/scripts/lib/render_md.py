@@ -1,4 +1,4 @@
-# version: 0.27.0
+# version: 0.28.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -119,11 +119,21 @@ def _render_action_md(
             # 2026-09-27, extended here); and an outcome claim would repeat
             # the mistake corrected the day before, since nothing re-checks
             # the destination between Pass 1 and the apply.
+            # The remedy is picked in the SUGGESTIONS document and only then
+            # re-synthesized — stating it the other way round ("re-run /inbox
+            # and pick ...") named the steps in an order that cannot be
+            # followed. `--pass2 --force` because it short-circuits the
+            # coverage check outright; a bare `/inbox` relies on drift
+            # detection noticing the edited checkbox, which is a weaker
+            # guarantee to hand someone. No reason is given for the flags:
+            # a rationale that depends on run state is the defect class this
+            # section has already been corrected for twice (owner, 2026-09-29).
             lines.append(
                 "- ⚠️ **Destination was occupied:** Pass 1 found this name "
                 "already taken and you chose Ignore, so the move is sent "
-                "unchanged. Re-run `/inbox` and pick Rename or Keep in inbox "
-                "to resolve it instead."
+                "unchanged. To resolve it instead, tick Rename or Keep in "
+                "inbox in the suggestions document, then run "
+                "`/inbox --pass2 --force`."
             )
         return "\n".join(lines)
 

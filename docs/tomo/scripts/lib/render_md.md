@@ -645,3 +645,41 @@ dropping the membership test annotates EVERY `move_asset`, and the first test
 passes under that mutation because its only move is the ignored one. Without a
 second fixture, "annotate the right move" and "annotate every move" are
 indistinguishable.
+
+## The Annotation Names Its Steps in a Followable Order (v0.28.0, 2026-09-29)
+
+Owner catch, the same day the annotation shipped: it read *"Re-run `/inbox` and
+pick Rename or Keep in inbox to resolve it instead."*
+
+Two faults in one sentence. The remedy is picked in the **suggestions**
+document, and only then is Pass 2 re-synthesized from it — so the steps were
+named in an order nobody can follow. And `/inbox` was the wrong invocation.
+
+It now reads: *"To resolve it instead, tick Rename or Keep in inbox in the
+suggestions document, then run `/inbox --pass2 --force`."*
+
+**Why `--pass2 --force`, and why the document does not say why.** That form
+short-circuits the coverage check outright (`inbox-triage.py`: `if
+state.force_all or to_process`) and cannot go idle. A bare `/inbox` would most
+likely work as well — the cache is re-read from the vault on every run
+(`inbox-triage.py:1076-1078`), so an edited checkbox changes the suggestions
+document's checksum, `detect_drift` sees the mismatch against the instructions
+document's recorded value, the source drops out of `covered_paths`, and branch 6
+routes to synthesize. That was traced, not assumed, and it is exactly why the
+rendered text states **no reason at all** for the flags: the weaker form's
+behaviour depends on run state, and a state-dependent rationale in owner-facing
+text is the defect this section has now been corrected for three times. Give the
+instruction that always works and stop there.
+
+This is the fourth correction in two days to text that told the owner something
+the code did not support — after "the owner chose otherwise", "will fail", and
+"it will be refused". The common shape is not carelessness about wording: each
+one asserted something the renderer was not in a position to know, or named an
+action sequence nobody had walked through.
+
+Not changed, and worth a deliberate note: the `vault_collision_held` remedy
+still reads *"rename the file and re-run `/inbox` to file it after all"*. That
+one is addressed to the state AFTER applying — the attachment is sitting in the
+inbox, and renaming it on disk really is the remedy, with a fresh Pass 1 to pick
+it up. Its order is already followable. It is flagged here only because the two
+sentences look alike and a future reader may assume both needed the same fix.

@@ -398,3 +398,32 @@ def test_the_annotation_and_the_summary_bullet_share_no_sentence():
     # between Pass 1 and the apply, which is the correction made 2026-09-28.
     assert "will be refused" not in block, block
     assert "will fail" not in block, block
+
+
+def test_the_annotation_names_its_steps_in_a_followable_order():
+    """Owner catch, 2026-09-29: the annotation read "Re-run `/inbox` and pick
+    Rename or Keep in inbox", naming the steps in an order nobody can follow —
+    the remedy is ticked in the SUGGESTIONS document, and only then is Pass 2
+    re-synthesized from it.
+
+    Mutation: restore "Re-run `/inbox` and pick Rename or Keep in inbox to
+    resolve it instead."
+
+    Also pins `--pass2 --force`. That form short-circuits the coverage check
+    (`inbox-triage.py`'s `force_all or to_process`) and cannot go idle. A bare
+    `/inbox` would most likely work too — the cache is re-read from the vault
+    each run, so an edited checkbox changes the suggestions doc's checksum and
+    drift routes it to synthesize — but that is a weaker guarantee to hand
+    someone, and the annotation deliberately states no reason for the flags:
+    a rationale that depends on run state is the defect this section has
+    already been corrected for twice.
+    """
+    block = _action_block(_render_with_remedy("ignore"))
+    tick_at = block.find("tick Rename or Keep in inbox")
+    run_at = block.find("/inbox --pass2 --force")
+    assert tick_at != -1, block
+    assert run_at != -1, block
+    assert tick_at < run_at, f"the steps are named out of order: {block}"
+    assert "suggestions document" in block, block
+    # The old form put the command first and named no document.
+    assert "Re-run `/inbox` and pick" not in block, block

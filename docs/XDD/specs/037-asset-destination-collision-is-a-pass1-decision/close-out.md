@@ -1,6 +1,6 @@
 ---
 title: "Close-out — 037 an occupied asset destination is a Pass-1 decision"
-status: in_progress
+status: complete
 ---
 
 # Close-out
@@ -311,6 +311,125 @@ two days earlier.
 
 ---
 
-## PRD criteria — filled in as Phase 4 completes
+## PRD criteria — every one traced to a test that was RUN
 
-_(F1, F2, F3, S1, S2, C1, C2 traced by node id once T4.2-T4.4 land.)_
+All 22 acceptance criteria in F1-F3, S1-S2, C1-C2. The node ids below were
+**executed together on 2026-09-29** — one `pytest` invocation naming exactly
+these tests, `30 passed` — not collected, not inferred from a task that mentions
+the criterion. That distinction is the point of this table: spec 037 produced
+**nine tests whose named mutation could not bite**, so "a test exists" is a
+materially weaker claim here than usual.
+
+Test ids are given without the `tests/test_037_` prefix.
+
+### F1 — Tomo learns whether the destination is already taken
+
+| Criterion | Executed test |
+|---|---|
+| Free destination → no conflict, run unchanged | `t1_2_attachment_vault_collision.py::test_a_free_destination_leaves_the_emitted_document_unchanged` |
+| Occupied → conflict names incoming file and destination | `t1_2_attachment_vault_collision.py::test_an_occupied_destination_names_source_destination_and_owner` |
+| Vault consulted once per folder, not per attachment | `t1_1_folder_cache_serves_attachments.py::test_a_folder_primed_by_notes_serves_the_attachment_caller_from_one_listing` + `::test_the_attachment_caller_first_also_serves_the_note_caller_from_one_listing` |
+| Case-differing name counts as occupied (CON-6) | `t1_1_folder_cache_serves_attachments.py::test_a_name_differing_only_in_case_is_found` + `t1_2_attachment_vault_collision.py::test_unit_dedup_by_destination_case_folded` |
+| Vault unreachable → check degrades, does not block | `t1_2_attachment_vault_collision.py::test_no_kado_client_produces_no_conflicts_and_no_error` + `::test_a_listing_that_raises_produces_no_conflicts_and_no_error` |
+
+### F2 — The conflict is a decision, with rename as the default
+
+| Criterion | Executed test |
+|---|---|
+| Entry names file, occupied destination, every embedding note | `t2_2_render_conflicts.py::test_owner_link_matches_same_notes_own_section_link` |
+| Exactly three remedies, rename ticked | `t2_2_render_conflicts.py::test_exactly_three_remedies_with_rename_ticked` |
+| Several owners → one entry, one tick settles all | `t2_2_render_conflicts.py::test_one_block_per_conflict_not_per_owner` + `t1_5_one_entry_one_file.py::test_one_attachment_three_owners_still_one_entry` |
+| No conflicts → no section at all | `t2_2_render_conflicts.py::test_one_conflict_renders_section_zero_conflicts_render_nothing` |
+| Rename unticked, nothing else ticked → read back as `ignore` | `t2_4_parse_remedy.py::test_rename_cleared_nothing_else_ticked_yields_ignore` |
+
+### F3 — Pass 2 honours the chosen remedy
+
+| Criterion | Executed test |
+|---|---|
+| Rename → move to a free name, every owning embed names it | `t3_1_remedy_outcomes.py::test_rename_emits_move_to_the_proposed_basename` + `t3_3_embed_rewrite.py::test_end_to_end_written_file_agrees_with_the_emitted_move_asset` |
+| Keep-in-inbox → no move, nothing fails at apply | `t3_1_remedy_outcomes.py::test_keep_in_inbox_emits_no_move_and_records_vault_collision_held` |
+| Ignore → move emitted unchanged, **so Hashi refuses and reports it** | `t3_1_remedy_outcomes.py::test_ignore_emits_the_move_unchanged_and_skips_nothing` — **first half only**; see below |
+| No action overwrites the occupying file | `t3_1_remedy_outcomes.py::test_a_remedys_destination_still_goes_through_the_claimed_check` + `t2_1_proposed_name.py::test_an_occupied_proposal_advances` |
+| Coverage audit agrees on a run containing conflicts | `t3_2_audit_needs_no_new_arithmetic.py::test_mixing_every_remedy_in_one_run_passes_the_audit` |
+
+**The one criterion no Tomo test can close.** F3's ignore criterion is two
+claims joined by *so*: Tomo emits the move unchanged, **and Hashi refuses it**.
+The first is ours and is tested. The second is the consumer's behaviour and is
+structurally outside this repo — the same shape as spec 036's two consumer-owned
+criteria, which that close-out left OPEN pending Hashi's reply.
+
+This one is **not** left open, because it was measured end to end in T4.4's live
+run on 2026-09-29: Hashi refused with `Inconsistent state — both source and
+destination present`, **verbatim the 2026-09-15 text**, exactly one failure in a
+seven-action set. That is stronger evidence than a Tomo-side test could ever
+be — a test would assert our belief about Hashi, while the run observed Hashi.
+
+### S1 — The document says whether it is the same file
+
+| Criterion | Executed test |
+|---|---|
+| Byte-identical → says so, warns of a second copy | `t2_3_same_file_wording.py::test_same_file_true_renders_second_copy_warning` + `t1_3_same_file.py::test_byte_identical_files_set_same_file_true` |
+| Differs → says a different file holds the name | `t2_3_same_file_wording.py::test_same_file_false_renders_different_file_statement` |
+| Cannot compare → says so, remedies unchanged | `t2_3_same_file_wording.py::test_same_file_null_renders_could_not_compare` + `::test_remedies_unchanged_from_t2_2_baseline` |
+
+### S2 — An unresolved conflict is called out
+
+| Criterion | Executed test |
+|---|---|
+| Rename not ticked → entry states the conflict remains and what follows | `t4_2_unresolved_summary.py::test_unresolved_report_names_the_two_non_rename_sources_verbatim` + `::test_degraded_rename_is_reported_despite_its_remedy_field_saying_rename` |
+
+The second test is the load-bearing one. A degraded rename's own `remedy` field
+still reads `"rename"`, so filtering on `remedy != "rename"` drops it — which is
+why this report is built from two source lists rather than one filter.
+
+### C1 / C2 — Could-have features, both shipped
+
+| Criterion | Executed test |
+|---|---|
+| C1 — the rename remedy names the destination it would use | `t2_2_render_conflicts.py::test_rename_remedy_names_fully_composed_destination` |
+| C1 — an occupied proposal advances to the next free variant | `t2_1_proposed_name.py::test_an_occupied_proposal_advances` |
+| C2 — the summary names each unresolved conflict rather than counting | `t4_2_unresolved_summary.py::test_no_sentence_counts_the_conflicts` |
+
+---
+
+## What this spec cost, and what it is worth recording
+
+**Nine tests named a mutation they could not detect.** Every one passed happily;
+every one was found by running the mutation it named rather than by reading it.
+The ninth was found in this phase, in a test written *for* this phase's own
+lesson. A which-test-catches-what claim is measurable, and in this spec it was
+wrong often enough that measuring it is no longer optional.
+
+**Presence-only assertions hid two defects a fixture already rendered.** T4.2's
+duplication defect and T4.4's duplicated path both sat in output an existing
+test was rendering. Every assertion checked that expected strings were present;
+none counted. Count assertions found both.
+
+**Four owner-facing sentences asserted more than the renderer knows**, two of
+them caught by the owner reading shipped output rather than by review:
+"the owner chose otherwise" (false for a degraded rename), "will fail" and "it
+will be refused" (nothing re-checks the destination between Pass 1 and the
+apply), and an instruction whose steps could not be followed in the order given.
+Sweeping every instructional line of a rendered document offline — one
+`render_instructions_md` call — found the fifth before it shipped.
+
+**The live runs found what no test did.** The first T4.3 attempt produced no
+conflict at all: the fixture note's own body asked the classifier not to act,
+and the runbook had called that text "harmless". Three of this spec's findings —
+the force-atomic gap, the ignore disclosure, and the delete that outlives a
+refused move — came from running it against a real vault.
+
+## Open, recorded rather than closed
+
+- **Force Atomic Note bypasses conflict detection** (`docs/XDD/backlog.md`).
+  Detection skips suppressed items by design; the tick un-suppresses one in
+  Pass 2, after detection has run. Traced in code, not yet measured.
+- **A delete outlives a refused attachment move.** T4.4's ignore run filed the
+  note and deleted its source while the move failed. Both mechanisms behave as
+  written; the disclosure was the gap, and it was closed in `render_md` 0.30.0.
+- **The embed rewrite cannot disambiguate a shared basename**
+  (`docs/XDD/backlog.md`), accepted at T3.3.
+- **For byte-identical files, the pre-ticked Rename creates a second copy.** The
+  comparison sentence warns; the default does not. Documented for the owner in
+  `docs/usage.md`; whether the pre-tick should differ for that case is a design
+  question this spec did not open.

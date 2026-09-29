@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Integration and the live path"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -42,7 +42,7 @@ Establishes that the chain works end to end and that nothing outside Tomo moved.
   5. Success: Hashi receives no new field and needs no change `[ref: SDD/ADR-5]`; the contrast with spec 036's consumerless `depends_on` is preserved
 
 
-- [ ] **T4.2 Pass 2's summary names what it did not resolve** `[activity: backend-api]` `[parallel: true]`
+- [x] **T4.2 Pass 2's summary names what it did not resolve** `[activity: backend-api]` `[parallel: true]`
 
   1. Prime: Read `render_instructions_md`'s "Skipped — un-appliable actions" section `[ref: lib/render_md.py:886-935]` and the metadata dict that feeds it `[ref: instruction-render.py:1103-1123]`. This is a **script**, not a runtime skill — ordinary Python + pytest, no `docs/tomo` imperatives-only constraint. Read `_withdrawn_links_note`'s docstring `[ref: render_md.py:666-678]` for ADR-11 and the `⚠️ **<label>:**` convention it shares with Pass 1
   2. Test: **the `vault_collision_held` fallback is gone** — on HEAD a `keep_in_inbox` conflict renders `(no remedy defined for skip kind 'vault_collision_held' — check render_md.py)`, a live user-facing defect T3.1 shipped, since every Phase 3 test asserted on `skipped_assets` as data and none rendered it. **Mutation: delete the new `kind` branch** and that catch-all returns, which `test_031_t2_3_move_asset_md_rendering.py::test_unrecognized_skip_kind_never_inherits_a_remedy` pins for a genuinely unknown kind; one fixture carrying a `keep_in_inbox`, an `ignore` and a **successful** `rename` together names the two non-rename sources **verbatim** and the rename source **nowhere** in that reporting — **mutation: filter `attachment_conflict_remedies` on `remedy != "rename"`**, which silently drops a DEGRADED rename (`proposed_name: null`, which SDD:292 degrades to `keep_in_inbox`) — the two source lists are `skipped_assets` filtered to `kind == "vault_collision_held"` (which already unifies keep-in-inbox and degraded rename) PLUS `attachment_conflict_remedies` filtered to `remedy == "ignore"`; naming is asserted as **the exact expected strings**, and separately that no rendered sentence matches a bare `\d+ conflicts?` count — **mutation: render `"2 conflicts remain: a.png, b.png"`**, which a vague "names both" assertion would accept `[ref: PRD/C2 — "conflicts not resolved by rename"]`; a run with no conflicts renders the section byte-identically to a captured pre-change literal — **NOT** asserted alone, since it is already true on HEAD `[ref: plan/phase-1.md:45]`
@@ -51,7 +51,7 @@ Establishes that the chain works end to end and that nothing outside Tomo moved.
   5. Success: an owner who unticked a default is reminded before applying `[ref: PRD/S2]`; no rendered line names a wire action `[ref: ADR-11, render_md.py:668]`
 
 
-- [ ] **T4.3 The live run reproduces the 2026-09-15 case and resolves it** `[activity: testing]`
+- [x] **T4.3 The live run reproduces the 2026-09-15 case and resolves it** `[activity: testing]`
 
   1. Prime: Read the run log `100 Inbox/tomo-hashi-run-log_2026-09-15T2057.md` for the failing row; confirm both `karte.png` files are still in place and still differ
   2. Test — as a live `/inbox` run, not a fixture: Pass 1 raises exactly one conflict for `karte.png`; the document shows it with rename ticked and states that a **different** file holds the name; Pass 2 with the default emits a move to a free name; the coverage audit passes; Hashi applies the run with **zero** `move_asset` failures — the row that was red on 2026-09-15 is green
@@ -59,7 +59,7 @@ Establishes that the chain works end to end and that nothing outside Tomo moved.
   4. Validate: compare `base_kado_calls` against the spec 034 T6.4 baseline of **2** — it must be unchanged, since the reducer is a separate process `[ref: SDD/Cost]`; record `folder_listing_calls` and confirm it rose by at most one
   5. Success: every PRD KPI has a measured value from this run `[ref: PRD/Success Metrics]`; owner agency goes from 0-of-1 to 1-of-1; the failed action goes from 1 to 0
 
-- [ ] **T4.4 The unresolved remedies behave as designed on the live vault** `[activity: testing]`
+- [x] **T4.4 The unresolved remedies behave as designed on the live vault** `[activity: testing]`
 
   1. Prime: T4.3's run must be complete and its vault state known
   2. Test — two further live runs against the same fixture: with `keep_in_inbox`, no `move_asset` is emitted and Hashi reports no failure; with `ignore`, the move is emitted and **Hashi refuses it with the same message as 2026-09-15** — which is the remedy working, not a regression

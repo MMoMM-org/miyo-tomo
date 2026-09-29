@@ -106,7 +106,7 @@ bash scripts/reset-tomo-tmp.sh --pass1 --instance <path>/tomo-tmp
 - [x] [Phase 1: Detection in the reducer](phase-1.md)
 - [x] [Phase 2: The decision in the document](phase-2.md)
 - [x] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
-- [ ] [Phase 4: Integration and the live path](phase-4.md)
+- [x] [Phase 4: Integration and the live path](phase-4.md)
 
 ## Plan Verification
 

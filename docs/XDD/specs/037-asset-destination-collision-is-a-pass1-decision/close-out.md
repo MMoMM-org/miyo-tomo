@@ -241,6 +241,76 @@ like a regression to anyone who meets it without this note.
 
 ---
 
+### T4.4 (b) — ignore, the run that was supposed to fail
+
+Run 2026-09-29. Metadata only.
+
+**It failed, exactly once, in the same words as 2026-09-15.** Hashi's run log:
+
+| Action | Result |
+|---|---|
+| `I02` `move_asset` `100 Inbox/Scans/karte.png` → `Atlas/290 Assets/295 Attachments/karte.png` | **failed** — `Inconsistent state — both source and destination present` |
+
+`applied: 6, failed: 1`. The refusal text is **verbatim** the one the
+2026-09-15 incident recorded. **ADR-5 is therefore proven rather than
+assumed**: Tomo emits no wire field and relies on Hashi's own final check, and
+that check exists, fires, and reads identically a fortnight later.
+
+| Check | Measured |
+|---|---|
+| Failures | exactly 1, naming the attachment move |
+| `Atlas/290 Assets/295 Attachments/karte.png` | `0fb588dae23c` — untouched by the refused move |
+| `100 Inbox/Scans/karte.png` | `fa86a6e447ff` — still in the inbox |
+| Summary blocks | "Conflict remains" only; "Attachment not filed" correctly absent, since `ignore` never reaches `skipped_assets` |
+| Action annotation | rendered on `I02` itself, different sentence from the summary bullet |
+
+**Three rendered-text corrections were made between the keep-in-inbox run and
+this one**, two of them caught by the owner reading shipped output: the Pass-1
+`Ignore` label and the Pass-2 bullet both promised an outcome nothing re-checks
+("will fail", "will be refused"); the new action annotation named its steps in
+an order nobody can follow ("Re-run `/inbox` and pick ..." — the remedy is
+ticked in the suggestions document *first*); and the held remedy named only the
+route for after applying. All four are described in
+`docs/tomo/scripts/lib/render_md.md` with measured mutations.
+
+### The open finding this run produced: a delete that outlives a refused move
+
+`I03 delete_source` applied although `I02` failed. `Dresden.md` is gone,
+`karte.png` sits in the inbox with no note referencing it, and the filed Atlas
+note embeds `![[100 Inbox/Scans/karte.png]]` — reaching backwards into the
+inbox. **That is the end state of 2026-09-15, reproduced.**
+
+Two mechanisms, both working as written:
+
+1. `delete_source` declares `depends_on: ["I01"]` — the note move. Spec 036's
+   contract covers four delete sources (checked "Delete source", daily-only,
+   move_note origins, tag-handler groups) and an attachment move is none of
+   them. By 036's own logic the delete IS justified: the note's content was
+   captured by the atomic.
+2. ADR-6's residue rule (`render_actions.py:1410`) cannot fire here at all —
+   not because `ignore` was excluded, but because it keys on `skipped_assets`
+   and an `ignore`d conflict never produces an entry there. The exclusion that
+   IS explicit covers `vault_collision_held`, per the owner's 2026-09-27
+   ruling.
+
+So for all three remedies the note is filed and its source deleted. Under
+`rename` that is correct and complete. Under the other two the filed note points
+back into the inbox — a reference that still resolves, because the file is
+genuinely still there, but that no longer has an owning note in the inbox to
+bring it forward.
+
+**What the document does not say.** It states that the move goes out unchanged
+and will be refused unless the name was freed. It does not state that the note
+is filed and its source note deleted regardless. An owner ticking `ignore` is
+told what happens to the attachment and not what happens to the note.
+
+Recorded as a finding, not fixed in flight: closing it means either widening
+ADR-6 to a case that produces no `skipped_assets` entry, or adding a sentence to
+the disclosure, and the first is a design change to a rule the owner ruled on
+two days earlier.
+
+---
+
 ## PRD criteria — filled in as Phase 4 completes
 
 _(F1, F2, F3, S1, S2, C1, C2 traced by node id once T4.2-T4.4 land.)_

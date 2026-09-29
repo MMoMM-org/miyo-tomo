@@ -683,3 +683,28 @@ one is addressed to the state AFTER applying — the attachment is sitting in th
 inbox, and renaming it on disk really is the remedy, with a fresh Pass 1 to pick
 it up. Its order is already followable. It is flagged here only because the two
 sentences look alike and a future reader may assume both needed the same fix.
+
+## The Held Remedy Names Both Reading Moments (v0.29.0, 2026-09-29)
+
+The `vault_collision_held` remedy read *"No action needed unless you change your
+mind; rename the file and re-run `/inbox` to file it after all."*
+
+That is the route for **after** applying, and the document is read **before** —
+every action carries an unticked "Applied" box. At that moment the suggestions
+document is still live and re-ticking is the cheap route; renaming a file on
+disk is not. Read after applying, the source note is gone and the suggestions
+document is spent, so renaming really is the remedy. Both are true at their own
+moment and neither at the other's, so the line now names both, in order.
+
+Found by sweeping every instructional line of a rendered document offline rather
+than waiting to meet it in a live run — after four corrections in two days, two
+of them caught by the owner reading shipped output, the cheaper move was to
+render all three skip kinds plus an ignored conflict locally and read every line
+that tells the owner to do something. That sweep is worth repeating whenever
+this section changes; it costs one `render_instructions_md` call.
+
+The sweep cleared the rest: "Conflict remains" is conditional on `unless that
+name has since been freed`; "the owner chose not to file it" is reached only by
+`keep_in_inbox`, since a degraded rename builds its own sentence; and the
+collision and `no_basename` remedies already name a file action followed by a
+re-run, which is a followable order.

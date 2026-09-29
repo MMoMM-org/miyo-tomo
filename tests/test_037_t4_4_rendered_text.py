@@ -427,3 +427,30 @@ def test_the_annotation_names_its_steps_in_a_followable_order():
     assert "suggestions document" in block, block
     # The old form put the command first and named no document.
     assert "Re-run `/inbox` and pick" not in block, block
+
+
+def test_the_held_remedy_covers_both_reading_moments():
+    """Owner ruling, 2026-09-29: the `vault_collision_held` remedy named only
+    the route for AFTER applying ("rename the file and re-run `/inbox`").
+
+    This document is read BEFORE applying — every action carries an unticked
+    "Applied" box — and at that moment the suggestions document is still live,
+    so re-ticking is the cheap route and renaming a file on disk is not. Read
+    after applying, the source note is gone and that document is spent, so
+    renaming really is the remedy. Both are true at their own moment and
+    neither is true at the other's, so the line names both.
+
+    Mutation: restore "No action needed unless you change your mind; rename the
+    file and re-run `/inbox` to file it after all."
+    """
+    _skipped, md = _all_three_kinds()
+    ln = next(b for b in _filed_bullets(md) if f"`{HELD}`" in b)
+    before_at = ln.find("before applying")
+    after_at = ln.find("afterwards")
+    assert before_at != -1, ln
+    assert after_at != -1, ln
+    assert before_at < after_at, f"the two moments are named out of order: {ln}"
+    assert "/inbox --pass2 --force" in ln, ln
+    # Same ordering rule as the ignore annotation: tick first, then run.
+    tick_at = ln.find("tick Rename in the suggestions document")
+    assert tick_at != -1 and tick_at < ln.find("/inbox --pass2 --force"), ln

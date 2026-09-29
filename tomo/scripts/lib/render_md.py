@@ -1,4 +1,4 @@
-# version: 0.28.0
+# version: 0.29.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1083,7 +1083,20 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     # or a rename that degraded to it) — `reason` above already
                     # says why; there is nothing left for the user to do unless
                     # they change their mind.
-                    remedy = "No action needed unless you change your mind; rename the file and re-run `/inbox` to file it after all"
+                    # Two reading moments, two different routes, and naming
+                    # only one misleads at the other (owner, 2026-09-29). This
+                    # document is read BEFORE applying — it carries unticked
+                    # "Applied" boxes — when the suggestions doc is still live
+                    # and re-ticking is the cheap route. Read AFTER applying,
+                    # the source note is gone and that doc is spent, so the
+                    # remedy really is renaming the file on disk. The earlier
+                    # text named only the second.
+                    remedy = (
+                        "No action needed unless you change your mind: before "
+                        "applying, tick Rename in the suggestions document and "
+                        "run `/inbox --pass2 --force`; afterwards, rename the "
+                        "file in the inbox and re-run `/inbox`"
+                    )
                 else:
                     # A missing or unrecognized kind must never silently fall
                     # back to either remedy above — that is how a third skip

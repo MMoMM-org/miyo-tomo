@@ -1183,3 +1183,55 @@ whose basename already exists in the asset folder, tick Force Atomic Note in the
 suggestions document, and apply Pass 2. Expect one `move_asset` into the
 occupied destination and a Hashi refusal, with no Attachment Conflicts section
 anywhere in either document.
+
+
+## OPEN — spec 037's remedy does not survive Pass 2's JSON-only path, and silently becomes `ignore`
+
+**Reported by Hashi 2026-09-29**, the day spec 037 merged, and **reproduced
+against our own code** rather than accepted on their analysis:
+`tests/test_037_remedy_lost_on_the_wire_path.py` (4 passing, 1 strict xfail).
+
+The chain, every link in this repo:
+
+1. `tomo/schemas/suggestions-wire.schema.json` carries no attachment-conflict
+   field. Its own top-level description states the invariant this violates:
+   *"every editable decision the markdown offers is carried here."*
+2. `suggestion-parser.py:492` hardcodes `"attachment_conflict_remedies": []` in
+   `build_from_wire`. The comment beside it states the premise correctly and
+   stops there — the consequence was never traced.
+3. ADR-026: an `emit_digest` mismatch makes Pass 2 rebuild from the wire alone
+   and never re-read the markdown.
+4. `_build_move_asset_actions` treats an absent source as a plain attachment —
+   its docstring says "same as `ignore`".
+
+So a user ticks **Rename**, anything edits the wire, and Pass 2 emits the
+**Ignore** outcome: the move goes out against the occupied destination, Hashi
+refuses it, and the owning note is filed and its source deleted regardless. The
+user chose the safe remedy and got the unsafe one, and nothing reports a
+problem — the failed move is now an expected class, and Pass 2 sees a
+well-formed document.
+
+**Why spec 037's suite could not see it.** The wire path was tested only for
+conflict-FREE runs, on byte-identical golden parity. A conflict run through the
+wire is not expressible, because the field does not exist — so the one case
+that loses data is the one no fixture could build. The hardcoded `[]` was even
+deliberately proven load-bearing for that parity, which is true and was the
+wrong question.
+
+**Also a gap before it is a defect:** Hashi's editor reads the JSON, so a user
+reviewing there never sees the collision and cannot choose a remedy at all.
+
+**What closing this needs** — a consumer-coordinated wire change, so a spec of
+its own. Hashi named what their editor must read (their shape, explicitly not a
+spec): the owning suggestion, the attachment path, the occupied destination,
+the remedy as an editable enum defaulted the way the markdown pre-ticks it, and
+the rename target. They would rather join on `item_key` than on a stem, after
+the namesake collision. They have offered to demonstrate the loss by
+hand-crafting a collision document if it should be shown rather than argued.
+
+**Interim truth for users:** tick the remedy in the markdown, run Pass 2, and do
+not open the Hashi editor in between. Not documented for users — it is an
+unpleasant instruction and the fix is cheap enough that it should not outlive
+one spec.
+
+Handoff: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_037-remedy-cannot-survive-the-editor.md`

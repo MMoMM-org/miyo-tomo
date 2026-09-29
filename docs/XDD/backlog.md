@@ -1261,6 +1261,60 @@ and not a parse tweak:
   Tomo's markdown does not, the two surfaces diverge again — which is the shape
   this whole entry is about.
 
+**Owner decision 2026-09-29 on validation — deliberately minimal.** Pass 2
+checks the typed name, surfaces a problem if there is one, and records it in the
+instruction document. **Nothing more** — no repair, no silent substitution, no
+blocking. Hashi validates too, directly in the editor, for immediate feedback.
+
+Two checks, two jobs, and that is the point rather than duplication: Hashi's is
+UX and may be skipped or bypassed; Tomo's is the one that must be *recorded*,
+because the instruction document is the artefact the owner reads afterwards.
+Same shape as the standing ruling on Hashi's own destination check — defence in
+depth, not a replacement.
+
+Note what this rules out: Pass 2 must **not** fall back to the computed name
+when the typed one is unusable. That would be the defect this entry exists to
+close, wearing a different hat.
+
+### The parity question this raised, and its answer
+
+Asked by the owner 2026-09-29: does Hashi know everything the markdown now
+offers, so they can mirror it? Audited by reading their source (read-only;
+`src/ui/suggestions-view/`):
+
+| Decision the markdown offers | Wire field | Control in their editor |
+|---|---|---|
+| Approve / Skip | `decision` | ✅ |
+| **Delete source** (the tri-state's third leg) | `delete_source` | ❌ **`setDeleteSource` exists in `src/suggestions/transforms/suggestion.ts:170` and is called from nowhere** |
+| Keep source files | `keep_source` | ✅ `SuggestionsTab.ts` |
+| Force Atomic Note | `force_atomic` | ✅ `SuggestionsTab.ts`, `DailyTab.ts` |
+| MOC choice | `candidate_mocs` | ✅ |
+| Daily: Accept | `accepted` | ✅ |
+| Tag-handler group | `approved`, `keep_source` | ✅ |
+| **Attachment-conflict remedy** | **none** | ❌ (this entry) |
+
+So there are **two** gaps, not one, and they are different in kind:
+
+- The **remedy** has no wire field, so a value set in the markdown is
+  *destroyed* on write-back. Data loss.
+- **Delete source** has a wire field and rides through their model, so a value
+  set in the markdown survives; the editor simply offers no way to *set* it. A
+  capability gap, and it predates spec 037.
+
+The second is theirs to close and we should tell them rather than file it.
+Caveat on our own evidence: we verified the missing call site, not their load
+path, so "it round-trips" is inference from the field existing in their schema
+and types.
+
+**The larger answer is no, and structurally so.** Nothing tells Hashi what the
+suggestions markdown offers. Every feature has reached them through a handoff
+somebody remembered to write, and 037 is what happens when one does not — the
+remedy reached their editor through no channel at all. There is no inventory
+either side can check a new feature against. Proposing one as part of spec 038:
+a single table of the markdown's editable decisions with their wire field and
+their status, owned here and sent on change. It is the artefact that would have
+made 037's gap visible at design time rather than on merge day.
+
 **Interim truth for users:** tick the remedy in the markdown, run Pass 2, and do
 not open the Hashi editor in between. Not documented for users — it is an
 unpleasant instruction and the fix is cheap enough that it should not outlive

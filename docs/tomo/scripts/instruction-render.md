@@ -708,3 +708,117 @@ Declined as out of scope for this fix — low probability, no vault write
 involved, and the half-present state that would result is already handled
 correctly (as stale) by the logic above, so the failure mode is "one entry's
 notice is treated as a new run" rather than data corruption or a leak.
+
+## The Remedy Is Read AND Forwarded — Both, or It Is a No-Op (spec 037 T3.0, v0.60.1)
+
+`instruction-render.py` pulls `attachment_conflict_remedies` off the parsed
+suggestions JSON and passes it to `build_actions`, which forwards it to
+`_build_move_asset_actions`.
+
+This is the same shape as `merged_moc_proposals` (spec 034 T6.0c) and fails the
+same way: a read without a forward compiles, runs, passes every test that
+inspects the parser's output, and does nothing. The whole point of the field is
+what happens at the far end of the chain, so both halves are asserted — one test
+checks what `build_actions` was actually called with, and one runs a real parser
+`main()` into a real `instruction-render` `main()` end to end. A parser-side
+assertion alone cannot see a missing forward.
+
+**Why `.get(key, [])` rather than a required key.** It matches how every other
+field is pulled from `suggestions` in this file, and both producers — the
+markdown `main()` and `build_from_wire` — always emit the key explicitly. The
+default is reached only by a `suggestions.json` cached before spec 037 existed.
+
+That default is worth naming precisely, because its failure mode is quiet: a
+missing key yields `[]`, which means no remedy is found for any conflict, which
+means every conflict falls through to the behaviour of `ignore` — the move is
+emitted against the occupied destination and refused downstream. The owner's
+choice is discarded without a word. That is an acceptable posture for a
+stale-cache edge case and an unacceptable one for a typo in a key name, which is
+why the name is now fixed in the SDD's Interface Specifications rather than
+living only in three files that happen to agree.
+
+## The Embed Rewrite Lives Between the Render and the Write, Not in `render_actions.py` (spec 037 T3.3)
+
+The 2026-09-15 failure this spec exists to close (README.md Context) left an
+Atlas note filed correctly while its body still embedded
+`![[Scans/karte.png]]` — an inbox path the attachment had never actually left,
+because nothing renamed that attachment in that run. T3.1 taught
+`_build_move_asset_actions` to recompute a renamed attachment's destination.
+This task is the other half of a rename: the file moves under a new name and
+the note that embeds it has to say so.
+
+**Why here, and why this window.** `_build_move_asset_actions` runs from
+`build_actions`, which is called (instruction-render.py:~614) only after every
+item in the per-item loop has already rendered its body and written it to
+disk. By the time a move action exists, the body it would need to correct is
+already on disk under the old embed. The rewrite therefore cannot consult the
+move action — it has to recompute the new basename itself, straight from
+`attachment_conflict_remedies[source].proposed_name`, the same source data
+`_build_move_asset_actions` reads. The call sits between the render
+(`rendered = render_via_script(...)`) and the write
+(`rendered_path.write_text(rendered, ...)`) for the same reason C5's filename
+disambiguation and the tomo: block stamp do — it is the last point in the loop
+the body can still change before it becomes a fact on disk.
+
+**Why a separate module (`lib/embed_rewrite.py`) instead of inlining the regex
+here.** The rewrite reuses `attachment_index._EMBED_RE` — the one place this
+repo already parses `![[...]]` vs `[[...]]` — but needs to WRITE, not just
+read: preserve an alias/anchor tail, skip fenced code blocks, and rebuild the
+bare new basename. None of that belongs mixed into the per-item render loop's
+control flow, and attachment_index.py is a reader with no fence-handling of
+its own to extend.
+
+**Why basename matching, accepted rather than engineered around.** A
+confirmed item's `attachments[]` holds resolved, inbox-relative paths;
+`inbox-triage.py` only keeps the owner's as-typed `embed_target` for
+UNRESOLVED references (`:325,340`) — a resolved one is only ever a path. But
+the note body holds whatever the owner actually typed: bare, path-qualified,
+aliased, anchored, or none of those if the attachment isn't embedded at all.
+Basename is the only handle common to both sides. This breaks, in principle,
+when one note embeds two different attachments from different inbox folders
+that happen to share a basename and only one of them is renamed — the rewrite
+cannot tell which literal embed text (if both are bare, e.g. two
+`![[karte.png]]`) belongs to which source path, and could rewrite the wrong
+one or both. This case is accepted, not handled: it requires the SAME basename
+to collide twice in one run from two different folders, which the destination
+`claimed` check in `_build_move_asset_actions` already treats as a naming
+conflict on the FILING side, so it is already a rare, reported situation
+before the embed rewrite ever runs.
+
+**Why the render-time rewrite may outrun the move (owner ruling
+2026-09-27).** A renamed destination still passes through the in-run
+`claimed` check in `_build_move_asset_actions`, which runs after every body in
+this loop is already written. A second attachment in the same run can claim
+that exact renamed destination first, dropping the first as `kind: collision`
+— after its owning note's embed has already been rewritten to the name that
+lost the race. Two fixes were considered and rejected: moving the write-to-
+disk after `build_actions` (correct, but restructures a loop every Pass 2 run
+goes through, for a corner case that loses nothing), and pre-checking proposed
+names against each other before rendering (duplicates the `claimed` rule in a
+second place). The accepted outcome is a held note, not a mis-filed one:
+`kind: collision` (unlike `vault_collision_held`) still suppresses the owning
+note's move via `suppress_moves_for_unfiled_attachments`, so the note stays in
+the inbox with its attachment, and the run reports the collision. Re-running
+Pass 2 after the reported collision is resolved files everything correctly —
+this pass holds no memo of the earlier clash. See SDD/Runtime View, "A renamed
+embed is written before the move is known to survive."
+
+## `attachment_conflict_remedies` Reaches The Renderer's Metadata Dict Too (spec 037 T4.2)
+
+`main()` has read `attachment_conflict_remedies` since T3.0 and forwarded it
+to `build_actions` (see "The Remedy Is Read AND Forwarded" above), but the
+`render_instructions_md` metadata dict never got a copy — the SAME shape as
+that section describes, one level further down the chain: a transport with
+one leg missing compiles, runs, and quietly does nothing at the end that
+needed it. Nothing needed it there until T4.2's `## Skipped` addition
+(`## Skipped` Gains a Second, Independent Report, `docs/tomo/scripts/lib/
+render_md.md`) needed to see which sources were `ignore`d — `skipped_assets`
+alone cannot say that; `ignore` never produces an entry there.
+
+Deliberately NOT projected into `instructions.json`'s `tomo` block, unlike
+`skipped_assets`, `destination_clashes`, and friends: `instructions-diff`
+does not need it (an `ignore`d move is still a normal, counted `move_asset`
+action — the audit already reconciles it correctly, same as `merged_moc_
+proposals`'s "not an audit input" reasoning above), and nothing else reads
+`instructions.json` for this. The renderer's dict is the only consumer this
+task has.

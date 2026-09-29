@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.0
+# version: 0.40.3
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -35,6 +35,7 @@ from lib.supporting_items import (  # noqa: E402
 from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 from lib.wire_version import wire_schema_version  # noqa: E402
+from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -483,6 +484,12 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         "tag_handler_keep_source_group_ids": [
             g["group_id"] for g in tag_groups if g.get("keep_source")
         ],
+        # spec 037 T3.0: the ADR-026 wire (_suggestions.json) carries no
+        # Attachment-Conflicts data at all — that lives only in the
+        # structured suggestions-doc.json the markdown path reads via
+        # --suggestions-doc. Always [], never fabricated, so an unedited
+        # wire keeps CON-5 parity with the markdown parse.
+        "attachment_conflict_remedies": [],
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),
@@ -2214,6 +2221,177 @@ def parse_tag_handler_keep_source(text: str) -> list[str]:
     return [gid for gid, _, keep in _walk_tag_handler_decisions(text) if keep]
 
 
+# ── Attachment Conflicts (spec 037 T2.4) ─────────────────────────────────────
+
+# Entry delimiter rendered by `render_attachment_conflicts_block`: `### `<source>` `.
+RE_ATTACHMENT_CONFLICT_SOURCE = re.compile(r"^###\s+`([^`]+)`")
+
+REMEDY_RENAME = "rename"
+REMEDY_KEEP_IN_INBOX = "keep_in_inbox"
+REMEDY_IGNORE = "ignore"
+
+
+def _resolve_attachment_remedy(
+    rename_ticked: bool,
+    rename_impossible: bool,
+    keep_ticked: bool,
+    ignore_ticked: bool,
+) -> str:
+    """Apply PRD Business Rules 2-4 and the ADR-4 null-proposal exception to
+    one conflict entry's three ticks. Exhaustive — always returns one of the
+    three remedy strings, never None (SDD/Interface Specifications).
+
+    Exactly one tick settles the entry to that remedy (Rule 2), unless it is
+    the "Rename — no free name available" line (`rename_impossible`):
+    passing `rename` through with no `proposed_name` would hand Pass 2
+    `_asset_dest_join(asset_folder, None)`, a move with no destination,
+    breaking Rule 6. Owner decision 2026-09-23 resolves that state to
+    `ignore` instead — ADR-4's own reasoning, an override of the pre-selected
+    answer gets the loudest outcome, not the quietest, and `keep_in_inbox`
+    would discard the tick with no signal that it was discarded.
+
+    Zero ticks (Rule 3) or two-or-more ticks in ANY combination — including
+    one where the pre-ticked rename box is still ticked alongside another
+    (Rule 4) — resolve to `ignore`. The pre-tick carries no special weight
+    once a second box is also ticked; it is not sticky.
+    """
+    ticks = (rename_ticked, keep_ticked, ignore_ticked)
+    if sum(ticks) == 1:
+        if rename_ticked:
+            return REMEDY_IGNORE if rename_impossible else REMEDY_RENAME
+        if keep_ticked:
+            return REMEDY_KEEP_IN_INBOX
+        return REMEDY_IGNORE
+    return REMEDY_IGNORE
+
+
+def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
+    """Walk the ## Attachment Conflicts section, one record per `### `source`` block.
+
+    Mirrors `_walk_tag_handler_decisions`: a new entry starts at each
+    ``### `<source>` `` heading and the checkbox state seen before the next
+    entry (or the section's end) resolves it via `_resolve_attachment_remedy`.
+    A checkbox line absent from the text is simply never seen, so it
+    contributes an unticked (False) state like any other unticked line — no
+    line is required for an entry to resolve.
+
+    Returns ``[(source, remedy), ...]`` in document order; empty when the
+    section is absent (mirrors T1.2's absent-not-empty decision — no
+    invented entry).
+
+    Reads exactly ONE `## Attachment Conflicts` section — the first. A
+    second such section later in the document is not merged in; the walk
+    stops at the first non-matching `## ` heading it meets. Deliberate:
+    the renderer emits at most one, so a second can only come from a hand
+    edit or a bad merge, and which one reflects the owner's intent is
+    genuinely ambiguous — silently combining them risks merging two
+    sections that contradict each other.
+    """
+    lines = text.splitlines()
+    in_section = False
+    records: list[tuple[str, str]] = []
+    current_source: str | None = None
+    rename_ticked = False
+    rename_impossible = False
+    keep_ticked = False
+    ignore_ticked = False
+
+    def _flush() -> None:
+        nonlocal current_source, rename_ticked, rename_impossible
+        nonlocal keep_ticked, ignore_ticked
+        if current_source is not None:
+            records.append((
+                current_source,
+                _resolve_attachment_remedy(
+                    rename_ticked, rename_impossible, keep_ticked, ignore_ticked
+                ),
+            ))
+        current_source = None
+        rename_ticked = False
+        rename_impossible = False
+        keep_ticked = False
+        ignore_ticked = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == "## Attachment Conflicts":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            _flush()
+            break
+        if not in_section:
+            continue
+
+        sm = RE_ATTACHMENT_CONFLICT_SOURCE.match(stripped)
+        if sm:
+            _flush()
+            current_source = sm.group(1).strip()
+            continue
+
+        if current_source is None:
+            continue
+
+        cb_checked = RE_CHECKED.match(stripped)
+        cb_unchecked = RE_UNCHECKED.match(stripped)
+        if not (cb_checked or cb_unchecked):
+            continue
+        checked = bool(cb_checked)
+        label = (cb_checked or cb_unchecked).group(1).strip().lower()
+
+        if label.startswith("rename"):
+            rename_ticked = checked
+            rename_impossible = RENAME_IMPOSSIBLE_MARKER in label
+        elif label.startswith("keep in inbox"):
+            keep_ticked = checked
+        elif label.startswith("ignore"):
+            ignore_ticked = checked
+
+    _flush()
+    return records
+
+
+def parse_attachment_conflict_remedies(text: str) -> list[dict]:
+    """Return `[{"source": ..., "remedy": ...}, ...]` for every
+    `## Attachment Conflicts` entry, in document order.
+
+    `remedy` is always `rename` / `keep_in_inbox` / `ignore` — never None —
+    because `_resolve_attachment_remedy` is exhaustive over the tick states
+    (PRD Business Rules 2-4; SDD `remedy is never null after parsing`).
+    Empty when the section is absent — not a fabricated entry.
+    """
+    return [
+        {"source": source, "remedy": remedy}
+        for source, remedy in _walk_attachment_conflicts(text)
+    ]
+
+
+def _join_attachment_conflict_remedies(
+    remedies: list[dict], doc: dict
+) -> list[dict]:
+    """Join each `{source, remedy}` record from `parse_attachment_conflict_
+    remedies` to its `proposed_name`, read from the structured suggestions-
+    doc's `attachment_conflicts[]` (spec 037 T3.0). The join is on `source`
+    — T1.5's grouping key, so it agrees with what rendered the entry in the
+    first place.
+
+    A `source` present in the markdown but absent from the doc's
+    `attachment_conflicts[]` (a hand-edited or stale doc) joins to
+    `proposed_name: None` rather than raising — the doc supplies the name,
+    the markdown ticks stay authoritative for `remedy` regardless.
+    """
+    proposed_names = {
+        c.get("source"): c.get("proposed_name")
+        for c in (doc.get("attachment_conflicts") or [])
+        if c.get("source")
+    }
+    return [
+        {**r, "proposed_name": proposed_names.get(r["source"])}
+        for r in remedies
+    ]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2801,6 +2979,16 @@ def main() -> int:
     # output dict below.
     merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
+    # spec 037 T3.0: the owner's Attachment-Conflicts remedy, joined to its
+    # proposed rename basename from the structured doc already loaded above
+    # (_own_doc_path). Empty list when the document carries no ## Attachment
+    # Conflicts section — instruction-render.py forwards this key to
+    # build_actions -> _build_move_asset_actions, which for now accepts it
+    # and ignores it (T3.1 consumes it).
+    attachment_conflict_remedies = _join_attachment_conflict_remedies(
+        parse_attachment_conflict_remedies(text), _load_json_doc(_own_doc_path)
+    )
+
     output = {
         "confirmed_items": confirmed_items,
         # spec 034 T6.0c — see the wire path's note. Same record, same shape;
@@ -2818,6 +3006,7 @@ def main() -> int:
         # Group ids the user opted out of source-deletion via "Keep source files".
         # instruction-render suppresses the paired delete_source for these.
         "tag_handler_keep_source_group_ids": tag_handler_keep_source_group_ids,
+        "attachment_conflict_remedies": attachment_conflict_remedies,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

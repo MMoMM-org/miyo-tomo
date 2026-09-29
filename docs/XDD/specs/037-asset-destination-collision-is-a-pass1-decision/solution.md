@@ -42,7 +42,7 @@ version: "2.0"
 |-------|-------|
 | specId | 037-asset-destination-collision-is-a-pass1-decision |
 | status | COMPLETE |
-| components | 4 touched, 0 new files |
+| components | 5 touched, 0 new files |
 | adrs | 5, none open |
 | newWireFields | 0 |
 | externalComponentsChanged | 0 (Hashi untouched) |
@@ -102,18 +102,21 @@ without touching the paired consumer.
 | `tomo/scripts/suggestions-reducer.py:1946-2016` | The Kado client opened once for Pass-1 vault checks; `_folder_cache`, `_vault_folder_notes`, `folder_listing_calls`, and the T5.2 clash pass for notes |
 | `tomo/scripts/suggestions-reducer.py:1363` | `load_asset_folder(shared_ctx_path)` — the reducer already reads the configured destination |
 | `tomo/scripts/suggestions-reducer.py:1452` | `render_attachments_preamble` — the document already has an attachments voice to extend |
-| `tomo/scripts/lib/render_actions.py:640-728` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
+| `tomo/scripts/lib/render_actions.py:691-782` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
 | `tomo/scripts/lib/render_actions.py:509` | `_asset_dest_join` — the only place a destination is computed |
-| `tomo/scripts/instructions-diff.py:858-883` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
+| `tomo/scripts/instructions-diff.py:922-946` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
 | `tomo/scripts/lib/kado_client.py:313,176` | `path_exists`, `read_file_bytes` — probed live on a PNG, 2026-09-15 |
 
 ### Implementation Boundaries
 
 **In scope:** attachment destinations; the suggestions document's new decision
-section; the parser reading those ticks; `render_actions` honouring the remedy.
+section; the parser reading those ticks and carrying them onto its output;
+`instruction-render.py` transporting them into Pass 2 and rewriting the embed on
+a rename; `render_actions` honouring the remedy.
 
 **Out of scope:** note destinations (T5.2 owns them); the instructions document;
-Hashi; any wire-format change; overwrite as a remedy; note-holding.
+Hashi; any wire-format change; overwrite as a remedy; note-holding — a filed note
+keeps its move even when its attachment is held (`requirements.md:374-382`).
 
 ### External Interfaces
 
@@ -156,13 +159,24 @@ subtraction in the audit.
 |---|---|---|
 | `suggestions-reducer.py` | Detect the occupied destination, classify it, put the decision in the document | extended |
 | Suggestions document (Markdown + JSON) | Carry the conflict and the owner's tick | extended |
-| `suggestion-parser.py` | Read the tick back off the reviewed document | extended |
+| `suggestion-parser.py` | Read the tick back off the reviewed document **and emit it on the parsed output, joined to its `proposed_name`** | extended |
+| `instruction-render.py` | **Carry the remedies from the parsed output into `build_actions`; rewrite the embed on a rename** | extended |
 | `render_actions.py` | Honour the remedy; record a withheld move in `skipped_assets` | extended |
 | `instructions-diff.py` | Account for the withheld move | **none** — ADR-3 |
 
 The MECE split follows what each component already owns: detection needs config
-and Kado (reducer), reading ticks is parsing (parser), emitting actions is
-rendering (render_actions).
+and Kado (reducer), reading ticks is parsing (parser), moving the result between
+the two passes and assembling note bodies is `instruction-render.py`, emitting
+actions is rendering (render_actions).
+
+**`instruction-render.py` was added to this table on 2026-09-25**, before Phase 3
+was dispatched. The original table named no transport between the parser and
+`_build_move_asset_actions`, and the Pass-2 flow below jumped straight from one to
+the other. In the code there is no such edge: `parse_attachment_conflict_remedies`
+(T2.4) had no production caller at all, and `_build_move_asset_actions` is reached
+only through `instruction-render.py:600`. The embed rewrite lands here for the same
+reason — `render_actions.py` assembles action dicts and never touches a note body,
+while the rendered body is built at `instruction-render.py:550-610`.
 
 ### Interface Specifications
 
@@ -176,7 +190,7 @@ Written by the reducer; read by the renderer and the parser.
 | `destination` | The computed, occupied destination |
 | `same_file` | `true` · `false` · `null` when the comparison could not be made (S1) |
 | `owner_source_items` | Every note embedding this attachment, as resolved paths |
-| `proposed_name` | The free destination the rename remedy would use (C1) |
+| `proposed_name` | The free **basename** a rename remedy would use — not a path (C1). The folder is invariant and already carried in `destination`; a consumer composes the two with `_asset_dest_join`. `null` when no candidate is free within 99 attempts. |
 | `remedy` | Filled by the parser: `rename` · `keep_in_inbox` · `ignore` |
 
 `owner_source_items` deliberately matches the field `_build_move_asset_actions`
@@ -184,6 +198,32 @@ already records, so both collision sources describe residue the same way.
 
 `remedy` is never null after parsing — Rule 3 resolves an empty or contradictory
 entry to `ignore` in the parser, so no downstream consumer has to re-derive it.
+
+#### `attachment_conflict_remedies[]` — the parser's output key (T3.0)
+
+The transport between the two passes. Written by `suggestion-parser.py`'s
+`main()` onto its JSON output; read by `instruction-render.py` and forwarded
+through `build_actions` to `_build_move_asset_actions`.
+
+| Field | Meaning |
+|---|---|
+| `source` | The incoming attachment's vault path — the join key, matching T1.5's grouping key |
+| `remedy` | `rename` · `keep_in_inbox` · `ignore`, from the owner's ticks. Never null |
+| `proposed_name` | The rename **basename**, joined from `attachment_conflicts[]` in the structured doc. `null` when no free name exists, or when the markdown names a `source` the structured doc does not carry |
+
+**The key is always present, and always a list** — `[]` when the document has no
+`## Attachment Conflicts` section, so a conflict-free run's output has the same
+*shape* as a conflicted one and no consumer needs a presence guard.
+`build_from_wire` emits `[]` unconditionally: the ADR-026 wire carries no
+conflicts data at all, and CON-5 pins its output equal to the markdown parse's.
+
+**The name is recorded here because three components must agree on it and none
+of them owns it.** `instruction-render.py` reads it with `.get(key, [])`, so a
+mismatched name does not raise — it yields `[]`, no remedy is found for any
+conflict, and every conflict silently falls through to `ignore`'s behaviour.
+The owner's decision would be discarded without a word, which is the quiet
+outcome ADR-4 exists to prevent. Added 2026-09-25, after T3.0 chose the name
+and no specification document held it.
 
 #### `skipped_assets[]` — one new `kind`
 
@@ -211,11 +251,108 @@ and the audit counts it as any other move. Only Hashi later refuses it.
 ### Primary Flow — Pass 2
 
 1. The parser reads the ticks into `remedy`, applying Rule 3 and Rule 4.
-2. `_build_move_asset_actions` consults `remedy` before claiming a destination:
-   - `rename` → move to `proposed_name`, rewriting every owning note's embed
+2. The parser joins each remedy to its `proposed_name` from `attachment_conflicts[]`
+   in the structured suggestions-doc JSON it already loads (`--suggestions-doc`,
+   with `_default_doc_path` as fallback) and emits the pairs on its output. The
+   join is on `source`, matching T1.5's grouping key. `proposed_name` is **not**
+   re-read from the rendered markdown: that would be a third render/parse coupling,
+   and the backlog already carries two.
+3. `instruction-render.py` reads that key off the parsed suggestions JSON and passes
+   it to `build_actions`, which forwards it to `_build_move_asset_actions`.
+4. `_build_move_asset_actions` consults `remedy` before claiming a destination:
+   - `rename` → move to `_asset_dest_join(asset_folder, proposed_name)`. `proposed_name`
+     is a BASENAME: using it directly as a path would write to the vault root.
    - `keep_in_inbox` → emit nothing, record `kind: vault_collision_held`
    - `ignore` → emit the move unchanged against the occupied destination
-3. The coverage audit subtracts held entries through the existing path.
+5. On a rename, `instruction-render.py` rewrites the embed target in every owning
+   note's rendered body, so no filed note names a file the run did not file.
+6. The coverage audit subtracts held entries through the existing path.
+
+#### A `rename` that lost its name degrades to `keep_in_inbox`
+
+There are **two** ways a rename can have no name, and only one of them was
+decided before implementation began.
+
+The first is ADR-4's exception: Pass 1 tries 99 variants, finds none free, and
+writes `proposed_name: null` into the document. Pass 1 then renders *keep in
+inbox* pre-ticked instead of rename, and T2.4's parser resolves a
+ticked-anyway rename to `ignore`. That path is closed, at render time and again
+at parse time.
+
+The second was not. Pass 1 computes a name normally, the document shows it, the
+owner ticks rename having read it — and by Pass 2 the structured
+`suggestions-doc.json` no longer carries that `source`. A stale `--suggestions-doc`,
+a hand edit, a re-run of Pass 1 between review and render. The markdown carries
+no impossibility marker, so `_resolve_attachment_remedy` correctly returns
+`rename`; `_join_attachment_conflict_remedies` then finds no matching entry and
+yields `proposed_name: None`. The state arrives at `_build_move_asset_actions`
+as `{remedy: "rename", proposed_name: None}`, and until 2026-09-25 nothing in
+this spec said what to do with it.
+
+**It degrades to `keep_in_inbox`** — no move, `kind: vault_collision_held`, the
+owning note filed as usual. The owner asked for a rename to a specific name that
+has since been lost; not acting is the closest available thing to their
+instruction. Emitting the move instead (the `ignore` behaviour, which the sibling
+impossible-rename case uses) would send out a move certain to be refused, and
+ADR-4's exception already names that *"the late failure this spec exists to
+remove"*. Failing the run outright was considered and rejected: it contradicts
+the standing degrade-gracefully posture and turns one attachment's problem into
+a stopped Pass 2.
+
+The two cases reach the same outcome by different routes, which is a coincidence
+worth stating rather than relying on — the first is decided in the renderer and
+the parser, the second in `_build_move_asset_actions`, and a change to either
+does not carry to the other.
+
+#### A renamed embed is written before the move is known to survive
+
+The embed rewrite happens at **render time** — `instruction-render.py` between
+line 518, where the body is produced, and 551, where it is written. The move
+actions are not built until line 607. So the rewrite cannot know what
+`_build_move_asset_actions` will decide, and one case exists where they
+disagree: a renamed destination still goes through the in-run `claimed` check,
+and can be dropped as `kind: collision` if another attachment in the same run
+claimed that exact name first.
+
+**The outcome is a held note, not a mis-filed one.** Only
+`vault_collision_held` is excluded from `suppress_moves_for_unfiled_attachments`
+(`render_actions.py:1447`); a `collision` entry still suppresses the owning
+note's move. So the note stays in the inbox **with its attachment**, and the
+collision is reported. There is no cross-folder dangling embed and no data loss
+— the 2026-09-15 failure mode is not reachable this way.
+
+The residue is narrower: the held inbox note's body now names the basename the
+rename intended, while the file beside it still carries its original name. Both
+are in the inbox, together, and the run reported why.
+
+**Owner ruling 2026-09-27: accepted and documented rather than engineered out.**
+Two alternatives were considered. Moving the write-to-disk after `build_actions`
+would make the rewrite consult the actions actually emitted — strictly correct,
+and a restructuring of the loop every Pass 2 runs through, for a corner case
+that loses nothing. Pre-checking the run's proposed names against each other
+before rendering would be narrower, but it duplicates the `claimed` rule in a
+second place, and two implementations of one rule are how they drift apart.
+
+Re-running Pass 2 after resolving the reported collision files everything
+correctly; the pass holds no memo of the earlier clash
+(`suppress_moves_for_unfiled_attachments`'s own stated posture).
+
+#### `vault_collision_held` does not hold the owning note
+
+`suppress_moves_for_unfiled_attachments` (`render_actions.py:1331`) keeps an owning
+note in the inbox for **every** `skipped_assets` entry, so a new `kind` is held back
+by default rather than by choice. `vault_collision_held` is excluded from that pass:
+the note is filed and only the file stays behind.
+
+This is the standing ruling, recorded in `requirements.md:374-382` before
+implementation began — *keep in inbox* names the attachment, not the note, and the
+scoping principle puts the residue with Hashi rather than widening the remedy. The
+exclusion is therefore written deliberately and asserted by a test; it is not the
+absence of a behaviour. Re-confirmed by the owner on 2026-09-25 when the interaction
+with ADR-6 was measured rather than assumed.
+
+The accepted cost is the one the PRD's Context section opens with: a filed note whose
+embed reaches back into the inbox. F3-AC2 still holds — nothing *fails* at apply.
 
 ### Error Handling
 
@@ -226,6 +363,7 @@ and the audit counts it as any other move. Only Hashi later refuses it.
 | `read_file_bytes` raises | `same_file: null`; remedies unchanged | A comparison that did not happen is not evidence either way |
 | Destination is a folder | Conflict; rename remains the default | The only remedy that can succeed |
 | No remedy ticked / rename cleared | `ignore` | ADR-4 |
+| `remedy: rename` arrives with `proposed_name: null` | Degrades to `keep_in_inbox` — no move, `kind: vault_collision_held`, the owning note still filed | Owner ruling 2026-09-25. **Not** the ADR-4 exception's case — see below |
 | Two remedies ticked | `ignore` | Rule 4 — a contradiction is not a first-wins race |
 | The conflict is gone by Pass 2 | The plain move is emitted | A stale conflict changes nothing |
 | A conflict appears only at apply | Hashi refuses and reports | Not modelled, by the scoping principle |
@@ -251,7 +389,19 @@ gives them two copies of one image.
 - **`folder_listing_calls` gains at most one**, and only on a cache miss for the
   asset folder. It is already carried in the output document for the
   cost-history entry, so the increase appears where the existing numbers do.
-- **Content reads are bounded by actual collisions**, not by attachment count.
+- **Content reads are bounded by the number of distinct colliding SOURCE
+  paths**, not by attachment count. Phase 1 T1.5 groups conflict entries by
+  the exact source path rather than the case-folded destination, so N
+  distinct sources that collide on the same destination are N separate
+  comparisons, each reading both sides — 2N reads for that destination,
+  against 2 for the pre-T1.5 destination-keyed code. N is bounded only by
+  the run's attachment count; spec 034's recursive inbox discovery plus
+  repeat camera/scanner default filenames make N > 2 realistic, not a
+  two-element edge case. A shared destination-side cache was considered and
+  rejected — not because N is usually small, but because it would be wrong
+  at any N: `same_file` is a property of the (source, destination) pair,
+  and caching one verdict per destination would hand every source after
+  the first another source's answer.
 
 ### Fail direction
 
@@ -342,6 +492,17 @@ rename the owner did not think about. S1's warning on an identical file is the
 mitigation, and the outcome is in any case reversible — a renamed copy beside
 the original, never an overwrite.
 
+**Exception added 2026-09-23 — when `proposed_name` is `null`, *keep in inbox*
+is pre-ticked instead.** After 99 taken variants there is no name to rename to,
+so the rename remedy is rendered but unavailable and cannot be the default. The
+rule above says a cleared entry resolves to *ignore*, and that rule is right for
+an owner who cleared it deliberately — but nobody cleared this one, and *ignore*
+would send out a move Hashi is certain to refuse, which is exactly the late
+failure this spec exists to remove. Pre-ticking follows ADR-4's own reason:
+tick when a safe obvious answer exists. Here that answer is *keep in inbox* —
+the file and its note stay where they are and nothing moves. T2.4 parses this
+state explicitly rather than inferring it.
+
 ### ADR-5 — No wire field, no Hashi change, no instructions-document change
 
 **Choice:** Pass 2 emits ordinary actions. The instructions document is
@@ -361,7 +522,12 @@ resolved. That is the intended behaviour and the second journey in the PRD.
 
 Carried from the PRD; neither blocks implementation.
 
-- [ ] The rename scheme for `proposed_name` (C1).
+- [x] The rename scheme for `proposed_name` (C1). **Decided 2026-09-23**: `{stem} ({n}){ext}`,
+      n from 2, first free name wins — the scheme `resolve_destination_clashes` already ships
+      for note clashes, with the counter moved before the extension because an attachment's
+      basename carries its own suffix. Computed in the reducer (Phase 2 T2.1), not the
+      renderer. The note that this question "does not block implementation" was wrong: T2.2
+      renders the field.
 - [ ] Whether *keep in inbox* should also suppress the owning note's filing. The
       owner has ruled it need not, on the scoping principle; recorded because it
       is the question most likely to return after living with it.

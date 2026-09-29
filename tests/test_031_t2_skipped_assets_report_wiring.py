@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_031_t2_skipped_assets_report_wiring.py — spec 031 T2.2/T2.4
 code-quality follow-up: skipped attachments must reach the user, not just
 stderr, and the two skip reasons (collision vs. no-basename) must read
@@ -143,13 +143,16 @@ def test_collision_and_no_basename_render_with_different_remedies(monkeypatch, t
     md = (out_dir / "instructions.md").read_text(encoding="utf-8")
     assert "## Skipped — un-appliable actions" in md
 
+    # spec 037 T4.2 (ADR-11): no rendered line names the wire action
+    # `move_asset` any more — the bullet leads with `⚠️ **Attachment not
+    # filed:**` instead.
     collision_line = next(
         line for line in md.splitlines()
-        if line.startswith("- `move_asset`") and "100 Inbox/Scans/karte.jpg" in line
+        if line.startswith("- ⚠️ **Attachment not filed:**") and "100 Inbox/Scans/karte.jpg" in line
     )
     no_basename_line = next(
         line for line in md.splitlines()
-        if line.startswith("- `move_asset`") and "100 Inbox/Images/" in line
+        if line.startswith("- ⚠️ **Attachment not filed:**") and "100 Inbox/Images/" in line
     )
     assert collision_line != no_basename_line
     assert "rename" in collision_line.lower()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_034_t5_4_attachment_clash_suppression.py — spec 034 T5.4.
 
 PRD Feature 8 / ADR-6. Two different files sharing a basename cannot both be
@@ -670,17 +670,32 @@ def test_a_clean_run_renders_no_suppression_block():
 
 def test_the_skipped_attachment_report_is_unchanged_by_the_new_link():
     """`skipped_assets` is rendered for the user today; the field the join
-    needs must not leak into that output (`test_031_t2_skipped_assets…`)."""
+    needs must not leak into that output (`test_031_t2_skipped_assets…`).
+
+    spec 037 T4.2 (ADR-11): the bullet no longer names the wire action
+    `move_asset` — it leads with `⚠️ **Attachment not filed:**` instead."""
     _actions, skipped_assets = _build(CLASHING_PAIR)
     md = _render([], [], [], skipped_assets=skipped_assets)
-    bullets = [ln for ln in md.splitlines() if ln.startswith("- `move_asset`")]
+    bullets = [
+        ln for ln in md.splitlines()
+        if ln.startswith("- ⚠️ **Attachment not filed:**")
+    ]
     assert len(bullets) == 1, bullets
     assert bullets[0] == (
-        f"- `move_asset` → `{UFER_REISE}` — destination collision: "
-        f"'{UFER_REISE}' also resolves to '{ASSETS}Ufer.jpg', already claimed "
-        f"by '{UFER_PLACES}'. rename one of the two files so they no longer "
+        f"- ⚠️ **Attachment not filed:** `{UFER_REISE}` — destination collision: "
+        f"it also resolves to `{ASSETS}Ufer.jpg`, already claimed by "
+        f"`{UFER_PLACES}`. Rename one of the two files so they no longer "
         f"share `{ASSETS}Ufer.jpg`, then re-run `/inbox`."
     ), bullets[0]
+    # spec 037 T4.4, measured on this very line: the skipped source appeared
+    # twice — once backticked in the lead, once as a repr inside the reason —
+    # and the remedy opened a sentence in lower case after a full stop.
+    assert bullets[0].count(UFER_REISE) == 1, (
+        f"the skipped source is named more than once: {bullets[0]}"
+    )
+    assert "'" not in bullets[0], (
+        f"paths render in backticks, never repr quotes: {bullets[0]}"
+    )
 
 
 # ---------------------------------------------------------------------------

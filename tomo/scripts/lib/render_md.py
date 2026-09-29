@@ -1,4 +1,4 @@
-# version: 0.22.0
+# version: 0.30.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -69,9 +69,22 @@ def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
 
 
 def _render_action_md(
-    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None
+    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None,
+    ignored_conflict_sources: set[str] | None = None,
 ) -> str:
-    """Render a single action as an H3 block with a checkbox + structured fields."""
+    """Render a single action as an H3 block with a checkbox + structured fields.
+
+    `ignored_conflict_sources` names the attachments whose Pass-1 destination
+    conflict the owner resolved with `ignore` (owner request 2026-09-28). Such
+    a move is emitted against a destination Pass 1 saw occupied, and until now
+    the only sign of that was a bullet at the far end of the document — the
+    owner had to correlate it back to an action by hand. The note now sits in
+    the block it is about.
+
+    Only `ignore` reaches here: `keep_in_inbox` and a degraded rename withhold
+    the move entirely, so they have no action to annotate, which is why the
+    end-of-document block stays the place that lists all three.
+    """
     aid = action["id"]
     kind = action["action"]
     heading_prefix = f"### {aid} — "
@@ -99,6 +112,44 @@ def _render_action_md(
             lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
+        if ignored_conflict_sources and action.get("source") in ignored_conflict_sources:
+            # States the DECISION and how to revisit it — never an outcome.
+            # The end-of-document bullet is the one that says what applying
+            # will do, so the two carry different sentences (owner ruling
+            # 2026-09-27, extended here); and an outcome claim would repeat
+            # the mistake corrected the day before, since nothing re-checks
+            # the destination between Pass 1 and the apply.
+            # The remedy is picked in the SUGGESTIONS document and only then
+            # re-synthesized — stating it the other way round ("re-run /inbox
+            # and pick ...") named the steps in an order that cannot be
+            # followed. `--pass2 --force` because it short-circuits the
+            # coverage check outright; a bare `/inbox` relies on drift
+            # detection noticing the edited checkbox, which is a weaker
+            # guarantee to hand someone. No reason is given for the flags:
+            # a rationale that depends on run state is the defect class this
+            # section has already been corrected for twice (owner, 2026-09-29).
+            # The middle sentence is the disclosure T4.4's live ignore run
+            # showed to be missing: the owner was told what happens to the
+            # ATTACHMENT and not what happens to the NOTE. Measured that day —
+            # the move was refused, the note was filed anyway and its source
+            # note deleted, leaving the attachment in the inbox with nothing
+            # referencing it. That is the 2026-09-15 end state, reached this
+            # time by a choice the document did not fully describe.
+            #
+            # It says "filed either way" and not "its source note is deleted":
+            # a move_asset only exists for a CONFIRMED item, so the owning
+            # note is always being filed, while the paired delete_source can
+            # be opted out of with "Keep source files". Stating the always-true
+            # half keeps this from becoming the fifth claim corrected for
+            # asserting more than the renderer knows.
+            lines.append(
+                "- ⚠️ **Destination was occupied:** Pass 1 found this name "
+                "already taken and you chose Ignore, so the move is sent "
+                "unchanged. The note that embeds it is filed either way, so "
+                "it will point at a file left behind in the inbox. To resolve "
+                "it instead, tick Rename or Keep in inbox in the suggestions "
+                "document, then run `/inbox --pass2 --force`."
+            )
         return "\n".join(lines)
 
     if kind == "create_moc":
@@ -686,6 +737,66 @@ def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
     )
 
 
+def _render_unresolved_conflict_bullet(entry: dict) -> str:
+    """One attachment conflict the owner did NOT resolve by rename (spec 037
+    T4.2, PRD C2/S2): named individually under "## Skipped", same `⚠️
+    **<label>:**` register as `_render_withdrawal_bullet` — an approved item
+    is not fully settled, the same class of fact.
+
+    Two distinct shapes reach here (see `unresolved_conflicts`'s own
+    docstring above): a `skipped_assets` entry (has `kind`, always
+    `vault_collision_held` by construction), and an `attachment_conflict_
+    remedies` entry (`ignore`), which carries no `reason` at all — Pass 2
+    emitted its move unchanged and nothing built a sentence for it before
+    T4.2, so this bullet is that sentence's only home.
+
+    Owner ruling 2026-09-27: a `vault_collision_held` source is deliberately
+    named in BOTH this block and "Attachment not filed" (see the module
+    docstring and docs/tomo/scripts/lib/render_md.md:384-402) — but the two
+    bullets must not state the same SENTENCE. "Attachment not filed" reused
+    `reason` (`_build_move_asset_actions`'s own words) plus a remedy clause;
+    this block used to reuse that exact `reason` string too, so the second
+    bullet read as the first minus the remedy. This block instead states the
+    decision and its consequence in its own words — "Attachment not filed"
+    is left to answer where the file is and what to do about it, and stays
+    the only place a `reason` clause or the remedy clause appears.
+    """
+    source = entry.get("source") or "?"
+    if "kind" in entry:
+        # Both `keep_in_inbox` and a degraded rename land here under one
+        # `kind` (spec 037 T3.1), and this sentence must be true of BOTH.
+        #
+        # It is therefore PASSIVE, deliberately. An earlier version read
+        # "the owner declined to file it" — true of a held attachment, false
+        # of a degraded rename, where the owner asked for a rename and this
+        # run could not recover the name. `render_actions.py`'s own comment
+        # at the site that creates this kind says so in as many words:
+        # "Reporting the second as a choice would tell them they decided
+        # something they did not." Corrected 2026-09-27 after a code-quality
+        # review caught the regression.
+        #
+        # The distinction is not lost, only relocated: `reason` states which
+        # of the two happened, and "Attachment not filed" is the block that
+        # carries `reason`. This block says only that the conflict remains.
+        destination = entry.get("destination") or "?"
+        detail = (
+            f"it was not filed over the occupied destination "
+            f"`{destination}`, so it stays unmoved"
+        )
+    else:
+        # Conditional for the same reason the Pass-1 checkbox label is: this
+        # document knows only what Pass 1 saw. Saying "it will be refused"
+        # asserts an outcome that depends on vault state nobody has looked at
+        # since, and the owner may well have freed the name — which is a
+        # reason to choose `ignore` in the first place.
+        detail = (
+            "the move goes out unchanged against the destination that was "
+            "occupied in Pass 1 — it will be refused unless that name has "
+            "since been freed"
+        )
+    return f"- ⚠️ **Conflict remains:** `{source}` — {detail}"
+
+
 def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
     """One withdrawn delete, stated where its absence would otherwise be
     silent: under "## Source Deletions" itself, not only cross-referenced
@@ -843,6 +954,16 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 )
         body_parts.append("")
 
+    # Computed before the action loop, not beside the "Skipped" block that
+    # also reads these remedies further down: the move_asset block is rendered
+    # here, and an `ignore`d conflict is annotated in the block it belongs to
+    # rather than only at the end of the document (owner request 2026-09-28).
+    ignored_conflict_sources = {
+        r.get("source")
+        for r in (metadata.get("attachment_conflict_remedies") or [])
+        if r.get("remedy") == "ignore" and r.get("source")
+    }
+
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
         # "Source Deletions" carries a notice for every withdrawn delete
@@ -856,7 +977,9 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
-            body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
+            body_parts.append(
+                _render_action_md(a, cfg, ambiguous_sources, ignored_conflict_sources)
+            )
             body_parts.append("")
         for w in withdrawn_here:
             body_parts.append(_render_withdrawn_delete_notice(w))
@@ -871,6 +994,23 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_assets = metadata.get("skipped_assets") or []
     dropped_sources = metadata.get("dropped_sources") or []
     unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    # spec 037 T4.2 (PRD C2/S2): every attachment conflict Pass 2 did NOT
+    # resolve by rename, from the two places that carry one half each —
+    # `skipped_assets` already unifies `keep_in_inbox` and a degraded rename
+    # (both land as `kind: vault_collision_held`, spec 037 T3.1) under
+    # "**Attachment not filed**" below, but `ignore` never reaches
+    # `skipped_assets` at all: `_build_move_asset_actions` emits its move
+    # unchanged and reports nothing (render_actions.py:819-823), so an
+    # `ignore` source is invisible everywhere else in this document. Filtering
+    # `attachment_conflict_remedies` on `remedy != "rename"` looks like a
+    # one-list shortcut and is wrong: a degraded rename's OWN remedy field
+    # still reads "rename" (only its `proposed_name` is null), so that filter
+    # drops it — it must come from `skipped_assets`, which already carries the
+    # degrade, not from re-deriving it off `remedy` a second time.
+    attachment_conflict_remedies = metadata.get("attachment_conflict_remedies") or []
+    unresolved_conflicts = [
+        s for s in skipped_assets if s.get("kind") == "vault_collision_held"
+    ] + [r for r in attachment_conflict_remedies if r.get("remedy") == "ignore"]
     # spec 036 T4.3 (PRD F6-AC1/F6-AC2): a withdrawn delete_source is reported
     # in this same section — never a new top-level heading — so its presence
     # alone (even when every other skip key here is empty) must still open
@@ -884,9 +1024,32 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # Deletions" and this section agree on the same withdrawal list.
     withdrawals_by_id, leftover_withdrawals = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
-            or unresolvable_links or delete_withdrawals):
+            or unresolvable_links or delete_withdrawals or unresolved_conflicts):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
+        if unresolved_conflicts:
+            # Named individually, never counted (PRD/C2 — "names each one
+            # rather than counting them"): a count above bullets that already
+            # name every source is redundant when right and misleading the
+            # moment the two drift, which a bare `f"{n} conflicts remain"`
+            # gives no test any way to catch.
+            # The heading states the OUTCOME, never the reason — for the same
+            # reason `_render_unresolved_conflict_bullet` is passive. An
+            # earlier version read "the owner chose otherwise", which is false
+            # for a degraded rename: `skipped_assets` unifies keep-in-inbox and
+            # a degraded rename under one `vault_collision_held` kind (see
+            # below), so both render here, and in the second case the owner
+            # chose `rename` and this run lost the name. Found in T4.4's live
+            # keep-in-inbox run, where the claim happened to be true — the
+            # bullet had been made passive in T4.2 and the heading above it
+            # was never revisited.
+            body_parts.append(
+                "**Conflicts not resolved by rename** — Pass 2 did not file "
+                "these over their occupied destinations:")
+            body_parts.append("")
+            for entry in unresolved_conflicts:
+                body_parts.append(_render_unresolved_conflict_bullet(entry))
+            body_parts.append("")
         if skipped_daily:
             body_parts.append(
                 "**Daily note missing** — Create the daily note in Obsidian "
@@ -914,24 +1077,53 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     body_parts.append(_render_withdrawal_bullet(w, indent="    "))
             body_parts.append("")
         if skipped_assets:
+            # Deliberately NOT the bullet's own label: the bullets below each
+            # begin "**Attachment not filed:**", and repeating that verbatim as
+            # the heading made the block read as an echo of itself. The
+            # "Conflicts not resolved by rename" block above never did this.
             body_parts.append(
-                "**Attachment not filed** — these attachments were left in the inbox:")
+                "**Attachments still in the inbox** — none of these were filed:")
             body_parts.append("")
             for s in skipped_assets:
                 source = s.get("source") or "?"
                 reason = s.get("reason") or "?"
                 kind = s.get("kind")
                 if kind == "no_basename":
-                    remedy = "the inbox entry has no filename — inspect that inbox path directly, this is not a naming conflict"
+                    remedy = "Inspect that inbox path directly — this is not a naming conflict"
                 elif kind == "collision":
                     destination = s.get("destination") or "?"
-                    remedy = f"rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                    remedy = f"Rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                elif kind == "vault_collision_held":
+                    # spec 037 T3.1/T4.2: the owner's own choice (keep-in-inbox
+                    # or a rename that degraded to it) — `reason` above already
+                    # says why; there is nothing left for the user to do unless
+                    # they change their mind.
+                    # Two reading moments, two different routes, and naming
+                    # only one misleads at the other (owner, 2026-09-29). This
+                    # document is read BEFORE applying — it carries unticked
+                    # "Applied" boxes — when the suggestions doc is still live
+                    # and re-ticking is the cheap route. Read AFTER applying,
+                    # the source note is gone and that doc is spent, so the
+                    # remedy really is renaming the file on disk. The earlier
+                    # text named only the second.
+                    remedy = (
+                        "No action needed unless you change your mind: before "
+                        "applying, tick Rename in the suggestions document and "
+                        "run `/inbox --pass2 --force`; afterwards, rename the "
+                        "file in the inbox and re-run `/inbox`"
+                    )
                 else:
                     # A missing or unrecognized kind must never silently fall
                     # back to either remedy above — that is how a third skip
                     # reason would quietly inherit the wrong instruction.
-                    remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
-                body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
+                    remedy = f"(No remedy defined for skip kind {kind!r} — check render_md.py)"
+                # ADR-11 (render_md.py:668): no executor internals in the
+                # rendered text — `move_asset` is a wire action name, not a
+                # word the owner should ever need to know.
+                # `remedy` is joined on after a full stop, so each branch above starts
+                # with a capital: T4.4 rendered "...karte.png'. no action
+                # needed", a sentence opening in lower case.
+                body_parts.append(f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}.")
             body_parts.append("")
         if dropped_sources:
             body_parts.append(

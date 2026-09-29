@@ -45,6 +45,45 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 
 `/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
 
+#### When an attachment's name is already taken
+
+If an inbox note embeds a file — a scan, a photo, a PDF — Tomo files that file
+into your attachments folder alongside the note. When a file of that name is
+**already there**, Tomo does not guess. Pass 1 adds an **Attachment Conflicts**
+section to the suggestions document, above the suggestions, and you decide.
+
+Each entry names the file, the destination that is occupied, and which of your
+notes embeds it. It also tells you whether the two files are actually the same:
+
+| What it says | What it means |
+|---|---|
+| A different file already holds this name | Two unrelated files, one name. Renaming keeps both. |
+| This is the same file already in the vault | You already have it. Renaming would leave you with two copies. |
+| The files could not be compared | Tomo could not read one of them — look before you accept the rename. |
+
+Three remedies, one per entry. **Rename is pre-ticked** — it is the only one
+that files the attachment successfully in every case:
+
+- **Rename** — files it under a free name (`karte (2).png`), and rewrites the
+  embed in your note to match, so the note keeps working.
+- **Keep in inbox** — leaves the file where it is. The note is still filed; only
+  the file stays behind.
+- **Ignore** — sends the move anyway. It will be refused unless you free the
+  name yourself before applying.
+
+> **When the comparison says it is the same file**, the pre-ticked Rename gives
+> you a second copy of something you already have. Tick **Keep in inbox**
+> instead if you would rather not file it at all.
+
+**In every case the note itself is filed.** Choosing Keep in inbox or Ignore
+holds back the *file*, not the note — so the filed note will point at a file
+that is still sitting in your inbox. That reference still works; it just reaches
+backwards. Tomo says so in the instruction set, both on the action and in its
+summary.
+
+To change your mind after Pass 2 has run but before you apply: tick a different
+remedy in the suggestions document, then run `/inbox --pass2 --force`.
+
 #### Tagged notes from MiYo tools
 
 If you use [Tomo Tsukai](https://github.com/MMoMM-org/miyo-tomo-tsukai) or another MiYo tool that tags inbox notes with `MiYo/<Feature>/…`, and you have a matching handler registered, `/inbox` groups all such captures for the same target into **one** merged suggestion rather than surfacing them individually. You review and approve it the same way you would any other suggestion. No special command is needed — the grouping happens automatically during Pass 1.

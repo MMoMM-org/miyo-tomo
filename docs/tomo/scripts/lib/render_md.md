@@ -362,3 +362,396 @@ document has no visual signal that this line is the one place where
 (`⚠️` + bold lead-in + em-dash + explanation) rather than inventing a new
 shape keeps the whole document's warning vocabulary in one place instead of
 two.
+
+## `vault_collision_held` Was Live On HEAD With No Renderer (spec 037 T4.2)
+
+Phase 3 (spec 037) taught `_build_move_asset_actions` to emit `skipped_assets`
+entries with `kind: "vault_collision_held"` for a `keep_in_inbox` remedy and
+for a `rename` that degraded to one (`proposed_name: null` — SDD:292, "a
+rename that lost its name"). Every Phase 3 test asserted on that `skipped_
+assets` list as DATA. None of them rendered it, so the `## Skipped` loop's
+`if "no_basename" / elif "collision" / else <loud placeholder>` branch — see
+"The `kind` Discriminator" above — fell through to `else` for the one kind
+that ships most often (rename is the ticked default; `keep_in_inbox` is what
+an owner picks INSTEAD of it). A live `keep_in_inbox` conflict rendered `(no
+remedy defined for skip kind 'vault_collision_held' — check render_md.py)` —
+correct behaviour by the branch's own design (an unrecognised kind must not
+silently inherit a wrong remedy), wrong by omission: `vault_collision_held`
+was never unrecognised, just never given an `elif`. Fixed by adding the
+branch; its remedy text says nothing needs doing — `reason` (already built by
+`_build_move_asset_actions`) is what explains why.
+
+## `## Skipped` Gains a Second, Independent Report For The Same Attachments (spec 037 T4.2, PRD C2/S2)
+
+"**Attachment not filed**" (the `skipped_assets` loop above) and
+"**Conflicts not resolved by rename**" (`_render_unresolved_conflict_bullet`)
+both render under `## Skipped`, and a `vault_collision_held` source appears in
+BOTH. That is not an oversight of the union computed for the second block —
+it is drawing from a different question. The first answers "what happened to
+this file" with full detail (`_build_move_asset_actions`'s own `reason`
+string). The second answers "which approved conflicts did Pass 2 NOT resolve
+by rename", a strictly narrower and reader-facing question the PRD (C2/S2)
+asks for by name, and the ONLY place an `ignore`d conflict is reported at
+all — `ignore` never touches `skipped_assets` (`render_actions.py:819-823`
+emits its move unchanged and records nothing), so before this task an
+`ignore`d source appeared nowhere in the rendered document. Two overlapping
+answers to two different questions is not duplication in the sense CON-2
+would object to; the alternative — folding "conflict remains" language into
+the existing loop's `no_basename`/`collision` cases too — would make the new
+sentence true of kinds that were never a conflict `ignore`/`keep_in_inbox`
+choice to begin with.
+
+### Two Different Questions, Then Two Different Sentences (owner ruling 2026-09-27)
+
+T4.2 shipped the design above but not its consequence in the rendered text:
+`_render_unresolved_conflict_bullet`'s `vault_collision_held` branch reused
+`entry.get("reason")` verbatim — the exact string "Attachment not filed"
+already renders for the same source — so "Conflicts not resolved by rename"
+read as "Attachment not filed" minus its remedy clause. For
+`100 Inbox/Scans/keep.jpg` / `Atlas/keep.jpg` that produced:
+
+```
+- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'
+- ⚠️ **Attachment not filed:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'. no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all.
+```
+
+Owner ruling: keep both blocks — the design above still holds — but stop
+repeating the sentence. Each bullet states only the facts its own question
+needs:
+
+- **"Conflict remains"** — that the conflict is unresolved, and what follows
+  from it. For a `vault_collision_held` source (`keep_in_inbox` or a degraded
+  rename alike): **it was not filed** over the occupied destination, named by
+  path, and stays unmoved. For an `ignore`d conflict: the move goes out
+  unchanged against the occupied destination and will be refused when the run
+  is applied.
+
+  **That sentence is passive on purpose, and the first version of this section
+  got it wrong.** It read *"they declined to file it"* — and was corrected
+  2026-09-27 after a code-quality review. "Declined" is true of a held
+  attachment and **false of a degraded rename**, where the owner asked for a
+  rename and this run could not recover the name. `render_actions.py`, at the
+  site that creates this very `kind`, already said so:
+
+  > One outcome, two reasons, and they must not be told as one: a held
+  > attachment is the owner's own instruction, while a degraded rename is the
+  > owner asking to file it under a name this run could not recover.
+  > **Reporting the second as a choice would tell them they decided something
+  > they did not.**
+
+  The fix for the duplication had collapsed the two back into one claim about
+  owner intent — trading a duplication defect for an accuracy one, on the
+  sub-case its own tests did not render. The distinction is not lost, only
+  relocated: `reason` says which of the two happened, and "Attachment not
+  filed" is the block that carries `reason`. This block asserts nothing about
+  intent, which is the only thing it cannot know from `kind` alone.
+- **"Attachment not filed"** — unchanged: where the file is now (`reason`)
+  and what, if anything, to do about it (the `remedy` clause).
+
+The same fixture now renders:
+
+```
+- ⚠️ **Conflict remains:** `100 Inbox/Scans/keep.jpg` — it was not filed over the occupied destination `Atlas/keep.jpg`, so it stays unmoved
+- ⚠️ **Attachment not filed:** `100 Inbox/Scans/keep.jpg` — kept in inbox: the owner chose not to file '100 Inbox/Scans/keep.jpg' over the occupied destination 'Atlas/keep.jpg'. no action needed — this is what the owner chose; rename the file and re-run `/inbox` to file it after all.
+```
+
+Both sources are still named in both blocks — nothing was removed from
+either loop, and `vault_collision_held` stays in the "Attachment not filed"
+loop so a reader scanning what did not get filed still finds it there — but
+no sentence is now common to both. `test_conflict_remains_never_repeats_
+attachment_not_filed` (`tests/test_037_t4_2_unresolved_summary.py`) pins
+this by splitting each rendered bullet into sentences and asserting the two
+blocks' sentence sets do not intersect, rather than comparing whole lines —
+a whole-line comparison would miss a repeated clause sitting inside a longer
+"Attachment not filed" line. It also pins that neither bullet lost the fact
+only it carries: the remedy clause ("no action needed …") stays exclusive to
+"Attachment not filed", and the destination path stays visible in "Conflict
+remains".
+
+### Two Source Lists, Not One Filter
+
+`unresolved_conflicts` is `[s for s in skipped_assets if kind ==
+"vault_collision_held"] + [r for r in attachment_conflict_remedies if remedy
+== "ignore"]` — reading from BOTH transports the metadata dict carries,
+not one. The single-list shortcut, `[r for r in attachment_conflict_remedies
+if remedy != "rename"]`, reads as equivalent and is not: a degraded rename's
+OWN `attachment_conflict_remedies` entry still says `"remedy": "rename"` —
+only its `proposed_name` came back null. `_build_move_asset_actions` is what
+performs the degrade (`render_actions.py:780-784`), and it performs it INTO
+`skipped_assets`, not back onto the `attachment_conflict_remedies` record
+that caused it. Filtering the latter on `remedy != "rename"` silently drops
+every degraded rename from this report — the exact class of loss `remedy:
+"rename", proposed_name: null` exists to make visible to a downstream
+consumer, and this file is one. `skipped_assets` already carries the degrade
+correctly (that is what the `kind == "vault_collision_held"` branch above
+this one renders), so this block reads it from there instead of re-deriving
+it a second way.
+
+### Names, Never Counts (PRD/C2)
+
+The intro sentence above the bullets states no number. C2's own words are
+"names each one rather than counting them" — a count sentence
+(`f"{n} conflicts remain: ..."`) is redundant the moment it agrees with the
+bullets beneath it and misleading the moment it does not, and nothing forces
+the two to move together the way a hand-written intro and a computed list
+never do reliably. `test_no_sentence_counts_the_conflicts`
+(`tests/test_037_t4_2_unresolved_summary.py`) pins this with a regex over the
+whole document, not a per-sentence check, since the count could as easily
+have leaked into a different sentence than the one under test.
+
+### ADR-11 Reaches the Existing Loop Too
+
+Fixing `vault_collision_held` touched the same bullet the other two kinds
+(`no_basename`, `collision`) share, and the owner's 2026-09-27 ruling was that
+ADR-11 ("no executor internals in the rendered text") applies to all three at
+once: the bullet dropped its `` `move_asset` → `` prefix — a wire action name
+that told the reader nothing they needed — for the `⚠️ **Attachment not
+filed:**` lead-in, matching the convention above. `attachment_conflict_
+remedies` entries never carried a wire action name to begin with, so the new
+block's bullets (`⚠️ **Conflict remains:**`) started clean.
+
+## Four Text Defects a Green Suite Could Not See (v0.25.0, spec 037 T4.4)
+
+T4.4's live keep-in-inbox run put this document's "## Skipped — un-appliable
+actions" section in front of an owner for the first time. Four defects were in
+shipped output, and the whole suite was green through all of them. They share
+one cause: every assertion checked that an expected substring was **present**,
+and not one of these defects removes a substring.
+
+### The heading asserted an intent the bullet refuses to assert
+
+The heading read *"**Conflicts not resolved by rename** — the owner chose
+otherwise, and Pass 2 did not resolve these:"*.
+
+`_render_unresolved_conflict_bullet` was made passive in T4.2 for a specific
+reason, recorded above: "the owner declined to file it" is **false for a
+degraded rename**, where the owner chose `rename` and this run lost the name.
+`skipped_assets` unifies keep-in-inbox and a degraded rename under one
+`vault_collision_held` kind, so both render under this heading — and the heading
+made exactly the claim the bullet beneath it had been rewritten to avoid.
+
+The bullet was fixed; the heading one line above it was never revisited. It now
+states the outcome only: *"Pass 2 did not file these over their occupied
+destinations."* True for all three routes — held, degraded, and ignored.
+
+This is worth naming as a shape rather than an incident: a decision applied at
+the level it was raised, while the same claim survived one level up, where
+nobody was looking.
+
+### `reason` + `remedy` is two sentences, and the second began in lower case
+
+The bullet template is `f"... — {reason}. {remedy}."`. Every remedy string
+started lower case, so the rendered line read *"...karte.png'. no action
+needed"*. All four branches now start with a capital, and the template carries a
+comment saying why, because the requirement is invisible at the definition site.
+
+### The block heading was the bullet's own label
+
+*"**Attachment not filed** — these attachments were left in the inbox:"* above
+bullets that each open *"**Attachment not filed:**"*. The sibling block never
+did this ("Conflicts not resolved by rename" → "Conflict remains"), so the
+convention already existed and only this block broke it. Now "**Attachments
+still in the inbox**".
+
+### Why the T4.2 tests were blind to all of this
+
+`tests/test_037_t4_2_unresolved_summary.py` hand-writes its `skipped_assets`
+entries, including `reason`. Defects two and three live in the **seam** between
+the reason (built in `render_actions.py`) and the remedy (built here), so a
+fixture supplying its own reason cannot reach them at all.
+`tests/test_037_t4_4_rendered_text.py` builds through `_build_move_asset_actions`
+instead, and its five mutations were measured 2026-09-28: each turns red
+exactly the test that names it, and only that test.
+
+## Neither Pass May Promise an Outcome It Cannot Know (v0.26.0, 2026-09-28)
+
+Owner catch during T4.4: the Pass-1 `Ignore` checkbox read *"the move is sent
+as-is and **will fail** — the attachment stays in the inbox"*, and the Pass-2
+"Conflict remains" bullet read *"it **will be refused** when the run is
+applied"*.
+
+Both assert an outcome neither document is in a position to know. Occupancy is
+observed once, in Pass 1's reducer, and re-checked nowhere: `path_exists`
+appears in neither `instruction-render.py` nor `render_actions.py`. Between
+Pass 1 and the Hashi apply the owner may have deleted or renamed the occupying
+file — and doing exactly that is a plausible *reason* to choose `ignore` in the
+first place. In that case the move succeeds, and both halves of the Pass-1
+sentence are wrong: it does not fail, and the attachment does not stay in the
+inbox.
+
+Both are now conditional, and the Pass-2 bullet also says *when* the observation
+was made ("the destination that was occupied in Pass 1"), because a claim about
+vault state is only as good as its timestamp.
+
+This is the same family as the four defects above: the document asserting
+something it cannot know. It is recorded separately because it was found by the
+owner reading the text rather than by a test, and because it sat in **two**
+places — fixing the one that was noticed would have left the other.
+
+## The Legacy Ignore Label Still Parses, and the Test for It Had to Be Rebuilt
+
+A suggestions document rendered by reducer 1.57.2 can be sitting unapplied in a
+vault. `suggestion-parser.py` matches `label.startswith("ignore")`, so the old
+parenthetical still resolves — asserted rather than left to luck.
+
+The first version of that test could not fail, and measurement is the only
+reason it was caught. It ticked only the legacy `Ignore` line and asserted
+`remedy == "ignore"`. Under the mutation (`label == "ignore"`) the tick is not
+seen, all four flags stay False, and `_resolve_attachment_remedy` resolves zero
+ticks to `ignore` by Rule 3 — the same answer. The test was measured GREEN under
+the mutation it named.
+
+The fixture now ticks **rename and the legacy Ignore line together**, where the
+outcomes diverge: seen means two ticks and Rule 4's `ignore`; not seen means one
+tick and Rule 2's `rename`, silently discarding the owner's override. That is
+the ninth unbiteable test this spec produced, and the count is itself the
+argument for measuring every named mutation rather than reasoning about it.
+
+## An Ignored Conflict Is Annotated on Its Own Action (v0.27.0, 2026-09-28)
+
+Owner request during T4.4: *"können wir bei conflict remains auf den
+entsprechenden IXX verweisen? oder vielleicht sogar bei IXX das anmerken und
+nicht am ende des dokumentes?"*
+
+The second form was built, and the first was declined for a reason worth
+recording: **the end-of-document bullet renders for three routes and only
+`ignore` has an action to point at.** `keep_in_inbox` and a degraded rename
+withhold the move entirely, so there is no `I0x` in the document for them. A
+reference inside the bullet would therefore appear for one route and be missing
+for the other two, with nothing in the text explaining the difference. An
+annotation *on the action* exists exactly where an action exists, and says
+nothing where none does.
+
+`ADR-11`'s "no action id in rendered text" is not in tension with this. That rule
+lives only in `_render_withdrawal_bullet`'s docstring here — it is not defined in
+the SDD, and the plan cites it three times as the literal character `n` — and it
+means "no executor handle dropped into prose". Action ids are already the H3
+headings of this document; they are how the owner ticks "Applied" per action.
+The annotation is a line inside the block that already carries its own id.
+
+**The two sites carry different sentences, by the same 2026-09-27 ruling that
+governs the two "Skipped" blocks.** The annotation states the DECISION and how to
+revisit it and claims no outcome at all; the end-of-document bullet states what
+applying will do. Claiming an outcome at the action would have repeated the
+mistake corrected the day before, since nothing re-checks the destination between
+Pass 1 and the apply.
+
+`ignored_conflict_sources` is computed before the action loop rather than beside
+the "Skipped" block that reads the same remedies, because the `move_asset` block
+is rendered first.
+
+Three mutations, measured 2026-09-28. The second one matters more than it looks:
+dropping the membership test annotates EVERY `move_asset`, and the first test
+passes under that mutation because its only move is the ignored one. Without a
+second fixture, "annotate the right move" and "annotate every move" are
+indistinguishable.
+
+## The Annotation Names Its Steps in a Followable Order (v0.28.0, 2026-09-29)
+
+Owner catch, the same day the annotation shipped: it read *"Re-run `/inbox` and
+pick Rename or Keep in inbox to resolve it instead."*
+
+Two faults in one sentence. The remedy is picked in the **suggestions**
+document, and only then is Pass 2 re-synthesized from it — so the steps were
+named in an order nobody can follow. And `/inbox` was the wrong invocation.
+
+It now reads: *"To resolve it instead, tick Rename or Keep in inbox in the
+suggestions document, then run `/inbox --pass2 --force`."*
+
+**Why `--pass2 --force`, and why the document does not say why.** That form
+short-circuits the coverage check outright (`inbox-triage.py`: `if
+state.force_all or to_process`) and cannot go idle. A bare `/inbox` would most
+likely work as well — the cache is re-read from the vault on every run
+(`inbox-triage.py:1076-1078`), so an edited checkbox changes the suggestions
+document's checksum, `detect_drift` sees the mismatch against the instructions
+document's recorded value, the source drops out of `covered_paths`, and branch 6
+routes to synthesize. That was traced, not assumed, and it is exactly why the
+rendered text states **no reason at all** for the flags: the weaker form's
+behaviour depends on run state, and a state-dependent rationale in owner-facing
+text is the defect this section has now been corrected for three times. Give the
+instruction that always works and stop there.
+
+This is the fourth correction in two days to text that told the owner something
+the code did not support — after "the owner chose otherwise", "will fail", and
+"it will be refused". The common shape is not carelessness about wording: each
+one asserted something the renderer was not in a position to know, or named an
+action sequence nobody had walked through.
+
+Not changed, and worth a deliberate note: the `vault_collision_held` remedy
+still reads *"rename the file and re-run `/inbox` to file it after all"*. That
+one is addressed to the state AFTER applying — the attachment is sitting in the
+inbox, and renaming it on disk really is the remedy, with a fresh Pass 1 to pick
+it up. Its order is already followable. It is flagged here only because the two
+sentences look alike and a future reader may assume both needed the same fix.
+
+## The Held Remedy Names Both Reading Moments (v0.29.0, 2026-09-29)
+
+The `vault_collision_held` remedy read *"No action needed unless you change your
+mind; rename the file and re-run `/inbox` to file it after all."*
+
+That is the route for **after** applying, and the document is read **before** —
+every action carries an unticked "Applied" box. At that moment the suggestions
+document is still live and re-ticking is the cheap route; renaming a file on
+disk is not. Read after applying, the source note is gone and the suggestions
+document is spent, so renaming really is the remedy. Both are true at their own
+moment and neither at the other's, so the line now names both, in order.
+
+Found by sweeping every instructional line of a rendered document offline rather
+than waiting to meet it in a live run — after four corrections in two days, two
+of them caught by the owner reading shipped output, the cheaper move was to
+render all three skip kinds plus an ignored conflict locally and read every line
+that tells the owner to do something. That sweep is worth repeating whenever
+this section changes; it costs one `render_instructions_md` call.
+
+The sweep cleared the rest: "Conflict remains" is conditional on `unless that
+name has since been freed`; "the owner chose not to file it" is reached only by
+`keep_in_inbox`, since a degraded rename builds its own sentence; and the
+collision and `no_basename` remedies already name a file action followed by a
+re-run, which is a followable order.
+
+## The Ignore Disclosure Was Missing, and Only a Live Run Showed It (v0.30.0, 2026-09-29)
+
+T4.4's `ignore` run was supposed to fail, and did: Hashi refused the move with
+`Inconsistent state — both source and destination present`, verbatim the
+2026-09-15 text. What it also did was file the note and delete its source, so
+the attachment ended up in the inbox with nothing referencing it and the filed
+note embedding a path backwards into the inbox — **the 2026-09-15 end state,
+reproduced**.
+
+Both mechanisms behaved as written. `delete_source` depends on the note move,
+and spec 036's contract covers four delete sources of which an attachment move
+is none; by that logic the delete is justified, since the atomic captured the
+note's content. And ADR-6's residue rule (`render_actions.py:1410`) cannot fire
+here at all — not because `ignore` was excluded, but because it keys on
+`skipped_assets` and an ignored conflict never produces an entry there. The
+explicit exclusion covers `vault_collision_held` only.
+
+What was missing was the *telling*. The owner was told what happens to the
+attachment and not to the note. Owner ruling 2026-09-29: add the disclosure,
+change no behaviour — holding the note would contradict the 2026-09-27 ruling
+that a remedy names the attachment, not the note.
+
+The sentence says "the note that embeds it is **filed either way**" and
+deliberately not "its source note is deleted": a `move_asset` exists only for a
+confirmed item, so the owning note is always being filed, while the paired
+`delete_source` can be opted out of with "Keep source files". Asserting the
+delete would have been the fifth claim in this section corrected for saying more
+than the renderer knows.
+
+## Where This Lands in the User Documentation
+
+Owner reminder, 2026-09-29: none of spec 037 had reached the user docs. Grep
+found "Attachment Conflicts" in code, schema, and these WHY files, and in no
+document a user reads. The feature is a new decision point in the Pass-1 review
+— the one place the owner is asked to choose — so its absence there was the
+larger gap.
+
+- `docs/usage.md`, under "Process inbox items": what the section is, the three
+  file-comparison verdicts, the three remedies, and the consequence that the
+  note is filed in every case. Effect, never mechanism.
+- `docs/troubleshooting.md`: the refusal text as the symptom someone searches
+  for, what it leaves behind, and how to recover.
+- `docs/instructions-json.md`: one row, because the annotation adds a bullet
+  inside an action entry and that file is the consumer contract. It is never the
+  first bullet, so the Applied rule is unaffected — and a live Hashi run had
+  already executed a set carrying it before the row was written.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.23.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -11,9 +11,11 @@ Output: Final suggestions markdown file (written to --output path)
 Section order (strict):
   1. Frontmatter + Approved checkbox + Decision-precedence note + Summary
   2. Daily Notes Updates (when non-empty)
-  3. Suggestions (per-item sections)
-  4. Proposed MOCs (when non-empty)
-  5. Needs Attention (when non-empty)
+  3. Tag-Handler Updates (when non-empty)
+  4. Attachment Conflicts (when non-empty)
+  5. Suggestions (per-item sections)
+  6. Proposed MOCs (when non-empty)
+  7. Needs Attention (when non-empty)
 """
 import json
 import re
@@ -116,6 +118,19 @@ def render_tag_handler_updates(d: dict) -> list[str]:
     returns [] when absent or empty so the section is omitted cleanly.
     """
     md = (d.get("rendered_tag_handler_updates_md") or "").strip()
+    if not md:
+        return []
+    return [md, ""]
+
+
+def render_attachment_conflicts(d: dict) -> list[str]:
+    """Render the ## Attachment Conflicts block from the pre-rendered reducer output.
+
+    Mirrors render_tag_handler_updates: reads rendered_attachment_conflicts_md
+    verbatim, returns [] when absent or empty so the section is omitted cleanly
+    (spec 037 T2.2).
+    """
+    md = (d.get("rendered_attachment_conflicts_md") or "").strip()
     if not md:
         return []
     return [md, ""]
@@ -524,6 +539,7 @@ def main() -> int:
     parts.extend(render_summary(d))
     parts.extend(render_daily_updates(d))
     parts.extend(render_tag_handler_updates(d))
+    parts.extend(render_attachment_conflicts(d))
     parts.extend(render_suggestions(d))
     parts.extend(render_proposed_mocs(d))
     parts.extend(render_needs_attention(d))

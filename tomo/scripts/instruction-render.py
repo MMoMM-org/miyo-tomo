@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.60.0
+# version: 0.62.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -47,6 +47,7 @@ from lib.doc_frontmatter import (  # noqa: E402
     build_tomo_block,
     merge_tomo_block_into_markdown,
 )
+from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
 from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
 from lib.render_actions import (  # noqa: E402,F401
@@ -366,6 +367,13 @@ def main() -> int:
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
     )
+    # spec 037 T3.0: {source, remedy, proposed_name} per Attachment-Conflicts
+    # entry the owner resolved in Pass 2 (suggestion-parser.py). Forwarded to
+    # build_actions -> _build_move_asset_actions, which for now accepts it
+    # and ignores it — T3.1 is the task that consults it.
+    attachment_conflict_remedies = suggestions.get(
+        "attachment_conflict_remedies", []
+    )
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
     cfg = load_config(args.config)
@@ -423,6 +431,14 @@ def main() -> int:
     manifest: list[dict] = []
     used_filenames: set[str] = set()
     errors = 0
+
+    # spec 037 T3.3: source -> remedy dict, so a renamed attachment's owning
+    # note(s) get their embed rewritten to the new bare basename. Built once,
+    # read per item below — a note can embed more than one attachment, and
+    # the same attachment can be embedded by more than one note.
+    attachment_remedies_by_source = {
+        r["source"]: r for r in attachment_conflict_remedies
+    }
 
     for item in confirmed:
         item_id = item.get("id", "?")
@@ -530,6 +546,16 @@ def main() -> int:
                 file=sys.stderr,
             )
 
+        # 4c. Rewrite embed targets for attachments this run's owner renamed
+        # (spec 037 T3.3). Must happen before the write below (551) — that is
+        # the last point the body can still change. `_build_move_asset_actions`
+        # computes the actual move only after every file in this loop has
+        # already been written to disk, so the new basename is recomputed
+        # here from `proposed_name` rather than read back from a move action.
+        rendered = rewrite_renamed_embeds(
+            rendered, attachments, attachment_remedies_by_source
+        )
+
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
         base_filename = f"{date_prefix}_{slug}.md"
@@ -604,6 +630,7 @@ def main() -> int:
             tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
             parent_marker=conventions.parent_marker,
             peer_marker=conventions.peer_marker,
+            attachment_conflict_remedies=attachment_conflict_remedies,
         )
 
     # The staging notes the action list claims before any guard runs. Paired
@@ -1093,6 +1120,11 @@ def main() -> int:
             "merged_moc_proposals": merged_moc_proposals,
             "unresolvable_moc_links": unresolvable_links,
             "delete_withdrawals": delete_withdrawals,
+            # spec 037 T4.2: reaches `main()` at line ~374 already, but was
+            # used only for the embed rewrite (render_actions.py:439-441) and
+            # never forwarded to the renderer — the same missing-transport gap
+            # T3.0 fixed for suggestion-parser -> instruction-render.
+            "attachment_conflict_remedies": attachment_conflict_remedies,
         },
         cfg,
     )

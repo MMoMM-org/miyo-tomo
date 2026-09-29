@@ -1014,3 +1014,172 @@ rather than leaving a data-quality guard to prompt adherence. Directly relevant 
 [#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue
 is about, caught doing real work.
 
+## OPEN — `suggestions-reducer.py` is 2514 LOC, and spec 037 T1.1 made its extraction seam visible
+
+**Recorded 2026-09-22** by the code-quality review of `a082b7c`, as an advisory finding on a task
+that otherwise passed clean.
+
+The file is well past the Constitution L2 guidance (~300–500 LOC of dense logic). That on its own
+has been true for a while and is not news. What changed is that T1.1 hoisted the old `main()`-nested
+`_vault_folder_notes` closure into a module-level class `_VaultFolderLookup`
+(`suggestions-reducer.py:310-389`) which has **zero remaining coupling to `main()`'s locals** — it is
+constructed with nothing but a `kado_client`, and the new test already loads it standalone via
+`importlib`.
+
+So the seam the size guidance points at is now an actual, named, dependency-free unit rather than a
+general wish that the file were smaller. `tomo/scripts/lib/` is where it would go, beside
+`render_actions.py`'s own join helpers that it calls.
+
+**Not done here deliberately**: T1.1's mandate was to generalise the helper, and T1.2/T1.3 wire the
+new `.assets()` method into a real collision check. Moving the class mid-phase would put a file move
+in the middle of three tasks that all touch it. Revisit after spec 037 closes.
+
+Sibling entry: `garden-audit-render.py` is 1387 LOC, same guideline, different file.
+
+**Second seam, added 2026-09-22** by the code-quality review of T1.4: `detect_attachment_conflicts`
+now takes five parameters, two of them optional callables (`asset_listing`, `folder_listing`) that
+**come from the same `_VaultFolderLookup` instance at every call site** — `main()` and all tests
+pass `lookup.assets` and `lookup.occupied_by_folder` together, never independently. A single
+`folder_lookup: _VaultFolderLookup | None` parameter would drop the count to four and remove one
+`is None` branch without losing the "no Kado client means no capability" semantics, which are real
+production states rather than test scaffolding. `content_reader` stays separate — it genuinely comes
+from a different object (`kado_client`).
+
+**Not done mid-phase deliberately**: the signature is consumed by T1.2's, T1.3's and T1.4's test
+files. Changing it while Phase 2 renders from the same structure would put a signature churn between
+the tasks that produce the data and the tasks that display it. Revisit with the extraction above.
+
+
+## RESOLVED — a folder occupying an attachment destination (spec 037)
+
+**Recorded 2026-09-22, resolved the same day by spec 037 T1.4.** Kept rather than deleted because
+the shape of the mistake is worth having on record.
+
+`requirements.md` Edge Case Scenario 7 asked that a destination held by a **folder** become a
+conflict. It did not, and the cause was one line of a sibling task: T1.1's `_VaultFolderLookup._map`
+drops every listing entry whose `type` is not `"file"`, so the name never read as occupied. T1.3
+shipped with the row unmet, and its spec-compliance review is what surfaced it.
+
+**How it was closed**: additively. `_map`, `notes()` and `assets()` are untouched — widening them
+would have leaked folder-admission into the note path and broken spec 034 T5.2. Instead
+`_VaultFolderLookup.occupied_by_folder()` reads the same cached raw listing and returns only what
+that filter drops, and `detect_attachment_conflicts` takes it as a fifth injected callable. The
+folder verdict is `same_file: false` decided from `entry.get("type")`, with **no content read** —
+pinned by a test, because a `false` derived from a caught read error is indistinguishable in the
+output from a correct one.
+
+**The lesson worth keeping**: the gap was invisible to Phase 1's own tests because the filter that
+caused it lived in a task that had already passed review. A requirement can be unmet by code nobody
+in the current task is looking at. Mechanism written up at
+`docs/tomo/scripts/suggestions-reducer.md:1183`.
+
+## OPEN — the suggestions renderer and parser still agree by duplicated English literal
+
+**Recorded 2026-09-23** while fixing one instance of it in spec 037 T2.4.
+
+`suggestions-reducer.py` writes the decision section's English text; `suggestion-parser.py`
+recognises it by matching substrings of that same text. Neither shares a constant with the other,
+so the agreement is a convention nothing enforces.
+
+**One instance is fixed**: the rename-impossible marker now lives in
+`tomo/scripts/lib/attachment_conflict_states.py` and is imported by both. That one was fixed
+because it was live-dangerous — the phase had already reworded that exact line twice, and a third
+reword would have resolved a ticked rename to `remedy: rename` with no destination, breaking PRD
+Rule 6 with every test still green.
+
+**Two more of the identical shape remain**, deliberately not fixed in that task to keep a fix from
+becoming a refactor:
+- The three remedy labels. The parser matches `label.startswith("rename" / "keep in inbox" /
+  "ignore")` (`suggestion-parser.py:~2328-2334`) against the reducer's own bare literals
+  `"Rename to"` / `"Rename — …"` / `"Keep in inbox"` / `"Ignore ("`
+  (`suggestions-reducer.py:~1517-1524`).
+- The section heading. `"## Attachment Conflicts"` is built at `suggestions-reducer.py:~1480` and
+  matched by exact string equality at `suggestion-parser.py:~2304`.
+
+**Why it is not urgent**: these labels have no reason to change, and a reword would break loudly —
+the parser would find no checkbox at all and the entry would resolve to `ignore` by Rule 3, which
+is the safe direction. The fixed instance was different precisely because its failure was silent
+and produced an action with no destination.
+
+**What closing it needs**: move the three labels and the heading into
+`attachment_conflict_states.py` beside the marker, and decide whether a round-trip test per label
+is worth more than the constants alone. The round-trip test added for the marker
+(`tests/test_037_fix_render_parse_round_trip.py`) is the pattern.
+
+## OPEN — an embed rewrite cannot tell two attachments apart when they share a basename
+
+Spec 037 T3.3 rewrites `![[...]]` embed targets when the owner renames an
+attachment. `rewrite_renamed_embeds` (`tomo/scripts/lib/embed_rewrite.py`)
+matches the literal body text to a renamed attachment **by basename**, and that
+is the finest matching the data allows.
+
+**Where it breaks.** Two attachments in different inbox folders sharing one
+basename — `100 Inbox/Scans/karte.png` and `100 Inbox/Fotos/karte.png` — both on
+one note's `attachments[]`, both embedded as a bare `![[karte.png]]`. If only
+the first is renamed, the rename map is keyed `"karte.png" → "karte (2).png"`, so
+**both** occurrences are rewritten. The second now names a file the run never
+filed, which is the defect class spec 037 exists to close, reached by a different
+route.
+
+**Why basename is the only handle.** `item["attachments"]` carries resolved paths
+only. `inbox-triage.py` keeps the as-typed `embed_target` for **unresolved**
+references (`:325,340`) and discards it for resolved ones (`:321`), so by the time
+the rewrite runs there is no per-occurrence text left to disambiguate against. A
+bare `![[karte.png]]` in the body has no path component to compare either.
+
+**What a real fix needs.** Per-occurrence link metadata threaded from Kado
+(`list_notes(fields=["links"])`, the source `attachment_index.md` records the
+read path as having moved to) through triage to render time, replacing the flat
+`attachments[]` list — or triage preserving `embed_target` for resolved refs too.
+Both are wire changes across a pass boundary, well outside T3.3's scope.
+
+**Why it was accepted rather than fixed.** The shape is narrow: the same basename
+must exist in two different inbox folders, both be embedded in one note, and be
+embedded identically. Obsidian cannot distinguish them typographically either —
+it resolves by its own shortest-path rule — so the note as written is already
+ambiguous about which file it means. `_build_move_asset_actions`'s own
+`claimed`/`collision` machinery already treats this shape as a naming problem on
+the filing side and reports it, just not in a form the rewrite can consume.
+
+Documented at three sites so a future reader meeting it in a real vault can
+recognise it: `rewrite_renamed_embeds`'s docstring,
+`docs/tomo/scripts/lib/embed_rewrite.md` ("Basename Matching, Not Full-Path
+Matching"), and `docs/tomo/scripts/instruction-render.md`'s T3.3 section.
+
+## OPEN — Force Atomic Note bypasses attachment conflict detection entirely
+
+**Recorded 2026-09-28**, found while diagnosing why spec 037's first live T4.3
+run produced no conflict. **Traced in code; not yet measured against a live
+run.**
+
+`detect_attachment_conflicts` (`suggestions-reducer.py:582`) contributes only
+`create_atomic_note` actions that are **not suppressed** — documented and
+deliberate: a sub-worthy atomic stays in the inbox, Pass 2 moves nothing for it,
+so its attachments claim no destination. The same filter the note clash-claims
+loop applies.
+
+The gap is that suppression is not final. **Force Atomic Note** is a supported
+Pass-1 owner action that un-suppresses the item, and by the time it is ticked
+the conflict scan has already run and skipped that item. Nothing re-checks.
+`_build_move_asset_actions`'s docstring is explicit that a source absent from
+`attachment_conflict_remedies` is "treated as a plain attachment — same as
+`ignore`", and there is no occupancy check anywhere in Pass 2: `path_exists`
+does not appear in `instruction-render.py` or `render_actions.py`.
+
+So a sub-worthy note whose attachment collides with an occupied vault
+destination can still be filed with a bare `move_asset`, no remedy offered, no
+warning rendered — the exact 2026-09-15 failure spec 037 exists to close,
+reached through a path the spec does not cover.
+
+**Why it was not fixed in flight.** Spec 037's PRD scopes conflict detection to
+Pass 1's reducer, and the force-atomic tick arrives after that. Closing it means
+either re-running detection after parsing the ticks (a second Kado folder
+listing, against the SDD's cost budget) or carrying occupancy into Pass 2 (a
+wire field, which ADR-5 deliberately rejected). Both are design decisions, not
+fixes.
+
+**How to measure it.** Take a sub-worthy inbox note embedding an attachment
+whose basename already exists in the asset folder, tick Force Atomic Note in the
+suggestions document, and apply Pass 2. Expect one `move_asset` into the
+occupied destination and a Hashi refusal, with no Attachment Conflicts section
+anywhere in either document.

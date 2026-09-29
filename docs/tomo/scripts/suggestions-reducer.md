@@ -982,6 +982,47 @@ already runs on both paths, already holds the folder counts, and
 `routing-plan.json` — carrying triage's own metrics — already sits in the
 `tomo-tmp/` it writes into. The wrapper script the skills called was retired.
 
+## The Folder Cache Caches the Raw Listing, Not the Derived Map (spec 037 T1.1)
+
+Spec 037 needs the same per-folder `list_dir` cache T5.2 built to also answer
+an attachment lookup — "is this destination already occupied" has to hold for
+assets, not just notes. `_vault_folder_notes`'s body did two things in one
+step: fetch-or-reuse the listing, and derive a `.md`-only `{destination:
+path}` map from it. Generalising by parameterising that combined step (file
+predicate + destination-join, still cached keyed on folder) would have cached
+the *derived* map — so a folder the note caller primes first would hand the
+attachment caller a `.md`-only dict for the rest of the run, and the
+attachment lookup would find nothing. **Silently**: no exception, no second
+`list_dir` call to notice, just an empty result exactly like "not occupied."
+That is the failure mode this spec exists to remove, reintroduced by the
+refactor meant to prevent it.
+
+`_VaultFolderLookup` (module-level class, replacing the closure nested in
+`main()`) splits the two steps instead: `_entries(folder)` is the only thing
+that touches the cache, keyed on folder, storing the raw `list_dir` result
+list. `notes()` and `assets()` both call it and then derive their own map —
+`.md`-only via `_dest_join`, non-`.md` via `_asset_dest_join` — fresh, every
+call, from whatever is in the cache. A second call for the same folder still
+costs zero extra `list_dir` round trips (the entries are already cached); it
+just costs a re-filter over an already-in-memory list, which is not a cost
+`folder_listing_calls` was ever meant to count.
+
+Hoisted to module level (it was a closure over `main()`'s locals — `kado_client`,
+the cache dict, `folder_listing_calls`) so spec 037's test can drive it
+directly, the same way `resolve_destination_clashes` already is, instead of
+needing to run the whole reducer to exercise a lookup. `main()` now
+instantiates one `_VaultFolderLookup(kado_client)` (or `None` when Kado is
+absent/unreachable/`--fan-resolve`, unchanged from before) and reads
+`folder_listing_calls` / `distinct_destination_folders` off it at the two
+existing sites — behaviour unchanged, only where the state lives.
+
+The note path is unchanged in output: `notes()` is the same filter
+(`type == "file"` and lowercased name ends `.md`) and the same join
+(`_dest_join(folder, name[:-3]).casefold()`) the pre-generalisation body used,
+verified in `tests/test_037_t1_1_folder_cache_serves_attachments.py` against a
+reproduction of that exact body, and against the spec 034 T5.2 suite passing
+unmodified.
+
 WHY `--routing-plan` defaults to a sibling of `--output` rather than a literal
 `tomo-tmp/routing-plan.json`: both are artefacts of one run in one directory,
 and both skills put them there. A cwd-relative literal would silently pick up a
@@ -992,3 +1033,711 @@ own working tree before the flag existed.
 WHY a missing routing plan warns instead of failing: measurement must never
 fail a run `[ref: SDD/Error Handling]`. The document is already written by then;
 losing the cost line is the cheaper failure.
+
+## `attachment_conflicts[]` — An Occupied Destination Becomes a Pass-1 Decision (spec 037 T1.2)
+
+T1.1 built `_VaultFolderLookup.assets()` and shipped it with no production
+caller. T1.2 is that caller: for every distinct attachment on the run's
+surviving `create_atomic_note` actions, compute the destination through
+`_asset_dest_join` — the SAME helper Pass 2's `_build_move_asset_actions` uses
+— and ask the same per-folder cache T5.2 built for notes whether that name is
+already occupied. A taken name becomes one `attachment_conflicts[]` entry;
+Phase 2 (F2) turns it into a rendered decision. T1.2 stops at detection —
+`same_file` is T1.3's, `remedy`/rendering is Phase 2's.
+
+WHY a pure function, not inline in `main()`: `resolve_destination_clashes`
+already set the precedent (module-level, testable without running the whole
+reducer) for the sibling note-clash pass, and the two checks are close enough
+in shape that a second closure buried in `main()` would read as a
+justification-free divergence.
+
+WHY the dedup key was ORIGINALLY the case-folded destination, and why that
+was wrong: T1.2 keyed on destination because PRD/F1-AC2 is stated in
+destination terms — "one attachment embedded by three notes yields one
+conflict carrying three owners" — and destination is the thing a second
+occurrence of the SAME attachment always agrees on. What T1.2 missed, and
+how it was fixed, is told in full under "Grouping Is By Exact Source Path"
+(spec 037 T1.5), below — this paragraph is kept only as the record of why
+the original choice looked right at the time it was made, not as a second
+telling of the story. The in-run collision (two incoming files fighting
+over one name before either reaches the vault) is a separate question,
+stays Pass 2's `claimed` dict in `_build_move_asset_actions`, and remains
+out of scope here regardless of which key `detect_attachment_conflicts`
+groups by.
+
+WHY `owner_source_items` holds `item_key` directly, not
+`resolve_source_path(item_key, source_path, inbox_path)` the way
+`_build_move_asset_actions` computes it: `resolve_source_path` returns
+`item_key` verbatim whenever `item_key` is present (spec 034 ADR-1 — the key
+IS the path), and the reducer's `prepared` loop always has `item_key` in
+hand. Calling the three-argument helper here would be the same value
+reached through an unnecessary indirection.
+
+WHY suppressed atomics contribute no attachments: a sub-worthy atomic stays
+in the inbox with everything it owns (#88) — Pass 2 never files it and
+therefore never moves what it embeds. The clash-claims loop just above
+already filters `action.get("kind") != "create_atomic_note" or
+action.get("suppressed")` for exactly this reason; the attachment pass reuses
+the same filter rather than inventing a second opinion about which actions
+are live.
+
+WHY the vault listing is fetched lazily, only when there is at least one
+attachment path to check: `_VaultFolderLookup.assets()` is not free — a cache
+miss costs a real `list_dir` round trip, counted in `folder_listing_calls`.
+Calling it unconditionally on a run with zero attachments would charge every
+run in the fleet (most runs carry none) for a lookup nothing will ever
+consult, which is exactly the "per-attachment probe creeping in" the SDD's
+Cost section says the design must not produce.
+
+WHY `attachment_conflicts` is OMITTED, not an empty list, when there are no
+conflicts: `tag_handler_updates` already set this precedent (T3.3, above) —
+an unconditional `attachment_conflicts: []` would itself be a diff on every
+document a run with zero collisions produces, and "a run with no conflicts
+behaves identically" `[ref: SDD/Constraints, additive only]` would be false
+by construction if the key always appeared. The schema
+(`suggestions-doc.schema.json`) lists it as optional, not required, for the
+same reason.
+
+Two regressions are pinned rather than re-derived, because both properties
+already exist and predate this task: no Kado client means
+`_vault_folder_lookup` is `None` (unchanged since `main()` built it, spec 034
+T5.2 era), and `_VaultFolderLookup._entries` already fails open to `[]` on a
+raised listing (T1.1). T1.2's tests exercise both failure shapes THROUGH the
+new attachment path specifically — the assertion is not "T1.1 behaves" (that
+is `test_037_t1_1_folder_cache_serves_attachments.py`'s job) but "wiring
+`.assets()` into the attachment pass did not reintroduce a crash T1.1 already
+closed off." See
+`tests/test_037_t1_2_attachment_vault_collision.py` for the named mutation
+each pin catches.
+
+## `same_file` — The Conflict Knows Whether It Is the Same File (spec 037 T1.3)
+
+T1.2 flags an occupied destination but never says whether the occupant IS
+the incoming file or a different one. T1.3 adds `content_reader` — a second
+injected callable, normally `KadoClient.read_file_bytes` — and a private
+`_same_file(source, destination, content_reader)` helper that reads both
+sides and compares bytes, only for a destination `detect_attachment_conflicts`
+has just determined is taken.
+
+WHY content, never size: the spec exists because of a live failure — two
+69-byte PNGs, same size, different pictures. A size check would have called
+them identical and steered the owner toward the one remedy (rename) that
+actually gives them two copies of one image `[ref: SDD/Complex Logic]`.
+`tests/test_037_t1_3_same_file.py::test_equal_size_different_content_sets_same_file_false`
+pins this with a same-size, different-content pair and is the one test that
+a size-based comparator gets wrong rather than merely under-tests.
+
+WHY `content_reader` is a second parameter alongside `asset_listing`, not a
+field threaded through it: the two questions are independent — "is the name
+taken" (asset_listing) and "if so, is it the same bytes" (content_reader) —
+and the function already has a precedent for "a capability the caller may
+not have" being `None` rather than a sentinel object (`asset_listing` itself
+works the same way). `None` — no Kado client, or a caller/test double that
+does not implement `read_file_bytes` — sets `same_file: null` for every
+conflict without an attempted read: a missing CAPABILITY is not evidence
+either way, the same posture the SDD gives a read that raises.
+
+WHY a raising read is caught PER ENTRY, not around the whole function: the
+alternative (letting the exception propagate out of
+`detect_attachment_conflicts`) would lose every conflict in the run, not
+just the one whose comparison failed — exactly the trap
+`test_raising_read_sets_null_for_its_conflict_and_leaves_the_other_intact`
+exists to catch. A single-conflict version of that test cannot tell "caught
+the exception" from "the run aborted and every conflict vanished"; it needs
+a second, unrelated conflict in the same call to prove the difference.
+
+WHY the source is read before the destination, and a source-side failure is
+not distinguished from a destination-side one: the SDD's Error Handling row
+says only "`read_file_bytes` raises → `same_file: null`" — it does not
+split by which side failed, and there is no requirement to. Reading source
+first means a raising source read never even attempts the destination read
+(one fewer round trip on the failure path); either failure means the same
+thing downstream: this particular comparison did not happen.
+
+WHY `same_file` is computed once, at entry-creation time, not per owner: the
+Cost section requires a destination shared by several owning notes to still
+cost one comparison. Placing the `_same_file` call inside the
+`if item_key not in entry["owner_source_items"]` branch (or anywhere
+re-entered per owner) would multiply reads with the owner count instead;
+`test_shared_destination_across_owners_is_one_comparison` pins the call
+count directly rather than trusting the placement by inspection.
+
+WHY reads are bounded by COLLISIONS, not by attachments: `_same_file` is
+only ever called from inside the `entry is None` branch, which is only
+reached once `dest_key not in vault_assets` has already been checked false
+— an attachment whose destination is free never reaches a content read at
+all. `test_reads_bounded_by_collisions_not_attachments` mixes colliding and
+non-colliding attachments in one call and asserts the free one's path never
+appears in the reader's call log, not just that the total count is small.
+
+See `tests/test_037_t1_3_same_file.py` for the named mutation each test
+catches, including the size-comparison kill test.
+`test_folder_occupied_destination_never_becomes_a_conflict` in that same
+file still pins the narrower claim its name makes: given ONLY
+`_VaultFolderLookup.assets` (no `folder_listing`), a folder-occupied
+destination stays invisible to `detect_attachment_conflicts` — accurate
+before and after T1.4, because that narrower call shape is exactly what a
+caller opts OUT of the folder check by using. It is not evidence that the
+gap below was left open; T1.4 closes it through a path that test never
+exercises.
+
+## A Folder Holding the Name Is a Conflict Too (spec 037 T1.4)
+
+T1.3's spec-compliance review reopened `requirements.md` Edge Case
+Scenario 7 — "the destination is occupied by a folder → conflict, rename
+stays the sensible default" — as unmet, not merely undocumented. T1.3's own
+deviation block (above) had traced the cause to `_VaultFolderLookup._map`'s
+`entry.get("type") != "file"` filter, which discards a folder entry before
+either `notes()` or `assets()` ever sees it: the destination read as free,
+and `detect_attachment_conflicts` was never even told the name was taken.
+The owner decided the code gives way, not the PRD. T1.4 closes it.
+
+WHY a new method (`occupied_by_folder`), not a widened `_map`: `_map` is the
+SHARED body behind both `notes()` and `assets()` — widening its filter to
+admit non-file entries would leak folder-admission into the note path too,
+turning an unrelated subfolder into a phantom note clash and breaking spec
+034 T5.2 (`test_notes_is_unaffected_by_folder_occupied_detection` pins
+exactly this). `occupied_by_folder` reads the same cached raw listing
+`_entries` fills — a folder already primed by `notes()` or `assets()` for
+the same location costs no second `list_dir` round trip — but keys its
+result with `_asset_dest_join`, the attachment join, because a
+folder-occupied name only ever matters on the attachment side. `notes()`
+and `assets()` keep their exact pre-T1.4 filter, join, and return shape:
+this is an addition beside them, not a change inside them.
+
+WHY `detect_attachment_conflicts` gets a fifth parameter (`folder_listing`)
+rather than folding folder-occupancy into `asset_listing`'s existing dict:
+the two questions the function already keeps separate — "is the name taken"
+vs. "if so, is it the same bytes" (T1.3's `content_reader`) — gain a third,
+"taken by what kind of thing", and the same pattern applies: a capability
+the caller may not have is `None`, not a sentinel folded into an existing
+shape. `main()` wires `_vault_folder_lookup.occupied_by_folder` alongside
+`.assets`, so both are `None` together exactly when there is no Kado client
+— the existing `asset_listing is None` short-circuit needed no change.
+
+WHY the folder verdict is decided from `entry.get("type")`, never a read: a
+folder cannot be byte-identical to a file, so the comparison `_same_file`
+exists to make has nothing to compare — calling it anyway (or approximating
+it by reading the destination and treating any resulting exception as
+`false`) would spend a real `read_file_bytes` round trip for an answer
+already implied by the entry's kind. `content_reader` is consulted only
+when `occupied_by_file` is true; the folder branch sets `same_file: false`
+directly. `tests/test_037_t1_4_folder_occupied_destination.py`'s case
+1+2 test asserts this on ONE fixture and ONE entry — the value (`false`)
+and the read count (`0`) together — specifically because a mutation that
+decides `false` via a caught read exception produces the identical value
+and is invisible to any test that checks the value alone; only the read
+count exposes it. That mutation was applied and run by hand during
+implementation: it turned the read-count assertions in three of this file's
+tests red while every value assertion (`same_file is False`) stayed green,
+confirming the claim rather than merely asserting it.
+
+WHY a destination present in both the file map and the folder set is
+decided as a file, never downgraded: `vault_assets` membership is checked
+first, and when true, drives the verdict through `_same_file` regardless of
+whether `occupied_by_folder` also names the same casefolded key. This
+matters only for a case-sensitive vault filesystem holding both, e.g.,
+`Photo.PNG/` (a folder) and `photo.png` (a file) — a shape one `list_dir`
+listing is vanishingly unlikely to produce and this function has no way to
+confirm from the entries it receives, since `_map` already collapses same
+name to a single last-writer-wins path. Documented as an assumption, not
+inferred silently: file-occupied still wins if it ever happens.
+
+Cost accounting is untouched: `folder_listing_calls` increments inside
+`_entries`, which `occupied_by_folder` reuses rather than reimplements —
+this task added no new counter and no new `list_dir` call shape.
+
+## Grouping Is By Exact Source Path, Not Destination (spec 037 T1.5)
+
+T1.2's compliance review (carried into `plan/phase-2.md`, "Named risk carried
+in from Phase 1") found that `detect_attachment_conflicts` grouped conflict
+entries by case-folded DESTINATION, not by source path. Harmless for
+detection, which only claims a destination is occupied. Not harmless
+downstream: `_asset_dest_join` builds the destination from the asset folder
+plus the source's basename, and spec 034 shipped recursive inbox discovery,
+so two DIFFERENT inbox attachments sharing a filename —
+`100 Inbox/A/karte.png` and `100 Inbox/B/karte.png` — compute the identical
+destination without being the same file. Destination-keyed dedup folded them
+into one entry: `source` kept whichever path was seen first, and
+`owner_source_items` accumulated the owners of both. Phase 3 applies a
+rename with an embed rewrite, so the second file's owning note would be told
+its embed was retargeted to a file it never owned — a note the owner never
+approved gets modified. The owner chose to fix this in the data (T1.5),
+rather than teach Phase 2's renderer a per-source special case.
+
+WHY the key moved to the exact source path rather than a case-folded one:
+occupancy is a question about the VAULT, which is case-insensitive on the
+platforms Tomo targets, so `dest_key` stays case-folded for the `vault_assets`
+/ `occupied_folders` membership tests. Grouping is a question about how many
+DISTINCT incoming files there are, and two inbox paths differing only in
+case are still two different files on a case-sensitive inbox filesystem — so
+the source key is exact, never folded. Folding it would re-merge exactly the
+pair this task exists to split, in a narrower, case-only form.
+`test_occupancy_stays_case_folded_while_grouping_is_exact_on_source` pins
+both halves in one fixture: two sources whose basenames differ only in case
+both collide with the one vault file and still yield two entries.
+
+WHY one attachment embedded by three notes still yields one entry — and why
+that is NOT new evidence the fix works: when the source path is literally
+the same string, the old (destination) key and the new (source) key agree,
+so this case was already passing before T1.5 touched anything. It is kept as
+a regression pin against a plausible wrong redesign — grouping by
+`(source, item_key)` instead of `source` alone — which would pass every
+other T1.5 bullet while silently reintroducing three one-owner entries for a
+single shared attachment, breaking PRD F2-AC3.
+`test_one_attachment_three_owners_still_one_entry`'s docstring says so
+explicitly, because T1.2 and T1.3 both established the convention of
+disclosing an "already true" case rather than presenting it as coverage of
+the current task.
+
+WHY the cost bound changed, and why that is accepted rather than patched
+around: `same_file` is computed once per entry, at entry-creation time
+(unchanged since T1.2/T1.3) — but an entry is now keyed by source, so N
+distinct source paths colliding on the same destination are N entries, each
+running its own `_same_file(path, destination, content_reader)` call, which
+reads BOTH sides. The group therefore costs 2N reads — N source reads plus N
+destination reads — against 2 total for the pre-T1.5 destination-keyed code,
+which read one source and the destination once, regardless of N. N is
+bounded only by the run's attachment count, and N > 2 is a realistic shape,
+not a hypothetical one: spec 034 shipped recursive inbox discovery, and
+camera/scanner default filenames repeat across folders. `SDD/Cost` is
+amended alongside the code (`solution.md`, "Content reads are bounded by the
+number of distinct colliding SOURCE paths") rather than left describing a
+bound the code no longer produces. A shared destination-side read cache was
+considered and rejected — not because N is usually small, but because it
+would be WRONG at any N: `same_file` answers a question about the (SOURCE,
+destination) PAIR, not about the destination alone, so caching one verdict
+per destination would hand every source after the first another source's
+answer.
+`test_two_sources_colliding_on_one_destination_read_it_twice` asserts the
+exact call count at N=2; `test_three_sources_colliding_on_one_destination_read_it_three_times`
+does the same at N=3, which is what pins the bound as scaling with N rather
+than merely holding at N=2.
+
+WHY entries are still built by appending at first occurrence in the owners
+list: Phase 2's T2.2 renders `attachment_conflicts[]` straight into document
+order. Splitting one destination-keyed entry into several source-keyed ones
+moves entries relative to OTHER destinations' entries if the ordering
+mechanism ever changes — an unstated contract in the reducer becomes an
+unstated one in the renderer. The mutation that actually falsifies this is
+sorting the returned list by case-folded destination before returning it —
+verified by hand in a disposable copy, it turns
+`test_entry_order_follows_first_occurrence` red (1 failed, 7 passed) and
+nothing else. Building the entries by iterating the grouping dict at the end
+instead of appending at first occurrence does NOT falsify it: Python dict
+insertion order already equals first-occurrence order here (the grouping
+dict is only ever appended to, never reordered), so that swap is
+observationally identical to the shipped code — measured, by the same
+hand-applied check, to leave the test GREEN (8 passed). A future reader
+should not mistake that silence for permission to make the swap.
+`test_entry_order_follows_first_occurrence` fixes the order with a fixture
+that interleaves two independent destination collisions with a two-source
+split, so the ordering claim is pinned against a concrete multi-collision
+shape, not inferred from a single-collision test.
+
+WHY the entry's field set is asserted exactly, not just its content: the
+loop this task rewrites is the one place a grouping key could leak onto the
+entry dict for developer convenience (`dest_key`, or a new source key) and
+every other T1.5 assertion would still pass — only `additionalProperties:
+false` in the schema would catch it, and only at validation, later than this
+test suite runs. `test_entry_field_set_is_exactly_the_schema_four` asserts
+`set(entry.keys()) == {"source", "destination", "same_file",
+"owner_source_items"}` directly (T2.1 below added a fifth field,
+`proposed_name`, and updated this assertion's expected set accordingly —
+the test's name and its own reasoning above are otherwise unchanged).
+
+See `tests/test_037_t1_5_one_entry_one_file.py` for the named mutation each
+test catches, and the module docstring for the full list plus which of
+T1.2/T1.3/T1.4's existing tests were checked for an entry-count change and
+found unaffected (none needed editing: every existing fixture's colliding
+sources share either the SAME source path or already-distinct basenames, so
+none crosses the destination-vs-source grouping boundary this task moved).
+
+## `proposed_name` — The Rename Candidate Is Computed Where the Data Lives (spec 037 T2.1)
+
+`attachment_conflicts[]` said a destination was occupied but never said what
+a rename remedy would actually be called. `SDD/Interface Specifications`
+listed `proposed_name` as a field and left its scheme an open question that
+"does not block implementation" — until Phase 2's T2.2 was asked to render
+it. Owner decision 2026-09-23: mirror the scheme `resolve_destination_clashes`
+already ships for note-title clashes — `{stem} ({n})`, n from 2, first free
+wins, give up after 99 — computed in the reducer (`_propose_asset_name`,
+called from `detect_attachment_conflicts` at entry-creation time, the same
+point `same_file` is computed) rather than recovered by the parser from
+rendered prose, per `SDD/Runtime View, Pass 2`.
+
+WHY the counter goes BEFORE the extension, the one deliberate difference
+from the note scheme: `resolve_destination_clashes` appends `(n)` to the
+title and lets `_dest_join` append `.md` afterward, so the counter always
+lands before the extension by construction. `_asset_dest_join` has no such
+step — it preserves an attachment's basename VERBATIM, extension included,
+because Obsidian resolves an embed by exact filename. Appending after the
+whole basename (`karte.png (2)`) would produce a file no longer recognised
+as a PNG and an embed that stops resolving. `_propose_asset_name` therefore
+splits the basename itself with `str.rpartition(".")` — the LAST dot, so
+`karte.tar.gz` proposes `karte.tar (2).gz` and keeps its real type as the
+final suffix — and reassembles `{stem} ({n}).{ext}`, falling back to
+`{stem} ({n})` when there is no dot at all (`README` → `README (2)`).
+
+WHY a basename whose only dot is the LEADING one falls back the same way
+(code-quality review advisory, owner decision 2026-09-23, fixed alongside
+T2.1's original ship): `rpartition(".")` on `.hidden` returns `("", ".",
+"hidden")` — a non-empty separator but an EMPTY stem. Treating that as an
+ordinary split (as first shipped) reassembles `f"{stem} ({n}).{ext}"` with
+an empty `stem`, producing `" (2).hidden"` — a leading space, and a name
+that is no longer a dotfile, because the leading dot is not an extension
+separator at all, it is part of the name. `_propose_asset_name` now checks
+`not sep or not stem` before falling back, so an empty stem is treated
+exactly like "no dot at all": `.hidden` proposes `.hidden (2)`, keeping the
+leading dot in the name and the counter at the very end. `karte.` (a
+trailing, not leading, dot) is unaffected — its stem is `karte`, non-empty,
+so it still proposes `karte (2).` as before.
+
+WHY a candidate is checked against THREE sets, not the one
+`detect_attachment_conflicts` already had at hand: `vault_assets` (the file
+listing) is necessary but not sufficient — T1.4 exists precisely because a
+destination can be held by a FOLDER, invisible to the file listing alone. A
+candidate-generation loop that checked only `vault_assets` would re-create
+T1.4's fixed defect one level down, in the rename candidate instead of the
+initial destination — silently, because every fixture that does not put a
+folder at a candidate position would still pass. The third set, `proposed`,
+is new at this task: it is not vault state at all, but the case-folded
+destinations THIS RUN has already handed out to earlier conflicts. Without
+it, two different attachments colliding on the same vault name would both
+walk the vault listing independently, both find `(2)` first-free, and both
+propose it — the rename would collide with itself, reintroducing in naming
+the exact defect T1.5 removed from ownership.
+
+WHY `_propose_asset_name` only READS `proposed` and never writes to it
+(code-quality review advisory, owner decision 2026-09-23, fixed alongside
+T2.1's original ship): the helper originally called `proposed.add(key)` on
+the caller-owned set itself before returning, making the recording side
+effect invisible at the call site — a reader of `detect_attachment_conflicts`
+would not see, from that call alone, that its own `proposed_names` set had
+just grown. The sibling function `resolve_destination_clashes`, right above
+in this file, does not have this problem: it claims a destination with
+`claimed[dest_key] = dest` inline in ITS OWN caller loop, not inside a
+callee. `_propose_asset_name` now matches that split: it computes and
+returns the candidate only, and `detect_attachment_conflicts` records the
+accepted name into `proposed_names` itself, right after the call, mirroring
+`resolve_destination_clashes`'s own claiming line. The caller has only a
+basename (`proposed_name`), not the case-folded destination KEY the set
+actually stores — rather than re-deriving that join by hand a second time
+(which would put the join expression in two places), the caller calls the
+same `_asset_dest_join(asset_folder, proposed_name).casefold()` the helper
+already calls internally on every candidate it tries. `_asset_dest_join`
+is the one place the join logic lives; both sites merely call it, the same
+way every other occupancy check in this module does. This is a pure
+refactor — `_propose_asset_name`'s return value and every observable
+outcome of `detect_attachment_conflicts` are unchanged, and no existing
+test needed editing.
+
+WHY the occupancy comparison folds case at the CANDIDATE level, not only at
+the entry level: `detect_attachment_conflicts`'s own `dest_key =
+destination.casefold()` check (T1.1/T1.2, unchanged by this task) already
+proves the INITIAL destination is matched case-insensitively. That is a
+different comparison from the one `_propose_asset_name` performs on each
+generated candidate, and a fixture built only around the initial
+destination (vault holds `Karte.png`, incoming is `karte.png`) cannot
+exercise the candidate-level fold at all: `karte.png` and `karte (2).png`
+are different strings under ANY comparison, so occupying only the former
+proves nothing about how the latter is checked. `_propose_asset_name` folds
+by calling `_asset_dest_join(asset_folder, candidate).casefold()` before
+every membership test — the same join every other occupancy test in this
+module uses, so the fold behaviour cannot silently diverge between the
+initial check and the candidate check.
+Verified live, in a disposable copy of the module, both readings this
+task's own tests support:
+- Dropping `.casefold()` from ONLY the folder-check line (leaving the
+  candidate-level fold intact) is Bullet 6's mutation, not this one, and is
+  isolated by exactly `test_candidate_checked_against_folder_set_too` — 1
+  failed, 8 passed.
+- Dropping `.casefold()` from the candidate join ENTIRELY does NOT isolate
+  to one test: because `ASSET_FOLDER` itself carries uppercase
+  (`"Atlas/290 Assets/295 Attachments/"`), an unfolded candidate join never
+  matches ANY folded listing entry, occupied or not — it fails
+  `test_an_occupied_proposal_advances`, `test_occupancy_check_folds_case`,
+  `test_candidate_checked_against_folder_set_too`, and
+  `test_99_taken_variants_gives_up_but_still_emits_the_conflict` together (4
+  failed, 5 passed), not just the one test named for case-folding. The
+  case-folding test (`test_occupancy_check_folds_case`) therefore does not
+  claim exclusive isolation of a wholesale "no casefold at all" mutation —
+  only that folding the join is necessary, alongside the other three tests
+  that would also catch its removal. Its fixture (`Karte.png` AND
+  `Karte (2).png` occupied, `karte.png` incoming, expects `karte (3).png`)
+  was strengthened past the task list's own illustrative fixture — occupying
+  a case-different spelling of the CANDIDATE, not just the original name —
+  specifically because the weaker fixture cannot distinguish folded from
+  literal comparison at all, for the reason given above.
+
+WHY the give-up threshold mirrors `resolve_destination_clashes` exactly
+(`range(2, 101)`, `None` after 99 taken variants): the note scheme already
+made this call — 99 taken names is not a situation a rename can rescue — and
+the owner's decision was to have one rename convention in the repo, not two.
+`proposed_name: null` does not remove the conflict entry; the occupancy is
+real regardless of whether a rename can name it, and Phase 2 still renders
+the other two remedies (keep in inbox, ignore).
+
+Out of scope, by owner decision, not oversight: a source whose OWN basename
+already matches `{stem} ({n}){ext}` — `karte (2).png` colliding — proposes
+`karte (2) (2).png`. `resolve_destination_clashes` does the same to a note
+titled `Something (2)` today; mirroring shipped behaviour was the decision,
+changing it would be a new one and belongs to a future task if it ever
+matters.
+
+See `tests/test_037_t2_1_proposed_name.py` for the named mutation each test
+catches — each was verified live in a disposable copy of the module, not
+merely asserted in the docstring, after two earlier reviews on this spec
+reported a mutation result for a mutation other than the one named. Every
+T1.2-T1.5 exact-dict assertion that now includes `proposed_name` was a pure
+field addition; nothing else about those tests changed.
+
+`test_leading_dot_with_no_other_dot_stays_a_dotfile` (bullet 3b) covers the
+code-quality-review fix above: removing the `stem == ""` guard was verified
+live, in a disposable copy of the module, to turn it red with
+`proposed_name == " (2).hidden"` — the exact leading-space, no-longer-a-
+dotfile candidate the guard exists to prevent.
+
+## `render_attachment_conflicts_block` — The Conflict Becomes a Decision the Owner Reads (spec 037 T2.2)
+
+Phase 1 (T1.2-T1.5) detects an occupied destination and, as of T2.1, proposes
+a free name for it — all data, none of it visible to the owner until this
+task. `render_attachment_conflicts_block(conflicts, asset_folder) -> str`
+renders `attachment_conflicts[]` into the `## Attachment Conflicts` markdown
+section, following the exact split `render_tag_handler_updates_block` and
+`render_daily_notes_updates_block` already established: the reducer renders
+markdown into a `rendered_*_md` doc field (`rendered_attachment_conflicts_md`
+here), gated inside the same `if attachment_conflicts:` block that already
+gates `doc["attachment_conflicts"]` itself — so a conflict-free run adds
+neither key, and stays byte-identical to a pre-spec-037 document. That
+byte-identity is pinned by a committed golden file,
+`tests/fixtures/037-t2-2/pre-change-no-conflicts-doc.json`, captured by
+running the reducer at the commit before this task
+(`04829d2`) — same anchoring approach as T1.2's own fixture, and for the same
+reason: "byte-compare against the pre-change render" without a committed
+fixture is unanchored and was rejected twice already in this spec's Phase 1.
+
+**One block per CONFLICT, not per owner.** Phase 1 already dedups by exact
+source path (T1.5), so an entry whose `owner_source_items` names several
+notes is still one occupancy — the render loop iterates `conflicts`, once
+each, and lists every owner inside that one block. The plan's own guardian
+review flagged that a renderer iterating `owner_source_items` and emitting a
+block per owner would pass every OTHER test in the file, because the default
+test fixture carries only one owner — verified live: with that exact
+mutation applied, 8 of the 9 tests in
+`tests/test_037_t2_2_render_conflicts.py` still pass, and only
+`test_one_block_per_conflict_not_per_owner` (built on a three-owner fixture)
+catches it. That is why the test suite deliberately carries a three-owner
+case rather than relying on the single-owner default everywhere.
+
+**The rename target is composed, not the bare basename.** `proposed_name`
+(T2.1) is a basename only; the folder lives in the entry's `destination`.
+This function is handed `asset_folder` directly (its own parameter, not
+re-derived per entry) and composes the two with `_asset_dest_join` — the
+same helper Pass 2's `_build_move_asset_actions` and T1.2's detector both use
+to build every other attachment destination in this module. Rendering
+`proposed_name` alone would pass a substring check while showing the owner a
+name with no folder — the exact regression the task text calls out by name.
+
+**`proposed_name: null` pre-ticks *keep in inbox*, not rename — the ADR-4
+exception, not the ADR-4 rule.** ADR-4's general rule (a cleared box resolves
+to *ignore*) governs the parser (T2.4), not this renderer. This renderer's
+own job under the exception is narrower: when no free name was found, tick
+*keep in inbox* instead of rename, and still render the rename line —
+unticked, stating plainly that no free name is available — so the owner can
+see WHY the usual default is missing rather than being shown two
+ordinary-looking remedies with no explanation for the gap. T2.4 must read
+this exact tick pattern; the two tasks were required not to disagree about
+what it means.
+
+**Correction (fix/037, `# version: 1.55.1`): the T2.2 commit (`092e420`)
+shipped two lines that broke the no-executor-internals rule this same file
+states at lines 141-143 and 174-177 — the rename line read "no free name
+found within 99 attempts", naming the reducer's internal retry budget
+(`range(2, 101)` in the destination-name search), and the ignore line read
+"the move goes out unchanged; Hashi refuses it and reports it", naming the
+executor by name. Both are now mechanism-free: the rename line reads "no
+free name available" (the owner cannot act on the number 99, and does not
+need it); the ignore line reads "the move is sent as-is and will fail — the
+attachment stays in the inbox" (per the SDD Runtime View, Pass 2: *ignore*
+emits the move normally, and it is the resulting failure — not who performs
+it — that matters to the owner; *keep in inbox* is the remedy that emits
+nothing). This paragraph previously narrated the "99 attempts" wording as
+deliberate ("so the owner can see WHY"); it was not a deliberate choice, it
+was the leak, and this file documented the rule that forbids it roughly
+1,400 lines above the section that violated it — worth recording as a gap in
+review, not smoothing over.
+
+**Deliberately out of scope here, owned by a sibling:** the S2 "here is what
+happens if you leave this unresolved" statement (T2.4, tied to the parsed
+`remedy`) is not rendered by this function. Adding it here would have this
+task guess at wording T2.4 is specifically chartered to decide. (`same_file`
+wording shipped in T2.3, below.)
+
+**Second correction (fix/037, `# version: 1.56.0`): the owner wikilinks
+bypassed `lib/source_link.py` and disagreed with the rest of the document.**
+The `owners` loop built each link with an inline
+`owner[:-3] if owner.endswith(".md") else owner` — `owner` is a raw
+`item_key`, the note's full vault-relative path — never routed through
+`source_link_targets`/`resolve_source_link`. A note that is BOTH a conflict
+owner and the source of its own per-item section rendered two different link
+texts for the same note in the same document: the owner list showed the full
+path (`[[100 Inbox/Scans/karte]]`), the per-item section showed whatever
+`resolve_source_link` produces (`[[karte]]`, or `[[<path>|karte]]` once a
+stem collides — spec 034). `source_link.py`'s own module docstring says its
+two prior consumers "have been bitten twice by parallel copies of a shared
+shape"; this inline slice was the third. Fixed by threading
+`source_links: dict[str, str] | None = None` through the function signature
+(mirroring `render_daily_notes_updates_block`) and adding a local
+`_owner_link` helper that mirrors the in-file `_key_link` precedent — falls
+back to a clean basename, never the full path, when the key is absent — via
+`resolve_source_link`. The call site passes the same
+`source_links = source_link_targets(done_items)` already computed for the
+per-item sections, so the two renderings are now one computation instead of
+two copies of it. The shared helper is used here, rather than a local strip
+fixed in place, precisely because a local strip is what caused the drift in
+the first place — patching this copy without routing through the shared
+module would have made a fourth parallel copy, not closed the pattern.
+
+This changes rendered output for the single-owner test fixtures that
+hard-coded the old full-path form: `render_attachment_conflicts_block`'s new
+default (`source_links=None`) exercises the same `_key_link`-style basename
+fallback, a clean basename rather than the raw `item_key` path the old inline
+slice produced. `tests/test_037_t2_2_render_conflicts.py`'s three affected
+assertions were updated to match (`[[100 Inbox/Scans/karte]]` → `[[karte]]`,
+and the three-owner test's three full paths → three bare basenames). A new
+test, `test_owner_link_matches_same_notes_own_section_link`, pins the
+consistency the fix exists to guarantee: two items sharing one stem force the
+qualified `<path>|stem` form, and the test asserts the owner-list link and
+the per-item `**Source:**` link resolve to the identical string.
+
+**Third correction (fix/037, same version): the no-executor-internals guard
+test had an uncovered reintroduction path.** `test_no_executor_internals_in_
+rendered_block` scanned digits only across checkbox lines, because the
+`**Destination:**` line legitimately carries Johnny-Decimal folder numbers
+(e.g. `290 Assets`) and a whole-block scan against the module's own
+`ASSET_SOURCE`/`ITEM_KEY` fixtures (which carry a `100` inbox-tier number in
+the path itself) would flag that real path content too. A code-quality
+reviewer showed live that this scoping left a hole: a leaked mechanism detail
+planted as PROSE under the `### <source>` heading — not a checkbox — passed
+both of the test's assertions undetected. Widened the scan to every line
+except `**Destination:**`, and gave this one test its own digit-free
+source/owner (`Inbox/Scans/karte.png` / `.md`, no leading Johnny-Decimal
+number) so the widened scan has no other legitimate digit to special-case —
+the fix stays "exclude the one line that legitimately carries digits," not
+"exclude every non-checkbox line" (the same narrowing mistake, just moved).
+
+**Fourth correction (fix/037, `# version: 1.57.1`): the guard was still
+parametrized over only one of the three `same_file` branches.** The fixture
+this test builds never set `same_file`, so it always fell through to the
+`null` sentence — the `true` and `false` sentences added by T2.3 were never
+scanned. Parametrized the test over `same_file in (True, False, None)`
+(`pytest.mark.parametrize`, the established pattern in this test suite) so
+all three branches pass through the same whole-block digit/executor-name
+scan.
+
+**Fifth correction (fix/037, `# version: 1.57.2`): the "no free name
+available" wording was a bare literal duplicated in this file and in
+`suggestion-parser.py`'s `rename_impossible = "no free name available" in
+label` check — no shared constant tied the two together.** The wording had
+already been reworded twice in this phase for unrelated reasons (the two
+corrections above); a third reword would have passed every test in this
+file — none of which exercise the parser — while silently breaking the
+parser's detection of the state, letting a ticked-but-impossible rename
+resolve to `remedy: rename` with `proposed_name: null` (the Rule 6
+violation the owner decision of 2026-09-23 exists to prevent). Extracted
+the marker to `lib/attachment_conflict_states.RENAME_IMPOSSIBLE_MARKER`;
+this renderer now builds the line as `f"- [ ] Rename — {
+RENAME_IMPOSSIBLE_MARKER}"` instead of the bare string. Rendered output is
+unchanged — this is a refactor of where the string lives, not of what the
+owner reads, pinned by the unchanged golden file and the unchanged
+`test_null_proposed_name_pre_ticks_keep_in_inbox_not_rename` assertion.
+`tests/test_037_fix_render_parse_round_trip.py` adds the coverage the
+constant does not provide: it runs this renderer's real output through the
+real parser and pins the SEMANTIC mapping (rename-impossible-and-ticked →
+`ignore`), which a wording constant cannot protect since it lives in the
+parser's `_resolve_attachment_remedy`, not in the marker text.
+
+The same "renderer builds English text, parser matches a substring of it"
+shape also exists, unconsolidated, for the "Rename"/"Keep in inbox"/
+"Ignore" remedy-label prefixes and for the `## Attachment Conflicts`
+heading itself — noted during this fix, left alone as out of scope.
+
+## `same_file` wording in `render_attachment_conflicts_block` (spec 037 T2.3)
+
+T1.3 computes `same_file` (`True` / `False` / `None`) once per conflict entry
+at detection time; this task adds the one sentence in the rendered block that
+tells the owner which it is. A `- **File comparison:**` bullet, placed right
+after the `**Embedded by:**` owner list and before `**Remedy — choose
+one:**`, so the owner reads it immediately before deciding.
+
+**Why the default does not change when the files are identical.** It is
+tempting to read "this is the same picture" as a reason to steer the owner
+away from rename — untick it, or pre-tick *keep in inbox* instead, the way
+`proposed_name: null` does. The SDD is explicit that this is wrong:
+`same_file` "changes no remedy and no default. It changes one sentence in the
+document." Two reasons this holds even though it reads as under-reactive:
+
+1. **Rename is still the safe, correct action for a duplicate.** An
+   identical file at the destination is exactly the case rename resolves
+   cleanly — the owner ends up with one canonical copy under a
+   disambiguated name, not a broken embed. Suppressing the default here
+   would make the one case where `same_file: true` is *most* actionable the
+   one case the pipeline second-guesses the owner on.
+2. **The sentence is the intervention.** ADR-4's whole model is: ship the
+   obvious default, but make the document loud enough that an owner who
+   should deviate, does. A sentence the owner reads before ticking anything
+   already does that job; a silently-changed default would remove the
+   owner's chance to *decide* differently, replacing it with the pipeline
+   deciding for them — the opposite of what a Pass-1 decision means in this
+   spec.
+
+The wording is intentionally digit-free and names no executor
+(`tests/test_037_t2_2_render_conflicts.py::test_no_executor_internals_in_
+rendered_block` scans the whole block, this bullet included) and introduces
+no content-derived value — `_same_file` (T1.3) already returns only
+`True`/`False`/`None`, so there is no digest to leak in the first place
+(SDD/Security and privacy).
+
+**Implemented as a conditional fully separate from the `proposed_name` tick
+logic**, not folded into it, specifically so the two fields stay independent
+in the rendered output the way they already are in the data (T1.3 sets
+`same_file`, T2.1 sets `proposed_name`; nothing ties their values together).
+An entry can be `same_file: true` AND `proposed_name: null` at once — an
+attachment identical to an occupant that also happens to be the 100th
+colliding name — and both statements must render: the duplicate-file
+sentence, and the "no free name available" rename line with *keep in inbox*
+pre-ticked. Verified live: merging the two into one `if/elif` keyed on
+"what's special about this entry" (null proposal takes priority, `same_file`
+checked only when a name was found) drops the duplicate-file sentence
+whenever both conditions hold, and among the full T2.3 test file only
+`test_same_file_true_and_no_proposed_name_render_both` catches it — the
+other five tests in the file, and the entire rest of the suite, stayed
+green under that exact mutation.
+
+See `tests/test_037_t2_3_same_file_wording.py` for the named mutation each
+test kills, each verified red by applying that exact mutation before this
+task closed.
+
+**Position, not just presence (fix/037, `# version: 1.57.1`).** Every
+assertion above this correction checked substring presence or absence —
+none pinned WHERE the `- **File comparison:**` bullet lands relative to the
+rest of the block. `test_file_comparison_bullet_precedes_remedy_block` now
+asserts its line index falls strictly between `**Embedded by:**` and
+`**Remedy — choose one:**`, for all three `same_file` values. This matters
+because the block is a document a person reads top to bottom to decide: the
+sentence that tells them a rename would create a duplicate has to land
+before the checkboxes it informs, not after — the code already placed it
+there, but nothing proved it stayed there.
+
+**The `null` sentence now carries guidance, not just a fact (fix/037,
+`# version: 1.57.1`).** The `true` and `false` branches told the owner what
+the comparison meant for their choice; `null` stated only that the
+comparison could not be made, with no next step. Changed to "The files could
+not be compared — check manually before accepting the rename." `PRD/S1-AC3`
+requires only that the document say the files could not be compared, which
+this still says — the addition is guidance appended after the required
+statement, not a changed meaning, so no acceptance criterion moved. It stays
+subject to the same no-executor-internals, digit-free guard as the other two
+sentences, and changes no remedy or default — `same_file` still governs one
+sentence only (SDD/Complex Logic), unchanged by this wording edit.

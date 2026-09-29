@@ -5,17 +5,17 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-15 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-09-16 |
+| **Last Updated** | 2026-09-29 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 37 acceptance criteria; 6 Must, 2 Should, 2 Could, 4 Won't |
+| requirements.md | completed | v2.0; 22 acceptance criteria across F1-F3, S1-S2, C1-C2 (the earlier "37" counted v1.0's, before the owner's scope cut) |
 | solution.md | completed | v2.0; 5 ADRs, none open; 0 new wire fields, Hashi untouched |
-| plan/ | completed | 4 phases, 13 tasks |
+| plan/ | completed | 4 phases, 19 tasks — 13 planned, 6 added from review findings |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -31,11 +31,11 @@
 | 2026-09-16 | Research phase skipped; PRD written directly | Owner decision. The problem is measured on a live run, the feasibility probed against live Kado, and the design choices already taken. Research agents would have restated the README. |
 | 2026-09-16 | Spec documents ride `spec/035-wire-schema-versioning` | Owner decision. Documentation only, no code; 035 already carries every fix from this session and is the branch waiting on "tomo funktioniert ordentlich". Avoids a second unmerged branch stacked on an unmerged one. |
 | 2026-09-15 | Overwrite is not a default remedy | Overwriting a file already filed in the Atlas destroys content the user placed there. Standing project constraint: deleting data a person painstakingly entered is not an option. If offered at all it must be explicit and never pre-ticked. |
-
 | 2026-09-16 | Scope cut by the owner; both documents rewritten as v2.0 | v1.0 framed the defect as "a note must never be separated from its attachment" and proposed holding notes back, a fail-closed vault check and four remedies. The owner scoped it to: show the conflict, offer rename (default) / keep in inbox / ignore, leave Hashi and the instructions document alone. Both ADRs that were awaiting confirmation dissolved. |
 | 2026-09-16 | The gap between passes is explicitly not modelled | Owner principle: "wir wissen nicht was zwischen pass1/pass2 und der Anwendung im Vault passiert". The only guarantee is that no component overwrites data; a failed check, a stale conflict and a late conflict all resolve the same way — Hashi reports, the owner fixes. |
 | 2026-09-16 | Rename is pre-ticked, contradicting the usual no-default rule | A safe obvious answer exists: renaming overwrites nothing and loses nothing. Requiring a tick would charge attention for the common case. A cleared default resolves to `ignore` — the loudest outcome — because clearing it is itself a signal. |
 | 2026-09-16 | **Decomposition tier: Incremental** | Classifier recommended Incremental and it was accepted. Signals: `change_type=fix`, `feature_count=3` (F1-F3), `ac_count=22`, `component_count=0` (no new surface — four existing files extended), `parallel_markers=false`. Rule 1 fires on `feature_count` alone and precedes rule 2, so breadth vetoes the `fix` escape. Noted for accuracy: F1 is not independently user-visible, so a reading that counts one capability would have reached Direct via rule 2. |
+| 2026-09-29 | Implementation complete | All 4 phases, 19 tasks. An occupied asset destination is now a Pass-1 decision: the reducer detects it through the shared folder cache, the suggestions document offers three remedies with rename pre-ticked, and Pass 2 honours the tick — rename files under a free name and rewrites the owning notes' embeds, keep-in-inbox withholds the move, ignore sends it unchanged. ADR-5 held: no wire field, Hashi unchanged, proven by running their compiled validator on a real three-remedy set. `close-out.md` traces all 22 PRD criteria to tests that were EXECUTED — 30 node ids in one pytest invocation — not to tasks that mention them. Three live runs against Privat-Test, one per remedy: rename resolved the 2026-09-15 case end to end with zero failures; keep-in-inbox held the file and filed the note; ignore failed exactly once with Hashi's verbatim 2026-09-15 refusal text, which is what makes ADR-5's dependency measured rather than assumed. Suite 4379 passed, ruff clean. Rides `spec/037-asset-destination-collision` through `feb5eb9`; not merged. Four items recorded open rather than closed: force_atomic bypasses conflict detection, a delete outlives a refused attachment move, the embed rewrite cannot disambiguate a shared basename, and a byte-identical file still gets Rename pre-ticked. Spec 037 also reached the user docs — `usage.md`, `troubleshooting.md`, `instructions-json.md` — which no prior phase had touched. |
 
 ## Context
 

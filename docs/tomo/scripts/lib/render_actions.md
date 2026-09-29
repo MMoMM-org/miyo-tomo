@@ -1392,3 +1392,155 @@ that produced it): `_inbox_join` (`lib/render_actions.py`) reads
 `cfg["concepts.inbox"]` and joins it with the same bare `.rstrip('/')`,
 with no leading `.strip()` — the identical defect shape, unconfirmed
 live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.
+
+## A Parameter Accepted and Deliberately Ignored (spec 037 T3.0, v0.26.3)
+
+`_build_move_asset_actions` gained `attachment_conflict_remedies` and does not
+read it. `build_actions` forwards it and does not read it either.
+
+This is deliberate and scoped. T3.0's whole job was the transport — proving the
+owner's remedy travels from the reviewed markdown all the way to the function
+that will act on it. T3.1 is the task that consults it, to pick a `rename`
+destination, withhold a `keep_in_inbox` move, or leave an `ignore` move
+unchanged. Splitting them means the wiring is proven green before any behaviour
+depends on it, so a later failure is unambiguously about the decision logic and
+never about whether the data arrived.
+
+The parameter is pinned by a test asserting this function's output is identical
+with and without it, which is the assertion that would fail the moment someone
+implements T3.1 — at which point that test is meant to be replaced, not
+weakened. An unused parameter is normally a smell; here it is a seam with a
+named successor and a dated one. If T3.1 is ever abandoned, this parameter goes
+with it rather than being left as decoration.
+
+**Superseded by T3.1 below.** The identity assertion above now holds only for
+a source `attachment_conflict_remedies` does not name — a matched source
+changes the outcome, by design. `tests/test_037_t3_0_remedy_transport.py`'s
+test was narrowed to the unmatched case rather than deleted, since it still
+anchors something real (T3.1's own "conflict gone by Pass 2" rule).
+
+## The Remedy Lookup Sits Between the Basename Guard and the Claimed Check (spec 037 T3.1, v0.26.4)
+
+`_build_move_asset_actions` now consults `remedy` at one specific point in the
+loop: after `_asset_dest_join(asset_folder, path)` has already succeeded (the
+no-basename skip is unconditional — a malformed inbox path is a defect in
+`path` itself, orthogonal to any remedy), and before `claimed.get(destination.
+casefold())` is ever read. That ordering is load-bearing, not incidental:
+
+- **After the basename guard** — a remedy can only apply to an attachment
+  that resolved to a real destination. There is no `remedy` case for a path
+  with no basename; conflating the two would need a second reason string
+  vocabulary for the same failure.
+- **Before the claimed check** — `rename` and the degraded-`keep_in_inbox`
+  cases replace `destination` (or skip claiming it at all) BEFORE the
+  collision guard runs, so the guard always sees the destination that will
+  actually be requested, never the pre-Pass-1 one. `ignore` and "no remedy at
+  all" leave `destination` as computed from `path` and fall through to the
+  exact same `claimed.get(...)` / `claimed[...] = ...` lines every other
+  attachment uses — no separate code path, no separate collision logic.
+
+**What breaks if a future task moves the lookup below the claimed check:** a
+`rename`'s recomputed destination would never be compared against `claimed`, so
+two renames landing on the same new name would both be emitted and the second
+would overwrite the first on apply. `test_a_remedys_destination_still_goes_through_the_claimed_check`
+catches exactly this — **measured, 2026-09-27**, by moving the whole remedy
+block below the claimed check and registration: the test fails on
+`assert len(actions) == 1`, seeing two moves both bound for `orig.png`.
+
+The implementer's own report claimed this test "would pass by accident" because
+it asserts the skip rather than the ordering, and the first version of this
+paragraph repeated that. Both were wrong: the test asserts an action *count*
+alongside the skip, and the count is what bites. Recorded rather than quietly
+deleted, because a WHY doc that claims a test is weaker than it is invites
+someone to bolt on a redundant one. **What breaks if it moves above the
+basename guard:** a malformed `path` with a coincidentally-matching remedy
+record would need `_asset_dest_join` to succeed on `path` before the remedy
+branch could even ask about `proposed_name`, which it cannot — the ValueError
+path has no destination to hand to a `rename` or `keep_in_inbox` branch, so
+moving the lookup earlier would need it to catch and re-decide on the same
+exception the guard already handles, duplicating that logic rather than
+sequencing it.
+
+**One outcome, two reasons, deliberately not told as one.** `keep_in_inbox`
+and a `rename` that arrived with no name share a branch — both withhold the
+move and both record `kind: vault_collision_held` — but they do NOT share their
+`reason` string, and the split is the point rather than an inconsistency.
+
+A held attachment is the owner's own instruction: they ticked *keep in inbox*.
+A degraded rename is the opposite — they asked for the file to be filed, under
+a name this run could not recover. Reporting the second with the first's "the
+owner chose not to file" wording tells them they decided something they never
+decided, in the one place they find out which file stayed behind.
+
+Every other assertion about these two cases stays green if the strings are
+merged, because the outcome really is identical; only
+`test_a_degraded_rename_is_not_reported_as_the_owners_choice` separates them.
+Found by the T3.1 code-quality review, which read the string rather than only
+the control flow.
+
+**Why `ignore` and "no remedy" are the same branch, not two.** Semantically
+they answer different questions Pass 1 asked — one is an owner's explicit
+choice, the other is "no conflict was ever recorded for this path" — but
+Pass 2 never re-checks the live vault (`SDD/Error Handling`: the asset-folder
+listing is a Pass-1-only read), so there is no destination Pass 2 could
+compute that would differ between them. Two branches producing identical code
+would be a maintenance seam for no behavioural reason; the docstring names
+both explicitly instead so a reader does not have to infer their equivalence
+from the fall-through.
+
+**`rename` with `proposed_name: None` degrades to `keep_in_inbox`, not
+`ignore`** — owner ruling 2026-09-25 (`SDD/Runtime View`, "A rename that lost
+its name"). This is checked in the SAME branch as `keep_in_inbox` itself
+(`remedy == "keep_in_inbox" or (remedy == "rename" and not proposed_name)`)
+rather than as a separate `elif`, because the two cases are the same outcome
+by the owner's ruling, not a coincidence a future refactor should undo.
+
+**`vault_collision_held` excluded from `suppress_moves_for_unfiled_
+attachments`.** That pass holds an owning note for every OTHER
+`skipped_assets` `kind` by default — it was written before this `kind`
+existed, so a new kind inherits "hold the note" unless it opts out. The
+exclusion is a single `continue` keyed on `entry.get("kind")`, placed as the
+FIRST statement in the `for entry in skipped_assets` loop, so the entry never
+reaches `moves_by_source` lookup, `dropped_ids`, or `pending` — it produces no
+suppression record at all, not an empty or no-op one. `requirements.md:374-
+382` records this as the owner's standing ruling: *keep in inbox* names the
+attachment, not the note.
+
+## `reason` Is Rendered Text, Not a Self-Contained Record (v0.26.7, spec 037 T4.4)
+
+WHY the three `skipped_assets` reasons no longer name the skipped attachment,
+and spell paths in backticks rather than through `!r`.
+
+T4.4's live run rendered this line:
+
+    - ⚠️ **Attachment not filed:** `100 Inbox/Scans/karte.png` — kept in inbox:
+      the owner chose not to file '100 Inbox/Scans/karte.png' over the occupied
+      destination 'Atlas/290 Assets/295 Attachments/karte.png'. no action needed…
+
+One path, twice, in two quoting styles, inside twenty words. All three kinds did
+it — `no_basename` also said "has no filename" in both the reason and the
+remedy, telling the owner one fact in a two-clause sentence.
+
+**Why removing the path is safe, and how that was established rather than
+assumed.** `reason` has exactly one consumer: `render_md.py`'s "Attachment not
+filed" bullet, which opens with `` `{source}` `` for every kind. The path is
+also carried structurally in the entry's own `source` field. Hashi does not read
+`skipped_assets` at all — checked across its source tree on 2026-09-28, zero
+references. So nothing renders `reason` without the path beside it.
+
+A test asserted the opposite contract — *"the reason is the one place the owner
+learns which file stayed put"* — and that premise was simply wrong about the
+rendered document. It was corrected rather than honoured, with the measurement
+recorded in the test.
+
+**What stays.** A collision's CLAIMANT has no field of its own, so it remains in
+`reason`. And `_asset_dest_join`'s `ValueError` message still names the path: an
+exception can surface anywhere, so it must stand alone. The `no_basename` entry
+now builds its own user-facing reason instead of reusing `str(exc)` — the two
+have different audiences and only one of them has a bullet lead.
+
+Pinned by `tests/test_037_t4_4_rendered_text.py`'s
+`test_a_skipped_attachment_is_named_exactly_once_in_its_bullet`, a **count**
+assertion. The pre-existing tests asserted presence, which stays true when a
+path appears twice — which is how four reason strings carried a duplicate
+across three specs without one test noticing.

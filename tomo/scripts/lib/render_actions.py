@@ -1,4 +1,4 @@
-# version: 0.26.2
+# version: 0.26.7
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -693,6 +693,7 @@ def _build_move_asset_actions(
     inbox_path: str,
     asset_folder: str,
     counter: list[int],
+    attachment_conflict_remedies: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Emit move_asset actions for every unique attachment path across the
     whole manifest, deduplicated globally (not per item) on the resolved path.
@@ -721,6 +722,21 @@ def _build_move_asset_actions(
     `source_inbox_item` — that is what lets a caller keep such a note in the
     inbox with its file (spec 034 ADR-6). It is a list because the global
     `seen` dedup examines each path once while several notes may embed it.
+
+    `attachment_conflict_remedies` (spec 037 T3.0) resolves a source whose
+    Pass-1 destination was occupied: `rename` recomputes the destination from
+    `proposed_name` (a basename — joined through `_asset_dest_join`, never
+    used as a path directly); `keep_in_inbox` withholds the move and records
+    a `skipped_assets` entry with `kind: vault_collision_held`; `ignore`
+    leaves the move unchanged against the still-occupied destination and
+    records nothing. A `rename` whose `proposed_name` is `None` (the
+    markdown/JSON desync route — SDD/Runtime View "A rename that lost its
+    name") degrades to `keep_in_inbox`. A source absent from
+    `attachment_conflict_remedies` (the conflict is gone by Pass 2, or never
+    existed) is treated as a plain attachment — same as `ignore`. Whichever
+    destination is chosen still passes through the `claimed` check below: a
+    remedy resolves WHICH destination is examined, never whether it is
+    examined (see docs/tomo/scripts/lib/render_actions.md).
     """
     out: list[dict] = []
     skipped: list[dict] = []
@@ -730,6 +746,9 @@ def _build_move_asset_actions(
     # the way their notes embed them.
     claimed: dict[str, str] = {}
     skipped_by_path: dict[str, dict] = {}
+    remedies_by_source = {
+        r["source"]: r for r in (attachment_conflict_remedies or [])
+    }
     for m in manifest:
         owner = _ensure_md_extension(
             resolve_source_path(
@@ -751,18 +770,78 @@ def _build_move_asset_actions(
                 destination = _asset_dest_join(asset_folder, path)
             except ValueError as exc:
                 print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
+                # NOT str(exc): the exception message names the path because
+                # an exception can surface anywhere, while `reason` has exactly
+                # one consumer — render_md.py's bullet, which already opens with
+                # the path in backticks. Rendering both put it twice on one line.
                 entry = {
-                    "source": path, "destination": None, "reason": str(exc),
+                    "source": path, "destination": None,
+                    "reason": "the inbox path has no filename",
                     "kind": "no_basename", "owner_source_items": owners,
                 }
                 skipped.append(entry)
                 skipped_by_path[path] = entry
                 continue
+            remedy_entry = remedies_by_source.get(path)
+            remedy = remedy_entry["remedy"] if remedy_entry else None
+            if remedy == "keep_in_inbox" or (
+                remedy == "rename" and not remedy_entry.get("proposed_name")
+            ):
+                # `destination` here is the occupied one Pass 1 found — the
+                # attachment stays put, so nothing is ever claimed for it.
+                #
+                # One outcome, two reasons, and they must not be told as one:
+                # a held attachment is the owner's own instruction, while a
+                # degraded rename is the owner asking to file it under a name
+                # this run could not recover. Reporting the second as a choice
+                # would tell them they decided something they did not.
+                #
+                # Neither reason repeats `path`: the only consumer
+                # (render_md.py's "Attachment not filed" bullet) already opens
+                # with it in backticks, and T4.4's live run rendered it twice in
+                # one line — once backticked, once as a repr. Paths are spelled
+                # in backticks here for the same reason, since `!r` produced
+                # straight quotes beside the renderer's backticks.
+                if remedy == "keep_in_inbox":
+                    reason = (
+                        f"kept in inbox: the owner chose not to file it over "
+                        f"the occupied destination `{destination}`"
+                    )
+                else:
+                    reason = (
+                        f"kept in inbox: it was to be filed under a new name "
+                        f"beside the occupied destination `{destination}`, and "
+                        f"that name is no longer available to this run — it "
+                        f"stays in the inbox rather than being filed under a "
+                        f"name the owner did not choose"
+                    )
+                entry = {
+                    "source": path, "destination": destination, "reason": reason,
+                    "kind": "vault_collision_held", "owner_source_items": owners,
+                }
+                skipped.append(entry)
+                skipped_by_path[path] = entry
+                continue
+            if remedy == "rename":
+                # proposed_name is a BASENAME (SDD C1) — _asset_dest_join,
+                # never the vault root a bare join would write to.
+                destination = _asset_dest_join(
+                    asset_folder, remedy_entry["proposed_name"]
+                )
+            # `ignore`, and no remedy at all (the conflict is gone by Pass 2 or
+            # never existed), both leave `destination` as computed from `path`
+            # above and fall through to the same claimed check as any other
+            # attachment — a remedy decides WHICH destination is examined,
+            # never whether it is examined.
             claimant = claimed.get(destination.casefold())
             if claimant is not None:
+                # Paths in backticks, and the colliding source named once:
+                # the bullet that renders this already leads with it. The
+                # stderr line below appends it separately, so the log entry
+                # stays self-contained.
                 reason = (
-                    f"destination collision: {path!r} also resolves to "
-                    f"{destination!r}, already claimed by {claimant!r}"
+                    f"destination collision: it also resolves to "
+                    f"`{destination}`, already claimed by `{claimant}`"
                 )
                 print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
                 entry = {
@@ -1351,6 +1430,12 @@ def suppress_moves_for_unfiled_attachments(
     (ADR-1) that `_build_move_asset_actions` recorded on each skipped entry —
     never on the stem, which two notes in different inbox folders share.
 
+    `kind: vault_collision_held` (spec 037) is excluded from this pass: the
+    owner chose *keep in inbox* for the attachment, not for the note, and
+    holding the note anyway would silently widen that choice. See
+    docs/tomo/scripts/lib/render_actions.md for why this needed an explicit
+    exclusion rather than following from the shape above.
+
     Composes with ``validate_destinations`` in either order: a move that pass
     already dropped is absent here, so no note is reported as withheld twice
     and no delete or MOC link is counted as withdrawn twice. Only suppressions that
@@ -1375,6 +1460,9 @@ def suppress_moves_for_unfiled_attachments(
     dropped_ids: set[str] = set()
     withdrawn_paths: set[str] = set()
     for entry in skipped_assets:
+        if entry.get("kind") == "vault_collision_held":
+            # The owner's remedy — spec 037 T3.1. Only the file stays behind.
+            continue
         dropped: list[dict] = []
         candidates: list[str] = []
         for owner in entry.get("owner_source_items") or []:
@@ -2583,6 +2671,7 @@ def build_actions(
     tag_handler_keep_source_group_ids: list[str] | None = None,
     parent_marker: str = "up::",
     peer_marker: str = "related::",
+    attachment_conflict_remedies: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Assemble the full ordered action list.
 
@@ -2605,6 +2694,11 @@ def build_actions(
       7. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
       8. delete_source      — incl. approved tag-handler group sources (after their insert)
       9. skip
+
+    `attachment_conflict_remedies` (spec 037 T3.0) is forwarded verbatim to
+    `_build_move_asset_actions`, which consults it per attachment (T3.1) to
+    choose a renamed destination, withhold a held move, or leave an ignored
+    one unchanged.
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -2621,7 +2715,8 @@ def build_actions(
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
     move_assets, skipped_assets = _build_move_asset_actions(
-        manifest, inbox_path, asset_folder, counter
+        manifest, inbox_path, asset_folder, counter,
+        attachment_conflict_remedies=attachment_conflict_remedies,
     )
     out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))

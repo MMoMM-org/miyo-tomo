@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.47.0
+# version: 1.58.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -37,6 +37,7 @@ import copy
 import json
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
@@ -65,8 +66,9 @@ from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
 )
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
-from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash
+from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash; spec 037 T1.1
     DEFAULT_ASSET_FOLDER,
+    _asset_dest_join,
     _dest_join,
 )
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
@@ -74,6 +76,7 @@ from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — s
 # spec 034 T5.1, moved to lib at T5.5 when the instruction document needed
 # the same collision rule and the same link form at three more sites.
 from lib.source_link import resolve_source_link, source_link_targets  # noqa: E402
+from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -305,6 +308,116 @@ def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
     )
 
 
+class _VaultFolderLookup:
+    """One `list_dir` per destination folder, served to every caller.
+
+    Caches the RAW listing per folder — not a caller-derived map. A folder
+    primed by `notes()` (which reads only `.md` entries) still answers a
+    later `assets()` call from the same cached listing, because the cache
+    holds the listing itself and each call derives its own map from it. A
+    cache keyed on the derived map would serve the second caller a map
+    built for the first — silently empty for every attachment [ref: spec 037
+    T1.1; see docs/tomo/scripts/suggestions-reducer.md].
+
+    Fails open on a listing error — an error is not a collision, matching
+    the pre-generalisation behaviour — and still charges the round trip to
+    `folder_listing_calls` (spec 034 T6.1 / F9).
+    """
+
+    def __init__(self, kado_client) -> None:
+        self._kado_client = kado_client
+        self.folders: dict[str, list[dict]] = {}
+        self.folder_listing_calls = 0
+
+    def _entries(self, folder: str) -> list[dict]:
+        if folder in self.folders:
+            return self.folders[folder]
+        calls_before = observed_call_count(self._kado_client)
+        try:
+            entries = list(self._kado_client.list_dir(folder, depth=1))
+        except Exception:  # noqa: BLE001 — an error is not a collision
+            entries = []
+        calls_after = observed_call_count(self._kado_client)
+        self.folder_listing_calls += (
+            calls_after - calls_before
+            if calls_before is not None and calls_after is not None
+            else 1
+        )
+        self.folders[folder] = entries
+        return entries
+
+    def _map(
+        self,
+        location: str,
+        *,
+        file_predicate: Callable[[str], bool],
+        join: Callable[[str, str], str],
+    ) -> dict[str, str]:
+        folder = (location or "").rstrip("/") + "/"
+        found: dict[str, str] = {}
+        for entry in self._entries(folder):
+            path = entry.get("path") or ""
+            name = path.rsplit("/", 1)[-1]
+            if entry.get("type") != "file" or not file_predicate(name):
+                continue
+            found[join(folder, name).casefold()] = path
+        return found
+
+    def notes(self, location: str) -> dict[str, str]:
+        """The `.md` notes in `location`, keyed as `_dest_join` builds them.
+
+        Unchanged from the pre-generalisation `_vault_folder_notes` body:
+        same filter, same join, recomposed through `_dest_join` so both
+        sides of a comparison are built by the same helper (spec 034 T5.2).
+        """
+        return self._map(
+            location,
+            file_predicate=lambda name: name.lower().endswith(".md"),
+            join=lambda folder, name: _dest_join(folder, name[:-3]),
+        )
+
+    def assets(self, location: str) -> dict[str, str]:
+        """The non-`.md` attachments in `location`, keyed by `_asset_dest_join`.
+
+        `.md` entries are excluded — a note sharing an attachment folder is
+        not an attachment collision.
+        """
+        return self._map(
+            location,
+            file_predicate=lambda name: not name.lower().endswith(".md"),
+            join=_asset_dest_join,
+        )
+
+    def occupied_by_folder(self, location: str) -> set[str]:
+        """Casefolded ATTACHMENT-destination keys held by a FOLDER entry in
+        `location` (spec 037 T1.4, PRD Edge Case Scenario 7).
+
+        Additive sibling to `assets()`, not a change to it: `_map`'s
+        `type != "file"` guard keeps dropping non-file entries from
+        `notes()` and `assets()` exactly as before — this method reads the
+        same cached raw listing `_entries` fills and picks up only what
+        that guard drops, keyed with `_asset_dest_join` because a
+        folder-occupied name only matters to the attachment side
+        (`detect_attachment_conflicts`); `notes()`'s `.md`-keyed results are
+        untouched by this method's existence.
+
+        A folder primed by an earlier `notes()` or `assets()` call for the
+        same `location` costs no second `list_dir` round trip — `_entries`
+        is the shared cache (spec 037 T1.1).
+        """
+        folder = (location or "").rstrip("/") + "/"
+        found: set[str] = set()
+        for entry in self._entries(folder):
+            if entry.get("type") == "file":
+                continue
+            path = entry.get("path") or ""
+            name = path.rsplit("/", 1)[-1]
+            if not name:
+                continue
+            found.add(_asset_dest_join(folder, name).casefold())
+        return found
+
+
 def resolve_destination_clashes(
     claims: list[tuple[str, str, str]],
     folder_listing=None,
@@ -366,6 +479,269 @@ def resolve_destination_clashes(
             claimed.setdefault(key, base)
 
     return adjustments
+
+
+def _same_file(
+    source: str,
+    destination: str,
+    content_reader: Callable[[str], bytes] | None,
+) -> bool | None:
+    """Whether `source` and `destination` hold byte-identical content
+    (spec 037 T1.3, PRD S1).
+
+    Compares CONTENT, never size — two files of equal size are not
+    necessarily the same file (the 2026-09-15 live pair: two different
+    69-byte PNGs). Reading both fully and comparing bytes is the only
+    comparison this function performs; nothing shorter (size, a digest) ever
+    substitutes for it `[ref: SDD/Complex Logic]`.
+
+    `content_reader` is normally `KadoClient.read_file_bytes`. `None` (no
+    reader — no Kado client, or a caller that does not offer one) returns
+    `None` without attempting a read: a missing comparison CAPABILITY is not
+    evidence either way, just like a comparison that was attempted and
+    failed. A read that raises, on EITHER side, also returns `None` — the
+    source is read first, so a raising source read never even reaches the
+    destination read, and either failure carries the same meaning: this
+    particular comparison did not happen `[ref: SDD/Error Handling]`.
+
+    Nothing derived from the content is returned or retained beyond this
+    `True`/`False`/`None` verdict — not the bytes, not a digest, not a size
+    `[ref: SDD/Security and privacy]`.
+    """
+    if content_reader is None:
+        return None
+    try:
+        source_bytes = content_reader(source)
+        destination_bytes = content_reader(destination)
+    except Exception:  # noqa: BLE001 — a failed read is not evidence either way
+        return None
+    return source_bytes == destination_bytes
+
+
+def _propose_asset_name(
+    asset_folder: str,
+    basename: str,
+    vault_assets: dict[str, str],
+    occupied_folders: set[str],
+    proposed: set[str],
+) -> str | None:
+    """The first free rename this attachment's `destination` basename could
+    take, mirroring `resolve_destination_clashes`' `{title} ({n})` scheme
+    (spec 037 T2.1, PRD C1; owner decision 2026-09-23).
+
+    The counter goes BEFORE the extension, not after: `_asset_dest_join`
+    preserves an attachment's basename verbatim, so `resolve_destination_clashes`'
+    own trick — appending `(n)` then letting `_dest_join` append `.md` — has
+    no equivalent here. `karte.png` proposes `karte (2).png`, never
+    `karte.png (2)`, which is no longer a PNG and whose embed cannot resolve.
+
+    The stem is everything before the LAST dot (`str.rpartition(".")`), so
+    a multi-suffix name keeps its real type as the final suffix:
+    `karte.tar.gz` proposes `karte.tar (2).gz`. A name with no dot at all
+    takes the counter at the very end: `README` proposes `README (2)`.
+
+    A candidate is free only when its case-folded destination — built with
+    `_asset_dest_join`, the same join every occupancy test in this module
+    uses — is absent from ALL THREE of: `vault_assets` (the asset folder's
+    file listing), `occupied_folders` (T1.4's folder-occupancy set, so a
+    candidate cannot be rejected as free just because no FILE holds it),
+    and `proposed` (the destinations this run has already handed to other
+    conflicts — two conflicts in one run must not both walk to the same
+    first-free name and collide with each other, the way T1.5 already keeps
+    their ownership from doing the same). This function only reads
+    `proposed`; it does not add to it. Recording the accepted candidate is
+    the caller's job, mirroring how `resolve_destination_clashes` does its
+    own claiming inline in its caller loop (`claimed[dest_key] = dest`)
+    rather than inside a callee (owner decision 2026-09-23).
+
+    Gives up after 99 taken variants (`range(2, 101)`), mirroring
+    `resolve_destination_clashes`: 99 taken names is not a situation a
+    rename can rescue. Returns `None` in that case; the conflict itself is
+    still real and still emitted by the caller.
+
+    A basename whose only dot is the LEADING one (`.hidden`) is not split
+    there: that dot is not an extension separator, it is part of the name.
+    `rpartition(".")` still finds it and would otherwise leave an empty
+    stem, producing `" (2).hidden"` — a leading space, and no longer a
+    dotfile. Treating an empty stem the same as "no dot at all" makes
+    `.hidden` propose `.hidden (2)`, keeping the leading dot as part of the
+    name and the counter at the very end (owner decision 2026-09-23).
+    """
+    stem, sep, ext = basename.rpartition(".")
+    if not sep or not stem:
+        stem, sep, ext = basename, "", ""
+    for n in range(2, 101):
+        candidate = f"{stem} ({n}).{ext}" if sep else f"{stem} ({n})"
+        key = _asset_dest_join(asset_folder, candidate).casefold()
+        if key in vault_assets or key in occupied_folders or key in proposed:
+            continue
+        return candidate
+    return None
+
+
+def detect_attachment_conflicts(
+    items: list[tuple[str, list[dict]]],
+    asset_folder: str,
+    asset_listing: Callable[[str], dict[str, str]] | None,
+    content_reader: Callable[[str], bytes] | None = None,
+    folder_listing: Callable[[str], set[str]] | None = None,
+) -> list[dict]:
+    """Attachments whose computed vault destination is already occupied
+    (spec 037 T1.2, PRD F1; `same_file` added T1.3, PRD S1; a destination
+    held by a FOLDER added T1.4, PRD Edge Case Scenario 7; `proposed_name`
+    added T2.1, PRD C1, via `_propose_asset_name`, above).
+
+    `items` is (item_key, actions) pairs. Only `create_atomic_note` actions
+    that are not `suppressed` contribute — a sub-worthy atomic stays in the
+    inbox (#88) and Pass 2 moves nothing for it, so its attachments claim no
+    destination either; same filter the clash-claims loop above applies to
+    notes.
+
+    The destination is computed through `_asset_dest_join` — the SAME helper
+    Pass 2's `_build_move_asset_actions` uses `[ref: render_actions.py:691-782]`,
+    so the two cannot disagree about what "the same place" means.
+
+    Dedup key is the EXACT SOURCE PATH, not the case-folded destination
+    (spec 037 T1.5). A destination-keyed dedup was the original design and is
+    wrong: `_asset_dest_join`, above, builds the destination from the asset
+    folder plus the source's basename, and spec 034 shipped recursive inbox
+    discovery, so two DIFFERENT attachments — `100 Inbox/A/karte.png` and
+    `100 Inbox/B/karte.png` — genuinely share one destination without being
+    the same file. Keying on destination folded them into one entry: `source`
+    kept whichever path was seen first, and `owner_source_items` accumulated
+    the owners of both — so the second file's owning note would be told, at
+    apply time, that its embed was retargeted to a file it never owned.
+    Keying on the source path instead means one attachment embedded by
+    several notes still yields one entry (they share the same source path),
+    while two different attachments that merely collide on the same
+    destination now yield two — each naming only its own owners. The
+    occupancy test stays on the case-folded DESTINATION (`dest_key`, below)
+    since that is what the vault actually has stored; only the accumulator
+    moved. Keying on the exact string is safe because of an upstream
+    invariant, not a coincidence: every `path` reaching `owners` is the
+    literal `resolved_path` `build_inbox_index` placed in the one shared
+    index `resolve_inbox_attachments` builds once per run
+    (`inbox-triage.py`'s `resolve_inbox_attachments`, via
+    `lib/attachment_index.py`'s `build_inbox_index`/`narrow_candidates`) —
+    so the same physical file always yields the identical string here, and
+    two differently-cased strings can only name two different files. This
+    is still not the in-run collision (two incoming files fighting
+    over one name before either reaches the vault) — that stays Pass 2's
+    `claimed` dict and is out of scope here.
+
+    `asset_listing(asset_folder)` — normally `_VaultFolderLookup.assets` —
+    is called at most once, and only when there is at least one attachment to
+    check: a run with none must not pay for a folder listing it has no use
+    for `[ref: SDD/Cost]`. `None` (no Kado client) short-circuits to `[]`
+    before any call is made — the `is None` guard is load-bearing, not
+    defensive: `asset_listing` really is `None` on every run without a Kado
+    client, and calling it unconditionally would raise `TypeError` there.
+
+    `content_reader(path) -> bytes` — normally `KadoClient.read_file_bytes` —
+    decides `same_file` for a destination occupied by a FILE, via
+    `_same_file`, above. It is consulted ONLY for a destination this
+    function has just determined is occupied by a file, and only ONCE per
+    distinct SOURCE PATH (spec 037 T1.5): `same_file` is computed when a
+    source's entry is first created, before a later owner is folded into
+    `owner_source_items`, so a source several notes embed is still one
+    comparison, not one per owner. Reads are therefore bounded by the
+    number of distinct colliding SOURCE PATHS, not by the number of
+    attachments checked `[ref: SDD/Cost]`. The exact bound: for N distinct
+    source paths that all collide on the SAME destination, each gets its
+    own entry and its own `_same_file` call, and `_same_file` reads BOTH
+    sides — so the group costs 2N reads total (N source reads plus N
+    destination reads), against 2 total for the pre-T1.5 destination-keyed
+    code, which read one source and the destination once, regardless of N.
+    Nothing in this function caps N but the run's
+    attachment count, and N > 2 is a realistic shape, not a hypothetical
+    one: spec 034 shipped recursive inbox discovery, and camera/scanner
+    default filenames repeat across folders. A shared destination-side
+    cache is not a smaller-N-only shortcut skipped here for simplicity — it
+    would be WRONG at any N, because `same_file` answers a question about
+    the (SOURCE, destination) PAIR, not about the destination alone: source
+    A can be byte-identical to the destination while source B is not, so
+    caching one verdict and handing it to every source sharing that
+    destination would silently mis-report every source after the first.
+    The 2N reads are the honest price of a genuinely per-source comparison,
+    not an unoptimised two-element special case.
+
+    `folder_listing(asset_folder)` — normally `_VaultFolderLookup
+    .occupied_by_folder` — answers the other way a destination can be taken
+    (spec 037 T1.4, PRD Edge Case Scenario 7): `_VaultFolderLookup._map`'s
+    `type != "file"` filter keeps a folder entry OUT of `vault_assets`, so
+    `asset_listing` alone still cannot see it. `folder_listing` is what
+    makes it visible, called at most once under the same `not owners` cost
+    guard as `asset_listing`. When a destination is occupied by a folder,
+    `same_file` is set to `False` from `entry.get("type")` alone —
+    `content_reader` is never consulted for it, because a folder cannot be
+    byte-identical to a file and reading one to find that out would spend a
+    call this spec exists to avoid. A destination present in BOTH maps (a
+    file and a folder differing only by case, on a case-sensitive vault
+    filesystem — vanishingly rare, and not a shape `_map`'s single-listing
+    construction can itself produce) is decided as a file: `vault_assets`
+    membership is checked first and, when true, always drives the verdict
+    through `_same_file`, never downgraded to `False` for the folder sharing
+    the same casefolded key.
+    """
+    owners: list[tuple[str, str]] = []
+    for item_key, actions in items:
+        for action in actions:
+            if action.get("kind") != "create_atomic_note" or action.get("suppressed"):
+                continue
+            for path in action.get("attachments") or []:
+                if path:
+                    owners.append((item_key, path))
+
+    if not owners or asset_listing is None:
+        return []
+
+    vault_assets = asset_listing(asset_folder)
+    occupied_folders = folder_listing(asset_folder) if folder_listing is not None else set()
+    conflicts: list[dict] = []
+    by_source: dict[str, dict] = {}
+    # Case-folded destinations this run has already handed out as a
+    # `proposed_name` for an earlier conflict (spec 037 T2.1) — shared
+    # across every entry below so two conflicts in one run cannot both walk
+    # to the same first-free name. This loop is the sole writer: it records
+    # each accepted candidate right after `_propose_asset_name` returns it,
+    # the same ownership split `resolve_destination_clashes` uses for
+    # `claimed` above (owner decision 2026-09-23).
+    proposed_names: set[str] = set()
+    for item_key, path in owners:
+        try:
+            destination = _asset_dest_join(asset_folder, path)
+        except ValueError:
+            continue
+        dest_key = destination.casefold()
+        occupied_by_file = dest_key in vault_assets
+        occupied_by_folder = dest_key in occupied_folders
+        if not occupied_by_file and not occupied_by_folder:
+            continue
+        entry = by_source.get(path)
+        if entry is None:
+            same_file = (
+                _same_file(path, destination, content_reader)
+                if occupied_by_file
+                else False
+            )
+            basename = destination.rsplit("/", 1)[-1]
+            proposed_name = _propose_asset_name(
+                asset_folder, basename, vault_assets, occupied_folders, proposed_names
+            )
+            if proposed_name is not None:
+                proposed_names.add(_asset_dest_join(asset_folder, proposed_name).casefold())
+            entry = {
+                "source": path,
+                "destination": destination,
+                "same_file": same_file,
+                "owner_source_items": [],
+                "proposed_name": proposed_name,
+            }
+            by_source[path] = entry
+            conflicts.append(entry)
+        if item_key not in entry["owner_source_items"]:
+            entry["owner_source_items"].append(item_key)
+    return conflicts
 
 
 def _template_link(template: str) -> str:
@@ -1055,6 +1431,106 @@ def render_tag_handler_updates_block(groups: list[dict]) -> str:
         lines.append(f"### {heading} — `{marker}`")
         lines.append("")
         lines.append(render_tag_handler_group(group))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_attachment_conflicts_block(
+    conflicts: list[dict],
+    asset_folder: str,
+    source_links: dict[str, str] | None = None,
+) -> str:
+    """Render the ## Attachment Conflicts section from attachment_conflicts[]
+    (spec 037 T2.2, PRD F2).
+
+    Mirrors render_tag_handler_updates_block / render_daily_notes_updates_block:
+    returns "" when empty so the caller omits the section cleanly — a
+    conflict-free run must render byte-identically to a pre-spec-037 document
+    (PRD F2-AC4).
+
+    One block per CONFLICT (one array element), never per owner: Phase 1
+    (T1.2, re-keyed T1.5) already dedups by exact source path, so an entry
+    whose `owner_source_items` names several notes still renders as ONE
+    decision that settles it for all of them (PRD F2-AC3).
+
+    Rename ships ticked (SDD ADR-4) unless `proposed_name` is null, in which
+    case *keep in inbox* is pre-ticked instead and the rename line still
+    renders, unticked, stating that no free name was found (ADR-4 exception,
+    owner decision 2026-09-23 — T2.4 parses this state explicitly).
+
+    The rename target is the FULLY COMPOSED destination: the asset folder
+    plus `proposed_name`, joined with `_asset_dest_join` — the same helper
+    every other attachment destination in this module is built with — not a
+    bare basename, which would show the owner a name with no folder (PRD C1).
+
+    `owner_source_items` are raw `item_key`s (full vault-relative paths), not
+    display stems — routed through `resolve_source_link` (fix/037) so an
+    owner's link here matches the SAME note's own per-item section exactly,
+    rather than a parallel inline `.md`-strip disagreeing with it. Falls back
+    to a clean basename (mirroring `_key_link` above), never the full path.
+
+    `same_file` (spec 037 T2.3, PRD S1) adds one sentence — same file /
+    different file / could not be compared — independent of `proposed_name`
+    and the tick logic above: it informs, it never changes a remedy or a
+    default (SDD Complex Logic). The two are separate conditionals so both
+    can fire together (e.g. an identical file AND no free name available).
+    """
+    if not conflicts:
+        return ""
+    lines: list[str] = ["## Attachment Conflicts", ""]
+
+    def _owner_link(owner: str) -> str:
+        basename = owner.rsplit("/", 1)[-1]
+        stem = basename[:-3] if basename.endswith(".md") else basename
+        return resolve_source_link(source_links, owner, stem)
+
+    for entry in conflicts:
+        source = entry["source"]
+        destination = entry["destination"]
+        proposed_name = entry.get("proposed_name")
+        owners = entry.get("owner_source_items") or []
+
+        lines.append(f"### `{source}`")
+        lines.append("")
+        lines.append(f"- **Destination:** `{destination}` (already occupied)")
+        lines.append("- **Embedded by:**")
+        for owner in owners:
+            lines.append(f"  - [[{_owner_link(owner)}]]")
+        same_file = entry.get("same_file")
+        if same_file is True:
+            lines.append(
+                "- **File comparison:** This is the same file already in the "
+                "vault — renaming would create a second copy of it."
+            )
+        elif same_file is False:
+            lines.append(
+                "- **File comparison:** A different file already holds this name."
+            )
+        else:
+            lines.append(
+                "- **File comparison:** The files could not be compared — "
+                "check manually before accepting the rename."
+            )
+        lines.append("")
+        lines.append("**Remedy — choose one:**")
+        if proposed_name is not None:
+            rename_target = _asset_dest_join(asset_folder, proposed_name)
+            lines.append(f"- [x] Rename to `{rename_target}`")
+            lines.append("- [ ] Keep in inbox")
+        else:
+            lines.append(f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}")
+            lines.append("- [x] Keep in inbox")
+        lines.append(
+            # NOT "will fail": occupancy was observed in Pass 1 and nothing
+            # re-checks it before Hashi applies (`path_exists` appears nowhere
+            # in instruction-render.py or render_actions.py). Freeing the name
+            # yourself is a plausible REASON to pick this remedy, and then the
+            # move succeeds and the attachment does not stay in the inbox —
+            # so both halves of the old sentence were wrong in that case.
+            # Owner catch, 2026-09-28.
+            "- [ ] Ignore (send the move unchanged — if the name is still taken "
+            "when you apply, the move fails and the attachment stays in the inbox)"
+        )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1989,46 +2465,10 @@ def main() -> int:
     # destination: a folded comparison needs the folder's real filenames, and
     # an existence probe would only answer the question Kado's own case
     # semantics decide — which CON-7 forbids this spec from measuring.
-    _folder_cache: dict[str, dict[str, str]] = {}
-    # spec 034 T6.1 / F9: what those listings actually cost. One listing per
-    # cache MISS, so this is not the claim count — and it is read off the
-    # client's own round-trip counter where the client keeps one, so a paged
-    # listing is not undercounted as a single call. Carried in the output
-    # document below: the step that appends the run's cost-history entry runs in
-    # a later process and has no other way to receive it.
-    folder_listing_calls = 0
-
-    def _vault_folder_notes(location: str) -> dict[str, str]:
-        nonlocal folder_listing_calls
-        # Key on the folder _dest_join derives, not on the raw string: two
-        # claims whose location differs only by a trailing slash name one
-        # folder, and a raw key would list it twice. The cost of that is a
-        # doubled Kado call and nothing else, so it fails silently — and F9
-        # measures exactly this number.
-        folder = (location or "").rstrip("/") + "/"
-        if folder not in _folder_cache:
-            found: dict[str, str] = {}
-            calls_before = observed_call_count(kado_client)
-            try:
-                for entry in kado_client.list_dir(folder, depth=1):
-                    path = entry.get("path") or ""
-                    name = path.rsplit("/", 1)[-1]
-                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
-                        continue
-                    # Recompose through _dest_join so both sides of the
-                    # comparison are built by the same helper.
-                    found[_dest_join(folder, name[:-3]).casefold()] = path
-            except Exception:  # noqa: BLE001 — an error is not a collision
-                found = {}
-            # After the except: a listing that raised still spent its round trip.
-            calls_after = observed_call_count(kado_client)
-            folder_listing_calls += (
-                calls_after - calls_before
-                if calls_before is not None and calls_after is not None
-                else 1
-            )
-            _folder_cache[folder] = found
-        return _folder_cache[folder]
+    # spec 037 T1.1: the same cache also answers an attachment lookup — see
+    # _VaultFolderLookup, and docs/tomo/scripts/suggestions-reducer.md for
+    # why it caches the raw listing rather than a caller-derived map.
+    _vault_folder_lookup = _VaultFolderLookup(kado_client) if kado_client else None
 
     clash_claims: list[tuple[str, str, str]] = []
     claim_actions: dict[str, dict] = {}
@@ -2046,10 +2486,31 @@ def main() -> int:
                 (action.get("suggested_title") or "").strip() or stem,
             ))
     for claim_id, (adjusted_title, reason) in resolve_destination_clashes(
-        clash_claims, _vault_folder_notes if kado_client else None
+        clash_claims, _vault_folder_lookup.notes if _vault_folder_lookup else None
     ).items():
         claim_actions[claim_id]["suggested_title"] = adjusted_title
         claim_actions[claim_id]["clash_reason"] = reason
+
+    # spec 037 T1.2: the same "is the destination already occupied" question,
+    # asked of attachments instead of notes, through the same folder cache.
+    # T1.3: `getattr(..., None)` rather than a bare attribute access — a test
+    # double (or any future kado_client shape) that does not implement
+    # `read_file_bytes` must degrade to "no reader" (same_file: null), not
+    # crash the run; the real KadoClient always has this method.
+    # T1.4: a destination held by a FOLDER is a conflict too — Scenario 7.
+    attachment_conflicts = detect_attachment_conflicts(
+        [(item_key, actions) for _idx, _stem, item_key, actions in prepared],
+        asset_folder,
+        _vault_folder_lookup.assets if _vault_folder_lookup else None,
+        getattr(kado_client, "read_file_bytes", None) if kado_client else None,
+        _vault_folder_lookup.occupied_by_folder if _vault_folder_lookup else None,
+    )
+    # spec 037 T2.2: pre-rendered here, alongside detection, so the doc-build
+    # block below only has to gate its inclusion — same split as
+    # rendered_tag_handler_updates_md/rendered_daily_updates_md.
+    rendered_attachment_conflicts_md = render_attachment_conflicts_block(
+        attachment_conflicts, asset_folder, source_links
+    )
 
     for idx, stem, item_key, actions in prepared:
         section_id = f"S{idx:02d}"
@@ -2405,14 +2866,24 @@ def main() -> int:
         # that scales with content, reported as its own line rather than folded
         # into the base — a single number mixing a fixed pipeline cost with a
         # content-scaling one tells a later reader nothing about either.
-        "folder_listing_calls": folder_listing_calls,
-        "distinct_destination_folders": len(_folder_cache),
+        "folder_listing_calls": (
+            _vault_folder_lookup.folder_listing_calls if _vault_folder_lookup else 0
+        ),
+        "distinct_destination_folders": (
+            len(_vault_folder_lookup.folders) if _vault_folder_lookup else 0
+        ),
     }
     # spec 024 T3.3: omit-when-empty — a no-groups run is byte-identical to pre-T3.3.
     # render.py reads rendered_tag_handler_updates_md via .get() so absent is fine.
     if tag_handler_updates:
         doc["tag_handler_updates"] = tag_handler_updates
         doc["rendered_tag_handler_updates_md"] = rendered_tag_handler_updates_md
+    # spec 037 T1.2: omit-when-empty, same reasoning as tag_handler_updates
+    # above — a run with no conflicts must render byte-identically to a
+    # pre-T1.2 run, which an unconditional [] would break by construction.
+    if attachment_conflicts:
+        doc["attachment_conflicts"] = attachment_conflicts
+        doc["rendered_attachment_conflicts_md"] = rendered_attachment_conflicts_md
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
@@ -2433,8 +2904,12 @@ def main() -> int:
     record_run(
         run_id=args.run_id,
         routing_plan_path=routing_plan_path,
-        folder_listing_calls=folder_listing_calls,
-        distinct_destination_folders=len(_folder_cache),
+        folder_listing_calls=(
+            _vault_folder_lookup.folder_listing_calls if _vault_folder_lookup else 0
+        ),
+        distinct_destination_folders=(
+            len(_vault_folder_lookup.folders) if _vault_folder_lookup else 0
+        ),
         history_path=args.cost_history,
     )
 

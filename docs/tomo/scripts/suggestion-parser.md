@@ -915,3 +915,135 @@ waiting for a document that renders a placeholder into them.
 WHY the `parent moc` field at the `Link to MOC` site needed no change: it is
 already written as `if wl:` and discards a non-matching value instead of
 falling back to it.
+
+## An Impossible Rename Resolves to `ignore`, Not `keep_in_inbox` (spec 037 T2.4, v0.40.0)
+
+WHY `_resolve_attachment_remedy` treats a ticked-but-impossible rename (the
+"Rename — no free name available" line, rendered when `proposed_name` is
+`null`) as `ignore` rather than falling back to the safe-looking
+`keep_in_inbox`, even though `keep_in_inbox` is what the SAME line ships
+pre-ticked with by `render_attachment_conflicts_block` (SDD ADR-4 exception):
+
+The two states look identical at a glance — both leave the file where it is —
+but they are reached by different owners. The pre-tick is *nobody's* decision;
+`keep_in_inbox` is correct there because it is what ADR-4's own rule says a
+safe, unread default should be. A ticked-but-impossible rename is the
+opposite: the owner actively cleared a box that told them clearing it does
+nothing, or ticked a box that was never meant to move. That is a deliberate,
+malformed instruction, and ADR-4's rule for a deliberate override is the
+loudest of the three outcomes, not the quietest — `keep_in_inbox` would
+silently discard the tick with no trace that anything was overridden.
+
+WHY passing `remedy: rename` through was never on the table: Pass 2 composes
+the move target as `_asset_dest_join(asset_folder, proposed_name)`. With
+`proposed_name: null` that call has no basename to join, and the SDD's Rule 6
+promises the strongest outcome this feature can produce is a move to a free
+name — never a write with no destination.
+
+**Correction (fix/037, v0.40.1): `"no free name available"` was a bare
+literal, duplicated in this file's `rename_impossible = "no free name
+available" in label` check and in `suggestions-reducer.py`'s rendered line —
+no shared symbol tied the detection to the wording it detects.** The
+rendered line had already been reworded twice in this phase for reasons
+unrelated to this check (dropping an internal retry count, dropping an
+executor name — see `docs/tomo/scripts/suggestions-reducer.md`'s
+corrections). Neither reword happened to touch this exact substring, but
+nothing would have caught it if one had: this parser has no test that
+renders through the reducer, so a drift here would have kept every test in
+this file green while every real "no free name" document silently stopped
+being detected. Now reads `RENAME_IMPOSSIBLE_MARKER` from
+`lib/attachment_conflict_states.py`, imported by both files, so the two can
+no longer say different things about what this state looks like on the
+page — a wording change to one is a compile-time-visible change to the
+other's import, not a silent divergence.
+
+This constant fixes the WORDING coupling only. The semantic mapping this
+section documents above — impossible-and-ticked resolves to `ignore`, never
+`rename` — still lives entirely in `_resolve_attachment_remedy` and is not
+protected by the constant at all; a change to that function's logic would
+pass with the constant untouched. `tests/test_037_fix_render_parse_round_
+trip.py` closes that gap by running the reducer's real rendered output
+through this parser and asserting the resolved remedy, rather than adding
+another hand-typed fixture like this file's own `test_037_t2_4_parse_
+remedy.py` (which pins the same mapping, but never via a real render).
+
+## `_walk_attachment_conflicts` Reads Only the First Section (spec 037 T2.4, v0.40.2)
+
+WHY the walker stops at the first `## ` heading that isn't `## Attachment
+Conflicts` and never resumes, rather than skipping past an interstitial
+heading to pick up a second `## Attachment Conflicts` section further down:
+a code-quality review found the loop shape did this by accident — `break`
+exits the whole scan the first time it meets a non-matching `## ` line
+after entering the section, so a document with two such sections silently
+returns only the first section's entries, with no error and no signal.
+
+The decision, once surfaced, is to keep the behaviour and state it on
+purpose. The renderer (`suggestions-reducer.py`) emits at most one
+`## Attachment Conflicts` section per document, so a second one can only
+arrive via a hand edit or a bad merge. At that point which section carries
+the owner's actual intent is genuinely ambiguous — scanning on and merging
+both risks combining two sections that contradict each other, which is a
+worse failure than dropping the second one outright. First-section-wins is
+the defensible contract for an out-of-band input; it is documented in the
+function's own docstring so it reads as a decision, not as leftover loop
+shape.
+
+Pinned by `tests/test_037_t2_4_parse_remedy.py::
+test_two_attachment_conflicts_sections_only_parses_first` — a fixture with
+two `## Attachment Conflicts` sections separated by an unrelated `##`
+heading. Named mutation: replacing the terminating `break` with a
+continue-style re-entry (drop `in_section` back to `False` and `continue`
+instead of breaking) so the second section is also scanned — this pins the
+CURRENT contract against exactly the "fix" a well-meaning reader would
+otherwise apply.
+
+Phase 3 (Pass 2's consumer of this parser's output) is left a note in its
+Phase Context to decide, with this in hand, whether its consumer needs to
+notice a partial result — not resolved here, since the parser's contract
+does not change.
+
+## The Remedy Reaches Pass 2 by Joining Two Sources, Not by Re-Reading One (spec 037 T3.0, v0.40.3)
+
+T2.4 shipped `parse_attachment_conflict_remedies` and nothing called it. The
+function reads the owner's ticks correctly, returns `{source, remedy}` per
+entry, and its result went nowhere: `main()` never invoked it and the `output`
+dict never carried it. T3.0 built the missing edge.
+
+**Why the join, and why from the JSON.** A remedy alone is not actionable.
+`rename` needs the name to rename *to*, and that name — `proposed_name` — is
+computed by the reducer in Pass 1 and lives in the structured
+`suggestions-doc.json`'s `attachment_conflicts[]`. It is also rendered into the
+markdown, on the rename checkbox line. Reading it back off that line would have
+worked, and it was rejected: the backlog already carries two render/parse
+couplings, where the reducer writes a string one way and the parser must keep
+matching it. A third would have been the cheapest to add and the most expensive
+to keep. `main()` already loads the structured doc (`_own_doc_path`), so
+`_join_attachment_conflict_remedies` joins there instead, on `source` — T1.5's
+grouping key, so the join agrees with whatever rendered the entry.
+
+**Why a missing source joins to `None` rather than raising.** The markdown is
+the authority on `remedy`; the JSON is the authority on `proposed_name`. A
+hand-edited or stale document can carry a `### ` entry whose source the JSON
+does not know. Raising there would abort a whole Pass 2 over one unmatched name
+in a document the owner is allowed to edit by hand. `None` is what the reducer
+itself writes when no free name exists within 99 attempts, so the downstream
+already has to handle it — the unmatched case reuses a path that must work
+anyway rather than inventing a second one.
+
+## The Wire Path Emits the Key Empty, Because the Wire Has Nothing to Say (spec 037 T3.0, v0.40.3)
+
+`build_from_wire` (ADR-026, the JSON-only parse path) also emits
+`attachment_conflict_remedies`, always `[]`.
+
+The `_suggestions.json` wire carries no Attachment-Conflicts data at all — that
+block exists only in the structured `suggestions-doc.json` the markdown path
+reads. So `[]` here is not a placeholder for data that failed to arrive; it is
+the honest and complete answer for a path where the question does not apply.
+
+It is also load-bearing. CON-5 pins `build_from_wire`'s output equal to the
+markdown parse's for the same input, and three golden tests in
+`tests/test_suggestions_wire_golden.py` enforce it. Emitting the key on one path
+and not the other breaks all three — measured, by reverting this line alone.
+The alternative shape — omit the key on both paths when empty — was rejected
+because it makes a conflict-free run's output a different *shape* from a
+conflicted one, which every consumer would then have to guard.

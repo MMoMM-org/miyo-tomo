@@ -34,16 +34,16 @@ version: "1.0"
 |-------|-------|
 | specId | 037-asset-destination-collision-is-a-pass1-decision |
 | phases | 4 |
-| tasks | 13 |
+| tasks | 17 |
 | status | pending |
 
 ### PhaseStatus
 
 | Phase | Title | Status |
 |-------|-------|--------|
-| 1 | Detection in the reducer | pending |
-| 2 | The decision in the document | pending |
-| 3 | Honouring the remedy in Pass 2 | pending |
+| 1 | Detection in the reducer | completed |
+| 2 | The decision in the document | completed |
+| 3 | Honouring the remedy in Pass 2 | completed |
 | 4 | Integration and the live path | pending |
 
 ---
@@ -90,8 +90,8 @@ Read before starting any phase:
 - `tomo/scripts/suggestions-reducer.py:1946-2016` — the T5.2 note-clash pass this
   spec extends; read it before writing anything, because the shape to follow is
   already there
-- `tomo/scripts/lib/render_actions.py:640-728` — `_build_move_asset_actions`
-- `tomo/scripts/instructions-diff.py:858-883` — `_subtract_skipped_assets`
+- `tomo/scripts/lib/render_actions.py:691-782` — `_build_move_asset_actions`
+- `tomo/scripts/instructions-diff.py:922-946` — `_subtract_skipped_assets`
 
 Project commands:
 
@@ -103,10 +103,10 @@ bash scripts/reset-tomo-tmp.sh --pass1 --instance <path>/tomo-tmp
 
 ## Implementation Phases
 
-- [ ] [Phase 1: Detection in the reducer](phase-1.md)
-- [ ] [Phase 2: The decision in the document](phase-2.md)
-- [ ] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
-- [ ] [Phase 4: Integration and the live path](phase-4.md)
+- [x] [Phase 1: Detection in the reducer](phase-1.md)
+- [x] [Phase 2: The decision in the document](phase-2.md)
+- [x] [Phase 3: Honouring the remedy in Pass 2](phase-3.md)
+- [x] [Phase 4: Integration and the live path](phase-4.md)
 
 ## Plan Verification
 
@@ -114,12 +114,13 @@ bash scripts/reset-tomo-tmp.sh --pass1 --instance <path>/tomo-tmp
 |---|---|
 | F1 (detection, 5 criteria) | T1.1, T1.2, T1.3 |
 | F2 (the decision surface, 5 criteria) | T2.1, T2.2, T2.3 |
-| F3 (Pass 2 honours the remedy, 5 criteria) | T3.1, T3.2, T3.3 |
+| F3 (Pass 2 honours the remedy, 5 criteria) | T3.0 (transport), T3.1, T3.2, T3.3 |
 | S1 (same-file wording, 3 criteria) | T1.3, T2.2 |
 | S2 (unresolved conflict called out, 1 criterion) | T2.3 |
 | C1, C2 (3 criteria) | T2.1 (proposed name), T4.2 (summary) |
 | SDD ADR-1 | T1.1 — the check lands in the reducer |
 | SDD ADR-2 | T1.1 — the folder cache is generalised, not duplicated |
 | SDD ADR-3 | T3.2 — proven, not assumed |
+| PRD Open Question — keep-in-inbox vs. the note | T3.1 — `vault_collision_held` excluded from the ADR-6 pass |
 | SDD ADR-4 | T2.3, T3.1 — default and cleared-default semantics |
 | SDD ADR-5 | T4.1 — asserted by absence: no wire change, no Hashi change |

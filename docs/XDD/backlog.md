@@ -1390,9 +1390,13 @@ state, stated at design time by whoever adds the markdown control.
 Excluded by their request: anything read-only (drift is harmless if they never
 write it) and per-field docs (the description already lives in our schema).
 
-Owner decision pending: adopt the vendored-file shape, or keep it prose. If
-prose, they build the coverage map anyway and check it by hand — worse, and
-their words, "better than nothing".
+**Owner decision 2026-09-29: adopt the vendored-file shape, exactly as they
+asked, as part of spec 038.** So 038 owes three artefacts, not one: the wire
+field, the editable rename target, and this file. The remedy's row is written
+against the field 038 defines rather than added as `wire_field: null` and
+edited again a week later — with the standing offer that if the ordering blocks
+their #140 or their coverage map, we ship the file first and the row starts as
+`null`, which is the state the format exists to express.
 
 Handoff: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_037-remedy-cannot-survive-the-editor.md`
 Reply and correction: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_delete-source-loses-a-tick-and-yes-to-the-inventory.md`

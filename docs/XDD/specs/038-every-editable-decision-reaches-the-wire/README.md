@@ -114,6 +114,14 @@ at that point: `/` and `../` are truncated silently rather than refused;
 `: * ? " < > |` and `\` pass through untouched; `" "` slips the existing
 emptiness guard (`not " "` is `False`); no length cap, no Unicode normalisation.
 
+**An editable free-text field on this wire is precedented — the guard is not.**
+`suggestions[].title` is already an owner-editable string, so the rename target
+is not a new capability class. But `title` reaches a destination through
+`_dest_join`, which **does** call `sanitize_stem`; the rename target reaches one
+through `_asset_dest_join`, which does not. Reading "free text is already
+allowed here" as "no new guard is needed" would be exactly the presence-is-not-
+safety inference that produced both of this spec's parent defects.
+
 **Extend the existing trust model rather than adding one.** The markdown's ticks
 are already authoritative over the JSON; the *name* should be read the same way.
 On an untouched document the backtick text **is** the computed name, so the

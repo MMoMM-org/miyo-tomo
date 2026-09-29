@@ -65,6 +65,13 @@ T4.1 compliance review.
 
 ### T4.1 (c) — the consumer's own compiled validator accepts a three-remedy set
 
+> **What this evidence is and is not** (added 2026-09-29 after Hashi's reply).
+> The validator is theirs; the machine, the generated set and the run were ours.
+> That makes it a real check and **not** something the consumer can verify — we
+> sent the claim without the artifact. Hashi said so plainly: *"your validator
+> claim rests on your run, not our check."* Fair. Attach the instruction set to
+> the handoff next time, the way the 2026-09-18 schema pair was attached.
+
 Measured 2026-09-27, read-only, from `cd /Volumes/Moon/Coding/MiYo/Hashi`
 against their installed `node_modules`, writing nothing under `Hashi/`:
 

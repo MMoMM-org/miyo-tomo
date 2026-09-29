@@ -227,6 +227,13 @@ move_asset | 100 Inbox/Scans/karte.png → Atlas/.../karte.png | failed
 Inconsistent state — both source and destination present
 ```
 
+> **Check the action kind first.** Hashi emits this same message for
+> `move_note` as well (confirmed by Hashi, 2026-09-29 — both come from one
+> branch). The rest of this entry is about **`move_asset`** only. A failing
+> `move_note` means a NOTE name is taken at the destination; that has no
+> Attachment-Conflicts section and none of the remedies below apply — resolve
+> it by renaming the note or clearing the destination, then re-run `/inbox`.
+
 **Cause:** A file of that name is already in your attachments folder, and the
 attachment was sent anyway. This is what **Ignore** does — Tomo warned about it
 in the suggestions document and again on the action itself.

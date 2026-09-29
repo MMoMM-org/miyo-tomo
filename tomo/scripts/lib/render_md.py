@@ -1,4 +1,4 @@
-# version: 0.29.0
+# version: 0.30.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -128,12 +128,27 @@ def _render_action_md(
             # guarantee to hand someone. No reason is given for the flags:
             # a rationale that depends on run state is the defect class this
             # section has already been corrected for twice (owner, 2026-09-29).
+            # The middle sentence is the disclosure T4.4's live ignore run
+            # showed to be missing: the owner was told what happens to the
+            # ATTACHMENT and not what happens to the NOTE. Measured that day —
+            # the move was refused, the note was filed anyway and its source
+            # note deleted, leaving the attachment in the inbox with nothing
+            # referencing it. That is the 2026-09-15 end state, reached this
+            # time by a choice the document did not fully describe.
+            #
+            # It says "filed either way" and not "its source note is deleted":
+            # a move_asset only exists for a CONFIRMED item, so the owning
+            # note is always being filed, while the paired delete_source can
+            # be opted out of with "Keep source files". Stating the always-true
+            # half keeps this from becoming the fifth claim corrected for
+            # asserting more than the renderer knows.
             lines.append(
                 "- ⚠️ **Destination was occupied:** Pass 1 found this name "
                 "already taken and you chose Ignore, so the move is sent "
-                "unchanged. To resolve it instead, tick Rename or Keep in "
-                "inbox in the suggestions document, then run "
-                "`/inbox --pass2 --force`."
+                "unchanged. The note that embeds it is filed either way, so "
+                "it will point at a file left behind in the inbox. To resolve "
+                "it instead, tick Rename or Keep in inbox in the suggestions "
+                "document, then run `/inbox --pass2 --force`."
             )
         return "\n".join(lines)
 

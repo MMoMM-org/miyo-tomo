@@ -170,6 +170,7 @@ Generated from: [[2026-04-21_0918_suggestions]]
 | Applied checkbox | The **first** bullet under each H3 is always `- [ ] Applied` (or `- [x] Applied` after the user ticks it). Tomo Hashi writes the tick after a successful apply; any other checkbox in the entry (if any) is decoration. |
 | Action ordering | Identical to `instructions.json.actions[]`. Never re-order. |
 | Wikilinks | Sources of rendered files use `[[<stem>]]` (no folder, no `.md`). Destinations are code-fenced full paths for clarity. |
+| Warning bullets | An entry may carry a trailing `- ⚠️ **<label>:** …` bullet — e.g. `move_asset` whose destination Pass 1 found occupied and the user chose to send anyway. It is prose for the user, never a parameter, and never the first bullet, so the Applied rule above is unaffected. Verified against a live Hashi run 2026-09-29: the executor applied every other action and refused that one on its own destination check, unchanged. |
 
 ### What NOT to parse out of the `.md`
 

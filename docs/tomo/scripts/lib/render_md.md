@@ -708,3 +708,50 @@ name has since been freed`; "the owner chose not to file it" is reached only by
 `keep_in_inbox`, since a degraded rename builds its own sentence; and the
 collision and `no_basename` remedies already name a file action followed by a
 re-run, which is a followable order.
+
+## The Ignore Disclosure Was Missing, and Only a Live Run Showed It (v0.30.0, 2026-09-29)
+
+T4.4's `ignore` run was supposed to fail, and did: Hashi refused the move with
+`Inconsistent state — both source and destination present`, verbatim the
+2026-09-15 text. What it also did was file the note and delete its source, so
+the attachment ended up in the inbox with nothing referencing it and the filed
+note embedding a path backwards into the inbox — **the 2026-09-15 end state,
+reproduced**.
+
+Both mechanisms behaved as written. `delete_source` depends on the note move,
+and spec 036's contract covers four delete sources of which an attachment move
+is none; by that logic the delete is justified, since the atomic captured the
+note's content. And ADR-6's residue rule (`render_actions.py:1410`) cannot fire
+here at all — not because `ignore` was excluded, but because it keys on
+`skipped_assets` and an ignored conflict never produces an entry there. The
+explicit exclusion covers `vault_collision_held` only.
+
+What was missing was the *telling*. The owner was told what happens to the
+attachment and not to the note. Owner ruling 2026-09-29: add the disclosure,
+change no behaviour — holding the note would contradict the 2026-09-27 ruling
+that a remedy names the attachment, not the note.
+
+The sentence says "the note that embeds it is **filed either way**" and
+deliberately not "its source note is deleted": a `move_asset` exists only for a
+confirmed item, so the owning note is always being filed, while the paired
+`delete_source` can be opted out of with "Keep source files". Asserting the
+delete would have been the fifth claim in this section corrected for saying more
+than the renderer knows.
+
+## Where This Lands in the User Documentation
+
+Owner reminder, 2026-09-29: none of spec 037 had reached the user docs. Grep
+found "Attachment Conflicts" in code, schema, and these WHY files, and in no
+document a user reads. The feature is a new decision point in the Pass-1 review
+— the one place the owner is asked to choose — so its absence there was the
+larger gap.
+
+- `docs/usage.md`, under "Process inbox items": what the section is, the three
+  file-comparison verdicts, the three remedies, and the consequence that the
+  note is filed in every case. Effect, never mechanism.
+- `docs/troubleshooting.md`: the refusal text as the symptom someone searches
+  for, what it leaves behind, and how to recover.
+- `docs/instructions-json.md`: one row, because the annotation adds a bullet
+  inside an action entry and that file is the consumer contract. It is never the
+  first bullet, so the Applied rule is unaffected — and a live Hashi run had
+  already executed a set carrying it before the row was written.

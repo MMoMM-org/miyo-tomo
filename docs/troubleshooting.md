@@ -218,6 +218,40 @@ Without `/clear`, peak parent context grows roughly +5-15k per `/inbox` re-trigg
 3. **Source items** carry their state in the `tomo.state` frontmatter field (e.g., `tomo.state: captured` for inbox items). Tomo writes and advances this automatically — you don't set it by hand.
 4. If Obsidian is syncing, give the checkbox/frontmatter changes a moment to propagate before re-running `/inbox`.
 
+### An Attachment Move Was Refused — "Inconsistent state"
+
+**Symptom:** Applying the instruction set, one action fails:
+
+```
+move_asset | 100 Inbox/Scans/karte.png → Atlas/.../karte.png | failed
+Inconsistent state — both source and destination present
+```
+
+**Cause:** A file of that name is already in your attachments folder, and the
+attachment was sent anyway. This is what **Ignore** does — Tomo warned about it
+in the suggestions document and again on the action itself.
+
+It also happens if you picked **Rename** but freed nothing and the name got
+taken between Pass 1 and applying: Tomo checks the destination once, during
+Pass 1, and does not re-check it later.
+
+**What the failure leaves behind:** the occupying file is untouched, and the
+attachment stays in your inbox. But **the note was filed anyway** — the refusal
+stops the file move, not the rest of the run — so the filed note now embeds a
+path back into your inbox. The link still resolves, because the file really is
+still there.
+
+**Fix:**
+1. Decide which of the two files you want under that name, and free the name if
+   that is the inbox one.
+2. Re-run `/inbox`. The attachment has no note in the inbox pointing at it any
+   more, so file it by hand, or move it back beside a note and re-run.
+
+**Avoid it next time:** leave the pre-ticked **Rename** in place. It is the only
+remedy that files the attachment and rewrites the embed in your note to match.
+
+---
+
 ## Docker
 
 ### Image Build Fails

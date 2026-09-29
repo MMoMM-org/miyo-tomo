@@ -454,3 +454,27 @@ def test_the_held_remedy_covers_both_reading_moments():
     # Same ordering rule as the ignore annotation: tick first, then run.
     tick_at = ln.find("tick Rename in the suggestions document")
     assert tick_at != -1 and tick_at < ln.find("/inbox --pass2 --force"), ln
+
+
+def test_the_ignore_annotation_discloses_what_happens_to_the_note():
+    """T4.4's live ignore run, 2026-09-29: the move was refused, the note was
+    filed anyway and its source deleted, and the attachment stayed in the inbox
+    with nothing referencing it — the 2026-09-15 end state, reached by a choice
+    the document described only half of. The owner was told what happens to the
+    ATTACHMENT and not to the NOTE.
+
+    Mutation: drop the "filed either way" sentence.
+
+    It says "filed either way" rather than "its source note is deleted"
+    deliberately: a `move_asset` exists only for a CONFIRMED item, so the owning
+    note is always being filed, while the paired `delete_source` can be opted
+    out of with "Keep source files". Asserting the delete would be the fifth
+    claim in this section corrected for saying more than the renderer knows.
+    """
+    block = _action_block(_render_with_remedy("ignore"))
+    assert "filed either way" in block, block
+    assert "left behind in the inbox" in block, block
+    assert "source note is deleted" not in block, (
+        "the paired delete can be opted out of with Keep source files, so this "
+        f"must not be asserted: {block}"
+    )

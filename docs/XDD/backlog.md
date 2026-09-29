@@ -1229,6 +1229,38 @@ the rename target. They would rather join on `item_key` than on a stem, after
 the namesake collision. They have offered to demonstrate the loss by
 hand-crafting a collision document if it should be shown rather than argued.
 
+**Owner decision 2026-09-29, and it widens this** — *"Hashi soll das Ziel
+umbenennen können und wir auch."* The rename target must be **editable on both
+surfaces**, not merely displayed. So the wire field carries a name the owner may
+have written, not only one Tomo computed, and Hashi's control is a text field
+rather than a label.
+
+Today **neither** surface can do it, and ours fails worse: the markdown renders
+the computed name inside a checkbox label, so it looks editable, and
+`_join_attachment_conflict_remedies` reads `proposed_name` from the structured
+doc and never from the rendered text. An owner who overtypes the name gets the
+computed one, silently. Measured and pinned in
+`tests/test_037_typed_rename_target_is_ignored.py` (2 passing, 1 strict xfail).
+
+That is the same class as the four owner-facing sentences corrected on
+2026-09-28/29 and as the wire loss above: a surface offering something it does
+not honour. Three instances in one spec is the pattern worth carrying forward,
+not the individual fixes.
+
+**What honouring a typed name additionally needs** — this is why it is a spec
+and not a parse tweak:
+
+- **Sanitisation** to an Obsidian-safe filename (`lib/obsidian_filename.py`), or
+  the owner can write a name that cannot exist.
+- **A freeness check** against the same vault listing `_propose_asset_name`
+  already consults, since a typed name can collide exactly like the original.
+- **A defined answer when the typed name is also taken.** Falling back to the
+  computed name silently would re-create the defect being fixed; the likeliest
+  answer is that Pass 2 reports it and files nothing, but it is a decision.
+- **Agreement on where validation happens.** If Hashi's editor validates and
+  Tomo's markdown does not, the two surfaces diverge again — which is the shape
+  this whole entry is about.
+
 **Interim truth for users:** tick the remedy in the markdown, run Pass 2, and do
 not open the Hashi editor in between. Not documented for users — it is an
 unpleasant instruction and the fix is cheap enough that it should not outlive

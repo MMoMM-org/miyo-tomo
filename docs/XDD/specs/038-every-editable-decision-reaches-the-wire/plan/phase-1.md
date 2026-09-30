@@ -319,7 +319,12 @@ first — an inventory of what the suggestions markdown actually offers today.
     over-match today, but these rules are explicitly designed to be **extended**,
     and the name invites a maintainer adding a new editable field key to reach for
     `_is_option_value` by analogy with `placement` — reasoning from a false premise.
-    Split the bucket or at minimum name the two reasons inline. Do **not** convert
+    Split the bucket or at minimum name the two reasons inline. Each literal
+    should belong to exactly **one** rule — double-coverage breaks no test, since
+    `_is_justified_absence` is an `any()`, but it signals muddled intent, so give
+    each bucket a comment saying why its members belong there. A literal
+    accidentally dropped from every bucket needs no criterion: it becomes uncovered
+    and `test_real_artefacts_parser_side_join_passes` reddens on the next run. Do **not** convert
     the predicates to bare `set.__contains__`: the names are what tell a reader why
     a literal is excused, which is this file's whole purpose.
   - **Normalise the one non-uniform marker.** `proposed_mocs[].tags` in
@@ -330,6 +335,13 @@ first — an inventory of what the suggestions markdown actually offers today.
     22 and fails confusingly. It cost one measurement discrepancy in T1.2 already.
     Description-only change; no test pins description text and the consumer's
     guard does not scan that node.
+
+    **Order matters and is the one hard requirement on this task.** Write the
+    uniformity test **first** and watch it fail on the real schema — RED comes from
+    reality here, because one description genuinely is non-uniform. Then normalise,
+    and watch it go green. This is the **inverse** of T1.2, where the artefacts were
+    already correct so RED had to be injected. An implementer carrying T1.2's habit
+    across will look for something to inject and find nothing.
   - Run the full suite and `ruff`. Confirm the inventory validates against its own
     schema. Report every discrepancy **Phase 1** surfaced as a list, with a
     recommendation for each: in scope for this spec, or a backlog entry. Not just
@@ -345,8 +357,11 @@ first — an inventory of what the suggestions markdown actually offers today.
     doing at all rather than just tolerating the odd one out.
   - Success:
     - [ ] Suite green; `ruff` clean; the inventory validates against its own schema
-    - [ ] The discrepancy list exists and every item carries a recommendation —
-          in scope for this spec, or a backlog entry `[ref: PRD/F4]`
+    - [ ] The discrepancy list exists and every item carries a **concrete**
+          recommendation — either "in scope for spec 038" naming where it lands, or
+          a named backlog entry. Not "maybe later", not "worth considering": a
+          recommendation that defers without naming where it defers to is the same
+          as no recommendation `[ref: PRD/F4]`
     - [ ] All 23 marked descriptions use the uniform `Editable — ` form, proved by
           a **committed** test whose bite was demonstrated by reverting one
           description to the bare form and watching it fail

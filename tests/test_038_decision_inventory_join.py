@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -97,6 +97,7 @@ from __future__ import annotations
 import ast
 import copy
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -451,7 +452,7 @@ def test_injection_a_marked_schema_field_with_no_row_fails(
     — so wire-backed-row-count drops to 22 against a still-23 marked count,
     and the equality check inside _assert_schema_side_join fails."""
     mutated_rows = [row for row in inventory_rows if row["id"] != "D05"]
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape("a marked field has no row")):
         _assert_schema_side_join(wire_schema_doc, mutated_rows)
 
 
@@ -462,7 +463,7 @@ def test_injection_b_unmapped_harvested_literal_fails(inventory_rows: list[dict]
     of that set, never into suggestion-parser.py."""
     injected = _harvest_control_literals(PARSER_PATH.read_text(encoding="utf-8"))
     injected.add("zzz-unmapped-control-literal")
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape("no row and no justified absence")):
         _assert_parser_side_join(injected, inventory_rows)
 
 
@@ -477,7 +478,7 @@ def test_injection_c_stale_exemption_fails(
     still fires — the opposite of what editable: false exists to say."""
     stale_row = _synthetic_row(id="D90", editable=False, parser_label=["approve"])
     mutated_rows = inventory_rows + [stale_row]
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape("parser control still live")):
         _assert_parser_side_join(harvested_literals, mutated_rows)
 
 
@@ -507,5 +508,5 @@ def test_injection_e_reworded_marker_breaches_the_floor(
     mutated_schema = copy.deepcopy(wire_schema_doc)
     reworded = _reword_one_editable_marker(mutated_schema)
     assert reworded, "fixture setup: no Editable-marked description found to reword"
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape("may be silently matching nothing")):
         _assert_schema_side_join(mutated_schema, inventory_rows)

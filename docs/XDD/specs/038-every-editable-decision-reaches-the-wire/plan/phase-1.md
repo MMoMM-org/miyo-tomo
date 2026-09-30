@@ -195,7 +195,16 @@ first — an inventory of what the suggestions markdown actually offers today.
      join on prose, and do not join on `wire_field`: D24's is `null`.
 
      **Schema side**: walk the wire schema for descriptions beginning
-     `Editable — `. Floor the enumeration at **23**.
+     `Editable` — the **broad** prefix, not `Editable — ` with the dash. Floor the
+     enumeration at **23**.
+
+     That distinction is load-bearing and was measured 2026-09-30:
+     `proposed_mocs[].tags` reads a bare `"Editable."` with no dash, so the
+     dashed predicate finds only **22**. The broad prefix is what T1.1b's
+     committed count test uses and what the consumer's own guard uses
+     (`spec.description?.startsWith("Editable")`), so it is the convention in
+     code. Anyone writing a new guard with the dashed form gets 22 and a
+     confusing failure — normalising that one description is a T1.3 item.
 
      **Parser side**: extract the literals with Python's stdlib `ast`, filtering
      by **what is being compared**, not by which function it sits in. Harvest
@@ -301,6 +310,14 @@ first — an inventory of what the suggestions markdown actually offers today.
 
 - [ ] **T1.3 Phase validation** `[activity: validate]`
 
+  - **Normalise the one non-uniform marker.** `proposed_mocs[].tags` in
+    `tomo/schemas/suggestions-wire.schema.json` reads a bare `"Editable."` where
+    the other 22 read `"Editable — …"`. Every implementation uses the broad
+    `startswith("Editable")` predicate so nothing is broken today, but the
+    non-uniformity is a live trap: a new guard written with the dashed form finds
+    22 and fails confusingly. It cost one measurement discrepancy in T1.2 already.
+    Description-only change; no test pins description text and the consumer's
+    guard does not scan that node.
   - Run the full suite and `ruff`. Confirm the inventory validates against its own
     schema. Report every discrepancy T1.1 surfaced as a list, with a recommendation
     for each: in scope for this spec, or a backlog entry. **Do not resolve them in

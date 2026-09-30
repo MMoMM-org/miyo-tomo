@@ -1442,3 +1442,46 @@ complete *for the run*. But neither side can show the owner a previously-filed
 note whose embed a rename will break, and the owner-facing text must not imply
 otherwise. Spec 037 shipped four sentences that asserted more than the renderer
 knew; this is the same trap with a new mechanism behind it.
+
+## CLOSED — `classification` is parsed but unreachable from the review surface
+
+**Found 2026-09-30** while building the suggestions decision inventory: a field-line
+handler exists (`key == "classification"` in `suggestion-parser.py`'s `parse_section`)
+that no renderer ever gives it anything to match.
+
+Traced:
+
+- `suggestion-parser.py`'s `parse_section` recognises a `**Classification:**` field
+  line and stores it on `result["classification"]`.
+- The renderer never emits that field line. Each field on a suggestion is written by
+  its own literal `lines.append(f"**Name:** …")`-style call rather than a generic
+  per-field emitter, and no such call exists for classification. The one place the
+  word "Classification" appears in the renderer folds a category and confidence
+  number into the free-text `**Why:**` bullet — prose, not a `**Field:** value` line
+  the parser's field-line regex would ever match.
+
+So the field is permanently `None`: nothing writes the line the parser looks for.
+
+**Not an editable decision** — it owes no row in the suggestions decision inventory
+(spec 038) and no wire field. Recorded so the next reader does not re-derive this
+trace from scratch.
+
+**Closed 2026-09-30** — investigated and found not actionable: dead code with no
+owner-facing effect, not a bug.
+
+## OPEN — the `type` field line has no wire-schema counterpart, untraced
+
+**Found 2026-09-30** alongside the `classification` finding above, during the same
+pass over `suggestion-parser.py`'s field-line handling. Lower confidence — this one
+was not run to ground.
+
+`parse_section` recognises a `**Type:**` field line (`key == "type"`) and stores it
+on `result["type"]`, and its own docstring shows the shape as part of the
+LLM-authored flat format: `- **Type:** #type/note/normal`. Unlike `classification`,
+no check was made for whether any current renderer or upstream stage still emits
+this line — it may be reachable only from older or LLM-direct output, or it may be
+as dead as `classification` turned out to be. `suggestions-wire.schema.json` has no
+`type` field, so if the line is reachable, its edits have nowhere to travel.
+
+**Not resolved here** — needs the same renderer/emission trace `classification` got
+before it can be closed either way.

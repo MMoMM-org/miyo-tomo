@@ -83,6 +83,7 @@ version: "1.0"
 | 2026-09-30 | T1.1 | T1.1 gains a test of its own: the inventory's JSON Schema is written first, then `tests/test_038_inventory_schema_validation.py`, before the inventory is authored. The task previously declared "Test: none yet". | The TDD guardian blocked the task on an internal contradiction: T1.1 claimed no test while carrying "a malformed row fails Tomo's tests" as a success criterion, which `[ref: PRD/F4]` requires. T1.2's join test proves *completeness*, never *row validity*, so as originally sequenced that PRD criterion was owned by no test in the plan. The guardian's distinction is the one that resolves it — a test for "what makes a row valid" is available immediately, a test for "which rows exist" is not. Approved by the owner 2026-09-30. |
 | 2026-09-30 | — | The schema's `Editable` field count corrected from 23 to 21 in this file, `solution.md` ADR-7, and twice in `phase-1.md`. | Measured, not recalled: a walk over every schema description containing `Editable` returns 21, and returns 21 at `main`, so the schema had not drifted — the figure was wrong when written. Corrected before T1.1 was dispatched so no implementer is primed to count until it reaches a number that does not exist. Commit `de8da00`. |
 | 2026-09-30 | T1.1b (new) | A task is added to Phase 1, between T1.1 and T1.2: mark `candidate_mocs[].selected` and `.anchor` `Editable` in the wire schema, add a `parser_label` key to the inventory, make the D22/D23/D24 notes self-contained, and correct the plan's two control counts. Phase 1 goes from 3 tasks to 4; the spec from 22 to 23. | Two owner rulings on T1.1's findings, both 2026-09-30. **First:** `build_from_wire` honours `selected` (it skips unselected entries) and `anchor`, yet neither description carries the `Editable` marker — so ADR-7's schema-side join is permanently blind to two fields the wire acts on, which is the exact blind spot this spec exists to close. **Second:** the parser-side join needs a key, and neither available field can serve — `wire_field` is `null` on D24, and `markdown_control` is prose whose provenance was deliberately stripped as consumer-facing. Without `parser_label` the mapping would live as a hand-written dict in the test, which is "a rule someone has to remember" — the mechanism ADR-7 names as what failed in 037. Both must land before T1.2 writes its join, and they share two files, so they ship as one task rather than three review cycles. |
+| 2026-09-30 | T1.1b | The schema's `Editable` field count is corrected again, from 21 to **23**, in this file, `solution.md` ADR-7, and once in `phase-1.md`. The plan's "about seven" / "~7 recognised controls" estimate is replaced everywhere it appeared with a measured **34** distinct `parser_label` values across the inventory's 24 rows. | Both measured, not recalled. The 21→23 count follows directly from T1.1b step 3a marking `selected` and `.anchor` `Editable`, verified by a committed test that walks the wire schema. The label count is a plain `len(set(...))` over every row's `parser_label` array as authored from the parser source, derived per-decision rather than estimated — it was never a count of "controls" in the loose sense the original estimate meant, so the two numbers are not directly comparable, only the estimate's role (an approximation) is retired. |
 
 ### A standing warning carried forward from spec 037
 
@@ -174,10 +175,10 @@ argument for going early was sound on its own terms: *"its value is the rows
 neither of us knows about."*
 
 Building it in Phase 1 collects that value without shipping early. The schema
-already marks **21** fields `Editable` while the parser recognises about seven
-controls, so the join test is expected to fail on its first run — and what it
-reveals may change the scope of Phases 2–4. Finding that out first is strictly
-better than finding it out last.
+already marks **23** fields `Editable` while the parser recognises 34 distinct
+`parser_label` literals across its 24 decisions, so the join test is expected to
+fail on its first run — and what it reveals may change the scope of Phases 2–4.
+Finding that out first is strictly better than finding it out last.
 
 **Phase 3 precedes Phase 4** — refusal lands before anything can type a bad name.
 The check is a pure function on a string, so it is fully testable before the

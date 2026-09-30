@@ -19,6 +19,13 @@
         "type": "object",
         "required": ["id", "markdown_control", "wire_field", "editable"],
         "additionalProperties": false,
+        "if": {
+          "properties": {"editable": {"const": true}},
+          "required": ["editable"]
+        },
+        "then": {
+          "required": ["parser_label"]
+        },
         "properties": {
           "id": {
             "type": "string",
@@ -38,6 +45,12 @@
           "editable": {
             "type": "boolean",
             "description": "True while the markdown still offers this control. False marks a retired control whose row is kept for consumer migration rather than deleted."
+          },
+          "parser_label": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "description": "The literal strings suggestion-parser.py compares against to recognise this decision — many-to-one: one decision can fire on several literals (e.g. a checkbox matched by either of two words, or a field line with several accepted key aliases). Required while editable is true; absent when editable is false, since a retired control has no live match site left to name."
           },
           "note": {
             "type": "string",

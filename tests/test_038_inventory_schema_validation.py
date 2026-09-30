@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -13,11 +13,17 @@ claims to forbid is rejected — demonstrated by running both directions, not by
 asserting them (PRD/F4).
 
 Every declared constraint (additionalProperties, required, type, pattern,
-minLength, const, minItems) gets its own rejection test, constructed to violate
-exactly that constraint and nothing else — a schema missing `additionalProperties:
-false`, an incomplete `required`, or a missing type/enum/pattern constraint would
-let a genuinely malformed row through undetected (spec 037's nine mutations that
-could not bite is the standing warning this guards against).
+minLength, const, minItems, the editable/parser_label conditional) gets its own
+rejection test, constructed to violate exactly that constraint and nothing else —
+a schema missing `additionalProperties: false`, an incomplete `required`, or a
+missing type/enum/pattern constraint would let a genuinely malformed row through
+undetected (spec 037's nine mutations that could not bite is the standing warning
+this guards against).
+
+T1.1b adds `parser_label` (required while `editable` is true, permitted absent
+when false) and two consumer-facing guards that do not depend on the row set:
+the wire schema's `Editable`-marked field count, and a note field's freedom from
+task/phase/feature/spec identifiers.
 
 Spec: docs/XDD/specs/038-every-editable-decision-reaches-the-wire/
 Ref: PRD/F4; SDD/ADR-7
@@ -26,6 +32,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +48,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "suggestions-decision-inventory.schema.json"
 INVENTORY_PATH = REPO_ROOT / "tomo" / "schemas" / "suggestions-decision-inventory.json"
+WIRE_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "suggestions-wire.schema.json"
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +62,7 @@ def _row(**overrides) -> dict:
         "markdown_control": "Accept/Approve checkbox on a suggestion.",
         "wire_field": "suggestions[].decision",
         "editable": True,
+        "parser_label": ["accept", "approve"],
     }
     row.update(overrides)
     return row
@@ -187,6 +196,57 @@ def test_row_rejects_note_wrong_type(schema):
 
 
 # ---------------------------------------------------------------------------
+# parser_label — the literal(s) the parser matches on. Required while
+# editable is true, permitted absent when false (T1.1b).
+# ---------------------------------------------------------------------------
+
+
+def test_row_rejects_parser_label_wrong_type(schema):
+    row = _row(parser_label="accept")
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
+def test_row_rejects_parser_label_item_wrong_type(schema):
+    row = _row(parser_label=[1])
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
+def test_row_rejects_parser_label_item_empty_string(schema):
+    row = _row(parser_label=[""])
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
+def test_row_rejects_parser_label_empty_array(schema):
+    row = _row(parser_label=[])
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
+def test_row_rejects_missing_parser_label_when_editable_true(schema):
+    """The if/then conditional: editable=true requires parser_label."""
+    row = _row()
+    del row["parser_label"]
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
+def test_conforming_row_with_editable_false_and_no_parser_label_validates(schema):
+    """The other direction of the same conditional: a retired control
+    (editable=false) has no live match site left to name, so parser_label's
+    absence must be permitted — not merely tolerated by accident."""
+    row = _row(editable=False, note="Retired control.")
+    del row["parser_label"]
+    validate(instance=_doc(row), schema=schema)
+
+
+def test_conforming_row_with_editable_true_and_parser_label_validates(schema):
+    validate(instance=_doc(_row(parser_label=["accept", "approve"])), schema=schema)
+
+
+# ---------------------------------------------------------------------------
 # Top-level document rejections — one per declared constraint.
 # ---------------------------------------------------------------------------
 
@@ -275,3 +335,75 @@ def test_validate_does_not_mutate_shared_schema_fixture(schema):
     before = copy.deepcopy(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
     validate(instance=_doc(_row()), schema=schema)
     assert schema == before
+
+
+# ---------------------------------------------------------------------------
+# The wire schema's `Editable`-marked field count (T1.1b step 4). The join
+# T1.2 builds is marked-field → row; a marker DELETED from the wire schema
+# makes the corresponding requirement silently disappear — no row goes
+# missing, nothing fails on that side. This count is the only thing that
+# catches a deleted marker; it stays even after T1.2 exists.
+# ---------------------------------------------------------------------------
+
+
+def _count_editable_marked_descriptions(schema_path: Path) -> int:
+    doc = json.loads(schema_path.read_text(encoding="utf-8"))
+    count = 0
+
+    def walk(node) -> None:
+        nonlocal count
+        if isinstance(node, dict):
+            description = node.get("description")
+            if isinstance(description, str) and description.startswith("Editable"):
+                count += 1
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(doc)
+    return count
+
+
+def test_wire_schema_marks_exactly_23_editable_fields():
+    """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
+    bringing the count from 21 (T1.1) to 23. A future marker removed from
+    the wire schema with no corresponding inventory-row change would
+    otherwise pass every other test in this file."""
+    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 23
+
+
+# ---------------------------------------------------------------------------
+# note values are self-contained — no task/phase/feature/spec identifier
+# (T1.1b step 4). A manual read is "a rule someone has to remember" (the
+# mechanism SDD/ADR-7 names as what failed in 037); this makes the rule
+# mechanical instead.
+# ---------------------------------------------------------------------------
+
+_IDENTIFIER_RE = re.compile(
+    r"\bT\d+(?:\.\d+)?[a-z]?\b"      # task ids: T1, T1.1, T1.1b
+    r"|\bF\d+\b"                      # feature ids: F4
+    r"|\bADR-\d+\b"                   # architecture decisions: ADR-7
+    r"|\bPhase\s*\d+\b"               # Phase 2
+    r"|\bspec\s*0?\d{2,4}\b"          # spec 037, spec037
+    r"|\bPRD\b",                      # PRD (always paired with an F-id in practice)
+    re.IGNORECASE,
+)
+
+
+def test_inventory_notes_carry_no_task_phase_feature_or_spec_identifier():
+    doc = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    offenders = [
+        (row["id"], row["note"])
+        for row in doc["decisions"]
+        if row.get("note") and _IDENTIFIER_RE.search(row["note"])
+    ]
+    assert not offenders, f"note(s) reference an internal identifier: {offenders}"
+
+
+def test_identifier_regex_bites_on_a_planted_identifier():
+    """Ablation: prove the assertion above actually catches something,
+    rather than vacuously passing because no note happens to match today."""
+    planted = "See T5.2 for the follow-up; ref: PRD/F4, spec 037, ADR-7, Phase 2."
+    assert _IDENTIFIER_RE.search(planted), "identifier regex failed to bite a planted identifier"

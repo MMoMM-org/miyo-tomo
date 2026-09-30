@@ -73,11 +73,11 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [x] A malformed row fails Tomo's tests, proved by an executed test named
            by node id — not by the schema's mere existence `[ref: PRD/F4]`
 
-  **Expect this task to produce a finding, not just a file.** 21 schema fields
-  against ~7 recognised controls means some editable wire fields have no markdown
-  control and some controls may have no row anyone knew about. Record every
-  discrepancy in the task's report rather than resolving it silently — it may
-  change Phases 2–4, and it is the reason this phase is first.
+  **Expect this task to produce a finding, not just a file.** 23 schema fields
+  against 34 distinct `parser_label` literals means some editable wire fields have
+  no markdown control and some controls may have no row anyone knew about. Record
+  every discrepancy in the task's report rather than resolving it silently — it
+  may change Phases 2–4, and it is the reason this phase is first.
 
 - [ ] **T1.1b The schema stops under-reporting, and the join gains a key** `[activity: data-architecture]`
 

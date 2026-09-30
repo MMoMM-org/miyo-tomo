@@ -50,11 +50,11 @@
               "additionalProperties": false,
               "properties": {
                 "path": {"type": "string", "description": "Vault-relative MOC path (the stable key for an existing MOC)."},
-                "selected": {"type": "boolean", "description": "True ⇒ link this MOC."},
+                "selected": {"type": "boolean", "description": "Editable — true ⇒ link this MOC."},
                 "source": {"type": "string", "enum": ["tomo", "user"], "description": "tomo = Tomo-proposed; user = added in the editor. Pass-2 honours both identically."},
                 "anchor": {
                   "type": ["object", "null"],
-                  "description": "Resolved placement anchor (spec 022/023 shape). Null when none was resolved. `inside` never appears on a heading/line anchor (executor constraint).",
+                  "description": "Editable — resolved placement anchor (spec 022/023 shape). Null when none was resolved. `inside` never appears on a heading/line anchor (executor constraint).",
                   "required": ["type", "placement"],
                   "additionalProperties": false,
                   "properties": {

@@ -19,6 +19,7 @@
         "type": "object",
         "required": ["id", "markdown_control", "wire_field", "editable"],
         "additionalProperties": false,
+        "$comment": "A retired control (editable: false) has no live match site left to name, so parser_label cannot be required unconditionally — that would reject exactly the row the editable:false column exists to carry. No row is currently editable:false, but that is a fact about today's data, not a reason to simplify this conditional away.",
         "if": {
           "properties": {"editable": {"const": true}},
           "required": ["editable"]

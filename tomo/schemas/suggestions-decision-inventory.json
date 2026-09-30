@@ -17,7 +17,7 @@
     },
     {
       "id": "D03",
-      "markdown_control": "Delete Source checkbox on a suggestion: explicitly deletes the origin.",
+      "markdown_control": "Delete Source/Delete checkbox on a suggestion: explicitly deletes the origin.",
       "wire_field": "suggestions[].delete_source",
       "editable": true,
       "parser_label": ["delete source", "delete"]
@@ -52,7 +52,7 @@
     },
     {
       "id": "D08",
-      "markdown_control": "Tags/Tag/New tags to add field line on a suggestion: retype the tag list to add.",
+      "markdown_control": "Tags/Tag/New tags to add/New tags field line on a suggestion: retype the tag list to add.",
       "wire_field": "suggestions[].tags",
       "editable": true,
       "parser_label": ["tags", "tag", "new tags to add", "new tags"]
@@ -150,11 +150,11 @@
     },
     {
       "id": "D22",
-      "markdown_control": "Checkbox on a wikilinked MOC under a suggestion's 'Link to MOC:' header: checking it links the MOC; checking an unlisted wikilink here adds a user-sourced candidate (source='user').",
+      "markdown_control": "Checkbox on a wikilinked MOC under a suggestion's 'Link to MOC:' or 'Parent MOC:' header: checking it links the MOC; checking an unlisted wikilink here adds a user-sourced candidate (source='user').",
       "wire_field": "suggestions[].candidate_mocs[].selected",
       "editable": true,
       "parser_label": ["link to moc", "parent moc", "parent_moc", "parentmoc", "moc"],
-      "note": "candidate_mocs[].source is the same control's side effect, not a separate decision."
+      "note": "suggestions[].candidate_mocs[].source is the same control's side effect, not a separate decision."
     },
     {
       "id": "D23",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -387,6 +387,7 @@ _IDENTIFIER_RE = re.compile(
     r"|\bADR-\d+\b"                   # architecture decisions: ADR-7
     r"|\bPhase\s*\d+\b"               # Phase 2
     r"|\bspec\s*0?\d{2,4}\b"          # spec 037, spec037
+    r"|\b0\d{2}\b"                    # bare zero-padded spec number: 037, 038
     r"|\bPRD\b",                      # PRD (always paired with an F-id in practice)
     re.IGNORECASE,
 )
@@ -407,3 +408,11 @@ def test_identifier_regex_bites_on_a_planted_identifier():
     rather than vacuously passing because no note happens to match today."""
     planted = "See T5.2 for the follow-up; ref: PRD/F4, spec 037, ADR-7, Phase 2."
     assert _IDENTIFIER_RE.search(planted), "identifier regex failed to bite a planted identifier"
+
+    # D24's actual pre-fix note (spec 038) — a bare zero-padded spec number
+    # with no literal "spec" beside it. The guard exists specifically to
+    # catch a reversion to this note, so it belongs in the ablation.
+    bare_spec_number = "037 state: the remedy has no wire field yet."
+    assert _IDENTIFIER_RE.search(bare_spec_number), (
+        "identifier regex failed to bite a bare zero-padded spec number"
+    )

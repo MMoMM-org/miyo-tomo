@@ -167,10 +167,29 @@ first — an inventory of what the suggestions markdown actually offers today.
      `test/unit/ui/suggestions-view/editable-field-coverage.test.ts` in the Hashi
      repo (**read-only**; never edit anything there). Ours is its mirror
      `[ref: SDD/ADR-7]`.
-  2. Test: the test *is* the deliverable. It must fail in both directions: a
-     schema field marked `Editable` with no inventory row, and a
-     parser-recognised control with no inventory row. Build both failures
-     deliberately and watch them fail before making them pass.
+  2. Test: the test *is* the deliverable, and **RED comes from deliberate
+     injection, not from the initial run**. The inventory, the schema and the 23
+     markers are already correct and reviewed, so the join is expected to pass the
+     first time it is run against the real artefacts. That is not a problem and it
+     is not evidence the test is wrong — do **not** manufacture a failure against
+     real data to satisfy a red-first habit.
+
+     Instead inject each failure mode into a fixture, run it, and watch it fail:
+
+     a. **A marked schema field with no row** — remove a row from the fixture.
+     b. **A harvested parser literal in neither a row nor the absence list** — add
+        a literal to the fixture that no row carries.
+     c. **A stale exemption** — a synthetic row at `editable: false` whose parser
+        control is still live. Must fail.
+     d. **A legitimate retirement** — a synthetic row at `editable: false` whose
+        control is genuinely gone. Must **pass**; this is the one case where a row
+        rightly has no control.
+     e. **A reworded marker** — change a description so it no longer begins
+        `Editable — `, and watch the schema-side floor fail rather than the
+        enumeration quietly matching nothing.
+
+     Then run the whole test against the real artefacts, which must pass. Report
+     every one of the five by pytest node id `[ref: PRD/F4]`.
   3. Implement: `tests/test_038_decision_inventory_join.py`, joining to rows
      through **`parser_label`** — the array T1.1b added for exactly this. Do not
      join on prose, and do not join on `wire_field`: D24's is `null`.

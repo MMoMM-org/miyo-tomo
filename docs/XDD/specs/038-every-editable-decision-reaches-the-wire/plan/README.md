@@ -76,6 +76,13 @@ version: "1.0"
 3. Update the SDD when the deviation improves the design.
 4. Record every deviation here for traceability.
 
+#### Recorded deviations
+
+| Date | Task | Deviation | Rationale |
+|------|------|-----------|-----------|
+| 2026-09-30 | T1.1 | T1.1 gains a test of its own: the inventory's JSON Schema is written first, then `tests/test_038_inventory_schema_validation.py`, before the inventory is authored. The task previously declared "Test: none yet". | The TDD guardian blocked the task on an internal contradiction: T1.1 claimed no test while carrying "a malformed row fails Tomo's tests" as a success criterion, which `[ref: PRD/F4]` requires. T1.2's join test proves *completeness*, never *row validity*, so as originally sequenced that PRD criterion was owned by no test in the plan. The guardian's distinction is the one that resolves it — a test for "what makes a row valid" is available immediately, a test for "which rows exist" is not. Approved by the owner 2026-09-30. |
+| 2026-09-30 | — | The schema's `Editable` field count corrected from 23 to 21 in this file, `solution.md` ADR-7, and twice in `phase-1.md`. | Measured, not recalled: a walk over every schema description containing `Editable` returns 21, and returns 21 at `main`, so the schema had not drifted — the figure was wrong when written. Corrected before T1.1 was dispatched so no implementer is primed to count until it reaches a number that does not exist. Commit `de8da00`. |
+
 ### A standing warning carried forward from spec 037
 
 Spec 037 produced **nine** instances of a named mutation that could not bite — a

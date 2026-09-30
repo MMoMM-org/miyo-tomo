@@ -47,15 +47,22 @@ first — an inventory of what the suggestions markdown actually offers today.
      and the field-line handling below it. Then read every `Editable` description
      in `tomo/schemas/suggestions-wire.schema.json` — there are **21**
      `[ref: SDD/ADR-7]`.
-  2. Test: none yet — this task's output is data, and T1.2 is the test that
-     constrains it. Writing the test first here would mean asserting the contents
-     of a file whose contents are the open question.
+  2. Test: write `tomo/schemas/suggestions-decision-inventory.schema.json` first,
+     then `tests/test_038_inventory_schema_validation.py` against it — a
+     conforming row validates, and a row that is malformed in each way the schema
+     claims to forbid fails. **Demonstrate both directions by running them**, not
+     by asserting them `[ref: PRD/F4]`.
+
+     What is *not* testable at this point is **which rows exist** — that is the
+     open question this task answers, and T1.2's join test is what constrains it.
+     The distinction is the whole point: a test for "what makes a row valid" is
+     available now; a test for "which rows there are" is not.
   3. Implement: `tomo/schemas/suggestions-decision-inventory.json` with one row
      per editable decision: `id` (stable, opaque, never changes when wording
      changes), `markdown_control` (prose, for humans), `wire_field` (dotted path
-     or `null`), `editable`, optional `note`. Plus
-     `tomo/schemas/suggestions-decision-inventory.schema.json` so a malformed row
-     fails our own tests before it can reach the consumer `[ref: PRD/F4]`.
+     or `null`), `editable`, optional `note`. The schema from step 2 is already
+     guarding the shape, so the inventory is never authored against an unverified
+     structure `[ref: PRD/F4]`.
   4. Validate: the file validates against its own schema; `ruff` clean; ids are
      unique and none is derived from prose.
   5. Success:
@@ -63,7 +70,8 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [ ] The attachment-conflict remedy appears with `wire_field: null`, which
            is the 037 state and the row the format exists for `[ref: PRD/F4]`
      - [ ] No read-only decision appears `[ref: PRD/F4]`
-     - [ ] A malformed row fails Tomo's tests `[ref: PRD/F4]`
+     - [ ] A malformed row fails Tomo's tests, proved by an executed test named
+           by node id — not by the schema's mere existence `[ref: PRD/F4]`
 
   **Expect this task to produce a finding, not just a file.** 21 schema fields
   against ~7 recognised controls means some editable wire fields have no markdown

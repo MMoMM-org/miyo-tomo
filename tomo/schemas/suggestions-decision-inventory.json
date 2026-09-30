@@ -3,147 +3,147 @@
   "decisions": [
     {
       "id": "D01",
-      "markdown_control": "Accept/Approve checkbox on a suggestion (parse_section decision checkboxes, suggestion-parser.py:812-822): checked = approve, unchecked = skip.",
+      "markdown_control": "Accept/Approve checkbox on a suggestion: checked approves the suggestion, unchecked skips it.",
       "wire_field": "suggestions[].decision",
       "editable": true
     },
     {
       "id": "D02",
-      "markdown_control": "Keep Source checkbox on a suggestion (suggestion-parser.py:818-819): keep the origin inbox note instead of deleting it.",
+      "markdown_control": "Keep Source checkbox on a suggestion: keeps the origin inbox note instead of deleting it.",
       "wire_field": "suggestions[].keep_source",
       "editable": true
     },
     {
       "id": "D03",
-      "markdown_control": "Delete Source checkbox on a suggestion (suggestion-parser.py:820-821): explicitly delete the origin.",
+      "markdown_control": "Delete Source checkbox on a suggestion: explicitly deletes the origin.",
       "wire_field": "suggestions[].delete_source",
       "editable": true
     },
     {
       "id": "D04",
-      "markdown_control": "Force Atomic checkbox on a suppressed light block (suggestion-parser.py:814-815): promote it to a full atomic note.",
+      "markdown_control": "Force Atomic checkbox on a suppressed light block: promotes it to a full atomic note.",
       "wire_field": "suggestions[].force_atomic",
       "editable": true
     },
     {
       "id": "D05",
-      "markdown_control": "Title/Suggested name/Suggested title/Name field line on a suggestion (suggestion-parser.py:886-889): retype to rename; the filename derives from it.",
+      "markdown_control": "Title/Suggested name/Suggested title/Name field line on a suggestion: retype to rename; the filename derives from it.",
       "wire_field": "suggestions[].title",
       "editable": true
     },
     {
       "id": "D06",
-      "markdown_control": "Template field line on a suggestion (suggestion-parser.py:908-910): retype the template wikilink target.",
+      "markdown_control": "Template field line on a suggestion: retype the template wikilink target.",
       "wire_field": "suggestions[].template",
       "editable": true
     },
     {
       "id": "D07",
-      "markdown_control": "Destination/Location/Move to field line on a suggestion (suggestion-parser.py:903-906): retype the destination folder.",
+      "markdown_control": "Destination/Location/Move to field line on a suggestion: retype the destination folder.",
       "wire_field": "suggestions[].location",
       "editable": true
     },
     {
       "id": "D08",
-      "markdown_control": "Tags/Tag/New tags to add field line on a suggestion (suggestion-parser.py:891-892): retype the tag list to add.",
+      "markdown_control": "Tags/Tag/New tags to add field line on a suggestion: retype the tag list to add.",
       "wire_field": "suggestions[].tags",
       "editable": true
     },
     {
       "id": "D09",
-      "markdown_control": "Approve/Skip checkbox on a Proposed MOC block (parse_proposed_mocs, suggestion-parser.py:1136-1147).",
+      "markdown_control": "Approve/Skip checkbox on a Proposed MOC block: checked approves creating the MOC, unchecked skips it.",
       "wire_field": "proposed_mocs[].decision",
       "editable": true
     },
     {
       "id": "D10",
-      "markdown_control": "Name field line on a Proposed MOC block (suggestion-parser.py:1160-1161): retype to rename the MOC.",
+      "markdown_control": "Name field line on a Proposed MOC block: retype to rename the MOC.",
       "wire_field": "proposed_mocs[].name",
       "editable": true
     },
     {
       "id": "D11",
-      "markdown_control": "Parent field line on a Proposed MOC block (suggestion-parser.py:1162-1163): retype to reparent.",
+      "markdown_control": "Parent field line on a Proposed MOC block: retype to reparent.",
       "wire_field": "proposed_mocs[].parent",
       "editable": true
     },
     {
       "id": "D12",
-      "markdown_control": "Tags/Tag/New tags/Suggested tags field line on a Proposed MOC block (suggestion-parser.py:1166-1167).",
+      "markdown_control": "Tags/Tag/New tags/Suggested tags field line on a Proposed MOC block: retype the tag list to add.",
       "wire_field": "proposed_mocs[].tags",
       "editable": true
     },
     {
       "id": "D13",
-      "markdown_control": "Accept checkbox under a daily note's Possible Trackers block (parse_daily_updates, suggestion-parser.py:1851-1861).",
+      "markdown_control": "Accept checkbox under a daily note's Possible Trackers block: checked accepts the tracker suggestion.",
       "wire_field": "daily_updates[].trackers[].accepted",
       "editable": true
     },
     {
       "id": "D14",
-      "markdown_control": "Leading time token on a Possible Log Entries line, or the separate '- Time:' sub-field (parse_daily_updates, suggestion-parser.py:1886-1888, 1910-1928): retype to change when the entry lands.",
+      "markdown_control": "Leading time token on a Possible Log Entries line, or the separate '- Time:' sub-field: retype to change when the entry lands.",
       "wire_field": "daily_updates[].log_entries[].time",
       "editable": true
     },
     {
       "id": "D15",
-      "markdown_control": "Leading position token (a time, or after_last_line/before_first_line) on a Possible Log Entries line (suggestion-parser.py:1910-1928).",
+      "markdown_control": "Leading position token (a time, or after_last_line/before_first_line) on a Possible Log Entries line: retype to change where the entry is inserted.",
       "wire_field": "daily_updates[].log_entries[].position",
       "editable": true
     },
     {
       "id": "D16",
-      "markdown_control": "Text after the em dash on a Possible Log Entries line (suggestion-parser.py:1910-1928): retype to change the log-entry content.",
+      "markdown_control": "Text after the em dash on a Possible Log Entries line: retype to change the log-entry content.",
       "wire_field": "daily_updates[].log_entries[].content",
       "editable": true
     },
     {
       "id": "D17",
-      "markdown_control": "Accept checkbox under a daily note's Possible Log Entries block (suggestion-parser.py:1851-1861).",
+      "markdown_control": "Accept checkbox under a daily note's Possible Log Entries block: checked accepts the log-entry suggestion.",
       "wire_field": "daily_updates[].log_entries[].accepted",
       "editable": true
     },
     {
       "id": "D18",
-      "markdown_control": "Force Atomic Note checkbox on a Possible Log Entries item (suggestion-parser.py:1868-1875).",
+      "markdown_control": "Force Atomic Note checkbox on a Possible Log Entries item: checked promotes it to a full atomic note.",
       "wire_field": "daily_updates[].log_entries[].force_atomic_note",
       "editable": true
     },
     {
       "id": "D19",
-      "markdown_control": "Accept checkbox under a daily note's Possible Log Links block (suggestion-parser.py:1851-1861).",
+      "markdown_control": "Accept checkbox under a daily note's Possible Log Links block: checked accepts the log-link suggestion.",
       "wire_field": "daily_updates[].log_links[].accepted",
       "editable": true
     },
     {
       "id": "D20",
-      "markdown_control": "Approve checkbox on a Tag-Handler Updates group block (_walk_tag_handler_decisions, suggestion-parser.py:2185-2187).",
+      "markdown_control": "Approve checkbox on a Tag-Handler Updates group block: checked approves the group's changes.",
       "wire_field": "tag_handler_groups[].approved",
       "editable": true
     },
     {
       "id": "D21",
-      "markdown_control": "Keep source files checkbox on a Tag-Handler Updates group block (suggestion-parser.py:2182-2184).",
+      "markdown_control": "Keep source files checkbox on a Tag-Handler Updates group block: keeps the source files instead of removing them.",
       "wire_field": "tag_handler_groups[].keep_source",
       "editable": true
     },
     {
       "id": "D22",
-      "markdown_control": "Checkbox on a wikilinked MOC under a suggestion's 'Link to MOC:' header (parse_section, suggestion-parser.py:793-810): checking it links the MOC; checking an unlisted wikilink here adds a user-sourced candidate (source='user').",
+      "markdown_control": "Checkbox on a wikilinked MOC under a suggestion's 'Link to MOC:' header: checking it links the MOC; checking an unlisted wikilink here adds a user-sourced candidate (source='user').",
       "wire_field": "suggestions[].candidate_mocs[].selected",
       "editable": true,
       "note": "Functionally editable and round-tripped by build_from_wire, but suggestions-wire.schema.json's own field description does not carry the literal 'Editable' marker the T1.2 join reads off the schema side — a schema/parser discrepancy (finding, not resolved in T1.1). candidate_mocs[].source is the same control's side effect, not a separate decision."
     },
     {
       "id": "D23",
-      "markdown_control": "Placement line following a checked MOC checkbox (parse_placement_line / _bind_candidate_anchor, suggestion-parser.py:787-791): overrides where the link is inserted.",
+      "markdown_control": "Placement line following a checked MOC checkbox: overrides where the link is inserted.",
       "wire_field": "suggestions[].candidate_mocs[].anchor",
       "editable": true,
       "note": "Same schema-marker gap as D22 — functionally editable, not literally marked 'Editable' in suggestions-wire.schema.json."
     },
     {
       "id": "D24",
-      "markdown_control": "Rename / Keep in inbox / Ignore checkboxes on an Attachment Conflicts entry (_walk_attachment_conflicts / _resolve_attachment_remedy, suggestion-parser.py:2268-2320+): the three ticks resolve to one remedy.",
+      "markdown_control": "Rename / Keep in inbox / Ignore checkboxes on an Attachment Conflicts entry: the three ticks resolve to one remedy.",
       "wire_field": null,
       "editable": true,
       "note": "037 state: the remedy has no wire field yet. This is the row F4's acceptance criteria name explicitly; Phase 2/T5.2 moves it off null when the field is added."

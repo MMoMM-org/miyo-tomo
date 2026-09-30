@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -180,6 +180,12 @@ def test_row_rejects_note_empty_string(schema):
         validate(instance=_doc(row), schema=schema)
 
 
+def test_row_rejects_note_wrong_type(schema):
+    row = _row(note=42)
+    with pytest.raises(ValidationError):
+        validate(instance=_doc(row), schema=schema)
+
+
 # ---------------------------------------------------------------------------
 # Top-level document rejections — one per declared constraint.
 # ---------------------------------------------------------------------------
@@ -227,6 +233,21 @@ def test_top_level_rejects_decisions_wrong_type(schema):
         validate(instance=doc, schema=schema)
 
 
+def test_top_level_rejects_non_object_instance(schema):
+    """Root type: object — a JSON array at the document root must be rejected."""
+    with pytest.raises(ValidationError):
+        validate(instance=["not", "an", "object"], schema=schema)
+
+
+def test_decisions_item_rejects_non_object(schema):
+    """decisions[].type: object — a non-object item makes required/
+    additionalProperties no-ops under JSON Schema semantics, so this must be
+    tested independently of them."""
+    doc = {"schema_version": 1, "decisions": [42]}
+    with pytest.raises(ValidationError):
+        validate(instance=doc, schema=schema)
+
+
 # ---------------------------------------------------------------------------
 # The committed inventory file itself (step 4: "the file validates against
 # its own schema ... ids are unique"). Which rows exist is NOT asserted here
@@ -249,7 +270,7 @@ def test_inventory_ids_are_unique():
     assert len(ids) == len(set(ids)), "duplicate id in suggestions-decision-inventory.json"
 
 
-def test_inventory_is_untouched_by_deepcopy_round_trip(schema):
+def test_validate_does_not_mutate_shared_schema_fixture(schema):
     """Sanity: the fixtures above mutate copies, never the loaded schema itself."""
     before = copy.deepcopy(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
     validate(instance=_doc(_row()), schema=schema)

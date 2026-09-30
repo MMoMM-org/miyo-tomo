@@ -161,7 +161,7 @@ first — an inventory of what the suggestions markdown actually offers today.
   - The `type` field line has no `suggestions-wire` counterpart and was not
     traced. Open question, lower confidence than `classification`.
 
-- [ ] **T1.2 The two-sided join test** `[activity: testing]`
+- [x] **T1.2 The two-sided join test** `[activity: testing]`
 
   1. Prime: read the consumer's own guard as the model —
      `test/unit/ui/suggestions-view/editable-field-coverage.test.ts` in the Hashi
@@ -248,20 +248,20 @@ first — an inventory of what the suggestions markdown actually offers today.
      field to the schema without a row) turn it red — **run them, do not assert
      that they would** `[ref: plan/README.md; the standing warning]`.
   5. Success:
-     - [ ] A schema field marked `Editable` with no row fails the test `[ref: PRD/F4]`
-     - [ ] A parser-recognised control with no row fails the test `[ref: PRD/F4]`
-     - [ ] A retired control's row survives at `editable: false` and does **not**
+     - [x] A schema field marked `Editable` with no row fails the test `[ref: PRD/F4]`
+     - [x] A parser-recognised control with no row fails the test `[ref: PRD/F4]`
+     - [x] A retired control's row survives at `editable: false` and does **not**
            fail the parser-side join — the one case where a row legitimately has
            no control `[ref: PRD/F4]`
-     - [ ] **The exemption cannot go stale**: a row at `editable: false` whose
+     - [x] **The exemption cannot go stale**: a row at `editable: false` whose
            parser control still exists fails the test. Without this, a row marked
            retired while its control is alive stays exempt, and the consumer is
            told to delete a control that still works — the exact opposite of what
            the column exists to say `[ref: PRD/F4]`
-     - [ ] **The join cannot pass vacuously**: the test pins a floor on its own
+     - [x] **The join cannot pass vacuously**: the test pins a floor on its own
            schema-side enumeration, so a reworded marker fails loudly instead of
            matching nothing and satisfying every assertion below it
-     - [ ] Every failure mode above demonstrated by executed mutation, named in
+     - [x] Every failure mode above demonstrated by executed mutation, named in
            the task report by node id
 
      Two notes on the criteria above, both from the TDD guardian's audit:
@@ -310,6 +310,18 @@ first — an inventory of what the suggestions markdown actually offers today.
 
 - [ ] **T1.3 Phase validation** `[activity: validate]`
 
+  - **Rename the absence bucket that mixes two kinds of literal.** Both reviewers
+    flagged it independently. `_OPTION_VALUE_LITERALS` in
+    `tests/test_038_decision_inventory_join.py` holds true option synonyms
+    (`keep`, `preserve`, `behalten`, `related` — enumerated choices a control
+    resolves to), internal non-wire **field keys** (`placement`, `items`,
+    `supporting items`), and raw punctuation. Exact-set membership means no
+    over-match today, but these rules are explicitly designed to be **extended**,
+    and the name invites a maintainer adding a new editable field key to reach for
+    `_is_option_value` by analogy with `placement` — reasoning from a false premise.
+    Split the bucket or at minimum name the two reasons inline. Do **not** convert
+    the predicates to bare `set.__contains__`: the names are what tell a reader why
+    a literal is excused, which is this file's whole purpose.
   - **Normalise the one non-uniform marker.** `proposed_mocs[].tags` in
     `tomo/schemas/suggestions-wire.schema.json` reads a bare `"Editable."` where
     the other 22 read `"Editable — …"`. Every implementation uses the broad

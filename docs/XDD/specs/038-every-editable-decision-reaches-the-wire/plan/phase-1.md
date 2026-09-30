@@ -178,17 +178,40 @@ first — an inventory of what the suggestions markdown actually offers today.
      **Schema side**: walk the wire schema for descriptions beginning
      `Editable — `. Floor the enumeration at **23**.
 
-     **Parser side**: extract the literals with Python's stdlib `ast` — find
-     string constants compared against the checkbox text or the field key inside
-     the parser's control-recognition functions. The shapes to match are
-     `"x" in text_lower`, `key == "x"`, `key in ("x", "y")` and
-     `label.startswith("x")`. Floor the extraction at **34**. Owner ruling
-     2026-09-30.
+     **Parser side**: extract the literals with Python's stdlib `ast`, filtering
+     by **what is being compared**, not by which function it sits in. Harvest
+     string constants where the other operand is one of the parser's control
+     subjects — `text_lower`, `key`, `label`, `cb_text`, `text`, `stripped` — in
+     the shapes `"x" in text_lower`, `key == "x"`, `key in ("x", "y")` and
+     `label.startswith("x")`. Floor the harvest at **61**.
 
-     A hand-written literal list was rejected: a control added to the parser and
-     not to the list fails nothing, which makes this criterion theatre and leaves
-     the same class of hole 037 shipped. Regex over the source was rejected too —
-     it misreads multi-line calls and fails confusingly rather than loudly.
+     **These numbers are measured, not estimated** (2026-09-30). The subject
+     filter harvests **61** literals; the inventory carries **34**. Do not
+     "correct" either number to make them agree — they are not supposed to.
+
+     Every harvested literal must be **either** in some row's `parser_label`
+     **or** in an explicit justified-absence list carrying a stated reason. That
+     is the consumer's own pattern and it fails **closed**: a newly added control
+     literal is in neither, so the test goes red with nobody remembering anything.
+     Owner ruling 2026-09-30.
+
+     The **31** currently-absent literals fall into three groups, so express the
+     list as rules plus a few specifics rather than 31 hand-written entries:
+     structural markers (anything starting with `#` or `**`, plus field-line
+     labels like `- Source:`), option values that are not control labels
+     (`keep`, `preserve`, `behalten`, `related`), and **read-only field keys** —
+     `summary`, `classification`, `source`, `type`, `attachments`. That last group
+     is the reassuring one: the harvest is correctly finding non-editable fields,
+     including the dead `classification` branch this phase recorded in the backlog.
+
+     Rejected alternatives, recorded so they are not revisited: a hand-written
+     literal list (a control added to the parser and not to the list fails
+     nothing, which makes this criterion theatre); regex over the source (misreads
+     multi-line calls, fails confusingly rather than loudly); scoping the walk to
+     named control-recognition functions (**measured**: still ~70 literals, so
+     function scope is not what removes the noise); and an advisory parser side
+     that only checks rows against the source (concedes the direction ADR-7 built
+     the two-sided join for).
 
      **A row with `editable: false` is exempt from the parser-side join** — that
      is what a retired control is, and without the exemption the test would reject
@@ -247,11 +270,15 @@ first — an inventory of what the suggestions markdown actually offers today.
     identically. A fourth decision added to that same line would find `"—"`
     already has rows and the join would stay green. State that sentence, not the
     general form — it names the exact mutation that slips through.
-  - The `ast` extraction scans **named** functions. A control introduced in a
-    brand-new function the list does not name stays invisible. That is the
-    residual "rule someone has to remember", and it is deliberately much narrower
-    than the alternative: a new control inside any function already scanned is
-    caught with nobody remembering anything.
+  - **Four row labels cannot be harvested by any AST filter**, measured
+    2026-09-30: `—` lives inside a regex rather than a comparison;
+    `after_last_line` and `before_first_line` are set-membership against a
+    module-level constant; `force atomic note` is compared through
+    `cb.group(1).lower()`, a call chain rather than a plain name. All four are
+    already in rows, and the join requires harvested-literal → row, not the
+    reverse, so they cause no failure. They are simply **not guarded** by the
+    parser-side direction. Say that in the docstring; do not contort the
+    extraction to reach them.
 
 - [ ] **T1.3 Phase validation** `[activity: validate]`
 

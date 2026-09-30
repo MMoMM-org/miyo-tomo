@@ -171,14 +171,28 @@ first — an inventory of what the suggestions markdown actually offers today.
      schema field marked `Editable` with no inventory row, and a
      parser-recognised control with no inventory row. Build both failures
      deliberately and watch them fail before making them pass.
-  3. Implement: `tests/test_038_decision_inventory_join.py`. Enumerate the schema
-     side by walking the schema for `Editable` descriptions; enumerate the parser
-     side from the label literals the parser matches on, joining to rows through
-     **`parser_label`** — the array T1.1b added for exactly this. Do not join on
-     prose, and do not join on `wire_field`: D24's is `null`. **A row with
-     `editable: false` is exempt from the parser-side join** — that is what a
-     retired control is, and without the exemption the test would reject exactly
-     the row the column exists to carry `[ref: PRD/F4]`.
+  3. Implement: `tests/test_038_decision_inventory_join.py`, joining to rows
+     through **`parser_label`** — the array T1.1b added for exactly this. Do not
+     join on prose, and do not join on `wire_field`: D24's is `null`.
+
+     **Schema side**: walk the wire schema for descriptions beginning
+     `Editable — `. Floor the enumeration at **23**.
+
+     **Parser side**: extract the literals with Python's stdlib `ast` — find
+     string constants compared against the checkbox text or the field key inside
+     the parser's control-recognition functions. The shapes to match are
+     `"x" in text_lower`, `key == "x"`, `key in ("x", "y")` and
+     `label.startswith("x")`. Floor the extraction at **34**. Owner ruling
+     2026-09-30.
+
+     A hand-written literal list was rejected: a control added to the parser and
+     not to the list fails nothing, which makes this criterion theatre and leaves
+     the same class of hole 037 shipped. Regex over the source was rejected too —
+     it misreads multi-line calls and fails confusingly rather than loudly.
+
+     **A row with `editable: false` is exempt from the parser-side join** — that
+     is what a retired control is, and without the exemption the test would reject
+     exactly the row the column exists to carry `[ref: PRD/F4]`.
   4. Validate: full suite green; both mutations (remove a row; add an `Editable`
      field to the schema without a row) turn it red — **run them, do not assert
      that they would** `[ref: plan/README.md; the standing warning]`.
@@ -199,6 +213,21 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [ ] Every failure mode above demonstrated by executed mutation, named in
            the task report by node id
 
+     Two notes on the criteria above, both from the TDD guardian's audit:
+
+     - **Criteria 3 and 4 are exercised on synthetic rows, and the docstring must
+       say so.** No row currently has `editable: false`, so both the exemption and
+       its staleness guard can only run against fabricated data. Name what each
+       fixture models: one row retired with its control genuinely gone, which must
+       pass the join; one row retired while its control is still live, which must
+       fail it. They model future rows that do not exist yet, and that is the
+       point of writing them now rather than when the first control is retired.
+     - **The schema-side floor here is not redundant with T1.1b's exact count.**
+       `test_wire_schema_marks_exactly_23_editable_fields` asserts `== 23` and
+       catches a marker being **deleted**. This test's `>= 23` floor catches the
+       enumeration **silently matching nothing** after a reword. Different
+       mutations, different files, either deletable alone. Both must remain.
+
   **Where these two extra criteria came from.** Both are the consumer's, read off
   their own guard during Phase 1. Their fourth test keeps their justified-absence
   list honest — an entry that *does* have a control fails — and ours had no mirror
@@ -218,6 +247,11 @@ first — an inventory of what the suggestions markdown actually offers today.
     identically. A fourth decision added to that same line would find `"—"`
     already has rows and the join would stay green. State that sentence, not the
     general form — it names the exact mutation that slips through.
+  - The `ast` extraction scans **named** functions. A control introduced in a
+    brand-new function the list does not name stays invisible. That is the
+    residual "rule someone has to remember", and it is deliberately much narrower
+    than the alternative: a new control inside any function already scanned is
+    caught with nobody remembering anything.
 
 - [ ] **T1.3 Phase validation** `[activity: validate]`
 

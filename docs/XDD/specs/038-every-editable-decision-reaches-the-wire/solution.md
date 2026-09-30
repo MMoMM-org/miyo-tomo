@@ -209,7 +209,7 @@ nothing today can answer "what does the markdown offer?" mechanically.
 | C9 | `suppress_moves_for_unfiled_attachments` (modified) | Hold the owning note for the new refusal kind | F3, ADR-6 |
 | C10 | `render_md.py`'s skipped block (modified) | Report the refusal to the owner in the existing register | F3, CON-6 |
 | C11 | **`tomo/schemas/suggestions-decision-inventory.json` (new)** | Declare every editable decision the markdown offers | F4 |
-| C12 | **The inventory join test (new)** | Fail when the inventory disagrees with either the schema or the parser | F4, ADR-7 |
+| C12 | **The inventory join test (new)** | Fail when the inventory disagrees with either the schema or the parser; the parser side harvests control literals by an `ast` walk over comparison subjects and fails closed on any literal that is neither in a row nor justifiably absent | F4, ADR-7 |
 | C13 | `docs/usage.md`, `docs/troubleshooting.md` (modified) | State that the name is editable, what a refusal looks like, and which surface wins | S1 |
 
 **Responsibility matrix — no requirement has two owners, none has zero:**
@@ -249,8 +249,20 @@ separator present, forbidden character, blank, taken. A usable name returns the
 name unchanged — the check never rewrites.
 
 **The inventory row**: `id` (stable, opaque), `markdown_control` (prose, for
-humans), `wire_field` (path or `null`), `editable` (`false` only for a retired
-control), optional `note`.
+humans — and consumer-facing, so it names the control as the owner encounters it,
+carrying no Tomo source paths), `wire_field` (path or `null`), `editable` (`false`
+only for a retired control), `parser_label` (the literal strings the parser
+compares against to recognise this decision — an **array**, many-to-one, required
+when `editable` is true and permitted absent when it is false), optional `note`.
+
+`parser_label` was added in Phase 1 (T1.1b, owner ruling 2026-09-30) because the
+parser-side half of ADR-7's join had no usable key: `wire_field` is `null` on the
+attachment-conflict remedy, and `markdown_control` is prose. Without it the
+mapping would have lived as a hand-written dict inside the test — "a rule someone
+has to remember", which is the mechanism ADR-7 names as what failed in 037. It is
+an array because the parser matches several literals for one decision: the
+approve checkbox fires on either `accept` or `approve`, a field line accepts four
+key spellings, and the remedy resolves from three separate labels.
 
 ## Runtime View
 

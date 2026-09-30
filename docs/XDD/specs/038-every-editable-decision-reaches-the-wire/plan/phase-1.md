@@ -331,8 +331,11 @@ first — an inventory of what the suggestions markdown actually offers today.
     Description-only change; no test pins description text and the consumer's
     guard does not scan that node.
   - Run the full suite and `ruff`. Confirm the inventory validates against its own
-    schema. Report every discrepancy T1.1 surfaced as a list, with a recommendation
-    for each: in scope for this spec, or a backlog entry. **Do not resolve them in
+    schema. Report every discrepancy **Phase 1** surfaced as a list, with a
+    recommendation for each: in scope for this spec, or a backlog entry. Not just
+    T1.1's — the phase ran four tasks and six review passes, and findings came from
+    all of them, including two that changed what ships to the consumer and three
+    that corrected the plan's own claims. **Do not resolve them in
     this phase** — they are input to a scope decision, not work to absorb quietly.
   - **The marker convention gains a guard, not just a fix.** Normalising one
     description leaves nothing stopping the next one drifting. Add a committed test

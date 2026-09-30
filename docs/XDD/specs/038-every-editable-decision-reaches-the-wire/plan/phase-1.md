@@ -109,7 +109,26 @@ first — an inventory of what the suggestions markdown actually offers today.
         them. D22/D23's current text stops being true the moment (a) lands.
   4. Validate: full suite and `ruff`. **15 test files reference
      `suggestions-wire.schema`** — if any pins description text or hashes the file,
-     report it rather than working around it. Confirm the marked count is now 23.
+     report it rather than working around it. Then, concretely:
+     - A **committed** test asserts `suggestions-wire.schema.json` carries exactly
+       **23** `Editable`-marked descriptions. This is not redundant with T1.2's
+       join: the join requires *marked field → row*, so **removing** a marker is
+       silent — the requirement simply disappears, the orphaned row still
+       satisfies the parser-side direction, and nothing fails. This assertion is
+       the only thing that catches a deleted marker. Do not remove it later as
+       duplicate coverage.
+     - A **committed** test asserts no `note` value carries a task, phase, feature
+       or spec identifier. Prove it bites by inserting such a string and watching
+       it fail. A manual read would be "a rule someone has to remember", which is
+       the mechanism `[ref: SDD/ADR-7]` names as what failed in 037 — and this file
+       is hand-maintained, so the next row added is exactly where jargon returns.
+     - The inventory validates against its schema, which is what catches a row
+       missing `parser_label` where one is required.
+     - Report the **count of distinct `parser_label` values**. That measured number
+       replaces the plan's "~7 recognised controls" estimate — a count, not an
+       estimate.
+     - Execute the ablations from step 2 and report which constraint each test
+       proved, by pytest node id.
   5. Success:
      - [ ] `selected` and `anchor` carry the marker, so the schema-side join sees
            them `[ref: PRD/F4]`
@@ -117,9 +136,13 @@ first — an inventory of what the suggestions markdown actually offers today.
            `editable: false` `[ref: PRD/F4]`
      - [ ] Each constraint `parser_label` adds has a rejection test whose bite was
            demonstrated by executed ablation
-     - [ ] No `note` value references a task, phase, feature or spec id
-     - [ ] The plan's counts are corrected — 23 marked fields, and the measured
-           control count replaces "~7 recognised controls"
+     - [ ] No `note` value references a task, phase, feature or spec id, proved by
+           a **committed** test whose bite was demonstrated — not by a manual read
+     - [ ] A **committed** test pins the marked-field count at 23, catching a
+           deleted marker, which T1.2's join structurally cannot
+     - [ ] The plan's counts are corrected — 23 marked fields, and a measured
+           count of distinct `parser_label` values replaces "~7 recognised
+           controls"
 
   **Two backlog entries this task also writes**, to `docs/XDD/backlog.md`:
   - `classification` is parsed but **unreachable from the review surface**: no

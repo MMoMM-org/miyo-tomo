@@ -163,7 +163,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor:
 **Prime** (understand context), **Test** (red), **Implement** (green),
 **Validate** (refactor + verify).
 
-- [ ] [Phase 1: The inventory, and what it reveals](phase-1.md)
+- [x] [Phase 1: The inventory, and what it reveals](phase-1.md)
 - [ ] [Phase 2: The wire carries the decision](phase-2.md)
 - [ ] [Phase 3: Refusal, before anything can be typed](phase-3.md)
 - [ ] [Phase 4: The name becomes a value](phase-4.md)

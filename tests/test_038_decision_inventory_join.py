@@ -216,17 +216,40 @@ def _is_structural_marker(literal: str) -> bool:
     )
 
 
-# Option values the parser matches against — real strings in the markdown,
-# but naming a CHOICE, not a control someone toggles or retypes.
-_OPTION_VALUE_LITERALS = {
-    "keep", "preserve", "behalten", "related",
-    "other sections in this moc", "supporting items", "placement", "items",
-    ",", "- ", "[",
+# True option synonyms: real words the parser compares against checkbox
+# DISPLAY TEXT (`"keep" in cb_text`, suggestion-parser.py:1718-1719) to
+# resolve which choice a control settled on. These name a CHOICE, never a
+# control someone toggles or retypes.
+_OPTION_SYNONYM_LITERALS = {"keep", "preserve", "behalten", "related"}
+
+
+def _is_option_synonym(literal: str) -> bool:
+    return literal in _OPTION_SYNONYM_LITERALS
+
+
+# Internal non-wire field keys: the parser's own field-line vocabulary,
+# compared via `key in (...)` against the field's KEY, not its value
+# (suggestion-parser.py:848, :1164). "other sections in this moc" lives here
+# rather than with the option synonyms above — the source only ever compares
+# it as a field-line key ("**Other sections in this MOC:**"), the same shape
+# as "placement", never against checkbox display text the way "keep" is.
+_NON_WIRE_FIELD_KEY_LITERALS = {
+    "placement", "items", "supporting items", "other sections in this moc",
 }
 
 
-def _is_option_value(literal: str) -> bool:
-    return literal in _OPTION_VALUE_LITERALS
+def _is_non_wire_field_key(literal: str) -> bool:
+    return literal in _NON_WIRE_FIELD_KEY_LITERALS
+
+
+# Raw parsing punctuation: AST string constants used as list/line-prefix
+# separators inside the parser's own string handling — never any kind of
+# control label.
+_PARSING_PUNCTUATION_LITERALS = {",", "- ", "["}
+
+
+def _is_parsing_punctuation(literal: str) -> bool:
+    return literal in _PARSING_PUNCTUATION_LITERALS
 
 
 # Read-only field keys: the harvest correctly finding non-editable fields,
@@ -244,7 +267,9 @@ def _is_read_only_field_key(literal: str) -> bool:
 
 ABSENCE_RULES: tuple[tuple[str, "callable[[str], bool]"], ...] = (
     ("structural marker", _is_structural_marker),
-    ("option value, not a control label", _is_option_value),
+    ("option synonym, not a control label", _is_option_synonym),
+    ("internal field key, not a wire control", _is_non_wire_field_key),
+    ("parsing punctuation, not a control label", _is_parsing_punctuation),
     ("read-only field key", _is_read_only_field_key),
 )
 

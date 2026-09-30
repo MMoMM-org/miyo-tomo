@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -372,6 +372,44 @@ def test_wire_schema_marks_exactly_23_editable_fields():
     the wire schema with no corresponding inventory-row change would
     otherwise pass every other test in this file."""
     assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 23
+
+
+def _editable_marked_descriptions(schema_path: Path) -> list[str]:
+    doc = json.loads(schema_path.read_text(encoding="utf-8"))
+    descriptions: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            description = node.get("description")
+            if isinstance(description, str) and description.startswith("Editable"):
+                descriptions.append(description)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(doc)
+    return descriptions
+
+
+def test_wire_schema_editable_markers_use_uniform_dash_form():
+    """Every `Editable`-marked description must read `Editable — …` (em
+    dash), not the bare `Editable.` form. The broad `startswith("Editable")`
+    predicate used above and by the T1.2 join tolerates both, which is
+    exactly the trap: a future guard written against the dashed form finds
+    22, not 23, and fails confusingly (this is what happened once already,
+    in T1.2's own measurement). This test is that guard, committed rather
+    than left to be rediscovered."""
+    non_uniform = [
+        description
+        for description in _editable_marked_descriptions(WIRE_SCHEMA_PATH)
+        if not description.startswith("Editable — ")
+    ]
+    assert not non_uniform, (
+        "Editable-marked description(s) not in the uniform 'Editable — ' "
+        f"form: {non_uniform}"
+    )
 
 
 # ---------------------------------------------------------------------------

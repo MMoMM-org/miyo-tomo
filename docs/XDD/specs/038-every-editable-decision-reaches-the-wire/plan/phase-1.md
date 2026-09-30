@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: The inventory, and what it reveals"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -308,7 +308,7 @@ first — an inventory of what the suggestions markdown actually offers today.
     parser-side direction. Say that in the docstring; do not contort the
     extraction to reach them.
 
-- [ ] **T1.3 Phase validation** `[activity: validate]`
+- [x] **T1.3 Phase validation** `[activity: validate]`
 
   - **Rename the absence bucket that mixes two kinds of literal.** Both reviewers
     flagged it independently. `_OPTION_VALUE_LITERALS` in
@@ -356,19 +356,19 @@ first — an inventory of what the suggestions markdown actually offers today.
     anyone who reaches for it, and it is the reason the normalisation is worth
     doing at all rather than just tolerating the odd one out.
   - Success:
-    - [ ] Suite green; `ruff` clean; the inventory validates against its own schema
-    - [ ] The discrepancy list exists and every item carries a **concrete**
+    - [x] Suite green; `ruff` clean; the inventory validates against its own schema
+    - [x] The discrepancy list exists and every item carries a **concrete**
           recommendation — either "in scope for spec 038" naming where it lands, or
           a named backlog entry. Not "maybe later", not "worth considering": a
           recommendation that defers without naming where it defers to is the same
           as no recommendation `[ref: PRD/F4]`
-    - [ ] All 23 marked descriptions use the uniform `Editable — ` form, proved by
+    - [x] All 23 marked descriptions use the uniform `Editable — ` form, proved by
           a **committed** test whose bite was demonstrated by reverting one
           description to the bare form and watching it fail
-    - [ ] The broad `startswith("Editable")` predicate still finds 23 — the
+    - [x] The broad `startswith("Editable")` predicate still finds 23 — the
           existing count test stays green, so the normalisation changed no count
-    - [ ] Field-key literals no longer sit in a bucket named for option values,
+    - [x] Field-key literals no longer sit in a bucket named for option values,
           and `test_absence_rules_never_shadow_a_real_control_label` still passes
           against whatever buckets exist afterwards
-    - [ ] Phase 1 is marked complete in both `phase-1.md` frontmatter and the
+    - [x] Phase 1 is marked complete in both `phase-1.md` frontmatter and the
           manifest checklist in `plan/README.md`

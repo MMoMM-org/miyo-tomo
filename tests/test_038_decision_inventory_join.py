@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -451,6 +451,17 @@ def test_injection_a_marked_schema_field_with_no_row_fails(
     the real rows. The wire schema is untouched — title stays marked Editable
     — so wire-backed-row-count drops to 22 against a still-23 marked count,
     and the equality check inside _assert_schema_side_join fails."""
+    dropped_row = next((row for row in inventory_rows if row["id"] == "D05"), None)
+    assert (
+        dropped_row is not None
+        and dropped_row.get("editable") is True
+        and dropped_row.get("wire_field") is not None
+    ), (
+        'fixture premise: "D05" must exist in the real inventory as an '
+        "editable, wire-backed row for dropping it to actually reduce the "
+        "backed count below the marked count — if this fails, pick a "
+        "different wire-backed row to drop, rather than loosen the pin"
+    )
     mutated_rows = [row for row in inventory_rows if row["id"] != "D05"]
     with pytest.raises(AssertionError, match=re.escape("a marked field has no row")):
         _assert_schema_side_join(wire_schema_doc, mutated_rows)
@@ -461,8 +472,22 @@ def test_injection_b_unmapped_harvested_literal_fails(inventory_rows: list[dict]
     than editing the real parser to invent a new control string, the join
     takes a harvested-literal SET as input — so inject directly into a copy
     of that set, never into suggestion-parser.py."""
+    injected_literal = "zzz-unmapped-control-literal"
+    assert injected_literal not in _active_parser_labels(inventory_rows), (
+        f'fixture premise: "{injected_literal}" must not already be a live '
+        "parser_label on some editable row — this test models a harvested "
+        "literal with genuinely no row, so if this fails, pick a literal "
+        "that truly has none, rather than loosen the pin"
+    )
+    assert not _is_justified_absence(injected_literal), (
+        f'fixture premise: "{injected_literal}" must not be absorbed by any '
+        "absence rule — this test models a harvested literal with no row AND "
+        "no excuse, so if a future absence rule grows broad enough to "
+        "swallow it, pick a literal that still isn't, rather than loosen "
+        "the pin"
+    )
     injected = _harvest_control_literals(PARSER_PATH.read_text(encoding="utf-8"))
-    injected.add("zzz-unmapped-control-literal")
+    injected.add(injected_literal)
     with pytest.raises(AssertionError, match=re.escape("no row and no justified absence")):
         _assert_parser_side_join(injected, inventory_rows)
 
@@ -476,7 +501,16 @@ def test_injection_c_stale_exemption_fails(
     literal the real harvest still finds. Without the staleness guard this
     row would sit exempt while telling a consumer to delete a control that
     still fires — the opposite of what editable: false exists to say."""
-    stale_row = _synthetic_row(id="D90", editable=False, parser_label=["approve"])
+    live_literal = "approve"
+    assert live_literal in _active_parser_labels(inventory_rows), (
+        f'fixture premise: "{live_literal}" must be a live parser_label on '
+        "some editable row in the real inventory — this test models a row "
+        "retired while its control is still live, so the injected literal "
+        "has to actually be live (otherwise the uncovered assertion fires "
+        "instead of the stale one, for an unrelated reason); if this fails, "
+        "pick a literal that still is live, rather than loosen the pin"
+    )
+    stale_row = _synthetic_row(id="D90", editable=False, parser_label=[live_literal])
     mutated_rows = inventory_rows + [stale_row]
     with pytest.raises(AssertionError, match=re.escape("parser control still live")):
         _assert_parser_side_join(harvested_literals, mutated_rows)
@@ -505,6 +539,15 @@ def test_injection_e_reworded_marker_breaches_the_floor(
     assertion inside _assert_schema_side_join — not the equality check below
     it — is what fails first, proving the floor is load-bearing rather than
     an assertion the equality check would have caught anyway."""
+    marked_before = _count_editable_marked_descriptions(wire_schema_doc)
+    assert marked_before == FLOOR_SCHEMA_MARKED_FIELDS, (
+        f"fixture premise: the real schema must mark exactly "
+        f"{FLOOR_SCHEMA_MARKED_FIELDS} field(s) Editable ({marked_before} "
+        "found) for rewording one of them to breach the floor rather than "
+        "merely narrow it — if this fails, a schema change moved the count "
+        "out from under this injection; pick a fixture that actually sits "
+        "on the floor, rather than loosen the pin"
+    )
     mutated_schema = copy.deepcopy(wire_schema_doc)
     reworded = _reword_one_editable_marker(mutated_schema)
     assert reworded, "fixture setup: no Editable-marked description found to reword"

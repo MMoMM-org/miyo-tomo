@@ -45,7 +45,8 @@ first — an inventory of what the suggestions markdown actually offers today.
      decision checkboxes ~`:812-822`, `_walk_attachment_conflicts` `:2268`,
      `_walk_tag_handler_decisions` `:2135`, `parse_tag_handler_keep_source` `:2212`)
      and the field-line handling below it. Then read every `Editable` description
-     in `tomo/schemas/suggestions-wire.schema.json` — there are **21**
+     in `tomo/schemas/suggestions-wire.schema.json` — there were **21** when this
+     task ran; T1.1b marks two more, so a reader arriving later finds **23**
      `[ref: SDD/ADR-7]`.
   2. Test: write `tomo/schemas/suggestions-decision-inventory.schema.json` first,
      then `tests/test_038_inventory_schema_validation.py` against it — a
@@ -73,11 +74,18 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [x] A malformed row fails Tomo's tests, proved by an executed test named
            by node id — not by the schema's mere existence `[ref: PRD/F4]`
 
-  **Expect this task to produce a finding, not just a file.** 23 schema fields
-  against 34 distinct `parser_label` literals means some editable wire fields have
-  no markdown control and some controls may have no row anyone knew about. Record
-  every discrepancy in the task's report rather than resolving it silently — it
-  may change Phases 2–4, and it is the reason this phase is first.
+  **This task was expected to produce a finding, not just a file, and it did.**
+  The expectation rested on 21 marked schema fields against a parser whose controls
+  were merely *estimated* at "about seven" — a gap wide enough that something had
+  to be unaccounted for. Both figures have since been measured and neither is what
+  it was, so the original arithmetic is retired rather than restated: the marked
+  count is now 23, and the parser side is 34 distinct label literals, which is a
+  different unit and not comparable to it.
+
+  What the task actually surfaced is recorded in the deviation table and the
+  backlog rather than resolved silently — including two fields the schema-side join
+  was blind to, which added T1.1b to this very phase. That is the clearest evidence
+  for why this phase is first.
 
 - [ ] **T1.1b The schema stops under-reporting, and the join gains a key** `[activity: data-architecture]`
 

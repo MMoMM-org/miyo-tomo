@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/suggestions-decision-inventory.schema.json",
+  "title": "Suggestions Decision Inventory",
+  "description": "Hand-written registry of every editable decision the suggestions markdown offers (spec 038 ADR-7). One row per decision, joined in both directions against suggestions-wire.schema.json's `Editable`-marked fields and against the parser's recognised controls (T1.2). A row's `id` is opaque and never changes when a control's label is reworded — the consumer's join sees an edit, not a delete plus an add.",
+  "type": "object",
+  "required": ["schema_version", "decisions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Schema version sentinel. Always 1 for this revision."
+    },
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per editable decision the suggestions markdown offers. A decision that is read-only never appears. A control that has been retired keeps its row with editable=false, so a consumer still vendoring it is told to remove their control rather than left writing a field no longer honoured.",
+      "items": {
+        "type": "object",
+        "required": ["id", "markdown_control", "wire_field", "editable"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^D[0-9]{2,}$",
+            "description": "Stable, opaque row id (e.g. 'D01'). Never derived from markdown_control's prose and never changes when that prose is reworded — the consumer's join keys on this, not on the label."
+          },
+          "markdown_control": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable description of the control on the suggestions markdown (checkbox, field line, or line-edit) that makes this decision editable. Prose, for humans — not machine-matched."
+          },
+          "wire_field": {
+            "type": ["string", "null"],
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
+            "description": "Dotted path (array segments suffixed '[]') to the field on suggestions-wire.schema.json this decision writes, e.g. 'suggestions[].title'. Null when the decision has no wire field yet — recorded explicitly rather than omitting the row (F4)."
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "True while the markdown still offers this control. False marks a retired control whose row is kept for consumer migration rather than deleted."
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional free-text context — why wire_field is null, a schema/parser discrepancy, or retirement rationale. Omitted when there is nothing to add."
+          }
+        }
+      }
+    }
+  }
+}

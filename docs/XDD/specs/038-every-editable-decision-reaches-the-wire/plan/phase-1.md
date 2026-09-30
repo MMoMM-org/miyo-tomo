@@ -39,7 +39,7 @@ Delivers the artefact that makes a missing editable decision a build failure
 instead of a defect report, and — as a side effect that is the real reason it is
 first — an inventory of what the suggestions markdown actually offers today.
 
-- [ ] **T1.1 Enumerate what the markdown offers, and write it down** `[activity: domain-modeling]`
+- [x] **T1.1 Enumerate what the markdown offers, and write it down** `[activity: domain-modeling]`
 
   1. Prime: read `suggestion-parser.py`'s control recognition (`parse_section`'s
      decision checkboxes ~`:812-822`, `_walk_attachment_conflicts` `:2268`,
@@ -66,11 +66,11 @@ first — an inventory of what the suggestions markdown actually offers today.
   4. Validate: the file validates against its own schema; `ruff` clean; ids are
      unique and none is derived from prose.
   5. Success:
-     - [ ] One row per editable decision the markdown offers `[ref: PRD/F4]`
-     - [ ] The attachment-conflict remedy appears with `wire_field: null`, which
+     - [x] One row per editable decision the markdown offers `[ref: PRD/F4]`
+     - [x] The attachment-conflict remedy appears with `wire_field: null`, which
            is the 037 state and the row the format exists for `[ref: PRD/F4]`
-     - [ ] No read-only decision appears `[ref: PRD/F4]`
-     - [ ] A malformed row fails Tomo's tests, proved by an executed test named
+     - [x] No read-only decision appears `[ref: PRD/F4]`
+     - [x] A malformed row fails Tomo's tests, proved by an executed test named
            by node id — not by the schema's mere existence `[ref: PRD/F4]`
 
   **Expect this task to produce a finding, not just a file.** 21 schema fields

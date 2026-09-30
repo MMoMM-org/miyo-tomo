@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -36,18 +36,18 @@ are not supposed to):
   - 31 of the 61 are legitimately absent from every row (see ABSENCE_RULES)
   - the wire schema marks 23 fields Editable
 
-A NOTE ON THE SCHEMA-SIDE MATCH PREDICATE: the plan text for this task
-describes the marker as a description "beginning `Editable — ` [em dash]".
-Measured: only 22 of the 23 marked fields actually begin with that exact
-string — `proposed_mocs[].tags` reads bare `"Editable."`, no dash. Using the
-literal em-dash prefix yields 22, breaching the specified floor of 23 and
-disagreeing with T1.1b's own already-committed, already-green
-`test_wire_schema_marks_exactly_23_editable_fields`, which matches on
-`description.startswith("Editable")` (no dash). This file mirrors T1.1b's
-broader predicate for that reason — consistency with the existing count, and
-the floor is actually reachable — rather than the plan text's narrower one.
-Flagged for the record, not fixed: the wire schema is off-limits for editing
-here regardless of which predicate is "right".
+A NOTE ON THE SCHEMA-SIDE MATCH PREDICATE: as of T1.2, only 22 of the 23
+marked fields began with the plan text's literal em-dash prefix
+(`"Editable — "`) — `proposed_mocs[].tags` read bare `"Editable."`, no dash.
+T1.3 resolved this (phase-1-findings.md #15): the description now reads
+`"Editable — tags to add."`, so all 23 marked fields begin with the dashed
+form and both predicates agree. This file still mirrors T1.1b's broader
+`description.startswith("Editable")` predicate rather than switching to the
+literal em-dash form — not because the dashed form is unreachable (it now
+is), but as defence in depth: `test_038_inventory_schema_validation.py`'s
+`test_wire_schema_editable_markers_use_uniform_dash_form` is the guard
+responsible for catching a future non-uniform marker, so this join's own
+predicate does not need to double as that check.
 
 KNOWN LIMITATIONS (deliberate, not to be fixed by this test):
   1. This catches a *missing* row, not a *wrong* one. A row whose `wire_field`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.4
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -346,34 +346,6 @@ def test_validate_does_not_mutate_shared_schema_fixture(schema):
 # ---------------------------------------------------------------------------
 
 
-def _count_editable_marked_descriptions(schema_path: Path) -> int:
-    doc = json.loads(schema_path.read_text(encoding="utf-8"))
-    count = 0
-
-    def walk(node) -> None:
-        nonlocal count
-        if isinstance(node, dict):
-            description = node.get("description")
-            if isinstance(description, str) and description.startswith("Editable"):
-                count += 1
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(doc)
-    return count
-
-
-def test_wire_schema_marks_exactly_23_editable_fields():
-    """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
-    bringing the count from 21 (T1.1) to 23. A future marker removed from
-    the wire schema with no corresponding inventory-row change would
-    otherwise pass every other test in this file."""
-    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 23
-
-
 def _editable_marked_descriptions(schema_path: Path) -> list[str]:
     doc = json.loads(schema_path.read_text(encoding="utf-8"))
     descriptions: list[str] = []
@@ -391,6 +363,18 @@ def _editable_marked_descriptions(schema_path: Path) -> list[str]:
 
     walk(doc)
     return descriptions
+
+
+def _count_editable_marked_descriptions(schema_path: Path) -> int:
+    return len(_editable_marked_descriptions(schema_path))
+
+
+def test_wire_schema_marks_exactly_23_editable_fields():
+    """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
+    bringing the count from 21 (T1.1) to 23. A future marker removed from
+    the wire schema with no corresponding inventory-row change would
+    otherwise pass every other test in this file."""
+    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 23
 
 
 def test_wire_schema_editable_markers_use_uniform_dash_form():

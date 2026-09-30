@@ -87,7 +87,7 @@ first — an inventory of what the suggestions markdown actually offers today.
   was blind to, which added T1.1b to this very phase. That is the clearest evidence
   for why this phase is first.
 
-- [ ] **T1.1b The schema stops under-reporting, and the join gains a key** `[activity: data-architecture]`
+- [x] **T1.1b The schema stops under-reporting, and the join gains a key** `[activity: data-architecture]`
 
   1. Prime: read the `candidate_mocs[].selected` and `.anchor` descriptions in
      `tomo/schemas/suggestions-wire.schema.json`, and the format the other 21 use
@@ -138,17 +138,17 @@ first — an inventory of what the suggestions markdown actually offers today.
      - Execute the ablations from step 2 and report which constraint each test
        proved, by pytest node id.
   5. Success:
-     - [ ] `selected` and `anchor` carry the marker, so the schema-side join sees
+     - [x] `selected` and `anchor` carry the marker, so the schema-side join sees
            them `[ref: PRD/F4]`
-     - [ ] Every row carries `parser_label`; its absence is permitted only at
+     - [x] Every row carries `parser_label`; its absence is permitted only at
            `editable: false` `[ref: PRD/F4]`
-     - [ ] Each constraint `parser_label` adds has a rejection test whose bite was
+     - [x] Each constraint `parser_label` adds has a rejection test whose bite was
            demonstrated by executed ablation
-     - [ ] No `note` value references a task, phase, feature or spec id, proved by
+     - [x] No `note` value references a task, phase, feature or spec id, proved by
            a **committed** test whose bite was demonstrated — not by a manual read
-     - [ ] A **committed** test pins the marked-field count at 23, catching a
+     - [x] A **committed** test pins the marked-field count at 23, catching a
            deleted marker, which T1.2's join structurally cannot
-     - [ ] The plan's counts are corrected — 23 marked fields, and a measured
+     - [x] The plan's counts are corrected — 23 marked fields, and a measured
            count of distinct `parser_label` values replaces "~7 recognised
            controls"
 
@@ -173,8 +173,10 @@ first — an inventory of what the suggestions markdown actually offers today.
      deliberately and watch them fail before making them pass.
   3. Implement: `tests/test_038_decision_inventory_join.py`. Enumerate the schema
      side by walking the schema for `Editable` descriptions; enumerate the parser
-     side from the label literals and field names the parser matches on. **A row
-     with `editable: false` is exempt from the parser-side join** — that is what a
+     side from the label literals the parser matches on, joining to rows through
+     **`parser_label`** — the array T1.1b added for exactly this. Do not join on
+     prose, and do not join on `wire_field`: D24's is `null`. **A row with
+     `editable: false` is exempt from the parser-side join** — that is what a
      retired control is, and without the exemption the test would reject exactly
      the row the column exists to carry `[ref: PRD/F4]`.
   4. Validate: full suite green; both mutations (remove a row; add an `Editable`
@@ -186,13 +188,36 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [ ] A retired control's row survives at `editable: false` and does **not**
            fail the parser-side join — the one case where a row legitimately has
            no control `[ref: PRD/F4]`
-     - [ ] Both failure modes demonstrated by executed mutation, named in the
-           task report by node id
+     - [ ] **The exemption cannot go stale**: a row at `editable: false` whose
+           parser control still exists fails the test. Without this, a row marked
+           retired while its control is alive stays exempt, and the consumer is
+           told to delete a control that still works — the exact opposite of what
+           the column exists to say `[ref: PRD/F4]`
+     - [ ] **The join cannot pass vacuously**: the test pins a floor on its own
+           schema-side enumeration, so a reworded marker fails loudly instead of
+           matching nothing and satisfying every assertion below it
+     - [ ] Every failure mode above demonstrated by executed mutation, named in
+           the task report by node id
 
-  **Known limitation to state in the test's own docstring, not to fix:** this
-  catches a *missing* row, not a *wrong* one. A row whose `wire_field` names the
-  wrong path passes. The consumer's join catches that from the other side
-  `[ref: SDD/ADR-7 trade-offs]`.
+  **Where these two extra criteria came from.** Both are the consumer's, read off
+  their own guard during Phase 1. Their fourth test keeps their justified-absence
+  list honest — an entry that *does* have a control fails — and ours had no mirror
+  of it. And their detection guard pins `expect(editableFields.length)
+  .toBeGreaterThanOrEqual(8)` under a comment naming the risk outright: *"If Tomo
+  rewords 'Editable — …' the filter above silently matches nothing and every
+  assertion below passes vacuously."* That is this spec's signature failure mode,
+  anticipated by the consumer, in the test we are mirroring.
+
+  **Two known limitations to state in the test's own docstring, not to fix:**
+  - It catches a *missing* row, not a *wrong* one. A row whose `wire_field` names
+    the wrong path passes. The consumer's join catches that from the other side
+    `[ref: SDD/ADR-7 trade-offs]`.
+  - It catches a newly added **literal-matched** control, not a pattern-matched
+    one. Owner ruling 2026-09-30. Concretely: `RE_DAILY_LOG_LINE` matches one line
+    and yields time, position and content together, so `"—"` keys D14, D15 and D16
+    identically. A fourth decision added to that same line would find `"—"`
+    already has rows and the join would stay green. State that sentence, not the
+    general form — it names the exact mutation that slips through.
 
 - [ ] **T1.3 Phase validation** `[activity: validate]`
 

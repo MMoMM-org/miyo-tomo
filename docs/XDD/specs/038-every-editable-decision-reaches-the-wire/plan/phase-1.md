@@ -334,5 +334,23 @@ first — an inventory of what the suggestions markdown actually offers today.
     schema. Report every discrepancy T1.1 surfaced as a list, with a recommendation
     for each: in scope for this spec, or a backlog entry. **Do not resolve them in
     this phase** — they are input to a scope decision, not work to absorb quietly.
-  - Success: suite green; `ruff` clean; the discrepancy list exists and each item
-    has a recommendation `[ref: PRD/F4]`.
+  - **The marker convention gains a guard, not just a fix.** Normalising one
+    description leaves nothing stopping the next one drifting. Add a committed test
+    asserting every `Editable`-marked description begins with the uniform
+    `Editable — ` form. That test is what makes the dashed predicate safe for
+    anyone who reaches for it, and it is the reason the normalisation is worth
+    doing at all rather than just tolerating the odd one out.
+  - Success:
+    - [ ] Suite green; `ruff` clean; the inventory validates against its own schema
+    - [ ] The discrepancy list exists and every item carries a recommendation —
+          in scope for this spec, or a backlog entry `[ref: PRD/F4]`
+    - [ ] All 23 marked descriptions use the uniform `Editable — ` form, proved by
+          a **committed** test whose bite was demonstrated by reverting one
+          description to the bare form and watching it fail
+    - [ ] The broad `startswith("Editable")` predicate still finds 23 — the
+          existing count test stays green, so the normalisation changed no count
+    - [ ] Field-key literals no longer sit in a bucket named for option values,
+          and `test_absence_rules_never_shadow_a_real_control_label` still passes
+          against whatever buckets exist afterwards
+    - [ ] Phase 1 is marked complete in both `phase-1.md` frontmatter and the
+          manifest checklist in `plan/README.md`

@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-29 |
-| **Current Phase** | PLAN |
+| **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-09-30 |
 
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | v1.0, 38 acceptance criteria; both open questions answered by the consumer 2026-09-29 |
 | solution.md | completed | v1.0, 8 ADRs all confirmed; CON-8 records a live L2 obligation |
-| plan/ | pending | |
+| plan/ | completed | 5 phases, 22 tasks; the inventory is built first though it ships last |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 

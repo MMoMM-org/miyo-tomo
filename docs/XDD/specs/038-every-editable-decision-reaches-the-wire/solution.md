@@ -18,7 +18,7 @@ version: "1.0"
 
 - [x] Every PRD requirement maps to exactly one owning component
 - [x] No [NEEDS CLARIFICATION] markers remain
-- [ ] Every architecture decision is recorded as an ADR and confirmed by the owner — 4 of 8 await confirmation
+- [x] Every architecture decision is recorded as an ADR and confirmed by the owner
 - [x] No component owns another's domain logic
 - [x] Runtime view traces both Pass-2 paths, not only the markdown one
 
@@ -29,6 +29,7 @@ version: "1.0"
 - [x] Cost of every new vault interaction accounted for
 - [x] The consumer's side of each interface named, with what they must change
 - [x] Acceptance criteria traceable 1:1 to the PRD's
+- [x] Checked against the MiYo Constitution (no repo-level `Constitution.md`; L1 Privacy, L1/L2 Testing, L1 Code Quality and L1 Dependencies pass — L2 Architecture surfaced CON-8, an open obligation rather than a violation)
 
 ---
 
@@ -39,8 +40,8 @@ version: "1.0"
 | Field | Value |
 |-------|-------|
 | specId | 038-every-editable-decision-reaches-the-wire |
-| status | `IN_REVIEW` — blocked on four ADR confirmations |
-| adrsConfirmed | 4 of 8 — ADR-1, 2, 3, 8 proposed, awaiting the owner |
+| status | `COMPLETE` |
+| adrsConfirmed | 8 of 8 |
 | componentsAdded | 3 (a typed-name check, an inventory, its join test) |
 | componentsModified | 10 |
 | wireVersionMove | suggestions wire `2` → `3` |
@@ -67,7 +68,7 @@ version: "1.0"
 | Building Block View | `Complete` |
 | Runtime View | `Complete` |
 | Cross-Cutting Concepts | `Complete` |
-| Architecture Decisions | `NeedsDecision` — 8 ADRs, 4 confirmed, 4 proposed |
+| Architecture Decisions | `Complete` — 8 ADRs, all confirmed |
 | Acceptance Criteria | `Complete` |
 | Risks and Technical Debt | `Complete` |
 
@@ -75,14 +76,14 @@ version: "1.0"
 
 | ADR | Name | Confirmed |
 |-----|------|-----------|
-| ADR-1 | 037's ADR-5 is superseded; the suggestions wire moves `2` → `3` | proposed |
-| ADR-2 | The conflict is a top-level array, not a per-suggestion field | proposed |
-| ADR-3 | Carry what the consumer cannot derive; omit what it can | proposed |
+| ADR-1 | 037's ADR-5 is superseded; the suggestions wire moves `2` → `3` | ✅ owner 2026-09-30 |
+| ADR-2 | The conflict is a top-level array, not a per-suggestion field | ✅ owner 2026-09-30 |
+| ADR-3 | Carry what the consumer cannot derive; omit what it can | ✅ owner 2026-09-30 |
 | ADR-4 | The markdown keeps its shape; the parser trusts the backtick text | ✅ owner 2026-09-30 |
 | ADR-5 | A typed name is **rejected**, never sanitised; `sanitize_stem` is not reused | ✅ owner 2026-09-29 |
 | ADR-6 | A refused name reuses `skipped_assets` and **holds** the owning note | ✅ owner 2026-09-30 |
 | ADR-7 | The inventory is hand-written with a two-sided join test | ✅ owner 2026-09-30 |
-| ADR-8 | `attachments` becomes required on the wire | proposed |
+| ADR-8 | `attachments` becomes required on the wire | ✅ owner 2026-09-30 |
 
 ---
 
@@ -108,6 +109,17 @@ version: "1.0"
 - **CON-7** — The owning-note list is complete **for the run only**. A note filed
   in an earlier run that embeds the same attachment is invisible to both sides
   (backlog, 2026-09-30), so no rendered text may imply the list is exhaustive.
+- **CON-8** — **An open constitutional obligation, surfaced by running the
+  check rather than citing it.** MiYo Constitution L2 (Architecture): *"Any change
+  that affects interactions between MiYo components … must be reflected in MiYo
+  Kokoro as an updated design note or ADR — **before or alongside the
+  implementation**."* This spec is exactly such a change, and the Kokoro handoff
+  that would satisfy it is **written but not yet sent**
+  (`_outbox/for-kokoro/2026-09-29_…four-specs-since-july…`). So the obligation is
+  live: the handoff goes out before or with the implementation, not after it. It
+  already asks for the two ADRs this design assumes — the boundary-is-several-
+  channels rule, and the producer-inventory/consumer-coverage-map mechanism that
+  F4 builds.
 
 ## Implementation Context
 
@@ -350,6 +362,8 @@ property on a **closed** node as consumer-affecting, and both the root and
 alternative — an open node to avoid the move — would hide the change from the
 gate that exists to catch exactly this.
 
+**Confirmed** by the owner 2026-09-30.
+
 ### ADR-2 — The conflict is a top-level array, not a per-suggestion field
 
 **Choice.** `attachment_conflicts[]` at the top level, beside
@@ -366,6 +380,8 @@ with it.
 the field on one. That join is `source` against `suggestions[].attachments`, which
 ADR-8 makes reliable.
 
+**Confirmed** by the owner 2026-09-30.
+
 ### ADR-3 — Carry what the consumer cannot derive; omit what it can
 
 **Choice.** Carry `destination` and `same_file`. Do not carry the owning notes.
@@ -380,6 +396,8 @@ and our own list is no better than theirs (CON-7).
 
 **Trade-offs.** Two read-only fields on a closed node. Cheap, and both are the
 answer to "why is this a conflict at all", which their card has to show.
+
+**Confirmed** by the owner 2026-09-30.
 
 ### ADR-4 — The markdown keeps its shape; the parser trusts the backtick text
 
@@ -472,6 +490,8 @@ That is this spec's own defect class pointing the other way. The version is
 moving anyway, so closing it costs nothing.
 
 **Trade-offs.** None identified. It makes a guarantee out of current behaviour.
+
+**Confirmed** by the owner 2026-09-30.
 
 ## Quality Requirements
 

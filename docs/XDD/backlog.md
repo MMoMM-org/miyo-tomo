@@ -1400,3 +1400,45 @@ their #140 or their coverage map, we ship the file first and the row starts as
 
 Handoff: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_037-remedy-cannot-survive-the-editor.md`
 Reply and correction: `_inbox/from-hashi/2026-09-29_hashi-to-tomo_delete-source-loses-a-tick-and-yes-to-the-inventory.md`
+
+## OPEN — a renamed attachment breaks the embed in any note that was filed earlier
+
+**Found 2026-09-30** while answering a question from Hashi about whether Tomo's
+conflict entry ever names an owning note outside the run. It does not, and the
+reason is the finding: **we never look.**
+
+Traced:
+
+- `detect_attachment_conflicts` builds `owner_source_items` only from the run's
+  own prepared items (`suggestions-reducer.py:711-743`), so it is a subset of
+  what `suggestions[]` carries.
+- `rewrite_renamed_embeds(body, attachments, remedies_by_source)`
+  (`lib/embed_rewrite.py:91`) rewrites a note's **own** body using that note's
+  **own** attachment paths. Only notes in the run are ever touched.
+
+So if a note already filed in the vault embeds an attachment that is still in the
+inbox, and the owner picks **Rename**, that note keeps pointing at the old
+basename and its embed stops resolving. Nothing detects it and nothing reports
+it.
+
+**It is reachable, and it is the exact state spec 037's own motivating incident
+left behind:** the 2026-09-15 run filed a note to `Atlas/202 Notes/` while its
+attachment stayed in the inbox, so the Atlas note embeds `![[Scans/karte.png]]`
+today. Rename that attachment in a later run and the Atlas note's embed breaks.
+
+**Severity is degradation, not data loss.** The embed already pointed into the
+inbox; afterwards it points at nothing. No content is destroyed, and the
+attachment itself is filed correctly.
+
+**Why closing it is not cheap.** It needs a reverse index — which vault notes
+embed a given inbox path — and we have no such thing. Kado can search, so it is
+feasible, but it is a vault query per conflicted attachment on the Pass-1 path,
+which is the cost `detect_attachment_conflicts` was carefully designed to avoid
+(one folder listing per run, not one call per attachment).
+
+**Consequence for spec 038, recorded rather than fixed:** Hashi asked whether to
+derive the owning-note list or receive it. Derive is correct — our list is
+complete *for the run*. But neither side can show the owner a previously-filed
+note whose embed a rename will break, and the owner-facing text must not imply
+otherwise. Spec 037 shipped four sentences that asserted more than the renderer
+knew; this is the same trap with a new mechanism behind it.

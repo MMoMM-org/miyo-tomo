@@ -45,8 +45,8 @@ version: "1.0"
 | title | Every editable decision reaches the wire |
 | status | `IN_REVIEW` |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 33 |
-| openQuestions | 2 (both consumer-owned — see Open Questions) |
+| acceptanceCriteria | 38 |
+| openQuestions | 0 — both were answered by the consumer 2026-09-29 |
 
 ### SectionStatus
 
@@ -60,7 +60,7 @@ version: "1.0"
 | Success Metrics | `COMPLETE` | |
 | Constraints and Assumptions | `COMPLETE` | |
 | Risks and Mitigations | `COMPLETE` | |
-| Open Questions | `COMPLETE` | Both are Hashi's to answer; neither blocks the SDD |
+| Open Questions | `COMPLETE` | Both answered; their answers are now requirements in F1 and F4 |
 
 ---
 
@@ -271,6 +271,8 @@ precisely because only the human ones were considered.
   - [ ] Given an edited wire, When Pass 2 rebuilds from it alone, Then the remedies it produces are identical to those the markdown path produces for the same decisions
   - [ ] Given a run with no conflicts, When the wire is published, Then the output is unchanged from today apart from the version stamp
   - [ ] Given the suggestions wire schema changes, When the change is classified, Then the wire's version is moved and a handoff is owed, because the affected nodes are closed
+  - [ ] Given a conflict on the wire, When it is published, Then it carries the occupied destination and whether the two files are byte-identical — the consumer cannot derive either
+  - [ ] Given a conflict on the wire, When it is published, Then the notes that embed the attachment are **not** carried, because the consumer derives them from the run
   - [ ] Given the instructions wire, When this spec ships, Then it is untouched — no criterion here constrains it
 
 #### F2: The rename target is owner-editable, on both surfaces
@@ -310,7 +312,10 @@ precisely because only the human ones were considered.
 - **Acceptance Criteria:**
   - [ ] Given the inventory, When it is read, Then it carries one row per editable decision the suggestions markdown offers
   - [ ] Given a decision with no wire field, When its row is written, Then the row records that absence explicitly rather than omitting the decision
+  - [ ] Given any row, When it is written, Then it carries a stable opaque `id` that does not change when the markdown's wording changes
+  - [ ] Given a control's label is reworded, When the inventory is regenerated, Then the row's `id` is unchanged, so the consumer's join sees an edit rather than a delete plus an add
   - [ ] Given a decision that is read-only, When the inventory is built, Then it does not appear
+  - [ ] Given a control that has been retired, When the inventory is written, Then its row remains with `editable: false`, so the consumer is told to remove their control rather than left writing a field no longer honoured
   - [ ] Given the inventory, When a row is added or changed, Then the change is visible as a diff to a file, not as prose in a handoff
   - [ ] Given a malformed row, When Tomo's own tests run, Then they fail — the consumer never receives a malformed inventory
   - [ ] Given this spec ships, When the inventory is published, Then its rows agree with the suggestions wire as this spec leaves it, including the remedy's new field
@@ -513,15 +518,33 @@ adoption numbers.
 
 ## Open Questions
 
-Both are consumer-owned. Neither blocks the SDD; both ride the next handoff.
+**Both have been answered** (consumer reply, 2026-09-29). Recorded here because
+the answers are now requirements, not options.
 
-- [ ] Does the consumer's editor need the conflict's context — the occupied
-      destination, which notes embed the attachment, whether the files are
-      identical — carried on the wire, or can it derive them from data already
-      there? This decides whether the field carries context or only the decision.
-- [ ] Does the consumer want the inventory to carry anything this spec has not
-      planned for? They asked for rows and a wire path, and explicitly excluded
-      read-only entries and per-field documentation.
+- [x] **The conflict's context: send the destination and the byte-identity;
+      let them derive the owning notes.** The destination is not derivable — the
+      wire carries only the profile's *name*, and the editor has no other source
+      for where attachments are filed. Byte-identity is firmer than a preference:
+      their vault port has **no binary read at all**, and a UTF-8 round trip
+      through it corrupts a binary, so computing it would mean adding a binary
+      path to a shared abstraction and doing per-conflict I/O in the editor. We
+      have already compared the files; a boolean is cheaper than them re-deriving
+      it badly. The owning notes they can derive from the run.
+- [x] **The inventory needs one column we had not planned: a stable row `id`.**
+      Neither planned field can key a row — `markdown_control` is prose, and
+      prose gets reworded (our own warning bullet was reworded four times in two
+      days), which their join would read as one row deleted and one added,
+      silently dropping that row's coverage claim. `wire_field` is `null` for
+      exactly the rows that matter most, so it cannot be unique either.
+      `editable` stays, with a purpose it did not have before: a retired control
+      keeps its row at `editable: false`.
+
+**One thing their answer surfaced that is ours, and is not fixed here.** Deriving
+the owning notes from the run is correct because our own list is complete *for
+the run* — but a note filed in an earlier run that embeds the same inbox
+attachment is invisible to both sides, and a rename breaks its embed. Recorded in
+`docs/XDD/backlog.md`; the owner-facing text this spec ships must not imply the
+list is exhaustive.
 
 Resolved before this document was written, recorded here so they are not
 reopened: what happens to an unusable typed name (refused and recorded); whether

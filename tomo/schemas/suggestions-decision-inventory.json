@@ -59,7 +59,7 @@
     },
     {
       "id": "D09",
-      "markdown_control": "Approve/Skip checkbox on a Proposed MOC block: checked approves creating the MOC, unchecked skips it.",
+      "markdown_control": "Approve checkbox on a Proposed MOC block: checked approves creating the MOC, unchecked skips it.",
       "wire_field": "proposed_mocs[].decision",
       "editable": true,
       "parser_label": ["approve"]

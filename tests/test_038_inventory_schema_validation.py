@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -387,7 +387,7 @@ _IDENTIFIER_RE = re.compile(
     r"|\bADR-\d+\b"                   # architecture decisions: ADR-7
     r"|\bPhase\s*\d+\b"               # Phase 2
     r"|\bspec\s*0?\d{2,4}\b"          # spec 037, spec037
-    r"|\b0\d{2}\b"                    # bare zero-padded spec number: 037, 038
+    r"|\b\d{3,4}\b"                   # bare id-shaped number: 037, 100, 0038
     r"|\bPRD\b",                      # PRD (always paired with an F-id in practice)
     re.IGNORECASE,
 )
@@ -415,4 +415,16 @@ def test_identifier_regex_bites_on_a_planted_identifier():
     bare_spec_number = "037 state: the remedy has no wire field yet."
     assert _IDENTIFIER_RE.search(bare_spec_number), (
         "identifier regex failed to bite a bare zero-padded spec number"
+    )
+
+    # The two shapes the old bare-zero-padded branch (\b0\d{2}\b) missed:
+    # a 3-digit spec number with no leading zero, and a 4-digit id that
+    # kills the closing \b on a 3-digit-only pattern.
+    bare_unpadded_number = "100 state: the remedy has no wire field yet."
+    assert _IDENTIFIER_RE.search(bare_unpadded_number), (
+        "identifier regex failed to bite a bare unpadded 3-digit number"
+    )
+    bare_four_digit_id = "ref 0038 for detail."
+    assert _IDENTIFIER_RE.search(bare_four_digit_id), (
+        "identifier regex failed to bite a bare 4-digit id"
     )

@@ -166,7 +166,7 @@ argument for going early was sound on its own terms: *"its value is the rows
 neither of us knows about."*
 
 Building it in Phase 1 collects that value without shipping early. The schema
-already marks **23** fields `Editable` while the parser recognises about seven
+already marks **21** fields `Editable` while the parser recognises about seven
 controls, so the join test is expected to fail on its first run — and what it
 reveals may change the scope of Phases 2–4. Finding that out first is strictly
 better than finding it out last.

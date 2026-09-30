@@ -468,7 +468,7 @@ spec already carrying four deliverables and a wire version move, and it cuts
 against additive-only so close to MVP.
 
 The two-sided join is affordable because both sides are enumerable: the schema
-already marks 23 fields `Editable`, and the parser recognises its controls
+already marks 21 fields `Editable`, and the parser recognises its controls
 through a small set of label literals. It is also the mirror of the guard the
 consumer just built, which is the strongest argument that the shape works.
 

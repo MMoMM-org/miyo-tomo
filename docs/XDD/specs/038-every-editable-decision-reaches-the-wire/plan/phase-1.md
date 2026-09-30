@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: The inventory, and what it reveals"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -45,7 +45,7 @@ first — an inventory of what the suggestions markdown actually offers today.
      decision checkboxes ~`:812-822`, `_walk_attachment_conflicts` `:2268`,
      `_walk_tag_handler_decisions` `:2135`, `parse_tag_handler_keep_source` `:2212`)
      and the field-line handling below it. Then read every `Editable` description
-     in `tomo/schemas/suggestions-wire.schema.json` — there are **23**
+     in `tomo/schemas/suggestions-wire.schema.json` — there are **21**
      `[ref: SDD/ADR-7]`.
   2. Test: none yet — this task's output is data, and T1.2 is the test that
      constrains it. Writing the test first here would mean asserting the contents
@@ -65,7 +65,7 @@ first — an inventory of what the suggestions markdown actually offers today.
      - [ ] No read-only decision appears `[ref: PRD/F4]`
      - [ ] A malformed row fails Tomo's tests `[ref: PRD/F4]`
 
-  **Expect this task to produce a finding, not just a file.** 23 schema fields
+  **Expect this task to produce a finding, not just a file.** 21 schema fields
   against ~7 recognised controls means some editable wire fields have no markdown
   control and some controls may have no row anyone knew about. Record every
   discrepancy in the task's report rather than resolving it silently — it may

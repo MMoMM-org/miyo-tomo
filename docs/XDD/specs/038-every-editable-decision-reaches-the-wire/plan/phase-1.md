@@ -79,6 +79,57 @@ first — an inventory of what the suggestions markdown actually offers today.
   discrepancy in the task's report rather than resolving it silently — it may
   change Phases 2–4, and it is the reason this phase is first.
 
+- [ ] **T1.1b The schema stops under-reporting, and the join gains a key** `[activity: data-architecture]`
+
+  1. Prime: read the `candidate_mocs[].selected` and `.anchor` descriptions in
+     `tomo/schemas/suggestions-wire.schema.json`, and the format the other 21 use
+     — `"Editable — <prose>"`. Read `build_from_wire`'s `candidate_mocs` loop,
+     which honours `selected` (it skips unselected entries) and `anchor`. Read the
+     inventory and its schema as T1.1 left them.
+  2. Test: `parser_label`'s constraints get rejection tests in
+     `tests/test_038_inventory_schema_validation.py`, one per constraint, each
+     demonstrated by executed ablation. That file's docstring claims **every**
+     declared constraint has its own rejection test, and T1.1's re-review made the
+     claim true exhaustively across all 18 keywords. Adding a constrained property
+     without its tests falsifies it again `[ref: PRD/F4]`.
+  3. Implement:
+     a. Prepend the `Editable — ` marker to `candidate_mocs[].selected` and
+        `.anchor`. Both are honoured by the rebuild path but carry no marker, so
+        ADR-7's schema-side join is structurally blind to them — the blind spot
+        this spec exists to end. Owner ruling 2026-09-30.
+     b. Add `parser_label` to the inventory schema and every row: the literal the
+        parser matches on. It is **many-to-one** — `time`, `position` and
+        `content` come from one log-entry line, and the three `accepted` fields
+        share one checkbox. A row at `editable: false` has no control by
+        definition, so the schema must permit the label's absence, or the field
+        breaks the exemption `editable: false` exists to carry. Owner ruling
+        2026-09-30.
+     c. Rewrite D22/D23/D24's `note` self-contained: no task, phase, feature or
+        spec identifiers. The file is vendored by a consumer who cannot resolve
+        them. D22/D23's current text stops being true the moment (a) lands.
+  4. Validate: full suite and `ruff`. **15 test files reference
+     `suggestions-wire.schema`** — if any pins description text or hashes the file,
+     report it rather than working around it. Confirm the marked count is now 23.
+  5. Success:
+     - [ ] `selected` and `anchor` carry the marker, so the schema-side join sees
+           them `[ref: PRD/F4]`
+     - [ ] Every row carries `parser_label`; its absence is permitted only at
+           `editable: false` `[ref: PRD/F4]`
+     - [ ] Each constraint `parser_label` adds has a rejection test whose bite was
+           demonstrated by executed ablation
+     - [ ] No `note` value references a task, phase, feature or spec id
+     - [ ] The plan's counts are corrected — 23 marked fields, and the measured
+           control count replaces "~7 recognised controls"
+
+  **Two backlog entries this task also writes**, to `docs/XDD/backlog.md`:
+  - `classification` is parsed but **unreachable from the review surface**: no
+    renderer emits the line, and field lines are emitted literally rather than
+    from a generic emitter, so the value is always `None`. It is not an editable
+    decision and owes no wire field. Recorded so the next reader does not
+    re-derive it.
+  - The `type` field line has no `suggestions-wire` counterpart and was not
+    traced. Open question, lower confidence than `classification`.
+
 - [ ] **T1.2 The two-sided join test** `[activity: testing]`
 
   1. Prime: read the consumer's own guard as the model —

@@ -39,7 +39,7 @@ version: "1.0"
 | specId | 038-every-editable-decision-reaches-the-wire |
 | title | Every editable decision reaches the wire |
 | status | `IN_REVIEW` |
-| totalTasks | 22 |
+| totalTasks | 23 |
 | parallelTasks | 3 |
 | specReferences | 125 |
 | clarificationsRemaining | 0 |
@@ -48,7 +48,7 @@ version: "1.0"
 
 | Phase | Name | Status | Tasks | File |
 |-------|------|--------|-------|------|
-| 1 | The inventory, and what it reveals | `pending` | 3 | `phase-1.md` |
+| 1 | The inventory, and what it reveals | `in_progress` | 4 | `phase-1.md` |
 | 2 | The wire carries the decision | `pending` | 5 | `phase-2.md` |
 | 3 | Refusal, before anything can be typed | `pending` | 5 | `phase-3.md` |
 | 4 | The name becomes a value | `pending` | 4 | `phase-4.md` |
@@ -82,6 +82,7 @@ version: "1.0"
 |------|------|-----------|-----------|
 | 2026-09-30 | T1.1 | T1.1 gains a test of its own: the inventory's JSON Schema is written first, then `tests/test_038_inventory_schema_validation.py`, before the inventory is authored. The task previously declared "Test: none yet". | The TDD guardian blocked the task on an internal contradiction: T1.1 claimed no test while carrying "a malformed row fails Tomo's tests" as a success criterion, which `[ref: PRD/F4]` requires. T1.2's join test proves *completeness*, never *row validity*, so as originally sequenced that PRD criterion was owned by no test in the plan. The guardian's distinction is the one that resolves it — a test for "what makes a row valid" is available immediately, a test for "which rows exist" is not. Approved by the owner 2026-09-30. |
 | 2026-09-30 | — | The schema's `Editable` field count corrected from 23 to 21 in this file, `solution.md` ADR-7, and twice in `phase-1.md`. | Measured, not recalled: a walk over every schema description containing `Editable` returns 21, and returns 21 at `main`, so the schema had not drifted — the figure was wrong when written. Corrected before T1.1 was dispatched so no implementer is primed to count until it reaches a number that does not exist. Commit `de8da00`. |
+| 2026-09-30 | T1.1b (new) | A task is added to Phase 1, between T1.1 and T1.2: mark `candidate_mocs[].selected` and `.anchor` `Editable` in the wire schema, add a `parser_label` key to the inventory, make the D22/D23/D24 notes self-contained, and correct the plan's two control counts. Phase 1 goes from 3 tasks to 4; the spec from 22 to 23. | Two owner rulings on T1.1's findings, both 2026-09-30. **First:** `build_from_wire` honours `selected` (it skips unselected entries) and `anchor`, yet neither description carries the `Editable` marker — so ADR-7's schema-side join is permanently blind to two fields the wire acts on, which is the exact blind spot this spec exists to close. **Second:** the parser-side join needs a key, and neither available field can serve — `wire_field` is `null` on D24, and `markdown_control` is prose whose provenance was deliberately stripped as consumer-facing. Without `parser_label` the mapping would live as a hand-written dict in the test, which is "a rule someone has to remember" — the mechanism ADR-7 names as what failed in 037. Both must land before T1.2 writes its join, and they share two files, so they ship as one task rather than three review cycles. |
 
 ### A standing warning carried forward from spec 037
 

@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-29 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Current Phase** | PLAN |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-09-30 |
 
 ## Documents
@@ -33,6 +33,7 @@
 | 2026-09-30 | Everything ships in one release — the inventory does **not** go early | Owner, declining the consumer's request to ship it first. Their argument was sound (the inventory's value is the rows neither side knows about, and every day it is absent is a day an already-wrong row stays invisible). Overruled in favour of one coordinated delivery, because the release is forced to be coordinated anyway by the version move, and a second partial handoff costs more than it buys. |
 | 2026-09-30 | The release includes a runnable test setup for the consumer | Owner. Their QA vault cannot exercise what they just built: its only suggestions run has **one** worthy card, the other six are suppressed and render only Force Atomic, and no run either side holds carries `delete_source: true` — so the tri-state's delete leg and the stale-flag render path are reachable only by hand. We hold a vault with a real conflict fixture, so we send the run rather than describe it. Precedent: `_archive/outbox/2026-09/2026-09-14_tomo-run-fixture-three-buckets_suggestions.json`. |
 | 2026-09-30 | The inventory row carries a stable opaque `id`; `editable` stays for retired controls | Consumer's request, accepted — and the reasoning is theirs: `markdown_control` is prose and prose gets reworded (our own warning bullet changed wording four times in two days), which their join would read as one row deleted plus one added, silently dropping that row's coverage claim. `wire_field` is `null` for exactly the rows that matter, so it cannot be unique. `editable: false` on a retired row becomes their signal to remove a control rather than keep one writing a field we no longer honour. |
+| 2026-09-30 | Decomposition tier: Incremental | Classifier recommended Incremental — rule 1 fired twice (component_count 3: `typed_name_check`, the decision inventory, its join test; feature_count 4). 38 acceptance criteria, `parallel_markers` false, `change_type` ambiguous between feature and fix but irrelevant because rule 1 precedes the change-type escape. Accepted. The 10 modified components correctly did not increment the count. |
 | 2026-09-30 | The wire carries the occupied destination and byte-identity; the owning notes are derived | Consumer's answer to the PRD's open question. Neither is a preference: the wire carries only the profile's *name*, so the destination is not derivable; and their vault port has no binary read at all — a UTF-8 round trip through it corrupts a binary — so byte-identity would cost them a binary path in a shared abstraction plus per-conflict I/O in the editor. The owning notes they derive from the run. |
 | 2026-09-29 | The conflict row is keyed by `source`, not `item_key` | Research finding, not a reversal: the `item_key` agreement with Hashi concerns **note** identity after the spec 034 namesake collision. An attachment conflict is keyed by **attachment** identity — `_build_move_asset_actions` already builds `remedies_by_source`, and `detect_attachment_conflicts` dedups by exact source path so one attachment keeps one decision across several owning notes. Must be said explicitly to Hashi, since "item_key agreed" was written to them in plain language. |
 

@@ -240,6 +240,20 @@ survives Pass 2's JSON-only rebuild.
      `test_losing_the_remedy_silently_produces_the_ignore_outcome`). The file's own
      docstring predicts `4 passed, 1 xfailed` → `3 failed`; that transition is the
      signal the change works `[ref: SDD/Implementation Gotchas]`.
+     **One assertion inside the second test must be REHOMED, not deleted with it.**
+     Its closing two assertions pin a behaviour that **survives** this fix: an
+     *explicit* `remedy: "ignore"` leaves the `move_asset` destination at the
+     occupied path and records nothing as skipped. Measured 2026-10-01 — nothing
+     else in the suite pins that. `test_037_t3_3_embed_rewrite.py:168`
+     (`test_non_rename_remedies_leave_the_body_unchanged`) covers `ignore` only for
+     "the body is unchanged", and a grep for a move-destination assertion under
+     `ignore` returns nothing. `ignore` stays reachable after the fix — the schema
+     enum keeps it and `_resolve_attachment_remedy` (`suggestion-parser.py:2234`)
+     returns it for specific tick combinations — so this is live behaviour, not
+     defect residue. Write it as its own small test before deleting the host:
+     explicit `ignore` ⇒ destination is the occupied path, `skipped == []`. The
+     tdd-guardian reviewed this task and approved the deletion as safe; it read the
+     test's first three assertions and not its last two.
   3. Implement: replace the `[]` with a projection producing the same
      `{source, remedy, proposed_name}` triple the markdown path yields.
   4. Validate: the two baseline tests in that file stay green; remove the xfail
@@ -273,6 +287,9 @@ survives Pass 2's JSON-only rebuild.
            identical decisions `[ref: PRD/F1]`
      - [ ] The strict xfail is **removed**, not left passing `[ref: SDD/Implementation Gotchas]`
      - [ ] The two defect-recording tests are deleted with it
+     - [ ] The explicit-`ignore` move-destination assertion is **rehomed** to its
+           own test before its host is deleted, and that test fails if the
+           behaviour changes — demonstrated, not assumed
      - [ ] All four sites asserting "the wire carries no Attachment-Conflicts
            data" are swept, including both `docs/tomo/` WHY files and a
            supersession pointer in 037's SDD

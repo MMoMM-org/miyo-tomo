@@ -4,10 +4,10 @@
   "title": "Suggestions Wire (Vault-published editor surface)",
   "description": "Complete, structured mirror of the review surface, published to the vault every Pass 1 (ADR-026). The Hashi Suggestions Editor reads and edits it; Tomo owns it. emit_digest is the tool-agnostic change signal: when it no longer matches a recomputation over the editable payload, Pass-2 rebuilds its ENTIRE output from this JSON alone (build_from_wire) — never re-reading the markdown. So every editable decision the markdown offers is carried here.",
   "type": "object",
-  "required": ["schema_version", "generated", "run_id", "profile", "source_items", "emit_digest", "suggestions", "proposed_mocs", "daily_updates", "tag_handler_groups"],
+  "required": ["schema_version", "generated", "run_id", "profile", "source_items", "emit_digest", "suggestions", "proposed_mocs", "daily_updates", "tag_handler_groups", "attachment_conflicts"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "2"},
+    "schema_version": {"const": "3"},
     "generated": {"type": "string"},
     "run_id": {"type": "string"},
     "profile": {"type": "string"},
@@ -22,7 +22,7 @@
       "description": "One entry per atomic note suggestion, keyed by its stable S## id. Carries the full editable per-note surface.",
       "items": {
         "type": "object",
-        "required": ["id", "stem", "item_key", "title", "template", "location", "tags", "decision", "keep_source", "delete_source", "force_atomic", "suppressed", "candidate_mocs"],
+        "required": ["id", "stem", "item_key", "title", "template", "location", "tags", "decision", "keep_source", "delete_source", "force_atomic", "suppressed", "candidate_mocs", "attachments"],
         "additionalProperties": false,
         "properties": {
           "id": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"},
@@ -169,6 +169,22 @@
           "marker": {"type": "string", "description": "Read-only display — the anchor/marker in the target note."},
           "source_paths": {"type": "array", "items": {"type": "string"}, "description": "Read-only display — the inbox notes captured into this group."},
           "preview": {"type": "string", "description": "Read-only display — the composed block that will be inserted."}
+        }
+      }
+    },
+    "attachment_conflicts": {
+      "type": "array",
+      "description": "Attachment destination conflicts (spec 037/038). One entry per colliding attachment, however many notes embed it — the owning notes are not carried here; the consumer derives them by scanning suggestions[].attachments for the same path.",
+      "items": {
+        "type": "object",
+        "required": ["source", "destination", "same_file", "remedy", "proposed_name"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {"type": "string", "description": "Read-only — the colliding attachment's source path; the join key against suggestions[].attachments."},
+          "destination": {"type": "string", "description": "Read-only — the vault destination already occupied by this attachment."},
+          "same_file": {"type": ["boolean", "null"], "description": "Read-only — whether source and destination are byte-identical. Null when the comparison could not be made."},
+          "remedy": {"type": "string", "enum": ["rename", "keep_in_inbox", "ignore"], "description": "Editable — how to resolve the conflict. Default mirrors the markdown's pre-ticked remedy: rename when a free name was found, otherwise keep_in_inbox."},
+          "proposed_name": {"type": ["string", "null"], "description": "Editable — the rename target's basename. Null when Pass 1 found no free name; the owner may type one."}
         }
       }
     }

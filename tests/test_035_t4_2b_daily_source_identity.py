@@ -186,8 +186,14 @@ def test_bucket_declares_source_item_key_required(bucket):
     assert prop["minLength"] == 1
 
 
-def test_schema_version_moved_to_2():
-    assert WIRE_SCHEMA["properties"]["schema_version"]["const"] == "2"
+def test_schema_version_moved_to_3():
+    """Pinned literal, re-measured as the version keeps moving: "1" -> "2"
+    here (spec 035 T4.2b, F9), "2" -> "3" in spec 038 T2.1 (ADR-1, the
+    attachment_conflicts[] addition). A regression guard against an
+    unintended future bump, not a structural check — update the literal
+    each time a deliberate move lands, the same way this test's own history
+    already did once."""
+    assert WIRE_SCHEMA["properties"]["schema_version"]["const"] == "3"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -686,24 +686,29 @@ class TestVendoredCopies:
             for c in mutated_changes
         ), f"the comparison stopped detecting a removed property: {mutated_changes}"
 
-    def test_suggestions_comparison_a_is_clean_offline(self):
+    def test_suggestions_comparison_a_reports_measured_delta_offline(self):
         """[ref: PRD/F6-AC3] Offline, hermetic: OUR
         suggestions-wire.schema.json against the COMMITTED vendored copy.
 
-        Re-measured 2026-09-12, the third measurement this test has
-        carried. It went zero (T2.4) -> eight (T4.2b, once F9 widened the
-        three daily buckets and the version const moved) -> zero again
-        here, because Hashi vendored the widened wire and merged it
-        (PR #134, `f799588`) and T4.4 refreshed the committed copy.
+        Re-measured 2026-10-01 (spec 038 T2.1). It went zero (T2.4) ->
+        eight (T4.2b) -> zero (T4.4) -> six here, because `schema_version`
+        moved "2" -> "3" and `attachment_conflicts[]` was added to the live
+        schema (ADR-1/ADR-2/ADR-8) while the vendored copy — deliberately,
+        per ADR-1 — was NOT touched: it records what the consumer actually
+        vendors, and stamping the new version there would make this
+        comparison read clean while Hashi's real copy still rejects every
+        document we emit.
 
         Its previous instruction — re-measure and update rather than treat
         a changed delta as a defect in `snapshot_parity_delta` — is what
         this revision follows, and it carries forward unchanged. So does
-        the reason the delta was allowed to stand in the meantime:
+        the reason the delta is allowed to stand until the handover:
         requirements.md's Rule 7 ("A consumer-affecting change is not
         emitted until the consumer confirms") plus the 2026-09-09 "one
-        strict wire, no compatibility window" decision. Reaching zero here
-        is the confirmation arriving, not the rule weakening.
+        strict wire, no compatibility window" decision. Phase 5 refreshes
+        the vendored copy once Hashi confirms, the same sequence spec 035
+        followed (`4338481` then `f63b947`), and this test returns to
+        `_is_clean_offline` then.
         """
         recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(
@@ -715,10 +720,6 @@ class TestVendoredCopies:
             changes, HASHI_SUGGESTIONS_SNAPSHOT.name
         )
 
-        assert reportable == [], (
-            "the consumer has vendored this wire, so anything here is drift "
-            f"they have not been told about: {reportable}"
-        )
         assert sanctioned == [], (
             "nothing is sanctioned on this wire — an entry means "
             "SANCTIONED_ASYMMETRIES grew a prefix that is hiding a real delta"
@@ -728,9 +729,33 @@ class TestVendoredCopies:
             "(ADR-7 carry-forward b) — nothing here may claim a change "
             "obliges the consumer"
         )
-        assert render_snapshot_parity_report(
+
+        # The exact six-entry delta T2.1 produces — pinned so a future
+        # schema edit that changes this wire's shape again is caught here,
+        # not waved through as "still some drift, as expected".
+        assert {(c["pointer"], c["kind"], c["detail"]) for c in reportable} == {
+            ("", "added_enum_value", "schema_version: added value '3'"),
+            ("", "removed_enum_value", "schema_version: removed value '2'"),
+            ("", "added_property", "added property: attachment_conflicts"),
+            ("", "required_added", "required gained: attachment_conflicts"),
+            (
+                "/properties/attachment_conflicts/items",
+                "node_added",
+                "node added: /properties/attachment_conflicts/items",
+            ),
+            (
+                "/properties/suggestions/items",
+                "required_added",
+                "required gained: attachments",
+            ),
+        }
+        assert len(reportable) == 6
+
+        message = render_snapshot_parity_report(
             [{"document": HASHI_SUGGESTIONS_SNAPSHOT.name, "changes": reportable}]
-        ) == "", "an in-sync document must render to nothing at all"
+        )
+        assert "attachment_conflicts" in message
+        assert "schema_version" in message
 
         # Non-vacuity, on the exact field this wire's release was about: a
         # scratch copy — never the committed file — that drops

@@ -139,9 +139,22 @@ survives Pass 2's JSON-only rebuild.
        in the code before relying on it.
      - **Both count guards**, updated and not collapsed:
        `FLOOR_SCHEMA_MARKED_FIELDS` (`:117`) `23` → `25`, its explanatory text at
-       `:78-79`, and the arithmetic at `:563`/`:568`; and
-       `test_wire_schema_marks_exactly_23_editable_fields` in
+       `:78-79`, and the docstring arithmetic at `:563` ("drops from 23 to 22" →
+       `25` to `24`); and `test_wire_schema_marks_exactly_23_editable_fields` in
        `tests/test_038_inventory_schema_validation.py`, renamed to its new number.
+       **`FLOOR_SCHEMA_MARKED_FIELDS` is not a loose floor** — despite the name and
+       the `>=` comparison, `test_injection_e_reworded_marker_breaches_the_floor`
+       opens with the premise `marked_before == FLOOR_SCHEMA_MARKED_FIELDS` and its
+       failure message says so outright: "a schema change moved the count out from
+       under this injection; pick a fixture that actually sits on the floor, rather
+       than loosen the pin". The floor must equal the exact marked count or that
+       injection stops testing anything, so a floor left lagging at `23` does not
+       merely under-constrain — it breaks the injection's premise. Verified by
+       reading `:563-580`.
+     - **Arithmetic, verified 2026-10-01** so it is not re-derived: 23 rows are
+       backed now; D24 moving off `null` makes 24; one new row makes **25**, which
+       equals the marked count. No existing row names `attachment_conflicts`, so
+       exactly one row is added, not two.
      - Check whether the inventory's own top-level `schema_version` (currently `1`)
        is obliged to move for an added row. The file is **vendored by Hashi** —
        state the answer either way rather than leaving it unexamined.

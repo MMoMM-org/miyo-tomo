@@ -329,31 +329,52 @@ survives Pass 2's JSON-only rebuild.
      and **`emit_digest`**. The digest is a hash over the payload minus itself, so
      it changes necessarily whenever any field changes; a criterion naming only two
      differences fails on the first run, for a reason that is correct behaviour.
-     Handle it deliberately rather than by widening the allowance: compare the two
-     payloads with `emit_digest` removed from both sides, and assert **separately**
-     that the digest differs. That second assertion is worth having on its own — it
-     is the only executed proof that the digest actually covers the new field, which
-     T2.2 established by reading `compute_payload_digest` but never by running it.
+     Handle it deliberately rather than by widening the allowance, and use the
+     **strong** form of the digest assertion, not "the digest differs" — a digest
+     that merely changed says nothing about *which* field moved it, and would pass
+     just as happily if an unrelated field had been renamed. Instead: take the
+     baseline, apply **only** the two intended changes (`schema_version` → `"3"`, add
+     `attachment_conflicts: []`), recompute with `compute_payload_digest`
+     (`lib/render_md.py:383`), and assert it reproduces today's digest **exactly**.
+     **Verified end-to-end 2026-10-01 — it does**, and the negative control holds:
+     omit the new key and the digest does not match. That one assertion subsumes the
+     "no others" criterion, because any unrelated field having moved would break the
+     reconstruction, and it is the only *executed* proof that the digest covers the
+     new field — T2.2 established that by reading `compute_payload_digest`, which is
+     sound but is not a test. Keep the key-set comparison alongside it: when the
+     reconstruction fails, the digest tells you only *that* something moved, while
+     the key-set diff names *what*.
      **And do not derive the baseline by loading the old module.** Measured: the
      historical `suggestions-render.py` imported standalone and run on today's
      fixture stamps `schema_version: "3"`, not `"2"`, because
      `wire_schema_version` reads the schema **from disk at call time**
      (`lib/wire_version.py`) rather than carrying a literal. Old code plus today's
      schema gives you old structure with the current version stamp — so the one
-     difference this test most wants to see would silently vanish. Capture the
-     baseline as committed data instead: produce it with the schema file from
-     `50d8f1b` in place as well as the script (a scratch worktree is the clean way,
-     removed afterwards with `rm -rf` plus `git worktree prune`), and commit the
-     result under `tests/fixtures/`. Derive the baseline from **`50d8f1b`** — the last commit before Phase 2
-     touched either file — rather than hand-typing it from memory; a hand-typed
-     baseline proves only that two people agreed on what they expected. Note what
-     `50d8f1b` is **not**: it is not the branch point, which is `8d284fb`, 36 commits
-     earlier. Either would in fact serve here, because Phase 1 changed only
-     `description` strings in the wire schema and nothing that affects a payload's
-     shape — but `50d8f1b` is the tighter baseline, and verified: at that commit the
-     schema reads `const: "2"` with no `attachment_conflicts` property, and
-     `tomo/scripts/suggestions-render.py` is untouched by anything on this branch
-     before T2.2.
+     difference this test most wants to see would silently vanish.
+     **Capture the baseline as committed data instead**, under `tests/fixtures/`.
+     The source is **`50d8f1b`** — the last commit before Phase 2 touched either
+     file. It is *not* the branch point, which is `8d284fb`, 36 commits earlier;
+     either would in fact serve, because Phase 1 changed only `description` strings
+     in the wire schema and nothing affecting a payload's shape, but `50d8f1b` is
+     the tighter choice. Verified at that commit: the schema reads `const: "2"`
+     with no `attachment_conflicts` property, and `tomo/scripts/suggestions-render.py`
+     is untouched by anything on this branch before T2.2.
+     **The recipe is verified, not merely suggested** — run 2026-10-01:
+     `git worktree add --detach <scratch> 50d8f1b`, then inside that worktree load
+     both `tests/test_suggestions_wire_emit.py` and
+     `tomo/scripts/suggestions-render.py` from the worktree and call
+     `build_wire_payload(_doc())`. It works for a reason worth stating:
+     `tests/test_suggestions_wire_emit.py` is **byte-identical** at `50d8f1b` and at
+     HEAD (`git diff` over that range is empty), so the baseline and the current
+     payload are built from the same input — had the fixture drifted, the diff would
+     have included fixture changes and proved nothing. Remove the worktree afterwards
+     with `rm -rf` plus `git worktree prune`.
+     What that recipe produces, recorded so a differing result reads as a problem
+     rather than as news: **10 top-level keys**, `schema_version: "2"`, no
+     `attachment_conflicts`. Today's payload has **11**. The only added key is
+     `attachment_conflicts`; nothing is removed; `emit_digest` and `schema_version`
+     are the only changed values. Do **not** hand-type it — a hand-typed baseline
+     proves only that two people agreed on what they expected.
   3. Implement: nothing in `tomo/scripts/` changes. This task is test-only.
   4. Validate: the new test passes. Then **prove it bites**: on a scratch copy,
      rename or drop one unrelated top-level payload key and confirm the test fails
@@ -362,7 +383,8 @@ survives Pass 2's JSON-only rebuild.
      - [ ] A conflict-free payload differs from the pre-038 baseline in exactly the
            version stamp and the new empty array, with `emit_digest` compared
            separately rather than counted among them `[ref: SDD/Acceptance Criteria]`
-     - [ ] The digest is shown by execution to cover the new field
+     - [ ] The digest is shown by execution to cover the new field — by
+           reconstruction from the baseline, with the key-omitted negative control
      - [ ] The baseline is **captured**, not hand-typed `[ref: SDD/Acceptance Criteria]`
      - [ ] An unrelated top-level key change turns the test red, **demonstrated**,
            and the failure names the key

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Refusal, before anything can be typed"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -29,8 +29,14 @@ phase: 3
 - A refused name **holds the owning note**. 037 excluded `vault_collision_held`
   from the holding pass because the owner *chose* to leave the attachment; a
   refused name is the opposite `[ref: SDD/ADR-6]`.
-- `_asset_dest_join` is **not** changed. Its truncation stays as defence in depth
-  `[ref: SDD/CON-4]`.
+- `_asset_dest_join` is **not** changed. What stays as defence in depth is
+  **basename extraction**, not truncation — `source_path.rsplit("/", 1)[-1]`
+  (`lib/render_actions.py:571`). So an unguarded typed `a/b.png` yields
+  `<asset_folder>/b.png` today: the prefix is silently dropped, which is a wrong
+  name rather than a traversal. The PRD states this correctly at
+  `requirements.md:515` — "the existing helper already discards everything before
+  the last separator, so refusal closes the reporting gap rather than a traversal
+  hole". Measured 2026-10-01; do not go looking for a truncation `[ref: SDD/CON-4]`.
 
 **Dependencies**: none on Phases 1–2. **This phase precedes Phase 4 on purpose**:
 no commit on the branch should ever have an owner-typed string reaching a
@@ -67,9 +73,17 @@ produce a typed name at all.
   2. Test: one case per refusal class and one acceptance case. Separator present
      (`a/b.png`, `../../x.png`, `/abs.png`); forbidden character (each of
      `: * ? " < > |` and backslash); blank and whitespace-only (`""`, `" "` —
-     note `not " "` is `False`, so the existing emptiness guard does **not** catch
-     it); already taken. Plus: a usable name is returned **unchanged**, never
-     rewritten.
+     note `not " "` is `False`, so **two** existing truthiness guards each let it
+     through, both measured 2026-10-01: `lib/render_actions.py:788`'s
+     `not remedy_entry.get("proposed_name")`, which is why `" "` does **not**
+     degrade to `keep_in_inbox` the way a `None` does, and `_asset_dest_join`'s
+     `if not basename` at `:572`, which is why it then returns a destination
+     ending in a bare space instead of raising. The check must precede both);
+     already taken. Plus: a usable name is returned **unchanged**, never
+     rewritten. One addition to the character list, measured: `FORBIDDEN_CHARS`
+     (`lib/obsidian_filename.py:32`) has **ten** members — the eight named above,
+     plus `/` which the separator class already covers, plus **NUL**, which this
+     list never named. Refuse it too, so "each of" means the whole set.
   3. Implement: `tomo/scripts/lib/typed_name_check.py`. Returns a verdict plus a
      refusal reason from a **closed set** so the renderer can phrase each without
      parsing a string `[ref: SDD/Interface Specifications]`.
@@ -121,11 +135,22 @@ produce a typed name at all.
 
 - [ ] **T3.4 The instruction document reports it** `[activity: frontend-ui]`
 
-  1. Prime: read `render_md.py`'s skipped block (`~:1046-1051`) and
-     `_render_unresolved_conflict_bullet` (`:797`) for the established register:
-     a heading stating the outcome, a bold lead sentence stating the effect, then
-     `- ⚠️ **<Label>:**` bullets. Read ADR-11 in
-     `docs/tomo/scripts/lib/render_md.md:328-330` `[ref: SDD/CON-6]`.
+  1. Prime: read `lib/render_md.py`'s skipped-**assets** block at
+     **`:1079-1095`** and `_render_unresolved_conflict_bullet` at **`:740`**, for
+     the established register: a heading stating the outcome, a bold lead sentence
+     stating the effect, then `- ⚠️ **<Label>:**` bullets. All three references
+     were wrong as first written and are corrected here, measured 2026-10-01:
+     `~:1046-1051` is the *unresolved_conflicts* block — a different block with its
+     own heading and its own passive-voice history; `:797` is 57 lines past the
+     one and only definition of that helper. The real block already carries the
+     register at `:1084-1092`, and gives each kind its own `remedy` line beneath
+     the bullet — the new kind needs one too, and that line is where "what to do
+     about it" belongs. For CON-6 read
+     **`docs/tomo/scripts/lib/render_md.md:502-510`** ("ADR-11 Reaches the Existing
+     Loop Too"), which is about this exact bullet — the one `no_basename` and
+     `collision` already share, and where the owner ruled on 2026-09-27 that the
+     `` `move_asset` → `` wire-action prefix had to go. `:328-330` only cites
+     ADR-11 in passing inside another ADR's argument `[ref: SDD/CON-6]`.
   2. Test: a refused name produces a bullet naming the attachment and the reason
      class; the text contains **no** function name, module name, wire action name
      or id; the sentence asserts only what was verified.

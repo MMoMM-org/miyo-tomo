@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.62.0
+# version: 0.62.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -987,24 +987,26 @@ def main() -> int:
             }
             for a in skipped_daily
         ]
-    # Record attachments that could not be filed (no basename, or a
-    # destination collision) so instructions-diff can reconcile expected vs
-    # actual instead of reading a deliberate skip as a coverage gap. Metadata
-    # only: source/destination/reason, never content.
+    # Record attachments that could not be filed (no basename, a destination
+    # collision, or a refused typed name) so instructions-diff can reconcile
+    # expected vs actual instead of reading a deliberate skip as a coverage
+    # gap. Metadata only: source/destination/kind/reason, never content.
     if skipped_assets:
         tomo_block = instructions_doc.get("tomo")
         if tomo_block is None:
             tomo_block = {}
             instructions_doc["tomo"] = tomo_block
-        # "kind" is deliberately not projected here — it exists to pick a
-        # rendering-time remedy string (see render_md.py) and nothing reads
-        # it from this JSON today. A future JSON consumer that needs to
-        # distinguish the two cases can derive it: a no-basename skip never
-        # has a destination, a collision always does.
+        # spec 038 T3.2: "kind" IS now projected. It used to be considered
+        # derivable and so omitted — "a no-basename skip never has a
+        # destination, a collision always does" — but `typed_name_refused`
+        # also carries `destination: None`, so that derivation no longer
+        # distinguishes every pair and a JSON consumer needs the explicit
+        # value instead.
         tomo_block["skipped_assets"] = [
             {
                 "source": s.get("source"),
                 "destination": s.get("destination"),
+                "kind": s.get("kind"),
                 "reason": s.get("reason"),
             }
             for s in skipped_assets

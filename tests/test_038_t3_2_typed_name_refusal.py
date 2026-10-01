@@ -36,10 +36,23 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from lib.render_actions import (  # noqa: E402
+    _build_move_asset_actions,
+    build_actions,
+    suppress_moves_for_unfiled_attachments,
+)
+from lib.typed_name_check import REFUSAL_REASONS  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"
+
+CFG = {
+    "concepts.inbox": INBOX,
+    "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
+    "daily_log.heading": "Daily Log",
+    "daily_log.heading_level": 2,
+    "profile": "miyo",
+}
 
 # Legal on macOS, forbidden by Obsidian (FORBIDDEN_CHARS) — the exact string
 # the task text uses to show the ruling matters: run the reducer's own
@@ -67,6 +80,20 @@ def _remedy(source, remedy, proposed_name=None, *, name_is_owner_supplied=None) 
     entry = {"source": source, "remedy": remedy, "proposed_name": proposed_name}
     if name_is_owner_supplied is not None:
         entry["name_is_owner_supplied"] = name_is_owner_supplied
+    return entry
+
+
+def _confirmed_entry(**overrides) -> dict:
+    entry = {
+        "id": "S01",
+        "action": None,
+        "title": "Some Note",
+        "source_path": "some-note.md",
+        "parent_mocs": [],
+        "tags": [],
+        "candidate_mocs": [],
+    }
+    entry.update(overrides)
     return entry
 
 
@@ -99,7 +126,10 @@ def test_unusable_typed_name_is_refused_when_owner_supplied():
     assert len(skipped) == 1
     assert skipped[0]["source"] == "100 Inbox/Scans/other.png"
     assert skipped[0]["kind"] == "typed_name_refused"
-    assert skipped[0]["reason"] == "forbidden_character"
+    # `refusal_reason` is the bare REFUSAL_REASONS code; `reason` is prose
+    # (coordinator review, 2026-10-01) — see the dedicated tests below for
+    # the exact prose string and the no-raw-code guarantee.
+    assert skipped[0]["refusal_reason"] == "forbidden_character"
 
 
 def test_unusable_computed_name_behaves_exactly_as_today_when_not_owner_supplied():
@@ -262,7 +292,7 @@ def test_whitespace_only_proposed_name_reaches_the_rename_branch_and_is_refused(
     assert actions == []
     assert len(skipped) == 1
     assert skipped[0]["kind"] == "typed_name_refused"
-    assert skipped[0]["reason"] == "blank"
+    assert skipped[0]["refusal_reason"] == "blank"
 
 
 def test_whitespace_only_proposed_name_without_flag_still_degrades_as_before():
@@ -314,3 +344,147 @@ def test_refused_source_produces_no_move_asset_anywhere_in_actions():
     sources_in_actions = [a["source"] for a in actions if a["action"] == "move_asset"]
     assert "100 Inbox/Scans/bad.png" not in sources_in_actions
     assert len(skipped) == 1
+
+
+# ---------------------------------------------------------------------------
+# CONFIRMED DEFECT (coordinator spec-compliance review, 2026-10-01): `reason`
+# must be prose, like every other `skipped_assets` kind — not a bare
+# REFUSAL_REASONS code. Verified live by execution: `render_actions.py`'s own
+# `_attachment_suppression_reason` (reached unconditionally from
+# `suppress_moves_for_unfiled_attachments`, itself called in production at
+# `instruction-render.py:673-675`) and `render_md.py`'s skipped-assets bullet
+# both render `reason` VERBATIM — a bare code there is a CON-6 violation
+# ("no executor internals in the rendered text") live today, not a defect
+# deferred to T3.4. The bare code now lives in its own `refusal_reason`
+# field, so a renderer can still branch on it deterministically.
+# ---------------------------------------------------------------------------
+
+
+def test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code():
+    """Mutation: put the bare REFUSAL_REASONS code back into `reason` — a
+    reader of `_attachment_suppression_reason`'s or render_md.py's rendered
+    text would then see a raw enum literal."""
+    manifest = [
+        _manifest_entry(
+            source_path="karte.md", rendered_file="2026-01-01_0900_karte.md",
+            attachments=["100 Inbox/Scans/other.png"],
+        ),
+    ]
+    remedies = [
+        _remedy(
+            "100 Inbox/Scans/other.png", "rename", UNUSABLE_TYPED_NAME,
+            name_is_owner_supplied=True,
+        )
+    ]
+    _actions, skipped = _build_move_asset_actions(
+        manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
+    )
+    assert len(skipped) == 1
+    entry = skipped[0]
+    assert entry["refusal_reason"] == "forbidden_character"
+    assert entry["reason"] != "forbidden_character"
+    for code in REFUSAL_REASONS:
+        assert code not in entry["reason"], (
+            f"a bare REFUSAL_REASONS code leaked into the prose reason: "
+            f"{entry['reason']!r}"
+        )
+    assert entry["reason"] == (
+        f"typed name refused: `{UNUSABLE_TYPED_NAME}` contains a character "
+        f"Obsidian does not allow in a filename"
+    )
+
+
+def test_each_refusal_class_has_its_own_exact_prose_sentence():
+    """Assert on the EXACT string for all three refusal classes, not merely
+    presence — spec 037's T4.4 shipped four defective sentences precisely
+    because every assertion there checked presence rather than the exact
+    text."""
+    cases = [
+        ("a/b.png", "separator_present", (
+            "typed name refused: `a/b.png` contains a path separator, "
+            "which is not allowed in a filename"
+        )),
+        (UNUSABLE_TYPED_NAME, "forbidden_character", (
+            f"typed name refused: `{UNUSABLE_TYPED_NAME}` contains a "
+            f"character Obsidian does not allow in a filename"
+        )),
+        (" ", "blank", "typed name refused: the typed name is blank"),
+    ]
+    for proposed_name, expected_code, expected_reason in cases:
+        manifest = [
+            _manifest_entry(
+                source_path="karte.md", rendered_file="2026-01-01_0900_karte.md",
+                attachments=["100 Inbox/Scans/x.png"],
+            ),
+        ]
+        remedies = [
+            _remedy(
+                "100 Inbox/Scans/x.png", "rename", proposed_name,
+                name_is_owner_supplied=True,
+            )
+        ]
+        _actions, skipped = _build_move_asset_actions(
+            manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
+        )
+        assert len(skipped) == 1, (expected_code, skipped)
+        assert skipped[0]["refusal_reason"] == expected_code
+        assert skipped[0]["reason"] == expected_reason
+
+
+def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code():
+    """The sentence actually printed into instructions.md
+    (`render_md.py:947`, via `_attachment_suppression_reason`,
+    reached unconditionally through `suppress_moves_for_unfiled_attachments`
+    at `instruction-render.py:673-675`) for a refused typed name.
+
+    Assert on the EXACT string: it must name the TYPED NAME as the thing to
+    fix (F3's seventh acceptance criterion: the text states only what was
+    verified), never tell the owner to correct the inbox path (the inbox
+    path was never the problem — this is the defect the coordinator's review
+    found live: the generic branch said exactly that), and never leak a bare
+    REFUSAL_REASONS code.
+    """
+    manifest = [
+        _manifest_entry(
+            source_path="karte.md", rendered_file="2026-01-01_0900_karte.md",
+            attachments=["100 Inbox/Scans/other.png"],
+        ),
+    ]
+    confirmed = [_confirmed_entry(source_path="karte.md")]
+    remedies = [
+        _remedy(
+            "100 Inbox/Scans/other.png", "rename", UNUSABLE_TYPED_NAME,
+            name_is_owner_supplied=True,
+        )
+    ]
+    actions, skipped_assets = build_actions(
+        manifest, confirmed, [], [], CFG, attachment_conflict_remedies=remedies,
+    )
+    assert [s["kind"] for s in skipped_assets] == ["typed_name_refused"]
+    kept, suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)
+
+    # typed_name_refused is NOT in the vault_collision_held-only exclusion
+    # list (render_actions.py ~1568), so the owning note is held exactly
+    # like `collision` and `no_basename` already are — true today, with no
+    # production change pending in T3.3 (whose own task text says "that is
+    # the whole change": proving the ABSENCE of an exclusion, not adding
+    # code).
+    move_notes = [a for a in kept if a["action"] == "move_note"]
+    assert move_notes == [], f"the owning note must be held, not filed: {move_notes}"
+
+    assert len(suppressions) == 1
+    assert suppressions[0]["reason"] == (
+        "`100 Inbox/Scans/other.png` cannot be filed — typed name refused: "
+        f"`{UNUSABLE_TYPED_NAME}` contains a character Obsidian does not "
+        "allow in a filename — the note that embeds it is not filed "
+        "either. To fix: retype a usable name for it, then re-run Pass 2."
+    )
+    for code in REFUSAL_REASONS:
+        assert code not in suppressions[0]["reason"], (
+            f"a bare REFUSAL_REASONS code leaked into the owner-facing "
+            f"sentence: {suppressions[0]['reason']!r}"
+        )
+    assert "inbox path" not in suppressions[0]["reason"], (
+        "the inbox path was never the problem — a refused TYPED NAME is: "
+        f"{suppressions[0]['reason']!r}"
+    )

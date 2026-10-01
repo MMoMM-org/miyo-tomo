@@ -15,12 +15,15 @@ phase-3.md` T3.2 bullet 1): `derive_expected`'s attachment block
 `attachments_seen: set[str]` and counts with `len()`; `summarize_actual`
 (`:520-523`) is a raw per-kind tally over `instrs["actions"]`.
 `_subtract_skipped_assets` (`:922-946`) decrements the expected count once per
-entry in `tomo.skipped_assets`, regardless of any `kind` field — and
-`instruction-render.py` never even writes `kind` into that JSON block
-(`instruction-render.py:980-984`: "kind is deliberately not projected here...
-nothing reads it from this JSON today"). **Neither side of the audit ever reads
-a `move_asset`'s `destination`.** A `rename`'s new basename, successful or
-degraded, is invisible to this file end to end.
+entry in `tomo.skipped_assets`, regardless of any `kind` field. True when this
+file was written: `instruction-render.py` did not write `kind` into that JSON
+block at all. **Spec 038 T3.2 changed that premise** — `kind` is now
+projected there too (`typed_name_refused` and `no_basename` both carry
+`destination: None`, so a JSON consumer needs the explicit value) — but
+`_subtract_skipped_assets`'s own arithmetic still never reads it, which is
+the fact this file actually needs and still holds. **Neither side of the
+audit ever reads a `move_asset`'s `destination`.** A `rename`'s new basename,
+successful or degraded, is invisible to this file end to end.
 
 This task writes NO production code. `instructions-diff.py` needed no line
 touched for spec 037's three remedies plus the degraded-rename variant to
@@ -149,10 +152,11 @@ def _run_pass2(pairs: list[tuple[dict, dict]], remedies: list[dict]):
 
 def _instrs(actions: list[dict], skipped_assets: list[dict]) -> dict:
     """Project `skipped_assets` exactly as `instruction-render.py` writes
-    them into `instructions.json` (`instruction-render.py:985-992`):
-    source/destination/reason only. `kind` never reaches this JSON, so a
-    fixture carrying it would test the audit against a document Tomo never
-    produces.
+    them into `instructions.json`. As of spec 038 T3.2 that projection
+    carries `source`/`destination`/`kind`/`reason` — `kind` included — so
+    this mirrors it with `kind` present too, even though
+    `_subtract_skipped_assets`'s arithmetic (this file's actual subject)
+    never reads it.
     """
     return {
         "actions": actions,
@@ -161,6 +165,7 @@ def _instrs(actions: list[dict], skipped_assets: list[dict]) -> dict:
                 {
                     "source": s.get("source"),
                     "destination": s.get("destination"),
+                    "kind": s.get("kind"),
                     "reason": s.get("reason"),
                 }
                 for s in skipped_assets

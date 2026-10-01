@@ -1060,7 +1060,8 @@ never disagree with. They do **not** prove the conflicted case: measured, those
 fixtures carry no `attachment_conflicts` entry at all, so both sides produce `[]`
 and the only behaviour covered there is the empty one. The conflicted case is
 pinned by `tests/test_037_remedy_lost_on_the_wire_path.py`'s cross-path equality
-instead. This is the same caveat this file already records further down for
-`source_note_title` — the golden tests "prove parity on a fixture that has no
-collision and so cannot see it" — and it is worth stating twice, because a golden
-test's fixtures decide what its parity claim is worth.
+instead. This is the same caveat this file already records earlier in the file
+(see "A Source Link's DISPLAY Text Is Parsed, Not Its Target") — the golden
+tests "prove parity on a fixture that has no collision and so cannot see it" —
+and it is worth stating twice, because a golden test's fixtures decide what its
+parity claim is worth.

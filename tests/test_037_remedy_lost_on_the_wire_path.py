@@ -43,15 +43,18 @@ the wire; the rule is any `emit_digest` mismatch.
 **The fix (spec 038 T2.2/T2.3).** The wire gained a top-level
 `attachment_conflicts[]` array (T2.2), and `build_from_wire` now projects it
 into the same `{source, remedy, proposed_name}` triple the markdown path
-yields, instead of hardcoding `[]` (T2.3). Three tests here changed together,
+yields, instead of hardcoding `[]` (T2.3). Two tests here changed together,
 by design: the strict xfail (`test_the_wire_path_carries_the_chosen_remedy_
 too`) now asserts the fixed behaviour directly, and the marker is removed;
 `test_the_wire_path_returns_an_empty_list_today` and
 `test_losing_the_remedy_silently_produces_the_ignore_outcome` — which recorded
-the defect's wrong answer — are deleted. One assertion from the second was
-rehomed first, into `test_an_explicit_ignore_remedy_leaves_the_destination_
-occupied`: an *explicit* `ignore` remedy leaving the move at the occupied
-destination is behaviour that survives this fix, not defect residue.
+the defect's wrong answer — are deleted outright. The second's closing two
+assertions (an *explicit* `ignore` leaving the move at the occupied
+destination) pin behaviour that survives this fix, but need no rehoming:
+`tests/test_037_t3_1_remedy_outcomes.py::
+test_ignore_emits_the_move_unchanged_and_skips_nothing` already pins it, more
+strongly (it also asserts `len(actions)` and the action's `source`), and has
+done so since spec 037 shipped — look there for `ignore`'s coverage.
 """
 from __future__ import annotations
 
@@ -168,7 +171,7 @@ def test_the_markdown_path_files_the_attachment_under_the_free_name():
 
 
 # ---------------------------------------------------------------------------
-# 2. The defect
+# 2. The fix holds
 # ---------------------------------------------------------------------------
 
 def test_the_wire_path_carries_the_chosen_remedy_too():
@@ -184,28 +187,3 @@ def test_the_wire_path_carries_the_chosen_remedy_too():
     it to remove the marker, as this task does.
     """
     assert _remedies_via_wire() == _remedies_via_markdown()
-
-
-# ---------------------------------------------------------------------------
-# 3. Surviving behaviour — an explicit `ignore` is not the same bug
-# ---------------------------------------------------------------------------
-
-def test_an_explicit_ignore_remedy_leaves_the_destination_occupied():
-    """Rehomed from `test_losing_the_remedy_silently_produces_the_ignore_
-    outcome` (spec 038 T2.3) rather than deleted with it: this pins
-    behaviour that SURVIVES the lost-remedy fix, not the defect itself. An
-    owner who explicitly ticks Ignore — not a remedy lost in transit — gets
-    exactly this outcome: `_build_move_asset_actions` leaves the move against
-    the destination Pass 1 already found occupied and records nothing as
-    skipped (`ignore` is handled the same as a source absent from the
-    remedies list — see its docstring, "same as `ignore`").
-
-    Nothing else in the suite pins this. `test_037_t3_3_embed_rewrite.py
-    ::test_non_rename_remedies_leave_the_body_unchanged` covers `ignore`
-    only for "the body is unchanged", not the move destination.
-    """
-    explicit_ignore, skipped = _move_destination(
-        [{"source": SOURCE, "remedy": "ignore", "proposed_name": None}]
-    )
-    assert explicit_ignore == OCCUPIED, explicit_ignore
-    assert skipped == [], skipped

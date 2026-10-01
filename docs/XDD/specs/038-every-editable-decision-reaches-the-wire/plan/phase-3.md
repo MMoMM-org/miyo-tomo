@@ -113,7 +113,7 @@ produce a typed name at all.
      - [ ] The signature takes **one** argument — no run state, no vault listing
      - [ ] Both acceptance **and** rejection are proven, per Constitution L1 `[ref: SDD/CON-5]`
 
-- [ ] **T3.2 The move builder consumes the verdict** `[activity: backend-api]`
+- [x] **T3.2 The move builder consumes the verdict** `[activity: backend-api]`
 
   1. Prime: read `_build_move_asset_actions` (`lib/render_actions.py:691`), its
      rename branch (`:825-830`), and the existing `skipped_assets` kinds
@@ -214,19 +214,76 @@ produce a typed name at all.
 
 - [ ] **T3.3 The owning note is held** `[activity: backend-api]`
 
-  1. Prime: read `suppress_moves_for_unfiled_attachments` (`render_actions.py:1410`)
+  1. Prime: read `suppress_moves_for_unfiled_attachments` (`render_actions.py:1516`)
      including the docstring explaining why `vault_collision_held` is **excluded**,
      and 037's `requirements.md:374-382` where that exclusion was measured rather
      than assumed.
+
+     **Measured 2026-10-02, before dispatch: this task has no production code
+     left, and two of its three success criteria are already evidenced.** Read
+     this before briefing anyone, or the brief will ask for work that is done.
+
+     - **There is no exclusion *list*.** The exclusion is a single equality at
+       `render_actions.py:1570` — `if entry.get("kind") == "vault_collision_held":
+       continue`. So a new kind is never excluded by construction; it falls through
+       to the suppressing default with no edit at all. Step 3's "that is the whole
+       change" is literally a no-op, not shorthand for a small change. The task
+       text's phrase "the exclusion list" is kept below because it is what the
+       mutation creates, but nothing in the tree matches that shape today.
+     - **Criterion 1 is already green.** `tests/test_038_t3_2_typed_name_refusal.py`
+       builds a `typed_name_refused` skip, runs the suppression pass, and asserts
+       `move_notes == []` plus the exact owner-facing suppression sentence.
+     - **Criterion 2 is already green**, in 037 and unchanged by Phase 3:
+       `tests/test_037_t3_1_remedy_outcomes.py:158`,
+       `test_vault_collision_held_owning_note_is_still_filed`, which asserts
+       `vault_collision_held` produces no suppression at all.
+     - **Criterion 3 has now been run** — see step 4 below. It was the only one of
+       the three that was outstanding, and it is the reason this task was not
+       simply ticked on existing evidence.
+
+     **So what remains is one real deliverable**, and it came out of running the
+     mutation rather than reading the plan: the guard that caught it is named
+     `test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code`
+     — a name about the suppression *sentence*. The holds-the-note assertion is a
+     passenger inside it. A future reader asking "does a refused typed name hold
+     its owning note?" cannot find that answer by name, and a future edit that
+     narrows that test to its sentence concern would take the data-loss guard with
+     it silently. Give the assertion its own named test. That is the deliverable;
+     the production tree needs nothing.
   2. Test: a refused typed name holds the owning note — and assert this
      **specifically**, because the exclusion list is exactly where 037 had to make
      the opposite choice explicit, and `typed_name_refused` silently added to that
      list would
-     be invisible `[ref: SDD/Acceptance Criteria]`.
+     be invisible `[ref: SDD/Acceptance Criteria]`. **"Specifically" now means in a
+     test whose NAME is about holding the note** — the assertion already exists but
+     rides inside a test named for the suppression sentence, which is not findable
+     and not safe from a future narrowing edit. The existing assertion may stay
+     where it is; this adds a named one, it does not move it.
   3. Implement: `typed_name_refused` is **not** added to the exclusion list. That is the
      whole change; the pass's default behaviour does the rest `[ref: SDD/ADR-6]`.
   4. Validate: the 037 test that `vault_collision_held` does **not** hold the note
      stays green — the two kinds must diverge, and both directions need proof.
+
+     **Criterion 3's mutation was executed 2026-10-02** in a throwaway `git
+     worktree` at `HEAD` (`0c3059e`), never in the working tree. Baseline in that
+     worktree: 11 passed. The mutation the criterion names — the single equality at
+     `:1570` widened to
+     `in ("vault_collision_held", "typed_name_refused")` — turned it red:
+
+     ```
+     FAILED tests/test_038_t3_2_typed_name_refusal.py::
+       test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code
+     AssertionError: the owning note must be held, not filed:
+       [{'action': 'move_note', 'source': '100 Inbox/2026-01-01_0900_karte.md',
+         'destination': 'Atlas/202 Notes/Some Note.md', ...}]
+     1 failed, 10 passed
+     ```
+
+     The failure is worth reading rather than just counting: the note is filed to
+     `Atlas/202 Notes/Some Note.md` while the attachment it embeds stays in the
+     inbox — the exact separation this task exists to prevent. The worktree was
+     removed with `rm -rf` plus `git worktree prune`, and the working tree's
+     `:1570` was re-verified unmutated afterwards.
   5. Success:
      - [ ] A refused name holds the owning note `[ref: PRD/F3]`
      - [ ] `vault_collision_held` still does not `[ref: SDD/ADR-6]`

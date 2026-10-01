@@ -1469,19 +1469,36 @@ trace from scratch.
 **Closed 2026-09-30** — investigated and found not actionable: dead code with no
 owner-facing effect, not a bug.
 
-## OPEN — the `type` field line has no wire-schema counterpart, untraced
+## CLOSED — the `type` field line is dead, its producer retired in April
 
-**Found 2026-09-30** alongside the `classification` finding above, during the same
-pass over `suggestion-parser.py`'s field-line handling. Lower confidence — this one
-was not run to ground.
+**Found 2026-09-30** alongside the `classification` finding, left OPEN because it
+had not been run to ground. **Traced and closed 2026-10-01** before Phase 2 of
+spec 038 opened — an untraced field line would otherwise have been a scope
+question carried into the phase rather than settled before it.
 
-`parse_section` recognises a `**Type:**` field line (`key == "type"`) and stores it
-on `result["type"]`, and its own docstring shows the shape as part of the
-LLM-authored flat format: `- **Type:** #type/note/normal`. Unlike `classification`,
-no check was made for whether any current renderer or upstream stage still emits
-this line — it may be reachable only from older or LLM-direct output, or it may be
-as dead as `classification` turned out to be. `suggestions-wire.schema.json` has no
-`type` field, so if the line is reachable, its edits have nowhere to travel.
+`parse_section` recognises a `**Type:**` field line (`key == "type"`,
+`suggestion-parser.py:876`) and stores a cleaned value on `result["type"]`. The
+trace:
 
-**Not resolved here** — needs the same renderer/emission trace `classification` got
-before it can be closed either way.
+- **No renderer emits the line.** The only `**Type:**` in `tomo/scripts/` is the
+  parser's own docstring at `:711`, which labels the shape *"Flat format (LLM
+  output from suggestion-builder v0.6.0+)"*.
+- **That producer no longer exists.** `suggestion-builder` was retired on
+  2026-04-15 (spec 004's decision log: *"suggestion-builder retired"*), and
+  `suggestions-reducer.py:19` says so in its own header — *"Rendering rules
+  (replicated from the retired suggestion-builder format)"*.
+- **No runtime file asks an LLM to write it.** Nothing under `tomo/dot_claude/`
+  or `tomo/skills/` mentions a `Type:` line, so the LLM-direct path the original
+  entry suspected does not exist either.
+- **`type` is not a declared field in any schema**, and the parsed value is
+  defaulted to `None` and carried downstream unused. The other `"type"` keys in
+  `render_actions.py` and `suggestions-render.py` are unrelated — anchor types,
+  file-entry types, and the `tomo-suggestions` doc-type marker.
+
+So the parser branch is **unreachable from the review surface**, exactly as
+`classification` turned out to be, and for a firmer reason: its producer was
+deliberately retired six months earlier. It is not an editable decision and owes
+no wire field. **Spec 038's Phase 2 scope is confirmed unchanged by it.**
+
+The parser keeps accepting the format defensively. That is not a defect, and the
+docstring is accurate as history rather than as a description of current output.

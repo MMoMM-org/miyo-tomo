@@ -65,7 +65,7 @@ before this task started.
 | # | Finding | Status |
 |---|---|---|
 | 4 | `classification` is parsed (`suggestion-parser.py`) but unreachable from the review surface — no renderer emits the line, field lines are emitted literally rather than from a generic emitter, so the value is always `None`. | **CLOSED** in backlog (`## CLOSED — classification is parsed but unreachable from the review surface`). Not an editable decision, owes no wire field. This *removed* a phantom Phase 2 obligation rather than adding one. |
-| 5 | The `type` field line has no `suggestions-wire` counterpart and was not traced. | **OPEN** in backlog (`## OPEN — the type field line has no wire-schema counterpart, untraced`), lower confidence than #4 — same shape, not yet given the same renderer/emission trace. |
+| 5 | The `type` field line has no `suggestions-wire` counterpart. Left untraced by Phase 1, then **traced and closed 2026-10-01** before Phase 2 opened. | **CLOSED** in backlog (`## CLOSED — the type field line is dead, its producer retired in April`). Dead: no renderer emits the line, no runtime file asks an LLM to write it, and its producer `suggestion-builder` was retired 2026-04-15 per spec 004's decision log. **Phase 2 owes nothing for it** — the second phantom obligation this phase removed rather than added. |
 
 ## Accepted limitations — not backlog items (2)
 

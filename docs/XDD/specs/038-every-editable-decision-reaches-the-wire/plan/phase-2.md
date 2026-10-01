@@ -244,11 +244,38 @@ survives Pass 2's JSON-only rebuild.
      `{source, remedy, proposed_name}` triple the markdown path yields.
   4. Validate: the two baseline tests in that file stay green; remove the xfail
      marker rather than leaving a passing xfail.
+     **Then sweep the claim this task falsifies.** "The wire carries no
+     Attachment-Conflicts data at all" is asserted in four places, and only two of
+     them are files this task already opens — a diff-scoped review cannot see the
+     other two, which is why they are listed here rather than left to be noticed:
+     - `tomo/scripts/suggestion-parser.py:487-491` — the comment above the
+       hardcoded `[]`. Rewritten by step 3 anyway; make sure the replacement does
+       not keep the premise.
+     - `tests/test_037_remedy_lost_on_the_wire_path.py:18` — the file's own
+       docstring, in the file this task edits.
+     - **`docs/tomo/scripts/suggestion-parser.md:1037-1041`** — the WHY-persistence
+       layer for the file step 3 changes. It currently says the `[]` "is the honest
+       and complete answer for a path where the question does not apply". After this
+       task the question applies, so that passage becomes actively false. **No
+       Phase 2 task mentioned `docs/tomo` before this amendment** (Phases 3 and 4
+       do), so the WHY layer for both of Phase 2's production changes was unowned —
+       T2.2's `suggestions-render.py` change included. Update this file for the
+       parser change, and add the `build_wire_payload` projection to
+       `docs/tomo/scripts/suggestions-render.md`, which documents that function and
+       does not yet mention `attachment_conflicts`.
+     - `docs/XDD/specs/037-…/solution.md:217` — a **shipped** spec's SDD. Do not
+       rewrite its history; 038's ADR-1 already records that it supersedes 037's
+       ADR-5. Add a one-line supersession pointer so a reader arriving at 037 is
+       told the claim no longer holds. Measured: that file currently contains zero
+       references to `superseded` or to 038.
   5. Success:
      - [ ] The wire path and the markdown path return identical triples for
            identical decisions `[ref: PRD/F1]`
      - [ ] The strict xfail is **removed**, not left passing `[ref: SDD/Implementation Gotchas]`
      - [ ] The two defect-recording tests are deleted with it
+     - [ ] All four sites asserting "the wire carries no Attachment-Conflicts
+           data" are swept, including both `docs/tomo/` WHY files and a
+           supersession pointer in 037's SDD
 
 - [ ] **T2.4 Update the golden fixtures** `[activity: testing]`
 

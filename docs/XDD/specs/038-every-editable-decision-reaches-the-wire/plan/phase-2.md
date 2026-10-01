@@ -227,7 +227,7 @@ survives Pass 2's JSON-only rebuild.
      - [ ] No additional vault interaction `[ref: SDD/Cost]`
      - [ ] A conflict-free run emits `[]`, not `null`, and validates
 
-- [ ] **T2.3 Read the conflict back from the wire** `[activity: backend-api]`
+- [x] **T2.3 Read the conflict back from the wire** `[activity: backend-api]`
 
   1. Prime: read `build_from_wire` (`suggestion-parser.py:325`) and the hardcoded
      `"attachment_conflict_remedies": []` at `:492` with its comment — the comment

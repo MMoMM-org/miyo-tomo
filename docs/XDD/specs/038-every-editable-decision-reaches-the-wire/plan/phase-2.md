@@ -442,6 +442,20 @@ survives Pass 2's JSON-only rebuild.
     and then `grep` the instance's schema to confirm it reads `"3"` before
     generating the run. Schemas are compared **bytewise** there, not gated on a
     `# version:` header (`scripts/update-tomo.sh:308`, `:500-503`), so the sync does
-    carry this change — but confirm it rather than assume it.
+    carry this change — but confirm it rather than assume it. `--yolo` is just
+    `--keep-voice --yes` (`:46`), useful only to skip the confirmation prompt.
+  - **Clear the stale wire before the run, or the demonstration is void.** Measured
+    2026-10-01: `tomo-instance/tomo-tmp/suggestions-wire.json` exists **right now**
+    at `schema_version: 2`, and eight cached run artefacts under
+    `tomo-tmp/inbox-cache/` are at `"2"` as well. The moment `update-tomo` moves the
+    instance schema to `"3"`, every one of those becomes version-mismatched — and
+    `load_changed_wire` answers a mismatch with a stderr warning and a silent
+    fallback to the markdown. So a run that reuses or is influenced by that older
+    state takes the markdown path, looks entirely correct, and proves the opposite
+    of what this step claims. This is **CON-2 in its actual form**: not a
+    half-finished code move, which spec 035's ADR-5 made impossible, but a stale
+    artefact on disk. Remove or regenerate `tomo-tmp/suggestions-wire.json` and
+    confirm the fresh one carries `"3"` **before** editing it. The same hygiene the
+    repo already learned once as "reset `tomo-tmp` before a live run".
   - Success: suite green; `ruff` clean; the wire path demonstrably taken after the
     version move `[ref: PRD/F1]`.

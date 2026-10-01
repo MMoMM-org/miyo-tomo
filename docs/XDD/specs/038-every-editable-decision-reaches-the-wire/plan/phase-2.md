@@ -376,6 +376,21 @@ survives Pass 2's JSON-only rebuild.
      are the only changed values. Do **not** hand-type it — a hand-typed baseline
      proves only that two people agreed on what they expected.
   3. Implement: nothing in `tomo/scripts/` changes. This task is test-only.
+     **Commit the generator next to the baseline, not just the baseline.** A
+     committed expected-payload fixture is easy to silence: when it fails, the
+     cheapest response is to regenerate it rather than ask why it moved, and that
+     turns the test into a rubber stamp. The tdd-guardian raised this as a real and
+     unguarded risk and it is right. Two guards, both cheap:
+     - Put the baseline under `tests/fixtures/038-wire-baseline/` **together with the
+       script that produced it**, with `50d8f1b` hard-coded in that script. The
+       fixture then stops being an assertion and becomes **reproducible** — a
+       reviewer can re-run the generator and confirm the committed bytes, which is
+       not possible for a hand-maintained expected value.
+     - State the regeneration rule where someone about to break it will read it: a
+       comment directly above the baseline load in the test, saying that this file
+       is a frozen pre-038 artefact, that a diff against it moving is a finding
+       rather than a maintenance chore, and that it is regenerated only when the
+       pre-038 state itself is re-chosen — not when the current payload changes.
   4. Validate: the new test passes. Then **prove it bites**: on a scratch copy,
      rename or drop one unrelated top-level payload key and confirm the test fails
      naming that key, not merely "payloads differ".
@@ -389,6 +404,8 @@ survives Pass 2's JSON-only rebuild.
      - [ ] An unrelated top-level key change turns the test red, **demonstrated**,
            and the failure names the key
      - [ ] No production file is touched
+     - [ ] The baseline ships with its generator and a stated regeneration rule, so
+           a future failure cannot be silenced by regenerating it unthinkingly
 
 - [ ] **T2.5 Phase validation** `[activity: validate]`
 

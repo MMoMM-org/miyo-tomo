@@ -426,13 +426,44 @@ survives Pass 2's JSON-only rebuild.
     entries — measured, and two more than a first reading suggests, because
     the version move itself contributes both `added_enum_value '3'` and
     `removed_enum_value '2'`.
-  - **Prove the wire path is still taken.** Generate a run **after** the version
-    move so its wire carries `"3"`, edit that wire, and confirm Pass 2 rebuilds from
-    it. A wire generated before the move carries `"2"`, mismatches, and falls back
-    to the markdown with only a stderr warning — so reusing an existing wire would
-    demonstrate the opposite of what this step claims, and a green suite proves
-    nothing either way `[ref: SDD/CON-2]`. Run against `--instance tomo-instance`
-    (**never** `tomo-privat`, which is live).
+  - **Prove the wire path is still taken.** The tdd-guardian BLOCKED this step as
+    unexecutable — it named no commands and its only proposed evidence was the
+    *absence* of a warning. Both objections were right. **The recipe below was then
+    run end-to-end 2026-10-01 and works; it needs no Kado, no Docker, no vault, and
+    mutates nothing under `tomo-instance/`.** Re-run it and record the output; the
+    expected values are given so a differing result reads as a finding.
+    ```
+    # 1. Render a fresh wire from the instance's existing suggestions-doc.
+    #    suggestions-render.py is file-to-file; the version stamp comes from the
+    #    schema beside the SCRIPT, so the repo copy stamps "3".
+    ./venv/bin/python tomo/scripts/suggestions-render.py \
+      --input tomo-instance/tomo-tmp/suggestions-doc.json \
+      --output $TMPDIR/t25/suggestions.md \
+      --json-output $TMPDIR/t25/wire.json
+    # 2. Edit the wire: change attachment_conflicts[0].remedy
+    #    from "rename" to "keep_in_inbox" — the owner changing their mind.
+    # 3. Wire path. --suggestions-json SUPPLEMENTS the markdown, it does not
+    #    replace it: without --file the parser exits "error: input is empty".
+    ./venv/bin/python tomo/scripts/suggestion-parser.py \
+      --file $TMPDIR/t25/suggestions.md --suggestions-json $TMPDIR/t25/wire.json
+    ```
+    **Measured, all three states — and the observable is POSITIVE, not an absence:**
+    - **Edited wire at `"3"`** → `attachment_conflict_remedies` carries
+      `remedy: "keep_in_inbox"`, the owner's edit, and stderr states it outright:
+      `suggestions-json: edited wire is authoritative (JSON-only path)`. The parser
+      announces the wire path; nobody has to infer it from silence.
+    - **No wire** (markdown + `--suggestions-doc`) → `remedy: "rename"`, the
+      markdown's pre-tick. So the two paths return **different** remedies for the
+      same markdown, which is what proves the wire was read.
+    - **Stale wire stamped `"2"`** carrying the same edit → stderr
+      `warning: suggestions-json schema_version 2 != 3 — ignored, using markdown`,
+      and the remedy that arrives is `"rename"`. **The owner's decision is
+      discarded.** That is CON-2 observed rather than described, and it is the
+      negative control proving the observable discriminates `[ref: SDD/CON-2]`.
+    Before this phase the first state was impossible: `build_from_wire` returned `[]`
+    unconditionally, so an edited wire and an untouched one were indistinguishable.
+    Any live run that touches an instance uses `--instance tomo-instance`, **never**
+    `tomo-privat`, which is live.
   - **Sync the instance first, and verify it.** Measured 2026-10-01:
     `tomo-instance/schemas/suggestions-wire.schema.json` still declares `"2"` after
     T2.1, because the instance holds its own copy. Both the emitter and the reader

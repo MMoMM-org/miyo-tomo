@@ -188,7 +188,7 @@ survives Pass 2's JSON-only rebuild.
            one-off run — the count guard's docstring claim is executed, not asserted
      - [ ] The commit message restates why the inventory's `schema_version` stays `1`
 
-- [ ] **T2.2 Project the conflict onto the wire** `[activity: backend-api]`
+- [x] **T2.2 Project the conflict onto the wire** `[activity: backend-api]`
 
   1. Prime: read `build_wire_payload` (`suggestions-render.py:422`) and `_wire_note`
      (`:293`), and `detect_attachment_conflicts`'s output shape

@@ -155,21 +155,38 @@ survives Pass 2's JSON-only rebuild.
        backed now; D24 moving off `null` makes 24; one new row makes **25**, which
        equals the marked count. No existing row names `attachment_conflicts`, so
        exactly one row is added, not two.
-     - Check whether the inventory's own top-level `schema_version` (currently `1`)
-       is obliged to move for an added row. The file is **vendored by Hashi** —
-       state the answer either way rather than leaving it unexamined.
+     - The inventory's own `schema_version` **stays `1`** — settled 2026-10-01, not
+       a judgement call: `suggestions-decision-inventory.schema.json` declares
+       `"schema_version": {"const": 1}`, so any other value fails the row guard. An
+       added row cannot move it without changing the guard schema too, which this
+       task does not do. Restate this in the commit message; do not re-investigate.
   4. Validate: both `test_038_*` files fully green; `scripts/wire-shape.py --check`
-     still exits 0. Then **prove the two guards still bite**: delete one `Editable`
-     marker and confirm the `== 25` test fails; reword one and confirm the floor
-     test fails. Neither mutation may leave both green `[ref: README/A standing
-     warning carried forward from spec 037]`.
+     still exits 0. Then **prove the two guards still bite** — and for the deletion
+     half, leave an artefact behind:
+     - **Rewording is already owned** by
+       `test_038_decision_inventory_join.py::test_injection_e_reworded_marker_breaches_the_floor`.
+       Confirm it still passes at the new number; nothing new is needed.
+     - **Deletion is NOT owned.** `test_wire_schema_marks_exactly_23_editable_fields`
+       asserts against `WIRE_SCHEMA_PATH` — the real file — and its docstring claims
+       "a future marker removed from the wire schema … would otherwise pass every
+       other test in this file" while **nothing executes that claim**. That is the
+       shape of spec 037's nine unbiteable mutations
+       `[ref: README/A standing warning carried forward from spec 037]`. Add a
+       committed injection test: deepcopy the wire schema, delete one
+       `Editable`-marked description, write it to `tmp_path`, and assert the count
+       guard fails on it — never mutating the committed file. Mirror
+       injection-e's structure, including a `match=` pin so it is the intended
+       assertion that fires and not an incidental one.
+     - Neither mutation may leave both guards green.
   5. Success:
      - [ ] D24 names its wire field, and its note no longer predicts `[ref: PRD/F4]`
      - [ ] `proposed_name` has a row `[ref: PRD/F4]`
      - [ ] The join passes in both directions again
      - [ ] Both count guards updated to `25`, neither removed, **both demonstrated
            still able to fail** by executed mutation
-     - [ ] The inventory's `schema_version` question is answered in the commit message
+     - [ ] The deletion mutation is owned by a **committed** injection test, not a
+           one-off run — the count guard's docstring claim is executed, not asserted
+     - [ ] The commit message restates why the inventory's `schema_version` stays `1`
 
 - [ ] **T2.2 Project the conflict onto the wire** `[activity: backend-api]`
 

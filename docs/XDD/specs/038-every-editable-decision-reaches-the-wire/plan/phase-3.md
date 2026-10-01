@@ -86,8 +86,16 @@ produce a typed name at all.
      `not remedy_entry.get("proposed_name")`, which is why `" "` does **not**
      degrade to `keep_in_inbox` the way a `None` does, and `_asset_dest_join`'s
      `if not basename` at `:572`, which is why it then returns a destination
-     ending in a bare space instead of raising. The check must precede both);
-     already taken. Plus: a usable name is returned **unchanged**, never
+     ending in a bare space instead of raising. The check must precede both).
+     **Three classes, not four** — owner ruling 2026-10-01, after this task was
+     blocked for specifying an untestable one. `taken` is a property of the run,
+     not of the string, and the run already decides it at
+     `lib/render_actions.py:836`, which a remedy-chosen destination reaches by
+     design (`:831-835`). So this module takes **one argument** and stays a pure
+     function on a string; do not add a `taken`/`claimed` parameter, and do not
+     reach for a vault listing — there is none on this path (`path_exists` appears
+     nowhere in `render_actions.py` or `render_md.py`). Plus: a usable name is
+     returned **unchanged**, never
      rewritten. One addition to the character list, measured: `FORBIDDEN_CHARS`
      (`lib/obsidian_filename.py:32`) has **ten** members — the eight named above,
      plus `/` which the separator class already covers, plus **NUL**, which this
@@ -98,9 +106,11 @@ produce a typed name at all.
   4. Validate: unit tests green; `ruff` clean; the module has no import from
      `render_actions` (it must be usable from the parser side too).
   5. Success:
-     - [ ] Each refusal class refuses `[ref: PRD/F3]`
+     - [ ] Each of the **three** refusal classes refuses `[ref: PRD/F3]`
      - [ ] A usable name is returned unchanged — the check never rewrites `[ref: PRD/F3]`
-     - [ ] `" "` is refused, closing the gap the existing emptiness guard leaves
+     - [ ] `" "` is refused, closing the gap the two existing truthiness guards leave
+     - [ ] NUL is refused, so "every forbidden character" means all ten
+     - [ ] The signature takes **one** argument — no run state, no vault listing
      - [ ] Both acceptance **and** rejection are proven, per Constitution L1 `[ref: SDD/CON-5]`
 
 - [ ] **T3.2 The move builder consumes the verdict** `[activity: backend-api]`
@@ -111,7 +121,13 @@ produce a typed name at all.
   2. Test: a refused name emits **no** `move_asset` for that attachment and **one**
      `skipped_assets` entry of the new kind carrying the reason; a usable typed
      name emits the move against the typed destination; a Tomo-computed name
-     behaves exactly as today.
+     behaves exactly as today. **Plus one case this task confirms rather than
+     builds** (owner ruling 2026-10-01, where F3's fourth criterion landed): a
+     typed name that is usable as a string but collides with a destination another
+     action in the same run already claimed is refused by the **existing** check at
+     `:836` with `kind: "collision"`. Assert it — the guarantee lives only in a
+     comment (`:831-835`) today, and a check inserted before `_asset_dest_join`
+     is exactly the kind of edit that could bypass it.
   3. Implement: call the check before `_asset_dest_join`; add the new kind. Do
      **not** touch `_asset_dest_join` `[ref: SDD/CON-4]`.
   4. Validate: the 037 suite stays green — particularly the degraded-rename path
@@ -161,7 +177,14 @@ produce a typed name at all.
      ADR-11 in passing inside another ADR's argument `[ref: SDD/CON-6]`.
   2. Test: a refused name produces a bullet naming the attachment and the reason
      class; the text contains **no** function name, module name, wire action name
-     or id; the sentence asserts only what was verified.
+     or id; the sentence asserts only what was verified. Note the reasons reach
+     this renderer from **two** sources after the 2026-10-01 ruling: three from
+     T3.1's module via the new kind, and the run-local collision from the existing
+     `kind: "collision"` path. Decide whether a collision on an owner-**typed**
+     name reads differently from one on a Tomo-computed name — the existing reason
+     string says "already claimed by" and never mentions that a name was typed,
+     which under F3's sixth criterion ("records that the typed name could not be
+     used") may not be enough.
   3. Implement: one bullet per refusal, in the existing skipped block. Also the
      Could-have count in the summary `[ref: PRD/C1]`.
   4. Validate: assert on the **exact** rendered string, not on presence — spec 037

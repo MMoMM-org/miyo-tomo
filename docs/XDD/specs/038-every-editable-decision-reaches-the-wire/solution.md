@@ -243,9 +243,19 @@ would be reachable only from one of them.
 `owner_source_items` is **not** carried (ADR-3). The consumer derives it by
 scanning `suggestions[].attachments` for the same path, which ADR-8 makes safe.
 
+**`taken` is deliberately not one of C7's reasons** (owner ruling 2026-10-01).
+The other three are properties of the string; `taken` is a property of the run,
+and the run already decides it — `render_actions.py:836`'s claimed check, which a
+remedy-chosen destination passes through by design (`:831-835`), emitting
+`kind: "collision"`. Giving C7 a fourth reason would mean handing it run state,
+duplicating a check that already fires. The vault-side reading of "taken" is a
+different matter and is not decidable in Pass 2 at all: there is no vault listing
+on this path, and the wire carries no occupancy set. See `requirements.md` F3's
+fourth criterion, which records both readings.
+
 **The typed-name check** (C7) answers one question and returns one of a closed
 set of refusal reasons, so C10 can render each without interpreting a string:
-separator present, forbidden character, blank, taken. A usable name returns the
+separator present, forbidden character, blank. A usable name returns the
 name unchanged — the check never rewrites.
 
 **The inventory row**: `id` (stable, opaque), `markdown_control` (prose, for
@@ -603,5 +613,5 @@ are now requirements in F1 and F4.
 | Instructions wire | The Pass-2 output the executor applies. Untouched by this spec |
 | `emit_digest` | The hash that tells Pass 2 whether the wire was edited; a mismatch makes the wire authoritative (ADR-026) |
 | Remedy | One of `rename`, `keep_in_inbox`, `ignore` — the owner's answer to an occupied destination |
-| Refusal reason | A closed set: separator, forbidden character, blank, taken |
+| Refusal reason | A closed set of three, all properties of the string: separator, forbidden character, blank. A run-local collision is refused separately, by the claimed check that already exists |
 | Retired control | A markdown control that no longer exists; keeps its inventory row at `editable: false` |

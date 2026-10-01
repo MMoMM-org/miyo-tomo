@@ -1697,3 +1697,33 @@ task's success criteria, and because the environment may be the whole cause.
 the vendored snapshot against Hashi's copy by some means that does not depend on
 this fetch succeeding — the handoff itself carries the schema, so comparing
 against the artefact the consumer confirms is the obvious route.
+
+## OPEN — `_attachment_suppression_reason`'s `else` branch is a trap for the next kind
+
+**Found 2026-10-01** by the T3.2 implementer, who correctly declined to fix it
+unilaterally because it changes behaviour beyond what the task asked.
+
+`_attachment_suppression_reason` (`tomo/scripts/lib/render_actions.py`) dispatches
+on `kind` with named branches for `collision` and, as of spec 038 T3.2,
+`typed_name_refused` — and an `else` that is now implicitly `no_basename`-only,
+since `vault_collision_held` is filtered out upstream by
+`suppress_moves_for_unfiled_attachments`'s exclusion list.
+
+So a fifth `skipped_assets` kind added without its own branch here silently
+inherits `no_basename`'s text: **"To fix: correct that inbox path, then re-run
+Pass 2."** That is exactly the defect spec 038's T3.2 spec-compliance review
+found live — a remedy naming the wrong thing to fix — and the `else` is a
+standing invitation for it to recur. Measured at the time: the refused typed name
+rendered `cannot be filed — forbidden_character — … To fix: correct that inbox
+path`, leaking an enum literal and misdirecting the owner in one sentence.
+
+The structural fix is to make the fallthrough loud rather than plausible: dispatch
+from an explicit per-kind mapping and raise (or emit a visibly wrong-looking
+placeholder) on an unmapped kind, the way `render_wire_gate_report`'s
+`_render_action` already refuses an action it has no instruction for rather than
+rendering nothing. That precedent is in the same codebase and was written for the
+same reason.
+
+Not fixed in 038: no task's success criteria cover it, and it is a change to how
+an unknown kind behaves rather than to anything 038 introduces. The risk is
+strictly future — every kind that exists today has correct text.

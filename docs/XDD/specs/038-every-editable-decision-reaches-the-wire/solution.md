@@ -500,7 +500,7 @@ catches that from the other side.
 
 **Choice.** Add `attachments` to `suggestions[].items.required`.
 
-**Rationale.** `_wire_note` (`suggestions-render.py:325`) already emits it
+**Rationale.** `_wire_note` (`suggestions-render.py:293`) already emits it
 unconditionally, defaulting to `[]`. But the schema permits absence and the
 consumer treats absent as "none" — so their derivation of the owning notes works
 **by accident**, and an emitter change would silently hand them an empty list.

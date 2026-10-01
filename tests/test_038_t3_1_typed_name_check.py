@@ -70,6 +70,29 @@ def test_usable_name_with_unicode_is_accepted_unchanged():
     assert verdict.name == "karte münchen.png"
 
 
+def test_leading_and_trailing_whitespace_is_accepted_and_preserved():
+    """PINS TODAY'S ANSWER, not a final ruling (flagged to the owner
+    2026-10-01, see the module docstring note below) -- a name padded with
+    leading/trailing whitespace (`"  a.png  "`) is neither blank (it has
+    non-whitespace content), nor separator-bearing, nor forbidden-char-
+    bearing, so it is accepted UNCHANGED, padding and all. The task's
+    three refusal classes are a CLOSED set (owner ruling 2026-10-01); a
+    fourth "padded" class would need the same kind of explicit ruling that
+    excluded `taken`, and ADR-5's two-option discipline (accept verbatim
+    or refuse) forbids a third option that trims instead.
+
+    This test exists so a future change to this behaviour is deliberate,
+    not an accidental side effect of someone "fixing" `name.strip()` to
+    also drive the returned value.
+
+    Falsified by: any change that trims, rejects, or otherwise alters
+    `" a.png "` on this path.
+    """
+    verdict = check_typed_name("  a.png  ")
+    assert verdict.ok is True
+    assert verdict.name == "  a.png  "
+
+
 # ---------------------------------------------------------------------------
 # Refusal class 1: separator present.
 # ---------------------------------------------------------------------------

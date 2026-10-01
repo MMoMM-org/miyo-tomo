@@ -58,6 +58,15 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     `a/b.png` must report `separator_present`, not `forbidden_character`.
     Blank is checked first of all, since an empty or whitespace-only string
     has no meaningful separator or character content to classify.
+
+    A name padded with leading/trailing whitespace (`"  a.png  "`) is none
+    of the three refusal classes, so it is accepted verbatim, padding and
+    all — `.strip()` here only decides blankness, it never trims the
+    returned name. Flagged to the owner 2026-10-01 as a possible fourth
+    case (whitespace is easy to type by accident and invisible once typed);
+    left as accept-as-is pending a ruling, since ADR-5 permits only accept-
+    verbatim or refuse, never trim, and the three classes are a closed set.
+    See tests/test_038_t3_1_typed_name_check.py's pinning test.
     """
     if not name.strip():
         return TypedNameVerdict(ok=False, name=name, reason="blank")

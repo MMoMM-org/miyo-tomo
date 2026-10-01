@@ -1642,3 +1642,58 @@ no wire field. **Spec 038's Phase 2 scope is confirmed unchanged by it.**
 
 The parser keeps accepting the format defensively. That is not a defect, and the
 docstring is accurate as history rather than as a description of current output.
+
+## OPEN — the upstream-parity check skips silently, on the one wire 038 changes
+
+**Found 2026-10-01** during spec 038 Phase 3, while checking an implementer's
+claim that a skip count moving 5 to 4 between two suite runs was "a pre-existing
+non-deterministic skip elsewhere". They were right that it was not theirs. It is
+not non-deterministic in any mysterious sense — it is network-dependent, and on
+the suggestions wire it is **reproducible**.
+
+`tests/test_wire_snapshot_parity.py` fetches Hashi's live schema from
+`raw.githubusercontent.com/MMoMM-org/miyo-tomo-hashi/main/src/schema/` (`:119-123`)
+and `_fetch_or_skip` (`:149-180`) turns any transport failure — including a
+partial read — into `pytest.skip`. Two tests depend on it:
+`test_snapshot_matches_upstream_hashi` (`:257`) and
+`test_suggestions_snapshot_matches_upstream_hashi` (`:262`).
+
+Measured, two consecutive direct fetches each:
+
+| URL | attempt 1 | attempt 2 |
+|---|---|---|
+| `suggestions-wire.schema.json` | `IncompleteRead(8268 read, 4306 more expected)` | **identical** |
+| `instructions.schema.json` | `IncompleteRead(23707 read, 1798 more expected)` | OK, 25505 bytes |
+
+The suggestions fetch truncates at **exactly the same offset twice**, so for that
+wire the test does not flake — it does not run. The instructions fetch is
+intermittent, which is what moved the count 5 to 4.
+
+**Why this matters beyond a flaky test.** That skipped test is the only thing in
+the suite that compares our committed vendored snapshot against what Hashi
+actually publishes. Spec 038 Phase 2 decided the vendored copy stays at `"2"`
+until Phase 5 refreshes it once Hashi confirms, and Phase 5's handoff rests on
+the snapshot being an accurate record of what the consumer vendors. The hermetic
+offline comparison still runs and still pins its six-entry delta
+(`test_suggestions_comparison_a_reports_measured_delta_offline`), so drift
+*between our two local files* is caught. Drift between our snapshot and Hashi's
+live copy is not — and the suite reports green either way.
+
+**Not necessarily a Tomo defect.** A deterministic truncation at a fixed offset
+looks far more like the local egress proxy than like GitHub, and this session's
+Bash tool runs behind a filtering proxy. The skip-rather-than-fail design is also
+deliberate and well-argued in the test's own docstring (`:160-170`): a truncated
+body is "network gave us garbage", not evidence of drift, and failing on it would
+manufacture a false obligation. That reasoning still holds.
+
+What is wrong is only that the result is **invisible**. A check that cannot run
+reports the same green as a check that ran and passed. Options, none yet chosen:
+have the test emit a loud warning rather than a plain skip; retry a partial read
+before giving up; or record a `last verified upstream` date beside the snapshot
+so staleness is legible without the network. Left OPEN because it is in no 038
+task's success criteria, and because the environment may be the whole cause.
+
+**Spec 038 consequence, recorded in `plan/phase-5.md` T5.4**: Phase 5 must verify
+the vendored snapshot against Hashi's copy by some means that does not depend on
+this fetch succeeding — the handoff itself carries the schema, so comparing
+against the artefact the consumer confirms is the obvious route.

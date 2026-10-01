@@ -127,6 +127,20 @@ close-out that traces every criterion to a test that was executed.
        green. Name them in the handoff body explicitly — nothing else surfaces
        them, and refreshing the vendored copy without them re-vendors the
        divergence.
+     - **The upstream comparison may not have run at all.** Measured 2026-10-01:
+       `test_wire_snapshot_parity.py`'s `_fetch_or_skip` (`:149-180`) turns a
+       partial read into `pytest.skip`, and the fetch of Hashi's live
+       `suggestions-wire.schema.json` truncates at the **same offset on repeated
+       attempts** (`IncompleteRead(8268 read, 4306 more expected)`), so
+       `test_suggestions_snapshot_matches_upstream_hashi` (`:262`) does not run
+       here — on this wire it is not flaky, it is absent. The hermetic offline
+       comparison still pins the six-entry delta, so drift between our two local
+       files is caught; drift between our snapshot and what Hashi actually
+       publishes is not, and the suite is green either way. **Do not treat a green
+       suite as evidence the vendored snapshot still matches upstream.** Verify it
+       against the schema the consumer confirms in the handoff instead, which this
+       task already attaches. See `docs/XDD/backlog.md`, "the upstream-parity
+       check skips silently".
   4. Validate: re-read the consumer's last message and confirm each of their action
      items is answered.
   5. Success:

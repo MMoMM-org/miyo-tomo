@@ -1717,12 +1717,24 @@ standing invitation for it to recur. Measured at the time: the refused typed nam
 rendered `cannot be filed — forbidden_character — … To fix: correct that inbox
 path`, leaking an enum literal and misdirecting the owner in one sentence.
 
-The structural fix is to make the fallthrough loud rather than plausible: dispatch
-from an explicit per-kind mapping and raise (or emit a visibly wrong-looking
-placeholder) on an unmapped kind, the way `render_wire_gate_report`'s
-`_render_action` already refuses an action it has no instruction for rather than
-rendering nothing. That precedent is in the same codebase and was written for the
-same reason.
+The structural fix is already written down in this repo, for this exact failure,
+and implemented for a different report. `docs/tomo/scripts/instruction-render.md`
+(:383-387) states the convention for the dropped-sources report: "`kind` is what
+renderers branch on; the `reason` is for a human and must never be parsed. **An
+unrecognised `kind` gets no remedy at all rather than inheriting another one's** —
+misdiagnosing the cause is the exact failure this section was rewritten to stop, so
+a third drop kind added later fails loudly instead of quietly reading as one of
+these two."
+
+So the answer is not novel design: give `_attachment_suppression_reason` the same
+discipline the drop report already has — no remedy for an unmapped kind, rather
+than the `no_basename` remedy by default. `lib/wire_gate.py`'s `_render_action`,
+which refuses an action it has no instruction for, is a second precedent.
+
+Worth noting the same doc passage also shows T3.2's first attempt violated a
+**written** convention, not merely an implicit one: putting a bare enum code in
+`reason` contradicted "the `reason` is for a human and must never be parsed"
+directly. The spec-compliance review that caught it was righter than it knew.
 
 Not fixed in 038: no task's success criteria cover it, and it is a change to how
 an unknown kind behaves rather than to anything 038 introduces. The risk is

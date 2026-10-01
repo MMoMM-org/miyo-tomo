@@ -252,22 +252,50 @@ matching the PRD's own out-of-scope note), pinned by
 in `tests/test_031_t3_5_manifest_entry_attachments.py` rather than "fixed" —
 there is no note move for the attachment to accompany in that case.
 
-## `kind` Stays Out of `instructions.json`'s `tomo.skipped_assets`
+## `kind` Is Projected Into `instructions.json`'s `tomo.skipped_assets` (spec 038 T3.2, v0.62.1)
 
-WHY `tomo_block["skipped_assets"]`'s per-entry projection carries only
-`source`/`destination`/`reason`, omitting the `kind` discriminator that
-`lib/render_md.py` uses to pick a rendering-time remedy: nothing reads
-`kind` from this JSON today — no Hashi consumer, no Tomo consumer, no test
-outside the markdown-rendering path. The Constitution's L2 Performance rule
-("trim unused fields aggressively, especially in JSON payloads") is the
-concrete reason, not just a style preference: a field with no reader is pure
-liability, and this one is also redundant — a `"no_basename"` skip never has
-a `destination`, a `"collision"` skip always does, so a future JSON consumer
-that needs the distinction can derive it from that alone. The omission is
-pinned by a test asserting `kind` is absent from every JSON entry and that
-`destination` correctly distinguishes the two cases, specifically so a later
-"just add it back" change is a decision made against a red test, not a
-change nobody notices.
+WHY `tomo_block["skipped_assets"]`'s per-entry projection carries
+`source`/`destination`/`reason`/`kind`. **This reverses the original decision,
+and the reversal is the point of this entry — read it before changing the field
+again in either direction.**
+
+The original decision omitted `kind` and rested on two legs. The first was the
+Constitution's L2 Performance rule ("trim unused fields aggressively, especially
+in JSON payloads"): a field with no reader is pure liability, and nothing read
+`kind` from this JSON — no Hashi consumer, no Tomo consumer, no test outside the
+markdown-rendering path. The second was that `kind` was **derivable** here: a
+`no_basename` skip never has a `destination`, a `collision` skip always does, so
+a consumer needing the distinction could get it from `destination` alone.
+
+Spec 038's T3.2 broke the second leg. `typed_name_refused` also carries
+`destination: None` — deliberately, because the only destination in scope at the
+point of refusal belongs to the *occupied* name, not to the name the owner typed,
+and reporting it would misattribute it. So `destination` no longer separates the
+no-destination kinds: `no_basename` and `typed_name_refused` are identical under
+the old derivation rule.
+
+That left two options and the owner chose this one (2026-10-01). Without `kind`,
+the only remaining way to tell those two apart in this JSON is to parse the prose
+`reason` — which is precisely what spec 038 exists to stop anyone having to do,
+and what its own `refusal_reason` field was introduced to avoid one layer up. A
+machine-readable discriminator beats a prose heuristic even when nothing reads it
+yet. The L2 tension is real and is accepted, not dissolved: this is still a field
+with no reader today, kept because the cheap alternative became unsound rather
+than because a consumer asked for it. If a future audit trims it, the derivation
+rule must not be restored with it — it is wrong now, permanently.
+
+**On the guard that was supposed to prevent this.** The omission was pinned by a
+test asserting `kind` absent from every JSON entry, written "specifically so a
+later 'just add it back' change is a decision made against a red test, not a
+change nobody notices". That mechanism worked exactly as designed: the test went
+red when T3.2 added the field. It was then updated to assert the field present —
+which, without this entry, would have been the "change nobody notices" arriving
+by the back door, the guard disarmed rather than heeded. The red test did its job;
+what nearly failed was the step after it. The updated test
+(`tests/test_031_t2_skipped_assets_report_wiring.py`) now pins the field's
+presence, so the guard still fires in both directions — but a future reader who
+finds a green test and this entry should understand the reversal was deliberate
+and argued, not incidental.
 
 
 ## Tracker syntax and section are read from config here, not round-tripped (#162, v0.45.0)

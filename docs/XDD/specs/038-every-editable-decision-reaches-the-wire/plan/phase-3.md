@@ -275,8 +275,28 @@ produce a typed name at all.
 
 - [ ] **T3.5 Phase validation** `[activity: validate]`
 
-  - Run the full suite and `ruff`. Write the `docs/tomo/scripts/lib/` WHY entries
-    for the new module and the two modified functions — **now, not in Phase 5**.
+  - Run the full suite and `ruff`. Write the `docs/tomo/` WHY entries — **now, not
+    in Phase 5**. The list below replaces "the new module and the two modified
+    functions", which undercounted what Phase 3 actually changed (corrected
+    2026-10-01, after T3.2 grew twice):
+    - `docs/tomo/scripts/lib/typed_name_check.md` — new. Why rejection rather than
+      `sanitize_stem`'s substitution; why a separate module; why three string
+      classes and not four; why one argument and no vault listing.
+    - `docs/tomo/scripts/lib/render_actions.md` — `_typed_name_refusal_reason`,
+      the `name_is_owner_supplied` gate and why a computed name is never checked,
+      and `_attachment_suppression_reason`'s third branch. State how the three
+      fields divide: `kind` is what renderers branch on, `reason` is prose for a
+      human and must never be parsed, `refusal_reason` is a second-level
+      machine-readable discriminator under one kind. That division is already the
+      documented convention for the dropped-sources report
+      (`docs/tomo/scripts/instruction-render.md:383-387`) — say that this follows
+      it rather than inventing it, since T3.2's first attempt broke it by putting
+      the bare code in `reason`.
+    - `docs/tomo/scripts/suggestion-parser.md` — why the flag is set in two
+      producers with different values, and why the wire path cannot compare
+      against the doc.
+    - `docs/tomo/scripts/instruction-render.md` — **already written** during T3.2
+      (the `kind` reversal); verify it rather than rewriting it.
   - Re-read every assertion added in this phase and ask of each: *which mutation
     turns this red?* Run the ones you can name. Spec 037 produced nine assertions
     that could not bite `[ref: plan/README.md; the standing warning]`.

@@ -75,8 +75,8 @@ KNOWN LIMITATIONS (deliberate, not to be fixed by this test):
 
 TWO GUARDS THAT LOOK REDUNDANT AND ARE NOT (both must remain):
   `test_038_inventory_schema_validation.py`'s
-  `test_wire_schema_marks_exactly_23_editable_fields` asserts `== 23` and
-  catches a marker being DELETED. This file's `>= 23` floor (inside
+  `test_wire_schema_marks_exactly_25_editable_fields` asserts `== 25` and
+  catches a marker being DELETED. This file's `>= 25` floor (inside
   `_assert_schema_side_join`) catches the enumeration silently matching
   NOTHING after a REWORD — a different mutation, in a different file, from a
   different starting predicate. Either is deletable alone; both stay.
@@ -114,7 +114,7 @@ WIRE_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "suggestions-wire.schema.jso
 PARSER_PATH = REPO_ROOT / "tomo" / "scripts" / "suggestion-parser.py"
 
 FLOOR_HARVESTED_LITERALS = 61
-FLOOR_SCHEMA_MARKED_FIELDS = 23
+FLOOR_SCHEMA_MARKED_FIELDS = 25
 
 
 # ---------------------------------------------------------------------------
@@ -560,7 +560,7 @@ def test_injection_e_reworded_marker_breaches_the_floor(
     wire_schema_doc: dict, inventory_rows: list[dict]
 ) -> None:
     """(e) Reword one Editable-marked description (on a deepcopy) so it no
-    longer matches. The enumeration drops from 23 to 22 and the FLOOR
+    longer matches. The enumeration drops from 25 to 24 and the FLOOR
     assertion inside _assert_schema_side_join — not the equality check below
     it — is what fails first, proving the floor is load-bearing rather than
     an assertion the equality check would have caught anyway."""

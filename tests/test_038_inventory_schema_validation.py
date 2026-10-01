@@ -369,12 +369,55 @@ def _count_editable_marked_descriptions(schema_path: Path) -> int:
     return len(_editable_marked_descriptions(schema_path))
 
 
-def test_wire_schema_marks_exactly_23_editable_fields():
+def test_wire_schema_marks_exactly_25_editable_fields():
     """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
-    bringing the count from 21 (T1.1) to 23. A future marker removed from
-    the wire schema with no corresponding inventory-row change would
-    otherwise pass every other test in this file."""
-    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 23
+    bringing the count from 21 (T1.1) to 23; attachment_conflicts[].remedy
+    and .proposed_name gained it later, bringing the count to 25. A future
+    marker removed from the wire schema with no corresponding inventory-row
+    change would otherwise pass every other test in this file."""
+    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 25
+
+
+def test_a_deleted_editable_marker_is_caught(tmp_path):
+    """Deletion is NOT owned by the equality assertion above on its own — that
+    assertion runs against the real, committed schema, so nothing in this file
+    actually exercises what happens when a marker disappears. Mirror
+    injection-e's structure: deepcopy the wire schema, delete one
+    Editable-marked description, write the mutated copy to tmp_path, and prove
+    the count guard fails on it. Never mutate the committed file itself."""
+    schema_doc = json.loads(WIRE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    mutated = copy.deepcopy(schema_doc)
+
+    def _delete_first_editable_marker(node: object) -> bool:
+        if isinstance(node, dict):
+            description = node.get("description")
+            if isinstance(description, str) and description.startswith("Editable"):
+                del node["description"]
+                return True
+            for value in node.values():
+                if _delete_first_editable_marker(value):
+                    return True
+        elif isinstance(node, list):
+            for item in node:
+                if _delete_first_editable_marker(item):
+                    return True
+        return False
+
+    deleted = _delete_first_editable_marker(mutated)
+    assert deleted, "fixture setup: no Editable-marked description found to delete"
+
+    mutated_path = tmp_path / "suggestions-wire.schema.json"
+    mutated_path.write_text(json.dumps(mutated), encoding="utf-8")
+
+    count = _count_editable_marked_descriptions(mutated_path)
+    with pytest.raises(AssertionError, match=re.escape("a deleted marker")):
+        assert count == 25, (
+            f"wire schema marks {count} field(s) Editable, expected 25 — "
+            "a deleted marker would otherwise pass every other test in this file"
+        )
+
+    # The committed file itself is untouched by this test.
+    assert json.loads(WIRE_SCHEMA_PATH.read_text(encoding="utf-8")) == schema_doc
 
 
 def test_wire_schema_editable_markers_use_uniform_dash_form():

@@ -166,10 +166,17 @@
     {
       "id": "D24",
       "markdown_control": "Rename / Keep in inbox / Ignore checkboxes on an Attachment Conflicts entry: the three ticks resolve to one remedy.",
-      "wire_field": null,
+      "wire_field": "attachment_conflicts[].remedy",
       "editable": true,
       "parser_label": ["rename", "keep in inbox", "ignore"],
-      "note": "The remedy has no wire field yet; expected to gain one once the wire is extended to carry it."
+      "note": "The remedy's wire field arrived, as this row once predicted it would."
+    },
+    {
+      "id": "D25",
+      "markdown_control": "The backtick-quoted filename following the Rename checkbox on an Attachment Conflicts entry: retype to choose a different rename target.",
+      "wire_field": "attachment_conflicts[].proposed_name",
+      "editable": true,
+      "parser_label": ["Rename to"]
     }
   ]
 }

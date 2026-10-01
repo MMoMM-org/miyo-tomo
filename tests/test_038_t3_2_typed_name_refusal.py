@@ -380,23 +380,18 @@ def test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code():
     assert len(skipped) == 1
     entry = skipped[0]
     assert entry["refusal_reason"] == "forbidden_character"
-    assert entry["reason"] != entry["refusal_reason"]
-    # NOT `for code in REFUSAL_REASONS: assert code not in entry["reason"]` —
-    # that loop is UNSOUND (coordinator review, 2026-10-01): `blank` is
-    # simultaneously an enum token and the ordinary English word the correct
-    # prose uses to describe a blank name ("...the typed name is blank"), so
-    # generalising this loop to the blank case would fail against the
-    # INTENDED sentence, not a defect. The sound version checks for an
-    # UNDERSCORE-BEARING code instead — `separator_present` and
-    # `forbidden_character` both have one, `blank` does not, so this
-    # excludes `blank` by construction rather than by a carved-out
-    # exception. The exact-string assertion below is what actually proves
-    # the blank case's prose is correct; see
+    # `entry["reason"] != entry["refusal_reason"]` is sound — it compares two
+    # fields, never searches text. No CONTAINMENT rule over `reason` itself
+    # can be sound, at any granularity: the sentence quotes the owner's typed
+    # name verbatim, and that name is arbitrary input, not a fixed phrase.
+    # A loop over REFUSAL_REASONS members failed on `blank`, which is also
+    # the ordinary English word the correct blank-case prose uses. An
+    # underscore check (tried next) failed just as fast on a typed name that
+    # itself contains an underscore (`my_file*bad.png`) — ubiquitous in real
+    # filenames. There is no substring left to safely forbid. The exact-
+    # string assertion below is what actually carries the guarantee; see
     # test_each_refusal_class_has_its_own_exact_prose_sentence for all three.
-    assert "_" not in entry["reason"], (
-        f"an underscore-bearing REFUSAL_REASONS code leaked into the prose "
-        f"reason: {entry['reason']!r}"
-    )
+    assert entry["reason"] != entry["refusal_reason"]
     assert entry["reason"] == (
         f"typed name refused: `{UNUSABLE_TYPED_NAME}` contains a character "
         f"Obsidian does not allow in a filename"
@@ -488,16 +483,16 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
         "allow in a filename — the note that embeds it is not filed "
         "either. To fix: retype a usable name for it, then re-run Pass 2."
     )
-    # NOT `for code in REFUSAL_REASONS: assert code not in ...reason` — see
+    # No general containment rule over this sentence can be sound (see
     # test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code
-    # for why that loop is unsound (`blank` is also the ordinary English
-    # word the correct blank-case prose uses). The exact-string assertion
-    # above already proves this specific (forbidden_character) sentence is
-    # correct; the underscore check below is the sound general version.
-    assert "_" not in suppressions[0]["reason"], (
-        f"an underscore-bearing REFUSAL_REASONS code leaked into the "
-        f"owner-facing sentence: {suppressions[0]['reason']!r}"
-    )
+    # for the two that failed): it quotes the owner's typed name verbatim,
+    # and that name is arbitrary input. The exact-string assertion above is
+    # what actually carries the guarantee for this sentence.
+    #
+    # "inbox path" below is different in kind, not just in luck: it is OUR
+    # OWN fixed phrase, never the owner's input, so no realistic typed
+    # filename can produce it — unlike an enum token or an underscore, it
+    # has nothing to collide with.
     assert "inbox path" not in suppressions[0]["reason"], (
         "the inbox path was never the problem — a refused TYPED NAME is: "
         f"{suppressions[0]['reason']!r}"

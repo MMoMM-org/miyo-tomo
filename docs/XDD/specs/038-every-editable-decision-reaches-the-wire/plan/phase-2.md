@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: The wire carries the decision"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -21,9 +21,24 @@ phase: 2
 - `[ref: SDD/Risks and Technical Debt; Known Technical Issues]`
 
 **Key Decisions**:
-- The version move touches **three** artefacts and a half-finished move **fails
-  silently** — `load_changed_wire` falls back to the markdown with only a stderr
-  warning `[ref: SDD/CON-2]`. This is the single most important risk in the spec.
+- The version move touches **two** artefacts — the live schema and the shape
+  manifest. The vendored `hashi-` copy is **not** touched here: it records what the
+  consumer actually vendors, and spec 035's move (`4338481`) updated it only in a
+  later commit (`f63b947`), once Hashi had confirmed. Writing the new version there
+  now would make the parity report claim the consumer is current while their real
+  copy still pins the old one and rejects every document we emit `[ref: SDD/CON-1]`.
+- The manifest carries the version at **two internal sites** —
+  `nodes["/"].values.schema_version` and the top-level `schema_version`. Both are
+  written by `scripts/wire-shape.py --regenerate`; hand-editing one is the
+  half-finished move in its most literal form.
+- **CON-2's silent fallback cannot originate in code.** Spec 035's ADR-5 made the
+  emitter (`suggestions-render.py:507`) and the reader (`suggestion-parser.py:270`)
+  both derive the expected version from the schema via `wire_schema_version`, so the
+  two can no longer diverge. What survives is a **stale wire file on disk** emitted
+  at the old version, and **fixtures** pinning it. A live proof must therefore
+  regenerate the run *after* the move rather than reuse an existing wire
+  `[ref: SDD/CON-2]`. This is still the most important risk in the spec — its
+  mechanism is just not the one this plan first named.
 - The array carries `source`, `destination`, `same_file`, `remedy`,
   `proposed_name`. It does **not** carry the owning notes `[ref: SDD/ADR-3]`.
 - `remedy` defaults exactly the way the markdown pre-ticks: `rename` when a free
@@ -39,23 +54,37 @@ the inventory's remedy row). Nothing in Phases 3–4.
 Delivers the fix for the measured data-loss path: a remedy chosen by the owner
 survives Pass 2's JSON-only rebuild.
 
-- [ ] **T2.1 The schema move, all three artefacts at once** `[activity: data-architecture]`
+- [ ] **T2.1 The schema move, both artefacts at once** `[activity: data-architecture]`
 
   1. Prime: read `tomo/schemas/suggestions-wire.schema.json`, its
      `hashi-` sibling, `tomo/schemas/shapes/suggestions-wire.shape.json`, and
-     `tomo/scripts/lib/wire_gate.py`'s `classify()` (`:582-725`) to understand why
-     an added property on a closed node forces `ACTION_MOVE_VERSION`
-     `[ref: SDD/ADR-1]`.
-  2. Test: a test asserting all three artefacts agree on `schema_version` and on
-     the presence of `attachment_conflicts`. Make it red by moving only one.
+     `tomo/scripts/lib/wire_shape.py`'s `classify()` (`:582-725` — **not**
+     `wire_gate.py`, which is 522 lines and merely re-exports it at `:48`) to
+     understand why an added property on a closed node forces
+     `ACTION_MOVE_VERSION` `[ref: SDD/ADR-1]`.
+  2. Test: a test asserting the live schema and the shape manifest agree on
+     `schema_version` and on the presence of `attachment_conflicts`, and that the
+     manifest agrees with itself across both of its version sites. Make it red by
+     moving only one.
   3. Implement: add the top-level `attachment_conflicts[]` array with the five
-     fields; add `attachments` to `suggestions[].items.required`
-     `[ref: SDD/ADR-8]`; move `schema_version` `2` → `3` in the live schema and
-     the vendored copy; regenerate the shape manifest with `wire_shape.py`'s CLI.
-  4. Validate: the wire gate passes; the drift test from step 2 is green; a
-     deliberately half-finished move turns it red.
+     fields **and add it to the schema's top-level `required`** — `tag_handler_groups`,
+     `proposed_mocs` and `daily_updates` are all required-and-may-be-empty, and
+     T2.2's conflict-free-run assertion is only enforceable if this one is too; add
+     `attachments` to `suggestions[].items.required` `[ref: SDD/ADR-8]`; move
+     `schema_version` `2` → `3` in the live schema **only**; regenerate the shape
+     manifest with `scripts/wire-shape.py --regenerate` (the CLI is at
+     `scripts/`, not under `tomo/scripts/lib/`). Leave
+     `hashi-suggestions-wire.schema.json` untouched — Phase 5 owns it.
+  4. Validate: `scripts/wire-shape.py --check` exits 0 and `--obligations` reports
+     no drift once the manifest is regenerated — **measured**: property added +
+     version moved + manifest regenerated yields `passed=True, actions=[]`. The
+     drift test from step 2 is green; a deliberately half-finished move turns it
+     red.
   5. Success:
-     - [ ] All three artefacts carry `schema_version: "3"` `[ref: PRD/F1]`
+     - [ ] The live schema and the shape manifest carry `schema_version: "3"`,
+           both manifest sites included; the vendored copy still reads `"2"`
+           `[ref: PRD/F1]`
+     - [ ] `attachment_conflicts` is in the schema's top-level `required`
      - [ ] A half-finished move fails the gate rather than shipping quietly
            `[ref: SDD/Acceptance Criteria]`
      - [ ] `attachments` is required `[ref: SDD/ADR-8]`
@@ -124,12 +153,25 @@ survives Pass 2's JSON-only rebuild.
 
 - [ ] **T2.5 Phase validation** `[activity: validate]`
 
-  - Run the full suite and `ruff`. Verify the wire gate's classification is
-    `ACTION_MOVE_VERSION` + `ACTION_HANDOVER` and that the handover obligation is
-    recorded for Phase 5 rather than discharged here.
-  - **Prove the wire path is still taken.** Generate a run, edit its wire, and
-    confirm Pass 2 rebuilds from it — because a mismatched version falls back to
-    the markdown *without erroring*, a green suite alone does not prove this
-    `[ref: SDD/CON-2]`.
+  - Run the full suite and `ruff`. **Measured correction to this task as first
+    written**: the gate's `ACTION_MOVE_VERSION` + `ACTION_HANDOVER` verdict is
+    reachable ONLY while the version has not moved. With T2.1 done the gate returns
+    `passed=True, actions=[]`, so chasing the original wording would require leaving
+    the move half-finished — the very CON-2 failure this phase exists to prevent.
+    Verify instead: `--check` clean on the repo, and `move_version` + `handover`
+    reproduced on a **scratch copy** with the version held back, as the
+    half-finished-move guard. The handover obligation is recorded for Phase 5 by
+    hand — the gate stops emitting it once the move is complete.
+  - **Record for Phase 5**: the live-vs-vendored comparison is structural only
+    (`snapshot_parity_delta` ignores `description`), so three already-divergent
+    descriptions — `candidate_mocs[].selected`, `candidate_mocs[].anchor` and
+    `proposed_mocs[].tags` — are invisible to every test in the suite and must ride
+    the handoff explicitly alongside the four structural changes.
+  - **Prove the wire path is still taken.** Generate a run **after** the version
+    move so its wire carries `"3"`, edit that wire, and confirm Pass 2 rebuilds from
+    it. A wire generated before the move carries `"2"`, mismatches, and falls back
+    to the markdown with only a stderr warning — so reusing an existing wire would
+    demonstrate the opposite of what this step claims, and a green suite proves
+    nothing either way `[ref: SDD/CON-2]`. Run against `--instance tomo-instance`.
   - Success: suite green; `ruff` clean; the wire path demonstrably taken after the
     version move `[ref: PRD/F1]`.

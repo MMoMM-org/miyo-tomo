@@ -65,9 +65,14 @@ produce a typed name at all.
      which on a real run reads ``Rename to `Atlas/290 Assets/295 Attachments/karte (2).png` `` — while the wire field `attachment_conflicts[].proposed_name`
      holds the bare basename `karte (2).png`. So the separator refusal this task
      specifies will reject the **most natural edit there is**: retyping the stem
-     and leaving the folder prefix where the renderer put it. Decide here, not at
-     T3.4, whether this task strips a leading folder that matches the asset
-     folder or refuses it with a reason that states what to type instead.
+     and leaving the folder prefix where the renderer put it. **The PRD already
+     settles what to do about it** — F3's first criterion refuses a separator
+     "not truncated to its last segment", and ADR-5 forbids rewriting — so
+     stripping the folder the renderer itself wrote is not an option, however
+     tempting. What stays open is only the refusal reason's wording, which T3.4
+     owns and the existing `separator present` class already covers. Flagged
+     here because the collision is real and a reader of this task alone could
+     reasonably invent the strip.
      Confirmed absent today, so the task is building something real: the parse
      site lowercases the label and branches on `startswith("rename")`
      (`suggestion-parser.py:2350-2354`) and never reads the backtick-quoted text

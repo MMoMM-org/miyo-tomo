@@ -173,9 +173,24 @@ produce a typed name at all.
      builds** (owner ruling 2026-10-01, where F3's fourth criterion landed): a
      typed name that is usable as a string but collides with a destination another
      action in the same run already claimed is refused by the **existing** check at
-     `:836` with `kind: "collision"`. Assert it — the guarantee lives only in a
-     comment (`:831-835`) today, and a check inserted before `_asset_dest_join`
-     is exactly the kind of edit that could bypass it.
+     `:836` with `kind: "collision"`.
+
+     **Correction, 2026-10-01.** This bullet first claimed the guarantee "lives
+     only in a comment (`:831-835`)". That was false, and a coverage claim made
+     without an exhaustive search — the same mistake as spec 038 Phase 2's, in
+     the same test file. It lives in
+     `tests/test_037_t3_1_remedy_outcomes.py:280-312`,
+     `test_a_remedys_destination_still_goes_through_the_claimed_check`, which
+     renames `other.png` onto `orig.png`'s destination and asserts
+     `kind == "collision"`, with its mutation named in its own docstring. **That
+     test is the regression anchor and must pass UNCHANGED** — it supplies no
+     flag, so the check must not fire for it.
+
+     What it cannot cover is the combination that needs the new field: a
+     **usable** typed name, `name_is_owner_supplied` `True`, colliding
+     run-locally — which must come back `collision`, **not**
+     `typed_name_refused`. That is the case to add, and it is the one a check
+     inserted before `_asset_dest_join` could bypass.
   3. Implement: set `name_is_owner_supplied` in both producers; in the rename
      branch call the check **before** `_asset_dest_join` and **only when the flag
      is `True`**; add the new `skipped_assets` kind **`typed_name_refused`**. Do

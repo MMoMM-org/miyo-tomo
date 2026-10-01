@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# version: 1.0.0
 """Regenerate tests/fixtures/038-wire-baseline/{payload,input_doc}.json from
 commit 50d8f1b.
 
@@ -65,6 +66,14 @@ def main() -> None:
         input_doc = test_mod._doc()
         payload = render_mod.build_wire_payload(input_doc)
     finally:
+        # Teardown is `rmtree` + `prune`, deliberately WITHOUT the
+        # `git worktree remove --force` that
+        # tests/fixtures/034-t6-2-instructions-golden/record.py pairs with its own
+        # rmtree: `--force` is disallowed in this project's git usage. Safe without
+        # it by construction — `scratch` comes from `tempfile.mkdtemp`, is never
+        # reassigned, and this line is reachable only after `worktree add`
+        # succeeded, so the path removed is always the worktree just created.
+        # Do not 'align with the precedent' by adding --force.
         shutil.rmtree(scratch, ignore_errors=True)
         subprocess.run(["git", "worktree", "prune"], cwd=REPO_ROOT, check=False)
 

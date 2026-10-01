@@ -294,7 +294,7 @@ survives Pass 2's JSON-only rebuild.
            data" are swept, including both `docs/tomo/` WHY files and a
            supersession pointer in 037's SDD
 
-- [ ] **T2.4 A captured baseline, since the fixture sweep is already done** `[activity: testing]`
+- [x] **T2.4 A captured baseline, since the fixture sweep is already done** `[activity: testing]`
 
   **Premise replaced by measurement, owner ruling 2026-10-01.** This task was
   written as "add the key to every fixture that builds a full payload; update the

@@ -61,18 +61,16 @@ close-out that traces every criterion to a test that was executed.
      - [ ] A new troubleshooting entry exists, distinct from the apply-time one
      - [ ] No executor internals `[ref: SDD/CON-6]`
 
-- [ ] **T5.2 The inventory's remedy row moves off `null`** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T5.2 — moved to Phase 2 as T2.1b** `[activity: data-architecture]`
 
-  1. Prime: re-read the inventory written in Phase 1 and the field this spec added
-     in Phase 2.
-  2. Test: the Phase 1 join test now requires the remedy row to name a real wire
-     field — it should fail until the row is updated, which is the mechanism working.
-  3. Implement: change the remedy row's `wire_field` from `null` to the array's
-     path. Add the optional `note` where a row needs one `[ref: PRD/C2]`.
-  4. Validate: the join test passes in both directions again.
-  5. Success:
-     - [ ] The remedy row names its wire field `[ref: PRD/F4]`
-     - [ ] The join test's failure-then-pass transition was observed, not assumed
+  The inventory's remedy row moving off `null` was scheduled here, but T2.1 made
+  the wire field exist and Phase 1's two-sided join went red the moment it did —
+  `25` marked against `23` backed. This task's own step 2 said that failure "is the
+  mechanism working", and it is; but left here it would have run red through
+  Phases 3 and 4, each of whose gates demands a green suite. Owner ruled
+  2026-10-01 to pull it forward. It also had to widen: T2.1 added **two** editable
+  fields, not one, so a second row and both count guards came with it. See
+  `phase-2.md`'s T2.1b. T5.3–T5.5 keep their numbers.
 
 - [ ] **T5.3 The live run** `[activity: validate]`
 

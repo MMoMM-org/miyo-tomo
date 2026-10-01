@@ -111,6 +111,53 @@ survives Pass 2's JSON-only rebuild.
      - [ ] `attachments` is required `[ref: SDD/ADR-8]`
      - [ ] The instructions wire is untouched `[ref: PRD/F1]`
 
+- [ ] **T2.1b The inventory catches up with the field it predicted** `[activity: data-architecture]`
+
+  Moved from Phase 5 (was T5.2) by owner ruling 2026-10-01, and **widened by
+  measurement**: T5.2's text covered only the remedy row, but T2.1 added **two**
+  editable wire fields, so the marked count went `23` → `25` while 23 rows carry a
+  non-null `wire_field`. Phase 1's join is red, correctly, and would have stayed
+  red through Phases 3 and 4 — against three phase gates that each demand a green
+  suite. Its only prerequisite, the wire field existing, is now satisfied.
+
+  1. Prime: read `tomo/schemas/suggestions-decision-inventory.json` — especially
+     **D24**, whose own note already predicted this: "The remedy has no wire field
+     yet; expected to gain one once the wire is extended to carry it." Read the new
+     `attachment_conflicts` node in `tomo/schemas/suggestions-wire.schema.json` and
+     `_assert_schema_side_join` (`tests/test_038_decision_inventory_join.py:317`).
+  2. Test: the join test is **already red** — `25 schema field(s) marked Editable
+     but only 23 inventory row(s) carry a non-null wire_field`. That is this task's
+     RED state and it arrived on its own; do not manufacture another. Observe the
+     red → green transition rather than assuming it.
+  3. Implement:
+     - **D24**: `wire_field` `null` → the remedy's path; rewrite the note so it
+       records that the prediction came true rather than still predicting.
+     - **A new row** for `attachment_conflicts[].proposed_name`, `editable: true`.
+       Its `parser_label` may name the control Phase 4's T4.2 will implement — the
+       parser-side join runs literal → row only (`_assert_parser_side_join`), so a
+       row whose label is not yet harvestable violates nothing. Verify that claim
+       in the code before relying on it.
+     - **Both count guards**, updated and not collapsed:
+       `FLOOR_SCHEMA_MARKED_FIELDS` (`:117`) `23` → `25`, its explanatory text at
+       `:78-79`, and the arithmetic at `:563`/`:568`; and
+       `test_wire_schema_marks_exactly_23_editable_fields` in
+       `tests/test_038_inventory_schema_validation.py`, renamed to its new number.
+     - Check whether the inventory's own top-level `schema_version` (currently `1`)
+       is obliged to move for an added row. The file is **vendored by Hashi** —
+       state the answer either way rather than leaving it unexamined.
+  4. Validate: both `test_038_*` files fully green; `scripts/wire-shape.py --check`
+     still exits 0. Then **prove the two guards still bite**: delete one `Editable`
+     marker and confirm the `== 25` test fails; reword one and confirm the floor
+     test fails. Neither mutation may leave both green `[ref: README/A standing
+     warning carried forward from spec 037]`.
+  5. Success:
+     - [ ] D24 names its wire field, and its note no longer predicts `[ref: PRD/F4]`
+     - [ ] `proposed_name` has a row `[ref: PRD/F4]`
+     - [ ] The join passes in both directions again
+     - [ ] Both count guards updated to `25`, neither removed, **both demonstrated
+           still able to fail** by executed mutation
+     - [ ] The inventory's `schema_version` question is answered in the commit message
+
 - [ ] **T2.2 Project the conflict onto the wire** `[activity: backend-api]`
 
   1. Prime: read `build_wire_payload` (`suggestions-render.py:422`) and `_wire_note`

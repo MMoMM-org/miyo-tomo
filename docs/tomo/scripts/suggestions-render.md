@@ -92,3 +92,33 @@ already establish. Placed in `main()`'s `parts.extend(...)` chain right after
 `render_tag_handler_updates` and before `render_suggestions`: it is a run-level
 decision block like daily-notes and tag-handler updates, so it belongs beside
 them, ahead of the per-item Suggestions sections — not interleaved with them.
+
+## `build_wire_payload` projects `attachment_conflicts[]` onto the wire (spec 038 T2.2)
+
+WHY this field exists on the wire at all: until spec 038, the ADR-026 wire
+(`_suggestions.json`) carried no Attachment-Conflicts data, so Pass 2's
+JSON-only rebuild (`build_from_wire` in `suggestion-parser.py`) could not see
+a remedy the owner chose — a measured data-loss path
+(`tests/test_037_remedy_lost_on_the_wire_path.py`). T2.2 closes the gap on the
+producer side by adding a top-level `attachment_conflicts[]` array to the
+payload; T2.3 closes it on the consumer side (see `suggestion-parser.md`'s
+entry on `build_from_wire`).
+
+`_wire_attachment_conflict` projects one `detect_attachment_conflicts` record
+(`suggestions-reducer.py:582`) to `{source, destination, same_file, remedy,
+proposed_name}`. `remedy` is not a field of that record — it is derived here
+the same way `render_attachment_conflicts_block` derives the markdown's
+pre-tick: `rename` when a free name was found, otherwise `keep_in_inbox`.
+`owner_source_items` is read by the reducer but not projected (SDD/ADR-3): the
+consumer derives the owning notes by scanning `suggestions[].attachments` for
+this `source` path, so carrying them here would duplicate data the wire
+already carries elsewhere.
+
+WHY `d.get("attachment_conflicts") or []`, not a bare `.get(...)`: the reducer
+omits the doc's `attachment_conflicts` key entirely on a conflict-free run
+(`suggestions-reducer.py:2884`, `if attachment_conflicts:`) so that run
+renders byte-identically to a pre-037 run. `d.get(...)` alone projects that
+absence as `None`, which fails the wire's own schema — T2.1 made the wire
+field required. The asymmetry is deliberate: the **doc** omits the key when
+empty, the **wire** always carries the array, so a conflict-free run still
+emits `[]` rather than `null`.

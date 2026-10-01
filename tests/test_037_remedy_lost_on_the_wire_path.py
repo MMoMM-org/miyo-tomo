@@ -1,60 +1,63 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_remedy_lost_on_the_wire_path.py — the attachment-conflict remedy
-does not survive Pass 2's JSON-only path, and silently becomes `ignore`.
+did not survive Pass 2's JSON-only path, and silently became `ignore`.
+**Fixed by spec 038 T2.3** — see the bottom of this docstring.
 
 Reported by Hashi on 2026-09-29, after spec 037 shipped, and reproduced here
 against Tomo's own code rather than accepted on their analysis.
 
-**The chain, every link verifiable in this repo:**
+**The chain, every link verifiable in this repo at the time:**
 
-1. `tomo/schemas/suggestions-wire.schema.json` carries no attachment-conflict
+1. `tomo/schemas/suggestions-wire.schema.json` carried no attachment-conflict
    field of any kind. Its own top-level description states the invariant that
    makes this a defect rather than an omission: *"every editable decision the
    markdown offers is carried here."* Spec 037 added an editable decision to
    the markdown and did not carry it there.
-2. `suggestion-parser.py:492` — `build_from_wire` hardcodes
-   `"attachment_conflict_remedies": []`. The comment beside it states the
+2. `suggestion-parser.py:492` — `build_from_wire` hardcoded
+   `"attachment_conflict_remedies": []`. The comment beside it stated the
    premise correctly ("the ADR-026 wire carries no Attachment-Conflicts data at
-   all") and stops there; the consequence was never traced.
+   all") and stopped there; the consequence was never traced.
 3. ADR-026 precedence: when `emit_digest` no longer matches, Pass 2 rebuilds
    its entire output from the wire and never re-reads the markdown
-   (`suggestion-parser.py:~2489`). So an edited wire takes path 2.
+   (`suggestion-parser.py:~2489`). So an edited wire took path 2.
 4. `_build_move_asset_actions` treats a source absent from the remedies list as
    a plain attachment — its own docstring says "same as `ignore`".
 
-So a user who ticks **Rename** and then does anything that edits the wire gets
-**Ignore**: the move goes out against the occupied destination, Hashi refuses
-it, and the owning note is filed and its source deleted regardless.
+So a user who ticked **Rename** and then did anything that edited the wire got
+**Ignore**: the move went out against the occupied destination, Hashi refused
+it, and the owning note was filed and its source deleted regardless.
 
 **Why spec 037's suite could not see this.** The wire path was tested only for
 CONFLICT-FREE runs, asserting byte-identical output against a pre-change golden
 (`test_037_t3_0_remedy_transport.py::
 test_conflict_free_run_output_is_byte_identical_to_pre_change_literal`). A
-conflict run through the wire is not expressible, because the field does not
-exist — so the one case that loses data is the one case no fixture could build.
+conflict run through the wire was not expressible, because the field did not
+exist — so the one case that lost data was the one case no fixture could build.
 The hardcoded `[]` was even deliberately proven load-bearing for golden parity,
-which is true and was the wrong question.
+which was true and was the wrong question.
 
-**Trigger is not Hashi-specific.** Their editor's save is one way to change the
-wire; the rule is any `emit_digest` mismatch.
+**Trigger was not Hashi-specific.** Their editor's save is one way to change
+the wire; the rule is any `emit_digest` mismatch.
 
-**To whoever fixes this: three tests here change together, by design.** Measured
-2026-09-29 by simulating the fix (making `build_from_wire` carry the remedy):
-the suite goes from `4 passed, 1 xfailed` to `3 failed`. That is the strict
-xfail flipping plus the two tests that deliberately record today's wrong answer
-(`test_the_wire_path_returns_an_empty_list_today` and
-`test_losing_the_remedy_silently_produces_the_ignore_outcome`). They are
-documentation of a defect, not of a contract — delete them with the marker. The
-two baseline tests above them stay.
+**The fix (spec 038 T2.2/T2.3).** The wire gained a top-level
+`attachment_conflicts[]` array (T2.2), and `build_from_wire` now projects it
+into the same `{source, remedy, proposed_name}` triple the markdown path
+yields, instead of hardcoding `[]` (T2.3). Three tests here changed together,
+by design: the strict xfail (`test_the_wire_path_carries_the_chosen_remedy_
+too`) now asserts the fixed behaviour directly, and the marker is removed;
+`test_the_wire_path_returns_an_empty_list_today` and
+`test_losing_the_remedy_silently_produces_the_ignore_outcome` — which recorded
+the defect's wrong answer — are deleted. One assertion from the second was
+rehomed first, into `test_an_explicit_ignore_remedy_leaves_the_destination_
+occupied`: an *explicit* `ignore` remedy leaving the move at the occupied
+destination is behaviour that survives this fix, not defect residue.
 """
 from __future__ import annotations
 
 import importlib.util
 import sys
 from pathlib import Path
-
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
@@ -102,10 +105,20 @@ STRUCTURED_DOC = {
     }],
 }
 
-# An edited wire for the SAME run. Shaped after the real thing
-# (`suggestions-wire.schema.json`) — which is exactly why it carries no
-# conflict: there is no field for one.
-WIRE = {"suggestions": [], "daily_updates": []}
+# The SAME run's wire, carrying the owner's chosen remedy in
+# `attachment_conflicts[]` (spec 038 T2.2/T2.3) — `destination`/`same_file`
+# are wire-only display context `build_from_wire` does not project.
+WIRE = {
+    "suggestions": [],
+    "daily_updates": [],
+    "attachment_conflicts": [{
+        "source": SOURCE,
+        "destination": OCCUPIED,
+        "same_file": False,
+        "remedy": "rename",
+        "proposed_name": "karte (2).png",
+    }],
+}
 
 
 def _remedies_via_markdown():
@@ -158,65 +171,41 @@ def test_the_markdown_path_files_the_attachment_under_the_free_name():
 # 2. The defect
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "spec 037's remedy is not carried on the suggestions wire, so the "
-        "ADR-026 JSON-only path returns [] and the owner's choice is lost. "
-        "Reported by Hashi 2026-09-29; fix requires a wire field, which is a "
-        "consumer-coordinated change. Remove this marker when it lands."
-    ),
-)
 def test_the_wire_path_carries_the_chosen_remedy_too():
-    """**This is the defect, stated as the behaviour we want.**
+    """**This was the defect, now fixed (spec 038 T2.3).** The wire's
+    `attachment_conflicts[]` (T2.2) carries the owner's remedy, and
+    `build_from_wire` now projects it to the same triple the markdown path
+    yields, instead of hardcoding `[]`.
 
-    Marked `xfail(strict=True)` rather than asserting today's wrong answer: a
-    test that pins the defect would go green forever and tell no one. Strict
-    means pytest FAILS if it ever passes, so whoever adds the wire field is
-    told to delete this marker.
+    Was `xfail(strict=True)` rather than an assertion of the then-current
+    wrong answer: a test pinning the defect would have gone green forever and
+    told no one. Strict meant pytest would FAIL if it ever passed — which is
+    exactly what happened when the wire field landed, telling whoever added
+    it to remove the marker, as this task does.
     """
     assert _remedies_via_wire() == _remedies_via_markdown()
 
 
-def test_the_wire_path_returns_an_empty_list_today():
-    """The current answer, recorded plainly so the xfail above is not the only
-    evidence and a reader need not run it to know what happens."""
-    assert _remedies_via_wire() == []
-
-
 # ---------------------------------------------------------------------------
-# 3. The consequence — an empty list is not neutral, it is `ignore`
+# 3. Surviving behaviour — an explicit `ignore` is not the same bug
 # ---------------------------------------------------------------------------
 
-def test_losing_the_remedy_silently_produces_the_ignore_outcome():
-    """The part that makes this data loss rather than a missing feature.
+def test_an_explicit_ignore_remedy_leaves_the_destination_occupied():
+    """Rehomed from `test_losing_the_remedy_silently_produces_the_ignore_
+    outcome` (spec 038 T2.3) rather than deleted with it: this pins
+    behaviour that SURVIVES the lost-remedy fix, not the defect itself. An
+    owner who explicitly ticks Ignore — not a remedy lost in transit — gets
+    exactly this outcome: `_build_move_asset_actions` leaves the move against
+    the destination Pass 1 already found occupied and records nothing as
+    skipped (`ignore` is handled the same as a source absent from the
+    remedies list — see its docstring, "same as `ignore`").
 
-    An empty remedies list is not "no decision" — `_build_move_asset_actions`
-    treats an absent source as a plain attachment, which is byte-for-byte the
-    `ignore` outcome: the move goes out against the destination Pass 1 already
-    found occupied. Hashi then refuses it, while the owning note is filed and
-    its source deleted regardless.
-
-    So the owner ticks the one remedy that files the attachment safely, and
-    Pass 2 emits the one that cannot.
+    Nothing else in the suite pins this. `test_037_t3_3_embed_rewrite.py
+    ::test_non_rename_remedies_leave_the_body_unchanged` covers `ignore`
+    only for "the body is unchanged", not the move destination.
     """
-    chosen, _ = _move_destination(_remedies_via_markdown())
-    lost, lost_skipped = _move_destination(_remedies_via_wire())
-
-    assert chosen == RENAMED
-    assert lost == OCCUPIED, (
-        "if this is no longer the occupied destination the defect has changed "
-        f"shape and this file needs rereading: {lost}"
-    )
-    assert lost != chosen
-
-    explicit_ignore, _ = _move_destination(
+    explicit_ignore, skipped = _move_destination(
         [{"source": SOURCE, "remedy": "ignore", "proposed_name": None}]
     )
-    assert lost == explicit_ignore, (
-        "a lost remedy must be indistinguishable from an explicit ignore — "
-        "that indistinguishability is why nothing reports a problem"
-    )
-    assert lost_skipped == [], (
-        "and nothing is recorded as skipped, so no report names it either"
-    )
+    assert explicit_ignore == OCCUPIED, explicit_ignore
+    assert skipped == [], skipped

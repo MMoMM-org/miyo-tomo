@@ -217,6 +217,11 @@ through `build_actions` to `_build_move_asset_actions`.
 `build_from_wire` emits `[]` unconditionally: the ADR-026 wire carries no
 conflicts data at all, and CON-5 pins its output equal to the markdown parse's.
 
+> **Superseded (spec 038 ADR-1).** The ADR-026 wire now carries a top-level
+> `attachment_conflicts[]` array (038 T2.2), and `build_from_wire` projects it
+> instead of emitting `[]` unconditionally (038 T2.3) — see
+> `docs/tomo/scripts/suggestion-parser.md` for the current behaviour.
+
 **The name is recorded here because three components must agree on it and none
 of them owns it.** `instruction-render.py` reads it with `.get(key, [])`, so a
 mismatched name does not raise — it yields `[]`, no remedy is found for any

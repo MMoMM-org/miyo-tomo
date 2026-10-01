@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.3
+# version: 0.40.4
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -484,12 +484,21 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         "tag_handler_keep_source_group_ids": [
             g["group_id"] for g in tag_groups if g.get("keep_source")
         ],
-        # spec 037 T3.0: the ADR-026 wire (_suggestions.json) carries no
-        # Attachment-Conflicts data at all — that lives only in the
-        # structured suggestions-doc.json the markdown path reads via
-        # --suggestions-doc. Always [], never fabricated, so an unedited
-        # wire keeps CON-5 parity with the markdown parse.
-        "attachment_conflict_remedies": [],
+        # spec 038 T2.3: the wire's `attachment_conflicts[]` (T2.2) carries
+        # the owner's remedy — the rendered default if Hashi left it alone,
+        # or whatever Hashi wrote in its place. Project to the same
+        # {source, remedy, proposed_name} triple `_join_attachment_conflict_
+        # remedies` yields for the markdown path; `destination`/`same_file`
+        # are wire-only display context, not part of the outcome triple
+        # Pass 2 acts on.
+        "attachment_conflict_remedies": [
+            {
+                "source": c["source"],
+                "remedy": c["remedy"],
+                "proposed_name": c["proposed_name"],
+            }
+            for c in wire.get("attachment_conflicts", [])
+        ],
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

@@ -1030,20 +1030,29 @@ itself writes when no free name exists within 99 attempts, so the downstream
 already has to handle it — the unmatched case reuses a path that must work
 anyway rather than inventing a second one.
 
-## The Wire Path Emits the Key Empty, Because the Wire Has Nothing to Say (spec 037 T3.0, v0.40.3)
+## The Wire Path Now Projects `attachment_conflicts[]`, It Did Not Used To (spec 037 T3.0 → spec 038 T2.3, v0.40.4)
 
-`build_from_wire` (ADR-026, the JSON-only parse path) also emits
-`attachment_conflict_remedies`, always `[]`.
+**Superseded premise, kept for history.** From spec 037 T3.0 through spec 038
+T2.1/T2.2, `build_from_wire` (ADR-026, the JSON-only parse path) hardcoded
+`attachment_conflict_remedies` to `[]`, on the premise that the `_suggestions.json`
+wire carried no Attachment-Conflicts data at all — that block existed only in
+the structured `suggestions-doc.json` the markdown path reads. `[]` was the
+honest and complete answer for a path where the question did not apply.
 
-The `_suggestions.json` wire carries no Attachment-Conflicts data at all — that
-block exists only in the structured `suggestions-doc.json` the markdown path
-reads. So `[]` here is not a placeholder for data that failed to arrive; it is
-the honest and complete answer for a path where the question does not apply.
+Spec 038 T2.2 added a top-level `attachment_conflicts[]` array to the wire
+itself (038's ADR-1 supersedes 037's ADR-5), so the premise stopped holding:
+the wire now has something to say, and continuing to hardcode `[]` would
+silently discard a decision the owner made — the lost-remedy defect fixed by
+`tests/test_037_remedy_lost_on_the_wire_path.py`. T2.3 replaced the hardcoded
+`[]` with a projection of `wire.get("attachment_conflicts", [])` into the same
+`{source, remedy, proposed_name}` triple `_join_attachment_conflict_remedies`
+yields for the markdown path, dropping `destination`/`same_file` — wire-only
+display context the outcome triple does not carry (SDD/ADR-3).
 
-It is also load-bearing. CON-5 pins `build_from_wire`'s output equal to the
-markdown parse's for the same input, and three golden tests in
-`tests/test_suggestions_wire_golden.py` enforce it. Emitting the key on one path
-and not the other breaks all three — measured, by reverting this line alone.
-The alternative shape — omit the key on both paths when empty — was rejected
-because it makes a conflict-free run's output a different *shape* from a
-conflicted one, which every consumer would then have to guard.
+CON-5's parity requirement still holds, for a different reason: on a
+conflict-free run the wire's `attachment_conflicts` is `[]` (the reducer omits
+the doc's key entirely — `suggestions-render.py` projects that through `or []`
+— spec 038 T2.2), so the projection is `[]` too, matching the markdown path's
+empty result. The three golden tests in `tests/test_suggestions_wire_golden.py`
+that pin `build_from_wire`'s output equal to the markdown parse's now exercise
+a real round-trip through the field rather than a hardcoded constant.

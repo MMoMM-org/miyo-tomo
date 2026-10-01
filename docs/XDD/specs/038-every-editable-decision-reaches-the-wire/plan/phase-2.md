@@ -196,16 +196,36 @@ survives Pass 2's JSON-only rebuild.
   2. Test: a conflict run's wire carries the array with the remedy defaulted as the
      markdown pre-ticks; a conflict-free run carries an empty array; an attachment
      embedded by several notes produces **one** entry `[ref: PRD/F1]`.
-  3. Implement: project `d.get("attachment_conflicts")` into the payload. The
-     source is the same structured record the markdown block already renders from —
-     computed once, rendered twice, **no second vault call** `[ref: SDD/Cross-Cutting Concepts; Cost]`.
-  4. Validate: `emit_digest` covers the new field automatically (it hashes the
-     payload minus itself) — confirm rather than assume.
+  3. Implement: project `d.get("attachment_conflicts") or []` into the payload —
+     **the `or []` is load-bearing, not defensive style.** The reducer writes
+     `doc["attachment_conflicts"]` **omit-when-empty**
+     (`suggestions-reducer.py:2884`, `if attachment_conflicts:`), deliberately, so
+     that a conflict-free run renders byte-identically to a pre-037 run. The
+     suggestions-doc schema therefore does **not** require the key, while T2.1 made
+     the wire field **required**. Measured: on a conflict-free run
+     `d.get("attachment_conflicts")` is `None`, and projecting that bare emits
+     `null` into a field the schema requires to be an array — the wire would fail
+     its own validation on exactly the runs that are supposed to be unaffected.
+     The asymmetry is intentional and worth stating in the code: the **doc** omits
+     the key when empty, the **wire** always carries the array.
+     The source is the same structured record the markdown block already renders
+     from — computed once, rendered twice, **no second vault call**
+     `[ref: SDD/Cross-Cutting Concepts; Cost]`.
+  4. Validate: `emit_digest` covers the new field automatically — **already
+     confirmed 2026-10-01, do not re-derive**: `compute_payload_digest`
+     (`lib/render_md.py:383`) builds
+     `{k: v for k, v in payload.items() if k != "emit_digest"}` over the whole
+     payload, so any new top-level key is included by construction. Confirmed by
+     reading the function rather than by observing a digest change, which would
+     not distinguish "covered" from "coincidentally different".
+     Then confirm the conflict-free path: a run with no conflicts must produce
+     `attachment_conflicts: []` and still validate against the wire schema.
   5. Success:
      - [ ] The wire carries remedy, source, destination, `same_file`, `proposed_name` `[ref: PRD/F1]`
      - [ ] One entry per attachment however many notes embed it `[ref: PRD/F1]`
      - [ ] The owning notes are **not** carried `[ref: PRD/F1]`
      - [ ] No additional vault interaction `[ref: SDD/Cost]`
+     - [ ] A conflict-free run emits `[]`, not `null`, and validates
 
 - [ ] **T2.3 Read the conflict back from the wire** `[activity: backend-api]`
 

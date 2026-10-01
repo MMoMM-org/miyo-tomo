@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.24.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -333,6 +333,27 @@ def _wire_note(section: dict, action: dict) -> dict:
     }
 
 
+def _wire_attachment_conflict(entry: dict) -> dict:
+    """Project one `detect_attachment_conflicts` record (suggestions-reducer.py:582)
+    to a wire `attachment_conflicts[]` entry (spec 038 T2.2).
+
+    `remedy` is not a field of the structured record — it is derived here the
+    same way `render_attachment_conflicts_block` derives the markdown's
+    pre-tick (suggestions-reducer.py:1512-1524): `rename` when a free name was
+    found, otherwise `keep_in_inbox`. `owner_source_items` is read but not
+    projected — SDD/ADR-3: the consumer derives the owning notes by scanning
+    `suggestions[].attachments` for this `source` path, so carrying them here
+    would duplicate data the wire already carries elsewhere.
+    """
+    return {
+        "source": entry["source"],
+        "destination": entry["destination"],
+        "same_file": entry.get("same_file"),
+        "remedy": "rename" if entry.get("proposed_name") is not None else "keep_in_inbox",
+        "proposed_name": entry.get("proposed_name"),
+    }
+
+
 _DAILY_BUCKETS = ("trackers", "log_entries", "log_links")
 
 # One METADATA-ONLY field per bucket — used only to help a human LOCATE the
@@ -503,6 +524,16 @@ def build_wire_payload(d: dict) -> dict:
             "preview": g.get("composed_block", ""),
         })
 
+    # T2.1 made the wire field required; the reducer's doc omits the key on a
+    # conflict-free run (suggestions-reducer.py:2884, `if attachment_conflicts:`)
+    # so that run renders byte-identically to a pre-037 run. `d.get(...)` alone
+    # would project that absence as `None`, which fails the wire's own schema —
+    # the `or []` below is load-bearing, not defensive style [ref: plan T2.2].
+    attachment_conflicts = [
+        _wire_attachment_conflict(entry)
+        for entry in (d.get("attachment_conflicts") or [])
+    ]
+
     payload = {
         "schema_version": wire_schema_version("suggestions-wire.schema.json"),
         "generated": d["generated"],
@@ -513,6 +544,7 @@ def build_wire_payload(d: dict) -> dict:
         "proposed_mocs": proposed_mocs,
         "daily_updates": daily_updates,
         "tag_handler_groups": tag_handler_groups,
+        "attachment_conflicts": attachment_conflicts,
     }
     payload["emit_digest"] = compute_payload_digest(payload)
     return payload

@@ -1054,5 +1054,13 @@ conflict-free run the wire's `attachment_conflicts` is `[]` (the reducer omits
 the doc's key entirely — `suggestions-render.py` projects that through `or []`
 — spec 038 T2.2), so the projection is `[]` too, matching the markdown path's
 empty result. The three golden tests in `tests/test_suggestions_wire_golden.py`
-that pin `build_from_wire`'s output equal to the markdown parse's now exercise
-a real round-trip through the field rather than a hardcoded constant.
+that pin `build_from_wire`'s output equal to the markdown parse's now include the
+field in that comparison instead of comparing against a constant one side could
+never disagree with. They do **not** prove the conflicted case: measured, those
+fixtures carry no `attachment_conflicts` entry at all, so both sides produce `[]`
+and the only behaviour covered there is the empty one. The conflicted case is
+pinned by `tests/test_037_remedy_lost_on_the_wire_path.py`'s cross-path equality
+instead. This is the same caveat this file already records further down for
+`source_note_title` — the golden tests "prove parity on a fixture that has no
+collision and so cannot see it" — and it is worth stating twice, because a golden
+test's fixtures decide what its parity claim is worth.

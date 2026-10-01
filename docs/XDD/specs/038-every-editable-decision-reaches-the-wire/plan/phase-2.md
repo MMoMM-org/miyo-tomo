@@ -320,9 +320,31 @@ survives Pass 2's JSON-only rebuild.
      key holding `[]`. Nothing else should have moved.
   2. Test: capture a conflict-free wire payload as an explicit expected structure,
      then assert a freshly built one differs from the pre-038 shape in **exactly**
-     those two ways and no others. The point is the "no others" — this is the test
-     that catches an unrelated top-level field being changed, dropped or renamed in
-     passing. Derive the baseline from **`50d8f1b`** — the last commit before Phase 2
+     the expected ways and no others. The point is the "no others" — this is the
+     test that catches an unrelated top-level field being changed, dropped or
+     renamed in passing.
+     **The difference is THREE keys, not two — measured 2026-10-01, and the task
+     said two.** Running today's `build_wire_payload` against the pre-038 one on the
+     same `_doc()` fixture yields: `attachment_conflicts` (new), `schema_version`,
+     and **`emit_digest`**. The digest is a hash over the payload minus itself, so
+     it changes necessarily whenever any field changes; a criterion naming only two
+     differences fails on the first run, for a reason that is correct behaviour.
+     Handle it deliberately rather than by widening the allowance: compare the two
+     payloads with `emit_digest` removed from both sides, and assert **separately**
+     that the digest differs. That second assertion is worth having on its own — it
+     is the only executed proof that the digest actually covers the new field, which
+     T2.2 established by reading `compute_payload_digest` but never by running it.
+     **And do not derive the baseline by loading the old module.** Measured: the
+     historical `suggestions-render.py` imported standalone and run on today's
+     fixture stamps `schema_version: "3"`, not `"2"`, because
+     `wire_schema_version` reads the schema **from disk at call time**
+     (`lib/wire_version.py`) rather than carrying a literal. Old code plus today's
+     schema gives you old structure with the current version stamp — so the one
+     difference this test most wants to see would silently vanish. Capture the
+     baseline as committed data instead: produce it with the schema file from
+     `50d8f1b` in place as well as the script (a scratch worktree is the clean way,
+     removed afterwards with `rm -rf` plus `git worktree prune`), and commit the
+     result under `tests/fixtures/`. Derive the baseline from **`50d8f1b`** — the last commit before Phase 2
      touched either file — rather than hand-typing it from memory; a hand-typed
      baseline proves only that two people agreed on what they expected. Note what
      `50d8f1b` is **not**: it is not the branch point, which is `8d284fb`, 36 commits
@@ -338,7 +360,9 @@ survives Pass 2's JSON-only rebuild.
      naming that key, not merely "payloads differ".
   5. Success:
      - [ ] A conflict-free payload differs from the pre-038 baseline in exactly the
-           version stamp and the new empty array `[ref: SDD/Acceptance Criteria]`
+           version stamp and the new empty array, with `emit_digest` compared
+           separately rather than counted among them `[ref: SDD/Acceptance Criteria]`
+     - [ ] The digest is shown by execution to cover the new field
      - [ ] The baseline is **captured**, not hand-typed `[ref: SDD/Acceptance Criteria]`
      - [ ] An unrelated top-level key change turns the test red, **demonstrated**,
            and the failure names the key

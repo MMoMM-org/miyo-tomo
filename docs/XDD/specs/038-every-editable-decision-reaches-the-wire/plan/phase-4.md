@@ -74,6 +74,31 @@ surface, landing into an already-guarded path.
      as `proposed_name`. **Remove the structured-doc read for this value** — do not
      leave both in play, or a stale doc wins over the owner's keystrokes
      `[ref: SDD/Implementation Gotchas]`.
+
+     **And set `name_is_owner_supplied` here — T3.2 added it, and this task is
+     where the markdown side stops being `False`.** The rule is NOT `True`
+     unconditionally, and getting that wrong re-opens the behaviour change the
+     owner avoided on 2026-10-01. Set it to **`extracted != the doc's computed
+     name`**. Reasoning, measured during T3.2's amendment:
+     - After this task every markdown `proposed_name` comes from the rendered
+       text, an untouched pre-ticked default included. Flagging all of them
+       `True` would make T3.2's check refuse an untouched default whose computed
+       name carries an Obsidian-forbidden character — and `* " | < > \` are all
+       legal in macOS filenames, so `foo*bar (2).png` is a real computed name.
+       That is precisely the "check every name" option the owner rejected, and it
+       would also contradict this task's own test that an untouched default
+       resolves to the computed name **byte-identically**.
+     - The comparison is **free here** and only here: this path already loads the
+       doc (`_load_json_doc(_own_doc_path)`, `:2998`). The wire path keeps `True`
+       unconditionally because it deliberately does not load the doc — Phase 2's
+       T2.5 measured the JSON-only path working with `--file` plus
+       `--suggestions-json` and no `--suggestions-doc`, and re-coupling it would
+       undo that.
+     - The asymmetry is therefore not an inconsistency: each side uses what it
+       has. It does mean an untouched unusable default is refused on the wire and
+       permitted in the markdown. Acceptable because the wire path ships to the
+       consumer for the first time in Phase 5, so no deployed behaviour changes —
+       but say so in the handoff rather than letting them discover it.
   4. Validate: full suite; the 037 baseline test
      (`test_the_untouched_default_resolves_to_the_computed_name`) is the regression
      floor and must stay green.

@@ -115,26 +115,84 @@ produce a typed name at all.
 
 - [ ] **T3.2 The move builder consumes the verdict** `[activity: backend-api]`
 
-  1. Prime: read `_build_move_asset_actions` (`render_actions.py:691`), its rename
-     branch (`:825-830`), and the existing `skipped_assets` kinds (`no_basename`,
-     `vault_collision_held`, `collision`).
+  1. Prime: read `_build_move_asset_actions` (`lib/render_actions.py:691`), its
+     rename branch (`:825-830`), and the existing `skipped_assets` kinds
+     (`no_basename`, `vault_collision_held`, `collision`).
+
+     **This task grew on 2026-10-01, by owner ruling, and now touches
+     `suggestion-parser.py` as well.** The reason is measured: `proposed_name`
+     carries **no provenance**. `detect_attachment_conflicts` builds every record
+     in one literal of five keys (`suggestions-reducer.py:735-741`) and none of
+     them says whether the owner typed the name or Pass 1 computed it. So "the
+     computed-name path is unchanged" cannot be met by branching on anything that
+     exists today, and it is not satisfied by accident either: `_propose_asset_name`
+     rebuilds `f"{stem} ({n}).{ext}"` from the raw basename
+     (`suggestions-reducer.py:573-577`) and sanitises nothing — `FORBIDDEN_CHARS`
+     appears nowhere in that module. Measured by running T3.1's check over names
+     the reducer would compute: **five of seven** realistic macOS filenames are
+     refused, because `* " | < > \` are all legal on macOS and all forbidden by
+     Obsidian.
+
+     ```
+     inbox basename        Tomo computes          verdict
+     karte.png             karte (2).png          OK
+     foo*bar.png           foo*bar (2).png        REFUSED (forbidden_character)
+     quote"name.png        quote"name (2).png     REFUSED (forbidden_character)
+     a|b.png               a|b (2).png            REFUSED (forbidden_character)
+     note<draft>.png       note<draft> (2).png    REFUSED (forbidden_character)
+     back\slash.png        back\slash (2).png     REFUSED (forbidden_character)
+     Q&A notes.png         Q&A notes (2).png      OK
+     ```
+
+     So add **`name_is_owner_supplied`** to the remedy record, in both producers —
+     both internal to `suggestion-parser.py`, so this is **not** a schema or wire
+     change and Phase 2's version question stays closed:
+     - `build_from_wire`'s projection (`:494`, built in T2.2) — **`True`**. The
+       consumer's editor can change this field, and Tomo cannot tell whether it
+       did, so "could have been edited" is the semantic.
+     - the markdown join (`:2997`, `_join_attachment_conflict_remedies` over
+       `_load_json_doc`) — **`False`** today, because the name comes from the
+       structured doc and the rendered text is never consulted for it. **Phase 4
+       flips this** when a typed name actually arrives; see `phase-4.md`.
+
+     Considered and not chosen: comparing the wire's `proposed_name` against the
+     doc's computed one, which would be more precise — it would spare a consumer
+     who never touched the name. It was rejected because it re-couples the
+     JSON-only path to the doc, and Phase 2's T2.5 measured that path working
+     without it (`--file` plus `--suggestions-json`, no `--suggestions-doc`).
   2. Test: a refused name emits **no** `move_asset` for that attachment and **one**
      `skipped_assets` entry of the new kind carrying the reason; a usable typed
      name emits the move against the typed destination; a Tomo-computed name
-     behaves exactly as today. **Plus one case this task confirms rather than
+     behaves exactly as today. **Both sides of the flag need a case, and one of
+     them is the whole point**: the SAME unusable string — take `foo*bar (2).png`
+     from the table above — must be **refused** when `name_is_owner_supplied` is
+     `True` and must behave **exactly as today** when it is `False`. A test that
+     only covers the refusal would pass against an implementation that checks
+     every name, which is the behaviour change this ruling exists to prevent. **Plus one case this task confirms rather than
      builds** (owner ruling 2026-10-01, where F3's fourth criterion landed): a
      typed name that is usable as a string but collides with a destination another
      action in the same run already claimed is refused by the **existing** check at
      `:836` with `kind: "collision"`. Assert it — the guarantee lives only in a
      comment (`:831-835`) today, and a check inserted before `_asset_dest_join`
      is exactly the kind of edit that could bypass it.
-  3. Implement: call the check before `_asset_dest_join`; add the new kind. Do
-     **not** touch `_asset_dest_join` `[ref: SDD/CON-4]`.
+  3. Implement: set `name_is_owner_supplied` in both producers; in the rename
+     branch call the check **before** `_asset_dest_join` and **only when the flag
+     is `True`**; add the new `skipped_assets` kind. Do **not** touch
+     `_asset_dest_join` `[ref: SDD/CON-4]`. Pick the kind name once and use it in
+     T3.3 and T3.4 unchanged — three tasks depend on the same literal.
   4. Validate: the 037 suite stays green — particularly the degraded-rename path
-     (`proposed_name` null still degrades to `keep_in_inbox`).
+     (`proposed_name` null still degrades to `keep_in_inbox`,
+     `render_actions.py:787-789`). Note that guard is a truthiness test, so `" "`
+     does **not** degrade; it reaches the rename branch and is refused there when
+     the flag is `True`.
   5. Success:
      - [ ] A refused name emits no move and one records entry `[ref: PRD/F3]`
-     - [ ] The computed-name path is unchanged `[ref: PRD/F3]`
+     - [ ] The computed-name path is unchanged, **proven on a string that the
+           check refuses** — not merely on a name that happens to pass
+           `[ref: PRD/F3]`
+     - [ ] `name_is_owner_supplied` is `True` on the wire path and `False` on the
+           markdown path, each asserted `[ref: PRD/F3]`
+     - [ ] No schema file and no wire field changed — the flag is internal
      - [ ] `_asset_dest_join` is byte-identical to before `[ref: SDD/Acceptance Criteria]`
 
 - [ ] **T3.3 The owning note is held** `[activity: backend-api]`

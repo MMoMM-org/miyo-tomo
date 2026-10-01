@@ -52,7 +52,7 @@ destination unguarded.
 Delivers the guard and its consequences, fully tested, before the markdown can
 produce a typed name at all.
 
-- [ ] **T3.1 The typed-name check** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T3.1 The typed-name check** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: read `lib/obsidian_filename.py`'s `sanitize_stem` (`:36-44`) — to
      understand precisely what is **not** being reused and why — and

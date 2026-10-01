@@ -49,6 +49,21 @@ produce a typed name at all.
      understand precisely what is **not** being reused and why — and
      `_asset_dest_join` (`render_actions.py:560-575`) to see what the string would
      otherwise flow into.
+
+     **Measured 2026-10-01 (T2.5) — the control an owner edits renders a full
+     path, not a filename.** `suggestions-reducer.py:1517` emits the Rename line
+     as ``- [x] Rename to `{_asset_dest_join(asset_folder, proposed_name)}` ``,
+     which on a real run reads ``Rename to `Atlas/290 Assets/295 Attachments/karte (2).png` `` — while the wire field `attachment_conflicts[].proposed_name`
+     holds the bare basename `karte (2).png`. So the separator refusal this task
+     specifies will reject the **most natural edit there is**: retyping the stem
+     and leaving the folder prefix where the renderer put it. Decide here, not at
+     T3.4, whether this task strips a leading folder that matches the asset
+     folder or refuses it with a reason that states what to type instead.
+     Confirmed absent today, so the task is building something real: the parse
+     site lowercases the label and branches on `startswith("rename")`
+     (`suggestion-parser.py:2350-2354`) and never reads the backtick-quoted text
+     at all. D25's `markdown_control` calls it "the backtick-quoted filename",
+     which understates the control — worth amending in the same breath.
   2. Test: one case per refusal class and one acceptance case. Separator present
      (`a/b.png`, `../../x.png`, `/abs.png`); forbidden character (each of
      `: * ? " < > |` and backslash); blank and whitespace-only (`""`, `" "` —

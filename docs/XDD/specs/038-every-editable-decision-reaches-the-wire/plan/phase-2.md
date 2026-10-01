@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: The wire carries the decision"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -407,7 +407,7 @@ survives Pass 2's JSON-only rebuild.
      - [ ] The baseline ships with its generator and a stated regeneration rule, so
            a future failure cannot be silenced by regenerating it unthinkingly
 
-- [ ] **T2.5 Phase validation** `[activity: validate]`
+- [x] **T2.5 Phase validation** `[activity: validate]`
 
   - Run the full suite and `ruff`. **Measured correction to this task as first
     written**: the gate's `ACTION_MOVE_VERSION` + `ACTION_HANDOVER` verdict is
@@ -488,5 +488,49 @@ survives Pass 2's JSON-only rebuild.
     artefact on disk. Remove or regenerate `tomo-tmp/suggestions-wire.json` and
     confirm the fresh one carries `"3"` **before** editing it. The same hygiene the
     repo already learned once as "reset `tomo-tmp` before a live run".
+  - **Executed 2026-10-01 — recorded results.**
+    - Suite: `4449 passed, 5 skipped, 1 xfailed` in 110.99s — zero failures.
+      `ruff check tomo/scripts/` — `All checks passed!`.
+    - `scripts/wire-shape.py --check` on the repo: silent, exit 0 — the
+      `passed=True, actions=[]` state, exactly as predicted once T2.1 landed.
+    - **`move_version` + `handover` reproduced on a scratch copy**, mutating
+      nothing in the repo. `--schemas-dir` / `--shapes-dir` exist for this
+      (`scripts/wire-shape.py:30-32`). The scratch schema held the version back
+      at `"2"` while keeping `attachment_conflicts`, against the pre-T2.1
+      manifest (`git show 7a517f4^:tomo/schemas/shapes/suggestions-wire.shape.json`).
+      Exit 1, verdict verbatim:
+      ```
+      suggestions-wire.schema.json: shape changed ('2' vs manifest '2')
+         added_property (affecting): added property: attachment_conflicts
+         required_added (not affecting): required gained: attachment_conflicts
+        /properties/attachment_conflicts/items node_added (affecting): node added: /properties/attachment_conflicts/items
+        /properties/suggestions/items required_added (not affecting): required gained: attachments
+        -> move schema_version to a new value
+        -> hand over the schema and the obligation table to the consumer
+      ```
+      Those **four** structural entries plus the version move's own
+      `added_enum_value '3'` and `removed_enum_value '2'` are the **six** the
+      vendored-parity test pins (`tests/test_wire_snapshot_parity.py:738-752`).
+      The bullet above asserted that arithmetic; it is now measured, not reasoned.
+    - **The three states, re-run, all as the recipe predicted.** A: edited wire
+      at `"3"` yields `remedy: "keep_in_inbox"` with stderr
+      `suggestions-json: edited wire is authoritative (JSON-only path)`.
+      B: no wire yields `remedy: "rename"`. C: the same edit on a wire stamped
+      `"2"` yields `warning: suggestions-json schema_version 2 != 3 — ignored,
+      using markdown` and `remedy: "rename"` — the owner's decision discarded.
+    - **One correction to the expected values given above.** State C also
+      returned `proposed_name: null`, and that is **not** part of the rejection
+      behaviour — it is an unsupplied `--suggestions-doc`. Measured three ways:
+      `--file` alone returns `null` too, and state C re-run **with**
+      `--suggestions-doc` returns `"karte (2).png"`. The discriminator between
+      the two paths is the **remedy**, never the name. A bare `null` here means
+      a missing input; reading it as evidence would invert the conclusion.
+    - Not run: `scripts/update-tomo.sh`. The sync bullet above predates the
+      recipe and the recipe supersedes it — the version stamp resolves against
+      the schema beside the *script*, so the repo copy stamps `"3"` with no sync
+      at all, and nothing under `tomo-instance/` is read except
+      `tomo-tmp/suggestions-doc.json`, as input, or written. The instance's own
+      stale `"2"` artefacts are therefore untouched and still stale — they bite
+      a **container** run, which is T5.3's, and the warning stands there.
   - Success: suite green; `ruff` clean; the wire path demonstrably taken after the
-    version move `[ref: PRD/F1]`.
+    version move `[ref: PRD/F1]`. **All three met, evidence above.**

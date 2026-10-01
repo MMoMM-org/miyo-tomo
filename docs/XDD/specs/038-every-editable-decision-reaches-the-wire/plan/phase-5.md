@@ -94,23 +94,47 @@ close-out that traces every criterion to a test that was executed.
 
 - [ ] **T5.4 The coordinated handoff, and the Kokoro obligation** `[activity: documentation]`
 
-  1. Prime: read the pending handoffs in `_outbox/for-hashi/` and
-     `_outbox/for-kokoro/` — both are written and unsent, and the Kokoro one is
-     what discharges CON-8 `[ref: SDD/CON-8]`.
+  1. Prime: read the pending handoff in `_outbox/for-hashi/`. **Measured
+     2026-10-01 (T2.5): only that one is outstanding.** The Kokoro handoff
+     `2026-09-29_tomo-to-kokoro_four-specs-since-july-034-through-037.md` is
+     already `status: done` and Kokoro replied with ADR-029/030/031, so **CON-8
+     is discharged before this phase begins** `[ref: SDD/CON-8]`. Confirm that
+     reply; do not re-send it.
   2. Test: not testable. The check is completeness: schema pair attached, the run
      fixture attached, the version move named, the `source`-not-`item_key` keying
      restated, and the inventory attached.
   3. Implement: one handoff to the consumer carrying the new schema, the inventory,
      and a runnable suggestions run with a real conflict — a run their QA vault
      cannot produce. Attach the artefacts rather than describing them: the 2026-09-18
-     schema pair and the 2026-09-14 run fixture are the precedents. Send the Kokoro
-     handoff at the same time or before.
+     schema pair and the 2026-09-14 run fixture are the precedents. The Kokoro
+     handoff needs no coupling here — it went out 2026-09-29 and is answered.
+
+     **Carry these three. Measured in Phase 2 (T2.5); the suite can see neither
+     the first nor the third.**
+     - The **`handover` action itself**. The gate emits `move_version` +
+       `handover` only while the version is still held back, and stops emitting
+       it the moment the move completes — which T2.1 did. So no tooling will
+       remind this phase that a handover is owed; this bullet is the reminder.
+     - The **six reportable structural entries**, pinned at
+       `tests/test_wire_snapshot_parity.py:738-752`: `schema_version` gaining
+       `'3'` and losing `'2'`, `attachment_conflicts` added and required, the
+       `/properties/attachment_conflicts/items` node, and `attachments` becoming
+       required under `/properties/suggestions/items`.
+     - **Three divergences no test can see.** `snapshot_parity_delta` compares
+       structure only and ignores `description`, so `candidate_mocs[].selected`,
+       `candidate_mocs[].anchor` and `proposed_mocs[].tags` already differ in
+       prose between our schema and the vendored copy with the suite entirely
+       green. Name them in the handoff body explicitly — nothing else surfaces
+       them, and refreshing the vendored copy without them re-vendors the
+       divergence.
   4. Validate: re-read the consumer's last message and confirm each of their action
      items is answered.
   5. Success:
      - [ ] One handoff, complete, with artefacts attached `[ref: SDD/CON-1]`
      - [ ] A runnable conflict run is included `[ref: README/Decisions Log]`
-     - [ ] The Kokoro handoff has gone out, discharging CON-8 `[ref: SDD/CON-8]`
+     - [ ] CON-8's discharge is confirmed from Kokoro's reply rather than
+           re-sent — it was already `done` on 2026-09-29 `[ref: SDD/CON-8]`
+     - [ ] The three description-only divergences are named in the handoff body
      - [ ] Nothing was shipped to a live wire before their copy was updated
 
 - [ ] **T5.5 Close-out** `[activity: documentation]`

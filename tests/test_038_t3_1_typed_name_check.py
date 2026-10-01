@@ -33,10 +33,10 @@ from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
-LIB_PATH = REPO_ROOT / "tomo" / "scripts" / "lib"
+SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
-sys.path.insert(0, str(LIB_PATH))
-from typed_name_check import (  # noqa: E402
+sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.typed_name_check import (  # noqa: E402
     REFUSAL_REASONS,
     check_typed_name,
 )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from obsidian_filename import FORBIDDEN_CHARS
+from lib.obsidian_filename import FORBIDDEN_CHARS
 
 # Closed set of refusal reasons, so a renderer can phrase each without parsing
 # a string. Exactly three members — `taken` is excluded on purpose; see the

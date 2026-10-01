@@ -1443,6 +1443,46 @@ note whose embed a rename will break, and the owner-facing text must not imply
 otherwise. Spec 037 shipped four sentences that asserted more than the renderer
 knew; this is the same trap with a new mechanism behind it.
 
+## OPEN — `build_from_wire` reads every required wire array with a tolerant default
+
+**Found 2026-10-01** during spec 038 Phase 2, T2.3 review. Predates the task; T2.3
+followed the existing convention correctly and is not the defect.
+
+`build_from_wire` (`suggestion-parser.py:325`) is Pass 2's JSON-only rebuild path.
+It reads three top-level arrays that the wire schema marks **required**, and reads
+all three with a tolerant default:
+
+- `wire.get("tag_handler_groups", [])`
+- `wire.get("daily_updates", [])`
+- `wire.get("attachment_conflicts", [])` (added by 038 T2.3)
+
+Nothing validates the wire against its schema on the read path. `load_changed_wire`
+(`:243`) checks `schema_version` and nothing else — a version match is not a shape
+check. So a version-current wire that is missing a required array is accepted, and
+each missing array degrades to "the owner decided nothing" rather than to an error.
+
+For `attachment_conflicts` that degradation is exactly the data-loss path spec 038
+exists to close, arriving by a different route: the remedy is not lost because the
+producer failed to emit it, but because the consumer's edit dropped the key and the
+reader silently supplied `[]`. The same shape applies to the other two.
+
+The counter-argument for tolerance is real and should be weighed rather than
+dismissed: Hashi edits these documents, and a hard failure turns a consumer-side
+bug into a Pass-2 crash. But `load_changed_wire` already has a documented tolerance
+story for a mismatched version — it warns and falls back to the markdown — and that
+story does not extend to a malformed document, which currently gets neither a
+warning nor a fallback.
+
+Options: validate the wire against the vendored schema once at read time and fall
+back to the markdown on failure, reusing `load_changed_wire`'s existing fallback
+rather than inventing a second behaviour; or subscript the three required arrays so
+a malformed wire raises; or keep the tolerance and record why, with a test that
+pins the degradation as intended rather than accidental. The first is the only one
+that treats "malformed" the way the file already treats "wrong version".
+
+Worth settling while 038 is still open, because 038 is what made the third field
+load-bearing.
+
 ## OPEN — two different `_count_editable_marked_descriptions` with the same name and different contracts
 
 **Found 2026-10-01** during spec 038 Phase 2 review. Predates the phase; latent,

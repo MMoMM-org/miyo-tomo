@@ -176,7 +176,8 @@
       "markdown_control": "The backtick-quoted filename following the Rename checkbox on an Attachment Conflicts entry: retype to choose a different rename target.",
       "wire_field": "attachment_conflicts[].proposed_name",
       "editable": true,
-      "parser_label": ["Rename to"]
+      "parser_label": ["rename"],
+      "note": "Shares its match site with the remedy row above — the name lives on the same checkbox line, not a separate one."
     }
   ]
 }

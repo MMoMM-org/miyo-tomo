@@ -1443,6 +1443,73 @@ note whose embed a rename will break, and the owner-facing text must not imply
 otherwise. Spec 037 shipped four sentences that asserted more than the renderer
 knew; this is the same trap with a new mechanism behind it.
 
+## OPEN — the inventory join could now catch a *wrong* `wire_field`, not just a missing row
+
+**Found 2026-10-01** during spec 038 Phase 2, T2.1b. Not a defect — an obstacle
+that this spec removed, leaving a known limitation newly closeable.
+
+`[ref: 038/SDD/ADR-7]` accepted a limitation deliberately: the two-sided join
+catches a **missing** row, not a **wrong** one. A row whose `wire_field` names a
+field that does not exist, or names the wrong field, passes everything.
+
+The stated reason the schema side counts correspondence instead of matching path
+strings was that one row had no path to match: D24, the attachment-conflict
+remedy, carried `wire_field: null` because the wire did not yet carry the remedy.
+A path-string join "has no answer for the one row that has no path".
+
+That obstacle is gone. T2.1 added `attachment_conflicts[].remedy` and
+`.proposed_name` to the wire, T2.1b pointed D24 at the first and added D25 for
+the second, and **no inventory row now carries a null `wire_field`** (measured:
+zero). So a path-string join became possible at the moment the spec that relied
+on its impossibility finished its own schema move.
+
+What it would buy, concretely: resolve each row's `wire_field` as a path into the
+wire schema and assert the target exists and is `Editable`-marked. That catches
+three faults the count correspondence cannot — a typo'd path, a row pointing at a
+read-only field, and a row pointing at a field that was renamed. The count check
+stays useful alongside it: a reword can still drop the marked count without any
+row's path changing, which is why the counting exists and should not be replaced.
+
+Not done in 038. It is a change to ADR-7's accepted scope, not a task inside it,
+and the join's current shape is reviewed and green. The honest sequencing is a
+decision first — does the limitation stay accepted now that it is cheap to close?
+— and only then an implementation.
+
+Note that `wire_field` values are array-aware (`attachment_conflicts[].remedy`,
+`suggestions[].decision`), so a resolver has to understand the `[]` segment
+rather than splitting on dots. That is the only non-trivial part.
+
+## OPEN — the inventory's identifier guard scans `note` but never `markdown_control`
+
+**Found 2026-10-01** during spec 038 Phase 2, T2.1b review. Predates the task
+(introduced with the guard itself in T1.1b); flagged rather than fixed in-phase
+because it is not in any 038 task's success criteria.
+
+`tests/test_038_inventory_schema_validation.py`'s
+`test_inventory_notes_carry_no_task_phase_feature_or_spec_identifier` iterates
+rows and tests `row["note"]` against `_IDENTIFIER_RE`. It never tests
+`row["markdown_control"]`.
+
+Both fields are consumer-facing prose in a file **vendored by Hashi**, and
+`markdown_control` is the larger and more frequently edited of the two — it is
+the field that describes the control to the consumer. It is also the field that
+already went wrong once: all 24 rows originally baked
+`suggestion-parser.py:NNN` line references into it, stripped by hand in `77c05c1`
+during Phase 1. The guard that exists to stop that recurring was then pointed at
+the other field.
+
+Nothing has leaked today — D24's and D25's `markdown_control` text was read and
+is clean. The gap is that a future leak would not be caught, and the hand-strip
+that fixed it last time is exactly the "rule someone has to remember" that
+ADR-7 names as the mechanism which failed in 037.
+
+Fix is small: extend the existing test to scan both fields, then plant an
+identifier in a `markdown_control` on a copy and confirm it bites — the file's
+`test_identifier_regex_bites_on_a_planted_identifier` ablation already models
+how. Worth checking one thing first: whether any legitimate `markdown_control`
+value would trip `_IDENTIFIER_RE`'s bare `\b\d{3,4}\b` branch, since that
+branch is broad and consumer prose may legitimately contain a three-digit number.
+
 ## CLOSED — `classification` is parsed but unreachable from the review surface
 
 **Found 2026-09-30** while building the suggestions decision inventory: a field-line

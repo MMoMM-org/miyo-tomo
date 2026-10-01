@@ -75,6 +75,25 @@ survives Pass 2's JSON-only rebuild.
      manifest with `scripts/wire-shape.py --regenerate` (the CLI is at
      `scripts/`, not under `tomo/scripts/lib/`). Leave
      `hashi-suggestions-wire.schema.json` untouched — Phase 5 owns it.
+     **Fourth artefact, consequent on leaving the vendored copy alone:**
+     `tests/test_wire_snapshot_parity.py`'s
+     `test_suggestions_comparison_a_is_clean_offline` (`:689`) asserts
+     `reportable == []` and **will fail** — measured: the change produces
+     **six** reportable entries (`added_enum_value '3'`,
+     `removed_enum_value '2'`, `added_property attachment_conflicts`,
+     `required_added attachment_conflicts`,
+     `node_added /properties/attachment_conflicts/items`,
+     `required_added attachments`). Re-measure that expectation to the new
+     delta, following the instruction its own docstring carries forward —
+     "re-measure and update rather than treat a changed delta as a defect".
+     Precedent: this test has already stood at **eight** while awaiting the
+     consumer (it went 0 → 8 → 0 across spec 035), under requirements.md's
+     Rule 7. **Do NOT reach for `SANCTIONED_ASYMMETRIES`**: its own comment
+     restricts it to "a standing cross-repo decision, not a lag awaiting a
+     handoff", and `test_wire_snapshot_parity.py:810` pins the mapping to
+     exactly `{"hashi-instructions.schema.json"}` on the stated ground that
+     an exclusion on this wire "hides drift instead of scoping the
+     comparison".
   4. Validate: `scripts/wire-shape.py --check` exits 0 and `--obligations` reports
      no drift once the manifest is regenerated — **measured**: property added +
      version moved + manifest regenerated yields `passed=True, actions=[]`. The
@@ -85,6 +104,8 @@ survives Pass 2's JSON-only rebuild.
            both manifest sites included; the vendored copy still reads `"2"`
            `[ref: PRD/F1]`
      - [ ] `attachment_conflicts` is in the schema's top-level `required`
+     - [ ] The vendored-parity expectation is re-measured to the six-entry
+           delta, and `SANCTIONED_ASYMMETRIES` is unchanged
      - [ ] A half-finished move fails the gate rather than shipping quietly
            `[ref: SDD/Acceptance Criteria]`
      - [ ] `attachments` is required `[ref: SDD/ADR-8]`
@@ -166,7 +187,10 @@ survives Pass 2's JSON-only rebuild.
     (`snapshot_parity_delta` ignores `description`), so three already-divergent
     descriptions — `candidate_mocs[].selected`, `candidate_mocs[].anchor` and
     `proposed_mocs[].tags` — are invisible to every test in the suite and must ride
-    the handoff explicitly alongside the four structural changes.
+    the handoff explicitly alongside the **six** reportable structural
+    entries — measured, and two more than a first reading suggests, because
+    the version move itself contributes both `added_enum_value '3'` and
+    `removed_enum_value '2'`.
   - **Prove the wire path is still taken.** Generate a run **after** the version
     move so its wire carries `"3"`, edit that wire, and confirm Pass 2 rebuilds from
     it. A wire generated before the move carries `"2"`, mismatches, and falls back

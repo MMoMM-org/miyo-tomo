@@ -277,24 +277,48 @@ survives Pass 2's JSON-only rebuild.
            data" are swept, including both `docs/tomo/` WHY files and a
            supersession pointer in 037's SDD
 
-- [ ] **T2.4 Update the golden fixtures** `[activity: testing]`
+- [ ] **T2.4 A captured baseline, since the fixture sweep is already done** `[activity: testing]`
 
-  1. Prime: read `tests/test_suggestions_wire_golden.py` (hand-built full payload
-     dicts, e.g. `:115-236`) and `tests/test_wire_snapshot_parity.py` (`:238`,
-     `:262`). These are **mechanical, multi-site, and easy to half-finish**
-     `[ref: SDD/Known Technical Issues]`.
-  2. Test: the conflict-free golden comparison must show **only** the version
-     stamp and an empty `attachment_conflicts` array as differences — capture the
-     pre-change payload as the comparison target rather than asserting "unchanged"
-     against nothing.
-  3. Implement: add the key to every fixture that builds a full payload; update
-     the expected `schema_version`.
-  4. Validate: full suite green; the offline schema-vs-vendored comparison passes;
-     the network upstream comparison is a report and may skip.
+  **Premise replaced by measurement, owner ruling 2026-10-01.** This task was
+  written as "add the key to every fixture that builds a full payload; update the
+  expected `schema_version`". Measured after T2.2: there is nothing left to sweep,
+  and the file the task named does not do what the task assumed.
+  - `tests/test_suggestions_wire_golden.py` builds **no** wire payloads. It calls
+    `build_wire_payload`, feeds the result to `build_from_wire`, and compares the
+    **parse output** against the markdown parse. The lines the task cited
+    (`:115-236`) are *suggestions-doc* fixtures, and the file imports `jsonschema`
+    nowhere.
+  - The only file that validates a built wire against the schema is
+    `tests/test_suggestions_wire_emit.py`, closed by T2.2. The four hand-written
+    fixtures were closed by T2.1. Every other `schema_version: "3"` in `tests/` is
+    the **instructions** wire, at 3 since spec 036 — not this wire.
+  So the sweep is complete. What is **not** complete is this task's own success
+  criterion, which nothing in the repo owns: no test captures a baseline wire
+  payload and diffs a later one against it (`grep` for a captured target finds only
+  `capsys` stderr captures).
+
+  1. Prime: read `tests/test_suggestions_wire_emit.py`'s `_doc()` fixture and
+     `build_wire_payload` (`suggestions-render.py:422`). Note what T2.1 and T2.2
+     changed about a conflict-free payload: the version stamp `2` → `3` and one new
+     key holding `[]`. Nothing else should have moved.
+  2. Test: capture a conflict-free wire payload as an explicit expected structure,
+     then assert a freshly built one differs from the pre-038 shape in **exactly**
+     those two ways and no others. The point is the "no others" — this is the test
+     that catches an unrelated top-level field being changed, dropped or renamed in
+     passing. Derive the baseline from the pre-038 commit (`50d8f1b`, the branch
+     point's parent state for these files) rather than hand-typing it from memory;
+     a hand-typed baseline proves only that two people agreed.
+  3. Implement: nothing in `tomo/scripts/` changes. This task is test-only.
+  4. Validate: the new test passes. Then **prove it bites**: on a scratch copy,
+     rename or drop one unrelated top-level payload key and confirm the test fails
+     naming that key, not merely "payloads differ".
   5. Success:
-     - [ ] Conflict-free runs differ only by the version stamp and an empty array,
-           against a **captured** target `[ref: SDD/Acceptance Criteria]`
-     - [ ] No fixture left half-updated — the suite is the check
+     - [ ] A conflict-free payload differs from the pre-038 baseline in exactly the
+           version stamp and the new empty array `[ref: SDD/Acceptance Criteria]`
+     - [ ] The baseline is **captured**, not hand-typed `[ref: SDD/Acceptance Criteria]`
+     - [ ] An unrelated top-level key change turns the test red, **demonstrated**,
+           and the failure names the key
+     - [ ] No production file is touched
 
 - [ ] **T2.5 Phase validation** `[activity: validate]`
 

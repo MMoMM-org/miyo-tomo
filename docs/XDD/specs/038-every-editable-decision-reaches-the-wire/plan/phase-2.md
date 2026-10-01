@@ -54,7 +54,7 @@ the inventory's remedy row). Nothing in Phases 3–4.
 Delivers the fix for the measured data-loss path: a remedy chosen by the owner
 survives Pass 2's JSON-only rebuild.
 
-- [ ] **T2.1 The schema move, both artefacts at once** `[activity: data-architecture]`
+- [x] **T2.1 The schema move, both artefacts at once** `[activity: data-architecture]`
 
   1. Prime: read `tomo/schemas/suggestions-wire.schema.json`, its
      `hashi-` sibling, `tomo/schemas/shapes/suggestions-wire.shape.json`, and
@@ -243,6 +243,17 @@ survives Pass 2's JSON-only rebuild.
     it. A wire generated before the move carries `"2"`, mismatches, and falls back
     to the markdown with only a stderr warning — so reusing an existing wire would
     demonstrate the opposite of what this step claims, and a green suite proves
-    nothing either way `[ref: SDD/CON-2]`. Run against `--instance tomo-instance`.
+    nothing either way `[ref: SDD/CON-2]`. Run against `--instance tomo-instance`
+    (**never** `tomo-privat`, which is live).
+  - **Sync the instance first, and verify it.** Measured 2026-10-01:
+    `tomo-instance/schemas/suggestions-wire.schema.json` still declares `"2"` after
+    T2.1, because the instance holds its own copy. Both the emitter and the reader
+    inside the instance resolve `wire_schema_version` against *that* copy, so they
+    agree with each other at the OLD version — a live run would take the wire path,
+    look correct, and prove nothing about the move. Run `scripts/update-tomo.sh`
+    and then `grep` the instance's schema to confirm it reads `"3"` before
+    generating the run. Schemas are compared **bytewise** there, not gated on a
+    `# version:` header (`scripts/update-tomo.sh:308`, `:500-503`), so the sync does
+    carry this change — but confirm it rather than assume it.
   - Success: suite green; `ruff` clean; the wire path demonstrably taken after the
     version move `[ref: PRD/F1]`.

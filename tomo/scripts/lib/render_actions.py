@@ -1,4 +1,4 @@
-# version: 0.26.7
+# version: 0.26.8
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -29,6 +29,7 @@ from lib.render_helpers import (
     resolve_source_path,
 )
 from lib.render_md import bare_stem
+from lib.typed_name_check import check_typed_name
 from lib.source_link import colliding_names, qualified_target
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
@@ -737,6 +738,17 @@ def _build_move_asset_actions(
     destination is chosen still passes through the `claimed` check below: a
     remedy resolves WHICH destination is examined, never whether it is
     examined (see docs/tomo/scripts/lib/render_actions.md).
+
+    spec 038 T3.2 / ADR-5 / ADR-6: a `rename` whose record carries
+    `name_is_owner_supplied: True` is run through `lib.typed_name_check`
+    before `_asset_dest_join` ever sees `proposed_name`. A refused name
+    emits no move and a `skipped_assets` entry with `kind:
+    typed_name_refused` (its `reason` is the bare `REFUSAL_REASONS` code,
+    not a sentence — see the inline comment at the call site). A record
+    with the flag False or absent — the markdown path, or any `rename`
+    record predating this field — is never checked, because `proposed_name`
+    there was computed by Pass 1, not typed by the owner, and ADR-5 confines
+    rejection to names an owner could have typed.
     """
     out: list[dict] = []
     skipped: list[dict] = []
@@ -823,11 +835,51 @@ def _build_move_asset_actions(
                 skipped_by_path[path] = entry
                 continue
             if remedy == "rename":
+                proposed_name = remedy_entry["proposed_name"]
+                # spec 038 T3.2 / ADR-5: only a name the owner could have
+                # typed is checked, gated on `name_is_owner_supplied`
+                # (suggestion-parser.py) — `proposed_name` itself carries no
+                # such provenance. A Tomo-computed name (flag False, or
+                # absent on an older/foreign remedy record) skips the check
+                # and reaches `_asset_dest_join` exactly as it did before
+                # this task: `_propose_asset_name` (suggestions-reducer.py)
+                # sanitises nothing and can legally produce a macOS basename
+                # Obsidian forbids (`*`, `"`, `|`, `<`, `>`, `\`); checking it
+                # would refuse names Pass 1 itself generated, which F3's
+                # ninth acceptance criterion ("this feature constrains typed
+                # names only") forbids. The check runs BEFORE
+                # `_asset_dest_join` on purpose — an unusable name must never
+                # reach it, not even to be rejected there.
+                if remedy_entry.get("name_is_owner_supplied"):
+                    verdict = check_typed_name(proposed_name)
+                    if not verdict.ok:
+                        # `reason` here is the bare REFUSAL_REASONS code
+                        # (`separator_present` / `forbidden_character` /
+                        # `blank`), not a prose sentence like the other
+                        # kinds' `reason` fields — this kind's single value
+                        # of `kind` covers three distinct refusal classes,
+                        # and typed_name_check's own docstring is explicit
+                        # that the closed set exists so "a renderer can
+                        # phrase each without parsing a string" (T3.4 does
+                        # that phrasing; this module never does).
+                        # `destination` is None: unlike `no_basename`
+                        # (nothing to compute from) there IS a natural
+                        # destination for `path`, but it belongs to the
+                        # occupied name this rename was meant to avoid, not
+                        # to the refused typed name — reporting it here would
+                        # misattribute it.
+                        entry = {
+                            "source": path, "destination": None,
+                            "reason": verdict.reason,
+                            "kind": "typed_name_refused",
+                            "owner_source_items": owners,
+                        }
+                        skipped.append(entry)
+                        skipped_by_path[path] = entry
+                        continue
                 # proposed_name is a BASENAME (SDD C1) — _asset_dest_join,
                 # never the vault root a bare join would write to.
-                destination = _asset_dest_join(
-                    asset_folder, remedy_entry["proposed_name"]
-                )
+                destination = _asset_dest_join(asset_folder, proposed_name)
             # `ignore`, and no remedy at all (the conflict is gone by Pass 2 or
             # never existed), both leave `destination` as computed from `path`
             # above and fall through to the same claimed check as any other

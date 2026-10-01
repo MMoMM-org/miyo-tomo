@@ -157,9 +157,17 @@ def _move_destination(remedies):
 def test_the_markdown_path_carries_the_chosen_remedy():
     """Passes today. Here so that the failure below cannot be dismissed as a
     malformed fixture: the same document, read the way Pass 2 normally reads
-    it, yields the owner's choice."""
+    it, yields the owner's choice.
+
+    `name_is_owner_supplied: False` (spec 038 T3.2) joins in alongside the
+    rest — the name here comes from the structured doc, never the rendered
+    text."""
     assert _remedies_via_markdown() == [
-        {"source": SOURCE, "remedy": "rename", "proposed_name": "karte (2).png"},
+        {
+            "source": SOURCE, "remedy": "rename",
+            "proposed_name": "karte (2).png",
+            "name_is_owner_supplied": False,
+        },
     ]
 
 
@@ -185,5 +193,23 @@ def test_the_wire_path_carries_the_chosen_remedy_too():
     told no one. Strict meant pytest would FAIL if it ever passed — which is
     exactly what happened when the wire field landed, telling whoever added
     it to remove the marker, as this task does.
+
+    spec 038 T3.2 adds one field the two paths do NOT share:
+    `name_is_owner_supplied` — True on the wire (an editor could have
+    changed `proposed_name` and this path cannot tell), False on the
+    markdown (the name comes from the structured doc, never the rendered
+    text). So the two triples are compared with that field stripped, and
+    each path's value for it is asserted separately.
     """
-    assert _remedies_via_wire() == _remedies_via_markdown()
+    via_wire = _remedies_via_wire()
+    via_markdown = _remedies_via_markdown()
+
+    def _without_flag(records):
+        return [
+            {k: v for k, v in r.items() if k != "name_is_owner_supplied"}
+            for r in records
+        ]
+
+    assert _without_flag(via_wire) == _without_flag(via_markdown)
+    assert all(r["name_is_owner_supplied"] is True for r in via_wire)
+    assert all(r["name_is_owner_supplied"] is False for r in via_markdown)

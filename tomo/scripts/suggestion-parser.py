@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.4
+# version: 0.40.5
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -491,11 +491,21 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         # remedies` yields for the markdown path; `destination`/`same_file`
         # are wire-only display context, not part of the outcome triple
         # Pass 2 acts on.
+        #
+        # spec 038 T3.2: `name_is_owner_supplied` is True here, always. The
+        # consumer's editor (Hashi or any future wire editor) can change
+        # `proposed_name` in place, and this record carries no trace of
+        # whether it did — so the only honest provenance claim this path can
+        # make is "could have been edited". That is what gates
+        # `check_typed_name` in `_build_move_asset_actions`: the wire path
+        # is checked, the markdown path (False, below) is not. Internal to
+        # this script's own output dict — not a schema or wire field.
         "attachment_conflict_remedies": [
             {
                 "source": c["source"],
                 "remedy": c["remedy"],
                 "proposed_name": c["proposed_name"],
+                "name_is_owner_supplied": True,
             }
             for c in wire.get("attachment_conflicts", [])
         ],
@@ -2389,6 +2399,13 @@ def _join_attachment_conflict_remedies(
     `attachment_conflicts[]` (a hand-edited or stale doc) joins to
     `proposed_name: None` rather than raising — the doc supplies the name,
     the markdown ticks stay authoritative for `remedy` regardless.
+
+    spec 038 T3.2: `name_is_owner_supplied` is False here, always. The name
+    this path yields comes from the structured doc's own computed or typed
+    value — the rendered markdown text is never consulted for it — so this
+    path is never routed through `check_typed_name`. (Phase 4's T4.2 revisits
+    this once a typed name's extracted text can be compared against the
+    doc's: not implemented here.)
     """
     proposed_names = {
         c.get("source"): c.get("proposed_name")
@@ -2396,7 +2413,11 @@ def _join_attachment_conflict_remedies(
         if c.get("source")
     }
     return [
-        {**r, "proposed_name": proposed_names.get(r["source"])}
+        {
+            **r,
+            "proposed_name": proposed_names.get(r["source"]),
+            "name_is_owner_supplied": False,
+        }
         for r in remedies
     ]
 

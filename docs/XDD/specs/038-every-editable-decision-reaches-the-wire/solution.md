@@ -200,7 +200,7 @@ nothing today can answer "what does the markdown offer?" mechanically.
 |---|---|---|---|
 | C1 | `detect_attachment_conflicts` (modified) | Produce the conflict records. Unchanged in behaviour; its output now also feeds the wire | F1 |
 | C2 | `build_wire_payload` / `_wire_note` (modified) | Project the conflict records onto the wire; make `attachments` unconditional | F1, ADR-8 |
-| C3 | The three schema artefacts (modified) | Declare the new array, move the version, regenerate the shape manifest | F1, CON-2 |
+| C3 | The two producer schema artefacts (modified) | Declare the new array, move the version, regenerate the shape manifest. The vendored `hashi-` copy is **not** one of them — it records the consumer's state and moves in Phase 5, per the 035 precedent (`4338481` moved the pair; `f63b947` refreshed the vendored copy once Hashi confirmed) | F1, CON-1, CON-2 |
 | C4 | `render_attachment_conflicts_block` (modified) | Render the remedy lines; the rename line's name becomes an editable value, and the impossible case gains one | F2 |
 | C5 | `_walk_attachment_conflicts` / `_join_attachment_conflict_remedies` (modified) | Read the remedy **and** the name from the markdown | F2 |
 | C6 | `build_from_wire` (modified) | Read the remedy and the name from the wire; the `[]` at `:492` becomes a projection | F1 |
@@ -358,7 +358,13 @@ their own document — consistent with Constitution L2 on metadata-only traces.
 ### ADR-1 — 037's ADR-5 is superseded; the suggestions wire moves `2` → `3`
 
 **Choice.** The suggestions wire gains a field, and its `schema_version` moves
-from `2` to `3` across the live schema, the vendored copy and the shape manifest.
+from `2` to `3` across the live schema and the shape manifest. The vendored copy
+is deliberately **not** moved with them: it records what the consumer actually
+vendors, so stamping the new version there would make the parity comparison read
+clean while their real copy still rejects every document we emit. It is refreshed
+in Phase 5, once Hashi confirms — the sequence spec 035 followed (`4338481` moved
+the producer pair, `f63b947` refreshed the vendored copy afterwards). Owner ruling
+2026-10-01.
 
 **Rationale.** 037's ADR-5 claimed no wire change was needed and verified it
 against the consumer's compiled validator — on the **instructions** wire. The
@@ -521,8 +527,19 @@ moving anyway, so closing it costs nothing.
 The PRD's 38 criteria are the contract. The SDD's additions are the ones only a
 design can state:
 
-- [ ] Given the version move, When any one of the three schema artefacts is left
-      behind, Then the wire gate fails — a half-finished move cannot ship quietly
+- [ ] Given the version move, When either producer artefact — the live schema or
+      the shape manifest — is left behind, Then the wire gate fails; and when the
+      vendored copy is left behind (as Phase 2 intends), Then the vendored-parity
+      comparison reports it. **Measured 2026-10-01:** these are two different
+      mechanisms and neither substitutes for the other. `run_wire_gate` compares
+      the schema against the manifest and never reads the vendored copy, so it
+      returns `passed=True, actions=[]` on a complete move with the vendored copy
+      still at the old version. The vendored copy is owned instead by
+      `test_wire_snapshot_parity.py`'s
+      `test_suggestions_comparison_a_is_clean_offline`, whose expectation is
+      re-measured to the six-entry delta Phase 2 creates and returns to zero in
+      Phase 5 — a half-finished move cannot ship quietly, but only because both
+      guards exist
 - [ ] Given a conflict-free run, When its wire is compared to the pre-change
       golden, Then the only differences are the version stamp and an empty
       `attachment_conflicts` array

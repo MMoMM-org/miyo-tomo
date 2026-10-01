@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""Regenerate tests/fixtures/038-wire-baseline/payload.json from commit 50d8f1b.
+"""Regenerate tests/fixtures/038-wire-baseline/{payload,input_doc}.json from
+commit 50d8f1b.
 
-Run this ONLY when the pre-038 reference commit itself is deliberately
-re-chosen (e.g. a correction to which commit represents "pre-038"). Do NOT
-run it because today's build_wire_payload() output changed -- a moving
-baseline would silence the exact regression the diff test is meant to catch.
+Two, and only two, legitimate reasons to run this:
+  1. The pre-038 reference commit itself is deliberately re-chosen (e.g. a
+     correction to which commit represents "pre-038").
+  2. tests/test_suggestions_wire_emit.py's `_doc()` fixture was edited for an
+     unrelated reason. The baseline means "what the pre-038 producer emits
+     from THIS input" -- once `_doc()` changes, input_doc.json is stale and
+     the comparison test (test_038_t2_4_wire_baseline_diff.py) will refuse to
+     run until this is re-run, naming the drift rather than producing a
+     confusing key diff.
+
+Do NOT run it because today's build_wire_payload() output changed with
+`_doc()` held fixed -- that is the regression the diff test exists to catch,
+and a moving baseline would silence it.
 
 Usage: python3 generate_baseline.py
 Must be run with the repo root as the current working directory.
@@ -22,6 +32,7 @@ from pathlib import Path
 BASELINE_COMMIT = "50d8f1b"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 OUT_PATH = Path(__file__).resolve().parent / "payload.json"
+INPUT_OUT_PATH = Path(__file__).resolve().parent / "input_doc.json"
 
 
 def _load_module(name: str, path: Path):
@@ -51,7 +62,8 @@ def main() -> None:
         render_mod = _load_module(
             "baseline_suggestions_render", scripts_dir / "suggestions-render.py"
         )
-        payload = render_mod.build_wire_payload(test_mod._doc())
+        input_doc = test_mod._doc()
+        payload = render_mod.build_wire_payload(input_doc)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
         subprocess.run(["git", "worktree", "prune"], cwd=REPO_ROOT, check=False)
@@ -60,7 +72,18 @@ def main() -> None:
         json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print(f"Wrote {OUT_PATH} ({len(payload)} top-level keys)")
+    # Captured alongside the payload so the diff test can tell "the producer
+    # changed" (a finding) apart from "the input fixture changed" (regenerate):
+    # the baseline means "what the pre-038 producer emits from THIS input", so
+    # the input itself has to be pinned too, not just its output.
+    INPUT_OUT_PATH.write_text(
+        json.dumps(input_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"Wrote {OUT_PATH} ({len(payload)} top-level keys) "
+        f"and {INPUT_OUT_PATH}"
+    )
 
 
 if __name__ == "__main__":

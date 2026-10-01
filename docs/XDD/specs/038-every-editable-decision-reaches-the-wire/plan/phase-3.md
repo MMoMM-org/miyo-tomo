@@ -161,7 +161,8 @@ produce a typed name at all.
      JSON-only path to the doc, and Phase 2's T2.5 measured that path working
      without it (`--file` plus `--suggestions-json`, no `--suggestions-doc`).
   2. Test: a refused name emits **no** `move_asset` for that attachment and **one**
-     `skipped_assets` entry of the new kind carrying the reason; a usable typed
+     `skipped_assets` entry of kind **`typed_name_refused`** carrying the reason;
+     a usable typed
      name emits the move against the typed destination; a Tomo-computed name
      behaves exactly as today. **Both sides of the flag need a case, and one of
      them is the whole point**: the SAME unusable string — take `foo*bar (2).png`
@@ -177,9 +178,10 @@ produce a typed name at all.
      is exactly the kind of edit that could bypass it.
   3. Implement: set `name_is_owner_supplied` in both producers; in the rename
      branch call the check **before** `_asset_dest_join` and **only when the flag
-     is `True`**; add the new `skipped_assets` kind. Do **not** touch
-     `_asset_dest_join` `[ref: SDD/CON-4]`. Pick the kind name once and use it in
-     T3.3 and T3.4 unchanged — three tasks depend on the same literal.
+     is `True`**; add the new `skipped_assets` kind **`typed_name_refused`**. Do
+     **not** touch `_asset_dest_join` `[ref: SDD/CON-4]`. The literal is fixed in
+     ADR-6, not chosen here — T3.3 asserts it and T3.4 branches on it, so do not
+     rename it `[ref: SDD/ADR-6]`.
   4. Validate: the 037 suite stays green — particularly the degraded-rename path
      (`proposed_name` null still degrades to `keep_in_inbox`,
      `render_actions.py:787-789`). Note that guard is a truthiness test, so `" "`
@@ -203,16 +205,17 @@ produce a typed name at all.
      than assumed.
   2. Test: a refused typed name holds the owning note — and assert this
      **specifically**, because the exclusion list is exactly where 037 had to make
-     the opposite choice explicit, and a new kind silently added to that list would
+     the opposite choice explicit, and `typed_name_refused` silently added to that
+     list would
      be invisible `[ref: SDD/Acceptance Criteria]`.
-  3. Implement: the new kind is **not** added to the exclusion list. That is the
+  3. Implement: `typed_name_refused` is **not** added to the exclusion list. That is the
      whole change; the pass's default behaviour does the rest `[ref: SDD/ADR-6]`.
   4. Validate: the 037 test that `vault_collision_held` does **not** hold the note
      stays green — the two kinds must diverge, and both directions need proof.
   5. Success:
      - [ ] A refused name holds the owning note `[ref: PRD/F3]`
      - [ ] `vault_collision_held` still does not `[ref: SDD/ADR-6]`
-     - [ ] The mutation — adding the new kind to the exclusion list — turns the
+     - [ ] The mutation — adding `typed_name_refused` to the exclusion list — turns the
            T3.3 test red. **Run it.**
 
 - [ ] **T3.4 The instruction document reports it** `[activity: frontend-ui]`
@@ -226,7 +229,7 @@ produce a typed name at all.
      own heading and its own passive-voice history; `:797` is 57 lines past the
      one and only definition of that helper. The real block already carries the
      register at `:1084-1092`, and gives each kind its own `remedy` line beneath
-     the bullet — the new kind needs one too, and that line is where "what to do
+     the bullet — `typed_name_refused` needs one too, and that line is where "what to do
      about it" belongs. For CON-6 read
      **`docs/tomo/scripts/lib/render_md.md:502-510`** ("ADR-11 Reaches the Existing
      Loop Too"), which is about this exact bullet — the one `no_basename` and
@@ -237,7 +240,7 @@ produce a typed name at all.
      class; the text contains **no** function name, module name, wire action name
      or id; the sentence asserts only what was verified. Note the reasons reach
      this renderer from **two** sources after the 2026-10-01 ruling: three from
-     T3.1's module via the new kind, and the run-local collision from the existing
+     T3.1's module via `typed_name_refused`, and the run-local collision from the existing
      `kind: "collision"` path. Decide whether a collision on an owner-**typed**
      name reads differently from one on a Tomo-computed name — the existing reason
      string says "already claimed by" and never mentions that a name was typed,

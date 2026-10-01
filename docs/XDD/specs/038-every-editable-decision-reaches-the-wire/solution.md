@@ -55,7 +55,7 @@ version: "1.0"
 | What it deliberately omits | The owning notes — derivable from the run |
 | Markdown shape | Unchanged; the parser trusts the backtick text |
 | Typed-name validation | A new check that **rejects**; `sanitize_stem` is not reused on this path |
-| A refused name | Reuses `skipped_assets` with a new `kind`, and holds the owning note |
+| A refused name | Reuses `skipped_assets` with kind `typed_name_refused`, and holds the owning note |
 | Inventory | Hand-written, guarded by a two-sided join test |
 
 ### SectionStatus
@@ -465,9 +465,18 @@ builder is reachable from neither independently.
 
 ### ADR-6 — A refused name reuses `skipped_assets` and holds the owning note
 
-**Choice.** A new `kind` on `skipped_assets`, and it is **not** added to
-`suppress_moves_for_unfiled_attachments`'s exclusion list — so the owning note is
-held with its attachment.
+**Choice.** A new `kind` on `skipped_assets` — **`typed_name_refused`** — and it
+is **not** added to `suppress_moves_for_unfiled_attachments`'s exclusion list, so
+the owning note is held with its attachment.
+
+The literal was fixed here on 2026-10-01 rather than left to T3.2's implementer:
+T3.2 emits it, T3.3 asserts it is absent from an exclusion list, and T3.4 branches
+on it to render a bullet, so three tasks and three review cycles compare against
+the same string. It follows the existing kinds' shape (`no_basename`,
+`vault_collision_held`, `collision` — snake_case, naming why the move did not
+happen) and keeps this ADR's own word, *refused*. `typed_` carries the part that
+matters: a **computed** name is never checked, and the kind should not read as
+though it could be.
 
 **Rationale.** Reusing `skipped_assets` follows 037's ADR-3: a fourth records
 list would need its own renderer, its own diff reconciliation and its own

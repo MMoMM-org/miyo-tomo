@@ -36,7 +36,10 @@ phase: 3
   name rather than a traversal. The PRD states this correctly at
   `requirements.md:515` — "the existing helper already discards everything before
   the last separator, so refusal closes the reporting gap rather than a traversal
-  hole". Measured 2026-10-01; do not go looking for a truncation `[ref: SDD/CON-4]`.
+  hole". Measured 2026-10-01. The SDD describes the mechanism correctly at
+  `solution.md:321` and then calls it "the truncation" as shorthand at `:330` —
+  same thing, no contradiction; just do not go looking for a length limit
+  `[ref: SDD/CON-4]`.
 
 **Dependencies**: none on Phases 1–2. **This phase precedes Phase 4 on purpose**:
 no commit on the branch should ever have an owner-typed string reaching a

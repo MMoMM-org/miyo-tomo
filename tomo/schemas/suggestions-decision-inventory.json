@@ -177,7 +177,7 @@
       "wire_field": "attachment_conflicts[].proposed_name",
       "editable": true,
       "parser_label": ["rename"],
-      "note": "Shares its match site with the remedy row above — the name lives on the same checkbox line, not a separate one."
+      "note": "The name is typed on the same checkbox line as the remedy, so this row and the remedy row share the `rename` label rather than each having one of their own."
     }
   ]
 }

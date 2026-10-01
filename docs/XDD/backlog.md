@@ -1443,6 +1443,39 @@ note whose embed a rename will break, and the owner-facing text must not imply
 otherwise. Spec 037 shipped four sentences that asserted more than the renderer
 knew; this is the same trap with a new mechanism behind it.
 
+## OPEN — two different `_count_editable_marked_descriptions` with the same name and different contracts
+
+**Found 2026-10-01** during spec 038 Phase 2 review. Predates the phase; latent,
+not currently wrong.
+
+`tests/test_038_decision_inventory_join.py` and
+`tests/test_038_inventory_schema_validation.py` each define a function named
+`_count_editable_marked_descriptions`. They take different things: the join
+file's takes a **parsed document** (so its injections can walk an in-memory
+deepcopy), the validation file's takes a **`Path`** (so its guard reads the
+committed file and its deletion injection reads a `tmp_path` copy). Both
+contracts are the right one for their file — this is not a case of one being
+wrong.
+
+The trap is navigational. Go-to-definition and a grep both land ambiguously, and
+a reader who has the wrong one in mind will mis-read the call sites: passing a
+`Path` to the doc-taking version counts nothing and raises nothing obvious,
+because a `Path` is not a dict or a list, so the walker simply returns `0`. A
+future guard written against the wrong import would therefore pass vacuously —
+the same failure shape spec 037 shipped nine times.
+
+Phase 1 already collapsed a duplicated tree-walk *within* one of these files
+(`58c8280`), so the within-file duplication is fixed and only the cross-file
+name collision remains. Spec 038 keeps touching both files through Phase 5, so
+this is worth settling while that is still true.
+
+Options, cheapest first: rename one (`..._in_doc` / `..._at_path`); or give the
+doc-taking one a thin path-taking wrapper and share a single walker; or move the
+walker into a small shared test helper module. The middle option is the one that
+removes the duplication as well as the ambiguity, but it couples two test files
+that are currently independent — which is a trade worth stating rather than
+assuming.
+
 ## OPEN — the inventory join could now catch a *wrong* `wire_field`, not just a missing row
 
 **Found 2026-10-01** during spec 038 Phase 2, T2.1b. Not a defect — an obstacle

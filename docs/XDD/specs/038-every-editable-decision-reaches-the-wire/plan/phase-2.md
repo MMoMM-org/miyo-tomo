@@ -111,7 +111,7 @@ survives Pass 2's JSON-only rebuild.
      - [ ] `attachments` is required `[ref: SDD/ADR-8]`
      - [ ] The instructions wire is untouched `[ref: PRD/F1]`
 
-- [ ] **T2.1b The inventory catches up with the field it predicted** `[activity: data-architecture]`
+- [x] **T2.1b The inventory catches up with the field it predicted** `[activity: data-architecture]`
 
   Moved from Phase 5 (was T5.2) by owner ruling 2026-10-01, and **widened by
   measurement**: T5.2's text covered only the remedy row, but T2.1 added **two**

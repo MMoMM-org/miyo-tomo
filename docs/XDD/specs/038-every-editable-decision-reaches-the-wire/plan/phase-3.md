@@ -224,7 +224,7 @@ produce a typed name at all.
      this before briefing anyone, or the brief will ask for work that is done.
 
      - **There is no exclusion *list*.** The exclusion is a single equality at
-       `render_actions.py:1570` — `if entry.get("kind") == "vault_collision_held":
+       `render_actions.py:1569` — `if entry.get("kind") == "vault_collision_held":
        continue`. So a new kind is never excluded by construction; it falls through
        to the suppressing default with no edit at all. Step 3's "that is the whole
        change" is literally a no-op, not shorthand for a small change. The task
@@ -267,7 +267,7 @@ produce a typed name at all.
      **Criterion 3's mutation was executed 2026-10-02** in a throwaway `git
      worktree` at `HEAD` (`0c3059e`), never in the working tree. Baseline in that
      worktree: 11 passed. The mutation the criterion names — the single equality at
-     `:1570` widened to
+     `:1569` widened to
      `in ("vault_collision_held", "typed_name_refused")` — turned it red:
 
      ```
@@ -283,7 +283,7 @@ produce a typed name at all.
      `Atlas/202 Notes/Some Note.md` while the attachment it embeds stays in the
      inbox — the exact separation this task exists to prevent. The worktree was
      removed with `rm -rf` plus `git worktree prune`, and the working tree's
-     `:1570` was re-verified unmutated afterwards.
+     `:1569` was re-verified unmutated afterwards.
   5. Success:
      - [ ] A refused name holds the owning note `[ref: PRD/F3]`
      - [ ] `vault_collision_held` still does not `[ref: SDD/ADR-6]`

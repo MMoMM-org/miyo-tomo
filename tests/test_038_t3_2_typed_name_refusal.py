@@ -468,7 +468,7 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
     kept, suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)
 
     # typed_name_refused is NOT in the vault_collision_held-only exclusion
-    # list (render_actions.py ~1568), so the owning note is held exactly
+    # list (render_actions.py:1569), so the owning note is held exactly
     # like `collision` and `no_basename` already are — true today, with no
     # production change pending in T3.3 (whose own task text says "that is
     # the whole change": proving the ABSENCE of an exclusion, not adding

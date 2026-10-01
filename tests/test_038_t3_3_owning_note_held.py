@@ -2,7 +2,7 @@
 """test_038_t3_3_owning_note_held.py — spec 038 T3.3.
 
 T3.3's production change is a non-change: `suppress_moves_for_unfiled_
-attachments`'s exclusion at `lib/render_actions.py:1570` names exactly one
+attachments`'s exclusion at `lib/render_actions.py:1569` names exactly one
 kind — `vault_collision_held` — and only that kind, by a single equality.
 There is no exclusion list. A new kind (`typed_name_refused`, from T3.2) is
 therefore never excluded by construction; it falls through to the
@@ -97,7 +97,7 @@ def _confirmed_entry(**overrides) -> dict:
 
 
 def test_typed_name_refused_skip_holds_its_owning_note():
-    """Mutation: widen the `:1570` equality from `entry.get("kind") ==
+    """Mutation: widen the `:1569` equality from `entry.get("kind") ==
     "vault_collision_held"` to `entry.get("kind") in ("vault_collision_held",
     "typed_name_refused")` — i.e. add `typed_name_refused` to the exclusion.
     With that mutation applied, the owning note is filed to

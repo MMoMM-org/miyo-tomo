@@ -322,9 +322,16 @@ survives Pass 2's JSON-only rebuild.
      then assert a freshly built one differs from the pre-038 shape in **exactly**
      those two ways and no others. The point is the "no others" — this is the test
      that catches an unrelated top-level field being changed, dropped or renamed in
-     passing. Derive the baseline from the pre-038 commit (`50d8f1b`, the branch
-     point's parent state for these files) rather than hand-typing it from memory;
-     a hand-typed baseline proves only that two people agreed.
+     passing. Derive the baseline from **`50d8f1b`** — the last commit before Phase 2
+     touched either file — rather than hand-typing it from memory; a hand-typed
+     baseline proves only that two people agreed on what they expected. Note what
+     `50d8f1b` is **not**: it is not the branch point, which is `8d284fb`, 36 commits
+     earlier. Either would in fact serve here, because Phase 1 changed only
+     `description` strings in the wire schema and nothing that affects a payload's
+     shape — but `50d8f1b` is the tighter baseline, and verified: at that commit the
+     schema reads `const: "2"` with no `attachment_conflicts` property, and
+     `tomo/scripts/suggestions-render.py` is untouched by anything on this branch
+     before T2.2.
   3. Implement: nothing in `tomo/scripts/` changes. This task is test-only.
   4. Validate: the new test passes. Then **prove it bites**: on a scratch copy,
      rename or drop one unrelated top-level payload key and confirm the test fails

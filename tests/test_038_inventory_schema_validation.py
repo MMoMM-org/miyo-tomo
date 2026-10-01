@@ -369,13 +369,28 @@ def _count_editable_marked_descriptions(schema_path: Path) -> int:
     return len(_editable_marked_descriptions(schema_path))
 
 
+EXPECTED_EDITABLE_MARKED_FIELDS = 25
+
+
+def _assert_editable_marked_field_count(schema_path: Path) -> None:
+    """The single guard both tests below exercise — one assertion, one
+    expected value, so changing either changes what both tests check rather
+    than two hand-typed copies that stay in sync only by coincidence."""
+    count = _count_editable_marked_descriptions(schema_path)
+    assert count == EXPECTED_EDITABLE_MARKED_FIELDS, (
+        f"wire schema marks {count} field(s) Editable, expected "
+        f"{EXPECTED_EDITABLE_MARKED_FIELDS} — a deleted marker would "
+        "otherwise pass every other test in this file"
+    )
+
+
 def test_wire_schema_marks_exactly_25_editable_fields():
     """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
     bringing the count from 21 (T1.1) to 23; attachment_conflicts[].remedy
     and .proposed_name gained it later, bringing the count to 25. A future
     marker removed from the wire schema with no corresponding inventory-row
     change would otherwise pass every other test in this file."""
-    assert _count_editable_marked_descriptions(WIRE_SCHEMA_PATH) == 25
+    _assert_editable_marked_field_count(WIRE_SCHEMA_PATH)
 
 
 def test_a_deleted_editable_marker_is_caught(tmp_path):
@@ -384,7 +399,8 @@ def test_a_deleted_editable_marker_is_caught(tmp_path):
     actually exercises what happens when a marker disappears. Mirror
     injection-e's structure: deepcopy the wire schema, delete one
     Editable-marked description, write the mutated copy to tmp_path, and prove
-    the count guard fails on it. Never mutate the committed file itself."""
+    the count guard fails on it, via the same helper the test above calls —
+    not a second hand-typed assertion. Never mutate the committed file itself."""
     schema_doc = json.loads(WIRE_SCHEMA_PATH.read_text(encoding="utf-8"))
     mutated = copy.deepcopy(schema_doc)
 
@@ -409,12 +425,8 @@ def test_a_deleted_editable_marker_is_caught(tmp_path):
     mutated_path = tmp_path / "suggestions-wire.schema.json"
     mutated_path.write_text(json.dumps(mutated), encoding="utf-8")
 
-    count = _count_editable_marked_descriptions(mutated_path)
     with pytest.raises(AssertionError, match=re.escape("a deleted marker")):
-        assert count == 25, (
-            f"wire schema marks {count} field(s) Editable, expected 25 — "
-            "a deleted marker would otherwise pass every other test in this file"
-        )
+        _assert_editable_marked_field_count(mutated_path)
 
     # The committed file itself is untouched by this test.
     assert json.loads(WIRE_SCHEMA_PATH.read_text(encoding="utf-8")) == schema_doc

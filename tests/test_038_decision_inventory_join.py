@@ -17,13 +17,14 @@ drifts unless something checks it from BOTH sides:
                  what the markdown offers).
 
 The join key is `parser_label` (T1.1b), never `markdown_control` prose and
-never `wire_field` — D24's `wire_field` is null, and the SCHEMA side's own
-correspondence is counted (marked-field count vs. wire-backed-row count), not
-matched by string path, for the same reason: a path-string join has no answer
-for the one row that has no path.
+never `wire_field` — the SCHEMA side's own correspondence is counted
+(marked-field count vs. wire-backed-row count), not matched by string path:
+a reworded marker can silently drop the marked count without any row's path
+changing, so a path-string join would miss exactly the drift this floor
+exists to catch.
 
-THE FIRST RUN IS EXPECTED TO PASS. The inventory, the schema and the 23
-markers are already correct and reviewed (T1.1/T1.1b); this file's RED comes
+THE FIRST RUN IS EXPECTED TO PASS. The inventory, the schema and the 25
+markers are already correct and reviewed (T1.1/T1.1b/T2.1b); this file's RED comes
 from the five deliberate injections below, run against in-memory fixtures —
 never against the real schema or inventory files, which this test never
 mutates. Do not read a green first run as evidence the test is weak; read the
@@ -34,13 +35,13 @@ are not supposed to):
   - the parser's subject-filtered AST harvest yields 61 literals
   - the inventory carries 34 distinct `parser_label` literals
   - 31 of the 61 are legitimately absent from every row (see ABSENCE_RULES)
-  - the wire schema marks 23 fields Editable
+  - the wire schema marks 25 fields Editable
 
 A NOTE ON THE SCHEMA-SIDE MATCH PREDICATE: as of T1.2, only 22 of the 23
 marked fields began with the plan text's literal em-dash prefix
 (`"Editable — "`) — `proposed_mocs[].tags` read bare `"Editable."`, no dash.
 T1.3 resolved this (phase-1-findings.md #15): the description now reads
-`"Editable — tags to add."`, so all 23 marked fields begin with the dashed
+`"Editable — tags to add."`, so every marked field begins with the dashed
 form and both predicates agree. This file still mirrors T1.1b's broader
 `description.startswith("Editable")` predicate rather than switching to the
 literal em-dash form — not because the dashed form is unreachable (it now
@@ -280,9 +281,10 @@ def _is_justified_absence(literal: str) -> bool:
 
 # ---------------------------------------------------------------------------
 # Schema side: count of `Editable`-marked fields vs. count of rows that
-# actually carry a wire path. No field-path string matching (that would be
-# joining on `wire_field`, which D24's null value forbids) — a count
-# correspondence, floored so a reword cannot silently match nothing.
+# actually carry a wire path. No field-path string matching — a reworded
+# marker can silently drop the marked count without any row's path changing,
+# which a path join would miss — so this is a count correspondence instead,
+# floored so a reword cannot silently match nothing.
 # ---------------------------------------------------------------------------
 
 
@@ -474,7 +476,7 @@ def test_injection_a_marked_schema_field_with_no_row_fails(
 ) -> None:
     """(a) Drop D05 (suggestions[].title, a wire-backed row) from a COPY of
     the real rows. The wire schema is untouched — title stays marked Editable
-    — so wire-backed-row-count drops to 22 against a still-23 marked count,
+    — so wire-backed-row-count drops to 24 against a still-25 marked count,
     and the equality check inside _assert_schema_side_join fails."""
     dropped_row = next((row for row in inventory_rows if row["id"] == "D05"), None)
     assert (

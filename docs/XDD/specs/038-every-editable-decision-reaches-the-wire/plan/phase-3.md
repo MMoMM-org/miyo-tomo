@@ -313,11 +313,26 @@ produce a typed name at all.
      or id; the sentence asserts only what was verified. Note the reasons reach
      this renderer from **two** sources after the 2026-10-01 ruling: three from
      T3.1's module via `typed_name_refused`, and the run-local collision from the existing
-     `kind: "collision"` path. Decide whether a collision on an owner-**typed**
-     name reads differently from one on a Tomo-computed name — the existing reason
-     string says "already claimed by" and never mentions that a name was typed,
-     which under F3's sixth criterion ("records that the typed name could not be
-     used") may not be enough.
+     `kind: "collision"` path.
+
+     **That question is now closed — do not re-open it, and do not touch the
+     collision sentence** (owner ruling 2026-10-02). It had asked whether a
+     collision on an owner-**typed** name should read differently from one on a
+     Tomo-computed name, since the shared string
+     (`render_actions.py:935`) says *"destination collision: it also resolves to
+     `<dest>`, already claimed by `<claimant>`"* and never mentions that a name
+     was typed. The ruling: F3's sixth criterion covers the **three string
+     classes** T3.1 decides, not the fourth criterion's run-local collision, and
+     the PRD now records that scope beside the criterion itself.
+
+     So **this task renders one new bullet shape, not two.** `typed_name_refused`
+     gets a bullet and a `remedy` line; the `collision` bullet is untouched, for
+     typed and computed names alike. Measured before the ruling, in case a later
+     reader wants the cost: the skipped entry carries no provenance at all
+     (`{source, destination, reason, kind, owner_source_items}` —
+     `render_actions.py:938-941`), so either alternative needed a new field or a
+     forked string, and the owner already knows they typed the name because the
+     document is rendered from the run in which they typed it.
   3. Implement: one bullet per refusal, in the existing skipped block. Also the
      Could-have count in the summary `[ref: PRD/C1]`.
   4. Validate: assert on the **exact** rendered string, not on presence — spec 037

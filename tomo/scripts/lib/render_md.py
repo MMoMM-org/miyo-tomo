@@ -1,4 +1,4 @@
-# version: 0.30.0
+# version: 0.31.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1111,6 +1111,24 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                         "applying, tick Rename in the suggestions document and "
                         "run `/inbox --pass2 --force`; afterwards, rename the "
                         "file in the inbox and re-run `/inbox`"
+                    )
+                elif kind == "typed_name_refused":
+                    # spec 038 T3.3/T3.4: unlike vault_collision_held, the
+                    # owning note here is HELD, not filed — its source
+                    # survives in the inbox and will be re-discovered by the
+                    # next `/inbox` (suppress_moves_for_unfiled_attachments
+                    # leaves the paired delete_source in place and
+                    # withdraw_unjustified_deletes removes it afterwards, per
+                    # spec 036 T2.3/ADR-4). So the two reading moments (owner,
+                    # 2026-09-29 pattern) diverge from vault_collision_held's:
+                    # the "afterwards" route is re-running `/inbox`, never
+                    # renaming a file on disk.
+                    remedy = (
+                        "Type a usable name for it: before applying, correct "
+                        "the name in the suggestions document and run "
+                        "`/inbox --pass2 --force`; afterwards, the note is "
+                        "still in the inbox, so re-run `/inbox` and name it "
+                        "again"
                     )
                 else:
                     # A missing or unrecognized kind must never silently fall

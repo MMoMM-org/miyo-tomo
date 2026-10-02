@@ -1,4 +1,4 @@
-# version: 0.26.9
+# version: 0.26.10
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -774,8 +774,16 @@ def _build_move_asset_actions(
     `name_is_owner_supplied: True` is run through `lib.typed_name_check`
     before `_asset_dest_join` ever sees `proposed_name`. A refused name
     emits no move and a `skipped_assets` entry with `kind:
-    typed_name_refused` (its `reason` is the bare `REFUSAL_REASONS` code,
-    not a sentence — see the inline comment at the call site). A record
+    typed_name_refused`, whose `reason` is a prose sentence from
+    `_typed_name_refusal_reason` and whose `refusal_reason` carries the bare
+    `REFUSAL_REASONS` code. Those two fields are not interchangeable: `reason`
+    is written for a human and must never be parsed, and this docstring said
+    the opposite until 2026-10-02 — it described T3.2's first attempt
+    (`8e7d9b0`), which put the bare code in `reason` and rendered an enum
+    literal plus the wrong remedy into the owner's instruction document.
+    `e2a67b9` fixed the code and the call site's comment and missed this
+    docstring, so for four commits the file's own documentation contradicted
+    the comment it told the reader to go and read. A record
     with the flag False or absent — the markdown path, or any `rename`
     record predating this field — is never checked, because `proposed_name`
     there was computed by Pass 1, not typed by the owner, and ADR-5 confines

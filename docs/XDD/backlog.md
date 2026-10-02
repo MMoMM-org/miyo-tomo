@@ -1698,7 +1698,18 @@ the vendored snapshot against Hashi's copy by some means that does not depend on
 this fetch succeeding — the handoff itself carries the schema, so comparing
 against the artefact the consumer confirms is the obvious route.
 
-## OPEN — `_attachment_suppression_reason`'s `else` branch is a trap for the next kind
+## OPEN — two reason-builders fall back silently on an unrecognised code
+
+**Two sites, one shape.** Counted 2026-10-02 over every function in
+`tomo/scripts/` that maps a code or kind to owner-facing text:
+`_attachment_suppression_reason` (the original finding, below) and
+`_typed_name_refusal_reason` (added at T3.5, below it). A third,
+`_destination_clash_reason`, was checked and is **not** an instance — its
+`else` is a genuine third case over a closed numeric/equality partition, not
+an open set of codes. `render_md.py`'s skipped-assets chain is the
+counter-example to copy: it has an explicit `else` that renders
+`(No remedy defined for skip kind {kind!r} — check render_md.py)`, so an
+unmapped kind is visible instead of inheriting a neighbour's text.
 
 **Found 2026-10-01** by the T3.2 implementer, who correctly declined to fix it
 unilaterally because it changes behaviour beyond what the task asked.
@@ -1739,6 +1750,51 @@ directly. The spec-compliance review that caught it was righter than it knew.
 Not fixed in 038: no task's success criteria cover it, and it is a change to how
 an unknown kind behaves rather than to anything 038 introduces. The risk is
 strictly future — every kind that exists today has correct text.
+
+
+---
+
+### Sibling, found 2026-10-02 by T3.5's mutation audit: `_typed_name_refusal_reason`
+
+`_typed_name_refusal_reason` (`tomo/scripts/lib/render_actions.py:692`) has the same
+shape one layer down, and is slightly worse because **its own docstring denies it**:
+
+> `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS` — a closed set of
+> exactly three members — so the final branch is reached only by `blank`, not as a
+> silent fallback for an unrecognised code.
+
+Structurally that is not what the code does. Two `if` statements test
+`separator_present` and `forbidden_character`; **`blank` is not tested at all** — it is
+the unguarded `return` at the end. Measured:
+
+```
+_typed_name_refusal_reason('separator_present', 'a/b.png')
+  -> "typed name refused: `a/b.png` contains a path separator, …"
+_typed_name_refusal_reason('nonsense', 'a/b.png')
+  -> "typed name refused: the typed name is blank"
+```
+
+An unrecognised code is announced to the owner as a **blank name**. Found the honest
+way: T3.5's audit needed a mutation for the test covering these sentences, deleted the
+`separator_present` branch, and the owner-facing text did not become "forbidden
+character" — it became "the typed name is blank", a false statement about the name the
+owner actually typed.
+
+The docstring's claim is true *today* only because `REFUSAL_REASONS` is closed and a
+test pins it closed (`test_038_t3_1_typed_name_check.py::test_refusal_reasons_is_a_closed_set_of_three`).
+So this is a latent trap, not a live defect: it fires the moment a fourth reason is
+added, which F3's fourth criterion already contemplates — the PRD records a vault-side
+reading of "already taken" that Pass 2 cannot decide today but a later pass could.
+
+Two things to fix together, whenever this is picked up, and **neither was done at T3.5
+because both change behaviour beyond a validation task's scope**:
+
+1. Test `blank` explicitly and make the final branch raise or return a visibly-unmapped
+   sentence, following `render_md.py`'s placeholder pattern rather than inventing one.
+2. Correct the docstring. As written it would persuade a reader that the structural
+   guarantee exists, which is the more expensive half of the bug — a future author
+   adding a fourth reason reads that sentence and believes the function already handles
+   the case safely.
 
 ## CLOSED (2026-10-02) — spec 038's C1 asked for a count the renderer is twice argued against
 

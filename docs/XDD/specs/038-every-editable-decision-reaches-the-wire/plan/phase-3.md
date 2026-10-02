@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Refusal, before anything can be typed"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -370,7 +370,7 @@ produce a typed name at all.
            specific trap 037 fell into four times `[ref: SDD/CON-6]`
      - [ ] Nothing implies the owning-note list is exhaustive `[ref: SDD/CON-7]`
 
-- [ ] **T3.5 Phase validation** `[activity: validate]`
+- [x] **T3.5 Phase validation** `[activity: validate]`
 
   - Run the full suite and `ruff`. Write the `docs/tomo/` WHY entries — **now, not
     in Phase 5**. The list below replaces "the new module and the two modified

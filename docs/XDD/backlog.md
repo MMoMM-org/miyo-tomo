@@ -1740,7 +1740,9 @@ Not fixed in 038: no task's success criteria cover it, and it is a change to how
 an unknown kind behaves rather than to anything 038 introduces. The risk is
 strictly future — every kind that exists today has correct text.
 
-## OPEN — spec 038's C1 asks for a count the renderer is twice argued against
+## CLOSED (2026-10-02) — spec 038's C1 asked for a count the renderer is twice argued against
+
+**Resolved by owner ruling 2026-10-02: C1 closes as SATISFIED BY F3**, not dropped and not built. F3's bullet in the instruction document carries the at-a-glance signal C1 wanted, so no count was added and neither ruling below was re-opened. Recorded beside the criterion in `requirements.md`. The findings are kept here because the reasoning is reusable: the next request for a count in this region meets the same two rulings.
 
 **Found 2026-10-02** while priming spec 038's T3.4, before briefing an implementer.
 

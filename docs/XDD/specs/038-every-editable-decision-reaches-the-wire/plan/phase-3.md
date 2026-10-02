@@ -340,8 +340,8 @@ produce a typed name at all.
      beside `no_basename`, `collision` and `vault_collision_held`
      (`render_md.py:1087-1119`). **That is this task's whole production change.**
 
-     **C1's count is NOT built here — it is blocked, measured 2026-10-02, and
-     awaits an owner decision** (see the PRD beside C1 and the backlog entry).
+     **C1's count was never built here, and C1 closed on 2026-10-02 as satisfied
+     by F3** (owner ruling; see the PRD beside C1 and the backlog entry).
      Two findings, both exhaustive: *(a)* there are no "existing skip counts" for
      a new count to appear alongside — nothing in Pass 2 renders a count of skips
      at all; the only count anywhere is `action_count` in the frontmatter
@@ -354,11 +354,12 @@ produce a typed name at all.
      ("a heading or intro that counted them would contradict the bullets
      underneath it"), with the WHY at `docs/tomo/scripts/lib/render_md.md:493`.
 
-     Note that C1's **intent** — "so that I see at a glance that something needs
-     me" — is arguably already met by the bullet this task adds, under the heading
-     "**Attachments still in the inbox** — none of these were filed:". If the
-     owner agrees, C1 closes as satisfied-by-F3 rather than as dropped. Do not
-     decide that here `[ref: PRD/C1]`.
+     **Decided 2026-10-02: C1 closes as SATISFIED BY F3.** The owner ruled that
+     C1's intent — "so that I see at a glance that something needs me" — is
+     delivered by the bullet this task adds, under the heading "**Attachments
+     still in the inbox** — none of these were filed:". No count was built, and
+     neither anti-counting ruling was re-opened. T3.5 records the close-out as
+     *satisfied*, never as *dropped* `[ref: PRD/C1]`.
   4. Validate: assert on the **exact** rendered string, not on presence — spec 037
      shipped four defective sentences precisely because every assertion checked
      presence `[ref: SDD/Risks]`.

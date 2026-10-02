@@ -16,7 +16,7 @@ This module takes no dependency on render_actions.py (or any other caller) so
 it stays usable from the parser side too, and it is a pure function on a
 string: one argument, no run state, no vault listing. `taken` is deliberately
 not a reason here — it is a property of the run, not of the string, and the
-run already decides it (render_actions.py:927); handing this module run state
+run already decides it (render_actions.py:939); handing this module run state
 to duplicate that check was rejected by the owner (2026-10-01).
 """
 from __future__ import annotations

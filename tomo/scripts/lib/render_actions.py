@@ -1,4 +1,4 @@
-# version: 0.26.11
+# version: 0.26.12
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -783,8 +783,14 @@ def _build_move_asset_actions(
     literal plus the wrong remedy into the owner's instruction document.
     `e2a67b9` fixed the code and the call site's comment and missed this
     docstring, so the file's own documentation contradicted the comment it told
-    the reader to go and read. It survived 19 commits that way, and the reason
-    is the useful part: **not one of them touched this file.** A stale docstring
+    the reader to go and read. It survived 18 commits that way, and the reason
+    is the useful part: **not one of them touched this file.** (Eighteen, not
+    nineteen: `e2a67b9..06fd16b` counts 19 but includes the commit that fixed
+    it, which manifestly did touch the file. `e2a67b9..06fd16b~1` is 18, and
+    zero of those 18 touched it. The first draft of this very sentence said
+    "four", the second "19"; a third reviewer caught the second. The figure is
+    harder to state correctly than the fact it supports, which is the argument
+    for stating the fact first.) A stale docstring
     is not found by the work going on around it — only by someone reading the
     function to write about it, which is how this one surfaced (spec 038 T3.5).
     A record

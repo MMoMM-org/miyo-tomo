@@ -77,10 +77,10 @@ by looking at the name and nothing else, which is what makes them answerable by
 a one-argument pure function. Occupancy is a property of the run: whether
 `karte.png` is free depends on what the other items in this same Pass 2 have
 already claimed, and that is a question only the run can answer. The run does
-answer it, at `render_actions.py:927` — `claimant = claimed.get(destination.
+answer it, at `render_actions.py:939` — `claimant = claimed.get(destination.
 casefold())` — and a typed destination reaches that check by design, not by
 accident: the remedy branch recomputes `destination` and then falls through to
-the same claimed check every other attachment uses (`render_actions.py:922-926`
+the same claimed check every other attachment uses (`render_actions.py:934-938`
 spells that out in a comment). Adding `taken` here would mean handing this
 module the run's `claimed` map so it could duplicate a check that already
 exists and already covers the typed case. That was put to the owner and

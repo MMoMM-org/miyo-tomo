@@ -859,7 +859,7 @@ cannot drift.
 Verified by exhaustive grep over `tomo/` and `scripts/` rather than by sampling:
 the string `Type a usable name for it` occurs exactly once in the tree, at
 `render_md.py:1134`, and the only other site that touches a remedy at all is the
-bullet join eleven lines below it.
+bullet join sixteen lines below it (`:1134` to `:1150`).
 
 `instruction-render.py` renders none of this. Its `skipped_assets` block projects
 metadata only — `source`, `destination`, `kind`, `reason` — into

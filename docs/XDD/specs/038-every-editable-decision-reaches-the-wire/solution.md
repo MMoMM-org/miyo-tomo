@@ -245,8 +245,8 @@ scanning `suggestions[].attachments` for the same path, which ADR-8 makes safe.
 
 **`taken` is deliberately not one of C7's reasons** (owner ruling 2026-10-01).
 The other three are properties of the string; `taken` is a property of the run,
-and the run already decides it — `render_actions.py:927`'s claimed check, which a
-remedy-chosen destination passes through by design (`:922-926`), emitting
+and the run already decides it — `render_actions.py:939`'s claimed check, which a
+remedy-chosen destination passes through by design (`:934-938`), emitting
 `kind: "collision"`. Giving C7 a fourth reason would mean handing it run state,
 duplicating a check that already fires. The vault-side reading of "taken" is a
 different matter and is not decidable in Pass 2 at all: there is no vault listing

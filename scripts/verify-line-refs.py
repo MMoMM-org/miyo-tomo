@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """Resolve every `<module>.py:NNN` reference in a file and show what it points at.
 
 Prose references go stale silently. Inserting code above a cited line shifts it,
@@ -18,6 +18,17 @@ Exit status is 0 unless `--strict` is given, which exits 1 when any reference
 cannot be resolved at all (missing module, line past end of file). A reference
 that resolves is never an error here — only a human can say whether the line it
 landed on is the one meant.
+
+That gap is this tool's real limitation, and it is worth stating plainly: a
+reference whose line still EXISTS is not a reference that is still CORRECT. Insert
+code above a cited line and the citation keeps resolving, silently, at the wrong
+content. A review of spec 038's T3.5 caught eighteen such citations that this tool
+had just reported clean. The one heuristic that helps is SUSPECT: a citation
+landing on a bare closing bracket, a lone docstring quote, a comment marker or a
+blank line is almost certainly stale, because nobody cites those deliberately. It
+is advisory — shown even under `--quiet`, never failing `--strict` — and it is a
+floor, not a guarantee. The only complete check is reading the cited line against
+what the citing text claims it says.
 """
 from __future__ import annotations
 
@@ -38,6 +49,24 @@ SEARCH_ROOTS = [
     Path("scripts/lib"),
     Path("tests"),
 ]
+
+
+# A citation that lands on one of these is almost certainly stale rather than
+# deliberate: nobody cites a bare closing bracket or a blank line to make a point.
+# This is the gap a resolve-only check leaves open — a reference whose line still
+# EXISTS is not a reference that is still CORRECT, and the difference is exactly
+# what shifted-by-insertion looks like. Found the hard way: a `:927` citation that
+# the resolve check passed happily was pointing at a lone `}`, four lines past the
+# code it named, after an unrelated docstring edit grew the function above it.
+_IMPLAUSIBLE = {"}", ")", "]", "},", "),", "],", "):", '"""', "'''", "", "#"}
+
+
+def implausible(line: str) -> str:
+    """A one-word flag when a cited line cannot plausibly be the intended target."""
+    stripped = line.strip()
+    if stripped in _IMPLAUSIBLE:
+        return "SUSPECT (lands on a bare delimiter or blank line)"
+    return ""
 
 
 def resolve_module(repo: Path, mod: str, hinted_dir: str | None) -> Path | None:
@@ -85,9 +114,10 @@ def check_file(repo: Path, path: Path, quiet: bool) -> tuple[int, int]:
         if m.group("end"):
             end = min(int(m.group("end")), len(lines))
             shown += f"   …through: {lines[end - 1].strip()}"
-        rows.append((cited_at, ref, "", shown))
+        rows.append((cited_at, ref, implausible(lines[start - 1]), shown))
 
-    if not rows or (quiet and unresolvable == 0):
+    suspects = sum(1 for _c, _r, problem, _s in rows if problem.startswith("SUSPECT"))
+    if not rows or (quiet and unresolvable == 0 and suspects == 0):
         return len(rows), unresolvable
 
     print(f"\n{path}")

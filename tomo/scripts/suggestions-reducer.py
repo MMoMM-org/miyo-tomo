@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.58.0
+# version: 1.59.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1518,7 +1518,7 @@ def render_attachment_conflicts_block(
             lines.append(f"- [x] Rename to `{rename_target}`")
             lines.append("- [ ] Keep in inbox")
         else:
-            lines.append(f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}")
+            lines.append(f"- [ ] Rename to `` — {RENAME_IMPOSSIBLE_MARKER}")
             lines.append("- [x] Keep in inbox")
         lines.append(
             # NOT "will fail": occupancy was observed in Pass 1 and nothing

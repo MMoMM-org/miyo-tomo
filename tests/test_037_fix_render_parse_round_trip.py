@@ -95,14 +95,34 @@ def _untick(line: str) -> str:
 def _toggle(md: str, *, tick_contains: str, untick_contains: str) -> str:
     """Flip exactly one checkbox marker on and one off, leaving every other
     character — including the renderer's own wording — untouched. Models an
-    owner editing the actual rendered document, not a hand-typed fixture."""
+    owner editing the actual rendered document, not a hand-typed fixture.
+
+    Raises if either matcher hits zero lines or more than one: a silent
+    miss returns the document with that checkbox untouched, which is not an
+    owner edit at all — it is the matcher failing to find what it was told
+    to flip. (Spec 038 T4.1: a prior version of this helper had no such
+    guard, so when T4.1's rewording made `tick_contains="Rename —"` stop
+    matching anything, this function returned the line unticked and the
+    caller's test kept passing — green, while silently pinning a different
+    business rule. Mutation this guards against: restore the old
+    no-else/no-count behaviour and this function must raise instead of
+    returning the document unchanged.)
+    """
     out = []
+    tick_hits = 0
+    untick_hits = 0
     for line in md.splitlines():
         if tick_contains in line:
+            tick_hits += 1
             line = _tick(line)
         elif untick_contains in line:
+            untick_hits += 1
             line = _untick(line)
         out.append(line)
+    assert tick_hits == 1, f"tick_contains={tick_contains!r} matched {tick_hits} lines, expected 1"
+    assert untick_hits == 1, (
+        f"untick_contains={untick_contains!r} matched {untick_hits} lines, expected 1"
+    )
     return "\n".join(out) + "\n"
 
 
@@ -118,7 +138,7 @@ def test_render_parse_round_trip_pins_semantic_mapping():
     assert "no free name available" in rendered_null
     owner_edited = _toggle(
         rendered_null,
-        tick_contains="Rename —",
+        tick_contains="Rename to `` —",
         untick_contains="Keep in inbox",
     )
     resolved = PARSER.parse_attachment_conflict_remedies(owner_edited)

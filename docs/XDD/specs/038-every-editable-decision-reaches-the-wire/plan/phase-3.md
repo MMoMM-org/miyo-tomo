@@ -292,7 +292,7 @@ produce a typed name at all.
      - [ ] The mutation — adding `typed_name_refused` to the exclusion list — turns the
            T3.3 test red. **Run it.**
 
-- [ ] **T3.4 The instruction document reports it** `[activity: frontend-ui]`
+- [x] **T3.4 The instruction document reports it** `[activity: frontend-ui]`
 
   1. Prime: read `lib/render_md.py`'s skipped-**assets** block at
      **`:1079-1095`** and `_render_unresolved_conflict_bullet` at **`:740`**, for
@@ -412,6 +412,15 @@ produce a typed name at all.
     text: `git diff --name-only <phase-3 base>..HEAD -- tomo/` names every runtime
     file changed, and each one owes a `docs/tomo/` counterpart. A list maintained
     by hand drifts behind the tasks that feed it.
+
+    **Derived and checked 2026-10-02, after T3.4 closed: exactly these five, no
+    sixth.** `git diff --name-only <T3.1^>..HEAD -- tomo/` returns
+    `instruction-render.py`, `lib/render_actions.py`, `lib/render_md.py`,
+    `lib/typed_name_check.py`, `suggestion-parser.py`. Four of their `docs/tomo/`
+    counterparts already exist; `docs/tomo/scripts/lib/typed_name_check.md` is the
+    one to create, which matches its entry above. Note `scripts/verify-line-refs.py`
+    owes nothing — the WHY layer mirrors `tomo/` only, and that file is a
+    maintenance CLI under `scripts/`.
   - Re-read every assertion added in this phase and ask of each: *which mutation
     turns this red?* Run the ones you can name. Spec 037 produced nine assertions
     that could not bite `[ref: plan/README.md; the standing warning]`.

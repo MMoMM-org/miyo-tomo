@@ -219,8 +219,10 @@ surface, landing into an already-guarded path.
      **And set `name_is_owner_supplied` here — T3.2 added it, and this task is
      where the markdown side stops being `False`.** The rule is NOT `True`
      unconditionally, and getting that wrong re-opens the behaviour change the
-     owner avoided on 2026-10-01. Set it to **`extracted != the doc's computed
-     name`**. Reasoning, measured during T3.2's amendment:
+     owner avoided on 2026-10-01. Compare against the **rendered** form of the
+     computed name, **not the bare name** — step 3b below specifies the
+     comparison and carries the measured table. Reasoning, measured during
+     T3.2's amendment:
      - After this task every markdown `proposed_name` comes from the rendered
        text, an untouched pre-ticked default included. Flagging all of them
        `True` would make T3.2's check refuse an untouched default whose computed
@@ -242,6 +244,80 @@ surface, landing into an already-guarded path.
        permitted in the markdown. Acceptable because the wire path ships to the
        consumer for the first time in Phase 5, so no deployed behaviour changes —
        but say so in the handoff rather than letting them discover it.
+  3b. **The markdown renders a PATH, the doc carries a BARE NAME, and that
+     changes three things in step 3. All measured 2026-10-02, before dispatch,
+     through the real renderer.**
+
+     `render_attachment_conflicts_block` puts `_asset_dest_join(asset_folder,
+     proposed_name)` in the backticks — a full destination path. The structured
+     doc's `attachment_conflicts[]` record carries `proposed_name` as a bare
+     basename. So on an **untouched** default:
+
+     ```
+     extracted         = 'Atlas/290 Assets/295 Attachments/karte (2).png'
+     doc proposed_name = 'karte (2).png'
+     extracted != doc proposed_name  ->  True    <-- on an UNTOUCHED default
+         -> name_is_owner_supplied True -> check_typed_name
+         -> REFUSED separator_present
+     ```
+
+     **(a) Compare like with like.** The operand is the rendered default, which
+     costs no new field: the record's `destination` is
+     `_asset_dest_join(asset_folder, source)`, so the folder is
+     `destination.rsplit('/', 1)[0]` and the rendered default is that folder
+     joined with `proposed_name` through the same helper. Measured: equal, so
+     `name_is_owner_supplied` is `False` and the byte-identical criterion holds.
+     `_asset_dest_join` normalises a trailing slash, so the folder form the doc
+     happens to carry does not matter — the 037 fixture uses the trailing-slash
+     variant and agrees.
+
+     **(b) Un-render the folder prefix — owner ruling 2026-10-02.** Because the
+     markdown shows a path, the natural owner edit is to change the filename and
+     leave the folder, and that contains a separator, which T3.1 refuses. The
+     two 037 fixtures already encode the answer and neither can be satisfied any
+     other way: `_markdown()` prepends the asset folder to whatever it is given,
+     while `test_the_untouched_default_resolves_to_the_computed_name` asserts a
+     **bare** `COMPUTED` and the strict xfail asserts a **bare** `TYPED`. So the
+     parser strips the prefix the renderer itself wrote, then judges the
+     remainder. **This is not sanitising and does not touch ADR-5**: what is
+     removed is the renderer's own join, not owner input. Strip **only** an exact
+     match for that record's folder — a folder the owner typed themselves does
+     not match, so it still refuses. Measured table:
+
+     ```
+     case                      owner?  remainder                   verdict
+     untouched default         False   'karte (2).png'             guard skipped
+     filename edited in place  True    'karte-dresden-1938.png'    OK
+     folder deleted too        True    'karte-dresden-1938.png'    OK
+     a different folder typed  True    'Archive/karte-…938.png'    REFUSED separator_present
+     forbidden char, in place  True    'karte|1938.png'            REFUSED forbidden_character
+     empty backticks           True    ''                          see (c)
+     folder left, name deleted True    ''                          see (c)
+     ```
+
+     F3-AC1 keeps its teeth: the only separator that stops being refused is one
+     this program printed. Say this in the `docs/tomo/` entry (T4.4) — a reader
+     comparing F3-AC1 to the code will otherwise read it as a contradiction.
+
+     **(c) The marker branch must be evaluated BEFORE the guard, and this is the
+     one that fails silently if you get it backwards.** An emptied set of
+     backticks yields remainder `''`, and `check_typed_name('')` is
+     `REFUSED blank` (measured; `blank` is one of the three `REFUSAL_REASONS`).
+     Two lines reach that state and they must NOT resolve alike:
+     - **Ordinary conflict, backticks emptied** — no marker, so the narrowed
+       `rename_impossible` is `False`. Nothing else stops it, so it would fall
+       through to `rename` with `proposed_name` `None` and hand Pass 2
+       `_asset_dest_join(folder, None)` — the destination-less move the
+       2026-09-23 docstring names. It must become a **refusal** (`blank`), which
+       is what step 2 already asks for; route it through the guard.
+     - **The no-free-name line, backticks still empty** — marker present and no
+       name, so the narrowed condition holds and it resolves to `ignore`,
+       unchanged from today. If the guard runs first it becomes
+       `typed_name_refused` instead, and T3.4 then renders a refusal bullet for a
+       name the owner never typed. Nothing in the suite asserts the absence of
+       that bullet, so assert it: the test for case (b) in step 2 must check the
+       remedy is `ignore` **and** that no `typed_name_refused` is emitted.
+
   4. Validate: full suite; the 037 baseline test
      (`test_the_untouched_default_resolves_to_the_computed_name`) is the regression
      floor and must stay green.

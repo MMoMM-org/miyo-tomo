@@ -391,10 +391,40 @@ produce a typed name at all.
     - `docs/tomo/scripts/suggestion-parser.md` — why the flag is set in two
       producers with different values, and why the wire path cannot compare
       against the doc.
+    - `docs/tomo/scripts/lib/render_md.md` — T3.4's `typed_name_refused` branch in
+      the skipped-assets bullet chain. Record the one thing a reader would
+      otherwise get wrong: its remedy deliberately does **not** share
+      `vault_collision_held`'s "afterwards" sentence. That kind's note IS filed,
+      so after applying the source note is gone and the remedy is renaming the
+      file on disk; a refused typed name's note is **held**, so its source
+      survives in the inbox and the route is re-running `/inbox`. Measured
+      2026-10-02 through the production chain — `removed_deletes` is report-only
+      (spec 036 T2.3/ADR-4) and `withdraw_unjustified_deletes` removes the paired
+      delete by id afterwards, leaving zero actions for that note. Calling the
+      suppression helper alone looks like a data-loss bug and is not one; say so,
+      because the next reader will call it alone too.
     - `docs/tomo/scripts/instruction-render.md` — **already written** during T3.2
       (the `kind` reversal); verify it rather than rewriting it.
+
+    **This list has now undercounted twice** — once on 2026-10-01 after T3.2 grew,
+    and again on 2026-10-02 when T3.4 turned out to touch `render_md.py`. Before
+    writing any entry, derive the list from the phase's diff rather than from this
+    text: `git diff --name-only <phase-3 base>..HEAD -- tomo/` names every runtime
+    file changed, and each one owes a `docs/tomo/` counterpart. A list maintained
+    by hand drifts behind the tasks that feed it.
   - Re-read every assertion added in this phase and ask of each: *which mutation
     turns this red?* Run the ones you can name. Spec 037 produced nine assertions
     that could not bite `[ref: plan/README.md; the standing warning]`.
+  - **Optional, not a success criterion: re-check this phase's line references.**
+    Offered because Phase 3 produced the failure twice. T3.2 inserted ~106 lines
+    above the run-local claimed check, and twelve prose references written during
+    T3.1 silently went stale — pointing ~91 lines short, at a comment in a
+    different branch (swept in `739a6d6`). Nothing in the suite catches this: 4478
+    tests pass whether a `file.py:NNN` in a docstring or a plan points at the right
+    line or not. `scripts/verify-line-refs.py` resolves every `<module>.py:NNN` in
+    a file and prints the line it actually lands on, so a wrong one is visible
+    without reading the target. Deliberately left as a judgement call rather than a
+    gate — a stale reference misleads a reader but breaks no behaviour, and making
+    it blocking would stop a phase closing over a docstring.
   - Success: suite green; `ruff` clean; WHY entries written; every new assertion
     has a named, executed mutation `[ref: PRD/F3]`.

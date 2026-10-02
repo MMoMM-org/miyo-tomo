@@ -318,6 +318,35 @@ surface, landing into an already-guarded path.
        that bullet, so assert it: the test for case (b) in step 2 must check the
        remedy is `ignore` **and** that no `typed_name_refused` is emitted.
 
+     **(d) Every row of the table above is a required test case, and every
+     refusal assertion names its `reason`.** Added after the TDD gate BLOCKed
+     this task on exactly these two gaps (2026-10-02).
+
+     The un-rendering is load-bearing and nothing in the suite exercises it: an
+     implementation that omits the strip, or that mishandles the trailing-slash
+     form the doc may carry, leaves every test green while the natural owner
+     edit silently refuses. So assert, each as its own case:
+
+     | owner edit | expected |
+     |---|---|
+     | filename edited in place, folder left | `rename`, `proposed_name` the bare typed name |
+     | folder deleted too | `rename`, same bare typed name |
+     | a **different** folder typed | refusal, `reason` `separator_present` |
+     | forbidden character, folder left | refusal, `reason` `forbidden_character` |
+     | folder left, filename deleted | ordinary conflict: refusal, `reason` `blank` |
+     | folder left, filename deleted | no-free-name line: `ignore`, no refusal |
+
+     The first two must yield the **same** `proposed_name` — that is what proves
+     the strip is a prefix match and not a `basename()`.
+
+     **Name the reason, never just the polarity.** "Resolves to a refusal" is
+     true before and after the change for different reasons, so it distinguishes
+     nothing: a broken strip leaves the full path in the remainder and refuses
+     `separator_present`, where the correct behaviour on an emptied line refuses
+     `blank`. Both are refusals. This is the same shape as the guard T4.1 nearly
+     disarmed — an assertion that keeps passing while testing a different rule —
+     and it is why `REFUSAL_REASONS` carries three members rather than a boolean.
+
   4. Validate: full suite; the 037 baseline test
      (`test_the_untouched_default_resolves_to_the_computed_name`) is the regression
      floor and must stay green.

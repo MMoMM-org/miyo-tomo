@@ -1132,7 +1132,30 @@ and stops.
 
 That boundary is deliberate and it is cheap to keep: adding it to the wire would
 mean a schema version, a consumer round-trip, and a field Hashi has no use for,
-all to carry a value that only Tomo's own Pass 2 consults. CON-4's reasoning for
+all to carry a value that only Tomo's own Pass 2 consults.
+
+"Hashi has no use for it" was an inherited claim when this entry was first
+written — reasoned from the field's absence from any schema, with a prior spec's
+"zero references, checked 2026-09-28" as the only evidence. T3.5's implementer
+flagged it as unverified rather than let it stand, so it was **read directly on
+2026-10-02** (Hashi is read-only to this repo, but reading is the point).
+Confirmed, and more strongly than the claim needed: across Hashi's `.ts`, `.js`
+and `.json` sources there are **zero** references to `name_is_owner_supplied`,
+and zero to `proposed_name`, `refusal_reason` and `attachment_conflict_remedies`
+as well. Its vendored `src/schema/suggestions-wire.schema.json` pins
+`schema_version` to `const: "2"` and contains none of those fields, nor
+`skipped_assets`. The grep is sound rather than mis-aimed: the same search finds
+`suggestions` in 98 files, `move_asset` in 17 and `schema_version` in 54.
+
+So the consumer does not yet know the remedy exists at all — Tomo moved this wire
+to `schema_version` 3 in T2.1 and projected the remedies onto it in T2.2, and
+Hashi is still reading 2. That is the expected state, not a defect: Phase 5 owes
+the handoff that tells them. It is recorded here because it is the concrete
+starting position for that conversation, and because a field's absence from a
+consumer is the kind of fact that rots silently — the test that would compare our
+vendored snapshot against theirs is skipped on this very wire (see
+`docs/XDD/backlog.md`, "the upstream-parity check skips silently"), so a green
+suite proves nothing about it either way. CON-4's reasoning for
 the permissive `tomo` block applies in the same direction — a field with no
 external reader does not belong on the wire — and the one-week-earlier argument
 over `kind`'s reader-less presence in `instructions.json`

@@ -100,6 +100,27 @@ close-out that traces every criterion to a test that was executed.
      already `status: done` and Kokoro replied with ADR-029/030/031, so **CON-8
      is discharged before this phase begins** `[ref: SDD/CON-8]`. Confirm that
      reply; do not re-send it.
+
+     **The consumer's starting position, read directly on 2026-10-02 rather than
+     inferred.** Hashi's vendored `src/schema/suggestions-wire.schema.json` pins
+     `schema_version` to `const: "2"`, and contains **none** of
+     `attachment_conflict_remedies`, `proposed_name`, `remedy`,
+     `refusal_reason` or `skipped_assets`. Across Hashi's `.ts`/`.js`/`.json`
+     sources those four field names appear **zero** times. The search is sound
+     rather than mis-aimed: the same grep finds `suggestions` in 98 files,
+     `move_asset` in 17 and `schema_version` in 54.
+
+     So the handoff is not a version-bump notice — **the consumer does not yet
+     know the remedy exists.** Tomo moved this wire to `schema_version` 3 in T2.1
+     and projected the remedies onto it in T2.2, and Hashi is reading 2 with no
+     remedy fields at all. Write the handoff for a reader starting from zero on
+     this feature, not one reconciling a field they already parse.
+
+     This also cannot be checked from the suite: the test that would compare our
+     vendored snapshot against Hashi's live copy is skipped on this very wire —
+     see obligation 4 below and `docs/XDD/backlog.md`. The reading above was done
+     by opening Hashi's file, which is the only method that currently works.
+     Hashi is read-only to this repo; reading it is allowed, editing it never is.
   2. Test: not testable. The check is completeness: schema pair attached, the run
      fixture attached, the version move named, the `source`-not-`item_key` keying
      restated, and the inventory attached.

@@ -425,6 +425,28 @@ produce a typed name at all.
   - Re-read every assertion added in this phase and ask of each: *which mutation
     turns this red?* Run the ones you can name. Spec 037 produced nine assertions
     that could not bite `[ref: plan/README.md; the standing warning]`.
+
+    **Measured 2026-10-02, so this is a list and not a re-read.** Phase 3 added 87
+    assertions across 31 tests in four new files. The auditable unit is the test, not
+    the assertion — a mutation falsifies a test. **28 of the 31 name a mutation in
+    their own docstring; three do not**, and those three are the whole audit:
+    - `test_038_t3_2_typed_name_refusal.py::test_whitespace_only_proposed_name_without_flag_still_degrades_as_before`
+    - `test_038_t3_2_typed_name_refusal.py::test_each_refusal_class_has_its_own_exact_prose_sentence`
+    - `test_038_t3_2_typed_name_refusal.py::test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code`
+
+    The third is worth looking at first. It is the test that was carrying T3.3's
+    holds-the-note guarantee as an unnamed passenger — the reason T3.3 existed at all
+    was to give that guarantee its own named test. Its own mutation is still unnamed,
+    which is the same shape one level down. Name a mutation for each of the three and
+    run it; if one genuinely has no mutation that turns it red, say so and delete it,
+    because an assertion nothing can falsify is scaffolding, not a guard.
+
+    Re-derive rather than trust this list if the files have changed since:
+    `scripts/audit-test-mutations.py --quiet tests/test_038_t3_*.py` walks each
+    test's own docstring for the cue words. A flagged test is not automatically
+    wrong — a docstring may name the mutation in words the cue list misses, and
+    some tests pin a shape rather than falsify a mechanism. It is a worklist, not
+    a verdict.
   - **Optional, not a success criterion: re-check this phase's line references.**
     Offered because Phase 3 produced the failure twice. T3.2 inserted ~106 lines
     above the run-local claimed check, and twelve prose references written during

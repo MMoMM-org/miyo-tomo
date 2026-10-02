@@ -1835,3 +1835,58 @@ withdraw C1. Left to the owner.
 Recorded in `requirements.md` beside the criterion itself, and in
 `plan/phase-3.md`'s T3.4 step 3, so neither an implementer nor a reviewer treats
 the absence of a count as an omission.
+
+## OPEN — an EMPTY typed name escapes the refusal contract on both surfaces
+
+Found 2026-10-02 by T4.2's implementer, measured through
+`_build_move_asset_actions`, and **not** introduced by spec 038 — the wire path has
+carried `name_is_owner_supplied: True` unconditionally since T2.3, so this is live
+behaviour.
+
+The contract spec 038 ships to Hashi is *"an unusable typed name is refused, with a
+reason from `REFUSAL_REASONS` carried in `refusal_reason`."* The empty string is the
+one input where that does not hold:
+
+```
+proposed_name=''              flag=True -> skipped vault_collision_held   (no refusal_reason)
+proposed_name=None            flag=True -> skipped vault_collision_held   (no refusal_reason)
+proposed_name='   '           flag=True -> skipped typed_name_refused  blank
+proposed_name='Archive/x.png' flag=True -> skipped typed_name_refused  separator_present
+```
+
+`_build_move_asset_actions` tests `remedy == "rename" and not
+remedy_entry.get("proposed_name")` (`render_actions.py:848-849` as of 2026-10-02) —
+a **falsy** test — and that branch precedes the `name_is_owner_supplied` gate at
+`:902` by fifty-three lines. So the guard never sees `""`.
+
+**Why it matters more than the wording suggests.**
+
+- The owner (or the consumer) reads *"it was to be filed under a new name beside the
+  occupied destination `…`, and that name is no longer available to this run"* — which
+  reports that **this run lost the name** when in fact **an empty one was supplied**.
+  The sentence misattributes the cause to Tomo.
+- `""` and `null` are indistinguishable in the result, and neither carries a
+  `refusal_reason`, so a consumer branching on that field to explain the failure finds
+  nothing to branch on.
+- **`"   "` and `""` diverge**, which is the part most likely to cost a consumer time.
+  A whitespace-only name is truthy, clears the degrade, reaches the guard, and comes
+  back `typed_name_refused` / `blank`. An empty name does not. Two inputs any UI treats
+  as the same mistake, two different outcomes — and an editor that trims before sending
+  converts the refusal into the misattributed degrade.
+- It is **one defect with two entrances**, not a wire quirk: the markdown reaches the
+  same state from an emptied pair of backticks (T4.1's line, or a deleted filename),
+  the wire from the consumer's own editor. That is the argument for fixing it in
+  `render_actions.py` rather than documenting it twice.
+
+**The fix is two edits that must land together.** Gate the degrade with `and not
+remedy_entry.get("name_is_owner_supplied")`, **and** change the guard call to
+`check_typed_name(proposed_name or "")`. Verified 2026-10-02: `check_typed_name(None)`
+raises `AttributeError: 'NoneType' object has no attribute 'strip'`, and today the
+degrade branch is the only thing making that unreachable. Gating the degrade without
+the second edit turns a misattributed message into a crashed render.
+
+**Not taken inside spec 038.** `render_actions.py` belongs to no Phase 4 task, and the
+behaviour predates the spec on the wire side. Phase 5's handoff must **tell** Hashi
+rather than let them find it; T4.2 pins today's answer (`vault_collision_held`) in a
+test with the mechanism named in its docstring, so the pin reads as a measurement
+rather than an endorsement.

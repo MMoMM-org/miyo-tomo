@@ -277,7 +277,11 @@ surface, landing into an already-guarded path.
      two 037 fixtures already encode the answer and neither can be satisfied any
      other way: `_markdown()` prepends the asset folder to whatever it is given,
      while `test_the_untouched_default_resolves_to_the_computed_name` asserts a
-     **bare** `COMPUTED` and the strict xfail asserts a **bare** `TYPED`. So the
+     **bare** `COMPUTED` and the strict xfail asserts a **bare** `TYPED`.
+     (Precisely: the fixtures *require* a bare name, and un-rendering is the route
+     chosen to it. An earlier draft here claimed no other implementation could
+     satisfy them — that was an overclaim; what is established is the requirement,
+     not the uniqueness of the answer.) So the
      parser strips the prefix the renderer itself wrote, then judges the
      remainder. **This is not sanitising and does not touch ADR-5**: what is
      removed is the renderer's own join, not owner input. Strip **only** an exact

@@ -1620,13 +1620,26 @@ was written rather than deferred to T3.4, because
 `e2a67b9`.
 
 What makes it worth a WHY entry is the shape of the fix that was chosen. The
-reads of a `reason` key were counted across the three files before deciding
-rather than patching the first consumer that showed the symptom — re-counted
-2026-10-02 at T3.5: **14** of them in `render_actions.py`, `render_md.py` and
-`instruction-render.py` together, excluding `refusal_reason` and
-`withdrawal_reason`. (T3.2's own note said 13; the figure is sensitive to whether
-pass-through projections and a comment mentioning the key are counted, which is
-why the number matters less than its order of magnitude.) The conclusion was to
+reads of a `reason` key were counted before deciding, rather than patching the
+first consumer that showed the symptom.
+
+**Do not re-count this without reading the scope, because the number depends
+entirely on it.** The figure below counts: expressions matching
+`.get("reason")` or `["reason"]`, in exactly `lib/render_actions.py`,
+`lib/render_md.py` and `instruction-render.py`, excluding `refusal_reason` and
+`withdrawal_reason`, and excluding comments that merely mention the key. On that
+scope, re-counted 2026-10-02 at T3.5: **14**. T3.2's own note said 13. A
+repo-wide `grep -rn 'get("reason")\|\["reason"\]' tomo/scripts/` gives 15 across
+seven files, because it picks up `garden-audit-configure.py`,
+`suggestions-reducer.py`, `suggestion-parser.py` and `lib/render_helpers.py`
+reads of unrelated `reason` fields that have nothing to do with a skipped
+attachment. Widening that same grep to accept single quotes as well takes it to
+25 across eight files — so even "repo-wide" is not one number.
+
+Three scopes, three numbers, and none of them is wrong — which is the actual
+point. The load-bearing fact is the order of magnitude: `reason` had more than a
+dozen readers, so it was a shared prose contract rather than one function's
+private string, and that is what settled the fix. The conclusion was to
 restore the invariant at the producer rather than teach one consumer to
 special-case an enum — because a prose field that is prose except in one case is
 no longer a prose field, and the next consumer to be written would have had no
@@ -1660,14 +1673,23 @@ Obsidian will refuse.
 Checking every name would therefore refuse names Tomo itself computed, which
 F3's ninth acceptance criterion ("this feature constrains typed names only")
 forbids. The size of that blast radius is easy to under-estimate, so it was
-measured rather than asserted: of seven realistic macOS attachment basenames
-(screenshot with dots; `Rechnung 4/2026.pdf`; `Notiz "wichtig".png`; `Scan |
-Seite 2.jpg`; `Budget <draft>.png`; a pasted Windows path; `foto*.heic`), **six
-are refused** by `check_typed_name` and one survives. The exact ratio is a
-property of the sample and not worth quoting as a constant — the durable fact is
-the mechanism, that eight of the ten forbidden characters are legal on the
-platform the files come from, so the failure rate on real-world input is high
-rather than marginal.
+measured rather than asserted, against a sample tabulated in the plan so the
+figure stays reproducible (`plan/phase-3.md:137-144` — `karte.png`,
+`foo*bar.png`, `quote"name.png`, `a|b.png`, `note<draft>.png`, `back\slash.png`,
+`Q&A notes.png`, each with the reducer's `f"{stem} ({n}).{ext}"` applied):
+**five of those seven are refused** by `check_typed_name`, re-run and confirmed
+2026-10-02 at T3.5.
+
+The mechanism is the part that outlives the sample, and it is the better thing
+to reason from. Of `FORBIDDEN_CHARS`' ten members (`\x00 " * / : < > ? \ |`),
+only `/` and NUL are actually illegal in a macOS POSIX basename — the other
+eight (`"`, `*`, `:`, `<`, `>`, `?`, `\`, `|`) are characters a real file on the
+owner's disk can contain and Obsidian will refuse. So the failure rate on
+real-world input is high rather than marginal, whichever seven names one picks:
+a ratio depends on the sample, but the eight-character overlap does not. (A
+differently-chosen sample at T3.5 gave six of seven, by including a path
+separator and a pasted Windows path — which is the reason to cite the plan's
+tabulated set rather than any ad-hoc one.)
 
 The check also runs BEFORE `_asset_dest_join` rather than letting it reject the
 name: an unusable name must never reach the join, not even to be refused there,

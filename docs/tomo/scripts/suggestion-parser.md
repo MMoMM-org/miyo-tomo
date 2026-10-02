@@ -1065,3 +1065,78 @@ instead. This is the same caveat this file already records earlier in the file
 tests "prove parity on a fixture that has no collision and so cannot see it" —
 and it is worth stating twice, because a golden test's fixtures decide what its
 parity claim is worth.
+
+## One Flag, Two Producers, Two Different Constant Values (spec 038 T3.2)
+
+WHY `name_is_owner_supplied` is set in two places and never computed — `True`
+unconditionally in `build_from_wire`'s projection (`:508`), `False`
+unconditionally in `_join_attachment_conflict_remedies` (`:2419`).
+
+A flag that is a constant in both producers looks like a flag that should not
+exist, so the reason it does is the whole of this entry. It is not describing a
+property of the name; it is recording which path the record came down, because
+the two paths differ in what they can honestly claim about the name's
+provenance.
+
+On the wire path the name can have been edited and this script cannot tell
+whether it was. `build_from_wire` reads a `proposed_name` out of the consumer's
+JSON, and the consumer's editor — Hashi, or any future wire editor — can change
+that value in place. The record arrives carrying no trace of the edit: no
+original to compare against, no dirty marker, no provenance field of its own.
+So the only honest claim available on this path is **"could have been edited"**,
+and `True` is that claim. It is deliberately not "was edited". Treating a name
+as owner-supplied when the owner left it untouched costs a check that passes;
+treating it as computed when the owner did retype it is the defect spec 038
+closes.
+
+On the markdown path the name is read from the structured suggestions document,
+and the rendered markdown text is never consulted for it —
+`_join_attachment_conflict_remedies` joins `remedy` from the ticked markdown but
+takes `proposed_name` from `doc["attachment_conflicts"]`. The owner's ticks
+decide the remedy; the document supplies the name. Since no owner keystroke can
+reach the name on this path, `False` is a statement of fact rather than a
+default, and the consequence is that `check_typed_name` never runs on it
+(`render_actions.py`'s gate) — which is what keeps Pass 1's own computed names
+out of scope, per F3's ninth acceptance criterion.
+
+### WHY the Wire Path Cannot Just Compare Against the Doc's Computed Name
+
+The obvious improvement is to make the flag mean something: on the wire path,
+compare the incoming `proposed_name` against the one the suggestions document
+computed, and set `True` only when they differ. That would turn "could have been
+edited" into "was edited", and it would be strictly more precise.
+
+It was rejected because it re-couples the JSON-only path to the **structured**
+document. `--suggestions-doc` is optional on this script, and Phase 2's T2.5
+measured the path working without it — `--file` plus `--suggestions-json`, no
+`--suggestions-doc` argument at all (`plan/phase-2.md:448`; the markdown `--file`
+is still required, since the wire supplements it rather than replacing it). A
+comparison against the doc's computed name would promote that optional argument
+to a requirement for the sole purpose of deciding a flag, trading the path's
+independence for precision on a check whose false positive costs one validation
+that passes.
+
+Phase 4's T4.2 revisits this once a typed name's extracted text can be compared
+against the doc's, which is the right place for it: it is a question about
+reconciling two sources, not about the projection. The current wording in
+`_join_attachment_conflict_remedies`' docstring says "not implemented here"
+rather than "not possible", because the deferral is a sequencing decision and
+should not read as a limitation.
+
+### WHY the Flag Is Internal to This Script's Output
+
+`name_is_owner_supplied` appears in the dict this script emits and in no schema
+and no wire field. It travels from here into
+`attachment_conflict_remedies[]`, is read once by `_build_move_asset_actions`,
+and stops.
+
+That boundary is deliberate and it is cheap to keep: adding it to the wire would
+mean a schema version, a consumer round-trip, and a field Hashi has no use for,
+all to carry a value that only Tomo's own Pass 2 consults. CON-4's reasoning for
+the permissive `tomo` block applies in the same direction — a field with no
+external reader does not belong on the wire — and the one-week-earlier argument
+over `kind`'s reader-less presence in `instructions.json`
+(`docs/tomo/scripts/instruction-render.md`, the spec 038 T3.2 reversal) is the
+precedent for taking that question seriously rather than adding fields
+speculatively. The difference between the two cases is that `kind` had become
+non-derivable and this flag is not on the wire at all.

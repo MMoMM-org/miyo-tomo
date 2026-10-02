@@ -755,3 +755,122 @@ larger gap.
   inside an action entry and that file is the consumer contract. It is never the
   first bullet, so the Applied rule is unaffected — and a live Hashi run had
   already executed a set carrying it before the row was written.
+
+## The Refused-Name Remedy Deliberately Does Not Share `vault_collision_held`'s "Afterwards" (spec 038 T3.4, v0.32.0)
+
+WHY the `typed_name_refused` branch in the skipped-assets bullet chain is a
+fourth branch rather than a second `kind` folded into the one above it, when
+both produce an unfiled attachment and both already follow the two-reading-
+moments pattern the owner set on 2026-09-29.
+
+Because the two kinds differ in what happened to the **note**, and that is
+exactly what the "afterwards" half of the sentence is about. Both remedies open
+the same way — before applying, the suggestions document is still live, so the
+cheap route is correcting it there and running `/inbox --pass2 --force`. They
+diverge on the second reading moment, and getting it wrong sends the owner to a
+file that is not where the sentence says it is.
+
+A `vault_collision_held` note **is filed**. The owner chose *keep in inbox* for
+the attachment, not for the note, so that kind is excluded from
+`suppress_moves_for_unfiled_attachments` (`render_actions.py:1569`) and the move
+goes ahead. Read after applying, the source note is gone and the suggestions
+document is spent, so the only thing left to act on is the attachment still
+sitting in the inbox — hence "afterwards, rename the file in the inbox and
+re-run `/inbox`".
+
+A `typed_name_refused` note is **held**. It is not excluded from that pass, so
+its move is dropped and its source survives in the inbox to be re-discovered by
+the next run. Renaming a file on disk is the wrong instruction here — there is
+no filed note to reconcile with and nothing on disk that needs a new name except
+via the document. The route is re-running `/inbox`, which is what the branch
+says: "afterwards, it is still in the inbox, so re-run `/inbox` and name it
+again".
+
+### Calling the Suppression Helper Alone Looks Like a Data-Loss Bug, and Is Not One
+
+This is the thing a reader will get wrong, and the reason to say so plainly is
+that the next person to check it will check it the way it was checked here: by
+calling `suppress_moves_for_unfiled_attachments` on its own and reading the
+result.
+
+Measured 2026-10-02, through the production chain, with one held note and one
+refused typed name. After the suppression pass:
+
+    STAGE 1 — after suppress_moves_for_unfiled_attachments()
+        surviving: [('delete_source', 'a2')]
+        withdrawn_deletes (REPORT-ONLY): ['100 Inbox/Scans/karte.md']
+        >>> move_note dropped: True   delete_source STILL PRESENT: True
+
+The `move_note` is gone and its paired `delete_source` is still in the list.
+Read at that point and nothing else, this is an unambiguous data-loss bug: the
+run would delete the inbox source of a note it had just refused to file. The
+`withdrawn_deletes` field naming that very path makes it look worse, not better,
+because the report says the delete was withdrawn and the action list says it was
+not.
+
+The report is right and the list is not yet finished. `removed_deletes` is
+**report-only** — spec 036 T2.3 / ADR-4 — so this pass records which deletes
+*should* go without removing them, and the removal is a separate, later,
+id-keyed pass. `withdraw_unjustified_deletes` then drops the delete because its
+`depends_on` names a move id that no longer survives:
+
+    STAGE 2 — after withdraw_unjustified_deletes()
+        surviving: []
+        withdrawn: [('a2', 'Origin consumed by 1 atomic.')]
+    >>> actions left touching 100 Inbox/Scans/karte.md: 0
+
+Zero actions for that note: not filed, not deleted, held intact. The guarantee
+holds across the pair of passes and is absent from either one alone, which is
+why reading one of them in isolation produces a false alarm rather than a
+partial answer.
+
+### WHY the Remedy Says "It" and Not "the Note" — the Undercount T3.4 Shipped
+
+T3.4's first version of this remedy ended "afterwards, **the note** is still in
+the inbox". Review caught it and `6c176ef` changed it to "afterwards, **it** is
+still in the inbox".
+
+The bug is a count, not a word choice. `owner_source_items` is a **list**: two
+notes can embed the same attachment, and when its typed name is refused both are
+held. So the singular "the note" was simply false in that case — and worse, it
+contradicted a correct count already present in the same document, since the
+suppression block says "the 2 notes that embed it are not filed either"
+(`_attachment_suppression_reason` pluralises on `note_count`). Two different
+counts for one attachment, in one document the owner approves on, is precisely
+what `render_md.py:871-874` rules against under CON-2: the owner approves on
+what this document says, so it must not miscount what it withheld.
+
+"It" is the attachment. The attachment is never moved, is always exactly one,
+and stays in the inbox whether one owning note is held or five — so the sentence
+is true in every case without counting anything.
+
+**A plural-aware count here was considered and rejected.** Making this remedy
+agree with `note_count` — "afterwards, the 2 notes are still in the inbox" —
+would be accurate, and it was declined anyway, because it puts a *second* count
+of the same fact into the same document. Two counts that agree today drift the
+moment one of them is computed from a different list, which is how the original
+defect arose: the suppression block and the remedy derive from the same entry but
+are written in different functions, and nothing joins them. One count, in the
+block whose job is counting, and a remedy that needs no count, is the shape that
+cannot drift.
+
+### This Is the Sole Render Site for This Remedy
+
+Verified by exhaustive grep over `tomo/` and `scripts/` rather than by sampling:
+the string `Type a usable name for it` occurs exactly once in the tree, at
+`render_md.py:1134`, and the only other site that touches a remedy at all is the
+bullet join eleven lines below it.
+
+`instruction-render.py` renders none of this. Its `skipped_assets` block projects
+metadata only — `source`, `destination`, `kind`, `reason` — into
+`instructions.json`'s `tomo` block, and carries no remedy prose for any kind. So
+a change to any remedy sentence needs to be made in exactly one place, and the
+absence of a second site is a measured fact rather than an assumption about how
+the two renderers divide.
+
+The unrecognised-`kind` fallback below the four branches matters more than it
+looks because of that: a fifth kind arriving without a branch here gets "(No
+remedy defined for skip kind …)", not the nearest neighbour's instruction. Given
+that a wrong remedy sends the owner to the wrong file — the exact defect this
+section documents twice over, once in T3.2's generic `else` and once in T3.4's
+singular count — failing visibly is the cheaper outcome.

@@ -1544,3 +1544,181 @@ Pinned by `tests/test_037_t4_4_rendered_text.py`'s
 assertion. The pre-existing tests asserted presence, which stays true when a
 path appears twice — which is how four reason strings carried a duplicate
 across three specs without one test noticing.
+
+## A Refused Typed Name Reports Prose and a Code, Not One Doing Both Jobs (spec 038 T3.2, v0.26.9)
+
+WHY `_typed_name_refusal_reason` exists as a function, and why the entry it
+feeds carries both a `reason` sentence and a separate `refusal_reason` code for
+the same fact.
+
+The three sentences it returns are not interchangeable phrasings of one
+refusal. Each one sends the owner somewhere different: a path separator means
+they tried to express a folder in a field that takes a basename, a forbidden
+character means one character has to go, and blank means nothing arrived at all.
+They share a register with the reasons immediately above them in the same
+builder — `kept in inbox: …` and `destination collision: …` — a label, a colon,
+then the specific fact, and none of them repeats `source`/`path`, because the
+only consumer (`render_md.py`'s "Attachment not filed" bullet, and this file's
+own `_attachment_suppression_reason`) already opens with the path in backticks.
+Spec 037's T4.4 is why that restraint is written down rather than assumed: four
+reason strings carried the same path twice across three specs, and the sentence
+the owner read said one path, in two quoting styles, inside twenty words.
+
+The function names the TYPED name as the thing at fault and nothing else. Not
+the inbox path, which was never the problem here, and not what will happen on
+re-run, which belongs to the remedy text — F3's seventh acceptance criterion
+restricts the text to what was verified, and "the move will succeed next time"
+is not a verified fact about a run that has not happened.
+
+`refusal_reason` carries the bare `REFUSAL_REASONS` code beside the sentence
+rather than instead of it, which is the part worth arguing because it looks like
+duplication. It is not: the two fields have different readers with different
+needs. A renderer that wants to branch per refusal class — which T3.4 then did —
+needs a value it can compare, and the alternative is parsing the prose, which is
+exactly the practice spec 038 exists to stop anyone having to adopt. Three
+branches keyed on an enum are also why the final branch of
+`_typed_name_refusal_reason` is reached only by `blank` and is not a silent
+fallback: the set is closed (`frozenset`, `lib/typed_name_check.py`), so an
+unrecognised code is not a possibility the function has to absorb.
+
+Measured at T3.5 by disabling the `separator_present` branch: the fall-through
+is worse than the obvious guess. Because the function branches on the CODE and
+never re-inspects the string, a disabled separator branch does not re-label a
+separator as a forbidden character — it falls past that check too and announces
+a separator to the owner as **blank**.
+`test_each_refusal_class_has_its_own_exact_prose_sentence` is red on that, which
+is why it asserts all three classes in one loop rather than one apiece.
+
+### WHY the Three Fields Divide As They Do — Following a Convention, Not Inventing One
+
+`kind` is what renderers branch on. `reason` is prose for a human and must never
+be parsed. `refusal_reason` is a second-level machine-readable discriminator
+under one `kind`.
+
+That division is already this codebase's documented convention and the point of
+saying so here is that it was **not** invented for spec 038. The precedent is the
+dropped-sources report at `docs/tomo/scripts/instruction-render.md:383-387`,
+which states it in nearly those words for `dropped_missing_source`: *"`kind`
+(`not-found` / `unverifiable`) is what renderers branch on; the `reason` is for a
+human and must never be parsed."* `refusal_reason` is the only genuinely new
+element, and it is a refinement rather than a departure — a discriminator one
+level below `kind`, for a kind that has three internal cases where the others
+have none.
+
+**T3.2's first attempt broke it**, and that is the reason this subsection is
+here rather than left implicit. The first version put the bare enum code in
+`reason`. Because `reason` is rendered verbatim by two consumers, the owner-facing
+sentence came out as:
+
+    cannot be filed — forbidden_character — … To fix: correct that inbox path
+
+An enum literal where a sentence belongs, and attached to the wrong remedy: the
+inbox path was never the problem. Two defects in one line, live at the time it
+was written rather than deferred to T3.4, because
+`suppress_moves_for_unfiled_attachments` is reached unconditionally in production
+(`instruction-render.py:673-675`). Caught by spec-compliance review, fixed in
+`e2a67b9`.
+
+What makes it worth a WHY entry is the shape of the fix that was chosen. The
+reads of a `reason` key were counted across the three files before deciding
+rather than patching the first consumer that showed the symptom — re-counted
+2026-10-02 at T3.5: **14** of them in `render_actions.py`, `render_md.py` and
+`instruction-render.py` together, excluding `refusal_reason` and
+`withdrawal_reason`. (T3.2's own note said 13; the figure is sensitive to whether
+pass-through projections and a comment mentioning the key are counted, which is
+why the number matters less than its order of magnitude.) The conclusion was to
+restore the invariant at the producer rather than teach one consumer to
+special-case an enum — because a prose field that is prose except in one case is
+no longer a prose field, and the next consumer to be written would have had no
+way to know which case it was looking at. The convention held; what nearly failed
+was noticing that it had been broken.
+
+### WHY a Computed Name Is Never Checked — the Gate on `name_is_owner_supplied`
+
+`check_typed_name` runs only when the remedy record carries
+`name_is_owner_supplied: True`. A record with the flag `False`, or absent on an
+older or foreign record, reaches `_asset_dest_join` exactly as it did before
+T3.2.
+
+The principled reason is ADR-5's scope: rejection is confined to names an owner
+could have typed, and `proposed_name` itself carries no provenance — the string
+`karte (2).png` looks identical whether the owner typed it or Pass 1 computed it.
+The gate is the only thing that knows the difference, which is why it is read
+from the record rather than inferred from the value.
+
+The measured reason is the stronger half, and it is the one to keep. Pass 1
+computes these names with `_propose_asset_name`
+(`suggestions-reducer.py:573-577`), which rebuilds `f"{stem} ({n}).{ext}"` from
+the raw basename and **sanitises nothing** — zero `sanitize` calls in the whole
+function, confirmed 2026-10-02. So Pass 1 can legally emit a basename that
+Obsidian forbids, because the forbidden sets differ: of the ten members of
+`FORBIDDEN_CHARS` (`\x00 " * / : < > ? \ |`), only `/` and NUL are actually
+illegal in a macOS POSIX basename. Everything else — `*`, `"`, `|`, `<`, `>`,
+`\`, `:`, `?` — is a character a real file on the owner's disk can contain and
+Obsidian will refuse.
+
+Checking every name would therefore refuse names Tomo itself computed, which
+F3's ninth acceptance criterion ("this feature constrains typed names only")
+forbids. The size of that blast radius is easy to under-estimate, so it was
+measured rather than asserted: of seven realistic macOS attachment basenames
+(screenshot with dots; `Rechnung 4/2026.pdf`; `Notiz "wichtig".png`; `Scan |
+Seite 2.jpg`; `Budget <draft>.png`; a pasted Windows path; `foto*.heic`), **six
+are refused** by `check_typed_name` and one survives. The exact ratio is a
+property of the sample and not worth quoting as a constant — the durable fact is
+the mechanism, that eight of the ten forbidden characters are legal on the
+platform the files come from, so the failure rate on real-world input is high
+rather than marginal.
+
+The check also runs BEFORE `_asset_dest_join` rather than letting it reject the
+name: an unusable name must never reach the join, not even to be refused there,
+because the join's `ValueError` path is about a malformed `path` and conflating
+the two would need one reason vocabulary to cover both.
+
+`test_whitespace_only_proposed_name_without_flag_still_degrades_as_before` is
+the guard on the gate's existence, and T3.5 measured what removing it costs:
+replacing the gate with `if True:` turns that test red, because the same `" "`
+string that must fall through to `_asset_dest_join` on the computed path
+instead becomes a `typed_name_refused` skip. Worth naming because deleting the
+gate reads as *tightening* a check, which is how it would get removed.
+
+### WHY `_attachment_suppression_reason` Needed a Third Branch
+
+A reader who cannot tell which of three things happened cannot act, and the
+three remedies are genuinely different: a destination clash (`collision`) is
+fixed by renaming one of the two **files**, a refused typed name
+(`typed_name_refused`) by retyping a usable **name**, and the remaining kind
+reaching this function (`no_basename`) by correcting the inbox **path**.
+
+Before T3.2 added the middle one, a refused typed name fell through to the
+generic `else` and was handed `no_basename`'s remedy — "correct that inbox path"
+— which is not merely unhelpful but actively misdirecting, since the inbox path
+in that scenario is fine and the owner would go looking for a problem that is
+not there. Found by execution rather than by reading the control flow, which is
+the only way it could have been found: the branch was syntactically unremarkable
+and every assertion about the entry's `kind` stayed green.
+
+`vault_collision_held` never reaches this function at all — it is excluded at
+the top of `suppress_moves_for_unfiled_attachments` — so there is no fourth
+branch to add for it, and the docstring says so to stop someone adding one
+defensively.
+
+T3.5 measured both halves of this. Disabling the `typed_name_refused` branch
+reproduces the shipped defect verbatim, with
+`test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code`
+red on an exact-string compare whose diff is `. To fix: retype a usable name for
+it` against `. To fix: correct that inbox path`. That test asserts the exact
+sentence rather than a containment rule for a reason recorded in its own body:
+the sentence quotes the owner's typed name verbatim, and arbitrary input cannot
+be excluded by a `not in` check. The one containment assertion it does keep —
+`"inbox path" not in` — is sound because that phrase is ours and fixed, never the
+owner's input.
+
+The same test carries a second guarantee that is easy to miss, and T3.5 gave it
+its own named mutation: `assert move_notes == []` is the whole of T3.3.
+`typed_name_refused` holds its owning note by **not** being excluded from the
+suppression pass, so the guarantee is the absence of a line, and the only
+mutation that can falsify it is adding `typed_name_refused` to the
+`vault_collision_held` exclusion. Run 2026-10-02: red, with the owning note
+filed. An absence is the hardest kind of guarantee to protect, because nothing
+in the diff of a future change that adds the exclusion would look like a
+deletion.

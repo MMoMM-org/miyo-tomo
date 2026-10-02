@@ -297,7 +297,19 @@ def test_whitespace_only_proposed_name_without_flag_still_degrades_as_before():
     """The same `" "` string, without the flag, must still reach the rename
     branch (truthy) and fall through to `_asset_dest_join` exactly as it did
     before this task — there is no blank-string special case on the
-    computed-name path."""
+    computed-name path.
+
+    Mutation: replace the `if remedy_entry.get("name_is_owner_supplied"):`
+    gate with `if True:` so every `rename` is checked regardless of
+    provenance. Run 2026-10-02 (T3.5): red on `assert skipped == []`, which
+    gains a `kind: typed_name_refused` entry reading "the typed name is
+    blank" and loses the one action. This is the mutation worth naming
+    because removing the gate is the plausible change — it reads as
+    tightening a check — and it is the one F3's ninth acceptance criterion
+    ("this feature constrains typed names only") forbids. This test is the
+    guard on the gate's EXISTENCE; the gate's correctness on a name the
+    owner did type is pinned by the sibling tests above.
+    """
     manifest = [
         _manifest_entry(
             source_path="karte.md", rendered_file="2026-01-01_0900_karte.md",
@@ -402,7 +414,22 @@ def test_each_refusal_class_has_its_own_exact_prose_sentence():
     """Assert on the EXACT string for all three refusal classes, not merely
     presence — spec 037's T4.4 shipped four defective sentences precisely
     because every assertion there checked presence rather than the exact
-    text."""
+    text.
+
+    Mutation: disable `_typed_name_refusal_reason`'s first branch (`if
+    refusal_reason == "separator_present":`). Run 2026-10-02 (T3.5): red on
+    the first case's `reason`, which comes back "typed name refused: the
+    typed name is blank" instead of the path-separator sentence. The
+    measured fall-through is worth recording because it is worse than the
+    obvious guess — `/` IS a `FORBIDDEN_CHARS` member, so collapsing this
+    branch looks like it would merely re-label a separator as a forbidden
+    character; in fact `_typed_name_refusal_reason` branches on the CODE, not
+    the string, so the disabled branch falls past `forbidden_character` to
+    the unguarded final `return` and calls a separator BLANK. That is the
+    reason the three branches are keyed on a closed enum rather than
+    re-inspecting `proposed_name`, and the reason this test asserts all three
+    classes in one loop rather than one apiece.
+    """
     cases = [
         ("a/b.png", "separator_present", (
             "typed name refused: `a/b.png` contains a path separator, "
@@ -447,6 +474,30 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
     path was never the problem — this is the defect the coordinator's review
     found live: the generic branch said exactly that), and never leak a bare
     REFUSAL_REASONS code.
+
+    This test carries TWO guarantees, so it names two mutations. Both run
+    2026-10-02 (T3.5).
+
+    Mutation A, for the sentence: disable `_attachment_suppression_reason`'s
+    `elif entry.get("kind") == "typed_name_refused":` branch so the entry
+    falls through to the generic `else`. Red on the exact-string assertion,
+    with the diff reproducing the shipped defect verbatim — "To fix: correct
+    that inbox path, then re-run Pass 2." Note which assertion bites: the
+    `"inbox path" not in` check below bites too, but the exact-string compare
+    is the one that fires first and the one that would still fire if a future
+    remedy regressed to some OTHER wrong instruction that happened not to say
+    "inbox path".
+
+    Mutation B, for the held-note guarantee: add `typed_name_refused` to the
+    `vault_collision_held` exclusion at the top of
+    `suppress_moves_for_unfiled_attachments`. Red on `assert move_notes ==
+    []`, which comes back holding the `move_note` for `100 Inbox/karte.md`.
+    Naming this one matters because that assertion is the whole of T3.3 —
+    typed_name_refused holds its owning note by NOT being excluded, so the
+    guarantee is the absence of a line and nothing but an exclusion-list
+    mutation can falsify it. `tests/test_038_t3_3_owning_note_held.py` now
+    owns that guarantee by name; this assertion is the second, incidental
+    guard on it and is kept deliberately rather than thinned out.
     """
     manifest = [
         _manifest_entry(

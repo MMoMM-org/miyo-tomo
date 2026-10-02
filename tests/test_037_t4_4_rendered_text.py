@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t4_4_rendered_text.py — spec 037 T4.4: four text defects the
 keep-in-inbox live run exposed, none of which any test could see.
 
@@ -310,8 +310,12 @@ def test_a_document_rendered_before_the_wording_changed_still_parses():
         "- [ ] Keep in inbox\n"
         f"{LEGACY_IGNORE_LINE}\n"
     )
+    # `rename_target` (spec 038 T4.2) carries the rename line's backtick text
+    # to `_join_attachment_conflict_remedies`, which decides the name from it.
+    # Asserted as part of the record: the two ticks this test is about are only
+    # settled correctly if the rename line was read in full.
     assert PARSER.parse_attachment_conflict_remedies(text) == [
-        {"source": HELD, "remedy": "ignore"},
+        {"source": HELD, "remedy": "ignore", "rename_target": "x.png"},
     ], "the legacy Ignore label was not recognised, so the rename tick won"
 
 

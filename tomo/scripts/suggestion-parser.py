@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.5
+# version: 0.41.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -2245,6 +2245,15 @@ def parse_tag_handler_keep_source(text: str) -> list[str]:
 # Entry delimiter rendered by `render_attachment_conflicts_block`: `### `<source>` `.
 RE_ATTACHMENT_CONFLICT_SOURCE = re.compile(r"^###\s+`([^`]+)`")
 
+# The rename line's backtick content (spec 038 T4.2): `` - [x] Rename to
+# `<target>` `` and `` - [ ] Rename to `` — no free name available ``. `*` not
+# `+`, because the second shape's empty pair is the slot T4.1 gave the owner to
+# type into — matching it as "no backticks at all" would make an emptied line
+# and a reworded line indistinguishable. Searched, not anchored: the label
+# arrives with the `- [x] ` marker already stripped, and only the FIRST pair is
+# taken, so the marker prose that follows cannot be read as a name.
+RE_RENAME_TARGET = re.compile(r"`([^`]*)`")
+
 REMEDY_RENAME = "rename"
 REMEDY_KEEP_IN_INBOX = "keep_in_inbox"
 REMEDY_IGNORE = "ignore"
@@ -2260,14 +2269,24 @@ def _resolve_attachment_remedy(
     one conflict entry's three ticks. Exhaustive — always returns one of the
     three remedy strings, never None (SDD/Interface Specifications).
 
-    Exactly one tick settles the entry to that remedy (Rule 2), unless it is
-    the "Rename — no free name available" line (`rename_impossible`):
-    passing `rename` through with no `proposed_name` would hand Pass 2
+    Exactly one tick settles the entry to that remedy (Rule 2), unless the
+    rename line names NO usable name (`rename_impossible`): passing `rename`
+    through with no `proposed_name` would hand Pass 2
     `_asset_dest_join(asset_folder, None)`, a move with no destination,
     breaking Rule 6. Owner decision 2026-09-23 resolves that state to
     `ignore` instead — ADR-4's own reasoning, an override of the pre-selected
     answer gets the loudest outcome, not the quietest, and `keep_in_inbox`
     would discard the tick with no signal that it was discarded.
+
+    spec 038 T4.2, owner ruling 2026-10-02: the override turns on the
+    ABSENCE OF A NAME, not on the presence of the marker. The line the
+    renderer ships for that state is ``- [ ] Rename to `` — no free name
+    available`` — empty backticks the owner can type into (T4.1). Ticking it
+    with a name typed between those backticks resolves to `rename` carrying
+    that name: the Rule 6 reason above cannot arise once a name exists.
+    Ticking it with the backticks still empty resolves to `ignore`, exactly
+    as before. `rename_impossible` is therefore computed as marker present
+    AND nothing usable read from the backticks (`_walk_attachment_conflicts`).
 
     Zero ticks (Rule 3) or two-or-more ticks in ANY combination — including
     one where the pre-ticked rename box is still ticked alongside another
@@ -2284,7 +2303,7 @@ def _resolve_attachment_remedy(
     return REMEDY_IGNORE
 
 
-def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
+def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
     """Walk the ## Attachment Conflicts section, one record per `### `source`` block.
 
     Mirrors `_walk_tag_handler_decisions`: a new entry starts at each
@@ -2294,9 +2313,26 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
     contributes an unticked (False) state like any other unticked line — no
     line is required for an entry to resolve.
 
-    Returns ``[(source, remedy), ...]`` in document order; empty when the
-    section is absent (mirrors T1.2's absent-not-empty decision — no
-    invented entry).
+    Returns ``[(source, remedy, rename_target), ...]`` in document order;
+    empty when the section is absent (mirrors T1.2's absent-not-empty
+    decision — no invented entry).
+
+    `rename_target` (spec 038 T4.2) is the rename line's backtick content
+    VERBATIM — what `render_attachment_conflicts_block` calls `rename_target`
+    and writes as `_asset_dest_join(asset_folder, proposed_name)`, read back
+    unparsed and unsanitised (ADR-4: the parser trusts the backtick text;
+    ADR-5: it is never rewritten here). `""` when the line is present but
+    names nothing — empty backticks, or a half edit that left no closing
+    backtick, both of which `_join_attachment_conflict_remedies` turns into a
+    refusal rather than a fallback. `None` when the markdown named nothing at
+    all: no rename line was seen, or the `rename_impossible` override fired —
+    a line whose override fired carries no owner keystrokes, so the record
+    must not claim an owner-supplied name. The override is therefore settled
+    HERE, before the join decides provenance: the empty backtick pair on the
+    no-free-name line is Tomo's own rendering, and reporting it as something
+    the owner supplied would be false whatever Pass 2 then does with it —
+    `check_typed_name` verdicts an empty string `blank`, so the owner could be
+    told their name was rejected when they typed none.
 
     Reads exactly ONE `## Attachment Conflicts` section — the first. A
     second such section later in the document is not merged in; the walk
@@ -2308,15 +2344,16 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
     """
     lines = text.splitlines()
     in_section = False
-    records: list[tuple[str, str]] = []
+    records: list[tuple[str, str, str | None]] = []
     current_source: str | None = None
     rename_ticked = False
     rename_impossible = False
+    rename_target: str | None = None
     keep_ticked = False
     ignore_ticked = False
 
     def _flush() -> None:
-        nonlocal current_source, rename_ticked, rename_impossible
+        nonlocal current_source, rename_ticked, rename_impossible, rename_target
         nonlocal keep_ticked, ignore_ticked
         if current_source is not None:
             records.append((
@@ -2324,10 +2361,12 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
                 _resolve_attachment_remedy(
                     rename_ticked, rename_impossible, keep_ticked, ignore_ticked
                 ),
+                None if rename_impossible else rename_target,
             ))
         current_source = None
         rename_ticked = False
         rename_impossible = False
+        rename_target = None
         keep_ticked = False
         ignore_ticked = False
 
@@ -2357,11 +2396,24 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
         if not (cb_checked or cb_unchecked):
             continue
         checked = bool(cb_checked)
-        label = (cb_checked or cb_unchecked).group(1).strip().lower()
+        # The raw label, not the case-folded one, is what carries the name: a
+        # typed filename is case-sensitive and `.lower()` would file `Karte.png`
+        # as `karte.png`. `label` stays folded for the prefix matching below.
+        raw_label = (cb_checked or cb_unchecked).group(1).strip()
+        label = raw_label.lower()
 
         if label.startswith("rename"):
             rename_ticked = checked
-            rename_impossible = RENAME_IMPOSSIBLE_MARKER in label
+            target_match = RE_RENAME_TARGET.search(raw_label)
+            rename_target = target_match.group(1) if target_match else ""
+            # Narrowed from `RENAME_IMPOSSIBLE_MARKER in label` (owner ruling
+            # 2026-10-02): the marker alone no longer overrides, or T4.1's
+            # empty backticks would accept the owner's keystrokes and discard
+            # them. `.strip()` mirrors `check_typed_name`'s own blankness test,
+            # so a whitespace-only edit counts as nothing typed here too.
+            rename_impossible = (
+                RENAME_IMPOSSIBLE_MARKER in label and not rename_target.strip()
+            )
         elif label.startswith("keep in inbox"):
             keep_ticked = checked
         elif label.startswith("ignore"):
@@ -2372,54 +2424,120 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str]]:
 
 
 def parse_attachment_conflict_remedies(text: str) -> list[dict]:
-    """Return `[{"source": ..., "remedy": ...}, ...]` for every
-    `## Attachment Conflicts` entry, in document order.
+    """Return `[{"source": ..., "remedy": ..., "rename_target": ...}, ...]`
+    for every `## Attachment Conflicts` entry, in document order.
 
     `remedy` is always `rename` / `keep_in_inbox` / `ignore` — never None —
     because `_resolve_attachment_remedy` is exhaustive over the tick states
     (PRD Business Rules 2-4; SDD `remedy is never null after parsing`).
     Empty when the section is absent — not a fabricated entry.
+
+    `rename_target` (spec 038 T4.2) is the rename line's backtick text, as
+    documented on `_walk_attachment_conflicts`. It rides on this record
+    because `_join_attachment_conflict_remedies` is where the name is decided
+    and these records are its only input — the join reads no markdown of its
+    own. It is consumed there and does NOT reach the parser's JSON output,
+    whose remedy records keep the `{source, remedy, proposed_name,
+    name_is_owner_supplied}` shape the wire path also yields.
     """
     return [
-        {"source": source, "remedy": remedy}
-        for source, remedy in _walk_attachment_conflicts(text)
+        {"source": source, "remedy": remedy, "rename_target": rename_target}
+        for source, remedy, rename_target in _walk_attachment_conflicts(text)
     ]
 
 
 def _join_attachment_conflict_remedies(
     remedies: list[dict], doc: dict
 ) -> list[dict]:
-    """Join each `{source, remedy}` record from `parse_attachment_conflict_
-    remedies` to its `proposed_name`, read from the structured suggestions-
-    doc's `attachment_conflicts[]` (spec 037 T3.0). The join is on `source`
-    — T1.5's grouping key, so it agrees with what rendered the entry in the
-    first place.
+    """Join each `{source, remedy, rename_target}` record from
+    `parse_attachment_conflict_remedies` to the `proposed_name` Pass 2 acts
+    on. The join is on `source` — T1.5's grouping key, so it agrees with what
+    rendered the entry in the first place.
 
-    A `source` present in the markdown but absent from the doc's
-    `attachment_conflicts[]` (a hand-edited or stale doc) joins to
-    `proposed_name: None` rather than raising — the doc supplies the name,
-    the markdown ticks stay authoritative for `remedy` regardless.
+    **spec 038 T4.2: the NAME now comes from the markdown, not from the doc.**
+    The doc's `attachment_conflicts[]` record is still read, but for its
+    `destination` and for the comparison below — never as the answer. A stale
+    doc must not win over the owner's keystrokes (SDD/Implementation Gotchas),
+    which is why the former `{source: proposed_name}` lookup is gone rather
+    than kept as a fallback.
 
-    spec 038 T3.2: `name_is_owner_supplied` is False here, always. The name
-    this path yields comes from the structured doc's own computed or typed
-    value — the rendered markdown text is never consulted for it — so this
-    path is never routed through `check_typed_name`. (Phase 4's T4.2 revisits
-    this once a typed name's extracted text can be compared against the
-    doc's: not implemented here.)
+    The markdown shows a PATH where the doc carries a BARE NAME:
+    `render_attachment_conflicts_block` writes
+    `_asset_dest_join(asset_folder, proposed_name)` into the backticks, so the
+    natural owner edit (change the filename, leave the folder) arrives here
+    with a separator in it, and T3.1 refuses separators. So the renderer's own
+    join is UN-RENDERED first: the folder is recovered from the record's
+    `destination` — itself `_asset_dest_join(asset_folder, source)`, so it
+    carries the same normalised prefix — and stripped from the extracted text
+    on an EXACT prefix match only. Owner ruling 2026-10-02. This is not
+    sanitising and leaves ADR-5 intact: what is removed is the join this
+    program printed, not owner input, so a folder the owner typed themselves
+    does not match the prefix and is still refused (`separator_present`), and
+    F3-AC1 keeps its teeth — the only separator that stops being refused is
+    one Tomo wrote.
+
+    `name_is_owner_supplied` compares the remainder against the doc's bare
+    `proposed_name`, which is comparing like with like: on an untouched
+    default they are equal, the flag is False, and the name is byte-identical
+    to the pre-T4.2 answer. Comparing the extracted PATH against the bare name
+    instead would make every untouched default look owner-supplied and
+    `check_typed_name` would refuse it `separator_present` — the outcome the
+    flag exists to prevent (measured 2026-10-02). The wire path keeps the flag
+    True unconditionally because it deliberately loads no doc (T2.5); each
+    side uses what it has.
+
+    Two cases keep the pre-T4.2 answer — `proposed_name` from the doc, flag
+    False:
+      - the markdown named nothing (`rename_target is None`): no rename line,
+        or the `rename_impossible` override fired. Nothing was typed, so there
+        is nothing to honour and nothing to check.
+      - a `source` present in the markdown but absent from the doc's
+        `attachment_conflicts[]` (a hand-edited or stale doc) joins to
+        `proposed_name: None` rather than raising, exactly as in 037. Without
+        the record there is no folder to un-render with, so the extracted text
+        cannot be told apart from a typed one; degrading to the documented
+        "rename that lost its name" route is honest where guessing is not.
+
+    Everything else is the owner's: the remainder is carried verbatim, blank
+    included. An emptied set of backticks on an ordinary conflict yields `""`
+    with the flag True — NOT `rename` with a null name, which is the
+    destination-less move Rule 6 forbids. `check_typed_name` verdicts that
+    `""` `blank`. Measured 2026-10-02, and NOT what Pass 2 reports today:
+    `_build_move_asset_actions` degrades `rename` with any falsy
+    `proposed_name` to keep-in-inbox before `name_is_owner_supplied` is
+    consulted, so the owner reads the `vault_collision_held` sentence rather
+    than a refusal. Both withhold the move; only the wording differs, and that
+    ordering belongs to `render_actions.py` (Phase 3's T3.2), not here.
     """
-    proposed_names = {
-        c.get("source"): c.get("proposed_name")
+    doc_records = {
+        c.get("source"): c
         for c in (doc.get("attachment_conflicts") or [])
         if c.get("source")
     }
-    return [
-        {
-            **r,
-            "proposed_name": proposed_names.get(r["source"]),
-            "name_is_owner_supplied": False,
-        }
-        for r in remedies
-    ]
+    joined: list[dict] = []
+    for r in remedies:
+        doc_record = doc_records.get(r["source"]) or {}
+        doc_name = doc_record.get("proposed_name")
+        rename_target = r.get("rename_target")
+        proposed_name = doc_name
+        name_is_owner_supplied = False
+        if rename_target is not None and doc_record:
+            destination = doc_record.get("destination") or ""
+            folder_prefix = (
+                destination.rsplit("/", 1)[0] + "/" if "/" in destination else ""
+            )
+            if folder_prefix and rename_target.startswith(folder_prefix):
+                proposed_name = rename_target[len(folder_prefix):]
+            else:
+                proposed_name = rename_target
+            name_is_owner_supplied = proposed_name != doc_name
+        joined.append({
+            "source": r["source"],
+            "remedy": r["remedy"],
+            "proposed_name": proposed_name,
+            "name_is_owner_supplied": name_is_owner_supplied,
+        })
+    return joined
 
 
 # ──────────────────────────────────────────────────────────────────────────────

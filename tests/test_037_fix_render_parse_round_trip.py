@@ -128,7 +128,9 @@ def _toggle(md: str, *, tick_contains: str, untick_contains: str) -> str:
 
 def test_render_parse_round_trip_pins_semantic_mapping():
     # Case 1: proposed_name is None (ADR-4 exception path). The renderer
-    # pre-ticks "Keep in inbox" and ships "Rename — <marker>" unticked; here
+    # pre-ticks "Keep in inbox" and ships "Rename to `` — <marker>" unticked
+    # (the empty backticks arrived with spec 038 T4.1; this comment said
+    # "Rename — <marker>" until then, which is the pre-T4.1 shape); here
     # the owner instead ticks the impossible rename and clears keep-in-inbox
     # — the exact state Rule 6 must never resolve to a bare rename.
     null_conflict = _conflict(proposed_name=None)

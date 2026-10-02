@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`

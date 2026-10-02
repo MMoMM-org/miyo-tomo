@@ -1,4 +1,4 @@
-# version: 0.31.0
+# version: 0.32.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1123,12 +1123,18 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     # 2026-09-29 pattern) diverge from vault_collision_held's:
                     # the "afterwards" route is re-running `/inbox`, never
                     # renaming a file on disk.
+                    # "it" refers to the attachment, not the note(s) that embed
+                    # it — `owner_source_items` is a list and two notes can
+                    # embed the same attachment, both held when the name is
+                    # refused. The suppression block already reports that
+                    # count correctly; a second, singular count here would
+                    # contradict it the moment more than one note is involved
+                    # — the exact drift CON-2 rules against at :871-874.
                     remedy = (
                         "Type a usable name for it: before applying, correct "
                         "the name in the suggestions document and run "
-                        "`/inbox --pass2 --force`; afterwards, the note is "
-                        "still in the inbox, so re-run `/inbox` and name it "
-                        "again"
+                        "`/inbox --pass2 --force`; afterwards, it is still in "
+                        "the inbox, so re-run `/inbox` and name it again"
                     )
                 else:
                     # A missing or unrecognized kind must never silently fall

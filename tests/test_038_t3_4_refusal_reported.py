@@ -34,6 +34,16 @@ literally the word `blank`). The exact-string assertion already carries every
 criterion a containment check was reaching for: if the whole line is pinned,
 no forbidden phrase can be hiding in it.
 
+The remedy's "afterwards" clause reads "it is still in the inbox", not "the
+note is still in the inbox" — `owner_source_items` is a list, and two notes
+can embed the same refused attachment, both held. "the note" (singular)
+undercounts that case; "it" names the attachment, which is genuinely
+singular regardless of how many notes embed it, and the note count is
+already reported correctly elsewhere (the suppression block). Covered below
+by `test_two_owning_notes_still_render_a_singular_attachment_remedy`, built
+with two manifest entries embedding one shared attachment so the undercount
+this fixes cannot come back silently.
+
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
 from __future__ import annotations
@@ -66,10 +76,17 @@ FORBIDDEN_TYPED_NAME = "foo*bar.png"
 BLANK_SOURCE = "100 Inbox/Scans/leer.png"
 BLANK_TYPED_NAME = "   "
 
+# Two notes embedding the SAME refused attachment — `owner_source_items`
+# grows to length 2 ("A later note embedding an already-refused file joins
+# that entry's owners", render_actions.py). The bullet text must stay
+# singular-safe regardless.
+TWO_OWNER_SOURCE = "100 Inbox/Scans/other.png"
+TWO_OWNER_TYPED_NAME = "sub/dir.png"
+
 REMEDY_LINE = (
     "Type a usable name for it: before applying, correct the name in the "
-    "suggestions document and run `/inbox --pass2 --force`; afterwards, the "
-    "note is still in the inbox, so re-run `/inbox` and name it again"
+    "suggestions document and run `/inbox --pass2 --force`; afterwards, it "
+    "is still in the inbox, so re-run `/inbox` and name it again"
 )
 
 
@@ -143,3 +160,46 @@ def test_blank_renders_the_exact_bullet():
         f"typed name refused: the typed name is blank. {REMEDY_LINE}."
     )
     assert ln == expected, ln
+
+
+def test_two_owning_notes_still_render_a_singular_attachment_remedy():
+    """Mutation: change the remedy's clause back to "afterwards, the note is
+    still in the inbox" (singular, naming the note rather than the
+    attachment). With two notes embedding the same refused attachment, both
+    held, "the note" undercounts — the same rendered document's suppression
+    block already says "the 2 notes that embed it are not filed either" for
+    this exact attachment, so the two blocks would disagree about one number.
+
+    Two manifest entries embed the SAME attachment path, so
+    `_build_move_asset_actions` folds them into one `skipped_assets` entry
+    with `owner_source_items` of length 2 (`render_actions.py`'s "a later
+    note embedding an already-refused file joins that entry's owners").
+    The bullet itself never renders a note count — it is about the
+    attachment, which is singular either way — so the expected string here
+    is identical in shape to the single-owner tests above; what this test
+    adds is proof that a second owner does not change that.
+    """
+    manifest = [
+        _entry("100 Inbox/karte.md", [TWO_OWNER_SOURCE]),
+        _entry("100 Inbox/zweite.md", [TWO_OWNER_SOURCE]),
+    ]
+    remedies = [{
+        "source": TWO_OWNER_SOURCE, "remedy": "rename",
+        "proposed_name": TWO_OWNER_TYPED_NAME, "name_is_owner_supplied": True,
+    }]
+    _actions, skipped = _build_move_asset_actions(
+        manifest, INBOX, ASSET_FOLDER, [0],
+        attachment_conflict_remedies=remedies,
+    )
+    assert [s["kind"] for s in skipped] == ["typed_name_refused"], skipped
+    assert len(skipped[0]["owner_source_items"]) == 2, skipped[0]
+    md = render_instructions_md([], {**BASE_METADATA, "skipped_assets": skipped}, {})
+    bullets = [ln for ln in md.splitlines()
+               if ln.startswith("- ⚠️ **Attachment not filed:**")]
+    assert len(bullets) == 1, bullets
+    expected = (
+        "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/other.png` — "
+        "typed name refused: `sub/dir.png` contains a path separator, which "
+        f"is not allowed in a filename. {REMEDY_LINE}."
+    )
+    assert bullets[0] == expected, bullets[0]

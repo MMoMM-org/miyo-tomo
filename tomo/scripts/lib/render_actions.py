@@ -1,4 +1,4 @@
-# version: 0.26.10
+# version: 0.26.11
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -782,8 +782,12 @@ def _build_move_asset_actions(
     (`8e7d9b0`), which put the bare code in `reason` and rendered an enum
     literal plus the wrong remedy into the owner's instruction document.
     `e2a67b9` fixed the code and the call site's comment and missed this
-    docstring, so for four commits the file's own documentation contradicted
-    the comment it told the reader to go and read. A record
+    docstring, so the file's own documentation contradicted the comment it told
+    the reader to go and read. It survived 19 commits that way, and the reason
+    is the useful part: **not one of them touched this file.** A stale docstring
+    is not found by the work going on around it — only by someone reading the
+    function to write about it, which is how this one surfaced (spec 038 T3.5).
+    A record
     with the flag False or absent — the markdown path, or any `rename`
     record predating this field — is never checked, because `proposed_name`
     there was computed by Pass 1, not typed by the owner, and ADR-5 confines

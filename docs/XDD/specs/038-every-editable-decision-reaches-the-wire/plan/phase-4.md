@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The name becomes a value"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -43,10 +43,19 @@ surface, landing into an already-guarded path.
 
 - [ ] **T4.1 The markdown offers a place to type** `[activity: frontend-ui]`
 
-  1. Prime: read `render_attachment_conflicts_block`
-     (`suggestions-reducer.py:1438-1535`), specifically the rename line at `:1518`
-     and the `RENAME_IMPOSSIBLE_MARKER` branch at `:1521-1522`
-     (`lib/attachment_conflict_states.py:19`).
+  1. Prime: read `render_attachment_conflicts_block` in `suggestions-reducer.py`,
+     specifically its pre-ticked **rename line** (`lines.append(f"- [x] Rename to
+     `{rename_target}`")`) and its **`RENAME_IMPOSSIBLE_MARKER` branch**
+     (`lines.append(f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}")`). The marker
+     itself is `RENAME_IMPOSSIBLE_MARKER` in `lib/attachment_conflict_states.py`.
+
+     **Grep for those two statements rather than trusting a line number** — this
+     task edits the file they live in, so any number here is stale the moment you
+     start. As of 2026-10-02 they were at `:1518` and `:1521`, and the function at
+     `:1438`; the citation convention adopted that day (see
+     `docs/ai/memory/general.md`) is that the symbol is authoritative and the line
+     is a dated hint, because every `suggestion-parser.py` reference in this phase
+     had already gone stale by 19 lines when T3.2 grew the file above them.
   2. Test: an ordinary conflict renders **byte-identically to today**; the
      no-free-name case renders the line with empty backticks rather than no
      parameter at all.
@@ -60,10 +69,26 @@ surface, landing into an already-guarded path.
 
 - [ ] **T4.2 The parser reads the name from the markdown** `[activity: backend-api]`
 
-  1. Prime: read `_walk_attachment_conflicts` (`suggestion-parser.py:2268`), the
-     prefix match at `:2343`, `parse_attachment_conflict_remedies` (`:2355`), and
-     `_join_attachment_conflict_remedies` (`:2370-2392`) where `proposed_name` is
-     currently read from the structured doc by `source`.
+  1. Prime: in `suggestion-parser.py`, read `_walk_attachment_conflicts`, its
+     **`rename` label prefix match** (`if label.startswith("rename"):`),
+     `parse_attachment_conflict_remedies`, and
+     `_join_attachment_conflict_remedies` — the last being where `proposed_name` is
+     currently read from the structured doc by `source`, in the
+     `proposed_names = {c.get("source"): c.get("proposed_name") ...}` comprehension
+     and consumed just below it. **That comprehension is the structured-doc read
+     step 3 tells you to remove**; the old text pointed at the function but never
+     located the read itself.
+
+     **Grep for the symbols, do not trust a line number here.** This task edits
+     this very file, and every line number in this Prime was already wrong before
+     the phase opened: T3.2 added `name_is_owner_supplied` above all of them, so
+     the stated `:2268`, `:2343`, `:2355` and `:2370-2392` were short by 19, and
+     the `:2998` cited below was short by 21. Measured 2026-10-02 with the file
+     final, as dated hints only — `_walk_attachment_conflicts` `:2287`, the prefix
+     match `:2362`, `parse_attachment_conflict_remedies` `:2374`,
+     `_join_attachment_conflict_remedies` `:2389`, the doc read `:2410`,
+     `name_is_owner_supplied: False` `:2419`. See `docs/ai/memory/general.md` for
+     the convention and why three sweeps in Phase 3 produced it.
   2. Test: an overtyped name is returned; an untouched default resolves to the
      computed name **byte-identically** (this flips
      `tests/test_037_typed_rename_target_is_ignored.py`'s strict xfail and deletes
@@ -89,7 +114,9 @@ surface, landing into an already-guarded path.
        would also contradict this task's own test that an untouched default
        resolves to the computed name **byte-identically**.
      - The comparison is **free here** and only here: this path already loads the
-       doc (`_load_json_doc(_own_doc_path)`, `:2998`). The wire path keeps `True`
+       doc — `parse_attachment_conflict_remedies(text), _load_json_doc(_own_doc_path)`
+       at the call site in `main` (`:3019` as of 2026-10-02; the old text said
+       `:2998`, short by 21). The wire path keeps `True`
        unconditionally because it deliberately does not load the doc — Phase 2's
        T2.5 measured the JSON-only path working with `--file` plus
        `--suggestions-json` and no `--suggestions-doc`, and re-coupling it would

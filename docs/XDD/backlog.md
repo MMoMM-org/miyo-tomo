@@ -1739,3 +1739,41 @@ directly. The spec-compliance review that caught it was righter than it knew.
 Not fixed in 038: no task's success criteria cover it, and it is a change to how
 an unknown kind behaves rather than to anything 038 introduces. The risk is
 strictly future — every kind that exists today has correct text.
+
+## OPEN — spec 038's C1 asks for a count the renderer is twice argued against
+
+**Found 2026-10-02** while priming spec 038's T3.4, before briefing an implementer.
+
+C1 reads: *"Given a run with at least one refused typed name, When the summary is
+rendered, Then the count appears alongside the existing skip counts."* Both halves
+fail on measurement.
+
+**There are no existing skip counts.** Nothing in Pass 2 renders a count of skips.
+The only count anywhere in the instruction document is `action_count` in the
+frontmatter (`render_md.py:841`); Pass 2's stderr carries per-item warnings
+(`instruction-render.py:449,467`, `render_actions.py:815,937`), not a run summary.
+So a new count has nothing to appear alongside.
+
+**Counting here is already ruled against, twice, in the file C1 would touch.**
+
+| site | ruling |
+|---|---|
+| `render_md.py:1031-1034` | skipped assets are "named individually, never counted" — a count above bullets that already name every source is "redundant when right and misleading the moment the two drift", and a bare `f"{n} conflicts remain"` "gives no test any way to catch" the drift |
+| `render_md.py:871-874` | for destination clashes, "a heading or intro that counted them would contradict the bullets underneath it in whichever case it did not describe" — under CON-2, "the user approves on what this document says, so it must not miscount what it withheld" |
+
+The WHY is persisted at `docs/tomo/scripts/lib/render_md.md:493`, citing spec 037's
+PRD/C2 ("names each one rather than counting them").
+
+**Why this is recorded rather than decided.** C1 is a Could-Have, so nothing in
+F3 depends on it, and T3.4 proceeds without it. But its *intent* — "so that I see
+at a glance that something needs me" — is plausibly already satisfied by the
+bullet T3.4 adds, under the heading "**Attachments still in the inbox** — none of
+these were filed:". If so, C1 closes as **satisfied by F3** rather than dropped,
+which is a materially different close-out line. Three dispositions are open:
+close as satisfied-by-F3; build a count anyway and accept the conflict, which
+means re-opening a convention argued in two places and documented in a third; or
+withdraw C1. Left to the owner.
+
+Recorded in `requirements.md` beside the criterion itself, and in
+`plan/phase-3.md`'s T3.4 step 3, so neither an implementer nor a reviewer treats
+the absence of a count as an omission.

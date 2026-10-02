@@ -335,8 +335,30 @@ produce a typed name at all.
      `render_actions.py:938-941`), so either alternative needed a new field or a
      forked string, and the owner already knows they typed the name because the
      document is rendered from the run in which they typed it.
-  3. Implement: one bullet per refusal, in the existing skipped block. Also the
-     Could-have count in the summary `[ref: PRD/C1]`.
+  3. Implement: one bullet per refusal, in the existing skipped block — a new
+     `elif kind == "typed_name_refused":` branch with its own `remedy` line,
+     beside `no_basename`, `collision` and `vault_collision_held`
+     (`render_md.py:1087-1119`). **That is this task's whole production change.**
+
+     **C1's count is NOT built here — it is blocked, measured 2026-10-02, and
+     awaits an owner decision** (see the PRD beside C1 and the backlog entry).
+     Two findings, both exhaustive: *(a)* there are no "existing skip counts" for
+     a new count to appear alongside — nothing in Pass 2 renders a count of skips
+     at all; the only count anywhere is `action_count` in the frontmatter
+     (`render_md.py:841`), and Pass 2's stderr carries per-item warnings, not a
+     run summary. *(b)* Counting in this region is argued **against** twice in the
+     very file C1 would touch: `render_md.py:1031-1034` ("Named individually,
+     never counted … a count above bullets that already name every source is
+     redundant when right and misleading the moment the two drift, which a bare
+     `f\"{n} conflicts remain\"` gives no test any way to catch") and `:871-874`
+     ("a heading or intro that counted them would contradict the bullets
+     underneath it"), with the WHY at `docs/tomo/scripts/lib/render_md.md:493`.
+
+     Note that C1's **intent** — "so that I see at a glance that something needs
+     me" — is arguably already met by the bullet this task adds, under the heading
+     "**Attachments still in the inbox** — none of these were filed:". If the
+     owner agrees, C1 closes as satisfied-by-F3 rather than as dropped. Do not
+     decide that here `[ref: PRD/C1]`.
   4. Validate: assert on the **exact** rendered string, not on presence — spec 037
      shipped four defective sentences precisely because every assertion checked
      presence `[ref: SDD/Risks]`.

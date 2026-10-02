@@ -122,13 +122,13 @@ surface, landing into an already-guarded path.
      `tick_contains` is wrong. A test that cannot fail on a missed matcher is the
      defect, not the matcher.
   5. Success:
-     - [ ] An ordinary conflict's markdown is unchanged `[ref: PRD/F2]`
-     - [ ] The no-free-name line carries empty backticks `[ref: PRD/F2]`
-     - [ ] `test_render_parse_round_trip_pins_semantic_mapping` still ticks the
+     - [x] An ordinary conflict's markdown is unchanged `[ref: PRD/F2]`
+     - [x] The no-free-name line carries empty backticks `[ref: PRD/F2]`
+     - [x] `test_render_parse_round_trip_pins_semantic_mapping` still ticks the
            rename box — asserted by tick count, not inferred from a green run
-     - [ ] `_toggle` fails loudly on a missed matcher, shown by an executed RED
+     - [x] `_toggle` fails loudly on a missed matcher, shown by an executed RED
 
-- [ ] **T4.2 The parser reads the name from the markdown** `[activity: backend-api]`
+- [x] **T4.2 The parser reads the name from the markdown** `[activity: backend-api]`
 
   1. Prime: in `suggestion-parser.py`, read `_walk_attachment_conflicts`, its
      **`rename` label prefix match** (`if label.startswith("rename"):`),
@@ -144,12 +144,20 @@ surface, landing into an already-guarded path.
      this very file, and every line number in this Prime was already wrong before
      the phase opened: T3.2 added `name_is_owner_supplied` above all of them, so
      the stated `:2268`, `:2343`, `:2355` and `:2370-2392` were short by 19, and
-     the `:2998` cited below was short by 21. Measured 2026-10-02 with the file
-     final, as dated hints only — `_walk_attachment_conflicts` `:2287`, the prefix
-     match `:2362`, `parse_attachment_conflict_remedies` `:2374`,
-     `_join_attachment_conflict_remedies` `:2389`, the doc read `:2410`,
-     `name_is_owner_supplied: False` `:2419`. See `docs/ai/memory/general.md` for
-     the convention and why three sweeps in Phase 3 produced it.
+     the `:2998` cited below was short by 21.
+
+     **The line numbers that stood here have been removed rather than refreshed**
+     (2026-10-02, after T4.2 shipped as `c1a8ef2`). All seven had moved again, and
+     two of the landmarks no longer exist as they were described: the
+     structured-doc read is **gone** — removing it was this task — and
+     `name_is_owner_supplied` is no longer `False` unconditionally. Refreshing the
+     numbers would have been wrong twice over, and T4.3 edits this same file next,
+     which would have forced a fourth sweep of the same landmarks. Grep the
+     symbols: `_walk_attachment_conflicts`, its `label.startswith("rename")`
+     match, `parse_attachment_conflict_remedies`,
+     `_join_attachment_conflict_remedies`, `_resolve_attachment_remedy`. See
+     `docs/ai/memory/general.md` for the convention and why three sweeps in Phase 3
+     produced it.
   2. Test: an overtyped name is returned; an untouched default resolves to the
      computed name **byte-identically** (this flips
      `tests/test_037_typed_rename_target_is_ignored.py`'s strict xfail and deletes
@@ -233,8 +241,10 @@ surface, landing into an already-guarded path.
        resolves to the computed name **byte-identically**.
      - The comparison is **free here** and only here: this path already loads the
        doc — `parse_attachment_conflict_remedies(text), _load_json_doc(_own_doc_path)`
-       at the call site in `main` (`:3019` as of 2026-10-02; the old text said
-       `:2998`, short by 21). The wire path keeps `True`
+       at the sole `parse_attachment_conflict_remedies(text),
+       _load_json_doc(_own_doc_path)` call site in `main` — grep that pair; the
+       line numbers two drafts of this sentence carried were both stale within a
+       day. The wire path keeps `True`
        unconditionally because it deliberately does not load the doc — Phase 2's
        T2.5 measured the JSON-only path working with `--file` plus
        `--suggestions-json` and no `--suggestions-doc`, and re-coupling it would
@@ -427,11 +437,13 @@ surface, landing into an already-guarded path.
      (`test_the_untouched_default_resolves_to_the_computed_name`) is the regression
      floor and must stay green.
   5. Success:
-     - [ ] A typed name reaches Pass 2 `[ref: PRD/F2]`
-     - [ ] An untouched default is byte-identical to today `[ref: PRD/F2]`
-     - [ ] The strict xfail is **removed**, not left passing
-     - [ ] An unreadable name is a refusal, never a fallback `[ref: PRD/F2]`
-     - [ ] The structured doc is no longer consulted for this value `[ref: SDD/Implementation Gotchas]`
+     - [x] A typed name reaches Pass 2 `[ref: PRD/F2]`
+     - [x] An untouched default is byte-identical to today `[ref: PRD/F2]`
+     - [x] The strict xfail is **removed**, not left passing — zero `xfailed`
+           in the suite, which was its only one
+     - [x] An unreadable name is a refusal, never a fallback `[ref: PRD/F2]` —
+           with the `reason` named per case, not merely the polarity
+     - [x] The structured doc is no longer consulted for this value `[ref: SDD/Implementation Gotchas]`
 
   6. **Measured 2026-10-02, and worth a decision inside this task: the markdown
      invites the refusal.** The ordinary line renders the FULL destination path in

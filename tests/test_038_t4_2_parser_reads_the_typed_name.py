@@ -159,9 +159,21 @@ def test_the_untouched_default_is_byte_identical_to_the_computed_name():
     the record is byte-for-byte what the pre-T4.2 doc-read produced.
 
     This is the criterion that forbids the obvious shortcut: flagging every
-    markdown name `name_is_owner_supplied: True`. Mutation: set the flag True
-    unconditionally — `check_typed_name` then refuses this untouched default
-    `separator_present`, because the backticks hold a path."""
+    markdown name `name_is_owner_supplied: True`.
+
+    Two mutations break it, by different mechanisms, and an earlier draft of
+    this docstring credited the wrong one to the wrong mutation (found in code
+    review, 2026-10-02):
+
+    - Set the flag `True` unconditionally. Caught by the dict equality below
+      and **not** by `check_typed_name` — `proposed_name` here is the
+      post-strip bare name, which holds no separator, so the guard would pass
+      it. The flag value alone is what differs.
+    - Compare the **pre-strip** extracted text against the doc's bare name,
+      which is what this task's brief originally specified. That flags the
+      untouched default owner-supplied *and* hands the guard the full rendered
+      path, so it refuses `separator_present`. This is the one where the
+      backticks holding a path is the operative fact."""
     record = _record(_rendered(COMPUTED), _doc(COMPUTED))
     assert record == {
         "source": SOURCE,

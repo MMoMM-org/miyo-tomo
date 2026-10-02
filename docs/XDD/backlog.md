@@ -1890,3 +1890,26 @@ behaviour predates the spec on the wire side. Phase 5's handoff must **tell** Ha
 rather than let them find it; T4.2 pins today's answer (`vault_collision_held`) in a
 test with the mechanism named in its docstring, so the pin reads as a measurement
 rather than an endorsement.
+
+## OPEN — `_walk_attachment_conflicts` carries six per-entry fields declared in three places
+
+Flagged in T4.2's code quality review (2026-10-02), not a blocker, not taken.
+
+`_walk_attachment_conflicts` in `tomo/scripts/suggestion-parser.py` tracks six pieces
+of per-entry state — `current_source`, `rename_ticked`, `rename_impossible`,
+`rename_target`, `keep_ticked`, `ignore_ticked` — and each is touched in **three**
+places: the initial declaration, the `nonlocal` list in `_flush`, and the reset at the
+end of `_flush`. T4.2 had to edit all three to add one field.
+
+Three tasks in a row have added to this function (T4.1 read it, T4.2 added
+`rename_target`, T4.3 is next), so a fourth field is likely rather than hypothetical.
+A small container for the current entry's state — a dataclass or a dict — collapses
+the declaration and the reset to one line each and removes the class of bug where a
+new field is added to two of the three sites.
+
+**Why it is recorded rather than done.** The change is a refactor of code T4.2 did not
+otherwise touch, and the reviewer was explicitly told not to make a surrounding
+refactor a condition of passing. The file is also already past the constitution's
+300–500 LOC guidance for reasons that predate this spec, so this is one seam in a file
+that has several; taking it in isolation buys the next field's safety and nothing more.
+Worth doing **before** a fourth field lands, not after.

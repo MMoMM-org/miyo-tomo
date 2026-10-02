@@ -78,11 +78,55 @@ surface, landing into an already-guarded path.
      So do **not** treat the marker as cosmetic and do not reorder the two tasks:
      if T4.1 ships before T4.2's condition is narrowed, the box this task adds
      accepts a name and throws it away, which is worse than not offering it.
-  4. Validate: every existing 037 render test stays green — this task should break
-     nothing.
+  4. Validate: every existing 037 render test stays green — but **"green" is not
+     the bar for one of them, and this is the task's real risk.** Measured
+     2026-10-02, before dispatch.
+
+     `tests/test_037_fix_render_parse_round_trip.py::test_render_parse_round_trip_pins_semantic_mapping`
+     is the **only** test pinning the owner's 2026-09-23 decision that a
+     ticked-but-impossible rename resolves to `ignore` rather than falling through
+     to `rename`. It renders the null-`proposed_name` case through the real
+     renderer, then edits it with a helper, `_toggle(md,
+     tick_contains="Rename —", untick_contains="Keep in inbox")`.
+
+     After this task the rendered line reads ``Rename to `` — no free name
+     available``, so **`"Rename —"` no longer appears in it** and `_toggle`'s
+     matcher misses. `_toggle` has no else and raises nothing — it returns the
+     document unchanged for that line. So the rename box is never ticked, `Keep in
+     inbox` is still unticked, and the entry reaches the parser with **zero ticks**,
+     which Rule 3 also resolves to `ignore`. Executed both ways:
+
+     ```
+     today      remedy=ignore  ticks=1   - [x] Rename — no free name available
+     post-T4.1  remedy=ignore  ticks=0   - [ ] Rename to `` — no free name available
+     ```
+
+     **The assertion passes in both cases, and in the second it is testing a
+     different rule.** The test stops guarding "ticked-but-impossible → ignore" and
+     starts guarding "zero ticks → ignore", which nothing in this spec is changing.
+     T4.2 then narrows the 2026-09-23 decision with no guard watching it. This is
+     spec 031's disarmed-`kind`-guard shape with one difference that makes it worse:
+     **nobody has to edit the test.** It disarms itself, and a green suite reports
+     success.
+
+     So this task owns two fixes to that file, and they are not optional:
+     - Update `_toggle`'s `tick_contains` to match the new line.
+     - **Make `_toggle` fail loudly when a matcher misses** — raise, or assert that
+       each matcher hit exactly one line. One definition, one call site, one file
+       (counted 2026-10-02), so the change is contained. Without it the next reword
+       of that line repeats this silently, and the helper's own docstring promises
+       it "models an owner editing the actual rendered document" — an owner who
+       ticks nothing is not that.
+
+     Prove the repair: assert the tick count, or show the test RED when
+     `tick_contains` is wrong. A test that cannot fail on a missed matcher is the
+     defect, not the matcher.
   5. Success:
      - [ ] An ordinary conflict's markdown is unchanged `[ref: PRD/F2]`
      - [ ] The no-free-name line carries empty backticks `[ref: PRD/F2]`
+     - [ ] `test_render_parse_round_trip_pins_semantic_mapping` still ticks the
+           rename box — asserted by tick count, not inferred from a green run
+     - [ ] `_toggle` fails loudly on a missed matcher, shown by an executed RED
 
 - [ ] **T4.2 The parser reads the name from the markdown** `[activity: backend-api]`
 

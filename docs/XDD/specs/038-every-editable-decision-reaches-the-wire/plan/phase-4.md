@@ -200,6 +200,22 @@ surface, landing into an already-guarded path.
      failure spec compliance FAILed T3.2 for twice. Say that the override is about
      the absence of a name, not the presence of a marker.
 
+     **One more line in the same file, found by T4.1's review sweep (2026-10-02)**:
+     `_resolve_attachment_remedy`'s docstring also quotes the rendered line as
+     *the "Rename — no free name available" line* — the pre-T4.1 shape. T4.1 made
+     it ``Rename to `` — no free name available``. Correct the quotation while you
+     are in that docstring; it is the sentence a reader checks the new condition
+     against, so a stale quote there is worse than one in a doc.
+
+     And **replace the old-shape parser fixtures**:
+     `tests/test_037_t2_4_parse_remedy.py`'s `RENAME_IMPOSSIBLE_TICKED` and
+     `RENAME_IMPOSSIBLE_UNTICKED` are hand-built markdown of the pre-T4.1 line.
+     They are green and will stay green, because the parser still accepts the old
+     shape — which is exactly the trap: they test a document the renderer no longer
+     produces. This repo has recorded that fixture-drift failure before ("mirror
+     live renderer output"). Add new-shape fixtures; keep an old-shape one only if
+     you deliberately want to pin backward tolerance, and say so in its name.
+
      **And set `name_is_owner_supplied` here — T3.2 added it, and this task is
      where the markdown side stops being `False`.** The rule is NOT `True`
      unconditionally, and getting that wrong re-opens the behaviour change the
@@ -292,5 +308,27 @@ surface, landing into an already-guarded path.
     `[ref: PRD/F1, PRD/F2]`.
   - Run the full suite and `ruff`. Write the `docs/tomo/` WHY entries for the
     parser and reducer changes.
+
+    **Two of those entries are corrections, not additions — found by T4.1's review
+    sweep (2026-10-02) and left for this task deliberately.** Both describe the
+    pre-T4.1 line as current:
+    - `docs/tomo/scripts/suggestions-reducer.md` — says *"this renderer now builds
+      the line as `f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}"`"*, quoting code
+      that no longer exists. This is the worst of the three, because it quotes the
+      literal and reads as authoritative.
+    - `docs/tomo/scripts/suggestion-parser.md` — refers to *the "Rename — no free
+      name available" line*.
+
+    Derive the full list from the phase diff rather than this list:
+    `git diff --name-only <T4.1^>..HEAD -- tomo/` names every runtime file the phase
+    changed and each owes a `docs/tomo/` counterpart. Phase 3's equivalent list was
+    hand-maintained and undercounted **twice**; the rule that replaced it is in
+    `plan/phase-3.md`'s T3.5 and it applies here too.
+
+    When correcting a claim, ask whether it was false or merely **narrower than it
+    looked** — the repo's own guidance (`docs/ai/memory/general.md`) is that
+    deleting a correct warning because the code now contradicts it is the same move
+    as editing a test to match an implementation. Here both are plainly false and
+    should be corrected rather than split.
   - Success: suite green; `ruff` clean; both paths proven to converge on identical
     output for identical decisions `[ref: PRD/F1]`.

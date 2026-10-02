@@ -61,6 +61,23 @@ surface, landing into an already-guarded path.
      parameter at all.
   3. Implement: the single change is the impossible branch. The ordinary branch is
      untouched `[ref: SDD/ADR-4]`.
+
+     **Keep `RENAME_IMPOSSIBLE_MARKER` on the line** — the owner should still see
+     why the rename was impossible at the point of deciding. That is only safe
+     because of T4.2's narrowed `rename_impossible`, ruled 2026-10-02; without it
+     this task's empty backticks are inert. Measured before the ruling, on today's
+     parser, with the real section heading and source-line shapes:
+
+     ```
+     - [x] Rename to `Atlas/290 Assets/295 Attachments/karte-2.png`
+         remedy: rename                        (ordinary conflict, the control)
+     - [x] Rename to `…karte-2.png` — no free name available
+         remedy: ignore   <-- the typed name silently discarded
+     ```
+
+     So do **not** treat the marker as cosmetic and do not reorder the two tasks:
+     if T4.1 ships before T4.2's condition is narrowed, the box this task adds
+     accepts a name and throws it away, which is worse than not offering it.
   4. Validate: every existing 037 render test stays green — this task should break
      nothing.
   5. Success:
@@ -95,10 +112,49 @@ surface, landing into an already-guarded path.
      `test_the_typed_name_is_discarded_today` with it); a half-edited line with no
      closing backtick, and one with empty backticks on an ordinary conflict, both
      resolve to a refusal rather than to a fallback or a different remedy.
+
+     **Three more cases, from the 2026-10-02 ruling, and the first is the one that
+     matters**: on the no-free-name line, (a) ticked with a typed name resolves to
+     `rename` carrying that name — this is the case that fails today; (b) ticked
+     with the backticks still empty resolves to `ignore`, unchanged from today; and
+     (c) left unticked with `Keep in inbox` pre-ticked resolves to
+     `keep_in_inbox`, also unchanged. Assert (b) and (c) as well as (a): a change
+     that only made (a) pass could do so by dropping the override entirely, which
+     would hand Pass 2 a destination-less move in case (b).
   3. Implement: extract the backtick content on a ticked rename line and carry it
      as `proposed_name`. **Remove the structured-doc read for this value** — do not
      leave both in play, or a stale doc wins over the owner's keystrokes
-     `[ref: SDD/Implementation Gotchas]`.
+     `[ref: SDD/Implementation Gotchas]`. The read to remove is the
+     `proposed_names = {c.get("source"): c.get("proposed_name") ...}` comprehension
+     in `_join_attachment_conflict_remedies` and the line that consumes it.
+
+     **Also narrow `rename_impossible` — owner ruling 2026-10-02, and this is the
+     task that makes T4.1's empty backticks work at all.** Today it is
+     `rename_impossible = RENAME_IMPOSSIBLE_MARKER in label`, and
+     `_resolve_attachment_remedy` turns `rename_ticked` plus `rename_impossible`
+     into `ignore`. So the owner ticks the box T4.1 adds, types a name, and the
+     name is discarded — proven on today's parser before the ruling:
+
+     ```
+     - [x] Rename to `…karte-2.png`                      -> rename   (control)
+     - [x] Rename to `…karte-2.png` — no free name available -> ignore
+     - [x] Rename to `` — no free name available           -> ignore   (correct)
+     ```
+
+     Set it to **marker present AND no usable name extracted**. The narrowing is
+     faithful rather than a reversal: the 2026-09-23 decision that this state
+     resolves to `ignore` rests on a reason stated in
+     `_resolve_attachment_remedy`'s own docstring — *"passing `rename` through with
+     no `proposed_name` would hand Pass 2 `_asset_dest_join(asset_folder, None)`, a
+     move with no destination, breaking Rule 6"*. That reason cannot arise once a
+     name has been typed, because there **is** a `proposed_name`. Empty backticks
+     left untouched still resolve to `ignore`, exactly as today — which is the
+     third line above, and it must stay that way.
+
+     **Update that docstring in the same commit.** It currently states the
+     unconditional rule, and a WHY text left asserting the old behaviour is the
+     failure spec compliance FAILed T3.2 for twice. Say that the override is about
+     the absence of a name, not the presence of a marker.
 
      **And set `name_is_owner_supplied` here — T3.2 added it, and this task is
      where the markdown side stops being `False`.** The rule is NOT `True`

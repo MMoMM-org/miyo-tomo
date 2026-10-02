@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -16,7 +16,7 @@ This module takes no dependency on render_actions.py (or any other caller) so
 it stays usable from the parser side too, and it is a pure function on a
 string: one argument, no run state, no vault listing. `taken` is deliberately
 not a reason here — it is a property of the run, not of the string, and the
-run already decides it (render_actions.py:836); handing this module run state
+run already decides it (render_actions.py:927); handing this module run state
 to duplicate that check was rejected by the owner (2026-10-01).
 """
 from __future__ import annotations

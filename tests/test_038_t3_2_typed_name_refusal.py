@@ -437,7 +437,7 @@ def test_each_refusal_class_has_its_own_exact_prose_sentence():
 
 def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_code():
     """The sentence actually printed into instructions.md
-    (`render_md.py:947`, via `_attachment_suppression_reason`,
+    (`render_md.py:948`, via `_attachment_suppression_reason`,
     reached unconditionally through `suppress_moves_for_unfiled_attachments`
     at `instruction-render.py:673-675`) for a refused typed name.
 

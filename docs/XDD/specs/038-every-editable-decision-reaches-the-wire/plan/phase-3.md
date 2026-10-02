@@ -90,8 +90,8 @@ produce a typed name at all.
      **Three classes, not four** — owner ruling 2026-10-01, after this task was
      blocked for specifying an untestable one. `taken` is a property of the run,
      not of the string, and the run already decides it at
-     `lib/render_actions.py:836`, which a remedy-chosen destination reaches by
-     design (`:831-835`). So this module takes **one argument** and stays a pure
+     `lib/render_actions.py:927`, which a remedy-chosen destination reaches by
+     design (`:922-926`). So this module takes **one argument** and stays a pure
      function on a string; do not add a `taken`/`claimed` parameter, and do not
      reach for a vault listing — there is none on this path (`path_exists` appears
      nowhere in `render_actions.py` or `render_md.py`). Plus: a usable name is
@@ -180,7 +180,9 @@ produce a typed name at all.
      without an exhaustive search — the same mistake as spec 038 Phase 2's, in
      the same test file. It lives in
      `tests/test_037_t3_1_remedy_outcomes.py:280-312`,
-     `test_a_remedys_destination_still_goes_through_the_claimed_check`, which
+     `test_a_remedys_destination_still_goes_through_the_claimed_check`, which (the
+     `:831-835` inside that quotation is pre-T3.2 numbering and is left as
+     quoted; that comment block is now `:922-926`)
      renames `other.png` onto `orig.png`'s destination and asserts
      `kind == "collision"`, with its mutation named in its own docstring. **That
      test is the regression anchor and must pass UNCHANGED** — it supplies no
@@ -212,7 +214,7 @@ produce a typed name at all.
      - [ ] No schema file and no wire field changed — the flag is internal
      - [ ] `_asset_dest_join` is byte-identical to before `[ref: SDD/Acceptance Criteria]`
 
-- [ ] **T3.3 The owning note is held** `[activity: backend-api]`
+- [x] **T3.3 The owning note is held** `[activity: backend-api]`
 
   1. Prime: read `suppress_moves_for_unfiled_attachments` (`render_actions.py:1516`)
      including the docstring explaining why `vault_collision_held` is **excluded**,

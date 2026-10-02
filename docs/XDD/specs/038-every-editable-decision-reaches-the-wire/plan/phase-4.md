@@ -305,11 +305,36 @@ surface, landing into an already-guarded path.
      `REFUSED blank` (measured; `blank` is one of the three `REFUSAL_REASONS`).
      Two lines reach that state and they must NOT resolve alike:
      - **Ordinary conflict, backticks emptied** — no marker, so the narrowed
-       `rename_impossible` is `False`. Nothing else stops it, so it would fall
-       through to `rename` with `proposed_name` `None` and hand Pass 2
-       `_asset_dest_join(folder, None)` — the destination-less move the
-       2026-09-23 docstring names. It must become a **refusal** (`blank`), which
-       is what step 2 already asks for; route it through the guard.
+       `rename_impossible` is `False`. Carry `""` with the flag `True`, **not**
+       `rename` with a null name.
+
+       **Correction, 2026-10-02.** An earlier draft of this bullet said "nothing
+       else stops it, so it would fall through to `rename` with `proposed_name`
+       `None` and hand Pass 2 `_asset_dest_join(folder, None)`". That was wrong,
+       and it was wrong in the implementer's brief too. Something does stop it:
+       `_build_move_asset_actions` tests `remedy == "rename" and not
+       remedy_entry.get("proposed_name")` (`render_actions.py:848-849` as of
+       2026-10-02) — a **falsy** test, so `""` takes it as well as `None` — and
+       that branch precedes the `name_is_owner_supplied` gate at `:902` by 53
+       lines. The destination-less move has been unreachable on this route since
+       037's T3.1; the degrade to `vault_collision_held` is the documented
+       "a rename that lost its name" path.
+
+       So the owner reads the `vault_collision_held` sentence, not a refusal.
+       Both withhold the move; only the wording differs. Measured through
+       `_build_move_asset_actions` with the flag `True` on every row:
+
+       ```
+       proposed_name=''              -> skipped vault_collision_held
+       proposed_name=None            -> skipped vault_collision_held
+       proposed_name='   '           -> skipped typed_name_refused  blank
+       proposed_name='Archive/x.png' -> skipped typed_name_refused  separator_present
+       ```
+
+       Row 3 is the sharp one: `blank` **is** reachable, but only for a truthy
+       whitespace-only name. For `""` it is not reachable at all, because the
+       value that would trigger the refusal is the same value that triggers the
+       degrade one branch earlier.
      - **The no-free-name line, backticks still empty** — marker present and no
        name, so the narrowed condition holds and it resolves to `ignore`,
        unchanged from today. If the guard runs first it becomes
@@ -333,8 +358,17 @@ surface, landing into an already-guarded path.
      | folder deleted too | `rename`, same bare typed name |
      | a **different** folder typed | refusal, `reason` `separator_present` |
      | forbidden character, folder left | refusal, `reason` `forbidden_character` |
-     | folder left, filename deleted | ordinary conflict: refusal, `reason` `blank` |
+     | folder left, filename deleted | ordinary conflict: `proposed_name` `""`, flag `True`, and `check_typed_name` verdicts it `blank` |
      | folder left, filename deleted | no-free-name line: `ignore`, no refusal |
+
+     Row 5 is asserted **at this task's boundary**, not end-to-end: see the
+     correction in (c). No parser-only change can make Pass 2 report
+     `typed_name_refused` with `refusal_reason: blank` for an emptied line. Pin
+     `vault_collision_held` as today's surfaced answer alongside it, and name the
+     mechanism in the test docstring so the pin reads as a measurement rather
+     than an endorsement. Changing which sentence the owner reads needs
+     `render_actions.py`, which is not this task's file — if it is wanted, it is a
+     backlog entry, not a widening of T4.2.
 
      The first two must yield the **same** `proposed_name` — that is what proves
      the strip is a prefix match and not a `basename()`.

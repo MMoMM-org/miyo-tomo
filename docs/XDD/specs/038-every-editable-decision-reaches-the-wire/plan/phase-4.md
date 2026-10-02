@@ -278,10 +278,22 @@ surface, landing into an already-guarded path.
      other way: `_markdown()` prepends the asset folder to whatever it is given,
      while `test_the_untouched_default_resolves_to_the_computed_name` asserts a
      **bare** `COMPUTED` and the strict xfail asserts a **bare** `TYPED`.
-     (Precisely: the fixtures *require* a bare name, and un-rendering is the route
-     chosen to it. An earlier draft here claimed no other implementation could
-     satisfy them — that was an overclaim; what is established is the requirement,
-     not the uniqueness of the answer.) So the
+     **Do not read those two fixtures as the proof, and do not read them as
+     coverage.** An earlier draft of this paragraph claimed no implementation could
+     satisfy them without un-rendering. That is false, measured 2026-10-02 by
+     applying the mutation: a plain `rsplit("/", 1)[-1]` returns `karte (2).png`
+     for the untouched default and `karte-dresden-1938.png` for the typed one,
+     which is exactly what each fixture asserts. Under a `basename()` the whole of
+     `tests/test_037_typed_rename_target_is_ignored.py` stays green, and so do both
+     overtyped-name cases — `1 failed, 12 passed`, the single failure being
+     `test_a_different_folder_typed_is_refused_separator_present`.
+
+     So what rules out `basename()` is the **`Archive/` row of (d)** — the row the
+     TDD gate added — and not the 037 fixtures at all. The fixtures establish only
+     that the output must be a bare name; the `Archive/` row establishes *how* it
+     may become one. A reader who takes the fixtures as sufficient evidence will
+     also take them as sufficient coverage, and skip the row doing the real work.
+     So the
      parser strips the prefix the renderer itself wrote, then judges the
      remainder. **This is not sanitising and does not touch ADR-5**: what is
      removed is the renderer's own join, not owner input. Strip **only** an exact
@@ -364,6 +376,32 @@ surface, landing into an already-guarded path.
      | forbidden character, folder left | refusal, `reason` `forbidden_character` |
      | folder left, filename deleted | ordinary conflict: `proposed_name` `""`, flag `True`, and `check_typed_name` verdicts it `blank` |
      | folder left, filename deleted | no-free-name line: `ignore`, no refusal |
+
+     **Row 6's "no refusal" half must be asserted on the RECORD, not on the
+     rendered bullet — the bullet assertion is vacuous.** Measured 2026-10-02 by
+     removing the override's veto on provenance: no `typed_name_refused` bullet is
+     emitted under the mutation either, because `''` is falsy and the degrade at
+     `render_actions.py:848-849` fires before provenance is ever consulted. The
+     refusal bullet for a name nobody typed is unreachable today for **structural**
+     reasons, not because the ordering is right — so a test written only against
+     the bullet, which is what (c) above literally asks for, passes the mutation
+     silently. Assert the exact record (`proposed_name` and
+     `name_is_owner_supplied` both) and keep the bullet check as a second,
+     weaker line. With the record asserted, the mutation kills two tests:
+     `…ticked_but_still_empty_stays_ignore` and
+     `…left_alone_keeps_the_attachment_in_the_inbox`, the latter because the record
+     claims an owner-supplied `''` for a line the owner never touched.
+
+     **And check that your own fixture can tell the conditions apart.** T4.2's
+     implementer found their first version of the typed-name case survived
+     `marker_unconditional` — restoring `RENAME_IMPOSSIBLE_MARKER in label` — at
+     `13 passed`, because the fixture had replaced the whole rename line and
+     deleted the marker prose with it. `rename_impossible` was then `False` under
+     both forms of the condition and the test could not tell which one it was
+     running against: right outcome, wrong document. Type **between the
+     backticks** and leave the marker standing. This is the third test in this
+     spec that could not fail for the reason its name gave, and the first one its
+     own author caught.
 
      Row 5 is asserted **at this task's boundary**, not end-to-end: see the
      correction in (c). No parser-only change can make Pass 2 report

@@ -41,7 +41,7 @@ the input does).
 Delivers the capability the owner asked for: naming the file themselves, on either
 surface, landing into an already-guarded path.
 
-- [ ] **T4.1 The markdown offers a place to type** `[activity: frontend-ui]`
+- [x] **T4.1 The markdown offers a place to type** `[activity: frontend-ui]`
 
   1. Prime: read `render_attachment_conflicts_block` in `suggestions-reducer.py`,
      specifically its pre-ticked **rename line** (`lines.append(f"- [x] Rename to

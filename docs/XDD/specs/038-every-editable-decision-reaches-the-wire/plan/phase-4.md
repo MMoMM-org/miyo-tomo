@@ -236,6 +236,33 @@ surface, landing into an already-guarded path.
      - [ ] An unreadable name is a refusal, never a fallback `[ref: PRD/F2]`
      - [ ] The structured doc is no longer consulted for this value `[ref: SDD/Implementation Gotchas]`
 
+  6. **Measured 2026-10-02, and worth a decision inside this task: the markdown
+     invites the refusal.** The ordinary line renders the FULL destination path in
+     its backticks — `_asset_dest_join(asset_folder, proposed_name)` — so the
+     natural owner edit is to change the filename and leave the folder. Run through
+     T3.1's check:
+
+     ```
+     'Atlas/290 Assets/295 Attachments/karte (2).png'   REFUSED separator_present  (untouched default)
+     'Atlas/290 Assets/295 Attachments/karte-scan.png'  REFUSED separator_present  (the natural edit)
+     'karte-scan.png'                                   OK                         (a bare name)
+     ```
+
+     The first line is why this task's `extracted != computed` rule is load-bearing
+     rather than a nicety: without it, every untouched default is refused. The
+     second is the gap. **The behaviour is correct and already ruled** — ADR-5, a
+     typed name is rejected and never sanitised, and F3-AC1 refuses a separator
+     rather than truncating to the last segment. Do **not** strip a leading folder
+     to be helpful; that is the option ADR-5 closed.
+
+     What is open is only the **remedy wording**. `_typed_name_refusal_reason`'s
+     separator sentence says the name *"contains a path separator, which is not
+     allowed in a filename"* — true, and no use to someone the document just showed
+     a path to. Consider having T3.4's `typed_name_refused` remedy line say to type
+     the filename only, not the folder. That is a change to a sentence Phase 3
+     shipped, so raise it rather than edit it silently, and keep it out of this
+     task's production diff if it widens scope `[ref: PRD/F3, SDD/ADR-5]`.
+
 - [ ] **T4.3 Validate before the embed is rewritten** `[activity: backend-api]`
 
   1. Prime: read `rewrite_renamed_embeds` (`lib/embed_rewrite.py:91`) and note the

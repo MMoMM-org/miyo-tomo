@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """Resolve every `<module>.py:NNN` reference in a file and show what it points at.
 
 Prose references go stale silently. Inserting code above a cited line shifts it,
@@ -29,6 +29,15 @@ blank line is almost certainly stale, because nobody cites those deliberately. I
 is advisory — shown even under `--quiet`, never failing `--strict` — and it is a
 floor, not a guarantee. The only complete check is reading the cited line against
 what the citing text claims it says.
+
+One sequencing rule, learned by breaking it: **never rewrite citations and edit the
+cited file in the same pass.** A sweep that verifies a landmark, rewrites every
+citation to it, and then grows the file above it writes 18 stale citations in one
+run — the arithmetic is right and the ordering makes it wrong. Measure after the
+last code edit, rewrite citations in a pass that touches no source, and verify by
+reading the cited line's CONTENT afterwards, not by this tool reporting zero
+unresolvable. The same landmark in `render_actions.py` moved three times in one day
+(836, 927, 939, 945) and the third move was caused by the sweep fixing the second.
 """
 from __future__ import annotations
 

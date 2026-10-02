@@ -10,7 +10,7 @@ exact defect this spec closes, wearing a different hat.
 
 THREE refusal classes (owner ruling 2026-10-01 — `taken` is a property of
 the run, not of the string, and is already decided at
-render_actions.py:939):
+render_actions.py:945):
 
   1. separator present   -- a name is not a bare basename
   2. forbidden character -- one of FORBIDDEN_CHARS (10 members, incl. NUL)
@@ -235,7 +235,7 @@ def test_whitespace_only_tabs_and_newlines_is_refused():
 def test_refusal_reasons_is_a_closed_set_of_three():
     """REFUSAL_REASONS names exactly the three classes -- not four. `taken`
     is deliberately excluded (owner ruling 2026-10-01): it is a property
-    of the run, which render_actions.py:939 already decides, not of the
+    of the run, which render_actions.py:945 already decides, not of the
     string this module checks.
 
     Falsified by: adding a fourth reason (e.g. `taken`) to the set, or

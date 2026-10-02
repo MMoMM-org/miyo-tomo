@@ -49,7 +49,7 @@ attachment through the same skip-and-report path as a destination collision
 ## Global Dedup, Not Per-Item (spec 031)
 
 WHY `_build_move_asset_actions`'s `seen` set spans the WHOLE manifest instead
-of resetting per manifest entry, unlike the `audio_peer` precedent at `:2151`
+of resetting per manifest entry, unlike the `audio_peer` precedent at `:2157`
 (`{mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}`, which
 dedups within one ORIGIN-STEM GROUP): an audio peer belongs to exactly one
 origin note by construction, so per-group dedup is correct there. An

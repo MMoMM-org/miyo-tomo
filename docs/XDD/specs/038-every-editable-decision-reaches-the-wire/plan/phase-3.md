@@ -90,8 +90,8 @@ produce a typed name at all.
      **Three classes, not four** — owner ruling 2026-10-01, after this task was
      blocked for specifying an untestable one. `taken` is a property of the run,
      not of the string, and the run already decides it at
-     `lib/render_actions.py:939`, which a remedy-chosen destination reaches by
-     design (`:934-938`). So this module takes **one argument** and stays a pure
+     `lib/render_actions.py:945`, which a remedy-chosen destination reaches by
+     design (`:940-944`). So this module takes **one argument** and stays a pure
      function on a string; do not add a `taken`/`claimed` parameter, and do not
      reach for a vault listing — there is none on this path (`path_exists` appears
      nowhere in `render_actions.py` or `render_md.py`). Plus: a usable name is
@@ -182,7 +182,7 @@ produce a typed name at all.
      `tests/test_037_t3_1_remedy_outcomes.py:280-312`,
      `test_a_remedys_destination_still_goes_through_the_claimed_check`, which (the
      `:831-835` inside that quotation is pre-T3.2 numbering and is left as
-     quoted; that comment block is now `:934-938`)
+     quoted; that comment block is now `:940-944`)
      renames `other.png` onto `orig.png`'s destination and asserts
      `kind == "collision"`, with its mutation named in its own docstring. **That
      test is the regression anchor and must pass UNCHANGED** — it supplies no
@@ -321,7 +321,7 @@ produce a typed name at all.
      collision sentence** (owner ruling 2026-10-02). It had asked whether a
      collision on an owner-**typed** name should read differently from one on a
      Tomo-computed name, since the shared string
-     (`render_actions.py:947`) says *"destination collision: it also resolves to
+     (`render_actions.py:953`) says *"destination collision: it also resolves to
      `<dest>`, already claimed by `<claimant>`"* and never mentions that a name
      was typed. The ruling: F3's sixth criterion covers the **three string
      classes** T3.1 decides, not the fourth criterion's run-local collision, and
@@ -332,7 +332,7 @@ produce a typed name at all.
      typed and computed names alike. Measured before the ruling, in case a later
      reader wants the cost: the skipped entry carries no provenance at all
      (`{source, destination, reason, kind, owner_source_items}` —
-     `render_actions.py:950-953`), so either alternative needed a new field or a
+     `render_actions.py:956-959`), so either alternative needed a new field or a
      forked string, and the owner already knows they typed the name because the
      document is rendered from the run in which they typed it.
   3. Implement: one bullet per refusal, in the existing skipped block — a new

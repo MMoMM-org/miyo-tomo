@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
 from __future__ import annotations
 
 import re
 
 from lib.attachment_index import _EMBED_RE
+from lib.typed_name_check import check_typed_name
 
 _FENCE_OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\n]*)$")
 
@@ -118,6 +119,43 @@ def rewrite_renamed_embeds(
     yet at the point this is called, so the new basename is recomputed
     directly from `proposed_name` rather than read back from a move action.
 
+    `proposed_name` is substituted VERBATIM — there is no basename step
+    here — so name two separate mechanisms, not one, for why the "bare
+    basename, never a path" guarantee above actually holds:
+
+    - a Tomo-COMPUTED name holds it by construction of its producer
+      (`_propose_asset_name`, suggestions-reducer.py, emits a basename);
+    - an owner-TYPED name holds it because of the `check_typed_name` gate
+      below, whose `separator_present` verdict refuses any name containing
+      `/` outright (ADR-5: refused, never sanitised).
+
+    Until spec 038 T4.3 added that gate the second mechanism did not exist
+    and this paragraph asserted a property the code did not have: a typed
+    `Archive/karte.png` was substituted whole, hard-coding a folder into
+    every rewritten body — the exact thing the sentence promises never
+    happens — while `_build_move_asset_actions` refused the same record and
+    emitted no move, so the body pointed at a file the run never created.
+
+    The cost of that gate is real and worth stating: `check_typed_name` is
+    now called from here AND from `_build_move_asset_actions`, two places
+    that must keep agreeing, and nothing in the type system makes them.
+    T3.2 produced the defect above by changing one and not the other. The
+    agreement is pinned by execution instead — one case in
+    `tests/test_038_t4_3_refused_name_rewrites_no_embed.py` feeds a single
+    refused name to both halves and asserts the builder emits
+    `typed_name_refused` AND the body comes back byte-identical. Deciding
+    the refusal once upstream and carrying the verdict on the record is the
+    better design; it changes the wire contract, so it is in
+    `docs/XDD/backlog.md` rather than here.
+
+    The gate covers only the typed-name verdict. A move withheld for a
+    RUN-level reason the per-note rewrite cannot see — a destination
+    collision (`kind: collision`), a path with no basename
+    (`kind: no_basename`) — still leaves this function rewriting a body for
+    an attachment that is never filed. Those predate T4.3 and are not
+    closed by it; both need the single-verdict record above, since the
+    `claimed` map they depend on is global to the run.
+
     Every matching embed in the body is rewritten, not just the first one —
     a note can embed the same attachment more than once. An embed inside a
     fenced code block is left alone, and so is any `[[...]]` missing the
@@ -131,6 +169,17 @@ def rewrite_renamed_embeds(
         new_name = remedy_entry.get("proposed_name")
         if not new_name:
             continue
+        # spec 038 T4.3: an owner-TYPED name is validated before it can reach
+        # a body. Gated on `name_is_owner_supplied` and refused on the same
+        # verdict `_build_move_asset_actions` refuses on, because that builder
+        # emits no move for a refused name — rewriting the body anyway pointed
+        # it at a file the run never created. ADR-5: refused, never sanitised,
+        # so the entry is skipped and the body left alone; basenaming a
+        # separator-bearing name here to rescue it would file the attachment
+        # under a name the owner did not choose.
+        if remedy_entry.get("name_is_owner_supplied"):
+            if not check_typed_name(new_name).ok:
+                continue
         old_basename = path.rsplit("/", 1)[-1]
         renames[old_basename] = new_name
 

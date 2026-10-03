@@ -147,14 +147,38 @@ def _stub_pipeline(
 
 
 def _document_bullets(out_dir: Path) -> list[str]:
-    """The "Attachment not filed" bullets as the owner reads them, from the
-    instruction document this run actually wrote."""
+    """The withheld-attachment block's lines as the owner reads them, from the
+    instruction document this run actually wrote.
+
+    Located STRUCTURALLY — the block's heading, then its blank line, then
+    every line up to the next blank — and deliberately not by matching the
+    bullet's own `- ⚠️ **Attachment not filed:**` prefix. A prefix filter is
+    something `_render_skipped_asset_notice` itself produces, so it makes this
+    helper return `[]` whenever that function is broken, and the comparison
+    below then fails for a run in which the two surfaces actually AGREED
+    (both emitting the broken sentence). Measured 2026-10-03: a source
+    mutation of the notice function failed
+    `test_relay_lines_are_the_documents_own_bullets` for exactly that reason,
+    which reads as evidence of divergence when it is nothing of the kind. Keyed
+    on the heading, this helper only ever fails on real divergence.
+    """
     doc = out_dir / "instructions.md"
     assert doc.exists(), sorted(out_dir.iterdir())
-    return [
-        ln for ln in doc.read_text(encoding="utf-8").splitlines()
-        if ln.startswith("- ⚠️ **Attachment not filed:**")
-    ]
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    heading = next(
+        (i for i, ln in enumerate(lines)
+         if ln.startswith("**Attachments still in the inbox**")),
+        None,
+    )
+    if heading is None:
+        return []
+    start = heading + 1
+    while start < len(lines) and lines[start] == "":
+        start += 1
+    end = start
+    while end < len(lines) and lines[end] != "":
+        end += 1
+    return lines[start:end]
 
 
 # ── 1. Every withheld attachment reaches the run-level relay file ──────────
@@ -331,9 +355,8 @@ class TestSharedCodePathUnderMutation:
         relay_lines = (out_dir.parent / RELAY_NAME).read_text(
             encoding="utf-8"
         ).splitlines()
-        # The document surface moved: no real bullet survives.
-        assert _document_bullets(out_dir) == []
-        # The relay surface moved to the same mutated string.
+        # Both surfaces moved to the mutated string — neither built its own.
+        assert _document_bullets(out_dir) == [broken] * 4
         assert relay_lines == [broken] * 4
 
 

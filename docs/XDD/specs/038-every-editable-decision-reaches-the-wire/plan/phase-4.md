@@ -902,6 +902,40 @@ surface, landing into an already-guarded path.
     emitted `move_asset` destination is identical, for a computed name and for a
     typed one. This is F1's and F2's shared criterion stated as one assertion
     `[ref: PRD/F1, PRD/F2]`.
+
+    **Two constraints on how that test is built, measured 2026-10-03 before
+    dispatch. Get the first wrong and the test passes while proving nothing.**
+
+    **(1) The wire is authoritative only when EDITED** `[ref: ADR-026]`. In
+    `main`, `load_changed_wire(args.suggestions_json)` returns a wire only when its
+    embedded `emit_digest` no longer matches a recomputation; then
+    `build_from_wire` rebuilds the **entire** output and the markdown is never
+    read — the code comment says "the SOLE authoritative source … No mixing" and
+    the branch returns early. An **unedited** wire falls through to the markdown
+    path. So a convergence test that publishes a wire without staling its digest
+    **runs the markdown path twice and passes** — a tautology that would assert
+    convergence while exercising one path. Build the wire from the same doc, then
+    mutate it in place so the digest goes stale, which is what
+    `tests/test_suggestion_parser_json_precedence.py` already does; copy that
+    mechanism rather than inventing one. **Assert in the test that the JSON-only
+    branch was taken** — it prints `suggestions-json: edited wire is authoritative
+    (JSON-only path)` to stderr — so the test cannot silently degrade to the
+    markdown path if the digest mechanism changes.
+
+    **(2) Convergence holds for guard-passing names, and the exception is
+    deliberate.** The two paths set provenance differently and by design: the wire
+    path sets `name_is_owner_supplied: True` **unconditionally** (T2.3 — it cannot
+    know whether the consumer edited the field, so "could have been edited" is
+    the only honest claim), while the markdown path sets it by comparison
+    (T4.2 — `remainder != doc_name`). So for an untouched **computed** name the
+    wire runs `check_typed_name` and the markdown does not. For any name that
+    passes the guard the destinations are identical, which is what this criterion
+    asserts. For a computed name the vault forbids but macOS permits —
+    `foo*bar (2).png` is a real one — the wire refuses and the markdown files it.
+    **That asymmetry is recorded (T3.2, and the deviations row of 2026-10-02) and
+    must not be "fixed" here.** Pick a guard-passing fixture, and pin the
+    asymmetry as its own asserted case so the next reader finds it documented
+    rather than discovering it as a failure.
   - Run the full suite and `ruff`. Write the `docs/tomo/` WHY entries for the
     parser and reducer changes.
 
@@ -912,6 +946,14 @@ surface, landing into an already-guarded path.
       the line as `f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}"`"*, quoting code
       that no longer exists. This is the worst of the three, because it quotes the
       literal and reads as authoritative.
+
+      **It is at `:1650-1651` and it is WRAPPED ACROSS A LINE BREAK** mid-literal
+      — `f"- [ ] Rename — {` then `RENAME_IMPOSSIBLE_MARKER}"` on the next line.
+      Verified 2026-10-03: a grep for the obvious one-line pattern returns
+      **nothing**, so anyone sweeping for it that way concludes it is already
+      fixed. Grep `RENAME_IMPOSSIBLE_MARKER` or `now builds` in that file instead.
+      The parser's counterpart is at `suggestion-parser.md:922` and is not
+      wrapped.
     - `docs/tomo/scripts/suggestion-parser.md` — refers to *the "Rename — no free
       name available" line*.
 
@@ -920,6 +962,23 @@ surface, landing into an already-guarded path.
     changed and each owes a `docs/tomo/` counterpart. Phase 3's equivalent list was
     hand-maintained and undercounted **twice**; the rule that replaced it is in
     `plan/phase-3.md`'s T3.5 and it applies here too.
+
+    **And it undercounted again here — run 2026-10-03, `0e45678^..HEAD`, six files,
+    not four.** The prose above names `embed_rewrite`, `instruction-render`,
+    `suggestions-reducer` and `suggestion-parser`. The diff also names:
+    - `tomo/dot_claude/agents/synthesis-conductor.md` — T4.5 added the Step 4
+      relay; its `docs/tomo/` counterpart has no entry for it;
+    - `tomo/scripts/lib/render_md.py` — T4.5 extracted
+      `_render_skipped_asset_notice` out of `render_instructions_md`, and T3.4
+      added the `typed_name_refused` branch earlier.
+
+    **All six `docs/tomo/` counterparts already exist**, so every one of these is
+    an append or a correction, never a new file: `synthesis-conductor.md` (270
+    lines), `instruction-render.md` (852), `lib/embed_rewrite.md` (175),
+    `lib/render_md.md` (876), `suggestion-parser.md` (1165),
+    `suggestions-reducer.md` (1743). Re-run the diff yourself rather than trusting
+    this list — that is the whole point of the rule, and this paragraph is now the
+    third hand-written list in two phases to be wrong.
 
     When correcting a claim, ask whether it was false or merely **narrower than it
     looked** — the repo's own guidance (`docs/ai/memory/general.md`) is that

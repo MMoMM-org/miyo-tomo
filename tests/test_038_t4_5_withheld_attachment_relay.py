@@ -246,7 +246,7 @@ class TestNothingWithheldRemovesAPreviousRunsFile:
         relay, sidecar = self._write_stale_run(tmp_path)
         assert relay.exists() and sidecar.exists()
 
-        out_dir = _stub_pipeline(monkeypatch, tmp_path, [], RUN_B)
+        _stub_pipeline(monkeypatch, tmp_path, [], RUN_B)
         assert _ir.main() == 0
 
         assert not relay.exists()

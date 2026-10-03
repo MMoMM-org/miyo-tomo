@@ -2199,3 +2199,39 @@ what the code promised, and no assertion in the repo encodes the expectation.
 condition in `docs/usage.md` in one owner-facing sentence, so the sequence above is
 recognisable before it costs anyone work. The warning is already on stderr, which Pass 2's
 shell report surfaces.
+
+### The companion dispatch has no test at all — only the function it dispatches to
+
+**Measured 2026-10-03, independently of the code-quality report that raised it**, because
+this entry and two other artifacts now assert the fallback as settled fact and an
+unverified assertion is the thing this spec exists to remove.
+
+| What | Measured |
+|---|---|
+| `fan_resolve_json` / `fan-resolve-json` anywhere in `tests/` | **0 files** |
+| the warning string `only ONE edited wire` in `tests/` | **0 files** |
+| `build_from_wire_companion` in `tests/` | 1 file, `tests/test_companion_merge_json.py` |
+| how those 3 tests call it | `build_from_wire_companion(_primary(), _fan(), "t_moc")` — **directly**, never `main()`, never the CLI |
+
+So the gap is not "the fallback branch is untested". It is **the whole companion dispatch
+is untested**: the merge function has coverage, and the decision of whether to reach it has
+none — neither the both-edited route into it nor the one-edited route away from it.
+
+That is the same defect family as spec 038's T4.4 finding, where a convergence test that
+publishes a wire without staling its digest runs the markdown path twice and passes. A test
+that proves a mechanism works proves nothing about whether the mechanism is reached.
+
+**The falsification a test here must perform**, stated so nobody has to re-derive it:
+invoke the parser's CLI with an **edited** `--suggestions-json` and an unedited or absent
+`--fan-resolve-json`, then assert both halves — (a) stderr carries
+`warning: companion has only ONE edited wire`, and (b) the output equals the markdown-parse
+result, **not** `build_from_wire_companion`'s. Half (b) is the load-bearing half: without it
+the test passes under a regression that silently switches to JSON-only on one edited wire,
+which is exactly the failure this entry describes. Build both wires through
+`build_wire_payload` so the accepted `schema_version` comes from the schema itself — a
+hardcoded version drifts the moment the schema moves and takes the markdown path for the
+wrong reason, which would make half (b) pass vacuously.
+
+**Pre-dates spec 038.** The branch was introduced well before this spec's first commit;
+038 neither created nor worsened it. Recorded here rather than fixed because it is outside
+Phase 5's scope, and flagged to the owner as a candidate to pull in.

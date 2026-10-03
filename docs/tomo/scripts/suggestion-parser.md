@@ -214,17 +214,17 @@ decisions never touched in the editor. That is not a defect of this design, it i
 cost, and it is the reason `docs/usage.md` carries a "Two surfaces, one rule" callout
 rather than leaving the rule to be inferred. PRD/S1 of spec 038 exists for this.
 
-WHY the companion flow needs BOTH wires edited, and what happens when only one is:
-`main`'s companion branch grants JSON authority only on `_p is not None and _f is not
-None`. On `or` it emits `warning: companion has only ONE edited wire — falling back to the
-markdown merge (mixed markdown/JSON authority is not supported)` and falls through to the
-markdown, discarding the edited wire. This is the same no-mixing ruling applied one level
-up: merging one edited wire against a stale sibling would apply the sibling's old values
-as if current, which is worse than ignoring the edit. The owner-facing cost — a run they
-saved in the editor being overridden by the markdown — is reachable through ordinary use,
-since the fan document is one the owner approves like any other. Recorded in
+WHY the companion flow's both-or-neither rule is this same ruling one level up: the
+mechanism is in "Companion merge from two wires" below — do not restate it here. What that
+section does not say is why the fallback is right and what it costs. Merging one edited
+wire against a stale sibling would apply the sibling's old values as if current, which is
+worse than ignoring the edit outright, so the fallback is the no-mixing rule holding at
+document scope rather than field scope. Its cost lands on the owner: a run they saved in
+the editor is overridden by the markdown, and that is reachable through ordinary use, since
+the fan document is one the owner approves like any other. Recorded in
 `docs/XDD/backlog.md` under "A saved editor run is discarded when its sibling fan document
-was not also saved", with the three candidate fixes and why each costs something.
+was not also saved", with the three candidate fixes, why each costs something, and the
+measured fact that the branch has no test anywhere in the suite.
 
 WHY the fallback cases are deliberately indistinguishable to the caller: `load_changed_wire`
 returns `None` for four different situations — no path given, unparseable JSON, a

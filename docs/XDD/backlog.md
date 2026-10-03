@@ -2235,3 +2235,96 @@ wrong reason, which would make half (b) pass vacuously.
 **Pre-dates spec 038.** The branch was introduced well before this spec's first commit;
 038 neither created nor worsened it. Recorded here rather than fixed because it is outside
 Phase 5's scope, and flagged to the owner as a candidate to pull in.
+
+---
+
+## Separate the end-user operation scripts from the dev/test tooling in `scripts/`
+
+**Owner request, 2026-10-03**, in their words: *"ich würde gerne die user invocable scripts..
+also eigentlich install und update in einem eigenen verzeichnis haben und nicht mit den
+scripts vermischt die wir für das testing etc brauchen."* They added that moving the
+user-invocable ones is also acceptable — **this entry recommends against that half**, for
+a reason measured after they said it and which they did not have in view.
+
+### What is actually in `scripts/` — counted, not estimated
+
+21 scripts plus `lib/`. **All 21 are user-invoked**, so the criterion `scripts/CLAUDE.md`
+names does not separate them; the axis the owner wants is *who* invokes them.
+
+**End-user operation (8)** — a Tomo user runs these to install, update, and maintain an
+instance: `install-tomo.sh`, `update-tomo.sh`, `backup-tomo.sh`, `restore-tomo.sh`,
+`cleanup-tomo.sh`, `download-whisper-model.sh`, `notify-bridge.js`, plus everything in
+`scripts/lib/` (sourced by install/update, moves with them).
+
+**Maintainer / dev tooling (15)** — nobody but a maintainer runs these:
+`analyze-placement-confidence.py`, `audit-test-mutations.py`,
+`gen-garden-audit-hashi-example.py`, `measure-f47-token-cost.py`,
+`measure-inbox-pass-2-token-cost.py`, `measure-inbox-phase-b-token-cost.py`,
+`spec037-fixture.sh`, `spec038-wire-edit.py`, `strip-tomo-frontmatter.py`,
+`tomo-session-inspect.py`, `tomo-session-stats.py`, `tomo-token-usage.py`,
+`verify-line-refs.py`, `wire-shape.py`, `reset-tomo-tmp.sh`.
+
+A note against a tempting shortcut: **the files that look most like disposable per-spec
+helpers are not.** `analyze-placement-confidence.py` has its own test
+(`tests/test_analyze_placement_confidence.py`) and is cited from runtime code
+(`structural_headings.py:6`); `gen-garden-audit-hashi-example.py` is cited from
+`render_actions.py:2697`; `wire-shape.py` is cited from `wire_shape.py` and two tests.
+Sorting by filename would have moved exactly the wrong three.
+
+### Why the direction matters — and why moving install/update is the dangerous half
+
+**`scripts/lib/begin-tomo.sh.template` bakes the path into every generated launcher.**
+It writes `${TOMO_REPO_ROOT}/scripts/install-tomo.sh` and
+`${TOMO_REPO_ROOT}/scripts/update-tomo.sh` at six sites (`:152`, `:207`, `:213`, `:278`,
+`:283`, `:312`), and `update-tomo.sh.launcher.template:14` sets
+`REAL_UPDATER="$TOMO_REPO_ROOT/scripts/update-tomo.sh"`. The repo-root `begin-tomo.sh`
+in this working tree carries **5** such hardcoded references right now.
+
+Consequences, measured:
+
+- **Every already-generated launcher breaks**, and they live *outside* the repo. Three
+  instances are registered in `~/.tomo/instances.json`, one of them **`tomo-privat`** —
+  the LIVE user environment.
+- **It has a bootstrap problem.** The launcher's own recovery advice is "re-run
+  `install-tomo.sh`", printed with the path that just stopped existing.
+- **No test can see it.** The breakage is in generated files in other directories. The
+  suite would stay green.
+- A standing lesson already applies here: install **and** update must both deliver
+  launcher changes, or a fix ships in one path and not the other.
+
+**The inverse direction is the bigger sweep and the safer one.** Moving the 15 dev tools
+touches **55 distinct files** by literal path, and 3 runtime libs plus 3 tests reference
+them — but every one of those failures is inside the repo and is caught by the suite or a
+repo-wide `rg`. Nothing a user has on disk changes.
+
+### Recommended shape
+
+Move the **dev/test tooling** out — `tools/` at the repo root, or `scripts/dev/` if the
+top level should stay tidy — and leave the eight end-user scripts and `lib/` where they
+are. That reaches the owner's stated end state exactly: `scripts/` then contains *only*
+the user-invocable operation scripts, unmixed with testing tooling. The directory simply
+keeps its name instead of the distributed path being rewritten.
+
+If the owner prefers the other direction anyway, it is a **migration, not a refactor**,
+and needs: a regenerate step for every registered instance, a transitional shim at the old
+path so existing launchers keep working, and `tomo-privat` handled deliberately rather than
+incidentally.
+
+### Also fix, independent of which direction wins
+
+- **`scripts/CLAUDE.md` says *"Only user-invoked shell scripts live here"*.** False today:
+  14 Python files and one JavaScript file live there. The doc has been narrower than the
+  directory for a long time, and it is what made this question look like a placement
+  mistake rather than a missing category.
+- **The `# version:` header convention there is inconsistent**: 18 of 21 carry one; the
+  exceptions are `spec037-fixture.sh`, `spec038-wire-edit.py` and `tomo-token-usage.py`.
+  Worth either stating that per-spec helpers are exempt, or giving them headers. (Recorded
+  because an earlier claim in this session that the absence was conventional was
+  generalised from a single neighbour and was wrong.)
+- **`~/.tomo/instances.json` holds a stale pytest entry** — `testinst`, pointing into a
+  `pytest-of-marcus` tmpdir that no longer exists. Known registry pollution, harmless, but
+  it will show up in any inventory this work produces.
+
+**Not scheduled.** Raised and parked by the owner on 2026-10-03 while spec 038 Phase 5 was
+in flight; moving `spec038-wire-edit.py` now would invalidate `038`'s live runbook before
+its run.

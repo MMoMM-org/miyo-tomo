@@ -43,6 +43,15 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
     - **Via Tomo Hashi**: run the instruction-set executor in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) on the file. Choose preview mode — `Preview on` (approve each action), `Preview off` (visible apply), or `No confirmation` (background).
 5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
 
+> **Two surfaces, one rule.** You can review and edit a run two ways: directly
+> in the suggestions document, or in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s
+> structured Suggestions Editor. Both work on the same run. Once you've saved
+> that run in the editor, the editor's values are what Pass 2 uses for
+> anything you changed there — not the markdown. If you haven't opened the
+> editor for a run, the suggestions document is what counts, which is why
+> editing it directly and running `/inbox --pass2 --force` works the way the
+> rest of this page describes.
+
 `/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
 
 #### When an attachment's name is already taken
@@ -64,8 +73,14 @@ notes embeds it. It also tells you whether the two files are actually the same:
 Three remedies, one per entry. **Rename is pre-ticked** — it is the only one
 that files the attachment successfully in every case:
 
-- **Rename** — files it under a free name (`karte (2).png`), and rewrites the
-  embed in your note to match, so the note keeps working.
+- **Rename** — files it under a computed free name (`karte (2).png`), and
+  rewrites the embed in your note to match, so the note keeps working. **The
+  name is yours to change**: type over the text between the backticks before
+  you apply, and Tomo files it under what you typed instead of the computed
+  one. If Pass 1 couldn't find a free name at all, the backticks start out
+  **empty** — type a name there yourself. (You can type it in Tomo Hashi's
+  Suggestions Editor instead of the markdown, too — see "Two surfaces, one
+  rule" above for which one wins if you use both.)
 - **Keep in inbox** — leaves the file where it is. The note is still filed; only
   the file stays behind.
 - **Ignore** — sends the move anyway. It will be refused unless you free the
@@ -75,11 +90,35 @@ that files the attachment successfully in every case:
 > you a second copy of something you already have. Tick **Keep in inbox**
 > instead if you would rather not file it at all.
 
-**In every case the note itself is filed.** Choosing Keep in inbox or Ignore
-holds back the *file*, not the note — so the filed note will point at a file
-that is still sitting in your inbox. That reference still works; it just reaches
-backwards. Tomo says so in the instruction set, both on the action and in its
-summary.
+**Keep in inbox or Ignore still file the note.** They hold back the *file*,
+not the note — so the filed note will point at a file that is still sitting in
+your inbox. That reference still works; it just reaches backwards. Tomo says
+so in the instruction set, both on the action and in its summary. **A typed
+name that Pass 2 refuses is the one exception** — it holds back the note as
+well; see below.
+
+**A typed name is checked, never corrected.** Tomo doesn't guess at what you
+meant by swapping out a character — it either files your name exactly as you
+typed it, or refuses it outright. A typed name is refused when it is:
+
+- **blank** — empty, or nothing but whitespace,
+- **a path, not a plain filename** — it contains `/`, or
+- **carrying a character your vault forbids** — any of `\` `:` `*` `?` `"` `<` `>` `|`.
+
+That's the complete list of reasons a typed name gets refused. "That name is
+already taken" is deliberately not one of them — Tomo checks for that
+separately, as part of deciding whether Rename can even go ahead. One thing
+that is *not* a refusal: a name padded with stray leading or trailing spaces
+is accepted exactly as typed, not trimmed — so a space you didn't notice
+typing stays in the filename. Worth a second look before you move on.
+
+**When a typed name is refused, the attachment isn't filed — and neither is
+any note in this run that embeds it.** Both stay behind in your inbox: the
+instruction set lists them under "Attachments still in the inbox", and Pass 2
+reports them in your terminal too. To fix it: before you apply, correct the
+name in the suggestions document and run `/inbox --pass2 --force`; if you've
+already applied, the attachment and its note are still in the inbox either
+way, so just run `/inbox` again and type a usable name.
 
 To change your mind after Pass 2 has run but before you apply: tick a different
 remedy in the suggestions document, then run `/inbox --pass2 --force`.

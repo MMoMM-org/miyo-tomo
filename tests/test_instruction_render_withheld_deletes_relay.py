@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # version: 0.3.0
 """test_instruction_render_withheld_deletes_relay.py — the run-level withheld-
-delete relay file (`sync_withheld_deletes_file`, `instruction-render.py`).
+delete relay file (`sync_notice_relay_file`, `instruction-render.py`).
 
 Follow-up to spec 036/035's Step-4 relay (`3c8170c`, "withheld delete no
 longer fails coverage or stays silent to the user"). That commit taught
@@ -25,9 +25,13 @@ per-entry overwrite never touches it), append-only across the several
 `--run-id` to avoid leaking a previous `/inbox` run's notices into a later
 one. Full rationale: docs/tomo/scripts/instruction-render.md,
 "`sync_withheld_deletes_file` — a Run-Level Relay That Survives Being Called
-N Times".
+N Times" (that heading still carries the writer's original, delete-specific
+name; spec 038 T4.5 generalised the function to `sync_notice_relay_file` so
+the withheld-attachment relay could reuse one mechanism with one set of
+staleness semantics, and the call sites below were renamed with it — no
+behaviour changed, every test in this file still exercises the delete relay).
 
-Tests are RED against `3c8170c` (no `sync_withheld_deletes_file`, no
+Tests are RED against `3c8170c` (no run-level relay writer at all, no
 `tomo-tmp/withheld-deletes.md` at all) and GREEN after this change.
 
 **v0.19.0 update**: code-quality review of the mechanism above found a
@@ -46,7 +50,7 @@ rationale: docs/tomo/scripts/instruction-render.md, "Run Marker Moved to a
 Sidecar — the In-File Header Leaked Into Chat".
 
 **v0.3.0 update**: `_render_withdrawn_delete_notice` (`lib/render_md.py`,
-whose output this relay carries verbatim — see `sync_withheld_deletes_file`'s
+whose output this relay carries verbatim — see `sync_notice_relay_file`'s
 call site) now leads with `⚠️ **Not deleted:**` instead of the bare `was
 **not** deleted` phrase, matching `suggestions-reducer.py`'s Pass-1
 hard-guard-notice convention. This relay is a pure pass-through of that
@@ -314,7 +318,7 @@ class TestBothFilesLifecycleTogether:
     def test_notices_create_both_files_together(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
         sidecar = tmp_path / "withheld-deletes.run_id"
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- first notice"])
         assert path.exists()
         assert sidecar.exists()
         assert sidecar.read_text(encoding="utf-8").strip() == RUN_A
@@ -322,10 +326,10 @@ class TestBothFilesLifecycleTogether:
     def test_new_run_with_no_notices_deletes_both_files_together(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
         sidecar = tmp_path / "withheld-deletes.run_id"
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- first notice"])
         assert path.exists() and sidecar.exists()
 
-        _ir.sync_withheld_deletes_file(path, RUN_B, [])
+        _ir.sync_notice_relay_file(path, RUN_B, [])
         assert not path.exists()
         assert not sidecar.exists()
 
@@ -338,7 +342,7 @@ class TestBothFilesLifecycleTogether:
         sidecar.write_text(RUN_A + "\n", encoding="utf-8")
         assert not path.exists()
 
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- fresh notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- fresh notice"])
 
         content = path.read_text(encoding="utf-8")
         assert content.splitlines() == ["- fresh notice"]
@@ -352,7 +356,7 @@ class TestBothFilesLifecycleTogether:
         path.write_text("- leftover notice from an unmatched state\n", encoding="utf-8")
         assert not sidecar.exists()
 
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- fresh notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- fresh notice"])
 
         content = path.read_text(encoding="utf-8")
         assert "leftover notice from an unmatched state" not in content
@@ -366,7 +370,7 @@ class TestBothFilesLifecycleTogether:
         sidecar = tmp_path / "withheld-deletes.run_id"
         sidecar.write_text(RUN_A + "\n", encoding="utf-8")
 
-        _ir.sync_withheld_deletes_file(path, RUN_A, [])
+        _ir.sync_notice_relay_file(path, RUN_A, [])
 
         assert not path.exists()
         assert not sidecar.exists()
@@ -376,7 +380,7 @@ class TestBothFilesLifecycleTogether:
         sidecar = tmp_path / "withheld-deletes.run_id"
         path.write_text("- leftover notice\n", encoding="utf-8")
 
-        _ir.sync_withheld_deletes_file(path, RUN_A, [])
+        _ir.sync_notice_relay_file(path, RUN_A, [])
 
         assert not path.exists()
         assert not sidecar.exists()
@@ -406,22 +410,22 @@ class TestSentenceIdenticalToInstructionsMd:
         assert relay_notice == md_notice
 
 
-# ── 6. sync_withheld_deletes_file unit coverage (direct, no pipeline) ──────
+# ── 6. sync_notice_relay_file unit coverage (direct, no pipeline) ──────
 
 
 class TestSyncWithheldDeletesFileUnit:
     def test_no_run_id_is_a_no_op(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
         sidecar = tmp_path / "withheld-deletes.run_id"
-        _ir.sync_withheld_deletes_file(path, None, ["- [[X]] was **not** deleted — reason"])
+        _ir.sync_notice_relay_file(path, None, ["- [[X]] was **not** deleted — reason"])
         assert not path.exists()
         assert not sidecar.exists()
 
     def test_same_run_id_appends_without_duplicating_the_sidecar(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
         sidecar = tmp_path / "withheld-deletes.run_id"
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- second notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- first notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- second notice"])
 
         lines = path.read_text(encoding="utf-8").splitlines()
         assert "- first notice" in lines
@@ -435,8 +439,8 @@ class TestSyncWithheldDeletesFileUnit:
     def test_same_run_zero_notices_does_not_delete_prior_entries(self, tmp_path):
         path = tmp_path / "withheld-deletes.md"
         sidecar = tmp_path / "withheld-deletes.run_id"
-        _ir.sync_withheld_deletes_file(path, RUN_A, ["- first notice"])
-        _ir.sync_withheld_deletes_file(path, RUN_A, [])
+        _ir.sync_notice_relay_file(path, RUN_A, ["- first notice"])
+        _ir.sync_notice_relay_file(path, RUN_A, [])
         assert path.exists()
         assert "- first notice" in path.read_text(encoding="utf-8")
         assert sidecar.exists()

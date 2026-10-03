@@ -1,4 +1,4 @@
-# version: 0.32.0
+# version: 0.33.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -816,6 +816,84 @@ def _render_withdrawn_delete_notice(withdrawal: dict) -> str:
     )
 
 
+def _render_skipped_asset_notice(entry: dict) -> str:
+    """One withheld attachment, as a single owner-facing sentence: what was
+    withheld, which attachment, and what the owner can do about it.
+
+    A function rather than an inline `body_parts.append` because this sentence
+    has two surfaces — the instruction document's "**Attachments still in the
+    inbox**" block and the run-level relay `instruction-render.py` writes for
+    the Pass-2 shell report. Both call this, so they cannot drift apart; the
+    withheld-delete notice beside it works the same way, and the comment at
+    its relay call site states the reason outright.
+
+    `remedy` is joined on after a full stop, so every branch below starts with
+    a capital: T4.4's live run rendered "...karte.png'. no action needed", a
+    sentence opening in lower case.
+
+    ADR-11: no executor internals in rendered text — `move_asset` is a wire
+    action name, not a word the owner should ever need to know.
+    """
+    source = entry.get("source") or "?"
+    reason = entry.get("reason") or "?"
+    kind = entry.get("kind")
+    if kind == "no_basename":
+        remedy = "Inspect that inbox path directly — this is not a naming conflict"
+    elif kind == "collision":
+        destination = entry.get("destination") or "?"
+        remedy = f"Rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+    elif kind == "vault_collision_held":
+        # spec 037 T3.1/T4.2: the owner's own choice (keep-in-inbox
+        # or a rename that degraded to it) — `reason` above already
+        # says why; there is nothing left for the user to do unless
+        # they change their mind.
+        # Two reading moments, two different routes, and naming
+        # only one misleads at the other (owner, 2026-09-29). This
+        # document is read BEFORE applying — it carries unticked
+        # "Applied" boxes — when the suggestions doc is still live
+        # and re-ticking is the cheap route. Read AFTER applying,
+        # the source note is gone and that doc is spent, so the
+        # remedy really is renaming the file on disk. The earlier
+        # text named only the second.
+        remedy = (
+            "No action needed unless you change your mind: before "
+            "applying, tick Rename in the suggestions document and "
+            "run `/inbox --pass2 --force`; afterwards, rename the "
+            "file in the inbox and re-run `/inbox`"
+        )
+    elif kind == "typed_name_refused":
+        # spec 038 T3.3/T3.4: unlike vault_collision_held, the
+        # owning note here is HELD, not filed — its source
+        # survives in the inbox and will be re-discovered by the
+        # next `/inbox` (suppress_moves_for_unfiled_attachments
+        # leaves the paired delete_source in place and
+        # withdraw_unjustified_deletes removes it afterwards, per
+        # spec 036 T2.3/ADR-4). So the two reading moments (owner,
+        # 2026-09-29 pattern) diverge from vault_collision_held's:
+        # the "afterwards" route is re-running `/inbox`, never
+        # renaming a file on disk.
+        # "it" refers to the attachment, not the note(s) that embed
+        # it — `owner_source_items` is a list and two notes can
+        # embed the same attachment, both held when the name is
+        # refused. The suppression block already reports that
+        # count correctly; a second, singular count here would
+        # contradict it the moment more than one note is involved
+        # — the exact drift CON-2 rules against at :871-874.
+        remedy = (
+            "Type a usable name for it: before applying, correct "
+            "the name in the suggestions document and run "
+            "`/inbox --pass2 --force`; afterwards, it is still in "
+            "the inbox, so re-run `/inbox` and name it again"
+        )
+    else:
+        # A missing or unrecognized kind must never silently fall
+        # back to either remedy above — that is how a third skip
+        # reason would quietly inherit the wrong instruction. Loud
+        # on purpose, in the document and now in the shell report.
+        remedy = f"(No remedy defined for skip kind {kind!r} — check render_md.py)"
+    return f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}."
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -1085,69 +1163,9 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 "**Attachments still in the inbox** — none of these were filed:")
             body_parts.append("")
             for s in skipped_assets:
-                source = s.get("source") or "?"
-                reason = s.get("reason") or "?"
-                kind = s.get("kind")
-                if kind == "no_basename":
-                    remedy = "Inspect that inbox path directly — this is not a naming conflict"
-                elif kind == "collision":
-                    destination = s.get("destination") or "?"
-                    remedy = f"Rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
-                elif kind == "vault_collision_held":
-                    # spec 037 T3.1/T4.2: the owner's own choice (keep-in-inbox
-                    # or a rename that degraded to it) — `reason` above already
-                    # says why; there is nothing left for the user to do unless
-                    # they change their mind.
-                    # Two reading moments, two different routes, and naming
-                    # only one misleads at the other (owner, 2026-09-29). This
-                    # document is read BEFORE applying — it carries unticked
-                    # "Applied" boxes — when the suggestions doc is still live
-                    # and re-ticking is the cheap route. Read AFTER applying,
-                    # the source note is gone and that doc is spent, so the
-                    # remedy really is renaming the file on disk. The earlier
-                    # text named only the second.
-                    remedy = (
-                        "No action needed unless you change your mind: before "
-                        "applying, tick Rename in the suggestions document and "
-                        "run `/inbox --pass2 --force`; afterwards, rename the "
-                        "file in the inbox and re-run `/inbox`"
-                    )
-                elif kind == "typed_name_refused":
-                    # spec 038 T3.3/T3.4: unlike vault_collision_held, the
-                    # owning note here is HELD, not filed — its source
-                    # survives in the inbox and will be re-discovered by the
-                    # next `/inbox` (suppress_moves_for_unfiled_attachments
-                    # leaves the paired delete_source in place and
-                    # withdraw_unjustified_deletes removes it afterwards, per
-                    # spec 036 T2.3/ADR-4). So the two reading moments (owner,
-                    # 2026-09-29 pattern) diverge from vault_collision_held's:
-                    # the "afterwards" route is re-running `/inbox`, never
-                    # renaming a file on disk.
-                    # "it" refers to the attachment, not the note(s) that embed
-                    # it — `owner_source_items` is a list and two notes can
-                    # embed the same attachment, both held when the name is
-                    # refused. The suppression block already reports that
-                    # count correctly; a second, singular count here would
-                    # contradict it the moment more than one note is involved
-                    # — the exact drift CON-2 rules against at :871-874.
-                    remedy = (
-                        "Type a usable name for it: before applying, correct "
-                        "the name in the suggestions document and run "
-                        "`/inbox --pass2 --force`; afterwards, it is still in "
-                        "the inbox, so re-run `/inbox` and name it again"
-                    )
-                else:
-                    # A missing or unrecognized kind must never silently fall
-                    # back to either remedy above — that is how a third skip
-                    # reason would quietly inherit the wrong instruction.
-                    remedy = f"(No remedy defined for skip kind {kind!r} — check render_md.py)"
-                # ADR-11 (render_md.py:668): no executor internals in the
-                # rendered text — `move_asset` is a wire action name, not a
-                # word the owner should ever need to know.
-                # `remedy` is joined on after a full stop, so each branch above starts
-                # with a capital: T4.4 rendered "...karte.png'. no action
-                # needed", a sentence opening in lower case.
-                body_parts.append(f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}.")
+                # Same sentence the run-level relay writes for the shell
+                # report — one function, two surfaces.
+                body_parts.append(_render_skipped_asset_notice(s))
             body_parts.append("")
         if dropped_sources:
             body_parts.append(

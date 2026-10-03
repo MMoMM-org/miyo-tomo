@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.62.1
+# version: 0.63.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -95,6 +95,7 @@ from lib.render_md import (  # noqa: E402,F401
     _compute_sha256,
     _md_section_for,
     _render_action_md,
+    _render_skipped_asset_notice,
     _render_withdrawn_delete_notice,
     backfill_supporting_items_parents,
     render_instructions_md,
@@ -249,12 +250,28 @@ def render_via_script(template_path: str, tokens_path: str, config_path: str) ->
         return None
 
 
-def sync_withheld_deletes_file(path: Path, run_id: str | None, notices: list[str]) -> None:
-    """Relay this entry's withdrawn-delete notices into the run-level file at
+# Run-level relay files, written beside `--output-dir` and `cat`ed verbatim by
+# `synthesis-conductor.md`'s Step 4. Named constants because the agent's
+# runtime prompt must reference the same filenames, and a drift on either side
+# is silent in a live run — a missing `cat` simply reports nothing withheld
+# (`tests/test_038_t4_5_withheld_attachment_relay.py::TestAgentWiringGuard`).
+WITHHELD_DELETES_RELAY = "withheld-deletes.md"
+WITHHELD_ATTACHMENTS_RELAY = "withheld-attachments.md"
+
+
+def sync_notice_relay_file(path: Path, run_id: str | None, notices: list[str]) -> None:
+    """Relay this entry's already-sanitized notices into the run-level file at
     *path*, surviving the per-entry overwrite of `--output-dir` that made the
     prior (grep-and-remember) relay mechanism lose entries 1..N-1 of an
-    N-entry run. *notices* are `_render_withdrawn_delete_notice` strings —
-    already identical, by construction, to what `instructions.md` renders.
+    N-entry run. *notices* come from the SAME renderer function that produced
+    the corresponding bullets in `instructions.md`
+    (`_render_withdrawn_delete_notice` for deletes,
+    `_render_skipped_asset_notice` for withheld attachments) — identical to
+    the document's text by construction, never re-derived here.
+
+    One mechanism per relay file, with one set of staleness semantics: each
+    caller owns a distinct *path*, and its sidecar derives from that path, so
+    two relays never contend.
 
     *path*'s content is ONLY notice lines — never a run marker — so a
     consumer that `cat`s it relays exactly what a user should see. The run
@@ -930,10 +947,27 @@ def main() -> int:
     # the two surfaces cannot drift apart. Placed after both fatal-abort
     # guards above (return 2), matching every other artifact write in this
     # function: a run that aborts before this point writes nothing.
-    sync_withheld_deletes_file(
-        out_dir.parent / "withheld-deletes.md",
+    sync_notice_relay_file(
+        out_dir.parent / WITHHELD_DELETES_RELAY,
         args.run_id,
         [_render_withdrawn_delete_notice(w) for w in delete_withdrawals],
+    )
+
+    # ── Relay withheld-attachment notices the same way (spec 038 T4.5) ────
+    # A withheld attachment was reported on the wire, in instructions.md and
+    # on stderr, and in none of the three places the owner reads first: a skip
+    # is not an error, so this script exits 0 and Step 4 reports plain success.
+    # Same strings render_instructions_md writes under "**Attachments still in
+    # the inbox**" — `_render_skipped_asset_notice` called a second time, never
+    # re-derived, so the two surfaces cannot drift apart. One line per withheld
+    # attachment, never a count. `skipped_assets` is final above
+    # (suppress_moves_for_unfiled_attachments takes it read-only), and this sits
+    # after both fatal-abort guards: a run that aborts before this point writes
+    # nothing.
+    sync_notice_relay_file(
+        out_dir.parent / WITHHELD_ATTACHMENTS_RELAY,
+        args.run_id,
+        [_render_skipped_asset_notice(s) for s in skipped_assets],
     )
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────

@@ -828,7 +828,15 @@ surface, landing into an already-guarded path.
   T4.3 left its function's docstring at ~45 lines against a ~35-line body, which is
   a **pre-migration state, not a violation** — this repo's rule is that WHY moves to
   `docs/tomo/` *before* it leaves the runtime file, never the reverse. Do the move,
-  in this order, then trim. Target ~15–18 lines left in the docstring.
+  in this order, then trim.
+
+  **The "~15–18 lines" target an earlier draft gave here was a bad estimate —
+  mine, corrected 2026-10-03 after spec compliance measured the result at ~35.**
+  The gap is not under-done work: the remaining lines are pre-existing
+  parameter-explanation prose that predates T4.3, was never on the move list, and
+  was never supposed to move. Judge the move by whether the four named items left
+  the docstring and the three named items stayed, not by a line count — a count
+  invites trimming prose nobody asked to lose.
 
   **Keep in the docstring** — a maintainer editing that function needs it in front
   of them:

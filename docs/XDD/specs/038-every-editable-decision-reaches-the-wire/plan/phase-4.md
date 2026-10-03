@@ -725,6 +725,64 @@ surface, landing into an already-guarded path.
      relay needed an explicit prohibition to stop exactly that. **Reading is the
      right verification here, not a test** — see 3c(iv); the executable check is
      the live run in Phase 5.
+
+  4b. **Why requirement (ii)'s mutation test earns its place — measured, after it
+     was nearly argued away.** Keep this; it is the reason the test must not be
+     deleted as redundant later, and it was established by running the mutation
+     that matters rather than the one that was easy.
+
+     A relay that re-derives its line by **copy-pasting** the notice function's
+     body — so both surfaces emit **byte-identical** strings today — kills **only**
+     the mutation test. The two comparison tests pass, the byte-identity pin
+     passes, the whole-line relay test passes: `1 failed, 7 passed`. An earlier
+     mutation that differed by one character was caught by the comparison tests,
+     which is why the mutation test briefly looked redundant — but that is a
+     *divergent* duplicate, the easy case. **The realistic regression is a
+     duplicate that agrees today and drifts when one copy is edited**, and every
+     test that compares the two surfaces is blind to it, because they genuinely
+     agree.
+
+     In one line: **comparing two surfaces proves they agree; only mutating their
+     shared source proves they cannot disagree.** That is the property T4.5 was
+     asked to establish.
+
+     | test | divergent duplicate | identical duplicate | the sentence regressing |
+     |---|---|---|---|
+     | `…relay_lines_are_the_documents_own_bullets` | catches | **blind** | blind |
+     | `…a_new_run_replaces_a_previous_runs_notices` | catches | **blind** | blind |
+     | `…mutating_the_notice_function_moves_both_surfaces` | catches | **catches** | blind by design |
+     | `…extraction_preserves_rendered_document_byte_identical` | blind | blind | catches |
+
+     Four tests, four distinct columns, no two fully overlapping, and the mutation
+     test owns a column alone.
+
+  4c. **An unattributed intermittent failure, recorded rather than closed.**
+     `test_mutating_the_notice_function_moves_both_surfaces` failed **once** in a
+     full-suite run (`1 failed, 4512 passed, 4 skipped`), before the hardening in
+     `786d746`. It passes alone and in its own file. **Not reproduced in nine
+     subsequent clean full-suite runs** (totals 4517 every time), and the
+     assertion text was never captured.
+
+     Ruled out: no `pytest-randomly`, no `pytest-xdist`, nothing in
+     `pyproject.toml` affecting order — so collection order is deterministic and
+     this is **not** an ordering dependency. No stray relay artifacts; the relay
+     path is per-test under `tmp_path`. Only one `render_md.py` exists on disk; no
+     test evicts, reloads or reassigns `sys.modules["lib.render_md"]`. Both T4.5
+     test files sort adjacently and share one fixture, so pollution upstream of
+     both would have taken the byte-identity pin down too — one failure, one test
+     body.
+
+     **The `__globals__` fragility fixed in `786d746` is NOT offered as the
+     explanation.** It is a real defect, proven in isolation — a
+     `monkeypatch.setattr` on the module could silently miss the document surface,
+     because a name resolves through the calling function's globals while `import`
+     resolves through `sys.modules`, and the two are not guaranteed to be the same
+     dict — and it was removed on its own merits. Nine clean runs at the observed
+     one-in-three would be a 2.6% outcome, which says the rate is lower than
+     observed or the trigger is environmental. Neither is "fixed".
+
+     If it returns: make it deterministic, or quarantine it **loudly**. Do not
+     delete it on the theory that the other tests cover it — per 4b they do not.
   5. Success:
      - [ ] A withheld attachment appears in the shell report, named `[ref: PRD/C1]`
      - [ ] A run with no withheld attachment writes no relay file and adds no

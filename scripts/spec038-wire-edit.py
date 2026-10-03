@@ -40,12 +40,16 @@ from pathlib import Path
 REMEDIES = ("rename", "keep_in_inbox", "ignore")
 
 
-def _load_digest_fn():
-    """Import compute_payload_digest from the repo's own lib — never reimplement it.
+def _load_lib():
+    """Import the digest function and the accepted wire version from the repo's own
+    lib — never reimplement either.
 
     A second copy of the canonical-serialization rule here would agree with the
     producer today and drift the moment either side changed, which is the exact
-    failure mode this script exists to detect.
+    failure mode this script exists to detect. The accepted `schema_version` is read
+    from the schema the same way the parser's own gate reads it (ADR-5): spec 035 F9
+    found that literal still hardcoded on the acceptor side after every emitter had
+    been moved off one, so a literal here would be the same bug a third time.
     """
     override = os.environ.get("TOMO_SCRIPTS_DIR")
     lib_root = Path(override) if override else Path(__file__).resolve().parent.parent / "tomo" / "scripts"
@@ -56,18 +60,19 @@ def _load_digest_fn():
         )
     sys.path.insert(0, str(lib_root))
     from lib.render_md import compute_payload_digest  # noqa: E402
+    from lib.wire_version import wire_schema_version  # noqa: E402
 
-    return compute_payload_digest
+    return compute_payload_digest, wire_schema_version("suggestions-wire.schema.json")
 
 
-def _conflicts(wire: dict, path: Path) -> list[dict]:
+def _conflicts(wire: dict, path: Path, accepted: str) -> list[dict]:
     if "attachment_conflicts" not in wire:
         version = wire.get("schema_version")
         hint = (
             "That version predates the field; the instance that published this wire was "
-            "not synced. Run scripts/update-tomo.sh --instance tomo-instance --yolo and "
-            "re-run Pass 1."
-            if version != "3"
+            f"not synced. The schema accepts {accepted!r}. Run "
+            "scripts/update-tomo.sh --instance tomo-instance --yolo and re-run Pass 1."
+            if version != accepted
             else "The version is current, so the key is missing for some other reason — "
             "read the wire before going further rather than editing around it."
         )
@@ -110,7 +115,7 @@ def main() -> int:
     ap.add_argument("--show", action="store_true", help="print state and exit, writing nothing")
     args = ap.parse_args()
 
-    digest_fn = _load_digest_fn()
+    digest_fn, accepted_version = _load_lib()
 
     if not args.wire.is_file():
         sys.exit(f"spec038-wire-edit: no such file: {args.wire}")
@@ -123,7 +128,7 @@ def main() -> int:
             "fix this rather than running with it."
         )
 
-    conflicts = _conflicts(wire, args.wire)
+    conflicts = _conflicts(wire, args.wire, accepted_version)
 
     if args.show or (args.remedy is None and args.proposed_name is None):
         _show(conflicts, wire, digest_fn)

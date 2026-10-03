@@ -280,6 +280,14 @@ karte*1938.png
   from keep-in-inbox, which files the note. Check this explicitly; it is the half of the
   behaviour that is newest and the half `docs/usage.md` had asserted the opposite of until
   T5.1 narrowed it.
+
+  One line decides it, and it is worth knowing which, because a regression here would look
+  like a plausible design choice rather than a break. `suppress_moves_for_unfiled_
+  attachments` drops the `move_note` of every skipped attachment's owners **except** those
+  it explicitly skips: `if entry.get("kind") == "vault_collision_held": continue`.
+  `typed_name_refused` is not in that exclusion, so it is suppressed — the note is held.
+  `vault_collision_held` is, deliberately, because the owner chose keep-in-inbox for the
+  *attachment*, not for the note, and holding the note would silently widen that choice.
 - The instruction document carries this bullet under "**Attachments still in the inbox**
   — none of these were filed:", and it should match character for character, because both
   surfaces are rendered by one function. **The line below was produced by executing that

@@ -84,7 +84,9 @@ that files the attachment successfully in every case:
   one. If Pass 1 couldn't find a free name at all, the backticks start out
   **empty** — type a name there yourself. (You can type it in Tomo Hashi's
   Suggestions Editor instead of the markdown, too — see "Two surfaces, one
-  rule" above: edit both for this run and the markdown version is dropped.)
+  rule" above: if this run produced a second suggestions document, save that
+  one in the editor too, or your typed name is dropped in favour of the
+  markdown.)
 - **Keep in inbox** — leaves the file where it is. The note is still filed; only
   the file stays behind.
 - **Ignore** — sends the move anyway. It will be refused unless you free the

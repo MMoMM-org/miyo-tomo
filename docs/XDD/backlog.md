@@ -1952,3 +1952,63 @@ halves and asserts the move is withheld AND the body is byte-identical (spec 038
 That test is the only thing standing between the two conditions and silent drift — do
 not delete it as redundant with the per-half tests, because neither of those can see a
 disagreement.
+
+## OPEN — a move withheld for a RUN-level reason still rewrites the staged note's embed
+
+Found 2026-10-03 by spec 038 T4.3's implementer, answering whether its gate agrees
+with `_build_move_asset_actions` on every input. It does — on the typed-name verdict.
+But the builder withholds a move for **three** reasons and the gate covers one.
+
+| withheld because | `kind` | embed rewritten anyway |
+|---|---|---|
+| typed name unusable | `typed_name_refused` | no — closed by T4.3 |
+| destination already claimed this run | `collision` | **yes** |
+| attachment path has no basename | `no_basename` | **yes** |
+
+Both remaining cases are **run-level**: the `claimed` map is global to the run and
+`no_basename` is decided inside the builder's own `try`. `rewrite_renamed_embeds` runs
+per-note, inside `instruction-render.py`'s item loop, **before** either exists. So it
+has nothing to consult — this is not closable the way T4.3 was.
+
+**Reproduced** (2026-10-03, independently of the implementer): two attachments, one
+renamed onto the other's destination. The first claims it, the second is skipped
+`collision`, and the second's staged body is rewritten to the first's filename.
+Measured with the flag `True`, `False`, and absent — the gate's condition is not what
+makes it fire.
+
+**Scope, and it is narrower than it first looks** (established by the owner's question,
+2026-10-03):
+
+- `rewrite_renamed_embeds` is reached only for items **with a template** — notes Pass 2
+  **creates**. Instruction-only items (`update_daily`, `link_to_moc`) are skipped at the
+  top of the loop. **No existing vault note is modified by this path.**
+- The result is written to `out_dir` and stamped `rendered-note` / `pending-move` — the
+  inbox staging area, reviewable before Hashi applies anything.
+- The withheld move **is reported** to the owner, under "**Attachments still in the
+  inbox** — none of these were filed:", naming the shared destination and the remedy
+  ("Rename one of the two files so they no longer share `…`, then re-run `/inbox`").
+- The attachment itself stays in the inbox. **Nothing is lost.**
+
+**So the residual defect is an inconsistency, not data loss**: the document tells the
+owner the attachment was not filed, while the staged note's body has already been
+rewritten to the new name. Catching it requires reading the body, not just the report.
+An earlier draft of this entry called it "silently points at a different attachment's
+file" — wrong on *silently*, since the non-filing is reported.
+
+**Reachability.** Measured: an owner can produce it by typing a name another inbox
+attachment in the same run already holds — which spec 038's T4.1/T4.2 made possible, so
+this is not purely a 037 inheritance. Whether the **reducer** can emit such a record on
+its own, with a computed name, is **unverified**: `_propose_asset_name` avoids
+vault-occupied destinations and names already handed out this run, but not destinations
+that a free, non-conflicted attachment will claim at move time. An attempt to construct
+that fixture produced no conflict at all, so there is no evidence either way. Do not
+repeat the claim that it fires on computed names without building the fixture first.
+
+**The fix** is the single-verdict record in the entry above — decide once, carry it as
+data, both consumers read a field. That also closes the duplicated-`check_typed_name`
+drift risk. It needs a wire field Hashi must populate, so it waits until after Phase 5
+has introduced those remedy fields to them.
+
+`no_basename` is the same class with far lower reachability: it needs a malformed
+attachment path **and** an embed whose target rsplits to empty. `![[]]` cannot reach it
+— `_EMBED_RE` requires one or more characters.

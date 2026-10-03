@@ -169,8 +169,17 @@ Then:
   `move_asset` to `karte (2).png` is the pre-038 defect reappearing.
 - `Dresden.md` is still **filed** — keep-in-inbox holds the file, not the note.
 - The instruction document lists the attachment under "**Attachments still in the inbox**"
-  with the keep-in-inbox remedy wording.
-- The shell report relays that same line.
+  with this line, **produced by executing the renderer on 2026-10-03, not transcribed**:
+
+  ```
+  - ⚠️ **Attachment not filed:** `100 Inbox/Scans/karte.png` — kept in inbox: the owner chose not to file it over the occupied destination `Atlas/290 Assets/295 Attachments/karte.png`. No action needed unless you change your mind: before applying, tick Rename in the suggestions document and run `/inbox --pass2 --force`; afterwards, rename the file in the inbox and re-run `/inbox`.
+  ```
+
+  Note how this remedy differs from Run C's: here the "afterwards" route is renaming the
+  file on disk, because the note **was** filed and its suggestions document is spent. In
+  Run C the note is held, so the "afterwards" route is re-running `/inbox`. If the two
+  runs print the same remedy, one of them is wrong.
+- The shell report relays that same line, from `tomo-tmp/withheld-attachments.md`.
 
 Apply via Hashi, then capture, then restore.
 

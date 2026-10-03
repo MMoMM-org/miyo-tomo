@@ -39,7 +39,7 @@ phase: 5
 Delivers the release: documentation, a live proof, the coordinated handoff, and a
 close-out that traces every criterion to a test that was executed.
 
-- [ ] **T5.1 User documentation** `[activity: documentation]` `[parallel: true]`
+- [x] **T5.1 User documentation** `[activity: documentation]` `[parallel: true]`
 
   1. Prime: read `docs/usage.md:48-85` ("When an attachment's name is already
      taken") and `docs/troubleshooting.md:220-259`. The usage section currently
@@ -56,10 +56,30 @@ close-out that traces every criterion to a test that was executed.
   4. Validate: grep the new text for function names, module names and wire action
      names — there should be none.
   5. Success:
-     - [ ] `usage.md` says the name is editable and covers a refusal `[ref: PRD/S1]`
-     - [ ] The precedence rule is stated `[ref: PRD/S1]`
-     - [ ] A new troubleshooting entry exists, distinct from the apply-time one
-     - [ ] No executor internals `[ref: SDD/CON-6]`
+     - [x] `usage.md` says the name is editable and covers a refusal `[ref: PRD/S1]`
+       — the Rename bullet carries both halves of S1-AC2: the target is the
+       backtick content and is typed over, empty when Pass 1 found no free name;
+       and the three closed refusal classes are named in owner terms, with
+       `taken` explicitly excluded and the accept-verbatim padding case called out
+       as *not* a refusal.
+     - [x] The precedence rule is stated `[ref: PRD/S1]` — **and it took two FAILs
+       to state it correctly.** The first draft said the editor wins *"for anything
+       you changed there"*, which promises a per-field merge; the rule is
+       whole-document, because the digest can only answer *edited at all* and there
+       is no field provenance on the wire to merge against. Spec compliance found it
+       via the spec's own decisions log, the orchestrator via the control flow —
+       `build_from_wire` runs and `main` returns before the split-and-parse block
+       that reads the markdown. The second FAIL was the Rename bullet's
+       back-reference saying "both" with no antecedent inside the sentence.
+     - [x] A new troubleshooting entry exists, distinct from the apply-time one —
+       "I Typed a Name Pass 2 Could Not Use", placed beside the existing
+       "Inconsistent state" entry and opening on the distinction: this one fires
+       before any action is emitted and nothing fails at apply time.
+     - [x] No executor internals `[ref: SDD/CON-6]` — re-grepped across the whole
+       T5.1 range (3 commits, 90 added lines in the two files) rather than per
+       commit, after the orchestrator mislabelled a single-hunk grep as covering
+       the range: **0 matches**. CON-7 holds too — every sentence about embedding
+       notes is scoped "in this run".
 
 - [x] **T5.2 — moved to Phase 2 as T2.1b** `[activity: data-architecture]`
 

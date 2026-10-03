@@ -314,6 +314,10 @@ class TestSharedCodePathUnderMutation:
     what proves they share one code path: if only one moved, the relay is not
     calling the function and T4.5's design is absent while its tests are
     green.
+
+    The mutation goes through each call site's own `__globals__` — see the test
+    body for why a module-attribute patch can miss a surface silently, which is
+    this spec's own defect class appearing inside the guard against it.
     """
 
     def test_mutating_the_notice_function_moves_both_surfaces(
@@ -324,28 +328,56 @@ class TestSharedCodePathUnderMutation:
         one survives the mutation, that surface is building the sentence
         itself, and T4.5's design is absent while its other tests are green.
 
-        The patch is applied to two module namespaces because
-        `instruction-render.py` does `from lib.render_md import
-        _render_skipped_asset_notice` — that binds the function object into its
-        own globals at import, so patching `lib.render_md`'s attribute alone
-        moves the document surface and leaves the relay calling the original.
-        One function, two bindings; patching both is what makes the mutation
-        reach both call sites rather than one. (Measured 2026-10-03: patching
-        only `lib.render_md` left the relay's four lines untouched.)
+        The mutation is applied to the GLOBALS OF THE TWO FUNCTIONS THAT
+        CONTAIN THE CALL SITES, never to a module reached by `import`. Two
+        patches because `instruction-render.py` does `from lib.render_md import
+        _render_skipped_asset_notice`, binding the function object into its own
+        globals at import: the document's call lives inside
+        `render_instructions_md`, whose `__globals__` is the defining module's
+        dict, and the relay's call lives inside `main`, whose `__globals__` is
+        `instruction-render.py`'s own dict. One function, two bindings.
+
+        Why `__globals__` and not `monkeypatch.setattr(lib.render_md, …)`: a
+        name lookup at call time resolves through the *calling function's* own
+        globals, and `import lib.render_md` returns whatever `sys.modules` holds
+        at that moment — not necessarily the module object the renderer was
+        defined in. Measured 2026-10-03 in isolation: with a second copy of
+        `lib/render_md.py` live under the same key, the module-attribute patch
+        left the document surface rendering real sentences while this test still
+        passed its other assertions — a guard against a silent code path that
+        was itself able to pass silently. Patching the globals of the function
+        that owns the call site cannot miss, because that dict IS the namespace
+        the call resolves through.
 
         Patching both does not weaken the claim. A relay that built its own
         f-string would emit real sentences under this patch and fail the
         second assertion; a document block that built its own would fail the
         first.
         """
-        import lib.render_md as render_md
-
         broken = "- MUTATED NOTICE"
-        monkeypatch.setattr(
-            render_md, "_render_skipped_asset_notice", lambda _entry: broken
+        monkeypatch.setitem(
+            _ir.render_instructions_md.__globals__,
+            "_render_skipped_asset_notice", lambda _entry: broken,
         )
-        monkeypatch.setattr(
-            _ir, "_render_skipped_asset_notice", lambda _entry: broken
+        monkeypatch.setitem(
+            _ir.main.__globals__,
+            "_render_skipped_asset_notice", lambda _entry: broken,
+        )
+        # Reported on failure: which module each call site resolves through,
+        # and every live copy of render_md.py. With the patches above these
+        # cannot cause a miss; the names are here so a future failure says
+        # where it rendered from instead of leaving it to be inferred.
+        diag = (
+            f"document call site globals __name__="
+            f"{_ir.render_instructions_md.__globals__.get('__name__')!r}; "
+            f"relay call site globals __name__="
+            f"{_ir.main.__globals__.get('__name__')!r}; "
+            f"live render_md copies="
+            + repr(sorted(
+                k for k, m in list(sys.modules.items())
+                if getattr(m, "__file__", None)
+                and str(getattr(m, "__file__", "")).endswith("render_md.py")
+            ))
         )
 
         skipped = build_four_kinds_skipped_assets()
@@ -356,8 +388,8 @@ class TestSharedCodePathUnderMutation:
             encoding="utf-8"
         ).splitlines()
         # Both surfaces moved to the mutated string — neither built its own.
-        assert _document_bullets(out_dir) == [broken] * 4
-        assert relay_lines == [broken] * 4
+        assert _document_bullets(out_dir) == [broken] * 4, diag
+        assert relay_lines == [broken] * 4, diag
 
 
 # ── 4. Wiring guard: the runtime prompt names the path the writer writes ───

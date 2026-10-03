@@ -44,17 +44,27 @@ carry them:
   3. `compute_payload_digest(wire) != wire["emit_digest"]` before the run —
      the staleness was genuine, not a line that appeared for another reason.
 
-The digest is staled by ticking the candidate MOC in the wire
-(`suggestions[0].candidate_mocs[0].selected`), the mutation
-`test_changed_wire_overrides_moc_selection` already uses. It is deliberately
-**orthogonal to the decision under test**: any mutation stales the digest, but
-mutating the attachment remedy itself would mean the two paths no longer carry
-the same decision, so an identical destination would prove nothing and a
-differing one would be correct behaviour misread as a defect. Its visible
-consequence is that the wire run's item carries `parent_mocs` and the markdown
-run's does not — the wire being authoritative, exactly as designed — which is
-why `_assert_same_subject` compares the fields `move_asset` is built from
-(`attachments`, `item_key`) and not the whole manifest.
+The digest is staled by rewriting the `reason` of a proposed MOC that ships
+un-approved (`proposed_mocs[0].reason`, `decision: "skip"`). Two properties are
+wanted of a staling knob and this one has both.
+
+It is **orthogonal to the decision under test**: any mutation stales the digest,
+but mutating the attachment remedy itself would mean the two paths no longer
+carry the same decision, so an identical destination would prove nothing and a
+differing one would be correct behaviour misread as a defect.
+
+It is also **output-free**, which the obvious knob is not. Ticking a candidate
+MOC — the mutation `test_changed_wire_overrides_moc_selection` uses, and what an
+earlier draft of this file used — stales the digest but makes the wire run's
+`parent_mocs` diverge. That divergence is correct behaviour (the wire is
+authoritative), and it is still a cost: it forces the cross-path comparison down
+to the two fields a move is built from and leaves a documented exception in the
+one test that proves the phase. `reason` on a skipped proposed MOC reaches no
+output at all, because `build_from_wire` skips the whole record when `decision`
+is not `approve` — measured 2026-10-03, with the two runs' entire parser outputs
+identical but for the provenance flag. So `_assert_paths_agree_but_for_provenance`
+compares the WHOLE output instead, and `_run_both` asserts the `decision: "skip"`
+precondition the knob's output-freedom rests on.
 
 Provenance differs by design, so convergence is about guard-passing names
 -------------------------------------------------------------------------
@@ -74,8 +84,11 @@ including a broken one.
 
 Mutations, each of which turns a case here red
 ----------------------------------------------
-Each was applied and run (2026-10-03); the assertion named is the one that
-actually fires, which for several is upstream of the destination comparison.
+Each was applied and run against THIS form of the file (2026-10-03), and the
+assertion named is the one that actually fires. Worth reading as a group: for
+four of the five it is a guard inside `_run_both`, upstream of any
+destination comparison. The cross-path guards are what hold this test
+together, not the destination equality the cases end on.
 
   - Make `load_changed_wire` treat a stale digest as unedited (`if stored:
     return None`). **All three** cases fail on `_run_both`'s JSON-only stderr
@@ -84,24 +97,30 @@ actually fires, which for several is upstream of the destination comparison.
     again. That is the tautology this file exists to refuse.
   - Set `name_is_owner_supplied: False` in `build_from_wire`'s
     `attachment_conflict_remedies` (T2.3 reverted): all three cases fail on
-    the wire's whole-remedy assertion. With that assertion removed,
-    `test_an_unusable_computed_name_*` would still fail on `wire.actions == []`
-    — the wire would file the name the vault forbids.
+    the per-case **wire** whole-remedy assertion. Not on
+    `_assert_paths_agree_but_for_provenance`, which strips that field by
+    design — the flag's value is asserted per case on both sides instead.
+    With the per-case assertion removed, `test_an_unusable_computed_name_*`
+    would still fail on `wire.actions == []`: the wire would file the name
+    the vault forbids.
   - Set the markdown path's flag `True` unconditionally in
     `_join_attachment_conflict_remedies` (T4.2 reverted): the computed and
-    asymmetry cases fail on the markdown's whole-remedy assertion — the typed
-    case passes, correctly, since provenance already agrees there. With the
-    record assertion removed, the asymmetry case would still fail on
-    `markdown.actions` — the markdown would refuse a name Pass 1 computed.
+    asymmetry cases fail on the per-case **markdown** whole-remedy assertion
+    — the typed case passes, correctly, since provenance already agrees
+    there. With that assertion removed, the asymmetry case would still fail
+    on `markdown.actions`: the markdown would refuse a name Pass 1 computed.
   - Restore the pre-T4.2 `proposed_name = doc_name` doc lookup as the markdown
-    path's answer: only `test_a_typed_accepted_name_converges` fails, on the
-    markdown remedy — it carries `karte (2).png` where the wire carries
-    `karte-dresden-1938.png`, so the two paths would file different names.
+    path's answer: only `test_a_typed_accepted_name_converges` fails, and it
+    fails on `_assert_paths_agree_but_for_provenance` — the markdown's remedy
+    carries `karte (2).png` where the wire's carries
+    `karte-dresden-1938.png`, so the paths would file different names.
   - Drop the un-render prefix strip in `_join_attachment_conflict_remedies`:
-    all three cases fail on the markdown remedy, whose `proposed_name` now
-    carries the rendered folder. With that assertion removed the typed case
-    would still fail on the destination, since `check_typed_name` refuses the
-    path `separator_present` and no move is emitted.
+    **all three** cases fail, also on
+    `_assert_paths_agree_but_for_provenance`, because the markdown's
+    `proposed_name` now carries the rendered folder on every case. With that
+    guard removed the typed case would still fail on the destination, since
+    `check_typed_name` refuses the path `separator_present` and no move is
+    emitted.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker. The
 markdown and the wire are both produced by the real renderers, never hand-built
@@ -242,7 +261,19 @@ def _doc(source: str, proposed_name: str | None) -> dict:
                 "actions": [_atomic_action(source)],
             }
         ],
-        "proposed_mocs": [],
+        # Carried so `_run_both` has a `reason` to edit. It ships
+        # `decision: "skip"` (the markdown default — un-approving IS skipping),
+        # which is what makes that edit output-free; see `_run_both`.
+        "proposed_mocs": [
+            {
+                "topic": "Widgets",
+                "items": ["S01"],
+                "parent": "Root MOC",
+                "name": "Widgets MOC",
+                "tags": ["topic/widgets"],
+                "reason": "cluster",
+            }
+        ],
         "needs_attention": [],
         "attachment_conflicts": [conflict],
         "rendered_attachment_conflicts_md": (
@@ -275,6 +306,8 @@ def _full_md(doc: dict) -> str:
             "\n".join(RENDER.render_suggestions(doc)),
             "",
             "\n".join(RENDER.render_attachment_conflicts(doc)),
+            "",
+            "\n".join(RENDER.render_proposed_mocs(doc)),
         ]
     )
 
@@ -315,7 +348,7 @@ def _parse(tmp_path: Path, doc: dict, markdown: str, wire: dict | None):
     return json.loads(result.stdout), result.stderr.splitlines()
 
 
-def _move_assets(parsed: dict) -> tuple[list[dict], list[dict], dict]:
+def _move_assets(parsed: dict) -> tuple[list[dict], list[dict]]:
     """Drive one parser output through the Pass 2 move builder.
 
     The manifest is built from **this run's own** confirmed item rather than
@@ -345,7 +378,7 @@ def _move_assets(parsed: dict) -> tuple[list[dict], list[dict], dict]:
         [0],
         attachment_conflict_remedies=parsed["attachment_conflict_remedies"],
     )
-    return actions, skipped, entry
+    return actions, skipped
 
 
 class _Outcome:
@@ -355,7 +388,7 @@ class _Outcome:
         self.parsed = parsed
         self.stderr_lines = stderr_lines
         self.remedies = parsed["attachment_conflict_remedies"]
-        self.actions, self.skipped, self.manifest_entry = _move_assets(parsed)
+        self.actions, self.skipped = _move_assets(parsed)
 
     @property
     def remedy(self) -> dict:
@@ -375,10 +408,10 @@ def _run_both(
 ) -> tuple[_Outcome, _Outcome]:
     """Drive `doc`/`markdown` down the markdown path and the wire path.
 
-    `wire_edit` applies the consumer's edit to the wire payload. The candidate
-    MOC is ticked on top of it in every case, which is what stales the digest;
-    see this module's docstring for why the staling mutation must not be the
-    decision under test.
+    `wire_edit` applies the consumer's edit to the wire payload. On top of it,
+    the proposed MOC's `reason` is rewritten in every case, and that is what
+    stales the digest; see this module's docstring for why the staling mutation
+    must be output-free and must not be the decision under test.
 
     Every anti-tautology assertion lives here, so no case can omit one.
     """
@@ -387,7 +420,15 @@ def _run_both(
     wire = RENDER.build_wire_payload(doc)
     if wire_edit is not None:
         wire_edit(wire)
-    wire["suggestions"][0]["candidate_mocs"][0]["selected"] = True
+
+    # The knob is output-free only while this proposed MOC stays un-approved:
+    # `build_from_wire` skips the whole record when `decision != "approve"`, so
+    # `reason` never reaches the output. Assert the precondition rather than
+    # trust it — if a future change let a skipped record's fields through, this
+    # line fails instead of the staling knob quietly acquiring an effect and
+    # weakening `_assert_paths_agree_but_for_provenance` below.
+    assert wire["proposed_mocs"][0]["decision"] == "skip", wire["proposed_mocs"]
+    wire["proposed_mocs"][0]["reason"] = "cluster (rewritten by the consumer)"
 
     # (3) The staleness is genuine — the recomputation no longer matches the
     # digest the producer embedded. Asserted before the run, so a wire that
@@ -408,22 +449,43 @@ def _run_both(
         ignored = [ln for ln in lines if ln.startswith("warning: suggestions-json")]
         assert ignored == [], (name, ignored)
 
+    _assert_paths_agree_but_for_provenance(md_parsed, wire_parsed)
+
     return _Outcome(md_parsed, md_stderr), _Outcome(wire_parsed, wire_stderr)
 
 
-def _assert_same_subject(markdown: _Outcome, wire: _Outcome) -> None:
-    """The two paths are acting on the same attachment and the same note.
+def _strip_provenance(parsed: dict) -> dict:
+    """`parsed` with `name_is_owner_supplied` dropped from every remedy."""
+    out = dict(parsed)
+    out["attachment_conflict_remedies"] = [
+        {k: v for k, v in r.items() if k != "name_is_owner_supplied"}
+        for r in parsed["attachment_conflict_remedies"]
+    ]
+    return out
 
-    Only the fields `_build_move_asset_actions` reads: a full manifest equality
-    would fail on `parent_mocs`, which diverges because ticking the candidate
-    MOC is what stales the digest — the wire being authoritative, by design.
+
+def _assert_paths_agree_but_for_provenance(md_parsed: dict, wire_parsed: dict) -> None:
+    """The two runs' WHOLE parser outputs are equal once the provenance flag is
+    dropped — `confirmed_items`, `skipped`, the MOC records, the daily updates,
+    the remedy's `source` / `remedy` / `proposed_name`, everything.
+
+    `name_is_owner_supplied` is the single field the two paths are designed to
+    disagree on (T2.3 vs T4.2), and each case asserts its value on both sides
+    explicitly. This says there is nothing ELSE: a divergence introduced
+    anywhere in either path fails here, not just one in the two fields a move
+    is built from.
+
+    That the whole output can be compared at all is a property of the staling
+    knob. An earlier draft ticked a candidate MOC instead, which made the wire
+    run's `parent_mocs` diverge — correct behaviour, but it forced this
+    comparison down to two fields and left a documented exception in the one
+    test that proves the phase.
     """
-    assert markdown.manifest_entry["attachments"] == [
-        *wire.manifest_entry["attachments"]
-    ], (markdown.manifest_entry, wire.manifest_entry)
-    assert (
-        markdown.manifest_entry["item_key"] == wire.manifest_entry["item_key"] == OWNER
-    ), (markdown.manifest_entry, wire.manifest_entry)
+    assert _strip_provenance(md_parsed) == _strip_provenance(wire_parsed), (
+        "the two paths diverge somewhere other than the provenance flag",
+        md_parsed,
+        wire_parsed,
+    )
 
 
 # ── Case 1: a computed name converges ────────────────────────────────────────
@@ -443,7 +505,6 @@ def test_a_computed_name_converges_on_one_destination(tmp_path):
     """
     doc = _doc(SOURCE, COMPUTED)
     markdown, wire = _run_both(tmp_path, doc, _full_md(doc))
-    _assert_same_subject(markdown, wire)
 
     # The provenance differs — by design (T2.3 vs T4.2).
     assert markdown.remedy == {
@@ -497,7 +558,6 @@ def test_a_typed_accepted_name_converges_on_one_destination(tmp_path):
     markdown, wire = _run_both(
         tmp_path, doc, markdown_text, wire_edit=_consumer_types_a_name
     )
-    _assert_same_subject(markdown, wire)
 
     expected_remedy = {
         "source": SOURCE,
@@ -541,7 +601,6 @@ def test_an_unusable_computed_name_is_refused_on_the_wire_and_filed_in_the_markd
     """
     doc = _doc(UNUSABLE_SOURCE, UNUSABLE_COMPUTED)
     markdown, wire = _run_both(tmp_path, doc, _full_md(doc))
-    _assert_same_subject(markdown, wire)
 
     # Both paths agree the name is unchanged from Pass 1's; they disagree only
     # about whether it could have been typed.

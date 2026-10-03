@@ -1316,9 +1316,24 @@ drifts the moment the schema moves — and this spec moved it. Hence two
 construction rules that read as fussy and are not: build the wire through
 `build_wire_payload`, and assert the positive stderr line
 (`suggestions-json: edited wire is authoritative (JSON-only path)`), which closes
-all three routes at once. The digest is staled by ticking a candidate MOC —
-orthogonal to the decision under test, because staling it with the remedy itself
-would mean the two paths no longer carry the same decision.
+all three routes at once.
+
+**The staling knob wants two properties, and the obvious one has only the
+first.** It must be orthogonal to the decision under test — staling the digest
+with the attachment remedy itself would mean the two paths no longer carry the
+same decision, so an identical destination would prove nothing and a differing
+one would be correct behaviour misread as a defect. It should also be
+**output-free**, and ticking a candidate MOC is not: it makes the wire run's
+`parent_mocs` diverge, which is correct behaviour and still a cost, because it
+drags the cross-path comparison down to the two fields a move is built from and
+leaves a documented exception in the one test that proves the phase. Rewriting
+the `reason` of a proposed MOC that ships `decision: "skip"` has both
+properties — `build_from_wire` skips the whole record when the decision is not
+`approve`, so the field reaches no output at all. Measured 2026-10-03: the two
+runs' **entire** parser outputs are then identical but for
+`name_is_owner_supplied`, so the test compares the whole output and asserts the
+`decision: "skip"` precondition the knob's output-freedom rests on, rather than
+comparing two fields and explaining an exception.
 
 **The convergence is about guard-passing names, and the one exception is
 deliberate.** Because the wire claims `name_is_owner_supplied: True`

@@ -95,6 +95,19 @@ together, not the destination equality the cases end on.
     assertion, and the observed failure is `assert '…(JSON-only path)' in []`
     — the wire run printed nothing at all, because it was the markdown run
     again. That is the tautology this file exists to refuse.
+
+    With that stderr assertion removed, **2 of 3 cases still fail and only
+    `test_a_typed_accepted_name_converges` passes vacuously** (measured in
+    review, 2026-10-03). The other two expect the markdown and wire sides to
+    *disagree* on the provenance flag, and a markdown-run-twice result cannot
+    produce that disagreement, so their per-case remedy assertions catch the
+    broken gate incidentally. The typed case is the one the stderr assertion
+    is actually protecting, because there both paths independently report
+    `name_is_owner_supplied: True` and nothing else notices. An earlier
+    statement that all three would pass overstated it; the conclusion is
+    unchanged — the gate assertions are necessary — but the protection is for
+    one case, not three, and that is worth knowing before anyone decides the
+    assertion is redundant.
   - Set `name_is_owner_supplied: False` in `build_from_wire`'s
     `attachment_conflict_remedies` (T2.3 reverted): all three cases fail on
     the per-case **wire** whole-remedy assertion. Not on

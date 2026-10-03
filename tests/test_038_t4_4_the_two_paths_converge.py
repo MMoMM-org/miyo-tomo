@@ -436,10 +436,21 @@ def _run_both(
 
     # The knob is output-free only while this proposed MOC stays un-approved:
     # `build_from_wire` skips the whole record when `decision != "approve"`, so
-    # `reason` never reaches the output. Assert the precondition rather than
-    # trust it — if a future change let a skipped record's fields through, this
-    # line fails instead of the staling knob quietly acquiring an effect and
-    # weakening `_assert_paths_agree_but_for_provenance` below.
+    # `reason` never reaches the output. This line pins THIS FIXTURE's half of
+    # that — if a future test edit drifts the decision, it fails here with a
+    # specific message instead of the knob quietly acquiring an output effect.
+    #
+    # It does NOT guard the production half, and an earlier version of this
+    # comment claimed it did. Measured in review (2026-10-03) by constructing
+    # exactly that regression — removing `build_from_wire`'s
+    # `decision != "approve"` guard and threading `reason` into the MOC output:
+    # this assertion did not fire, because it only checks a static fact about
+    # the wire fixture, which stays true however `build_from_wire` behaves. The
+    # regression was still caught, by `_assert_paths_agree_but_for_provenance`
+    # below — the leaked record showed up as an extra `confirmed_items` entry
+    # (`total_approved: 1 != 2`) the markdown run did not have. So the
+    # whole-output comparison is what protects the knob's premise; this line
+    # protects the fixture's.
     assert wire["proposed_mocs"][0]["decision"] == "skip", wire["proposed_mocs"]
     wire["proposed_mocs"][0]["reason"] = "cluster (rewritten by the consumer)"
 

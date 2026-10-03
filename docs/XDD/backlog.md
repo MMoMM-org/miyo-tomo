@@ -2012,3 +2012,96 @@ has introduced those remedy fields to them.
 `no_basename` is the same class with far lower reachability: it needs a malformed
 attachment path **and** an embed whose target rsplits to empty. `![[]]` cannot reach it
 — `_EMBED_RE` requires one or more characters.
+
+## OPEN — a withheld attachment never reaches the shell, only the document
+
+Owner direction 2026-10-03: *"solche Dinge sollten wir nicht nur im Document surfacen
+sondern auch in der Shell — dann kann der User direkt zurück zu Instructions, dort die
+Änderung machen und `/inbox --pass2 --force` ausführen."*
+
+Measured the same day. A withheld attachment move is reported in **three** places and
+none of them is the shell:
+
+- `skipped_assets` in the wire, rendered as the document's "**Attachments still in the
+  inbox** — none of these were filed:" block, with a per-`kind` remedy sentence;
+- a `[warn] destination collision: …` line on **stderr** from
+  `_build_move_asset_actions`;
+- nowhere in the Pass 2 run summary the owner actually reads.
+
+A skip is not an error, so `instruction-render.py` still exits 0, and
+`synthesis-conductor.md`'s Step 3b treats exit 0 as plain success. Its Step 4 report
+lists the doc count, the coverage audit, drift warnings and withheld deletes —
+**skipped assets are absent**. So the shell says the run succeeded and the owner learns
+about the withheld attachment only by reading the document.
+
+**There is already a shipped pattern for exactly this**, built by spec 036 for withheld
+deletes and worth copying rather than redesigning: a writer emits
+`tomo-tmp/withheld-deletes.md`, one pre-sanitized user-facing line per withheld delete,
+containing nothing else — no run id, no header, no internals. Step 4 `cat`s it and
+appends its lines **verbatim** to the report, only when the file exists. The agent is
+explicitly forbidden from substituting the raw stderr block or the JSON for it.
+
+The same shape applies: a `tomo-tmp/withheld-assets.md` relay written beside the
+instruction document, appended verbatim by Step 4. That keeps the sanitisation in a
+script (where it is testable) rather than asking the LLM to summarise internals, which
+is the reason the delete relay is built that way.
+
+**Why it matters more than a convenience.** The owner's stated loop is: see it in the
+shell, go back to the instructions document, change the decision there, re-run
+`/inbox --pass2 --force`. Today the first step is missing, so the loop only starts if
+they happen to read the document. It also matters for the inconsistency recorded above
+— a `collision`-withheld attachment leaves a *staged note whose body was already
+rewritten*, so the owner has a reason to look that the document does not give them.
+
+## OPEN — a run-local destination collision offers no name to type
+
+Owner question 2026-10-03: *"ODER Tomo anweisen die Datei auf XYZ umzubenennen, das
+sollte doch auch gehen oder?"* — in principle yes, and spec 038's T4.1/T4.2 built
+exactly that mechanism. This case cannot reach it.
+
+Measured 2026-10-03: two inbox attachments sharing a basename, destination **free** in
+the vault.
+
+```
+conflicts the reducer found:            0
+'## Attachment Conflicts' block:        not rendered
+a 'Rename to' line to type into:        none
+move builder:                           1 move, 1 skipped kind=collision
+```
+
+`detect_attachment_conflicts` creates an entry only when the computed destination is
+occupied **in the vault** (`vault_assets` / `occupied_folders`). A run-local collision
+is not discovered there at all — it surfaces later, in `_build_move_asset_actions`'s
+`claimed` map, long after the suggestions document has been written. So the owner gets
+the remedy sentence *"Rename one of the two files so they no longer share `…`, then
+re-run `/inbox`"* — an instruction to rename a file **on disk themselves**, which is
+the one thing the 2-pass model otherwise never asks of them.
+
+**The asymmetry is new and this spec created it.** Before T4.1/T4.2 there was no way to
+type a name anywhere, so a filesystem rename was the only answer. Now there is a typable
+`Rename to \`\`` line, a validation guard (T3.1), a refusal path (T3.2/T3.4) and a
+parser that reads the typed name (T4.2) — and the case that most obviously calls for a
+name the owner chooses is the one case that cannot offer the box.
+
+**The plumbing already exists.** `detect_attachment_conflicts` walks every
+`(item_key, path)` pair in one loop and already maintains a `proposed_names` set
+precisely so two conflicts cannot walk to the same first-free name. Detecting "two
+sources, one destination" in that same loop and emitting a conflict entry with a
+`proposed_name` would put the collision into the existing block, and every downstream
+piece — render, parse, guard, refuse, move — already handles it.
+
+**Open design questions**, not decided here:
+
+- Which of the two colliding sources gets the rename offer, or both? Offering both lets
+  the owner resolve it either way; offering one is less document noise.
+- The entry needs a `destination`-occupied reason distinct from the vault case, because
+  the document's existing wording ("already occupied") would be wrong — nothing occupies
+  it yet; two things want it.
+- Whether a computed `proposed_name` should be offered pre-ticked here as it is for a
+  vault conflict, which would resolve the collision with no owner action at all. That may
+  make the whole class disappear for the common case and leave the box for when the
+  owner dislikes the computed name.
+
+The third question is the interesting one: if the reducer proposes a free name for the
+second claimant, the collision stops being a withheld move and becomes an ordinary
+rename the owner can accept or overtype.

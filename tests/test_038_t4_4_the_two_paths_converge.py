@@ -13,74 +13,24 @@ way the wire path can be reached at all — and each run's own
 the typed-name guard. So a divergence is asserted where the owner would see it,
 not on an intermediate record.
 
-Why this test can pass while proving nothing, and what stops it
----------------------------------------------------------------
-ADR-026: `load_changed_wire` returns the wire **only** when it was edited (its
-embedded `emit_digest` no longer matches a recomputation). An unedited wire
-falls straight through to the markdown parse. So a convergence test that
-publishes a wire and forgets to stale its digest **runs the markdown path twice
-and passes** — and nothing about it looks wrong.
+Why this test can pass while proving nothing, and why provenance differs
+------------------------------------------------------------------------
+Both are explained once, in `docs/tomo/scripts/suggestion-parser.md`'s
+section "The Two Paths Converge, and Where They Deliberately Do Not" — the
+ADR-026 gate and the three routes by which an unedited, unparseable or
+version-mismatched wire falls through to the markdown parse; why the staling
+knob must be output-free and why `reason` on a skipped proposed MOC is the one
+that is; and why the two paths set `name_is_owner_supplied` differently, so
+convergence is a claim about guard-passing names.
 
-`load_changed_wire` returns `None` on three distinct routes, each of which
-produces that same tautology:
+Read it before changing anything here. What that section means for this file,
+in one line: a convergence test that publishes a wire without staling its
+digest runs the markdown path **twice** and passes, and `_run_both`'s three
+assertions are what refuse it.
 
-  - the digest matches (an unedited wire);
-  - the JSON is unparseable (`warning: suggestions-json ignored (…)`);
-  - `schema_version` is not the schema's current version
-    (`warning: suggestions-json schema_version X != Y — ignored, using
-    markdown`). The accepted version is read from the schema itself, never a
-    literal, so a hand-built wire that hard-codes one drifts the moment the
-    schema moves — and spec 038 moved it. The wires here are therefore built
-    through `build_wire_payload`, so the version comes from the same source
-    the gate checks.
-
-Three assertions close all three routes, and `_run_both` makes every case
-carry them:
-
-  1. the JSON-only announcement is a line of the wire run's stderr —
-     `suggestions-json: edited wire is authoritative (JSON-only path)`;
-  2. it is NOT a line of the markdown run's stderr, and neither run warns
-     about the wire at all;
-  3. `compute_payload_digest(wire) != wire["emit_digest"]` before the run —
-     the staleness was genuine, not a line that appeared for another reason.
-
-The digest is staled by rewriting the `reason` of a proposed MOC that ships
-un-approved (`proposed_mocs[0].reason`, `decision: "skip"`). Two properties are
-wanted of a staling knob and this one has both.
-
-It is **orthogonal to the decision under test**: any mutation stales the digest,
-but mutating the attachment remedy itself would mean the two paths no longer
-carry the same decision, so an identical destination would prove nothing and a
-differing one would be correct behaviour misread as a defect.
-
-It is also **output-free**, which the obvious knob is not. Ticking a candidate
-MOC — the mutation `test_changed_wire_overrides_moc_selection` uses, and what an
-earlier draft of this file used — stales the digest but makes the wire run's
-`parent_mocs` diverge. That divergence is correct behaviour (the wire is
-authoritative), and it is still a cost: it forces the cross-path comparison down
-to the two fields a move is built from and leaves a documented exception in the
-one test that proves the phase. `reason` on a skipped proposed MOC reaches no
-output at all, because `build_from_wire` skips the whole record when `decision`
-is not `approve` — measured 2026-10-03, with the two runs' entire parser outputs
-identical but for the provenance flag. So `_assert_paths_agree_but_for_provenance`
-compares the WHOLE output instead, and `_run_both` asserts the `decision: "skip"`
-precondition the knob's output-freedom rests on.
-
-Provenance differs by design, so convergence is about guard-passing names
--------------------------------------------------------------------------
-The wire path sets `name_is_owner_supplied: True` unconditionally (T2.3 — it
-cannot know whether the consumer edited the field, so "could have been edited"
-is the only honest claim); the markdown path sets it by comparison (T4.2 —
-`remainder != doc_name`). So for an untouched **computed** name the wire runs
-`check_typed_name` and the markdown does not. For any name that passes the
-guard the destinations are identical, which is what the first two cases assert.
-
-For a computed name the vault forbids but macOS permits, the wire refuses and
-the markdown files it. That asymmetry is recorded (T3.2, and the deviations row
-of 2026-10-02) and is pinned here as its own case rather than fixed — and it is
-pinned as **whole records on both sides**, because "the wire refuses and the
-markdown permits" would pass on any implementation that happened to diverge,
-including a broken one.
+The table below is NOT in that document and is the reason this docstring is
+still long: it is dated, executed mutation evidence, and nothing else carries
+it.
 
 Mutations, each of which turns a case here red
 ----------------------------------------------

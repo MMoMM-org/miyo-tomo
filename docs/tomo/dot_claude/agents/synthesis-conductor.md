@@ -314,18 +314,13 @@ quietly undone.
 
 ### WHY This Instruction Has a Wiring Guard and No Output Test
 
-This file is an LLM-loaded runtime prompt, so Step 4's report is produced by a
-model at runtime and there is no output for pytest to capture. Asserting that the
-instruction prose exists here asserts only that a string is in the file someone
-just wrote it into, and this repo has already recorded that an agent definition's
-rules are not what the LLM does.
+Explained once in `docs/tomo/scripts/instruction-render.md`, under "Why Step 4
+Gets a Wiring Guard and Not an Output Test". That file is canonical because it
+owns the `WITHHELD_DELETES_RELAY` / `WITHHELD_ATTACHMENTS_RELAY` constants the
+guard compares this prompt's `cat` path against.
 
-What is testable is the **path**. `TestAgentWiringGuard` in
-`tests/test_038_t4_5_withheld_attachment_relay.py` asserts this file references
-the same relay filename the writer writes — which is why
-`WITHHELD_DELETES_RELAY` / `WITHHELD_ATTACHMENTS_RELAY` became named constants on
-the writer's side. It catches the two failure modes that are otherwise silent in
-a live run: the `cat` deleted while the writer stays, and either side drifting to
-a different filename. A missing `cat` does not error; it simply reports nothing
-withheld, which is indistinguishable from a clean run. The executable check on
-the report itself is Phase 5's live run.
+The one thing to carry away without following the link: a missing `cat` does not
+error — it reports nothing withheld, which is indistinguishable from a clean run.
+`TestAgentWiringGuard` pins this file's path to the writer's so that renaming
+either alone fails. The executable check on the report itself is Phase 5's live
+run.

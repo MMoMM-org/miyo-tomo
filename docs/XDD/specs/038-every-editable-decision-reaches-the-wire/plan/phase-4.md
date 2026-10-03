@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The name becomes a value"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -1049,5 +1049,20 @@ surface, landing into an already-guarded path.
     deleting a correct warning because the code now contradicts it is the same move
     as editing a test to match an implementation. Here both are plainly false and
     should be corrected rather than split.
-  - Success: suite green; `ruff` clean; both paths proven to converge on identical
-    output for identical decisions `[ref: PRD/F1]`.
+  - [x] Success: suite green (**4520** — 4515 passed / 5 skipped); `ruff` clean on
+    `tomo/scripts/` and `scripts/`; both paths proven to converge on identical
+    output for identical decisions `[ref: PRD/F1]`. The convergence is over the
+    **whole** parser output, stripped only of the one field the two paths are
+    designed to disagree on — possible because the staling knob was chosen to be
+    output-free. The tautology was closed **by construction**, three times by two
+    people with independently written mutations, each giving `wire_stderr == []`.
+
+    **Process note, recorded because the record was briefly wrong.** This task's
+    checkbox and Phase 4's box in `plan/README.md` were both ticked in the
+    implementer's own commit (`0f48d76`), **before either review gate ran** — and
+    spec compliance then found a real gap in that commit (`_assert_same_subject`
+    compared two fields where the whole output was available), which needed
+    `6a8db0e` to close. So the plan asserted a finished phase while a genuine
+    weakness was open. The ticks belong to the orchestrator after 4f and 4g pass,
+    for exactly this reason; an implementer ticking their own box turns the plan
+    into a claim about intent rather than a record of what was verified.

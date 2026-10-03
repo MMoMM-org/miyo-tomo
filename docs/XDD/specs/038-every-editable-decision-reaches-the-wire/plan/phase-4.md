@@ -602,10 +602,63 @@ surface, landing into an already-guarded path.
      file would print an empty section). Cover every `kind` that withholds a
      move: `typed_name_refused`, `vault_collision_held`, `collision`,
      `no_basename`. Assert whole lines.
-  3. Implement: write the relay beside the instruction document, from the same
-     `skipped_assets` the document renders from — **one source, two surfaces**,
-     so the shell cannot disagree with the document. Then add the `cat` and the
-     relay instruction to Step 4, alongside the delete relay.
+  3. Implement, and **the first step is an extraction, not a write** — measured
+     2026-10-03, before dispatch.
+
+     **(a) The delete relay's whole trick is that its sentence is already a
+     function.** `_render_withdrawn_delete_notice(withdrawal) -> str` lives in
+     `render_md.py`, and `instruction-render.py` calls it a **second** time to build
+     the relay. The comment at that call site states the reason outright: *"this
+     calls the same function a second time rather than re-deriving them, so the two
+     surfaces cannot drift apart."*
+
+     **The asset bullet is not a function.** It is built inline inside
+     `render_instructions_md`'s loop: a per-`kind` `if`/`elif` chain assigning
+     `remedy`, then one `body_parts.append(f"- ⚠️ **Attachment not filed:** …")`.
+     So **extract it first** — a `_render_skipped_asset_notice(entry) -> str`
+     beside the delete one, called from the loop *and* from the relay. Skip the
+     extraction and "one source, two surfaces" is unachievable: you would be
+     re-deriving the sentence, which is the drift this spec has spent four tasks
+     paying for.
+
+     **(b) Reuse the relay WRITER as it stands; do not write staleness logic.**
+     `sync_withheld_deletes_file(path, run_id, notices)` (in
+     `instruction-render.py`) already takes an arbitrary list of notice strings,
+     and its subtlety is the part you would get wrong. `--output-dir` is
+     overwritten per entry, which made an earlier grep-and-remember relay lose
+     entries 1..N-1 of an N-entry run; the fix is a `.run_id` sidecar that
+     distinguishes same-run append from new-run rewrite. A half-present state is
+     always staleness. `run_id is None` is a no-op. A new run with no notices
+     removes **both** files, which is what gives you the "no file when there is
+     nothing to say" behaviour for free.
+
+     Its name is delete-specific. Generalising it serves one mechanism with one set
+     of staleness semantics and is preferred, but it touches 036's call site and
+     `tests/test_instruction_render_withheld_deletes_relay.py` — if you generalise,
+     keep that test green and say so; if you add a thin sibling instead, say why.
+
+     **(c) Markdown in the relayed line is the established shape — do not invent a
+     plainer one.** The delete notice is `- ⚠️ **Not deleted:** <ref> — <detail>`
+     and Step 4 relays it verbatim. The asset bullet is `- ⚠️ **Attachment not
+     filed:** \`<source>\` — <reason>. <remedy>.` — same marker, same register.
+     Reuse it as it is.
+
+     **(d) Where to write it.** `skipped_assets` is final where `build_actions`
+     returns it and is never extended afterwards —
+     `suppress_moves_for_unfiled_attachments` takes it read-only and returns
+     `(kept_actions, suppressions)`. So write the relay beside the delete relay,
+     after both fatal-abort guards, matching that call's own rule: *a run that
+     aborts before this point writes nothing*.
+
+     **(e) One inherited wart, named so nobody silently "fixes" it.** The per-`kind`
+     chain ends in a deliberate loud fallback — `(No remedy defined for skip kind
+     '…' — check render_md.py)` — which the relay will now put in the shell. It is
+     deliberate: an unrecognised kind must not inherit another kind's instruction.
+     Leave it loud. If you think a filename in a user-facing line is wrong, raise it
+     rather than softening it.
+
+     Then add the `cat` and the relay instruction to Step 4, alongside the delete
+     relay.
 
      **One line per withheld attachment, never a count** `[ref: PRD/C1]`. The
      no-count ruling is argued twice in `render_md.py` and T3.4's undercount is

@@ -916,11 +916,53 @@ surface, landing into an already-guarded path.
     **runs the markdown path twice and passes** — a tautology that would assert
     convergence while exercising one path. Build the wire from the same doc, then
     mutate it in place so the digest goes stale, which is what
-    `tests/test_suggestion_parser_json_precedence.py` already does; copy that
-    mechanism rather than inventing one. **Assert in the test that the JSON-only
-    branch was taken** — it prints `suggestions-json: edited wire is authoritative
-    (JSON-only path)` to stderr — so the test cannot silently degrade to the
-    markdown path if the digest mechanism changes.
+    `tests/test_suggestion_parser_json_precedence.py` already does. **Assert in the
+    test that the JSON-only branch was taken** — it prints `suggestions-json:
+    edited wire is authoritative (JSON-only path)` to stderr — so the test cannot
+    silently degrade to the markdown path if the digest mechanism changes.
+
+    **The mechanism, named rather than referenced** (measured 2026-10-03, after the
+    TDD gate rightly refused "copy that mechanism" as a specification):
+    `build_wire_payload(doc)` emits a wire whose `emit_digest` matches its payload;
+    mutate **any** field in place and leave `emit_digest` untouched, and the
+    recomputation no longer matches. `load_changed_wire` is the gate —
+    `compute_payload_digest(wire) == stored` returns `None`, meaning the markdown
+    stays authoritative; a difference returns the wire. The precedence test's
+    `test_changed_wire_overrides_moc_selection` is the pattern (mutate
+    `wire["suggestions"][0]["candidate_mocs"][0]["selected"]`), and
+    `test_unchanged_wire_is_noop` is the control proving an unmutated wire is a
+    no-op.
+
+    **Also assert the staleness directly**, not only its effect:
+    `compute_payload_digest(wire) != wire["emit_digest"]` before the run. The
+    stderr line proves the branch was taken; this proves *why*, and the two
+    together distinguish a genuinely stale wire from a line that appeared for
+    another reason.
+
+    **There is a THIRD route to the same tautology that the gate did not name, and
+    it is the one a fixture is most likely to hit.** `load_changed_wire` returns
+    `None` — silently falling through to the markdown — in **three** cases, not
+    one:
+    - the digest matches (unedited wire);
+    - the JSON is unparseable (prints `warning: suggestions-json ignored (…)`);
+    - **`schema_version` does not equal the current schema's version** (prints
+      `warning: suggestions-json schema_version X != Y — ignored, using markdown`).
+      The accepted version is read from the schema itself, never a literal, so a
+      hand-built fixture that hard-codes a version drifts the moment the schema
+      moves — and spec 038 moved it.
+
+    Build the wire through `build_wire_payload` rather than by hand so the version
+    comes from the same source the gate checks. Asserting the positive JSON-only
+    line covers all three routes at once, which is why that assertion is the
+    non-negotiable one.
+
+    **One construction requirement that follows from the mechanism: stale the
+    digest with a change that does NOT alter the decision under test.** Any
+    mutation stales it, so mutate something unrelated — a MOC selection, as the
+    precedence test does — and leave the attachment remedy at its rendered
+    default. Mutate the remedy itself and the two paths are no longer carrying the
+    same decision, so an identical destination would prove nothing and a differing
+    one would be correct behaviour misread as a defect.
 
     **(2) Convergence holds for guard-passing names, and the exception is
     deliberate.** The two paths set provenance differently and by design: the wire
@@ -936,6 +978,20 @@ surface, landing into an already-guarded path.
     must not be "fixed" here.** Pick a guard-passing fixture, and pin the
     asymmetry as its own asserted case so the next reader finds it documented
     rather than discovering it as a failure.
+
+    **The asymmetry case must assert whole records, not a direction** — the TDD
+    gate's one terminal objection (2026-10-03), and it is right: "the wire refuses
+    and the markdown permits" would pass on any implementation that happened to
+    diverge, including a broken one. Name all three specifics:
+    - the exact fixture name and which character makes it unusable — e.g.
+      `foo*bar (2).png`, legal on macOS, forbidden by the vault;
+    - the wire path's whole outcome: no `move_asset`, a `skipped_assets` entry with
+      `kind: typed_name_refused` and `refusal_reason: forbidden_character`;
+    - the markdown path's whole outcome: a `move_asset` whose destination carries
+      that same computed name.
+
+    Then the case fails if either side changes, which is what makes it an
+    assertion rather than a snapshot of today.
   - Run the full suite and `ruff`. Write the `docs/tomo/` WHY entries for the
     parser and reducer changes.
 

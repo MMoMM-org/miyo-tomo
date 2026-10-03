@@ -1913,3 +1913,42 @@ refactor a condition of passing. The file is also already past the constitution'
 300–500 LOC guidance for reasons that predate this spec, so this is one seam in a file
 that has several; taking it in isolation buys the next field's safety and nothing more.
 Worth doing **before** a fourth field lands, not after.
+
+## OPEN — the typed-name refusal is decided twice, by two consumers, with nothing enforcing agreement
+
+Recorded 2026-10-03 while priming spec 038 T4.3. Not taken in Phase 4 — it changes the
+wire contract and would need a Hashi handoff.
+
+After T4.3, two places independently decide whether a typed `proposed_name` is usable:
+
+- `_build_move_asset_actions` (`render_actions.py`) — withholds the move and emits
+  `typed_name_refused`.
+- `rewrite_renamed_embeds` (`lib/embed_rewrite.py`) — skips the body rewrite.
+
+Both gate on `name_is_owner_supplied` and then call `check_typed_name`. Nothing in the
+types makes them agree, and they run at different points in the pipeline: the rewrite
+during `instruction-render.py`'s per-item loop, the move builder only after every
+rendered file is already on disk. **If they ever disagree, the failure is a body that
+points at a file no move created** — which is precisely the defect T4.3 exists to
+close, reintroduced by drift rather than by omission.
+
+That divergence is exactly what happened once already: T3.2 added the refusal to the
+move builder and did not touch the rewrite, and the gap went unnoticed because no test
+exercised a typed name against the rewrite at all.
+
+**The fix.** Decide once, carry the verdict as data. The producing side — the parser
+for the markdown path, the consumer for the wire path — sets a refusal field on the
+`attachment_conflicts[]` record, and both consumers read it instead of re-deriving it.
+Then an inconsistency is impossible rather than merely tested for.
+
+**Why it is not done now.** It adds a field to the wire that Hashi must populate, so it
+needs a contract change and a handoff, and Phase 5 is already introducing
+`attachment_conflicts[]` remedy fields to them for the first time. Doing both at once
+means shipping a field whose producer does not exist yet. Revisit after Phase 5 lands,
+when the consumer is on the current schema.
+
+**Until then**, the agreement is pinned by one test that feeds a refused name to both
+halves and asserts the move is withheld AND the body is byte-identical (spec 038 T4.3).
+That test is the only thing standing between the two conditions and silent drift — do
+not delete it as redundant with the per-half tests, because neither of those can see a
+disagreement.

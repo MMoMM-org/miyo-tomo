@@ -482,8 +482,88 @@ surface, landing into an already-guarded path.
   2. Test: a **refused** typed name leaves every owning note's embed untouched.
      Without this ordering the embed is rewritten to a name the move then refuses,
      leaving bodies pointing at a file that was never created.
-  3. Implement: ensure the verdict from Phase 3's check is available before the
-     rewrite runs, and that the rewrite skips a refused entry.
+
+     **This is a live defect, not a hypothetical. Measured 2026-10-03, before
+     dispatch, by running both halves of the pipeline on the same remedy record.**
+     `rewrite_renamed_embeds` gates on `remedy == "rename"` plus a truthy
+     `proposed_name` and consults neither `name_is_owner_supplied` nor
+     `check_typed_name`:
+
+     ```
+     case               guard                       embed rewritten  move
+     accepted           ok=True                     yes              actions=1
+     refused separator  ok=False separator_present  YES              0, typed_name_refused
+     refused pipe       ok=False forbidden_character YES             0, typed_name_refused
+     refused blank      ok=False blank              YES              0, typed_name_refused
+     ```
+
+     So for every refusal the body **is** rewritten and the move is **not** made:
+     the attachment stays in the inbox under its old name while the note points
+     somewhere else. **T3.2 created this divergence** — it added the refusal to the
+     move builder without touching the rewrite — and it is reachable in production
+     now, because the wire path carries `name_is_owner_supplied: True`
+     unconditionally; T4.2 opened the markdown path to it as well. Treat this task
+     as closing a defect, not as adding a nicety.
+
+     **There are three failure modes and this task's sentence above describes only
+     one of them.** Measured bodies, from `![[karte.png]]`:
+
+     | typed | body becomes | what it is |
+     |---|---|---|
+     | `Archive/karte-…938.png` | `![[Archive/karte-…938.png]]` | dangling, **and** hard-codes a path |
+     | `karte\|1938.png` | `![[karte\|1938.png]]` | **not** dangling — see below |
+     | `   ` | `![[   ]]` | an embed of whitespace |
+
+     The middle row is the one that justifies the priority. `|` is Obsidian's
+     **alias separator**, so `![[karte|1938.png]]` is not a broken link — it is an
+     embed of a *different* note named `karte`, displayed as `1938.png`. If such a
+     note exists the owner sees real content from the wrong file, with nothing
+     visibly wrong. A dangling embed announces itself; this does not. A second
+     occurrence carrying its own size suffix becomes `![[karte|1938.png|300]]`.
+
+     **And the function's own docstring already promises what the code does not
+     do**: *"the OLD basename is replaced by the BARE new basename … never the new
+     full path (which would hard-code the asset folder into every rewritten
+     body)"*. `new_name` is used verbatim with no basename step, so that guarantee
+     holds only for names that pass the guard, and nothing enforces it today. Fix
+     the claim or the code in the same commit — do not leave the docstring
+     asserting a property the code lacks, which is the failure spec compliance
+     FAILed T3.2 for twice.
+
+     **Coverage today is zero**: `grep -c name_is_owner_supplied
+     tests/test_037_t3_3_embed_rewrite.py` → `0`. Nothing in that file's nineteen
+     cases involves a typed name at all.
+  3. Implement: the rewrite must skip a refused entry.
+
+     **Scope correction (2026-10-03): the first half of this step is already
+     done.** It read "ensure the verdict from Phase 3's check is available before
+     the rewrite runs" — it is available. The remedy record reaching
+     `rewrite_renamed_embeds` already carries both `proposed_name` and
+     `name_is_owner_supplied`, and `lib/typed_name_check.py` imports nothing at all
+     (stdlib only), so there is no circular-import obstacle; `embed_rewrite.py`
+     already imports from `lib.attachment_index`. Nothing needs plumbing. Only the
+     skip needs building.
+
+     **Put the gate in `rewrite_renamed_embeds` itself, not in the
+     `instruction-render.py` caller.** The guarantee that is being broken is stated
+     in that function's docstring, the function is the one T4.4's convergence
+     criterion is about, and a gate in the caller leaves the library wrong for the
+     next caller. Gate on the same condition `_build_move_asset_actions` uses —
+     `name_is_owner_supplied` truthy, then `check_typed_name`.
+
+     **State the cost in the docstring, because it is real**: `check_typed_name`
+     is then called from two places that must keep agreeing, and nothing in the
+     type system makes them. That agreement is testable and the test is cheap —
+     one case that feeds a refused name to **both** halves and asserts the move
+     builder emits `typed_name_refused` **and** the body comes back byte-identical.
+     Write that test; it is the one that fails if the two conditions drift apart,
+     which no per-half test can catch.
+
+     The single-verdict alternative — compute the refusal once upstream and carry
+     it on the record so both consumers read a field instead of re-deciding — is
+     better in principle and **out of scope**: it changes the wire contract and
+     would need a Hashi handoff. Recorded in `docs/XDD/backlog.md`; do not build it
+     here.
   4. Validate: the 037 embed-rewrite tests stay green; the new test fails if the
      ordering is reversed — **construct that reversal and run it**.
   5. Success:

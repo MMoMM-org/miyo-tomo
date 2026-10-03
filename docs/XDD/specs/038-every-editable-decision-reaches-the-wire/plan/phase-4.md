@@ -472,7 +472,7 @@ surface, landing into an already-guarded path.
      shipped, so raise it rather than edit it silently, and keep it out of this
      task's production diff if it widens scope `[ref: PRD/F3, SDD/ADR-5]`.
 
-- [ ] **T4.3 Validate before the embed is rewritten** `[activity: backend-api]`
+- [x] **T4.3 Validate before the embed is rewritten** `[activity: backend-api]`
 
   1. Prime: read `rewrite_renamed_embeds` (`lib/embed_rewrite.py:91`) and note the
      ordering stated in its docstring — it runs **before**
@@ -567,10 +567,15 @@ surface, landing into an already-guarded path.
   4. Validate: the 037 embed-rewrite tests stay green; the new test fails if the
      ordering is reversed — **construct that reversal and run it**.
   5. Success:
-     - [ ] A refused name rewrites no embeds `[ref: PRD/F2, PRD/F3]`
-     - [ ] An accepted typed name rewrites every owning note's embed, as 037
+     - [x] A refused name rewrites no embeds `[ref: PRD/F2, PRD/F3]` — all three
+           classes, each asserting its own `reason`
+     - [x] An accepted typed name rewrites every owning note's embed, as 037
            already does for a computed name `[ref: PRD/F2]`
-     - [ ] The ordering mutation turns the test red, demonstrated
+     - [x] The ordering mutation turns the test red, demonstrated — and the
+           mutation chosen was stronger than the one asked for: the gate was moved
+           BELOW the assignment rather than deleted, so the verdict is computed and
+           then ignored. That proves the gate runs **in time**, not merely that it
+           runs. 4 of 8 tests die; the 29 pre-existing cases are blind to it.
 
 - [ ] **T4.5 A withheld attachment reaches the shell** `[activity: backend-api]`
 
@@ -633,6 +638,38 @@ surface, landing into an already-guarded path.
 - [ ] **T4.4 Phase validation — the two paths converge** `[activity: validate]`
 
   **Run this task LAST in the phase — after T4.5**, regardless of the numbering.
+
+  **`docs/tomo/scripts/lib/embed_rewrite.md` has a literal task list, from T4.3's
+  code quality review (2026-10-03).** That file exists and covers only 037's T3.3.
+  T4.3 left its function's docstring at ~45 lines against a ~35-line body, which is
+  a **pre-migration state, not a violation** — this repo's rule is that WHY moves to
+  `docs/tomo/` *before* it leaves the runtime file, never the reverse. Do the move,
+  in this order, then trim. Target ~15–18 lines left in the docstring.
+
+  **Keep in the docstring** — a maintainer editing that function needs it in front
+  of them:
+  - the two-mechanism explanation (Tomo-computed vs owner-typed) for why "bare
+    basename, never a path" holds — it is the direct rationale for the
+    `name_is_owner_supplied` branch;
+  - **one line** that this gate and `_build_move_asset_actions`'s gate must keep
+    agreeing, since nothing in the type system enforces it;
+  - **one line** naming the known gap (`collision` / `no_basename` uncovered).
+
+  **Move to `docs/tomo/scripts/lib/embed_rewrite.md`** — history, pointers and
+  design asides, which the routing rule in `CLAUDE.md` assigns there:
+  - the "Until spec 038 T4.3 added that gate … asserted a property the code did not
+    have" paragraph — that is what broke *before* the fix, not what the code does;
+  - the named test-file pointer and its case description;
+  - the backlog aside about deciding the refusal once upstream;
+  - the full elaboration of the `collision` / `no_basename` divergence, including
+    the `claimed`-map mechanics and that they predate T4.3.
+
+  Two things belong in that file that are **not** in the docstring at all, and both
+  are measured: that the owner is *told* about a withheld move in the document
+  ("Attachments still in the inbox") while the staged note's body has already been
+  rewritten — an inconsistency, not data loss, and the distinction matters because an
+  earlier draft of mine overstated it; and that only notes Pass 2 **creates** are
+  affected, since the rewrite is reached solely for items with a template.
 
   - The load-bearing test of this phase and Phase 2 together: drive the **same**
     decision through the markdown path and through the wire path and assert the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
 from __future__ import annotations
 
@@ -169,14 +169,9 @@ def rewrite_renamed_embeds(
         new_name = remedy_entry.get("proposed_name")
         if not new_name:
             continue
-        # spec 038 T4.3: an owner-TYPED name is validated before it can reach
-        # a body. Gated on `name_is_owner_supplied` and refused on the same
-        # verdict `_build_move_asset_actions` refuses on, because that builder
-        # emits no move for a refused name — rewriting the body anyway pointed
-        # it at a file the run never created. ADR-5: refused, never sanitised,
-        # so the entry is skipped and the body left alone; basenaming a
-        # separator-bearing name here to rescue it would file the attachment
-        # under a name the owner did not choose.
+        # spec 038 T4.3: refuse an owner-typed name the same way
+        # `_build_move_asset_actions` does — see the docstring above for why
+        # this must stay in step with that gate.
         if remedy_entry.get("name_is_owner_supplied"):
             if not check_typed_name(new_name).ok:
                 continue

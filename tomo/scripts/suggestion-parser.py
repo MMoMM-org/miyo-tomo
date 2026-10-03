@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.41.0
+# version: 0.41.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -233,12 +233,14 @@ def _bind_candidate_anchor(
 
 # ── Suggestions wire precedence (ADR-026) ─────────────────────────────────
 # The vault-published _suggestions.json sibling carries the editable review
-# surface. When it was edited — its embedded emit_digest no longer matches a
-# recomputation over the editable payload — the JSON is authoritative for the
-# fields it carries (per-note MOC selection/anchors, proposed-MOC
-# rename/reparent/decision) and is applied as an override on top of the
-# markdown parse. Unchanged / absent / unparseable / unknown-version ⇒ the
-# markdown path is used byte-for-byte (Tomo never assumes Hashi is installed).
+# surface. Edited — its embedded emit_digest no longer matches a recomputation
+# over the editable payload — means the wire is the SOLE source: build_from_wire
+# rebuilds the ENTIRE output and the markdown is never read. There is no
+# per-field merge; the digest answers only "edited at all", never "which
+# fields". Unchanged / absent / unparseable / non-current-version ⇒ the markdown
+# path is used byte-for-byte (Tomo never assumes Hashi is installed). The
+# companion flow needs BOTH wires edited; one edited wire falls back to the
+# markdown merge and is discarded.
 
 def load_changed_wire(path: str | None) -> dict | None:
     """Return the wire payload iff present, parseable, the CURRENT schema

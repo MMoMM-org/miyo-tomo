@@ -2148,3 +2148,54 @@ So the honest shape is probably **not** a direct-edit skill but a prose front en
 existing loop: parse the request, apply it to the document, re-run `--pass2 --force`,
 and report what changed. That reuses every guard already built instead of adding a
 second write path into reviewed artifacts.
+
+---
+
+## A saved editor run is discarded when its sibling fan document was not also saved
+
+**Found 2026-10-03 while writing spec 038's T5.1 documentation, not by a failing test.**
+Recorded rather than fixed: it is a pre-existing ADR-026 property, older than spec 038,
+and nothing in 038's scope created or worsened it.
+
+**The shape.** `suggestion-parser.py`'s companion branch grants JSON authority only when
+**both** wires are edited:
+
+```
+if _p is not None and _f is not None:   → JSON-only merge from the two wires
+if _p is not None or _f is not None:    → warning, then the MARKDOWN merge
+```
+
+The `or` branch emits `warning: companion has only ONE edited wire — falling back to the
+markdown merge (mixed markdown/JSON authority is not supported)` and then falls through
+to the markdown parse. **The edited wire is discarded in full.** The comment is honest
+about the choice — mixed authority really is not supported, and merging one edited wire
+against a stale sibling would be worse — but the owner-visible outcome is that a run they
+saved in the editor is silently overridden by the markdown.
+
+**Why it is owner-reachable rather than theoretical.** The companion flow is force-atomic
+resolution, and `synthesis-conductor.md` threads `--fan-resolve-json` only "when BOTH the
+suggestions entry AND the `approved_fan[0]` entry carry `wire_cache_path`". `approved_fan[0]`
+is a document the owner **approved**, like any other suggestions document. So the reachable
+sequence is ordinary: a run fans out, the owner approves both documents, opens the primary
+in the editor, saves, and does not open the fan one.
+
+**Why the suite cannot see it.** The fallback is correct behaviour by its own contract, so
+there is nothing for a test to call wrong. The loss is in what the owner expected, not in
+what the code promised, and no assertion in the repo encodes the expectation.
+
+**Why it is not obviously cheap to fix.** The three candidate fixes each cost something:
+
+- **Refuse the run** rather than silently falling back. Loud and safe, but it blocks a run
+  on a condition the owner cannot see from inside the editor, and the editor has no way to
+  tell them which sibling is missing.
+- **Merge the one edited wire against the other's markdown.** This is exactly the mixed
+  authority ADR-026 rules out, and the ruling is sound: a stale sibling's values would be
+  applied as if current.
+- **Have the editor save both.** The right answer and the only one that removes the
+  condition — but it is Hashi's change, not Tomo's, and it depends on the editor knowing a
+  run has a fan sibling at all.
+
+**What was done instead**, and why it is enough for now: spec 038's T5.1 documents the
+condition in `docs/usage.md` in one owner-facing sentence, so the sequence above is
+recognisable before it costs anyone work. The warning is already on stderr, which Pass 2's
+shell report surfaces.

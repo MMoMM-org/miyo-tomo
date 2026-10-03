@@ -184,6 +184,58 @@ field that reaches the output JSON. Any new field on `result` that is omitted fr
 the projection is silently dropped. `audio_peer` was added to both `result` defaults
 and the projection to ensure it survives to `instruction-render.py` as intended.
 
+## Wire precedence is whole-document, never per-field (ADR-026)
+
+WHY this section exists at all: until 2026-10-03 the runtime file carried a section
+comment above `load_changed_wire` saying the opposite — that the JSON is "authoritative
+for the fields it carries … and is applied as an override on top of the markdown parse."
+That describes a pre-ADR-026 override model which the code does not implement, and it sat
+roughly 2400 lines above the branch that does. It was not harmless: while writing spec
+038's user documentation (T5.1) the implementer produced the sentence *"the editor's
+values are what Pass 2 uses for anything you changed there — not the markdown"*, which
+reads as a paraphrase of that stale comment, and spec compliance caught it as a FAIL.
+A wrong comment in a runtime file propagated into shipped owner-facing prose in one step.
+The comment was corrected rather than deleted, and the model it got wrong is recorded
+here so the next reader has somewhere authoritative to check.
+
+WHY whole-document rather than per-field: the gate is a digest, not a field diff.
+`load_changed_wire` compares a recomputation over the editable payload against the
+embedded `emit_digest` and can therefore answer exactly one question — *was this edited
+at all* — never *which fields were edited*. There is no per-field provenance on the wire
+to merge against, so "override the touched fields" is not a thing the data supports.
+Given that, the design takes the only other coherent option: the edited wire becomes the
+sole source and `build_from_wire` rebuilds everything. The call site says it outright —
+"the SOLE authoritative source … No mixing" — and the control flow enforces it, because
+the branch `return`s before the split-and-parse block that reads the markdown ever runs.
+
+WHY the owner-visible consequence is worth stating plainly: save a run in the editor, then
+edit that same run's markdown, and the markdown edits are discarded in full — including
+decisions never touched in the editor. That is not a defect of this design, it is its
+cost, and it is the reason `docs/usage.md` carries a "Two surfaces, one rule" callout
+rather than leaving the rule to be inferred. PRD/S1 of spec 038 exists for this.
+
+WHY the companion flow needs BOTH wires edited, and what happens when only one is:
+`main`'s companion branch grants JSON authority only on `_p is not None and _f is not
+None`. On `or` it emits `warning: companion has only ONE edited wire — falling back to the
+markdown merge (mixed markdown/JSON authority is not supported)` and falls through to the
+markdown, discarding the edited wire. This is the same no-mixing ruling applied one level
+up: merging one edited wire against a stale sibling would apply the sibling's old values
+as if current, which is worse than ignoring the edit. The owner-facing cost — a run they
+saved in the editor being overridden by the markdown — is reachable through ordinary use,
+since the fan document is one the owner approves like any other. Recorded in
+`docs/XDD/backlog.md` under "A saved editor run is discarded when its sibling fan document
+was not also saved", with the three candidate fixes and why each costs something.
+
+WHY the fallback cases are deliberately indistinguishable to the caller: `load_changed_wire`
+returns `None` for four different situations — no path given, unparseable JSON, a
+`schema_version` that is not the current schema's, and a digest that still matches. All
+four mean the same thing operationally ("use the markdown"), and collapsing them into one
+return value is what lets the caller stay a single `if`. The distinctions are not lost,
+they are reported on stderr, each with its own line. This matters for tests: a hand-built
+fixture that hardcodes a version drifts the moment the schema moves and silently takes the
+markdown path, which is why convergence tests build wires through `build_wire_payload` and
+assert the positive stderr line rather than trusting the absence of a failure.
+
 ## Companion merge from two wires — build_from_wire_companion (ADR-026)
 
 WHY the companion merge got a JSON-only path (parser v0.24.0): the markdown companion

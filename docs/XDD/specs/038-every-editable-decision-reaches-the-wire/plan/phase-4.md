@@ -833,6 +833,26 @@ surface, landing into an already-guarded path.
   - the full elaboration of the `collision` / `no_basename` divergence, including
     the `claimed`-map mechanics and that they predate T4.3.
 
+  **`docs/tomo/scripts/instruction-render.md` also owes a T4.5 section — it has
+  none, and the renamed test file's own docstring already points at it as the home
+  of `sync_notice_relay_file`'s full rationale.** Code quality named one paragraph
+  to lift there (2026-10-03): `TestSharedCodePathUnderMutation`'s explanation of
+  why the mutation patches each call site's `__globals__` rather than
+  `monkeypatch.setattr(lib.render_md, …)` — **`from X import Y` binds a reference
+  into the importing module's own namespace while `import X` resolves through
+  `sys.modules`, and the two can diverge.** That is generalisable Python semantics,
+  not a fact about this test, and it is the reason the earlier form could silently
+  miss the document surface. Ask the T4.5 implementer which half a reader of the
+  test still needs in front of them before moving all of it — they wrote it and
+  that judgement is theirs.
+
+  That file also owes: the relay's **one source, two surfaces** rule and why the
+  extraction was a precondition rather than a tidy-up; the four-column table from
+  step 4b, because it is the standing reason the mutation test must never be
+  deleted as redundant; and the unattributed flake from step 4c with its ruled-out
+  list, so the next person to see it starts where this one stopped rather than
+  re-deriving it.
+
   Two things belong in that file that are **not** in the docstring at all, and both
   are measured: that the owner is *told* about a withheld move in the document
   ("Attachments still in the inbox") while the staged note's body has already been

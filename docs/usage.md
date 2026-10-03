@@ -46,11 +46,15 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 > **Two surfaces, one rule.** You can review and edit a run two ways: directly
 > in the suggestions document, or in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s
 > structured Suggestions Editor. Both work on the same run. Once you've saved
-> that run in the editor, the editor's values are what Pass 2 uses for
-> anything you changed there — not the markdown. If you haven't opened the
-> editor for a run, the suggestions document is what counts, which is why
-> editing it directly and running `/inbox --pass2 --force` works the way the
-> rest of this page describes.
+> that run in the editor, the editor's values are what Pass 2 uses for the
+> whole run — not the markdown, even for fields you left untouched in the
+> editor. Don't go back and edit the markdown for that run afterwards; the
+> edit is dropped, not merged in. If a run produced a second suggestions
+> document, Tomo needs both saved in the editor — otherwise it uses the
+> markdown for the whole run instead, and Pass 2 says so when that happens.
+> If you haven't opened the editor for a run at all, the suggestions document
+> is what counts, which is why editing it directly and running `/inbox
+> --pass2 --force` works the way the rest of this page describes.
 
 `/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
 
@@ -80,7 +84,7 @@ that files the attachment successfully in every case:
   one. If Pass 1 couldn't find a free name at all, the backticks start out
   **empty** — type a name there yourself. (You can type it in Tomo Hashi's
   Suggestions Editor instead of the markdown, too — see "Two surfaces, one
-  rule" above for which one wins if you use both.)
+  rule" above: edit both for this run and the markdown version is dropped.)
 - **Keep in inbox** — leaves the file where it is. The note is still filed; only
   the file stays behind.
 - **Ignore** — sends the move anyway. It will be refused unless you free the

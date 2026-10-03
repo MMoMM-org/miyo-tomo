@@ -1647,7 +1647,7 @@ parser's detection of the state, letting a ticked-but-impossible rename
 resolve to `remedy: rename` with `proposed_name: null` (the Rule 6
 violation the owner decision of 2026-09-23 exists to prevent). Extracted
 the marker to `lib/attachment_conflict_states.RENAME_IMPOSSIBLE_MARKER`;
-this renderer now builds the line as `f"- [ ] Rename — {
+this renderer built the line as `f"- [ ] Rename — {
 RENAME_IMPOSSIBLE_MARKER}"` instead of the bare string. Rendered output is
 unchanged — this is a refactor of where the string lives, not of what the
 owner reads, pinned by the unchanged golden file and the unchanged
@@ -1741,3 +1741,43 @@ statement, not a changed meaning, so no acceptance criterion moved. It stays
 subject to the same no-executor-internals, digit-free guard as the other two
 sentences, and changes no remedy or default — `same_file` still governs one
 sentence only (SDD/Complex Logic), unchanged by this wording edit.
+
+## The Rename-Impossible Line Offers a Place to Type (spec 038 T4.1)
+
+`# version: 1.59.0`. The `proposed_name is null` branch of
+`render_attachment_conflicts_block` previously rendered
+`f"- [ ] Rename — {RENAME_IMPOSSIBLE_MARKER}"` — a statement with nowhere to
+answer it. The owner was told no free name was available and given no field in
+which to supply one, so the only reachable outcomes were *keep in inbox* or the
+Rule-6-forbidden rename-without-a-name. The line is now:
+
+```python
+lines.append(f"- [ ] Rename to `` — {RENAME_IMPOSSIBLE_MARKER}")
+```
+
+An empty backtick pair between "Rename to" and the marker, matching the shape
+the `rename` branch one line above already renders, so the owner types into the
+same place on both branches.
+
+The empty pair is load-bearing on the parser side and not merely cosmetic.
+`_walk_attachment_conflicts` extracts the backtick text as `rename_target`, and
+T4.2 then decides the name from it; without a pair there is nothing to extract
+and the typed name has no route into Pass 2 at all. The two halves had to ship
+in this order, and T4.2 narrowed the `rename_impossible` override so that it
+turns on the absence of a NAME rather than the presence of the marker — without
+that narrowing, a name typed into the new backticks would still have been
+discarded, which is why T4.1 ahead of T4.2 was an interval with a box that did
+not work rather than a half-feature.
+
+**Supersedes the "Fifth correction" paragraph under
+`render_attachment_conflicts_block` above**, which quoted the pre-T4.1 literal
+in the present tense ("this renderer now builds the line as …"). That paragraph
+is a fix/037 history entry and still describes correctly where the marker
+constant lives and why it was extracted; only its tense was wrong, and it has
+been moved to the past. The claim was plainly false rather than narrower than it
+looked — the literal it quoted no longer exists in the file — so it was
+corrected rather than split. Found by T4.1's review sweep (2026-10-02),
+corrected in T4.4 (2026-10-03). It is worth knowing *how* it survived the sweep
+that found it: the literal is **wrapped across a line break** mid-string, so a
+grep for the one-line form returns nothing and a reader sweeping that way
+concludes it is already fixed. Grep the constant name, or `now builds`.

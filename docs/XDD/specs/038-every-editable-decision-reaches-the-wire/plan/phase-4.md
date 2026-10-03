@@ -819,7 +819,7 @@ surface, landing into an already-guarded path.
      `/inbox --pass2 --force` already does it. Recorded in
      `docs/XDD/backlog.md`; do not build it here.
 
-- [ ] **T4.4 Phase validation — the two paths converge** `[activity: validate]`
+- [x] **T4.4 Phase validation — the two paths converge** `[activity: validate]`
 
   **Run this task LAST in the phase — after T4.5**, regardless of the numbering.
 

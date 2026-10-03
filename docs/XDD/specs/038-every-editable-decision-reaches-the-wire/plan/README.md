@@ -189,7 +189,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor:
 - [x] [Phase 1: The inventory, and what it reveals](phase-1.md)
 - [x] [Phase 2: The wire carries the decision](phase-2.md)
 - [x] [Phase 3: Refusal, before anything can be typed](phase-3.md)
-- [ ] [Phase 4: The name becomes a value](phase-4.md)
+- [x] [Phase 4: The name becomes a value](phase-4.md)
 - [ ] [Phase 5: Integration, the live path, and one handoff](phase-5.md)
 
 ### Why this order, and one thing it deliberately inverts

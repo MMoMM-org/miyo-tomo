@@ -919,8 +919,8 @@ falling back to it.
 ## An Impossible Rename Resolves to `ignore`, Not `keep_in_inbox` (spec 037 T2.4, v0.40.0)
 
 WHY `_resolve_attachment_remedy` treats a ticked-but-impossible rename (the
-"Rename — no free name available" line, rendered when `proposed_name` is
-`null`) as `ignore` rather than falling back to the safe-looking
+rename line carrying `RENAME_IMPOSSIBLE_MARKER`, rendered when
+`proposed_name` is `null`) as `ignore` rather than falling back to the safe-looking
 `keep_in_inbox`, even though `keep_in_inbox` is what the SAME line ships
 pre-ticked with by `render_attachment_conflicts_block` (SDD ADR-4 exception):
 
@@ -1163,3 +1163,178 @@ over `kind`'s reader-less presence in `instructions.json`
 precedent for taking that question seriously rather than adding fields
 speculatively. The difference between the two cases is that `kind` had become
 non-derivable and this flag is not on the wire at all.
+
+## The Name Comes From the Markdown Now, Not From the Document (spec 038 T4.2, v0.41.0)
+
+WHY `_join_attachment_conflict_remedies` stopped reading `proposed_name` out of
+`doc["attachment_conflicts"]` and reads the rendered rename line instead.
+
+Until this task the markdown accepted the owner's keystrokes and dropped them.
+`parse_attachment_conflict_remedies` parsed the ticks and nothing else; the name
+came from the structured document by `source`, so a name typed into the rename
+line changed nothing about where the attachment was filed. That is the defect
+spec 038 exists to close, and `tests/test_037_typed_rename_target_is_ignored.py`
+pinned it as a strict xfail until T4.2 removed it.
+
+`rename_target` — the rename line's backtick text — now rides on the record
+`parse_attachment_conflict_remedies` yields, and the join decides the name from
+it. The document's record is still read, but for its `destination` and for the
+comparison below, never as the answer. The former `{source: proposed_name}`
+lookup is **gone rather than kept as a fallback**: a stale document must not win
+over the owner's keystrokes, and a fallback is exactly the shape in which it
+would (SDD/Implementation Gotchas).
+
+`rename_target` is consumed inside the join and does not reach this script's JSON
+output, whose remedy records keep the `{source, remedy, proposed_name,
+name_is_owner_supplied}` shape the wire path also yields. One shape, two
+producers — which is what makes T4.4's convergence criterion expressible at all.
+
+### WHY the Renderer's Own Folder Join Is Un-Rendered First
+
+The markdown shows a PATH where the document carries a BARE NAME.
+`render_attachment_conflicts_block` writes
+`_asset_dest_join(asset_folder, proposed_name)` into the backticks, so the
+natural owner edit — retype the filename, leave the folder alone — arrives here
+with a separator in it, and T3.1 refuses separators. So the join is undone before
+the remainder is judged: the folder is recovered from the record's own
+`destination` (itself `_asset_dest_join(asset_folder, source)`, so it carries the
+same normalised prefix) and stripped from the extracted text on an **exact prefix
+match only**. Owner ruling 2026-10-02.
+
+**This is not sanitising and it leaves ADR-5 intact.** What is removed is the
+join this program printed, not owner input. A folder the owner typed themselves
+does not match the prefix, so it is still refused `separator_present`. State this
+plainly, because a reader comparing F3-AC1 ("a typed name carrying a separator is
+refused") against the code will otherwise read the strip as a contradiction:
+F3-AC1 keeps its teeth, and the only separator that stops being refused is one
+this program wrote.
+
+An exact prefix match rather than `rsplit("/", 1)[-1]` is the load-bearing
+choice, and the case that rules out the `basename()` form is a *different* folder
+typed into the line — `Archive/karte-dresden-1938.png`. A `basename()` would
+accept it by silently discarding the folder the owner typed, which is the ADR-5
+rewrite this spec exists to prevent. The two bare-name rows (folder left in
+place, folder deleted too) pass under either implementation, so they establish
+only that the output must be a bare name, never how it may become one. A reader
+who takes them as sufficient evidence will also take them as sufficient coverage
+and drop the row doing the real work.
+
+### WHY `name_is_owner_supplied` Became a Comparison, and What It Compares
+
+It is no longer a constant on this path: `proposed_name != doc_name`, where
+`proposed_name` is the **post-strip** remainder and `doc_name` the document's
+bare name. That is comparing like with like — on an untouched default the two are
+equal, the flag is `False`, and the name is byte-identical to the pre-T4.2
+answer, which is the regression floor this task had to hold.
+
+Comparing the **pre-strip** extracted text against the bare name instead — the
+form this task's brief originally specified — fails twice over, and measured
+2026-10-02: every untouched default looks owner-supplied, *and* the guard is
+handed the full rendered path, so it refuses `separator_present`. That is the
+exact outcome the flag exists to prevent. The two failures are distinguishable
+and a draft of the test's own docstring credited the wrong one to the wrong
+mutation, which is why the test asserts the whole record rather than the flag.
+
+Two cases keep the pre-T4.2 answer — the document's name, flag `False`:
+
+- **the markdown named nothing** (`rename_target is None`): no rename line at
+  all, or the narrowed `rename_impossible` override fired. Nothing was typed, so
+  there is nothing to honour and nothing to check.
+- **a `source` in the markdown that the document does not carry** (a hand-edited
+  or stale document) joins to `proposed_name: None` rather than raising, exactly
+  as in 037. Without the record there is no folder to un-render with, so the
+  extracted text cannot be told apart from a typed one, and degrading to the
+  documented "a rename that lost its name" route is honest where guessing is not.
+
+Everything else is the owner's and is carried verbatim, blank included.
+
+### WHY the `rename_impossible` Override Turns on the Absence of a Name
+
+T4.1 gave the impossible-rename line an empty backtick pair to type into, which
+means the marker can now sit on a line that also carries a name. The override
+therefore turns on the **absence of a name**, not on the presence of the marker,
+and it is settled BEFORE the typed-name guard can see the line. Owner ruling
+2026-10-02.
+
+Both halves of that ordering matter, in opposite directions:
+
+- Keep the old `marker in label` test and a name typed into T4.1's new backticks
+  is discarded and the entry resolves to `ignore` — T4.1 ships a box that does
+  nothing.
+- Drop the override entirely and an *untouched* empty backtick pair is reported
+  as an owner-supplied blank name, so T3.4 renders a refusal bullet for a name
+  nobody typed.
+
+An emptied set of backticks on an **ordinary** conflict (no marker) is a
+different state and must not resolve alike: it yields `""` with the flag `True`
+— **not** `rename` with a null name, which is the destination-less move Rule 6
+forbids. `check_typed_name("")` verdicts that `blank`.
+
+What Pass 2 reports for it today is not the refusal, and the distinction was
+measured 2026-10-02: `_build_move_asset_actions` degrades a `rename` with any
+falsy `proposed_name` to keep-in-inbox **before** `name_is_owner_supplied` is
+consulted, so the owner reads the `vault_collision_held` sentence rather than a
+refusal. Both withhold the move; only the wording differs, and that ordering
+belongs to `render_actions.py` (Phase 3's T3.2), not here.
+
+### Supersedes the Markdown Half of "One Flag, Two Producers" Above
+
+The spec 038 T3.2 entry above describes `name_is_owner_supplied` as a constant in
+both producers, `False` on the markdown path "as a statement of fact rather than
+a default", because no owner keystroke could reach the name. That was true when
+it was written and T4.2 ended it: a keystroke now reaches the name, and the flag
+on this path is computed. The entry is otherwise still current — the wire half is
+unchanged, and its "WHY the Wire Path Cannot Just Compare Against the Doc's
+Computed Name" subsection names T4.2 as the place the comparison belongs and is
+the reason the comparison landed here rather than there. Read it as the
+provenance argument and this section as the markdown half's current answer; its
+title is the stale part.
+
+## The Two Paths Converge, and Where They Deliberately Do Not (spec 038 T4.4)
+
+WHY the phase closes with one test that drives the SAME decision down both paths
+— `tests/test_038_t4_4_the_two_paths_converge.py` — rather than with per-path
+tests on each side of the join.
+
+Each path had tests. What neither side could show is that they agree, and
+agreement is the whole of F1's and F2's shared criterion: one decision, one
+`move_asset` destination, whichever surface the owner edited. The test runs this
+script's `main` twice over the same document — once with no wire, once with an
+edited one — and drives each run's own `attachment_conflict_remedies` through
+`_build_move_asset_actions`, so a divergence is asserted where the owner would
+see it rather than on an intermediate record.
+
+**That test can pass while proving nothing, and the reason is worth keeping.**
+ADR-026's gate returns the wire only when it was edited, so a test that publishes
+a wire without staling its `emit_digest` runs the markdown path twice and passes
+— asserting convergence while exercising one path, with nothing about it looking
+wrong. There are three routes into that state, not one: a matching digest,
+unparseable JSON, and a `schema_version` that is not the schema's current one.
+The third is the one a fixture is most likely to hit, because the accepted version
+is read from the schema itself and never from a literal, so a hand-built wire
+drifts the moment the schema moves — and this spec moved it. Hence two
+construction rules that read as fussy and are not: build the wire through
+`build_wire_payload`, and assert the positive stderr line
+(`suggestions-json: edited wire is authoritative (JSON-only path)`), which closes
+all three routes at once. The digest is staled by ticking a candidate MOC —
+orthogonal to the decision under test, because staling it with the remedy itself
+would mean the two paths no longer carry the same decision.
+
+**The convergence is about guard-passing names, and the one exception is
+deliberate.** Because the wire claims `name_is_owner_supplied: True`
+unconditionally and the markdown computes it, an untouched **computed** name is
+run through `check_typed_name` on the wire and not on the markdown. For any name
+that passes the guard the destinations are identical. For a computed name the
+vault forbids but macOS permits — `foo*bar (2).png` is a real one, since
+`_propose_asset_name` sanitises nothing — the wire refuses it
+`forbidden_character` and the markdown files it. ADR-5 confines rejection to
+names an owner could have typed, so refusing it on the markdown path would refuse
+a name Pass 1 itself generated, which F3's ninth acceptance criterion forbids.
+
+That asymmetry is recorded in T3.2 and in the deviations row of 2026-10-02 and is
+**pinned as its own test case** rather than fixed, so the next reader finds it
+documented instead of discovering it as a failure. It is pinned as whole records
+on both sides — the wire's `skipped_assets` entry in full, the markdown's
+`move_asset` in full — because "the wire refuses and the markdown permits" would
+also pass on an implementation that diverged for the wrong reason, or on a broken
+one.

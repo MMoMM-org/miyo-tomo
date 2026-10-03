@@ -315,9 +315,21 @@ class TestSharedCodePathUnderMutation:
     calling the function and T4.5's design is absent while its tests are
     green.
 
-    The mutation goes through each call site's own `__globals__` — see the test
-    body for why a module-attribute patch can miss a surface silently, which is
-    this spec's own defect class appearing inside the guard against it.
+    **DO NOT DELETE THIS TEST AS REDUNDANT.** What it uniquely catches is a
+    relay that re-derives its line by COPY-PASTING the notice function's body,
+    so both surfaces emit **byte-identical** strings today and drift only when
+    one copy is later edited. Every test that compares the two surfaces is
+    blind to that, because the two surfaces genuinely agree — measured, and
+    the copy-paste variant kills only this test (`1 failed, 7 passed`). A
+    duplicate that differs by one character is the easy case and the
+    comparison tests do catch it, which is why this test looks redundant until
+    the realistic regression is the one you run. Comparing two surfaces proves
+    they agree; only mutating their shared source proves they cannot disagree.
+
+    The mutation goes through each call site's own `__globals__`. See
+    `docs/tomo/scripts/instruction-render.md`, "Why the Mutation Patches
+    `__globals__`", for the Python semantics that make a module-attribute
+    patch able to miss a surface silently.
     """
 
     def test_mutating_the_notice_function_moves_both_surfaces(
@@ -329,25 +341,19 @@ class TestSharedCodePathUnderMutation:
         itself, and T4.5's design is absent while its other tests are green.
 
         The mutation is applied to the GLOBALS OF THE TWO FUNCTIONS THAT
-        CONTAIN THE CALL SITES, never to a module reached by `import`. Two
-        patches because `instruction-render.py` does `from lib.render_md import
-        _render_skipped_asset_notice`, binding the function object into its own
-        globals at import: the document's call lives inside
+        CONTAIN THE CALL SITES, never to a module reached by `import`. **Two
+        patches because there are two bindings of one function** — do not
+        delete either as belt-and-braces: the document's call lives inside
         `render_instructions_md`, whose `__globals__` is the defining module's
         dict, and the relay's call lives inside `main`, whose `__globals__` is
-        `instruction-render.py`'s own dict. One function, two bindings.
+        `instruction-render.py`'s own dict, because that script does
+        `from lib.render_md import _render_skipped_asset_notice`.
 
-        Why `__globals__` and not `monkeypatch.setattr(lib.render_md, …)`: a
-        name lookup at call time resolves through the *calling function's* own
-        globals, and `import lib.render_md` returns whatever `sys.modules` holds
-        at that moment — not necessarily the module object the renderer was
-        defined in. Measured 2026-10-03 in isolation: with a second copy of
-        `lib/render_md.py` live under the same key, the module-attribute patch
-        left the document surface rendering real sentences while this test still
-        passed its other assertions — a guard against a silent code path that
-        was itself able to pass silently. Patching the globals of the function
-        that owns the call site cannot miss, because that dict IS the namespace
-        the call resolves through.
+        A patch on each call site's own globals cannot miss, because that dict
+        IS the namespace the call resolves through; a
+        `monkeypatch.setattr(lib.render_md, …)` can — see
+        `docs/tomo/scripts/instruction-render.md`, "Why the Mutation Patches
+        `__globals__`", for why, and for the measurement.
 
         Patching both does not weaken the claim. A relay that built its own
         f-string would emit real sentences under this patch and fail the

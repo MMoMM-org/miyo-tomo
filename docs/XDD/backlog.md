@@ -2055,9 +2055,14 @@ rewritten*, so the owner has a reason to look that the document does not give th
 
 ## OPEN — a run-local destination collision offers no name to type
 
-Owner question 2026-10-03: *"ODER Tomo anweisen die Datei auf XYZ umzubenennen, das
-sollte doch auch gehen oder?"* — in principle yes, and spec 038's T4.1/T4.2 built
-exactly that mechanism. This case cannot reach it.
+**Attribution corrected 2026-10-03: this entry is MY finding, not the owner's
+request.** I read their *"ODER Tomo anweisen die Datei auf XYZ umzubenennen"* as a
+request for a rename box on this case. They meant something else — instructing Tomo
+in prose to fix the **already-generated** files — which is the entry below. The gap
+described here is real and measured, but nobody asked for it; weigh it accordingly.
+
+Measured while answering that question. Spec 038's T4.1/T4.2 built a typable rename
+line. This case cannot reach it.
 
 Measured 2026-10-03: two inbox attachments sharing a basename, destination **free** in
 the vault.
@@ -2105,3 +2110,41 @@ piece — render, parse, guard, refuse, move — already handles it.
 The third question is the interesting one: if the reducer proposes a free name for the
 second claimant, the collision stops being a withheld move and becomes an ordinary
 rename the owner can accept or overtype.
+
+## NICE TO HAVE — tell Tomo in prose to fix the already-generated files
+
+Owner, 2026-10-03, stated with its own priority: *"mit 'Tomo sagen er soll die Datei
+umbenennen' meinte ich die Anweisung das Problem in den erstellten Dateien zu fixen …
+also so etwas wie 'Bitte nenne die Zieldatei für den Anhang der Notiz test in
+Karte2.jpg um' und Tomo geht dann hin und ändert entsprechend die bereits erzeugten
+Dateien."*
+
+**Explicitly NOT a must-have, in the owner's own words**, and for a reason that is
+already true today: *"immerhin kann der user ja die instructions.md Datei editieren und
+pass2 mit force neu ausführen."* The edit-and-re-run loop covers the same ground, and
+T4.5 is making the shell tell the owner when to start it.
+
+What this would add on top is a conversational entry point to the **same** correction:
+instead of opening the document, finding the entry and editing the backtick content,
+the owner says what they want changed and Tomo performs the edit on the artifacts Pass 2
+has already produced — the instruction document and, where affected, the staged rendered
+notes.
+
+**Why it is not obviously cheap**, and worth noting before anyone scopes it as a small
+skill addition:
+
+- The correction has to land in the **document**, not in the staged notes alone, or the
+  next `--pass2 --force` re-derives the old value and silently undoes it. That makes it
+  an edit to the artifact the owner reviews, which is the one place this project is
+  deliberately conservative about writing.
+- A staged rendered note's embed was computed from the old name, so a rename after the
+  fact means re-running the embed rewrite for that note — the function T4.3 just gated.
+  Doing it piecemeal re-creates the report-versus-body inconsistency recorded above.
+- Resolving *"the attachment of note test"* to one `source` path is a lookup the owner
+  will expect to be forgiving (note title, partial filename) and the artifacts are keyed
+  by resolved inbox path.
+
+So the honest shape is probably **not** a direct-edit skill but a prose front end to the
+existing loop: parse the request, apply it to the document, re-run `--pass2 --force`,
+and report what changed. That reuses every guard already built instead of adding a
+second write path into reviewed artifacts.

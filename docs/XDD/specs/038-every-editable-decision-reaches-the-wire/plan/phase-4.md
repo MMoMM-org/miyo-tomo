@@ -572,7 +572,67 @@ surface, landing into an already-guarded path.
            already does for a computed name `[ref: PRD/F2]`
      - [ ] The ordering mutation turns the test red, demonstrated
 
+- [ ] **T4.5 A withheld attachment reaches the shell** `[activity: backend-api]`
+
+  Owner direction 2026-10-03, and it closes the reopened half of `[ref: PRD/C1]`.
+  **Execution order: this task runs BEFORE T4.4**, which validates the phase.
+
+  1. Prime: read spec 036's withheld-delete relay end to end, because this task
+     re-applies it rather than inventing anything. The writer emits
+     `tomo-tmp/withheld-deletes.md` — one pre-sanitised, user-facing line per
+     withheld delete, and **nothing else**: no run id, no header, no internals.
+     `tomo/dot_claude/agents/synthesis-conductor.md`'s **Step 4 — Report** `cat`s
+     it and appends its lines **verbatim**, only when the file exists, and is
+     explicitly forbidden from substituting the raw stderr block or the JSON.
+     Read why it is built that way: the sanitising lives in a script, where it is
+     testable, instead of asking the LLM to summarise internals.
+
+     Then measure the gap. Step 4's report lists the doc count, the coverage
+     audit, drift warnings and withheld deletes. **Skipped assets are absent**,
+     and a skip is not an error — `instruction-render.py` exits 0, which Step 3b
+     treats as plain success. Measured 2026-10-03.
+  2. Test: a run with at least one withheld attachment writes a relay file whose
+     lines name each withheld attachment; a run with none writes **no file at
+     all** (the delete relay's contract — Step 4 keys on existence, so an empty
+     file would print an empty section). Cover every `kind` that withholds a
+     move: `typed_name_refused`, `vault_collision_held`, `collision`,
+     `no_basename`. Assert whole lines.
+  3. Implement: write the relay beside the instruction document, from the same
+     `skipped_assets` the document renders from — **one source, two surfaces**,
+     so the shell cannot disagree with the document. Then add the `cat` and the
+     relay instruction to Step 4, alongside the delete relay.
+
+     **One line per withheld attachment, never a count** `[ref: PRD/C1]`. The
+     no-count ruling is argued twice in `render_md.py` and T3.4's undercount is
+     the evidence; the line-per-item shape satisfies C1's intent without
+     re-opening it.
+
+     Each line must say what was withheld, which attachment, and what the owner
+     can do — the document's per-`kind` remedy sentences already exist and are
+     owner-reviewed, so reuse them rather than writing new prose. Do **not** put
+     a path the owner cannot act on, a `kind` token, or a refusal code in the
+     line: those are internals, and the delete relay's contract excludes them.
+  4. Validate: full suite; and confirm by reading `synthesis-conductor.md` that
+     the new instruction cannot be satisfied by summarising stderr — the delete
+     relay needed an explicit prohibition to stop exactly that.
+  5. Success:
+     - [ ] A withheld attachment appears in the shell report, named `[ref: PRD/C1]`
+     - [ ] A run with no withheld attachment writes no relay file and adds no
+           section to the report
+     - [ ] The shell lines and the document's bullets come from the same
+           `skipped_assets`, so they cannot disagree
+     - [ ] No count is introduced anywhere `[ref: PRD/C1]`
+
+  6. **Not in this task.** The owner's related idea — telling Tomo in prose
+     *"rename the target file for note X's attachment to Karte2.jpg"* and having
+     it edit the **already-generated** files — is explicitly **not a must-have**
+     (owner, 2026-10-03), because editing `instructions.md` and re-running
+     `/inbox --pass2 --force` already does it. Recorded in
+     `docs/XDD/backlog.md`; do not build it here.
+
 - [ ] **T4.4 Phase validation — the two paths converge** `[activity: validate]`
+
+  **Run this task LAST in the phase — after T4.5**, regardless of the numbering.
 
   - The load-bearing test of this phase and Phase 2 together: drive the **same**
     decision through the markdown path and through the wire path and assert the

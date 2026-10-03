@@ -577,7 +577,7 @@ surface, landing into an already-guarded path.
            then ignored. That proves the gate runs **in time**, not merely that it
            runs. 4 of 8 tests die; the 29 pre-existing cases are blind to it.
 
-- [ ] **T4.5 A withheld attachment reaches the shell** `[activity: backend-api]`
+- [x] **T4.5 A withheld attachment reaches the shell** `[activity: backend-api]`
 
   Owner direction 2026-10-03, and it closes the reopened half of `[ref: PRD/C1]`.
   **Execution order: this task runs BEFORE T4.4**, which validates the phase.
@@ -783,18 +783,33 @@ surface, landing into an already-guarded path.
 
      If it returns: make it deterministic, or quarantine it **loudly**. Do not
      delete it on the theory that the other tests cover it — per 4b they do not.
+
+     **Hunt outcome: not reproduced in 17+ clean full-suite runs, cause
+     unattributed** (2026-10-03). Nine of those ran against the **un-hardened**
+     form at `b8dbe35` with a diagnostic probe armed — the only configuration that
+     could still exhibit a patch-miss — and the probe never printed. Total was 4517
+     every run. One detail argues against the last surviving hypothesis rather
+     than for it: the worktree runs varied **more** in which tests executed (4–7
+     skips, against 4–5 in the main tree, the network-dependent wire-parity tests
+     being less reliable there) and still produced no reproduction. So "which
+     tests ran differed between runs" is weaker as an explanation after the hunt
+     than before it.
   5. Success:
-     - [ ] A withheld attachment appears in the shell report, named `[ref: PRD/C1]`
-     - [ ] A run with no withheld attachment writes no relay file and adds no
+     - [x] A withheld attachment appears in the shell report, named `[ref: PRD/C1]`
+     - [x] A run with no withheld attachment writes no relay file and adds no
            section to the report
-     - [ ] The shell lines and the document's bullets come from the same
-           `skipped_assets`, so they cannot disagree
-     - [ ] No count is introduced anywhere `[ref: PRD/C1]`
-     - [ ] The document is byte-identical across the extraction, asserted against
-           literals captured BEFORE it, for all four kinds
-     - [ ] A mutation of the shared notice function fails **both** surfaces' tests,
-           demonstrated — this is what proves they share one code path
-     - [ ] A relay file and sidecar left by a previous run are **removed** when the
+     - [x] The shell lines and the document's bullets come from the same
+           `skipped_assets`, so they cannot disagree — one function, called twice
+     - [x] No count is introduced anywhere `[ref: PRD/C1]`
+     - [x] The document is byte-identical across the extraction — the pin was
+           committed in `2deb5d5`, a commit touching **only** a test file, and it
+           passes against pre-extraction source in a detached worktree **and** at
+           `HEAD`. Measured, not asserted.
+     - [x] A mutation of the shared notice function fails **both** surfaces' tests,
+           demonstrated — and the copy-paste variant of it kills **only** the
+           mutation test (`1 failed, 7 passed`), reconstructed independently by
+           spec compliance. See step 4b.
+     - [x] A relay file and sidecar left by a previous run are **removed** when the
            new run has nothing to say
 
   6. **Not in this task.** The owner's related idea — telling Tomo in prose
@@ -842,9 +857,31 @@ surface, landing into an already-guarded path.
   into the importing module's own namespace while `import X` resolves through
   `sys.modules`, and the two can diverge.** That is generalisable Python semantics,
   not a fact about this test, and it is the reason the earlier form could silently
-  miss the document surface. Ask the T4.5 implementer which half a reader of the
-  test still needs in front of them before moving all of it — they wrote it and
-  that judgement is theirs.
+  miss the document surface.
+
+  **Their recommended split, asked for and given (2026-10-03)** — the division is a
+  judgement about what a reader needs mid-debug, when a docs cross-reference will
+  not be followed, so take it as given rather than re-deciding it:
+
+  **Move** (Python semantics, not facts about this test): that `from X import Y`
+  binds the function object into the importing module's namespace while `import X`
+  resolves through `sys.modules`; that a name lookup at call time resolves through
+  the **calling function's** globals; the isolation measurement showing a second
+  live copy under the same key leaves a module-attribute patch rendering real
+  sentences; and the rule to carry away — *when you mutate a function to prove two
+  call sites share it, patch the globals of each containing function, never a
+  module reached by `import`*.
+
+  **Keep in the test docstring**: *what* is patched and *why there are two* (one
+  function, two bindings — without this the two `setitem` calls read as
+  belt-and-braces and someone deletes one); the one-line reason the globals form
+  cannot miss, not its derivation; that patching both does not weaken the claim
+  (an independent relay fails the second assertion, an independent document block
+  the first); and the sentence naming what the test uniquely catches — a
+  **byte-identical copy-pasted** duplicate, which both comparison tests are blind
+  to. That last line is load-bearing: without it the next person to see the test
+  go red reaches for deletion on the same wrong theory its own author nearly
+  argued themselves into.
 
   That file also owes: the relay's **one source, two surfaces** rule and why the
   extraction was a precondition rather than a tidy-up; the four-column table from

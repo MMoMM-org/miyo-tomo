@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.1
+# version: 0.39.2
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -909,6 +909,31 @@ def read_approval_state(
             call_counter[0] += 1
         return _cache_wire_sibling(client, vault_path, cache_dir)
 
+    def _warn_and_drift(vault_path: str, exc: KadoError) -> None:
+        """Warn on stderr and record a `wire_sibling_unreadable` drift
+        indicator for a non-NOT_FOUND KadoError on a wire-sibling read.
+
+        Shared by all four _cache_wire_sibling call sites below: three
+        `continue` out of the per-doc loop iteration, the garden-audit site
+        instead sets `approved = False` and falls through to its own
+        approval check (see that site for why `continue` would be wrong
+        there). A caller that drops this call at one site silently stops
+        warning/recording drift for that site while the other three keep
+        working — see docs/tomo/scripts/inbox-triage.md for the WHY and
+        tests/test_inbox_triage_wire_cache.py / tests/test_inbox_triage.py
+        for the per-site tests this guards.
+        """
+        print(
+            f"[inbox-triage] WARNING: wire sibling read failed for "
+            f"{vault_path}: {exc}",
+            file=sys.stderr,
+        )
+        drift_indicators.append({
+            "path": vault_path,
+            "type": "wire_sibling_unreadable",
+            "detail": str(exc),
+        })
+
     tagged_pending: list[tuple[dict, str]] = []
     for doc in pending_approval_hits:
         doc_type = _get_doc_type(doc)
@@ -976,16 +1001,7 @@ def read_approval_state(
             try:
                 garden_wire_cache = _cache_wire_sibling_counted(vault_path)
             except KadoError as exc:
-                print(
-                    f"[inbox-triage] WARNING: wire sibling read failed for "
-                    f"{vault_path}: {exc}",
-                    file=sys.stderr,
-                )
-                drift_indicators.append({
-                    "path": vault_path,
-                    "type": "wire_sibling_unreadable",
-                    "detail": str(exc),
-                })
+                _warn_and_drift(vault_path, exc)
                 approved = False
             else:
                 approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
@@ -1015,16 +1031,7 @@ def read_approval_state(
                 try:
                     wire_cache = _cache_wire_sibling_counted(vault_path)
                 except KadoError as exc:
-                    print(
-                        f"[inbox-triage] WARNING: wire sibling read failed for "
-                        f"{vault_path}: {exc}",
-                        file=sys.stderr,
-                    )
-                    drift_indicators.append({
-                        "path": vault_path,
-                        "type": "wire_sibling_unreadable",
-                        "detail": str(exc),
-                    })
+                    _warn_and_drift(vault_path, exc)
                     continue
                 edited_wire = None
                 if wire_cache:
@@ -1051,16 +1058,7 @@ def read_approval_state(
                 try:
                     wire_cache = _cache_wire_sibling_counted(vault_path)
                 except KadoError as exc:
-                    print(
-                        f"[inbox-triage] WARNING: wire sibling read failed for "
-                        f"{vault_path}: {exc}",
-                        file=sys.stderr,
-                    )
-                    drift_indicators.append({
-                        "path": vault_path,
-                        "type": "wire_sibling_unreadable",
-                        "detail": str(exc),
-                    })
+                    _warn_and_drift(vault_path, exc)
                     continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
@@ -1138,16 +1136,7 @@ def read_approval_state(
                 try:
                     wire_cache = _cache_wire_sibling_counted(vault_path)
                 except KadoError as exc:
-                    print(
-                        f"[inbox-triage] WARNING: wire sibling read failed for "
-                        f"{vault_path}: {exc}",
-                        file=sys.stderr,
-                    )
-                    drift_indicators.append({
-                        "path": vault_path,
-                        "type": "wire_sibling_unreadable",
-                        "detail": str(exc),
-                    })
+                    _warn_and_drift(vault_path, exc)
                     continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache

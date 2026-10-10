@@ -836,6 +836,123 @@ class TestKadoReadFailureSkipsDoc:
 
 
 # ---------------------------------------------------------------------------
+# Test: wire-sibling KadoError excludes the doc, at the two call sites the
+# wire-cache test file's own fixture never reaches — the `suggestions-fan`
+# branch and the --force-pass2 terminal-approved `suggestions` re-cache.
+# Both go through the shared read_approval_state helper (_warn_and_drift);
+# these drive FakeKadoClient's read_file_errors, the capability its own
+# docstring advertised with no test exercising it before this.
+# ---------------------------------------------------------------------------
+
+class TestWireSiblingErrorExcludesSuggestionsFan:
+    def test_tool_error_excludes_fan_doc_and_warns(self, tmp_path, capsys):
+        """A non-NOT_FOUND KadoError on the suggestions-fan wire sibling must
+        exclude the doc from approved_fan, record a wire_sibling_unreadable
+        drift indicator, and warn on stderr — same contract as the
+        `suggestions` call site, proven independently here because the two
+        call sites are separate `try`/`except` blocks.
+
+        Mutation: drop the `_warn_and_drift(vault_path, exc)` call from the
+        suggestions-fan `except KadoError` block (leaving a bare `continue`).
+        approved_fan stays empty (continue still runs), but drift_indicators
+        goes empty and stderr loses "WARNING" — this test goes red on both
+        of those assertions while the plain suggestions-site test above
+        stays green, proving THIS call site's wiring is what broke.
+        """
+        from lib.kado_client import KadoToolError
+
+        mod = _load_module()
+
+        fan_path = INBOX_PATH + "2026-05-23_1328_suggestions-fan.md"
+        wire_path = fan_path[:-3] + ".json"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(fan_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [
+                    _fm_hit(fan_path, "suggestions-fan", "pending-approval"),
+                ],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+            },
+            read_note_responses={
+                fan_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+            read_file_errors={
+                wire_path: KadoToolError("boom"),
+            },
+        )
+
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+
+        assert state.approved_fan == []
+        assert len(state.drift_indicators) == 1
+        drift = state.drift_indicators[0]
+        assert drift["path"] == fan_path
+        assert drift["type"] == "wire_sibling_unreadable"
+
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert fan_path in err
+
+
+class TestWireSiblingErrorExcludesForcePass2TerminalRecache:
+    def test_tool_error_excludes_terminal_doc_and_warns(self, tmp_path, capsys):
+        """Same contract at the fourth call site: --force-pass2 re-caching a
+        terminal-approved `suggestions` doc. A non-NOT_FOUND KadoError there
+        must exclude the doc from approved_suggestions (so it is never added
+        to the synthesize work-list this run), record a wire_sibling_unreadable
+        drift indicator, and warn on stderr.
+
+        Mutation: drop the `_warn_and_drift(vault_path, exc)` call from this
+        (fourth) call site's `except KadoError` block. approved_suggestions
+        stays empty (continue still runs), but drift_indicators goes empty
+        and stderr loses "WARNING" — red here while the non-force-pass2
+        suggestions-site test and the suggestions-fan test above stay green,
+        proving this specific call site's wiring is what broke.
+        """
+        from lib.kado_client import KadoToolError
+
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        wire_path = sugg_path[:-3] + ".json"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(sugg_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+            read_file_errors={
+                wire_path: KadoToolError("boom"),
+            },
+        )
+
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_pass2=True,
+        )
+
+        assert state.approved_suggestions == []
+        assert len(state.drift_indicators) == 1
+        drift = state.drift_indicators[0]
+        assert drift["path"] == sugg_path
+        assert drift["type"] == "wire_sibling_unreadable"
+
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert sugg_path in err
+
+
+# ---------------------------------------------------------------------------
 # Test: empty inbox produces empty state
 # ---------------------------------------------------------------------------
 

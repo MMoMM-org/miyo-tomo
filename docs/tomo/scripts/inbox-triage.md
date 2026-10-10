@@ -171,10 +171,24 @@ case (`KadoNotFoundError`, caught inside `_cache_wire_sibling` itself) still rea
 `approved:true` as before — see "wire_cache_path is set unconditionally" below for why that
 case must keep working exactly as it did.
 
-Pinned by
-`tests/test_inbox_triage_wire_cache.py::test_wire_sibling_kado_tool_error_warns_and_excludes`
-and its `KadoConnectionError` sibling test (the three original call sites); the no-regression
-case (genuine NOT_FOUND stays silent) is pinned by `test_wire_sibling_kado_not_found_no_warning`.
+WHY the warn + drift-indicator logic at all three non-garden-audit sites (and the
+garden-audit site's own `approved = False` variant) is now one shared `_warn_and_drift`
+helper, closed over `drift_indicators`, rather than four copy-pasted blocks: the four
+blocks were byte-identical except for their trailing statement (`continue` ×3,
+`approved = False` ×1), so testing one site proved nothing about whether a sibling site
+had been kept in sync — a later edit to the warning text or the drift-indicator shape
+could diverge silently at three of the four call sites with every existing test still
+green. Routing all four through one helper means a single test per call site now proves
+that call site is WIRED TO the shared behaviour, which is the only thing that can still
+differ between them.
+
+Pinned by `tests/test_inbox_triage_wire_cache.py::test_wire_sibling_kado_tool_error_warns_and_excludes`
+and its `KadoConnectionError` sibling test, for the `suggestions` call site — one of the
+three non-garden-audit sites, not all three. The other two of those three are pinned in
+`tests/test_inbox_triage.py`: `TestWireSiblingErrorExcludesSuggestionsFan` (the
+`suggestions-fan` branch) and `TestWireSiblingErrorExcludesForcePass2TerminalRecache` (the
+`--force-pass2` terminal-approved `suggestions` re-cache). The no-regression case (genuine
+NOT_FOUND stays silent) is pinned by `test_wire_sibling_kado_not_found_no_warning`.
 The garden-audit call site has its own three: `test_garden_audit_wire_sibling_kado_tool_error_warns_and_pends`,
 `test_garden_audit_wire_sibling_kado_connection_error_warns_and_pends`, and the no-regression
 `test_garden_audit_wire_sibling_not_found_still_approved`.

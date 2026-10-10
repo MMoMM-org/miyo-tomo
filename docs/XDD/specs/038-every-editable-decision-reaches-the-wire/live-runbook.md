@@ -102,12 +102,32 @@ is the frontmatter `Updated:` line (`2026-09-28 13:18` → `2026-09-29 12:51`), 
 Obsidian rewrites. Body and embed byte-identical. No `NEW` files, so no suggestion or
 instruction documents are left over from earlier runs.
 
-### `--pass1 --force` is mandatory, and a bare `/inbox` fails silently
+### Use `--recover`, not `--pass1 --force` — measured 2026-10-10
 
-`Dresden.md` carries `tomo.state: captured` with `run_id: 2026-09-28T09-34-28Z-350cc2`.
-Triage does not re-intake a captured source without `--force`. A bare `/inbox` will skip
-it, raise no conflict, and **every run below will look like it passed while testing
-nothing.** This is the single easiest way to waste a run.
+`Dresden.md` carries `tomo.state: captured`. Triage does not re-intake a captured source
+without being told to, so a bare `/inbox` skips it, raises no conflict, and **every run
+below will look like it passed while testing nothing.**
+
+`--pass1 --force` is documented as equivalent (`inbox.md`: "`--recover` — treat captured
+items as fresh (≈ `--pass1 --force`)"), and it is — in the script. **It is not equivalent
+in practice**, because it depends on the agent threading *two* flags. Measured on
+2026-10-10 from the container transcript: the retry ran `python3 scripts/inbox-triage.py
+--force-pass1`, **without `--force`**, so `force_all` was false, the captured-items fold
+never ran, `dispatch_sources` stayed empty, and the plan recorded `fresh_sources: []` with
+an `orphaned_state` drift indicator. One hour earlier, the *same typed command* in the
+same vault ran `--force-pass1 --force` correctly and produced a suggestions doc for 6
+items. Same instruction, two invocations, two outcomes — an agent definition is not what
+the model does.
+
+`--recover` reaches the same fold through a single flag and is robust against that
+deviation. Use it.
+
+**A note on where that was diagnosed, because it took far longer than it should.** Neither
+Tomo artefact records the flags it was invoked with: the routing plan has 16 fields and
+none of them is about what was *asked*, and the cost-history entry carries `action` and
+`item_count` but no flags. The evidence existed only in the container's Claude transcript
+under `tomo-home/.claude/projects/`, among 347 files. Tomo logs what it decided, never what
+it was asked. Backlogged.
 
 Do not hand-edit Dresden.md's frontmatter to work around this — frontmatter goes through
 Kado, never a regex.
@@ -140,7 +160,7 @@ all**, so an edited wire sent Pass 2 to rebuild from a wire that did not know th
 choice, and it silently reverted to the pre-ticked default.
 
 ```
-/inbox --pass1 --force
+/inbox --recover
 ```
 
 Check in the suggestions document: exactly one Attachment Conflicts entry for
@@ -213,7 +233,7 @@ bash scripts/spec037-fixture.sh restore
 ```
 
 ```
-/inbox --pass1 --force
+/inbox --recover
 ```
 
 In the suggestions document, **type over the backtick content** of the Rename line,
@@ -264,7 +284,7 @@ bash scripts/spec037-fixture.sh restore
 ```
 
 ```
-/inbox --pass1 --force
+/inbox --recover
 ```
 
 Type over the backtick content with a name the **vault** forbids but macOS permits:
@@ -346,6 +366,39 @@ Stadtplan"*. Atomic titles come from the classifier and no name pattern predicts
 which is why `restore`'s glob is the whole `Atlas/202 Notes/` folder and why the 308
 pre-existing notes recorded in `preexisting.txt` are what keeps it from deleting anything
 real.
+
+## Results
+
+### Run A — F1 — **PASSED**, 2026-10-10
+
+Every item below was measured from the artefacts, before and after the Hashi apply.
+
+| Check | Result |
+|---|---|
+| the wire reached Pass 2 | `inbox-cache/2026-10-10_1442_suggestions.json` present — the check that failed silently on the first attempt |
+| the owner's remedy survived the rebuild | parser emitted `remedy: "keep_in_inbox"` |
+| the JSON-only path really ran | `name_is_owner_supplied: true` — on the markdown path this is set by comparison, and the rename text equalled the computed name, so it would have been `false`. Independent of the cache file, and in the parser's own output |
+| no `move_asset` | confirmed across all 6 actions. A move to `karte (2).png` would have been the pre-038 defect reappearing |
+| the note was still filed | `move_note` → `Atlas/202 Notes/Historische Stadtkarte von Dresden vor 1945.md`. Keep-in-inbox holds the file, not the note |
+| the document reported it | `tomo.skipped_assets[0].kind == "vault_collision_held"` with the matching reason |
+| the relay matched the renderer | `tomo-tmp/withheld-attachments.md` **byte-identical** to the line produced by executing `_render_skipped_asset_notice` on 2026-10-03 and recorded in Run A's pass condition above. Two surfaces, one function — proven on a live run rather than by comparing two code paths |
+| apply | Hashi: `applied: 6, failed: 0` |
+| post-apply vault | `karte.png` still in `100 Inbox/Scans/`; the occupier byte-identical at `0fb588dae23c`; no `karte (2).png`; `Dresden.md` deleted, its atomic filed |
+| the filed note's embed resolves | `![[100 Inbox/Scans/karte.png]]`, target exists — the documented "reaches backwards" state, not a broken link |
+| cost log | updated; `base_kado_calls=2` on all three of the day's entries, the spec 034 T6.4 baseline |
+
+**The run also cost one failed attempt, recorded because the wrong turns transfer.** The
+first try produced a correctly edited wire that Pass 2 never looked at, and two diagnoses
+of mine were wrong before the artefacts settled it — see `plan/README.md`'s 2026-10-10
+deviation row. The cause was that a Hashi save does *two* things (writes the wire **and**
+ticks `- [x] Approved`) while the helper script only did the first; the approval step is
+now a standing requirement above, and the helper refuses to let it be overlooked.
+
+### Run B — F2 — not yet run
+
+### Run C — F3 — not yet run
+
+---
 
 ## Read the output as the owner, not as the author
 

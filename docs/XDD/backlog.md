@@ -2328,3 +2328,56 @@ incidentally.
 **Not scheduled.** Raised and parked by the owner on 2026-10-03 while spec 038 Phase 5 was
 in flight; moving `spec038-wire-edit.py` now would invalidate `038`'s live runbook before
 its run.
+
+---
+
+## The routing plan records what triage decided, never what it was asked
+
+**Found 2026-10-10 while running spec 038's T5.3 live validation.** Cost roughly an hour
+of diagnosis for a question that one field would have answered instantly, and sent two of
+my hypotheses in the wrong direction first.
+
+**The incident.** `/inbox --pass1 --force` reported 0 sources to dispatch while six captured
+items sat in the inbox with no suggestion docs. The code is unambiguous — the fold at
+`inbox-triage.py`'s `if force_all and not force_pass2 and captured_hits:` is unconditional —
+so either `force_all` was false or `captured_hits` was empty, and the `orphaned_state` drift
+indicator proved the latter wrong. Nothing in any Tomo artefact could distinguish them.
+
+**What the artefacts carry, measured:**
+
+| Artefact | Records | Flags? |
+|---|---|---|
+| `routing-plan.json` | 16 fields: `action`, `fresh_sources`, `pending_approval`, `drift_indicators`, `metrics`, … | **no** |
+| `state/inbox-cost-history.jsonl` | `run_id`, `action`, `item_count`, `base_kado_calls`, … | **no** |
+| `inbox-state.jsonl` | per-item dispatch status | **no** |
+
+So Tomo records its **decision** and never its **question**. The evidence existed only in
+the container's Claude transcript under `tomo-home/.claude/projects/…/*.jsonl`, among 347
+files, where `grep -o 'python3 scripts/inbox-triage\.py[^"]*'` showed it immediately:
+
+```
+16:43  python3 scripts/inbox-triage.py --force-pass1            <- the failing retry
+15:04  python3 scripts/inbox-triage.py --force-pass1 --force     <- an hour earlier, worked
+```
+
+**Same typed command, two invocations.** `inbox.md` specifies the mapping correctly
+(`--pass1` → `--force-pass1`, `--force` → `--force`); the model threaded both at 15:04 and
+dropped one at 16:43. An agent definition is not what the model does — and that is a known
+lesson here, which is exactly why the *invocation* is the thing worth recording.
+
+**The proposal.** The routing plan gains the resolved flags as its own field — a string
+array, no enum, written where the plan is assembled. One line at the write site, one schema
+property. It makes this entire failure class self-diagnosing from the artefact a reader
+already opens, including the inverse case: a flag the model *added* that the owner never
+typed. The cost-history entry is the second candidate, and cheaper to justify there since
+it already carries `action` for the same run.
+
+**Why it is worth more than it looks.** This is not only about flags. A plan that records
+only outcomes cannot distinguish "asked and refused" from "never asked", and that
+distinction is the whole subject of spec 038 one layer up: a decision that does not reach
+the thing acting on it. The same shape, in the observability layer.
+
+**Not scheduled.** Raised during T5.3 and parked: building it mid-run would have needed
+another instance sync before the owner's next attempt. The runbook's instruction was
+changed to `--recover` instead, which reaches the same fold through a single flag and is
+robust against the deviation.

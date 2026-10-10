@@ -2381,3 +2381,54 @@ the thing acting on it. The same shape, in the observability layer.
 another instance sync before the owner's next attempt. The runbook's instruction was
 changed to `--recover` instead, which reaches the same fold through a single flag and is
 robust against the deviation.
+
+---
+
+## `spec037-fixture.sh`'s restore cannot clean an owner-typed asset name, and broadening its glob is unsafe without re-baselining
+
+**Found 2026-10-10 during spec 038's T5.3 cleanup.** Recorded rather than fixed, because the
+obvious fix was measured to be destructive.
+
+**The defect.** `CREATED_GLOBS` contains `Atlas/290 Assets/295 Attachments/karte (*).png` —
+the *computed* free-name pattern. Spec 038 made the attachment name **owner-typed**, so the
+filed asset can be called anything. T5.3's Run B typed `karte-1938.png`, and that file
+survived the restore before Run C. The script's own comment four lines above
+`CREATED_GLOBS` already argues this case for notes: *"Atomic titles come from the
+classifier, so no name pattern can predict them; only the destination folder is knowable in
+advance"* — which is why the note glob is the whole folder. The same reasoning now applies
+to attachments and has not been carried over.
+
+**Why the obvious fix is unsafe, measured rather than assumed.** Broadening the glob to
+`Atlas/290 Assets/295 Attachments/*` and running `restore` would have deleted **67 real
+vault files**, including the fixture's own occupier `karte.png`. Dry-run output, per file:
+`KEEP` where the path is in `preexisting.txt`, `DELETE` otherwise — and the folder has
+**zero** entries in `preexisting.txt`.
+
+The reason is a coupling that is easy to miss: `cmd_snapshot` builds `preexisting.txt` **by
+iterating `CREATED_GLOBS`**. The narrow glob matched nothing in that folder at snapshot
+time, so nothing there was ever recorded as pre-existing. The safety net does not cover the
+folder — it covers *what the globs matched when the baseline was taken*. Broadening a glob
+against an old baseline therefore removes the protection instead of extending it.
+
+**The coupled fix.** Two changes that must land together, in this order:
+
+1. `cmd_snapshot` records the **full inventory of each destination folder** a run can write
+   into, independent of `CREATED_GLOBS` — so `preexisting.txt` protects the folder rather
+   than a name pattern.
+2. `CREATED_GLOBS` broadens to the destination folders.
+
+Then a **re-baseline is mandatory**, and it must happen on a clean vault: re-baselining
+while a leftover is present would record that leftover as pre-existing and make it
+permanently un-cleanable. `cmd_snapshot` already refuses to overwrite an existing baseline
+("delete it deliberately if you really mean to re-baseline"), which is the right guard and
+makes this a deliberate operation rather than a side effect.
+
+**What was done on 2026-10-10 instead**: the one leftover was removed by hand after verifying
+its hash (`fa86a6e447ff`, the inbox original Run B moved — not the occupier's
+`0fb588dae23c`), then a normal `restore`, which reported "Vault matches the baseline."
+Correct for one file; it does not scale to the next spec that types a name.
+
+**Worth noting about the dry run.** The script has no `--dry-run`, so the KEEP/DELETE
+listing had to be computed by hand before changing a deletion path. A `--dry-run` on
+`restore` is a small, obvious addition and would have made the 67-file consequence visible
+in one command rather than requiring someone to think of checking.

@@ -410,7 +410,49 @@ now a standing requirement above, and the helper refuses to let it be overlooked
 | apply | Hashi: `applied: 8, failed: 0` |
 | the embed resolves | to the moved file at its new destination |
 
-### Run C — F3 — not yet run
+### Run C — F3 — **PASSED**, 2026-10-10. T4.5 is verified.
+
+| Check | Result |
+|---|---|
+| the forbidden name reached the parser verbatim | `proposed_name: "karte*1938.png"` — the `*` intact, no sanitisation. ADR-5's whole point: refused, never corrected |
+| no `move_asset` | and no sanitised `karte-1938.png` destination either, which is what a leaked `sanitize_stem` would have produced |
+| **the owning note was HELD** | only **4** actions, all `skip`. No `move_note`, no `delete_source`. The ids start at **I03** — `I01` and `I02` were built and then suppressed, and the gap is the visible evidence that `suppress_moves_for_unfiled_attachments` and `withdraw_unjustified_deletes` both fired |
+| the vault agrees | `Dresden.md` still in `100 Inbox/`, `karte.png` still in `100 Inbox/Scans/`, occupier untouched at `0fb588dae23c` |
+| the document reported it | `tomo.skipped_assets[0]`: `kind: "typed_name_refused"`, `destination: null`, and the `reason` string exactly as predicted by executing `_typed_name_refusal_reason` on 2026-10-03 |
+| **the relay matched, for the second time and with the other line** | `tomo-tmp/withheld-attachments.md` byte-identical to this run's executed prediction. Its `run_id` sidecar reads `…17-17-06Z…`, matching the `1717` instruction document, so it is this run's line and not Run A's |
+| apply | **not applied, by design** — a refused name leaves nothing to do for the attachment, and the note's actions were never emitted |
+
+With Run A this puts the two-surface guarantee on the record for **both** withholding
+kinds: one function, two surfaces, proven twice on live runs rather than by comparing two
+code paths. T4.5 has the only verification it can ever get, because `synthesis-conductor.md`
+Step 4 is produced by a model at runtime and no pytest can capture it.
+
+### A fixture defect found during the cleanup, and a wrong fix I nearly applied
+
+Run B's filed asset, `karte-1938.png`, **survived the restore before Run C.**
+`CREATED_GLOBS` carries `Atlas/290 Assets/295 Attachments/karte (*).png` — the *computed*
+name pattern — which cannot match an owner-typed name. The script's own comment four lines
+above makes exactly this argument for notes: *"Atomic titles come from the classifier, so no
+name pattern can predict them; only the destination folder is knowable in advance."* Spec
+038 made attachment names owner-typed; the fixture predates that.
+
+**Run C was not contaminated** — its Pass 1 computed `karte (2).png` as the free name because
+`karte.png` is the occupier, and `karte-1938.png` plays no part in that. Run B's filed *note*
+was correctly removed, because its glob is the whole folder.
+
+**The obvious fix is wrong, and the dry run is what caught it.** Broadening the glob to the
+whole attachments folder would have deleted **67 real vault files**, the fixture's own
+occupier among them. `preexisting.txt` is generated *from the globs* at snapshot time, and
+the narrow glob matched nothing there, so the folder has **zero** protected entries.
+Glob and baseline are coupled; broadening one without re-taking the other removes the
+safety net instead of extending it.
+
+What was done instead: `karte-1938.png` removed deliberately after verifying its hash
+(`fa86a6e447ff`, Run B's moved original — not the occupier's `0fb588dae23c`), then a normal
+restore, which reported **"Vault matches the baseline."** The coupled fix — snapshot
+recording the destination folder's full inventory so a broadened glob becomes safe, plus a
+re-baseline — is backlogged rather than done mid-validation.
+
 
 ---
 

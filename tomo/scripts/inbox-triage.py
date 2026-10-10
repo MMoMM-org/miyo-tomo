@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.38.0
+# version: 0.39.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -49,6 +49,7 @@ from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.kado_client import (  # noqa: E402
     KadoClient,
     KadoError,
+    KadoNotFoundError,
     observed_call_count,
 )
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
@@ -834,16 +835,20 @@ def _cache_wire_sibling(client, vault_path: str, cache_dir: Path) -> str | None:
     """Fetch + cache the _suggestions.json sibling of an approved doc (ADR-026).
 
     The sibling is a non-markdown file → read via the Kado file op (base64), not
-    read_note. Returns the local cache path, or None when there is no sibling
-    (older doc, or the user has no Hashi editor) — the parser then falls back to
-    the markdown path.
+    read_note. Returns the local cache path, or None when the sibling is
+    genuinely absent (KadoNotFoundError — older doc, or the user has no Hashi
+    editor) — the parser then falls back to the markdown path. Any OTHER
+    KadoError (permission, validation, connection, server) propagates to the
+    caller instead of collapsing to the same None: see
+    docs/tomo/scripts/inbox-triage.md for why, and lib/kado_client.py's
+    path_exists for the precedent this follows.
     """
     if not vault_path.endswith(".md"):
         return None
     wire_vault_path = vault_path[:-3] + ".json"
     try:
         data = client.read_file_bytes(wire_vault_path)
-    except KadoError:
+    except KadoNotFoundError:
         return None
     wire_path = cache_dir / _filename_from_path(wire_vault_path)
     wire_path.write_bytes(data)
@@ -993,7 +998,20 @@ def read_approval_state(
                 "cache_path": cache_path_str,
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    print(
+                        f"[inbox-triage] WARNING: wire sibling read failed for "
+                        f"{vault_path}: {exc}",
+                        file=sys.stderr,
+                    )
+                    drift_indicators.append({
+                        "path": vault_path,
+                        "type": "wire_sibling_unreadable",
+                        "detail": str(exc),
+                    })
+                    continue
                 edited_wire = None
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
@@ -1016,7 +1034,20 @@ def read_approval_state(
                 # ADR-026: cache the fan wire sibling too, so a Hashi-edited fan doc
                 # resolves JSON-only in Pass-2 (standalone-fan path). Fan docs carry
                 # no force-atomic re-opt-in, so extraction stays markdown here.
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    print(
+                        f"[inbox-triage] WARNING: wire sibling read failed for "
+                        f"{vault_path}: {exc}",
+                        file=sys.stderr,
+                    )
+                    drift_indicators.append({
+                        "path": vault_path,
+                        "type": "wire_sibling_unreadable",
+                        "detail": str(exc),
+                    })
+                    continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 force_atomic_items.extend(
@@ -1090,7 +1121,20 @@ def read_approval_state(
                 "cache_path": str(cache_path),
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    print(
+                        f"[inbox-triage] WARNING: wire sibling read failed for "
+                        f"{vault_path}: {exc}",
+                        file=sys.stderr,
+                    )
+                    drift_indicators.append({
+                        "path": vault_path,
+                        "type": "wire_sibling_unreadable",
+                        "detail": str(exc),
+                    })
+                    continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 approved_suggestions.append(entry)

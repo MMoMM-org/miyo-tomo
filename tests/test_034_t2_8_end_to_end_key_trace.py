@@ -151,9 +151,9 @@ class FakeKadoClient:
         return {"content": {}}
 
     def read_file_bytes(self, path: str) -> bytes:
-        from lib.kado_client import KadoError
+        from lib.kado_client import KadoNotFoundError
 
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 def _listdir_item(path: str) -> dict:

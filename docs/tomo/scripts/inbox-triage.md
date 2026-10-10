@@ -105,6 +105,51 @@ own force-atomic extraction stays markdown. LIMITATION: the fan-COMPANION merge
 (primary + fan in one run) still parses the fan markdown — it is not the Hashi
 standalone-fan path (primary already applied → fan approved in a later run).
 
+## Wire sibling errors are NOT_FOUND-only silent (defect found 2026-10-10)
+
+WHY `_cache_wire_sibling` now catches only `KadoNotFoundError`, not the base `KadoError`:
+the original `except KadoError: return None` collapsed five distinct outcomes — a
+genuinely absent sibling, a permission refusal, a path-validation error, a connection
+failure, a server 5xx — into the same `None`, which the docstring (and every caller) read
+as "there is no sibling, fall back to markdown." For a Hashi user the markdown is stale BY
+CONSTRUCTION — their editor's save is what carries their decisions — so falling back to it
+on, say, a transient Kado connection error silently applies decisions the user never made.
+This was found as a standalone defect while running spec 038's T5.3 live validation on
+2026-10-10, unrelated to that run's own failure (an unticked `- [x] Approved` box, which
+never reaches this code at all — `_cache_wire_sibling` only runs inside the approved
+branch). The owner ruled it must be fixed on its own merits: a warn-and-continue would
+still let the stale markdown win, which is exactly the failure shape this removes.
+
+WHY `KadoNotFoundError` alone is the safe case: it is the only exception that actually
+means "no wire exists here" (an older doc, or a non-Hashi user). Every other `KadoError`
+subclass means the sibling's existence is UNKNOWN, not negative — treating unknown as
+negative is the bug.
+
+WHY `path_exists` (`lib/kado_client.py`) is the precedent rather than a new scheme: it
+already makes exactly this split, and states the rule in its own docstring — "Returns
+`False` only on a genuine NOT_FOUND; any other Kado error propagates to the caller." This
+fix follows that existing convention instead of inventing a second one.
+
+WHY the three `suggestions`/`suggestions-fan` call sites inside `read_approval_state` (not
+the `garden-audit` wire pre-check, which caches the sibling to read its `approved:true`
+flag, a different use) now warn + record a drift indicator + skip the doc entirely: this
+is the Hashi-affected JSON-only path (ADR-026) where a missed wire read really does mean a
+missed decision. The new drift type is `wire_sibling_unreadable`, deliberately distinct
+from `missing_source` (the `read_note` failure handler a few lines above): that type means
+the doc itself vanished; this one means the doc's wire companion is unreachable while the
+doc is still there. Conflating them would hide which failure mode fired from a later
+reader of `drift_indicators`, or from `instructions-diff`. `routing-plan.schema.json`'s
+`drift_indicators[].type` enum gained this value alongside the existing four.
+
+WHY skip (exclude from `approved_suggestions`/`approved_fan`, no Pass-2 synthesis) rather
+than warn-and-continue-with-the-markdown: continuing with the markdown is precisely the
+silent-degrade this defect removes. Skipping means the doc stays out of this run and is
+retried on the next `/inbox`, once Kado answers again — correct behaviour rather than a
+wrong one applied confidently. Pinned by
+`tests/test_inbox_triage_wire_cache.py::test_wire_sibling_kado_tool_error_warns_and_excludes`
+and its `KadoConnectionError` sibling test; the no-regression case (genuine NOT_FOUND stays
+silent) is pinned by `test_wire_sibling_kado_not_found_no_warning`.
+
 ## `.base`/`.canvas` inbox files are deliberately NOT triaged (#93, won't-do-yet 2026-07-18)
 
 WHY `discover_files` partitions only `.md` + audio and drops everything else,

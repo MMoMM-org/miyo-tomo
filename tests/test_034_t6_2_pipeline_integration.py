@@ -61,7 +61,7 @@ GOLDEN_DIR = TESTS_DIR / "fixtures" / "034-t6-2-instructions-golden"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.item_key import to_filename  # noqa: E402
-from lib.kado_client import KadoError  # noqa: E402
+from lib.kado_client import KadoError, KadoNotFoundError  # noqa: E402
 
 INBOX = "100 Inbox/"
 RUN_ID = "t6-2-integration"
@@ -157,7 +157,7 @@ class FakeVault:
 
     def read_file_bytes(self, path):
         self.calls.append(("read_file_bytes", {"path": path}))
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
     # -- Pass 2 ------------------------------------------------------------
     def read_note(self, path):

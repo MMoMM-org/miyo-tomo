@@ -136,7 +136,7 @@
         "additionalProperties": false,
         "properties": {
           "path": {"type": "string"},
-          "type": {"type": "string", "enum": ["checksum_mismatch", "orphaned_state", "missing_source", "stale_cache"]},
+          "type": {"type": "string", "enum": ["checksum_mismatch", "orphaned_state", "missing_source", "stale_cache", "wire_sibling_unreadable"]},
           "detail": {"type": "string"}
         }
       },

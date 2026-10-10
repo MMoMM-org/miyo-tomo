@@ -39,6 +39,7 @@ class FakeKadoClient:
         read_frontmatter_responses: dict[str, dict] | None = None,
         read_frontmatter_errors: dict[str, Exception] | None = None,
         read_file_responses: dict[str, bytes] | None = None,
+        read_file_errors: dict[str, Exception] | None = None,
         list_notes_responses: list[dict] | None = None,
     ):
         self._listdir_items = listdir_items or []
@@ -48,6 +49,7 @@ class FakeKadoClient:
         self._read_frontmatter_responses = read_frontmatter_responses or {}
         self._read_frontmatter_errors = read_frontmatter_errors or {}
         self._read_file_responses = read_file_responses or {}
+        self._read_file_errors = read_file_errors or {}
         # spec 031 T5.1 (corrected ADR-2): inbox-triage's attachment
         # extraction/resolution reads listNotes(fields=["links"]) once per
         # run. No test in this file exercises attachments, so this defaults
@@ -89,13 +91,19 @@ class FakeKadoClient:
 
     def read_file_bytes(self, path: str) -> bytes:
         # ADR-026: the _suggestions.json sibling fetch. Unconfigured path ⇒
-        # KadoError, mimicking a missing sibling (older doc / no Hashi editor).
+        # KadoNotFoundError, mimicking a genuinely missing sibling (older doc,
+        # or the user has no Hashi editor) — the only KadoError subclass
+        # _cache_wire_sibling treats as silent (defect found 2026-10-10; see
+        # docs/tomo/scripts/inbox-triage.md). A test that needs to exercise a
+        # non-NOT_FOUND wire failure configures read_file_errors instead.
         self.calls.append(("read_file_bytes", {"path": path}))
         if path in self._read_file_responses:
             return self._read_file_responses[path]
-        from lib.kado_client import KadoError
+        if path in self._read_file_errors:
+            raise self._read_file_errors[path]
+        from lib.kado_client import KadoNotFoundError
 
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 # ---------------------------------------------------------------------------

@@ -230,11 +230,34 @@ WHY the fallback cases are deliberately indistinguishable to the caller: `load_c
 returns `None` for four different situations — no path given, unparseable JSON, a
 `schema_version` that is not the current schema's, and a digest that still matches. All
 four mean the same thing operationally ("use the markdown"), and collapsing them into one
-return value is what lets the caller stay a single `if`. The distinctions are not lost,
-they are reported on stderr, each with its own line. This matters for tests: a hand-built
-fixture that hardcodes a version drifts the moment the schema moves and silently takes the
-markdown path, which is why convergence tests build wires through `build_wire_payload` and
-assert the positive stderr line rather than trusting the absence of a failure.
+return value is what lets the caller stay a single `if`. Three of the four are reported on
+stderr, each with its own line, so the distinctions are not lost. This matters for tests: a
+hand-built fixture that hardcodes a version drifts the moment the schema moves and silently
+takes the markdown path, which is why convergence tests build wires through
+`build_wire_payload` and assert the positive stderr line rather than trusting the absence
+of a failure.
+
+WHY "no path given" is the one case left silent: the parser cannot know a wire sibling
+ever existed at that vault path — only that `--suggestions-json`/`--fan-resolve-json` was
+never passed — so there is nothing true to say about it here. (The sibling half of this
+same concern — a wire that WAS passed but came back unreadable for a reason other than
+"it doesn't exist" — is not this function's problem: that is the caller's read, upstream in
+`inbox-triage.py`'s `_cache_wire_sibling`, and is handled there; see
+`docs/tomo/scripts/inbox-triage.md`'s "Wire sibling errors are NOT_FOUND-only silent"
+section.)
+
+WHY the digest-match ("unchanged") case gained its stderr line (2026-10-10, found standalone
+while running spec 038's T5.3 live validation — not the cause of that run's own failure):
+until then it was the fourth silent route, and an owner who changed nothing in Hashi looked
+identical on stderr to an owner whose edit never reached the parser at all (wrong
+`--suggestions-json` path, wrong run pairing, a sync that never happened). The new line is
+deliberately symmetric with the positive "edited wire is authoritative (JSON-only path)"
+line emitted at the call site — same prefix, opposite outcome — so grepping one family of
+line tells the full story. Purely additive: `load_changed_wire` still returns `None` and the
+caller's markdown path is unchanged. Pinned by
+`tests/test_inbox_triage_wire_cache.py::test_load_changed_wire_unchanged_logs_markdown_fallback`,
+which builds the wire through `build_wire_payload` rather than a hand-rolled dict for the
+same hardcoded-version-drift reason as the convergence tests above.
 
 ## Companion merge from two wires — build_from_wire_companion (ADR-026)
 

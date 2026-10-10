@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.41.1
+# version: 0.41.2
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -280,6 +280,10 @@ def load_changed_wire(path: str | None) -> dict | None:
         return None
     stored = wire.get("emit_digest")
     if stored and compute_payload_digest(wire) == stored:
+        print(
+            "suggestions-json: wire unchanged, markdown is authoritative",
+            file=sys.stderr,
+        )
         return None  # unchanged — markdown stays authoritative
     return wire
 

@@ -129,9 +129,9 @@ class RecordingClient:
         return {"content": {}}
 
     def read_file_bytes(self, path):
-        from lib.kado_client import KadoError
+        from lib.kado_client import KadoNotFoundError
         self.calls.append(("read_file_bytes", {"path": path}))
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 # ---------------------------------------------------------------------------

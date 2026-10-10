@@ -99,9 +99,9 @@ class FakeKadoClient:
 
     def read_file_bytes(self, path: str) -> bytes:
         # ADR-026: _suggestions.json sibling fetch — no sibling in these fixtures.
-        from lib.kado_client import KadoError
+        from lib.kado_client import KadoNotFoundError
 
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 # ---------------------------------------------------------------------------

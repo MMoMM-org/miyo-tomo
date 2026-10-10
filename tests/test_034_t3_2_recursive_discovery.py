@@ -94,8 +94,8 @@ class _RecordingClient:
 
     def read_file_bytes(self, path):
         self.calls.append(("read_file_bytes", {"path": path}))
-        from lib.kado_client import KadoError
-        raise KadoError(f"not found: {path}")
+        from lib.kado_client import KadoNotFoundError
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 # A subtree with a root level, one nested level, two nested levels, and a

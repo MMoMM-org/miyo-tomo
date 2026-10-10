@@ -198,6 +198,16 @@ def main() -> int:
             "fix this rather than running with it."
         )
 
+    # --show writes nothing, so combining it with an edit flag silently discards the
+    # edit. Refused rather than warned: this script exists to stop silent degrades,
+    # and swallowing a requested change would be one of its own making.
+    if args.show and (args.remedy is not None or args.proposed_name is not None):
+        sys.exit(
+            "spec038-wire-edit: --show writes nothing, so it cannot be combined with "
+            "--remedy / --proposed-name.\nRun --show first to inspect, then re-run "
+            "without it to write."
+        )
+
     conflicts = _conflicts(wire, args.wire, accepted_version)
 
     if args.show or (args.remedy is None and args.proposed_name is None):

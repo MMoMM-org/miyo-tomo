@@ -5,8 +5,15 @@ suggestions wire, and PROVE the wire now counts as edited.
 For spec 038 T5.3's live runs. Hashi's Suggestions Editor is the surface that will
 normally do this, but its vendored schema still pins schema_version "2" and contains
 none of the remedy fields (measured 2026-10-03), so today the only way to exercise
-the wire path end to end is to set the field here. This script stands in for the
-editor and for nothing else.
+the wire path end to end is to set the field here.
+
+This replaces the editor's FIELD EDIT and nothing more. It is NOT a Hashi save. A
+Hashi save also writes `- [x] Approved` into the markdown peer — its own source
+calls that "the whole-run approve" — and that line is Tomo's only approval gate for
+a suggestions document. Without it triage holds the doc as pending-approval, Pass 2
+never runs, and the wire is never even read, because the wire cache is taken inside
+the approved branch. That cost a live run on 2026-10-10, so this script now checks
+the box and says so rather than leaving it to be remembered.
 
     spec038-wire-edit.py <suggestions.json> --show
     spec038-wire-edit.py <suggestions.json> --remedy keep_in_inbox
@@ -65,6 +72,62 @@ def _load_lib():
     return compute_payload_digest, wire_schema_version("suggestions-wire.schema.json")
 
 
+def _approval_state(wire_path: Path) -> tuple[str, str]:
+    """Is the markdown peer's `- [x] Approved` box ticked? Returns (state, detail).
+
+    The pattern is IMPORTED from inbox-triage rather than copied, so this check
+    cannot predict a different answer than the gate it is predicting. The filename
+    is hyphenated, so a plain import will not reach it; `sys.modules` must be
+    populated BEFORE exec_module or the module's dataclasses fail to resolve their
+    own __module__.
+    """
+    import importlib.util
+    import sys as _sys
+
+    md = wire_path.with_suffix(".md")
+    if not md.is_file():
+        return ("unknown", f"no markdown peer at {md}")
+
+    override = os.environ.get("TOMO_SCRIPTS_DIR")
+    root = Path(override) if override else Path(__file__).resolve().parent.parent / "tomo" / "scripts"
+    triage = root / "inbox-triage.py"
+    if not triage.is_file():
+        return ("unknown", f"cannot read the approval pattern from {triage}")
+    spec = importlib.util.spec_from_file_location("inbox_triage", triage)
+    mod = importlib.util.module_from_spec(spec)
+    _sys.modules["inbox_triage"] = mod
+    spec.loader.exec_module(mod)
+
+    body = md.read_text(encoding="utf-8")
+    if mod._RE_APPROVED.search(body):
+        return ("approved", str(md))
+    return ("not_approved", str(md))
+
+
+def _warn_if_unapproved(wire_path: Path) -> None:
+    """Say loudly that Pass 2 will not run, since nothing else will.
+
+    stdout is flushed first so this lands AFTER the body in a combined view. The
+    warning is the whole point of the call; printed out of order above the report
+    it is exactly where a reader skips it.
+    """
+    state, detail = _approval_state(wire_path)
+    if state == "approved":
+        return
+    sys.stdout.flush()
+    print(file=sys.stderr)
+    if state == "unknown":
+        print(f"  NOTE: could not check the approval box ({detail}).", file=sys.stderr)
+        print("        Confirm `- [x] Approved` yourself before running Pass 2.", file=sys.stderr)
+        return
+    print("  STOP — the wire is edited, but Pass 2 WILL NOT RUN.", file=sys.stderr)
+    print(f"  The markdown peer's approval box is UNTICKED: {detail}", file=sys.stderr)
+    print("  Tick `- [x] Approved` there, then run `/inbox --pass2 --force`.", file=sys.stderr)
+    print("  A Hashi save would have ticked it for you — this script does not.", file=sys.stderr)
+    print("  Unapproved, triage holds the doc as pending and never reads the wire,", file=sys.stderr)
+    print("  so the run would prove nothing about the edit above.", file=sys.stderr)
+
+
 def _conflicts(wire: dict, path: Path, accepted: str) -> list[dict]:
     if "attachment_conflicts" not in wire:
         version = wire.get("schema_version")
@@ -90,10 +153,17 @@ def _conflicts(wire: dict, path: Path, accepted: str) -> list[dict]:
     return conflicts
 
 
-def _show(conflicts: list[dict], wire: dict, digest_fn) -> None:
+def _show(conflicts: list[dict], wire: dict, digest_fn, wire_path: Path) -> None:
     stored = wire.get("emit_digest")
     recomputed = digest_fn(wire)
+    state, detail = _approval_state(wire_path)
+    label = {
+        "approved": "APPROVED (Pass 2 can run)",
+        "not_approved": "NOT APPROVED — Pass 2 will not run; tick `- [x] Approved`",
+        "unknown": f"unknown ({detail})",
+    }[state]
     print(f"schema_version : {wire.get('schema_version')!r}")
+    print(f"approval       : {label}")
     print(f"emit_digest    : {stored}")
     print(f"recomputed     : {recomputed}")
     print(f"counts as      : {'EDITED (wire is authoritative)' if stored != recomputed else 'UNCHANGED (markdown path)'}")
@@ -131,7 +201,7 @@ def main() -> int:
     conflicts = _conflicts(wire, args.wire, accepted_version)
 
     if args.show or (args.remedy is None and args.proposed_name is None):
-        _show(conflicts, wire, digest_fn)
+        _show(conflicts, wire, digest_fn, args.wire)
         if not args.show:
             print("\n(nothing to change — pass --remedy and/or --proposed-name)")
         return 0
@@ -180,6 +250,7 @@ def main() -> int:
     print("\n  ASSERTED: the two differ, so this wire now counts as EDITED and Pass 2")
     print("            must report: suggestions-json: edited wire is authoritative (JSON-only path)")
     print("            If that line is absent from Pass 2's output, the run proved nothing.")
+    _warn_if_unapproved(args.wire)
     return 0
 
 

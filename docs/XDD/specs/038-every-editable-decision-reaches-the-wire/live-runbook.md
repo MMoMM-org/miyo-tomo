@@ -112,6 +112,25 @@ nothing.** This is the single easiest way to waste a run.
 Do not hand-edit Dresden.md's frontmatter to work around this — frontmatter goes through
 Kado, never a regex.
 
+### Tick `- [x] Approved` in the suggestions document — every run, no exceptions
+
+Pass 1 ships the document with `- [ ] Approved` and `tomo.state: pending-approval`. That
+box is Tomo's **only** approval gate for a suggestions document: `inbox-triage.py` sets
+`approved = bool(_RE_APPROVED.search(body))` for this doc type, and the wire-side
+`_wire_approved` is OR-ed in only for garden-audit, by design.
+
+Unapproved, triage records `pending_approval: ["Awaiting user approval (suggestions)"]`,
+Pass 2 does not run — **and the wire is never read either**, because
+`_cache_wire_sibling` is called inside the approved branch. So an unticked box makes a
+wire-edit run look like a wire-detection failure. It did exactly that on 2026-10-10 and
+cost Run A.
+
+**A Hashi save does this for you**; `ObsidianSuggestionsDoc.ts` writes the
+`- [x] Approved` line itself and its own comment calls that "the whole-run approve". The
+helper script below is **not** a Hashi save — it writes the wire field and nothing else.
+It now checks the box and refuses to let you overlook it, but tick it yourself as part of
+the flow rather than relying on the warning.
+
 ---
 
 ## Run A — F1: a remedy survives a wire edit
@@ -130,7 +149,9 @@ basename, not a path; the comparison line saying the vault holds a **different**
 (if it says "the same file", the byte comparison is wrong and that is a finding); and
 "Embedded by" naming `[[Dresden]]`.
 
-**Leave the markdown alone.** Now set the remedy on the wire instead:
+**Leave the markdown's remedy alone** — do not untick Rename there; the whole point is
+that the wire overrides it. Tick `- [x] Approved` and change nothing else. Now set the
+remedy on the wire:
 
 ```bash
 ./venv/bin/python scripts/spec038-wire-edit.py \
@@ -203,9 +224,9 @@ karte-1938.png
 ```
 
 Legal, free, and meaningful — the note itself says *"ein Nachdruck der Ausgabe von 1938"*.
-Leave Rename ticked. Change nothing else, and do **not** touch the wire: this run tests
-the markdown surface, and an edited wire would take authority and make the markdown edit
-irrelevant.
+Leave Rename ticked and tick `- [x] Approved`. Change nothing else, and do **not** touch
+the wire: this run tests the markdown surface, and an edited wire would take authority and
+make the markdown edit irrelevant.
 
 ```
 /inbox --pass2 --force
@@ -252,7 +273,7 @@ Type over the backtick content with a name the **vault** forbids but macOS permi
 karte*1938.png
 ```
 
-`*` is one of the forbidden characters. Leave Rename ticked.
+`*` is one of the forbidden characters. Leave Rename ticked and tick `- [x] Approved`.
 
 ```
 /inbox --pass2 --force

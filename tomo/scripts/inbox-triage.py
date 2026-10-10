@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.0
+# version: 0.39.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -973,23 +973,37 @@ def read_approval_state(
             # sibling first so we can read its approve flag, then reuse the cached
             # path in the approved branch. Per-finding Apply ticks + the wire
             # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
-            garden_wire_cache = _cache_wire_sibling_counted(vault_path)
-            approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
-                garden_wire_cache
-            )
-            # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
-            # apply while suggestions the user requested have not been generated —
-            # applying would silently skip those candidates. Mainly protects the
-            # .md-only path (no editor to block the approve). Once --suggest runs,
-            # the pending signal clears and the doc applies on the next /inbox.
-            if approved and _garden_suggest_pending(body, garden_wire_cache):
+            try:
+                garden_wire_cache = _cache_wire_sibling_counted(vault_path)
+            except KadoError as exc:
                 print(
-                    f"[triage] garden-audit {vault_path!r}: approved but "
-                    "suggestions still pending — run `/garden-audit --suggest` "
-                    "first; skipping apply.",
+                    f"[inbox-triage] WARNING: wire sibling read failed for "
+                    f"{vault_path}: {exc}",
                     file=sys.stderr,
                 )
+                drift_indicators.append({
+                    "path": vault_path,
+                    "type": "wire_sibling_unreadable",
+                    "detail": str(exc),
+                })
                 approved = False
+            else:
+                approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
+                    garden_wire_cache
+                )
+                # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
+                # apply while suggestions the user requested have not been generated —
+                # applying would silently skip those candidates. Mainly protects the
+                # .md-only path (no editor to block the approve). Once --suggest runs,
+                # the pending signal clears and the doc applies on the next /inbox.
+                if approved and _garden_suggest_pending(body, garden_wire_cache):
+                    print(
+                        f"[triage] garden-audit {vault_path!r}: approved but "
+                        "suggestions still pending — run `/garden-audit --suggest` "
+                        "first; skipping apply.",
+                        file=sys.stderr,
+                    )
+                    approved = False
 
         if approved:
             entry = {

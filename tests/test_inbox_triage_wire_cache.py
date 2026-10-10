@@ -16,7 +16,14 @@ Covers two scripts:
   - inbox-triage.py's _cache_wire_sibling / read_approval_state: the catch is
     narrowed to KadoNotFoundError only; every other KadoError now makes the
     doc excluded from Pass 2 (warn + drift indicator + skip), rather than
-    silently falling back.
+    silently falling back. _cache_wire_sibling has four call sites inside
+    read_approval_state; three (suggestions, suggestions-fan) were guarded
+    when the catch was narrowed. The fourth — the garden-audit wire
+    pre-check, which runs unconditionally for every pending garden-audit doc
+    regardless of Hashi — was left unguarded, so a non-NOT_FOUND KadoError
+    there propagated through discover() into main()'s `except KadoError`
+    handler and aborted the WHOLE /inbox run. Fixed here with the same warn +
+    drift-indicator + not-approved-this-run treatment as its siblings.
   - suggestion-parser.py's load_changed_wire: the "unchanged wire" return-None
     route now logs a line on stderr, symmetric with the positive "edited wire
     is authoritative" line, so an owner can tell "nothing changed in the
@@ -199,6 +206,130 @@ def test_wire_sibling_success(tmp_path):
     assert entry["wire_cache_path"].endswith(".json")
     assert Path(entry["wire_cache_path"]).read_bytes() == b"{}"
     assert state["drift_indicators"] == []
+
+
+# ---------------------------------------------------------------------------
+# inbox-triage.py — the garden-audit wire pre-check (the fourth call site,
+# left unguarded by 984951b; fixed here). Reached unconditionally for every
+# pending garden-audit doc, independent of Hashi — unlike the three call
+# sites above, an uncaught KadoError here used to propagate out of
+# read_approval_state, through discover(), into main()'s `except KadoError`
+# handler: `ERROR: Triage failed: ...` + SystemExit(1), aborting the run for
+# every pending document, not just this one.
+# ---------------------------------------------------------------------------
+
+GARDEN_DOC_PATH = "100 Inbox/2026-10-10_1000_garden-audit.md"
+
+
+def _garden_hit(path: str = GARDEN_DOC_PATH) -> dict:
+    return {
+        "path": path,
+        "modified": 1234,
+        "frontmatter": {"tomo": {"doc_type": "garden-audit"}},
+    }
+
+
+def _run_garden(client, tmp_path) -> dict:
+    result = _triage.read_approval_state(client, [_garden_hit()], [], str(tmp_path))
+    return dict(zip(_STATE_KEYS, result))
+
+
+def test_garden_audit_wire_sibling_kado_tool_error_warns_and_pends(tmp_path, capsys):
+    """A validation/permission-shaped Kado failure on the garden-audit wire
+    pre-check must not escape read_approval_state, and must not abort the
+    run — it must warn, record a wire_sibling_unreadable drift indicator,
+    and leave the doc OUT of approved_garden_audits. The doc is treated as
+    not-approved-for-this-run (same mechanism the suggest-before-approve gate
+    already uses: `approved = False`, doc falls into pending_approval) rather
+    than skipped via `continue` out of the loop iteration — `continue` would
+    also be observably correct here (the body/manifest caching that precedes
+    the doc_type branch already ran), but `approved = False` reuses the
+    existing not-approved path instead of adding a second exit out of the
+    per-doc loop.
+
+    Headline mutation: delete the `try`/`except KadoError` wrapped around
+    `_cache_wire_sibling_counted` in the garden-audit branch (restoring the
+    984951b-shipped unguarded call). KadoToolError then propagates straight
+    out of this function call — the test goes red with an uncaught
+    exception, not a clean assertion failure, proving the test depends on
+    the catch actually being there.
+    """
+    client = _FakeClient(note_body=APPROVED_BODY, wire_error=KadoToolError("boom"))
+    state = _run_garden(client, tmp_path)
+
+    assert state["approved_garden_audits"] == []
+    pending_paths = {p["path"] for p in state["pending_approval"]}
+    assert GARDEN_DOC_PATH in pending_paths
+
+    assert len(state["drift_indicators"]) == 1
+    drift = state["drift_indicators"][0]
+    assert drift["path"] == GARDEN_DOC_PATH
+    assert drift["type"] == "wire_sibling_unreadable"
+
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert GARDEN_DOC_PATH in err
+
+
+def test_garden_audit_wire_sibling_kado_connection_error_warns_and_pends(tmp_path, capsys):
+    """Same as the KadoToolError case, with a different KadoError subclass —
+    proves the garden-audit guard catches the base KadoError, not one
+    allow-listed subclass.
+
+    Mutation: same headline mutation as the KadoToolError test above (delete
+    the try/except). KadoConnectionError propagates the same way and this
+    test goes red for the same reason.
+    """
+    client = _FakeClient(note_body=APPROVED_BODY, wire_error=KadoConnectionError("down"))
+    state = _run_garden(client, tmp_path)
+
+    assert state["approved_garden_audits"] == []
+    pending_paths = {p["path"] for p in state["pending_approval"]}
+    assert GARDEN_DOC_PATH in pending_paths
+
+    assert len(state["drift_indicators"]) == 1
+    drift = state["drift_indicators"][0]
+    assert drift["path"] == GARDEN_DOC_PATH
+    assert drift["type"] == "wire_sibling_unreadable"
+
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert GARDEN_DOC_PATH in err
+
+
+def test_garden_audit_wire_sibling_not_found_still_approved(tmp_path, capsys):
+    """No-regression guard: a genuinely absent wire sibling (KadoNotFoundError
+    — no Hashi editor, or an older doc) must stay silent, the doc must still
+    be approved via the markdown `- [x] Approved` box, and the entry must
+    carry `wire_cache_path: None` (key PRESENT, value None) — the spec 030
+    two-artifact-split invariant (docs/tomo/scripts/inbox-triage.md,
+    "wire_cache_path is set unconditionally") that garden-audit-parser relies
+    on to always receive `--wire`. Setting the key only when a sibling
+    exists was tried once historically and silently no-op'd the whole
+    garden-audit apply path.
+
+    Mutation: widen the new `except KadoError` in the garden-audit branch to
+    wrap the whole `elif doc_type == "garden-audit":` arm in a bare
+    try/except instead of scoping it to just the `_cache_wire_sibling_counted`
+    call — that would also swallow this NOT_FOUND case into "unapproved with
+    a drift indicator" (KadoNotFoundError is a KadoError too). This test
+    goes red (approved_garden_audits empty, drift_indicators non-empty)
+    while the two tests above stay green, proving the catch must be scoped
+    to the wire-read call, not the whole branch.
+    """
+    client = _FakeClient(note_body=APPROVED_BODY)
+    state = _run_garden(client, tmp_path)
+
+    assert len(state["approved_garden_audits"]) == 1
+    entry = state["approved_garden_audits"][0]
+    assert entry["path"] == GARDEN_DOC_PATH
+    assert "wire_cache_path" in entry
+    assert entry["wire_cache_path"] is None
+    assert state["drift_indicators"] == []
+
+    err = capsys.readouterr().err
+    assert "WARNING" not in err
+    assert "wire_sibling_unreadable" not in err
 
 
 # ---------------------------------------------------------------------------

@@ -130,25 +130,54 @@ already makes exactly this split, and states the rule in its own docstring — "
 `False` only on a genuine NOT_FOUND; any other Kado error propagates to the caller." This
 fix follows that existing convention instead of inventing a second one.
 
-WHY the three `suggestions`/`suggestions-fan` call sites inside `read_approval_state` (not
-the `garden-audit` wire pre-check, which caches the sibling to read its `approved:true`
-flag, a different use) now warn + record a drift indicator + skip the doc entirely: this
-is the Hashi-affected JSON-only path (ADR-026) where a missed wire read really does mean a
-missed decision. The new drift type is `wire_sibling_unreadable`, deliberately distinct
-from `missing_source` (the `read_note` failure handler a few lines above): that type means
-the doc itself vanished; this one means the doc's wire companion is unreachable while the
-doc is still there. Conflating them would hide which failure mode fired from a later
-reader of `drift_indicators`, or from `instructions-diff`. `routing-plan.schema.json`'s
+WHY all FOUR `_cache_wire_sibling` call sites inside `read_approval_state` now warn +
+record a drift indicator + stop the doc from reaching Pass 2, rather than three of them:
+`_cache_wire_sibling`'s narrowing is a change to a SHARED helper, and a shared helper's
+narrowing changes behaviour for every caller, not just the ones a first pass happens to
+touch. The three `suggestions`/`suggestions-fan` call sites were guarded when the catch
+was narrowed; the fourth — the `garden-audit` wire pre-check, which caches the sibling to
+read its `approved:true` flag and runs unconditionally for every pending garden-audit doc,
+independent of whether that owner uses Hashi at all — was missed. Before this fix, a
+non-NOT_FOUND `KadoError` there (a transient `KadoConnectionError`, a `KadoToolError`) had
+no catch anywhere above it: it propagated out of `read_approval_state`, out of the
+unguarded `discover()` call, into `main()`'s `except KadoError` handler —
+`ERROR: Triage failed: ...` + `SystemExit(1)`, aborting the run for every pending document
+in the inbox, not just the one garden-audit doc that hit the error. That is reachable by a
+plain markdown-only user with no Hashi editor, and it contradicts the owner's 2026-10-10
+ruling above — per document: warn, record a drift indicator, skip that one doc — rather
+than per run.
+
+The new drift type is `wire_sibling_unreadable`, deliberately distinct from
+`missing_source` (the `read_note` failure handler a few lines above): that type means the
+doc itself vanished; this one means the doc's wire companion is unreachable while the doc
+is still there. Conflating them would hide which failure mode fired from a later reader of
+`drift_indicators`, or from `instructions-diff`. `routing-plan.schema.json`'s
 `drift_indicators[].type` enum gained this value alongside the existing four.
 
-WHY skip (exclude from `approved_suggestions`/`approved_fan`, no Pass-2 synthesis) rather
-than warn-and-continue-with-the-markdown: continuing with the markdown is precisely the
-silent-degrade this defect removes. Skipping means the doc stays out of this run and is
-retried on the next `/inbox`, once Kado answers again — correct behaviour rather than a
-wrong one applied confidently. Pinned by
+WHY skip (exclude from `approved_suggestions`/`approved_fan`/`approved_garden_audits`, no
+Pass-2 synthesis) rather than warn-and-continue-with-the-markdown: continuing with the
+markdown is precisely the silent-degrade this defect removes. Skipping means the doc stays
+out of this run and is retried on the next `/inbox`, once Kado answers again — correct
+behaviour rather than a wrong one applied confidently. For `garden-audit` specifically this
+means treating the doc as NOT approved for this run — the same `approved = False` /
+pending-approval outcome the branch already produces for its suggest-before-approve gate —
+rather than falling through with `garden_wire_cache = None`: that would be exactly the
+silent-degrade this whole change removes, and for garden-audit it would additionally make
+`_wire_approved` return `False` while looking like a legitimate "no flag set" rather than
+"could not check." The wire-read call is wrapped in `try`/`except KadoError` scoped to just
+that call (not the whole `elif doc_type == "garden-audit":` arm), so the genuinely-absent
+case (`KadoNotFoundError`, caught inside `_cache_wire_sibling` itself) still reaches the
+`else:` clause unharmed and `approved` is still computed from the markdown box / wire
+`approved:true` as before — see "wire_cache_path is set unconditionally" below for why that
+case must keep working exactly as it did.
+
+Pinned by
 `tests/test_inbox_triage_wire_cache.py::test_wire_sibling_kado_tool_error_warns_and_excludes`
-and its `KadoConnectionError` sibling test; the no-regression case (genuine NOT_FOUND stays
-silent) is pinned by `test_wire_sibling_kado_not_found_no_warning`.
+and its `KadoConnectionError` sibling test (the three original call sites); the no-regression
+case (genuine NOT_FOUND stays silent) is pinned by `test_wire_sibling_kado_not_found_no_warning`.
+The garden-audit call site has its own three: `test_garden_audit_wire_sibling_kado_tool_error_warns_and_pends`,
+`test_garden_audit_wire_sibling_kado_connection_error_warns_and_pends`, and the no-regression
+`test_garden_audit_wire_sibling_not_found_still_approved`.
 
 ## `.base`/`.canvas` inbox files are deliberately NOT triaged (#93, won't-do-yet 2026-07-18)
 

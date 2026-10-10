@@ -394,7 +394,21 @@ deviation row. The cause was that a Hashi save does *two* things (writes the wir
 ticks `- [x] Approved`) while the helper script only did the first; the approval step is
 now a standing requirement above, and the helper refuses to let it be overlooked.
 
-### Run B — F2 — not yet run
+### Run B — F2 — **PASSED**, 2026-10-10
+
+| Check | Result |
+|---|---|
+| the typed name reached the parser | `proposed_name: "karte-1938.png"` — the computed default was `karte (2).png`, so the destination itself is the proof |
+| the markdown path was authoritative | wire `counts as: UNCHANGED (markdown path)` — this run tests that surface, and an edited wire would have overridden it |
+| provenance set by comparison | `name_is_owner_supplied: true`, here because the typed name differs from the computed one — the mirror of Run A, where the same `true` was set **unconditionally** by the wire path. Both paths observed live, with their different reasons |
+| the move went to the typed name | `I02 move_asset` → `Atlas/290 Assets/295 Attachments/karte-1938.png` |
+| the embed was rewritten | `![[karte-1938.png]]` — a **bare basename**, rewritten from the path-prefixed `![[100 Inbox/Scans/karte.png]]`, which is the branch this fixture exists to exercise |
+| nothing withheld | `tomo.skipped_assets: None`, correct for an accepted rename |
+| **the right file moved** | the filed asset's bytes are `fa86a6e447ff`, the inbox original — **not** the occupier's `0fb588dae23c`. Two files shared one name; a wrong-file move would show the other hash. This is the check that distinguishes "a file arrived" from "the file arrived" |
+| the occupier survived | still `0fb588dae23c` at `karte.png` |
+| the computed name never leaked | no `karte (2).png` anywhere |
+| apply | Hashi: `applied: 8, failed: 0` |
+| the embed resolves | to the moved file at its new destination |
 
 ### Run C — F3 — not yet run
 

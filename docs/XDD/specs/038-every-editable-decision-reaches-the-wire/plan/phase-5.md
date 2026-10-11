@@ -136,7 +136,7 @@ close-out that traces every criterion to a test that was executed.
      - [x] Step 4's owner read-through — the check that caught 037's four defective
        sentences — came back clean (owner, 2026-10-11).
 
-- [ ] **T5.4 The coordinated handoff, and the Kokoro obligation** `[activity: documentation]`
+- [x] **T5.4 The coordinated handoff, and the Kokoro obligation** `[activity: documentation]`
 
   1. Prime: read the pending handoff in `_outbox/for-hashi/`. **Measured
      2026-10-01 (T2.5): only that one is outstanding.** The Kokoro handoff
@@ -209,12 +209,33 @@ close-out that traces every criterion to a test that was executed.
   4. Validate: re-read the consumer's last message and confirm each of their action
      items is answered.
   5. Success:
-     - [ ] One handoff, complete, with artefacts attached `[ref: SDD/CON-1]`
-     - [ ] A runnable conflict run is included `[ref: README/Decisions Log]`
-     - [ ] CON-8's discharge is confirmed from Kokoro's reply rather than
-           re-sent — it was already `done` on 2026-09-29 `[ref: SDD/CON-8]`
-     - [ ] The three description-only divergences are named in the handoff body
-     - [ ] Nothing was shipped to a live wire before their copy was updated
+     - [x] One handoff, complete, with artefacts attached `[ref: SDD/CON-1]` —
+       `2026-10-11_tomo-to-hashi_wire-v3-ships-coordinated-your-five-asks-answered.md`,
+       with a six-file sidecar tree: the wire schema, its shape, the inventory and
+       the inventory schema, plus the run pair. **Hashi set it `status: done`
+       themselves** and vendored the schema `cmp`-identical in their PR #145.
+     - [x] A runnable conflict run is included `[ref: README/Decisions Log]` —
+       `2026-10-11_0802_suggestions.{json,md}`, `schema_version: "3"`, one
+       `attachment_conflicts` entry with `same_file: false`, `remedy: "rename"`
+       and `proposed_name: "karte (2).png"`. A run their QA vault cannot produce,
+       which is why it was attached rather than described.
+     - [x] CON-8's discharge is confirmed from Kokoro's reply rather than
+           re-sent — it was already `done` on 2026-09-29 `[ref: SDD/CON-8]`.
+           Handoff §15 names the reply and its three ADRs (029/030/031) and states
+           that nothing further goes to Kokoro from this task. **Kokoro re-confirmed
+           the discharge independently on 2026-10-11**, unprompted, in their
+           ADR-029 §3 reply.
+     - [x] The three description-only divergences are named in the handoff body —
+       §7, by field path: `candidate_mocs[].selected`, `candidate_mocs[].anchor`,
+       `proposed_mocs[].tags`. `snapshot_parity_delta` compares structure only, so
+       these three are invisible to a green suite; §7 says so and warns that
+       re-vendoring without them re-vendors the divergence.
+     - [x] Nothing was shipped to a live wire before their copy was updated —
+       every run in the handoff ran against `tomo-instance`, stated at §11
+       *"(never `tomo-privat`, which stays untouched)"*. Hashi's editor would have
+       hit the error screen on a v3 wire at two independent points (the
+       `schema_version` const and a required property on a closed node) — which is
+       why the release was coordinated rather than shipped and announced.
 
 - [ ] **T5.5 Close-out** `[activity: documentation]`
 

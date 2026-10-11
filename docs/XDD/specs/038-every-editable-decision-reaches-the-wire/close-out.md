@@ -432,6 +432,38 @@ documents, and none by a gate — which is the argument #187 exists to settle.
 
 ---
 
+## Where this spec's history lives
+
+Recorded because this document cites four shas and **none of them is an ancestor of
+`main`**. Spec 038 was squash-merged as `ce410fa` (PR #188), which is the repo's
+practice — spec 037 was squashed the same way as `b2132d7` — and the branch was then
+removed by delete-branch-on-merge.
+
+So `git log main` will not find `8964a76`, `6c176ef`, `aec05c0` or `bf4f192`. They are
+reachable from:
+
+- **`history/spec-038`**, an annotated tag at `94fbf9b`, pushed 2026-10-11. Tags are
+  untouched by delete-branch-on-merge and clone by default, which is why this is the
+  ref to use. Spec 037's equivalent is `history/spec-037` at `39abd73`.
+- **`refs/pull/188/head`**, GitHub's own retained PR head. Also `94fbf9b`, also
+  surviving branch deletion — but not fetched by default, not named, and a GitHub
+  convention rather than a git guarantee. The tag's own annotation overstates this by
+  calling itself *"the only remote-reachable record"*; it is not, and this paragraph is
+  the correction, because rewriting a pushed tag costs more than it is worth.
+
+**Specs 035 and 036 need no such note.** 035 landed as a merge commit (`039b8e4`), 036
+as individual commits on `main` — both histories are ancestors of `main` already.
+Verified with `git merge-base --is-ancestor` rather than inferred from the commit
+subjects.
+
+One method note, since it cost a wrong claim in this session: `git branch -a` lists
+**stale local tracking refs** and showed spec branches that the remote had already
+deleted. `git ls-remote origin` is the only thing that answers what the remote holds.
+Reading a local cache and concluding about a remote is the same error as reading a
+producing end and concluding about a consuming end, which this spec caught three times.
+
+---
+
 ## Closing condition
 
 The invariant this spec restores is written in our own schema and was violated by

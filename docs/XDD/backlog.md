@@ -2432,3 +2432,46 @@ Correct for one file; it does not scale to the next spec that types a name.
 listing had to be computed by hand before changing a deletion path. A `--dry-run` on
 `restore` is a small, obvious addition and would have made the 67-file consequence visible
 in one command rather than requiring someone to think of checking.
+
+---
+
+## No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
+
+**Found 2026-10-11 while answering Hashi's forbidden-character question** (handoff
+`2026-10-11_tomo-to-hashi_ten-characters-one-separator-…`). Promised to them as backlogged,
+so it is recorded here rather than left as a remark in a handoff.
+
+**The gap.** Hashi's editor will sanitise a typed attachment name visibly rather than
+refuse it, which makes their reasoning: every name they write back is either Tomo's own
+untouched default or a name the owner saw and approved, so ADR-5's refusal should only ever
+fire on an unusable *computed default* — "that is your side to avoid emitting."
+
+They are right, and we cannot point at a test that says so. What exists:
+
+- `tests/test_038_t3_1_typed_name_check.py:56` pins the canonical computed shape
+  `karte (2).png` as accepted — one literal, not the property.
+- `tests/test_037_t2_1_proposed_name.py` pins `_propose_asset_name`'s computation.
+
+Nothing feeds the first function's **output** into the second function's **verdict**. The
+argument that it always passes is structural: the basename comes from a file that already
+exists in the vault, so it is vault-legal by construction, and ` (n)` inserted before the
+final extension adds only a space, parentheses and digits — none of them in
+`FORBIDDEN_CHARS`. Sound, and unmeasured.
+
+**Why it is worth a test rather than a comment.** The two functions live in different
+modules with different owners (`suggestions-reducer.py` proposes, `lib/typed_name_check.py`
+verdicts) and `typed_name_check.py`'s docstring states it deliberately takes no dependency
+on its callers. That independence is the right design and it is exactly what lets the two
+drift: a future change to the naming scheme — a different separator, a prefix, a counter
+that lands after the extension — would be reviewed against the proposal tests alone, and
+nothing would fail if it started emitting a name our own guard refuses.
+
+The failure mode if it does drift is not a crash. Pass 2 refuses the name, holds the note
+in the inbox, and reports a `typed_name_refused` the owner never typed — a refusal
+attributed to an owner decision that was Tomo's own default. That is spec 038's subject
+wearing the opposite hat.
+
+**The fix.** One property test: generate a basename from the vault-legal alphabet, run it
+through `_propose_asset_name` across a range of occupied counters, and assert
+`check_typed_name(result).ok` for every output. Cheap, and it fails loudly the day the
+naming scheme moves.

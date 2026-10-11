@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: v2.2.21
-# tcs-git-helpers-bundle: h6
+# tcs-git-helpers: v2.2.37
+# tcs-git-helpers-bundle: h9
 # pre-push — tcs-git-helpers repo-side safety hook
 #
 # Blocks pushes to branches whose GitHub PR is CLOSED or MERGED.
@@ -245,8 +245,20 @@ _query_gh_pr_state() {
     # branch was unreachable and every push printed the catch-all warning
     # instead. Both patterns are kept, so a future rewording in either
     # direction stays silent rather than becoming noise again.
+    #
+    # The sibling case (#184): gh maps the remote fine, but the account it is
+    # authenticated as cannot see the repository — a multi-account setup whose
+    # push credential comes from outside gh. That is a steady state, not a
+    # tooling fault, and GitHub answers "not found" for both "does not exist"
+    # and "you may not see it":
+    #
+    #   GraphQL: Could not resolve to a Repository with the name 'owner/repo'.
+    #
+    # Either way the PR lookup is unavailable here and fail-open is the whole
+    # answer, so it joins the silent branch. Kept to that one wording: the
+    # branch stays narrow, and genuine gh failures keep warning.
     case "$gh_out" in
-      *"known GitHub host"*|*"no GitHub remote"*)
+      *"known GitHub host"*|*"no GitHub remote"*|*"Could not resolve to a Repository"*)
         printf 'SKIP 0\n'
         return 0
         ;;

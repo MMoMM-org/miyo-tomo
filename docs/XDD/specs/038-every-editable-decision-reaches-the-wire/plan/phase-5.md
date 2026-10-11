@@ -92,7 +92,7 @@ close-out that traces every criterion to a test that was executed.
   fields, not one, so a second row and both count guards came with it. See
   `phase-2.md`'s T2.1b. T5.3–T5.5 keep their numbers.
 
-- [ ] **T5.3 The live run** `[activity: validate]`
+- [x] **T5.3 The live run** `[activity: validate]`
 
   1. Prime: read `scripts/spec037-fixture.sh` and the 037 live runbook for how a
      live run is staged and reset. **`tomo-privat` is LIVE — never touch it.** All
@@ -107,10 +107,34 @@ close-out that traces every criterion to a test that was executed.
      Spec 037's four defective sentences were caught by the owner reading shipped
      output, not by review.
   5. Success:
-     - [ ] A remedy survives a wire edit in a real run `[ref: PRD/F1]`
-     - [ ] A typed name files the attachment and rewrites the embeds `[ref: PRD/F2]`
-     - [ ] A refused name holds the note and is reported `[ref: PRD/F3]`
-     - [ ] The cost log is updated, as after every live run
+     - [x] A remedy survives a wire edit in a real run `[ref: PRD/F1]` — Run A,
+       2026-10-10. Proven **twice over**: the wire reached Pass 2 (the cache held
+       it — the check that failed silently on the first attempt), and the parser
+       emitted `name_is_owner_supplied: true`, which on the markdown path is set by
+       comparison and would have been `false` since the rename text equalled the
+       computed name. The second signal is in the parser's own output and is
+       independent of the cache file. No `move_asset`; the note still filed.
+     - [x] A typed name files the attachment and rewrites the embeds
+       `[ref: PRD/F2]` — Run B. `move_asset` → `karte-1938.png`, the typed name
+       against a computed default of `karte (2).png`, so the destination is itself
+       the proof; embed rewritten to a **bare basename** from the path-prefixed
+       original. And the filed asset's bytes are `fa86a6e447ff`, the inbox original
+       — **not** the occupier's `0fb588dae23c`. Two files shared one name, so
+       "a file arrived" and "the file arrived" are different claims and only the
+       hash separates them.
+     - [x] A refused name holds the note and is reported `[ref: PRD/F3]` — Run C.
+       `proposed_name: "karte*1938.png"` reached the parser **verbatim**, no
+       sanitisation. The sharpest evidence is a gap: 4 actions, all `skip`, ids
+       starting at **I03** — `I01` and `I02` were built and then suppressed, so the
+       owning note is held. **T4.5 is verified here and nowhere else**: the relay
+       came out byte-identical to a prediction produced by executing the renderer,
+       for the second time and with the other line, its `run_id` sidecar naming
+       this run. One function, two surfaces, proven on live runs rather than by
+       comparing two code paths.
+     - [x] The cost log is updated, as after every live run — `base_kado_calls=2`
+       on all three entries, the spec 034 T6.4 baseline.
+     - [x] Step 4's owner read-through — the check that caught 037's four defective
+       sentences — came back clean (owner, 2026-10-11).
 
 - [ ] **T5.4 The coordinated handoff, and the Kokoro obligation** `[activity: documentation]`
 

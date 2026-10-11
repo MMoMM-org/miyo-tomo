@@ -182,15 +182,24 @@ If the markdown is lost or corrupted, Tomo Hashi can regenerate its
 Applied state from vault inspection or from a tracked execution log;
 the JSON is sufficient to replay.
 
-### Cleanup contract
+### Cleanup contract — there is no cleanup phase
 
-When `/inbox` runs the cleanup phase (`state-promoter.py` + `mark-captured.py`), it needs only
-the `.md`'s frontmatter tag (`#MiYo-Tomo/applied`) and per-action
-`- [x] Applied` checkboxes to decide which source inbox items to
-transition from `captured` → `active`. The `.json` is not consulted
-during cleanup. See
-[tier-3 instruction-set-cleanup](XDD/reference/tier-3/inbox/instruction-set-cleanup.md)
-for the full rules.
+**No automated cleanup exists.** An earlier design gave `/inbox` a cleanup phase that read the
+`.md`'s per-action `- [x] Applied` checkboxes and advanced source items `captured` → `active`.
+It was never built, and neither the phase nor the `active` state exists: `determine_action`
+routes only to `suggest`, `synthesize`, `transcribe`, `fan-resolve` or `idle`, and nothing in
+Tomo reads the `[x] Applied` checkboxes at all.
+
+What actually happens after a full apply: the next `/inbox` reports **`idle`**, because the
+instruction set's `tomo.sources[].path` entries mark their suggestions doc as covered. The
+applied set and its source stay in the inbox until the user deletes them. Removing them by hand
+is safe — but it also removes the coverage record, so a still-present approved suggestions doc
+would be synthesised again.
+
+See [tier-3 instruction-set-cleanup](XDD/reference/tier-3/inbox/instruction-set-cleanup.md),
+whose "Not implemented" banner (2026-05-27) is the authoritative statement, and
+[state-tag-lifecycle](XDD/reference/tier-3/inbox/state-tag-lifecycle.md) for the same note about
+the `active` transition.
 
 ---
 

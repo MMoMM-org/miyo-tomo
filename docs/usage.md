@@ -41,7 +41,9 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 4. **Apply the actions.** Tomo doesn't write outside the inbox; this step is yours. Two paths:
     - **Manually**: open the instruction set in Obsidian, perform each action yourself (write note, add link, set tag), tick `[x] Applied` per action.
     - **Via Tomo Hashi**: run the instruction-set executor in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) on the file. Choose preview mode — `Preview on` (approve each action), `Preview off` (visible apply), or `No confirmation` (background).
-5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
+5. **Clean up when you're ready — nothing does it for you.** An applied instruction set and the suggestions doc it came from **stay in your inbox**, and so do abandoned ones you never approved. There is no automatic removal, and nothing re-processes them in the meantime: re-running `/inbox` reports `idle` with the reason *"All approved items already covered by existing instructions"*.
+
+    **One thing to know if you do delete them: delete the pair, not just one half.** The leftover instruction set is what records that the work is done. Remove it while leaving its approved suggestions doc behind, and the next `/inbox` run sees an approved doc nothing covers — and builds the instruction set again. Deleting both, or neither, is always safe.
 
 > **Two surfaces, one rule.** You can review and edit a run two ways: directly
 > in the suggestions document, or in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s
@@ -252,7 +254,7 @@ Tomo's contract is **proposal-first and write-bounded**: Tomo only writes to the
 - **Inside your vault, but only in the inbox folder**:
   - `<inbox>/<YYYY-MM-DD_HHMM>_suggestions.md` — Pass 1 output.
   - `<inbox>/<YYYY-MM-DD_HHMM>_instructions.md` — Pass 2 output.
-  - The `tomo.state` frontmatter field on **inbox source items** flips from `captured` to `active` once you've applied their actions and `/inbox` cleanup runs.
+  - The `tomo.state` frontmatter field on **inbox source items**, set to `captured` when Pass 1 dispatches them. `captured` is the final state for a source item — it never changes again, and applying the actions does not change it.
 
 ### What Tomo never writes
 
@@ -261,7 +263,7 @@ Tomo's contract is **proposal-first and write-bounded**: Tomo only writes to the
 - Frontmatter or body of any existing note outside the inbox.
 - Any vault file other than the suggestions and instructions documents Tomo itself produced inside the inbox.
 
-When you approve a suggestions doc and Tomo runs Pass 2, the result is an **instruction set** — a markdown document with concrete `write_file`, `link`, `tag`, `archive` actions. You apply those actions one of two ways: by hand in Obsidian (write the new note, add the link, set the tag, tick `[x] Applied`) or via [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s instruction-set executor with your chosen preview mode. Either way, the next `/inbox` run sees the fully-applied instruction set and runs cleanup: `state-promoter.py` transitions source-item lifecycle states and `mark-captured.py` archives completed workflow docs.
+When you approve a suggestions doc and Tomo runs Pass 2, the result is an **instruction set** — a markdown document with concrete `write_file`, `link`, `tag`, `archive` actions. You apply those actions one of two ways: by hand in Obsidian (write the new note, add the link, set the tag, tick `[x] Applied`) or via [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s instruction-set executor with your chosen preview mode. Either way, the applied set and its suggestions doc **stay where they are**. Tomo does not delete or archive them, and neither does Hashi today — removing them is yours to do, whenever you want to.
 
 ### Success markers per workflow
 
@@ -272,19 +274,18 @@ When you approve a suggestions doc and Tomo runs Pass 2, the result is an **inst
 | `/inbox` Pass 1 | A `_suggestions.md` file appears in your inbox folder. Per-item analyst counts and any failures are reported. |
 | `/inbox` Pass 2 | A `_instructions.md` file appears in your inbox folder. The orchestrator reports an action count and a coverage audit. |
 | You apply the instruction set | Each action is applied — manually in Obsidian (tick `[x] Applied` per action) or via Tomo Hashi's instruction-set executor. |
-| `/inbox` cleanup | The next `/inbox` run runs cleanup: `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active`; `mark-captured.py` archives fully-applied workflow docs per your vault-config rules. |
+| The run after you applied | `/inbox` reports **`idle`**, naming *"All approved items already covered by existing instructions"*. That is the success marker: the work is recorded as done and will not be redone. Nothing is deleted or archived — the applied set and its suggestions doc stay in the inbox until you remove them. |
 | `/tomo-setup <section>` | The relevant `config/` files are updated. The wizard prints a per-phase summary so you can see what was written. |
 
 ### Lifecycle state
 
-Tomo tracks every inbox source item's state in a hidden `tomo.state` frontmatter field — not a tag. You never add or edit it by hand; Tomo writes and advances it automatically. The two states a source item moves through are:
+Tomo tracks every inbox source item's state in a hidden `tomo.state` frontmatter field — not a tag. You never add or edit it by hand; Tomo writes it automatically. A source item has exactly **one** state:
 
 | `tomo.state` | Meaning |
 |---|---|
-| `captured` | Item is in the inbox, waiting to be processed. |
-| `active` | Item has been processed: its actions were applied and `/inbox` cleanup transitioned it. |
+| `captured` | Pass 1 has picked the item up. This is the only state a source item ever has — it is set once and never changes, including after you apply the actions. |
 
-A source item carries exactly one state at any time. Because the field is frontmatter rather than a tag, it stays out of your tag pane. The signals you *do* see are filename conventions, body checkboxes (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets), and the per-run `/inbox` summary. Workflow documents (suggestions, instructions) don't carry a `tomo.state` — their progress is read from those checkboxes.
+Applying the actions does not advance it, because the item's own fate is already recorded in the instruction set: either an action moved it, or a `delete_source` removed it, or it was skipped and stays. The state field answers "has Pass 1 seen this", nothing more. Because the field is frontmatter rather than a tag, it stays out of your tag pane. The signals you *do* see are filename conventions, body checkboxes (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets), and the per-run `/inbox` summary. Workflow documents (suggestions, instructions) don't carry a `tomo.state` — their progress is read from those checkboxes.
 
 ## Launcher flags and slash commands
 

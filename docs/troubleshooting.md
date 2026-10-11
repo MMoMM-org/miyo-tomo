@@ -208,15 +208,16 @@ Without `/clear`, peak parent context grows roughly +5-15k per `/inbox` re-trigg
 
 ### `/inbox` Keeps Running the Same Pass
 
-**Symptom:** Running `/inbox` repeatedly does the same thing (re-runs Pass 1 instead of advancing to Pass 2, or re-runs Pass 2 instead of cleaning up).
+**Symptom:** Running `/inbox` repeatedly does the same thing — re-runs Pass 1 instead of advancing to Pass 2, or rebuilds an instruction set you already have.
 
-**Cause:** `/inbox` is state-driven — it inspects inbox contents to decide what's next. If the expected state marker is missing, it falls back to an earlier pass.
+**Cause:** `/inbox` is state-driven — it inspects inbox contents to decide what's next. If the expected marker is missing, it falls back to an earlier pass.
 
 **Check:**
 1. **Pass 1 → Pass 2 transition** — the `*_suggestions.md` doc must contain `- [x] Approved` at the top (the whole-document approval). Without it, `/inbox` assumes Pass 1 is still pending and re-runs it.
-2. **Pass 2 → Cleanup transition** — per-action `- [x] Applied` checkboxes on the `*_instructions.md` doc signal applied actions. Missing checkboxes keep the instruction set "open."
-3. **Source items** carry their state in the `tomo.state` frontmatter field (e.g., `tomo.state: captured` for inbox items). Tomo writes and advances this automatically — you don't set it by hand.
-4. If Obsidian is syncing, give the checkbox/frontmatter changes a moment to propagate before re-running `/inbox`.
+2. **Pass 2 re-running** — this is about **coverage**, not checkboxes. An approved suggestions doc is considered done when some instruction set in the inbox names it under `tomo.sources[].path`. Two things break that: the instruction set was deleted while its suggestions doc stayed, or the suggestions doc's body changed since the set was built (a checksum mismatch, reported as a `checksum_mismatch` drift indicator). Either un-covers it and Pass 2 runs again.
+3. **The `- [x] Applied` checkboxes do not affect `/inbox` at all.** Nothing in Tomo reads them — they are between you and Hashi. Ticking or un-ticking them will not change what the next run does, so do not debug routing by editing them.
+4. **Source items** carry their state in the `tomo.state` frontmatter field (`tomo.state: captured` for inbox items). Tomo writes it once at Pass 1 and never changes it — `captured` is the only state a source item has, so it is never a routing signal you need to inspect.
+5. If Obsidian is syncing, give the frontmatter changes a moment to propagate before re-running `/inbox`.
 
 ### An Attachment Move Was Refused — "Inconsistent state"
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.2
 """embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
 from __future__ import annotations
 
 import re
 
 from lib.attachment_index import _EMBED_RE
+from lib.typed_name_check import check_typed_name
 
 _FENCE_OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\n]*)$")
 
@@ -95,33 +96,39 @@ def rewrite_renamed_embeds(
 ) -> str:
     """Rewrite embed targets for attachments this run's owner renamed.
 
-    `attachments` is `item["attachments"]` — the note's own resolved,
-    inbox-relative attachment paths. `inbox-triage.py` keeps the as-typed
-    embed text (`embed_target`) only for UNRESOLVED references; a resolved
-    one carries only the resolved path, so basename is the only handle left
-    to match body text against (`_target_and_suffix`, above). This is why
-    matching is by basename rather than by full resolved path — a bare
+    `attachments` is `item["attachments"]` — the note's resolved,
+    inbox-relative attachment paths. Matching is by basename, not by that
+    full path: a resolved reference carries no as-typed text, so a bare
     `![[karte.png]]` in the body has no path component to compare.
 
-    `remedies_by_source` is keyed by that same resolved path (spec 037 T3.0's
-    transport: `{source, remedy, proposed_name}`). Only a `source` whose
-    remedy is `rename` with a non-empty `proposed_name` changes anything
-    here — `keep_in_inbox`, `ignore`, a null `proposed_name`, or no remedy
-    record at all all leave the attachment's filed name unchanged, so the
-    body is left alone for those.
+    `remedies_by_source` is keyed by that same resolved path (spec 037
+    T3.0's transport). Only a `source` whose remedy is `rename` with a
+    non-empty `proposed_name` changes anything here; every other remedy
+    leaves the attachment's filed name unchanged, so the body is left alone.
 
     A renamed attachment's OLD basename is replaced by the BARE new
-    basename (owner ruling 2026-09-27) — never the new full path (which
-    would hard-code the asset folder into every rewritten body) and never
-    the original path prefix (which would point at a folder the file has
-    left). `_build_move_asset_actions` (`render_actions.py`) has not run
-    yet at the point this is called, so the new basename is recomputed
-    directly from `proposed_name` rather than read back from a move action.
+    basename (owner ruling 2026-09-27) — never the new full path, never the
+    original prefix. `proposed_name` is substituted VERBATIM, with no
+    basename step here, so TWO separate mechanisms hold that guarantee:
 
-    Every matching embed in the body is rewritten, not just the first one —
-    a note can embed the same attachment more than once. An embed inside a
-    fenced code block is left alone, and so is any `[[...]]` missing the
-    leading `!` (a plain link, not an embed).
+    - a Tomo-COMPUTED name holds it by construction of its producer
+      (`_propose_asset_name`, suggestions-reducer.py, emits a basename);
+    - an owner-TYPED name holds it because of the `check_typed_name` gate
+      below, whose `separator_present` verdict refuses any name containing
+      `/` outright (ADR-5: refused, never sanitised).
+
+    That gate and `_build_move_asset_actions`' gate must keep agreeing and
+    nothing in the type system makes them.
+
+    Known gap: a move withheld for a RUN-level reason this per-note pass
+    cannot see (`kind: collision`, `kind: no_basename`) still gets its body
+    rewritten for an attachment that is never filed.
+
+    Every matching embed is rewritten, not just the first. An embed inside
+    a fenced code block is left alone, and so is any `[[...]]` missing the
+    leading `!`.
+
+    See `docs/tomo/scripts/lib/embed_rewrite.md`.
     """
     renames: dict[str, str] = {}
     for path in attachments or []:
@@ -131,6 +138,12 @@ def rewrite_renamed_embeds(
         new_name = remedy_entry.get("proposed_name")
         if not new_name:
             continue
+        # spec 038 T4.3: refuse an owner-typed name the same way
+        # `_build_move_asset_actions` does — see the docstring above for why
+        # this must stay in step with that gate.
+        if remedy_entry.get("name_is_owner_supplied"):
+            if not check_typed_name(new_name).ok:
+                continue
         old_basename = path.rsplit("/", 1)[-1]
         renames[old_basename] = new_name
 

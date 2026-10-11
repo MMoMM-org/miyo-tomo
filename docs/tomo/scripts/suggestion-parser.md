@@ -184,6 +184,81 @@ field that reaches the output JSON. Any new field on `result` that is omitted fr
 the projection is silently dropped. `audio_peer` was added to both `result` defaults
 and the projection to ensure it survives to `instruction-render.py` as intended.
 
+## Wire precedence is whole-document, never per-field (ADR-026)
+
+WHY this section exists at all: until 2026-10-03 the runtime file carried a section
+comment above `load_changed_wire` saying the opposite — that the JSON is "authoritative
+for the fields it carries … and is applied as an override on top of the markdown parse."
+That describes a pre-ADR-026 override model which the code does not implement, and it sat
+roughly 2400 lines above the branch that does. It was not harmless: while writing spec
+038's user documentation (T5.1) the implementer produced the sentence *"the editor's
+values are what Pass 2 uses for anything you changed there — not the markdown"*, which
+reads as a paraphrase of that stale comment, and spec compliance caught it as a FAIL.
+A wrong comment in a runtime file propagated into shipped owner-facing prose in one step.
+The comment was corrected rather than deleted, and the model it got wrong is recorded
+here so the next reader has somewhere authoritative to check.
+
+WHY whole-document rather than per-field: the gate is a digest, not a field diff.
+`load_changed_wire` compares a recomputation over the editable payload against the
+embedded `emit_digest` and can therefore answer exactly one question — *was this edited
+at all* — never *which fields were edited*. There is no per-field provenance on the wire
+to merge against, so "override the touched fields" is not a thing the data supports.
+Given that, the design takes the only other coherent option: the edited wire becomes the
+sole source and `build_from_wire` rebuilds everything. The call site says it outright —
+"the SOLE authoritative source … No mixing" — and the control flow enforces it, because
+the branch `return`s before the split-and-parse block that reads the markdown ever runs.
+
+WHY the owner-visible consequence is worth stating plainly: save a run in the editor, then
+edit that same run's markdown, and the markdown edits are discarded in full — including
+decisions never touched in the editor. That is not a defect of this design, it is its
+cost, and it is the reason `docs/usage.md` carries a "Two surfaces, one rule" callout
+rather than leaving the rule to be inferred. PRD/S1 of spec 038 exists for this.
+
+WHY the companion flow's both-or-neither rule is this same ruling one level up: the
+mechanism is in "Companion merge from two wires" below — do not restate it here. What that
+section does not say is why the fallback is right and what it costs. Merging one edited
+wire against a stale sibling would apply the sibling's old values as if current, which is
+worse than ignoring the edit outright, so the fallback is the no-mixing rule holding at
+document scope rather than field scope. Its cost lands on the owner: a run they saved in
+the editor is overridden by the markdown, and that is reachable through ordinary use, since
+the fan document is one the owner approves like any other. Recorded in
+`docs/XDD/backlog.md` under "A saved editor run is discarded when its sibling fan document
+was not also saved", with the three candidate fixes, why each costs something, and the
+measured fact that the branch has no test anywhere in the suite.
+
+WHY the fallback cases are deliberately indistinguishable to the caller: `load_changed_wire`
+returns `None` for four different situations — no path given, unparseable JSON, a
+`schema_version` that is not the current schema's, and a digest that still matches. All
+four mean the same thing operationally ("use the markdown"), and collapsing them into one
+return value is what lets the caller stay a single `if`. Three of the four are reported on
+stderr, each with its own line, so the distinctions are not lost. This matters for tests: a
+hand-built fixture that hardcodes a version drifts the moment the schema moves and silently
+takes the markdown path, which is why convergence tests build wires through
+`build_wire_payload` and assert the positive stderr line rather than trusting the absence
+of a failure.
+
+WHY "no path given" is the one case left silent: the parser cannot know a wire sibling
+ever existed at that vault path — only that `--suggestions-json`/`--fan-resolve-json` was
+never passed — so there is nothing true to say about it here. (The sibling half of this
+same concern — a wire that WAS passed but came back unreadable for a reason other than
+"it doesn't exist" — is not this function's problem: that is the caller's read, upstream in
+`inbox-triage.py`'s `_cache_wire_sibling`, and is handled there; see
+`docs/tomo/scripts/inbox-triage.md`'s "Wire sibling errors are NOT_FOUND-only silent"
+section.)
+
+WHY the digest-match ("unchanged") case gained its stderr line (2026-10-10, found standalone
+while running spec 038's T5.3 live validation — not the cause of that run's own failure):
+until then it was the fourth silent route, and an owner who changed nothing in Hashi looked
+identical on stderr to an owner whose edit never reached the parser at all (wrong
+`--suggestions-json` path, wrong run pairing, a sync that never happened). The new line is
+deliberately symmetric with the positive "edited wire is authoritative (JSON-only path)"
+line emitted at the call site — same prefix, opposite outcome — so grepping one family of
+line tells the full story. Purely additive: `load_changed_wire` still returns `None` and the
+caller's markdown path is unchanged. Pinned by
+`tests/test_inbox_triage_wire_cache.py::test_load_changed_wire_unchanged_logs_markdown_fallback`,
+which builds the wire through `build_wire_payload` rather than a hand-rolled dict for the
+same hardcoded-version-drift reason as the convergence tests above.
+
 ## Companion merge from two wires — build_from_wire_companion (ADR-026)
 
 WHY the companion merge got a JSON-only path (parser v0.24.0): the markdown companion
@@ -919,8 +994,8 @@ falling back to it.
 ## An Impossible Rename Resolves to `ignore`, Not `keep_in_inbox` (spec 037 T2.4, v0.40.0)
 
 WHY `_resolve_attachment_remedy` treats a ticked-but-impossible rename (the
-"Rename — no free name available" line, rendered when `proposed_name` is
-`null`) as `ignore` rather than falling back to the safe-looking
+rename line carrying `RENAME_IMPOSSIBLE_MARKER`, rendered when
+`proposed_name` is `null`) as `ignore` rather than falling back to the safe-looking
 `keep_in_inbox`, even though `keep_in_inbox` is what the SAME line ships
 pre-ticked with by `render_attachment_conflicts_block` (SDD ADR-4 exception):
 
@@ -1030,20 +1105,326 @@ itself writes when no free name exists within 99 attempts, so the downstream
 already has to handle it — the unmatched case reuses a path that must work
 anyway rather than inventing a second one.
 
-## The Wire Path Emits the Key Empty, Because the Wire Has Nothing to Say (spec 037 T3.0, v0.40.3)
+## The Wire Path Now Projects `attachment_conflicts[]`, It Did Not Used To (spec 037 T3.0 → spec 038 T2.3, v0.40.4)
 
-`build_from_wire` (ADR-026, the JSON-only parse path) also emits
-`attachment_conflict_remedies`, always `[]`.
+**Superseded premise, kept for history.** From spec 037 T3.0 through spec 038
+T2.1/T2.2, `build_from_wire` (ADR-026, the JSON-only parse path) hardcoded
+`attachment_conflict_remedies` to `[]`, on the premise that the `_suggestions.json`
+wire carried no Attachment-Conflicts data at all — that block existed only in
+the structured `suggestions-doc.json` the markdown path reads. `[]` was the
+honest and complete answer for a path where the question did not apply.
 
-The `_suggestions.json` wire carries no Attachment-Conflicts data at all — that
-block exists only in the structured `suggestions-doc.json` the markdown path
-reads. So `[]` here is not a placeholder for data that failed to arrive; it is
-the honest and complete answer for a path where the question does not apply.
+Spec 038 T2.2 added a top-level `attachment_conflicts[]` array to the wire
+itself (038's ADR-1 supersedes 037's ADR-5), so the premise stopped holding:
+the wire now has something to say, and continuing to hardcode `[]` would
+silently discard a decision the owner made — the lost-remedy defect fixed by
+`tests/test_037_remedy_lost_on_the_wire_path.py`. T2.3 replaced the hardcoded
+`[]` with a projection of `wire.get("attachment_conflicts", [])` into the same
+`{source, remedy, proposed_name}` triple `_join_attachment_conflict_remedies`
+yields for the markdown path, dropping `destination`/`same_file` — wire-only
+display context the outcome triple does not carry (SDD/ADR-3).
 
-It is also load-bearing. CON-5 pins `build_from_wire`'s output equal to the
-markdown parse's for the same input, and three golden tests in
-`tests/test_suggestions_wire_golden.py` enforce it. Emitting the key on one path
-and not the other breaks all three — measured, by reverting this line alone.
-The alternative shape — omit the key on both paths when empty — was rejected
-because it makes a conflict-free run's output a different *shape* from a
-conflicted one, which every consumer would then have to guard.
+CON-5's parity requirement still holds, for a different reason: on a
+conflict-free run the wire's `attachment_conflicts` is `[]` (the reducer omits
+the doc's key entirely — `suggestions-render.py` projects that through `or []`
+— spec 038 T2.2), so the projection is `[]` too, matching the markdown path's
+empty result. The three golden tests in `tests/test_suggestions_wire_golden.py`
+that pin `build_from_wire`'s output equal to the markdown parse's now include the
+field in that comparison instead of comparing against a constant one side could
+never disagree with. They do **not** prove the conflicted case: measured, those
+fixtures carry no `attachment_conflicts` entry at all, so both sides produce `[]`
+and the only behaviour covered there is the empty one. The conflicted case is
+pinned by `tests/test_037_remedy_lost_on_the_wire_path.py`'s cross-path equality
+instead. This is the same caveat this file already records earlier in the file
+(see "A Source Link's DISPLAY Text Is Parsed, Not Its Target") — the golden
+tests "prove parity on a fixture that has no collision and so cannot see it" —
+and it is worth stating twice, because a golden test's fixtures decide what its
+parity claim is worth.
+
+## One Flag, Two Producers, Two Different Constant Values (spec 038 T3.2)
+
+WHY `name_is_owner_supplied` is set in two places and never computed — `True`
+unconditionally in `build_from_wire`'s projection (`:508`), `False`
+unconditionally in `_join_attachment_conflict_remedies` (`:2419`).
+
+A flag that is a constant in both producers looks like a flag that should not
+exist, so the reason it does is the whole of this entry. It is not describing a
+property of the name; it is recording which path the record came down, because
+the two paths differ in what they can honestly claim about the name's
+provenance.
+
+On the wire path the name can have been edited and this script cannot tell
+whether it was. `build_from_wire` reads a `proposed_name` out of the consumer's
+JSON, and the consumer's editor — Hashi, or any future wire editor — can change
+that value in place. The record arrives carrying no trace of the edit: no
+original to compare against, no dirty marker, no provenance field of its own.
+So the only honest claim available on this path is **"could have been edited"**,
+and `True` is that claim. It is deliberately not "was edited". Treating a name
+as owner-supplied when the owner left it untouched costs a check that passes;
+treating it as computed when the owner did retype it is the defect spec 038
+closes.
+
+On the markdown path the name is read from the structured suggestions document,
+and the rendered markdown text is never consulted for it —
+`_join_attachment_conflict_remedies` joins `remedy` from the ticked markdown but
+takes `proposed_name` from `doc["attachment_conflicts"]`. The owner's ticks
+decide the remedy; the document supplies the name. Since no owner keystroke can
+reach the name on this path, `False` is a statement of fact rather than a
+default, and the consequence is that `check_typed_name` never runs on it
+(`render_actions.py`'s gate) — which is what keeps Pass 1's own computed names
+out of scope, per F3's ninth acceptance criterion.
+
+### WHY the Wire Path Cannot Just Compare Against the Doc's Computed Name
+
+The obvious improvement is to make the flag mean something: on the wire path,
+compare the incoming `proposed_name` against the one the suggestions document
+computed, and set `True` only when they differ. That would turn "could have been
+edited" into "was edited", and it would be strictly more precise.
+
+It was rejected because it re-couples the JSON-only path to the **structured**
+document. `--suggestions-doc` is optional on this script, and Phase 2's T2.5
+measured the path working without it — `--file` plus `--suggestions-json`, no
+`--suggestions-doc` argument at all (`plan/phase-2.md:448`; the markdown `--file`
+is still required, since the wire supplements it rather than replacing it). A
+comparison against the doc's computed name would promote that optional argument
+to a requirement for the sole purpose of deciding a flag, trading the path's
+independence for precision on a check whose false positive costs one validation
+that passes.
+
+Phase 4's T4.2 revisits this once a typed name's extracted text can be compared
+against the doc's, which is the right place for it: it is a question about
+reconciling two sources, not about the projection. The current wording in
+`_join_attachment_conflict_remedies`' docstring says "not implemented here"
+rather than "not possible", because the deferral is a sequencing decision and
+should not read as a limitation.
+
+### WHY the Flag Is Internal to This Script's Output
+
+`name_is_owner_supplied` appears in the dict this script emits and in no schema
+and no wire field. It travels from here into
+`attachment_conflict_remedies[]`, is read once by `_build_move_asset_actions`,
+and stops.
+
+That boundary is deliberate and it is cheap to keep: adding it to the wire would
+mean a schema version, a consumer round-trip, and a field Hashi has no use for,
+all to carry a value that only Tomo's own Pass 2 consults.
+
+"Hashi has no use for it" was an inherited claim when this entry was first
+written — reasoned from the field's absence from any schema, with a prior spec's
+"zero references, checked 2026-09-28" as the only evidence. T3.5's implementer
+flagged it as unverified rather than let it stand, so it was **read directly on
+2026-10-02** (Hashi is read-only to this repo, but reading is the point).
+Confirmed, and more strongly than the claim needed: across Hashi's `.ts`, `.js`
+and `.json` sources there are **zero** references to `name_is_owner_supplied`,
+and zero to `proposed_name`, `refusal_reason` and `attachment_conflict_remedies`
+as well. Its vendored `src/schema/suggestions-wire.schema.json` pins
+`schema_version` to `const: "2"` and contains none of those fields, nor
+`skipped_assets`. The grep is sound rather than mis-aimed: the same search finds
+`suggestions` in 98 files, `move_asset` in 17 and `schema_version` in 54.
+
+So the consumer does not yet know the remedy exists at all — Tomo moved this wire
+to `schema_version` 3 in T2.1 and projected the remedies onto it in T2.2, and
+Hashi is still reading 2. That is the expected state, not a defect: Phase 5 owes
+the handoff that tells them. It is recorded here because it is the concrete
+starting position for that conversation, and because a field's absence from a
+consumer is the kind of fact that rots silently — the test that would compare our
+vendored snapshot against theirs is skipped on this very wire (see
+`docs/XDD/backlog.md`, "the upstream-parity check skips silently"), so a green
+suite proves nothing about it either way. CON-4's reasoning for
+the permissive `tomo` block applies in the same direction — a field with no
+external reader does not belong on the wire — and the one-week-earlier argument
+over `kind`'s reader-less presence in `instructions.json`
+(`docs/tomo/scripts/instruction-render.md`, the spec 038 T3.2 reversal) is the
+precedent for taking that question seriously rather than adding fields
+speculatively. The difference between the two cases is that `kind` had become
+non-derivable and this flag is not on the wire at all.
+
+## The Name Comes From the Markdown Now, Not From the Document (spec 038 T4.2, v0.41.0)
+
+WHY `_join_attachment_conflict_remedies` stopped reading `proposed_name` out of
+`doc["attachment_conflicts"]` and reads the rendered rename line instead.
+
+Until this task the markdown accepted the owner's keystrokes and dropped them.
+`parse_attachment_conflict_remedies` parsed the ticks and nothing else; the name
+came from the structured document by `source`, so a name typed into the rename
+line changed nothing about where the attachment was filed. That is the defect
+spec 038 exists to close, and `tests/test_037_typed_rename_target_is_ignored.py`
+pinned it as a strict xfail until T4.2 removed it.
+
+`rename_target` — the rename line's backtick text — now rides on the record
+`parse_attachment_conflict_remedies` yields, and the join decides the name from
+it. The document's record is still read, but for its `destination` and for the
+comparison below, never as the answer. The former `{source: proposed_name}`
+lookup is **gone rather than kept as a fallback**: a stale document must not win
+over the owner's keystrokes, and a fallback is exactly the shape in which it
+would (SDD/Implementation Gotchas).
+
+`rename_target` is consumed inside the join and does not reach this script's JSON
+output, whose remedy records keep the `{source, remedy, proposed_name,
+name_is_owner_supplied}` shape the wire path also yields. One shape, two
+producers — which is what makes T4.4's convergence criterion expressible at all.
+
+### WHY the Renderer's Own Folder Join Is Un-Rendered First
+
+The markdown shows a PATH where the document carries a BARE NAME.
+`render_attachment_conflicts_block` writes
+`_asset_dest_join(asset_folder, proposed_name)` into the backticks, so the
+natural owner edit — retype the filename, leave the folder alone — arrives here
+with a separator in it, and T3.1 refuses separators. So the join is undone before
+the remainder is judged: the folder is recovered from the record's own
+`destination` (itself `_asset_dest_join(asset_folder, source)`, so it carries the
+same normalised prefix) and stripped from the extracted text on an **exact prefix
+match only**. Owner ruling 2026-10-02.
+
+**This is not sanitising and it leaves ADR-5 intact.** What is removed is the
+join this program printed, not owner input. A folder the owner typed themselves
+does not match the prefix, so it is still refused `separator_present`. State this
+plainly, because a reader comparing F3-AC1 ("a typed name carrying a separator is
+refused") against the code will otherwise read the strip as a contradiction:
+F3-AC1 keeps its teeth, and the only separator that stops being refused is one
+this program wrote.
+
+An exact prefix match rather than `rsplit("/", 1)[-1]` is the load-bearing
+choice, and the case that rules out the `basename()` form is a *different* folder
+typed into the line — `Archive/karte-dresden-1938.png`. A `basename()` would
+accept it by silently discarding the folder the owner typed, which is the ADR-5
+rewrite this spec exists to prevent. The two bare-name rows (folder left in
+place, folder deleted too) pass under either implementation, so they establish
+only that the output must be a bare name, never how it may become one. A reader
+who takes them as sufficient evidence will also take them as sufficient coverage
+and drop the row doing the real work.
+
+### WHY `name_is_owner_supplied` Became a Comparison, and What It Compares
+
+It is no longer a constant on this path: `proposed_name != doc_name`, where
+`proposed_name` is the **post-strip** remainder and `doc_name` the document's
+bare name. That is comparing like with like — on an untouched default the two are
+equal, the flag is `False`, and the name is byte-identical to the pre-T4.2
+answer, which is the regression floor this task had to hold.
+
+Comparing the **pre-strip** extracted text against the bare name instead — the
+form this task's brief originally specified — fails twice over, and measured
+2026-10-02: every untouched default looks owner-supplied, *and* the guard is
+handed the full rendered path, so it refuses `separator_present`. That is the
+exact outcome the flag exists to prevent. The two failures are distinguishable
+and a draft of the test's own docstring credited the wrong one to the wrong
+mutation, which is why the test asserts the whole record rather than the flag.
+
+Two cases keep the pre-T4.2 answer — the document's name, flag `False`:
+
+- **the markdown named nothing** (`rename_target is None`): no rename line at
+  all, or the narrowed `rename_impossible` override fired. Nothing was typed, so
+  there is nothing to honour and nothing to check.
+- **a `source` in the markdown that the document does not carry** (a hand-edited
+  or stale document) joins to `proposed_name: None` rather than raising, exactly
+  as in 037. Without the record there is no folder to un-render with, so the
+  extracted text cannot be told apart from a typed one, and degrading to the
+  documented "a rename that lost its name" route is honest where guessing is not.
+
+Everything else is the owner's and is carried verbatim, blank included.
+
+### WHY the `rename_impossible` Override Turns on the Absence of a Name
+
+T4.1 gave the impossible-rename line an empty backtick pair to type into, which
+means the marker can now sit on a line that also carries a name. The override
+therefore turns on the **absence of a name**, not on the presence of the marker,
+and it is settled BEFORE the typed-name guard can see the line. Owner ruling
+2026-10-02.
+
+Both halves of that ordering matter, in opposite directions:
+
+- Keep the old `marker in label` test and a name typed into T4.1's new backticks
+  is discarded and the entry resolves to `ignore` — T4.1 ships a box that does
+  nothing.
+- Drop the override entirely and an *untouched* empty backtick pair is reported
+  as an owner-supplied blank name, so T3.4 renders a refusal bullet for a name
+  nobody typed.
+
+An emptied set of backticks on an **ordinary** conflict (no marker) is a
+different state and must not resolve alike: it yields `""` with the flag `True`
+— **not** `rename` with a null name, which is the destination-less move Rule 6
+forbids. `check_typed_name("")` verdicts that `blank`.
+
+What Pass 2 reports for it today is not the refusal, and the distinction was
+measured 2026-10-02: `_build_move_asset_actions` degrades a `rename` with any
+falsy `proposed_name` to keep-in-inbox **before** `name_is_owner_supplied` is
+consulted, so the owner reads the `vault_collision_held` sentence rather than a
+refusal. Both withhold the move; only the wording differs, and that ordering
+belongs to `render_actions.py` (Phase 3's T3.2), not here.
+
+### Supersedes the Markdown Half of "One Flag, Two Producers" Above
+
+The spec 038 T3.2 entry above describes `name_is_owner_supplied` as a constant in
+both producers, `False` on the markdown path "as a statement of fact rather than
+a default", because no owner keystroke could reach the name. That was true when
+it was written and T4.2 ended it: a keystroke now reaches the name, and the flag
+on this path is computed. The entry is otherwise still current — the wire half is
+unchanged, and its "WHY the Wire Path Cannot Just Compare Against the Doc's
+Computed Name" subsection names T4.2 as the place the comparison belongs and is
+the reason the comparison landed here rather than there. Read it as the
+provenance argument and this section as the markdown half's current answer; its
+title is the stale part.
+
+## The Two Paths Converge, and Where They Deliberately Do Not (spec 038 T4.4)
+
+WHY the phase closes with one test that drives the SAME decision down both paths
+— `tests/test_038_t4_4_the_two_paths_converge.py` — rather than with per-path
+tests on each side of the join.
+
+Each path had tests. What neither side could show is that they agree, and
+agreement is the whole of F1's and F2's shared criterion: one decision, one
+`move_asset` destination, whichever surface the owner edited. The test runs this
+script's `main` twice over the same document — once with no wire, once with an
+edited one — and drives each run's own `attachment_conflict_remedies` through
+`_build_move_asset_actions`, so a divergence is asserted where the owner would
+see it rather than on an intermediate record.
+
+**That test can pass while proving nothing, and the reason is worth keeping.**
+ADR-026's gate returns the wire only when it was edited, so a test that publishes
+a wire without staling its `emit_digest` runs the markdown path twice and passes
+— asserting convergence while exercising one path, with nothing about it looking
+wrong. There are three routes into that state, not one: a matching digest,
+unparseable JSON, and a `schema_version` that is not the schema's current one.
+The third is the one a fixture is most likely to hit, because the accepted version
+is read from the schema itself and never from a literal, so a hand-built wire
+drifts the moment the schema moves — and this spec moved it. Hence two
+construction rules that read as fussy and are not: build the wire through
+`build_wire_payload`, and assert the positive stderr line
+(`suggestions-json: edited wire is authoritative (JSON-only path)`), which closes
+all three routes at once.
+
+**The staling knob wants two properties, and the obvious one has only the
+first.** It must be orthogonal to the decision under test — staling the digest
+with the attachment remedy itself would mean the two paths no longer carry the
+same decision, so an identical destination would prove nothing and a differing
+one would be correct behaviour misread as a defect. It should also be
+**output-free**, and ticking a candidate MOC is not: it makes the wire run's
+`parent_mocs` diverge, which is correct behaviour and still a cost, because it
+drags the cross-path comparison down to the two fields a move is built from and
+leaves a documented exception in the one test that proves the phase. Rewriting
+the `reason` of a proposed MOC that ships `decision: "skip"` has both
+properties — `build_from_wire` skips the whole record when the decision is not
+`approve`, so the field reaches no output at all. Measured 2026-10-03: the two
+runs' **entire** parser outputs are then identical but for
+`name_is_owner_supplied`, so the test compares the whole output and asserts the
+`decision: "skip"` precondition the knob's output-freedom rests on, rather than
+comparing two fields and explaining an exception.
+
+**The convergence is about guard-passing names, and the one exception is
+deliberate.** Because the wire claims `name_is_owner_supplied: True`
+unconditionally and the markdown computes it, an untouched **computed** name is
+run through `check_typed_name` on the wire and not on the markdown. For any name
+that passes the guard the destinations are identical. For a computed name the
+vault forbids but macOS permits — `foo*bar (2).png` is a real one, since
+`_propose_asset_name` sanitises nothing — the wire refuses it
+`forbidden_character` and the markdown files it. ADR-5 confines rejection to
+names an owner could have typed, so refusing it on the markdown path would refuse
+a name Pass 1 itself generated, which F3's ninth acceptance criterion forbids.
+
+That asymmetry is recorded in T3.2 and in the deviations row of 2026-10-02 and is
+**pinned as its own test case** rather than fixed, so the next reader finds it
+documented instead of discovering it as a failure. It is pinned as whole records
+on both sides — the wire's `skipped_assets` entry in full, the markdown's
+`move_asset` in full — because "the wire refuses and the markdown permits" would
+also pass on an implementation that diverged for the wrong reason, or on a broken
+one.

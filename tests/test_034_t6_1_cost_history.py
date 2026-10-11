@@ -180,10 +180,10 @@ class CountingFakeClient:
         return {"content": {}}
 
     def read_file_bytes(self, path: str) -> bytes:
-        from lib.kado_client import KadoError
+        from lib.kado_client import KadoNotFoundError
 
         self._charge("read_file_bytes", path=path)
-        raise KadoError(f"not found: {path}")
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 def _idle_client(**kw) -> CountingFakeClient:

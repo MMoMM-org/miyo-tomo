@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "decisions": [
+    {
+      "id": "D01",
+      "markdown_control": "Accept/Approve checkbox on a suggestion: checked approves the suggestion, unchecked skips it.",
+      "wire_field": "suggestions[].decision",
+      "editable": true,
+      "parser_label": ["accept", "approve"]
+    },
+    {
+      "id": "D02",
+      "markdown_control": "Keep Source checkbox on a suggestion: keeps the origin inbox note instead of deleting it.",
+      "wire_field": "suggestions[].keep_source",
+      "editable": true,
+      "parser_label": ["keep source"]
+    },
+    {
+      "id": "D03",
+      "markdown_control": "Delete Source/Delete checkbox on a suggestion: explicitly deletes the origin.",
+      "wire_field": "suggestions[].delete_source",
+      "editable": true,
+      "parser_label": ["delete source", "delete"]
+    },
+    {
+      "id": "D04",
+      "markdown_control": "Force Atomic checkbox on a suppressed light block: promotes it to a full atomic note.",
+      "wire_field": "suggestions[].force_atomic",
+      "editable": true,
+      "parser_label": ["force atomic"]
+    },
+    {
+      "id": "D05",
+      "markdown_control": "Title/Suggested name/Suggested title/Name field line on a suggestion: retype to rename; the filename derives from it.",
+      "wire_field": "suggestions[].title",
+      "editable": true,
+      "parser_label": ["title", "suggested name", "suggested title", "name"]
+    },
+    {
+      "id": "D06",
+      "markdown_control": "Template field line on a suggestion: retype the template wikilink target.",
+      "wire_field": "suggestions[].template",
+      "editable": true,
+      "parser_label": ["template"]
+    },
+    {
+      "id": "D07",
+      "markdown_control": "Destination/Location/Move to field line on a suggestion: retype the destination folder.",
+      "wire_field": "suggestions[].location",
+      "editable": true,
+      "parser_label": ["destination", "location", "move to"]
+    },
+    {
+      "id": "D08",
+      "markdown_control": "Tags/Tag/New tags to add/New tags field line on a suggestion: retype the tag list to add.",
+      "wire_field": "suggestions[].tags",
+      "editable": true,
+      "parser_label": ["tags", "tag", "new tags to add", "new tags"]
+    },
+    {
+      "id": "D09",
+      "markdown_control": "Approve checkbox on a Proposed MOC block: checked approves creating the MOC, unchecked skips it.",
+      "wire_field": "proposed_mocs[].decision",
+      "editable": true,
+      "parser_label": ["approve"]
+    },
+    {
+      "id": "D10",
+      "markdown_control": "Name field line on a Proposed MOC block: retype to rename the MOC.",
+      "wire_field": "proposed_mocs[].name",
+      "editable": true,
+      "parser_label": ["name"]
+    },
+    {
+      "id": "D11",
+      "markdown_control": "Parent field line on a Proposed MOC block: retype to reparent.",
+      "wire_field": "proposed_mocs[].parent",
+      "editable": true,
+      "parser_label": ["parent"]
+    },
+    {
+      "id": "D12",
+      "markdown_control": "Tags/Tag/New tags/Suggested tags field line on a Proposed MOC block: retype the tag list to add.",
+      "wire_field": "proposed_mocs[].tags",
+      "editable": true,
+      "parser_label": ["tags", "tag", "new tags", "suggested tags"]
+    },
+    {
+      "id": "D13",
+      "markdown_control": "Accept checkbox under a daily note's Possible Trackers block: checked accepts the tracker suggestion.",
+      "wire_field": "daily_updates[].trackers[].accepted",
+      "editable": true,
+      "parser_label": ["accept"]
+    },
+    {
+      "id": "D14",
+      "markdown_control": "Leading time token on a Possible Log Entries line, or the separate '- Time:' sub-field: retype to change when the entry lands.",
+      "wire_field": "daily_updates[].log_entries[].time",
+      "editable": true,
+      "parser_label": ["—", "- Time:"]
+    },
+    {
+      "id": "D15",
+      "markdown_control": "Leading position token (a time, or after_last_line/before_first_line) on a Possible Log Entries line: retype to change where the entry is inserted.",
+      "wire_field": "daily_updates[].log_entries[].position",
+      "editable": true,
+      "parser_label": ["—", "after_last_line", "before_first_line"]
+    },
+    {
+      "id": "D16",
+      "markdown_control": "Text after the em dash on a Possible Log Entries line: retype to change the log-entry content.",
+      "wire_field": "daily_updates[].log_entries[].content",
+      "editable": true,
+      "parser_label": ["—"]
+    },
+    {
+      "id": "D17",
+      "markdown_control": "Accept checkbox under a daily note's Possible Log Entries block: checked accepts the log-entry suggestion.",
+      "wire_field": "daily_updates[].log_entries[].accepted",
+      "editable": true,
+      "parser_label": ["accept"]
+    },
+    {
+      "id": "D18",
+      "markdown_control": "Force Atomic Note checkbox on a Possible Log Entries item: checked promotes it to a full atomic note.",
+      "wire_field": "daily_updates[].log_entries[].force_atomic_note",
+      "editable": true,
+      "parser_label": ["force atomic note"]
+    },
+    {
+      "id": "D19",
+      "markdown_control": "Accept checkbox under a daily note's Possible Log Links block: checked accepts the log-link suggestion.",
+      "wire_field": "daily_updates[].log_links[].accepted",
+      "editable": true,
+      "parser_label": ["accept"]
+    },
+    {
+      "id": "D20",
+      "markdown_control": "Approve checkbox on a Tag-Handler Updates group block: checked approves the group's changes.",
+      "wire_field": "tag_handler_groups[].approved",
+      "editable": true,
+      "parser_label": ["approve"]
+    },
+    {
+      "id": "D21",
+      "markdown_control": "Keep source files checkbox on a Tag-Handler Updates group block: keeps the source files instead of removing them.",
+      "wire_field": "tag_handler_groups[].keep_source",
+      "editable": true,
+      "parser_label": ["keep source"]
+    },
+    {
+      "id": "D22",
+      "markdown_control": "Checkbox on a wikilinked MOC under a suggestion's 'Link to MOC:' or 'Parent MOC:' header: checking it links the MOC; checking an unlisted wikilink here adds a user-sourced candidate (source='user').",
+      "wire_field": "suggestions[].candidate_mocs[].selected",
+      "editable": true,
+      "parser_label": ["link to moc", "parent moc", "parent_moc", "parentmoc", "moc"],
+      "note": "suggestions[].candidate_mocs[].source is the same control's side effect, not a separate decision."
+    },
+    {
+      "id": "D23",
+      "markdown_control": "Placement line following a checked MOC checkbox: overrides where the link is inserted.",
+      "wire_field": "suggestions[].candidate_mocs[].anchor",
+      "editable": true,
+      "parser_label": ["**Placement:**"]
+    },
+    {
+      "id": "D24",
+      "markdown_control": "Rename / Keep in inbox / Ignore checkboxes on an Attachment Conflicts entry: the three ticks resolve to one remedy.",
+      "wire_field": "attachment_conflicts[].remedy",
+      "editable": true,
+      "parser_label": ["rename", "keep in inbox", "ignore"],
+      "note": "The remedy's wire field arrived, as this row once predicted it would."
+    },
+    {
+      "id": "D25",
+      "markdown_control": "The backtick-quoted filename following the Rename checkbox on an Attachment Conflicts entry: retype to choose a different rename target.",
+      "wire_field": "attachment_conflicts[].proposed_name",
+      "editable": true,
+      "parser_label": ["rename"],
+      "note": "The name is typed on the same checkbox line as the remedy, so this row and the remedy row share the `rename` label rather than each having one of their own."
+    }
+  ]
+}

@@ -1,43 +1,41 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_typed_rename_target_is_ignored.py — a rename target the owner types
-into the suggestions markdown is silently discarded.
+into the suggestions markdown reaches Pass 2. **Fixed by spec 038 T4.2**; the
+filename is kept so the history of the defect stays findable.
 
 Owner decision 2026-09-29: *"Hashi soll das Ziel umbenennen können und wir
-auch."* Both surfaces must let the owner name the file. Today **neither** does,
-and the markdown's failure is the worse of the two because it accepts the
-keystrokes and drops them.
+auch."* Both surfaces must let the owner name the file. Neither did, and the
+markdown's failure was the worse of the two because it accepted the keystrokes
+and dropped them.
 
-**What happens today.** The markdown renders the computed name as part of a
-checkbox label — `- [x] Rename to \\`…/karte (2).png\\`` — so it looks editable.
-It is not. `_join_attachment_conflict_remedies` reads `proposed_name` from the
-structured `suggestions-doc.json` and joins it on `source`; the rendered text is
-never consulted for it (`suggestion-parser.py:~2370`). An owner who overtypes
-the name gets the computed one, with nothing anywhere reporting the difference.
+**What happened before.** The markdown renders the computed name as part of a
+checkbox label — `- [x] Rename to \\`…/karte (2).png\\`` — so it looks
+editable. It was not: `_join_attachment_conflict_remedies` read
+`proposed_name` from the structured `suggestions-doc.json` and joined it on
+`source`, and the rendered text was never consulted for it. An owner who
+overtyped the name got the computed one, with nothing anywhere reporting the
+difference. That was the same class as the four owner-facing sentences
+corrected on 2026-09-28/29 and as the wire-path loss Hashi reported on
+2026-09-29: a surface that offers something it does not honour.
 
-That is the same class as the four owner-facing sentences corrected on
-2026-09-28/29 and as the wire-path loss Hashi reported on 2026-09-29: a surface
-that offers something it does not honour. It is listed with them in
-`docs/XDD/backlog.md`.
+**What fixed it.** spec 038 T4.2: the name is read from the backtick text, the
+folder prefix the renderer itself wrote is un-rendered first (owner ruling
+2026-10-02), and the remainder is compared against the doc's bare name only to
+decide whether the typed-name guard (`lib/typed_name_check.py`, T3.1/T3.2)
+applies. The doc is no longer consulted for the value. The strict xfail and
+`test_the_typed_name_is_discarded_today` were both removed with that task.
 
-**Why this is not fixed here.** Honouring a typed name is not a parse change.
-An arbitrary name needs sanitising to an Obsidian-safe filename, checking for
-freeness against the same vault listing `_propose_asset_name` uses, and a
-defined answer for when the typed name is itself taken — and the same value has
-to reach Hashi's editor, which means the suggestions wire field that spec 038
-owes anyway. It is one design, not two patches.
-
-**To whoever fixes it:** the strict xfail below flips, and
-`test_the_typed_name_is_discarded_today` goes with it — that one documents the
-defect, not a contract.
+Both tests below are now plain statements of the 2026-09-29 decision. The
+cases that drove the design — the un-render table, the refusal reasons, the
+no-free-name line's three outcomes — live in
+`tests/test_038_t4_2_parser_reads_the_typed_name.py`.
 """
 from __future__ import annotations
 
 import importlib.util
 import sys
 from pathlib import Path
-
-import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -97,36 +95,18 @@ def test_the_untouched_default_resolves_to_the_computed_name():
     assert _proposed_name_for(COMPUTED) == COMPUTED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Owner decision 2026-09-29: both Tomo's markdown and Hashi's editor "
-        "must let the owner name the file. Today the markdown discards a typed "
-        "name — `proposed_name` is read from the structured doc, never from the "
-        "rendered text. Needs sanitisation, a freeness check and the spec 038 "
-        "wire field, so it is one design rather than a parse tweak. Remove this "
-        "marker when it lands."
-    ),
-)
 def test_a_typed_rename_target_is_honoured():
-    """**The behaviour the owner asked for**, stated as the assertion that will
-    pass once it exists.
+    """**The behaviour the owner asked for**, and it now holds: spec 038 T4.2
+    reads `proposed_name` from the rendered markdown instead of the structured
+    doc, un-rendering the folder prefix the renderer itself wrote so the bare
+    typed name is what reaches Pass 2.
 
-    Strict, so that whoever implements it is told to delete this marker rather
-    than leaving a passing xfail nobody reads.
+    The strict xfail that stood here was removed with that task, and
+    `test_the_typed_name_is_discarded_today` — which recorded the defect, not
+    a contract — was deleted with it, as its own assertion message instructed.
+    The case that drove the design lives on in
+    `tests/test_038_t4_2_parser_reads_the_typed_name.py`, with the un-render
+    table and the refusal reasons; this one stays as the plain statement of
+    the owner's 2026-09-29 decision.
     """
     assert _proposed_name_for(TYPED) == TYPED
-
-
-def test_the_typed_name_is_discarded_today():
-    """Today's answer, recorded plainly — and it is the silence that makes this
-    worth a test rather than a backlog line.
-
-    The owner typed a name, the document accepted the keystrokes, and Pass 2
-    uses a different one. Nothing in either document reports the substitution,
-    so the owner has no way to learn that their input did not count.
-    """
-    assert _proposed_name_for(TYPED) == COMPUTED, (
-        "if a typed name now survives, the defect is fixed and the xfail above "
-        "should have flipped — delete this test with it"
-    )

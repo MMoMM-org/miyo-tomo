@@ -41,7 +41,22 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 4. **Apply the actions.** Tomo doesn't write outside the inbox; this step is yours. Two paths:
     - **Manually**: open the instruction set in Obsidian, perform each action yourself (write note, add link, set tag), tick `[x] Applied` per action.
     - **Via Tomo Hashi**: run the instruction-set executor in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) on the file. Choose preview mode — `Preview on` (approve each action), `Preview off` (visible apply), or `No confirmation` (background).
-5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
+5. **Clean up when you're ready — nothing does it for you.** An applied instruction set and the suggestions doc it came from **stay in your inbox**, and so do abandoned ones you never approved. There is no automatic removal, and nothing re-processes them in the meantime: re-running `/inbox` reports `idle` with the reason *"All approved items already covered by existing instructions"*.
+
+    **One thing to know if you do delete them: delete the pair, not just one half.** The leftover instruction set is what records that the work is done. Remove it while leaving its approved suggestions doc behind, and the next `/inbox` run sees an approved doc nothing covers — and builds the instruction set again. Deleting both, or neither, is always safe.
+
+> **Two surfaces, one rule.** You can review and edit a run two ways: directly
+> in the suggestions document, or in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s
+> structured Suggestions Editor. Both work on the same run. Once you've saved
+> that run in the editor, the editor's values are what Pass 2 uses for the
+> whole run — not the markdown, even for fields you left untouched in the
+> editor. Don't go back and edit the markdown for that run afterwards; the
+> edit is dropped, not merged in. If a run produced a second suggestions
+> document, Tomo needs both saved in the editor — otherwise it uses the
+> markdown for the whole run instead, and Pass 2 says so when that happens.
+> If you haven't opened the editor for a run at all, the suggestions document
+> is what counts, which is why editing it directly and running `/inbox
+> --pass2 --force` works the way the rest of this page describes.
 
 `/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
 
@@ -64,8 +79,16 @@ notes embeds it. It also tells you whether the two files are actually the same:
 Three remedies, one per entry. **Rename is pre-ticked** — it is the only one
 that files the attachment successfully in every case:
 
-- **Rename** — files it under a free name (`karte (2).png`), and rewrites the
-  embed in your note to match, so the note keeps working.
+- **Rename** — files it under a computed free name (`karte (2).png`), and
+  rewrites the embed in your note to match, so the note keeps working. **The
+  name is yours to change**: type over the text between the backticks before
+  you apply, and Tomo files it under what you typed instead of the computed
+  one. If Pass 1 couldn't find a free name at all, the backticks start out
+  **empty** — type a name there yourself. (You can type it in Tomo Hashi's
+  Suggestions Editor instead of the markdown, too — see "Two surfaces, one
+  rule" above: if this run produced a second suggestions document, save that
+  one in the editor too, or your typed name is dropped in favour of the
+  markdown.)
 - **Keep in inbox** — leaves the file where it is. The note is still filed; only
   the file stays behind.
 - **Ignore** — sends the move anyway. It will be refused unless you free the
@@ -75,11 +98,35 @@ that files the attachment successfully in every case:
 > you a second copy of something you already have. Tick **Keep in inbox**
 > instead if you would rather not file it at all.
 
-**In every case the note itself is filed.** Choosing Keep in inbox or Ignore
-holds back the *file*, not the note — so the filed note will point at a file
-that is still sitting in your inbox. That reference still works; it just reaches
-backwards. Tomo says so in the instruction set, both on the action and in its
-summary.
+**Keep in inbox or Ignore still file the note.** They hold back the *file*,
+not the note — so the filed note will point at a file that is still sitting in
+your inbox. That reference still works; it just reaches backwards. Tomo says
+so in the instruction set, both on the action and in its summary. **A typed
+name that Pass 2 refuses is the one exception** — it holds back the note as
+well; see below.
+
+**A typed name is checked, never corrected.** Tomo doesn't guess at what you
+meant by swapping out a character — it either files your name exactly as you
+typed it, or refuses it outright. A typed name is refused when it is:
+
+- **blank** — empty, or nothing but whitespace,
+- **a path, not a plain filename** — it contains `/`, or
+- **carrying a character your vault forbids** — any of `\` `:` `*` `?` `"` `<` `>` `|`.
+
+That's the complete list of reasons a typed name gets refused. "That name is
+already taken" is deliberately not one of them — Tomo checks for that
+separately, as part of deciding whether Rename can even go ahead. One thing
+that is *not* a refusal: a name padded with stray leading or trailing spaces
+is accepted exactly as typed, not trimmed — so a space you didn't notice
+typing stays in the filename. Worth a second look before you move on.
+
+**When a typed name is refused, the attachment isn't filed — and neither is
+any note in this run that embeds it.** Both stay behind in your inbox: the
+instruction set lists them under "Attachments still in the inbox", and Pass 2
+reports them in your terminal too. To fix it: before you apply, correct the
+name in the suggestions document and run `/inbox --pass2 --force`; if you've
+already applied, the attachment and its note are still in the inbox either
+way, so just run `/inbox` again and type a usable name.
 
 To change your mind after Pass 2 has run but before you apply: tick a different
 remedy in the suggestions document, then run `/inbox --pass2 --force`.
@@ -207,7 +254,7 @@ Tomo's contract is **proposal-first and write-bounded**: Tomo only writes to the
 - **Inside your vault, but only in the inbox folder**:
   - `<inbox>/<YYYY-MM-DD_HHMM>_suggestions.md` — Pass 1 output.
   - `<inbox>/<YYYY-MM-DD_HHMM>_instructions.md` — Pass 2 output.
-  - The `tomo.state` frontmatter field on **inbox source items** flips from `captured` to `active` once you've applied their actions and `/inbox` cleanup runs.
+  - The `tomo.state` frontmatter field on **inbox source items**, set to `captured` when Pass 1 dispatches them. `captured` is the final state for a source item — it never changes again, and applying the actions does not change it.
 
 ### What Tomo never writes
 
@@ -216,7 +263,7 @@ Tomo's contract is **proposal-first and write-bounded**: Tomo only writes to the
 - Frontmatter or body of any existing note outside the inbox.
 - Any vault file other than the suggestions and instructions documents Tomo itself produced inside the inbox.
 
-When you approve a suggestions doc and Tomo runs Pass 2, the result is an **instruction set** — a markdown document with concrete `write_file`, `link`, `tag`, `archive` actions. You apply those actions one of two ways: by hand in Obsidian (write the new note, add the link, set the tag, tick `[x] Applied`) or via [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s instruction-set executor with your chosen preview mode. Either way, the next `/inbox` run sees the fully-applied instruction set and runs cleanup: `state-promoter.py` transitions source-item lifecycle states and `mark-captured.py` archives completed workflow docs.
+When you approve a suggestions doc and Tomo runs Pass 2, the result is an **instruction set** — a markdown document with concrete `write_file`, `link`, `tag`, `archive` actions. You apply those actions one of two ways: by hand in Obsidian (write the new note, add the link, set the tag, tick `[x] Applied`) or via [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi)'s instruction-set executor with your chosen preview mode. Either way, the applied set and its suggestions doc **stay where they are**. Tomo does not delete or archive them, and neither does Hashi today — removing them is yours to do, whenever you want to.
 
 ### Success markers per workflow
 
@@ -227,19 +274,18 @@ When you approve a suggestions doc and Tomo runs Pass 2, the result is an **inst
 | `/inbox` Pass 1 | A `_suggestions.md` file appears in your inbox folder. Per-item analyst counts and any failures are reported. |
 | `/inbox` Pass 2 | A `_instructions.md` file appears in your inbox folder. The orchestrator reports an action count and a coverage audit. |
 | You apply the instruction set | Each action is applied — manually in Obsidian (tick `[x] Applied` per action) or via Tomo Hashi's instruction-set executor. |
-| `/inbox` cleanup | The next `/inbox` run runs cleanup: `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active`; `mark-captured.py` archives fully-applied workflow docs per your vault-config rules. |
+| The run after you applied | `/inbox` reports **`idle`**, naming *"All approved items already covered by existing instructions"*. That is the success marker: the work is recorded as done and will not be redone. Nothing is deleted or archived — the applied set and its suggestions doc stay in the inbox until you remove them. |
 | `/tomo-setup <section>` | The relevant `config/` files are updated. The wizard prints a per-phase summary so you can see what was written. |
 
 ### Lifecycle state
 
-Tomo tracks every inbox source item's state in a hidden `tomo.state` frontmatter field — not a tag. You never add or edit it by hand; Tomo writes and advances it automatically. The two states a source item moves through are:
+Tomo tracks every inbox source item's state in a hidden `tomo.state` frontmatter field — not a tag. You never add or edit it by hand; Tomo writes it automatically. A source item has exactly **one** state:
 
 | `tomo.state` | Meaning |
 |---|---|
-| `captured` | Item is in the inbox, waiting to be processed. |
-| `active` | Item has been processed: its actions were applied and `/inbox` cleanup transitioned it. |
+| `captured` | Pass 1 has picked the item up. This is the only state a source item ever has — it is set once and never changes, including after you apply the actions. |
 
-A source item carries exactly one state at any time. Because the field is frontmatter rather than a tag, it stays out of your tag pane. The signals you *do* see are filename conventions, body checkboxes (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets), and the per-run `/inbox` summary. Workflow documents (suggestions, instructions) don't carry a `tomo.state` — their progress is read from those checkboxes.
+Applying the actions does not advance it, because the item's own fate is already recorded in the instruction set: either an action moved it, or a `delete_source` removed it, or it was skipped and stays. The state field answers "has Pass 1 seen this", nothing more. Because the field is frontmatter rather than a tag, it stays out of your tag pane. The signals you *do* see are filename conventions, body checkboxes (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets), and the per-run `/inbox` summary. Workflow documents (suggestions, instructions) don't carry a `tomo.state` — their progress is read from those checkboxes.
 
 ## Launcher flags and slash commands
 

@@ -165,10 +165,14 @@ def test_conflict_entry_joins_proposed_name_by_source(tmp_path):
     leaving T3.1 no name to rename to."""
     doc_path = _write_doc(tmp_path, _doc_with_conflict())
     output = _run_parser(_CONFLICT_MD, doc_path)
+    # spec 038 T3.2: the markdown join also stamps `name_is_owner_supplied:
+    # False` — the name comes from the structured doc, never the rendered
+    # text.
     assert output["attachment_conflict_remedies"] == [{
         "source": SOURCE,
         "remedy": "rename",
         "proposed_name": PROPOSED_NAME,
+        "name_is_owner_supplied": False,
     }]
 
 
@@ -215,6 +219,7 @@ def test_source_absent_from_doc_yields_null_proposed_name_not_keyerror(tmp_path)
         "source": SOURCE,
         "remedy": "rename",
         "proposed_name": None,
+        "name_is_owner_supplied": False,
     }]
 
     # --suggestions-doc points at a file that does not exist at all —
@@ -225,6 +230,7 @@ def test_source_absent_from_doc_yields_null_proposed_name_not_keyerror(tmp_path)
         "source": SOURCE,
         "remedy": "rename",
         "proposed_name": None,
+        "name_is_owner_supplied": False,
     }]
 
 
@@ -376,8 +382,14 @@ def test_parser_output_reaches_build_actions_end_to_end(monkeypatch, tmp_path):
         "source_path": "", "tags": [], "parent_mocs": [], "candidate_mocs": [],
     }]
     _out_dir, captured_kwargs = _run_instruction_render(monkeypatch, tmp_path, parsed)
+    # spec 038 T3.2: the REAL parser's markdown path now also stamps
+    # `name_is_owner_supplied: False` (the name came from the structured doc,
+    # not the rendered text) — present here because this fixture goes
+    # through the real `_join_attachment_conflict_remedies`, unlike the
+    # hand-built dict in the test above.
     assert captured_kwargs.get("attachment_conflict_remedies") == [{
         "source": SOURCE, "remedy": "rename", "proposed_name": PROPOSED_NAME,
+        "name_is_owner_supplied": False,
     }]
 
 

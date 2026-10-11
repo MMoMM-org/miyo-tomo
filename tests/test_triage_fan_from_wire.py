@@ -45,7 +45,7 @@ INBOX_INDEX = {"Sapporo.md": [INBOX + "Sapporo.md"]}
 
 def _wire(**over) -> dict:
     w = {
-        "schema_version": "2",
+        "schema_version": "3",
         "suggestions": [
             {"id": "S01", "stem": "Asahikawa", "item_key": INBOX + "Asahikawa.md",
              "suppressed": True, "force_atomic": True},

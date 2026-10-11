@@ -268,3 +268,59 @@ must not write the ledger, so the flag is opt-in at the call site rather than de
 script. The relay instruction for the `stamped N acknowledged advisory(ies)` stderr line exists
 because the stamp is otherwise invisible to the user — the confirmation belongs in the /inbox
 summary.
+
+## Step 4 Relays a Second File for a Withheld Attachment (spec 038 T4.5, v0.21.0)
+
+WHY Step 4 now `cat`s `tomo-tmp/withheld-attachments.md` as well, under the same
+rules as the delete relay above and not as a variation on them.
+
+The gap this closes is the same one, one decision over: a withheld attachment
+was reported on the wire, in `instructions.md` under "**Attachments still in the
+inbox**", and as a `[warn]` line on stderr — and in none of the three places the
+owner reads first. A skip is not an error, so `instruction-render.py` exits 0 and
+Step 3b treats exit 0 as plain success; the report listed the document count, the
+coverage audit, drift warnings and withheld *deletes*, and nothing about an
+attachment left behind. Measured 2026-10-03. The owner's loop depends on the
+missing step: see it in the shell, go back to the instructions document, change
+the decision, re-run `/inbox --pass2 --force`.
+
+Everything about the mechanism is inherited rather than re-decided, and the
+reasons are in the delete-relay sections above — the file holds only already-
+sanitized user-facing lines (no run id, no header, no internals), the run marker
+lives in a `.run_id` sidecar Step 4 never touches, a file absent means there is
+nothing to relay, and the lines are appended verbatim as the last lines of the
+report. The writer is the same function:
+`instruction-render.py`'s `sync_withheld_deletes_file` was generalised to
+`sync_notice_relay_file` and each caller owns a distinct path, so the two relays
+share one set of staleness semantics without contending.
+
+### WHY the Prohibition Had to Be Widened, Not Just Repeated
+
+The delete relay already forbade substituting the stderr withdrawal block or the
+raw `tomo.delete_withdrawals` JSON, because an earlier version of this agent did
+exactly that. The same prohibition now names the attachment path's own two
+tempting substitutes — the stderr `[warn]`/`[attach]` lines and
+`tomo.skipped_assets` — because a prohibition that lists only the delete surfaces
+reads as satisfied by any attachment surface. The sanitising lives in a script,
+where it is testable, rather than in an instruction asking the model to summarise
+internals.
+
+**`Never count them.`** The no-count ruling `[ref: PRD/C1]` is argued twice in
+`render_md.py` and T3.4's undercount is the evidence; one line per withheld
+attachment satisfies C1's intent without re-opening it. It is stated in the
+runtime prompt because a model asked to report a list of notices will otherwise
+summarise it as a number, which is the single most likely way this relay gets
+quietly undone.
+
+### WHY This Instruction Has a Wiring Guard and No Output Test
+
+Explained once in `docs/tomo/scripts/instruction-render.md`, under "Why Step 4
+Gets a Wiring Guard and Not an Output Test". That file is canonical because it
+owns the `WITHHELD_DELETES_RELAY` / `WITHHELD_ATTACHMENTS_RELAY` constants the
+guard compares this prompt's `cat` path against.
+
+The one thing to carry away without following the link: a missing `cat` does not
+error — it reports nothing withheld, which is indistinguishable from a clean run.
+`TestAgentWiringGuard` pins this file's path to the writer's so that renaming
+either alone fails. The executable check on the report itself is Phase 5's live
+run.

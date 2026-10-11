@@ -120,8 +120,8 @@ class _FullFakeClient:
         self.calls.append(("read_file_bytes", {"path": path}))
         if path in self._read_file_responses:
             return self._read_file_responses[path]
-        from lib.kado_client import KadoError
-        raise KadoError(f"not found: {path}")
+        from lib.kado_client import KadoNotFoundError
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 def _write_registry(tmp_path: Path) -> Path:

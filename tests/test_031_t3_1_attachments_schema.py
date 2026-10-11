@@ -188,7 +188,7 @@ def _make_wire_suggestion(**overrides) -> dict:
 
 def _make_wire(suggestion: dict) -> dict:
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "generated": "2026-09-05T10:00:00Z",
         "run_id": "2026-09-05-1000-attach",
         "profile": "miyo",
@@ -198,6 +198,7 @@ def _make_wire(suggestion: dict) -> dict:
         "proposed_mocs": [],
         "daily_updates": [],
         "tag_handler_groups": [],
+        "attachment_conflicts": [],
     }
 
 
@@ -207,9 +208,16 @@ def test_wire_suggestion_with_attachments_validates(suggestions_wire_schema):
     validate(instance=_make_wire(suggestion), schema=suggestions_wire_schema)
 
 
-def test_wire_suggestion_without_attachments_still_validates(suggestions_wire_schema):
-    """attachments is optional on the wire — legacy payloads still validate (CON-8)."""
-    validate(instance=_make_wire(_make_wire_suggestion()), schema=suggestions_wire_schema)
+def test_wire_suggestion_without_attachments_is_now_rejected(suggestions_wire_schema):
+    """attachments is no longer optional on the wire — spec 038 ADR-8 added it
+    to suggestions[].items.required (schema_version "3"), superseding the
+    legacy-payload allowance this test asserted under CON-8 (spec 031). The
+    emitter (`_wire_note`) already emits it unconditionally defaulting to
+    `[]`, so no real payload is affected — only a hand-built fixture missing
+    it entirely, which is exactly what a stale wire-version artifact would
+    look like."""
+    with pytest.raises(ValidationError):
+        validate(instance=_make_wire(_make_wire_suggestion()), schema=suggestions_wire_schema)
 
 
 def test_wire_suggestion_attachments_must_be_a_list(suggestions_wire_schema):

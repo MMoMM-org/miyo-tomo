@@ -1,0 +1,76 @@
+{
+  "daily_updates": [],
+  "emit_digest": "sha256:2e0c3418e97eed2b84c88ca060347f1f442423498489ab05784038e748ada307",
+  "generated": "2026-07-03T10:00:00Z",
+  "profile": "miyo",
+  "proposed_mocs": [
+    {
+      "decision": "skip",
+      "id": "M01",
+      "member_ids": [
+        "S01"
+      ],
+      "name": "Widgets MOC",
+      "parent": "Root MOC",
+      "reason": "cluster",
+      "tags": [
+        "topic/widgets"
+      ],
+      "topic": "Widgets"
+    }
+  ],
+  "run_id": "2026-07-03-1000-wire",
+  "schema_version": "2",
+  "source_items": 1,
+  "suggestions": [
+    {
+      "attachments": [],
+      "audio_peer": null,
+      "candidate_mocs": [
+        {
+          "anchor": {
+            "alt_headings": [],
+            "fit_confidence": null,
+            "new_section": null,
+            "placement": "after",
+            "type": "heading",
+            "value": "Notes"
+          },
+          "path": "Atlas/200 Maps/Topic MOC.md",
+          "selected": true,
+          "source": "tomo"
+        },
+        {
+          "anchor": {
+            "alt_headings": [],
+            "fit_confidence": null,
+            "new_section": null,
+            "placement": "after",
+            "type": "heading",
+            "value": "Refs"
+          },
+          "path": "Atlas/200 Maps/Other MOC.md",
+          "selected": false,
+          "source": "tomo"
+        }
+      ],
+      "decision": "approve",
+      "delete_source": false,
+      "force_atomic": false,
+      "id": "S01",
+      "item_key": "memo",
+      "keep_source": false,
+      "location": "Atlas/202 Notes/",
+      "stem": "memo",
+      "summary": null,
+      "suppressed": false,
+      "tags": [
+        "topic/mind"
+      ],
+      "template": "t_note_tomo.md",
+      "title": "My Note",
+      "worthiness": 0.8
+    }
+  ],
+  "tag_handler_groups": []
+}

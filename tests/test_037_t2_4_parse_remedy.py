@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_037_t2_4_parse_remedy.py — spec 037 T2.4.
 
 `parse_attachment_conflict_remedies(text) -> list[dict]` reads the three
@@ -45,7 +45,10 @@ rendered text verbatim (`tomo/scripts/suggestions-reducer.py:~1514-1524`):
      rename as sticky (default-wins over a later contradiction), which a
      two-tick test without rename cannot catch.
   7. `test_null_proposal_rename_ticked_alone_yields_ignore` — mutation: pass
-     `remedy: rename` through with a null proposal.
+     `remedy: rename` through with a null proposal. Paired with
+     `test_null_proposal_pre_t4_1_rendering_still_resolves_to_ignore`, which
+     pins the same answer for the pre-T4.1 rendering of that line (see the
+     `RENAME_IMPOSSIBLE_*` constants).
   8. `test_entry_missing_checkbox_lines_still_yields_a_string` — mutation:
      leave `remedy` unset when a line is absent.
   9. `test_no_attachment_conflicts_section_yields_empty_list` — mutation:
@@ -111,8 +114,20 @@ def _doc(*checkbox_lines: str) -> str:
 
 RENAME_TICKED = f"- [x] Rename to `{RENAME_TARGET}`"
 RENAME_UNTICKED = f"- [ ] Rename to `{RENAME_TARGET}`"
-RENAME_IMPOSSIBLE_TICKED = "- [x] Rename — no free name available"
-RENAME_IMPOSSIBLE_UNTICKED = "- [ ] Rename — no free name available"
+# The shape the renderer ships since spec 038 T4.1: empty backticks the owner
+# can type into, before the marker prose. Verified against
+# `render_attachment_conflicts_block` by
+# `tests/test_038_t4_1_markdown_offers_a_place_to_type.py::
+# test_no_free_name_line_carries_empty_backticks`.
+RENAME_IMPOSSIBLE_TICKED = "- [x] Rename to `` — no free name available"
+RENAME_IMPOSSIBLE_UNTICKED = "- [ ] Rename to `` — no free name available"
+
+# The PRE-T4.1 shape, kept deliberately to pin BACKWARD TOLERANCE: a document
+# rendered before T4.1 and ticked after it must still resolve. Named for what
+# it pins, because the two constants above were this shape until spec 038 T4.2
+# — hand-built markdown of a line the renderer had stopped producing, green
+# the whole time and testing a document that no longer existed.
+RENAME_IMPOSSIBLE_TICKED_PRE_T4_1_SHAPE = "- [x] Rename — no free name available"
 KEEP_TICKED = "- [x] Keep in inbox"
 KEEP_UNTICKED = "- [ ] Keep in inbox"
 IGNORE_TICKED = (
@@ -193,6 +208,28 @@ def test_rename_ticked_and_ignore_ticked_yields_ignore_not_rename():
 
 def test_null_proposal_rename_ticked_alone_yields_ignore():
     text = _doc(RENAME_IMPOSSIBLE_TICKED, KEEP_UNTICKED, IGNORE_UNTICKED)
+    assert _remedy(text) == "ignore"
+
+    # spec 038 T4.2 narrowed the override to "marker present AND no usable
+    # name read from the backticks". The empty pair above is still no name, so
+    # the 2026-09-23 answer stands. A name typed between those backticks
+    # resolves to `rename` instead — covered, with the ruling, in
+    # `tests/test_038_t4_2_parser_reads_the_typed_name.py`.
+
+
+def test_null_proposal_pre_t4_1_rendering_still_resolves_to_ignore():
+    """Backward tolerance: a document rendered before T4.1 gave the owner
+    somewhere to type carries no backticks on that line at all. Ticking it
+    still resolves to `ignore` — the parser reads the marker, not the
+    backticks, to recognise the line.
+
+    Mutation: require the empty backtick pair before honouring the marker
+    (`"to `` —" in label`) — a document rendered a day earlier and ticked
+    today would resolve to `rename` with no name, the destination-less move
+    Rule 6 forbids."""
+    text = _doc(
+        RENAME_IMPOSSIBLE_TICKED_PRE_T4_1_SHAPE, KEEP_UNTICKED, IGNORE_UNTICKED
+    )
     assert _remedy(text) == "ignore"
 
 
@@ -277,4 +314,12 @@ def test_two_attachment_conflicts_sections_only_parses_first():
         "when you apply, the move fails and the attachment stays in the inbox)\n"
     )
     entries = PARSER.parse_attachment_conflict_remedies(text)
-    assert entries == [{"source": "a.png", "remedy": "rename"}]
+    # `rename_target` (spec 038 T4.2) is the backtick text of the rename line,
+    # carried to `_join_attachment_conflict_remedies` and consumed there. It is
+    # asserted as part of the whole record rather than ignored, so that a walk
+    # which resumed into the SECOND section would have to get this right too.
+    assert entries == [{
+        "source": "a.png",
+        "remedy": "rename",
+        "rename_target": "Atlas/290 Assets/295 Attachments/a (2).png",
+    }]

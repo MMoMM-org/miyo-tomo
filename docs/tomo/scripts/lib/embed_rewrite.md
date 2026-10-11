@@ -173,3 +173,76 @@ which runs the real render loop over two items and reads both files off disk.
 Its mutation — hoisting the call out of the per-item loop — fails that test and
 **only** that test (measured 2026-09-27); the single-item end-to-end anchor stays
 green under it, which is why the loop-level test was needed at all.
+
+## A Refused Typed Name Rewrites No Embed (spec 038 T4.3, v0.4.1)
+
+WHY `rewrite_renamed_embeds` now calls `check_typed_name` itself, and why the
+docstring's "bare basename, never a path" guarantee needed **two** mechanisms
+named rather than one.
+
+`proposed_name` is substituted verbatim — this function has no basename step.
+Before T4.3 that guarantee rested on a single mechanism, Pass 1's producer
+(`_propose_asset_name` emits a basename by construction), and spec 038 opened a
+second producer: the owner's keyboard. **So the docstring asserted a property the
+code did not have.** A typed `Archive/karte.png` was substituted whole, hard-coding
+a folder into every rewritten body — the exact thing the sentence promises never
+happens — while `_build_move_asset_actions` refused the same record and emitted no
+move. The note's body then pointed at a file the run never created.
+
+That is why the gate lives in this function rather than in the
+`instruction-render.py` caller. The guarantee being broken is stated in this
+function's docstring; the function is the one T4.4's convergence criterion is
+about; and a gate in the caller leaves the library wrong for the next caller.
+
+### The Cost: Two Gates That Must Keep Agreeing
+
+`check_typed_name` is now called from here AND from `_build_move_asset_actions`,
+and nothing in the type system makes the two agree. T3.2 produced the defect above
+by changing one and not the other, so this is a measured risk, not a theoretical
+one. The two gate on the same condition — `name_is_owner_supplied` truthy, then
+`check_typed_name` — and the agreement is pinned by execution instead of by types:
+`tests/test_038_t4_3_refused_name_rewrites_no_embed.py` carries one case that
+feeds a **single** refused name to both halves and asserts the builder emits
+`typed_name_refused` **and** the body comes back byte-identical. That is the test
+that fails if the two conditions drift apart, and no per-half test can catch it.
+
+Deciding the refusal once upstream and carrying the verdict on the remedy record
+is the better design — one verdict, one producer, no agreement to maintain. It
+changes the wire contract, so it is in `docs/XDD/backlog.md` rather than in this
+spec.
+
+### Known Gap: Run-Level Withholdings Are Still Uncovered
+
+The gate covers the typed-name verdict and nothing else. A move withheld for a
+**run-level** reason this per-note pass cannot see still leaves the body
+rewritten for an attachment that is never filed:
+
+- `kind: collision` — two different source paths resolve to one destination, and
+  the second is skipped;
+- `kind: no_basename` — the inbox path has no filename to join.
+
+Both predate T4.3 and neither is closed by it. The reason they cannot be closed
+the same way is mechanical: both depend on `_build_move_asset_actions`' `claimed`
+map, which is **global to the run**, while this function sees one note's
+attachments and the remedy records for them. It cannot know whether another
+note's attachment already claimed the destination. Closing them therefore needs
+the single-verdict record described above — the same backlog item — and not a
+second local gate.
+
+### Where the T4.3 Rationale Lives
+
+The function's docstring keeps three things and only three, because a maintainer
+editing it needs them in front of them: the two-mechanism explanation (it is the
+direct rationale for the `name_is_owner_supplied` branch), one line that the two
+gates must keep agreeing, and one line naming the gap above. Everything else on
+this page — what broke before the fix, the test pointer, the backlog aside, and
+the `claimed`-map mechanics — moved here in T4.4 (2026-10-03) under the routing
+rule in `CLAUDE.md`. The move ran before the trim, which is the repo's required
+order: WHY reaches `docs/tomo/` first and leaves the runtime file second, because
+strip-first destroys it.
+
+The same pass compressed the 037-era paragraphs in that docstring (basename
+matching, the bare-basename ruling, the fenced-code guard) to their operative
+statements. Nothing was lost: every one of those arguments is already on this
+page, above, in more detail than the docstring carried — which is precisely the
+"no copy in both" rule, and the reason the docstring went from 67 lines to 36.

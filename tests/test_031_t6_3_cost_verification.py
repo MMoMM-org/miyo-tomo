@@ -95,8 +95,8 @@ class _FakeClient:
 
     def read_file_bytes(self, path):
         self.calls.append(("read_file_bytes", {"path": path}))
-        from lib.kado_client import KadoError
-        raise KadoError(f"not found: {path}")
+        from lib.kado_client import KadoNotFoundError
+        raise KadoNotFoundError(f"not found: {path}")
 
 
 def _breakdown(client) -> dict[str, int]:

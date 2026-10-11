@@ -115,7 +115,7 @@ def _suggestions_doc_needs_attention_doc() -> dict:
 
 def _suggestions_wire_doc() -> dict:
     return {
-        "schema_version": "2",
+        "schema_version": "3",
         "generated": "2026-09-06T00:00:00Z",
         "run_id": "run-1",
         "profile": "miyo",
@@ -135,11 +135,13 @@ def _suggestions_wire_doc() -> dict:
                 "force_atomic": False,
                 "suppressed": False,
                 "candidate_mocs": [],
+                "attachments": [],
             }
         ],
         "proposed_mocs": [],
         "daily_updates": [],
         "tag_handler_groups": [],
+        "attachment_conflicts": [],
     }
 
 

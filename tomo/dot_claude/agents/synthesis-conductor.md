@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.20.0
+# version: 0.21.0
 
 **Active agent: synthesis-conductor**
 
@@ -208,16 +208,28 @@ notice — one per withheld delete across every entry processed this run. The
 file never contains anything else (no run id, no header, no internals). If
 the command errors (no such file), there is nothing to relay.
 
+Check for a run-level withheld-attachment relay:
+```bash
+cat tomo-tmp/withheld-attachments.md
+```
+If the file exists, every line in it IS an already-sanitized user-facing
+notice — one per attachment this run left in the inbox, across every entry
+processed. The file never contains anything else (no run id, no header, no
+internals). If the command errors (no such file), there is nothing to relay.
+
 > Pass 2 complete — instructions rendered for N source doc(s).
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
 > <every line from tomo-tmp/withheld-deletes.md, if it exists>
+> <every line from tomo-tmp/withheld-attachments.md, if it exists>
 
-Append the file's lines verbatim as the last lines of the report, one per
+Append both files' lines verbatim as the last lines of the report, one per
 line, only when the file exists. Never substitute the stderr withdrawal
-block or the raw `tomo.delete_withdrawals` JSON for this — relay only the
-lines read from `tomo-tmp/withheld-deletes.md`.
+block, the stderr `[warn]`/`[attach]` lines, or the raw
+`tomo.delete_withdrawals` / `tomo.skipped_assets` JSON for this — relay only
+the lines read from `tomo-tmp/withheld-deletes.md` and
+`tomo-tmp/withheld-attachments.md`. Never count them.
 
 ## What you never do
 

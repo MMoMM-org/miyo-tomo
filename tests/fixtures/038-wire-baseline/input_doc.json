@@ -1,0 +1,74 @@
+{
+  "conventions": {
+    "moc_suffix": " MOC",
+    "parent_marker": "up::",
+    "peer_marker": "related::"
+  },
+  "generated": "2026-07-03T10:00:00Z",
+  "needs_attention": [],
+  "profile": "miyo",
+  "proposed_mocs": [
+    {
+      "items": [
+        "S01"
+      ],
+      "name": "Widgets MOC",
+      "parent": "Root MOC",
+      "reason": "cluster",
+      "tags": [
+        "topic/widgets"
+      ],
+      "topic": "Widgets"
+    }
+  ],
+  "run_id": "2026-07-03-1000-wire",
+  "schema_version": "1",
+  "sections": [
+    {
+      "actions": [
+        {
+          "candidate_mocs": [
+            {
+              "anchor": {
+                "placement": "inside",
+                "type": "heading",
+                "value": "Notes"
+              },
+              "path": "Atlas/200 Maps/Topic MOC.md",
+              "pre_check": true,
+              "score": 0.8
+            },
+            {
+              "anchor": {
+                "placement": "after",
+                "type": "heading",
+                "value": "Refs"
+              },
+              "path": "Atlas/200 Maps/Other MOC.md",
+              "pre_check": false,
+              "score": 0.2
+            }
+          ],
+          "item": {
+            "audio_peer": null,
+            "force_atomic": false,
+            "location": "Atlas/202 Notes/",
+            "suppressed": false,
+            "tags": [
+              "topic/mind"
+            ],
+            "template": "t_note_tomo.md",
+            "title": "My Note",
+            "worthiness": 0.8
+          },
+          "kind": "create_atomic_note",
+          "rendered_md": "**Suggested name:** My Note",
+          "suggestion_id": "S01"
+        }
+      ],
+      "id": "S01",
+      "stem": "memo"
+    }
+  ],
+  "source_items": 1
+}

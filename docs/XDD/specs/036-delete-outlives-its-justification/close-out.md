@@ -110,7 +110,7 @@ mechanism behaves as its source indicates — it was read, not executed, from th
 | F5-AC6 — a destination occupied after generation fails the move, the paired delete is skipped, the original survives | Hashi | Their reply to the T4.5 release handoff |
 
 **Status: both discharged 2026-09-21.** The handoff went out 2026-09-18; Hashi vendored wire 3,
-merged it (PR #136, `44cb031`, released 0.25.1) and confirmed both criteria against their own suite,
+merged it (PR #136, `44cb031`, released 0.26.0) and confirmed both criteria against their own suite,
 each new test first run against the old behaviour and confirmed failing.
 
 **Then both were observed live, which the plan did not ask for and which is worth more than the
@@ -258,7 +258,7 @@ have misled the implementer. A contract's prose is part of the contract; read it
 ## Still open at close-out
 
 - ~~**T4.5, the release handoff.**~~ Sent 2026-09-18, answered 2026-09-21. Wire 3 is vendored and
-  merged on the consumer side (0.25.1); emission is unblocked and both consumer-owned criteria are
+  merged on the consumer side (0.26.0); emission is unblocked and both consumer-owned criteria are
   discharged above.
 - ~~**The sanitisation-ownership question**~~ carried since the 2026-09-15 handoff. Closed by
   measurement on the consumer's side, not by assertion: `vault.create` exists in exactly three

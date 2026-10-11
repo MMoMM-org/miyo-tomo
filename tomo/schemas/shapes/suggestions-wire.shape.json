@@ -3,6 +3,7 @@
     "": {
       "closed": true,
       "properties": {
+        "attachment_conflicts": "array",
         "daily_updates": "array",
         "emit_digest": "string",
         "generated": "string",
@@ -15,6 +16,7 @@
         "tag_handler_groups": "array"
       },
       "required": [
+        "attachment_conflicts",
         "daily_updates",
         "emit_digest",
         "generated",
@@ -28,7 +30,37 @@
       ],
       "values": {
         "schema_version": [
-          "2"
+          "3"
+        ]
+      }
+    },
+    "/properties/attachment_conflicts/items": {
+      "closed": true,
+      "properties": {
+        "destination": "string",
+        "proposed_name": [
+          "null",
+          "string"
+        ],
+        "remedy": "string",
+        "same_file": [
+          "boolean",
+          "null"
+        ],
+        "source": "string"
+      },
+      "required": [
+        "destination",
+        "proposed_name",
+        "remedy",
+        "same_file",
+        "source"
+      ],
+      "values": {
+        "remedy": [
+          "ignore",
+          "keep_in_inbox",
+          "rename"
         ]
       }
     },
@@ -188,6 +220,7 @@
         ]
       },
       "required": [
+        "attachments",
         "candidate_mocs",
         "decision",
         "delete_source",
@@ -290,6 +323,6 @@
       "values": {}
     }
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "source": "tomo/schemas/suggestions-wire.schema.json"
 }

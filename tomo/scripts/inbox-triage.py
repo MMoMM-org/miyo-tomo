@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.38.0
+# version: 0.39.2
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -49,6 +49,7 @@ from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.kado_client import (  # noqa: E402
     KadoClient,
     KadoError,
+    KadoNotFoundError,
     observed_call_count,
 )
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
@@ -834,16 +835,20 @@ def _cache_wire_sibling(client, vault_path: str, cache_dir: Path) -> str | None:
     """Fetch + cache the _suggestions.json sibling of an approved doc (ADR-026).
 
     The sibling is a non-markdown file → read via the Kado file op (base64), not
-    read_note. Returns the local cache path, or None when there is no sibling
-    (older doc, or the user has no Hashi editor) — the parser then falls back to
-    the markdown path.
+    read_note. Returns the local cache path, or None when the sibling is
+    genuinely absent (KadoNotFoundError — older doc, or the user has no Hashi
+    editor) — the parser then falls back to the markdown path. Any OTHER
+    KadoError (permission, validation, connection, server) propagates to the
+    caller instead of collapsing to the same None: see
+    docs/tomo/scripts/inbox-triage.md for why, and lib/kado_client.py's
+    path_exists for the precedent this follows.
     """
     if not vault_path.endswith(".md"):
         return None
     wire_vault_path = vault_path[:-3] + ".json"
     try:
         data = client.read_file_bytes(wire_vault_path)
-    except KadoError:
+    except KadoNotFoundError:
         return None
     wire_path = cache_dir / _filename_from_path(wire_vault_path)
     wire_path.write_bytes(data)
@@ -903,6 +908,31 @@ def read_approval_state(
         if call_counter is not None:
             call_counter[0] += 1
         return _cache_wire_sibling(client, vault_path, cache_dir)
+
+    def _warn_and_drift(vault_path: str, exc: KadoError) -> None:
+        """Warn on stderr and record a `wire_sibling_unreadable` drift
+        indicator for a non-NOT_FOUND KadoError on a wire-sibling read.
+
+        Shared by all four _cache_wire_sibling call sites below: three
+        `continue` out of the per-doc loop iteration, the garden-audit site
+        instead sets `approved = False` and falls through to its own
+        approval check (see that site for why `continue` would be wrong
+        there). A caller that drops this call at one site silently stops
+        warning/recording drift for that site while the other three keep
+        working — see docs/tomo/scripts/inbox-triage.md for the WHY and
+        tests/test_inbox_triage_wire_cache.py / tests/test_inbox_triage.py
+        for the per-site tests this guards.
+        """
+        print(
+            f"[inbox-triage] WARNING: wire sibling read failed for "
+            f"{vault_path}: {exc}",
+            file=sys.stderr,
+        )
+        drift_indicators.append({
+            "path": vault_path,
+            "type": "wire_sibling_unreadable",
+            "detail": str(exc),
+        })
 
     tagged_pending: list[tuple[dict, str]] = []
     for doc in pending_approval_hits:
@@ -968,23 +998,28 @@ def read_approval_state(
             # sibling first so we can read its approve flag, then reuse the cached
             # path in the approved branch. Per-finding Apply ticks + the wire
             # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
-            garden_wire_cache = _cache_wire_sibling_counted(vault_path)
-            approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
-                garden_wire_cache
-            )
-            # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
-            # apply while suggestions the user requested have not been generated —
-            # applying would silently skip those candidates. Mainly protects the
-            # .md-only path (no editor to block the approve). Once --suggest runs,
-            # the pending signal clears and the doc applies on the next /inbox.
-            if approved and _garden_suggest_pending(body, garden_wire_cache):
-                print(
-                    f"[triage] garden-audit {vault_path!r}: approved but "
-                    "suggestions still pending — run `/garden-audit --suggest` "
-                    "first; skipping apply.",
-                    file=sys.stderr,
-                )
+            try:
+                garden_wire_cache = _cache_wire_sibling_counted(vault_path)
+            except KadoError as exc:
+                _warn_and_drift(vault_path, exc)
                 approved = False
+            else:
+                approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
+                    garden_wire_cache
+                )
+                # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
+                # apply while suggestions the user requested have not been generated —
+                # applying would silently skip those candidates. Mainly protects the
+                # .md-only path (no editor to block the approve). Once --suggest runs,
+                # the pending signal clears and the doc applies on the next /inbox.
+                if approved and _garden_suggest_pending(body, garden_wire_cache):
+                    print(
+                        f"[triage] garden-audit {vault_path!r}: approved but "
+                        "suggestions still pending — run `/garden-audit --suggest` "
+                        "first; skipping apply.",
+                        file=sys.stderr,
+                    )
+                    approved = False
 
         if approved:
             entry = {
@@ -993,7 +1028,11 @@ def read_approval_state(
                 "cache_path": cache_path_str,
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    _warn_and_drift(vault_path, exc)
+                    continue
                 edited_wire = None
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
@@ -1016,7 +1055,11 @@ def read_approval_state(
                 # ADR-026: cache the fan wire sibling too, so a Hashi-edited fan doc
                 # resolves JSON-only in Pass-2 (standalone-fan path). Fan docs carry
                 # no force-atomic re-opt-in, so extraction stays markdown here.
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    _warn_and_drift(vault_path, exc)
+                    continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 force_atomic_items.extend(
@@ -1090,7 +1133,11 @@ def read_approval_state(
                 "cache_path": str(cache_path),
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling_counted(vault_path)
+                try:
+                    wire_cache = _cache_wire_sibling_counted(vault_path)
+                except KadoError as exc:
+                    _warn_and_drift(vault_path, exc)
+                    continue
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 approved_suggestions.append(entry)

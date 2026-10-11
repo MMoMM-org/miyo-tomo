@@ -127,12 +127,14 @@ def test_skipped_assets_populate_the_json_tomo_block(monkeypatch, tmp_path):
     assert by_source["100 Inbox/Images/"]["destination"] is None
     assert "no filename" in by_source["100 Inbox/Images/"]["reason"].lower()
 
-    # "kind" is a rendering-time concern (picks the markdown remedy) and is
-    # deliberately NOT projected into the JSON — nothing consumes it there,
-    # and it is redundant: a no-basename skip never has a destination.
-    # Pinned here so the omission is a tested decision, not an oversight.
-    for entry in entries:
-        assert "kind" not in entry
+    # spec 038 T3.2: "kind" IS now projected. It used to be considered
+    # redundant with "destination" (a no-basename skip never has one, a
+    # collision always does) and was deliberately omitted on that basis —
+    # but `typed_name_refused` also carries `destination: None`, so that
+    # derivation no longer distinguishes every pair and a JSON consumer
+    # needs the explicit value.
+    assert by_source["100 Inbox/Scans/karte.jpg"]["kind"] == "collision"
+    assert by_source["100 Inbox/Images/"]["kind"] == "no_basename"
     assert by_source["100 Inbox/Scans/karte.jpg"]["destination"] is not None
 
 

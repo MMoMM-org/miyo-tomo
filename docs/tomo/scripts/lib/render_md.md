@@ -755,3 +755,184 @@ larger gap.
   inside an action entry and that file is the consumer contract. It is never the
   first bullet, so the Applied rule is unaffected — and a live Hashi run had
   already executed a set carrying it before the row was written.
+
+## The Refused-Name Remedy Deliberately Does Not Share `vault_collision_held`'s "Afterwards" (spec 038 T3.4, v0.32.0)
+
+WHY the `typed_name_refused` branch in the skipped-assets bullet chain is a
+fourth branch rather than a second `kind` folded into the one above it, when
+both produce an unfiled attachment and both already follow the two-reading-
+moments pattern the owner set on 2026-09-29.
+
+Because the two kinds differ in what happened to the **note**, and that is
+exactly what the "afterwards" half of the sentence is about. Both remedies open
+the same way — before applying, the suggestions document is still live, so the
+cheap route is correcting it there and running `/inbox --pass2 --force`. They
+diverge on the second reading moment, and getting it wrong sends the owner to a
+file that is not where the sentence says it is.
+
+A `vault_collision_held` note **is filed**. The owner chose *keep in inbox* for
+the attachment, not for the note, so that kind is excluded from
+`suppress_moves_for_unfiled_attachments` (`render_actions.py:1569`) and the move
+goes ahead. Read after applying, the source note is gone and the suggestions
+document is spent, so the only thing left to act on is the attachment still
+sitting in the inbox — hence "afterwards, rename the file in the inbox and
+re-run `/inbox`".
+
+A `typed_name_refused` note is **held**. It is not excluded from that pass, so
+its move is dropped and its source survives in the inbox to be re-discovered by
+the next run. Renaming a file on disk is the wrong instruction here — there is
+no filed note to reconcile with and nothing on disk that needs a new name except
+via the document. The route is re-running `/inbox`, which is what the branch
+says: "afterwards, it is still in the inbox, so re-run `/inbox` and name it
+again".
+
+### Calling the Suppression Helper Alone Looks Like a Data-Loss Bug, and Is Not One
+
+This is the thing a reader will get wrong, and the reason to say so plainly is
+that the next person to check it will check it the way it was checked here: by
+calling `suppress_moves_for_unfiled_attachments` on its own and reading the
+result.
+
+Measured 2026-10-02, through the production chain, with one held note and one
+refused typed name. After the suppression pass:
+
+    STAGE 1 — after suppress_moves_for_unfiled_attachments()
+        surviving: [('delete_source', 'a2')]
+        withdrawn_deletes (REPORT-ONLY): ['100 Inbox/Scans/karte.md']
+        >>> move_note dropped: True   delete_source STILL PRESENT: True
+
+The `move_note` is gone and its paired `delete_source` is still in the list.
+Read at that point and nothing else, this is an unambiguous data-loss bug: the
+run would delete the inbox source of a note it had just refused to file. The
+`withdrawn_deletes` field naming that very path makes it look worse, not better,
+because the report says the delete was withdrawn and the action list says it was
+not.
+
+The report is right and the list is not yet finished. `removed_deletes` is
+**report-only** — spec 036 T2.3 / ADR-4 — so this pass records which deletes
+*should* go without removing them, and the removal is a separate, later,
+id-keyed pass. `withdraw_unjustified_deletes` then drops the delete because its
+`depends_on` names a move id that no longer survives:
+
+    STAGE 2 — after withdraw_unjustified_deletes()
+        surviving: []
+        withdrawn: [('a2', 'Origin consumed by 1 atomic.')]
+    >>> actions left touching 100 Inbox/Scans/karte.md: 0
+
+Zero actions for that note: not filed, not deleted, held intact. The guarantee
+holds across the pair of passes and is absent from either one alone, which is
+why reading one of them in isolation produces a false alarm rather than a
+partial answer.
+
+### WHY the Remedy Says "It" and Not "the Note" — the Undercount T3.4 Shipped
+
+T3.4's first version of this remedy ended "afterwards, **the note** is still in
+the inbox". Review caught it and `6c176ef` changed it to "afterwards, **it** is
+still in the inbox".
+
+The bug is a count, not a word choice. `owner_source_items` is a **list**: two
+notes can embed the same attachment, and when its typed name is refused both are
+held. So the singular "the note" was simply false in that case — and worse, it
+contradicted a correct count already present in the same document, since the
+suppression block says "the 2 notes that embed it are not filed either"
+(`_attachment_suppression_reason` pluralises on `note_count`). Two different
+counts for one attachment, in one document the owner approves on, is precisely
+what `render_md.py:871-874` rules against under CON-2: the owner approves on
+what this document says, so it must not miscount what it withheld.
+
+"It" is the attachment. The attachment is never moved, is always exactly one,
+and stays in the inbox whether one owning note is held or five — so the sentence
+is true in every case without counting anything.
+
+**A plural-aware count here was considered and rejected.** Making this remedy
+agree with `note_count` — "afterwards, the 2 notes are still in the inbox" —
+would be accurate, and it was declined anyway, because it puts a *second* count
+of the same fact into the same document. Two counts that agree today drift the
+moment one of them is computed from a different list, which is how the original
+defect arose: the suppression block and the remedy derive from the same entry but
+are written in different functions, and nothing joins them. One count, in the
+block whose job is counting, and a remedy that needs no count, is the shape that
+cannot drift.
+
+### This Is the Sole Render Site for This Remedy
+
+Verified by exhaustive grep over `tomo/` and `scripts/` rather than by sampling:
+the string `Type a usable name for it` occurs exactly once in the tree, at
+`render_md.py:1134`, and the only other site that touches a remedy at all is the
+bullet join sixteen lines below it (`:1134` to `:1150`).
+
+`instruction-render.py` renders none of this. Its `skipped_assets` block projects
+metadata only — `source`, `destination`, `kind`, `reason` — into
+`instructions.json`'s `tomo` block, and carries no remedy prose for any kind. So
+a change to any remedy sentence needs to be made in exactly one place, and the
+absence of a second site is a measured fact rather than an assumption about how
+the two renderers divide.
+
+The unrecognised-`kind` fallback below the four branches matters more than it
+looks because of that: a fifth kind arriving without a branch here gets "(No
+remedy defined for skip kind …)", not the nearest neighbour's instruction. Given
+that a wrong remedy sends the owner to the wrong file — the exact defect this
+section documents twice over, once in T3.2's generic `else` and once in T3.4's
+singular count — failing visibly is the cheaper outcome.
+
+## `_render_skipped_asset_notice` — the Bullet Became a Function Because It Grew a Second Surface (spec 038 T4.5, v0.33.0)
+
+WHY the "**Attachment not filed**" bullet moved out of `render_instructions_md`'s
+loop into a function of its own, with no change to a single rendered byte.
+
+It grew a second reader. T4.5 relays every withheld attachment into the Pass-2
+shell report, and the relay must emit **the document's own sentence** rather than
+a sentence that looks like it. The withheld-delete notice beside it already works
+that way — `_render_withdrawn_delete_notice` is called a second time by
+`instruction-render.py` to build its relay, and the comment at that call site
+states the reason outright: the two surfaces cannot drift apart because there is
+only one of them.
+
+The asset bullet could not do that while it was an inline
+`body_parts.append(f"- ⚠️ **Attachment not filed:** …")` preceded by a per-`kind`
+`if`/`elif` chain. A relay built against it would have had to re-derive the
+sentence, which is the drift this spec had already spent four tasks paying for.
+So the extraction was a **precondition** of T4.5, not a tidy-up done alongside
+it — and the per-`kind` remedy chain moved with the f-string, because the chain
+is part of the sentence, not part of the loop.
+
+Nothing about the four remedies changed. Their rationale is above, unchanged:
+the two reading moments for `vault_collision_held` (v0.29.0), the deliberate
+divergence of `typed_name_refused`'s "afterwards" route (T3.4, v0.32.0), the
+`collision` and `no_basename` wordings, and ADR-11's rule that no executor
+internal — `move_asset` included — reaches rendered text.
+
+### WHY the Extraction Needed Its Own Test, and Why That Test Came First
+
+An extraction that claims to change nothing is exactly the change that can
+silently alter a document, so `test_extraction_preserves_rendered_document_byte_identical`
+pins all four kinds' notice strings as whole-string literals.
+
+The order is what makes it a pin rather than a tautology. The literals were
+captured from the output at `HEAD` **before** the extraction, in a commit
+touching only a test file, so they are the pre-extraction behaviour; a test
+written afterwards would only have pinned whatever the new function happened to
+emit. The TDD gate's first proposal — compare against "the document generated by
+the old inline code" — is not achievable at all, because after the extraction
+that code no longer exists to generate anything.
+
+It verified in both directions: green against pre-extraction source in a
+detached worktree, and green at `HEAD`. Measured, not asserted.
+
+### WHY the Loud Fallback Stays Loud
+
+The chain still ends in `(No remedy defined for skip kind '…' — check
+render_md.py)`, and since T4.5 that sentence can now reach the owner's shell as
+well as the document. It is deliberate: an unrecognised `kind` must never
+silently inherit another kind's remedy, which is how a wrong instruction reaches
+an owner looking authoritative. The filename in a user-facing line is a fair
+thing to object to — raise it rather than softening it in place.
+
+### The Capital Letter Is Load-Bearing, and a Live Run Found It
+
+`remedy` is joined on after a full stop, so every branch must start with a
+capital. T4.4's live run rendered `…karte.png'. no action needed` — a sentence
+opening in lower case — which is why that requirement is stated in the
+function's own docstring rather than left to the reader of four branches to
+notice. It is the kind of defect no unit test was asked to catch and a single
+real render makes obvious.

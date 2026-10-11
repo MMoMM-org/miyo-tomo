@@ -208,15 +208,16 @@ Without `/clear`, peak parent context grows roughly +5-15k per `/inbox` re-trigg
 
 ### `/inbox` Keeps Running the Same Pass
 
-**Symptom:** Running `/inbox` repeatedly does the same thing (re-runs Pass 1 instead of advancing to Pass 2, or re-runs Pass 2 instead of cleaning up).
+**Symptom:** Running `/inbox` repeatedly does the same thing — re-runs Pass 1 instead of advancing to Pass 2, or rebuilds an instruction set you already have.
 
-**Cause:** `/inbox` is state-driven — it inspects inbox contents to decide what's next. If the expected state marker is missing, it falls back to an earlier pass.
+**Cause:** `/inbox` is state-driven — it inspects inbox contents to decide what's next. If the expected marker is missing, it falls back to an earlier pass.
 
 **Check:**
 1. **Pass 1 → Pass 2 transition** — the `*_suggestions.md` doc must contain `- [x] Approved` at the top (the whole-document approval). Without it, `/inbox` assumes Pass 1 is still pending and re-runs it.
-2. **Pass 2 → Cleanup transition** — per-action `- [x] Applied` checkboxes on the `*_instructions.md` doc signal applied actions. Missing checkboxes keep the instruction set "open."
-3. **Source items** carry their state in the `tomo.state` frontmatter field (e.g., `tomo.state: captured` for inbox items). Tomo writes and advances this automatically — you don't set it by hand.
-4. If Obsidian is syncing, give the checkbox/frontmatter changes a moment to propagate before re-running `/inbox`.
+2. **Pass 2 re-running** — this is about **coverage**, not checkboxes. An approved suggestions doc is considered done when some instruction set in the inbox names it under `tomo.sources[].path`. Two things break that: the instruction set was deleted while its suggestions doc stayed, or the suggestions doc's body changed since the set was built (a checksum mismatch, reported as a `checksum_mismatch` drift indicator). Either un-covers it and Pass 2 runs again.
+3. **The `- [x] Applied` checkboxes do not affect `/inbox` at all.** Nothing in Tomo reads them — they are between you and Hashi. Ticking or un-ticking them will not change what the next run does, so do not debug routing by editing them.
+4. **Source items** carry their state in the `tomo.state` frontmatter field (`tomo.state: captured` for inbox items). Tomo writes it once at Pass 1 and never changes it — `captured` is the only state a source item has, so it is never a routing signal you need to inspect.
+5. If Obsidian is syncing, give the frontmatter changes a moment to propagate before re-running `/inbox`.
 
 ### An Attachment Move Was Refused — "Inconsistent state"
 
@@ -256,6 +257,44 @@ still there.
 
 **Avoid it next time:** leave the pre-ticked **Rename** in place. It is the only
 remedy that files the attachment and rewrites the embed in your note to match.
+
+### I Typed a Name Pass 2 Could Not Use
+
+> **Not the same entry as "Inconsistent state" above.** That one is about a
+> move Pass 2 already emitted and Hashi tried and failed to apply — you see a
+> specific `failed` action with an error message. This entry is earlier: Pass
+> 2 never emits a move at all, nothing fails when you apply, and the only
+> trace is a line naming the attachment in the instruction set and in Pass 2's
+> own report. If you're looking at a `failed` action, go to the entry above
+> instead.
+
+**Symptom:** Nothing errors. You apply the instruction set normally, but
+afterward an attachment you typed a replacement name for — and the note that
+embeds it — are both still sitting in your inbox. Looking back at Pass 2's
+report, or at the instruction set under **"Attachments still in the inbox"**,
+you find a line naming it.
+
+**Cause:** The name you typed over the computed one (in the suggestions
+document, or in Tomo Hashi's Suggestions Editor) couldn't be used, and Tomo
+never corrects a typed name to make it fit — it either files it exactly as
+typed, or refuses it. A typed name is refused only when it's blank, when it
+contains `/` (a typed name must be a plain filename, not a path), or when it
+contains a character your vault forbids (`\` `:` `*` `?` `"` `<` `>` `|`). When
+that happens, the attachment is not filed, and neither is any note in this run
+that embeds it — both are held back on purpose, so you get another chance
+rather than ending up with a silently mangled filename.
+
+**Fix:**
+1. **If you haven't applied yet:** correct the name in the suggestions
+   document, then run `/inbox --pass2 --force`.
+2. **If you've already applied:** the attachment and its note are still in
+   the inbox regardless — just run `/inbox` again and type a usable name when
+   it re-proposes them.
+
+**Avoid it next time:** stick to a plain filename — no `/` and none of
+`\ : * ? " < > |`. Also watch for stray leading or trailing spaces: Tomo
+accepts a padded name exactly as typed rather than refusing it, so a space you
+didn't mean to type can end up in the filename.
 
 ---
 

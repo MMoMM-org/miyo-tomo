@@ -1,4 +1,4 @@
-# version: 0.26.7
+# version: 0.26.12
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -29,6 +29,7 @@ from lib.render_helpers import (
     resolve_source_path,
 )
 from lib.render_md import bare_stem
+from lib.typed_name_check import check_typed_name
 from lib.source_link import colliding_names, qualified_target
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
@@ -688,6 +689,37 @@ def _build_move_note_actions(
     return out
 
 
+def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
+    """The prose sentence for a `typed_name_refused` skip entry's `reason`.
+
+    Matches the register of the other `rename`-branch reasons just above
+    (`kept in inbox: ...`) and `collision`'s (`destination collision: ...`):
+    a label, a colon, then the specific fact — never repeating `source`/
+    `path`, since the only consumer (render_md.py's "Attachment not filed"
+    bullet, and render_actions.py's own `_attachment_suppression_reason`)
+    already opens with it in backticks. Names the TYPED name as the thing at
+    fault (F3's seventh acceptance criterion: the text states only what was
+    verified) — never the inbox path, which is not the problem here, and
+    never what will happen on re-run, which belongs to the remedy text, not
+    this sentence.
+
+    `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS` — a
+    closed set of exactly three members — so the final branch is reached
+    only by `blank`, not as a silent fallback for an unrecognised code.
+    """
+    if refusal_reason == "separator_present":
+        return (
+            f"typed name refused: `{proposed_name}` contains a path "
+            f"separator, which is not allowed in a filename"
+        )
+    if refusal_reason == "forbidden_character":
+        return (
+            f"typed name refused: `{proposed_name}` contains a character "
+            f"Obsidian does not allow in a filename"
+        )
+    return "typed name refused: the typed name is blank"
+
+
 def _build_move_asset_actions(
     manifest: list[dict],
     inbox_path: str,
@@ -737,6 +769,35 @@ def _build_move_asset_actions(
     destination is chosen still passes through the `claimed` check below: a
     remedy resolves WHICH destination is examined, never whether it is
     examined (see docs/tomo/scripts/lib/render_actions.md).
+
+    spec 038 T3.2 / ADR-5 / ADR-6: a `rename` whose record carries
+    `name_is_owner_supplied: True` is run through `lib.typed_name_check`
+    before `_asset_dest_join` ever sees `proposed_name`. A refused name
+    emits no move and a `skipped_assets` entry with `kind:
+    typed_name_refused`, whose `reason` is a prose sentence from
+    `_typed_name_refusal_reason` and whose `refusal_reason` carries the bare
+    `REFUSAL_REASONS` code. Those two fields are not interchangeable: `reason`
+    is written for a human and must never be parsed, and this docstring said
+    the opposite until 2026-10-02 — it described T3.2's first attempt
+    (`8e7d9b0`), which put the bare code in `reason` and rendered an enum
+    literal plus the wrong remedy into the owner's instruction document.
+    `e2a67b9` fixed the code and the call site's comment and missed this
+    docstring, so the file's own documentation contradicted the comment it told
+    the reader to go and read. It survived 18 commits that way, and the reason
+    is the useful part: **not one of them touched this file.** (Eighteen, not
+    nineteen: `e2a67b9..06fd16b` counts 19 but includes the commit that fixed
+    it, which manifestly did touch the file. `e2a67b9..06fd16b~1` is 18, and
+    zero of those 18 touched it. The first draft of this very sentence said
+    "four", the second "19"; a third reviewer caught the second. The figure is
+    harder to state correctly than the fact it supports, which is the argument
+    for stating the fact first.) A stale docstring
+    is not found by the work going on around it — only by someone reading the
+    function to write about it, which is how this one surfaced (spec 038 T3.5).
+    A record
+    with the flag False or absent — the markdown path, or any `rename`
+    record predating this field — is never checked, because `proposed_name`
+    there was computed by Pass 1, not typed by the owner, and ADR-5 confines
+    rejection to names an owner could have typed.
     """
     out: list[dict] = []
     skipped: list[dict] = []
@@ -823,11 +884,59 @@ def _build_move_asset_actions(
                 skipped_by_path[path] = entry
                 continue
             if remedy == "rename":
+                proposed_name = remedy_entry["proposed_name"]
+                # spec 038 T3.2 / ADR-5: only a name the owner could have
+                # typed is checked, gated on `name_is_owner_supplied`
+                # (suggestion-parser.py) — `proposed_name` itself carries no
+                # such provenance. A Tomo-computed name (flag False, or
+                # absent on an older/foreign remedy record) skips the check
+                # and reaches `_asset_dest_join` exactly as it did before
+                # this task: `_propose_asset_name` (suggestions-reducer.py)
+                # sanitises nothing and can legally produce a macOS basename
+                # Obsidian forbids (`*`, `"`, `|`, `<`, `>`, `\`); checking it
+                # would refuse names Pass 1 itself generated, which F3's
+                # ninth acceptance criterion ("this feature constrains typed
+                # names only") forbids. The check runs BEFORE
+                # `_asset_dest_join` on purpose — an unusable name must never
+                # reach it, not even to be rejected there.
+                if remedy_entry.get("name_is_owner_supplied"):
+                    verdict = check_typed_name(proposed_name)
+                    if not verdict.ok:
+                        # `reason` is prose, like every other kind's `reason`
+                        # field — render_md.py's skipped-assets bullet and
+                        # render_actions.py's own `_attachment_suppression_
+                        # reason` both render it VERBATIM (checked by
+                        # execution, not assumed), so a bare enum literal
+                        # here is a CON-6 violation live today, not a defect
+                        # deferred to T3.4. `refusal_reason` carries the bare
+                        # REFUSAL_REASONS code separately, for a renderer
+                        # that needs to branch on it deterministically
+                        # without parsing `reason`'s prose — exactly the
+                        # "phrase each without parsing a string" purpose
+                        # typed_name_check.py's own docstring states for the
+                        # closed set.
+                        #
+                        # `destination` is None: unlike `no_basename`
+                        # (nothing to compute from) there IS a natural
+                        # destination for `path`, but it belongs to the
+                        # occupied name this rename was meant to avoid, not
+                        # to the refused typed name — reporting it here would
+                        # misattribute it.
+                        entry = {
+                            "source": path, "destination": None,
+                            "reason": _typed_name_refusal_reason(
+                                verdict.reason, proposed_name
+                            ),
+                            "refusal_reason": verdict.reason,
+                            "kind": "typed_name_refused",
+                            "owner_source_items": owners,
+                        }
+                        skipped.append(entry)
+                        skipped_by_path[path] = entry
+                        continue
                 # proposed_name is a BASENAME (SDD C1) — _asset_dest_join,
                 # never the vault root a bare join would write to.
-                destination = _asset_dest_join(
-                    asset_folder, remedy_entry["proposed_name"]
-                )
+                destination = _asset_dest_join(asset_folder, proposed_name)
             # `ignore`, and no remedy at all (the conflict is gone by Pass 2 or
             # never existed), both leave `destination` as computed from `path`
             # above and fall through to the same claimed check as any other
@@ -1385,9 +1494,14 @@ def _drop_md(path: str) -> str:
 def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
     """The sentence the user reads for one attachment that could not be filed.
 
-    It must not read like a destination clash: that one is fixed by renaming a
-    *note*, this one by renaming a *file*. A reader who cannot tell which
-    happened cannot act.
+    Three distinct remedies, and a reader who cannot tell which happened
+    cannot act: a destination clash (`collision`) is fixed by renaming one of
+    the two *files*; a refused typed name (`typed_name_refused`, spec 038
+    T3.2) is fixed by retyping a usable *name*; anything else reaching here
+    today — `no_basename` — is fixed by correcting the inbox *path*.
+    `vault_collision_held` never reaches this function at all (excluded in
+    `suppress_moves_for_unfiled_attachments`, above), so there is no fourth
+    branch to add for it.
     """
     source = entry.get("source") or "?"
     if entry.get("kind") == "collision":
@@ -1396,6 +1510,16 @@ def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
             f"claims `{entry.get('destination')}`"
         )
         remedy = "rename one of the two files, then re-run Pass 2"
+    elif entry.get("kind") == "typed_name_refused":
+        # `entry["reason"]` is already prose (see `_typed_name_refusal_
+        # reason`), so it reads naturally after "cannot be filed —" exactly
+        # like the other branches' reasons do. The remedy names the TYPED
+        # NAME as the thing to fix, never the inbox path — that distinction
+        # is the defect this branch exists to close (found by execution:
+        # the generic `else` branch below said "correct that inbox path",
+        # which is wrong here — the inbox path was never the problem).
+        head = f"`{source}` cannot be filed — {entry.get('reason') or 'the typed name was refused'}"
+        remedy = "retype a usable name for it, then re-run Pass 2"
     else:
         head = f"`{source}` cannot be filed — {entry.get('reason') or 'no filename'}"
         remedy = "correct that inbox path, then re-run Pass 2"

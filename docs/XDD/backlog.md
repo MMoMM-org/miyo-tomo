@@ -2475,3 +2475,58 @@ wearing the opposite hat.
 through `_propose_asset_name` across a range of occupied counters, and assert
 `check_typed_name(result).ok` for every output. Cheap, and it fails loudly the day the
 naming scheme moves.
+
+---
+
+## Two open refusal-class rulings for owner-typed attachment names: whitespace padding, and the link-breaking four
+
+**Both measured 2026-10-11** while answering Hashi's `#141` questions. ADR-5 makes the typed
+name accept-verbatim-or-refuse, never correct, and `check_typed_name`'s three reasons are a
+closed set — so each of these is either a fourth refusal class or a fact we record. Both need
+the owner's ruling; neither is a code change we can take unilaterally.
+
+### A. Whitespace padding — flagged 2026-10-01, still open
+
+`check_typed_name("  a.png  ")` returns `ok=True`. `.strip()` decides blankness only and never
+trims the returned name, so a padded name is filed with its padding. Legal in Obsidian, almost
+certainly not what anyone meant.
+
+Hashi has since closed their half: their editor will trim padding **visibly** as part of
+sanitising (their 2026-10-11 reply, shipping with #141). So the editor-typed route is covered
+from their side, and **only the markdown-typed route stays open** — which is entirely ours.
+
+### B. `#`, `^`, `[`, `]` — raised by Hashi, measured here, and worse than raised
+
+None of the four is in `FORBIDDEN_CHARS`, all four are legal filenames, and all four pass
+`check_typed_name`. Three measurements, by executing the real functions:
+
+1. **The typed path breaks the embed.** `rewrite_renamed_embeds` substitutes the typed name
+   verbatim, so a typed `karte#1938.png` yields `![[karte#1938.png]]` — which Obsidian parses
+   as file `karte` plus heading `1938.png`. Control in the same harness: `karte (2).png`
+   rewrites correctly and a typed `a/b.png` is refused with the body untouched.
+2. **A computed default cannot reach it**, which refutes Hashi's own closing worry.
+   `extract_attachment_embeds` does not match these embeds at all — five ordinary forms are
+   found (including `karte (2).png` and `karte münchen.png`), all four of these return `[]`. A
+   source file carrying one is never recognised as an attachment, so no conflict entry and no
+   computed default exist to carry it forward.
+3. **The finding neither side had: we go blind to the link we wrote.** Combining 1 and 2, the
+   typed path files the asset and rewrites the embed into a form *our own extractor cannot
+   read*. A later run over that note sees no attachment: it cannot report it unresolved, offer
+   a remedy, or count it. The note looks attachment-free and the broken embed is invisible to
+   the only tool that would notice.
+
+Point 3 is what makes this more than cosmetic. Hashi's sanitiser will treat the four as
+forbidden, so — as with A — the editor route closes from their side and the markdown route is
+ours alone.
+
+### Why both are recorded rather than fixed
+
+Adding a fourth reason to `REFUSAL_REASONS` widens a set three renderers branch on
+(`_typed_name_refusal_reason`, `render_md.py`'s bullet, `_attachment_suppression_reason`), and
+`typed_name_check.py` deliberately takes no dependency on its callers. The cheaper shape may be
+to fold both into `forbidden_character` by widening `FORBIDDEN_CHARS` — but that set is also
+`sanitize_stem`'s input, and widening it changes how every *derived* stem is sanitised, not just
+how a typed name is judged. That coupling is the decision, and it is the owner's.
+
+**Not scheduled.** Hashi needs neither ruling to ship #141, and their sanitising closes the
+editor route for both.

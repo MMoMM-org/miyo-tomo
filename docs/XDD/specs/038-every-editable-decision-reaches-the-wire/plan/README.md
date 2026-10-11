@@ -38,7 +38,7 @@ version: "1.0"
 |-------|-------|
 | specId | 038-every-editable-decision-reaches-the-wire |
 | title | Every editable decision reaches the wire |
-| status | `IN_REVIEW` |
+| status | `IMPLEMENTED` |
 | totalTasks | 23 |
 | parallelTasks | 3 |
 | specReferences | 125 |
@@ -48,10 +48,10 @@ version: "1.0"
 
 | Phase | Name | Status | Tasks | File |
 |-------|------|--------|-------|------|
-| 1 | The inventory, and what it reveals | `in_progress` | 4 | `phase-1.md` |
-| 2 | The wire carries the decision | `pending` | 5 | `phase-2.md` |
-| 3 | Refusal, before anything can be typed | `pending` | 5 | `phase-3.md` |
-| 4 | The name becomes a value | `pending` | 4 | `phase-4.md` |
+| 1 | The inventory, and what it reveals | `completed` | 4 | `phase-1.md` |
+| 2 | The wire carries the decision | `completed` | 5 | `phase-2.md` |
+| 3 | Refusal, before anything can be typed | `completed` | 5 | `phase-3.md` |
+| 4 | The name becomes a value | `completed` | 4 | `phase-4.md` |
 | 5 | Integration, the live path, and one handoff | `completed` | 5 | `phase-5.md` |
 
 ---

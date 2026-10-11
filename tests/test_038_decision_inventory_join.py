@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -580,3 +580,40 @@ def test_injection_e_reworded_marker_breaches_the_floor(
     assert reworded, "fixture setup: no Editable-marked description found to reword"
     with pytest.raises(AssertionError, match=re.escape("may be silently matching nothing")):
         _assert_schema_side_join(mutated_schema, inventory_rows)
+
+
+def test_rewording_every_label_changes_no_row_id_and_breaks_no_join(
+    wire_schema_doc: dict, inventory_rows: list[dict], harvested_literals: set[str]
+) -> None:
+    """PRD F4-AC4: a reworded control label leaves the row's `id` untouched.
+
+    The criterion says "when the inventory is regenerated" — ADR-7 chose a
+    hand-written registry, so there is no generator to regenerate it. What the
+    criterion actually wants is that row identity does not ride on prose: the
+    consumer's join keys on `id`, and a reword must read to them as an edit to
+    one row rather than a delete plus an add, which would silently drop that
+    row's coverage claim (owner/consumer decision, 2026-09-30).
+
+    Without this test the property was structural only — nothing executed would
+    notice a future refactor deriving `id` from `markdown_control`. The mutation
+    is applied to every row at once rather than one, because a prose-derived id
+    scheme would most likely be introduced wholesale.
+    """
+    before = [row["id"] for row in inventory_rows]
+
+    mutated = copy.deepcopy(inventory_rows)
+    for row in mutated:
+        row["markdown_control"] = "Reworded prose for " + row["id"] + "."
+
+    assert [row["markdown_control"] for row in mutated] != [
+        row["markdown_control"] for row in inventory_rows
+    ], "fixture setup: the reword did not change any label"
+
+    assert [row["id"] for row in mutated] == before, (
+        "a row's id changed when only its markdown_control prose was reworded — "
+        "the consumer's join would read this as a delete plus an add"
+    )
+
+    # Neither join reads the prose, so both must still pass on the mutated rows.
+    _assert_schema_side_join(wire_schema_doc, mutated)
+    _assert_parser_side_join(harvested_literals, mutated)

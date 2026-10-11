@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Integration, the live path, and one handoff"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -237,7 +237,7 @@ close-out that traces every criterion to a test that was executed.
        `schema_version` const and a required property on a closed node) — which is
        why the release was coordinated rather than shipped and announced.
 
-- [ ] **T5.5 Close-out** `[activity: documentation]`
+- [x] **T5.5 Close-out** `[activity: documentation]`
 
   1. Prime: read `docs/XDD/specs/037-…/close-out.md` as the model, and
      `docs/XDD/specs/036-…/close-out.md` for the trace format.
@@ -253,8 +253,28 @@ close-out that traces every criterion to a test that was executed.
   4. Validate: pick three criteria at random and verify their node ids by running
      them. A trace nobody spot-checks is a trace nobody can trust.
   5. Success:
-     - [ ] All 38 PRD criteria traced to executed tests by node id `[ref: PRD]`
-     - [ ] Open items recorded rather than quietly closed
-     - [ ] Three traces spot-checked by execution
-     - [ ] `Skill(tcs-workflow:xdd-meta)` Finalize has run — the spec reaches
-           `Implemented` rather than sitting on `Ready`
+     - [x] All 38 PRD criteria traced to executed tests by node id `[ref: PRD]` —
+       **35 to tests, 2 to documentation (S1, untestable), 1 to a closure ruling plus
+       T4.5's tests (C1).** The 95 cited node ids were run in **one** pytest
+       invocation on 2026-10-11, `95 passed in 1.22s`, against `aec05c0`; full suite
+       `4527 passed, 4 skipped` (skip count is network-dependent — 4 twice, 5 once
+       across three runs, the variance being the upstream fetch). **The trace found a
+       real gap, not a confirmation:**
+       F4-AC4 was asserted by no test that could fail — true by construction, and
+       nothing would have noticed a refactor deriving `id` from prose. Closed in
+       `aec05c0`, RED-proven by the mutation its docstring names (`'D31' != 'D01'`).
+     - [x] Open items recorded rather than quietly closed — seven, including the
+       four the task named (the hand-written inventory **and its two columns never
+       exercised on real data**, the earlier-run embed break, the `delete_source`
+       normalisation divergence, and the three Phase 1 findings that left as backlog),
+       plus the three Phase 5 issues (#185/#186/#187) and the fixture's owner-typed
+       name gap. **And the inverse case:** one backlog entry that T4.5 closed was
+       still marked OPEN eight days later — now CLOSED, and recorded as its own item.
+     - [x] Three traces spot-checked by execution — F1-AC8, F3-AC4 and F4-AC6,
+       picked across three features and three files, `3 passed in 0.10s`. Each was
+       chosen for a reason the close-out states: an exact-equality assertion that
+       proves an absence, a criterion whose vault-side reading is undecidable in
+       Pass 2, and a proof that can only run on synthetic rows today.
+     - [x] `Skill(tcs-workflow:xdd-meta)` Finalize has run — the spec reaches
+           `Implemented` rather than sitting on `Ready`. Status table and Decisions
+           Log both updated 2026-10-11.

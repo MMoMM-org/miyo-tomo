@@ -52,7 +52,7 @@ version: "1.0"
 | 2 | The wire carries the decision | `pending` | 5 | `phase-2.md` |
 | 3 | Refusal, before anything can be typed | `pending` | 5 | `phase-3.md` |
 | 4 | The name becomes a value | `pending` | 4 | `phase-4.md` |
-| 5 | Integration, the live path, and one handoff | `pending` | 5 | `phase-5.md` |
+| 5 | Integration, the live path, and one handoff | `completed` | 5 | `phase-5.md` |
 
 ---
 
@@ -191,7 +191,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor:
 - [x] [Phase 2: The wire carries the decision](phase-2.md)
 - [x] [Phase 3: Refusal, before anything can be typed](phase-3.md)
 - [x] [Phase 4: The name becomes a value](phase-4.md)
-- [ ] [Phase 5: Integration, the live path, and one handoff](phase-5.md)
+- [x] [Phase 5: Integration, the live path, and one handoff](phase-5.md)
 
 ### Why this order, and one thing it deliberately inverts
 

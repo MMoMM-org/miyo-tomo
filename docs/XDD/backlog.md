@@ -2013,7 +2013,7 @@ has introduced those remedy fields to them.
 attachment path **and** an embed whose target rsplits to empty. `![[]]` cannot reach it
 — `_EMBED_RE` requires one or more characters.
 
-## OPEN — a withheld attachment never reaches the shell, only the document
+## CLOSED (2026-10-11) — a withheld attachment never reaches the shell, only the document
 
 Owner direction 2026-10-03: *"solche Dinge sollten wir nicht nur im Document surfacen
 sondern auch in der Shell — dann kann der User direkt zurück zu Instructions, dort die
@@ -2052,6 +2052,25 @@ shell, go back to the instructions document, change the decision there, re-run
 they happen to read the document. It also matters for the inconsistency recorded above
 — a `collision`-withheld attachment leaves a *staged note whose body was already
 rewritten*, so the owner has a reason to look that the document does not give them.
+
+**CLOSED by spec 038 T4.5.** The relay was built exactly as proposed above, down to
+copying spec 036's line-per-item shape: a writer emits one pre-sanitized user-facing
+line per withheld attachment and `synthesis-conductor.md` Step 4 `cat`s it verbatim.
+The only divergence is the filename — this entry proposed `withheld-assets.md`; the
+built file is **`tomo-tmp/withheld-attachments.md`**.
+
+Verified on two live runs (2026-10-10), both **byte-identical** to a prediction
+produced by executing `_render_skipped_asset_notice`, on two different notice kinds,
+with Run C's `run_id` sidecar proving the second was its own line rather than Run A's.
+Pinned by `tests/test_038_t4_5_withheld_attachment_relay.py` — five tests including
+`TestAgentWiringGuard::test_conductor_cats_the_path_the_writer_writes`, which joins the
+path the writer writes to the path the agent reads, and
+`TestSharedCodePathUnderMutation::test_mutating_the_notice_function_moves_both_surfaces`,
+which proves the document and the shell share one function rather than two.
+
+Left marked OPEN for eight days after it was closed. Recorded in
+`docs/XDD/specs/038-every-editable-decision-reaches-the-wire/close-out.md` as an open
+item of its own kind — the inverse of a quietly-closed entry.
 
 ## OPEN — a run-local destination collision offers no name to type
 

@@ -265,15 +265,15 @@ precisely because only the human ones were considered.
   Pass 2 applies, regardless of what else touched the run, so that a safe choice
   cannot silently become the destructive one.
 - **Acceptance Criteria:**
-  - [ ] Given a run with an attachment conflict, When the suggestions wire is published, Then it carries the remedy for that conflict
-  - [ ] Given the same run, When the wire is published, Then the remedy's default value is the one the markdown pre-ticks for that conflict
-  - [ ] Given an attachment embedded by several notes, When the wire is published, Then the conflict appears once and one value settles it for all of them, consistent with 037's F2
-  - [ ] Given an edited wire, When Pass 2 rebuilds from it alone, Then the remedies it produces are identical to those the markdown path produces for the same decisions
-  - [ ] Given a run with no conflicts, When the wire is published, Then the output is unchanged from today apart from the version stamp
-  - [ ] Given the suggestions wire schema changes, When the change is classified, Then the wire's version is moved and a handoff is owed, because the affected nodes are closed
-  - [ ] Given a conflict on the wire, When it is published, Then it carries the occupied destination and whether the two files are byte-identical — the consumer cannot derive either
-  - [ ] Given a conflict on the wire, When it is published, Then the notes that embed the attachment are **not** carried, because the consumer derives them from the run
-  - [ ] Given the instructions wire, When this spec ships, Then it is untouched — no criterion here constrains it
+  - [x] Given a run with an attachment conflict, When the suggestions wire is published, Then it carries the remedy for that conflict
+  - [x] Given the same run, When the wire is published, Then the remedy's default value is the one the markdown pre-ticks for that conflict
+  - [x] Given an attachment embedded by several notes, When the wire is published, Then the conflict appears once and one value settles it for all of them, consistent with 037's F2
+  - [x] Given an edited wire, When Pass 2 rebuilds from it alone, Then the remedies it produces are identical to those the markdown path produces for the same decisions
+  - [x] Given a run with no conflicts, When the wire is published, Then the output is unchanged from today apart from the version stamp
+  - [x] Given the suggestions wire schema changes, When the change is classified, Then the wire's version is moved and a handoff is owed, because the affected nodes are closed
+  - [x] Given a conflict on the wire, When it is published, Then it carries the occupied destination and whether the two files are byte-identical — the consumer cannot derive either
+  - [x] Given a conflict on the wire, When it is published, Then the notes that embed the attachment are **not** carried, because the consumer derives them from the run
+  - [x] Given the instructions wire, When this spec ships, Then it is untouched — no criterion here constrains it
 
 #### F2: The rename target is owner-editable, on both surfaces
 
@@ -281,28 +281,28 @@ precisely because only the human ones were considered.
   accept a mechanical suffix, so that the vault ends up with a name that means
   something.
 - **Acceptance Criteria:**
-  - [ ] Given the owner types a name over the computed one in the markdown, When Pass 2 reads the document, Then the typed name is what Pass 2 proposes
-  - [ ] Given the owner leaves the computed name untouched, When Pass 2 reads the document, Then behaviour is byte-identical to today
-  - [ ] Given the owner types a name in the editor, When Pass 2 rebuilds from the wire, Then the typed name is what Pass 2 proposes
-  - [ ] Given a typed name arrives by either surface, When it is validated, Then the same rules apply to both — not two implementations that can diverge
-  - [ ] Given Pass 1 found no free name and rendered the "no free name available" line, When the owner supplies a name there, Then it is read and used like any other typed name
-  - [ ] Given that line with no name supplied, When Pass 2 reads the document, Then the behaviour is unchanged from today — the remedy degrades as it does now
-  - [ ] Given a typed name that is accepted, When the attachment is filed, Then the embed is rewritten in every owning note, as 037 already does for a computed name
+  - [x] Given the owner types a name over the computed one in the markdown, When Pass 2 reads the document, Then the typed name is what Pass 2 proposes
+  - [x] Given the owner leaves the computed name untouched, When Pass 2 reads the document, Then behaviour is byte-identical to today
+  - [x] Given the owner types a name in the editor, When Pass 2 rebuilds from the wire, Then the typed name is what Pass 2 proposes
+  - [x] Given a typed name arrives by either surface, When it is validated, Then the same rules apply to both — not two implementations that can diverge
+  - [x] Given Pass 1 found no free name and rendered the "no free name available" line, When the owner supplies a name there, Then it is read and used like any other typed name
+  - [x] Given that line with no name supplied, When Pass 2 reads the document, Then the behaviour is unchanged from today — the remedy degrades as it does now
+  - [x] Given a typed name that is accepted, When the attachment is filed, Then the embed is rewritten in every owning note, as 037 already does for a computed name
 
 #### F3: An unusable typed name is refused and recorded, never substituted
 
 - **User Story:** As the vault owner, I want to be told when the name I typed
   could not be used, so that I am never quietly given a different one.
 - **Acceptance Criteria:**
-  - [ ] Given a typed name containing a path separator, When Pass 2 validates it, Then it is refused — not truncated to its last segment
-  - [ ] Given a typed name containing a character the vault forbids, When Pass 2 validates it, Then it is refused — not rewritten with substitutes
-  - [ ] Given a typed name that is empty or only whitespace, When Pass 2 validates it, Then it is refused
-  - [ ] Given a typed name that is itself already taken at the destination, When Pass 2 validates it, Then it is refused — **run-local**: taken by another action in the same run. Measured 2026-10-01: Pass 2 has no vault listing (`path_exists` appears nowhere in `render_actions.py` or `render_md.py`, and the wire carries only `destination`, `same_file`, `proposed_name` per ADR-3), so the vault-side reading of this criterion is **not decidable in Pass 2** by any module. Pass 1 owns occupancy and hands forward one `proposed_name`. The run-local reading is satisfied by the existing claimed check at `render_actions.py:945`, which a typed destination already passes through by design (`:940-944`). The markdown already tells the owner as much on the `Ignore` line — "if the name is still taken when you apply, the move fails" — reworded after an owner catch on 2026-09-28 for claiming knowledge Pass 2 does not have.
-  - [ ] Given any refused name, When Pass 2 emits its output, Then no move is emitted for that attachment and the attachment stays where it is
-  - [ ] Given any refused name, When the instruction document is rendered, Then it records that the typed name could not be used, naming the attachment. **Scope, ruled by the owner 2026-10-02: "refused name" here means the three string classes T3.1 decides** — `separator_present`, `forbidden_character`, `blank` — **not the run-local collision of the fourth criterion.** A typed name that is usable as a string but collides is refused by the pre-existing claimed check (`render_actions.py:945`) and reported with the pre-existing shared sentence, *"destination collision: it also resolves to `<dest>`, already claimed by `<claimant>`"* (`render_actions.py:953`), which names no provenance because the skipped entry carries none. Two alternatives were measured and declined: forking that sentence when the name was typed, and plumbing `name_is_owner_supplied` onto the skipped entry so the renderer could add the framing. Both were rejected as buying little — the owner already knows they typed the name, since the document is rendered from the run in which they typed it — at the cost of forking a sentence the owner reviewed on 2026-09-28 or adding a second reader-less field one week after `kind`'s own reader-less field had to be argued for. The collision path's obligation is the fourth criterion's, and it is met.
-  - [ ] Given any refused name, When the instruction document is rendered, Then the text states only what was verified — never a predicted future outcome and never an inferred intent
-  - [ ] Given any refused name, When Pass 2 emits its output, Then the computed name is **not** used as a fallback
-  - [ ] Given a name Tomo computed rather than the owner typing it, When Pass 2 processes it, Then behaviour is unchanged from today — this feature constrains typed names only
+  - [x] Given a typed name containing a path separator, When Pass 2 validates it, Then it is refused — not truncated to its last segment
+  - [x] Given a typed name containing a character the vault forbids, When Pass 2 validates it, Then it is refused — not rewritten with substitutes
+  - [x] Given a typed name that is empty or only whitespace, When Pass 2 validates it, Then it is refused
+  - [x] Given a typed name that is itself already taken at the destination, When Pass 2 validates it, Then it is refused — **run-local**: taken by another action in the same run. Measured 2026-10-01: Pass 2 has no vault listing (`path_exists` appears nowhere in `render_actions.py` or `render_md.py`, and the wire carries only `destination`, `same_file`, `proposed_name` per ADR-3), so the vault-side reading of this criterion is **not decidable in Pass 2** by any module. Pass 1 owns occupancy and hands forward one `proposed_name`. The run-local reading is satisfied by the existing claimed check at `render_actions.py:945`, which a typed destination already passes through by design (`:940-944`). The markdown already tells the owner as much on the `Ignore` line — "if the name is still taken when you apply, the move fails" — reworded after an owner catch on 2026-09-28 for claiming knowledge Pass 2 does not have.
+  - [x] Given any refused name, When Pass 2 emits its output, Then no move is emitted for that attachment and the attachment stays where it is
+  - [x] Given any refused name, When the instruction document is rendered, Then it records that the typed name could not be used, naming the attachment. **Scope, ruled by the owner 2026-10-02: "refused name" here means the three string classes T3.1 decides** — `separator_present`, `forbidden_character`, `blank` — **not the run-local collision of the fourth criterion.** A typed name that is usable as a string but collides is refused by the pre-existing claimed check (`render_actions.py:945`) and reported with the pre-existing shared sentence, *"destination collision: it also resolves to `<dest>`, already claimed by `<claimant>`"* (`render_actions.py:953`), which names no provenance because the skipped entry carries none. Two alternatives were measured and declined: forking that sentence when the name was typed, and plumbing `name_is_owner_supplied` onto the skipped entry so the renderer could add the framing. Both were rejected as buying little — the owner already knows they typed the name, since the document is rendered from the run in which they typed it — at the cost of forking a sentence the owner reviewed on 2026-09-28 or adding a second reader-less field one week after `kind`'s own reader-less field had to be argued for. The collision path's obligation is the fourth criterion's, and it is met.
+  - [x] Given any refused name, When the instruction document is rendered, Then the text states only what was verified — never a predicted future outcome and never an inferred intent
+  - [x] Given any refused name, When Pass 2 emits its output, Then the computed name is **not** used as a fallback
+  - [x] Given a name Tomo computed rather than the owner typing it, When Pass 2 processes it, Then behaviour is unchanged from today — this feature constrains typed names only
 
 #### F4: The inventory of editable decisions exists, as a file the consumer can vendor
 
@@ -310,15 +310,15 @@ precisely because only the human ones were considered.
   list of every editable decision the markdown offers, so that a decision my
   editor does not cover fails my build instead of reaching a user.
 - **Acceptance Criteria:**
-  - [ ] Given the inventory, When it is read, Then it carries one row per editable decision the suggestions markdown offers
-  - [ ] Given a decision with no wire field, When its row is written, Then the row records that absence explicitly rather than omitting the decision
-  - [ ] Given any row, When it is written, Then it carries a stable opaque `id` that does not change when the markdown's wording changes
-  - [ ] Given a control's label is reworded, When the inventory is regenerated, Then the row's `id` is unchanged, so the consumer's join sees an edit rather than a delete plus an add
-  - [ ] Given a decision that is read-only, When the inventory is built, Then it does not appear
-  - [ ] Given a control that has been retired, When the inventory is written, Then its row remains with `editable: false`, so the consumer is told to remove their control rather than left writing a field no longer honoured
-  - [ ] Given the inventory, When a row is added or changed, Then the change is visible as a diff to a file, not as prose in a handoff
-  - [ ] Given a malformed row, When Tomo's own tests run, Then they fail — the consumer never receives a malformed inventory
-  - [ ] Given this spec ships, When the inventory is published, Then its rows agree with the suggestions wire as this spec leaves it, including the remedy's new field
+  - [x] Given the inventory, When it is read, Then it carries one row per editable decision the suggestions markdown offers
+  - [x] Given a decision with no wire field, When its row is written, Then the row records that absence explicitly rather than omitting the decision
+  - [x] Given any row, When it is written, Then it carries a stable opaque `id` that does not change when the markdown's wording changes
+  - [x] Given a control's label is reworded, When the inventory is regenerated, Then the row's `id` is unchanged, so the consumer's join sees an edit rather than a delete plus an add
+  - [x] Given a decision that is read-only, When the inventory is built, Then it does not appear
+  - [x] Given a control that has been retired, When the inventory is written, Then its row remains with `editable: false`, so the consumer is told to remove their control rather than left writing a field no longer honoured
+  - [x] Given the inventory, When a row is added or changed, Then the change is visible as a diff to a file, not as prose in a handoff
+  - [x] Given a malformed row, When Tomo's own tests run, Then they fail — the consumer never receives a malformed inventory
+  - [x] Given this spec ships, When the inventory is published, Then its rows agree with the suggestions wire as this spec leaves it, including the remedy's new field
 
 ### Should Have Features
 
@@ -328,8 +328,8 @@ precisely because only the human ones were considered.
   rule for which one counts, so that I am not surprised by a value I thought I
   had changed.
 - **Acceptance Criteria:**
-  - [ ] Given the user documentation, When it describes the two surfaces, Then it states plainly that once the run has been saved in the editor, the editor's values are the ones Pass 2 uses
-  - [ ] Given the documentation on attachment name collisions, When it is read after this spec ships, Then it says the name is editable and describes what happens when a typed name is refused
+  - [x] Given the user documentation, When it describes the two surfaces, Then it states plainly that once the run has been saved in the editor, the editor's values are the ones Pass 2 uses
+  - [x] Given the documentation on attachment name collisions, When it is read after this spec ships, Then it says the name is editable and describes what happens when a typed name is refused
 
 ### Could Have Features
 
@@ -349,7 +349,7 @@ precisely because only the human ones were considered.
   want one line saying why, so that I can tell a deliberate gap from an
   oversight.
 - **Acceptance Criteria:**
-  - [ ] Given a row with no wire field, When it carries a note, Then the note is a single short string and is optional on every other row
+  - [x] Given a row with no wire field, When it carries a note, Then the note is a single short string and is optional on every other row
 
 ### Won't Have (This Phase)
 

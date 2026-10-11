@@ -2519,14 +2519,31 @@ Point 3 is what makes this more than cosmetic. Hashi's sanitiser will treat the 
 forbidden, so — as with A — the editor route closes from their side and the markdown route is
 ours alone.
 
-### Why both are recorded rather than fixed
+### The cost, measured — smaller than first written
 
-Adding a fourth reason to `REFUSAL_REASONS` widens a set three renderers branch on
-(`_typed_name_refusal_reason`, `render_md.py`'s bullet, `_attachment_suppression_reason`), and
-`typed_name_check.py` deliberately takes no dependency on its callers. The cheaper shape may be
-to fold both into `forbidden_character` by widening `FORBIDDEN_CHARS` — but that set is also
-`sanitize_stem`'s input, and widening it changes how every *derived* stem is sanitised, not just
-how a typed name is judged. That coupling is the decision, and it is the owner's.
+An earlier draft of this entry said a fourth `REFUSAL_REASONS` member "widens a set three
+renderers branch on". **Measured 2026-10-11, that is wrong.** Exactly one site branches on the
+reason code:
+
+| Site | Reads | Branches on the code? |
+|---|---|---|
+| `render_actions.py:710,715` `_typed_name_refusal_reason` | `refusal_reason` | **yes** — the only one |
+| `render_md.py:838,1179` | `entry.get("reason")` — the prose | no |
+| `render_actions.py:1494` `_attachment_suppression_reason` | `entry.get("kind")` | no — `kind`, not the reason |
+
+So a fourth class costs: one frozenset member, one check in `check_typed_name`, one branch in
+`_typed_name_refusal_reason`, and tests. That is a small, contained change.
+
+**What is NOT cheap is the other shape.** Folding these into `forbidden_character` by widening
+`FORBIDDEN_CHARS` looks shorter but is not: that set is also `sanitize_stem`'s input, so
+widening it changes how every *derived* stem is sanitised — a note titled `C# Notizen` would
+file as `C- Notizen`. A typed-name rule must not reach into title sanitisation. Keep any new
+set local to `typed_name_check.py`.
+
+One wording constraint either way: `forbidden_character`'s prose says the character is one
+"Obsidian does not allow in a filename", which is **false** for `# ^ [ ]` — Obsidian allows all
+four. They break the *link*, not the filename. Reusing that reason would ship a wrong sentence,
+which is why this is a fourth class rather than an extension of the third.
 
 **Not scheduled.** Hashi needs neither ruling to ship #141, and their sanitising closes the
 editor route for both.

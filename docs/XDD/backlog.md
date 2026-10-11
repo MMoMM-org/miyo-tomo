@@ -2545,5 +2545,9 @@ One wording constraint either way: `forbidden_character`'s prose says the charac
 four. They break the *link*, not the filename. Reusing that reason would ship a wrong sentence,
 which is why this is a fourth class rather than an extension of the third.
 
-**Not scheduled.** Hashi needs neither ruling to ship #141, and their sanitising closes the
-editor route for both.
+**Tracked as issue #185** (`needs-decision`, `bug`, `area:inbox`, `P1-should`), which carries
+the full measurements. Deliberately not taken during spec 038's Phase 5: none of 038's 38
+acceptance criteria covers either class, so shipping new behaviour inside its close-out would
+document a feature with no criterion. Hashi needs neither ruling to ship #141, and their
+sanitising closes the editor route for both — the markdown-typed route is the only one left
+open, and it is entirely ours.

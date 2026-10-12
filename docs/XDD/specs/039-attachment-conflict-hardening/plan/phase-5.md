@@ -39,7 +39,7 @@ Delivers what the owner reads about the new outcomes, and the dependency that ke
   4. Validate: read the rendered document for a fixture covering every kind once; ruff clean
   5. Success: `[ref: PRD/F2-AC5]` `[ref: PRD/F2-AC8]` `[ref: PRD/F3-AC5]` `[ref: PRD/F3-AC6]` `[ref: PRD/F6-AC8]`
 
-- [ ] **T5.2 The origin's delete depends on its attachment moves (#186)** `[activity: backend]` `[parallel: true]`
+- [x] **T5.2 The origin's delete depends on its attachment moves (#186)** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `render_actions.py:1969-2218` (site 3 at :2096-2165), `:2721-2783` (`withdraw_unjustified_deletes`), `:2841-2862`; `tomo/schemas/instructions.schema.json:253` `[ref: SDD/ADR-10]`. **Gate:** T1.1 sent (CON-2)
   2. Test: origin with one note and two moved attachments → `depends_on` = note id(s) then both asset ids, audio-peer delete identical (F6-AC1); attachment shared by two origins → both deletes name its single id (F6-AC3); a withheld attachment's id appears in no delete (F6-AC4); Keep in inbox → `depends_on` unchanged from today (F6-AC5); a `move_asset` withdrawn by a later guard → the delete is withdrawn by the existing id pass; 036's F5-AC1..AC4 tests green (always present, `[]` explicit, all partners named, no dangling id); Tomo's `instructions.schema.json` description names `move_asset`; the vendored `hashi-instructions.schema.json` stays byte-identical to the consumer's until T6.2 (F6-AC6 completes there); `tests/test_036_*` that pin exact `depends_on` lists reviewed — fixtures with attachments updated with a stated reason

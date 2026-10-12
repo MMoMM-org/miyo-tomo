@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Refusal rules"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -34,7 +34,7 @@ phase: 2
 
 Delivers every refusal the plan will need, fully tested, before any surface can produce a typed folder.
 
-- [ ] **T2.1 `breaks_link` and `unsafe_sequence` for typed names (#185)** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T2.1 `breaks_link` and `unsafe_sequence` for typed names (#185)** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: `typed_name_check.py` (0.1.3) `:30-80`; `obsidian_filename.py:32`; backlog `:2500-2572` `[ref: SDD/ADR-6]`
   2. Test: `" a.png"`, `"a.png "`, `"\ta.png"` → `breaks_link`; each of `#`, `^`, `[`, `]` anywhere → `breaks_link`; `"   "` still `blank`; `a/b.png` still `separator_present` (order of checks: blank → separator → forbidden → breaks_link); `{{`, `<%`, `\x01` anywhere → `unsafe_sequence`, and a Pass 2 run fed such a typed name produces every other item and exits 0 — shown RED first against today's code, where it aborts with exit 2 (F5-AC7); `REFUSAL_REASONS` is exactly five (rename and re-pin `test_038_t3_1_*:235-247` `…closed_set_of_three`); the 038 padding-pinning test flips from accept to refuse; `sanitize_stem("C# Notizen")` unchanged; the sentence for `breaks_link` says the name would break the link and never "Obsidian does not allow"

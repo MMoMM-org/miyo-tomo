@@ -998,6 +998,13 @@ not.
 
 ### Two Facts the Docstrings Do Not Carry, Both Measured
 
+*The first fact is superseded by spec 039 T4.4 — the plan is built once before
+the render loop and `rewrite_attachment_embeds` writes only the plan's decided
+`embed`, so a withheld source (embed None) never has its body rewritten and the
+note and the document no longer disagree (F4-AC8). The second fact still holds:
+the rewrite is reached only inside the per-item render loop, for items that have
+a template. What follows is the pre-T4.4 measurement, kept as history.*
+
 **The owner is told about a withheld move in a document whose staged note body
 has already been rewritten.** `rewrite_renamed_embeds` runs per entry, between
 the body being produced and written, while `build_actions` — and therefore the

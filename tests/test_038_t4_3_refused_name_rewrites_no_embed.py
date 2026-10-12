@@ -3,7 +3,7 @@
 
 T3.2 taught `_build_move_asset_actions` (`lib/render_actions.py`) to refuse an
 owner-typed `proposed_name` and emit no `move_asset` for it. It did not touch
-`rewrite_renamed_embeds` (`lib/embed_rewrite.py`), which runs EARLIER in
+the embed rewrite (`lib/embed_rewrite.py`, then `rewrite_renamed_embeds`), which runs EARLIER in
 `instruction-render.py`'s per-item loop and gated only on `remedy == "rename"`
 plus a truthy `proposed_name`. So the two halves disagreed on the same remedy
 record: the body was rewritten to a name the move then refused, leaving the
@@ -127,8 +127,9 @@ def _manifest_entry(sid, source_path, attachments) -> dict:
 def test_refused_separator_present_leaves_body_byte_identical():
     """A typed name carrying a path separator rewrites nothing.
 
-    Mutation: delete the `check_typed_name` gate from the loop in
-    `rewrite_renamed_embeds` that builds `renames`. The body then becomes
+    Mutation: delete the typed-name refusal (decision-table row 6) in
+    `attachment_plan._decide`. The plan then gives the source an embed and the
+    body becomes
     `![[Archive/karte-dresden-1938.png]]` — dangling, and hard-coding a
     folder into the body, which this function's own docstring promises never
     to do.
@@ -144,7 +145,8 @@ def test_refused_separator_present_leaves_body_byte_identical():
 def test_refused_forbidden_character_leaves_body_byte_identical():
     """A typed name carrying `|` rewrites nothing — the quiet one.
 
-    Mutation: delete the `check_typed_name` gate. The body then becomes
+    Mutation: delete the typed-name refusal (row 6) in
+    `attachment_plan._decide`. The body then becomes
     `![[karte|1938.png]]` and `![[karte|1938.png|300]]`, which Obsidian
     reads as an embed of a note named `karte` aliased `1938.png` — not a
     dangling link that announces itself, but real content from the wrong
@@ -162,12 +164,12 @@ def test_refused_forbidden_character_leaves_body_byte_identical():
 def test_refused_blank_leaves_body_byte_identical():
     """A whitespace-only typed name rewrites nothing.
 
-    `"   "` is truthy, so the existing falsy-`proposed_name` check does not
-    stop it — only `check_typed_name`'s `blank` verdict does. Mutation:
-    delete the gate and the body becomes `![[   ]]`, an embed of
-    whitespace. A second mutation this also catches: gate on
-    `proposed_name.strip()` being falsy instead of on the verdict, which
-    would stop this case but neither of the two above.
+    `"   "` is truthy, so a falsy-`proposed_name` check does not stop it —
+    only `check_typed_name`'s `blank` verdict does. Mutation: delete the
+    typed-name refusal (row 6) in `attachment_plan._decide` and the body
+    becomes `![[   ]]`, an embed of whitespace. A second mutation this also
+    catches: refuse on `proposed_name.strip()` being falsy instead of on the
+    verdict, which would stop this case but neither of the two above.
     """
     verdict = check_typed_name(BLANK_TYPED_NAME)
     assert verdict.ok is False
@@ -245,13 +247,12 @@ def test_both_halves_refuse_the_same_typed_name():
     """One refused name, fed to BOTH halves: the move builder emits
     `typed_name_refused` AND the body comes back byte-identical.
 
-    This is the only test that sees the two gate conditions drift apart.
-    `check_typed_name` is now called from `rewrite_renamed_embeds` and from
-    `_build_move_asset_actions` and nothing in the type system keeps them
-    agreeing; T3.2 produced this defect precisely by changing one and not
-    the other. Mutation: change either half's condition — gate the rewrite
-    on `proposed_name` containing `/` instead of on the verdict, say, and
-    this test fails on the `|` name while every per-half test still passes.
+    This is the only test that sees the two gate conditions drift apart:
+    the move builder and the rewrite originally each called `check_typed_name`
+    and nothing kept them agreeing; T3.2 produced this defect by changing one
+    and not the other. Since T4.4 both read the plan's row-6 verdict. Mutation:
+    make `attachment_plan._decide` row 6 refuse on a narrower condition (only
+    names containing `/`, say) and this test fails on the `|` name.
     """
     remedy = _remedy(FORBIDDEN_TYPED_NAME, name_is_owner_supplied=True)
 

@@ -1,9 +1,10 @@
 # WHY: lib/embed_rewrite.py
 
 > Rationale for decisions in `tomo/scripts/lib/embed_rewrite.py`.
-> The module is spec 037 T3.3's rewrite pass: given a rendered note body and
-> the run's attachment-conflict remedies, rewrite `![[...]]` embed targets for
-> whichever attachments the owner renamed. No such rewriter existed anywhere
+> The module is the embed rewrite pass (spec 037 T3.3, reworked by spec 039
+> T4.4): given a rendered note body, the note's attachments and the attachment
+> plan, write the plan's decided `embed` text over each `![[...]]` embed of a
+> source whose plan row has one; sources with no embed (withheld) are left alone. No such rewriter existed anywhere
 > in this repo before this task — `lib/attachment_index.py` only reads
 > `![[...]]` embeds, and has no fenced-code-block handling either.
 
@@ -163,6 +164,8 @@ either way, verified before the change: the two regexes return the same span for
 a well-formed fence.
 
 ## Why the Two-Owner Assertion Lives in the Render Loop, Not Here (v0.2.0)
+
+*Superseded by spec 039 T4.4 — the function is now `rewrite_attachment_embeds` and reads the plan; the render-loop placement of the assertion still holds.*
 
 The plan requires that two different confirmed items embedding one renamed
 attachment are both rewritten. The first test written for it called

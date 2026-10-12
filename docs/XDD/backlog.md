@@ -2601,3 +2601,15 @@ acceptance criteria covers either class, so shipping new behaviour inside its cl
 document a feature with no criterion. Hashi needs neither ruling to ship #141, and their
 sanitising closes the editor route for both — the markdown-typed route is the only one left
 open, and it is entirely ours.
+
+## `embed_rewrite` fence handling: indented lines starting with three backticks count as fences, indented code blocks do not count as code
+
+**OPEN.** Found in the spec 039 T4.4 code review (2026-10-12). `_fence_spans` in
+`tomo/scripts/lib/embed_rewrite.py` opens a fence on `^[ \t]*(`{3,}|~{3,})`, so a line
+indented four or more spaces that starts with three backticks is treated as a fence
+opener. CommonMark treats that as an indented code block line, not a fence. The inverse
+also holds: a real indented code block (four-space indent, no fence) is not recognised as
+code, so a `![[...]]` inside it is rewritten. Both directions mis-classify only unusual
+notes; no measured occurrence in the test vault. Fix when it matters: cap the leading
+indent at three spaces for fence openers and add indented-code-block spans, each with a
+pinning test.

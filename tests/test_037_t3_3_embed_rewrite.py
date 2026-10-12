@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_037_t3_3_embed_rewrite.py — spec 037 T3.3.
 
 T3.1 made `_build_move_asset_actions` recompute a renamed attachment's
@@ -9,7 +9,7 @@ Context): `Atlas/202 Notes/Kai- ....md` embeds `![[Scans/karte.png]]`,
 reaching back into an inbox folder the file has left.
 
 Covers, per `docs/XDD/specs/037-asset-destination-collision-is-a-pass1-
-decision/plan/phase-3.md` T3.3. `rewrite_renamed_embeds`
+decision/plan/phase-3.md` T3.3. `rewrite_attachment_embeds`
 (`tomo/scripts/lib/embed_rewrite.py`) is exercised directly for the per-
 mutation unit coverage; the last test is the plan's required end-to-end
 anchor through the real `instruction-render.py` render loop.
@@ -58,7 +58,7 @@ def _remedy(source, remedy, proposed_name=None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Unit coverage of rewrite_renamed_embeds — one mutation per test, named in
+# Unit coverage of rewrite_attachment_embeds — one mutation per test, named in
 # each docstring per the plan.
 # ---------------------------------------------------------------------------
 
@@ -364,7 +364,8 @@ def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten
     per-item loop so it runs once, on the first item only. The second note
     is then written with the vacated `Scans/karte.png` still in it.
 
-    This test replaces an earlier one that called `rewrite_renamed_embeds`
+    This test replaces an earlier one that called the then-current
+    `rewrite_renamed_embeds` (replaced by `rewrite_attachment_embeds` in T4.4)
     twice with two separate bodies and asserted both came back rewritten.
     That could not fail: the function is stateless and rebuilds its rename
     map from its arguments on every call, so "rewrite only the first owner"

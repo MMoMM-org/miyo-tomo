@@ -1,4 +1,4 @@
-# version: 0.28.0
+# version: 0.28.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -18,7 +18,6 @@ import re
 import sys
 from pathlib import Path
 
-from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.profile_conventions import marker_word
@@ -29,7 +28,6 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
     resolve_sibling_path,
     resolve_source_path,
 )
-from lib.refusal_sentences import typed_name_sentence
 from lib.render_md import bare_stem
 from lib.attachment_plan import AttachmentPlan, build_attachment_plan
 from lib.vault_folder_lookup import VaultFolderLookup
@@ -66,12 +64,6 @@ def _next_id(counter: list[int]) -> str:
 def _inbox_join(inbox: str, basename: str) -> str:
     """Join inbox path + basename, normalising the trailing slash."""
     return f"{(inbox or '').rstrip('/')}/{basename}"
-
-
-# Moved to lib/file_extensions.py (spec 031 T1.1 code-quality fix) so a pure
-# text library can classify a wikilink target without importing this module.
-# Alias kept so existing references below (and any other consumer) are unchanged.
-_KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS
 
 
 # Path-shape contract (Hashi-driven, 2026-04-26 handoff): every path field
@@ -628,28 +620,6 @@ def _build_move_note_actions(
             "tags": m.get("tags", []) or [],
         })
     return out
-
-
-def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
-    """The prose sentence for a `typed_name_refused` skip entry's `reason`.
-
-    Matches the register of the other `rename`-branch reasons just above
-    (`kept in inbox: ...`) and `collision`'s (`destination collision: ...`):
-    a label, a colon, then the specific fact — never repeating `source`/
-    `path`, since the only consumer (render_md.py's "Attachment not filed"
-    bullet, and render_actions.py's own `_attachment_suppression_reason`)
-    already opens with it in backticks. Names the TYPED name as the thing at
-    fault (F3's seventh acceptance criterion: the text states only what was
-    verified) — never the inbox path, which is not the problem here, and
-    never what will happen on re-run, which belongs to the remedy text, not
-    this sentence.
-
-    `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS`. Each
-    member has its own branch; a code outside that set raises `ValueError`
-    rather than being reported as a blank name. The sentences live in
-    `lib.refusal_sentences`.
-    """
-    return typed_name_sentence(refusal_reason, proposed_name)
 
 
 def _build_move_asset_actions(

@@ -20,7 +20,7 @@ import pytest
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _typed_name_refusal_reason  # noqa: E402
+from lib.refusal_sentences import typed_name_sentence  # noqa: E402
 from lib.typed_name_check import REFUSAL_REASONS  # noqa: E402
 
 BLANK_SENTENCE = "typed name refused: the typed name is blank"
@@ -29,22 +29,22 @@ BLANK_SENTENCE = "typed name refused: the typed name is blank"
 @pytest.mark.parametrize("code", ["nonsense", "already_taken", "", "BLANK"])
 def test_unknown_code_raises_instead_of_reporting_blank(code):
     with pytest.raises(ValueError):
-        _typed_name_refusal_reason(code, "a/b.png")
+        typed_name_sentence(code, "a/b.png")
 
 
 def test_known_codes_keep_their_exact_sentences():
     # Same expectations as the 038 T3.2 pin.
-    assert _typed_name_refusal_reason("separator_present", "a/b.png") == (
+    assert typed_name_sentence("separator_present", "a/b.png") == (
         "typed name refused: `a/b.png` contains a path separator, "
         "which is not allowed in a filename"
     )
-    assert _typed_name_refusal_reason("forbidden_character", "a?b.png") == (
+    assert typed_name_sentence("forbidden_character", "a?b.png") == (
         "typed name refused: `a?b.png` contains a character "
         "Obsidian does not allow in a filename"
     )
-    assert _typed_name_refusal_reason("blank", " ") == BLANK_SENTENCE
+    assert typed_name_sentence("blank", " ") == BLANK_SENTENCE
 
 
 def test_every_member_of_refusal_reasons_is_handled():
     for code in REFUSAL_REASONS:
-        assert _typed_name_refusal_reason(code, "x").startswith("typed name refused: ")
+        assert typed_name_sentence(code, "x").startswith("typed name refused: ")

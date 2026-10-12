@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -257,4 +257,3 @@ def build_attachment_plan(confirmed, remedies_by_source, *, asset_folder,
         _folder_lookup=folder_lookup,
         _census=census,
     )
-

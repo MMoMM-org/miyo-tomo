@@ -22,6 +22,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
 from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"

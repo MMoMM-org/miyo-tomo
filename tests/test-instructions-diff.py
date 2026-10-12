@@ -33,6 +33,7 @@ REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
 from attachment_plan_fakes import build_actions_without_vault  # noqa: E402
 
 # Also need access to instruction-render for realistic actions[] generation

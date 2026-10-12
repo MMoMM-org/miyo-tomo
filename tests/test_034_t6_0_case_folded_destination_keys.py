@@ -52,6 +52,7 @@ from lib.render_actions import (  # noqa: E402
     _build_create_moc_actions,
     suppress_moves_for_unfiled_attachments,
 )
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
 from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 from lib.render_resolve import (  # noqa: E402
     resolve_section_names,

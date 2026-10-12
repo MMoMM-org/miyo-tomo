@@ -1361,6 +1361,8 @@ live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.
 
 ## A Parameter Accepted and Deliberately Ignored (spec 037 T3.0, v0.26.3)
 
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
+
 `_build_move_asset_actions` gained `attachment_conflict_remedies` and does not
 read it. `build_actions` forwards it and does not read it either.
 
@@ -1386,6 +1388,8 @@ test was narrowed to the unmatched case rather than deleted, since it still
 anchors something real (T3.1's own "conflict gone by Pass 2" rule).
 
 ## The Remedy Lookup Sits Between the Basename Guard and the Claimed Check (spec 037 T3.1, v0.26.4)
+
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
 
 `_build_move_asset_actions` now consults `remedy` at one specific point in the
 loop: after `_asset_dest_join(asset_folder, path)` has already succeeded (the
@@ -1566,8 +1570,9 @@ which is drawn from the closed three-member set. (PRD F5-AC5, SDD ADR-6.)
 **Spec 039 T2.1 (v0.26.15): the sentences moved out.** The text above describes
 the function as it was at specs 038/039 T1.5 and is kept as history. Today the
 sentences live in `lib/refusal_sentences.py` (SDD K16) and
-`_typed_name_refusal_reason` is a one-line delegate to `typed_name_sentence`,
-kept so callers and tests keep their entry point. `REFUSAL_REASONS` has five
+`_typed_name_refusal_reason` became a one-line delegate to `typed_name_sentence`;
+the delegate was removed in the spec 039 T4.3 tidy once no production caller
+remained, and its tests call `typed_name_sentence` directly. `REFUSAL_REASONS` has five
 members (`breaks_link` and `unsafe_sequence` joined the original three). The
 branching on the code, and the `ValueError` on an unknown code, now live in
 `typed_name_sentence`; see `docs/tomo/scripts/lib/refusal_sentences.md`.
@@ -1687,6 +1692,8 @@ instead becomes a `typed_name_refused` skip. Worth naming because deleting the
 gate reads as *tightening* a check, which is how it would get removed.
 
 ### WHY `_attachment_suppression_reason` Needed a Third Branch
+
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
 
 A reader who cannot tell which of three things happened cannot act, and the
 three remedies are genuinely different: a destination clash (`collision`) is

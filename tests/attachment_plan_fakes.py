@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """attachment_plan_fakes.py — one fake vault behind both of the plan's vault
 views, and the `plan_from_remedies` helper the old builder harnesses migrate
 through (spec 039 T4.2, T4.3).
@@ -199,11 +199,12 @@ def build_actions_without_vault(manifest, confirmed, daily_updates, skipped, cfg
                                 *args, **kwargs):
     """`build_actions` for a harness with no vault to ask: the plan is
     `plan_without_vault(manifest)`, which production no longer fabricates.
-    A caller that passes its own `attachment_plan` keeps it.
+    A caller that passes its own `attachment_plan` (keyword, or positional
+    index 6 after `cfg`) keeps it.
     """
     from lib.render_actions import DEFAULT_ASSET_FOLDER, build_actions
 
-    if kwargs.get("attachment_plan") is None and not args[10:]:
+    if kwargs.get("attachment_plan") is None and len(args) <= 6:
         kwargs["attachment_plan"] = plan_without_vault(
             manifest,
             asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),

@@ -71,6 +71,7 @@ triage = _load_mod("inbox_triage_t61", "inbox-triage.py")
 diff = _load_mod("instructions_diff_t61", "instructions-diff.py")
 dryrun = _load_mod("instructions_dryrun_t61", "instructions-dryrun.py")
 
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
 from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 
 CFG = {

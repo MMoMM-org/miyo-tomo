@@ -9,8 +9,9 @@ WHY the sentences are not in `render_actions.py`.
 `_typed_name_refusal_reason` used to hold them inline, and the folder-name
 refusals (T2.2) need sentences too. Two renderers phrasing refusals in two files
 drift apart; one module keeps the register consistent and lets a sentence be
-tested without assembling a Pass 2 fixture. `_typed_name_refusal_reason` is now a
-one-line delegate so existing callers and tests keep their entry point.
+tested without assembling a Pass 2 fixture. `_typed_name_refusal_reason` was a
+one-line delegate for a while; it was removed in the spec 039 T4.3 tidy and
+callers use `typed_name_sentence` directly.
 
 ## Unknown code raises (spec 039 T1.5)
 

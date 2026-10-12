@@ -27,7 +27,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
-from lib.render_actions import _typed_name_refusal_reason  # noqa: E402
+from lib.refusal_sentences import typed_name_sentence  # noqa: E402
 from lib.render_actions import _CONTROL_CHARS_RE  # noqa: E402
 from lib.typed_name_check import check_typed_name, is_control_char  # noqa: E402
 
@@ -86,7 +86,7 @@ def test_sanitize_stem_unchanged():
 
 
 def test_breaks_link_sentence_says_link_not_obsidian_forbids():
-    s = _typed_name_refusal_reason("breaks_link", "a#b.png")
+    s = typed_name_sentence("breaks_link", "a#b.png")
     assert s.startswith("typed name refused: ")
     assert "`a#b.png`" in s
     assert "break the link" in s
@@ -94,32 +94,32 @@ def test_breaks_link_sentence_says_link_not_obsidian_forbids():
 
 
 def test_unsafe_sequence_sentence_is_distinct_and_names_the_name():
-    s = _typed_name_refusal_reason("unsafe_sequence", "a{{b.png")
+    s = typed_name_sentence("unsafe_sequence", "a{{b.png")
     assert s.startswith("typed name refused: ")
     assert "`a{{b.png`" in s
-    assert s != _typed_name_refusal_reason("breaks_link", "a{{b.png")
+    assert s != typed_name_sentence("breaks_link", "a{{b.png")
 
 
 def test_unsafe_sequence_sentence_shows_control_characters_visibly():
-    s = _typed_name_refusal_reason("unsafe_sequence", "a\x01b.png")
+    s = typed_name_sentence("unsafe_sequence", "a\x01b.png")
     assert "\x01" not in s
 
 
 def test_delete_character_is_escaped_in_the_sentence():
-    s = _typed_name_refusal_reason("unsafe_sequence", "a\x7fb.png")
+    s = typed_name_sentence("unsafe_sequence", "a\x7fb.png")
     assert "\x7f" not in s
     assert "`a\\x7fb.png`" in s
 
 
 def test_breaks_link_sentence_exact():
-    assert _typed_name_refusal_reason("breaks_link", "a#b.png") == (
+    assert typed_name_sentence("breaks_link", "a#b.png") == (
         "typed name refused: `a#b.png` has leading or trailing whitespace or "
         "one of # ^ [ ], which would break the link"
     )
 
 
 def test_unsafe_sequence_sentence_exact():
-    assert _typed_name_refusal_reason("unsafe_sequence", "a{{b.png") == (
+    assert typed_name_sentence("unsafe_sequence", "a{{b.png") == (
         "typed name refused: `a{{b.png` contains a control character or a "
         "template sequence, which would corrupt the instruction set"
     )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_037_remedy_lost_on_the_wire_path.py — the attachment-conflict remedy
 did not survive Pass 2's JSON-only path, and silently became `ignore`.
 **Fixed by spec 038 T2.3** — see the bottom of this docstring.
@@ -167,6 +167,9 @@ def test_the_markdown_path_carries_the_chosen_remedy():
             "source": SOURCE, "remedy": "rename",
             "proposed_name": "karte (2).png",
             "name_is_owner_supplied": False,
+            # spec 039 T3.3: this hand-built markdown has no Folder line.
+            "proposed_dir": None,
+            "dir_is_owner_supplied": False,
         },
     ]
 

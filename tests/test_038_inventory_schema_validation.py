@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.3.6
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -369,7 +369,7 @@ def _count_editable_marked_descriptions(schema_path: Path) -> int:
     return len(_editable_marked_descriptions(schema_path))
 
 
-EXPECTED_EDITABLE_MARKED_FIELDS = 25
+EXPECTED_EDITABLE_MARKED_FIELDS = 26
 
 
 def _assert_editable_marked_field_count(schema_path: Path) -> None:
@@ -384,17 +384,16 @@ def _assert_editable_marked_field_count(schema_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
-def test_wire_schema_marks_exactly_25_editable_fields():
+def test_wire_schema_marks_exactly_26_editable_fields():
     """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
     bringing the count from 21 (T1.1) to 23; attachment_conflicts[].remedy
-    and .proposed_name gained it later, bringing the count to 25. A future
+    and .proposed_name gained it later, bringing the count to 25;
+    attachment_conflicts[].proposed_dir brought it to 26. A future
     marker removed from the wire schema with no corresponding inventory-row
     change would otherwise pass every other test in this file."""
     _assert_editable_marked_field_count(WIRE_SCHEMA_PATH)
 
 
-@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_a_deleted_editable_marker_is_caught(tmp_path):
     """Deletion is NOT owned by the equality assertion above on its own — that
     assertion runs against the real, committed schema, so nothing in this file

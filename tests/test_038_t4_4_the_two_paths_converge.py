@@ -431,10 +431,23 @@ def _run_both(
 
 
 def _strip_provenance(parsed: dict) -> dict:
-    """`parsed` with `name_is_owner_supplied` dropped from every remedy."""
+    """`parsed` with both provenance flags dropped from every remedy, and a
+    `proposed_dir` that is NOT owner-supplied read as `None`.
+
+    The folder half mirrors the one equality rule both paths converge on
+    downstream (spec 039 SDD, Pass 2 wire path step 2): a folder that is not
+    owner-supplied resolves to the configured asset folder, whatever text it
+    carries. The markdown path reports the rendered folder verbatim there and
+    the wire path reports `null`; both mean the same folder."""
     out = dict(parsed)
     out["attachment_conflict_remedies"] = [
-        {k: v for k, v in r.items() if k != "name_is_owner_supplied"}
+        {
+            **{
+                k: v for k, v in r.items()
+                if k not in ("name_is_owner_supplied", "dir_is_owner_supplied")
+            },
+            "proposed_dir": r["proposed_dir"] if r["dir_is_owner_supplied"] else None,
+        }
         for r in parsed["attachment_conflict_remedies"]
     ]
     return out
@@ -447,7 +460,9 @@ def _assert_paths_agree_but_for_provenance(md_parsed: dict, wire_parsed: dict) -
 
     `name_is_owner_supplied` is the single field the two paths are designed to
     disagree on (T2.3 vs T4.2), and each case asserts its value on both sides
-    explicitly. This says there is nothing ELSE: a divergence introduced
+    explicitly. Spec 039 T3.3 adds the folder's spelling of the same default
+    (rendered text vs `null`, both not owner-supplied), which
+    `_strip_provenance` reads as one value. This says there is nothing ELSE: a divergence introduced
     anywhere in either path fails here, not just one in the two fields a move
     is built from.
 
@@ -488,12 +503,16 @@ def test_a_computed_name_converges_on_one_destination(tmp_path):
         "remedy": "rename",
         "proposed_name": COMPUTED,
         "name_is_owner_supplied": False,
+        "proposed_dir": ASSET_FOLDER.rstrip("/"),
+        "dir_is_owner_supplied": False,
     }, markdown.remedy
     assert wire.remedy == {
         "source": SOURCE,
         "remedy": "rename",
         "proposed_name": COMPUTED,
         "name_is_owner_supplied": True,
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }, wire.remedy
 
     # The destination does not.
@@ -541,8 +560,14 @@ def test_a_typed_accepted_name_converges_on_one_destination(tmp_path):
         "proposed_name": TYPED,
         "name_is_owner_supplied": True,
     }
-    assert markdown.remedy == expected_remedy, markdown.remedy
-    assert wire.remedy == expected_remedy, wire.remedy
+    # spec 039 T3.3: the folder is untouched on both surfaces — rendered text
+    # on the markdown path, null on the wire, neither owner-supplied.
+    assert markdown.remedy == {**expected_remedy, **{
+        "proposed_dir": ASSET_FOLDER.rstrip("/"), "dir_is_owner_supplied": False,
+    }}, markdown.remedy
+    assert wire.remedy == {**expected_remedy, **{
+        "proposed_dir": None, "dir_is_owner_supplied": False,
+    }}, wire.remedy
 
     assert markdown.destinations == [f"{ASSET_FOLDER}{TYPED}"], markdown.actions
     assert wire.destinations == markdown.destinations, (
@@ -585,12 +610,16 @@ def test_an_unusable_computed_name_is_refused_on_the_wire_and_filed_in_the_markd
         "remedy": "rename",
         "proposed_name": UNUSABLE_COMPUTED,
         "name_is_owner_supplied": False,
+        "proposed_dir": ASSET_FOLDER.rstrip("/"),
+        "dir_is_owner_supplied": False,
     }, markdown.remedy
     assert wire.remedy == {
         "source": UNUSABLE_SOURCE,
         "remedy": "rename",
         "proposed_name": UNUSABLE_COMPUTED,
         "name_is_owner_supplied": True,
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }, wire.remedy
 
     # The markdown path's whole outcome: it files the name.

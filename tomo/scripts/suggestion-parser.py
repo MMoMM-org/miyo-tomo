@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.41.2
+# version: 0.42.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 
 # H5 (spec 022/023): the supporting_items union is shared with
 # instruction-render via lib/supporting_items.py. Ensure the script dir is on
@@ -506,12 +507,19 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         # `check_typed_name` in `_build_move_asset_actions`: the wire path
         # is checked, the markdown path (False, below) is not. Internal to
         # this script's own output dict — not a schema or wire field.
+        #
+        # spec 039 T3.3: `proposed_dir` follows the same rule — owner-supplied
+        # whenever non-null, since this path carries no `destination` to
+        # compare against. Null is the configured asset folder, not a typed
+        # value, so it is never owner-supplied.
         "attachment_conflict_remedies": [
             {
                 "source": c["source"],
                 "remedy": c["remedy"],
                 "proposed_name": c["proposed_name"],
                 "name_is_owner_supplied": True,
+                "proposed_dir": c.get("proposed_dir"),
+                "dir_is_owner_supplied": c.get("proposed_dir") is not None,
             }
             for c in wire.get("attachment_conflicts", [])
         ],
@@ -2309,7 +2317,36 @@ def _resolve_attachment_remedy(
     return REMEDY_IGNORE
 
 
-def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
+@dataclass
+class _ConflictEntry:
+    """Per-entry walker state for one `### `<source>`` block."""
+
+    source: str
+    rename_ticked: bool = False
+    rename_impossible: bool = False
+    rename_target: str | None = None
+    keep_ticked: bool = False
+    ignore_ticked: bool = False
+    folder_text: str | None = None
+
+
+def _read_folder_line(stripped: str) -> str:
+    """Return the folder text of a `` - Folder: `<dir>` `` line, verbatim.
+
+    The body after the label must be ONE backtick pair spanning all of it;
+    the text between the outer pair is returned unchanged, inner backticks
+    and edge whitespace included. Anything else — no backticks, a lone
+    backtick, text after the closing backtick — returns `""`.
+    """
+    body = stripped.partition(":")[2].strip()
+    if len(body) >= 2 and body[0] == "`" and body[-1] == "`":
+        return body[1:-1]
+    return ""
+
+
+def _walk_attachment_conflicts(
+    text: str,
+) -> list[tuple[str, str, str | None, str | None]]:
     """Walk the ## Attachment Conflicts section, one record per `### `source`` block.
 
     Mirrors `_walk_tag_handler_decisions`: a new entry starts at each
@@ -2319,7 +2356,8 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
     contributes an unticked (False) state like any other unticked line — no
     line is required for an entry to resolve.
 
-    Returns ``[(source, remedy, rename_target), ...]`` in document order;
+    Returns ``[(source, remedy, rename_target, folder_text), ...]`` in
+    document order;
     empty when the section is absent (mirrors T1.2's absent-not-empty
     decision — no invented entry).
 
@@ -2347,34 +2385,30 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
     edit or a bad merge, and which one reflects the owner's intent is
     genuinely ambiguous — silently combining them risks merging two
     sections that contradict each other.
+
+    `folder_text` is the non-checkbox `` - Folder: `<dir>` `` sub-line's
+    text, read by `_read_folder_line`. `None` when the entry has no such
+    line. A second folder line in the same entry that disagrees with the
+    first collapses the value to `""`.
     """
     lines = text.splitlines()
     in_section = False
-    records: list[tuple[str, str, str | None]] = []
-    current_source: str | None = None
-    rename_ticked = False
-    rename_impossible = False
-    rename_target: str | None = None
-    keep_ticked = False
-    ignore_ticked = False
+    records: list[tuple[str, str, str | None, str | None]] = []
+    entry: _ConflictEntry | None = None
 
     def _flush() -> None:
-        nonlocal current_source, rename_ticked, rename_impossible, rename_target
-        nonlocal keep_ticked, ignore_ticked
-        if current_source is not None:
+        if entry is not None:
             records.append((
-                current_source,
+                entry.source,
                 _resolve_attachment_remedy(
-                    rename_ticked, rename_impossible, keep_ticked, ignore_ticked
+                    entry.rename_ticked,
+                    entry.rename_impossible,
+                    entry.keep_ticked,
+                    entry.ignore_ticked,
                 ),
-                None if rename_impossible else rename_target,
+                None if entry.rename_impossible else entry.rename_target,
+                entry.folder_text,
             ))
-        current_source = None
-        rename_ticked = False
-        rename_impossible = False
-        rename_target = None
-        keep_ticked = False
-        ignore_ticked = False
 
     for line in lines:
         stripped = line.strip()
@@ -2384,6 +2418,7 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
             continue
         if in_section and stripped.startswith("## "):
             _flush()
+            entry = None
             break
         if not in_section:
             continue
@@ -2391,10 +2426,19 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
         sm = RE_ATTACHMENT_CONFLICT_SOURCE.match(stripped)
         if sm:
             _flush()
-            current_source = sm.group(1).strip()
+            entry = _ConflictEntry(source=sm.group(1).strip())
             continue
 
-        if current_source is None:
+        if entry is None:
+            continue
+
+        # Literal kept at the comparison site: the decision-inventory join
+        # harvests it from here and matches it to D26's parser_label.
+        if stripped.startswith("- Folder:"):
+            folder_text = _read_folder_line(stripped)
+            entry.folder_text = (
+                folder_text if entry.folder_text in (None, folder_text) else ""
+            )
             continue
 
         cb_checked = RE_CHECKED.match(stripped)
@@ -2409,29 +2453,31 @@ def _walk_attachment_conflicts(text: str) -> list[tuple[str, str, str | None]]:
         label = raw_label.lower()
 
         if label.startswith("rename"):
-            rename_ticked = checked
+            entry.rename_ticked = checked
             target_match = RE_RENAME_TARGET.search(raw_label)
-            rename_target = target_match.group(1) if target_match else ""
+            entry.rename_target = target_match.group(1) if target_match else ""
             # Narrowed from `RENAME_IMPOSSIBLE_MARKER in label` (owner ruling
             # 2026-10-02): the marker alone no longer overrides, or T4.1's
             # empty backticks would accept the owner's keystrokes and discard
             # them. `.strip()` mirrors `check_typed_name`'s own blankness test,
             # so a whitespace-only edit counts as nothing typed here too.
-            rename_impossible = (
-                RENAME_IMPOSSIBLE_MARKER in label and not rename_target.strip()
+            entry.rename_impossible = (
+                RENAME_IMPOSSIBLE_MARKER in label
+                and not entry.rename_target.strip()
             )
         elif label.startswith("keep in inbox"):
-            keep_ticked = checked
+            entry.keep_ticked = checked
         elif label.startswith("ignore"):
-            ignore_ticked = checked
+            entry.ignore_ticked = checked
 
     _flush()
     return records
 
 
 def parse_attachment_conflict_remedies(text: str) -> list[dict]:
-    """Return `[{"source": ..., "remedy": ..., "rename_target": ...}, ...]`
-    for every `## Attachment Conflicts` entry, in document order.
+    """Return `[{"source": ..., "remedy": ..., "rename_target": ...,
+    "folder_text": ...}, ...]` for every `## Attachment Conflicts` entry, in
+    document order.
 
     `remedy` is always `rename` / `keep_in_inbox` / `ignore` — never None —
     because `_resolve_attachment_remedy` is exhaustive over the tick states
@@ -2444,11 +2490,19 @@ def parse_attachment_conflict_remedies(text: str) -> list[dict]:
     and these records are its only input — the join reads no markdown of its
     own. It is consumed there and does NOT reach the parser's JSON output,
     whose remedy records keep the `{source, remedy, proposed_name,
-    name_is_owner_supplied}` shape the wire path also yields.
+    name_is_owner_supplied, proposed_dir, dir_is_owner_supplied}` shape the
+    wire path also yields. `folder_text` (spec 039 T3.3) rides along for the
+    same reason and is likewise consumed by the join.
     """
     return [
-        {"source": source, "remedy": remedy, "rename_target": rename_target}
-        for source, remedy, rename_target in _walk_attachment_conflicts(text)
+        {
+            "source": source,
+            "remedy": remedy,
+            "rename_target": rename_target,
+            "folder_text": folder_text,
+        }
+        for source, remedy, rename_target, folder_text
+        in _walk_attachment_conflicts(text)
     ]
 
 
@@ -2514,6 +2568,13 @@ def _join_attachment_conflict_remedies(
     consulted, so the owner reads the `vault_collision_held` sentence rather
     than a refusal. Both withhold the move; only the wording differs, and that
     ordering belongs to `render_actions.py` (Phase 3's T3.2), not here.
+
+    **spec 039 T3.3: the folder.** `proposed_dir` is the Folder line's text
+    verbatim; `dir_is_owner_supplied` is True iff it differs EXACTLY from the
+    folder Pass 1 rendered, `dirname(destination)` of the doc record — the
+    provenance rule the name uses, with no normalisation (a trailing `/` on
+    the default folder is owner-supplied). No Folder line, or no doc record
+    to compare against, yields `None` / False, as the name degrades.
     """
     doc_records = {
         c.get("source"): c
@@ -2537,11 +2598,20 @@ def _join_attachment_conflict_remedies(
             else:
                 proposed_name = rename_target
             name_is_owner_supplied = proposed_name != doc_name
+        folder_text = r.get("folder_text")
+        proposed_dir = None
+        dir_is_owner_supplied = False
+        if folder_text is not None and doc_record:
+            rendered_dir = (doc_record.get("destination") or "").rpartition("/")[0]
+            proposed_dir = folder_text
+            dir_is_owner_supplied = folder_text != rendered_dir
         joined.append({
             "source": r["source"],
             "remedy": r["remedy"],
             "proposed_name": proposed_name,
             "name_is_owner_supplied": name_is_owner_supplied,
+            "proposed_dir": proposed_dir,
+            "dir_is_owner_supplied": dir_is_owner_supplied,
         })
     return joined
 

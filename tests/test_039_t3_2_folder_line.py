@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_039_t3_2_folder_line.py — spec 039 T3.2 (PRD F1-AC2).
 
 Pass 1 renders a non-checkbox `  - Folder: \\`<dirname(destination)>\\`` sub-line
 directly under the Rename line, in both rename variants, and conflict records
-carry `proposed_dir: None`. Pass 2's parser must keep ignoring that line until
-T3.3 teaches it to read it.
+carry `proposed_dir: None`. Since T3.3 the parser reads that line; the
+round-trip test below pins that reading it changes nothing BUT the folder.
 
 Mutations guarded: dropping the sub-line from either variant (exact-line
 assertions); emitting it as a checkbox (exact-line assertions and the
 rendered-output guard, not the parser round-trip); omitting `proposed_dir`
 from records (schema + detect assertions); a parser that misreads the folder
-line as a name or a tick (round-trip test only).
+line as a name or a tick, or drops it (round-trip test only).
 
 CON-7: fixtures and fakes only.
 """
@@ -155,12 +155,17 @@ def _remedies(text: str) -> list[dict]:
     return PARSER.parse_attachment_conflict_remedies(text)
 
 
-def test_untouched_doc_with_folder_line_parses_to_same_remedies_as_without():
+def test_folder_line_changes_only_the_folder_never_the_tick_or_the_name():
+    """Retargeted in T3.3: the parser now reads the line, so the records
+    differ in `folder_text` and in nothing else."""
     for conflict in (_conflict(), _conflict(proposed_name=None)):
         with_line = REDUCER.render_attachment_conflicts_block([conflict], ASSET_FOLDER)
         without = "\n".join(
             ln for ln in with_line.splitlines() if not ln.startswith("  - Folder:")
         ) + "\n"
         assert with_line != without
-        assert _remedies(with_line) == _remedies(without), (with_line,)
-        assert len(_remedies(with_line)) == 1
+        (read,) = _remedies(with_line)
+        (absent,) = _remedies(without)
+        assert read.pop("folder_text") == ASSET_FOLDER.rstrip("/"), (with_line,)
+        assert absent.pop("folder_text") is None
+        assert read == absent, (with_line,)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_037_t4_4_rendered_text.py — spec 037 T4.4: four text defects the
 keep-in-inbox live run exposed, none of which any test could see.
 
@@ -315,7 +315,11 @@ def test_a_document_rendered_before_the_wording_changed_still_parses():
     # Asserted as part of the record: the two ticks this test is about are only
     # settled correctly if the rename line was read in full.
     assert PARSER.parse_attachment_conflict_remedies(text) == [
-        {"source": HELD, "remedy": "ignore", "rename_target": "x.png"},
+        {
+            "source": HELD, "remedy": "ignore", "rename_target": "x.png",
+            # spec 039 T3.3: this hand-built markdown has no Folder line.
+            "folder_text": None,
+        },
     ], "the legacy Ignore label was not recognised, so the rename tick won"
 
 

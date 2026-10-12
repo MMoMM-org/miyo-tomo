@@ -180,6 +180,9 @@ def test_the_untouched_default_is_byte_identical_to_the_computed_name():
         "remedy": "rename",
         "proposed_name": COMPUTED,
         "name_is_owner_supplied": False,
+        # spec 039 T3.3: the rendered Folder line, untouched.
+        "proposed_dir": ASSET_FOLDER.rstrip("/"),
+        "dir_is_owner_supplied": False,
     }, record
     actions, skipped = _outcome(record)
     assert skipped == [], skipped
@@ -411,6 +414,8 @@ def test_the_no_free_name_line_ticked_but_still_empty_stays_ignore():
         "remedy": "ignore",
         "proposed_name": None,
         "name_is_owner_supplied": False,
+        "proposed_dir": ASSET_FOLDER.rstrip("/"),
+        "dir_is_owner_supplied": False,
     }, record
     _actions, skipped = _outcome(record)
     assert [s["kind"] for s in skipped if s["kind"] == "typed_name_refused"] == [], (
@@ -432,6 +437,8 @@ def test_the_no_free_name_line_left_alone_keeps_the_attachment_in_the_inbox():
         "remedy": "keep_in_inbox",
         "proposed_name": None,
         "name_is_owner_supplied": False,
+        "proposed_dir": ASSET_FOLDER.rstrip("/"),
+        "dir_is_owner_supplied": False,
     }, record
 
 
@@ -471,6 +478,9 @@ def test_a_source_absent_from_the_doc_still_degrades_rather_than_raising():
         "remedy": "rename",
         "proposed_name": None,
         "name_is_owner_supplied": False,
+        # spec 039 T3.3: no doc record, no rendered folder to compare against.
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }, record
 
 

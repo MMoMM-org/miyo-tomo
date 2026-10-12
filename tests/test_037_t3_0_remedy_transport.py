@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_037_t3_0_remedy_transport.py — spec 037 T3.0.
 
 Before this file, `parse_attachment_conflict_remedies` (T2.4) had ZERO
@@ -173,6 +173,9 @@ def test_conflict_entry_joins_proposed_name_by_source(tmp_path):
         "remedy": "rename",
         "proposed_name": PROPOSED_NAME,
         "name_is_owner_supplied": False,
+        # spec 039 T3.3: this hand-built markdown has no Folder line.
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }]
 
 
@@ -220,6 +223,8 @@ def test_source_absent_from_doc_yields_null_proposed_name_not_keyerror(tmp_path)
         "remedy": "rename",
         "proposed_name": None,
         "name_is_owner_supplied": False,
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }]
 
     # --suggestions-doc points at a file that does not exist at all —
@@ -231,6 +236,8 @@ def test_source_absent_from_doc_yields_null_proposed_name_not_keyerror(tmp_path)
         "remedy": "rename",
         "proposed_name": None,
         "name_is_owner_supplied": False,
+        "proposed_dir": None,
+        "dir_is_owner_supplied": False,
     }]
 
 
@@ -390,6 +397,7 @@ def test_parser_output_reaches_build_actions_end_to_end(monkeypatch, tmp_path):
     assert captured_kwargs.get("attachment_conflict_remedies") == [{
         "source": SOURCE, "remedy": "rename", "proposed_name": PROPOSED_NAME,
         "name_is_owner_supplied": False,
+        "proposed_dir": None, "dir_is_owner_supplied": False,
     }]
 
 

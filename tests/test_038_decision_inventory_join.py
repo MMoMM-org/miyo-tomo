@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.4.2
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -76,7 +76,7 @@ KNOWN LIMITATIONS (deliberate, not to be fixed by this test):
 
 TWO GUARDS THAT LOOK REDUNDANT AND ARE NOT (both must remain):
   `test_038_inventory_schema_validation.py`'s
-  `test_wire_schema_marks_exactly_25_editable_fields` asserts `== 25` and
+  `test_wire_schema_marks_exactly_26_editable_fields` asserts `== 26` and
   catches a marker being DELETED. This file's `>= 25` floor (inside
   `_assert_schema_side_join`) catches the enumeration silently matching
   NOTHING after a REWORD — a different mutation, in a different file, from a
@@ -438,7 +438,6 @@ def test_parser_harvest_meets_the_measured_floor(harvested_literals: set[str]) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_real_artefacts_schema_side_join_passes(
     wire_schema_doc: dict, inventory_rows: list[dict]
 ) -> None:
@@ -559,32 +558,39 @@ def test_injection_d_legitimate_retirement_passes(
     _assert_parser_side_join(harvested_literals, mutated_rows)  # must not raise
 
 
-@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_injection_e_reworded_marker_breaches_the_floor(
     wire_schema_doc: dict, inventory_rows: list[dict]
 ) -> None:
-    """(e) Reword one Editable-marked description (on a deepcopy) so it no
-    longer matches. The enumeration drops from 25 to 24 and the FLOOR
-    assertion inside _assert_schema_side_join — not the equality check below
-    it — is what fails first, proving the floor is load-bearing rather than
-    an assertion the equality check would have caught anyway."""
+    """(e) Reword Editable-marked descriptions (on a deepcopy) until the
+    enumeration sits one below the floor. The FLOOR assertion inside
+    _assert_schema_side_join — not the equality check below it — is what
+    fails first, proving the floor is load-bearing rather than an assertion
+    the equality check would have caught anyway.
+
+    The floor stays at 25 while the real schema marks more (26 since the
+    `proposed_dir` field), so one reword no longer breaches it; the number
+    of rewords is derived from the measured count rather than hand-typed,
+    and the premise below pins that the real schema is AT OR ABOVE the
+    floor."""
     marked_before = _count_editable_marked_descriptions(wire_schema_doc)
-    assert marked_before == FLOOR_SCHEMA_MARKED_FIELDS, (
-        f"fixture premise: the real schema must mark exactly "
+    assert marked_before >= FLOOR_SCHEMA_MARKED_FIELDS, (
+        f"fixture premise: the real schema must mark at least "
         f"{FLOOR_SCHEMA_MARKED_FIELDS} field(s) Editable ({marked_before} "
-        "found) for rewording one of them to breach the floor rather than "
-        "merely narrow it — if this fails, a schema change moved the count "
-        "out from under this injection; pick a fixture that actually sits "
-        "on the floor, rather than loosen the pin"
+        "found) — if this fails, the real schema is already below the floor "
+        "and the real-artefacts join is the test that should be red"
     )
     mutated_schema = copy.deepcopy(wire_schema_doc)
-    reworded = _reword_one_editable_marker(mutated_schema)
-    assert reworded, "fixture setup: no Editable-marked description found to reword"
+    for _ in range(marked_before - FLOOR_SCHEMA_MARKED_FIELDS + 1):
+        reworded = _reword_one_editable_marker(mutated_schema)
+        assert reworded, "fixture setup: no Editable-marked description found to reword"
+    assert (
+        _count_editable_marked_descriptions(mutated_schema)
+        == FLOOR_SCHEMA_MARKED_FIELDS - 1
+    ), "fixture setup: the rewords did not land exactly one below the floor"
     with pytest.raises(AssertionError, match=re.escape("may be silently matching nothing")):
         _assert_schema_side_join(mutated_schema, inventory_rows)
 
 
-@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_rewording_every_label_changes_no_row_id_and_breaks_no_join(
     wire_schema_doc: dict, inventory_rows: list[dict], harvested_literals: set[str]
 ) -> None:

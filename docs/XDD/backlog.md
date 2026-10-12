@@ -1894,7 +1894,12 @@ rather than let them find it; T4.2 pins today's answer (`vault_collision_held`) 
 test with the mechanism named in its docstring, so the pin reads as a measurement
 rather than an endorsement.
 
-## OPEN — `_walk_attachment_conflicts` carries six per-entry fields declared in three places
+## RESOLVED — `_walk_attachment_conflicts` carries six per-entry fields declared in three places
+
+**Resolved 2026-10-12 by spec 039 T3.3**, in the same change that added the seventh field
+(`folder_text`, the Folder line). The per-entry state is now one `_ConflictEntry` dataclass:
+declared once, no `nonlocal` list, and the reset is the single assignment that starts the next
+entry. Kept rather than deleted because the prediction below came true.
 
 Flagged in T4.2's code quality review (2026-10-02), not a blocker, not taken.
 

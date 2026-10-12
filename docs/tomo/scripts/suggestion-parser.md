@@ -1428,3 +1428,65 @@ on both sides — the wire's `skipped_assets` entry in full, the markdown's
 `move_asset` in full — because "the wire refuses and the markdown permits" would
 also pass on an implementation that diverged for the wrong reason, or on a broken
 one.
+
+## The Folder Line Is Read, Recorded Verbatim, and Never Decided Here (spec 039 T3.3, v0.42.0)
+
+WHY the parser reads the `  - Folder: \`<dir>\`` sub-line at all: Pass 1
+(T3.2) renders it under the Rename line so the owner can choose where a renamed
+attachment goes (PRD F1-AC3). A line the markdown offers and Pass 2 ignores is
+exactly the defect spec 038 closed for the name — keystrokes accepted and
+dropped. The wire carries the same decision as
+`attachment_conflicts[].proposed_dir` (F1-AC4), so both paths now emit remedy
+records with the same six keys: `source, remedy, proposed_name,
+name_is_owner_supplied, proposed_dir, dir_is_owner_supplied`.
+
+WHY verbatim, with no normalisation: the parser records, Phase 4's attachment
+plan decides. `dir_is_owner_supplied` is True iff the text differs **exactly**
+from `dirname(destination)` of the doc record — the folder Pass 1 printed — the
+same provenance rule the name uses. A default folder with a trailing `/` is
+therefore owner-supplied and gets refused `trailing_separator` downstream on
+both paths alike; normalising it here would make the markdown path accept what
+the wire path refuses. The wire path has no `destination` to compare with, so
+it calls any non-null value owner-supplied (the 038 T2.5 rule for names); null
+means the configured asset folder and is never owner-supplied. The two paths
+spell the untouched default differently (rendered text vs `null`, both not
+owner-supplied); they converge where the plan resolves "not owner-supplied" to
+the configured folder, which is why the 038 convergence test reads those two as
+one value.
+
+WHY the line is matched as the literal prefix `- Folder:` at the comparison
+site: the decision-inventory join harvests comparison literals from this file
+and requires each to be claimed by an inventory row. D26's `parser_label` is
+that literal, so a renamed or removed folder line breaks the join instead of
+silently going unread.
+
+WHY malformed input becomes `""`, not the default and not a guess. The body
+must be exactly one backtick pair spanning the rest of the line; the text
+between the **outer** pair is taken, so a vault folder whose name contains a
+backtick round-trips unchanged (the rename line's first-pair regex would
+truncate it and report a folder nobody typed). No backticks, a lone backtick,
+or text after the closing backtick yields `""`: owner-supplied (unless the
+rendered folder was itself `""`), refused `blank` downstream, move withheld.
+Falling back to the default would silently drop an edit; taking the raw text
+would guess at intent. The refusal sentence will say "blank" for a line that
+was not literally blank — accepted as the price of never guessing.
+
+WHY two disagreeing folder lines in one entry collapse to `""`: first-wins and
+last-wins each silently discard one of two owner edits. Agreeing duplicates
+read as one. Disagreement is ambiguous intent, and the only outcome that drops
+nothing is to withhold the move and say so.
+
+WHY no doc record means `None` / False: the name degrades the same way — with
+no `destination` there is no rendered folder to tell an edit from the default,
+and the entry already has no name to move under.
+
+WHY a folder typed **inside the rename backticks** is still refused
+`separator_present` (F1-AC8): the folder line is a separate control. Reading it
+does not change what the rename line's backticks may contain; the un-render
+strips only the prefix Tomo printed.
+
+WHY the walker's per-entry state became one `_ConflictEntry` dataclass: each
+field used to be declared, listed `nonlocal`, and reset in three places, and
+this task added a seventh. One object per entry makes the reset a single
+assignment and removes the bug class where a new field is added to two of the
+three sites.

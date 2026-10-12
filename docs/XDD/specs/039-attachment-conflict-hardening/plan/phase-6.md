@@ -43,7 +43,7 @@ Delivers the owner documentation, the coordinated release to Hashi, a live run, 
 
   1. Prime: T1.2's reply and any answer; 038's wire-v3 handoff as the template `[ref: SDD/Deployment View; PRD/CON-1, CON-3]`
   2. Test: after Hashi confirms vendoring, the vendored suggestions copy equals Tomo's live v4 schema byte-identically and the parity test's delta is empty; the vendored instructions copy equals the consumer's updated file (`cmp`), carrying the new `depends_on` description (F6-AC6)
-  3. Implement: `/miyo-outbox` handoff with the v4 schema, shape manifest, inventory (D26), the `depends_on` description change, a runnable test run (precedent: 038's run fixture), and the asks — confirm the executor cascade for `move_asset` (F6-AC7) and a three-candidate tie-break probe only if F4 ever needs it (A1 and A3 measured by Hashi 2026-10-12); then refresh both vendored copies
+  3. Implement: `/miyo-outbox` handoff with the v4 schema, shape manifest, inventory (D26), the `depends_on` description change, a runnable test run (precedent: 038's run fixture), and the asks — confirm the executor cascade for `move_asset` (F6-AC7) and a three-candidate tie-break probe only if F4 ever needs it (A1 and A3 measured by Hashi 2026-10-12); then refresh both vendored copies. State that #141 ships once, on v4, with the picker — no interim v3 release (owner ruling via Kokoro, ADR-029 §7, 2026-10-12)
   4. Validate: Hashi's confirmation recorded in the README decisions log
   5. Success: consumer on v4 `[ref: PRD/CON-1]`; consumer half of `[ref: PRD/F6-AC6]`
 

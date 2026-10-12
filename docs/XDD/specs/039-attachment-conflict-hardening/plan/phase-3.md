@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: The folder reaches both surfaces"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

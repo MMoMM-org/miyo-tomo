@@ -1777,3 +1777,14 @@ degenerate input.
 the schema should catch. Unlike `remedy`, which the parser adds later, nothing
 downstream has to add this key. Pass 1 always writes `null`; nothing consumes
 it yet (Phase 4).
+
+## Pass-1 Destination Keys Are `path_key` (spec 039 W7)
+
+`resolve_destination_clashes`, `_propose_asset_name` and
+`detect_attachment_conflicts` compare destinations under
+`lib.vault_paths.path_key` (NFC, then casefold) — the key `VaultFolderLookup`
+builds its `notes`, `assets` and `occupied_by_folder` maps with. A
+`casefold()`-only key on this side would miss every NFC-stored occupier of an
+NFD-spelled destination, however the lookup keyed its maps. `_clash_reason`
+says "differs … only in case" only when the spellings differ after NFC
+(`same_spelling`).

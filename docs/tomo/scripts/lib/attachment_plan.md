@@ -115,3 +115,27 @@ have no vault to ask.
 `plan_from_remedies`, `plan_without_vault` and `build_actions_without_vault`
 live in `tests/attachment_plan_fakes.py`, not here: they supply a fake vault and is never a production code path, and `tomo/` is
 synced into the instance.
+
+## Targets compared under `path_key` (spec 039 W7)
+
+Row 7 (`claimed`) and row 8 (K2's `assets` / `occupied_by_folder` keys) used to
+fold case only, while the census and the Pass B name key already normalised
+to NFC. An NFD-spelled target — an owner typing on macOS, or an inbox basename
+the filesystem returned decomposed — therefore missed an NFC occupier or an
+NFC-claimed target, and the move failed at apply. Every target key in this
+module is now `lib.vault_paths.path_key` (NFC, then casefold), the same key K2
+builds its maps with, so the two sides of each lookup cannot disagree again.
+The Pass B name key is the same function (the former `_name_key` copy is gone).
+See `vault_paths.md`.
+
+## A failed render still claims its target (drift check W4, ADR-1 trade-off)
+
+The plan is built before the render loop, from every confirmed item. An item
+that later fails to render is still planned, so its attachment still claims its
+target in `claimed`. A rendered item whose attachment resolves to the same
+target is then withheld as `collision`, although the item that claimed it never
+files anything. This is the over-withholding direction: the attachment stays in
+the inbox and its note with it (spec 034 T5.4), and the next run, without the
+failed item, files it. Planning only rendered items would need the plan built
+after rendering, which is too late for the embed rewrite (the reason for
+ADR-1's single decision site).

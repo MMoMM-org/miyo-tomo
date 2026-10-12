@@ -48,3 +48,9 @@ Runtime file: `tomo/scripts/lib/basename_census.py`. Spec 039 K3, ADR-3, PRD F3-
 - **Malformed responses.** Response parsing sits inside the same `try` as the
   call, so a non-dict result or non-dict item is "unanswered" (None), never a
   count taken from a half-read answer.
+
+## The local key is `path_key` (spec 039 W7)
+
+The narrowing key (NFC + casefold) is `lib.vault_paths.path_key`, not a private
+copy, so the census counts under the same key K1 and K2 compare targets with.
+The Kado query forms (NFC and NFD through `.lower()`) are unchanged.

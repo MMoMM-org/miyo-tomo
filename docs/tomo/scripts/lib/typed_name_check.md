@@ -230,3 +230,9 @@ matches nothing rather than everything. Casefold is deliberately conservative
 
 No production call site yet; Phase 4 (K1) calls it when the folder is
 owner-supplied.
+
+## `inside_inbox` compares under `path_key` (spec 039 W7)
+
+The NFC + casefold comparison is `lib.vault_paths.path_key`; the private
+`_comparable` copy is gone. Same behaviour, one definition shared with every
+destination comparison (`vault_paths.md`).

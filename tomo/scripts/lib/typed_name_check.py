@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -21,10 +21,10 @@ to duplicate that check was rejected by the owner (2026-10-01).
 """
 from __future__ import annotations
 
-import unicodedata
 from dataclasses import dataclass
 
 from lib.obsidian_filename import FORBIDDEN_CHARS
+from lib.vault_paths import path_key
 
 # Closed set of refusal reasons, so a renderer can phrase each without parsing
 # a string. Exactly five members — `taken` is excluded on purpose; see the
@@ -141,15 +141,11 @@ def _escapes_vault(folder: str) -> bool:
     )
 
 
-def _comparable(path: str) -> str:
-    return unicodedata.normalize("NFC", path).casefold()
-
-
 def _is_inside_inbox(folder: str, inbox_path: str) -> bool:
-    inbox = _comparable(inbox_path).rstrip("/")
+    inbox = path_key(inbox_path).rstrip("/")
     if not inbox:
         return False
-    target = _comparable(folder)
+    target = path_key(folder)
     return target == inbox or target.startswith(inbox + "/")
 
 

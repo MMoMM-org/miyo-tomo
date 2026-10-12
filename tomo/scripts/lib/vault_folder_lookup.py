@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """vault_folder_lookup.py — one `list_dir` per vault folder, served to every
 reader in a run.
 
@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Literal
 
 from lib.kado_client import KadoNotFoundError, observed_call_count
-from lib.vault_paths import _asset_dest_join, _dest_join
+from lib.vault_paths import _asset_dest_join, _dest_join, path_key
 
 FolderState = Literal["listed", "absent", "unanswered"]
 
@@ -88,11 +88,11 @@ class VaultFolderLookup:
             name = path.rsplit("/", 1)[-1]
             if entry.get("type") != "file" or not file_predicate(name):
                 continue
-            found[join(folder, name).casefold()] = path
+            found[path_key(join(folder, name))] = path
         return found
 
     def notes(self, location: str) -> dict[str, str]:
-        """The `.md` notes in `location`: folded `_dest_join` key → vault path."""
+        """The `.md` notes in `location`: `path_key(_dest_join(...))` → vault path."""
         return self._map(
             location,
             file_predicate=lambda name: name.lower().endswith(".md"),
@@ -100,8 +100,8 @@ class VaultFolderLookup:
         )
 
     def assets(self, location: str) -> dict[str, str]:
-        """The non-`.md` files in `location`: folded `_asset_dest_join` key →
-        vault path. A note sharing the folder is not an attachment collision.
+        """The non-`.md` files in `location`: `path_key(_asset_dest_join(...))`
+        → vault path. A note sharing the folder is not an attachment collision.
         """
         return self._map(
             location,
@@ -110,7 +110,7 @@ class VaultFolderLookup:
         )
 
     def occupied_by_folder(self, location: str) -> set[str]:
-        """Folded `_asset_dest_join` keys held by a FOLDER entry in `location`
+        """`path_key(_asset_dest_join(...))` keys held by a FOLDER entry in `location`
         — the entries `notes()` and `assets()` drop.
         """
         folder = _folder_key(location)
@@ -122,5 +122,5 @@ class VaultFolderLookup:
             name = path.rsplit("/", 1)[-1]
             if not name:
                 continue
-            found.add(_asset_dest_join(folder, name).casefold())
+            found.add(path_key(_asset_dest_join(folder, name)))
         return found

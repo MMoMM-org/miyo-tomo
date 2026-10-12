@@ -63,3 +63,12 @@ It never says "a note already exists" — the note-clash sentence in
 `render_actions` is written for notes and would misdescribe an attachment.
 A folder at the target name has no file spelling to show, so that variant names
 the target only.
+
+## The case note needs a visible difference (spec 039 W7)
+
+Since target keys normalise to NFC (`vault_paths.path_key`), an NFD target can
+be found occupied by an NFC file of the same visible name. The `vault_occupied`
+sentence appends its case note only when the two spellings differ after NFC
+(`vault_paths.same_spelling`); an NFC/NFD pair reads as the plain sentence,
+because "the names differ only in case" would describe a difference that does
+not show.

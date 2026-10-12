@@ -1,4 +1,4 @@
-# version: 0.29.1
+# version: 0.29.2
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -31,7 +31,7 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
 from lib.render_md import bare_stem
 from lib.attachment_plan import AttachmentPlan, build_attachment_plan
 from lib.vault_folder_lookup import VaultFolderLookup
-from lib.vault_paths import _asset_dest_join, _dest_join  # noqa: F401 — re-exported (spec 039 T1.4)
+from lib.vault_paths import _asset_dest_join, _dest_join, path_key, same_spelling  # noqa: F401 — re-exported (spec 039 T1.4)
 from lib.source_link import colliding_names, qualified_target
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
@@ -694,9 +694,10 @@ _COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four"}
 
 
 def _unique_in_order(values: list[str]) -> list[str]:
+    """The distinct visible spellings, first spelling kept (NFC/NFD are one)."""
     out: list[str] = []
     for v in values:
-        if v not in out:
+        if not any(same_spelling(v, kept) for kept in out):
             out.append(v)
     return out
 
@@ -735,7 +736,7 @@ def _destination_clash_reason(
         if vault_note:
             head += f", and a note already exists at `{vault_note}`"
         tail = "neither is filed" if n == 2 else "none of them is filed"
-    elif vault_note == claim_dests[0]:
+    elif same_spelling(vault_note, claim_dests[0]):
         # The two-path form informs only when the two paths differ, which is
         # the case-only collision. On an exact match it names one path twice
         # and reads like a rendering bug — and the exact match is the common
@@ -996,7 +997,7 @@ def validate_destinations(
         destination = action.get("destination") or ""
         if not destination:
             continue
-        key = destination.casefold()
+        key = path_key(destination)
         if key not in groups:
             groups[key] = []
             order.append(key)

@@ -1801,3 +1801,17 @@ hands `validate_destinations` its own lookup's `notes` view), but the 034/036
 destination-guard harnesses build their view through it from a client, and
 the T1.4 tests pin the lookup branch. The plan's "drop the `isinstance` path"
 was conditional on it becoming dead; it did not.
+
+## `validate_destinations` Keys by `path_key` (spec 039 W7, v0.29.2)
+
+The destination guard groups claimants and looks up the vault's `notes` view
+under `lib.vault_paths.path_key` (NFC, then casefold) — the key the view itself
+is built with. Folding case alone let an NFD-spelled destination pass beside an
+NFC note or an NFC-spelled claimant. `_unique_in_order` counts visible
+spellings (`same_spelling`, equal after NFC), so `case_only` and the
+`_CASE_NOTE` stay false for an NFC/NFD-only pair, and the sentence does not
+name one visible path twice.
+
+`_build_create_moc_actions`' merge key (`by_dest`) is unchanged: it does not
+compare against K2, and an NFC/NFD pair of `create_moc` destinations that it
+does not merge is still caught by this guard as a run collision.

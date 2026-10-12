@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -18,6 +18,7 @@ shown as escapes so the sentence stays readable.
 from __future__ import annotations
 
 from lib.typed_name_check import is_control_char
+from lib.vault_paths import same_spelling
 
 
 def _visible(text: str) -> str:
@@ -101,7 +102,7 @@ def occupied_target_sentence(
         f"target occupied: the vault already holds `{shown}` at the target "
         f"`{_visible(target)}`, so the attachment is not filed over it"
     )
-    if occupier and occupier != target:
+    if occupier and not same_spelling(occupier, target):
         sentence += (
             " — the names differ only in case, and the filesystem may treat "
             "them as one file"

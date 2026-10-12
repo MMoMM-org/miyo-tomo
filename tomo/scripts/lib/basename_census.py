@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """basename_census.py — how many vault files already carry a given file name.
 
 Spec 039 K3 / ADR-3. Filing an attachment under a name another vault file
@@ -20,7 +20,7 @@ no Unicode normalisation and no casefold. So each ask sends the NFC and, when
 it differs, the NFD form, each through Python `.lower()` (not casefold, which
 would turn "Straße" into "strasse" and match nothing). Hits are unioned by
 path, narrowed to exact final-segment equality under the local key (NFC +
-casefold, the same normalisation as typed_name_check's `_comparable`; matching
+casefold — `lib.vault_paths.path_key`, the key every path comparison uses; matching
 more loosely than Kado is the safe, over-counting direction), and counted as
 distinct paths.
 
@@ -41,12 +41,13 @@ from __future__ import annotations
 
 import unicodedata
 
+from lib.vault_paths import path_key
+
 PAGE_BUDGET = 2
 PAGE_LIMIT = 500
 
 
-def _key(name: str) -> str:
-    return unicodedata.normalize("NFC", name).casefold()
+_key = path_key
 
 
 class BasenameCensus:

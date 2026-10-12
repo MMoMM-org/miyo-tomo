@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.60.2
+# version: 1.60.3
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -70,6 +70,8 @@ from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble
     DEFAULT_ASSET_FOLDER,
     _asset_dest_join,
     _dest_join,
+    path_key,
+    same_spelling,
 )
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
 from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
@@ -300,7 +302,7 @@ def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
         if in_run
         else "a note already exists at"
     )
-    if holder == claimed_dest:
+    if same_spelling(holder, claimed_dest):
         return f"{where} `{holder}`"
     return (
         f"{where} `{holder}`, which differs from `{claimed_dest}` only in case "
@@ -353,7 +355,7 @@ def resolve_destination_clashes(
             existing = folder_listing(location)
 
         base = _dest_join(location, title)
-        key = base.casefold()
+        key = path_key(base)
         holder = claimed.get(key) or existing.get(key)
         if holder is None:
             claimed[key] = base
@@ -363,7 +365,7 @@ def resolve_destination_clashes(
         for n in range(2, 101):
             candidate = f"{title} ({n})"
             dest = _dest_join(location, candidate)
-            dest_key = dest.casefold()
+            dest_key = path_key(dest)
             if dest_key not in claimed and dest_key not in existing:
                 adjustments[claim_id] = (candidate, reason)
                 claimed[dest_key] = dest
@@ -467,7 +469,7 @@ def _propose_asset_name(
         stem, sep, ext = basename, "", ""
     for n in range(2, 101):
         candidate = f"{stem} ({n}).{ext}" if sep else f"{stem} ({n})"
-        key = _asset_dest_join(asset_folder, candidate).casefold()
+        key = path_key(_asset_dest_join(asset_folder, candidate))
         if key in vault_assets or key in occupied_folders or key in proposed:
             continue
         return candidate
@@ -607,7 +609,7 @@ def detect_attachment_conflicts(
             destination = _asset_dest_join(asset_folder, path)
         except ValueError:
             continue
-        dest_key = destination.casefold()
+        dest_key = path_key(destination)
         occupied_by_file = dest_key in vault_assets
         occupied_by_folder = dest_key in occupied_folders
         if not occupied_by_file and not occupied_by_folder:
@@ -624,7 +626,7 @@ def detect_attachment_conflicts(
                 asset_folder, basename, vault_assets, occupied_folders, proposed_names
             )
             if proposed_name is not None:
-                proposed_names.add(_asset_dest_join(asset_folder, proposed_name).casefold())
+                proposed_names.add(path_key(_asset_dest_join(asset_folder, proposed_name)))
             entry = {
                 "source": path,
                 "destination": destination,

@@ -120,3 +120,12 @@ shared lookup catches only around the listing call itself — the behaviour the
 Pass 1 reducer already had. Real Kado output never produces either case, so the
 narrower catch is accepted rather than widened: failing open on a malformed
 entry would hide a contract break in Kado's response as "folder is free".
+
+## View keys are `path_key` (spec 039 W7)
+
+`notes()`, `assets()` and `occupied_by_folder()` key each entry by
+`lib.vault_paths.path_key` (NFC, then casefold) of the joined destination,
+not by `casefold()` alone. Every reader — K1, the Pass-1 reducer,
+`validate_destinations` — looks a destination up with the same function, so an
+NFD-spelled destination finds an NFC-stored file or folder. The values keep the
+vault's own spelling for display. Rationale: `vault_paths.md`.

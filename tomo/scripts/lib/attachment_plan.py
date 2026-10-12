@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -18,7 +18,6 @@ planned later still is. Rationale: docs/tomo/scripts/lib/attachment_plan.md.
 from __future__ import annotations
 
 import sys
-import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -29,7 +28,7 @@ from lib.refusal_sentences import (
 )
 from lib.render_helpers import _ensure_md_extension, resolve_source_path
 from lib.typed_name_check import check_typed_folder, check_typed_name
-from lib.vault_paths import _asset_dest_join
+from lib.vault_paths import _asset_dest_join, path_key
 
 
 @dataclass(frozen=True)
@@ -74,11 +73,6 @@ class _Outcome:
 
 def _basename(path: str) -> str:
     return path.rsplit("/", 1)[-1]
-
-
-def _name_key(name: str) -> str:
-    """The census's comparison key (lib/basename_census.py): NFC, case-folded."""
-    return unicodedata.normalize("NFC", name).casefold()
 
 
 def _owner_key(item: dict, inbox_path: str) -> str | None:
@@ -173,7 +167,7 @@ def _decide(outcome: _Outcome, remedy: dict | None, *, asset_folder: str,
                                  typed_name_sentence(verdict.reason, name), verdict.reason)
         target = _asset_dest_join(folder if folder is not None else asset_folder, name)
 
-    claimant = claimed.get(target.casefold())
+    claimant = claimed.get(path_key(target))
     if claimant is not None:  # row 7
         reason = (
             f"destination collision: it also resolves to "
@@ -185,7 +179,7 @@ def _decide(outcome: _Outcome, remedy: dict | None, *, asset_folder: str,
     target_folder = target.rpartition("/")[0]
     state = folder_lookup.state(target_folder)
     if kind != "ignore" and state == "listed":  # row 8
-        key = target.casefold()
+        key = path_key(target)
         occupier = folder_lookup.assets(target_folder).get(key)
         if occupier is not None or key in folder_lookup.occupied_by_folder(target_folder):
             # no file occupier but the key is taken: a folder holds the name
@@ -195,7 +189,7 @@ def _decide(outcome: _Outcome, remedy: dict | None, *, asset_folder: str,
                                          occupier_is_folder=occupier is None),
             )
 
-    claimed[target.casefold()] = path
+    claimed[path_key(target)] = path
     outcome.target = target
     outcome.unchecked = state == "unanswered"  # row 9
     outcome.folder_created = state == "absent"  # row 10
@@ -206,7 +200,7 @@ def _embed(outcome: _Outcome, census, moved_sources: Counter,
            moved_targets: Counter) -> tuple[str | None, str | None]:
     """Pass B: the embed for one moved source, judged on the vault after the run."""
     final = _basename(outcome.target)
-    key = _name_key(final)
+    key = path_key(final)
     hits = census.count(final)
     if hits is None:
         return outcome.target, "unanswered"
@@ -237,8 +231,8 @@ def build_attachment_plan(confirmed, remedies_by_source, *, asset_folder,
     ]
 
     moved = [o for o in outcomes if o.target is not None]
-    moved_sources = Counter(_name_key(_basename(o.source)) for o in moved)
-    moved_targets = Counter(_name_key(_basename(o.target)) for o in moved)
+    moved_sources = Counter(path_key(_basename(o.source)) for o in moved)
+    moved_targets = Counter(path_key(_basename(o.target)) for o in moved)
 
     decisions: list[AttachmentDecision] = []
     for o in outcomes:

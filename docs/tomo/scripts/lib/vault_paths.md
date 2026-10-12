@@ -53,3 +53,28 @@ before it reached Hashi as an instruction to move a file *to* a directory.
 `_build_move_asset_actions` catches the `ValueError` and routes that one
 attachment through the same skip-and-report path as a destination collision
 (`render_actions.md`, "Destination Collision") rather than letting it abort the whole render.
+
+## `path_key`: One Comparison Key for Every Target Path (spec 039 W7)
+
+WHY `path_key` = NFC, then `casefold()`: macOS hands back file names
+decomposed (NFD) while the vault, Kado and owner-typed text may hold the same
+name composed (NFC). Folding case alone left `Café.png` (NFD) and `Café.png`
+(NFC) as two keys, so K1's run-collision map and K2's occupancy maps missed an
+occupier the filesystem treats as the same file — the move was emitted and
+failed at apply with source and destination both present (Phase 4 drift check
+W7, owner ruling 2026-10-12: fix in code). Normalising is the over-matching,
+fail-safe direction, the same as folding case.
+
+WHY here: `vault_paths` sits below every module that compares destinations
+(K1 `attachment_plan`, K2 `vault_folder_lookup`, `render_actions`, the Pass-1
+reducer, K3 `basename_census`, `typed_name_check`), so one definition serves
+all without an import cycle. Before it there were three private copies of the
+NFC + casefold key (`typed_name_check._comparable`, `basename_census._key`,
+`attachment_plan._name_key`) and the destination keys used `casefold()` alone.
+The copies now route through `path_key`; a key built anywhere else is drift.
+
+WHY `same_spelling` beside it: the sentences that say *"the names differ only
+in case"* must not fire for an NFC/NFD pair — the two render identically, so
+the note would describe a difference nobody can see. `same_spelling` (equal
+after NFC) is what those sentences compare with; the comparison key stays
+`path_key`.

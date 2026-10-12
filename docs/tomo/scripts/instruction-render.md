@@ -1108,3 +1108,52 @@ census cannot count through it, an unanswered count qualifies the embed
 (F4-AC6), so a test that pins the bare name gives the run a `FakeVault`
 (`tests/attachment_plan_fakes.py`) through `VaultFolderLookup` and
 `make_basename_census`.
+
+## One Lookup, One Census, One Cost Entry (spec 039 T4.5, v0.66.0)
+
+`main()` builds one `VaultFolderLookup` (K2) and one basename census (K3)
+whenever it has a Kado client, before the render loop, and every reader in the
+run asks those two objects: the attachment plan, and `validate_destinations`,
+which now receives the lookup's `notes` view instead of
+`make_folder_listing(client)`. WHY: `make_folder_listing(client)` built a
+second, private lookup, so a folder holding both an attachment target and a
+note destination (an owner typing the note's own folder for an attachment) was
+listed twice — once per guard. ADR-2 and F3-AC7 ask for one raw listing per
+folder shared by every reader; the lookup caches the raw listing precisely so
+the second reader can derive its own view from it.
+
+The lookup and census are built whenever a client exists, including on a
+garden-audit run that builds no plan. Construction costs no Kado call; a
+garden-audit run emits no `move_note`, so the note guard lists nothing, and
+its output is byte-identical to before (pinned by
+`tests/fixtures/039-t4-5-unaffected-runs/expected.json`, recorded at 0e8835a6).
+
+**The cost-history entry (C1-AC1).** With `--cost-history <path>`, the render
+appends one entry through `lib/cost_history.build_entry` — the same helper the
+reducer and triage use, so the shape cannot drift — after `instructions.md` is
+written (the same placement as the reducer's: after the last artefact, so an
+aborted run records nothing). It carries the reducer's keys plus
+`basename_searches` and `basename_pages`, read off the run's census, and
+`folder_listing_calls` / `distinct_destination_folders` read off the run's
+lookup — so they count the attachment guard and the note guard together.
+
+- `action` is `render`: triage already appends its own `synthesize` entry for
+  a Pass 2 run (`synthesize` is not in `DOWNSTREAM_COST_ENTRY_ACTIONS`), so
+  reusing that action would make one run look like two triage runs.
+- `base_kado_calls` is `0`: the base is defined as triage's fixed pipeline
+  cost (the recursive listing and the embed extraction), which the render
+  process never spends. This is a measured zero for this process, not an
+  untaken measurement.
+- `total_kado_calls` is the client's own round-trip counter
+  (`observed_call_count`), never declared.
+- `item_count` is the confirmed items left after the missing-source filter.
+
+WHY the flag defaults to absent, unlike the reducer's cwd-relative default:
+dozens of host tests drive `main()` from the repo root, and a default path
+would append into the repo's `state/`. The conductor does not pass the flag
+yet; wiring it into `synthesis-conductor.md` step 3b is a separate change to a
+runtime file the LLM reads.
+
+A run with no attachment pays no census and no asset-folder listing: the plan
+asks the lookup and the census only per attachment source, so their counters
+stay at zero and the only listing is the note guard's (F3-AC7).

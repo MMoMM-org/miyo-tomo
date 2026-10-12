@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.60.1
+# version: 1.60.2
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -308,7 +308,8 @@ def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
     )
 
 
-# The spec 037 tests drive the lookup by its pre-039 name.
+# The spec 037 tests drive the lookup by its pre-039 name; nothing in this
+# module reads the alias.
 _VaultFolderLookup = VaultFolderLookup
 
 
@@ -523,7 +524,7 @@ def detect_attachment_conflicts(
     over one name before either reaches the vault) — that stays Pass 2's
     `claimed` dict and is out of scope here.
 
-    `asset_listing(asset_folder)` — normally `_VaultFolderLookup.assets` —
+    `asset_listing(asset_folder)` — normally `VaultFolderLookup.assets` —
     is called at most once, and only when there is at least one attachment to
     check: a run with none must not pay for a folder listing it has no use
     for `[ref: SDD/Cost]`. `None` (no Kado client) short-circuits to `[]`
@@ -559,9 +560,9 @@ def detect_attachment_conflicts(
     The 2N reads are the honest price of a genuinely per-source comparison,
     not an unoptimised two-element special case.
 
-    `folder_listing(asset_folder)` — normally `_VaultFolderLookup
+    `folder_listing(asset_folder)` — normally `VaultFolderLookup
     .occupied_by_folder` — answers the other way a destination can be taken
-    (spec 037 T1.4, PRD Edge Case Scenario 7): `_VaultFolderLookup._map`'s
+    (spec 037 T1.4, PRD Edge Case Scenario 7): `VaultFolderLookup._map`'s
     `type != "file"` filter keeps a folder entry OUT of `vault_assets`, so
     `asset_listing` alone still cannot see it. `folder_listing` is what
     makes it visible, called at most once under the same `not owners` cost
@@ -2367,7 +2368,7 @@ def main() -> int:
     # spec 037 T1.1: the same cache also answers an attachment lookup — see
     # lib/vault_folder_lookup.py, and docs/tomo/scripts/lib/vault_folder_lookup.md
     # for why it caches the raw listing rather than a caller-derived map.
-    _vault_folder_lookup = _VaultFolderLookup(kado_client) if kado_client else None
+    _vault_folder_lookup = VaultFolderLookup(kado_client) if kado_client else None
 
     clash_claims: list[tuple[str, str, str]] = []
     claim_actions: dict[str, dict] = {}

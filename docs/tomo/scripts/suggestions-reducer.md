@@ -983,7 +983,9 @@ already runs on both paths, already holds the folder counts, and
 
 The folder lookup this section described moved to `lib/vault_folder_lookup.py`
 in spec 039 T1.4 (now `VaultFolderLookup`; the reducer keeps
-`_VaultFolderLookup` as an alias). Its rationale — raw listing cached, each
+`_VaultFolderLookup` as an alias, for the spec 037 tests only — since T4.5,
+v1.60.2, `main()` and the docstrings use the public name, so the alias can be
+retired with those tests without touching the reducer's behaviour). Its rationale — raw listing cached, each
 view derived per call, how the counter charges pages — lives in
 `docs/tomo/scripts/lib/vault_folder_lookup.md`. `main()` still instantiates
 one lookup (or `None` when Kado is absent/unreachable/`--fan-resolve`) and

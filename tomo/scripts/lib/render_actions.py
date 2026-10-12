@@ -1,4 +1,4 @@
-# version: 0.28.1
+# version: 0.29.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -707,7 +707,8 @@ def make_folder_listing(client_or_lookup):
     The ``.md`` view of a ``VaultFolderLookup``: one ``list_dir(folder,
     depth=1)`` per distinct folder, never a per-name ``note_exists`` probe.
     Pass the run's lookup to share its raw listing with every other reader;
-    pass a client to get a private one. A failed listing reads as empty — an
+    pass a client to get a private one. Pass 2 hands ``validate_destinations``
+    its lookup's ``notes`` view directly and does not call this. A failed listing reads as empty — an
     error is not a collision.
     """
     lookup = (
@@ -979,8 +980,10 @@ def validate_destinations(
     ``target_moc`` (``_orphaned_link_targets``). Either way the bullet is an
     instruction to write into, or point at, a note that will never exist.
 
-    ``folder_listing`` is the vault view from ``make_folder_listing``; ``None``
-    skips the vault half and leaves the run-internal half working.
+    ``folder_listing`` is the run's ``VaultFolderLookup.notes`` view (or
+    ``make_folder_listing``); it is asked once per distinct destination
+    folder. ``None`` skips the vault half and leaves the run-internal half
+    working.
 
     The pass holds no state across calls: correcting one name and re-running
     Pass 2 emits both moves, with no memo of the earlier clash.
@@ -1002,10 +1005,13 @@ def validate_destinations(
     # One listing per destination folder, only for folders this run writes to.
     vault_holders: dict[str, str] = {}
     if folder_listing is not None:
+        folder_maps: dict[str, dict[str, str]] = {}
         for key in order:
             destination = groups[key][0].get("destination") or ""
             folder = destination.rsplit("/", 1)[0] if "/" in destination else ""
-            holder = folder_listing(folder).get(key)
+            if folder not in folder_maps:
+                folder_maps[folder] = folder_listing(folder)
+            holder = folder_maps[folder].get(key)
             if holder:
                 vault_holders[key] = holder
 

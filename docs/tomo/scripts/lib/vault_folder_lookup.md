@@ -21,7 +21,14 @@ a `.md` view over its cache (`make_folder_listing(client_or_lookup)` — hand it
 the run's lookup to share the cache, or a client to get a private one).
 
 The reducer keeps the name `_VaultFolderLookup` as an alias of
-`VaultFolderLookup`; the spec 037 tests drive it by that name.
+`VaultFolderLookup`; the spec 037 tests drive it by that name. Since spec 039
+T4.5 the reducer's own code and docstrings use the public name — nothing in
+production reads the alias.
+
+Pass 2 (spec 039 T4.5) builds one lookup per run and hands both the attachment
+plan and `validate_destinations` (its `notes` view) the same instance, so a
+folder is listed once across the asset and note guards; its
+`folder_listing_calls` reaches the run's cost-history entry.
 
 The path helpers it keys by (`_dest_join`, `_asset_dest_join`) moved with it
 to `lib/vault_paths.py` (SDD K15): `render_actions` imports this module for

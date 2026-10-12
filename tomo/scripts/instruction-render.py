@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.65.0
+# version: 0.66.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -52,7 +52,8 @@ from lib.attachment_plan import build_attachment_plan  # noqa: E402
 from lib.basename_census import make_basename_census  # noqa: E402
 from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402
 from lib.profile_conventions import resolve_conventions  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
+from lib.kado_client import KadoClient, KadoError, observed_call_count  # noqa: E402,F401
+from lib.cost_history import append_entry, build_entry  # noqa: E402
 from lib.render_actions import (  # noqa: E402,F401
     _build_create_moc_actions,
     _build_delete_source_actions,
@@ -359,6 +360,13 @@ def main() -> int:
              "tomo-tmp/tag-handler-groups (instance runtime); absent/empty → no "
              "such actions. Host/tests override.",
     )
+    p.add_argument(
+        "--cost-history",
+        default=None,
+        help="Cost-history JSONL to append this render's entry to (spec 039 "
+             "C1-AC1): Kado calls, folder listings and basename searches. "
+             "Absent → no entry is written.",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -453,6 +461,11 @@ def main() -> int:
     attachment_remedies_by_source = {
         r["source"]: r for r in attachment_conflict_remedies
     }
+    # One folder lookup and one census for the whole run: the plan reads
+    # both, validate_destinations reads the lookup's notes view, and the
+    # cost-history entry reads their counters.
+    folder_lookup = VaultFolderLookup(client) if client is not None else None
+    census = make_basename_census(client) if client is not None else None
     # The attachment plan, built before the loop because every owning note's
     # embed is written from it there, and the same object goes to
     # build_actions. Only items with a template render, so only their
@@ -465,8 +478,8 @@ def main() -> int:
             attachment_remedies_by_source,
             asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
             inbox_path=inbox_path,
-            folder_lookup=VaultFolderLookup(client),
-            census=make_basename_census(client),
+            folder_lookup=folder_lookup,
+            census=census,
         )
 
     for item in confirmed:
@@ -679,7 +692,7 @@ def main() -> int:
     # Runs for the garden-audit branch too: that branch emits no move_note, so
     # the pass is a proven no-op there rather than an untested exemption.
     actions, destination_clashes = validate_destinations(
-        actions, make_folder_listing(client) if client else None
+        actions, folder_lookup.notes if folder_lookup is not None else None
     )
     if destination_clashes:
         withheld = sum(len(c["dropped"]) for c in destination_clashes)
@@ -1175,6 +1188,26 @@ def main() -> int:
     )
     instructions_md_path = out_dir / "instructions.md"
     instructions_md_path.write_text(md, encoding="utf-8")
+
+    if args.cost_history:
+        append_entry(
+            build_entry(
+                run_id=args.run_id or "",
+                action="render",
+                item_count=len(confirmed),
+                base_kado_calls=0,
+                total_kado_calls=(observed_call_count(client) or 0) if client else 0,
+                folder_listing_calls=(
+                    folder_lookup.folder_listing_calls if folder_lookup else 0
+                ),
+                distinct_destination_folders=(
+                    len(folder_lookup.folders) if folder_lookup else 0
+                ),
+                basename_searches=census.searches if census else 0,
+                basename_pages=census.pages if census else 0,
+            ),
+            args.cost_history,
+        )
 
     print(
         f"instruction-render: rendered={len(manifest)} actions={len(actions)} "

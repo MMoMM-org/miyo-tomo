@@ -1786,3 +1786,18 @@ and qualifies every embed with no error anywhere. A manifest with no
 attachments has nothing to plan and proceeds. The test harnesses that have no
 vault go through `build_actions_without_vault` in `tests/attachment_plan_fakes.py`.
 The rules live once, in the plan.
+
+## `validate_destinations` Asks Each Folder Once (spec 039 T4.5, v0.29.0)
+
+The vault half asked `folder_listing(folder)` once per contested-or-not
+destination. With a raw-cached lookup that costs no extra Kado call, but every
+call re-derives the folder's `.md` map from the raw entries — the T1.4 review
+measured about 4.7 ms per rebuild for a 3000-note folder, paid once per note
+filed into it. The pass now keeps the map per folder for the duration of the
+call. It holds nothing across calls: re-running Pass 2 still lists afresh.
+
+`make_folder_listing` stays, with both branches: Pass 2 no longer calls it (it
+hands `validate_destinations` its own lookup's `notes` view), but the 034/036
+destination-guard harnesses build their view through it from a client, and
+the T1.4 tests pin the lookup branch. The plan's "drop the `isinstance` path"
+was conditional on it becoming dead; it did not.

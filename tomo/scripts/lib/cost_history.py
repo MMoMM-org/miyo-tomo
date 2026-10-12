@@ -1,5 +1,5 @@
 # cost_history.py — Append one record of what a triage run cost.
-# version: 0.2.0
+# version: 0.3.0
 """Persist the observed Kado cost of a completed /inbox run.
 
 One append-only JSONL record per run, in the instance's persistent state
@@ -10,9 +10,9 @@ rewritten, so a later reader can compare runs and tell a pipeline regression
 Public API:
 
     build_entry(...) -> dict
-        Assemble one record. The two folder fields are OMITTED when None —
-        they are present only on the paths where the reducer actually ran.
-        Zero would assert a measurement nobody took.
+        Assemble one record. The folder and basename fields are OMITTED when
+        None — they are present only on the paths that actually measured
+        them. Zero would assert a measurement nobody took.
 
     append_entry(entry, history_path) -> bool
         Append one record. Never raises: an unwritable history warns to stderr
@@ -56,6 +56,8 @@ def build_entry(
     total_kado_calls: int,
     folder_listing_calls: int | None = None,
     distinct_destination_folders: int | None = None,
+    basename_searches: int | None = None,
+    basename_pages: int | None = None,
     timestamp: str | None = None,
 ) -> dict:
     """Assemble one cost-history record.
@@ -63,7 +65,8 @@ def build_entry(
     Args:
         run_id:               Identifier of the run this record describes.
         action:               The action triage routed to (suggest, synthesize,
-                              idle, transcribe, fan-resolve).
+                              idle, transcribe, fan-resolve), or `render` for
+                              one Pass 2 instruction render.
         item_count:           Inbox markdown files this run's listing found.
         base_kado_calls:      Observed round trips spent on the fixed pipeline
                               cost — the recursive listing and the embed
@@ -73,6 +76,9 @@ def build_entry(
                               folders; None on the paths where it never ran.
         distinct_destination_folders: How many distinct folders produced them;
                               None on the paths where the reducer never ran.
+        basename_searches:    Kado byName searches the basename census made;
+                              None on the paths that run no census.
+        basename_pages:       Result pages those searches fetched; None likewise.
         timestamp:            Override for the record's ISO-8601 stamp.
     """
     entry = {
@@ -87,6 +93,10 @@ def build_entry(
         entry["folder_listing_calls"] = int(folder_listing_calls)
     if distinct_destination_folders is not None:
         entry["distinct_destination_folders"] = int(distinct_destination_folders)
+    if basename_searches is not None:
+        entry["basename_searches"] = int(basename_searches)
+    if basename_pages is not None:
+        entry["basename_pages"] = int(basename_pages)
     return entry
 
 

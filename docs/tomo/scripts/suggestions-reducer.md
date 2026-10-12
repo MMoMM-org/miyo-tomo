@@ -1747,3 +1747,31 @@ corrected in T4.4 (2026-10-03). It is worth knowing *how* it survived the sweep
 that found it: the literal is **wrapped across a line break** mid-string, so a
 grep for the one-line form returns nothing and a reader sweeping that way
 concludes it is already fixed. Grep the constant name, or `now builds`.
+
+## The Folder Line Under the Rename Line (spec 039 T3.2)
+
+`# version: 1.60.0`. `render_attachment_conflicts_block` writes a
+non-checkbox sub-line `  - Folder: \`<dirname(destination)>\`` directly under
+the Rename line, in both variants (ordinary and "no free name available"), and
+`detect_attachment_conflicts` emits `proposed_dir: None` on every record (SDD
+ADR-4, PRD F1-AC2). The folder is a separate line from the rename line so the
+owner can redirect the attachment without touching the name.
+
+**Why a sub-line and not a checkbox.** The remedy choice is the three
+checkboxes; the folder is a value, not a choice. A checkbox would join the
+tick-resolution in `_walk_attachment_conflicts` and could change which remedy
+wins. As plain text it is skipped by that walk (only `[x]`/`[ ]` lines are read),
+which `tests/test_039_t3_2_folder_line.py` pins as "same remedies with or
+without the line" so the parser change in T3.3 cannot regress it silently.
+
+**Folder text is `destination.rpartition("/")[0]`**, verbatim as stored
+(vault-relative, no trailing slash). A destination with no folder component
+renders empty backticks, mirroring the no-free-name rename line; in practice
+the destination is always the asset folder joined to a basename, so this is a
+degenerate input.
+
+**`proposed_dir` is required in the schema**, typed `["string", "null"]`, like
+`proposed_name`: the reducer always emits it, so a missing key is a producer bug
+the schema should catch. Unlike `remedy`, which the parser adds later, nothing
+downstream has to add this key. Pass 1 always writes `null`; nothing consumes
+it yet (Phase 4).

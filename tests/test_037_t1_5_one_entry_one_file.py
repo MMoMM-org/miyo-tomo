@@ -274,6 +274,7 @@ def test_entry_field_set_is_exactly_the_schema_four():
     for entry in result:
         assert set(entry.keys()) == {
             "source", "destination", "same_file", "owner_source_items", "proposed_name",
+            "proposed_dir",
         }, entry
 
 

@@ -239,6 +239,7 @@ def _conflict(**overrides) -> dict:
         "same_file": None,
         "owner_source_items": [ITEM_KEY],
         "proposed_name": "karte (2).png",
+        "proposed_dir": None,
     }
     base.update(overrides)
     return base
@@ -417,7 +418,7 @@ def test_no_executor_internals_in_rendered_block(same_file):
     md = REDUCER.render_attachment_conflicts_block([entry], ASSET_FOLDER)
     assert "hashi" not in md.lower(), md
     for line in md.splitlines():
-        if line.strip().startswith("- **Destination:**"):
+        if line.strip().startswith(("- **Destination:**", "- Folder:")):
             continue
         assert not re.search(r"\d", line), line
 

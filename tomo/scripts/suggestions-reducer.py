@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.59.1
+# version: 1.60.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -630,6 +630,7 @@ def detect_attachment_conflicts(
                 "same_file": same_file,
                 "owner_source_items": [],
                 "proposed_name": proposed_name,
+                "proposed_dir": None,
             }
             by_source[path] = entry
             conflicts.append(entry)
@@ -1407,12 +1408,15 @@ def render_attachment_conflicts_block(
             )
         lines.append("")
         lines.append("**Remedy — choose one:**")
+        folder_line = f"  - Folder: `{destination.rpartition('/')[0]}`"
         if proposed_name is not None:
             rename_target = _asset_dest_join(asset_folder, proposed_name)
             lines.append(f"- [x] Rename to `{rename_target}`")
+            lines.append(folder_line)
             lines.append("- [ ] Keep in inbox")
         else:
             lines.append(f"- [ ] Rename to `` — {RENAME_IMPOSSIBLE_MARKER}")
+            lines.append(folder_line)
             lines.append("- [x] Keep in inbox")
         lines.append(
             # NOT "will fail": occupancy was observed in Pass 1 and nothing

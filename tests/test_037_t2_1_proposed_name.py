@@ -335,6 +335,7 @@ def test_proposed_name_is_required_and_string_or_null(conflict_item_schema):
         "destination": f"{ASSET_FOLDER}karte.png",
         "same_file": None,
         "owner_source_items": ["100 Inbox/A/note-a.md"],
+        "proposed_dir": None,
     }
     validate(instance={**base, "proposed_name": "karte (2).png"}, schema=conflict_item_schema)
     validate(instance={**base, "proposed_name": None}, schema=conflict_item_schema)

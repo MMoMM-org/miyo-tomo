@@ -1727,3 +1727,51 @@ mutation that can falsify it is adding `typed_name_refused` to the
 filed. An absence is the hardest kind of guarantee to protect, because nothing
 in the diff of a future change that adds the exclusion would look like a
 deletion.
+
+## The Move Builder Is a Projection of the Attachment Plan (spec 039 T4.3)
+
+`_build_move_asset_actions(manifest, plan, counter, inbox_path)` decides
+nothing. Every branch it used to hold — no basename, keep in inbox, the
+degraded nameless rename, the typed-name check, the run collision — is a row of
+the plan's decision table (`lib/attachment_plan.py`, SDD ADR-1), alongside the
+rows that need the vault (typed folder, occupied target). The rationale that
+the sections above give for each branch (why collisions are reported rather
+than renamed, why `seen` stays exact, why a refused name carries no
+destination) now applies to the plan's rows; the reason strings and entry
+shapes are byte-identical, which is what kept every pre-existing assertion
+unchanged.
+
+What stays here is projection:
+
+- **Order and ids come from the manifest.** The builder walks the manifest as
+  before and visits each attachment once, so ids and order are today's. The
+  plan is ordered by the confirmed list, which can differ.
+- **Unrendered items emit nothing.** A source only an unrendered item embeds is
+  in the plan but in no manifest entry: no move, no skipped entry, as before.
+  A withheld entry's `owner_source_items` is narrowed to owners that rendered,
+  because the plan names every owner.
+- **A manifest attachment missing from the plan raises.** It means the plan was
+  built from a different list than the one that rendered — a wiring error that
+  must not degrade into a silently unfiled attachment.
+- **The `[warn]` lines are the plan's.** It prints them when it decides; the
+  projection does not print them again.
+- **`move_ids_by_origin` names every owner.** The old builder recorded only the
+  first owner of a moved attachment. `build_actions` stores the map on the plan
+  for the delete guard (T5.2).
+
+### Two New Withheld Kinds, Two New Sentences
+
+`typed_folder_refused` and `vault_occupied` hold their owning notes in
+`suppress_moves_for_unfiled_attachments` without any change there: the pass
+excludes only `vault_collision_held`, so a new kind holds by construction (the
+same absence-of-a-line guarantee T3.3 recorded for `typed_name_refused`).
+`_attachment_suppression_reason` does need a branch for each: its `else` tells
+the owner to "correct that inbox path", which is wrong for both. The head is
+the entry's own `reason` (phrased by `lib.refusal_sentences`); the remedy names
+what to change — the folder, or the occupied target.
+
+### `build_actions` Without a Plan
+
+A caller that passes no plan gets `plan_without_vault(manifest)`: the same
+rules with every vault question unanswered, which files exactly what the
+pre-plan builder filed. The rules live once, in the plan.

@@ -88,9 +88,24 @@ today's degrade to `vault_collision_held`.
 Every owning note is recorded for every source, moved or withheld, in confirmed
 order; the old builder kept only the first owner of a moved attachment. The
 delete guard (T5.2) needs all of them. The owner key is computed by
-`render_actions._ensure_md_extension`, imported inside the function so the
-plan and the builder share one key without an import cycle once
-`render_actions` imports this module.
+`render_helpers._ensure_md_extension` — the same function the move builder and
+`_build_move_note_actions` use (render_actions re-exports it), so the plan's
+owners join the notes' `source_inbox_item` exactly. T4.3 moved the helper into
+`render_helpers` (where `resolve_source_path` already lived) because
+`render_actions` now imports this module: importing it back from
+`render_actions` would be a cycle, which T4.2 had worked around with an
+in-function import.
+
+## `plan_without_vault` (spec 039 T4.3)
+
+`build_actions` still accepts no plan, because many harnesses and any caller
+with no Kado client have no vault to ask. Rather than keep a second copy of
+the decision rules for that case, `build_actions` builds the plan itself from
+the manifest with a K2/K3 stand-in that answers every folder `unanswered` and
+every count `None`. Unanswered is the honest answer — nothing was asked — and
+by row 9 it emits the move exactly as the pre-plan builder did; run collisions,
+holds and typed-name refusals still apply. It is a production code path (unlike
+`plan_from_remedies`, which describes a fake vault), so it lives here.
 
 ## Test helper location
 

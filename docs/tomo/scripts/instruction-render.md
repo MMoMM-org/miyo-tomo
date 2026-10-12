@@ -1037,3 +1037,33 @@ not the prose. It catches the two failure modes that are otherwise silent in a
 live run: the instruction deleted while the writer stays, and either side
 drifting to a different filename. The executable check on the report itself is
 Phase 5's live run.
+
+## The Attachment Plan Is Built at the `build_actions` Call (spec 039 T4.3, v0.64.0)
+
+`attachment_conflict_remedies` no longer reaches `build_actions` as an
+argument: it reaches it inside the attachment plan (`attachment_plan=`), built
+here from the remedies, a `VaultFolderLookup` and a basename census over the
+run's Kado client. The 037 T3.0 transport tests now spy on
+`build_attachment_plan` for the "read AND forwarded" guarantee above; the
+mutation they exist for — read the key, never forward it — is caught the same
+way.
+
+**Only items with a template are planned.** The render loop skips an item
+without a template, so it never reaches the manifest and its attachments were
+never filed. Planning them anyway would let such an item's attachment claim a
+target first and turn a rendered item's move into a `collision` — a change no
+owner asked for. An item that has a template but fails to render *is* planned
+(SDD ADR-1 accepts this); the move builder still emits nothing for it, because
+it projects only attachments named in the manifest.
+
+**No client, no plan.** A client is created whenever there are confirmed
+items; with none (a daily-only run) the manifest is empty and there is nothing
+to file, so no lookup and no census are constructed and `build_actions` gets
+`attachment_plan=None`. A garden-audit run never reaches `build_actions`.
+
+**Built at the call, not before the loop — for now.** T4.5 moves the build
+before the render loop so the embed rewrite (T4.4) can read the same plan; it
+sits here in T4.3 so the move builder could become a projection without
+reordering the run in the same change. Until T4.5 the folder lookup is a
+second instance beside `make_folder_listing(client)`'s, so a folder that is
+both an asset target and a note destination may be listed twice.

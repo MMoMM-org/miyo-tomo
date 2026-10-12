@@ -471,7 +471,12 @@ def _build_golden_actions() -> list[dict]:
 
 
 def test_build_actions_still_emits_the_recorded_baseline():
-    """The baseline was recorded at 9afcf73, before any T5.3 code existed."""
+    """The baseline was recorded at 9afcf73, before any T5.3 code existed.
+
+    Only `delete_source.depends_on` was re-recorded (spec 039 T5.2): an origin's
+    delete now also names the ids of its `move_asset` actions after its note
+    ids, and this fixture's origins embed attachments. Nothing else changed.
+    """
     assert _build_golden_actions() == _golden()["actions"]
 
 

@@ -1,4 +1,4 @@
-# version: 0.29.4
+# version: 0.29.5
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1684,6 +1684,7 @@ def _build_delete_source_actions(
     keep_source_group_ids: list[str] | None = None,
     daily_action_ids_by_origin: dict[str, list[str]] | None = None,
     insert_action_ids_by_group: dict[str, str] | None = None,
+    move_ids_by_origin: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -1703,8 +1704,10 @@ def _build_delete_source_actions(
        peer, naming the same move ids as the origin delete.
        Every delete from sites 1 and 3 carries `depends_on` (spec 036 T1.1):
        site 1 has no partner action and declares `depends_on: []`; site 3
-       names the ids of every move_note for that origin, and the audio-peer
-       delete names the same id set as its origin delete.
+       names the ids of every move_note for that origin, then the ids of the
+       move_asset actions for the attachments that origin embeds (spec 039
+       ADR-10, looked up in `move_ids_by_origin` by the origin's path), and the
+       audio-peer delete names the same id list as its origin delete.
     4. Tag-handler group sources — for every APPROVED group not opted out via
        "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
@@ -1829,6 +1832,9 @@ def _build_delete_source_actions(
         bucket_list = moves_by_origin.setdefault(_origin_key(origin), [])
         bucket_list.append(mn)
 
+    asset_ids_by_key = {
+        _origin_key(owner): ids for owner, ids in (move_ids_by_origin or {}).items()
+    }
     for origin_key, moves in moves_by_origin.items():
         if origin_key in keep_source_keys:
             continue
@@ -1844,7 +1850,11 @@ def _build_delete_source_actions(
         # completion gate above already bucketed. Populated here, before any
         # guard runs (SDD/Implementation Gotchas): a builder that adds it
         # afterwards reintroduces the ordering bug spec 036 fixes.
+        # Then the move_asset ids of the attachments this origin embeds, in the
+        # move builder's emission order (spec 039 ADR-10): the delete must not
+        # outlive the files its notes still point at.
         move_ids = [mn["id"] for mn in moves]
+        move_ids += asset_ids_by_key.get(origin_key, [])
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
@@ -2574,6 +2584,7 @@ def build_actions(
         keep_source_group_ids=tag_handler_keep_source_group_ids or [],
         daily_action_ids_by_origin=daily_action_ids_by_origin,
         insert_action_ids_by_group=insert_action_ids_by_group,
+        move_ids_by_origin=move_ids_by_origin,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,

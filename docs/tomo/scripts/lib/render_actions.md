@@ -1824,3 +1824,30 @@ and the upstream parser merge (`_merge_proposed_mocs_by_name`) key the same way,
 so a `link_to_moc` with an NFD `target_moc_path` still finds its in-set NFC
 `create_moc` template and its anchor. Tests:
 `tests/test_039_t4_7_nfc_target_keys.py`.
+
+## WHY the Origin's Delete Waits for Its Attachment Moves (spec 039 T5.2, ADR-10, #186)
+
+A `move_note` never carries its attachments, so an origin's `delete_source`
+that outlived a failed or withdrawn `move_asset` would delete the only copy of
+a file the filed note still embeds. Site 3 of `_build_delete_source_actions`
+therefore appends, after the origin's `move_note` ids, the ids of the
+`move_asset` actions for the attachments that origin embeds
+(`move_ids_by_origin`, the map `_build_move_asset_actions` returns from the
+attachment plan's FULL owner list, not the first owner). The audio-peer delete
+names the identical list. Asset ids follow the move builder's emission order
+(first appearance of the attachment in the manifest), so the list is
+deterministic.
+
+- A withheld move never receives an id, so no delete can name it (F6-AC4); an
+  attachment kept in the inbox by the owner emits no move and leaves the
+  delete's `depends_on` as it was (F6-AC5).
+- A shared attachment couples every owner's delete to its single id (F6-AC3,
+  accepted trade-off): if that move is withdrawn, all of them are.
+- A `move_asset` dropped by a later guard is handled by the existing id-keyed
+  `withdraw_unjustified_deletes`, which is kind-agnostic; no new withdrawal
+  code exists.
+- Keys are joined through `_origin_key` on both sides, the same normalisation
+  site 3 already applies to its own origin bucket.
+- The consumer's cascade (Hashi) needs no change; the vendored
+  `hashi-instructions.schema.json` is untouched until T6.2 (F6-AC6 completes
+  there). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.

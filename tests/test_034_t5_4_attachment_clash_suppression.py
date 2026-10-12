@@ -233,7 +233,12 @@ def _golden_actions() -> tuple[list[dict], list[dict]]:
 
 
 def test_build_actions_still_emits_the_recorded_duplicate_reference_baseline():
-    """The baseline was recorded at 1edaccd, before any T5.4 code existed."""
+    """The baseline was recorded at 1edaccd, before any T5.4 code existed.
+
+    Only `delete_source.depends_on` was re-recorded (spec 039 T5.2): an origin's
+    delete now also names the ids of its `move_asset` actions after its note
+    ids, and this fixture's origins embed attachments. Nothing else changed.
+    """
     actions, skipped_assets = _golden_actions()
     assert actions == _golden()["actions"]
     assert skipped_assets == _golden()["skipped_assets"] == []

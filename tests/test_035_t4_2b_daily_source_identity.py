@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_035_t4_2b_daily_source_identity.py — spec 035 Phase 4, T4.2b: the
 daily side gains its source identity.
 
@@ -186,14 +186,15 @@ def test_bucket_declares_source_item_key_required(bucket):
     assert prop["minLength"] == 1
 
 
-def test_schema_version_moved_to_3():
+def test_schema_version_moved_to_4():
     """Pinned literal, re-measured as the version keeps moving: "1" -> "2"
     here (spec 035 T4.2b, F9), "2" -> "3" in spec 038 T2.1 (ADR-1, the
-    attachment_conflicts[] addition). A regression guard against an
+    attachment_conflicts[] addition), "3" -> "4" in spec 039 T3.1
+    (attachment_conflicts[].proposed_dir). A regression guard against an
     unintended future bump, not a structural check — update the literal
     each time a deliberate move lands, the same way this test's own history
     already did once."""
-    assert WIRE_SCHEMA["properties"]["schema_version"]["const"] == "3"
+    assert WIRE_SCHEMA["properties"]["schema_version"]["const"] == "4"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -506,7 +507,7 @@ def test_widened_log_links_moved_version_and_regenerated_manifest_passes(tmp_pat
             ]["properties"].__setitem__(
                 "scratch_source_item_key_probe", {"type": "string"},
             ),
-            schema["properties"]["schema_version"].__setitem__("const", "3"),
+            schema["properties"]["schema_version"].__setitem__("const", "5"),
         ),
     )
 
@@ -521,8 +522,8 @@ def test_widened_log_links_moved_version_and_regenerated_manifest_passes(tmp_pat
     assert result["passed"] is True
     assert result["changes"] == []
     assert result["actions"] == []
-    assert result["schema_version"] == "3"
-    assert result["manifest_version"] == "3"
+    assert result["schema_version"] == "5"
+    assert result["manifest_version"] == "5"
 
 
 def test_all_actions_are_registered_identities():

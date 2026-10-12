@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_038_suggestions_wire_schema_move.py — T2.1: the suggestions wire's
 schema_version move (2 -> 3) and the new attachment_conflicts[] array must
 land in the live schema AND the shape manifest together, never one without
@@ -68,5 +68,6 @@ def test_live_schema_and_manifest_agree_on_version_and_attachment_conflicts():
     # T2.1 moves the version to "3" and adds attachment_conflicts — pin both,
     # not just internal self-consistency, so a move to the wrong version (or
     # a manifest regenerated against the wrong schema) still fails here.
-    assert schema_version == "3"
+    # Re-pinned to "4" by spec 039 T3.1 (attachment_conflicts[].proposed_dir).
+    assert schema_version == "4"
     assert schema_has_conflicts is True

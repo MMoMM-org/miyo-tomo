@@ -1,4 +1,4 @@
-# version: 0.3.1
+# version: 0.3.2
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -692,19 +692,20 @@ class TestVendoredCopies:
 
         The vendored copy is byte-identical to the schema the consumer
         actually holds (`schema_version` "3"), refreshed in spec 039 T1.3.
-        The delta is therefore empty: the live schema and the consumer's
-        copy agree in shape. History: zero (spec 038 T2.4) -> eight (T4.2b)
-        -> zero (T4.4) -> six while the vendored copy deliberately lagged
-        at "2" (ADR-1: it records what the consumer really vendors) ->
-        zero again once the consumer's v3 was copied in.
+        History: zero (spec 038 T2.4) -> eight (T4.2b) -> zero (T4.4) -> six
+        while the vendored copy deliberately lagged at "2" (ADR-1: it
+        records what the consumer really vendors) -> zero once the
+        consumer's v3 was copied in -> four now.
 
-        When the live schema moves to "4" (spec 039 CON-1) this delta
-        becomes non-empty on purpose and stays so until the consumer
-        confirms and the vendored copy follows — Rule 7 of requirements.md
-        ("A consumer-affecting change is not emitted until the consumer
+        Spec 039 T3.1 moved the live schema to "4" and added
+        `attachment_conflicts[].proposed_dir`, so the delta is non-empty on
+        purpose and stays so until the consumer confirms and the vendored
+        copy follows (spec 039 T6.2) — Rule 7 of requirements.md ("A
+        consumer-affecting change is not emitted until the consumer
         confirms") and the 2026-09-09 "one strict wire, no compatibility
-        window" decision. Re-measure then; do not treat a changed delta as
-        a defect in `snapshot_parity_delta`.
+        window" decision. The four entries are pinned exactly, so anything
+        beyond the version move and the one new field still fails here.
+        When T6.2 refreshes the vendored copy, this returns to zero.
         """
         recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(
@@ -720,9 +721,17 @@ class TestVendoredCopies:
             "nothing is sanctioned on this wire — an entry means "
             "SANCTIONED_ASYMMETRIES grew a prefix that is hiding a real delta"
         )
-        assert reportable == [], (
-            "the vendored copy no longer matches the live suggestions wire: "
-            f"{reportable}"
+        conflicts = "/properties/attachment_conflicts/items"
+        assert sorted(
+            (c["pointer"], c["kind"], c["detail"]) for c in reportable
+        ) == sorted([
+            ("", "added_enum_value", "schema_version: added value '4'"),
+            ("", "removed_enum_value", "schema_version: removed value '3'"),
+            (conflicts, "added_property", "added property: proposed_dir"),
+            (conflicts, "required_added", "required gained: proposed_dir"),
+        ]), (
+            "the delta between the live suggestions wire and the vendored "
+            f"copy is not exactly spec 039's v4 move: {reportable}"
         )
 
         # Non-vacuity, on the exact field this wire's release was about: a

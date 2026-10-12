@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_038_t2_2_attachment_conflicts_wire_projection.py — the attachment-conflict
 remedy a user would see pre-ticked in the markdown now reaches the wire too.
 
@@ -96,6 +96,7 @@ def test_conflict_run_wire_carries_remedy_defaulted_as_the_markdown_pre_ticks():
             "same_file": False,
             "owner_source_items": ["100 Inbox/Dresden.md"],
             "proposed_name": PROPOSED_NAME,
+            "proposed_dir": None,
         },
         {
             "source": SOURCE_STUCK,
@@ -103,6 +104,7 @@ def test_conflict_run_wire_carries_remedy_defaulted_as_the_markdown_pre_ticks():
             "same_file": None,
             "owner_source_items": ["100 Inbox/Other.md"],
             "proposed_name": None,
+            "proposed_dir": None,
         },
     ])
     payload = _MOD.build_wire_payload(doc)
@@ -114,6 +116,7 @@ def test_conflict_run_wire_carries_remedy_defaulted_as_the_markdown_pre_ticks():
             "same_file": False,
             "remedy": "rename",
             "proposed_name": PROPOSED_NAME,
+            "proposed_dir": None,
         },
         {
             "source": SOURCE_STUCK,
@@ -121,6 +124,7 @@ def test_conflict_run_wire_carries_remedy_defaulted_as_the_markdown_pre_ticks():
             "same_file": None,
             "remedy": "keep_in_inbox",
             "proposed_name": None,
+            "proposed_dir": None,
         },
     ]
     jsonschema.validate(instance=payload, schema=_SCHEMA)

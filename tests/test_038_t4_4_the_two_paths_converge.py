@@ -144,13 +144,15 @@ WIRE_NAME = "2026-07-03_1000_suggestions.json"
 # ── Fixture: one approved atomic note that embeds one conflicting attachment ──
 
 def _conflict(source: str, proposed_name: str | None) -> dict:
-    """One `attachment_conflicts[]` record, the shape T1.5 writes."""
+    """One `attachment_conflicts[]` record, the shape T1.5 writes (plus
+    spec 039 T3.2's `proposed_dir: None`)."""
     return {
         "source": source,
         "destination": f"{ASSET_FOLDER}{source.rsplit('/', 1)[-1]}",
         "same_file": False,
         "owner_source_items": [OWNER],
         "proposed_name": proposed_name,
+        "proposed_dir": None,
     }
 
 

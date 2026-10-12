@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_038_decision_inventory_join.py — the two-sided join test for
 suggestions-decision-inventory.json (spec 038 Phase 1, T1.2).
 
@@ -438,6 +438,7 @@ def test_parser_harvest_meets_the_measured_floor(harvested_literals: set[str]) -
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_real_artefacts_schema_side_join_passes(
     wire_schema_doc: dict, inventory_rows: list[dict]
 ) -> None:
@@ -558,6 +559,7 @@ def test_injection_d_legitimate_retirement_passes(
     _assert_parser_side_join(harvested_literals, mutated_rows)  # must not raise
 
 
+@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_injection_e_reworded_marker_breaches_the_floor(
     wire_schema_doc: dict, inventory_rows: list[dict]
 ) -> None:
@@ -582,6 +584,7 @@ def test_injection_e_reworded_marker_breaches_the_floor(
         _assert_schema_side_join(mutated_schema, inventory_rows)
 
 
+@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_rewording_every_label_changes_no_row_id_and_breaks_no_join(
     wire_schema_doc: dict, inventory_rows: list[dict], harvested_literals: set[str]
 ) -> None:

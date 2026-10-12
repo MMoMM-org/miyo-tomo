@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_triage_fan_from_wire.py — ADR-026: fan-resolve triggers from an edited wire.
 
 Under JSON-only (Hashi edited the _suggestions.json), the markdown body is a minimal
@@ -45,7 +45,7 @@ INBOX_INDEX = {"Sapporo.md": [INBOX + "Sapporo.md"]}
 
 def _wire(**over) -> dict:
     w = {
-        "schema_version": "3",
+        "schema_version": "4",
         "suggestions": [
             {"id": "S01", "stem": "Asahikawa", "item_key": INBOX + "Asahikawa.md",
              "suppressed": True, "force_atomic": True},

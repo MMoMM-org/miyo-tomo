@@ -122,3 +122,39 @@ absence as `None`, which fails the wire's own schema — T2.1 made the wire
 field required. The asymmetry is deliberate: the **doc** omits the key when
 empty, the **wire** always carries the array, so a conflict-free run still
 emits `[]` rather than `null`.
+
+## `proposed_dir` reaches the wire, always null from Pass 1; the wire moves to v4 (spec 039 T3.1)
+
+WHY the field: the owner can now choose the folder a renamed attachment moves
+to (spec 039 ADR-4). The markdown carries it as its own `  - Folder:` sub-line;
+the wire carries it as `attachment_conflicts[].proposed_dir`, so Pass 2's
+JSON-only rebuild sees the same decision the markdown offers (PRD/F1-AC1).
+
+WHY always present and null: Pass 1 never chooses a folder. `null` means
+"Pass 2's configured asset folder", resolved at Pass 2 time, so a run whose
+owner never touched the folder behaves exactly as before even if the config
+changed between passes. Required rather than optional so a dropped key is a
+schema failure, not a silent "use the default".
+
+WHY subscripted (`entry["proposed_dir"]`), not `.get()`: same reason as its
+siblings — `detect_attachment_conflicts` always sets the key, and a `None`
+VALUE is meaningful. `.get()` would let a producer regression that drops the
+key project a plausible null instead of raising.
+
+WHY the version moves to `"4"`: `attachment_conflicts[].items` is a closed
+node, so an added property is consumer-affecting under `wire_gate.classify()`;
+the version move is what makes the consumer notice (spec 038 ADR-1 precedent).
+The emitter reads the version from the schema const (`wire_schema_version`,
+spec 035 ADR-5) — no literal changed here. The vendored consumer copy
+(`hashi-suggestions-wire.schema.json`) stays at `"3"` until the consumer
+confirms it vendored v4; until then the snapshot-parity delta is non-empty on
+purpose.
+
+WHY a v3 wire is not accepted after the move: both acceptors
+(`suggestion-parser.load_changed_wire`, `inbox-triage`'s wire loader) compare
+against the same schema const and, on mismatch, ignore the wire and fall back
+to the markdown with a stderr warning — the spec 038 CON-2 behaviour. No
+dual-version window: the 2026-09-09 "one strict wire, no compatibility window"
+decision. A run published as v3 before the update is therefore re-read from
+its markdown; an edit made only on that v3 wire (in the consumer's editor) is
+not read — the CON-2 risk, accepted as in spec 038.

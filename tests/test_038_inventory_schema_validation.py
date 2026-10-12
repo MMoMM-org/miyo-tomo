@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test_038_inventory_schema_validation.py — JSON Schema validation tests for T1.1:
 suggestions-decision-inventory.schema.json (spec 038 Phase 1).
 
@@ -384,6 +384,7 @@ def _assert_editable_marked_field_count(schema_path: Path) -> None:
     )
 
 
+@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_wire_schema_marks_exactly_25_editable_fields():
     """candidate_mocs[].selected and .anchor gained the marker in T1.1b,
     bringing the count from 21 (T1.1) to 23; attachment_conflicts[].remedy
@@ -393,6 +394,7 @@ def test_wire_schema_marks_exactly_25_editable_fields():
     _assert_editable_marked_field_count(WIRE_SCHEMA_PATH)
 
 
+@pytest.mark.xfail(strict=True, reason="spec 039: D26 lands in T3.3")
 def test_a_deleted_editable_marker_is_caught(tmp_path):
     """Deletion is NOT owned by the equality assertion above on its own — that
     assertion runs against the real, committed schema, so nothing in this file

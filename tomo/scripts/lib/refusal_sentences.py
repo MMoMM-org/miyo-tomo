@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""refusal_sentences.py — the prose the owner reads when a typed name is refused.
+# version: 0.2.1
+"""refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
 one file and never spread across the renderers that report it. Pure functions
-on strings: no I/O, no run state. Each takes a reason code from
-`lib.typed_name_check.REFUSAL_REASONS` and raises `ValueError` on a code it does
-not know — an unknown code is a bug upstream, never reported as some other
-refusal.
+on strings: no I/O, no run state. `typed_name_sentence` takes a code from
+`lib.typed_name_check.REFUSAL_REASONS`; `folder_sentence` takes one from
+`lib.typed_name_check.FOLDER_REFUSAL_REASONS`. Each raises `ValueError` on a
+code it does not know — an unknown code is a bug upstream, never reported as
+some other refusal.
 
 Sentences state only what was verified about the typed name (no remedy text, no
 promise about a re-run) and name the typed name itself, with control characters

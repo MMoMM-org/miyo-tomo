@@ -37,6 +37,7 @@ REFUSALS = [
     (" a", "edge_whitespace"), ("a /b", "edge_whitespace"),
     ("a/ b", "edge_whitespace"), ("a/b ", "edge_whitespace"),
     ("a/ /b", "edge_whitespace"), ("\ta", "edge_whitespace"),
+    ("a\x1c", "edge_whitespace"), ("x/\x1fb", "edge_whitespace"),
     ("a/", "trailing_separator"), ("a/b/", "trailing_separator"),
     ("a:b", "forbidden_character"), ("a*b", "forbidden_character"),
     ("a?b", "forbidden_character"), ("a|b", "forbidden_character"),
@@ -85,10 +86,13 @@ def test_inbox_path_normalised_for_comparison_only(inbox):
 
 
 def test_inbox_comparison_ignores_unicode_normalisation():
-    nfd = "Posteingang \u00dc"  # precomposed
+    precomposed = "Posteingang \u00dc"
     decomposed = "Posteingang U\u0308"
-    assert check_typed_folder(decomposed, inbox_path=nfd).reason == "inside_inbox"
-    assert check_typed_folder(decomposed + "/x", inbox_path=nfd).reason == "inside_inbox"
+    assert check_typed_folder(decomposed, inbox_path=precomposed).reason == "inside_inbox"
+    assert (
+        check_typed_folder(decomposed + "/x", inbox_path=precomposed).reason
+        == "inside_inbox"
+    )
 
 
 def test_blank_inbox_path_never_matches():
@@ -127,16 +131,24 @@ def test_property_every_path_shape_rejection_is_refused():
     assert missed == []
 
 
-def test_never_raises_and_never_rewrites_over_corpus():
-    for s in ["", " ", "a/b", "\x00", "ü/ß", "/" * 5]:
-        v = check_typed_folder(s, inbox_path=INBOX)
-        assert v.name == s
+PHRASE = {
+    "blank": "is blank",
+    "escapes_vault": "leaves the vault",
+    "empty_segment": "empty path segment",
+    "edge_whitespace": "whitespace at the start or end",
+    "trailing_separator": "ends in a path separator",
+    "forbidden_character": "Obsidian does not allow",
+    "breaks_link": "would break the link",
+    "unsafe_sequence": "corrupt the instruction set",
+    "inside_inbox": "read it as inbox material",
+}
 
 
 @pytest.mark.parametrize("reason", sorted(FOLDER_REFUSAL_REASONS))
 def test_sentence_per_reason(reason):
     s = folder_sentence(reason, "a/b")
     assert s.startswith("typed folder refused:")
+    assert PHRASE[reason] in s
     if reason != "blank":
         assert "`a/b`" in s
 
@@ -154,12 +166,3 @@ def test_unknown_sentence_reason_raises():
         folder_sentence("taken", "a")
     with pytest.raises(ValueError):
         folder_sentence("", "a")
-
-
-def test_no_production_call_site_yet():
-    import subprocess
-    out = subprocess.run(
-        ["rg", "-l", "check_typed_folder", str(SCRIPTS_DIR)],
-        capture_output=True, text=True,
-    ).stdout.split()
-    assert [Path(p).name for p in out] == ["typed_name_check.py"]

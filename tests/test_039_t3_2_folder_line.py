@@ -8,9 +8,10 @@ carry `proposed_dir: None`. Pass 2's parser must keep ignoring that line until
 T3.3 teaches it to read it.
 
 Mutations guarded: dropping the sub-line from either variant (exact-line
-assertions); emitting it as a checkbox (the parser round-trip changes);
-omitting `proposed_dir` from records (schema + detect assertions);
-a parser that misreads the folder line as a name or a tick (round-trip test).
+assertions); emitting it as a checkbox (exact-line assertions and the
+rendered-output guard, not the parser round-trip); omitting `proposed_dir`
+from records (schema + detect assertions); a parser that misreads the folder
+line as a name or a tick (round-trip test only).
 
 CON-7: fixtures and fakes only.
 """
@@ -18,8 +19,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
+
+import pytest
+from jsonschema import ValidationError, validate
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -78,7 +83,10 @@ def test_no_free_name_variant_renders_folder_line_too():
 
 
 def test_folder_line_is_not_a_checkbox():
-    assert "[" not in FOLDER_LINE.split("Folder:")[0]
+    for conflict in (_conflict(), _conflict(proposed_name=None)):
+        lines = _lines(conflict)
+        assert not [ln for ln in lines if re.match(r"^\s*- \[[ xX]\]\s*Folder", ln)], lines
+        assert len([ln for ln in lines if ln.startswith("  - Folder: ")]) == 1, lines
 
 
 def test_folder_text_is_dirname_of_destination_verbatim():
@@ -132,9 +140,6 @@ def _schema_and_doc(conflict: dict) -> tuple[dict, dict]:
 
 
 def test_record_with_proposed_dir_validates_and_without_it_fails():
-    from jsonschema import ValidationError, validate  # noqa: PLC0415
-    import pytest  # noqa: PLC0415
-
     schema, doc = _schema_and_doc(_conflict())
     validate(instance=doc, schema=schema)
     schema, doc = _schema_and_doc(_conflict(proposed_dir="Elsewhere"))

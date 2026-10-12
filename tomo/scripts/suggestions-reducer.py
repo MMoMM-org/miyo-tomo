@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.60.0
+# version: 1.60.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1336,7 +1336,8 @@ def render_attachment_conflicts_block(
     source_links: dict[str, str] | None = None,
 ) -> str:
     """Render the ## Attachment Conflicts section from attachment_conflicts[]
-    (spec 037 T2.2, PRD F2).
+    (spec 037 T2.2, PRD F2). Each block carries a non-checkbox
+    `  - Folder: ...` sub-line under the Rename line (spec 039 T3.2).
 
     Mirrors render_tag_handler_updates_block / render_daily_notes_updates_block:
     returns "" when empty so the caller omits the section cleanly — a

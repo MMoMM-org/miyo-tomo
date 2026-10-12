@@ -1750,7 +1750,7 @@ concludes it is already fixed. Grep the constant name, or `now builds`.
 
 ## The Folder Line Under the Rename Line (spec 039 T3.2)
 
-`# version: 1.60.0`. `render_attachment_conflicts_block` writes a
+`render_attachment_conflicts_block` writes a
 non-checkbox sub-line `  - Folder: \`<dirname(destination)>\`` directly under
 the Rename line, in both variants (ordinary and "no free name available"), and
 `detect_attachment_conflicts` emits `proposed_dir: None` on every record (SDD

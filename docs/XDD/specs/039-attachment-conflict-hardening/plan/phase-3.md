@@ -43,7 +43,7 @@ Delivers the folder as a field on the v4 wire, a line in the markdown, a row in 
 
   **Depends on:** T3.2
 
-- [ ] **T3.2 Pass 1 renders the folder line** `[activity: backend]`
+- [x] **T3.2 Pass 1 renders the folder line** `[activity: backend]`
 
   1. Prime: `suggestions-reducer.py:690-740, 1438-1535`; `test_038_t4_1_markdown_offers_a_place_to_type.py:76`; `tests/test_037_t2_2_render_conflicts.py`, `test_037_t4_4_rendered_text.py` `[ref: SDD/Primary Flow — Pass 1]`
   2. Test: ordinary conflict renders the Rename line exactly as today followed by `  - Folder: \`<dirname(destination)>\``; the "no free name available" variant renders it too; conflict records carry `proposed_dir: None`; a conflict-free run's markdown is byte-identical to today

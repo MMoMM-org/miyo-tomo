@@ -9,6 +9,8 @@
 
 ## Called Between the Render and the Write, Not After `build_actions`
 
+*Superseded by spec 039 T4.4 — the rewrite writes the attachment plan's embed and matches by path; see the T4.4 section.*
+
 WHY `rewrite_renamed_embeds` is called from `instruction-render.py` between
 line 518 (the body is produced) and 551 (it is written to disk), and consumes
 `attachment_conflict_remedies` directly rather than the `move_asset` actions
@@ -25,6 +27,8 @@ the Render and the Write" for the full trace and the accepted race this
 ordering creates.
 
 ## Basename Matching, Not Full-Path Matching — and Where It Would Break
+
+*Superseded by spec 039 T4.4 — the rewrite writes the attachment plan's embed and matches by path; see the T4.4 section.*
 
 WHY the rename map is keyed by basename (`path.rsplit("/", 1)[-1]`) rather
 than by the full resolved path in `item["attachments"]`: the note body holds
@@ -52,6 +56,8 @@ for T3.3 (scope boundary: `instruction-render.py` and this one helper, not a
 second embed-resolution pass).
 
 ## The Bare New Basename, Never the Full New Path or the Old Prefix (Owner Ruling 2026-09-27)
+
+*Superseded by spec 039 T4.4 — the rewrite writes the attachment plan's embed and matches by path; see the T4.4 section.*
 
 WHY a path-prefixed original embed (`![[Scans/karte.png]]`) becomes the bare
 new basename (`![[karte (2).png]]`) rather than either the asset-folder-
@@ -121,7 +127,8 @@ Recorded because a WHY doc is also the history a future reader trusts, and
 crediting the wrong change makes `git log` and the prose disagree.
 
 Tilde support is a third change but not a fault the old regex *had* — it never
-claimed `~~~` at all.
+recognised `~~~` at all (reworded in T4.4 so the Phase 4 decision-site grep for
+`claimed` finds only the plan).
 
 Tilde fences (`~~~`) are recognised too. CommonMark allows them, and a note
 discussing backtick syntax is exactly where one appears — the same reachability
@@ -175,6 +182,8 @@ Its mutation — hoisting the call out of the per-item loop — fails that test 
 green under it, which is why the loop-level test was needed at all.
 
 ## A Refused Typed Name Rewrites No Embed (spec 038 T4.3, v0.4.1)
+
+*Superseded by spec 039 T4.4 — the rewrite writes the attachment plan's embed and matches by path; see the T4.4 section.*
 
 WHY `rewrite_renamed_embeds` now calls `check_typed_name` itself, and why the
 docstring's "bare basename, never a path" guarantee needed **two** mechanisms
@@ -246,3 +255,55 @@ matching, the bare-basename ruling, the fenced-code guard) to their operative
 statements. Nothing was lost: every one of those arguments is already on this
 page, above, in more detail than the docstring carried — which is precisely the
 "no copy in both" rule, and the reason the docstring went from 67 lines to 36.
+
+## The Rewrite Writes the Plan's Embed and Matches by Path (spec 039 T4.4, v0.5.0)
+
+`rewrite_renamed_embeds(body, attachments, remedies_by_source)` became
+`rewrite_attachment_embeds(body, attachments, plan)` (SDD K6, ADR-9). Three
+things changed, each closing a measured defect.
+
+**It decides nothing.** The attachment plan (`lib/attachment_plan.py`, K1)
+gives every source its `embed`: the exact target to write (a bare name or a
+full vault path), or None to leave its embeds alone. A withheld source has no
+target and no embed. The rewrite only writes that text, so a move and the
+embed pointing at it are decided once, from the same data (PRD Rule 6). The
+`check_typed_name` call added in spec 038 T4.3 is gone with it — the refusal is
+row 6 of the plan, the one place the move builder also reads — which closes the
+"decided twice" backlog entry, and a run-level `collision` or `no_basename`
+now rewrites nothing (F4-AC8), because the plan sees the whole run before any
+note is rendered. The "two gates must keep agreeing" cost and the run-level gap
+described in the T4.3 section above no longer exist.
+
+**It qualifies.** A filed attachment whose basename is not unique in the vault
+after the run gets its full path, in every note that embeds it, renamed or not
+(F4-AC2/AC3). The 2026-09-27 bare-name ruling still holds wherever the name is
+unique: the plan's embed is then the bare final name, byte-identical to 0.4.2
+(F4-AC1). The full path appears only where a bare name would resolve to the
+wrong file, which is the case the ruling did not consider.
+
+**It matches by path, with the resolver's own rule.** 0.4.2 matched by
+basename alone, so a written `![[Other/karte.png]]` naming a different file was
+rewritten (research R1 §3, measured). An embed now belongs to a source only if
+`attachment_index.narrow_candidates` — the rule that resolved the note's
+`attachments` in the first place — narrows it to that source over this note's
+attachments:
+
+- a bare name matches by basename;
+- a written path matches when the source equals it or ends with `/<path>`, on a
+  folder boundary: `Scans/karte.png` and `100 Inbox/Scans/karte.png` reach
+  `100 Inbox/Scans/karte.png`; `Other/karte.png` and `cans/karte.png` do not;
+- an embed that narrows to two of the note's attachments (two inbox files
+  sharing a basename, written bare) is left alone. That replaces 0.4.2's
+  accepted failure mode — rewriting the wrong occurrence or both — with no
+  rewrite at all; the resolver would not have resolved such a bare embed
+  either.
+
+Reusing `narrow_candidates` also means its whitespace stripping applies: an
+embed written `![[ karte.png ]]`, which the reader always resolved, is now
+rewritten too (R1 §3 noted 0.4.2 never did). The rewritten target carries no
+padding; the `|…`/`#…`/`^…` tail is put back verbatim as before.
+
+**Unrenamed and unique stays untouched**, even where the owner wrote an inbox
+path such as `![[Scans/karte.png]]` (the plan's embed is None). That is CON-3's
+byte-identity for untouched runs; whether such a path still resolves after the
+move is Obsidian's link resolution, unchanged by this spec.

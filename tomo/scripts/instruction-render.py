@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.64.0
+# version: 0.65.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -47,7 +47,7 @@ from lib.doc_frontmatter import (  # noqa: E402
     build_tomo_block,
     merge_tomo_block_into_markdown,
 )
-from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
+from lib.embed_rewrite import rewrite_attachment_embeds  # noqa: E402
 from lib.attachment_plan import build_attachment_plan  # noqa: E402
 from lib.basename_census import make_basename_census  # noqa: E402
 from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402
@@ -450,13 +450,24 @@ def main() -> int:
     used_filenames: set[str] = set()
     errors = 0
 
-    # spec 037 T3.3: source -> remedy dict, so a renamed attachment's owning
-    # note(s) get their embed rewritten to the new bare basename. Built once,
-    # read per item below — a note can embed more than one attachment, and
-    # the same attachment can be embedded by more than one note.
     attachment_remedies_by_source = {
         r["source"]: r for r in attachment_conflict_remedies
     }
+    # The attachment plan, built before the loop because every owning note's
+    # embed is written from it there, and the same object goes to
+    # build_actions. Only items with a template render, so only their
+    # attachments are planned — an instruction-only item must not claim a
+    # target first. No client means no confirmed item, so nothing to plan.
+    attachment_plan = None
+    if client is not None and args.upstream_type != "garden-audit":
+        attachment_plan = build_attachment_plan(
+            [i for i in confirmed if i.get("template")],
+            attachment_remedies_by_source,
+            asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
+            inbox_path=inbox_path,
+            folder_lookup=VaultFolderLookup(client),
+            census=make_basename_census(client),
+        )
 
     for item in confirmed:
         item_id = item.get("id", "?")
@@ -564,15 +575,12 @@ def main() -> int:
                 file=sys.stderr,
             )
 
-        # 4c. Rewrite embed targets for attachments this run's owner renamed
-        # (spec 037 T3.3). Must happen before the write below (551) — that is
-        # the last point the body can still change. `_build_move_asset_actions`
-        # computes the actual move only after every file in this loop has
-        # already been written to disk, so the new basename is recomputed
-        # here from `proposed_name` rather than read back from a move action.
-        rendered = rewrite_renamed_embeds(
-            rendered, attachments, attachment_remedies_by_source
-        )
+        # 4c. Write the plan's embed text for every attachment this note
+        # embeds — before the write below, the last point the body changes.
+        if attachment_plan is not None:
+            rendered = rewrite_attachment_embeds(
+                rendered, attachments, attachment_plan
+            )
 
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
@@ -641,19 +649,6 @@ def main() -> int:
             confirmed, parent_marker=conventions.parent_marker,
         )
     else:
-        # Only items with a template render, so only their attachments are
-        # planned — an instruction-only item must not claim a target first.
-        # No client means no confirmed item, so nothing to plan.
-        attachment_plan = None
-        if client is not None:
-            attachment_plan = build_attachment_plan(
-                [i for i in confirmed if i.get("template")],
-                attachment_remedies_by_source,
-                asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
-                inbox_path=inbox_path,
-                folder_lookup=VaultFolderLookup(client),
-                census=make_basename_census(client),
-            )
         actions, skipped_assets = build_actions(
             manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
             tag_handler_groups=tag_handler_groups,

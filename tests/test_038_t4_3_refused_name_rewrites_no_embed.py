@@ -37,6 +37,12 @@ apart — `check_typed_name` is now called from two places that must keep
 agreeing and nothing in the type system makes them. Neither per-half test can
 catch that; drift is exactly how T3.2 produced this defect.
 
+Since spec 039 T4.4 the rewrite is `rewrite_attachment_embeds`, which reads
+the attachment plan and calls no `check_typed_name` of its own: the refusal
+is decided once, in `lib/attachment_plan.py` (decision-table row 6), and both
+halves read that one verdict. The mutations the docstrings below name — the
+gate "in the rewrite" — now apply to that row; the assertions are unchanged.
+
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
 from __future__ import annotations
@@ -50,13 +56,25 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
-from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
+from attachment_plan_fakes import (  # noqa: E402
+    move_asset_actions_from_remedies,
+    rewrite_from_remedies,
+)
 from lib.typed_name_check import check_typed_name  # noqa: E402
 
 SOURCE = "100 Inbox/Scans/karte.png"
 INBOX = "100 Inbox/"
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
+
+
+def _rewrite(body, attachments, remedies_by_source):
+    """spec 039 T4.4: the rewrite now reads the attachment plan; the refusal
+    it used to re-derive with `check_typed_name` is decided once, in the
+    plan (`lib/attachment_plan.py` row 6). Vault: only the inbox copies."""
+    return rewrite_from_remedies(
+        body, attachments, remedies_by_source,
+        inbox_path=INBOX, asset_folder=ASSET_FOLDER,
+    )
 
 # One body, two embeds of the same attachment, the second carrying a `|300`
 # size suffix — both shapes 037 already covers for a computed name, kept here
@@ -120,7 +138,7 @@ def test_refused_separator_present_leaves_body_byte_identical():
     assert verdict.reason == "separator_present"
 
     remedies = {SOURCE: _remedy(SEPARATOR_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 def test_refused_forbidden_character_leaves_body_byte_identical():
@@ -138,7 +156,7 @@ def test_refused_forbidden_character_leaves_body_byte_identical():
     assert verdict.reason == "forbidden_character"
 
     remedies = {SOURCE: _remedy(FORBIDDEN_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 def test_refused_blank_leaves_body_byte_identical():
@@ -156,7 +174,7 @@ def test_refused_blank_leaves_body_byte_identical():
     assert verdict.reason == "blank"
 
     remedies = {SOURCE: _remedy(BLANK_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +194,7 @@ def test_accepted_typed_name_rewrites_every_embed_including_the_sized_one():
     assert check_typed_name(ACCEPTED_TYPED_NAME).ok is True
 
     remedies = {SOURCE: _remedy(ACCEPTED_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[karte-dresden-1938.png]]\n"
         "\n"
         "Again, sized: ![[karte-dresden-1938.png|300]]\n"
@@ -197,7 +215,7 @@ def test_computed_name_still_rewrites_when_flag_is_false():
     assert check_typed_name(computed).ok is False  # would be refused if typed
 
     remedies = {SOURCE: _remedy(computed, name_is_owner_supplied=False)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[foo*bar (2).png]]\n\nAgain, sized: ![[foo*bar (2).png|300]]\n"
     )
 
@@ -213,7 +231,7 @@ def test_computed_name_still_rewrites_when_flag_is_absent():
     """
     computed = "foo*bar (2).png"
     remedies = {SOURCE: _remedy(computed)}  # no flag key at all
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[foo*bar (2).png]]\n\nAgain, sized: ![[foo*bar (2).png|300]]\n"
     )
 
@@ -250,7 +268,7 @@ def test_both_halves_refuse_the_same_typed_name():
     assert skipped[0]["kind"] == "typed_name_refused"
     assert skipped[0]["refusal_reason"] == "forbidden_character"
 
-    assert rewrite_renamed_embeds(BODY, [SOURCE], {SOURCE: remedy}) == BODY
+    assert _rewrite(BODY, [SOURCE], {SOURCE: remedy}) == BODY
 
 
 def test_both_halves_accept_the_same_typed_name():
@@ -277,7 +295,7 @@ def test_both_halves_accept_the_same_typed_name():
     assert len(actions) == 1
     assert actions[0]["destination"] == f"{ASSET_FOLDER}{ACCEPTED_TYPED_NAME}"
 
-    rewritten = rewrite_renamed_embeds(BODY, [SOURCE], {SOURCE: remedy})
+    rewritten = _rewrite(BODY, [SOURCE], {SOURCE: remedy})
     assert rewritten == (
         "Map: ![[karte-dresden-1938.png]]\n"
         "\n"

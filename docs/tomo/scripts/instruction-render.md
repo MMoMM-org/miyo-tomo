@@ -767,6 +767,8 @@ living only in three files that happen to agree.
 
 ## The Embed Rewrite Lives Between the Render and the Write, Not in `render_actions.py` (spec 037 T3.3)
 
+*Superseded by spec 039 T4.4 — the rewrite reads the attachment plan built before the loop; see the T4.4 section.*
+
 The 2026-09-15 failure this spec exists to close (README.md Context) left an
 Atlas note filed correctly while its body still embedded
 `![[Scans/karte.png]]` — an inbox path the attachment had never actually left,
@@ -1061,9 +1063,41 @@ items; with none (a daily-only run) the manifest is empty and there is nothing
 to file, so no lookup and no census are constructed and `build_actions` gets
 `attachment_plan=None`. A garden-audit run never reaches `build_actions`.
 
+*Superseded by spec 039 T4.4 (next section) for where the plan is built.*
+
 **Built at the call, not before the loop — for now.** T4.5 moves the build
 before the render loop so the embed rewrite (T4.4) can read the same plan; it
 sits here in T4.3 so the move builder could become a projection without
 reordering the run in the same change. Until T4.5 the folder lookup is a
 second instance beside `make_folder_listing(client)`'s, so a folder that is
 both an asset target and a note destination may be listed twice.
+
+## The Render Loop Writes the Plan's Embeds (spec 039 T4.4, v0.65.0)
+
+The embed rewrite now reads the attachment plan, so the plan has to exist
+before the first note is rendered: it is built after the confirmed list is
+final (`filter_missing_source_notes`, `backfill_supporting_items_parents`) and
+before the loop, with the same template-bearing filter and the same lookup and
+census construction T4.3 used, and the **same object** is passed to
+`build_actions`. One plan per run means the moves and the embeds cannot
+disagree, and a move withheld for a run-level reason (`collision`,
+`no_basename`) no longer leaves a staged note rewritten to a name that was never
+filed — the inconsistency recorded under "Two Facts the Docstrings Do Not
+Carry" is closed.
+
+This is the part of T4.5's relocation the rewrite cannot work without, and only
+that part. Still T4.5's: the counters (`folder_listing_calls`,
+`basename_searches`, `basename_pages`) into `cost_history`, and handing
+`validate_destinations` a view of the same `VaultFolderLookup` instead of a
+second listing through `make_folder_listing(client)`.
+
+**Garden-audit runs build no plan** and so rewrite no embed, exactly as T4.3
+built none for them. Nothing changes in practice: `garden-audit-parser.py`
+emits neither a `template` (so the loop renders none of its items) nor
+`attachment_conflict_remedies`.
+
+**A harness with a bare `MagicMock` Kado now sees qualified embeds.** The
+census cannot count through it, an unanswered count qualifies the embed
+(F4-AC6), so a test that pins the bare name gives the run a `FakeVault`
+(`tests/attachment_plan_fakes.py`) through `VaultFolderLookup` and
+`make_basename_census`.

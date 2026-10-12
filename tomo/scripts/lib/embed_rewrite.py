@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.4.2
-"""embed_rewrite.py — Rewrite `![[...]]` embed targets for renamed attachments."""
+# version: 0.5.0
+"""embed_rewrite.py — Write the attachment plan's embed text into note bodies."""
 from __future__ import annotations
 
 import re
 
-from lib.attachment_index import _EMBED_RE
-from lib.typed_name_check import check_typed_name
+from lib.attachment_index import _EMBED_RE, narrow_candidates
 
 _FENCE_OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\n]*)$")
 
@@ -31,7 +30,7 @@ def _fence_spans(body: str) -> list[tuple[int, int]]:
     the opening one, and a CRLF closing line whose `\r` defeated the
     end-of-line anchor and swallowed the rest of the note as fenced. Tilde
     (`~~~`) fences are newly recognised, which is a third change but not a
-    fault the regex had — it never claimed them.
+    fault the regex had — it never recognised them.
 
     A third fault, an unclosed fence matching nothing at all so everything
     after a dangling fence was treated as live body text, was fixed one commit
@@ -89,65 +88,33 @@ def _target_and_suffix(raw: str) -> tuple[str, str]:
     return raw[:idx], raw[idx:]
 
 
-def rewrite_renamed_embeds(
-    body: str,
-    attachments: list[str],
-    remedies_by_source: dict[str, dict],
-) -> str:
-    """Rewrite embed targets for attachments this run's owner renamed.
+def rewrite_attachment_embeds(body: str, attachments: list[str], plan) -> str:
+    """Write the attachment plan's embed text into a note body.
 
-    `attachments` is `item["attachments"]` — the note's resolved,
-    inbox-relative attachment paths. Matching is by basename, not by that
-    full path: a resolved reference carries no as-typed text, so a bare
-    `![[karte.png]]` in the body has no path component to compare.
+    `attachments` is `item["attachments"]` — the note's resolved inbox paths.
+    `plan` is the run's `AttachmentPlan`; each source's `embed` is the exact
+    target to write, or None to leave its embeds alone. A withheld source has
+    `embed` None too. Nothing is decided here.
 
-    `remedies_by_source` is keyed by that same resolved path (spec 037
-    T3.0's transport). Only a `source` whose remedy is `rename` with a
-    non-empty `proposed_name` changes anything here; every other remedy
-    leaves the attachment's filed name unchanged, so the body is left alone.
+    An embed belongs to a source only if it resolves to it by
+    `narrow_candidates`, the resolver's own rule, over this note's
+    attachments: a bare name by basename, a written path only when the source
+    ends with it on a folder boundary. An embed resolving to two of the
+    note's attachments, or to none, is left alone.
 
-    A renamed attachment's OLD basename is replaced by the BARE new
-    basename (owner ruling 2026-09-27) — never the new full path, never the
-    original prefix. `proposed_name` is substituted VERBATIM, with no
-    basename step here, so TWO separate mechanisms hold that guarantee:
-
-    - a Tomo-COMPUTED name holds it by construction of its producer
-      (`_propose_asset_name`, suggestions-reducer.py, emits a basename);
-    - an owner-TYPED name holds it because of the `check_typed_name` gate
-      below, whose `separator_present` verdict refuses any name containing
-      `/` outright (ADR-5: refused, never sanitised).
-
-    That gate and `_build_move_asset_actions`' gate must keep agreeing and
-    nothing in the type system makes them.
-
-    Known gap: a move withheld for a RUN-level reason this per-note pass
-    cannot see (`kind: collision`, `kind: no_basename`) still gets its body
-    rewritten for an attachment that is never filed.
-
-    Every matching embed is rewritten, not just the first. An embed inside
-    a fenced code block is left alone, and so is any `[[...]]` missing the
-    leading `!`.
-
-    See `docs/tomo/scripts/lib/embed_rewrite.md`.
+    Only the target changes: the `|…`, `#…`, `^…` tail is put back verbatim.
+    Embeds inside fenced code and links without the leading `!` are left
+    alone. See `docs/tomo/scripts/lib/embed_rewrite.md`.
     """
-    renames: dict[str, str] = {}
+    index: dict[str, list[str]] = {}
+    embeds: dict[str, str] = {}
     for path in attachments or []:
-        remedy_entry = remedies_by_source.get(path)
-        if not remedy_entry or remedy_entry.get("remedy") != "rename":
-            continue
-        new_name = remedy_entry.get("proposed_name")
-        if not new_name:
-            continue
-        # spec 038 T4.3: refuse an owner-typed name the same way
-        # `_build_move_asset_actions` does — see the docstring above for why
-        # this must stay in step with that gate.
-        if remedy_entry.get("name_is_owner_supplied"):
-            if not check_typed_name(new_name).ok:
-                continue
-        old_basename = path.rsplit("/", 1)[-1]
-        renames[old_basename] = new_name
+        index.setdefault(path.rsplit("/", 1)[-1], []).append(path)
+        decision = plan.by_source.get(path)
+        if decision is not None and decision.embed is not None:
+            embeds[path] = decision.embed
 
-    if not renames:
+    if not embeds:
         return body
 
     fence_spans = _fence_spans(body)
@@ -162,9 +129,9 @@ def rewrite_renamed_embeds(
         if not bang:
             return match.group(0)  # plain [[...]] link — not an embed
         target, suffix = _target_and_suffix(raw)
-        new_basename = renames.get(target.rsplit("/", 1)[-1])
-        if new_basename is None:
+        candidates = narrow_candidates(target, index)
+        if len(candidates) != 1 or candidates[0] not in embeds:
             return match.group(0)
-        return f"![[{new_basename}{suffix}]]"
+        return f"![[{embeds[candidates[0]]}{suffix}]]"
 
     return _EMBED_RE.sub(_replace, body)

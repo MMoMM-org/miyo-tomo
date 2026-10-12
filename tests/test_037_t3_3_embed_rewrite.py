@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """test_037_t3_3_embed_rewrite.py — spec 037 T3.3.
 
 T3.1 made `_build_move_asset_actions` recompute a renamed attachment's
@@ -34,11 +34,23 @@ REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(TESTS_DIR))
 
-from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
+from attachment_plan_fakes import FakeVault, rewrite_from_remedies  # noqa: E402
 
 SOURCE = "100 Inbox/Scans/karte.png"
 PROPOSED_NAME = "karte (2).png"
+
+
+def _rewrite(body, attachments, remedies_by_source):
+    """spec 039 T4.4: `rewrite_renamed_embeds` became
+    `rewrite_attachment_embeds(body, attachments, plan)`; the plan is built
+    from these remedies over a vault holding only the inbox copies, so every
+    final basename is unique — the vault these tests always assumed."""
+    return rewrite_from_remedies(
+        body, attachments, remedies_by_source,
+        inbox_path="100 Inbox/", asset_folder="Atlas/290 Assets/295 Attachments/",
+    )
 
 
 def _remedy(source, remedy, proposed_name=None) -> dict:
@@ -58,7 +70,7 @@ def test_path_prefixed_embed_becomes_bare_new_basename():
     file has left."""
     body = "See the map: ![[Scans/karte.png]]\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == "See the map: ![[karte (2).png]]\n"
 
 
@@ -69,7 +81,7 @@ def test_full_new_path_is_never_hardcoded_into_the_body():
     changes."""
     body = "![[Scans/karte.png]]\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert "Atlas" not in result
     assert result == "![[karte (2).png]]\n"
 
@@ -79,7 +91,7 @@ def test_note_embedding_it_twice_has_both_rewritten():
     embeds of the same renamed attachment in one note body would change."""
     body = "First: ![[Scans/karte.png]]\nSecond: ![[Scans/karte.png]]\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == (
         "First: ![[karte (2).png]]\nSecond: ![[karte (2).png]]\n"
     )
@@ -97,7 +109,7 @@ def test_an_embed_after_an_unclosed_fence_is_left_alone():
     leaving it alone is the correct reading, not merely the cautious one."""
     body = "Intro.\n```\ncode\n![[Scans/karte.png]]\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+    assert _rewrite(body, [SOURCE], remedies) == body
 
 
 def test_untouched_attachment_in_the_same_note_is_left_verbatim():
@@ -108,7 +120,7 @@ def test_untouched_attachment_in_the_same_note_is_left_verbatim():
     other_source = "100 Inbox/Scans/other.png"
     body = "![[Scans/karte.png]] and ![[Scans/other.png]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE, other_source], remedies)
+    result = _rewrite(body, [SOURCE, other_source], remedies)
     assert result == "![[karte (2).png]] and ![[Scans/other.png]]"
 
 
@@ -121,7 +133,7 @@ def test_matches_by_basename_not_by_the_full_resolved_path():
     — that finds nothing for a bare embed."""
     body = "![[karte.png]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == "![[karte (2).png]]"
 
 
@@ -131,7 +143,7 @@ def test_alias_and_anchor_survive_the_rewrite():
     portion — the alias/anchor text would be lost."""
     body = "![[Scans/karte.png|Site Map#Legend]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == "![[karte (2).png|Site Map#Legend]]"
 
 
@@ -146,7 +158,7 @@ def test_embed_inside_a_fenced_code_block_is_left_alone():
         "```\n"
     )
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == (
         "Before the fence: ![[karte (2).png]]\n"
         "```\n"
@@ -162,7 +174,7 @@ def test_plain_link_without_the_bang_is_left_alone():
     borrowed reader logic, not coverage of new rewrite behaviour."""
     body = "See [[Scans/karte.png]] for details."
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert result == body
 
 
@@ -173,7 +185,7 @@ def test_non_rename_remedies_leave_the_body_unchanged():
     body = "![[Scans/karte.png]]"
     for remedy in ("keep_in_inbox", "ignore"):
         remedies = {SOURCE: _remedy(SOURCE, remedy)}
-        assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+        assert _rewrite(body, [SOURCE], remedies) == body
 
 
 def test_a_rename_with_null_proposed_name_leaves_the_body_unchanged():
@@ -206,14 +218,14 @@ def test_a_rename_with_null_proposed_name_leaves_the_body_unchanged():
     is the test that actually fails when the late check goes."""
     body = "![[Scans/karte.png]]"
     remedies = {SOURCE: _remedy(SOURCE, "rename", proposed_name=None)}
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+    assert _rewrite(body, [SOURCE], remedies) == body
 
 
 def test_no_matching_remedy_at_all_leaves_the_body_unchanged():
     """A source with no remedy record at all (conflict gone by Pass 2, or
     never existed) must not perturb an unrelated embed."""
     body = "![[Scans/karte.png]]"
-    assert rewrite_renamed_embeds(body, [SOURCE], {}) == body
+    assert _rewrite(body, [SOURCE], {}) == body
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +253,17 @@ _IR_CFG = {
     "profile": "miyo",
     "callouts.editable": ["NOTE"],
 }
+
+
+def _vault_holding_only_the_inbox_copy(monkeypatch):
+    """spec 039 T4.4: the render loop now writes the attachment plan's embed,
+    and a bare MagicMock Kado answers no census question — an unanswered
+    count qualifies the embed (F4-AC6). These tests pin the bare-name
+    outcome, so they give the plan the vault they always assumed: only the
+    inbox copy, the asset folder present and free."""
+    vault = FakeVault([SOURCE], existing_folders=[_IR_CFG["concepts.asset"]])
+    monkeypatch.setattr(ir, "VaultFolderLookup", lambda _client: vault.lookup)
+    monkeypatch.setattr(ir, "make_basename_census", lambda _client: vault.census)
 
 
 def test_end_to_end_written_file_agrees_with_the_emitted_move_asset(
@@ -286,6 +309,7 @@ def test_end_to_end_written_file_agrees_with_the_emitted_move_asset(
 
     monkeypatch.setattr(ir, "load_config", lambda _path: dict(_IR_CFG))
     monkeypatch.setattr(ir, "KadoClient", lambda: MagicMock())
+    _vault_holding_only_the_inbox_copy(monkeypatch)
     monkeypatch.setattr(ir, "read_template", lambda _client, _ref: "# {{title}}\n{{body}}\n")
     monkeypatch.setattr(ir, "read_note_body", lambda *_a, **_kw: "")
     monkeypatch.setattr(
@@ -336,7 +360,7 @@ def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten
     """Two DIFFERENT confirmed items in one run, both embedding the same
     renamed attachment — both written bodies must name the new basename.
 
-    Mutation: hoist the `rewrite_renamed_embeds(...)` call out of the
+    Mutation: hoist the `rewrite_attachment_embeds(...)` call out of the
     per-item loop so it runs once, on the first item only. The second note
     is then written with the vacated `Scans/karte.png` still in it.
 
@@ -377,6 +401,7 @@ def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten
 
     monkeypatch.setattr(ir, "load_config", lambda _path: dict(_IR_CFG))
     monkeypatch.setattr(ir, "KadoClient", lambda: MagicMock())
+    _vault_holding_only_the_inbox_copy(monkeypatch)
     monkeypatch.setattr(ir, "read_template", lambda _c, _r: "# {{title}}\n{{body}}\n")
     monkeypatch.setattr(ir, "read_note_body", lambda *_a, **_kw: "")
     monkeypatch.setattr(
@@ -427,7 +452,7 @@ def test_a_shorter_closing_run_does_not_end_a_longer_fence():
     backreference comparison)."""
     body = "Doc example:\n````\n```\n![[Scans/karte.png]]\n````\nEnd.\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+    assert _rewrite(body, [SOURCE], remedies) == body
 
 
 def test_a_crlf_closing_fence_still_closes_the_fence():
@@ -440,7 +465,7 @@ def test_a_crlf_closing_fence_still_closes_the_fence():
     Measured under the old regex: the trailing embed was not rewritten."""
     body = "Intro.\r\n```\r\ncode\r\n```\r\nAfter ![[Scans/karte.png]]\r\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    result = rewrite_renamed_embeds(body, [SOURCE], remedies)
+    result = _rewrite(body, [SOURCE], remedies)
     assert "![[karte (2).png]]" in result, (
         f"an embed after a CRLF-closed fence must still be rewritten: {result!r}"
     )
@@ -452,7 +477,7 @@ def test_a_tilde_fence_is_recognised_too():
     embed inside would be rewritten as if it were a live dependency."""
     body = "~~~\n![[Scans/karte.png]]\n~~~\n"
     remedies = {SOURCE: _remedy(SOURCE, "rename", PROPOSED_NAME)}
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+    assert _rewrite(body, [SOURCE], remedies) == body
 
 
 def test_a_non_rename_remedy_carrying_a_proposed_name_changes_nothing():
@@ -473,7 +498,7 @@ def test_a_non_rename_remedy_carrying_a_proposed_name_changes_nothing():
     each was covered by the other guard downstream."""
     remedies = {SOURCE: _remedy(SOURCE, "keep_in_inbox", PROPOSED_NAME)}
     body = "![[Scans/karte.png]]"
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies) == body
+    assert _rewrite(body, [SOURCE], remedies) == body
 
     remedies_ignore = {SOURCE: _remedy(SOURCE, "ignore", PROPOSED_NAME)}
-    assert rewrite_renamed_embeds(body, [SOURCE], remedies_ignore) == body
+    assert _rewrite(body, [SOURCE], remedies_ignore) == body

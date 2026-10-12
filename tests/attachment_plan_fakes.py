@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """attachment_plan_fakes.py — one fake vault behind both of the plan's vault
-views, and the `plan_from_remedies` helper the old builder harnesses migrate
-through (spec 039 T4.2, T4.3).
+views, and the `plan_from_remedies` helper the old builder and embed-rewrite harnesses
+migrate through (spec 039 T4.2, T4.3, T4.4).
 
 Lives in tests/, not tomo/scripts/lib/: it is never a production code path and
 tomo/ is synced into the instance. Not named `test_*`, so pytest does not
@@ -166,6 +166,31 @@ def move_asset_actions_from_remedies(
     )
     moves, skipped, _ids = _build_move_asset_actions(manifest, plan, counter, inbox_path)
     return moves, skipped
+
+
+def rewrite_from_remedies(
+    body,
+    attachments,
+    remedies_by_source,
+    *,
+    inbox_path,
+    asset_folder,
+    vault: FakeVault | None = None,
+):
+    """The old `rewrite_renamed_embeds(body, attachments, remedies_by_source)`
+    call, answered by `rewrite_attachment_embeds` over
+    `plan_from_remedies([{"attachments": attachments}], ...)`. With the
+    default vault every attachment's final basename is unique, which is the
+    vault the old harnesses assumed (bare name when renamed).
+    """
+    from lib.embed_rewrite import rewrite_attachment_embeds
+
+    plan = plan_from_remedies(
+        [{"attachments": list(attachments)}],
+        list((remedies_by_source or {}).values()),
+        inbox_path=inbox_path, asset_folder=asset_folder, vault=vault,
+    )
+    return rewrite_attachment_embeds(body, attachments, plan)
 
 
 class _NoVault:

@@ -343,7 +343,8 @@ def test_row7_is_decided_before_row_8():
 
 def test_occupied_target_sentence_variants():
     exact = occupied_target_sentence(DEFAULT_TARGET, DEFAULT_TARGET)
-    assert "already holds" in exact and "differ only in case" not in exact
+    # same spelling: naming the occupier would repeat the target, so it reads "a file"
+    assert "already holds a file at the target" in exact and "differ only in case" not in exact
     case_only = occupied_target_sentence(DEFAULT_TARGET, f"{ASSET}KARTE.png")
     assert f"`{ASSET}KARTE.png`" in case_only and "differ only in case" in case_only
     folder = occupied_target_sentence(DEFAULT_TARGET, None, occupier_is_folder=True)

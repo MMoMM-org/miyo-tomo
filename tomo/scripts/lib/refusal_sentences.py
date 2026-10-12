@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -105,9 +105,13 @@ def occupied_target_sentence(
             f"target occupied: the vault already has a folder at "
             f"`{_visible(target)}`, so the attachment is not filed there"
         )
-    shown = _visible(occupier or target)
+    held = (
+        "a file"
+        if occupier is None or same_spelling(occupier, target)
+        else f"`{_visible(occupier)}`"
+    )
     sentence = (
-        f"target occupied: the vault already holds `{shown}` at the target "
+        f"target occupied: the vault already holds {held} at the target "
         f"`{_visible(target)}`, so the attachment is not filed over it"
     )
     if occupier and not same_spelling(occupier, target):
@@ -126,8 +130,8 @@ def unchecked_target_sentence(target: str) -> str:
     """
     return (
         f"the vault did not answer whether anything already occupies "
-        f"`{_visible(target)}`, so this target was not checked before the move "
-        f"was written; if the move fails, the attachment and the source note "
+        f"`{_visible(target)}`, so this target was not checked before this move "
+        f"was put into the instructions; if the move fails, the attachment and the source note "
         f"that embeds it stay in the inbox"
     )
 

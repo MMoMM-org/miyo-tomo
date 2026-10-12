@@ -79,7 +79,8 @@ be found occupied by an NFC file of the same visible name. The `vault_occupied`
 sentence appends its case note only when the two spellings differ after NFC
 (`vault_paths.same_spelling`); an NFC/NFD pair reads as the plain sentence,
 because "the names differ only in case" would describe a difference that does
-not show.
+not show. When the occupier is spelled exactly as the target, the sentence says
+"a file" at the target instead of naming the same path twice.
 
 ## Sentences for a move that is emitted (spec 039 T5.1)
 
@@ -89,7 +90,8 @@ do: one home for owner-facing prose (K16). They state only what was verified.
 The unchecked sentence says the vault did not answer and never calls the target
 free (F3-AC6); its consequence clause ("if the move fails, the attachment and
 the source note that embeds it stay in the inbox") is the origin-keeping
-contract of ADR-10, the same one the Ignore disclosure states (F6-AC8).
+contract of ADR-10 (the sentence is read by an owner before apply, so it says
+"before this move was put into the instructions"), the same one the Ignore disclosure states (F6-AC8).
 "Will be created on apply" is the executor's documented contract (PRD A3).
 `qualified_embed_sentence` raises `ValueError` on a reason other than
 `ambiguous` / `unanswered`, like every function here that takes a code.

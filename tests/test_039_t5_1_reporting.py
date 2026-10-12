@@ -16,6 +16,9 @@ Mechanism each test falsifies:
 - `test_occupied_bullet_names_attachment_target_and_occupier` (F3-AC5): the
   skipped-asset notice having no `vault_occupied` branch (it falls to the
   loud "No remedy defined" fallback), or note wording leaking in.
+- `test_unchecked_target_notices_follow_the_final_actions`: the relay filter
+  reading reports instead of the final actions, so a move a guard withdrew is
+  still reported as an unchecked target.
 - `test_refused_folder_bullet_names_attachment_and_rule` (F2-AC5): no
   `typed_folder_refused` branch in the notice.
 - `test_each_folder_reason_has_its_own_sentence_in_the_notice` (F2-AC5):
@@ -59,7 +62,10 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from lib.kado_client import KadoError  # noqa: E402
-from lib.render_md import _render_skipped_asset_notice  # noqa: E402
+from lib.render_md import (  # noqa: E402
+    _render_skipped_asset_notice,
+    unchecked_target_notices,
+)
 from lib.typed_name_check import FOLDER_REFUSAL_REASONS  # noqa: E402
 from test_039_t4_5_wire_plan_into_pass_2 import (  # noqa: E402
     ASSET,
@@ -131,7 +137,7 @@ def every_kind(monkeypatch, tmp_path):
     vault = [
         FOLDER_NEW, UNCHECKED, OCCUPIED, FOLDER_REFUSED, BLANK_FOLDER,
         AMBIGUOUS, UNANSWERED, IGNORED,
-        f"{ASSET}/belegt.png",          # occupies OCCUPIED's target
+        f"{ASSET}/Belegt.png",          # occupies OCCUPIED's target, spelled differently in case
         "Elsewhere/doppelt.png",        # makes AMBIGUOUS's basename non-unique
         f"{ASSET}/egal.png",            # the occupier the owner chose to Ignore
     ]
@@ -192,12 +198,23 @@ def _sentence_fn(name):
 def test_occupied_bullet_names_attachment_target_and_occupier(every_kind):
     md, _relay = every_kind
     (bullet,) = [b for b in _withheld_bullets(md) if f"`{OCCUPIED}`" in b]
-    assert f"`{ASSET}/belegt.png`" in bullet, bullet
-    assert "the vault already holds" in bullet, bullet
+    assert f"at the target `{ASSET}/belegt.png`" in bullet, bullet
+    assert f"already holds `{ASSET}/Belegt.png`" in bullet, bullet
+    assert "differ only in case" in bullet, bullet
     assert "attachment" in bullet, bullet
     assert "No remedy defined" not in bullet, bullet
     for line in _lines_naming(md, OCCUPIED):
         assert "a note already exists" not in line, line
+
+
+def test_unchecked_target_notices_follow_the_final_actions():
+    target = f"{DOWN_FOLDER}/offen.png"
+    reports = {UNCHECKED: {"unchecked": True, "target": target}}
+    withdrawn = unchecked_target_notices([], reports)
+    assert withdrawn == [], "a move no longer in the actions must not be reported"
+    move = {"action": "move_asset", "source": UNCHECKED}
+    (notice,) = unchecked_target_notices([move], reports)
+    assert f"`{UNCHECKED}`" in notice and f"`{target}`" in notice, notice
 
 
 # ---------------------------------------------------------------------------

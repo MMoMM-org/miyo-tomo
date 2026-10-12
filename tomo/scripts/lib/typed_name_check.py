@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -76,15 +76,14 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     has no meaningful separator or character content to classify.
 
     Full order: blank, separator_present, edge whitespace (breaks_link),
-    template substrings `{{` / `<%` (unsafe_sequence), forbidden_character,
-    control characters (unsafe_sequence), link-breaking characters
+    template substrings `{{` / `<%` and control characters [\\x00-\\x1f\\x7f]
+    (unsafe_sequence), forbidden_character, link-breaking characters
     (breaks_link). Edge whitespace precedes the unsafe checks so a tab at
-    either edge (`"\ta.png"`) is `breaks_link` although a tab is also a
-    control character; an interior control character (`"a\x01b.png"`) is
-    `unsafe_sequence`. `<%` is tested before `forbidden_character` because `<`
-    is a FORBIDDEN_CHARS member and would otherwise mask it. `\x00` is also a
-    FORBIDDEN_CHARS member and stays `forbidden_character` (spec 038 pin); it
-    is refused either way and never aborts the run.
+    either edge (`"\\ta.png"`) is `breaks_link` although a tab is also a
+    control character. The unsafe checks precede `forbidden_character`
+    because `<` is a FORBIDDEN_CHARS member and would otherwise mask `<%`, and
+    `\\x00` is one too and would otherwise mask the control-character rule
+    (spec 039 F5-AC7: every control character shares one reason).
 
     Edge whitespace is refused, never trimmed: `.strip()` only decides
     blankness and edge whitespace; the returned name is the argument as typed.
@@ -101,11 +100,11 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     if any(u in name for u in _UNSAFE_SUBSTRINGS):
         return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
 
-    if any(c in _NON_SEPARATOR_FORBIDDEN_CHARS for c in name):
-        return TypedNameVerdict(ok=False, name=name, reason="forbidden_character")
-
     if any(_is_control(c) for c in name):
         return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
+
+    if any(c in _NON_SEPARATOR_FORBIDDEN_CHARS for c in name):
+        return TypedNameVerdict(ok=False, name=name, reason="forbidden_character")
 
     if any(c in _LINK_BREAKING_CHARS for c in name):
         return TypedNameVerdict(ok=False, name=name, reason="breaks_link")

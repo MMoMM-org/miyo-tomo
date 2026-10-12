@@ -169,10 +169,12 @@ The link-breaking set is local here, not added to `FORBIDDEN_CHARS`, because
 `sanitize_stem` uses `FORBIDDEN_CHARS` for note stems and `C# Notizen` must stay
 untouched (PRD F5-AC4).
 
-Check order: blank, separator, edge whitespace (`breaks_link`), `{{`/`<%`
-(`unsafe_sequence`), forbidden, control characters (`unsafe_sequence`), `# ^ [ ]`
+Check order: blank, separator, edge whitespace (`breaks_link`), `{{`/`<%` and
+control characters `[\x00-\x1f\x7f]` (`unsafe_sequence`), forbidden, `# ^ [ ]`
 (`breaks_link`). Edge whitespace precedes the unsafe checks so a tab at the edge
-reads as the whitespace problem it is. `<%` precedes `forbidden_character`
-because `<` is a `FORBIDDEN_CHARS` member and would mask it, contradicting
-F5-AC7. `\x00` is also a member and stays `forbidden_character` (a spec 038
-pin): refused either way, and it never aborts the run.
+reads as the whitespace problem it is. The unsafe checks precede
+`forbidden_character` because `<` and `\x00` are `FORBIDDEN_CHARS` members and
+would mask `<%` and the control-character rule, contradicting F5-AC7 ("one
+shared reason"). Spec 038 had pinned `\x00` as `forbidden_character`; spec 039
+re-pinned it to `unsafe_sequence` (review fix, T2.1) because NUL is a control
+character. Refused either way, and it never aborts the run.

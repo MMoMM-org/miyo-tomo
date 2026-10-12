@@ -146,13 +146,15 @@ def test_each_forbidden_character_is_refused():
 
     FORBIDDEN_CHARS has TEN members (obsidian_filename.py:32): the eight
     named in the task (: * ? " < > | and backslash), plus '/' (covered by
-    the separator class above), plus NUL (never named in the task's prose,
-    refused here so "every forbidden character" means all ten).
+    the separator class above), plus NUL (never named in the task's prose).
+    NUL is pinned separately by `test_nul_byte_is_refused`: since spec 039
+    F5-AC7 it is reported as `unsafe_sequence` because it is a control
+    character, so it no longer belongs in this `forbidden_character` loop.
 
-    Falsified by: omitting any one of these nine characters from the
-    implementation's forbidden set, or reusing a copy that dropped NUL.
+    Falsified by: omitting any one of these eight characters from the
+    implementation's forbidden set.
     """
-    forbidden_non_separator = [":", "*", "?", '"', "<", ">", "|", "\\", "\x00"]
+    forbidden_non_separator = [":", "*", "?", '"', "<", ">", "|", "\\"]
     for char in forbidden_non_separator:
         name = f"karte{char}png"
         verdict = check_typed_name(name)
@@ -164,14 +166,17 @@ def test_each_forbidden_character_is_refused():
 
 def test_nul_byte_is_refused():
     """NUL is refused even though the task's prose never names it --
-    only FORBIDDEN_CHARS' ten-member set does.
+    only FORBIDDEN_CHARS' ten-member set does. It is reported as
+    `unsafe_sequence` because it is a control character (spec 039 F5-AC7:
+    every control character shares one reason).
 
     Falsified by: an implementation that hand-lists the eight prose
-    characters instead of importing/mirroring the full FORBIDDEN_CHARS set.
+    characters instead of importing/mirroring the full FORBIDDEN_CHARS set
+    (NUL would then be accepted), or one that drops control characters.
     """
     verdict = check_typed_name("karte\x00.png")
     assert verdict.ok is False
-    assert verdict.reason == "forbidden_character"
+    assert verdict.reason == "unsafe_sequence"
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@
     such a name reached `_check_path_shape` and aborted ALL of Pass 2 (exit 2).
 
 Check order: blank, separator, edge whitespace (breaks_link), `{{`/`<%`
-(unsafe_sequence), forbidden, control chars (unsafe_sequence), `# ^ [ ]`
+and control chars [\\x00-\\x1f\\x7f] (unsafe_sequence), forbidden, `# ^ [ ]`
 (breaks_link). Edge tab is `breaks_link`; `<%` outranks forbidden because `<`
 is a FORBIDDEN_CHARS member.
 """
@@ -52,14 +52,19 @@ def test_existing_order_is_kept():
     assert check_typed_name("a?#b.png").reason == "forbidden_character"
     assert check_typed_name("a?#b.png").reason == "forbidden_character"
     # `<%` outranks forbidden_character ('<' is a FORBIDDEN_CHARS member);
-    # NUL stays forbidden_character (spec 038 pin).
+    # every control character, NUL included, outranks forbidden_character.
     assert check_typed_name("a<%b.png").reason == "unsafe_sequence"
-    assert check_typed_name("a\x00b.png").reason == "forbidden_character"
-    assert check_typed_name("a?\x01b.png").reason == "forbidden_character"
+    assert check_typed_name("a\x00b.png").reason == "unsafe_sequence"
+    assert check_typed_name("a?\x01b.png").reason == "unsafe_sequence"
+    # edge whitespace runs before the forbidden-character check.
+    assert check_typed_name(" a?.png").reason == "breaks_link"
+    assert check_typed_name("\ta\x00.png").reason == "breaks_link"
 
 
 @pytest.mark.parametrize("name", ["a{{b.png", "{{a.png", "a.png{{", "a<%b.png",
-                                  "<%a.png", "a\x01b.png", "a\x7fb.png", "a\nb.png"])
+                                  "<%a.png", "a\x01b.png", "a\x7fb.png", "a\nb.png",
+                                  "a\x00b.png", "\x01a.png", "a.png\x01",
+                                  "\x00a.png", "a.png\x7f"])
 def test_unsafe_sequences(name):
     v = check_typed_name(name)
     assert (v.ok, v.reason) == (False, "unsafe_sequence")

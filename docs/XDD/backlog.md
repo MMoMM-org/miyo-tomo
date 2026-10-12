@@ -1796,6 +1796,9 @@ because both change behaviour beyond a validation task's scope**:
    adding a fourth reason reads that sentence and believes the function already handles
    the case safely.
 
+**RESOLVED by spec 039 T1.5:** `blank` has an explicit branch, an unrecognised code raises
+`ValueError`, and the docstring no longer claims a structural guarantee the code lacked.
+
 ## CLOSED (2026-10-02) — spec 038's C1 asked for a count the renderer is twice argued against
 
 **Resolved by owner ruling 2026-10-02: C1 closes as SATISFIED BY F3**, not dropped and not built. F3's bullet in the instruction document carries the at-a-glance signal C1 wanted, so no count was added and neither ruling below was re-opened. Recorded beside the criterion in `requirements.md`. The findings are kept here because the reasoning is reusable: the next request for a count in this region meets the same two rulings.

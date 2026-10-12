@@ -1542,10 +1542,8 @@ duplication. It is not: the two fields have different readers with different
 needs. A renderer that wants to branch per refusal class — which T3.4 then did —
 needs a value it can compare, and the alternative is parsing the prose, which is
 exactly the practice spec 038 exists to stop anyone having to adopt. Three
-branches keyed on an enum are also why the final branch of
-`_typed_name_refusal_reason` is reached only by `blank` and is not a silent
-fallback: the set is closed (`frozenset`, `lib/typed_name_check.py`), so an
-unrecognised code is not a possibility the function has to absorb.
+branches keyed on an enum are also why `_typed_name_refusal_reason` branches on
+the code and never re-inspects the string.
 
 Measured at T3.5 by disabling the `separator_present` branch: the fall-through
 is worse than the obvious guess. Because the function branches on the CODE and
@@ -1554,6 +1552,16 @@ separator as a forbidden character — it falls past that check too and announce
 a separator to the owner as **blank**.
 `test_each_refusal_class_has_its_own_exact_prose_sentence` is red on that, which
 is why it asserts all three classes in one loop rather than one apiece.
+
+**Spec 039 T1.5 (v0.26.14): an unknown code raises.** The function used to end in
+an unguarded `return` of the blank sentence, so that measured fall-through was
+live for any code outside the three. `blank` now has its own branch and anything
+else raises `ValueError`. WHY raise instead of defaulting: a misreported reason
+tells the owner their name was blank when it was not, and the owner cannot tell
+the sentence is wrong. A raise is caught by tests the moment a fourth member joins
+`REFUSAL_REASONS`, never by an owner. It cannot fire in production today: the only
+caller, `_build_move_asset_actions`, passes `check_typed_name`'s verdict reason,
+which is drawn from the closed three-member set. (PRD F5-AC5, SDD ADR-6.)
 
 ### WHY the Three Fields Divide As They Do — Following a Convention, Not Inventing One
 

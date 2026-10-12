@@ -1,4 +1,4 @@
-# version: 0.26.13
+# version: 0.26.14
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -674,9 +674,9 @@ def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
     never what will happen on re-run, which belongs to the remedy text, not
     this sentence.
 
-    `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS` — a
-    closed set of exactly three members — so the final branch is reached
-    only by `blank`, not as a silent fallback for an unrecognised code.
+    `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS`. Each
+    member has its own branch; a code outside that set raises `ValueError`
+    rather than being reported as a blank name.
     """
     if refusal_reason == "separator_present":
         return (
@@ -688,7 +688,9 @@ def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
             f"typed name refused: `{proposed_name}` contains a character "
             f"Obsidian does not allow in a filename"
         )
-    return "typed name refused: the typed name is blank"
+    if refusal_reason == "blank":
+        return "typed name refused: the typed name is blank"
+    raise ValueError(f"unknown typed-name refusal reason: {refusal_reason!r}")
 
 
 def _build_move_asset_actions(

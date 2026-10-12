@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.4.0
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -58,6 +58,20 @@ class AttachmentPlan:
     @property
     def basename_searches(self) -> int:
         return getattr(self._census, "searches", 0)
+
+    def reports_by_source(self) -> dict[str, dict]:
+        """What the instruction document reports about each moved source:
+        its target, whether the target went unchecked, whether its folder
+        will be created, and why its embed carries a path (or None)."""
+        return {
+            d.source: {
+                "target": d.target,
+                "unchecked": d.unchecked,
+                "folder_created": d.folder_created,
+                "qualified_reason": d.qualified_reason,
+            }
+            for d in self.decisions if d.target is not None
+        }
 
 
 @dataclass

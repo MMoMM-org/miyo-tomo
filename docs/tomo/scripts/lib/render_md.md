@@ -738,6 +738,16 @@ confirmed item, so the owning note is always being filed, while the paired
 delete would have been the fifth claim in this section corrected for saying more
 than the renderer knows.
 
+**Superseded by spec 039 F6-AC8 (v0.34.0).** Since ADR-10 the origin's delete
+waits for its attachment moves, so the 2026-09-15 end state is no longer
+reachable through Ignore: a refused move fails the delete's dependency and the
+source note stays in the inbox. The disclosure now says exactly that — "If the
+move fails, the source note that embeds it is kept in the inbox rather than
+deleted" — and no longer says the note is filed either way or points at a file
+left behind. It still never says "its source note is deleted"; with "Keep source
+files" there is no delete, and the source note is kept all the same, so the new
+sentence is true in both cases.
+
 ## Where This Lands in the User Documentation
 
 Owner reminder, 2026-09-29: none of spec 037 had reached the user docs. Grep
@@ -936,3 +946,39 @@ opening in lower case — which is why that requirement is stated in the
 function's own docstring rather than left to the reader of four branches to
 notice. It is the kind of defect no unit test was asked to catch and a single
 real render makes obvious.
+
+## What the Plan Learned Is Reported in the Move's Own Block (spec 039 T5.1, v0.34.0)
+
+WHY "new folder", "target not checked" and "embed written with path" are lines
+in the move's block and not a section of their own: each is a fact about one
+move the owner is about to apply, and the block is where they tick it. An
+end-of-document list would need correlating back by hand — the defect the
+Ignore annotation was moved into the block to fix (owner request 2026-09-28).
+The data arrives as `metadata["attachment_reports"]`
+(`AttachmentPlan.reports_by_source`) keyed by source and is read only for moves
+still in `actions`, so a move a later guard withdrew reports nothing.
+
+- **New folder** (F2-AC8): "will be created on apply" is the executor's
+  documented contract (PRD A3), not a prediction; the folder is the one the
+  vault listed as absent.
+- **Target not checked** (F3-AC6, ADR-8): the vault did not answer, so the line
+  states only that — never "free", which would read an unanswered check as a
+  favourable one. It is a function (`_render_unchecked_target_notice`) for the
+  same reason `_render_skipped_asset_notice` is: it has a second surface, the
+  shell relay, and calling one function twice is what keeps them identical.
+- **Embed written with path** (tracking table, F4): names the reason —
+  another file has the same name, or the vault did not answer — so the new
+  embed form is auditable rather than surprising.
+
+Sentences come from `lib/refusal_sentences.py` (K16), the one home for
+owner-facing prose. No executor internals in any of them (ADR-11).
+
+## `typed_folder_refused` and `vault_occupied` Got Their Own Remedies (spec 039 T5.1)
+
+Both kinds reached `_render_skipped_asset_notice` from Phase 4 on and fell to
+the loud fallback, by design until the sentences were written here. A refused
+folder is held like a refused name, so its remedy mirrors that one's two reading
+moments with the folder as the thing to retype. An occupied target holds its
+notes too (ADR-7), so the remedy says the attachment stays in the inbox with the
+note that embeds it, and names the two ways out: free the target, or choose
+another name on the next `/inbox`.

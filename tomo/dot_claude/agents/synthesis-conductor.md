@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.21.0
+# version: 0.22.0
 
 **Active agent: synthesis-conductor**
 
@@ -147,7 +147,8 @@ python3 scripts/instruction-render.py \
   --upstream-type <DOC_TYPE> \
   --upstream-path "<VAULT_PATH>" \
   --upstream-body "<CACHE_PATH>" \
-  --run-id "<RUN_ID>"
+  --run-id "<RUN_ID>" \
+  --cost-history state/inbox-cost-history.jsonl
 ```
 
 Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
@@ -213,8 +214,9 @@ Check for a run-level withheld-attachment relay:
 cat tomo-tmp/withheld-attachments.md
 ```
 If the file exists, every line in it IS an already-sanitized user-facing
-notice — one per attachment this run left in the inbox, across every entry
-processed. The file never contains anything else (no run id, no header, no
+notice — one per attachment this run left in the inbox, and one per attachment
+target that could not be checked, across every entry processed. Relay both
+kinds alike. The file never contains anything else (no run id, no header, no
 internals). If the command errors (no such file), there is nothing to relay.
 
 > Pass 2 complete — instructions rendered for N source doc(s).

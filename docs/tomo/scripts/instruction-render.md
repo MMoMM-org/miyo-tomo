@@ -1162,3 +1162,21 @@ runtime file the LLM reads.
 A run with no attachment pays no census and no asset-folder listing: the plan
 asks the lookup and the census only per attachment source, so their counters
 stay at zero and the only listing is the note guard's (F3-AC7).
+
+## The Attachment Relay Also Carries Unchecked Targets (spec 039 T5.1, v0.67.0)
+
+WHY `withheld-attachments.md` holds a second kind of line rather than a third
+relay file: ADR-8 emits a move whose target the vault did not answer for and
+reports it as not checked, in the instruction document and in the shell (SDD
+Error Handling). A third file would be a third `cat` in the conductor and a
+third staleness pair for no gain — the lines are already-sanitised notices like
+the others, and `sync_notice_relay_file` does not care what they say. The
+lines come from `unchecked_target_notices(actions, reports)` over the final
+`actions`, so a move a guard withdrew is never relayed, and each is the line the
+move's block in `instructions.md` carries. One line per target, never a count
+(038 C1). The filename stays: renaming it would move the wiring guard and the
+conductor together for a cosmetic gain.
+
+`attachment_reports` (`AttachmentPlan.reports_by_source()`) is computed once
+there and handed to `render_instructions_md` in the metadata, so both surfaces
+read the same object.

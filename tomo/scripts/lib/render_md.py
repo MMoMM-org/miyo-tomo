@@ -1,4 +1,4 @@
-# version: 0.33.0
+# version: 0.34.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -15,6 +15,11 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
+from lib.refusal_sentences import (
+    folder_created_sentence,
+    qualified_embed_sentence,
+    unchecked_target_sentence,
+)
 from lib.render_helpers import (
     WITHDRAWAL_GUARDS,
     _moc_stem,
@@ -71,8 +76,14 @@ def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
 def _render_action_md(
     action: dict, cfg: dict, ambiguous_sources: set[str] | None = None,
     ignored_conflict_sources: set[str] | None = None,
+    attachment_reports: dict[str, dict] | None = None,
 ) -> str:
     """Render a single action as an H3 block with a checkbox + structured fields.
+
+    `attachment_reports` maps a moved attachment's source to what the
+    attachment plan learned about it (`AttachmentPlan.reports_by_source`): a
+    folder that will be created, a target the vault did not answer for, an
+    embed written with the full path. Each is reported in the move's own block.
 
     `ignored_conflict_sources` names the attachments whose Pass-1 destination
     conflict the owner resolved with `ignore` (owner request 2026-09-28). Such
@@ -112,6 +123,9 @@ def _render_action_md(
             lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
+        report = (attachment_reports or {}).get(action.get("source"))
+        if report:
+            lines.extend(_attachment_report_lines(action["source"], report))
         if ignored_conflict_sources and action.get("source") in ignored_conflict_sources:
             # States the DECISION and how to revisit it — never an outcome.
             # The end-of-document bullet is the one that says what applying
@@ -136,18 +150,16 @@ def _render_action_md(
             # referencing it. That is the 2026-09-15 end state, reached this
             # time by a choice the document did not fully describe.
             #
-            # It says "filed either way" and not "its source note is deleted":
-            # a move_asset only exists for a CONFIRMED item, so the owning
-            # note is always being filed, while the paired delete_source can
-            # be opted out of with "Keep source files". Stating the always-true
-            # half keeps this from becoming the fifth claim corrected for
-            # asserting more than the renderer knows.
+            # Spec 039 F6-AC8 replaced "filed either way": the origin's delete
+            # now waits for this move (ADR-10), so a refused move keeps the
+            # source note in the inbox. That holds with or without "Keep
+            # source files" — without a delete, nothing removes it either.
             lines.append(
                 "- ⚠️ **Destination was occupied:** Pass 1 found this name "
                 "already taken and you chose Ignore, so the move is sent "
-                "unchanged. The note that embeds it is filed either way, so "
-                "it will point at a file left behind in the inbox. To resolve "
-                "it instead, tick Rename or Keep in inbox in the suggestions "
+                "unchanged. If the move fails, the source note that embeds it "
+                "is kept in the inbox rather than deleted. To resolve it "
+                "instead, tick Rename or Keep in inbox in the suggestions "
                 "document, then run `/inbox --pass2 --force`."
             )
         return "\n".join(lines)
@@ -737,6 +749,52 @@ def _render_withdrawal_bullet(withdrawal: dict, indent: str) -> str:
     )
 
 
+def _render_unchecked_target_notice(source: str, target: str) -> str:
+    """One move whose target the vault did not answer for (spec 039 F3-AC6).
+
+    Two surfaces, like `_render_skipped_asset_notice`: the move's own block in
+    the instruction document and the run-level shell relay. Both call this.
+    """
+    return (
+        f"- ⚠️ **Target not checked:** `{source}` — "
+        f"{unchecked_target_sentence(target)}."
+    )
+
+
+def _attachment_report_lines(source: str, report: dict) -> list[str]:
+    """The lines a move's block carries for what the plan learned about it."""
+    lines: list[str] = []
+    target = report.get("target") or ""
+    if report.get("folder_created"):
+        lines.append(
+            f"- **New folder:** {folder_created_sentence(target.rpartition('/')[0])}"
+        )
+    if report.get("unchecked"):
+        lines.append(_render_unchecked_target_notice(source, target))
+    if report.get("qualified_reason"):
+        lines.append(
+            "- **Embed written with path:** "
+            f"{qualified_embed_sentence(target, report['qualified_reason'])}"
+        )
+    return lines
+
+
+def unchecked_target_notices(
+    actions: list[dict], attachment_reports: dict[str, dict] | None
+) -> list[str]:
+    """The unchecked-target notice for every move still in `actions`, in
+    action order — the same lines the document's move blocks carry."""
+    reports = attachment_reports or {}
+    notices = []
+    for a in actions:
+        if a.get("action") != "move_asset":
+            continue
+        report = reports.get(a.get("source"))
+        if report and report.get("unchecked"):
+            notices.append(_render_unchecked_target_notice(a["source"], report["target"]))
+    return notices
+
+
 def _render_unresolved_conflict_bullet(entry: dict) -> str:
     """One attachment conflict the owner did NOT resolve by rename (spec 037
     T4.2, PRD C2/S2): named individually under "## Skipped", same `⚠️
@@ -884,6 +942,24 @@ def _render_skipped_asset_notice(entry: dict) -> str:
             "the name in the suggestions document and run "
             "`/inbox --pass2 --force`; afterwards, it is still in "
             "the inbox, so re-run `/inbox` and name it again"
+        )
+    elif kind == "typed_folder_refused":
+        # spec 039: held like typed_name_refused, so the same two reading
+        # moments; the thing to retype is the FOLDER.
+        remedy = (
+            "Type a usable folder for it: before applying, correct "
+            "the folder in the suggestions document and run "
+            "`/inbox --pass2 --force`; afterwards, it is still in "
+            "the inbox, so re-run `/inbox` and choose its folder again"
+        )
+    elif kind == "vault_occupied":
+        # spec 039 ADR-7: the owning notes are held, so the attachment and
+        # the note that embeds it stay in the inbox until the target is free
+        # or another name is chosen.
+        remedy = (
+            "It stays in the inbox with the note that embeds it: free that "
+            "target in the vault, or re-run `/inbox` and choose another "
+            "name for it"
         )
     else:
         # A missing or unrecognized kind must never silently fall
@@ -1041,6 +1117,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for r in (metadata.get("attachment_conflict_remedies") or [])
         if r.get("remedy") == "ignore" and r.get("source")
     }
+    attachment_reports = metadata.get("attachment_reports") or {}
 
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
@@ -1056,7 +1133,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append("")
         for a in bucket:
             body_parts.append(
-                _render_action_md(a, cfg, ambiguous_sources, ignored_conflict_sources)
+                _render_action_md(a, cfg, ambiguous_sources, ignored_conflict_sources,
+                                  attachment_reports)
             )
             body_parts.append("")
         for w in withdrawn_here:

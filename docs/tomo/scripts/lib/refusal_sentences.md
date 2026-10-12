@@ -50,6 +50,14 @@ through `_visible`, an unknown code raises `ValueError`, no remedy text. The
 Obsidian forbids it, because it does not (owner ruling 2026-10-12). `blank`
 quotes nothing: there is nothing to show.
 
+**`blank` covers an unreadable folder line (spec 039 T5.1).** A malformed folder
+line (no backticks, a lone backtick, text after the closing one) and two folder
+lines that disagree both reach the plan as `""` and are refused `blank`. The
+first wording, "the typed folder is blank", told those owners they left it
+blank when they had typed something. The sentence now says the line "is blank
+or could not be read as a single folder in backticks" — true of all three, and
+cheaper than a tenth reason code that would have to cross the wire.
+
 ## The `vault_occupied` sentence (spec 039 T4.2, F3-AC5)
 
 WHY it lives here and not in the plan: K16 is the one home for owner-facing
@@ -72,3 +80,16 @@ sentence appends its case note only when the two spellings differ after NFC
 (`vault_paths.same_spelling`); an NFC/NFD pair reads as the plain sentence,
 because "the names differ only in case" would describe a difference that does
 not show.
+
+## Sentences for a move that is emitted (spec 039 T5.1)
+
+`unchecked_target_sentence`, `folder_created_sentence` and
+`qualified_embed_sentence` live here for the same reason the refusal sentences
+do: one home for owner-facing prose (K16). They state only what was verified.
+The unchecked sentence says the vault did not answer and never calls the target
+free (F3-AC6); its consequence clause ("if the move fails, the attachment and
+the source note that embeds it stay in the inbox") is the origin-keeping
+contract of ADR-10, the same one the Ignore disclosure states (F6-AC8).
+"Will be created on apply" is the executor's documented contract (PRD A3).
+`qualified_embed_sentence` raises `ValueError` on a reason other than
+`ambiguous` / `unanswered`, like every function here that takes a code.

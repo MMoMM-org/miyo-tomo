@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -7,9 +7,11 @@ one file and never spread across the renderers that report it. Pure functions
 on strings: no I/O, no run state. `typed_name_sentence` takes a code from
 `lib.typed_name_check.REFUSAL_REASONS`; `folder_sentence` takes one from
 `lib.typed_name_check.FOLDER_REFUSAL_REASONS`; `occupied_target_sentence`
-phrases the `vault_occupied` withheld kind. The first two raise `ValueError` on a
-code it does not know — an unknown code is a bug upstream, never reported as
-some other refusal.
+phrases the `vault_occupied` withheld kind. `unchecked_target_sentence`,
+`folder_created_sentence` and `qualified_embed_sentence` phrase what the
+instruction document reports about a move that IS emitted. Functions taking a
+code raise `ValueError` on one they do not know — an unknown code is a bug
+upstream, never reported as some other outcome.
 
 Sentences state only what was verified about the typed name (no remedy text, no
 promise about a re-run) and name the typed name itself, with control characters
@@ -77,7 +79,13 @@ _FOLDER_TAILS = {
 def folder_sentence(reason: str, folder: str) -> str:
     """The sentence for one refused typed folder, given its reason code."""
     if reason == "blank":
-        return "typed folder refused: the typed folder is blank"
+        # A malformed folder line, or two folder lines that disagree, reach
+        # the plan as "" too — so the sentence must not say the owner left it
+        # blank.
+        return (
+            "typed folder refused: the folder line is blank or could not be "
+            "read as a single folder in backticks"
+        )
     tail = _FOLDER_TAILS.get(reason)
     if tail is None:
         raise ValueError(f"unknown typed-folder refusal reason: {reason!r}")
@@ -108,3 +116,36 @@ def occupied_target_sentence(
             "them as one file"
         )
     return sentence
+
+
+def unchecked_target_sentence(target: str) -> str:
+    """The sentence for a move whose target the vault did not answer for.
+
+    States only what is known: nothing was learned about the target, so it is
+    never called free.
+    """
+    return (
+        f"the vault did not answer whether anything already occupies "
+        f"`{_visible(target)}`, so this target was not checked before the move "
+        f"was written; if the move fails, the attachment and the source note "
+        f"that embeds it stay in the inbox"
+    )
+
+
+def folder_created_sentence(folder: str) -> str:
+    """The sentence for a target folder the vault listed as absent."""
+    return f"`{_visible(folder)}` does not exist yet and will be created on apply"
+
+
+_QUALIFIED_TAILS = {
+    "ambiguous": "because another file has the same name",
+    "unanswered": "because the vault did not answer whether another file has the same name",
+}
+
+
+def qualified_embed_sentence(target: str, reason: str) -> str:
+    """The sentence for an embed written with the attachment's full path."""
+    tail = _QUALIFIED_TAILS.get(reason)
+    if tail is None:
+        raise ValueError(f"unknown embed qualification reason: {reason!r}")
+    return f"notes that embed it link to `{_visible(target)}`, {tail}"

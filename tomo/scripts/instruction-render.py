@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.66.2
+# version: 0.67.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -103,6 +103,7 @@ from lib.render_md import (  # noqa: E402,F401
     _render_withdrawn_delete_notice,
     backfill_supporting_items_parents,
     render_instructions_md,
+    unchecked_target_notices,
 )
 from lib.render_resolve import (  # noqa: E402,F401
     FOOTER_CALLOUTS,
@@ -986,10 +987,18 @@ def main() -> int:
     # (suppress_moves_for_unfiled_attachments takes it read-only), and this sits
     # after both fatal-abort guards: a run that aborts before this point writes
     # nothing.
+    # Spec 039 T5.1: the same file also carries one line per move whose target
+    # the vault did not answer for — the line its move block carries in
+    # instructions.md, read off the final `actions` so a move a guard withdrew
+    # is never reported.
+    attachment_reports = (
+        attachment_plan.reports_by_source() if attachment_plan is not None else {}
+    )
     sync_notice_relay_file(
         out_dir.parent / WITHHELD_ATTACHMENTS_RELAY,
         args.run_id,
-        [_render_skipped_asset_notice(s) for s in skipped_assets],
+        [_render_skipped_asset_notice(s) for s in skipped_assets]
+        + unchecked_target_notices(actions, attachment_reports),
     )
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
@@ -1183,6 +1192,10 @@ def main() -> int:
             # never forwarded to the renderer — the same missing-transport gap
             # T3.0 fixed for suggestion-parser -> instruction-render.
             "attachment_conflict_remedies": attachment_conflict_remedies,
+            # spec 039 T5.1: per moved source, what the attachment plan
+            # learned — folder to be created, target not checked, embed
+            # written with path.
+            "attachment_reports": attachment_reports,
         },
         cfg,
     )

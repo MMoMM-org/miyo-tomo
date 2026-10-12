@@ -139,3 +139,11 @@ the inbox and its note with it (spec 034 T5.4), and the next run, without the
 failed item, files it. Planning only rendered items would need the plan built
 after rendering, which is too late for the embed rewrite (the reason for
 ADR-1's single decision site).
+
+## `reports_by_source` (spec 039 T5.1)
+
+The renderer and the shell relay need what the plan learned about each moved
+source (folder to be created, target not checked, why the embed carries a
+path) without importing the plan's dataclasses. `reports_by_source()` projects
+exactly those four fields as plain dicts for moved sources only; a withheld
+source is already reported through its `skipped_assets` entry.

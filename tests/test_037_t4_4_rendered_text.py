@@ -471,17 +471,17 @@ def test_the_ignore_annotation_discloses_what_happens_to_the_note():
     the document described only half of. The owner was told what happens to the
     ATTACHMENT and not to the NOTE.
 
-    Mutation: drop the "filed either way" sentence.
+    Mutation: drop the disclosure sentence.
 
-    It says "filed either way" rather than "its source note is deleted"
-    deliberately: a `move_asset` exists only for a CONFIRMED item, so the owning
-    note is always being filed, while the paired `delete_source` can be opted
-    out of with "Keep source files". Asserting the delete would be the fifth
-    claim in this section corrected for saying more than the renderer knows.
+    Spec 039 F6-AC8 replaced the original "filed either way ... left behind in
+    the inbox" sentence: the origin's delete now waits for the attachment move
+    (ADR-10), so a refused move keeps the source note in the inbox. It still
+    never says "its source note is deleted" — the paired delete can be opted
+    out of with "Keep source files".
     """
     block = _action_block(_render_with_remedy("ignore"))
-    assert "filed either way" in block, block
-    assert "left behind in the inbox" in block, block
+    assert "If the move fails, the source note that embeds it is kept in the inbox" in block, block
+    assert "filed either way" not in block, block
     assert "source note is deleted" not in block, (
         "the paired delete can be opted out of with Keep source files, so this "
         f"must not be asserted: {block}"

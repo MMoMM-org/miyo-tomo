@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_039_t4_1_basename_census.py — spec 039 T4.1 (F3-AC7, SDD K3 / ADR-3).
 
 The census asks Kado `byName` once per distinct case-folded basename, filters
@@ -15,6 +15,9 @@ Mechanisms falsified, one per test:
 - Unicode undercount: Kado matches `query in name.lower()` with no
   normalisation, so the census must query both NFC and NFD lowercase forms
   (KadoVault below is faithful to that; FakeKado keys by exact query string)
+- local key not casefolded (`.lower()` leaves `ß` != `ss`): `Straße.png`
+  must count a hit stored as `STRASSE.png`
+- malformed response read as an answer: a non-dict result is None
 CON-7: a counting fake stands in for Kado; no network.
 """
 from __future__ import annotations
@@ -188,3 +191,37 @@ def test_glob_characters_are_not_sent_to_kado():
     census = make_basename_census(fake)
     assert census.count("a*.png") is None
     assert fake.calls == []
+
+
+def test_local_key_casefolds_sharp_s():
+    """Pins the LOCAL key (NFC + casefold: ss), not Kado's matching.
+
+    The fake maps the query to STRASSE.png explicitly, which Kado's substring
+    rule would not return; only the census's own narrowing is under test.
+    """
+    fake = FakeKado({"straße.png": [["x/STRASSE.png"]]})
+    assert make_basename_census(fake).count("Straße.png") == 1
+
+
+def test_malformed_response_is_none():
+    class Malformed:
+        def _call_tool(self, tool_name, arguments):
+            return ["not", "a", "dict"]
+
+    assert make_basename_census(Malformed()).count("a.png") is None
+
+
+def test_malformed_items_are_none():
+    class BadItems:
+        def _call_tool(self, tool_name, arguments):
+            return {"items": [None]}
+
+    assert make_basename_census(BadItems()).count("a.png") is None
+
+
+def test_regex_metacharacters_are_literal_in_kado_so_they_are_sent():
+    """Kado escapes every regex metachar except * and ?; only those are globs."""
+    fake = FakeKado({"a[1].png": [["x/a[1].png"]], "a{1}.png": [["x/a{1}.png"]]})
+    census = make_basename_census(fake)
+    assert census.count("a[1].png") == 1
+    assert census.count("a{1}.png") == 1

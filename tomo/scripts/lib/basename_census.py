@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """basename_census.py — how many vault files already carry a given file name.
 
 Spec 039 K3 / ADR-3. Filing an attachment under a name another vault file
@@ -20,9 +20,15 @@ no Unicode normalisation and no casefold. So each ask sends the NFC and, when
 it differs, the NFD form, each through Python `.lower()` (not casefold, which
 would turn "Straße" into "strasse" and match nothing). Hits are unioned by
 path, narrowed to exact final-segment equality under the local key (NFC +
-casefold, the same normalisation as typed_name_check's inside_inbox; matching
+casefold, the same normalisation as typed_name_check's `_comparable`; matching
 more loosely than Kado is the safe, over-counting direction), and counted as
 distinct paths.
+
+Glob guard: Kado's byName treats only `*` and `?` as glob syntax
+(`isGlobQuery` in search-adapter.ts); its glob-to-RegExp conversion escapes
+every other regex metacharacter, so `[`, `{`, `(` and the rest are literal and
+need no guard. A malformed response of any shape (non-dict, wrong field types)
+is "unanswered", the same as an error.
 
 Bounds (F3-AC7): one name search per distinct basename (cache keyed by the
 local key), plus one more only for a name whose NFC and NFD forms differ, so at
@@ -75,11 +81,11 @@ class BasenameCensus:
             self.pages += 1
             try:
                 result = self._client._call_tool("kado-search", args)
+                items = result.get("items", [])
+                paths.update(str(item.get("path", "")) for item in items)
+                cursor = result.get("nextCursor") or result.get("cursor")
             except Exception:  # noqa: BLE001 — any failure is "unanswered"
                 return False
-            items = result.get("items", [])
-            paths.update(str(item.get("path", "")) for item in items)
-            cursor = result.get("nextCursor") or result.get("cursor")
             if not cursor or not items:
                 return True
         return False

@@ -40,3 +40,11 @@ Runtime file: `tomo/scripts/lib/basename_census.py`. Spec 039 K3, ADR-3, PRD F3-
 - **Budget across variants.** PAGE_BUDGET (2) applies per variant search. If any
   variant errors or exhausts its budget the whole count is None (cached), never
   a partial number.
+- **Glob metacharacters.** Kado `search-adapter.ts` `isGlobQuery` treats only
+  `*` and `?` as glob syntax; `globQueryToRegExp` escapes `. + ^ $ { } ( ) | [ ] \`
+  first, so `[` and `{` are literal there and are sent like any other character
+  (pinned by a test). Guarding more than `*`/`?` would return None for legal
+  names for no safety gain.
+- **Malformed responses.** Response parsing sits inside the same `try` as the
+  call, so a non-dict result or non-dict item is "unanswered" (None), never a
+  count taken from a half-read answer.

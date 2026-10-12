@@ -1146,6 +1146,12 @@ recognise it: `rewrite_renamed_embeds`'s docstring,
 `docs/tomo/scripts/lib/embed_rewrite.md` ("Basename Matching, Not Full-Path
 Matching"), and `docs/tomo/scripts/instruction-render.md`'s T3.3 section.
 
+**Narrowed 2026-10-12 by spec 039 T4.4** (`186bfa5b`), still OPEN. The rewrite now matches by
+the resolver's own rule over the note's attachments: a bare `![[karte.png]]` shared by two of
+them resolves to neither and is no longer rewritten for either, and a path-qualified embed
+reaches only its own source. What remains is the bare embed left unrewritten for a renamed
+attachment in this shape — unchanged text, not a wrong rewrite.
+
 ## OPEN — Force Atomic Note bypasses attachment conflict detection entirely
 
 **Recorded 2026-09-28**, found while diagnosing why spec 037's first live T4.3
@@ -1922,7 +1928,16 @@ refactor a condition of passing. The file is also already past the constitution'
 that has several; taking it in isolation buys the next field's safety and nothing more.
 Worth doing **before** a fourth field lands, not after.
 
-## OPEN — the typed-name refusal is decided twice, by two consumers, with nothing enforcing agreement
+## RESOLVED — the typed-name refusal is decided twice, by two consumers, with nothing enforcing agreement
+
+**Resolved 2026-10-12 by spec 039 Phase 4**, without the wire field proposed below. The
+attachment plan (`lib/attachment_plan.py`) decides the refusal once, decision-table row 6,
+and both consumers read its verdict: the move builder since T4.3 (`651ed308`, a projection
+of the plan) and the embed rewrite since T4.4 (`186bfa5b`, `rewrite_attachment_embeds`, which
+no longer imports `check_typed_name`). The decision is carried as data inside Pass 2 rather
+than on the wire, so no Hashi handoff was needed. The agreement test in
+`test_038_t4_3_refused_name_rewrites_no_embed.py` stays; both halves now read one plan.
+Kept for the history below.
 
 Recorded 2026-10-03 while priming spec 038 T4.3. Not taken in Phase 4 — it changes the
 wire contract and would need a Hashi handoff.
@@ -1961,7 +1976,13 @@ That test is the only thing standing between the two conditions and silent drift
 not delete it as redundant with the per-half tests, because neither of those can see a
 disagreement.
 
-## OPEN — a move withheld for a RUN-level reason still rewrites the staged note's embed
+## RESOLVED — a move withheld for a RUN-level reason still rewrites the staged note's embed
+
+**Resolved 2026-10-12 by spec 039 T4.4** (`186bfa5b`). The attachment plan is built before the
+render loop and sees the whole run, so a `collision` or `no_basename` source has no target and
+no embed, and `rewrite_attachment_embeds` writes nothing for it (PRD F4-AC8). Pinned by
+`test_a_run_level_collision_rewrites_nothing` in `tests/test_039_t4_4_embed_rewrite_reads_plan.py`,
+built on the reproduction below. Kept for the history below.
 
 Found 2026-10-03 by spec 038 T4.3's implementer, answering whether its gate agrees
 with `_build_move_asset_actions` on every input. It does — on the typed-name verdict.

@@ -1,4 +1,4 @@
-# version: 0.26.14
+# version: 0.26.15
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -28,6 +28,7 @@ from lib.render_helpers import (
     resolve_sibling_path,
     resolve_source_path,
 )
+from lib.refusal_sentences import typed_name_sentence
 from lib.render_md import bare_stem
 from lib.typed_name_check import check_typed_name
 from lib.vault_folder_lookup import VaultFolderLookup
@@ -676,21 +677,10 @@ def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
 
     `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS`. Each
     member has its own branch; a code outside that set raises `ValueError`
-    rather than being reported as a blank name.
+    rather than being reported as a blank name. The sentences live in
+    `lib.refusal_sentences`.
     """
-    if refusal_reason == "separator_present":
-        return (
-            f"typed name refused: `{proposed_name}` contains a path "
-            f"separator, which is not allowed in a filename"
-        )
-    if refusal_reason == "forbidden_character":
-        return (
-            f"typed name refused: `{proposed_name}` contains a character "
-            f"Obsidian does not allow in a filename"
-        )
-    if refusal_reason == "blank":
-        return "typed name refused: the typed name is blank"
-    raise ValueError(f"unknown typed-name refusal reason: {refusal_reason!r}")
+    return typed_name_sentence(refusal_reason, proposed_name)
 
 
 def _build_move_asset_actions(

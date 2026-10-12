@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.2.0
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -26,9 +26,25 @@ from dataclasses import dataclass
 from lib.obsidian_filename import FORBIDDEN_CHARS
 
 # Closed set of refusal reasons, so a renderer can phrase each without parsing
-# a string. Exactly three members — `taken` is excluded on purpose; see the
+# a string. Exactly five members — `taken` is excluded on purpose; see the
 # module docstring.
-REFUSAL_REASONS = frozenset({"separator_present", "forbidden_character", "blank"})
+REFUSAL_REASONS = frozenset({
+    "separator_present", "forbidden_character", "blank",
+    "breaks_link", "unsafe_sequence",
+})
+
+# Characters a wikilink cannot carry (heading, block, nested-link syntax).
+# Local on purpose: FORBIDDEN_CHARS is the sanitiser's set and `sanitize_stem`
+# must keep leaving `C# Notizen` alone.
+_LINK_BREAKING_CHARS = frozenset("#^[]")
+
+# `{{` and `<%` are template syntax; control characters corrupt the wire.
+_UNSAFE_SUBSTRINGS = ("{{", "<%")
+
+
+def _is_control(c: str) -> bool:
+    return ord(c) < 0x20 or ord(c) == 0x7F
+
 
 # '/' is a member of FORBIDDEN_CHARS but is reported as `separator_present`,
 # not `forbidden_character` — the separator check runs first (see
@@ -59,14 +75,19 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     Blank is checked first of all, since an empty or whitespace-only string
     has no meaningful separator or character content to classify.
 
-    A name padded with leading/trailing whitespace (`"  a.png  "`) is none
-    of the three refusal classes, so it is accepted verbatim, padding and
-    all — `.strip()` here only decides blankness, it never trims the
-    returned name. Flagged to the owner 2026-10-01 as a possible fourth
-    case (whitespace is easy to type by accident and invisible once typed);
-    left as accept-as-is pending a ruling, since ADR-5 permits only accept-
-    verbatim or refuse, never trim, and the three classes are a closed set.
-    See tests/test_038_t3_1_typed_name_check.py's pinning test.
+    Full order: blank, separator_present, edge whitespace (breaks_link),
+    template substrings `{{` / `<%` (unsafe_sequence), forbidden_character,
+    control characters (unsafe_sequence), link-breaking characters
+    (breaks_link). Edge whitespace precedes the unsafe checks so a tab at
+    either edge (`"\ta.png"`) is `breaks_link` although a tab is also a
+    control character; an interior control character (`"a\x01b.png"`) is
+    `unsafe_sequence`. `<%` is tested before `forbidden_character` because `<`
+    is a FORBIDDEN_CHARS member and would otherwise mask it. `\x00` is also a
+    FORBIDDEN_CHARS member and stays `forbidden_character` (spec 038 pin); it
+    is refused either way and never aborts the run.
+
+    Edge whitespace is refused, never trimmed: `.strip()` only decides
+    blankness and edge whitespace; the returned name is the argument as typed.
     """
     if not name.strip():
         return TypedNameVerdict(ok=False, name=name, reason="blank")
@@ -74,7 +95,19 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     if "/" in name:
         return TypedNameVerdict(ok=False, name=name, reason="separator_present")
 
+    if name != name.strip():
+        return TypedNameVerdict(ok=False, name=name, reason="breaks_link")
+
+    if any(u in name for u in _UNSAFE_SUBSTRINGS):
+        return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
+
     if any(c in _NON_SEPARATOR_FORBIDDEN_CHARS for c in name):
         return TypedNameVerdict(ok=False, name=name, reason="forbidden_character")
+
+    if any(_is_control(c) for c in name):
+        return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
+
+    if any(c in _LINK_BREAKING_CHARS for c in name):
+        return TypedNameVerdict(ok=False, name=name, reason="breaks_link")
 
     return TypedNameVerdict(ok=True, name=name)

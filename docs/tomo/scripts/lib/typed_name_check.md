@@ -2,7 +2,7 @@
 
 > Rationale for decisions in `tomo/scripts/lib/typed_name_check.py`.
 > A pure verdict on one owner-typed attachment name: usable, or refused with
-> one of three reason codes. Only non-obvious decisions are recorded here.
+> one of five reason codes. Only non-obvious decisions are recorded here.
 
 ## Refusal, Never Substitution (spec 038 T3.1, ADR-5, v0.1.0)
 
@@ -28,16 +28,11 @@ argument. That is a structural guarantee rather than a convention — a future
 change that wanted to trim or substitute would have to alter the dataclass's
 documented contract to do it, not just add a line.
 
-ADR-5 closes the set of permitted outcomes to two, accept-verbatim or refuse,
-and the one case that tempts a third is recorded in `check_typed_name`'s own
-docstring rather than here because it is still open: a name padded with leading
-or trailing whitespace (`"  a.png  "`) is none of the three refusal classes, so
-it is accepted padding and all. Flagged to the owner 2026-10-01 — whitespace is
-easy to type by accident and invisible once typed — and deliberately left as
-accept-as-is pending a ruling, because trimming it is the one thing ADR-5 does
-not permit and inventing a fourth class to refuse it would pre-empt the owner's
-decision. `tests/test_038_t3_1_typed_name_check.py` pins the current behaviour
-so the ruling, when it comes, arrives against a test rather than into a gap.
+ADR-5 closes the set of permitted outcomes to two, accept-verbatim or refuse.
+The padded name that spec 038 left accepted (`"  a.png  "`, flagged to the
+owner 2026-10-01) is now refused as `breaks_link` (spec 039 T2.1, #185): trimming
+stays forbidden, so the only honest answer to an invisible, accidentally typed
+edge space is to refuse it and let the owner retype.
 
 ## A Separate Module, Not a Branch in the Move Builder (spec 038 T3.1)
 
@@ -66,9 +61,9 @@ function whose entire input is one `str` and whose entire output is a frozen
 dataclass has no seam to hide behind, so the file's size is the honest size of
 the rule rather than a wrapper around one elsewhere.
 
-## Three String Classes, and Why `taken` Is Not the Fourth (spec 038 T3.1, owner 2026-10-01)
+## The String Classes, and Why `taken` Is Not One of Them (spec 038 T3.1, owner 2026-10-01)
 
-WHY `REFUSAL_REASONS` has exactly three members when F3 names four things that
+WHY `REFUSAL_REASONS` has no `taken` member when F3 names four things that
 can be wrong with a typed name — separator, forbidden character, blank, and
 *already taken*.
 
@@ -111,13 +106,11 @@ document rendered from the run in which they typed the name.
 
 The set is `frozenset` and the module docstring calls it closed, which is load-
 bearing downstream rather than decorative: `_typed_name_refusal_reason`
-(`render_actions.py:692`) has three branches and reaches its final `return` only
-for `blank`, not as a fallback for an unrecognised code. Measured at T3.5 by
-disabling that function's first branch — a separate code that fell through
-would not be re-labelled as a forbidden character, it would be announced to the
-owner as *blank*, because the function branches on the code and never
-re-inspects the string. A fourth member added to this frozenset without a
-matching branch there would ship that sentence.
+(`render_actions.py:692`) delegates to `lib/refusal_sentences.py`, which raises on a code it does not
+know (spec 039 T1.5). Before that the function ended in an unguarded `return`
+of the blank sentence, so a code without a branch was announced to the owner as
+*blank*. A member added to this frozenset without a matching sentence now fails
+loudly instead.
 
 ### WHY `/` Is Reported as `separator_present` and Not `forbidden_character`
 
@@ -159,3 +152,27 @@ grows a member whose answer depends on when the run happened. The empty
 parameter list is the cheapest available guard against that, and it is why the
 docstring names the rejected alternative rather than only describing the chosen
 one.
+
+## `breaks_link` and `unsafe_sequence` (spec 039 T2.1, ADR-6, #185)
+
+WHY two new reasons, and why the character sets live in this module.
+
+`breaks_link` covers edge whitespace and `# ^ [ ]` anywhere: a wikilink cannot
+carry them (they are heading, block and nested-link syntax), so a name with one
+would be filed but never linked to. The sentence says the name would break the
+link, never that the vault forbids the filename, because the vault does not.
+`unsafe_sequence` covers `{{`, `<%` and control characters: before it existed
+such a name reached the path-shape guard and aborted ALL of Pass 2 (exit 2);
+now only that attachment is refused and every other item is produced.
+
+The link-breaking set is local here, not added to `FORBIDDEN_CHARS`, because
+`sanitize_stem` uses `FORBIDDEN_CHARS` for note stems and `C# Notizen` must stay
+untouched (PRD F5-AC4).
+
+Check order: blank, separator, edge whitespace (`breaks_link`), `{{`/`<%`
+(`unsafe_sequence`), forbidden, control characters (`unsafe_sequence`), `# ^ [ ]`
+(`breaks_link`). Edge whitespace precedes the unsafe checks so a tab at the edge
+reads as the whitespace problem it is. `<%` precedes `forbidden_character`
+because `<` is a `FORBIDDEN_CHARS` member and would mask it, contradicting
+F5-AC7. `\x00` is also a member and stays `forbidden_character` (a spec 038
+pin): refused either way, and it never aborts the run.

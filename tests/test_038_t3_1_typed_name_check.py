@@ -70,26 +70,16 @@ def test_usable_name_with_unicode_is_accepted_unchanged():
     assert verdict.name == "karte münchen.png"
 
 
-def test_leading_and_trailing_whitespace_is_accepted_and_preserved():
-    """PINS TODAY'S ANSWER, not a final ruling (flagged to the owner
-    2026-10-01, see the module docstring note below) -- a name padded with
-    leading/trailing whitespace (`"  a.png  "`) is neither blank (it has
-    non-whitespace content), nor separator-bearing, nor forbidden-char-
-    bearing, so it is accepted UNCHANGED, padding and all. The task's
-    three refusal classes are a CLOSED set (owner ruling 2026-10-01); a
-    fourth "padded" class would need the same kind of explicit ruling that
-    excluded `taken`, and ADR-5's two-option discipline (accept verbatim
-    or refuse) forbids a third option that trims instead.
+def test_leading_and_trailing_whitespace_is_refused_not_trimmed():
+    """Flipped by spec 039 T2.1 (was: accepted verbatim). A name padded with
+    whitespace is refused as `breaks_link`; the verdict still carries the name
+    exactly as typed -- refuse, never repair.
 
-    This test exists so a future change to this behaviour is deliberate,
-    not an accidental side effect of someone "fixing" `name.strip()` to
-    also drive the returned value.
-
-    Falsified by: any change that trims, rejects, or otherwise alters
-    `" a.png "` on this path.
+    Falsified by: accepting the name, or returning a trimmed `name`.
     """
     verdict = check_typed_name("  a.png  ")
-    assert verdict.ok is True
+    assert verdict.ok is False
+    assert verdict.reason == "breaks_link"
     assert verdict.name == "  a.png  "
 
 
@@ -232,18 +222,19 @@ def test_whitespace_only_tabs_and_newlines_is_refused():
 # ---------------------------------------------------------------------------
 
 
-def test_refusal_reasons_is_a_closed_set_of_three():
-    """REFUSAL_REASONS names exactly the three classes -- not four. `taken`
-    is deliberately excluded (owner ruling 2026-10-01): it is a property
-    of the run, which render_actions.py:945 already decides, not of the
-    string this module checks.
+def test_refusal_reasons_is_a_closed_set_of_five():
+    """REFUSAL_REASONS names exactly the five classes. `taken` is
+    deliberately excluded (owner ruling 2026-10-01): it is a property of the
+    run, which render_actions.py already decides, not of the string this
+    module checks. `breaks_link` and `unsafe_sequence` joined in spec 039.
 
-    Falsified by: adding a fourth reason (e.g. `taken`) to the set, or
-    naming the three differently than the module documents.
+    Falsified by: adding a sixth reason (e.g. `taken`) to the set, or
+    naming the five differently than the module documents.
     """
-    assert REFUSAL_REASONS == frozenset(
-        {"separator_present", "forbidden_character", "blank"}
-    )
+    assert REFUSAL_REASONS == frozenset({
+        "separator_present", "forbidden_character", "blank",
+        "breaks_link", "unsafe_sequence",
+    })
 
 
 def test_reason_tokens_are_not_prose():

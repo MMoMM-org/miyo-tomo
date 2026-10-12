@@ -48,7 +48,9 @@ attachment counts its own inbox copy and every embed is qualified — the
 mutation test removes it and `test_f4_ac4_moved_inbox_sources_are_not_counted`
 fails. A source that is withheld stays in the inbox, so its copy is not
 subtracted. Names are compared NFC-normalised and case-folded, the census's own
-key, so the subtraction matches what the census counted.
+key, so the subtraction matches what the census counted. The census part is
+clamped at zero (`max(hits − moved sources, 0)`): a census that under-counts
+must never go negative and cancel another in-run target's contribution.
 
 ## Ignore is exempt from the vault check only (PRD Rule 4, ADR-7)
 

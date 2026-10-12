@@ -36,7 +36,11 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from attachment_plan_fakes import FakeVault, plan_from_remedies  # noqa: E402
 from lib.attachment_plan import AttachmentDecision, build_attachment_plan  # noqa: E402
-from lib.refusal_sentences import folder_sentence, typed_name_sentence  # noqa: E402
+from lib.refusal_sentences import (  # noqa: E402
+    folder_sentence,
+    occupied_target_sentence,
+    typed_name_sentence,
+)
 
 
 def _load(name: str, filename: str):
@@ -321,7 +325,30 @@ def test_row8_case_only_occupier_is_occupied_and_named_as_spelled():
 
 def test_row8_a_folder_at_the_target_name_occupies_it():
     d = _one(_plan([_item()], [], FakeVault([SRC], existing_folders=[DEFAULT_TARGET])))
-    _held(d, "vault_occupied")
+    reason = _held(d, "vault_occupied")["reason"]
+    assert "already has a folder at" in reason
+    assert "already holds" not in reason
+
+
+def test_row7_is_decided_before_row_8():
+    """The target is occupied in the vault AND claimed by an Ignore source this
+    run: the claim (row 7) names the claimant, not the occupier (row 8)."""
+    a, b = "100 Inbox/a/karte.png", "100 Inbox/b/karte.png"
+    vault = FakeVault([a, b, DEFAULT_TARGET])
+    plan = _plan([_item(attachments=[a, b])], [_remedy("ignore", a)], vault)
+    _moved(plan.by_source[a], DEFAULT_TARGET)
+    reason = _held(plan.by_source[b], "collision")["reason"]
+    assert f"already claimed by `{a}`" in reason
+
+
+def test_occupied_target_sentence_variants():
+    exact = occupied_target_sentence(DEFAULT_TARGET, DEFAULT_TARGET)
+    assert "already holds" in exact and "differ only in case" not in exact
+    case_only = occupied_target_sentence(DEFAULT_TARGET, f"{ASSET}KARTE.png")
+    assert f"`{ASSET}KARTE.png`" in case_only and "differ only in case" in case_only
+    folder = occupied_target_sentence(DEFAULT_TARGET, None, occupier_is_folder=True)
+    assert "already has a folder at" in folder
+    assert "already holds" not in folder and "differ only in case" not in folder
 
 
 def test_row8_a_note_in_the_folder_does_not_occupy_an_attachment_target():
@@ -484,6 +511,41 @@ def test_f4_ac4_moved_inbox_sources_are_not_counted():
     _moved(plan.by_source[a], f"{ASSET}karte (2).png")
     _moved(plan.by_source[b], DEFAULT_TARGET)
     assert (plan.by_source[b].embed, plan.by_source[b].qualified_reason) == (None, None)
+
+
+def test_f4_census_key_is_nfc_a_decomposed_inbox_source_is_subtracted():
+    """The inbox copy is spelled NFD, the target NFC: they are one name to the
+    census, so the subtraction must match them."""
+    nfd = "100 Inbox/cafe\u0301.png"
+    nfc = "caf\u00e9.png"
+    assert nfd.rsplit("/", 1)[-1] != nfc
+    d = _one(_plan([_item(attachments=[nfd])], [_rename(nfd, nfc, name_typed=True)],
+                   FakeVault([nfd], existing_folders=[ASSET])))
+    _moved(d, f"{ASSET}{nfc}")
+    assert (d.embed, d.qualified_reason) == (nfc, None)
+
+
+def test_f4_an_undercounting_census_cannot_cancel_another_in_run_target():
+    """The census answers 0 for `karte.png`; two sources of the run end up
+    named `karte.png` in different folders, so each is ambiguous regardless."""
+    class ZeroCensus:
+        searches = 0
+
+        def count(self, basename):
+            return 0
+
+    a, b = "100 Inbox/a/karte.png", "100 Inbox/b/foto.png"
+    vault = FakeVault([a, b], existing_folders=[ASSET, MAPS])
+    plan = build_attachment_plan(
+        [_item(attachments=[a, b])],
+        {b: _rename(b, "karte.png", name_typed=True, folder=MAPS, folder_typed=True)},
+        asset_folder=ASSET, inbox_path=INBOX,
+        folder_lookup=vault.lookup, census=ZeroCensus(),
+    )
+    assert (plan.by_source[a].embed, plan.by_source[a].qualified_reason) == (
+        DEFAULT_TARGET, "ambiguous")
+    assert (plan.by_source[b].embed, plan.by_source[b].qualified_reason) == (
+        f"{MAPS}/karte.png", "ambiguous")
 
 
 def test_f4_ac4_rejected_a_withheld_inbox_copy_stays_and_counts():

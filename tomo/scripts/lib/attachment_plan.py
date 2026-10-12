@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -191,6 +191,7 @@ def _decide(outcome: _Outcome, remedy: dict | None, *, asset_folder: str,
         key = target.casefold()
         occupier = folder_lookup.assets(target_folder).get(key)
         if occupier is not None or key in folder_lookup.occupied_by_folder(target_folder):
+            # no file occupier but the key is taken: a folder holds the name
             return _withhold(
                 outcome, "vault_occupied", target,
                 occupied_target_sentence(target, occupier,
@@ -212,7 +213,7 @@ def _embed(outcome: _Outcome, census, moved_sources: Counter,
     hits = census.count(final)
     if hits is None:
         return outcome.target, "unanswered"
-    others = hits - moved_sources[key] + (moved_targets[key] - 1)
+    others = max(hits - moved_sources[key], 0) + (moved_targets[key] - 1)
     if others >= 1:
         return outcome.target, "ambiguous"
     return (final if final != _basename(outcome.source) else None), None

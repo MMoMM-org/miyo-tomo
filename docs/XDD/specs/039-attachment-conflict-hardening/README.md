@@ -5,16 +5,16 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-11 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
-| **Last Updated** | 2026-10-11 |
+| **Last Updated** | 2026-10-12 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.0, 51 acceptance criteria (F1–F6 Must, S1, C1); names four superseded prior criteria in CON-5 |
-| solution.md | in_progress | |
+| solution.md | completed | v1.0, 10 ADRs all confirmed; 3 new components, 11 modified; CON-2 = Kokoro handoff before implementation |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -39,6 +39,7 @@
 | 2026-10-11 | Defaults accepted without objection | Folder refusal classes (`..`, leading `/`, `\\`, `~`, `./`, empty segment, segment-edge whitespace, forbidden characters, trailing `/`, the inbox or below) refuse, never repair; a non-existent folder is allowed and reported as "will be created"; the path-qualified embed rule covers every attachment the run files; Keep in inbox is unchanged; the vendored consumer suggestions schema is refreshed to v3 first; empty typed name, fan-wire conflicts, edited-wire schema validation and the Force Atomic bypass stay in the backlog. |
 | 2026-10-11 | A folder with an empty name on the "no free name" line is refused as blank | Owner, over the consumer's implied reading that a folder alone resolves the conflict. 038's no-substitution contract wins; typing the original name back in remains valid (F1-AC10). PRD F1-AC11. |
 | 2026-10-11 | PRD approved | 51 criteria. Phase moves to SDD. |
+| 2026-10-12 | SDD approved — all 10 ADRs confirmed | Central choice ADR-1: one attachment plan decided before the render loop, with the embed rewrite and the move builder as its readers — closes `backlog.md:1917` and `:1956` on the way. ADR-10 changes C1, so the Kokoro design-time handoff (CON-2) precedes implementation. |
 
 ## Context
 

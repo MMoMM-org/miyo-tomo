@@ -50,7 +50,7 @@ version: "1.0"
 | status | `IN_REVIEW` |
 | clarificationsRemaining | 0 |
 | acceptanceCriteria | 53 |
-| openQuestions | 1 — a consumer measurement (A1); does not block the SDD. The owner question was ruled 2026-10-11 |
+| openQuestions | 0 — the owner question was ruled 2026-10-11; A1 stays an unmeasurable assumption (no party can probe Obsidian at runtime) |
 
 ### SectionStatus
 
@@ -64,7 +64,7 @@ version: "1.0"
 | Success Metrics | `COMPLETE` | |
 | Constraints and Assumptions | `COMPLETE` | Names the four prior criteria this spec supersedes |
 | Risks and Mitigations | `COMPLETE` | |
-| Open Questions | `COMPLETE` | One owner question ruled 2026-10-11; one consumer measurement open |
+| Open Questions | `COMPLETE` | One owner question ruled 2026-10-11; the former consumer measurement is withdrawn — A1 is unmeasurable |
 
 ---
 
@@ -518,8 +518,9 @@ can never disagree about the vault they are based on.
 ### Assumptions
 
 - **A1 — Obsidian resolves a bare basename across the whole vault**, so two
-  files with one basename make a bare embed ambiguous. Not measured by Tomo
-  (live probes are out of scope); it is the consumer's stated belief and the
+  files with one basename make a bare embed ambiguous. Not measured, and
+  not measurable by any party: neither Tomo nor the consumer can probe Obsidian
+  at runtime (owner, 2026-10-12). It is the consumer's stated belief and the
   premise of their request. F4 is safe whichever way it resolves: a qualified
   embed resolves in either case.
 - **A2 — Kado's name search covers every file type and the whole vault within
@@ -552,9 +553,11 @@ can never disagree about the vault they are based on.
   substituted for the owner wins over the consumer's "a folder alone resolves
   it"; a folder change with the original name typed back in remains valid
   (F1-AC10). Now criterion F1-AC11.
-- [ ] **Consumer (C10):** Does Obsidian resolve an ambiguous bare basename to a
-  file the owner did not intend? Asked of the consumer as a measurement in the
-  handoff; F4 does not depend on the answer (assumption A1).
+- [x] **Withdrawn 2026-10-12:** whether Obsidian resolves an ambiguous bare
+  basename to a file the owner did not intend. It was asked of the consumer as a
+  measurement; the owner pointed out the consumer cannot measure in Obsidian
+  either, so the ask was removed from the reply before it was read. It stays
+  assumption A1; F4 does not depend on the answer.
 
 ---
 

@@ -46,6 +46,7 @@
 | 2026-10-12 | `{{`, `<%` and control characters are refused in typed folders **and** names, with one new reason `unsafe_sequence` | Owner. Closes a pre-existing defect: such a typed name aborts the whole of Pass 2 today. PRD F2-AC9, F5-AC7 (53 criteria). |
 | 2026-10-12 | A typed folder containing `# ^ [ ]` is refused (`breaks_link`) | Owner. It would break a path-qualified embed. PRD F2-AC2. |
 | 2026-10-12 | Kokoro gate: handoff sent in Phase 1, no C1 work before it is sent, no merge before Kokoro answers; a rejection reverts T5.2 | Owner, replacing four inconsistent gates across the documents. |
+| 2026-10-12 | Handoffs sent: Kokoro (#186 proposal, T1.1) and Hashi (`proposed_dir` reply, T1.2); the Obsidian-measurement ask withdrawn from the Hashi reply | Owner: Hashi cannot measure in Obsidian either. The reply was corrected in place while still `pending`; A1 becomes an assumption no party can measure. F4 is safe either way. |
 
 ## Context
 

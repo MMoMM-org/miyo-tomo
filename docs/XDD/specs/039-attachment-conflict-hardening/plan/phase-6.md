@@ -43,7 +43,7 @@ Delivers the owner documentation, the coordinated release to Hashi, a live run, 
 
   1. Prime: T1.2's reply and any answer; 038's wire-v3 handoff as the template `[ref: SDD/Deployment View; PRD/CON-1, CON-3]`
   2. Test: after Hashi confirms vendoring, the vendored suggestions copy equals Tomo's live v4 schema byte-identically and the parity test's delta is empty; the vendored instructions copy equals the consumer's updated file (`cmp`), carrying the new `depends_on` description (F6-AC6)
-  3. Implement: `/miyo-outbox` handoff with the v4 schema, shape manifest, inventory (D26), the `depends_on` description change, a runnable test run (precedent: 038's run fixture), and the asks — confirm the executor cascade for `move_asset` (F6-AC7), measure ambiguous basename resolution (A1), confirm parent-folder creation (A3); then refresh both vendored copies
+  3. Implement: `/miyo-outbox` handoff with the v4 schema, shape manifest, inventory (D26), the `depends_on` description change, a runnable test run (precedent: 038's run fixture), and the asks — confirm the executor cascade for `move_asset` (F6-AC7) and parent-folder creation if still open (A3) — no Obsidian measurement is asked (A1 is unmeasurable); then refresh both vendored copies
   4. Validate: Hashi's confirmation recorded in the README decisions log
   5. Success: consumer on v4 `[ref: PRD/CON-1]`; consumer half of `[ref: PRD/F6-AC6]`
 

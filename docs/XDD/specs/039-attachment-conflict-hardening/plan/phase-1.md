@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Preconditions, no behaviour change"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -41,7 +41,7 @@ Clears the ground: the owed handoffs go out, the stale vendored schema is correc
 - [ ] **T1.2 Interim reply to Hashi's `proposed_dir` handoff** `[activity: technical-writing]` `[parallel: true]`
 
   1. Prime: `_inbox/from-hashi/2026-10-11_hashi-to-tomo_attachment-conflicts-need-an-editable-target-folder.md`; PRD CON-3; SDD External Interfaces
-  2. Test: n/a. Checklist: §1 accepted as `string | null`, required, released as `schema_version` 4 (coordinated); §2 our measurement — the risk exists **today** (three code paths, R1 §3) and our ruling (path only when ambiguous); asks them to measure Obsidian's resolution of an ambiguous bare basename (PRD A1); §4 confirmed with file:line (`render_actions.py:849/886`, `embed_rewrite.py:136`) and `proposed_dir` follows the same rule; #185 ruling (one reason, refused not trimmed on the markdown route) and the `unsafe_sequence` ruling; F1-AC11 ruling; folder refusal classes (incl. `# ^ [ ]`) so their picker can pre-empt them; that a missing folder is allowed because their executor creates it — please confirm (A3)
+  2. Test: n/a. Checklist: §1 accepted as `string | null`, required, released as `schema_version` 4 (coordinated); §2 our measurement — the risk exists **today** (three code paths, R1 §3) and our ruling (path only when ambiguous); states that Obsidian's resolution of an ambiguous bare basename stays unmeasured (PRD A1 — neither side can probe Obsidian); §4 confirmed with file:line (`render_actions.py:849/886`, `embed_rewrite.py:136`) and `proposed_dir` follows the same rule; #185 ruling (one reason, refused not trimmed on the markdown route) and the `unsafe_sequence` ruling; F1-AC11 ruling; folder refusal classes (incl. `# ^ [ ]`) so their picker can pre-empt them; that a missing folder is allowed because their executor creates it, asking whether several missing levels are created at once if their code or the Obsidian API docs settle it (A3)
   3. Implement: `_outbox/for-hashi/2026-10-12_tomo-to-hashi_<slug>.md`; set the inbound handoff `status: done`
   4. Validate: owner reads it before it is marked sent
   5. Success: Hashi's three asks answered `[ref: PRD/CON-3]`

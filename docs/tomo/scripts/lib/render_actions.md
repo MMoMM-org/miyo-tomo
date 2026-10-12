@@ -5,46 +5,12 @@
 > items, and daily/skip inputs into the ordered `actions[]` list. Only
 > non-obvious decisions are recorded here.
 
-## `_asset_dest_join` Exists Because Neither Existing Path Helper Is Safe (spec 031)
+## `_dest_join` / `_asset_dest_join` Live in `lib/vault_paths.py` (spec 039 T1.4)
 
-WHY a third destination-join helper instead of reusing `_dest_join` or
-`_ensure_md_extension`: both exist for NOTE paths, and both actively corrupt
-an attachment path.
-
-- `_dest_join` hardcodes a `.md` suffix (`f"{folder}{sanitize_stem(stem)}.md"`)
-  — an attachment keeping its own extension (`.jpg`, `.m4a`, …) would come out
-  as `karte.jpg.md`.
-- `_ensure_md_extension` is the more dangerous trap because its failure mode
-  looks like success on the obvious test case: for an extension already in
-  `KNOWN_FILE_EXTENSIONS` (`lib/file_extensions.py`) — `.jpg` included — it is
-  a silent NO-OP (`foto.jpg` → `foto.jpg`), so a fixture built around `.jpg`
-  proves nothing. For any extension NOT in that allowlist — `.heic`, `.docx`,
-  `.arw`, anything a phone or scanner produces that the note-path allowlist
-  never anticipated — it silently appends `.md` (`scan.heic` → `scan.heic.md`).
-  An earlier draft of this spec's own SDD had the hazard backwards (claimed
-  `_ensure_md_extension` corrupted `.jpg` and no-op'd on everything else); the
-  measured behaviour is the opposite. This is why `test_031_t2_1_asset_dest_join.py`
-  pins the regression with `scan.heic`, not `.jpg` — the `.jpg` case cannot
-  distinguish "safe" from "silently broken".
-
-`_asset_dest_join` also does NOT run the basename through `sanitize_stem`
-(unlike `_dest_join`): an attachment's filename already exists on disk and
-the embed referencing it resolves by that exact name — rewriting it (even to
-replace an Obsidian-forbidden character) would break the very embed the
-feature exists to keep working.
-
-`_asset_dest_join` raises `ValueError` when the source path has no basename
-(empty, or ending in `/`) instead of silently returning a bare folder path.
-This is reachable, not theoretical: `build_inbox_index` indexes a malformed
-`listDir` entry like `{"path": "100 Inbox/Images/", "type": "file"}` — Kado
-mistyping a folder as a file — under the key `""`, and `resolve_attachments`
-returns index values verbatim, so a bad entry can reach this function.
-`_check_path_shape` (the wire-level path validator, `:378`) has no basename
-check, so nothing downstream would have caught a bare-folder destination
-before it reached Hashi as an instruction to move a file *to* a directory.
-`_build_move_asset_actions` catches the `ValueError` and routes that one
-attachment through the same skip-and-report path as a destination collision
-(below) rather than letting it abort the whole render.
+Both path helpers moved to `lib/vault_paths.py` so the shared folder lookup
+(`lib/vault_folder_lookup.py`) can key by them without importing this module.
+This module re-exports both names. Why `_asset_dest_join` exists at all is
+recorded in `docs/tomo/scripts/lib/vault_paths.md`.
 
 ## Global Dedup, Not Per-Item (spec 031)
 
@@ -353,13 +319,13 @@ correctness depend on an unmeasured behaviour. A listing returns the folder's
 real filenames, which puts the fold in Tomo where a test can reach it, and
 carries the vault's own spelling for the report.
 
-It is the twin of `suggestions-reducer._vault_folder_notes`, which serves the
-Pass-1 proposal: both compose through `_dest_join` and fold the same way, so the
-proposal and the guard cannot disagree about what "the same place" means. They
-are duplicated rather than shared on purpose — `docs/XDD/backlog.md` schedules
-the extraction of the whole clash surface into a `lib/` module after Phase 5
-closes, when T5.2, T5.3 and T5.4 have all landed, and moving the ground
-mid-phase is what that entry declined.
+It was the twin of the Pass-1 reducer's folder lookup until spec 039 T1.4
+re-based it on that lookup: `make_folder_listing` is now the `.md` view of
+`lib/vault_folder_lookup.VaultFolderLookup`, so Pass 1 and Pass 2 compose
+through `_dest_join` and fold the same way by construction, and a lookup handed
+in is shared with every other reader of the same folder. Why the cache holds
+the raw listing and how folder state is classified: see
+`docs/tomo/scripts/lib/vault_folder_lookup.md`.
 
 The cache key is the folder `_dest_join` derives, not the raw string. T5.2
 shipped a raw-`location` cache and fixed it in `00eb712`, where a trailing slash

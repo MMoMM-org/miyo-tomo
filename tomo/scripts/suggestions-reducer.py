@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.59.0
+# version: 1.59.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -62,8 +62,8 @@ from lib.cost_history import (  # noqa: E402 — spec 034 T6.1
 from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
     KadoClient,
     KadoNotFoundError,
-    observed_call_count,
 )
+from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402 — spec 039 T1.4
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
 from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash; spec 037 T1.1
@@ -308,114 +308,8 @@ def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
     )
 
 
-class _VaultFolderLookup:
-    """One `list_dir` per destination folder, served to every caller.
-
-    Caches the RAW listing per folder — not a caller-derived map. A folder
-    primed by `notes()` (which reads only `.md` entries) still answers a
-    later `assets()` call from the same cached listing, because the cache
-    holds the listing itself and each call derives its own map from it. A
-    cache keyed on the derived map would serve the second caller a map
-    built for the first — silently empty for every attachment [ref: spec 037
-    T1.1; see docs/tomo/scripts/suggestions-reducer.md].
-
-    Fails open on a listing error — an error is not a collision, matching
-    the pre-generalisation behaviour — and still charges the round trip to
-    `folder_listing_calls` (spec 034 T6.1 / F9).
-    """
-
-    def __init__(self, kado_client) -> None:
-        self._kado_client = kado_client
-        self.folders: dict[str, list[dict]] = {}
-        self.folder_listing_calls = 0
-
-    def _entries(self, folder: str) -> list[dict]:
-        if folder in self.folders:
-            return self.folders[folder]
-        calls_before = observed_call_count(self._kado_client)
-        try:
-            entries = list(self._kado_client.list_dir(folder, depth=1))
-        except Exception:  # noqa: BLE001 — an error is not a collision
-            entries = []
-        calls_after = observed_call_count(self._kado_client)
-        self.folder_listing_calls += (
-            calls_after - calls_before
-            if calls_before is not None and calls_after is not None
-            else 1
-        )
-        self.folders[folder] = entries
-        return entries
-
-    def _map(
-        self,
-        location: str,
-        *,
-        file_predicate: Callable[[str], bool],
-        join: Callable[[str, str], str],
-    ) -> dict[str, str]:
-        folder = (location or "").rstrip("/") + "/"
-        found: dict[str, str] = {}
-        for entry in self._entries(folder):
-            path = entry.get("path") or ""
-            name = path.rsplit("/", 1)[-1]
-            if entry.get("type") != "file" or not file_predicate(name):
-                continue
-            found[join(folder, name).casefold()] = path
-        return found
-
-    def notes(self, location: str) -> dict[str, str]:
-        """The `.md` notes in `location`, keyed as `_dest_join` builds them.
-
-        Unchanged from the pre-generalisation `_vault_folder_notes` body:
-        same filter, same join, recomposed through `_dest_join` so both
-        sides of a comparison are built by the same helper (spec 034 T5.2).
-        """
-        return self._map(
-            location,
-            file_predicate=lambda name: name.lower().endswith(".md"),
-            join=lambda folder, name: _dest_join(folder, name[:-3]),
-        )
-
-    def assets(self, location: str) -> dict[str, str]:
-        """The non-`.md` attachments in `location`, keyed by `_asset_dest_join`.
-
-        `.md` entries are excluded — a note sharing an attachment folder is
-        not an attachment collision.
-        """
-        return self._map(
-            location,
-            file_predicate=lambda name: not name.lower().endswith(".md"),
-            join=_asset_dest_join,
-        )
-
-    def occupied_by_folder(self, location: str) -> set[str]:
-        """Casefolded ATTACHMENT-destination keys held by a FOLDER entry in
-        `location` (spec 037 T1.4, PRD Edge Case Scenario 7).
-
-        Additive sibling to `assets()`, not a change to it: `_map`'s
-        `type != "file"` guard keeps dropping non-file entries from
-        `notes()` and `assets()` exactly as before — this method reads the
-        same cached raw listing `_entries` fills and picks up only what
-        that guard drops, keyed with `_asset_dest_join` because a
-        folder-occupied name only matters to the attachment side
-        (`detect_attachment_conflicts`); `notes()`'s `.md`-keyed results are
-        untouched by this method's existence.
-
-        A folder primed by an earlier `notes()` or `assets()` call for the
-        same `location` costs no second `list_dir` round trip — `_entries`
-        is the shared cache (spec 037 T1.1).
-        """
-        folder = (location or "").rstrip("/") + "/"
-        found: set[str] = set()
-        for entry in self._entries(folder):
-            if entry.get("type") == "file":
-                continue
-            path = entry.get("path") or ""
-            name = path.rsplit("/", 1)[-1]
-            if not name:
-                continue
-            found.add(_asset_dest_join(folder, name).casefold())
-        return found
+# The spec 037 tests drive the lookup by its pre-039 name.
+_VaultFolderLookup = VaultFolderLookup
 
 
 def resolve_destination_clashes(
@@ -2466,8 +2360,8 @@ def main() -> int:
     # an existence probe would only answer the question Kado's own case
     # semantics decide — which CON-7 forbids this spec from measuring.
     # spec 037 T1.1: the same cache also answers an attachment lookup — see
-    # _VaultFolderLookup, and docs/tomo/scripts/suggestions-reducer.md for
-    # why it caches the raw listing rather than a caller-derived map.
+    # lib/vault_folder_lookup.py, and docs/tomo/scripts/lib/vault_folder_lookup.md
+    # for why it caches the raw listing rather than a caller-derived map.
     _vault_folder_lookup = _VaultFolderLookup(kado_client) if kado_client else None
 
     clash_claims: list[tuple[str, str, str]] = []

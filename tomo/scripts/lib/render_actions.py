@@ -1,4 +1,4 @@
-# version: 0.26.12
+# version: 0.26.13
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -30,6 +30,8 @@ from lib.render_helpers import (
 )
 from lib.render_md import bare_stem
 from lib.typed_name_check import check_typed_name
+from lib.vault_folder_lookup import VaultFolderLookup
+from lib.vault_paths import _asset_dest_join, _dest_join  # noqa: F401 — re-exported (spec 039 T1.4)
 from lib.source_link import colliding_names, qualified_target
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
@@ -539,41 +541,10 @@ def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
     )
 
 
-def _dest_join(folder: str, title: str) -> str:
-    """Join destination folder + Obsidian-safe title as filename (with .md)."""
-    if not folder:
-        folder = ""
-    folder = folder.rstrip("/") + "/"
-    # Obsidian allows Umlauts, em-dash etc. — no slug. Forbidden chars
-    # (\ / : * ? " < > |) in the title would crash Hashi's rename/create, so
-    # the filename stem is sanitised; the note's displayed title (frontmatter/H1)
-    # keeps the original. Link targets are sanitised the same way (_wikilink).
-    stem = title[:-3] if title.endswith(".md") else title
-    return f"{folder}{sanitize_stem(stem)}.md"
-
-
 # Default asset folder — single source of truth for both the fallback used
 # when a caller's cfg dict lacks "concepts.asset" (build_actions, below) and
 # instruction-render.py's CONFIG_DEFAULTS entry for the same key.
 DEFAULT_ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
-
-
-def _asset_dest_join(asset_folder: str, source_path: str) -> str:
-    """Join the asset folder with the source path's basename, preserving it verbatim.
-
-    Never _dest_join (appends a '.md' suffix) or _ensure_md_extension (a silent
-    no-op for an allowlisted extension, a corrupting '.md' append for anything
-    else) — an attachment's basename must survive exactly as-is, uppercase,
-    unusual extension, and all, or the embed referencing it stops resolving.
-
-    Raises ValueError if source_path has no basename (empty, or ending in
-    "/") rather than silently returning a bare folder path.
-    """
-    basename = source_path.rsplit("/", 1)[-1]
-    if not basename:
-        raise ValueError(f"attachment source path has no filename: {source_path!r}")
-    folder = (asset_folder or "").rstrip("/") + "/"
-    return f"{folder}{basename}"
 
 
 def _wikilink(title: str, destination: str | None = None) -> str:
@@ -988,49 +959,21 @@ def _unique_in_order(values: list[str]) -> list[str]:
     return out
 
 
-def make_folder_listing(kado_client):
+def make_folder_listing(client_or_lookup):
     """Return ``folder_listing(location) -> {folded destination: vault path}``.
 
-    One ``list_dir(folder, depth=1)`` per distinct destination folder, cached
-    for the life of the returned closure. Never a per-name ``note_exists``
-    probe: a probe answers with whatever Kado's own case semantics decide, and
-    CON-7 forbids this spec from running against a live vault to find out what
-    those are. A listing returns the folder's real filenames, which puts the
-    fold in Tomo where a test can reach it, and carries the vault's own
-    spelling for the report.
-
-    The cache key is the folder ``_dest_join`` derives, not the raw string: two
-    claims whose location differs only by a trailing slash name one folder, and
-    a raw key lists it twice. Kado failing is not a collision — an unreachable
-    folder reads as empty, so the vault half degrades and the run-internal half
-    keeps working (ADR-4).
-
-    This is the twin of ``suggestions-reducer._vault_folder_notes``, which
-    serves the Pass-1 proposal. Both compose through ``_dest_join`` and fold
-    the same way so the proposal and the guard cannot disagree about what "the
-    same place" means.
+    The ``.md`` view of a ``VaultFolderLookup``: one ``list_dir(folder,
+    depth=1)`` per distinct folder, never a per-name ``note_exists`` probe.
+    Pass the run's lookup to share its raw listing with every other reader;
+    pass a client to get a private one. A failed listing reads as empty — an
+    error is not a collision.
     """
-    cache: dict[str, dict[str, str]] = {}
-
-    def folder_listing(location: str) -> dict[str, str]:
-        folder = (location or "").rstrip("/") + "/"
-        if folder not in cache:
-            found: dict[str, str] = {}
-            try:
-                for entry in kado_client.list_dir(folder, depth=1):
-                    path = entry.get("path") or ""
-                    name = path.rsplit("/", 1)[-1]
-                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
-                        continue
-                    # Recompose through _dest_join so both sides of the
-                    # comparison are built by the same helper.
-                    found[_dest_join(folder, name[:-3]).casefold()] = path
-            except Exception:  # noqa: BLE001 — an error is not a collision
-                found = {}
-            cache[folder] = found
-        return cache[folder]
-
-    return folder_listing
+    lookup = (
+        client_or_lookup
+        if isinstance(client_or_lookup, VaultFolderLookup)
+        else VaultFolderLookup(client_or_lookup)
+    )
+    return lookup.notes
 
 
 def _destination_clash_reason(

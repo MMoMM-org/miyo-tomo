@@ -955,12 +955,9 @@ fixed pipeline cost with a content-scaling one and tell a later reader nothing
 about either. The folder count is what distinguishes a pipeline regression from
 a busy run.
 
-WHY the calls are read from the client's counter rather than counted as one per
-cache miss: `list_dir` pages internally, so a paged listing is several round
-trips. The per-miss fallback applies only to a client that keeps no count.
-
-WHY the snapshot is taken after the `except`: a listing that raised still spent
-its round trip.
+WHY the calls are read from the client's counter, and why a failed listing is
+still charged: see `docs/tomo/scripts/lib/vault_folder_lookup.md`, where the
+counter now lives.
 
 WHY both fields are always present here, even at zero: this file only writes
 them when it ran. A `--fan-resolve` run opens no Kado client and truthfully
@@ -984,44 +981,13 @@ already runs on both paths, already holds the folder counts, and
 
 ## The Folder Cache Caches the Raw Listing, Not the Derived Map (spec 037 T1.1)
 
-Spec 037 needs the same per-folder `list_dir` cache T5.2 built to also answer
-an attachment lookup — "is this destination already occupied" has to hold for
-assets, not just notes. `_vault_folder_notes`'s body did two things in one
-step: fetch-or-reuse the listing, and derive a `.md`-only `{destination:
-path}` map from it. Generalising by parameterising that combined step (file
-predicate + destination-join, still cached keyed on folder) would have cached
-the *derived* map — so a folder the note caller primes first would hand the
-attachment caller a `.md`-only dict for the rest of the run, and the
-attachment lookup would find nothing. **Silently**: no exception, no second
-`list_dir` call to notice, just an empty result exactly like "not occupied."
-That is the failure mode this spec exists to remove, reintroduced by the
-refactor meant to prevent it.
-
-`_VaultFolderLookup` (module-level class, replacing the closure nested in
-`main()`) splits the two steps instead: `_entries(folder)` is the only thing
-that touches the cache, keyed on folder, storing the raw `list_dir` result
-list. `notes()` and `assets()` both call it and then derive their own map —
-`.md`-only via `_dest_join`, non-`.md` via `_asset_dest_join` — fresh, every
-call, from whatever is in the cache. A second call for the same folder still
-costs zero extra `list_dir` round trips (the entries are already cached); it
-just costs a re-filter over an already-in-memory list, which is not a cost
-`folder_listing_calls` was ever meant to count.
-
-Hoisted to module level (it was a closure over `main()`'s locals — `kado_client`,
-the cache dict, `folder_listing_calls`) so spec 037's test can drive it
-directly, the same way `resolve_destination_clashes` already is, instead of
-needing to run the whole reducer to exercise a lookup. `main()` now
-instantiates one `_VaultFolderLookup(kado_client)` (or `None` when Kado is
-absent/unreachable/`--fan-resolve`, unchanged from before) and reads
-`folder_listing_calls` / `distinct_destination_folders` off it at the two
-existing sites — behaviour unchanged, only where the state lives.
-
-The note path is unchanged in output: `notes()` is the same filter
-(`type == "file"` and lowercased name ends `.md`) and the same join
-(`_dest_join(folder, name[:-3]).casefold()`) the pre-generalisation body used,
-verified in `tests/test_037_t1_1_folder_cache_serves_attachments.py` against a
-reproduction of that exact body, and against the spec 034 T5.2 suite passing
-unmodified.
+The folder lookup this section described moved to `lib/vault_folder_lookup.py`
+in spec 039 T1.4 (now `VaultFolderLookup`; the reducer keeps
+`_VaultFolderLookup` as an alias). Its rationale — raw listing cached, each
+view derived per call, how the counter charges pages — lives in
+`docs/tomo/scripts/lib/vault_folder_lookup.md`. `main()` still instantiates
+one lookup (or `None` when Kado is absent/unreachable/`--fan-resolve`) and
+reads `folder_listing_calls` / `distinct_destination_folders` off it.
 
 WHY `--routing-plan` defaults to a sibling of `--output` rather than a literal
 `tomo-tmp/routing-plan.json`: both are artefacts of one run in one directory,

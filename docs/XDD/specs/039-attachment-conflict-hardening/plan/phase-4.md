@@ -53,7 +53,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
   4. Validate: every row has both polarities; mutation check — delete the census subtraction and watch F4-AC4's test fail; ruff clean
   5. Success: `[ref: PRD/F1-AC3, AC5, AC6, AC10, AC11]` `[ref: PRD/F2-AC4, AC6, AC7, AC8]` `[ref: PRD/F3-AC1, AC2, AC4, AC6]` `[ref: PRD/F4-AC1, AC2, AC4, AC6]`
 
-- [ ] **T4.3 The move builder becomes a projection of the plan** `[activity: backend]`
+- [x] **T4.3 The move builder becomes a projection of the plan** `[activity: backend]`
 
   1. Prime: `render_actions.py:723-970, 1494-1531, 1534-1637, 2786-2877`; `instruction-render.py:643-651` `[ref: SDD/ADR-1, ADR-7; SDD/Interface Specifications K5]`
   2. Test: `_build_move_asset_actions(manifest, plan)` emits one `move_asset` per planned move whose owners include a rendered manifest item, in today's order and id sequence; returns `skipped_assets` for withheld decisions with the new kinds and `owner_source_items`; returns `move_ids_by_origin` with **every** owner; `suppress_moves_for_unfiled_attachments` holds the notes for `typed_folder_refused` and `vault_occupied` and still not for `vault_collision_held`; `_attachment_suppression_reason` gives each new kind its own sentence (no "correct that inbox path" for them); the full 036/037/038 suite green with **no assertion changed** (F1-AC7, F3-AC3)

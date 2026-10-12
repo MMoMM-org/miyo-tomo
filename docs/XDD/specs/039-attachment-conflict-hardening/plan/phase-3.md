@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: The folder reaches both surfaces"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -61,6 +61,7 @@ Delivers the folder as a field on the v4 wire, a line in the markdown, a row in 
 
   **Depends on:** T3.1
 
-- [ ] **T3.4 Phase 3 validation** `[activity: validate]`
+- [x] **T3.4 Phase 3 validation** `[activity: validate]`
 
   - Full suite green; Pass 2 output byte-identical on the 038 baseline and on a conflict fixture with an **edited** folder line (proves nothing consumes it yet); grep shows no reader of `proposed_dir` outside the parser and the renderer.
+  - *As delivered (drift check 2026-10-12):* no byte-for-byte Pass 2 golden exists for "the 038 baseline" — the 038 wire-baseline (`test_038_t2_4_wire_baseline_diff.py`) and convergence (`test_038_t4_4_the_two_paths_converge.py`) tests stay green unchanged; `test_039_t3_4_folder_not_consumed_yet.py` runs `instruction-render.py` `main()` with the folder untouched vs edited on both paths and asserts identical bytes (mutation-proven). Grep: only the parser, the reducer, the renderer and the schemas mention `proposed_dir`.

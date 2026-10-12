@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.63.0
+# version: 0.64.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -48,6 +48,9 @@ from lib.doc_frontmatter import (  # noqa: E402
     merge_tomo_block_into_markdown,
 )
 from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
+from lib.attachment_plan import build_attachment_plan  # noqa: E402
+from lib.basename_census import make_basename_census  # noqa: E402
+from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402
 from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
 from lib.render_actions import (  # noqa: E402,F401
@@ -384,10 +387,8 @@ def main() -> int:
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
     )
-    # spec 037 T3.0: {source, remedy, proposed_name} per Attachment-Conflicts
-    # entry the owner resolved in Pass 2 (suggestion-parser.py). Forwarded to
-    # build_actions -> _build_move_asset_actions, which for now accepts it
-    # and ignores it — T3.1 is the task that consults it.
+    # Remedy records per Attachment-Conflicts entry the owner resolved
+    # (suggestion-parser.py); the attachment plan reads them.
     attachment_conflict_remedies = suggestions.get(
         "attachment_conflict_remedies", []
     )
@@ -640,6 +641,19 @@ def main() -> int:
             confirmed, parent_marker=conventions.parent_marker,
         )
     else:
+        # Only items with a template render, so only their attachments are
+        # planned — an instruction-only item must not claim a target first.
+        # No client means no confirmed item, so nothing to plan.
+        attachment_plan = None
+        if client is not None:
+            attachment_plan = build_attachment_plan(
+                [i for i in confirmed if i.get("template")],
+                attachment_remedies_by_source,
+                asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
+                inbox_path=inbox_path,
+                folder_lookup=VaultFolderLookup(client),
+                census=make_basename_census(client),
+            )
         actions, skipped_assets = build_actions(
             manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
             tag_handler_groups=tag_handler_groups,
@@ -647,7 +661,7 @@ def main() -> int:
             tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
             parent_marker=conventions.parent_marker,
             peer_marker=conventions.peer_marker,
-            attachment_conflict_remedies=attachment_conflict_remedies,
+            attachment_plan=attachment_plan,
         )
 
     # The staging notes the action list claims before any guard runs. Paired

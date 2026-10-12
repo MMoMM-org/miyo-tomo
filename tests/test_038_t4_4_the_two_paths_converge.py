@@ -102,7 +102,7 @@ SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
 PARSER = SCRIPTS_DIR / "suggestion-parser.py"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 
 
@@ -336,7 +336,7 @@ def _move_assets(parsed: dict) -> tuple[list[dict], list[dict]]:
         "tags": item.get("tags") or [],
         "attachments": list(item.get("attachments") or []),
     }
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         [entry],
         INBOX,
         ASSET_FOLDER,

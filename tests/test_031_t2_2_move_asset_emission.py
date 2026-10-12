@@ -21,7 +21,8 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions, build_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
+from lib.render_actions import build_actions  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"
@@ -72,7 +73,7 @@ def test_one_item_one_attachment_emits_one_action_with_correct_paths():
         source_path="dresden.md", rendered_file="2026-01-01_0900_dresden.md",
         attachments=["100 Inbox/Images/karte.jpg"],
     )]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     assert actions[0]["destination"] == "Atlas/290 Assets/295 Attachments/karte.jpg"
@@ -92,7 +93,7 @@ def test_two_items_embedding_same_path_emit_one_action():
             attachments=["100 Inbox/Images/karte.jpg"],
         ),
     ]
-    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, _skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
 
@@ -116,7 +117,7 @@ def test_two_items_same_basename_different_path_are_not_deduped_at_seen_level(ca
             attachments=["100 Inbox/Scans/karte.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     assert "100 Inbox/Scans/karte.jpg" in capsys.readouterr().err
@@ -127,7 +128,7 @@ def test_item_with_empty_attachment_list_emits_no_actions():
     manifest = [_manifest_entry(
         source_path="a.md", rendered_file="2026-01-01_0900_a.md", attachments=[],
     )]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert actions == []
     assert skipped == []
 
@@ -137,7 +138,7 @@ def test_manifest_with_no_attachments_key_emits_no_actions():
     m.get('attachments') is None, not []."""
     manifest = [_manifest_entry(source_path="a.md", rendered_file="2026-01-01_0900_a.md")]
     assert "attachments" not in manifest[0]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert actions == []
     assert skipped == []
 
@@ -163,7 +164,7 @@ def test_ids_assigned_from_shared_counter_are_monotonic():
         attachments=["100 Inbox/Images/one.jpg", "100 Inbox/Images/two.jpg"],
     )]
     counter = [5]
-    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, counter)
+    actions, _skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, counter)
     assert [a["id"] for a in actions] == ["I06", "I07"]
     assert counter == [7]
 

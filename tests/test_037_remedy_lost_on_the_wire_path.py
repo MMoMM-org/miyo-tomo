@@ -66,7 +66,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
     "suggestion_parser_wire_loss", SCRIPTS_DIR / "suggestion-parser.py")
@@ -142,7 +142,7 @@ def _move_destination(remedies):
         "destination": "Atlas/202 Notes/", "parent_moc": "", "parent_mocs": [],
         "tags": [], "attachments": [SOURCE],
     }]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )

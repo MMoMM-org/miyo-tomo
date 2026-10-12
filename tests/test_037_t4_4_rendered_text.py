@@ -44,7 +44,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 INBOX = "100 Inbox/"
@@ -77,7 +77,7 @@ def _all_three_kinds():
         _entry("images.md", [NO_NAME]),
     ]
     remedies = [{"source": HELD, "remedy": "keep_in_inbox", "proposed_name": None}]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )

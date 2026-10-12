@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -27,7 +27,7 @@ from lib.refusal_sentences import (
     occupied_target_sentence,
     typed_name_sentence,
 )
-from lib.render_helpers import resolve_source_path
+from lib.render_helpers import _ensure_md_extension, resolve_source_path
 from lib.typed_name_check import check_typed_folder, check_typed_name
 from lib.vault_paths import _asset_dest_join
 
@@ -82,10 +82,7 @@ def _name_key(name: str) -> str:
 
 
 def _owner_key(item: dict, inbox_path: str) -> str | None:
-    # Imported here, not at module level: render_actions will import this
-    # module (T4.3), and the owner key must be the very one its move builder
-    # puts in `source_inbox_item`.
-    from lib.render_actions import _ensure_md_extension
+    """The very key the move builder's notes carry in `source_inbox_item`."""
     return _ensure_md_extension(
         resolve_source_path(item.get("item_key"), item.get("source_path") or "", inbox_path)
         or None
@@ -259,4 +256,30 @@ def build_attachment_plan(confirmed, remedies_by_source, *, asset_folder,
         by_source={d.source: d for d in decisions},
         _folder_lookup=folder_lookup,
         _census=census,
+    )
+
+
+class _NoVault:
+    """K2 and K3 for a caller with no vault to ask: every folder unanswered,
+    every basename count unknown."""
+    folder_listing_calls = 0
+    searches = 0
+    pages = 0
+
+    def state(self, _folder: str) -> str:
+        return "unanswered"
+
+    def count(self, _basename: str) -> None:
+        return None
+
+
+def plan_without_vault(items, remedies_by_source=None, *, asset_folder,
+                       inbox_path) -> AttachmentPlan:
+    """The plan for `items` when no vault can be asked: no target reads as
+    occupied, every embed is qualified, run collisions and refusals still apply.
+    """
+    no_vault = _NoVault()
+    return build_attachment_plan(
+        items, remedies_by_source, asset_folder=asset_folder,
+        inbox_path=inbox_path, folder_lookup=no_vault, census=no_vault,
     )

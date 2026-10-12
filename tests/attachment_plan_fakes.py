@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """attachment_plan_fakes.py — one fake vault behind both of the plan's vault
 views, and the `plan_from_remedies` helper the old builder harnesses migrate
 through (spec 039 T4.2, T4.3).
@@ -142,3 +142,27 @@ def plan_from_remedies(
         folder_lookup=vault.lookup,
         census=vault.census,
     )
+
+
+def move_asset_actions_from_remedies(
+    manifest,
+    inbox_path,
+    asset_folder,
+    counter,
+    attachment_conflict_remedies=None,
+    *,
+    vault: FakeVault | None = None,
+):
+    """The old `_build_move_asset_actions(manifest, inbox_path, asset_folder,
+    counter, attachment_conflict_remedies=...)` call, answered by projecting
+    `plan_from_remedies(manifest, ...)`: returns `(moves, skipped)` as the
+    old builder did, so its harnesses keep every assertion.
+    """
+    from lib.render_actions import _build_move_asset_actions
+
+    plan = plan_from_remedies(
+        manifest, attachment_conflict_remedies,
+        inbox_path=inbox_path, asset_folder=asset_folder, vault=vault,
+    )
+    moves, skipped, _ids = _build_move_asset_actions(manifest, plan, counter, inbox_path)
+    return moves, skipped

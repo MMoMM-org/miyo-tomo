@@ -85,6 +85,7 @@ def _load_module(name: str, filename: str):
 
 PARSER = _load_module("suggestion_parser_t037_t3_0", "suggestion-parser.py")
 RENDER_ACTIONS = _load_module("render_actions_t037_t3_0", "lib/render_actions.py")
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 IR = _load_module("instruction_render_t037_t3_0", "instruction-render.py")
 
 
@@ -326,6 +327,18 @@ def _run_instruction_render(monkeypatch, tmp_path, suggestions: dict):
 
     monkeypatch.setattr(IR, "build_actions", _spy_build_actions)
 
+    # spec 039 T4.3: the remedies now reach build_actions inside the
+    # attachment plan (`attachment_plan=`), built by `build_attachment_plan`
+    # from them. Record what the plan was built from under the old key, so
+    # "the parsed remedies reach Pass 2's decision" is asserted unchanged.
+    real_build_plan = IR.build_attachment_plan
+
+    def _spy_build_plan(confirmed, remedies_by_source, **kwargs):
+        captured_kwargs["attachment_conflict_remedies"] = list(remedies_by_source.values())
+        return real_build_plan(confirmed, remedies_by_source, **kwargs)
+
+    monkeypatch.setattr(IR, "build_attachment_plan", _spy_build_plan)
+
     out_dir = tmp_path / "out"
     monkeypatch.setattr(
         sys, "argv",
@@ -447,10 +460,10 @@ def test_build_move_asset_actions_ignores_an_unmatched_remedy():
         "remedy": "rename", "proposed_name": PROPOSED_NAME,
     }]
 
-    without_arg, skipped_without = RENDER_ACTIONS._build_move_asset_actions(
+    without_arg, skipped_without = move_asset_actions_from_remedies(
         manifest, "100 Inbox/", "Atlas/290 Assets/295 Attachments/", [0]
     )
-    with_arg, skipped_with = RENDER_ACTIONS._build_move_asset_actions(
+    with_arg, skipped_with = move_asset_actions_from_remedies(
         manifest, "100 Inbox/", "Atlas/290 Assets/295 Attachments/", [0],
         attachment_conflict_remedies=remedies,
     )

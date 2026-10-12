@@ -1,4 +1,4 @@
-# version: 0.26.15
+# version: 0.27.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -22,7 +22,8 @@ from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.profile_conventions import marker_word
-from lib.render_helpers import (
+from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T4.3)
+    _ensure_md_extension,
     _moc_stem,
     _stem,
     resolve_sibling_path,
@@ -30,7 +31,7 @@ from lib.render_helpers import (
 )
 from lib.refusal_sentences import typed_name_sentence
 from lib.render_md import bare_stem
-from lib.typed_name_check import check_typed_name
+from lib.attachment_plan import AttachmentPlan, plan_without_vault
 from lib.vault_folder_lookup import VaultFolderLookup
 from lib.vault_paths import _asset_dest_join, _dest_join  # noqa: F401 — re-exported (spec 039 T1.4)
 from lib.source_link import colliding_names, qualified_target
@@ -71,38 +72,6 @@ def _inbox_join(inbox: str, basename: str) -> str:
 # text library can classify a wikilink target without importing this module.
 # Alias kept so existing references below (and any other consumer) are unchanged.
 _KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS
-
-
-def _ensure_md_extension(path: str | None) -> str | None:
-    """Append `.md` to a wikilink-derived path unless it already names a file.
-
-    Wikilink-derived paths come in three shapes:
-      1. bare stem (`FooBar`)            — atomic note  → append `.md`
-      2. dotted note name (`Foo.Bar`)    — atomic note  → append `.md`
-      3. file with extension (`X.m4a`,
-         `Y.html`, `Z.md`)               — leave alone
-
-    The discriminator is the suffix after the basename's last dot: if it is
-    ≤4 chars and matches a known Obsidian-resolvable extension, treat as a
-    real file (case 3); otherwise it is part of a dotted note name and `.md`
-    must be appended (case 1 or 2). Mirrors Obsidian's wikilink semantics —
-    `[[FooBar]]` resolves to `FooBar.md`, `[[FooBar.m4a]]` resolves to the
-    literal media file.
-
-    Hashi consumes paths verbatim (no resolution), so the JSON `source_path`
-    must equal the `.md` peer's wikilink target byte-for-byte. See handoff
-    `_inbox/from-hashi/2026-04-29_hashi-to-tomo_audio-peer-path-emission.md`.
-    """
-    if not path:
-        return path
-    basename = path.rsplit("/", 1)[-1]
-    last_dot = basename.rfind(".")
-    if last_dot < 0:
-        return path + ".md"
-    suffix = basename[last_dot + 1:]
-    if len(suffix) <= 4 and suffix.lower() in _KNOWN_FILE_EXTENSIONS:
-        return path
-    return path + ".md"
 
 
 # Path-shape contract (Hashi-driven, 2026-04-26 handoff): every path field
@@ -685,252 +654,63 @@ def _typed_name_refusal_reason(refusal_reason: str, proposed_name: str) -> str:
 
 def _build_move_asset_actions(
     manifest: list[dict],
-    inbox_path: str,
-    asset_folder: str,
+    plan: AttachmentPlan,
     counter: list[int],
-    attachment_conflict_remedies: list[dict] | None = None,
-) -> tuple[list[dict], list[dict]]:
-    """Emit move_asset actions for every unique attachment path across the
-    whole manifest, deduplicated globally (not per item) on the resolved path.
+    inbox_path: str,
+) -> tuple[list[dict], list[dict], dict[str, list[str]]]:
+    """Project the attachment plan onto the rendered manifest.
 
-    Returns (actions, skipped) — mirrors filter_unappliable_relationships's
-    shape. An attachment is skipped, reported to stderr, and added to
-    `skipped` (never raises, never aborts the run) in two cases:
+    Returns ``(moves, skipped, move_ids_by_origin)``. Walks the manifest in
+    order and visits each attachment path once (first appearance): a planned
+    target becomes one ``move_asset`` with the next id; a withheld decision
+    becomes its ``skipped_assets`` entry. Every outcome, reason and entry is
+    the plan's (``lib.attachment_plan``) — nothing is decided here.
 
-    - the path has no basename (_asset_dest_join raises ValueError)
-    - a destination collision: two DIFFERENT paths (same basename, different
-      source folders) resolve to the same destination — the first claim wins,
-      the second is skipped. Renaming is not attempted. Destinations are
-      compared case-folded (CON-6, spec 034 T6.0); the source `seen` dedup
-      stays exact, so a case-only pair in one folder is examined twice and the
-      second sighting leaves here as a reported skip rather than as nothing.
-
-    Each skipped entry is {"source", "destination", "reason", "kind",
-    "owner_source_items"} — destination is None for the no-basename case,
-    since none could be computed. `kind` is "no_basename" or "collision" — the
-    two cases need different remedies (a malformed inbox path vs. a real naming
-    conflict), so callers rendering this for a user must not treat them as one
-    case.
-
-    `owner_source_items` names the notes that embed the refused attachment, by
-    the same resolved path `_build_move_note_actions` puts in a move's
-    `source_inbox_item` — that is what lets a caller keep such a note in the
-    inbox with its file (spec 034 ADR-6). It is a list because the global
-    `seen` dedup examines each path once while several notes may embed it.
-
-    `attachment_conflict_remedies` (spec 037 T3.0) resolves a source whose
-    Pass-1 destination was occupied: `rename` recomputes the destination from
-    `proposed_name` (a basename — joined through `_asset_dest_join`, never
-    used as a path directly); `keep_in_inbox` withholds the move and records
-    a `skipped_assets` entry with `kind: vault_collision_held`; `ignore`
-    leaves the move unchanged against the still-occupied destination and
-    records nothing. A `rename` whose `proposed_name` is `None` (the
-    markdown/JSON desync route — SDD/Runtime View "A rename that lost its
-    name") degrades to `keep_in_inbox`. A source absent from
-    `attachment_conflict_remedies` (the conflict is gone by Pass 2, or never
-    existed) is treated as a plain attachment — same as `ignore`. Whichever
-    destination is chosen still passes through the `claimed` check below: a
-    remedy resolves WHICH destination is examined, never whether it is
-    examined (see docs/tomo/scripts/lib/render_actions.md).
-
-    spec 038 T3.2 / ADR-5 / ADR-6: a `rename` whose record carries
-    `name_is_owner_supplied: True` is run through `lib.typed_name_check`
-    before `_asset_dest_join` ever sees `proposed_name`. A refused name
-    emits no move and a `skipped_assets` entry with `kind:
-    typed_name_refused`, whose `reason` is a prose sentence from
-    `_typed_name_refusal_reason` and whose `refusal_reason` carries the bare
-    `REFUSAL_REASONS` code. Those two fields are not interchangeable: `reason`
-    is written for a human and must never be parsed, and this docstring said
-    the opposite until 2026-10-02 — it described T3.2's first attempt
-    (`8e7d9b0`), which put the bare code in `reason` and rendered an enum
-    literal plus the wrong remedy into the owner's instruction document.
-    `e2a67b9` fixed the code and the call site's comment and missed this
-    docstring, so the file's own documentation contradicted the comment it told
-    the reader to go and read. It survived 18 commits that way, and the reason
-    is the useful part: **not one of them touched this file.** (Eighteen, not
-    nineteen: `e2a67b9..06fd16b` counts 19 but includes the commit that fixed
-    it, which manifestly did touch the file. `e2a67b9..06fd16b~1` is 18, and
-    zero of those 18 touched it. The first draft of this very sentence said
-    "four", the second "19"; a third reviewer caught the second. The figure is
-    harder to state correctly than the fact it supports, which is the argument
-    for stating the fact first.) A stale docstring
-    is not found by the work going on around it — only by someone reading the
-    function to write about it, which is how this one surfaced (spec 038 T3.5).
-    A record
-    with the flag False or absent — the markdown path, or any `rename`
-    record predating this field — is never checked, because `proposed_name`
-    there was computed by Pass 1, not typed by the owner, and ADR-5 confines
-    rejection to names an owner could have typed.
+    A source the plan knows but no manifest entry embeds (its item did not
+    render) emits nothing. A withheld entry names only the owners that
+    rendered. ``move_ids_by_origin`` maps every owner the plan names to the
+    ids of the moves it embeds. A manifest attachment the plan does not cover
+    is a wiring error and raises ``ValueError``.
     """
-    out: list[dict] = []
-    skipped: list[dict] = []
-    seen: set[str] = set()
-    # case-folded destination -> the path that claimed it, as it is spelled
-    # (T6.0). Only the key folds: the reason the user reads names both paths
-    # the way their notes embed them.
-    claimed: dict[str, str] = {}
-    skipped_by_path: dict[str, dict] = {}
-    remedies_by_source = {
-        r["source"]: r for r in (attachment_conflict_remedies or [])
-    }
-    for m in manifest:
-        owner = _ensure_md_extension(
-            resolve_source_path(
-                m.get("item_key"), m.get("source_path") or "", inbox_path
-            ) or None
+    rendered_owners = {
+        _ensure_md_extension(
+            resolve_source_path(m.get("item_key"), m.get("source_path") or "", inbox_path)
+            or None
         )
+        for m in manifest
+    }
+    moves: list[dict] = []
+    skipped: list[dict] = []
+    move_ids_by_origin: dict[str, list[str]] = {}
+    visited: set[str] = set()
+    for m in manifest:
         for path in m.get("attachments") or []:
-            if path in seen:
-                # A later note embedding an already-refused file owns the same
-                # residue as the first one, so it joins that entry's owners.
-                entry = skipped_by_path.get(path)
-                if entry is not None and owner:
-                    if owner not in entry["owner_source_items"]:
-                        entry["owner_source_items"].append(owner)
+            if path in visited:
                 continue
-            seen.add(path)
-            owners = [owner] if owner else []
-            try:
-                destination = _asset_dest_join(asset_folder, path)
-            except ValueError as exc:
-                print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
-                # NOT str(exc): the exception message names the path because
-                # an exception can surface anywhere, while `reason` has exactly
-                # one consumer — render_md.py's bullet, which already opens with
-                # the path in backticks. Rendering both put it twice on one line.
-                entry = {
-                    "source": path, "destination": None,
-                    "reason": "the inbox path has no filename",
-                    "kind": "no_basename", "owner_source_items": owners,
-                }
-                skipped.append(entry)
-                skipped_by_path[path] = entry
-                continue
-            remedy_entry = remedies_by_source.get(path)
-            remedy = remedy_entry["remedy"] if remedy_entry else None
-            if remedy == "keep_in_inbox" or (
-                remedy == "rename" and not remedy_entry.get("proposed_name")
-            ):
-                # `destination` here is the occupied one Pass 1 found — the
-                # attachment stays put, so nothing is ever claimed for it.
-                #
-                # One outcome, two reasons, and they must not be told as one:
-                # a held attachment is the owner's own instruction, while a
-                # degraded rename is the owner asking to file it under a name
-                # this run could not recover. Reporting the second as a choice
-                # would tell them they decided something they did not.
-                #
-                # Neither reason repeats `path`: the only consumer
-                # (render_md.py's "Attachment not filed" bullet) already opens
-                # with it in backticks, and T4.4's live run rendered it twice in
-                # one line — once backticked, once as a repr. Paths are spelled
-                # in backticks here for the same reason, since `!r` produced
-                # straight quotes beside the renderer's backticks.
-                if remedy == "keep_in_inbox":
-                    reason = (
-                        f"kept in inbox: the owner chose not to file it over "
-                        f"the occupied destination `{destination}`"
-                    )
-                else:
-                    reason = (
-                        f"kept in inbox: it was to be filed under a new name "
-                        f"beside the occupied destination `{destination}`, and "
-                        f"that name is no longer available to this run — it "
-                        f"stays in the inbox rather than being filed under a "
-                        f"name the owner did not choose"
-                    )
-                entry = {
-                    "source": path, "destination": destination, "reason": reason,
-                    "kind": "vault_collision_held", "owner_source_items": owners,
-                }
-                skipped.append(entry)
-                skipped_by_path[path] = entry
-                continue
-            if remedy == "rename":
-                proposed_name = remedy_entry["proposed_name"]
-                # spec 038 T3.2 / ADR-5: only a name the owner could have
-                # typed is checked, gated on `name_is_owner_supplied`
-                # (suggestion-parser.py) — `proposed_name` itself carries no
-                # such provenance. A Tomo-computed name (flag False, or
-                # absent on an older/foreign remedy record) skips the check
-                # and reaches `_asset_dest_join` exactly as it did before
-                # this task: `_propose_asset_name` (suggestions-reducer.py)
-                # sanitises nothing and can legally produce a macOS basename
-                # Obsidian forbids (`*`, `"`, `|`, `<`, `>`, `\`); checking it
-                # would refuse names Pass 1 itself generated, which F3's
-                # ninth acceptance criterion ("this feature constrains typed
-                # names only") forbids. The check runs BEFORE
-                # `_asset_dest_join` on purpose — an unusable name must never
-                # reach it, not even to be rejected there.
-                if remedy_entry.get("name_is_owner_supplied"):
-                    verdict = check_typed_name(proposed_name)
-                    if not verdict.ok:
-                        # `reason` is prose, like every other kind's `reason`
-                        # field — render_md.py's skipped-assets bullet and
-                        # render_actions.py's own `_attachment_suppression_
-                        # reason` both render it VERBATIM (checked by
-                        # execution, not assumed), so a bare enum literal
-                        # here is a CON-6 violation live today, not a defect
-                        # deferred to T3.4. `refusal_reason` carries the bare
-                        # REFUSAL_REASONS code separately, for a renderer
-                        # that needs to branch on it deterministically
-                        # without parsing `reason`'s prose — exactly the
-                        # "phrase each without parsing a string" purpose
-                        # typed_name_check.py's own docstring states for the
-                        # closed set.
-                        #
-                        # `destination` is None: unlike `no_basename`
-                        # (nothing to compute from) there IS a natural
-                        # destination for `path`, but it belongs to the
-                        # occupied name this rename was meant to avoid, not
-                        # to the refused typed name — reporting it here would
-                        # misattribute it.
-                        entry = {
-                            "source": path, "destination": None,
-                            "reason": _typed_name_refusal_reason(
-                                verdict.reason, proposed_name
-                            ),
-                            "refusal_reason": verdict.reason,
-                            "kind": "typed_name_refused",
-                            "owner_source_items": owners,
-                        }
-                        skipped.append(entry)
-                        skipped_by_path[path] = entry
-                        continue
-                # proposed_name is a BASENAME (SDD C1) — _asset_dest_join,
-                # never the vault root a bare join would write to.
-                destination = _asset_dest_join(asset_folder, proposed_name)
-            # `ignore`, and no remedy at all (the conflict is gone by Pass 2 or
-            # never existed), both leave `destination` as computed from `path`
-            # above and fall through to the same claimed check as any other
-            # attachment — a remedy decides WHICH destination is examined,
-            # never whether it is examined.
-            claimant = claimed.get(destination.casefold())
-            if claimant is not None:
-                # Paths in backticks, and the colliding source named once:
-                # the bullet that renders this already leads with it. The
-                # stderr line below appends it separately, so the log entry
-                # stays self-contained.
-                reason = (
-                    f"destination collision: it also resolves to "
-                    f"`{destination}`, already claimed by `{claimant}`"
+            visited.add(path)
+            decision = plan.by_source.get(path)
+            if decision is None:
+                raise ValueError(
+                    f"attachment {path!r} is not in the attachment plan — "
+                    f"the plan must be built from the items that rendered it"
                 )
-                print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
-                entry = {
-                    "source": path, "destination": destination, "reason": reason,
-                    "kind": "collision", "owner_source_items": owners,
-                }
+            if decision.withheld is not None:
+                entry = dict(decision.withheld)
+                entry["owner_source_items"] = [
+                    o for o in entry["owner_source_items"] if o in rendered_owners
+                ]
                 skipped.append(entry)
-                skipped_by_path[path] = entry
                 continue
-            claimed[destination.casefold()] = path
-            out.append({
-                "id": _next_id(counter),
+            move_id = _next_id(counter)
+            moves.append({
+                "id": move_id,
                 "action": "move_asset",
                 "source": path,
-                "destination": destination,
+                "destination": decision.target,
             })
-    return out, skipped
+            for owner in decision.owners:
+                move_ids_by_origin.setdefault(owner, []).append(move_id)
+    return moves, skipped, move_ids_by_origin
 
 
 # Names differing only in case are treated as one destination (CON-6). The
@@ -1429,11 +1209,15 @@ def _drop_md(path: str) -> str:
 def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
     """The sentence the user reads for one attachment that could not be filed.
 
-    Three distinct remedies, and a reader who cannot tell which happened
-    cannot act: a destination clash (`collision`) is fixed by renaming one of
-    the two *files*; a refused typed name (`typed_name_refused`, spec 038
-    T3.2) is fixed by retyping a usable *name*; anything else reaching here
-    today — `no_basename` — is fixed by correcting the inbox *path*.
+    One remedy per kind, and a reader who cannot tell which happened cannot
+    act: a destination clash (`collision`) is fixed by renaming one of the two
+    *files*; a refused typed name (`typed_name_refused`, spec 038 T3.2) by
+    retyping a usable *name*; a refused typed folder (`typed_folder_refused`,
+    spec 039) by retyping a usable *folder*; an occupied target
+    (`vault_occupied`, spec 039) by freeing the *target* or choosing another
+    name; anything else reaching here — `no_basename` — by correcting the
+    inbox *path*. The head of the last four is the entry's own `reason`,
+    phrased by `lib.refusal_sentences` (or the plan, for `no_basename`).
     `vault_collision_held` never reaches this function at all (excluded in
     `suppress_moves_for_unfiled_attachments`, above), so there is no fourth
     branch to add for it.
@@ -1455,6 +1239,15 @@ def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
         # which is wrong here — the inbox path was never the problem).
         head = f"`{source}` cannot be filed — {entry.get('reason') or 'the typed name was refused'}"
         remedy = "retype a usable name for it, then re-run Pass 2"
+    elif entry.get("kind") == "typed_folder_refused":
+        head = f"`{source}` cannot be filed — {entry.get('reason') or 'the typed folder was refused'}"
+        remedy = "retype a usable folder for it, then re-run Pass 2"
+    elif entry.get("kind") == "vault_occupied":
+        head = f"`{source}` cannot be filed — {entry.get('reason') or 'its target is occupied'}"
+        remedy = (
+            "free the target, or re-run Pass 1 to choose another name for it, "
+            "then re-run Pass 2"
+        )
     else:
         head = f"`{source}` cannot be filed — {entry.get('reason') or 'no filename'}"
         remedy = "correct that inbox path, then re-run Pass 2"
@@ -2730,7 +2523,7 @@ def build_actions(
     tag_handler_keep_source_group_ids: list[str] | None = None,
     parent_marker: str = "up::",
     peer_marker: str = "related::",
-    attachment_conflict_remedies: list[dict] | None = None,
+    attachment_plan: AttachmentPlan | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Assemble the full ordered action list.
 
@@ -2754,10 +2547,10 @@ def build_actions(
       8. delete_source      — incl. approved tag-handler group sources (after their insert)
       9. skip
 
-    `attachment_conflict_remedies` (spec 037 T3.0) is forwarded verbatim to
-    `_build_move_asset_actions`, which consults it per attachment (T3.1) to
-    choose a renamed destination, withhold a held move, or leave an ignored
-    one unchanged.
+    `attachment_plan` (spec 039 K1) decides every attachment; the move
+    builder projects it and this function stores the projection's
+    `move_ids_by_origin` back on the plan. Without one, the plan is built here
+    from the manifest with no vault to ask (`plan_without_vault`).
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -2773,10 +2566,14 @@ def build_actions(
     ))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
-    move_assets, skipped_assets = _build_move_asset_actions(
-        manifest, inbox_path, asset_folder, counter,
-        attachment_conflict_remedies=attachment_conflict_remedies,
+    if attachment_plan is None:
+        attachment_plan = plan_without_vault(
+            manifest, asset_folder=asset_folder, inbox_path=inbox_path,
+        )
+    move_assets, skipped_assets, move_ids_by_origin = _build_move_asset_actions(
+        manifest, attachment_plan, counter, inbox_path,
     )
+    attachment_plan.move_ids_by_origin = move_ids_by_origin
     out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
     daily_actions, daily_action_ids_by_origin = _build_daily_update_actions(

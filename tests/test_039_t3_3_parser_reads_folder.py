@@ -44,7 +44,7 @@ REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 
 
 def _load(module_name: str, filename: str):
@@ -243,7 +243,7 @@ def test_a_folder_typed_inside_the_rename_backticks_is_still_refused_separator()
         "destination": "Atlas/202 Notes/", "parent_moc": "", "parent_mocs": [],
         "tags": [], "attachments": [SOURCE],
     }]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=[r]
     )
     assert actions == [], actions

@@ -47,9 +47,9 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     _build_create_moc_actions,
-    _build_move_asset_actions,
     build_actions,
     suppress_moves_for_unfiled_attachments,
 )
@@ -284,7 +284,7 @@ def test_case_only_attachment_collision_records_a_skip(capsys):
             attachments=["100 Inbox/Bilder/ufer.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Reise/Ufer.jpg"
     assert actions[0]["destination"] == "Atlas/290 Assets/295 Attachments/Ufer.jpg", (
@@ -364,7 +364,7 @@ def test_case_differing_sources_in_one_folder_are_each_accounted_for(capsys):
             attachments=["100 Inbox/ufer.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     capsys.readouterr()
     assert len(actions) == 1
     assert len(skipped) == 1
@@ -390,7 +390,7 @@ def test_one_file_embedded_by_two_notes_is_still_a_dedup_not_a_collision(capsys)
             attachments=["100 Inbox/Reise/Ufer.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert skipped == []
     assert "collision" not in capsys.readouterr().err.lower()

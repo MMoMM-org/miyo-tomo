@@ -57,7 +57,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 INBOX = "100 Inbox/"
@@ -107,7 +107,7 @@ def _render_refusal_bullet(source: str, typed_name: str) -> str:
         "source": source, "remedy": "rename", "proposed_name": typed_name,
         "name_is_owner_supplied": True,
     }]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )
@@ -187,7 +187,7 @@ def test_two_owning_notes_still_render_a_singular_attachment_remedy():
         "source": TWO_OWNER_SOURCE, "remedy": "rename",
         "proposed_name": TWO_OWNER_TYPED_NAME, "name_is_owner_supplied": True,
     }]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )

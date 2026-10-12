@@ -51,7 +51,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.typed_name_check import check_typed_name  # noqa: E402
 
 SOURCE = "100 Inbox/Scans/karte.png"
@@ -237,7 +237,7 @@ def test_both_halves_refuse_the_same_typed_name():
     """
     remedy = _remedy(FORBIDDEN_TYPED_NAME, name_is_owner_supplied=True)
 
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         [_manifest_entry("S01", "karte.md", [SOURCE])],
         INBOX,
         ASSET_FOLDER,
@@ -266,7 +266,7 @@ def test_both_halves_accept_the_same_typed_name():
     """
     remedy = _remedy(ACCEPTED_TYPED_NAME, name_is_owner_supplied=True)
 
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         [_manifest_entry("S01", "karte.md", [SOURCE])],
         INBOX,
         ASSET_FOLDER,

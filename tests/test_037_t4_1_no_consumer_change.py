@@ -61,7 +61,7 @@ if Path(_DEPS).is_dir() and _DEPS not in sys.path:
 
 from jsonschema import validate  # noqa: E402
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"
@@ -136,7 +136,7 @@ def _render_three_remedy_set() -> tuple[list[dict], list[dict]]:
         _remedy("100 Inbox/Scans/foto.jpg", "ignore"),
         _remedy("100 Inbox/Scans/plan.pdf", "keep_in_inbox"),
     ]
-    return _build_move_asset_actions(
+    return move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
 

@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_039_t3_4_folder_not_consumed_yet.py — spec 039 T3.4 (Phase 3 validation).
+# version: 0.2.0
+"""test_039_t3_4_folder_not_consumed_yet.py — spec 039 T3.4, retargeted in T4.3.
 
 Phase 3 put an editable folder on both surfaces (Pass 1 renders a
 `  - Folder: \\`<dir>\\`` line, the wire v4 carries `proposed_dir`, the parser
-records `proposed_dir` + `dir_is_owner_supplied`). Nothing in Pass 2 reads
-them yet. This test runs the real `instruction-render.py` `main()` and pins
-that claim: the same conflict with the folder line untouched, with it edited
-to another folder, and (wire path) with `proposed_dir` null vs a string,
-produces byte-identical `instructions.json`, `instructions.md`, manifest and
-rendered notes.
+records `proposed_dir` + `dir_is_owner_supplied`). Phase 3 pinned that Pass 2
+ignored it; T4.3 made Pass 2 honour it through the attachment plan (K1), so
+this file now pins the real folder outcome, running the real
+`instruction-render.py` `main()`: untouched folder → the rename lands in the
+configured asset folder; folder edited (markdown line) or a `proposed_dir`
+string (wire) → the move lands in that folder; both surfaces agree byte for
+byte.
 
-Mechanism falsified: "Pass 2 consumes `proposed_dir` before Phase 4 says so".
-Mutation proven RED in an isolated copy: `_build_move_asset_actions`
-substitutes the remedy's `proposed_dir` for the asset folder when present —
-the edited-folder runs then diverge from the untouched run.
-
-DELIBERATELY RETARGETED IN PHASE 4: once Pass 2 honours the folder, "identical"
-is wrong by design; Phase 4 replaces the equality assertions with the real
-folder outcome (the move lands in the typed folder).
+Mechanism falsified: "Pass 2 drops the owner's folder" — revert K1's
+`_typed_folder` to always return None and both edited-folder tests fail.
 
 The "038 baseline" this phase must leave untouched is the captured fixture
 `tests/fixtures/038-wire-baseline/` pinned by
 `tests/test_038_t2_4_wire_baseline_diff.py` (conflict-free wire payload) and
 the markdown/wire convergence pinned by
 `tests/test_038_t4_4_the_two_paths_converge.py`; both are run green unchanged
-at HEAD rather than duplicated here. CON-7: fixtures and fakes only.
+rather than duplicated here. CON-7: fixtures and fakes only.
 """
 from __future__ import annotations
 
@@ -139,30 +134,28 @@ def _run_pass_2(monkeypatch, tmp_path: Path, remedies: list[dict]) -> dict[str, 
             for p in sorted(out.rglob("*")) if p.is_file()}
 
 
-def _assert_rename_landed_in_the_default_folder(files: dict[str, bytes]) -> None:
+def _moves(files: dict[str, bytes]) -> list[str]:
     instr = json.loads(files["instructions.json"])
-    moves = [a for a in instr["actions"]
-             if a["action"] == "move_asset" and a["source"] == SOURCE]
-    assert [m["destination"] for m in moves] == [f"{ASSET_FOLDER}karte (2).png"]
-    assert "Other Folder" not in b"".join(files.values()).decode("utf-8")
+    return [a["destination"] for a in instr["actions"]
+            if a["action"] == "move_asset" and a["source"] == SOURCE]
 
 
-def test_markdown_edited_folder_line_changes_no_pass_2_byte(monkeypatch, tmp_path):
+def test_markdown_edited_folder_line_moves_into_that_folder(monkeypatch, tmp_path):
     base = _run_pass_2(monkeypatch, tmp_path / "a", _markdown_remedies(None))
     edited_remedies = _markdown_remedies(f"  - Folder: `{OTHER_FOLDER}`")
     # The edit is real and reached the parser: owner-supplied, verbatim.
     assert (edited_remedies[0]["proposed_dir"],
             edited_remedies[0]["dir_is_owner_supplied"]) == (OTHER_FOLDER, True)
     edited = _run_pass_2(monkeypatch, tmp_path / "b", edited_remedies)
-    _assert_rename_landed_in_the_default_folder(base)
-    assert edited == base
+    assert _moves(base) == [f"{ASSET_FOLDER}karte (2).png"]
+    assert _moves(edited) == [f"{OTHER_FOLDER}/karte (2).png"]
 
 
-def test_wire_proposed_dir_string_changes_no_pass_2_byte(monkeypatch, tmp_path):
+def test_wire_proposed_dir_string_moves_into_that_folder(monkeypatch, tmp_path):
     base = _run_pass_2(monkeypatch, tmp_path / "a", _wire_remedies(None))
     edited = _run_pass_2(monkeypatch, tmp_path / "b", _wire_remedies(OTHER_FOLDER))
-    _assert_rename_landed_in_the_default_folder(base)
-    assert edited == base
+    assert _moves(base) == [f"{ASSET_FOLDER}karte (2).png"]
+    assert _moves(edited) == [f"{OTHER_FOLDER}/karte (2).png"]
 
 
 def test_both_surfaces_agree_with_each_other(monkeypatch, tmp_path):

@@ -60,9 +60,9 @@ TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     _asset_dest_join,
-    _build_move_asset_actions,
 )
 from lib.typed_name_check import check_typed_name  # noqa: E402
 
@@ -145,7 +145,7 @@ def _outcome(record: dict) -> tuple[list[dict], list[dict]]:
         "tags": [],
         "attachments": [SOURCE],
     }]
-    return _build_move_asset_actions(
+    return move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=[record]
     )
 

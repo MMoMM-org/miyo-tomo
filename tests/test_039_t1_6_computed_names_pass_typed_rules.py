@@ -7,9 +7,14 @@ The join between two modules that never import each other: every name
 `check_typed_name`, so Tomo never proposes a name it would refuse if the owner
 typed it back.
 
-Scope is the source basenames Tomo can discover as attachments AND the vault
-allows: no `#`, `^`, `[`, `]`, no leading/trailing whitespace, no
-FORBIDDEN_CHARS. Excluded on purpose, and why:
+Scope is every source basename the vault allows and Tomo would not refuse for
+link-breaking reasons: no `#`, `^`, `[`, `]`, no leading/trailing whitespace,
+no FORBIDDEN_CHARS, no `{{`, `<%` or control characters. The four rows
+`.hidden`, `README`, `karte (7)` and `report.tar.gz` are deliberately broader
+than PRD F5-AC6's discoverable set (they lack a KNOWN_FILE_EXTENSIONS suffix
+or have multiple dots); they cover the extension-less and multi-dot branches
+of the "(n)" suffix logic, which do not depend on discovery.
+Excluded on purpose, and why:
   - `# ^ [ ]` and edge whitespace: never discovered as attachments, and a later
     task (T2.1) makes the checker refuse them (`breaks_link`).
   - `{{`, `<%`, control characters: likewise refused by T2.1 (`unsafe_sequence`).
@@ -73,6 +78,7 @@ BASENAMES = [
 ]
 
 
+# Must mirror the reducer's occupancy keys (`_asset_dest_join(...).casefold()`), or the pressure rows stop colliding.
 def _key(name: str) -> str:
     return REDUCER._asset_dest_join(ASSET_FOLDER, name).casefold()
 

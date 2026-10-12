@@ -40,3 +40,11 @@ test is `is_control_char` from `lib/typed_name_check.py`, the single definition.
 ## Folder sentences
 
 T2.2 adds the folder-name sentences beside `typed_name_sentence` in this module.
+
+`folder_sentence(reason, folder)` covers the nine `FOLDER_REFUSAL_REASONS`
+(spec 039 F2-AC5). It speaks only about the folder; the caller (T5.1) adds the
+attachment name. Same rules as the name sentences: the typed text is echoed
+through `_visible`, an unknown code raises `ValueError`, no remedy text. The
+`breaks_link` tail says the character "would break the link" rather than that
+Obsidian forbids it, because it does not (owner ruling 2026-10-12). `blank`
+quotes nothing: there is nothing to show.

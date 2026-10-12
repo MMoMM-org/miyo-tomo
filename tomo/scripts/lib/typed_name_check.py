@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.3.0
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -21,6 +21,7 @@ to duplicate that check was rejected by the owner (2026-10-01).
 """
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 
 from lib.obsidian_filename import FORBIDDEN_CHARS
@@ -37,6 +38,15 @@ REFUSAL_REASONS = frozenset({
 # Local on purpose: FORBIDDEN_CHARS is the sanitiser's set and `sanitize_stem`
 # must keep leaving `C# Notizen` alone.
 _LINK_BREAKING_CHARS = frozenset("#^[]")
+
+# Closed set of folder refusal reasons (spec 039 K4). Own set, not an
+# extension of REFUSAL_REASONS: a folder has structure (segments, escape,
+# inbox) that a name does not.
+FOLDER_REFUSAL_REASONS = frozenset({
+    "blank", "escapes_vault", "empty_segment", "edge_whitespace",
+    "trailing_separator", "forbidden_character", "breaks_link",
+    "unsafe_sequence", "inside_inbox",
+})
 
 # `{{` and `<%` are template syntax; control characters corrupt the wire.
 _UNSAFE_SUBSTRINGS = ("{{", "<%")
@@ -110,3 +120,85 @@ def check_typed_name(name: str) -> TypedNameVerdict:
         return TypedNameVerdict(ok=False, name=name, reason="breaks_link")
 
     return TypedNameVerdict(ok=True, name=name)
+
+
+def _is_drive_letter_prefix(folder: str) -> bool:
+    """`C:` or `C:/...` — a drive root, not a name that merely has a colon."""
+    return (
+        len(folder) >= 2
+        and folder[0].isalpha()
+        and folder[1] == ":"
+        and (len(folder) == 2 or folder[2] == "/")
+    )
+
+
+def _escapes_vault(folder: str) -> bool:
+    return (
+        folder.startswith(("/", "~", "./"))
+        or "\\" in folder
+        or _is_drive_letter_prefix(folder)
+        or any(seg in ("..", ".") for seg in folder.split("/"))
+    )
+
+
+def _comparable(path: str) -> str:
+    return unicodedata.normalize("NFC", path).casefold()
+
+
+def _is_inside_inbox(folder: str, inbox_path: str) -> bool:
+    inbox = _comparable(inbox_path).rstrip("/")
+    if not inbox:
+        return False
+    target = _comparable(folder)
+    return target == inbox or target.startswith(inbox + "/")
+
+
+def check_typed_folder(folder: str, *, inbox_path: str) -> TypedNameVerdict:
+    """Return a verdict on whether `folder` is usable as a typed attachment folder.
+
+    Refuse, never repair: `.strip()` only decides blankness and edge
+    whitespace; the returned `name` is the argument as typed.
+
+    Full order: blank, escapes_vault (leading `/` `~` `./`, backslash, drive
+    letter `C:` / `C:/...`, any `..` or `.` segment), empty_segment (`//`),
+    edge_whitespace (any segment with whitespace at either end, including a
+    whitespace-only segment such as `a/ /b`), trailing_separator, unsafe_sequence
+    (`{{`, `<%`, control characters), forbidden_character, breaks_link
+    (`# ^ [ ]`), inside_inbox.
+
+    Structural reasons precede character reasons because `\\` and `:` are
+    FORBIDDEN_CHARS members and would otherwise mask escapes_vault; `<%` is
+    ordered before forbidden_character for the same reason as in
+    check_typed_name. A `:` outside a drive prefix (`a:b`) is
+    forbidden_character. inside_inbox runs last: it is the only reason that
+    depends on `inbox_path`, and a folder that is otherwise malformed is
+    better described by what is wrong with the string itself.
+
+    inside_inbox compares NFC-normalised, casefolded text on segment
+    boundaries; only `inbox_path` has trailing `/` removed for the comparison
+    (the config carries `100 Inbox/`). A blank `inbox_path` never matches.
+    """
+    def refuse(reason: str) -> TypedNameVerdict:
+        return TypedNameVerdict(ok=False, name=folder, reason=reason)
+
+    if not folder.strip():
+        return refuse("blank")
+    if _escapes_vault(folder):
+        return refuse("escapes_vault")
+    if "//" in folder:
+        return refuse("empty_segment")
+    if any(seg != seg.strip() for seg in folder.split("/")):
+        return refuse("edge_whitespace")
+    if folder.endswith("/"):
+        return refuse("trailing_separator")
+    if any(u in folder for u in _UNSAFE_SUBSTRINGS) or any(
+        is_control_char(c) for c in folder
+    ):
+        return refuse("unsafe_sequence")
+    if any(c in _NON_SEPARATOR_FORBIDDEN_CHARS for c in folder):
+        return refuse("forbidden_character")
+    if any(c in _LINK_BREAKING_CHARS for c in folder):
+        return refuse("breaks_link")
+    if _is_inside_inbox(folder, inbox_path):
+        return refuse("inside_inbox")
+    return TypedNameVerdict(ok=True, name=folder)

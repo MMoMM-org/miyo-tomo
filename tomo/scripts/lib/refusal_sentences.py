@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """refusal_sentences.py — the prose the owner reads when a typed name is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -51,3 +51,31 @@ def typed_name_sentence(reason: str, name: str) -> str:
             f"a template sequence, which would corrupt the instruction set"
         )
     raise ValueError(f"unknown typed-name refusal reason: {reason!r}")
+
+
+_FOLDER_TAILS = {
+    "escapes_vault": "leaves the vault or is not a plain vault-relative path",
+    "empty_segment": "contains an empty path segment (`//`)",
+    "edge_whitespace": "has whitespace at the start or end of a path segment",
+    "trailing_separator": "ends in a path separator",
+    "forbidden_character": "contains a character Obsidian does not allow in a name",
+    "breaks_link": "contains one of # ^ [ ], which would break the link",
+    "unsafe_sequence": (
+        "contains a control character or a template sequence, which would "
+        "corrupt the instruction set"
+    ),
+    "inside_inbox": (
+        "is the inbox folder or inside it, so the next run would read it as "
+        "inbox material"
+    ),
+}
+
+
+def folder_sentence(reason: str, folder: str) -> str:
+    """The sentence for one refused typed folder, given its reason code."""
+    if reason == "blank":
+        return "typed folder refused: the typed folder is blank"
+    tail = _FOLDER_TAILS.get(reason)
+    if tail is None:
+        raise ValueError(f"unknown typed-folder refusal reason: {reason!r}")
+    return f"typed folder refused: `{_visible(folder)}` {tail}"

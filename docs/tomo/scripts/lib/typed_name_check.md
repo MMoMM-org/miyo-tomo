@@ -188,3 +188,45 @@ is `render_actions.py`'s backstop regex `_CONTROL_CHARS_RE`, which has its own
 pattern; both must agree, and
 `test_render_backstop_regex_agrees_with_the_control_predicate` asserts it over
 `chr(0)..chr(0x9f)`.
+
+## `check_typed_folder` (spec 039 T2.2, ADR-5, K4)
+
+WHY it lives beside `check_typed_name`: one module owns "what an owner may
+type", and Pass 2 must refuse a typed folder per entry. `_check_path_shape`
+(`render_actions.py`) aborts the whole run on `../x`, and passes `a//b`,
+`a/./b` and `" a "` (research R2 section 5), so a per-entry check has to run
+first. Nine reasons, a closed set of its own (`FOLDER_REFUSAL_REASONS`), each
+with a sentence in `refusal_sentences.py`.
+
+WHY the order is blank, escapes_vault, empty_segment, edge_whitespace,
+trailing_separator, unsafe_sequence, forbidden_character, breaks_link,
+inside_inbox:
+- Structural reasons precede character reasons because `\` and `:` are
+  `FORBIDDEN_CHARS` members; `a\b` and `C:/x` must say `escapes_vault`, and
+  `<%` must say `unsafe_sequence` (same masking argument as for names).
+- A drive prefix is a letter, `:`, then `/` or end. `a:b` is not an escape; it
+  is a forbidden character. `_check_path_shape` rejects `a:b` as a drive letter,
+  the property test only needs it refused.
+- `.` segments are escapes: they are relative-path elements, and `./a` and
+  `a/./b` both reach the wire as paths that are not normal vault paths. A
+  leading `~` of any kind is refused, matching `_check_path_shape`.
+- Edge whitespace is judged per segment, so `a/ /b` (a whitespace-only
+  segment) is `edge_whitespace`, not `empty_segment`; `empty_segment` means
+  literally `//`. A segment edged with `\x1c`-`\x1f` also reports
+  `edge_whitespace` because `str.strip` treats those as whitespace (as in
+  `check_typed_name`); still refused.
+- `breaks_link` applies to folders: the folder becomes part of a qualified
+  embed, so `#`, `^`, `[`, `]` break it exactly as in a name (owner ruling
+  2026-10-12, so `C# Projekte` is refused).
+
+WHY `inside_inbox` runs last and compares NFC + casefold on segment
+boundaries: it is the only reason that depends on run configuration, and the
+vault may be case-insensitive and macOS hands back decomposed names. A
+sibling such as `100 Inbox Archive` is not inside `100 Inbox`. The config
+carries `concepts.inbox` as `100 Inbox/`, so only `inbox_path` has trailing
+slashes removed; the typed folder is never normalised. A blank `inbox_path`
+matches nothing rather than everything. Casefold is deliberately conservative
+(`ß` equals `ss`): refusing a lookalike beats filing into the inbox.
+
+No production call site yet; Phase 4 (K1) calls it when the folder is
+owner-supplied.

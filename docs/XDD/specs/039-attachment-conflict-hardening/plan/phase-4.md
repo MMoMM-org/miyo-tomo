@@ -69,7 +69,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
   4. Validate: 037/038 embed tests green or deliberately retargeted with a stated reason; ruff clean
   5. Success: `[ref: PRD/F4-AC1, AC2, AC3, AC5, AC8]` `[ref: PRD/F1-AC10]`
 
-- [ ] **T4.5 Wire the plan into Pass 2** `[activity: backend]`
+- [x] **T4.5 Wire the plan into Pass 2** `[activity: backend]`
 
   1. Prime: `instruction-render.py:380-760, 850-924` `[ref: SDD/Runtime View; SDD/Cost]`
   2. Test: integration through `main()` (call it the way production does — all optional args as production passes them): plan built once after remedies load and before the first render; goldens use a census fake that answers "unique" so byte-identity holds; `validate_destinations` receives a view of the **same** K2 instance (one `list_dir` per folder across asset and note guards, counting fake); a run with no attachment makes zero census and zero extra listing calls (F3-AC7); a bad typed folder refuses one item and the run exits 0 with the rest produced (F2-AC7) — and never reaches `_check_path_shape`; a Pass 2 `cost_history` entry carries `folder_listing_calls`, `basename_searches` and `basename_pages` when `--cost-history` is given, mirroring the reducer (`suggestions-reducer.py:2869, 2907`) (C1-AC1); garden-audit and daily-only runs (`client` None) unaffected

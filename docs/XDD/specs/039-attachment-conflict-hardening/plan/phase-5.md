@@ -31,7 +31,7 @@ phase: 5
 
 Delivers what the owner reads about the new outcomes, and the dependency that keeps an origin until its attachments arrive.
 
-- [ ] **T5.1 Instruction document and shell relay for the new outcomes** `[activity: backend]` `[parallel: true]`
+- [x] **T5.1 Instruction document and shell relay for the new outcomes** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `render_md.py:76-151, 838-880, 1031-1180`; `render_actions.py:1036-1066, 1494-1520`; `instruction-render.py:1039-1046`; `tomo-tmp/withheld-attachments.md` writer (038 T4.5) `[ref: SDD/Components K7, K8]`
   2. Test: `vault_occupied` bullet names the attachment, the target and its occupier in attachment wording — never "a note already exists" (F3-AC5); `typed_folder_refused` bullet names the attachment and the rule broken, one sentence per reason (F2-AC5); unchecked targets listed as "not checked", never as free (F3-AC6); folders to be created listed (F2-AC8); qualified embeds mentioned with reason ambiguous/unanswered (tracking table); the Ignore disclosure now says the origin is kept if the move fails and no longer says the note is filed either way (F6-AC8); the shell relay file carries one line per withheld attachment and per unchecked target — never a count (038 C1 ruling); `tomo/dot_claude/agents/synthesis-conductor.md:215-217` relays the new unchecked lines (WHY written to its `docs/tomo/` mirror first; `# version:` bumped); no executor internals in any sentence
@@ -47,7 +47,7 @@ Delivers what the owner reads about the new outcomes, and the dependency that ke
   4. Validate: suite green; instructions-diff paired consumer (`derive_expected`) updated if it re-derives `depends_on`
   5. Success: `[ref: PRD/F6-AC1]` `[ref: PRD/F6-AC3]` `[ref: PRD/F6-AC4]` `[ref: PRD/F6-AC5]`; Tomo half of `[ref: PRD/F6-AC6]`
 
-- [ ] **T5.3 The executor needs no change — asserted** `[activity: testing]`
+- [x] **T5.3 The executor needs no change — asserted** `[activity: testing]`
 
   1. Prime: Hashi `src/executor/planner.ts:39-56, 264-290`, `src/actions/moveAsset.ts:72-87` (read only — no edits in Hashi) `[ref: PRD/F6-AC7, A4]`
   2. Test: a Tomo-side test that every `delete_source.depends_on` id resolves to an action of a kind the vendored instructions schema allows, and that `move_asset` precedes `delete_source` in the vendored kind order if the schema or a vendored artefact records it; the rest is a written trace (file:line) of the planner's skip-on-failed-dependency path, recorded in `docs/tomo/` and asked to be confirmed by Hashi in T6.2

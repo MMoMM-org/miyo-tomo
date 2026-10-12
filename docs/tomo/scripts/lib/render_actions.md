@@ -1900,7 +1900,7 @@ trace time (2026-10-12). Paths below are relative to that tree.
 Verdict on a `skipped` move_asset: a `skipped-already` is NOT in
 `unsatisfiedIds`, so the dependent `delete_source` RUNS (the executor treats
 the end-state as present, and graduates it to `applied: true`,
-`InstructionExecutor.ts:535-545`). It arises only when the attachment is
+`InstructionExecutor.ts:537-542`). It arises only when the attachment is
 already gone from the inbox and something sits at the target. A `failed` move
 skips the delete (F6-AC2 holds): the failing cases that leave the file in the
 inbox (target occupied while the source is still present; source missing is

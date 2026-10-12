@@ -1346,11 +1346,11 @@ different state and must not resolve alike: it yields `""` with the flag `True`
 forbids. `check_typed_name("")` verdicts that `blank`.
 
 What Pass 2 reports for it today is not the refusal, and the distinction was
-measured 2026-10-02: `_build_move_asset_actions` degrades a `rename` with any
+measured 2026-10-02: K1 (`attachment_plan._decide`, row 5) degrades a `rename` with any
 falsy `proposed_name` to keep-in-inbox **before** `name_is_owner_supplied` is
 consulted, so the owner reads the `vault_collision_held` sentence rather than a
 refusal. Both withhold the move; only the wording differs, and that ordering
-belongs to `render_actions.py` (Phase 3's T3.2), not here.
+belongs to K1, not here.
 
 ### Supersedes the Markdown Half of "One Flag, Two Producers" Above
 

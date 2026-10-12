@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.0
+# version: 0.42.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -2563,11 +2563,11 @@ def _join_attachment_conflict_remedies(
     with the flag True — NOT `rename` with a null name, which is the
     destination-less move Rule 6 forbids. `check_typed_name` verdicts that
     `""` `blank`. Measured 2026-10-02, and NOT what Pass 2 reports today:
-    `_build_move_asset_actions` degrades `rename` with any falsy
-    `proposed_name` to keep-in-inbox before `name_is_owner_supplied` is
-    consulted, so the owner reads the `vault_collision_held` sentence rather
-    than a refusal. Both withhold the move; only the wording differs, and that
-    ordering belongs to `render_actions.py` (Phase 3's T3.2), not here.
+    K1 (`attachment_plan._decide`, decision-table row 5) degrades `rename`
+    with any falsy `proposed_name` and no typed folder to keep-in-inbox before
+    `name_is_owner_supplied` is consulted, so the owner reads the
+    `vault_collision_held` sentence rather than a refusal. Both withhold the
+    move; only the wording differs, and that ordering belongs to K1, not here.
 
     **spec 039 T3.3: the folder.** `proposed_dir` is the Folder line's text
     verbatim; `dir_is_owner_supplied` is True iff it differs EXACTLY from the

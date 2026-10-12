@@ -282,7 +282,7 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F2-AC6 (internal)** — Given any refused folder, When Pass 2 emits its output, Then the default folder is **not** used as a fallback
   - [ ] **F2-AC7 (internal)** — Given a bad folder in one conflict, When Pass 2 runs, Then only that item is refused and the rest of the run is produced — a single bad folder never aborts the run
   - [ ] **F2-AC8 (internal)** — Given a usable typed folder that does not exist yet, When Pass 2 renders, Then the move is emitted, And the instruction document states that the folder will be created on apply
-  - [ ] **F2-AC9 (internal)** — Given a typed folder containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with the same reason F5-AC7 uses, And the rest of the run is produced (owner ruling 2026-10-12)
+  - [ ] **F2-AC9 (internal)** — Given a typed folder containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with the same reason F5-AC7 uses, And the rest of the run is produced (owner ruling 2026-10-12). A control character that is also whitespace (`\t`, `\n`, `\x1c`–`\x1f`) at the edge of a segment is reported as `edge_whitespace` instead — the edge check runs first; it is refused either way (owner, 2026-10-12, Phase 2 drift check)
 
 #### Feature 3: Pass 2 checks every attachment target against the vault
 
@@ -325,7 +325,7 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F5-AC4 (internal)** — Given a note *title* containing `#` (e.g. `C# Notizen`), When Tomo derives its filename, Then the result is unchanged from today — the new rule constrains typed attachment names only
   - [ ] **F5-AC5 (internal)** — Given a refusal reason the renderer does not recognise, When the instruction document is rendered, Then it is never reported as a blank name
   - [ ] **F5-AC6 (internal)** — Given a conflict whose source basename Tomo can discover as an attachment and which contains no character the vault forbids, When Pass 1 computes a name for it and the typed-name rules check that name, Then it is accepted — Tomo never proposes such a name and then refuses it if typed back. (Sources carrying `#`, `^`, `[` or `]` are never discovered as attachments; sources carrying a forbidden character are pinned as a known divergence by spec 038.)
-  - [ ] **F5-AC7 (internal)** — Given a typed name containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with one shared reason, And the rest of the run is produced — today such a name aborts the whole of Pass 2 (owner ruling 2026-10-12)
+  - [ ] **F5-AC7 (internal)** — Given a typed name containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with one shared reason, And the rest of the run is produced — today such a name aborts the whole of Pass 2 (owner ruling 2026-10-12). A control character that is also whitespace (`\t`, `\n`, `\x1c`–`\x1f`) at the edge of the name is reported as `breaks_link` (F5-AC1) instead — the edge check runs first; it is refused either way (owner, 2026-10-12, Phase 2 drift check)
 
 #### Feature 6: An origin is deleted only after its attachments have arrived (#186)
 

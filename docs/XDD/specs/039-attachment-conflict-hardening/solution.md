@@ -319,6 +319,12 @@ FOLDER_REFUSAL_REASONS = frozenset({"blank", "escapes_vault", "empty_segment",
 # escapes_vault: '..' or '.' segment, leading '/', '~', './', backslash, drive letter
 # empty_segment: '//'
 # unsafe_sequence: '{{', '<%', control characters [\x00-\x1f\x7f]
+#   (a whitespace-class control char at an edge reports the edge reason)
+# name order:   blank, separator_present, breaks_link (edge ws), unsafe_sequence,
+#               forbidden_character, breaks_link (# ^ [ ])
+# folder order: blank, escapes_vault, empty_segment, edge_whitespace,
+#               trailing_separator, unsafe_sequence, forbidden_character,
+#               breaks_link, inside_inbox
 def check_typed_folder(folder: str, *, inbox_path: str) -> TypedNameVerdict
 ```
 

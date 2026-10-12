@@ -103,3 +103,13 @@ verified in `tests/test_037_t1_1_folder_cache_serves_attachments.py` against a
 reproduction of that exact body, and against the spec 034 T5.2 suite passing
 unmodified.
 
+
+## Accepted behaviour delta (spec 039 T1.4)
+
+The pre-039 Pass 2 closure in `make_folder_listing` wrapped both the `list_dir`
+call **and** the per-entry processing in its `try`, so a malformed entry (a
+non-dict) or a raising `sanitize_stem` failed open to an empty listing. The
+shared lookup catches only around the listing call itself — the behaviour the
+Pass 1 reducer already had. Real Kado output never produces either case, so the
+narrower catch is accepted rather than widened: failing open on a malformed
+entry would hide a contract break in Kado's response as "folder is free".

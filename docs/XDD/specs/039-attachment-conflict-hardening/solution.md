@@ -296,7 +296,7 @@ and the two call counters.
 
 **K2 — folder lookup:** `state(folder) -> Literal["listed","absent","unanswered"]`;
 `assets(folder) -> dict[str, str]` (case-folded joined path → vault spelling);
-`notes(folder)`; `occupied_by_folder(folder)`; `calls: int`. `absent` is Kado's
+`notes(folder)`; `occupied_by_folder(folder)`; `folder_listing_calls: int` (pages, via `observed_call_count`). `absent` is Kado's
 tool-level `Path not found` on `listDir` (Kado `search-adapter.ts:271`, surfaced as
 `KadoNotFoundError` by `kado_client.py:861-863`); an HTTP 404 on the endpoint
 itself (`kado_client.py:686`, a misconfiguration) and every other error are
@@ -683,8 +683,8 @@ behaviour:
 
 ### Known Technical Issues
 
-- The vendored consumer suggestions schema is at v2 (spec 038 Phase 5 gap) —
-  fixed first (CON-1).
+- ~~The vendored consumer suggestions schema is at v2 (spec 038 Phase 5 gap).~~
+  Resolved by T1.3 (`52a47cf`): byte-identical to the consumer's v3.
 - `build_from_wire_companion` drops the fan wire's conflicts — backlogged.
 - An empty typed name degrades instead of refusing (`backlog.md:1839`) — only the
   folder-typed case is fixed (row 4).

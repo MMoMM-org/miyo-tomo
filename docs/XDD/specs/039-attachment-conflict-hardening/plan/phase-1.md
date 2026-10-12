@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Preconditions, no behaviour change"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---

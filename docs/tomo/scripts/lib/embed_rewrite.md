@@ -307,3 +307,22 @@ padding; the `|…`/`#…`/`^…` tail is put back verbatim as before.
 path such as `![[Scans/karte.png]]` (the plan's embed is None). That is CON-3's
 byte-identity for untouched runs; whether such a path still resolves after the
 move is Obsidian's link resolution, unchanged by this spec.
+
+## One Index Entry per Path, and a Plan Miss Raises (v0.5.1)
+
+**The attachment list is deduped before the index is built.** Triage dedupes a
+note's embeds by the string typed, not by the path it resolves to, so a note
+with `![[karte.png]]` and `![[Scans/karte.png]]` carries
+`attachments == [SOURCE, SOURCE]`. Indexing each list entry put the path in
+the basename bucket twice; `narrow_candidates` then returned two candidates
+for each embed, the `len(candidates) != 1` guard (correct for two *different*
+files sharing a basename) left both untouched, and the move still renamed the
+file — a broken embed. The duplicate is one file, so it is indexed once
+(`dict.fromkeys` keeps first-seen order).
+
+**A path the plan has no entry for raises `ValueError`.** The plan is built
+from every template-bearing item's attachments, so a miss is a wiring error
+(the plan and the render loop disagree about which items rendered), not a
+"nothing to do". Returning the body unchanged would leave it pointing at a
+name the move is about to change, with no signal. The message names the path,
+like the projection guard in `lib/render_actions.py`.

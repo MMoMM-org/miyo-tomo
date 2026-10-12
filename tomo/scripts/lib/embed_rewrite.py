@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """embed_rewrite.py — Write the attachment plan's embed text into note bodies."""
 from __future__ import annotations
 
@@ -102,16 +102,24 @@ def rewrite_attachment_embeds(body: str, attachments: list[str], plan) -> str:
     ends with it on a folder boundary. An embed resolving to two of the
     note's attachments, or to none, is left alone.
 
+    A path listed twice (triage dedupes embeds by typed string, not resolved
+    path) counts once. A path the plan has no entry for raises `ValueError`.
+
     Only the target changes: the `|…`, `#…`, `^…` tail is put back verbatim.
     Embeds inside fenced code and links without the leading `!` are left
     alone. See `docs/tomo/scripts/lib/embed_rewrite.md`.
     """
     index: dict[str, list[str]] = {}
     embeds: dict[str, str] = {}
-    for path in attachments or []:
-        index.setdefault(path.rsplit("/", 1)[-1], []).append(path)
+    for path in dict.fromkeys(attachments or []):
         decision = plan.by_source.get(path)
-        if decision is not None and decision.embed is not None:
+        if decision is None:
+            raise ValueError(
+                f"attachment {path!r} is not in the attachment plan — "
+                f"the plan must be built from the items that rendered it"
+            )
+        index.setdefault(path.rsplit("/", 1)[-1], []).append(path)
+        if decision.embed is not None:
             embeds[path] = decision.embed
 
     if not embeds:

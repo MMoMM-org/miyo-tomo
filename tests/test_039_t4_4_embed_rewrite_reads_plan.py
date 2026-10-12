@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
@@ -232,9 +234,24 @@ def test_a_kept_or_refused_attachment_rewrites_nothing():
         assert rewrite_attachment_embeds(body, [SOURCE], plan) == body
 
 
-def test_a_source_the_plan_does_not_know_is_left_alone():
+def test_a_source_the_plan_does_not_know_is_a_wiring_error():
+    """The plan covers every attachment of every rendered note. A miss would
+    leave the body untouched while the move renames the file — a broken embed
+    with no signal. Mutation: `plan.by_source.get(path)` with a None skip."""
     plan = _plan(["100 Inbox/elsewhere.png"])
-    assert rewrite_attachment_embeds("![[karte.png]]", [SOURCE], plan) == "![[karte.png]]"
+    with pytest.raises(ValueError, match="100 Inbox/Scans/karte.png"):
+        rewrite_attachment_embeds("![[karte.png]]", [SOURCE], plan)
+
+
+def test_a_path_embedded_under_two_spellings_is_still_rewritten():
+    """Triage dedupes embeds by typed string, so `![[karte.png]]` and
+    `![[Scans/karte.png]]` give `attachments == [SOURCE, SOURCE]`. Mutation:
+    index each list entry — two candidates, neither embed is rewritten."""
+    plan = _plan([SOURCE], [_rename("karte (2).png")])
+    body = "![[karte.png]] and ![[Scans/karte.png|300]]"
+    assert rewrite_attachment_embeds(body, [SOURCE, SOURCE], plan) == (
+        "![[karte (2).png]] and ![[karte (2).png|300]]"
+    )
 
 
 def test_fenced_examples_and_plain_links_are_untouched_when_qualified():

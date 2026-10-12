@@ -33,7 +33,7 @@ phase: 3
 
 Delivers the folder as a field on the v4 wire, a line in the markdown, a row in the inventory, and a value in the parser's remedy records.
 
-- [ ] **T3.1 Suggestions wire v4** `[activity: integration]`
+- [x] **T3.1 Suggestions wire v4** `[activity: integration]`
 
   1. Prime: `tomo/schemas/suggestions-wire.schema.json:7-10, 175-190`; shape manifest; `suggestions-decision-inventory.json` D24/D25; `test_038_decision_inventory_join.py:56-60, 116, 209-279`; `test_038_inventory_schema_validation.py:372-470` `[ref: SDD/External Interfaces; SDD/ADR-4]`
   2. Test: wire with `proposed_dir: null` validates, wire without it fails (required), a non-string non-null fails; `schema_version` const `"4"`; `test_035_wire_gate` green against the regenerated manifest; vendored copy still `"3"` (it moves in T6.2)

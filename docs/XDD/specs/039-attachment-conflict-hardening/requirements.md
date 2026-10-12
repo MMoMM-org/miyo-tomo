@@ -49,7 +49,7 @@ version: "1.0"
 | title | Attachment conflict hardening |
 | status | `IN_REVIEW` |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 51 |
+| acceptanceCriteria | 53 |
 | openQuestions | 1 — a consumer measurement (A1); does not block the SDD. The owner question was ruled 2026-10-11 |
 
 ### SectionStatus
@@ -263,7 +263,7 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F1-AC4 (C3)** — Given the owner sets the folder in the editor, When Pass 2 rebuilds from the wire alone, Then the outcome is identical to the markdown path for the same decision
   - [ ] **F1-AC5 (C3, C4)** — Given an empty folder field, or a folder equal to the destination's own folder, When Pass 2 renders, Then the target is exactly what it is today
   - [ ] **F1-AC6 (C3, C4)** — Given a folder is set while the remedy is Keep in inbox or Ignore, When Pass 2 renders, Then the folder is ignored, And Ignore still sends the move to the original destination unchanged
-  - [ ] **F1-AC7 (C3, C4)** — Given an untouched suggestions document, When Pass 2 reads it on either path, Then its output is byte-identical to today's apart from the wire's version stamp
+  - [ ] **F1-AC7 (C3, C4)** — Given an untouched suggestions document, When Pass 2 reads it on either path, Then its output is byte-identical to today's apart from the wire's version stamp — provided every basename it files is unique in the vault, every target is free, and Kado answers; F3 and F4 deliberately change the output when any of those does not hold
   - [ ] **F1-AC8 (C4)** — Given a folder typed inside the rename line's backticks, When Pass 2 reads the document, Then it is still refused as a path separator — the 2026-10-02 ruling is unchanged by the new folder line
   - [ ] **F1-AC9 (C3)** — Given the inventory of editable decisions, When it is published, Then it carries one new row for the folder, And the count of editable wire fields moves from 25 to 26 with both directions of the join agreeing
   - [ ] **F1-AC10 (C3)** — Given the owner keeps the original basename and changes only the folder, When Pass 2 renders, Then the attachment is filed under its original name in the new folder — a changed folder alone is a valid rename
@@ -274,14 +274,15 @@ Pass 2), and does not relax it anywhere.
 - **User Story:** As the vault owner, I want a folder I mistyped to be refused
   and named, so that I am never given a different folder than the one I chose.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] **F2-AC1 (internal)** — Given a typed folder that climbs out of the vault (`..`), starts at the filesystem root (`/`, `~`), starts with `./`, uses a backslash, or contains an empty segment, When Pass 2 validates it, Then it is refused — not normalised
-  - [ ] **F2-AC2 (internal)** — Given a typed folder that is blank, ends in a slash, has whitespace at either end of any segment, or contains a character the vault forbids in a name, When Pass 2 validates it, Then it is refused
+  - [ ] **F2-AC1 (internal)** — Given a typed folder that climbs out of the vault (`..`), starts at the filesystem root (`/`, `~`), starts with `./`, uses a backslash, or contains an empty or a `.` segment, When Pass 2 validates it, Then it is refused — not normalised
+  - [ ] **F2-AC2 (internal)** — Given a typed folder that is blank, ends in a slash, has whitespace at either end of any segment, contains a character the vault forbids in a name, or contains `#`, `^`, `[` or `]`, which would break a path-qualified embed (owner ruling 2026-10-12), When Pass 2 validates it, Then it is refused
   - [ ] **F2-AC3 (internal)** — Given a typed folder that is the inbox or lies inside it, When Pass 2 validates it, Then it is refused, because a file filed there would be read as new inbox material by the next run
   - [ ] **F2-AC4 (C1)** — Given any refused folder, When Pass 2 emits its output, Then no move is emitted for that attachment, And the notes that embed it are held, as for a refused name
   - [ ] **F2-AC5 (internal)** — Given any refused folder, When the instruction document and the run's shell report are rendered, Then each names the attachment and states which rule the folder broke, using only what was verified
   - [ ] **F2-AC6 (internal)** — Given any refused folder, When Pass 2 emits its output, Then the default folder is **not** used as a fallback
   - [ ] **F2-AC7 (internal)** — Given a bad folder in one conflict, When Pass 2 runs, Then only that item is refused and the rest of the run is produced — a single bad folder never aborts the run
   - [ ] **F2-AC8 (internal)** — Given a usable typed folder that does not exist yet, When Pass 2 renders, Then the move is emitted, And the instruction document states that the folder will be created on apply
+  - [ ] **F2-AC9 (internal)** — Given a typed folder containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with the same reason F5-AC7 uses, And the rest of the run is produced (owner ruling 2026-10-12)
 
 #### Feature 3: Pass 2 checks every attachment target against the vault
 
@@ -295,7 +296,7 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F3-AC4 (C1)** — Given the owner chose Ignore, When Pass 2 renders, Then the move is still sent unchanged to the occupied destination — Ignore is the owner's explicit instruction and is exempt from this check
   - [ ] **F3-AC5 (internal)** — Given a withheld target, When the instruction document is rendered, Then it names the attachment, the occupied target and what occupies it, in wording written for an attachment rather than for a note
   - [ ] **F3-AC6 (internal)** — Given Kado cannot answer for a target's folder, When Pass 2 renders, Then the move is still emitted, And the instruction document reports that target as not checked — an unanswered check is never reported as a free target
-  - [ ] **F3-AC7 (internal)** — Given a run, When the check runs, Then the vault is consulted at most once per distinct target folder, And a run that files no attachment makes no additional vault calls
+  - [ ] **F3-AC7 (internal)** — Given a run, When the check runs, Then the vault is listed at most once per distinct target folder and searched by name at most once per distinct filed basename, a name search that would exceed a fixed page budget is treated as unanswered, And a run that files no attachment makes no additional vault calls
 
 #### Feature 4: The embed carries a path only when the basename would be ambiguous
 
@@ -323,7 +324,8 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F5-AC3 (internal)** — Given either refusal, When the instruction document is rendered, Then both share one reason, And its sentence says the name would break the link — never that the vault forbids the filename, which is false for these characters
   - [ ] **F5-AC4 (internal)** — Given a note *title* containing `#` (e.g. `C# Notizen`), When Tomo derives its filename, Then the result is unchanged from today — the new rule constrains typed attachment names only
   - [ ] **F5-AC5 (internal)** — Given a refusal reason the renderer does not recognise, When the instruction document is rendered, Then it is never reported as a blank name
-  - [ ] **F5-AC6 (internal)** — Given every name Pass 1 can compute for a conflict, When it is checked by the typed-name rules, Then it is accepted — Tomo never proposes a name it would refuse if typed
+  - [ ] **F5-AC6 (internal)** — Given a conflict whose source basename Tomo can discover as an attachment and which contains no character the vault forbids, When Pass 1 computes a name for it and the typed-name rules check that name, Then it is accepted — Tomo never proposes such a name and then refuses it if typed back. (Sources carrying `#`, `^`, `[` or `]` are never discovered as attachments; sources carrying a forbidden character are pinned as a known divergence by spec 038.)
+  - [ ] **F5-AC7 (internal)** — Given a typed name containing `{{`, `<%` or a control character, When Pass 2 validates it, Then it is refused with one shared reason, And the rest of the run is produced — today such a name aborts the whole of Pass 2 (owner ruling 2026-10-12)
 
 #### Feature 6: An origin is deleted only after its attachments have arrived (#186)
 
@@ -417,7 +419,11 @@ can never disagree about the vault they are based on.
   uniqueness — a false "taken" is recoverable, a silent overwrite is not.
 - **Rule 3:** Uniqueness is decided for the vault after the run: files this run
   moves out of the inbox do not count, files this run moves in do.
-- **Rule 4:** Ignore is exempt from Rule 1; it is never exempt from Rule 3.
+- **Rule 4:** Ignore is exempt from the **vault** half of Rule 1 — a target this
+  run already gave to another attachment still withholds it. It is never exempt
+  from Rule 3. Under Ignore the target is occupied by design, so a qualified
+  embed names the occupier's path: when the files are identical that is the
+  right file, and when the move fails the origin is kept (F6).
 - **Rule 5:** An unanswered question is never read as a favourable answer: a
   target Kado could not check is reported as unchecked, and a basename whose
   uniqueness could not be established is written with its path.
@@ -481,8 +487,11 @@ can never disagree about the vault they are based on.
   version 2 — so this spec's schema diff measures only 3 → 4.
 - **CON-2 — Design-time handoff to Kokoro.** F6 changes what a delete depends
   on in the instructions wire (C1). Per ADR-029's cadence it goes to Kokoro as a
-  proposal **before implementation**, naming C1, C3, C4 and C10 and carrying the
-  two near-miss runs.
+  proposal, naming C1, C3, C4 and C10, the suggestions wire's v3 → v4 migration
+  path, and the two near-miss runs. **Gate (owner ruling 2026-10-12):** sent in
+  Phase 1; no C1 work starts before it is sent; nothing merges to `main` before
+  Kokoro has answered. If Kokoro rejects option 1, the C1 change is reverted on
+  the branch before merge.
 - **CON-3 — Handoff to the consumer.** Answers its three asks (accept the folder
   field and name the release vehicle; the ambiguous-embed finding; the remedy
   rule for names) and delivers the #185 ruling, which was promised before it

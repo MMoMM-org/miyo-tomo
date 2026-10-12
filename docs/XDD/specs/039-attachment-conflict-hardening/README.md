@@ -5,17 +5,17 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-11 |
-| **Current Phase** | PLAN |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Current Phase** | Ready |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-10-12 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.0, 51 acceptance criteria (F1–F6 Must, S1, C1); names four superseded prior criteria in CON-5 |
-| solution.md | completed | v1.0, 10 ADRs all confirmed; 3 new components, 11 modified; CON-2 = Kokoro handoff before implementation |
-| plan/ | pending | |
+| requirements.md | completed | v1.0, 53 acceptance criteria (F1–F6 Must, S1, C1); names four superseded prior criteria in CON-5 |
+| solution.md | completed | v1.0, 10 ADRs all confirmed; 5 new components + 1 new test, 10 modified; CON-2 gate: handoff before C1 work, Kokoro's answer before merge |
+| plan/ | completed | 6 phases, 28 tasks (12 parallel); Kokoro + Hashi handoffs first (T1.1/T1.2), the attachment plan in Phase 4 |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -40,6 +40,12 @@
 | 2026-10-11 | A folder with an empty name on the "no free name" line is refused as blank | Owner, over the consumer's implied reading that a folder alone resolves the conflict. 038's no-substitution contract wins; typing the original name back in remains valid (F1-AC10). PRD F1-AC11. |
 | 2026-10-11 | PRD approved | 51 criteria. Phase moves to SDD. |
 | 2026-10-12 | SDD approved — all 10 ADRs confirmed | Central choice ADR-1: one attachment plan decided before the render loop, with the embed rewrite and the move builder as its readers — closes `backlog.md:1917` and `:1956` on the way. ADR-10 changes C1, so the Kokoro design-time handoff (CON-2) precedes implementation. |
+| 2026-10-12 | Decomposition tier: Incremental | Classifier recommended Incremental — rule 1 fired twice (component_count 3: attachment plan, shared folder lookup, basename census; feature_count 6). 51 acceptance criteria, change_type feature, parallel_markers false. Accepted. |
+| 2026-10-12 | Plan written | 6 phases, 28 tasks, all 51 PRD criteria and K1–K14 mapped (plan/README.md). Ordering: refusal rules (Phase 2) before the folder reaches any surface (Phase 3); the delete dependency (T5.2) waits for the Kokoro handoff (T1.1, CON-2). |
+| 2026-10-12 | Spec validated (three passes: references, consistency, constitution) — 5 FAIL and 31 WARN, all addressed in PRD/SDD/plan | Fixed without owner input: Ignore still yields to a run collision (PRD Rule 4 narrowed to the vault half); F1-AC7's byte identity scoped to unique basenames, free targets and an answering Kado; one folder-equality rule in K1 against Pass 2's `concepts.asset`, parser only records provenance; two-pass plan; `byName` page budget; `Path not found` vs endpoint 404; vendored instructions copy waits for the consumer (T6.2); `suggestions-doc.schema.json` change made unconditional; new suppression sentences; conductor relay update; refusal sentences in a new module; path helpers moved to break an import cycle; Phase 3 ordered T3.2 → T3.1 → T3.3; F5-AC6 narrowed to discoverable, vault-legal sources. Clarified: when Kado's listing fails but its name search answers, the embed follows the census — "path-qualify when Kado cannot be consulted" applies to the uniqueness check. |
+| 2026-10-12 | `{{`, `<%` and control characters are refused in typed folders **and** names, with one new reason `unsafe_sequence` | Owner. Closes a pre-existing defect: such a typed name aborts the whole of Pass 2 today. PRD F2-AC9, F5-AC7 (53 criteria). |
+| 2026-10-12 | A typed folder containing `# ^ [ ]` is refused (`breaks_link`) | Owner. It would break a path-qualified embed. PRD F2-AC2. |
+| 2026-10-12 | Kokoro gate: handoff sent in Phase 1, no C1 work before it is sent, no merge before Kokoro answers; a rejection reverts T5.2 | Owner, replacing four inconsistent gates across the documents. |
 
 ## Context
 

@@ -20,7 +20,7 @@ version: "1.0"
 
 ### CRITICAL GATES (Must Pass)
 
-- [x] Every PRD requirement maps to exactly one owning component
+- [x] Every PRD requirement has one primary owning component (first-named in the Acceptance Criteria table; others contribute)
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Every architecture decision is recorded as an ADR and confirmed by the owner
 - [x] No component owns another's domain logic
@@ -46,8 +46,8 @@ version: "1.0"
 | specId | 039-attachment-conflict-hardening |
 | status | `COMPLETE` |
 | adrsConfirmed | 10 of 10 |
-| componentsAdded | 3 (attachment plan, shared folder lookup, basename census) |
-| componentsModified | 11 |
+| componentsAdded | 5 (attachment plan, shared folder lookup, basename census, vault-path helpers, refusal sentences) + 1 new test (K14) |
+| componentsModified | 10 (K4–K13) |
 | wireVersionMove | suggestions wire `3` → `4`; instructions wire unchanged in shape, `depends_on` values and description widened |
 
 ### ArchitectureSummary
@@ -58,7 +58,7 @@ version: "1.0"
 | Vault occupancy in Pass 2 | One shared, raw-cached folder lookup for notes and assets; a missing folder and an unanswered folder are distinct states |
 | Basename uniqueness | Kado `byName`, once per distinct final basename, exact case-folded match, adjusted to the vault after the run |
 | Folder input | Its own markdown line; `proposed_dir` on the wire; refused by a closed set of reasons, never repaired |
-| #185 | One new name refusal reason, `breaks_link` |
+| #185 | One new name refusal reason, `breaks_link`; plus `unsafe_sequence` for names and folders (owner ruling 2026-10-12) |
 | #186 | The origin's delete names the `move_asset` ids of its attachments |
 | A withheld target | New `skipped_assets` kinds; the existing suppression pass holds the owning notes |
 | Embed form | Bare unless ambiguous or unanswered; then the full vault path with extension and the owner's suffix |
@@ -100,11 +100,17 @@ version: "1.0"
   its shape manifest move to `"4"`; the vendored consumer copy
   (`tomo/schemas/hashi-suggestions-wire.schema.json`) is first refreshed from
   `"2"` to the `"3"` the consumer actually holds, then moves to `"4"` only after
-  the consumer confirms — the same order spec 038's ADR-1 used.
+  the consumer confirms — the same order spec 038's ADR-1 used. The same rule
+  holds for the vendored **instructions** copy (`hashi-instructions.schema.json`,
+  byte-identical to the consumer's today): its `depends_on` description changes in
+  T6.2 after the consumer vendors it, never before.
 - **CON-2** — **Kokoro handoff before implementation** (PRD CON-2; MiYo
   Constitution L2 Architecture; ADR-029 cadence). ADR-10 changes C1 values and
-  C1's prose contract. The handoff is written from this SDD and sent before any
-  Phase that touches `depends_on` starts.
+  C1's prose contract. Owner ruling 2026-10-12: the handoff is sent in Phase 1; no C1 work
+  (T5.2) starts before it is sent; nothing merges to `main` before Kokoro has
+  answered; a rejection of option 1 reverts T5.2 on the branch before merge.
+  The handoff also carries the suggestions wire's v3 → v4 migration path (L2
+  Architecture: breaking changes document their migration in Kokoro).
 - **CON-3** — Additive for untouched runs: a run with no conflict, no typed input
   and only vault-unique basenames produces Pass 2 output byte-identical to today
   (PRD F1-AC7, F4-AC1, F3-AC3).
@@ -117,7 +123,10 @@ version: "1.0"
   prediction about this vault (PRD A3).
 - **CON-7** — Kado failures never abort Pass 2. An unanswered lookup degrades to
   the reported, cautious outcome (ADR-8); only `_check_path_shape` keeps its
-  whole-run abort, and nothing an owner types can reach it any more (ADR-5).
+  whole-run abort, and nothing an owner types can reach it any more (ADR-5) —
+  which requires the typed checks to refuse **every** class `_check_path_shape`
+  rejects, including `{{`, `<%` and control characters
+  (`render_actions.py:401-408, 111`).
 - **CON-8** — Runtime file discipline (repo CLAUDE.md): rationale goes to the
   `docs/tomo/` mirror of each changed script; runtime agent/skill files change
   only where a CLI contract changes.
@@ -134,7 +143,7 @@ version: "1.0"
   occupancy set.
 - Spec 036 `solution.md:519-524` — the four delete emission sites.
 - Kokoro `ADR-029-tomo-hashi-boundary-is-a-set-of-channels.md:136-152`.
-- Code: `instruction-render.py:380-760`, `render_actions.py` (`_build_move_asset_actions` :723, `make_folder_listing` :991, `validate_destinations` :1261, `suppress_moves_for_unfiled_attachments` :1534, `_build_delete_source_actions` :1969, `build_actions` :2804), `embed_rewrite.py`, `typed_name_check.py`, `suggestions-reducer.py` (`_VaultFolderLookup` :311, `detect_attachment_conflicts` :~690, `render_attachment_conflicts_block` :1438), `suggestion-parser.py` (:245-564, :2252-2546), `kado_client.py`.
+- Code: `instruction-render.py:380-760`, `render_actions.py` (`_build_move_asset_actions` :723, `make_folder_listing` :991, `validate_destinations` :1261, `suppress_moves_for_unfiled_attachments` :1534, `_build_delete_source_actions` :1969, `build_actions` :2786), `embed_rewrite.py`, `typed_name_check.py`, `suggestions-reducer.py` (`_VaultFolderLookup` :311, `detect_attachment_conflicts` :582, `render_attachment_conflicts_block` :1438), `suggestion-parser.py` (:245-564, :2252-2546), `kado_client.py`.
 
 ### Implementation Boundaries
 
@@ -200,22 +209,24 @@ python3 scripts/wire-shape.py --regenerate       # write it
 
 ### Components
 
-| # | Component | Status | Owns | PRD |
+| # | Component | Status | Owns | Contributes to (primary owner: Acceptance Criteria table) |
 |---|-----------|--------|------|-----|
 | K1 | `lib/attachment_plan.py` | **new** | One decision per attachment source: target resolution (folder + name), refusal routing, run-local claims, vault occupancy outcome, folder-will-be-created and unchecked flags, embed text, owners per source | F1-AC3/5/6/10/11, F2-AC4/6/7/8, F3-AC1–4/6, F4-AC1–6/8, F6 (owner map) |
-| K2 | `lib/vault_folder_lookup.py` | **new** (moved from `suggestions-reducer._VaultFolderLookup`) | One raw `list_dir(folder, depth=1)` per folder per run; views `notes()`, `assets()`, `occupied_by_folder()`; `state(folder)` ∈ {`listed`, `absent`, `unanswered`}; call counter | F3-AC7, F2-AC8, F3-AC6 (state) |
-| K3 | `lib/basename_census.py` | **new** | One `byName` per distinct case-folded basename; exact case-folded filter; `count(basename)` or `None` when unanswered; call counter | F4-AC2/4/6, C1-AC1 (counter) |
-| K4 | `lib/typed_name_check.py` | modified | Name reasons gain `breaks_link`; new `check_typed_folder` with its own closed reason set | F5-AC1/2/4/6, F2-AC1–3 |
-| K5 | `lib/render_actions.py` | modified | `_build_move_asset_actions` projects K1; `_build_delete_source_actions` site 3 adds `move_asset` ids; refusal sentences; `make_folder_listing` becomes a view over K2 | F6-AC1/3/4, F3-AC5, F5-AC3/5, F2-AC5 (sentences) |
+| K2 | `lib/vault_folder_lookup.py` | **new** (moved from `suggestions-reducer._VaultFolderLookup`) | One raw `list_dir(folder, depth=1)` per folder per run; views `notes()`, `assets()`, `occupied_by_folder()`; `state(folder)` ∈ {`listed`, `absent`, `unanswered`}; keeps its existing `folder_listing_calls` counter (pages, via `observed_call_count`) | F3-AC7, F2-AC8, F3-AC6 (state) |
+| K3 | `lib/basename_census.py` | **new** | One `byName` per distinct case-folded basename; exact case-folded filter; a page budget (2 pages of 500) beyond which the answer is `None`; `count(basename)` or `None` when unanswered; counters for searches and pages | F4-AC2/4/6, C1-AC1 (counter) |
+| K4 | `lib/typed_name_check.py` | modified | Name reasons gain `breaks_link` and `unsafe_sequence`; new `check_typed_folder` with its own closed reason set | F5-AC1/2/4/6, F2-AC1–3 |
+| K5 | `lib/render_actions.py` | modified | `_build_move_asset_actions` projects K1; `_build_delete_source_actions` site 3 adds `move_asset` ids; `_attachment_suppression_reason` gains branches for the new kinds; `make_folder_listing` becomes a view over K2; re-exports the moved path helpers | F6-AC1/3/4, F3-AC5, F5-AC3/5, F2-AC5 (sentences) |
 | K6 | `lib/embed_rewrite.py` | modified | `rewrite_attachment_embeds(body, attachments, plan)` — writes K1's embed text, matches by resolved path | F4-AC1–3/5/8, F1-AC10 |
-| K7 | `instruction-render.py` | modified | Builds K1 before the loop; passes it on; relays new withheld kinds and unchecked targets to the shell; records call counts | F2-AC5 (shell), C1-AC1 |
+| K7 | `instruction-render.py` + `tomo/dot_claude/agents/synthesis-conductor.md` | modified | Builds K1 before the loop; passes it on; relays new withheld kinds and unchecked targets to the shell; appends a Pass 2 `cost_history` entry with the K2/K3 counters; the conductor's relay imperative covers the new lines (WHY in its `docs/tomo/` mirror first) | F2-AC5 (shell), C1-AC1 |
 | K8 | `lib/render_md.py` | modified | Instruction-document bullets for the new kinds, unchecked targets, folders to be created; the revised Ignore disclosure | F2-AC5, F3-AC5/6, F2-AC8, F6-AC8 |
 | K9 | `suggestions-reducer.py` | modified | Renders the folder line; conflict records carry `proposed_dir: null`; imports K2 | F1-AC2 |
 | K10 | `suggestions-render.py` | modified | Projects `proposed_dir` onto the wire | F1-AC1 |
 | K11 | `suggestion-parser.py` | modified | Parses the folder line; joins it to `proposed_dir` + `dir_is_owner_supplied`; `build_from_wire` projects it | F1-AC3/4/8/11 |
-| K12 | Schemas | modified | Suggestions wire v4 + shape manifest; vendored copy 2 → 3; both instructions schemas' `depends_on` description; inventory D26 | F1-AC1/9, F6-AC6 |
+| K12 | Schemas | modified | Suggestions wire v4 + shape manifest; `suggestions-doc.schema.json` conflict record gains `proposed_dir`; vendored suggestions copy 2 → 3 (→ 4 after confirmation); Tomo's instructions schema `depends_on` description (vendored copy after confirmation); inventory D26 | F1-AC1/9, F6-AC6 |
 | K13 | User docs | modified | `docs/usage.md`, `docs/troubleshooting.md` | S1-AC1/2 |
-| K14 | Join test (`_propose_asset_name` × `check_typed_name`) | **new test** | Every computed name passes the typed-name rules | F5-AC6 |
+| K14 | Join test (`_propose_asset_name` × `check_typed_name`) | **new test** | Every computed name for a discoverable, vault-legal source passes the typed-name rules | F5-AC6 |
+| K15 | `lib/vault_paths.py` | **new** (moved from `render_actions`) | `_dest_join`, `_asset_dest_join` — so K2 can import them without a cycle; `render_actions` re-exports | — (enabler for K2) |
+| K16 | `lib/refusal_sentences.py` | **new** | One owner-facing sentence per refusal reason (names and folders) and per new withheld kind; keeps `render_actions.py` (2877 lines) from growing | F2-AC5, F5-AC3 |
 
 F4-AC7 (a qualified embed is still recognised) is owned by the existing
 `attachment_index.extract_attachment_embeds` and needs only a test — R1 §5
@@ -233,6 +244,8 @@ tomo/scripts/
   lib/attachment_plan.py           NEW
   lib/vault_folder_lookup.py       NEW     (moved from suggestions-reducer.py)
   lib/basename_census.py           NEW
+  lib/vault_paths.py               NEW     (moved from render_actions.py, re-exported)
+  lib/refusal_sentences.py         NEW
   lib/typed_name_check.py          MODIFY  breaks_link; check_typed_folder
   lib/render_actions.py            MODIFY
   lib/embed_rewrite.py             MODIFY
@@ -241,10 +254,12 @@ tomo/schemas/
   suggestions-wire.schema.json               MODIFY  v4, proposed_dir
   shapes/suggestions-wire.shape.json         REGENERATE
   hashi-suggestions-wire.schema.json         MODIFY  2 → 3 now; → 4 after consumer confirms
+  suggestions-doc.schema.json                MODIFY  conflict record gains proposed_dir
   instructions.schema.json                   MODIFY  depends_on description
-  hashi-instructions.schema.json             MODIFY  depends_on description
+  hashi-instructions.schema.json             MODIFY  depends_on description — T6.2, after consumer confirms
   suggestions-decision-inventory.json        MODIFY  D26
 docs/usage.md, docs/troubleshooting.md       MODIFY
+tomo/dot_claude/agents/synthesis-conductor.md MODIFY  relay imperative (version bump)
 docs/tomo/scripts/**                          MODIFY  WHY mirrors for every changed script
 tests/test_039_*.py                           NEW
 ```
@@ -282,22 +297,28 @@ and the two call counters.
 **K2 — folder lookup:** `state(folder) -> Literal["listed","absent","unanswered"]`;
 `assets(folder) -> dict[str, str]` (case-folded joined path → vault spelling);
 `notes(folder)`; `occupied_by_folder(folder)`; `calls: int`. `absent` is Kado's
-`NOT_FOUND` on `listDir` (Kado `search-adapter.ts:271`); every other error is
-`unanswered`.
+tool-level `Path not found` on `listDir` (Kado `search-adapter.ts:271`, surfaced as
+`KadoNotFoundError` by `kado_client.py:861-863`); an HTTP 404 on the endpoint
+itself (`kado_client.py:686`, a misconfiguration) and every other error are
+`unanswered` — K2 tells them apart by the message, never by the exception type alone.
 
 **K3 — basename census:** `count(basename) -> int | None` — the number of vault
 files whose name case-folds equal to `basename`, or `None` when Kado did not
-answer; `calls: int`.
+answer or the page budget was exhausted; `searches: int`, `pages: int`. With no
+client it is never constructed — a run without a client files no attachment.
 
 **K4 — typed-name check:**
 
 ```python
 REFUSAL_REASONS = frozenset({"separator_present", "forbidden_character",
-                             "blank", "breaks_link"})
+                             "blank", "breaks_link", "unsafe_sequence"})
 FOLDER_REFUSAL_REASONS = frozenset({"blank", "escapes_vault", "empty_segment",
                                     "edge_whitespace", "trailing_separator",
                                     "forbidden_character", "breaks_link",
-                                    "inside_inbox"})
+                                    "unsafe_sequence", "inside_inbox"})
+# escapes_vault: '..' or '.' segment, leading '/', '~', './', backslash, drive letter
+# empty_segment: '//'
+# unsafe_sequence: '{{', '<%', control characters [\x00-\x1f\x7f]
 def check_typed_folder(folder: str, *, inbox_path: str) -> TypedNameVerdict
 ```
 
@@ -387,9 +408,12 @@ today.
 
 1. `_walk_attachment_conflicts` reads the Rename line (unchanged) and the Folder
    sub-line (new, non-checkbox branch).
-2. `_join_attachment_conflict_remedies` sets `proposed_dir`: `None` when the
-   folder text equals the record's `dirname(destination)` after trailing-slash
-   normalisation, else the text verbatim with `dir_is_owner_supplied: True`.
+2. `_join_attachment_conflict_remedies` passes the folder text through
+   verbatim and sets `dir_is_owner_supplied` = text differs **exactly** from the
+   folder Pass 1 rendered (`dirname(destination)` of the doc record) — the same
+   provenance rule `name_is_owner_supplied` uses. No normalisation: a default
+   folder with a trailing `/` is owner-supplied and is refused
+   `trailing_separator` in K1, on both paths alike.
 3. K7 builds K1 → render loop (K6 per note) → `build_actions` (K5 projects K1) →
    `validate_destinations` (K2 view) → `suppress_moves_for_unfiled_attachments`
    (holds notes for the new kinds) → `withdraw_unjustified_deletes`.
@@ -397,12 +421,20 @@ today.
 ### Primary Flow — Pass 2, wire path
 
 1. `build_from_wire` projects `proposed_dir` with `dir_is_owner_supplied: True`
-   (same rule as names, 038 T2.5); a value equal to `dirname(destination)` is
-   normalised to `None` in K1 rather than in the parser, so both paths share
-   one equality rule.
-2. Steps 3 onward as above — the paths converge at K1.
+   whenever it is non-null (same rule as names, 038 T2.5); `destination` is not
+   carried, so nothing on this path compares against it.
+2. K1's one equality rule, for both paths: a folder that is not owner-supplied,
+   or is `null`, or equals Pass 2's `concepts.asset` **exactly**, resolves to
+   `concepts.asset`; anything else is checked by `check_typed_folder`.
+3. Steps 3 onward as above — the paths converge at K1.
 
 ### Decision table (K1, per source, first match wins)
+
+K1 is built in **two passes**. Pass A walks the sources in first-appearance
+order and assigns each an outcome from rows 1–11. Pass B, only after every
+outcome is known, computes the embed for every moved source from the census and
+the complete set of moved targets — so a target withheld later in Pass A is
+never counted as a run claim.
 
 | # | Condition | Outcome | Embed |
 |---|-----------|---------|-------|
@@ -412,15 +444,19 @@ today.
 | 4 | Rename, name empty and folder owner-typed (F1-AC11) | withheld `typed_name_refused` / `blank` | untouched |
 | 5 | Rename, name empty, folder not typed | withheld `vault_collision_held` (today's degrade) | untouched |
 | 6 | Rename, name owner-typed and refused | withheld `typed_name_refused` | untouched |
-| 7 | Target already claimed this run | withheld `collision` | untouched |
+| 7 | Target already claimed this run (Ignore included) | withheld `collision` | untouched |
 | 8 | Not Ignore, K2 `listed`, target taken | withheld `vault_occupied` | untouched |
 | 9 | K2 `unanswered` | move, `unchecked` | per census |
 | 10 | K2 `absent` | move, `folder_created` | per census |
 | 11 | otherwise (incl. Ignore) | move | per census |
 
-Census, for rows 9–11: `None` → full path (`unanswered`); `others ≥ 1` → full
-path (`ambiguous`); `0` → bare final name if it differs from the name the note
-wrote, else untouched.
+Census (Pass B), for rows 9–11: `others` = vault hits − this run's moved inbox
+sources with that basename + this run's other moved targets with it. `None` →
+full path (`unanswered`); `others ≥ 1` → full path (`ambiguous`); `0` → bare
+final name if it differs from the name the note wrote, else untouched. Under
+Ignore the occupier is a vault hit at the target itself, so the embed names the
+occupier's path — right when the files are identical; when the move fails the
+origin is kept (ADR-10).
 
 ### Error Handling
 
@@ -452,8 +488,8 @@ K2/K3 and recorded with the run's existing call counts (C1).
 | Check | Unanswered → |
 |-------|--------------|
 | Occupancy | move emitted, reported unchecked (ADR-8) |
-| Folder existence | indistinguishable from occupancy failure → unchecked |
-| Basename uniqueness | qualified embed |
+| Folder existence | `absent` only on Kado's `Path not found`; any other failure → unchecked |
+| Basename uniqueness | qualified embed (also when the page budget is exhausted) |
 | Typed folder / name | n/a — pure, no I/O |
 
 ### Security and privacy
@@ -476,8 +512,12 @@ only names and paths.
 - **Trade-offs:** Largest change in the spec — `_build_move_asset_actions`
   (~250 lines) becomes a projection. Attachments of an item that later fails to
   render are planned too; they emit nothing (the projection filters by the
-  manifest, as today) but their targets count for uniqueness — at worst one
-  needless qualification.
+  manifest, as today). Their targets count for uniqueness (at worst a needless
+  qualification), **and their inbox copies are subtracted although they stay** —
+  so in the rare run where an item fails to render *and* shares a basename with
+  a filed attachment, that attachment's embed can be written bare though
+  ambiguous. Accepted: render failures are reported as errors and the run is
+  re-run; recorded under Known Technical Issues.
 - **Rejected:** moving the rewrite after `build_actions` and re-writing staged
   files (two writes per note, and the decision would still live in the move
   builder while the embed lives elsewhere); adding the checks to both existing
@@ -521,7 +561,8 @@ only names and paths.
 
 - **Choice:** `check_typed_folder` beside `check_typed_name`, own closed set
   (`blank`, `escapes_vault`, `empty_segment`, `edge_whitespace`,
-  `trailing_separator`, `forbidden_character`, `breaks_link`, `inside_inbox`);
+  `trailing_separator`, `forbidden_character`, `breaks_link`, `unsafe_sequence`,
+  `inside_inbox`);
   K1 calls it only when `dir_is_owner_supplied`; refusal kind
   `typed_folder_refused`.
 - **Rationale:** One module owns "what an owner may type"; a separate kind keeps
@@ -529,11 +570,14 @@ only names and paths.
   `breaks_link` applies to folders too, because a folder becomes part of a
   qualified embed. Running inside K1 means `_check_path_shape`'s whole-run abort
   is never reached by typed input (F2-AC7).
-- **Trade-offs:** Eight reasons, each owing a sentence and a test.
+- **Trade-offs:** Nine reasons, each owing a sentence (K16) and a test.
+  `breaks_link` on folders is an owner ruling (2026-10-12).
 
 ### ADR-6 — #185 is one reason, `breaks_link`; the renderer stops defaulting to "blank"
 
 - **Choice:** `breaks_link` covers edge whitespace and `# ^ [ ]` in names;
+  `unsafe_sequence` (`{{`, `<%`, control characters — owner ruling 2026-10-12)
+  closes the pre-existing whole-run abort a typed name can trigger today;
   `_typed_name_refusal_reason` gets an explicit `blank` branch and raises on an
   unknown reason (caught by tests, never by an owner).
 - **Rationale:** Owner ruling (one reason). The fall-through is `backlog.md:1757`
@@ -610,21 +654,23 @@ behaviour:
 | F1-AC11 | K1 | row 4 |
 | F2-AC1–3 | K4 | folder reasons |
 | F2-AC4, F2-AC6 | K1 | row 3, no fallback |
-| F2-AC5 | K8, K7 | sentence + shell relay |
+| F2-AC5 | K16, K8, K7 | sentence + document + shell relay |
 | F2-AC7 | K1 | per-entry, before joins |
 | F2-AC8 | K1, K8 | row 10, "will be created" |
+| F2-AC9 | K4 | `unsafe_sequence` for folders |
 | F3-AC1, F3-AC2 | K1 | row 8 (every non-Ignore target) |
 | F3-AC3 | K1 | row 11 |
 | F3-AC4 | K1 | Ignore skips row 8 |
 | F3-AC5 | K8 | attachment wording |
 | F3-AC6 | K1, K8 | row 9 |
-| F3-AC7 | K2, K3 | call bounds |
+| F3-AC7 | K2, K3 | call bounds; K3 page budget |
 | F4-AC1–6, F4-AC8 | K1, K6 | census rule; untouched for withheld |
 | F4-AC7 | `attachment_index` | test only |
-| F5-AC1–3 | K4, K5 | `breaks_link` + sentence |
+| F5-AC1–3 | K4, K16 | `breaks_link` + sentence |
 | F5-AC4 | K4 | `FORBIDDEN_CHARS` untouched |
 | F5-AC5 | K5 | no default-to-blank |
 | F5-AC6 | K14 | join test |
+| F5-AC7 | K4 | `unsafe_sequence` for names |
 | F6-AC1, F6-AC3, F6-AC4 | K5 | site 3 |
 | F6-AC5 | K5 | no move → unchanged |
 | F6-AC6 | K12 | both descriptions |
@@ -642,6 +688,10 @@ behaviour:
 - `build_from_wire_companion` drops the fan wire's conflicts — backlogged.
 - An empty typed name degrades instead of refusing (`backlog.md:1839`) — only the
   folder-typed case is fixed (row 4).
+- Census under-count when an item fails to render and shares a basename (ADR-1
+  trade-off).
+- A **computed** or existing target folder whose name contains `# ^ [ ]` would
+  break a qualified embed; only typed folders are refused. Not handled; rare.
 
 ### Technical Debt
 
@@ -667,6 +717,13 @@ behaviour:
   attachment reads as ambiguous.
 - **Owners are first-only today** for emitted moves (`render_actions.py:820-829`);
   K1 must collect all of them or F6-AC3 fails silently.
+- **~43 call sites in ~25 test files** use the old `build_actions(...,
+  attachment_conflict_remedies=…)`, `_build_move_asset_actions` and
+  `rewrite_renamed_embeds` signatures. Provide `plan_from_remedies(...)` as a
+  test helper and migrate the harnesses; assertions stay unchanged.
+- **`_attachment_suppression_reason`'s `else`** tells the owner to "correct that
+  inbox path" — wrong for the new kinds; add their branches in the same task
+  that emits them.
 - **`refusal_reason` is not projected to the instructions JSON**
   (`instruction-render.py:1039-1046`); keep it that way — the prose carries it.
 

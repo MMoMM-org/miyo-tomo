@@ -1868,7 +1868,7 @@ Traced tree: `/Volumes/Moon/Coding/MiYo/Hashi`, branch
 trace time (2026-10-12). Paths below are relative to that tree.
 
 1. Kind order. `src/executor/planner.ts:39` `KIND_ORDER` lists `create_moc`,
-   `move_note`, `move_asset` (line 41) ... `delete_source` (line 53), `skip`.
+   `move_note`, `move_asset` (line 42) ... `delete_source` (line 54), `skip`.
    Records are emitted kind by kind at `planner.ts:209` (`for (const kind of
    KIND_ORDER)`), so every `move_asset` is executed before any
    `delete_source`.

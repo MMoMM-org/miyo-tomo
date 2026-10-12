@@ -50,7 +50,7 @@ version: "1.0"
 | status | `IN_REVIEW` |
 | clarificationsRemaining | 0 |
 | acceptanceCriteria | 53 |
-| openQuestions | 0 — the owner question was ruled 2026-10-11; A1 stays an unmeasurable assumption (no party can probe Obsidian at runtime) |
+| openQuestions | 0 — the owner question was ruled 2026-10-11; A1 and A3 measured by the consumer in Obsidian 2026-10-12 |
 
 ### SectionStatus
 
@@ -64,7 +64,7 @@ version: "1.0"
 | Success Metrics | `COMPLETE` | |
 | Constraints and Assumptions | `COMPLETE` | Names the four prior criteria this spec supersedes |
 | Risks and Mitigations | `COMPLETE` | |
-| Open Questions | `COMPLETE` | One owner question ruled 2026-10-11; the former consumer measurement is withdrawn — A1 is unmeasurable |
+| Open Questions | `COMPLETE` | One owner question ruled 2026-10-11; A1 measured by the consumer 2026-10-12 |
 
 ---
 
@@ -518,16 +518,21 @@ can never disagree about the vault they are based on.
 ### Assumptions
 
 - **A1 — Obsidian resolves a bare basename across the whole vault**, so two
-  files with one basename make a bare embed ambiguous. Not measured, and
-  not measurable by any party: neither Tomo nor the consumer can probe Obsidian
-  at runtime (owner, 2026-10-12). It is the consumer's stated belief and the
-  premise of their request. F4 is safe whichever way it resolves: a qualified
-  embed resolves in either case.
+  files with one basename make a bare embed ambiguous. **Measured by the
+  consumer in Obsidian on 2026-10-12** (`getFirstLinkpathDest`, two
+  `karte.png`): a copy in the embedding note's own folder wins; otherwise one
+  copy wins from everywhere — not the nearest (a note in `Atlas/202 Notes/` got
+  `100 Inbox/Scans/karte.png` over `Atlas/290 Assets/295 Attachments/karte.png`).
+  The tie-break between two candidates (shorter path or alphabetical) is not
+  pinned down. A bare ambiguous embed is therefore actively wrong, not merely
+  ambiguous; F4's qualified embed is required for correctness.
 - **A2 — Kado's name search covers every file type and the whole vault within
   the key's scope.** Read from Kado's source (v1.3.0), not measured live. A key
   restricted to part of the vault under-counts (Risk R3).
 - **A3 — The consumer's executor creates a missing parent folder** for an
-  attachment move, as its documented contract states.
+  attachment move, as its documented contract states. **Measured by the
+  consumer 2026-10-12:** one `app.vault.createFolder` call creates several
+  missing levels (`a/b/c` from nothing), so any depth holds.
 - **A4 — The consumer's executor skips any action whose dependency failed,
   whatever the kinds involved.** Confirmed live for note moves on 2026-09-21 and
   read in its planner for all kinds; F6-AC7 asserts it.
@@ -553,11 +558,11 @@ can never disagree about the vault they are based on.
   substituted for the owner wins over the consumer's "a folder alone resolves
   it"; a folder change with the original name typed back in remains valid
   (F1-AC10). Now criterion F1-AC11.
-- [x] **Withdrawn 2026-10-12:** whether Obsidian resolves an ambiguous bare
-  basename to a file the owner did not intend. It was asked of the consumer as a
-  measurement; the owner pointed out the consumer cannot measure in Obsidian
-  either, so the ask was removed from the reply before it was read. It stays
-  assumption A1; F4 does not depend on the answer.
+- [x] **Answered 2026-10-12:** whether Obsidian resolves an ambiguous bare
+  basename to a file the owner did not intend. The ask had been withdrawn from
+  the reply on the belief that the consumer cannot measure in Obsidian; the
+  consumer measured it anyway in its dev console — yes, it can (A1). F4's rule
+  is required, not just safe.
 
 ---
 

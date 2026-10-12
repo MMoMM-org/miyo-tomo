@@ -4,9 +4,10 @@
 > The module is the embed rewrite pass (spec 037 T3.3, reworked by spec 039
 > T4.4): given a rendered note body, the note's attachments and the attachment
 > plan, write the plan's decided `embed` text over each `![[...]]` embed of a
-> source whose plan row has one; sources with no embed (withheld) are left alone. No such rewriter existed anywhere
-> in this repo before this task — `lib/attachment_index.py` only reads
-> `![[...]]` embeds, and has no fenced-code-block handling either.
+> source whose plan row has one; sources with no embed (withheld) are left
+> alone. No such rewriter existed anywhere in this repo before this task —
+> `lib/attachment_index.py` only reads `![[...]]` embeds, and has no
+> fenced-code-block handling either.
 
 ## Called Between the Render and the Write, Not After `build_actions`
 

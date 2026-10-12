@@ -3,8 +3,9 @@
 
 T3.2 taught `_build_move_asset_actions` (`lib/render_actions.py`) to refuse an
 owner-typed `proposed_name` and emit no `move_asset` for it. It did not touch
-the embed rewrite (`lib/embed_rewrite.py`, then `rewrite_renamed_embeds`), which runs EARLIER in
-`instruction-render.py`'s per-item loop and gated only on `remedy == "rename"`
+the embed rewrite (`lib/embed_rewrite.py`, then `rewrite_renamed_embeds`),
+which runs EARLIER in `instruction-render.py`'s per-item loop and gated only
+on `remedy == "rename"`
 plus a truthy `proposed_name`. So the two halves disagreed on the same remedy
 record: the body was rewritten to a name the move then refused, leaving the
 attachment in the inbox under its old name while the note pointed elsewhere.
@@ -129,10 +130,9 @@ def test_refused_separator_present_leaves_body_byte_identical():
 
     Mutation: delete the typed-name refusal (decision-table row 6) in
     `attachment_plan._decide`. The plan then gives the source an embed and the
-    body becomes
-    `![[Archive/karte-dresden-1938.png]]` — dangling, and hard-coding a
-    folder into the body, which this function's own docstring promises never
-    to do.
+    body becomes `![[karte-dresden-1938.png]]` — the last path component of
+    the refused name — while the move is refused, so the note points at a file
+    that never arrives.
     """
     verdict = check_typed_name(SEPARATOR_TYPED_NAME)
     assert verdict.ok is False

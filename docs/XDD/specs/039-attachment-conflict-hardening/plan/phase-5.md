@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Reporting, and the delete that waits"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---

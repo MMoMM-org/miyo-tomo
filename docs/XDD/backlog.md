@@ -2613,3 +2613,14 @@ code, so a `![[...]]` inside it is rewritten. Both directions mis-classify only 
 notes; no measured occurrence in the test vault. Fix when it matters: cap the leading
 indent at three spaces for fence openers and add indented-code-block spans, each with a
 pinning test.
+
+## OPEN — `make_folder_listing`'s `VaultFolderLookup` branch is test-only since spec 039 T4.5
+
+**Found 2026-10-12** during spec 039 T4.5 review. Not a defect.
+
+Pass 2 now hands `validate_destinations` its shared lookup's `notes` view
+directly, so production no longer calls `make_folder_listing` with a lookup
+(`lib/render_actions.py`). The `isinstance(..., VaultFolderLookup)` branch is
+exercised only by the spec 037 / 034 / 036 tests. Drop the branch (and the
+function's client form, if nothing else uses it) when those tests migrate to
+passing `lookup.notes` directly.

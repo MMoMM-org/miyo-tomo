@@ -1144,6 +1144,11 @@ lookup — so they count the attachment guard and the note guard together.
   cost (the recursive listing and the embed extraction), which the render
   process never spends. This is a measured zero for this process, not an
   untaken measurement.
+- A run with no Kado client (daily-only) writes measured zeros for
+  `folder_listing_calls`, `distinct_destination_folders`, `basename_searches`,
+  `basename_pages` and `total_kado_calls`. With no client no lookup could have
+  run, so the zero is a measurement — unlike `cost_history.md`'s "omit when not
+  measured" rule, which covers counters the process could have taken.
 - `total_kado_calls` is the client's own round-trip counter
   (`observed_call_count`), never declared.
 - `item_count` is the confirmed items left after the missing-source filter.

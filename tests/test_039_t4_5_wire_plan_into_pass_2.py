@@ -522,5 +522,49 @@ def test_validate_destinations_lists_each_folder_once():
     assert sorted(asked) == sorted([NOTES, "Atlas/203 Other"]), asked
 
 
+# ---------------------------------------------------------------------------
+# (8) the entry on a run with no client, and on an aborted run
+# ---------------------------------------------------------------------------
+
+def test_a_daily_only_run_records_measured_zeros_without_a_client(
+    monkeypatch, tmp_path
+):
+    """No client means no lookup and no census could have run: the entry
+    carries measured zeros. Mutation: dropping the `if client` /
+    `if folder_lookup` / `if census` guard on the matching counter in
+    `main()` raises on `None`."""
+    history = tmp_path / "state" / "inbox-cost-history.jsonl"
+    rc, _out = _run_main(
+        monkeypatch, tmp_path,
+        _suggestions([], daily_updates=DAILY_UPDATES), None,
+        cost_history=history,
+    )
+    assert rc == 0
+    lines = history.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1, lines
+    entry = json.loads(lines[0])
+    assert entry["action"] == "render"
+    assert entry["item_count"] == 0
+    for key in ("folder_listing_calls", "basename_searches", "basename_pages",
+                "total_kado_calls"):
+        assert entry[key] == 0, (key, entry)
+
+
+def test_an_aborted_render_records_no_cost_entry(monkeypatch, tmp_path):
+    """A destination with a `..` segment reaches `_validate_action_paths`,
+    which aborts the run with exit 2 before any artefact is written.
+    Mutation: appending the entry before the abort guards."""
+    client = CountingKado([], existing_folders=[NOTES])
+    history = tmp_path / "state" / "inbox-cost-history.jsonl"
+    rc, out_dir = _run_main(
+        monkeypatch, tmp_path,
+        _suggestions([_item("S01", "Eins", destination="../Ausserhalb/")]),
+        client, cost_history=history,
+    )
+    assert rc == 2
+    assert not (out_dir / "instructions.md").exists()
+    assert not history.exists()
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

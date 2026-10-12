@@ -1,4 +1,4 @@
-# version: 0.29.0
+# version: 0.29.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -707,9 +707,9 @@ def make_folder_listing(client_or_lookup):
     The ``.md`` view of a ``VaultFolderLookup``: one ``list_dir(folder,
     depth=1)`` per distinct folder, never a per-name ``note_exists`` probe.
     Pass the run's lookup to share its raw listing with every other reader;
-    pass a client to get a private one. Pass 2 hands ``validate_destinations``
-    its lookup's ``notes`` view directly and does not call this. A failed listing reads as empty — an
-    error is not a collision.
+    pass a client to get a private one. Pass 2 does not call this: it hands
+    ``validate_destinations`` its lookup's ``notes`` view directly. A failed
+    listing reads as empty — an error is not a collision.
     """
     lookup = (
         client_or_lookup

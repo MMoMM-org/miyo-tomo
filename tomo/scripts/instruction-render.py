@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.66.0
+# version: 0.66.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs

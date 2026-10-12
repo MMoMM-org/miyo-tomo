@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """basename_census.py — how many vault files already carry a given file name.
 
 Spec 039 K3 / ADR-3. Filing an attachment under a name another vault file
@@ -15,9 +15,20 @@ targets is K1's job, not this module's. None is cached like any answer: an
 unanswered census already makes K1 path-qualify the embed, and re-asking under
 a rate-limit error would multiply calls against the F3-AC7 bound.
 
-Bounds (F3-AC7): one search per distinct basename (keyed NFC + casefold, the
-same normalisation as typed_name_check's inside_inbox), at most PAGE_BUDGET
-pages per search. A page is fetched through `client._call_tool` because
+Kado matches `query.toLowerCase()` as a substring of `name.toLowerCase()` with
+no Unicode normalisation and no casefold. So each ask sends the NFC and, when
+it differs, the NFD form, each through Python `.lower()` (not casefold, which
+would turn "Straße" into "strasse" and match nothing). Hits are unioned by
+path, narrowed to exact final-segment equality under the local key (NFC +
+casefold, the same normalisation as typed_name_check's inside_inbox; matching
+more loosely than Kado is the safe, over-counting direction), and counted as
+distinct paths.
+
+Bounds (F3-AC7): one name search per distinct basename (cache keyed by the
+local key), plus one more only for a name whose NFC and NFD forms differ, so at
+most two per basename; ASCII names cost one. At most PAGE_BUDGET pages per
+search; any variant that errors or exhausts its budget makes the whole count
+None. A page is fetched through `client._call_tool` because
 `KadoClient.search_by_name` drains every cursor and so cannot be bounded.
 """
 from __future__ import annotations
@@ -42,34 +53,46 @@ class BasenameCensus:
     def count(self, basename: str) -> int | None:
         key = _key(basename)
         if key not in self._cache:
-            self._cache[key] = self._search(key)
+            self._cache[key] = self._search(basename, key)
         return self._cache[key]
 
-    def _search(self, key: str) -> int | None:
+    def _search(self, name: str, key: str) -> int | None:
         if "*" in key or "?" in key:
             return None
+        paths: set[str] = set()
+        for query in _query_variants(name):
+            if not self._drain(query, paths):
+                return None
+        return sum(1 for path in paths if _final_segment(path) == key)
+
+    def _drain(self, query: str, paths: set[str]) -> bool:
         self.searches += 1
-        found = 0
         cursor = None
         for _ in range(PAGE_BUDGET):
-            args = {"operation": "byName", "query": key, "limit": PAGE_LIMIT}
+            args = {"operation": "byName", "query": query, "limit": PAGE_LIMIT}
             if cursor is not None:
                 args["cursor"] = cursor
             self.pages += 1
             try:
                 result = self._client._call_tool("kado-search", args)
             except Exception:  # noqa: BLE001 — any failure is "unanswered"
-                return None
+                return False
             items = result.get("items", [])
-            found += sum(1 for item in items if _final_segment(item) == key)
+            paths.update(str(item.get("path", "")) for item in items)
             cursor = result.get("nextCursor") or result.get("cursor")
             if not cursor or not items:
-                return found
-        return None
+                return True
+        return False
 
 
-def _final_segment(item: dict) -> str:
-    return _key(str(item.get("path", "")).rsplit("/", 1)[-1])
+def _query_variants(name: str) -> list[str]:
+    nfc = unicodedata.normalize("NFC", name).lower()
+    nfd = unicodedata.normalize("NFD", name).lower()
+    return [nfc] if nfc == nfd else [nfc, nfd]
+
+
+def _final_segment(path: str) -> str:
+    return _key(path.rsplit("/", 1)[-1])
 
 
 def make_basename_census(client) -> BasenameCensus:

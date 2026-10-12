@@ -17,8 +17,26 @@ Runtime file: `tomo/scripts/lib/basename_census.py`. Spec 039 K3, ADR-3, PRD F3-
 - **Why None is cached.** An unanswered census already makes K1 path-qualify the
   embed (fail-safe). Re-querying after a rate-limit error would multiply calls
   against F3-AC7's bound. Cached value is None, never 0.
-- **Normalisation.** NFC + casefold on both sides, matching
-  `typed_name_check._comparable` (inside_inbox). Names with `*`/`?` are never sent:
-  Kado would read them as a glob; Obsidian forbids them in names anyway.
-- **Known limit.** The query is sent NFC-casefolded; Kado lowercases but does not
-  normalise, so an NFD-stored filename may not match the NFC query (undercount).
+- **Kado's matching contract.** `search-adapter.ts` byName: `query.toLowerCase()`
+  is a substring of `f.name.toLowerCase()`. No Unicode normalisation, JS
+  lowercase rather than casefold. A query only finds files whose stored name
+  contains those exact code points once lowercased.
+- **Why two query forms, and why `.lower()`.** macOS stores names decomposed
+  (NFD) while typed names arrive NFC, so a single-form query undercounts, and an
+  undercount reads as "unique" and yields an unsafe bare embed (PRD Rule 5: an
+  unverified question is never favourable). The census sends NFC-lower and,
+  when different, NFD-lower. Python `.lower()` mirrors JS `toLowerCase`;
+  casefold would turn "Straße" into "strasse", which Kado cannot match.
+- **Why casefold locally.** After the union by path, hits are narrowed to final
+  segment equality under NFC + casefold (as `typed_name_check._comparable`).
+  That is looser than Kado's own rule and can only over-count; over-counting
+  makes K1 path-qualify, the safe direction. Cache key is the same local key, so
+  repeated asks in any casing or form cost nothing. Names with `*`/`?` are never
+  sent: Kado would read them as a glob; Obsidian forbids them in names anyway.
+- **F3-AC7 interaction.** "One name search per distinct basename" becomes at
+  most two: the second search is sent only for names whose NFC and NFD forms
+  differ (accented or otherwise decomposable names); ASCII names cost one.
+  `searches` counts each variant search sent, `pages` each page fetched.
+- **Budget across variants.** PAGE_BUDGET (2) applies per variant search. If any
+  variant errors or exhausts its budget the whole count is None (cached), never
+  a partial number.

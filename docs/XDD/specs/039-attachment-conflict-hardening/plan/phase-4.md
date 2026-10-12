@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The attachment plan"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -37,7 +37,7 @@ phase: 4
 
 Delivers the single decision site and rewires both of today's decision sites to read it.
 
-- [ ] **T4.1 Basename census `lib/basename_census.py`** `[activity: integration]` `[parallel: true]`
+- [x] **T4.1 Basename census `lib/basename_census.py`** `[activity: integration]` `[parallel: true]`
 
   1. Prime: `kado_client.py:283-311, 601-637`; `render_resolve.py:599-614` (the pattern to copy); Kado `search-adapter.ts:408-415` (substring, all file types) `[ref: SDD/ADR-3; SDD/Interface Specifications K3]`
   2. Test: `count("photo.png")` ignores `old-photo.png` (substring hit); case-folded equality (`Karte.PNG` counts for `karte.png`); one search per distinct case-folded basename however often asked; a Kado error → `None`, and not cached as 0; a third page requested → stop, `None` (page budget); `searches` and `pages` counters

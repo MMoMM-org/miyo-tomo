@@ -134,6 +134,12 @@ def _blank_folder(source):
 @pytest.fixture
 def every_kind(monkeypatch, tmp_path):
     """Render once over a vault where every new outcome happens once."""
+    return render_every_kind(monkeypatch, tmp_path)
+
+
+def render_every_kind(monkeypatch, tmp_path):
+    """`(instructions.md, relay lines)` for the every-outcome fixture — a plain
+    function so spec 039 T5.4's tests render the same document."""
     vault = [
         FOLDER_NEW, UNCHECKED, OCCUPIED, FOLDER_REFUSED, BLANK_FOLDER,
         AMBIGUOUS, UNANSWERED, IGNORED,
@@ -198,9 +204,10 @@ def _sentence_fn(name):
 def test_occupied_bullet_names_attachment_target_and_occupier(every_kind):
     md, _relay = every_kind
     (bullet,) = [b for b in _withheld_bullets(md) if f"`{OCCUPIED}`" in b]
-    assert f"at the target `{ASSET}/belegt.png`" in bullet, bullet
+    # spec 039 T5.4: the case-only occupier is not AT the target
+    assert f"from the target `{ASSET}/belegt.png`" in bullet, bullet
     assert f"already holds `{ASSET}/Belegt.png`" in bullet, bullet
-    assert "differ only in case" in bullet, bullet
+    assert "only in case" in bullet, bullet
     assert "attachment" in bullet, bullet
     assert "No remedy defined" not in bullet, bullet
     for line in _lines_naming(md, OCCUPIED):

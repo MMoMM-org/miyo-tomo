@@ -344,12 +344,14 @@ def test_row7_is_decided_before_row_8():
 def test_occupied_target_sentence_variants():
     exact = occupied_target_sentence(DEFAULT_TARGET, DEFAULT_TARGET)
     # same spelling: naming the occupier would repeat the target, so it reads "a file"
-    assert "already holds a file at the target" in exact and "differ only in case" not in exact
+    assert "already holds a file at the target" in exact and "only in case" not in exact
     case_only = occupied_target_sentence(DEFAULT_TARGET, f"{ASSET}KARTE.png")
-    assert f"`{ASSET}KARTE.png`" in case_only and "differ only in case" in case_only
+    assert f"`{ASSET}KARTE.png`" in case_only and "only in case" in case_only
+    # spec 039 T5.4: the case-only occupier is not AT the target
+    assert "at the target" not in case_only, case_only
     folder = occupied_target_sentence(DEFAULT_TARGET, None, occupier_is_folder=True)
     assert "already has a folder at" in folder
-    assert "already holds" not in folder and "differ only in case" not in folder
+    assert "already holds" not in folder and "only in case" not in folder
 
 
 def test_row8_a_note_in_the_folder_does_not_occupy_an_attachment_target():

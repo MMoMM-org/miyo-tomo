@@ -536,8 +536,11 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
         "`100 Inbox/Scans/other.png` cannot be filed — typed name refused: "
         f"`{UNUSABLE_TYPED_NAME}` contains a character Obsidian does not "
         "allow in a filename — the note that embeds it is not filed "
-        "either. To fix: retype a usable name for it, then re-run Pass 2."
-    )
+        "either. To fix: correct the name in the suggestions document and run "
+        "`/inbox --pass2 --force` before you apply. If you have already "
+        "applied, the attachment is still in the inbox, and so is every note "
+        "that embeds it: run `/inbox --recover` and name the attachment again."
+    )  # remedy re-pinned by spec 039 T5.4: one remedy per withheld kind
     # No general containment rule over this sentence can be sound (see
     # test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code
     # for the two that failed): it quotes the owner's typed name verbatim,

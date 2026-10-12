@@ -111,7 +111,10 @@ def test_an_nfc_only_difference_is_not_reported_as_a_case_difference():
     vault = FakeVault([source, f"{ASSET}{NFC_NAME}"], existing_folders=[ASSET])
     plan = _plan([{"source_path": "cafe.md", "attachments": [source]}], vault)
     (decision,) = plan.decisions
-    assert "differ only in case" not in decision.withheld["reason"]
+    # "only in case", not the pre-T5.4 "differ only in case", which no
+    # sentence carries any more and would pass vacuously (spec 039 T5.4).
+    assert "only in case" not in decision.withheld["reason"]
+    assert "already holds a file at the target" in decision.withheld["reason"]
 
 
 # --- K1 row 7: run collision --------------------------------------------------

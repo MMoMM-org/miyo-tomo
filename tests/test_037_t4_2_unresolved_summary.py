@@ -38,6 +38,12 @@ states where the file is and what to do about it. Neither may lose a fact
 it alone carries. `test_conflict_remains_never_repeats_attachment_not_filed`
 below pins this mechanically — by sentence, not by a vaguer "different
 wording somewhere" check.
+
+Spec 039 T5.4 (owner ruling 2026-10-12: one report per item) took the
+`ignore` half back out of "Conflicts not resolved by rename". Since 2026-09-28
+an ignored conflict is disclosed on its own move ("Destination was occupied"),
+so listing it here as well reported it twice — and the two said different
+things. 037's intent holds: the owner is still told, once, at the move.
 """
 from __future__ import annotations
 
@@ -152,7 +158,9 @@ def _three_remedy_metadata() -> dict:
     }
 
 
-def test_unresolved_report_names_the_two_non_rename_sources_verbatim():
+def test_unresolved_report_names_the_held_source_and_not_the_ignored_one():
+    """Re-pinned for spec 039 T5.4: the `ignore`d source is reported at its own
+    move (see the module docstring), so it is no longer named here."""
     md = render_instructions_md([], _three_remedy_metadata(), {})
     section = md.split("**Conflicts not resolved by rename**", 1)[1]
     # Cut at the next blank-line-terminated block so a coincidental mention
@@ -161,7 +169,7 @@ def test_unresolved_report_names_the_two_non_rename_sources_verbatim():
     # is reading.
     section = "\n\n".join(section.split("\n\n")[:2])
     assert KEEP_SOURCE in section, section
-    assert IGNORE_SOURCE in section, section
+    assert IGNORE_SOURCE not in section, section
 
 
 def test_unresolved_report_never_names_the_successful_rename_source():
@@ -292,13 +300,13 @@ def test_conflict_remains_never_repeats_attachment_not_filed():
     # each block's lines with `|=`, so a bullet rendered TWICE contributes an
     # identical set and passes silently — the whole additive-duplication class
     # is invisible to a presence-only assertion. This fixture has exactly one
-    # `vault_collision_held` entry and two unresolved conflicts (that entry
-    # plus the `ignore`d one).
+    # `vault_collision_held` entry and one unresolved conflict — the `ignore`d
+    # one is reported at its own move since spec 039 T5.4.
     # Mutation: append any `unresolved_conflicts` entry to the list twice in
     # `render_instructions_md`, or drop the `kind` filter so a `no_basename`
     # entry joins them — the set comparison stays green, this does not.
     assert len(filed_lines) == 1, f"expected exactly one filed bullet: {filed_lines}"
-    assert len(remains_lines) == 2, f"expected exactly two remains bullets: {remains_lines}"
+    assert len(remains_lines) == 1, f"expected exactly one remains bullet: {remains_lines}"
 
     sentences_filed: set[str] = set()
     for ln in filed_lines:

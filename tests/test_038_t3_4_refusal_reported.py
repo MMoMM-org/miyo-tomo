@@ -83,10 +83,15 @@ BLANK_TYPED_NAME = "   "
 TWO_OWNER_SOURCE = "100 Inbox/Scans/other.png"
 TWO_OWNER_TYPED_NAME = "sub/dir.png"
 
+# Re-pinned for spec 039 T5.4 (owner ruling 2026-10-12): one remedy per
+# withheld kind, the before-apply and after-apply routes as separate
+# sentences, and the after-apply route through `/inbox --recover` — a held
+# note's source is already captured, which a bare `/inbox` skips.
 REMEDY_LINE = (
-    "Type a usable name for it: before applying, correct the name in the "
-    "suggestions document and run `/inbox --pass2 --force`; afterwards, it "
-    "is still in the inbox, so re-run `/inbox` and name it again"
+    "To fix: correct the name in the suggestions document and run "
+    "`/inbox --pass2 --force` before you apply. If you have already applied, "
+    "the attachment is still in the inbox, and so is every note that embeds "
+    "it: run `/inbox --recover` and name the attachment again"
 )
 
 

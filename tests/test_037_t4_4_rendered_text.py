@@ -107,11 +107,14 @@ def test_the_unresolved_conflicts_heading_never_claims_the_owner_chose():
     lost by this run. Telling them they chose otherwise reports a decision
     they did not make — the exact defect T4.2 fixed one line lower down.
     """
+    # spec 039 T5.4: an `ignore` no longer renders under this heading (it is
+    # reported at its own move), so the heading is opened by a held entry.
     metadata = {
         **BASE_METADATA,
-        "attachment_conflict_remedies": [
-            {"source": HELD, "remedy": "ignore", "proposed_name": None},
-        ],
+        "skipped_assets": [{
+            "source": HELD, "destination": f"{ASSET_FOLDER}karte.png",
+            "reason": "kept in inbox", "kind": "vault_collision_held",
+        }],
     }
     md = render_instructions_md([], metadata, {})
     heading = next(
@@ -268,17 +271,16 @@ def test_the_pass2_ignore_bullet_does_not_promise_a_refusal():
     Distinct from the test above: that one covers the Pass-1 suggestions
     document, this one the Pass-2 instruction document. Both made the claim and
     fixing one would have left the other.
+
+    Re-pinned for spec 039 T5.4 (owner ruling 2026-10-12: one report per
+    item): the `else` branch is gone with the ignore's summary bullet — an
+    ignore is reported once, at its own move — so the claim must appear
+    nowhere in the document.
     """
-    md = render_instructions_md([], {
-        **BASE_METADATA,
-        "attachment_conflict_remedies": [
-            {"source": HELD, "remedy": "ignore", "proposed_name": None},
-        ],
-    }, {})
-    bullet = next(ln for ln in md.splitlines()
-                  if ln.startswith("- ⚠️ **Conflict remains:**"))
-    assert "unless that name has since been freed" in bullet, bullet
-    assert "will be refused when the run is applied" not in bullet, bullet
+    md = _render_with_remedy("ignore")
+    assert "Conflict remains" not in md, md
+    assert "will be refused" not in md, md
+    assert ANNOTATION in md, md
 
 
 def test_a_document_rendered_before_the_wording_changed_still_parses():
@@ -390,18 +392,16 @@ def test_the_annotation_and_the_summary_bullet_share_no_sentence():
     no SENTENCE may be repeated — applied to this third site.
 
     Mutation: give the annotation the summary bullet's own wording.
+
+    Re-pinned for spec 039 T5.4 (owner ruling 2026-10-12: one report per
+    item): there is no longer a summary bullet for an ignore, so no sentence
+    can be repeated — the source is named once, on its own move.
     """
     md = _render_with_remedy("ignore")
     block = _action_block(md)
-    bullet = next(ln for ln in md.splitlines()
-                  if ln.startswith("- ⚠️ **Conflict remains:**"))
-
-    def sentences(text):
-        return {s.strip().lower() for s in re.split(r"(?<=[.])\s+", text)
-                if len(s.strip()) > 25}
-
-    overlap = sentences(block) & sentences(bullet)
-    assert not overlap, f"a sentence appears in both places: {overlap}"
+    assert not any(ln.startswith("- ⚠️ **Conflict remains:**")
+                   for ln in md.splitlines()), md
+    assert md.count(f"`{HELD}`") == 1, md
     # The annotation must claim no OUTCOME — nothing re-checks the destination
     # between Pass 1 and the apply, which is the correction made 2026-09-28.
     assert "will be refused" not in block, block
@@ -450,11 +450,15 @@ def test_the_held_remedy_covers_both_reading_moments():
 
     Mutation: restore "No action needed unless you change your mind; rename the
     file and re-run `/inbox` to file it after all."
+
+    Spec 039 T5.4 (owner ruling 2026-10-12) split the two moments into
+    separate sentences — "... before you apply. If you have already applied,
+    ..." — because "afterwards" read as "after the step just named".
     """
     _skipped, md = _all_three_kinds()
     ln = next(b for b in _filed_bullets(md) if f"`{HELD}`" in b)
-    before_at = ln.find("before applying")
-    after_at = ln.find("afterwards")
+    before_at = ln.find("before you apply")
+    after_at = ln.find("If you have already applied")
     assert before_at != -1, ln
     assert after_at != -1, ln
     assert before_at < after_at, f"the two moments are named out of order: {ln}"

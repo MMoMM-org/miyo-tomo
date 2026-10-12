@@ -312,11 +312,11 @@ def test_d_vault_collision_held_still_files_the_notes():
 @pytest.mark.parametrize("kind,reason,remedy_words", [
     ("typed_folder_refused",
      "typed folder refused: `Atlas/Maps/` ends in a path separator",
-     "retype a usable folder"),
+     "correct the folder in the suggestions document"),
     ("vault_occupied",
-     "target occupied: the vault already holds `X/karte.png` at the target "
+     "target occupied: the vault already holds a file at the target "
      "`X/karte.png`, so the attachment is not filed over it",
-     "free the target"),
+     "free that target in the vault"),
 ])
 def test_e_new_kinds_get_their_own_sentence(kind, reason, remedy_words):
     entry = {"source": SHARED, "destination": "X/karte.png", "reason": reason,

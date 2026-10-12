@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -9,13 +9,15 @@ on strings: no I/O, no run state. `typed_name_sentence` takes a code from
 `lib.typed_name_check.FOLDER_REFUSAL_REASONS`; `occupied_target_sentence`
 phrases the `vault_occupied` withheld kind. `unchecked_target_sentence`,
 `folder_created_sentence` and `qualified_embed_sentence` phrase what the
-instruction document reports about a move that IS emitted. Functions taking a
-code raise `ValueError` on one they do not know — an unknown code is a bug
-upstream, never reported as some other outcome.
+instruction document reports about a move that IS emitted.
+`withheld_attachment_remedy` is the one remedy per withheld-attachment kind,
+used by every surface that reports one. Functions taking a code raise
+`ValueError` on one they do not know — an unknown code is a bug upstream, never
+reported as some other outcome.
 
-Sentences state only what was verified about the typed name (no remedy text, no
-promise about a re-run) and name the typed name itself, with control characters
-shown as escapes so the sentence stays readable.
+Refusal sentences state only what was verified about the typed name (no remedy
+text, no promise about a re-run) and name the typed name itself, with control
+characters shown as escapes so the sentence stays readable.
 """
 from __future__ import annotations
 
@@ -105,21 +107,17 @@ def occupied_target_sentence(
             f"target occupied: the vault already has a folder at "
             f"`{_visible(target)}`, so the attachment is not filed there"
         )
-    held = (
-        "a file"
-        if occupier is None or same_spelling(occupier, target)
-        else f"`{_visible(occupier)}`"
-    )
-    sentence = (
-        f"target occupied: the vault already holds {held} at the target "
-        f"`{_visible(target)}`, so the attachment is not filed over it"
-    )
-    if occupier and not same_spelling(occupier, target):
-        sentence += (
-            " — the names differ only in case, and the filesystem may treat "
-            "them as one file"
+    if occupier is None or same_spelling(occupier, target):
+        return (
+            f"target occupied: the vault already holds a file at the target "
+            f"`{_visible(target)}`, so the attachment is not filed over it"
         )
-    return sentence
+    return (
+        f"target occupied: the vault already holds `{_visible(occupier)}`, "
+        f"which differs from the target `{_visible(target)}` only in case — "
+        f"the filesystem may treat them as one file — so the attachment is "
+        f"not filed over it"
+    )
 
 
 def unchecked_target_sentence(target: str) -> str:
@@ -132,7 +130,8 @@ def unchecked_target_sentence(target: str) -> str:
         f"the vault did not answer whether anything already occupies "
         f"`{_visible(target)}`, so this target was not checked before this move "
         f"was put into the instructions; if the move fails, the attachment and the source note "
-        f"that embeds it stay in the inbox"
+        f"that embeds it stay in the inbox. You can apply this move as it is; to be "
+        f"sure first, check in the vault that nothing is at `{_visible(target)}`"
     )
 
 
@@ -153,3 +152,57 @@ def qualified_embed_sentence(target: str, reason: str) -> str:
     if tail is None:
         raise ValueError(f"unknown embed qualification reason: {reason!r}")
     return f"notes that embed it link to `{_visible(target)}`, {tail}"
+
+
+_BEFORE_APPLY = "run `/inbox --pass2 --force` before you apply"
+_HELD_AFTER_APPLY = (
+    "If you have already applied, the attachment is still in the inbox, and so "
+    "is every note that embeds it: run `/inbox --recover` and "
+)
+
+
+def withheld_attachment_remedy(kind: str, destination: str | None = None) -> str:
+    """The one remedy for a withheld attachment of `kind`, without a final full stop.
+
+    Every surface that reports a withheld attachment ends its line with this,
+    so the same item never carries two remedies. `destination` is named only by
+    `collision`, the one kind whose remedy depends on it.
+    """
+    if kind == "typed_folder_refused":
+        return (
+            f"To fix: correct the folder in the suggestions document and "
+            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}choose the attachment's "
+            f"folder again"
+        )
+    if kind == "typed_name_refused":
+        return (
+            f"To fix: correct the name in the suggestions document and "
+            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}name the attachment again"
+        )
+    if kind == "vault_occupied":
+        return (
+            f"To fix: free that target in the vault, then {_BEFORE_APPLY}. "
+            f"{_HELD_AFTER_APPLY}choose another name for the attachment, or "
+            f"free the target first"
+        )
+    if kind == "collision":
+        return (
+            f"To fix: rename one of the two files so they no longer share "
+            f"`{_visible(destination or '?')}`, then {_BEFORE_APPLY}. "
+            f"{_HELD_AFTER_APPLY}name the attachment again"
+        )
+    if kind == "no_basename":
+        return (
+            f"To fix: correct that inbox path in the note that embeds it — this "
+            f"is not a naming conflict — then {_BEFORE_APPLY}. If you have "
+            f"already applied, every note that embeds it is still in the inbox: "
+            f"correct the path there and run `/inbox --recover`"
+        )
+    if kind == "vault_collision_held":
+        return (
+            f"No action needed unless you change your mind. To file it after "
+            f"all, tick Rename in the suggestions document and {_BEFORE_APPLY}. "
+            f"If you have already applied, rename the attachment in the inbox "
+            f"and run `/inbox` again"
+        )
+    raise ValueError(f"unknown withheld-attachment kind: {kind!r}")

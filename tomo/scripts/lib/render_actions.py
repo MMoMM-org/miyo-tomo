@@ -1,4 +1,4 @@
-# version: 0.29.5
+# version: 0.30.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -29,6 +29,7 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
     resolve_source_path,
 )
 from lib.render_md import bare_stem
+from lib.refusal_sentences import withheld_attachment_remedy
 from lib.attachment_plan import AttachmentPlan, build_attachment_plan
 from lib.vault_folder_lookup import VaultFolderLookup
 from lib.vault_paths import _asset_dest_join, _dest_join, path_key, same_spelling  # noqa: F401 — _asset_dest_join/_dest_join re-exported (spec 039 T1.4)
@@ -1187,54 +1188,32 @@ def _drop_md(path: str) -> str:
 def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
     """The sentence the user reads for one attachment that could not be filed.
 
-    One remedy per kind, and a reader who cannot tell which happened cannot
-    act: a destination clash (`collision`) is fixed by renaming one of the two
-    *files*; a refused typed name (`typed_name_refused`, spec 038 T3.2) by
-    retyping a usable *name*; a refused typed folder (`typed_folder_refused`,
-    spec 039) by retyping a usable *folder*; an occupied target
-    (`vault_occupied`, spec 039) by freeing the *target* or choosing another
-    name; anything else reaching here — `no_basename` — by correcting the
-    inbox *path*. The head of the last four is the entry's own `reason`,
-    phrased by `lib.refusal_sentences` (or the plan, for `no_basename`).
+    The head names the attachment and why it was withheld; the remedy is
+    `lib.refusal_sentences.withheld_attachment_remedy` for the entry's kind —
+    the same remedy the "Attachments still in the inbox" bullet and the shell
+    relay carry, so one item never reads two different fixes (owner ruling
+    2026-10-12). A destination clash (`collision`) names the claimed
+    destination; every other kind's head is the entry's own `reason`, phrased
+    by `lib.refusal_sentences` (or the plan, for `no_basename`).
     `vault_collision_held` never reaches this function at all (excluded in
-    `suppress_moves_for_unfiled_attachments`, above), so there is no fourth
-    branch to add for it.
+    `suppress_moves_for_unfiled_attachments`, below).
     """
     source = entry.get("source") or "?"
-    if entry.get("kind") == "collision":
+    kind = entry.get("kind")
+    if kind == "collision":
         head = (
             f"`{source}` cannot be filed — another file of that name already "
             f"claims `{entry.get('destination')}`"
         )
-        remedy = "rename one of the two files, then re-run Pass 2"
-    elif entry.get("kind") == "typed_name_refused":
-        # `entry["reason"]` is already prose (see `_typed_name_refusal_
-        # reason`), so it reads naturally after "cannot be filed —" exactly
-        # like the other branches' reasons do. The remedy names the TYPED
-        # NAME as the thing to fix, never the inbox path — that distinction
-        # is the defect this branch exists to close (found by execution:
-        # the generic `else` branch below said "correct that inbox path",
-        # which is wrong here — the inbox path was never the problem).
-        head = f"`{source}` cannot be filed — {entry.get('reason') or 'the typed name was refused'}"
-        remedy = "retype a usable name for it, then re-run Pass 2"
-    elif entry.get("kind") == "typed_folder_refused":
-        head = f"`{source}` cannot be filed — {entry.get('reason') or 'the typed folder was refused'}"
-        remedy = "retype a usable folder for it, then re-run Pass 2"
-    elif entry.get("kind") == "vault_occupied":
-        head = f"`{source}` cannot be filed — {entry.get('reason') or 'its target is occupied'}"
-        remedy = (
-            "free the target, or re-run Pass 1 to choose another name for it, "
-            "then re-run Pass 2"
-        )
     else:
         head = f"`{source}` cannot be filed — {entry.get('reason') or 'no filename'}"
-        remedy = "correct that inbox path, then re-run Pass 2"
+    remedy = withheld_attachment_remedy(kind, entry.get("destination"))
     tail = (
         "the note that embeds it is not filed either"
         if note_count == 1
         else f"the {note_count} notes that embed it are not filed either"
     )
-    return f"{head} — {tail}. To fix: {remedy}."
+    return f"{head} — {tail}. {remedy}."
 
 
 def suppress_moves_for_unfiled_attachments(

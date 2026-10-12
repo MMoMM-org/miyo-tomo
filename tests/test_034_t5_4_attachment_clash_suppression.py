@@ -595,7 +595,9 @@ def test_the_document_names_the_note_and_the_file_that_held_it_back():
     md = _render(kept, [], suppressions)
     assert ELBE_REISE in md, md
     assert UFER_REISE in md, "the user must be told which file to rename"
-    assert "re-run" in md, "the user must be told the halt is recoverable"
+    # spec 039 T5.4 (owner ruling 2026-10-12, one remedy per withheld kind):
+    # the remedy names the command the owner types, not "re-run Pass 2".
+    assert "/inbox --pass2 --force" in md, "the user must be told the halt is recoverable"
 
 
 def _section_of(md: str, needle: str) -> tuple[str, str]:
@@ -690,9 +692,12 @@ def test_the_skipped_attachment_report_is_unchanged_by_the_new_link():
     assert bullets[0] == (
         f"- ⚠️ **Attachment not filed:** `{UFER_REISE}` — destination collision: "
         f"it also resolves to `{ASSETS}Ufer.jpg`, already claimed by "
-        f"`{UFER_PLACES}`. Rename one of the two files so they no longer "
-        f"share `{ASSETS}Ufer.jpg`, then re-run `/inbox`."
-    ), bullets[0]
+        f"`{UFER_PLACES}`. To fix: rename one of the two files so they no "
+        f"longer share `{ASSETS}Ufer.jpg`, then run `/inbox --pass2 --force` "
+        f"before you apply. If you have already applied, the attachment is "
+        f"still in the inbox, and so is every note that embeds it: run "
+        f"`/inbox --recover` and name the attachment again."
+    ), bullets[0]  # remedy re-pinned by spec 039 T5.4: one remedy per kind
     # spec 037 T4.4, measured on this very line: the skipped source appeared
     # twice — once backticked in the lead, once as a repr inside the reason —
     # and the remedy opened a sentence in lower case after a full stop.

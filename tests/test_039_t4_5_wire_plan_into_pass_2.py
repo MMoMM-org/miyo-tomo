@@ -530,9 +530,8 @@ def test_a_daily_only_run_records_measured_zeros_without_a_client(
     monkeypatch, tmp_path
 ):
     """No client means no lookup and no census could have run: the entry
-    carries measured zeros. Mutation: dropping the `if client` /
-    `if folder_lookup` / `if census` guard on the matching counter in
-    `main()` raises on `None`."""
+    carries measured zeros. Mutation: dropping the `if folder_lookup` or
+    `if census` guard on the matching counter in `main()` raises on `None`."""
     history = tmp_path / "state" / "inbox-cost-history.jsonl"
     rc, _out = _run_main(
         monkeypatch, tmp_path,
@@ -546,7 +545,7 @@ def test_a_daily_only_run_records_measured_zeros_without_a_client(
     assert entry["action"] == "render"
     assert entry["item_count"] == 0
     for key in ("folder_listing_calls", "basename_searches", "basename_pages",
-                "total_kado_calls"):
+                "total_kado_calls", "distinct_destination_folders"):
         assert entry[key] == 0, (key, entry)
 
 

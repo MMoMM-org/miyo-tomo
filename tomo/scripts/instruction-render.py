@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.66.1
+# version: 0.66.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1196,7 +1196,7 @@ def main() -> int:
                 action="render",
                 item_count=len(confirmed),
                 base_kado_calls=0,
-                total_kado_calls=(observed_call_count(client) or 0) if client else 0,
+                total_kado_calls=observed_call_count(client) or 0,
                 folder_listing_calls=(
                     folder_lookup.folder_listing_calls if folder_lookup else 0
                 ),

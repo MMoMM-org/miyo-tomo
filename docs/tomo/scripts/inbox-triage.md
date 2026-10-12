@@ -483,3 +483,11 @@ calls, and a history that omits them cannot show what idling costs.
 WHY `metrics` gained `item_count` and `base_kado_calls`: the reducer reads both
 back out of `routing-plan.json` rather than re-deriving its own, so `suggest`
 and `idle` cannot end up counting different things.
+
+## `check_audio` Pairs by `path_key` (spec 039 W7)
+
+WHY folder and stem compare under `lib.vault_paths.path_key` (NFC, then
+casefold) rather than `.lower()`: a macOS recorder may name the audio file in
+NFD while the transcript note is stored NFC. Compared raw, the pair never
+matches and the audio is re-transcribed on every run. The asymmetry that only
+the audio stem is passed through `sanitize_stem` is unchanged.

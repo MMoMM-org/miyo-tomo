@@ -198,3 +198,104 @@ def test_validate_destinations_drops_an_nfd_move_over_an_nfc_vault_note():
     assert kept == []
     (clash,) = clashes
     assert clash["kind"] == "vault_collision"
+
+
+# --- create_moc merge and its resolver ----------------------------------------
+
+from lib.render_actions import _build_create_moc_actions  # noqa: E402
+from lib.render_resolve import resolve_section_names  # noqa: E402
+
+MOC_FOLDER = "Atlas/200 Maps/"
+MOC_TEMPLATE_BODY = "# {{title}}\n\n> [!blocks] Key Concepts\n> \n"
+
+
+def _moc_entry(title: str, rendered_file: str, supporting_items) -> dict:
+    return {
+        "id": "S01", "action": "create_moc", "title": title,
+        "rendered_file": rendered_file, "destination": MOC_FOLDER,
+        "parent_moc": "", "template": "t_moc_tomo", "tags": [],
+        "supporting_items": supporting_items,
+    }
+
+
+class _TemplateClient:
+    def __init__(self, notes: dict[str, str]) -> None:
+        self.notes = notes
+
+    def read_note(self, path: str) -> dict:
+        if path in self.notes:
+            return {"content": self.notes[path]}
+        raise FileNotFoundError(path)
+
+    def search_by_name(self, stem: str) -> list[dict]:
+        return []
+
+
+def test_create_moc_destinations_differing_only_by_normalisation_merge():
+    """(f) One create_moc survives, carrying both proposals' children, and
+    `validate_destinations` has no run_collision left to drop it for."""
+    nfc = unicodedata.normalize("NFC", "Café (MOC)")
+    nfd = unicodedata.normalize("NFD", "Café (MOC)")
+    manifest = [
+        _moc_entry(nfc, "2026-01-01_0900_cafe-moc.md", ["Dresden"]),
+        _moc_entry(nfd, "2026-01-01_0901_cafe-moc.md", ["Kyoto"]),
+    ]
+    actions = _build_create_moc_actions(manifest, INBOX, [0])
+    assert len(actions) == 1, actions
+    assert actions[0]["supporting_items"] == ["Dresden", "Kyoto"]
+    kept, clashes = validate_destinations(actions)
+    assert [a["id"] for a in kept] == [actions[0]["id"]]
+    assert clashes == []
+
+
+def test_link_to_moc_with_nfd_target_finds_its_nfc_in_set_create_moc():
+    """(g) The template-body fallback is the only tier that can resolve here,
+    so the lookup — not the anchor picker — is what this asserts."""
+    nfc_dest = f"{MOC_FOLDER}{unicodedata.normalize('NFC', 'Café (MOC).md')}"
+    nfd_dest = f"{MOC_FOLDER}{unicodedata.normalize('NFD', 'Café (MOC).md')}"
+    client = _TemplateClient({"Atlas/900 Templates/t_moc_tomo.md": MOC_TEMPLATE_BODY})
+    actions = [
+        {"id": "I01", "action": "create_moc", "destination": nfc_dest,
+         "title": "Café (MOC)", "template": "Atlas/900 Templates/t_moc_tomo.md"},
+        {"id": "I02", "action": "link_to_moc", "target_moc": "Café (MOC)",
+         "target_moc_path": nfd_dest,
+         "anchor": {"type": "callout", "value": None},
+         "placement": "inside", "line_to_add": "- [[Dresden]]"},
+    ]
+    assert resolve_section_names(actions, client, ["connect", "blocks", "anchor"]) == 1
+    assert actions[1]["anchor"]["value"] == "[!blocks] Key Concepts"
+
+
+# --- the remaining comparison sites -------------------------------------------
+
+def test_unique_in_order_collapses_nfc_and_nfd_keeping_the_first_spelling():
+    from lib.render_actions import _unique_in_order
+    assert _unique_in_order([NFD_NAME, NFC_NAME, "other.png"]) == [NFD_NAME, "other.png"]
+
+
+def test_typed_folder_inside_an_nfd_spelled_inbox_is_refused():
+    """The reverse of T2.2's case: the INBOX path is the decomposed one."""
+    from lib.typed_name_check import check_typed_folder
+    inbox = unicodedata.normalize("NFD", "Posteingang Ü")
+    folder = unicodedata.normalize("NFC", "Posteingang Ü")
+    assert check_typed_folder(folder + "/x", inbox_path=inbox).reason == "inside_inbox"
+
+
+def test_proposed_mocs_differing_only_by_normalisation_merge_in_the_parser():
+    parser = _load("suggestion_parser_t039_t4_7", "suggestion-parser.py")
+    mocs = [
+        {"title": unicodedata.normalize("NFC", "Café (MOC)"), "supporting_items": ["Dresden"]},
+        {"title": unicodedata.normalize("NFD", "Café (MOC)"), "supporting_items": ["Kyoto"]},
+    ]
+    merged = parser._merge_proposed_mocs_by_name(mocs)
+    assert len(merged) == 1, merged
+    assert merged[0]["supporting_items"] == ["Dresden", "Kyoto"]
+
+
+def test_audio_paired_with_an_nfc_note_is_not_reflagged_when_spelled_nfd():
+    """An NFD recorder filename beside its NFC transcript is paired; leaving
+    it unpaired re-transcribes it every run."""
+    triage = _load("inbox_triage_t039_t4_7", "inbox-triage.py")
+    audio = [{"path": f"{INBOX}{unicodedata.normalize('NFD', 'Café')}.m4a"}]
+    notes = [{"path": f"{INBOX}{unicodedata.normalize('NFC', 'Café')}.md"}]
+    assert triage.check_audio(audio, notes) is False

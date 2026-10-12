@@ -1490,3 +1490,11 @@ field used to be declared, listed `nonlocal`, and reset in three places, and
 this task added a seventh. One object per entry makes the reset a single
 assignment and removes the bug class where a new field is added to two of the
 three sites.
+
+## `_merge_proposed_mocs_by_name` Keys by `path_key` (spec 039 W7)
+
+WHY the by-Name merge key gained NFC normalisation on top of `casefold()`: it is
+the upstream half of `_build_create_moc_actions`' `by_dest`, and the two must
+agree on what one destination is (Rule 2: paths compare ignoring case and
+Unicode normalisation form). The `casefold()` rationale above still holds;
+`path_key` is NFC then `casefold()`.

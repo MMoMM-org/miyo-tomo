@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.1
+# version: 0.42.2
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -34,6 +34,7 @@ from lib.supporting_items import (  # noqa: E402
     union_supporting_items as _union_supporting_items,
 )
 from lib.item_key import derive as derive_item_key  # noqa: E402
+from lib.vault_paths import path_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
@@ -1242,9 +1243,10 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
     proposals renamed to one Name emit two create_moc at the same destination and
     the second overwrites the first on apply, silently dropping children.
 
-    Names are compared case-folded (CON-6, spec 034 T6.0c): `Travel (MOC)` and
-    `travel (MOC)` are one file on this filesystem, so they are one proposal.
-    `casefold()`, not `.lower()` — `ß` folds to `ss` and these are German notes.
+    Names are compared by path_key, NFC + case (CON-6, spec 034 T6.0c, 039
+    W7): `Travel (MOC)` and `travel (MOC)` are one file on this filesystem, so
+    they are one proposal. Casefold, not `.lower()` — `ß` folds to `ss` and
+    these are German notes.
     The key folds; the survivor keeps the spelling its author wrote. Folding
     here removes the case-only pair upstream of every consumer, so the
     downstream `by_dest` fold is the defence-in-depth its comment claims and
@@ -1253,7 +1255,7 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
     merged: dict[str, dict] = {}
     order: list[str] = []
     for moc in mocs:
-        name = moc.get("title", "").casefold()
+        name = path_key(moc.get("title", ""))
         head = merged.get(name)
         if head is None:
             merged[name] = moc

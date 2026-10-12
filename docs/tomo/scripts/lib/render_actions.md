@@ -1812,6 +1812,15 @@ spellings (`same_spelling`, equal after NFC), so `case_only` and the
 `_CASE_NOTE` stay false for an NFC/NFD-only pair, and the sentence does not
 name one visible path twice.
 
-`_build_create_moc_actions`' merge key (`by_dest`) is unchanged: it does not
-compare against K2, and an NFC/NFD pair of `create_moc` destinations that it
-does not merge is still caught by this guard as a run collision.
+## `_build_create_moc_actions` Keys by `path_key` Too (spec 039 W7, v0.29.3)
+
+WHY `by_dest` moved from `casefold()` to `path_key` after this guard did: the
+guard groups `create_moc` destinations under `path_key`, so a merge keyed on
+`casefold()` alone left an NFC/NFD pair of MOC destinations unmerged, and the
+guard then dropped both as a run collision, losing the MOC and its supporting
+items. The merge must be at least as coarse as the guard it feeds. Its paired
+consumer `resolve_section_names` (`create_moc_by_dest`, `lib/render_resolve.py`)
+and the upstream parser merge (`_merge_proposed_mocs_by_name`) key the same way,
+so a `link_to_moc` with an NFD `target_moc_path` still finds its in-set NFC
+`create_moc` template and its anchor. Tests:
+`tests/test_039_t4_7_nfc_target_keys.py`.

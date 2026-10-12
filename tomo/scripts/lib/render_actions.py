@@ -1,4 +1,4 @@
-# version: 0.29.2
+# version: 0.29.3
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -541,8 +541,8 @@ def _build_create_moc_actions(
     link_to_moc so IDs for new MOCs precede anything that links into them.
     """
     out: list[dict] = []
-    # case-folded destination -> the action that claimed it (T6.0). The key
-    # folds; the action it holds keeps the spelling its author wrote.
+    # path_key(destination) (NFC + case) -> the action that claimed it (T6.0,
+    # W7). The key normalises; the action it holds keeps its author's spelling.
     by_dest: dict[str, dict] = {}
     for m in manifest:
         if m.get("action") != "create_moc":
@@ -555,10 +555,11 @@ def _build_create_moc_actions(
         # on apply, dropping the first's children. The parser merges by Name
         # upstream; this guard ensures a duplicate can never reach Hashi even if
         # upstream misses it — union supporting_items into the survivor.
-        # Compared case-folded (CON-6, spec 034 T6.0): `Travel (MOC)` and
-        # `travel (MOC)` are one file on this filesystem, and the parser's
-        # by-Name merge is exact so a case-only pair reaches here intact.
-        existing = by_dest.get(destination.casefold())
+        # Compared by path_key, NFC + case (CON-6, spec 034 T6.0, 039 W7):
+        # `Travel (MOC)` and `travel (MOC)` — or an NFC/NFD pair — are one file
+        # on this filesystem, and the parser's by-Name merge is exact so such a
+        # pair reaches here intact.
+        existing = by_dest.get(path_key(destination))
         if existing is not None:
             existing["supporting_items"] = _union_supporting_items(
                 existing.get("supporting_items"), m.get("supporting_items")
@@ -576,7 +577,7 @@ def _build_create_moc_actions(
             "tags": m.get("tags", []) or [],
             "supporting_items": m.get("supporting_items") or None,
         }
-        by_dest[destination.casefold()] = action
+        by_dest[path_key(destination)] = action
         out.append(action)
     return out
 

@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.5.1
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -16,6 +16,7 @@ import sys
 import lib.moc_structure as moc_structure
 from lib.render_helpers import _moc_stem, _stem, resolve_source_path
 from lib.render_io import read_template
+from lib.vault_paths import path_key
 
 # Editable-callout name regex: captures the callout keyword from a callout header
 # line, e.g. "[!blocks] Key Concepts" → "blocks". Used by resolve_section_names
@@ -210,16 +211,16 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
     # Index in-set create_moc actions by destination so the template-body
     # fallback can find the template a not-yet-existing MOC will be built from.
-    # Keyed case-folded (CON-6, spec 034 T6.0) — the paired consumer of
-    # `_build_create_moc_actions`' `by_dest`, which folds for the same reason.
-    # Folding one without the other lets a link_to_moc miss the create_moc that
+    # Keyed by path_key, NFC + case (CON-6, spec 034 T6.0, 039 W7) — the paired
+    # consumer of `_build_create_moc_actions`' `by_dest`, which keys the same way.
+    # Keying one without the other lets a link_to_moc miss the create_moc that
     # will actually land at its target and lose its anchor.
     create_moc_by_dest: dict[str, dict] = {}
     for a in actions:
         if a.get("action") == "create_moc":
             dest = a.get("destination")
             if dest:
-                create_moc_by_dest[dest.casefold()] = a
+                create_moc_by_dest[path_key(dest)] = a
 
     resolved = 0
     for a in actions:
@@ -239,7 +240,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         if res is None:
             # Template-body fallback: in-set create_moc landing at this path
             # (the live MOC doesn't exist yet, so resolve against its template).
-            create = create_moc_by_dest.get(path.casefold())
+            create = create_moc_by_dest.get(path_key(path))
             if create:
                 template = create.get("template")
                 if template:

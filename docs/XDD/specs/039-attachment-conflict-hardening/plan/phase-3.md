@@ -51,7 +51,7 @@ Delivers the folder as a field on the v4 wire, a line in the markdown, a row in 
   4. Validate: retarget the 038 golden to the new shape (do not delete it); suite green
   5. Success: `[ref: PRD/F1-AC2]`
 
-- [ ] **T3.3 Parser reads the folder line and the wire field** `[activity: backend]`
+- [x] **T3.3 Parser reads the folder line and the wire field** `[activity: backend]`
 
   1. Prime: `suggestion-parser.py:245-288, 331-521 (esp. 493-517), 2252-2546`; backlog `:1894` (fields declared in three places) `[ref: SDD/Primary Flow — Pass 2 markdown/wire]`
   2. Test: untouched folder line → `proposed_dir` = the rendered text, `dir_is_owner_supplied` False; edited → text verbatim, True; default folder plus a trailing `/` → verbatim, True (refused downstream, both paths alike); deleted line → `None`, False; folder line outside an entry ignored; a folder typed **inside the rename backticks** still yields `separator_present` downstream (`test_a_different_folder_typed_is_refused_separator_present` unchanged — F1-AC8); `build_from_wire` projects `proposed_dir` with `dir_is_owner_supplied: True`; remedy records carry exactly the six keys `{source, remedy, proposed_name, name_is_owner_supplied, proposed_dir, dir_is_owner_supplied}` on both paths; D26 present with `wire_field: attachment_conflicts[].proposed_dir` and `parser_label` carrying the folder-line literal; `EXPECTED_EDITABLE_MARKED_FIELDS` 26 and the test renamed from `…exactly_25…` to `…exactly_26…`, docstring at `test_038_decision_inventory_join.py:79` updated, `FLOOR_SCHEMA_MARKED_FIELDS` left at 25; both directions of the join green

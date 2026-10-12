@@ -982,3 +982,38 @@ moments with the folder as the thing to retype. An occupied target holds its
 notes too (ADR-7), so the remedy says the attachment stays in the inbox with the
 note that embeds it, and names the two ways out: free the target, or choose
 another name on the next `/inbox`.
+
+## One Report per Item, One Remedy per Kind (spec 039 T5.4, owner ruling 2026-10-12)
+
+An end-to-end read of a rendered document (the `every_kind` fixture in
+`tests/test_039_t5_1_reporting.py`) found three items reported more than once,
+with the copies disagreeing. The owner ruled one report per item and one remedy
+per withheld kind. Three changes here:
+
+- **The remedy comes from `refusal_sentences.withheld_attachment_remedy`.**
+  `_render_skipped_asset_notice` no longer carries a per-kind remedy chain; the
+  "Not filed" section (`render_actions._attachment_suppression_reason`) calls
+  the same function, so both sections and the shell relay end the same item
+  with the same fix. The reasons behind each command are in
+  `docs/tomo/scripts/lib/refusal_sentences.md`. The "Not filed" intro no longer
+  says "re-run Pass 2"; each line names its own command.
+- **An Ignore is no longer listed under "Conflicts not resolved by rename".**
+  Since 2026-09-28 the ignored move carries the "Destination was occupied"
+  disclosure in its own block; the Skipped bullet repeated it with a different
+  claim ("it will be refused unless that name has since been freed"). The shell
+  relay never carried an Ignore, so the move-block disclosure is now the one
+  report. An ignored move the plan withholds instead (a run collision, say) is
+  already an "Attachment not filed" bullet. `_render_unresolved_conflict_bullet`
+  lost its `ignore` branch with it. This supersedes the `ignore` half of the
+  spec 037 T4.2 sections above; 037's intent — the owner is told — holds.
+- **The "Delete withdrawn" catch-all is gone.** Every withdrawal is stated
+  under "## Source Deletions" with its cause (`_render_withdrawn_delete_notice`,
+  spec 035), so the catch-all only repeated that line for withdrawals with no
+  inline guard to nest under — for an attachment hold, a third report of the
+  same note. Nothing was reported only there: `withdrawn_here` is every
+  withdrawal, unconditionally. A withdrawal alone therefore no longer opens
+  "## Skipped". Spec 036 F6-AC1 ("withdrawal and its cause appear together")
+  is met by the Source Deletions line; the inline nesting under a daily,
+  relationship or MOC-link bullet stays, because F2-AC4 asks for the withheld
+  action and its withdrawn delete to read together. This supersedes the
+  catch-all paragraphs in the spec 036 T4.3 section above.

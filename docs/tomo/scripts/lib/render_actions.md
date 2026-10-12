@@ -1936,3 +1936,13 @@ out of `unsatisfiedIds` (so a dependent `delete_source` runs), while `failed`
 puts it in (so the delete ends `skipped-dependency`), is that behaviour
 intended to stay, and is "applied" in the contract meant to include
 `skipped-already`?
+
+## `_attachment_suppression_reason` Reads Its Remedy From K16 (spec 039 T5.4)
+
+The "Not filed" line used to compose its own remedy per kind ("retype a usable
+folder for it, then re-run Pass 2"), while the "Attachments still in the inbox"
+bullet and the shell relay carried a different one for the same item. Owner
+ruling 2026-10-12: one remedy per withheld kind. The head (what was withheld
+and why) stays here; the remedy is `refusal_sentences.withheld_attachment_remedy`,
+shared with `render_md._render_skipped_asset_notice`. The command semantics
+behind each remedy are recorded in `docs/tomo/scripts/lib/refusal_sentences.md`.

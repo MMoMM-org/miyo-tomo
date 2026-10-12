@@ -95,3 +95,71 @@ contract of ADR-10 (the sentence is read by an owner before apply, so it says
 "Will be created on apply" is the executor's documented contract (PRD A3).
 `qualified_embed_sentence` raises `ValueError` on a reason other than
 `ambiguous` / `unanswered`, like every function here that takes a code.
+
+## One remedy per withheld kind (spec 039 T5.4, owner ruling 2026-10-12)
+
+`withheld_attachment_remedy` is the only place a withheld attachment's remedy
+is written. Before T5.4 the "Not filed" section (`render_actions.
+_attachment_suppression_reason`) and the "Attachments still in the inbox"
+bullet plus shell relay (`render_md._render_skipped_asset_notice`) each carried
+their own remedy, and an end-to-end read of one rendered document found the
+same item told two different fixes ("retype a usable folder for it, then re-run
+Pass 2" against "correct the folder in the suggestions document and run
+`/inbox --pass2 --force`"). The owner ruled one remedy per kind, from one
+source; both renderers now end their line with this function's text.
+
+WHY the commands are the ones the owner types (`/inbox --pass2 --force`,
+`/inbox --recover`), never "Pass 1 / Pass 2": the owner runs commands, not
+passes.
+
+WHY the before-apply route is `/inbox --pass2 --force`, verified against
+`inbox-triage.py`: after Pass 2 the suggestions document is promoted to the
+terminal `approved` state. A bare `/inbox` does not read terminal-approved
+documents at all (`read_approval_state` caches them only under
+`force_pass2`, `inbox-triage.py:1096`, called with `force_pass2 or force_all`
+at `:1337`), so it cannot see an edit to one and goes idle. `/inbox --pass2`
+alone would see an edited body as drift (`detect_drift`, `:1441`;
+`compute_coverage` drops drifted paths from `covered`, `:1381`) and
+re-synthesize — but a remedy that changes only the vault (free the target,
+rename a file) leaves the body unchanged, so the document stays covered and
+`--pass2` goes idle (`determine_action`, `:1565-1568`). `--pass2 --force`
+synthesizes all approved documents regardless (`:1566`), so one command works
+for every kind.
+
+WHY the after-apply route is `/inbox --recover`, not a bare `/inbox`: every
+kind except `vault_collision_held` holds the notes that embed the attachment,
+so after applying those notes are still in the inbox with
+`tomo.state: captured` (Pass 1 marked them). Triage never re-intakes a captured
+source without being told to — `compute_new_sources` counts only notes in no
+state bucket, and the captured fold runs only under `--force` (not with
+`--pass2`) or `--recover` (`inbox-triage.py:1275`, `:1603`, `:1644-1654`);
+measured live in spec 038's runbook, where a bare `/inbox` skipped a captured
+note. `--recover` is the single-flag form the same runbook found robust.
+
+WHY "before you apply" and "If you have already applied" are separate
+sentences: the earlier "before applying, …; afterwards, it is still in the
+inbox, …" read "afterwards" as "after the step just named", and "it" had no
+clear antecedent. The after-apply sentence names "the attachment" and "every
+note that embeds it" — count-neutral, because several notes can embed one
+attachment and the "Not filed" list names each of them.
+
+WHY `vault_collision_held` keeps "rename the attachment in the inbox and run
+`/inbox` again" after applying: its notes are filed, not held, so `--recover`
+has nothing to re-intake. That route is unchanged from spec 037 and was not
+re-verified in T5.4.
+
+## The case-only occupier is not AT the target (spec 039 T5.4)
+
+The case-only `vault_occupied` sentence read "the vault already holds
+`…/Belegt.png` at the target `…/belegt.png`" — but the occupier sits at its own
+spelling, not at the target. It now reads "holds `…/Belegt.png`, which differs
+from the target `…/belegt.png` only in case — the filesystem may treat them as
+one file — so the attachment is not filed over it". The exact-spelling ("a file
+at the target") and folder variants are unchanged.
+
+## The unchecked target ends in an owner action (spec 039 T5.4)
+
+The unchecked sentence stated what was not known and stopped, leaving the
+owner nothing to do. It now ends "You can apply this move as it is; to be sure
+first, check in the vault that nothing is at `<target>`" — still never calling
+the target free (F3-AC6).

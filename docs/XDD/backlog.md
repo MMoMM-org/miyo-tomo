@@ -1796,7 +1796,7 @@ because both change behaviour beyond a validation task's scope**:
    adding a fourth reason reads that sentence and believes the function already handles
    the case safely.
 
-**RESOLVED by spec 039 T1.5:** `blank` has an explicit branch, an unrecognised code raises
+**RESOLVED by spec 039 T1.5 (`8eff968`):** `blank` has an explicit branch, an unrecognised code raises
 `ValueError`, and the docstring no longer claims a structural guarantee the code lacked.
 
 ## CLOSED (2026-10-02) — spec 038's C1 asked for a count the renderer is twice argued against
@@ -2458,6 +2458,8 @@ in one command rather than requiring someone to think of checking.
 ---
 
 ## No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
+
+**RESOLVED by spec 039 T1.6 (`689ead8`, `72b3381`):** `tests/test_039_t1_6_computed_names_pass_typed_rules.py` joins every computed name for a vault-legal source to `check_typed_name`, with a permanent negative control. Sources carrying a forbidden character stay the divergence pinned by spec 038.
 
 **Found 2026-10-11 while answering Hashi's forbidden-character question** (handoff
 `2026-10-11_tomo-to-hashi_ten-characters-one-separator-…`). Promised to them as backlogged,

@@ -1923,8 +1923,16 @@ Consequences:
   Tomo defect; it is stated here so the owner-facing wording is not read more
   strongly than the executor behaves.
 
+Wording divergence: the vendored schema's `delete_source.depends_on`
+description says Hashi "withholds the delete unless every id here is applied
+(AND semantics)", but the traced executor (`InstructionExecutor.ts:536-543`)
+also lets `skipped-already` satisfy a dependency, so "applied" there is
+narrower than the behaviour. Tomo's own `tomo/schemas/instructions.schema.json`
+(`delete_source.depends_on`, line 253) makes the same "applied" claim.
+
 Question for Hashi to confirm in T6.2: against the tree at
 `4119be0598a2`, does a `move_asset` outcome of `skipped-already` leave its id
 out of `unsatisfiedIds` (so a dependent `delete_source` runs), while `failed`
-puts it in (so the delete ends `skipped-dependency`), and is that behaviour
-intended to stay?
+puts it in (so the delete ends `skipped-dependency`), is that behaviour
+intended to stay, and is "applied" in the contract meant to include
+`skipped-already`?

@@ -23,6 +23,7 @@ CON-7: fixtures and fakes only.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -136,11 +137,14 @@ def test_every_delete_depends_on_id_names_an_action_in_the_set(actions):
 
 
 def test_every_depended_on_kind_is_a_kind_the_vendored_schema_allows(actions, schema):
+    """Also a schema-drift guard: the kind set is read from the vendored schema,
+    so a kind dropped from it (or an id missing from the set) fails here."""
     allowed = _allowed_kinds(schema)
     assert {"move_note", "move_asset", "delete_source"} <= allowed
     by_id = {a["id"]: a for a in actions}
     for d in (a for a in actions if a["action"] == "delete_source"):
         for dep in d["depends_on"]:
+            assert dep in by_id, (d["id"], dep)
             assert by_id[dep]["action"] in allowed, (d["id"], dep, by_id[dep]["action"])
 
 
@@ -159,11 +163,33 @@ def test_produced_set_validates_against_vendored_schema(actions, schema):
     validate(envelope, schema)
 
 
+_ORDER_WORDS = re.compile(
+    r"\b(order\w*|preced\w*|sequenc\w*|before|after|first|last|prior|then)\b",
+    re.IGNORECASE)
+
+
+def _descriptions(node):
+    """Every `description` string under a schema node, at any depth."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "description" and isinstance(value, str):
+                yield value
+            else:
+                yield from _descriptions(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _descriptions(value)
+
+
 def test_vendored_schema_records_no_kind_order(schema):
     """Execution order is Hashi's KIND_ORDER (planner.ts), not a vendored fact;
-    the move_asset-before-delete_source claim is carried by the written trace."""
-    text = json.dumps(schema).lower()
-    assert "kind_order" not in text
-    assert "kind order" not in text
-    assert "canonical order" not in text
-    assert "precede" not in text
+    the move_asset-before-delete_source claim is carried by the written trace.
+    Reads the descriptions of the two kinds involved for ordering words, and
+    pins the top-level actions items to a bare oneOf of $refs."""
+    for name in ("delete_source", "move_asset"):
+        for text in _descriptions(schema["$defs"][name]):
+            hit = _ORDER_WORDS.search(text)
+            assert hit is None, (name, hit.group(0), text)
+    items = schema["properties"]["actions"]["items"]
+    assert set(items) == {"oneOf"}, sorted(items)
+    assert all(set(ref) == {"$ref"} for ref in items["oneOf"])

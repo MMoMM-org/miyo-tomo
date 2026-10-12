@@ -56,7 +56,7 @@ version: "1.0"
 |--------|----------|
 | Where an attachment's fate is decided | Once, in an attachment plan built before the render loop; the embed rewrite and the move builder read it |
 | Vault occupancy in Pass 2 | One shared, raw-cached folder lookup for notes and assets; a missing folder and an unanswered folder are distinct states |
-| Basename uniqueness | Kado `byName`, once per distinct final basename, exact case-folded match, adjusted to the vault after the run |
+| Basename uniqueness | Kado `byName`, once per distinct final basename (two for a name whose NFC and NFD forms differ), exact match after NFC normalisation and case-folding, adjusted to the vault after the run |
 | Folder input | Its own markdown line; `proposed_dir` on the wire; refused by a closed set of reasons, never repaired |
 | #185 | One new name refusal reason, `breaks_link`; plus `unsafe_sequence` for names and folders (owner ruling 2026-10-12) |
 | #186 | The origin's delete names the `move_asset` ids of its attachments |
@@ -195,7 +195,7 @@ python3 scripts/wire-shape.py --regenerate       # write it
    #186.
 3. **Ask the vault twice, cheaply.** A shared folder lookup (one raw listing per
    folder, reused by the existing note guard) answers occupancy and folder
-   existence; a basename census (one `byName` per distinct basename) answers
+   existence; a basename census (one `byName` per distinct basename, two for a name whose NFC and NFD forms differ) answers
    uniqueness.
 4. **Refuse at the edge.** Folder and name checks run inside the plan, per
    entry, before any join — so a bad folder refuses one item and never reaches
@@ -213,11 +213,11 @@ python3 scripts/wire-shape.py --regenerate       # write it
 |---|-----------|--------|------|-----|
 | K1 | `lib/attachment_plan.py` | **new** | One decision per attachment source: target resolution (folder + name), refusal routing, run-local claims, vault occupancy outcome, folder-will-be-created and unchecked flags, embed text, owners per source | F1-AC3/5/6/10/11, F2-AC4/6/7/8, F3-AC1–4/6, F4-AC1–6/8, F6 (owner map) |
 | K2 | `lib/vault_folder_lookup.py` | **new** (moved from `suggestions-reducer._VaultFolderLookup`) | One raw `list_dir(folder, depth=1)` per folder per run; views `notes()`, `assets()`, `occupied_by_folder()`; `state(folder)` ∈ {`listed`, `absent`, `unanswered`}; keeps its existing `folder_listing_calls` counter (pages, via `observed_call_count`) | F3-AC7, F2-AC8, F3-AC6 (state) |
-| K3 | `lib/basename_census.py` | **new** | One `byName` per distinct case-folded basename; exact case-folded filter; a page budget (2 pages of 500) beyond which the answer is `None`; `count(basename)` or `None` when unanswered; counters for searches and pages | F4-AC2/4/6, C1-AC1 (counter) |
+| K3 | `lib/basename_census.py` | **new** | One `byName` per distinct case-folded basename (two for a name whose NFC and NFD forms differ — Kado does no Unicode normalisation); exact NFC-normalised, case-folded filter; `*`/`?` basenames → `None` (glob characters; path-qualified embed); a page budget (2 pages of 500) beyond which the answer is `None`; `count(basename)` or `None` when unanswered; counters for searches and pages | F4-AC2/4/6, C1-AC1 (counter) |
 | K4 | `lib/typed_name_check.py` | modified | Name reasons gain `breaks_link` and `unsafe_sequence`; new `check_typed_folder` with its own closed reason set | F5-AC1/2/4/6, F2-AC1–3 |
 | K5 | `lib/render_actions.py` | modified | `_build_move_asset_actions` projects K1; `_build_delete_source_actions` site 3 adds `move_asset` ids; `_attachment_suppression_reason` gains branches for the new kinds; `make_folder_listing` becomes a view over K2; re-exports the moved path helpers | F6-AC1/3/4, F3-AC5, F5-AC3/5, F2-AC5 (sentences) |
 | K6 | `lib/embed_rewrite.py` | modified | `rewrite_attachment_embeds(body, attachments, plan)` — writes K1's embed text, matches by resolved path | F4-AC1–3/5/8, F1-AC10 |
-| K7 | `instruction-render.py` + `tomo/dot_claude/agents/synthesis-conductor.md` | modified | Builds K1 before the loop; passes it on; relays new withheld kinds and unchecked targets to the shell; appends a Pass 2 `cost_history` entry with the K2/K3 counters; the conductor's relay imperative covers the new lines (WHY in its `docs/tomo/` mirror first) | F2-AC5 (shell), C1-AC1 |
+| K7 | `instruction-render.py` + `tomo/dot_claude/agents/synthesis-conductor.md` | modified | Builds K1 before the loop; passes it on; relays new withheld kinds and unchecked targets to the shell; appends a Pass 2 `cost_history` entry with the K2/K3 counters when `--cost-history` is given; the conductor passes it (T5.1); the conductor's relay imperative covers the new lines (WHY in its `docs/tomo/` mirror first) | F2-AC5 (shell), C1-AC1 |
 | K8 | `lib/render_md.py` | modified | Instruction-document bullets for the new kinds, unchecked targets, folders to be created; the revised Ignore disclosure | F2-AC5, F3-AC5/6, F2-AC8, F6-AC8 |
 | K9 | `suggestions-reducer.py` | modified | Renders the folder line; conflict records carry `proposed_dir: null`; imports K2 | F1-AC2 |
 | K10 | `suggestions-render.py` | modified | Projects `proposed_dir` onto the wire | F1-AC1 |
@@ -290,12 +290,14 @@ def build_attachment_plan(confirmed, remedies_by_source, *, asset_folder,
                           inbox_path, folder_lookup, census) -> AttachmentPlan
 ```
 
+The plan is built from the template-bearing confirmed items.
+
 `AttachmentPlan` exposes `decisions` (ordered by first appearance in
 `confirmed`), `by_source`, `move_ids_by_origin` (filled by K5's projection),
 and the two call counters.
 
 **K2 — folder lookup:** `state(folder) -> Literal["listed","absent","unanswered"]`;
-`assets(folder) -> dict[str, str]` (case-folded joined path → vault spelling);
+`assets(folder) -> dict[str, str]` (joined path, NFC-normalised before case-folding → vault spelling);
 `notes(folder)`; `occupied_by_folder(folder)`; `folder_listing_calls: int` (pages, via `observed_call_count`). `absent` is Kado's
 tool-level `Path not found` on `listDir` (Kado `search-adapter.ts:271`, surfaced as
 `KadoNotFoundError` by `kado_client.py:861-863`); an HTTP 404 on the endpoint
@@ -303,8 +305,8 @@ itself (`kado_client.py:686`, a misconfiguration) and every other error are
 `unanswered` — K2 tells them apart by the message, never by the exception type alone.
 
 **K3 — basename census:** `count(basename) -> int | None` — the number of vault
-files whose name case-folds equal to `basename`, or `None` when Kado did not
-answer or the page budget was exhausted; `searches: int`, `pages: int`. With no
+files whose name is equal to `basename` after NFC normalisation and case-folding, or `None` when Kado did not
+answer, the page budget was exhausted (per query), or the basename contains `*`/`?` (glob characters); `searches: int`, `pages: int`. With no
 client it is never constructed — a run without a client files no attachment.
 
 **K4 — typed-name check:**
@@ -333,7 +335,8 @@ def check_typed_folder(folder: str, *, inbox_path: str) -> TypedNameVerdict
 
 **K5:** `build_actions(..., attachment_plan=plan)` replaces the
 `attachment_conflict_remedies` argument; `_build_move_asset_actions(manifest, plan)`
-returns `(moves, skipped_assets, move_ids_by_origin)`.
+returns `(moves, skipped_assets, move_ids_by_origin)`. `build_actions` raises when
+attachments exist without a plan — no production fallback.
 
 #### Application Data Models
 
@@ -447,7 +450,7 @@ never counted as a run claim.
 | 1 | No basename | withheld `no_basename` | untouched |
 | 2 | Remedy Keep in inbox | withheld `vault_collision_held` | untouched |
 | 3 | Rename, folder owner-typed and refused | withheld `typed_folder_refused` | untouched |
-| 4 | Rename, name empty and folder owner-typed (F1-AC11) | withheld `typed_name_refused` / `blank` | untouched |
+| 4 | Rename, name empty and folder owner-typed (F1-AC11); a folder equal to the Pass 2 asset folder counts as untyped (F1-AC5), so row 5 applies | withheld `typed_name_refused` / `blank` | untouched |
 | 5 | Rename, name empty, folder not typed | withheld `vault_collision_held` (today's degrade) | untouched |
 | 6 | Rename, name owner-typed and refused | withheld `typed_name_refused` | untouched |
 | 7 | Target already claimed this run (Ignore included) | withheld `collision` | untouched |
@@ -456,8 +459,8 @@ never counted as a run claim.
 | 10 | K2 `absent` | move, `folder_created` | per census |
 | 11 | otherwise (incl. Ignore) | move | per census |
 
-Census (Pass B), for rows 9–11: `others` = vault hits − this run's moved inbox
-sources with that basename + this run's other moved targets with it. `None` →
+Census (Pass B), for rows 9–11: `others` = max(vault hits − this run's moved inbox
+sources with that basename, 0) + this run's other moved targets with it. `None` →
 full path (`unanswered`); `others ≥ 1` → full path (`ambiguous`); `0` → bare
 final name if it differs from the name the note wrote, else untouched. Under
 Ignore the occupier is a vault hit at the target itself, so the embed names the
@@ -486,7 +489,7 @@ v4 schema, inventory, #185 ruling → consumer confirms → vendored copy → 4.
 
 Pass 2 Kado calls added: one `list_dir` per distinct target folder not already
 listed (usually 1–2), one `byName` per distinct final basename (≈ number of
-filed attachments). Zero for a run that files no attachment (F3-AC7). Counted in
+filed attachments; two for a name whose NFC and NFD forms differ). Zero for a run that files no attachment (F3-AC7). Counted in
 K2/K3 and recorded with the run's existing call counts (C1).
 
 ### Fail direction
@@ -510,7 +513,7 @@ only names and paths.
 ### ADR-1 — One attachment plan, decided before the render loop
 
 - **Choice:** New K1, built after remedies load and before the first note
-  renders; K5 and K6 read it.
+  renders from the template-bearing confirmed items; K5 and K6 read it.
 - **Rationale:** The render loop is the last point a body can change, and the
   embed now depends on vault data and on every other attachment's target. A
   single decision site satisfies PRD Rule 6, closes `backlog.md:1917` (refusal
@@ -523,7 +526,10 @@ only names and paths.
   so in the rare run where an item fails to render *and* shares a basename with
   a filed attachment, that attachment's embed can be written bare though
   ambiguous. Accepted: render failures are reported as errors and the run is
-  re-run; recorded under Known Technical Issues.
+  re-run; recorded under Known Technical Issues. Conversely an item that later
+  fails to render still claims its target, so a rendered item whose attachment
+  resolves to the same target is withheld as `collision` (over-withholding
+  direction).
 - **Rejected:** moving the rewrite after `build_actions` and re-writing staged
   files (two writes per note, and the decision would still live in the move
   builder while the embed lives elsewhere); adding the checks to both existing
@@ -541,12 +547,19 @@ only names and paths.
 
 ### ADR-3 — Basename uniqueness through `byName`, adjusted to the vault after the run
 
-- **Choice:** K3, one `byName` per distinct case-folded basename, exact
-  case-folded equality filter; K1 subtracts this run's moved inbox sources with
+- **Choice:** K3, one `byName` per distinct case-folded basename (a second query
+  only when the basename's NFC and NFD forms differ), exact NFC-normalised,
+  case-folded equality filter; target and claim keys are NFC-normalised before
+  case-folding; K1 subtracts this run's moved inbox sources with
   that basename and adds this run's other targets with it.
 - **Rationale:** `byName` searches every file type vault-wide (R3 §1); one call
   per basename beats a full listing below ~15 basenames per run. The adjustment
   is mandatory: without it every filed attachment counts its own inbox copy.
+  The census clamps the subtraction: `max(hits − moved sources, 0)` — an
+  under-counting key must not cancel another in-run target.
+  Kado does no Unicode normalisation, so one NFC query undercounts NFD-stored
+  names (an unsafe bare embed); hence the second query. The page budget applies
+  per query; `searches` counts each query.
 - **Trade-offs:** A key scoped to part of the vault under-counts (PRD A2, R3).
   Index lag after outside changes is accepted.
 
@@ -617,6 +630,9 @@ only names and paths.
   extension is never dropped; no alias is added.
 - **Rationale:** F4-AC3 extends qualification beyond renames; R1 §3 measured
   that basename-only matching rewrites a qualified embed pointing elsewhere.
+  Behaviours of the rewrite: a bare embed shared by two of one note's
+  attachments is left alone; duplicate paths are deduped; a plan miss raises;
+  padded embeds are rewritten.
 - **Trade-offs:** Notes whose attachments were never renamed can now change —
   only when ambiguous (CON-3 holds for unique basenames).
 
@@ -696,6 +712,9 @@ behaviour:
   folder-typed case is fixed (row 4).
 - Census under-count when an item fails to render and shares a basename (ADR-1
   trade-off).
+- An item that later fails to render still claims its target, so a rendered item
+  whose attachment resolves to the same target is withheld as `collision`
+  (over-withholding; ADR-1 trade-off).
 - A **computed** or existing target folder whose name contains `# ^ [ ]` would
   break a qualified embed; only typed folders are refused. Not handled; rare.
 

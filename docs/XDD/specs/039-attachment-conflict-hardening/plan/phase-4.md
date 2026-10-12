@@ -40,10 +40,10 @@ Delivers the single decision site and rewires both of today's decision sites to 
 - [x] **T4.1 Basename census `lib/basename_census.py`** `[activity: integration]` `[parallel: true]`
 
   1. Prime: `kado_client.py:283-311, 601-637`; `render_resolve.py:599-614` (the pattern to copy); Kado `search-adapter.ts:408-415` (substring, all file types) `[ref: SDD/ADR-3; SDD/Interface Specifications K3]`
-  2. Test: `count("photo.png")` ignores `old-photo.png` (substring hit); case-folded equality (`Karte.PNG` counts for `karte.png`); one search per distinct case-folded basename however often asked; a Kado error → `None`, and not cached as 0; a third page requested → stop, `None` (page budget); `searches` and `pages` counters
+  2. Test: `count("photo.png")` ignores `old-photo.png` (substring hit); case-folded equality (`Karte.PNG` counts for `karte.png`); one search per distinct case-folded basename however often asked (two for a name whose NFC and NFD forms differ; `*`/`?` basenames → `None`; keys NFC-normalised before case-folding); a Kado error → `None`, and not cached as 0; a third page requested → stop, `None` (page budget); `searches` and `pages` counters
   3. Implement: `make_basename_census(client)` closure or small class
   4. Validate: counting fake; ruff clean
-  5. Success: `[ref: PRD/F3-AC7]` (name-search bound and page budget); input to F4
+  5. Success: `[ref: PRD/F3-AC7]` (name-search bound — one search per basename, two when NFC and NFD forms differ — and page budget); input to F4
 
 - [x] **T4.2 The plan `lib/attachment_plan.py`** `[activity: domain-modeling]`
 
@@ -75,9 +75,10 @@ Delivers the single decision site and rewires both of today's decision sites to 
   2. Test: integration through `main()` (call it the way production does — all optional args as production passes them): plan built once after remedies load and before the first render; goldens use a census fake that answers "unique" so byte-identity holds; `validate_destinations` receives a view of the **same** K2 instance (one `list_dir` per folder across asset and note guards, counting fake); a run with no attachment makes zero census and zero extra listing calls (F3-AC7); a bad typed folder refuses one item and the run exits 0 with the rest produced (F2-AC7) — and never reaches `_check_path_shape`; a Pass 2 `cost_history` entry carries `folder_listing_calls`, `basename_searches` and `basename_pages` when `--cost-history` is given, mirroring the reducer (`suggestions-reducer.py:2869, 2907`) (C1-AC1); garden-audit and daily-only runs (`client` None) unaffected
   3. Implement: build K2/K3/K1 after `:457`; pass plan to the loop and `build_actions`; counters; pass the shared lookup's `notes` view to `validate_destinations` instead of a client (drops the `isinstance` path in `make_folder_listing`), and memoise the per-folder map inside `validate_destinations` — T1.4 review measured ~4.7 ms per rebuild for a 3000-note folder; switch `suggestions-reducer.py:2365` and the docstrings at `:526`, `:562` to the public `VaultFolderLookup` name, keeping `_VaultFolderLookup` only for the 037 tests
   4. Validate: full suite green; ruff clean
-  5. Success: `[ref: PRD/F3-AC7]` `[ref: PRD/F2-AC7]` `[ref: PRD/C1-AC1]`
+  5. Success: `[ref: PRD/F3-AC7]` (one search per basename, two when NFC and NFD forms differ) `[ref: PRD/F2-AC7]` `[ref: PRD/C1-AC1]`
 
 - [ ] **T4.6 Phase 4 validation** `[activity: validate]`
 
   - Full suite green in one invocation; ruff clean; golden byte-identity on the 038 baseline; grep proof that K1 is the only decision site; backlog `:1917` and `:1956` updated with SHAs.
   - Carried from Phase 3: `test_038_t4_4_the_two_paths_converge.py`'s `_strip_provenance` maps a non-owner-supplied `proposed_dir` to `None` (the markdown spells the untouched default as the rendered folder, the wire as `null`); back it with a destination-level assertion — both paths produce the same `move_asset` destination for: untouched default, typed folder, default + trailing `/` (refused on both), typed folder equal to `concepts.asset`. `test_039_t3_4_folder_not_consumed_yet.py` asserts the folder is ignored; retarget it to the real folder outcome here.
+  - As delivered (drift check 2026-10-12): there is no Pass 2 golden; the evidence is the builder reference capture `test_039_t4_3`, the rewrite tests `test_039_t4_4`, the unaffected-runs fixture `test_039_t4_5`, the destination convergence test `test_039_t4_6`, and the 038 tests green unchanged.

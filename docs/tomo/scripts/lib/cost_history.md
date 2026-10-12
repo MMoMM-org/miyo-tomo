@@ -80,6 +80,9 @@ forms differ). C1-AC1 asks for them beside the run's existing counts, so
 for the same reason as the folder fields: triage and the reducer run no
 census, and a zero there would assert a measurement nobody took.
 
+For `action: "render"` there is no fixed base cost in that process, so
+`base_kado_calls` is 0 by definition, not a declared figure.
+
 ## WHY `action` Is on the Entry
 
 The SDD's original field list did not name it. Without it every entry with

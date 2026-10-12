@@ -296,7 +296,7 @@ Pass 2), and does not relax it anywhere.
   - [ ] **F3-AC4 (C1)** — Given the owner chose Ignore, When Pass 2 renders, Then the move is still sent unchanged to the occupied destination — Ignore is the owner's explicit instruction and is exempt from this check
   - [ ] **F3-AC5 (internal)** — Given a withheld target, When the instruction document is rendered, Then it names the attachment, the occupied target and what occupies it, in wording written for an attachment rather than for a note
   - [ ] **F3-AC6 (internal)** — Given Kado cannot answer for a target's folder, When Pass 2 renders, Then the move is still emitted, And the instruction document reports that target as not checked — an unanswered check is never reported as a free target
-  - [ ] **F3-AC7 (internal)** — Given a run, When the check runs, Then the vault is listed at most once per distinct target folder and searched by name at most once per distinct filed basename, a name search that would exceed a fixed page budget is treated as unanswered, And a run that files no attachment makes no additional vault calls
+  - [ ] **F3-AC7 (internal)** — Given a run, When the check runs, Then the vault is listed at most once per distinct target folder and searched by name once per distinct filed basename, or twice for a name whose NFC and NFD forms differ, a name search that would exceed a fixed page budget is treated as unanswered, And a run that files no attachment makes no additional vault calls
 
 #### Feature 4: The embed carries a path only when the basename would be ambiguous
 
@@ -415,7 +415,7 @@ can never disagree about the vault they are based on.
 
 - **Rule 1:** A target is judged against the vault and against this run's other
   targets together; neither alone decides.
-- **Rule 2:** Names are compared ignoring case, for occupancy and for
+- **Rule 2:** Names are compared ignoring case and Unicode normalisation form (NFC), for occupancy and for
   uniqueness — a false "taken" is recoverable, a silent overwrite is not.
 - **Rule 3:** Uniqueness is decided for the vault after the run: files this run
   moves out of the inbox do not count, files this run moves in do.
@@ -461,7 +461,7 @@ can never disagree about the vault they are based on.
   sampled. Zero embeds written bare for a basename the run knew to be
   non-unique.
 - **Business Impact (cost):** Additional vault calls per Pass 2 bounded by the
-  number of distinct target folders plus the number of distinct filed basenames;
+  number of distinct target folders plus the number of distinct filed basenames (×2 worst case for names whose NFC and NFD forms differ);
   zero for a run that files no attachment.
 
 ### Tracking Requirements
@@ -543,7 +543,7 @@ can never disagree about the vault they are based on.
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| R1 — The new vault lookups push a run into Kado's rate limit | Medium | Low | Bounded per distinct folder and basename (F3-AC7); retries already back off; C1 makes the cost visible |
+| R1 — The new vault lookups push a run into Kado's rate limit | Medium | Low | Bounded per distinct folder and basename (×2 worst case for names whose NFC and NFD forms differ) (F3-AC7); retries already back off; C1 makes the cost visible |
 | R2 — Holding notes on an occupied target (F3) surprises an owner who previously got the note filed and the move refused at apply | Medium | Medium | Same treatment as a refused name, already shipped in 038; the instruction document names the target and its occupier |
 | R3 — A restricted Kado key hides a same-named file, so an embed is written bare though ambiguous | Medium | Low | Recorded as assumption A2; no worse than today; a qualified embed is always written when Kado does not answer |
 | R4 — The consumer cannot ship version 4 in step | High | Low | CON-1; their editor ships #141 without the folder picker meanwhile, as they proposed |

@@ -59,11 +59,11 @@ GOLDEN_DIR = TESTS_DIR / "fixtures" / "034-t5-4-duplicate-reference-golden"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.render_actions import (  # noqa: E402
-    build_actions,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
     withdraw_unjustified_deletes,
 )
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 NOTES = "Atlas/202 Notes/"

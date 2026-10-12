@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """attachment_plan_fakes.py — one fake vault behind both of the plan's vault
 views, and the `plan_from_remedies` helper the old builder harnesses migrate
 through (spec 039 T4.2, T4.3).
@@ -166,3 +166,48 @@ def move_asset_actions_from_remedies(
     )
     moves, skipped, _ids = _build_move_asset_actions(manifest, plan, counter, inbox_path)
     return moves, skipped
+
+
+class _NoVault:
+    """K2 and K3 for a caller with no vault to ask: every folder unanswered,
+    every basename count unknown."""
+    folder_listing_calls = 0
+    searches = 0
+    pages = 0
+
+    def state(self, _folder: str) -> str:
+        return "unanswered"
+
+    def count(self, _basename: str) -> None:
+        return None
+
+
+def plan_without_vault(items, remedies_by_source=None, *, asset_folder,
+                       inbox_path):
+    """The plan for `items` when no vault can be asked: no target reads as
+    occupied, every embed is qualified, run collisions and refusals still apply.
+    Test-only: production must never fabricate this (spec 039 T4.3).
+    """
+    no_vault = _NoVault()
+    return build_attachment_plan(
+        items, remedies_by_source, asset_folder=asset_folder,
+        inbox_path=inbox_path, folder_lookup=no_vault, census=no_vault,
+    )
+
+
+def build_actions_without_vault(manifest, confirmed, daily_updates, skipped, cfg,
+                                *args, **kwargs):
+    """`build_actions` for a harness with no vault to ask: the plan is
+    `plan_without_vault(manifest)`, which production no longer fabricates.
+    A caller that passes its own `attachment_plan` keeps it.
+    """
+    from lib.render_actions import DEFAULT_ASSET_FOLDER, build_actions
+
+    if kwargs.get("attachment_plan") is None and not args[10:]:
+        kwargs["attachment_plan"] = plan_without_vault(
+            manifest,
+            asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
+            inbox_path=cfg["concepts.inbox"],
+        )
+    return build_actions(manifest, confirmed, daily_updates, skipped, cfg,
+                         *args, **kwargs)

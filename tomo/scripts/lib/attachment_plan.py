@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """attachment_plan.py — decide, once per Pass 2 run, what happens to every
 attachment the confirmed items embed.
 
@@ -258,28 +258,3 @@ def build_attachment_plan(confirmed, remedies_by_source, *, asset_folder,
         _census=census,
     )
 
-
-class _NoVault:
-    """K2 and K3 for a caller with no vault to ask: every folder unanswered,
-    every basename count unknown."""
-    folder_listing_calls = 0
-    searches = 0
-    pages = 0
-
-    def state(self, _folder: str) -> str:
-        return "unanswered"
-
-    def count(self, _basename: str) -> None:
-        return None
-
-
-def plan_without_vault(items, remedies_by_source=None, *, asset_folder,
-                       inbox_path) -> AttachmentPlan:
-    """The plan for `items` when no vault can be asked: no target reads as
-    occupied, every embed is qualified, run collisions and refusals still apply.
-    """
-    no_vault = _NoVault()
-    return build_attachment_plan(
-        items, remedies_by_source, asset_folder=asset_folder,
-        inbox_path=inbox_path, folder_lookup=no_vault, census=no_vault,
-    )

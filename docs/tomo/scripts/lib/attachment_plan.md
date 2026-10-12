@@ -96,19 +96,22 @@ owners join the notes' `source_inbox_item` exactly. T4.3 moved the helper into
 `render_actions` would be a cycle, which T4.2 had worked around with an
 in-function import.
 
-## `plan_without_vault` (spec 039 T4.3)
+## No production `plan_without_vault` (spec 039 T4.3)
 
-`build_actions` still accepts no plan, because many harnesses and any caller
-with no Kado client have no vault to ask. Rather than keep a second copy of
-the decision rules for that case, `build_actions` builds the plan itself from
-the manifest with a K2/K3 stand-in that answers every folder `unanswered` and
-every count `None`. Unanswered is the honest answer — nothing was asked — and
-by row 9 it emits the move exactly as the pre-plan builder did; run collisions,
-holds and typed-name refusals still apply. It is a production code path (unlike
-`plan_from_remedies`, which describes a fake vault), so it lives here.
+An earlier T4.3 kept a `plan_without_vault` here, so `build_actions` could run
+with no plan: a K2/K3 stand-in answered every folder `unanswered` and every
+count `None`. It was removed. That answer is not "nothing known"; to the plan's
+rules it is a finding, and it flags every move unchecked and qualifies every
+embed. A production caller that forgot to pass a plan would get that silently,
+with no error. `instruction-render.py` always has a plan when it has a client
+(no client only means no confirmed items, so an empty manifest), so
+`build_actions` now raises `ValueError` for a manifest that carries attachments
+and no plan. The stand-in lives in `tests/attachment_plan_fakes.py` as a
+test-only helper, with `build_actions_without_vault` for the harnesses that
+have no vault to ask.
 
 ## Test helper location
 
-`plan_from_remedies` lives in `tests/attachment_plan_fakes.py`, not here: it
-supplies a fake vault and is never a production code path, and `tomo/` is
+`plan_from_remedies`, `plan_without_vault` and `build_actions_without_vault`
+live in `tests/attachment_plan_fakes.py`, not here: they supply a fake vault and is never a production code path, and `tomo/` is
 synced into the instance.

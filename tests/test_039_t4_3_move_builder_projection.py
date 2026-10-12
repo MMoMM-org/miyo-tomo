@@ -172,18 +172,27 @@ def test_a_a_manifest_attachment_the_plan_does_not_cover_is_a_wiring_error():
         _build_move_asset_actions(_LEGACY_MANIFEST, plan, [0], INBOX)
 
 
-def test_a_build_actions_without_a_plan_files_as_today():
-    """No plan (a caller with no vault to ask) → the same moves as today."""
+def test_a_build_actions_without_a_plan_refuses_a_manifest_with_attachments():
+    """No plan + attachments → ValueError, never a fabricated "nothing known"
+    plan that would flag every move unchecked and qualify every embed."""
     manifest = [dict(m, rendered_file=f"r{i}.md", title=f"T{i}",
                      destination="Atlas/202 Notes/")
                 for i, m in enumerate(_LEGACY_MANIFEST)]
-    with_plan, skipped_with = build_actions(
-        manifest, [], [], [], CFG,
-        attachment_plan=plan_from_remedies(manifest, [], inbox_path=INBOX,
-                                           asset_folder=ASSET))
-    without, skipped_without = build_actions(manifest, [], [], [], CFG)
-    assert without == with_plan
-    assert skipped_without == skipped_with
+    assert any(m.get("attachments") for m in manifest)
+    with pytest.raises(ValueError, match="attachment_plan is required"):
+        build_actions(manifest, [], [], [], CFG)
+
+
+def test_a_build_actions_without_a_plan_proceeds_when_nothing_is_attached():
+    """No plan + no attachments → nothing to plan, the run proceeds."""
+    manifest = [{"id": "S01", "item_key": "100 Inbox/n.md", "source_path": "n.md",
+                 "title": "N", "rendered_file": "r.md",
+                 "destination": "Atlas/202 Notes/", "attachments": []}]
+    actions, skipped = build_actions(manifest, [], [], [], CFG)
+    kinds = [a["action"] for a in actions]
+    assert "move_note" in kinds
+    assert "move_asset" not in kinds
+    assert skipped == []
 
 
 # ── b ─────────────────────────────────────────────────────────────────────

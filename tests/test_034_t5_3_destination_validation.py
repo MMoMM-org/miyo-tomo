@@ -56,11 +56,11 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from lib.item_key import to_filename  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     _paired_delete_candidates,
-    build_actions,
     make_folder_listing,
     validate_destinations,
     withdraw_unjustified_deletes,
 )
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 NOTES = "Atlas/202 Notes/"

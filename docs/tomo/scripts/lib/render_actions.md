@@ -1772,6 +1772,10 @@ what to change — the folder, or the occupied target.
 
 ### `build_actions` Without a Plan
 
-A caller that passes no plan gets `plan_without_vault(manifest)`: the same
-rules with every vault question unanswered, which files exactly what the
-pre-plan builder filed. The rules live once, in the plan.
+WHY: no production fallback. A manifest that carries attachments and no plan
+raises `ValueError`. The fallback it replaced fabricated "every folder
+unanswered, every census unknown", which silently flags every move unchecked
+and qualifies every embed with no error anywhere. A manifest with no
+attachments has nothing to plan and proceeds. The test harnesses that have no
+vault go through `build_actions_without_vault` in `tests/attachment_plan_fakes.py`.
+The rules live once, in the plan.

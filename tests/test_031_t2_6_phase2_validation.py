@@ -27,7 +27,7 @@ SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import build_actions  # noqa: E402
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 from lib.render_resolve import _strip_internal_link_fields  # noqa: E402
 
 CFG = {

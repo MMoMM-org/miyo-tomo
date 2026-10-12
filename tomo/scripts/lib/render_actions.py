@@ -1,4 +1,4 @@
-# version: 0.27.0
+# version: 0.28.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -31,7 +31,7 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
 )
 from lib.refusal_sentences import typed_name_sentence
 from lib.render_md import bare_stem
-from lib.attachment_plan import AttachmentPlan, plan_without_vault
+from lib.attachment_plan import AttachmentPlan, build_attachment_plan
 from lib.vault_folder_lookup import VaultFolderLookup
 from lib.vault_paths import _asset_dest_join, _dest_join  # noqa: F401 — re-exported (spec 039 T1.4)
 from lib.source_link import colliding_names, qualified_target
@@ -2549,8 +2549,8 @@ def build_actions(
 
     `attachment_plan` (spec 039 K1) decides every attachment; the move
     builder projects it and this function stores the projection's
-    `move_ids_by_origin` back on the plan. Without one, the plan is built here
-    from the manifest with no vault to ask (`plan_without_vault`).
+    `move_ids_by_origin` back on the plan. A manifest that carries attachments
+    requires one (ValueError otherwise); one without attachments needs none.
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -2567,8 +2567,13 @@ def build_actions(
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
     if attachment_plan is None:
-        attachment_plan = plan_without_vault(
-            manifest, asset_folder=asset_folder, inbox_path=inbox_path,
+        if any(item.get("attachments") for item in manifest):
+            raise ValueError(
+                "attachment_plan is required when the manifest carries attachments"
+            )
+        attachment_plan = build_attachment_plan(
+            manifest, None, asset_folder=asset_folder, inbox_path=inbox_path,
+            folder_lookup=None, census=None,
         )
     move_assets, skipped_assets, move_ids_by_origin = _build_move_asset_actions(
         manifest, attachment_plan, counter, inbox_path,

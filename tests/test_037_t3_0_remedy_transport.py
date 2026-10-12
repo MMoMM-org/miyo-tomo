@@ -380,6 +380,8 @@ def test_build_actions_receives_the_parsed_remedies(monkeypatch, tmp_path):
     assert captured_kwargs.get("attachment_conflict_remedies") == [{
         "source": SOURCE, "remedy": "rename", "proposed_name": PROPOSED_NAME,
     }]
+    # build_actions has no production fallback: Pass 2 must hand it a plan.
+    assert captured_kwargs.get("attachment_plan") is not None
 
 
 def test_parser_output_reaches_build_actions_end_to_end(monkeypatch, tmp_path):

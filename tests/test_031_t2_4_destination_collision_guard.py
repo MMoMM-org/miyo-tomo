@@ -37,9 +37,9 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
-    build_actions,
     suppress_moves_for_unfiled_attachments,
 )
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"

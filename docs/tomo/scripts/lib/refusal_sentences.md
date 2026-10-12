@@ -48,3 +48,17 @@ through `_visible`, an unknown code raises `ValueError`, no remedy text. The
 `breaks_link` tail says the character "would break the link" rather than that
 Obsidian forbids it, because it does not (owner ruling 2026-10-12). `blank`
 quotes nothing: there is nothing to show.
+
+## The `vault_occupied` sentence (spec 039 T4.2, F3-AC5)
+
+WHY it lives here and not in the plan: K16 is the one home for owner-facing
+prose, including one sentence per new withheld kind (SDD K16). The plan only
+chooses the sentence.
+
+WHY it names the occupier as the vault spells it and appends a case note when
+the spellings differ: Rule 2 treats a case-only match as occupied, and an owner
+told `karte.png` is taken while the vault shows `KARTE.png` needs to see why.
+It never says "a note already exists" — the note-clash sentence in
+`render_actions` is written for notes and would misdescribe an attachment.
+A folder at the target name has no file spelling to show, so that variant names
+the target only.

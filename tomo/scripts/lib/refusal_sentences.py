@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
 one file and never spread across the renderers that report it. Pure functions
 on strings: no I/O, no run state. `typed_name_sentence` takes a code from
 `lib.typed_name_check.REFUSAL_REASONS`; `folder_sentence` takes one from
-`lib.typed_name_check.FOLDER_REFUSAL_REASONS`. Each raises `ValueError` on a
+`lib.typed_name_check.FOLDER_REFUSAL_REASONS`; `occupied_target_sentence`
+phrases the `vault_occupied` withheld kind. The first two raise `ValueError` on a
 code it does not know — an unknown code is a bug upstream, never reported as
 some other refusal.
 
@@ -80,3 +81,29 @@ def folder_sentence(reason: str, folder: str) -> str:
     if tail is None:
         raise ValueError(f"unknown typed-folder refusal reason: {reason!r}")
     return f"typed folder refused: `{_visible(folder)}` {tail}"
+
+
+def occupied_target_sentence(
+    target: str, occupier: str | None, *, occupier_is_folder: bool = False
+) -> str:
+    """The sentence for a `vault_occupied` withheld attachment.
+
+    Names the target and what occupies it as the vault spells it, in words for
+    an attachment — never "a note already exists".
+    """
+    if occupier_is_folder:
+        return (
+            f"target occupied: the vault already has a folder at "
+            f"`{_visible(target)}`, so the attachment is not filed there"
+        )
+    shown = _visible(occupier or target)
+    sentence = (
+        f"target occupied: the vault already holds `{shown}` at the target "
+        f"`{_visible(target)}`, so the attachment is not filed over it"
+    )
+    if occupier and occupier != target:
+        sentence += (
+            " — the names differ only in case, and the filesystem may treat "
+            "them as one file"
+        )
+    return sentence

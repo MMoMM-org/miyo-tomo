@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The attachment plan"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -77,7 +77,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
   4. Validate: full suite green; ruff clean
   5. Success: `[ref: PRD/F3-AC7]` (one search per basename, two when NFC and NFD forms differ) `[ref: PRD/F2-AC7]` `[ref: PRD/C1-AC1]`
 
-- [ ] **T4.6 Phase 4 validation** `[activity: validate]`
+- [x] **T4.6 Phase 4 validation** `[activity: validate]`
 
   - Full suite green in one invocation; ruff clean; golden byte-identity on the 038 baseline; grep proof that K1 is the only decision site; backlog `:1917` and `:1956` updated with SHAs.
   - Carried from Phase 3: `test_038_t4_4_the_two_paths_converge.py`'s `_strip_provenance` maps a non-owner-supplied `proposed_dir` to `None` (the markdown spells the untouched default as the rendered folder, the wire as `null`); back it with a destination-level assertion — both paths produce the same `move_asset` destination for: untouched default, typed folder, default + trailing `/` (refused on both), typed folder equal to `concepts.asset`. `test_039_t3_4_folder_not_consumed_yet.py` asserts the folder is ignored; retarget it to the real folder outcome here.

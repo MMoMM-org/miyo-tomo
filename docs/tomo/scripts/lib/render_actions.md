@@ -1851,3 +1851,80 @@ deterministic.
 - The consumer's cascade (Hashi) needs no change; the vendored
   `hashi-instructions.schema.json` is untouched until T6.2 (F6-AC6 completes
   there). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
+
+## Executor trace: a failed attachment move keeps the origin (spec 039 T5.3)
+
+PRD F6-AC7: the consumer's executor needs no change, asserted against its
+dependency cascade rather than assumed. Tomo-side proof:
+`tests/test_039_t5_3_executor_needs_no_change.py` (every `delete_source.depends_on`
+id names an action in the set; every depended-on kind is allowed by the
+vendored schema; the produced set validates; the vendored schema records no
+kind order, so the ordering claim lives only in this trace). The rest is
+this trace, read from the Hashi tree, to be confirmed by Hashi in T6.2.
+
+Traced tree: `/Volumes/Moon/Coding/MiYo/Hashi`, branch
+`feat/attachment-conflict-control`, HEAD `4119be0598a229d46825711823e19856e4988812`
+("docs(mockup): attachment conflicts rev 3 ..."), working tree clean at
+trace time (2026-10-12). Paths below are relative to that tree.
+
+1. Kind order. `src/executor/planner.ts:39` `KIND_ORDER` lists `create_moc`,
+   `move_note`, `move_asset` (line 41) ... `delete_source` (line 53), `skip`.
+   Records are emitted kind by kind at `planner.ts:209` (`for (const kind of
+   KIND_ORDER)`), so every `move_asset` is executed before any
+   `delete_source`.
+2. Declared edges. `planner.ts:264` unions the `depends_on` ids of EVERY
+   action into the dependency edges (read structurally by
+   `declaredDependencies`, `planner.ts:285`), so `delete_source.depends_on`
+   naming `move_asset` ids needs no new planner code.
+3. Dangling ids. `findDanglingDependencies` (`planner.ts:305`) collects any
+   id absent from the same set; `computeRemaining` returns them
+   (`planner.ts:185-186`) and `InstructionExecutor.ts:360` seeds
+   `unsatisfiedIds` with them, so a delete naming an absent id is skipped.
+   Tomo's test above keeps that case at zero.
+4. Skip on an unsatisfied dependency. `InstructionExecutor.ts:416`
+   `findDependencyFailure` (defined `:755`, loops the record's dependency
+   keys and returns the first one present in `unsatisfiedIds`) feeds the
+   `skipped-dependency` outcome at `:418`, which adds the skipped record to
+   `unsatisfiedIds` itself (`:428`) so the skip cascades.
+5. What enters `unsatisfiedIds`: a `failed` handler outcome (`:486-487`), a
+   handler throw (`:479`), a failed before-hook (`:448`), a missing action
+   (`:438`), cancellation (`:409`), and a skipped dependency (`:428`).
+   `applied` and `skipped-already` do not.
+6. `move_asset` outcomes (`src/actions/moveAsset.ts`): both source and
+   destination present is `failed` "Inconsistent state" (`:73-74`); source
+   gone and destination present is `skipped-already` (`:77-78`); neither
+   present is `failed` "Source missing" (`:81-82`); otherwise the folder is
+   created and the file renamed, `applied` (`:85-88`). Illegal characters or a
+   note extension fail earlier.
+
+Verdict on a `skipped` move_asset: a `skipped-already` is NOT in
+`unsatisfiedIds`, so the dependent `delete_source` RUNS (the executor treats
+the end-state as present, and graduates it to `applied: true`,
+`InstructionExecutor.ts:535-545`). It arises only when the attachment is
+already gone from the inbox and something sits at the target. A `failed` move
+skips the delete (F6-AC2 holds): the failing cases that leave the file in the
+inbox (target occupied while the source is still present; source missing is
+the other side) are `failed`, not `skipped-already`.
+
+Consequences:
+
+- Ignore, target occupied, source still in the inbox: Tomo sends the move to
+  the original destination unchanged (F1-AC6); at apply both paths exist, so
+  the move `failed`s and the origin's delete is skipped. Origin and
+  attachment both stay in the inbox. Consistent with F6-AC2.
+- Unchecked target (Kado could not check): the move is emitted; if the target
+  turns out occupied while the source is present, same `failed`, same result.
+- The one divergence from the owner-facing sentence ("if the move fails, the
+  source note stays in the inbox"): `skipped-already` is not a failure. If the
+  inbox attachment was already removed and a file occupies the target, the
+  delete proceeds. Nothing is lost from the inbox (the attachment is not
+  there), but the file at the target is not verified to be the embedded one.
+  This does not contradict F6-AC2 (which is about a FAILED move) and is not a
+  Tomo defect; it is stated here so the owner-facing wording is not read more
+  strongly than the executor behaves.
+
+Question for Hashi to confirm in T6.2: against the tree at
+`4119be0598a2`, does a `move_asset` outcome of `skipped-already` leave its id
+out of `unsatisfiedIds` (so a dependent `delete_source` runs), while `failed`
+puts it in (so the delete ends `skipped-dependency`), and is that behaviour
+intended to stay?

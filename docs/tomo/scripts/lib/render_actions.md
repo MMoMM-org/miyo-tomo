@@ -1517,7 +1517,7 @@ WHY `_typed_name_refusal_reason` exists as a function, and why the entry it
 feeds carries both a `reason` sentence and a separate `refusal_reason` code for
 the same fact.
 
-The three sentences it returns are not interchangeable phrasings of one
+The three sentences it returned at spec 038 T3.2 (historical; the sentences now live in `lib/refusal_sentences.py`, see the T2.1 paragraph below) are not interchangeable phrasings of one
 refusal. Each one sends the owner somewhere different: a path separator means
 they tried to express a folder in a field that takes a basename, a forbidden
 character means one character has to go, and blank means nothing arrived at all.
@@ -1542,10 +1542,10 @@ duplication. It is not: the two fields have different readers with different
 needs. A renderer that wants to branch per refusal class — which T3.4 then did —
 needs a value it can compare, and the alternative is parsing the prose, which is
 exactly the practice spec 038 exists to stop anyone having to adopt. Three
-branches keyed on an enum are also why `_typed_name_refusal_reason` branches on
+branches keyed on an enum are also why the sentence lookup (then in `_typed_name_refusal_reason`, now `typed_name_sentence`) branches on
 the code and never re-inspects the string.
 
-Measured at T3.5 by disabling the `separator_present` branch: the fall-through
+Measured at T3.5 (historical, against the pre-T1.5 inline function) by disabling the `separator_present` branch: the fall-through
 is worse than the obvious guess. Because the function branches on the CODE and
 never re-inspects the string, a disabled separator branch does not re-label a
 separator as a forbidden character — it falls past that check too and announces
@@ -1562,6 +1562,15 @@ the sentence is wrong. A raise is caught by tests the moment a fourth member joi
 `REFUSAL_REASONS`, never by an owner. It cannot fire in production today: the only
 caller, `_build_move_asset_actions`, passes `check_typed_name`'s verdict reason,
 which is drawn from the closed three-member set. (PRD F5-AC5, SDD ADR-6.)
+
+**Spec 039 T2.1 (v0.26.15): the sentences moved out.** The text above describes
+the function as it was at specs 038/039 T1.5 and is kept as history. Today the
+sentences live in `lib/refusal_sentences.py` (SDD K16) and
+`_typed_name_refusal_reason` is a one-line delegate to `typed_name_sentence`,
+kept so callers and tests keep their entry point. `REFUSAL_REASONS` has five
+members (`breaks_link` and `unsafe_sequence` joined the original three). The
+branching on the code, and the `ValueError` on an unknown code, now live in
+`typed_name_sentence`; see `docs/tomo/scripts/lib/refusal_sentences.md`.
 
 ### WHY the Three Fields Divide As They Do — Following a Convention, Not Inventing One
 

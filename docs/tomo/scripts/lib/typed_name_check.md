@@ -67,7 +67,7 @@ WHY `REFUSAL_REASONS` has no `taken` member when F3 names four things that
 can be wrong with a typed name — separator, forbidden character, blank, and
 *already taken*.
 
-Because `taken` is not a property of the string. The first three can be decided
+Because `taken` is not a property of the string. The original three (spec 038) can be decided
 by looking at the name and nothing else, which is what makes them answerable by
 a one-argument pure function. Occupancy is a property of the run: whether
 `karte.png` is free depends on what the other items in this same Pass 2 have
@@ -106,7 +106,7 @@ document rendered from the run in which they typed the name.
 
 The set is `frozenset` and the module docstring calls it closed, which is load-
 bearing downstream rather than decorative: `_typed_name_refusal_reason`
-(`render_actions.py:692`) delegates to `lib/refusal_sentences.py`, which raises on a code it does not
+(in `render_actions.py`) delegates to `lib/refusal_sentences.py`, which raises on a code it does not
 know (spec 039 T1.5). Before that the function ended in an unguarded `return`
 of the blank sentence, so a code without a branch was announced to the owner as
 *blank*. A member added to this frozenset without a matching sentence now fails
@@ -136,7 +136,7 @@ first owner the second instruction.
 WHY `check_typed_name(name: str)` takes nothing else — no config, no vault
 client, no `claimed` map, no run id.
 
-It is the same argument as the three classes, stated as a signature. Everything
+It is the same argument as the original three classes (spec 038), stated as a signature. Everything
 this function can decide is decidable from the string, so every additional
 parameter would be either unused or a second mechanism for something the run
 already does. The practical payoff is in the tests: each refusal class is one
@@ -178,3 +178,13 @@ would mask `<%` and the control-character rule, contradicting F5-AC7 ("one
 shared reason"). Spec 038 had pinned `\x00` as `forbidden_character`; spec 039
 re-pinned it to `unsafe_sequence` (review fix, T2.1) because NUL is a control
 character. Refused either way, and it never aborts the run.
+
+## One control-character predicate (spec 039 T2.1 review)
+
+WHY `is_control_char` is public: folder checks (T2.2) and the refusal sentence's
+escaping need the same definition of "control character" as `check_typed_name`,
+and a second copy is a second chance to disagree. The one deliberate exception
+is `render_actions.py`'s backstop regex `_CONTROL_CHARS_RE`, which has its own
+pattern; both must agree, and
+`test_render_backstop_regex_agrees_with_the_control_predicate` asserts it over
+`chr(0)..chr(0x9f)`.

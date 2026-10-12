@@ -28,7 +28,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 from lib.render_actions import _typed_name_refusal_reason  # noqa: E402
-from lib.typed_name_check import REFUSAL_REASONS, check_typed_name  # noqa: E402
+from lib.render_actions import _CONTROL_CHARS_RE  # noqa: E402
+from lib.typed_name_check import check_typed_name, is_control_char  # noqa: E402
 
 
 @pytest.mark.parametrize("name", [" a.png", "a.png ", "\ta.png", "a.png\t", "  a.png  "])
@@ -49,7 +50,6 @@ def test_existing_order_is_kept():
     assert check_typed_name("   ").reason == "blank"
     assert check_typed_name("a/b.png").reason == "separator_present"
     assert check_typed_name("a/#b.png").reason == "separator_present"
-    assert check_typed_name("a?#b.png").reason == "forbidden_character"
     assert check_typed_name("a?#b.png").reason == "forbidden_character"
     # `<%` outranks forbidden_character ('<' is a FORBIDDEN_CHARS member);
     # every control character, NUL included, outranks forbidden_character.
@@ -81,13 +81,6 @@ def test_usable_names_still_accepted_verbatim():
         assert v.ok is True and v.name == n
 
 
-def test_refusal_reasons_is_a_closed_set_of_five():
-    assert REFUSAL_REASONS == frozenset({
-        "separator_present", "forbidden_character", "blank",
-        "breaks_link", "unsafe_sequence",
-    })
-
-
 def test_sanitize_stem_unchanged():
     assert sanitize_stem("C# Notizen") == "C# Notizen"
 
@@ -110,6 +103,33 @@ def test_unsafe_sequence_sentence_is_distinct_and_names_the_name():
 def test_unsafe_sequence_sentence_shows_control_characters_visibly():
     s = _typed_name_refusal_reason("unsafe_sequence", "a\x01b.png")
     assert "\x01" not in s
+
+
+def test_delete_character_is_escaped_in_the_sentence():
+    s = _typed_name_refusal_reason("unsafe_sequence", "a\x7fb.png")
+    assert "\x7f" not in s
+    assert "`a\\x7fb.png`" in s
+
+
+def test_breaks_link_sentence_exact():
+    assert _typed_name_refusal_reason("breaks_link", "a#b.png") == (
+        "typed name refused: `a#b.png` has leading or trailing whitespace or "
+        "one of # ^ [ ], which would break the link"
+    )
+
+
+def test_unsafe_sequence_sentence_exact():
+    assert _typed_name_refusal_reason("unsafe_sequence", "a{{b.png") == (
+        "typed name refused: `a{{b.png` contains a control character or a "
+        "template sequence, which would corrupt the instruction set"
+    )
+
+
+def test_render_backstop_regex_agrees_with_the_control_predicate():
+    # render_actions keeps its own regex as a backstop; both must agree.
+    for cp in range(0x00, 0xA0):
+        c = chr(cp)
+        assert bool(_CONTROL_CHARS_RE.search(c)) == is_control_char(c), hex(cp)
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +192,15 @@ def test_unsafe_typed_name_does_not_abort_pass_2(monkeypatch, tmp_path, typed):
     out = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", ["instruction-render.py", "--suggestions", str(sf),
                                       "--output-dir", str(out), "--config", str(cf)])
+    captured = []
+    real_build_actions = ir.build_actions
+
+    def _capture(*a, **kw):
+        result = real_build_actions(*a, **kw)
+        captured.append(result[1])
+        return result
+
+    monkeypatch.setattr(ir, "build_actions", _capture)
     assert ir.main() == 0
 
     # Both items rendered; the refused attachment withholds only its own
@@ -183,3 +212,12 @@ def test_unsafe_typed_name_does_not_abort_pass_2(monkeypatch, tmp_path, typed):
     instr = json.loads((out / "instructions.json").read_text(encoding="utf-8"))
     assert not [a for a in instr["actions"]
                 if a["action"] == "move_asset" and a["source"] == SOURCE]
+    # The refusal is recorded as a skipped entry for the refused source. The
+    # bare `refusal_reason` code is not projected into instructions.json, so it
+    # is read from build_actions' own return value.
+    refused = [e for e in captured[0] if e.get("source") == SOURCE]
+    assert [(e["kind"], e["refusal_reason"]) for e in refused] == [
+        ("typed_name_refused", "unsafe_sequence")]
+    skipped_json = instr["tomo"]["skipped_assets"]
+    assert [(e["source"], e["kind"]) for e in skipped_json] == [
+        (SOURCE, "typed_name_refused")]

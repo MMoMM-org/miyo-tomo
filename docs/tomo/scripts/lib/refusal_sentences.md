@@ -29,9 +29,13 @@ that does not exist.
 
 WHY `_visible` rewrites control characters as `\xNN` before quoting the name:
 a raw control character inside the sentence would reach the rendered markdown
-and reintroduce the very corruption the refusal exists to stop. The
-`unsafe_sequence` sentence also avoids spelling `{{` and `<%` literally, for the
-same reason.
+and reintroduce the very corruption the refusal exists to stop. Only
+the sentence's own template text avoids spelling `{{` and `<%`; the echoed typed
+name is shown verbatim and may contain them. That is acceptable because the
+reason text is prose in a skipped entry, which is not path-shape validated, and
+the end-to-end run with such a name exits 0 (pinned in
+`tests/test_039_t2_1_breaks_link_and_unsafe_sequence.py`). The control-character
+test is `is_control_char` from `lib/typed_name_check.py`, the single definition.
 
 ## Folder sentences
 

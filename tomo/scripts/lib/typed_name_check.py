@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """typed_name_check.py — decide whether an owner-typed attachment name is usable.
 
 ADR-5 (spec 038): a typed name is rejected, never sanitised. `sanitize_stem`
@@ -42,7 +42,8 @@ _LINK_BREAKING_CHARS = frozenset("#^[]")
 _UNSAFE_SUBSTRINGS = ("{{", "<%")
 
 
-def _is_control(c: str) -> bool:
+def is_control_char(c: str) -> bool:
+    """True for every control character [\\x00-\\x1f\\x7f] — the one predicate."""
     return ord(c) < 0x20 or ord(c) == 0x7F
 
 
@@ -97,10 +98,9 @@ def check_typed_name(name: str) -> TypedNameVerdict:
     if name != name.strip():
         return TypedNameVerdict(ok=False, name=name, reason="breaks_link")
 
-    if any(u in name for u in _UNSAFE_SUBSTRINGS):
-        return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
-
-    if any(_is_control(c) for c in name):
+    if any(u in name for u in _UNSAFE_SUBSTRINGS) or any(
+        is_control_char(c) for c in name
+    ):
         return TypedNameVerdict(ok=False, name=name, reason="unsafe_sequence")
 
     if any(c in _NON_SEPARATOR_FORBIDDEN_CHARS for c in name):

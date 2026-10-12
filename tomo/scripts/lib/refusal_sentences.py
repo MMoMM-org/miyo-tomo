@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """refusal_sentences.py — the prose the owner reads when a typed name is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -15,11 +15,13 @@ shown as escapes so the sentence stays readable.
 """
 from __future__ import annotations
 
+from lib.typed_name_check import is_control_char
+
 
 def _visible(text: str) -> str:
     """`text` with every control character replaced by its `\\xNN` escape."""
     return "".join(
-        f"\\x{ord(c):02x}" if ord(c) < 0x20 or ord(c) == 0x7F else c for c in text
+        f"\\x{ord(c):02x}" if is_control_char(c) else c for c in text
     )
 
 

@@ -178,12 +178,13 @@ def test_036_contract_still_holds_with_attachments():
         assert isinstance(d["depends_on"], list)
         assert set(d["depends_on"]) <= ids
     assert _delete(actions, OTHER)["depends_on"] == [_ids(actions, "move_note")[1]]
+    origin_deps = _delete(actions, ORIGIN)["depends_on"]
+    assert _delete(actions, PEER)["depends_on"] == origin_deps
+    assert set(_ids(actions, "move_asset")) <= set(origin_deps)
 
 
 def test_instructions_schema_description_names_move_asset():
     """F6-AC6 (Tomo half)."""
     schema = json.loads((REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text())
-    text = json.dumps(schema)
-    desc = schema["$defs"]["delete_source"]["properties"]["depends_on"]["description"] \
-        if "delete_source" in schema.get("$defs", {}) else text
+    desc = schema["$defs"]["delete_source"]["properties"]["depends_on"]["description"]
     assert "move_asset" in desc

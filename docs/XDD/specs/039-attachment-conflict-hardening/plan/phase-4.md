@@ -61,7 +61,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
   4. Validate: grep — no `check_typed_name` / `remedy ==` / `claimed` left in the builder; golden comparison on the 038 baseline byte-identical
   5. Success: `[ref: PRD/F3-AC1]` (emission side) `[ref: PRD/F3-AC3]` `[ref: PRD/F1-AC7]` `[ref: PRD/F2-AC4]`
 
-- [ ] **T4.4 Embed rewrite reads the plan** `[activity: backend]`
+- [x] **T4.4 Embed rewrite reads the plan** `[activity: backend]`
 
   1. Prime: `embed_rewrite.py` (0.4.2) in full; `attachment_index.py:13, 148-171` `[ref: SDD/ADR-9]`
   2. Test: renamed + unique → bare new name (today's output, F4-AC1); unrenamed + unique → body untouched; ambiguous → `![[<full path>]]` in **every** owning note (F4-AC2, F4-AC3); suffixes `|300`, `|alias`, `#heading` kept and extension kept, no alias added (F4-AC5); a written `![[Other/name.png]]` pointing elsewhere is **not** rewritten (R1 §3 measured defect); a withheld source rewrites nothing — run-level `collision` included (F4-AC8, closes backlog `:1956`); fenced code and non-`!` links untouched (existing tests); original name into a new folder rewrites to the qualified path when ambiguous (F1-AC10)

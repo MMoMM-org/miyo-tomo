@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_039_t4_7_nfc_target_keys.py — spec 039 Phase 4 drift check W7.
 
 A target path is compared under ONE key: NFC-normalised, then case-folded
@@ -14,10 +14,13 @@ A separate file rather than more rows in the T4.2 file: the defect spans K1,
 K2 and both of K2's other consumers (the Pass-1 reducer and Pass 2's
 `validate_destinations`), and the T4.2 file is K1's decision table alone.
 
-Mutations (isolated copy): drop the `unicodedata.normalize("NFC", ...)` step
-from `path_key` — all ten tests fail. Make `same_spelling` plain `a == b` — the
-three sentence assertions fail (K1's `vault_occupied` sentence, the reducer's
-`_clash_reason`, `validate_destinations`' `case_only`).
+Mutations (isolated copy, 18 tests): drop the `unicodedata.normalize("NFC",
+...)` step from `path_key` - 14 of 18 fail (the two audio tests key on
+`nfc_lower` and are untouched). Make `same_spelling` plain `a == b` - 5 of 18
+fail (K1's `vault_occupied` sentence, the reducer's `_clash_reason`,
+`validate_destinations`' `case_only` and its one-path sentence, `_unique_in_order`).
+Drop NFC from `nfc_lower` - the NFD stem and folder audio tests fail; casefold
+instead of lower - the `Straße`/`Strasse` test fails.
 
 CON-7: fixtures and fakes only.
 """
@@ -198,6 +201,9 @@ def test_validate_destinations_drops_an_nfd_move_over_an_nfc_vault_note():
     assert kept == []
     (clash,) = clashes
     assert clash["kind"] == "vault_collision"
+    # Same visible spelling: the one-path sentence, and no case-only note.
+    assert "where this run would file" not in clash["reason"]
+    assert clash["case_only"] is False
 
 
 # --- create_moc merge and its resolver ----------------------------------------
@@ -299,3 +305,24 @@ def test_audio_paired_with_an_nfc_note_is_not_reflagged_when_spelled_nfd():
     audio = [{"path": f"{INBOX}{unicodedata.normalize('NFD', 'Café')}.m4a"}]
     notes = [{"path": f"{INBOX}{unicodedata.normalize('NFC', 'Café')}.md"}]
     assert triage.check_audio(audio, notes) is False
+
+
+def test_audio_pairs_across_nfd_and_case_differing_folder_spellings():
+    """The folder half of the pairing key is NFC + lower too: the same folder
+    spelled NFD, or in another case, still holds the transcript."""
+    triage = _load("inbox_triage_t039_t4_7", "inbox-triage.py")
+    nfc_dir = unicodedata.normalize("NFC", "Café Voice")
+    nfd_dir = unicodedata.normalize("NFD", "Café Voice")
+    notes = [{"path": f"{INBOX}{nfc_dir}/memo.md"}]
+    assert triage.check_audio([{"path": f"{INBOX}{nfd_dir}/memo.m4a"}], notes) is False
+    assert triage.check_audio([{"path": f"{INBOX}{nfc_dir.upper()}/memo.m4a"}], notes) is False
+
+
+def test_audio_does_not_pair_with_a_casefold_only_namesake():
+    """`Straße.m4a` beside `Strasse.md` is NOT paired: voice-transcribe and
+    voice-precheck compare exact sanitized paths, so casefolding `ß` to `ss`
+    would skip a transcription the voice tools still need."""
+    triage = _load("inbox_triage_t039_t4_7", "inbox-triage.py")
+    audio = [{"path": f"{INBOX}Straße.m4a"}]
+    notes = [{"path": f"{INBOX}Strasse.md"}]
+    assert triage.check_audio(audio, notes) is True

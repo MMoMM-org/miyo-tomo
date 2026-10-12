@@ -484,10 +484,17 @@ WHY `metrics` gained `item_count` and `base_kado_calls`: the reducer reads both
 back out of `routing-plan.json` rather than re-deriving its own, so `suggest`
 and `idle` cannot end up counting different things.
 
-## `check_audio` Pairs by `path_key` (spec 039 W7)
+## `check_audio` Pairs by `nfc_lower`, Not `path_key` (spec 039 W7)
 
-WHY folder and stem compare under `lib.vault_paths.path_key` (NFC, then
-casefold) rather than `.lower()`: a macOS recorder may name the audio file in
-NFD while the transcript note is stored NFC. Compared raw, the pair never
-matches and the audio is re-transcribed on every run. The asymmetry that only
-the audio stem is passed through `sanitize_stem` is unchanged.
+WHY folder and stem compare under `lib.vault_paths.nfc_lower` (NFC, then
+`.lower()`): a macOS recorder may name the audio file in NFD while the
+transcript note is stored NFC. Compared raw, the pair never matches and the
+audio is re-transcribed on every run, so normalisation is needed.
+
+WHY `.lower()` and not the `path_key` casefold used for target comparison
+elsewhere: transcript pairing must match the voice tools' exact-path view up to
+normalisation and case. `voice-transcribe` and `voice-precheck` compare exact
+sanitized paths, so `casefold()` would pair `Straße.m4a` with `Strasse.md`,
+skip the transcription, and leave the audio with no transcript the voice tools
+recognise. The asymmetry that only the audio stem is passed through
+`sanitize_stem` is unchanged.

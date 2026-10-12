@@ -1,10 +1,10 @@
-# version: 0.2.0
+# version: 0.2.1
 """vault_paths.py — the destination-join helpers every vault-path comparison
 is built with, and the one key (`path_key`) every such comparison uses.
 
 Lives below both `render_actions` and `vault_folder_lookup` so the folder
 lookup can key by these helpers without an import cycle; `render_actions`
-re-exports both names. Rationale: docs/tomo/scripts/lib/vault_paths.md.
+re-exports the two join helpers. Rationale: docs/tomo/scripts/lib/vault_paths.md.
 """
 from __future__ import annotations
 
@@ -16,6 +16,11 @@ from lib.obsidian_filename import sanitize_stem
 def path_key(path: str) -> str:
     """The one comparison key for a vault path or file name: NFC, then casefold."""
     return unicodedata.normalize("NFC", path).casefold()
+
+
+def nfc_lower(text: str) -> str:
+    """NFC, then `.lower()` — the audio-transcript pairing key, deliberately NOT `path_key`."""
+    return unicodedata.normalize("NFC", text).lower()
 
 
 def same_spelling(a: str, b: str) -> bool:

@@ -78,3 +78,9 @@ in case"* must not fire for an NFC/NFD pair — the two render identically, so
 the note would describe a difference nobody can see. `same_spelling` (equal
 after NFC) is what those sentences compare with; the comparison key stays
 `path_key`.
+
+WHY `nfc_lower` beside `path_key`: audio-to-transcript pairing in
+`inbox-triage.check_audio` needs NFC (a recorder's NFD name must meet its NFC
+note) but must keep `.lower()` rather than `casefold()`, because the voice tools
+compare exact sanitized paths and `ß` must not fold to `ss` there. It is the one
+sanctioned key besides `path_key`.

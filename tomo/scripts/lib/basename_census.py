@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """basename_census.py — how many vault files already carry a given file name.
 
 Spec 039 K3 / ADR-3. Filing an attachment under a name another vault file
@@ -47,9 +47,6 @@ PAGE_BUDGET = 2
 PAGE_LIMIT = 500
 
 
-_key = path_key
-
-
 class BasenameCensus:
     def __init__(self, client):
         self._client = client
@@ -58,7 +55,7 @@ class BasenameCensus:
         self.pages = 0
 
     def count(self, basename: str) -> int | None:
-        key = _key(basename)
+        key = path_key(basename)
         if key not in self._cache:
             self._cache[key] = self._search(basename, key)
         return self._cache[key]
@@ -99,7 +96,7 @@ def _query_variants(name: str) -> list[str]:
 
 
 def _final_segment(path: str) -> str:
-    return _key(path.rsplit("/", 1)[-1])
+    return path_key(path.rsplit("/", 1)[-1])
 
 
 def make_basename_census(client) -> BasenameCensus:

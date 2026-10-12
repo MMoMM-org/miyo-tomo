@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.3
+# version: 0.39.4
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -54,7 +54,7 @@ from lib.kado_client import (  # noqa: E402
 )
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 from lib.run_id import generate as generate_run_id  # noqa: E402
-from lib.vault_paths import path_key  # noqa: E402
+from lib.vault_paths import nfc_lower  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
 from lib.wire_version import wire_schema_version  # noqa: E402
 
@@ -555,12 +555,12 @@ def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
     md_keys = set()
     for f in md_files:
         p = Path(f["path"])
-        md_keys.add((path_key(str(p.parent)), path_key(p.stem)))
+        md_keys.add((nfc_lower(str(p.parent)), nfc_lower(p.stem)))
 
     for af in audio_files:
         p = Path(af["path"])
-        safe_stem = path_key(sanitize_stem(p.stem))
-        if (path_key(str(p.parent)), safe_stem) not in md_keys:
+        safe_stem = nfc_lower(sanitize_stem(p.stem))
+        if (nfc_lower(str(p.parent)), safe_stem) not in md_keys:
             return True
 
     return False

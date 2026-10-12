@@ -1,4 +1,4 @@
-# version: 0.29.3
+# version: 0.29.4
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -31,7 +31,7 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
 from lib.render_md import bare_stem
 from lib.attachment_plan import AttachmentPlan, build_attachment_plan
 from lib.vault_folder_lookup import VaultFolderLookup
-from lib.vault_paths import _asset_dest_join, _dest_join, path_key, same_spelling  # noqa: F401 — re-exported (spec 039 T1.4)
+from lib.vault_paths import _asset_dest_join, _dest_join, path_key, same_spelling  # noqa: F401 — _asset_dest_join/_dest_join re-exported (spec 039 T1.4)
 from lib.source_link import colliding_names, qualified_target
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.60.3
+# version: 1.60.4
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -70,9 +70,8 @@ from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble
     DEFAULT_ASSET_FOLDER,
     _asset_dest_join,
     _dest_join,
-    path_key,
-    same_spelling,
 )
+from lib.vault_paths import path_key, same_spelling  # noqa: E402 — spec 039 W7
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
 from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
 # spec 034 T5.1, moved to lib at T5.5 when the instruction document needed

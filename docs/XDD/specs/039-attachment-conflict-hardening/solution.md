@@ -229,8 +229,11 @@ python3 scripts/wire-shape.py --regenerate       # write it
 | K16 | `lib/refusal_sentences.py` | **new** | One owner-facing sentence per refusal reason and per new withheld kind, one remedy per withheld kind (`withheld_attachment_remedy`, the single source for the "Not filed" line, the Skipped bullet and the shell relay), and the per-move report lines (unchecked target, folder to be created, qualified embed); keeps `render_actions.py` (2877 lines) from growing | F2-AC5, F5-AC3, F2-AC8, F3-AC5, F3-AC6 |
 
 F4-AC7 (a qualified embed is still recognised) is owned by the existing
-`attachment_index.extract_attachment_embeds` and needs only a test — R1 §5
-verified the regex accepts it. F6-AC2/F6-AC7 are owned by the consumer's
+`inbox-triage.py::resolve_inbox_attachments` (Kado's `listNotes` embed links,
+resolved against the inbox index by `narrow_candidates`) and needs only a
+test. Corrected at close-out (§4): this line first named
+`attachment_index.extract_attachment_embeds`, which production triage does
+not call. F6-AC2/F6-AC7 are owned by the consumer's
 executor and are asserted, not built.
 
 ### Directory Map

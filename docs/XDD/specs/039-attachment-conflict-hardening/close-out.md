@@ -17,25 +17,25 @@ deduplicated): F1:11 F2:9 F3:7 F4:8 F5:7 F6:8 S1:2 C1:1. **50 trace to executed
 tests**, 2 to documentation (S1), and 1 (F6-AC2) to the live run and the
 consumer's own test, because only an executor can fail a move.
 
-The **165 node ids** in the trace tables (with three CON-1 ids added at the
-end) were run **together in one `pytest` invocation on 2026-10-13**, against
-`042da7e9` plus the test changes committed with this document:
+The **170 node ids** in the trace tables (plus three CON-1 ids, and at the
+end the three "Not a gap" projection tests) were run **together in one
+`pytest` invocation on 2026-10-13**, against `2ab4698e` plus the review-round
+changes committed with this revision (§4):
 
 ```
-296 passed in 2.94s
+306 passed in 2.70s
 ```
 
-165 node ids collect **296 items**: the difference is parametrisation
+170 node ids collect **306 items**: the difference is parametrisation
 (`test_refusal_reason` alone is 48 cases). Checked by script, not by eye:
 every listed node id collects at least one item, and every collected item
 belongs to a listed node id — nothing deselected, nothing extra. The full suite
-on the same tree, run twice: **4965 passed, 4 skipped**, then **4966 passed, 3
-skipped** (4969 items both times). Three skips are standing and environmental:
-the gitignored `_outbox/` attachment, a fixture absent from this checkout, and
-the voice model directory. The fourth comes and goes with the network — the
-upstream-schema fetch 038's close-out describes, which skipped on the first run
-and passed on the second. None is a 039 test. `ruff` is clean on every file
-this close-out touched.
+on the same tree: **4967 passed, 4 skipped** (4971 items). Three skips are
+standing and environmental: the gitignored `_outbox/` attachment, a fixture
+absent from this checkout, and the voice model directory. The fourth comes and
+goes with the network — the upstream-schema fetch 038's close-out describes
+(the first close-out's two runs saw it skip once and pass once). None is a 039
+test. `ruff` is clean on every file this close-out touched.
 
 The command, exactly as run (paths relative to the repo root):
 
@@ -202,10 +202,15 @@ The command, exactly as run (paths relative to the repo root):
   tests/test_039_t6_2_vendored_v4.py::test_vendored_instructions_copy_is_the_consumer_file_plus_the_one_string_patch \
   tests/test_039_t6_2_vendored_v4.py::test_vendored_suggestions_copy_is_byte_identical_to_the_live_v4_schema \
   tests/test_039_t6_2_vendored_v4.py::test_suggestions_parity_delta_is_empty \
+  tests/test_039_t6_3_qualified_embeds_are_recognised.py::test_triage_resolves_the_qualified_embed_past_a_namesake \
+  tests/test_039_t6_3_qualified_embeds_are_recognised.py::test_triage_reports_an_unindexed_qualified_embed_as_unresolved \
   tests/test_039_t6_3_qualified_embeds_are_recognised.py::test_a_note_rendered_by_pass_2_with_a_qualified_embed_is_recognised \
   tests/test_039_t6_3_qualified_embeds_are_recognised.py::test_alias_and_fragment_suffixes_survive_the_round_trip \
   tests/test_039_t6_3_untouched_document_baseline.py::test_an_untouched_document_renders_todays_output_apart_from_two_sanctioned_changes \
-  tests/test_039_t6_3_unsafe_folder_does_not_abort_pass_2.py::test_an_unsafe_typed_folder_is_refused_and_the_run_is_produced
+  tests/test_039_t6_3_unsafe_folder_does_not_abort_pass_2.py::test_an_unsafe_typed_folder_is_refused_and_the_run_is_produced \
+  tests/test_039_t4_3_move_builder_projection.py::test_h_the_builder_holds_no_decision_logic \
+  tests/test_039_t4_6_paths_converge_on_destinations.py::test_only_the_attachment_plan_calls_the_typed_guards \
+  tests/test_039_t4_6_paths_converge_on_destinations.py::test_the_two_projections_hold_no_decision_token
 ```
 
 Test ids below are given without the `tests/` prefix. "Live row N" is row N of
@@ -215,8 +220,9 @@ Test ids below are given without the `tests/` prefix. "Live row N" is row N of
 
 ## What the trace found
 
-Three gaps, all closed in the commit that adds this document. None needed a
-production change.
+Four gaps, all closed by test and document changes on this branch (§4 in the
+review round after the first close-out commit). None needed a production
+change.
 
 ### 1. F1-AC7 had no test that could fail for it — and its text is not literally true
 
@@ -253,9 +259,11 @@ test pins both exactly, so a third fails it:
    one of them, but F1-AC7 was not narrowed to match.
 
 Notes, manifest, every `move_asset`, every embed: byte-identical to the
-baseline. **Recommendation for the owner:** amend F1-AC7's proviso to name F6
-and the T5.4 remedy wording, the way CON-5 already names the other
-supersessions. This document does not edit the PRD.
+baseline. **The owner amended F1-AC7's proviso (decision 2026-10-13):** it now
+names both changes — the `delete_source` that also depends on the origin's
+`move_asset` (F6-AC1) and the T5.4 Keep-in-inbox wording — as holding even
+when every basename is unique, every target free and Kado answering. The
+criterion and the test now say the same thing.
 
 **Proven RED by the mutation its docstring names** (isolated `git archive`
 copy): drop the census subtraction of this run's moved inbox copies
@@ -314,6 +322,43 @@ whenever a reviewer's run crossed a second boundary between the two renders.
 Spec 039 T4.5 had already normalised `updated_at` for its own fixture; the
 paths-converge tests had not.
 
+### 4. F4-AC7 was traced to a function production triage does not call
+
+The first close-out traced F4-AC7 to `test_039_t6_3_qualified_embeds_are_recognised.py`,
+whose two tests fed what Pass 2 wrote to `attachment_index.extract_attachment_embeds`.
+Production triage does not call that extractor: `inbox-triage.py`'s embed
+targets come from Kado's `listNotes(fields=["links"])` metadataCache, read by
+`resolve_inbox_attachments` (`_strip_alias_and_anchor` → `_is_attachment_target`
+→ `resolve_attachments` / `narrow_candidates`). Review proved the gap: adding
+`if "/" in target: continue` to `resolve_inbox_attachments` — a later run that
+drops every qualified embed — left both tests green. `solution.md` had named the
+same wrong owner ("F4-AC7 is owned by the existing `extract_attachment_embeds`");
+that line now names `resolve_inbox_attachments`.
+
+Two tests now drive the real reader. They take the body `main()` wrote (with the
+`|300`, `|Karte` and `#p2` variants through the same plan-reading rewrite), turn
+its embeds into Kado `kind: embed` links, return them from a fake `list_notes`
+and call `resolve_inbox_attachments(client, INBOX, index)`. Index holding the
+qualified path and a namesake `Archive/karte.png` → `attachments ==
+[qualified path]`, nothing unresolved (the suffix narrowing, not ambiguity).
+Index lacking it → the note is present with one `unresolved` embed naming the
+qualified target, never attachment-free. **Proven RED** by exactly the
+reviewer's mutation in an isolated copy:
+
+```
+E       AssertionError: {}
+FAILED …::test_triage_resolves_the_qualified_embed_past_a_namesake
+FAILED …::test_triage_reports_an_unindexed_qualified_embed_as_unresolved
+2 failed, 2 passed in 0.12s
+```
+
+Restored, `4 passed`. The extractor tests stay; they cover the extractor, not
+F4-AC7. One limit, stated rather than hidden: triage's index is the **inbox**
+listing, so an attachment Pass 2 filed into the asset folder is never in it.
+On a real later run the second case — present, `unresolved`, named — is the
+outcome to expect. The first case pins the resolution path for a qualified
+target the index does hold.
+
 ### Not a gap, recorded so it is not mistaken for one
 
 Many F1–F4 criteria trace to **plan-level** tests (`test_039_t4_2_…`, K1), not
@@ -321,8 +366,9 @@ to `instructions.json`. That is valid only because the two projections that
 turn the plan into the wire are pinned to decide nothing:
 `test_039_t4_3_…::test_h_the_builder_holds_no_decision_logic` and
 `test_039_t4_6_…::test_only_the_attachment_plan_calls_the_typed_guards` /
-`::test_the_two_projections_hold_no_decision_token`, plus the whole-set
-convergence tests and the new baseline test, which see the emitted bytes.
+`::test_the_two_projections_hold_no_decision_token` — all three run in the
+single invocation above — plus the whole-set convergence tests and the new
+baseline test, which see the emitted bytes.
 
 ---
 
@@ -338,7 +384,7 @@ convergence tests and the new baseline test, which see the emitted bytes.
 | AC4 — editor folder, rebuilt from the wire alone, identical to the markdown path | `test_038_t4_4_the_two_paths_converge.py::test_a_typed_folder_alone_yields_the_identical_instruction_set` + `::test_a_typed_folder_and_a_typed_name_yield_the_identical_instruction_set` + `::test_the_default_folder_yields_the_identical_instruction_set` + `::test_a_refused_folder_is_refused_identically_on_both_paths` + `::test_a_folder_equal_to_the_asset_folder_yields_the_identical_instruction_set` (whole `instructions.json` and every note file) + the four `test_039_t4_6_paths_converge_on_destinations.py` tests + `test_039_t3_4_…::test_both_surfaces_agree_with_each_other` + `test_039_t3_3_…::test_wire_projects_a_non_null_folder_as_owner_supplied` | Editor run H1: the stub `.md` had no Folder line, so `293 Excalidraw` came from the `.json` |
 | AC5 — empty folder, or the destination's own folder → target as today | `test_039_t4_2_…::test_f1_ac5_untouched_folder_line_resolves_to_pass_2_asset_folder` + `::test_owner_supplied_folder_equal_to_asset_folder_is_the_default` + `test_038_t4_4_…::test_the_default_folder_yields_the_identical_instruction_set` + `::test_a_folder_equal_to_the_asset_folder_yields_the_identical_instruction_set` + `test_039_t6_3_untouched_document_baseline.py::test_an_untouched_document_renders_todays_output_apart_from_two_sanctioned_changes` | — |
 | AC6 — folder ignored under Keep in inbox / Ignore; Ignore's move unchanged | `test_039_t4_2_…::test_f1_ac6_folder_under_keep_or_ignore_is_ignored` (a refusable `../bad` folder that would be refused if read) | row 12 |
-| AC7 — untouched document byte-identical to today | `test_039_t6_3_untouched_document_baseline.py::test_an_untouched_document_renders_todays_output_apart_from_two_sanctioned_changes` (**added by this close-out**, §1) + `test_038_t4_4_…::test_the_default_folder_yields_the_identical_instruction_set` (the wire path equals the markdown path) + `test_039_t4_3_…::test_a_projection_matches_the_pre_change_builder` + `test_039_t4_4_…::test_renamed_and_unique_writes_the_bare_new_name_byte_identical_to_037` + `::test_unrenamed_and_unique_leaves_the_body_untouched` + `test_039_t4_5_…::test_garden_audit_and_daily_only_runs_are_byte_identical_to_before`. **Holds apart from two sanctioned differences the criterion does not name** (§1) | — |
+| AC7 — untouched document byte-identical to today | `test_039_t6_3_untouched_document_baseline.py::test_an_untouched_document_renders_todays_output_apart_from_two_sanctioned_changes` (**added by this close-out**, §1) + `test_038_t4_4_…::test_the_default_folder_yields_the_identical_instruction_set` (the wire path equals the markdown path) + `test_039_t4_3_…::test_a_projection_matches_the_pre_change_builder` + `test_039_t4_4_…::test_renamed_and_unique_writes_the_bare_new_name_byte_identical_to_037` + `::test_unrenamed_and_unique_leaves_the_body_untouched` + `test_039_t4_5_…::test_garden_audit_and_daily_only_runs_are_byte_identical_to_before`. The two differences the test pins are the ones the amended proviso names (owner decision 2026-10-13, §1) | — |
 | AC8 — folder typed in the rename backticks still refused `separator_present` | `test_039_t3_3_…::test_a_folder_typed_inside_the_rename_backticks_is_still_refused_separator` | — |
 | AC9 — one new inventory row; editable fields 25 → 26, both join directions agree | `test_039_t3_3_…::test_inventory_row_d26_names_the_wire_field_and_the_folder_literal` + `test_038_inventory_schema_validation.py::test_wire_schema_marks_exactly_26_editable_fields` + `test_038_decision_inventory_join.py::test_real_artefacts_schema_side_join_passes` + `::test_real_artefacts_parser_side_join_passes` | — |
 | AC10 — original basename, only the folder changed → a valid rename | `test_039_t4_2_…::test_f1_ac10_original_name_in_a_new_folder_is_a_valid_rename` + `test_038_t4_4_…::test_a_typed_folder_alone_yields_the_identical_instruction_set` + `test_039_t4_4_embed_rewrite_reads_plan.py::test_original_name_into_a_new_folder_is_qualified_when_ambiguous` + `::test_original_name_into_a_new_folder_is_untouched_when_unique` | rows 3–4 (`leipzig-plan.png` into `296 Karten`) |
@@ -380,7 +426,7 @@ convergence tests and the new baseline test, which see the emitted bytes.
 | AC4 — own inbox copy and other moved inbox files not counted | `test_039_t4_2_…::test_f4_ac4_moved_inbox_sources_are_not_counted` + `::test_f4_census_key_is_nfc_a_decomposed_inbox_source_is_subtracted` + `::test_f4_ac4_rejected_a_withheld_inbox_copy_stays_and_counts` + `::test_a_target_withheld_late_in_pass_a_is_not_counted_in_pass_b` + `test_039_t6_3_untouched_document_baseline.py::…` (RED on exactly this mutation, §1) | — |
 | AC5 — extension, size, alias, anchor kept | `test_039_t4_4_…::test_suffixes_and_extension_survive_qualification_and_no_alias_is_added` + `test_039_t6_3_qualified_embeds_are_recognised.py::test_alias_and_fragment_suffixes_survive_the_round_trip` | — |
 | AC6 — uniqueness unanswered → qualified | `test_039_t4_2_…::test_f4_ac6_census_unanswered_qualifies` + `test_039_t4_1_…::test_error_is_none_and_cached_as_none_not_zero` + `test_039_t5_1_…::test_qualified_embeds_are_reported_with_their_reason` | — |
-| AC7 — a later run still recognises a qualified embed as an attachment | `test_039_t6_3_qualified_embeds_are_recognised.py::test_a_note_rendered_by_pass_2_with_a_qualified_embed_is_recognised` (what `main()` wrote, fed to triage's `extract_attachment_embeds`) + `::test_alias_and_fragment_suffixes_survive_the_round_trip` | — |
+| AC7 — a later run still recognises a qualified embed as an attachment | `test_039_t6_3_qualified_embeds_are_recognised.py::test_triage_resolves_the_qualified_embed_past_a_namesake` + `::test_triage_reports_an_unindexed_qualified_embed_as_unresolved` (what `main()` and the rewrite wrote, as Kado embed links, through triage's real reader `resolve_inbox_attachments`; **added by this close-out**, §4) | — |
 | AC8 — withheld move rewrites no embed | `test_039_t4_4_…::test_a_kept_or_refused_attachment_rewrites_nothing` + `::test_a_run_level_collision_rewrites_nothing` + the K1 rows that assert `embed is None` on every withheld kind (`_held`): `test_039_t4_2_…::test_row1_no_basename_is_withheld`, `::test_row3_refused_typed_folder_is_withheld_without_fallback`, `::test_row7_second_source_onto_a_claimed_target_is_a_collision`, `::test_row8_occupied_rename_target_is_withheld_f3_ac1` | row 20 |
 
 ### F5 — A typed name that would break the link is refused (#185)
@@ -454,7 +500,8 @@ Verified by read-through on 2026-10-13:
 2. **F3-AC2 live** is likewise an optional probe, not run. The tests drive it
    end to end through the plan and the projection; no run has seen a
    destination taken between Pass 1 and Pass 2.
-3. **F1-AC7's text** — see §1. A wording amendment for the owner, not a defect.
+3. **F1-AC7's text** — closed: the owner amended the proviso on 2026-10-13 (§1).
+   Listed here so the earlier recommendation is not read as still open.
 4. **F6-AC2's Tomo-side assurance is structural.** Tomo proves the delete
    names the move; only the executor proves the skip. Both were observed
    (live, three times, and in Hashi's test), but a future executor change is

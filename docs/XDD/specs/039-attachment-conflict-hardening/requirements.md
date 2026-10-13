@@ -556,7 +556,7 @@ can never disagree about the vault they are based on.
 | R1 — The new vault lookups push a run into Kado's rate limit | Medium | Low | Bounded per distinct folder and basename (×2 worst case for names whose NFC and NFD forms differ) (F3-AC7); retries already back off; C1 makes the cost visible |
 | R2 — Holding notes on an occupied target (F3) surprises an owner who previously got the note filed and the move refused at apply | Medium | Medium | Same treatment as a refused name, already shipped in 038; the instruction document names the target and its occupier |
 | R3 — A restricted Kado key hides a same-named file, so an embed is written bare though ambiguous | Medium | Low | Recorded as assumption A2; no worse than today; a qualified embed is always written when Kado does not answer |
-| R4 — The consumer cannot ship version 4 in step | High | Low | CON-1; their editor ships #141 without the folder picker meanwhile, as they proposed |
+| R4 — The consumer cannot ship version 4 in step | High | Low | CON-1; the consumer holds #141 until version 4 and ships it once, with the folder picker — no interim release (owner ruling via Kokoro, ADR-029 §7, 2026-10-12; supersedes the consumer's earlier proposal to ship #141 without the picker meanwhile) |
 | R5 — Moving the embed decision changes the bytes of notes that previously rendered identically | Medium | Medium | F4-AC1 pins today's output for every unique basename; F1-AC7 pins an untouched document |
 | R6 — The new refusal reason is misreported by a renderer that only knows the old three | High | High without F5-AC5 | F5-AC5 is a prerequisite, not a follow-up |
 

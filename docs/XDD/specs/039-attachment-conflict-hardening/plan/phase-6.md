@@ -47,7 +47,7 @@ Delivers the owner documentation, the coordinated release to Hashi, a live run, 
   4. Validate: Hashi's confirmation recorded in the README decisions log
   5. Success: consumer on v4 `[ref: PRD/CON-1]`; consumer half of `[ref: PRD/F6-AC6]`
 
-- [ ] **T6.3 End-to-end, live run and close-out** `[activity: validate]`
+- [x] **T6.3 End-to-end, live run and close-out** `[activity: validate]`
 
   1. Prime: `close-out.md` of 038; memory notes on syncing the instance before a live walk and on update-tomo being version-gated `[ref: PRD/Success Metrics]`
   2. Test: (a) convergence — the same typed folder decision through the markdown path and the wire path produces identical instruction sets (extend `test_038_t4_4_the_two_paths_converge.py`) (F1-AC4); (b) a note rendered by this run with a qualified embed, fed to triage's embed extraction, is recognised as an attachment (F4-AC7); (c) live run on `tomo-instance`: a conflict resolved by folder only, a forced ambiguous basename, a refused folder, and an Ignore whose move fails at apply — the origin survives (F6-AC2); (c2) after applying a run with a held attachment whose target is still taken, `/inbox --recover` re-intakes the held note and the new suggestions document offers the attachment's folder/name again (T5.4 owner ruling 2026-10-13 — the after-apply remedy depends on it); (d) one pytest invocation executing every node id in the trace

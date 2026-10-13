@@ -17,8 +17,8 @@ deduplicated): F1:11 F2:9 F3:7 F4:8 F5:7 F6:8 S1:2 C1:1. **50 trace to executed
 tests**, 2 to documentation (S1), and 1 (F6-AC2) to the live run and the
 consumer's own test, because only an executor can fail a move.
 
-The **170 node ids** in the trace tables (plus three CON-1 ids, and at the
-end the three "Not a gap" projection tests) were run **together in one
+The **170 node ids** (the trace tables', three CON-1 ids, and at the end the
+three "Not a gap" projection tests) were run **together in one
 `pytest` invocation on 2026-10-13**, against `2ab4698e` plus the review-round
 changes committed with this revision (§4):
 
@@ -224,7 +224,7 @@ Four gaps, all closed by test and document changes on this branch (§4 in the
 review round after the first close-out commit). None needed a production
 change.
 
-### 1. F1-AC7 had no test that could fail for it — and its text is not literally true
+### 1. F1-AC7 had no test that could fail for it — and its text was not literally true (before the 2026-10-13 amendment)
 
 *"Given an untouched suggestions document, When Pass 2 reads it on either path,
 Then its output is byte-identical to today's apart from the wire's version
@@ -246,12 +246,13 @@ document has a conflict left on its pre-ticked Rename, a conflict-free
 attachment, and a conflict left on Keep in inbox — every basename unique, every
 target free, Kado answering.
 
-**The measurement found two differences the criterion does not name**, and the
+**The measurement found two differences the criterion did not name** before the
+amendment, and the
 test pins both exactly, so a third fails it:
 
 1. **Each origin's `delete_source.depends_on` gains the `move_asset` id of the
    attachment its note embeds** — F6-AC1, ADR-10, Kokoro ADR-029 §7. F1-AC7's
-   proviso names F3 and F4 as the deliberate exceptions. It does not name F6.
+   proviso named only F3 and F4 as the deliberate exceptions, not F6.
 2. **The Keep-in-inbox bullet's remedy reads as T5.4 worded it** — *"To file
    it after all, tick Rename … and run `/inbox --pass2 --force` before you
    apply. If you have already applied, rename the attachment in the inbox and

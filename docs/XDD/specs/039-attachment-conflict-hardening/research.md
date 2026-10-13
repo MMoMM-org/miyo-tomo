@@ -213,7 +213,7 @@ Four read-only research passes ran before the PRD, one per perspective. Their re
 
 ### 4. `proposed_dir` edge cases
 
-1. Move without rename → two `karte.png`; uniqueness must be computed on the vault as it will be after the run (remove the inbox source, add in-run destinations, keep the occupier). `extract_attachment_embeds` reads qualified embeds, so Tomo is not blinded.
+1. Move without rename → two `karte.png`; uniqueness must be computed on the vault as it will be after the run (remove the inbox source, add in-run destinations, keep the occupier). `extract_attachment_embeds` reads qualified embeds, so Tomo is not blinded. (Corrected at close-out §4: production triage does not call that extractor; `inbox-triage.py::resolve_inbox_attachments` is the reader that matters.)
 2. Folder does not exist — 037 Scenario 3 says no conflict; Hashi creates the parent folder (R2 §5).
 3. Outside Kado's scope or inside the inbox — undiscussed; checks are blind outside scope; inside the inbox the filed note points into the inbox and may be re-triaged. Folder string: refuse `..`, leading `/`, trailing `/`, `\`, empty segments.
 4. Same basename elsewhere, folder free → no occupancy conflict, but the embed rule triggers. A computed `proposed_name` is free in the asset folder, not necessarily in `proposed_dir`.

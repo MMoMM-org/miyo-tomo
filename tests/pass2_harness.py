@@ -20,6 +20,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from lib import doc_frontmatter  # noqa: E402
 from lib.kado_client import KadoNotFoundError  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
@@ -157,6 +158,10 @@ def _run_main(monkeypatch, tmp_path, suggestions, client, *,
 
     monkeypatch.delenv("TOMO_VERSION", raising=False)
     monkeypatch.setattr(ir, "datetime", _FrozenDatetime)
+    # The tomo-block builder stamps `updated_at` from its own clock, not
+    # `main()`'s: frozen too, or two renders compared byte for byte (the
+    # paths-converge tests) fail whenever they straddle a second boundary.
+    monkeypatch.setattr(doc_frontmatter, "_utc_now", lambda: "2026-10-12T09:00:00Z")
     monkeypatch.setattr(ir, "load_config", lambda _path: dict(cfg or _IR_CFG))
     monkeypatch.setattr(ir, "load_tracker_fields", lambda _path: {})
     monkeypatch.setattr(ir, "KadoClient", lambda: _client_or_refuse(client))

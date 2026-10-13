@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_039_t3_4_folder_not_consumed_yet.py — spec 039 T3.4, retargeted in T4.3.
 
 Phase 3 put an editable folder on both surfaces (Pass 1 renders a
@@ -45,6 +45,8 @@ def _load(name: str, filename: str):
 ir = _load("instruction_render_t039_t3_4", "instruction-render.py")
 PARSER = _load("suggestion_parser_t039_t3_4", "suggestion-parser.py")
 REDUCER = _load("suggestions_reducer_t039_t3_4", "suggestions-reducer.py")
+
+from lib import doc_frontmatter  # noqa: E402
 
 _CFG = {
     "concepts.inbox": "100 Inbox/",
@@ -124,6 +126,9 @@ def _run_pass_2(monkeypatch, tmp_path: Path, remedies: list[dict]) -> dict[str, 
     monkeypatch.setattr(ir, "read_note_body", lambda *_a, **_kw: "")
     monkeypatch.setattr(ir, "render_via_script",
                         lambda *_a, **_kw: "See ![[Scans/karte.png]]\n")
+    # `updated_at` comes from the tomo-block builder's own clock: frozen, or
+    # two runs compared byte for byte differ across a second boundary.
+    monkeypatch.setattr(doc_frontmatter, "_utc_now", lambda: "2026-10-12T09:00:00Z")
     out = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", ["instruction-render.py", "--suggestions", str(sf),
                                       "--output-dir", str(out), "--config", str(cf)])

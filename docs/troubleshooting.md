@@ -242,7 +242,7 @@ in the suggestions document and again on the action itself.
 It can also happen if you picked **Rename** and the name was free when Pass 1
 looked, but something took it before you applied. Pass 2 looks at the vault
 again for the final path and reports a taken path as **occupied** (see "Pass 2
-says a target is occupied or not checked" below), so in most cases you hear
+Says a Target Is Occupied or Not Checked" below), so in most cases you hear
 about it before applying. A change made after Pass 2 ran is the one thing
 nothing can see in advance.
 
@@ -255,8 +255,9 @@ still there.
 **Fix:**
 1. Decide which of the two files you want under that name, and free the name if
    that is the inbox one.
-2. Run `/inbox --recover`. The attachment has no note in the inbox pointing at
-   it any more, so file it by hand, or move it back beside a note and re-run.
+2. The attachment has no note in the inbox pointing at it any more, and a lone
+   file in the inbox is not picked up by `/inbox`. File it by hand, or move it
+   back beside a note that embeds it and run `/inbox`.
 
 **Avoid it next time:** leave the pre-ticked **Rename** in place. It is the only
 remedy that files the attachment and rewrites the embed in your note to match.
@@ -265,10 +266,12 @@ remedy that files the attachment and rewrites the embed in your note to match.
 
 Before Pass 2 writes a move, it looks in your vault at the exact path the
 attachment would be filed under — your typed name and folder included, not
-just the folder Pass 1 looked at. It reports what it found next to the move,
-in the instruction set and in your terminal. [#185](https://github.com/MMoMM-org/miyo-tomo/issues/185)
+just the folder Pass 1 looked at. It reports what it found in the instruction
+set and in your terminal: an occupied target under "Attachments still in the
+inbox" (no move is written for it), the other findings in the block of the
+move that is written. [#185](https://github.com/MMoMM-org/miyo-tomo/issues/185)
 
-**"Target occupied"** — something is already at that path: a file, a folder, or
+**"target occupied:"** — something is already at that path: a file, a folder, or
 a file whose name differs only in upper/lower case (some filesystems treat
 those as one). The attachment is **not** filed over it. It stays in the inbox,
 and so does every note that embeds it, listed under "Attachments still in the
@@ -281,15 +284,15 @@ inbox".
 3. If the target is still taken, the suggestions document offers the name (or
    folder) again; if you freed it, the attachment is filed there.
 
-**"Target not checked"** — the vault did not answer for that path, so Tomo
+**"Target not checked:"** — the vault did not answer for that path, so Tomo
 cannot say whether it is free, and it does not call it free. The move is still
 written. You can apply it as it is: if the path turns out to be taken, the
 move fails, and the attachment and its note stay in the inbox. To be sure
 first, look in the vault for the path named in the message.
 
 **"New folder … will be created on apply"** and **"Embed written with path"**
-are information, not problems: the folder you typed doesn't exist yet, or
-another file has the same name so your note links by full path.
+are information, not problems: the folder you typed on the Folder line in the
+markdown doesn't exist yet, or another file has the same name so your note links by full path.
 
 ### I Typed a Name or Folder Pass 2 Could Not Use
 
@@ -309,15 +312,19 @@ inbox"**, you find a line starting `typed name refused` or `typed folder
 refused`, naming what you typed and why.
 
 **Cause:** What you typed over the computed name (the Rename line) or folder
-(the Folder line) in the suggestions document, or in Tomo Hashi's Suggestions
-Editor, couldn't be used. Tomo never corrects it to make it fit — it either
+(the Folder line) in the suggestions document, or the name in Tomo Hashi's
+Suggestions Editor, couldn't be used. Hashi's editor only lets you pick a folder
+from your existing folders (the inbox is not offered), so a refused folder can
+only come from the Folder line in the markdown. Tomo never corrects it to make it fit — it either
 files it exactly as typed, or refuses it. A name is refused when it is blank,
-contains `/`, starts or ends with a space, contains a control character, `{{`
+contains `/`, starts or ends with a space or other whitespace such as a tab,
+contains a control character, `{{`
 or `<%`, or contains one of `\ : * ? " < > |` or `# ^ [ ]`. A folder is
 refused when it is blank, leaves the vault (starts with `/`, `~` or `./`,
 contains `..`, uses `\` or a drive letter), has an empty part (`//`), has a
-part with a space at either end, ends in `/`, contains one of the characters
-above, or is the inbox or inside it. [usage.md](usage.md) lists every rule. When it happens, the
+part with a space or other whitespace at either end, ends in `/`, contains one of the characters
+above, or is the inbox or inside it (upper/lower case and Unicode form are
+ignored, so `100 inbox/x` is refused too). [usage.md](usage.md) lists every rule. When it happens, the
 attachment is not filed, and neither is any note in this run that embeds it —
 both are held back on purpose, so you get another chance rather than ending up
 with a silently mangled filename or a file in the wrong place.

@@ -1448,6 +1448,8 @@ merged, because the outcome really is identical; only
 Found by the T3.1 code-quality review, which read the string rather than only
 the control flow.
 
+*Superseded by spec 039 (K2): Pass 2 now looks up the final target in the vault — see below.*
+
 **Why `ignore` and "no remedy" are the same branch, not two.** Semantically
 they answer different questions Pass 1 asked — one is an owner's explicit
 choice, the other is "no conflict was ever recorded for this path" — but

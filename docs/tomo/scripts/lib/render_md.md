@@ -633,6 +633,8 @@ means "no executor handle dropped into prose". Action ids are already the H3
 headings of this document; they are how the owner ticks "Applied" per action.
 The annotation is a line inside the block that already carries its own id.
 
+*Superseded by spec 039 (K2): Pass 2 now looks up the final target in the vault — see below.*
+
 **The two sites carry different sentences, by the same 2026-09-27 ruling that
 governs the two "Skipped" blocks.** The annotation states the DECISION and how to
 revisit it and claims no outcome at all; the end-of-document bullet states what

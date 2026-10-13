@@ -31,7 +31,7 @@ phase: 6
 
 Delivers the owner documentation, the coordinated release to Hashi, a live run, and the evidence that every criterion holds.
 
-- [ ] **T6.1 Owner documentation and WHY mirrors** `[activity: documentation]` `[parallel: true]`
+- [x] **T6.1 Owner documentation and WHY mirrors** `[activity: documentation]` `[parallel: true]`
 
   1. Prime: `docs/usage.md:48-97`, `docs/troubleshooting.md:222-250`, `docs/instructions-json.md:768-800`; research.md R2 §6 list of `docs/tomo/` mirrors `[ref: PRD/S1]`
   2. Test: n/a (docs). Checklist: usage describes the folder line, the folder and name refusal rules, and that Hashi's editor sanitises what the markdown refuses (S1-AC1); troubleshooting no longer says the destination is checked only in Pass 1 and explains "occupied" and "not checked" (S1-AC2); every changed script's `docs/tomo/` mirror carries the WHY for its change; no executor internals in user docs; carried from Phase 4: `vault_paths.py`'s module docstring and `docs/tomo/scripts/lib/vault_paths.md` still say `path_key` is the one key every comparison uses — name the sanctioned exception `nfc_lower` (audio↔transcript pairing); carried from Phase 5 (T5.4): `docs/usage.md` (~:127-129) and `docs/troubleshooting.md` (~:290-292) say "just run `/inbox` again" after apply — change to `/inbox --recover`, and add the before-apply `/inbox --pass2 --force`; name the ADR-029 §7 (Kokoro) acceptance of #186 option 1 in `docs/tomo/scripts/lib/render_actions.md`

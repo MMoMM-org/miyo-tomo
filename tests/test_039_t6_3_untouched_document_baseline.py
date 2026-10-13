@@ -23,7 +23,7 @@ test pins both exactly, so a third difference fails it:
 
 1. Each origin's `delete_source.depends_on` also names the `move_asset` of the
    attachment its note embeds (F6-AC1, ADR-10, Kokoro ADR-029 section 7). The
-   PRD's F1-AC7 proviso names F3 and F4 as the deliberate exceptions, not F6.
+   PRD's F1-AC7 proviso names it (amended by the owner 2026-10-13).
 2. The Keep-in-inbox bullet's remedy reads as the T5.4 owner ruling worded it
    (2026-10-12/13: one remedy per withheld kind, `--pass2 --force` before
    apply). CON-5 names the T5.4 supersessions; this sentence is one of them.

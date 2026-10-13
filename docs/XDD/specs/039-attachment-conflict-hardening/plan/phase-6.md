@@ -55,6 +55,6 @@ Delivers the owner documentation, the coordinated release to Hashi, a live run, 
   4. Validate: the trace is checked by a reviewer who re-runs the listed node ids
   5. Success: `[ref: PRD/F1-AC4]` `[ref: PRD/F4-AC7]` `[ref: PRD/F6-AC2]`; Success Metrics met
 
-- [ ] **T6.4 Backlog, memory and spec finalisation** `[activity: documentation]`
+- [x] **T6.4 Backlog, memory and spec finalisation** `[activity: documentation]`
 
   - Backlog: resolve `:1109`, `:1757`, `:1917`, `:1956`, `:2457`, `:2500` with SHAs; update `:1149` ("no occupancy check anywhere in Pass 2" is no longer true); add the out-of-scope items (empty typed name stays `:1839`, fan-wire conflicts, edited-wire schema validation). Close GitHub #185 and #186 with references; the PR cites spec 039, #185 and #186. Record the net line-count change of `render_actions.py`, `suggestion-parser.py` and `suggestions-reducer.py`, and file a backlog item to split `render_actions.py` if it grew. File a backlog item for the drift between Tomo's `tomo/schemas/instructions.schema.json` and the consumer's `src/schema/instructions.schema.json` (29 JSON pointers unrelated to 039, e.g. `replace_section`, the placement enum, `skipped_daily`, found while building the T6.2 handoff — the handoff shipped a one-string patch instead of our file). Add the close-out to `docs/ai/memory/memory.md` Critical Documentation. Finalise the spec via xdd-meta.

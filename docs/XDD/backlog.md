@@ -1206,9 +1206,9 @@ occupied destination and a Hashi refusal, with no Attachment Conflicts section
 anywhere in either document.
 
 **Updated 2026-10-13 by spec 039 (F3, `354afb9a` plan, `651ed308` projection): narrowed, still
-OPEN.** Pass 2 now checks every `move_asset` target against the vault that has no remedy or a
-Rename/Keep remedy, except an explicit Ignore (F3-AC4) or a folder Kado could not answer for
-(row 9) (decision-table row 8, `lib/attachment_plan.py`; PRD F3-AC1/AC2, pinned by
+OPEN.** Pass 2 now checks the `move_asset` target against the vault when the attachment has no
+remedy or a Rename/Keep remedy. It skips the check for an explicit Ignore (F3-AC4) or a folder
+Kado could not answer for (row 9). (Decision-table row 8, `lib/attachment_plan.py`; PRD F3-AC1/AC2, pinned by
 `test_row8_non_conflict_attachment_onto_now_occupied_target_f3_ac2` in
 `tests/test_039_t4_2_attachment_plan.py`). The force-atomic note's attachment onto an occupied
 destination is therefore withheld in Pass 2 with a named reason, its embeds untouched and the

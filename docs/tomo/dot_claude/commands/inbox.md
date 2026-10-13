@@ -67,3 +67,27 @@ Both halves are stated, not just the one that failed. A rule that names only
 the exception reads as a special case; naming both makes `Agent()` for the
 conductor and no-`Agent()` for the synthesis path a single distinction the
 reader can apply.
+
+## Step 3b Passes the Conductor's Report Through Unchanged (spec 039 T6.3, v0.19.0)
+
+WHY Step 3b carries a STRICT block instead of "Report the output".
+
+The live Pass 2 run of 2026-10-13 had two paraphrase layers. The
+synthesis-conductor reworded the withheld-delete and withheld-attachment relay
+lines into its own bullets (fixed in its Step 4), and then this command's
+Step 3b reworded the report again into a table. Each layer dropped the remedy
+sentence the relay line carries, so the owner saw what was withheld but not
+what to do about it.
+
+"Report the synthesis-conductor's output to the user" was the unadorned
+imperative and it was observed to fail, which is what justifies a STRICT block
+here. It requires the report to be output unchanged and every line beginning
+`- ⚠️ **` to be copied character for character, one per line, with no table,
+summary, or commentary standing in for them. A model can "pass the report
+through" and still reformat the `- ⚠️ **` lines, so the block names those lines
+by their literal prefix rather than leaning on the word "unchanged" alone.
+
+Single source for the shell relay: SDD K16; traceability F2-AC5. Test:
+`test_inbox_passes_the_conductor_report_through_unchanged` in
+`tests/test_039_t5_1_reporting.py`.
+

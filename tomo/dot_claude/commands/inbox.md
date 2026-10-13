@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.18.0
+# version: 0.19.0
 
 ## Arguments
 
@@ -70,7 +70,12 @@ Agent(
 )
 ```
 
-Report the synthesis-conductor's output to the user. Exit.
+Output the synthesis-conductor's report to the user, then exit.
+
+# STRICT — output the report unchanged. Every line beginning `- ⚠️ **` is
+# copied character for character, one per line. NEVER put those lines in a
+# table, NEVER summarise them, NEVER add commentary in their place.
+# Why: the model rebuilt the relay lines as a table and dropped their remedy.
 
 ### 4. Transcribe (stop-gate)
 

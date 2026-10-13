@@ -43,6 +43,10 @@ Mechanism each test falsifies:
 - `test_conductor_relays_unchecked_lines_and_passes_cost_history` and
   `test_conductor_mirror_records_the_unchecked_relay_decision`: the runtime
   prompt and its WHY mirror.
+- `test_the_conductor_relays_withheld_lines_character_for_character` and
+  `test_inbox_passes_the_conductor_report_through_unchanged` (K16, F2-AC5): a
+  Step 4 / Step 3b without a STRICT block naming the relay files or the
+  `- \u26a0\ufe0f **` lines, so a model rewords them into bullets or a table.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -392,3 +396,45 @@ def test_conductor_mirror_records_the_unchecked_relay_decision():
     assert marker in text, "WHY section for the unchecked relay is missing"
     section = text.split(marker, 1)[1].split("\n## ", 1)[0]
     assert "free" in section and "--cost-history" in section, section
+
+
+INBOX_CMD = REPO_ROOT / "tomo" / "dot_claude" / "commands" / "inbox.md"
+RELAY_MARKER = "- ⚠️ **"
+
+
+def _strict_blocks(section: str) -> list[str]:
+    """Each STRICT paragraph of a runtime section, '# ' comment prefixes dropped."""
+    plain = re.sub(r"^#\s?", "", section, flags=re.MULTILINE)
+    paras = re.split(r"\n\s*\n", plain)
+    return [" ".join(p.split()) for p in paras if "STRICT" in p]
+
+
+def test_the_conductor_relays_withheld_lines_character_for_character():
+    # Falsifies: Step 4 saying "verbatim" in prose only, so a model that cat'ed
+    # both files still re-bulleted them and dropped the remedy sentence.
+    text = CONDUCTOR.read_text(encoding="utf-8")
+    step4 = text.split("### Step 4", 1)[1].split("## What you never do", 1)[0]
+    blocks = [b for b in _strict_blocks(step4) if "withheld-deletes.md" in b]
+    assert len(blocks) == 1, step4
+    block = blocks[0]
+    for phrase in ("withheld-attachments.md", "character for character", "one per line",
+                   "NEVER reword", "merge", "table", "count", "Why:"):
+        assert phrase in block, (phrase, block)
+    assert "remedy" in block.split("Why:", 1)[1], block
+    assert RELAY_MARKER not in step4.split("> Pass 2 complete", 1)[1].split("\n\n", 1)[0], (
+        "relay lines must not sit inside the blockquote example"
+    )
+
+
+def test_inbox_passes_the_conductor_report_through_unchanged():
+    # Falsifies: Step 3b saying only "Report the output", which let /inbox
+    # rebuild the relay lines into a table and drop the remedy a second time.
+    text = INBOX_CMD.read_text(encoding="utf-8")
+    step3b = text.split("### 3b.", 1)[1].split("### 4.", 1)[0]
+    blocks = _strict_blocks(step3b)
+    assert len(blocks) == 1, step3b
+    block = blocks[0]
+    for phrase in ("unchanged", RELAY_MARKER, "character for character", "one per line",
+                   "NEVER", "table", "summar", "commentary", "Why:"):
+        assert phrase in block, (phrase, block)
+    assert "remedy" in block.split("Why:", 1)[1], block

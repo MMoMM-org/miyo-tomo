@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.22.0
+# version: 0.23.0
 
 **Active agent: synthesis-conductor**
 
@@ -223,15 +223,18 @@ internals). If the command errors (no such file), there is nothing to relay.
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
-> <every line from tomo-tmp/withheld-deletes.md, if it exists>
-> <every line from tomo-tmp/withheld-attachments.md, if it exists>
 
-Append both files' lines verbatim as the last lines of the report, one per
-line, only when the file exists. Never substitute the stderr withdrawal
-block, the stderr `[warn]`/`[attach]` lines, or the raw
-`tomo.delete_withdrawals` / `tomo.skipped_assets` JSON for this — relay only
-the lines read from `tomo-tmp/withheld-deletes.md` and
-`tomo-tmp/withheld-attachments.md`. Never count them.
+Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
+followed by the lines of `tomo-tmp/withheld-attachments.md`, only for each file
+that exists. Never substitute the stderr withdrawal block, the stderr
+`[warn]`/`[attach]` lines, or the raw `tomo.delete_withdrawals` /
+`tomo.skipped_assets` JSON for this.
+
+STRICT — copy every line of `tomo-tmp/withheld-deletes.md` and of
+`tomo-tmp/withheld-attachments.md` into the report character for character, one
+per line, the last lines of the report. NEVER reword, shorten, merge,
+summarise, put them in a table or count them. NEVER drop a sentence from a line.
+Why: the model reworded the relay lines into its own bullets and dropped their remedy.
 
 ## What you never do
 

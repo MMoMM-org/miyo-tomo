@@ -66,7 +66,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | D-05 | ☑ #25 | Done 2026-06-30 — WHY-docs for 6 skills created at `docs/tomo/dot_claude/skills/` |
 | D-06 | ☑ #25 | Done 2026-06-30 — post-018 deprecation banners added to 7 stale reference docs |
 | D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |
-| D-08 | ☐ #25 | `suggestion-parser.py` 1397 LOC refactor |
+| D-08 | ☐ #25 | `suggestion-parser.py` 3246 LOC refactor (+72 from spec 039); seam: markdown walkers vs `build_from_wire*` — see "RECORD — spec 039 net line counts" |
 | D-10 | **#41** | Documentation refresh (docs/ tree, coverage, screenshots) |
 | D-11 | ~~#39~~ | **Done (2026-07-02)** — `cleanup-tomo.sh` v0.3 registry-aware: `registry-only` (deregister, you delete the folder) vs `--delete-disk --force`; interactive r/d/N; non-interactive defaults to registry-only; `--instance`/`--list`; hardened path guard. |
 | D-12 | ☐ #23 | `move-tomo.sh` / instance-relocate helper |
@@ -1009,6 +1009,14 @@ LLM following one line of its agent definition. It has failed before — two Pas
 previously polluted with `unreadable_result` from exactly this. Two run logs are sitting in the test
 vault's inbox as of this entry.
 
+**Second symptom, observed 2026-10-13** (spec 039 T6.3, run `2026-10-13T13-03-47Z-070715`,
+`/inbox --recover`). The prompt line held: the analyst skipped
+`tomo-hashi-run-log_2026-10-13T1501.md`. But its skip branch writes `--status done` to the state
+file, and `mark-captured.py` stamps every `done` item. The run log came out of the run carrying
+`tomo: {doc_type: source, state: captured, …}` beside its own `tomo_skip_inbox_analysis: true`.
+From then on it sits in the `captured` bucket: every `--recover` re-intakes it, and it counts as a
+captured source with no downstream document. The same triage-level exclusion closes both symptoms.
+
 **What closing this needs**: teach `inbox-triage.py` the flag so the exclusion is deterministic,
 rather than leaving a data-quality guard to prompt adherence. Directly relevant to
 [#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue
@@ -1146,6 +1154,18 @@ recognise it: `rewrite_renamed_embeds`'s docstring,
 `docs/tomo/scripts/lib/embed_rewrite.md` ("Basename Matching, Not Full-Path
 Matching"), and `docs/tomo/scripts/instruction-render.md`'s T3.3 section.
 
+**Narrowed 2026-10-12 by spec 039 T4.4** (`186bfa5b`), still OPEN. The rewrite now matches by
+the resolver's own rule over the note's attachments: a bare `![[karte.png]]` shared by two of
+them resolves to neither and is no longer rewritten for either, and a path-qualified embed
+reaches only its own source. What remains is the bare embed left unrewritten for a renamed
+attachment in this shape — unchanged text, not a wrong rewrite.
+
+**Status at spec 039 close-out (2026-10-13): still OPEN, deliberately.** The wrong-rewrite half is
+closed and pinned by `test_a_bare_name_shared_by_two_of_the_notes_attachments_is_left_alone`
+(`tests/test_039_t4_4_embed_rewrite_reads_plan.py`, `186bfa5b`) plus the path-qualified cases
+beside it (F4-AC1..AC3). The unrewritten half is not closable without the per-occurrence link
+metadata described above, and spec 039 did not take it.
+
 ## OPEN — Force Atomic Note bypasses attachment conflict detection entirely
 
 **Recorded 2026-09-28**, found while diagnosing why spec 037's first live T4.3
@@ -1163,8 +1183,9 @@ Pass-1 owner action that un-suppresses the item, and by the time it is ticked
 the conflict scan has already run and skipped that item. Nothing re-checks.
 `_build_move_asset_actions`'s docstring is explicit that a source absent from
 `attachment_conflict_remedies` is "treated as a plain attachment — same as
-`ignore`", and there is no occupancy check anywhere in Pass 2: `path_exists`
-does not appear in `instruction-render.py` or `render_actions.py`.
+`ignore`", and there was, as of this entry, no occupancy check anywhere in Pass 2:
+`path_exists` did not appear in `instruction-render.py` or `render_actions.py`.
+**That sentence is no longer true — see the update below.**
 
 So a sub-worthy note whose attachment collides with an occupied vault
 destination can still be filed with a bare `move_asset`, no remedy offered, no
@@ -1183,6 +1204,19 @@ whose basename already exists in the asset folder, tick Force Atomic Note in the
 suggestions document, and apply Pass 2. Expect one `move_asset` into the
 occupied destination and a Hashi refusal, with no Attachment Conflicts section
 anywhere in either document.
+
+**Updated 2026-10-13 by spec 039 (F3, `354afb9a` plan, `651ed308` projection): narrowed, still
+OPEN.** Pass 2 now checks the `move_asset` target against the vault when the attachment has no
+remedy or a Rename/Keep remedy. It skips the check for an explicit Ignore (F3-AC4) or a folder
+Kado could not answer for (row 9). (Decision-table row 8, `lib/attachment_plan.py`; PRD F3-AC1/AC2, pinned by
+`test_row8_non_conflict_attachment_onto_now_occupied_target_f3_ac2` in
+`tests/test_039_t4_2_attachment_plan.py`). The force-atomic note's attachment onto an occupied
+destination is therefore withheld in Pass 2 with a named reason, its embeds untouched and the
+origin kept (F6) — no bare `move_asset` into the occupied path, no Hashi refusal. What remains
+is Pass 1: the reducer's conflict scan still skips the un-suppressed item, so no Attachment
+Conflicts section and no rename remedy is offered for it, and the owner learns of the clash
+only from the Pass 2 report. The "How to measure it" expectation above is therefore obsolete;
+the live measurement was never taken.
 
 
 ## OPEN — spec 037's remedy does not survive Pass 2's JSON-only path, and silently becomes `ignore`
@@ -1698,7 +1732,13 @@ the vendored snapshot against Hashi's copy by some means that does not depend on
 this fetch succeeding — the handoff itself carries the schema, so comparing
 against the artefact the consumer confirms is the obvious route.
 
-## OPEN — two reason-builders fall back silently on an unrecognised code
+## RESOLVED — two reason-builders fall back silently on an unrecognised code
+
+**Resolved by spec 039.** Both halves now raise instead of falling back: the typed-name sibling
+via `lib/refusal_sentences.py` `typed_name_sentence` (T1.5, `8eff968e`), the original
+`_attachment_suppression_reason` path via `withheld_attachment_remedy`, which raises `ValueError`
+on an unknown kind (T5.4, `587a0348`; `tests/test_039_t5_1_reporting.py`,
+`tests/test_039_t5_4_owner_wording.py`).
 
 **Two sites, one shape.** Counted 2026-10-02 over every function in
 `tomo/scripts/` that maps a code or kind to owner-facing text:
@@ -1796,6 +1836,12 @@ because both change behaviour beyond a validation task's scope**:
    adding a fourth reason reads that sentence and believes the function already handles
    the case safely.
 
+**RESOLVED by spec 039 T1.5 (`8eff968`):** `blank` has an explicit branch, an unrecognised code raises
+`ValueError`, and the docstring no longer claims a structural guarantee the code lacked. Verified
+2026-10-13 in code: the function now lives in `lib/refusal_sentences.py` (`typed_name_sentence`,
+final `raise ValueError`), pinned by `tests/test_039_t1_5_*::test_unknown_code_raises_instead_of_reporting_blank`
+and `::test_every_member_of_refusal_reasons_is_handled` (F5-AC5).
+
 ## CLOSED (2026-10-02) — spec 038's C1 asked for a count the renderer is twice argued against
 
 **Resolved by owner ruling 2026-10-02: C1 closes as SATISFIED BY F3**, not dropped and not built. F3's bullet in the instruction document carries the at-a-glance signal C1 wanted, so no count was added and neither ruling below was re-opened. Recorded beside the criterion in `requirements.md`. The findings are kept here because the reasoning is reusable: the next request for a count in this region meets the same two rulings.
@@ -1837,6 +1883,12 @@ Recorded in `requirements.md` beside the criterion itself, and in
 the absence of a count as an omission.
 
 ## OPEN — an EMPTY typed name escapes the refusal contract on both surfaces
+
+> **Out of scope of spec 039** (PRD out-of-scope list; decisions log 2026-10-11) and unchanged
+> by it, with one narrowing: an empty name **beside an owner-typed folder** is now refused
+> `blank` (F1-AC11, decision-table row 4, `test_row4_empty_name_with_typed_folder_is_refused_blank`).
+> An empty name with no typed folder still takes the `vault_collision_held` degrade (row 5), so
+> the entry below stays open for that case.
 
 Found 2026-10-02 by T4.2's implementer, measured through
 `_build_move_asset_actions`, and **not** introduced by spec 038 — the wire path has
@@ -1891,7 +1943,12 @@ rather than let them find it; T4.2 pins today's answer (`vault_collision_held`) 
 test with the mechanism named in its docstring, so the pin reads as a measurement
 rather than an endorsement.
 
-## OPEN — `_walk_attachment_conflicts` carries six per-entry fields declared in three places
+## RESOLVED — `_walk_attachment_conflicts` carries six per-entry fields declared in three places
+
+**Resolved 2026-10-12 by spec 039 T3.3**, in the same change that added the seventh field
+(`folder_text`, the Folder line). The per-entry state is now one `_ConflictEntry` dataclass:
+declared once, no `nonlocal` list, and the reset is the single assignment that starts the next
+entry. Kept rather than deleted because the prediction below came true.
 
 Flagged in T4.2's code quality review (2026-10-02), not a blocker, not taken.
 
@@ -1914,7 +1971,16 @@ refactor a condition of passing. The file is also already past the constitution'
 that has several; taking it in isolation buys the next field's safety and nothing more.
 Worth doing **before** a fourth field lands, not after.
 
-## OPEN — the typed-name refusal is decided twice, by two consumers, with nothing enforcing agreement
+## RESOLVED — the typed-name refusal is decided twice, by two consumers, with nothing enforcing agreement
+
+**Resolved 2026-10-12 by spec 039 Phase 4**, without the wire field proposed below. The
+attachment plan (`lib/attachment_plan.py`) decides the refusal once, decision-table row 6,
+and both consumers read its verdict: the move builder since T4.3 (`651ed308`, a projection
+of the plan) and the embed rewrite since T4.4 (`186bfa5b`, `rewrite_attachment_embeds`, which
+no longer imports `check_typed_name`). The decision is carried as data inside Pass 2 rather
+than on the wire, so no Hashi handoff was needed. The agreement test in
+`test_038_t4_3_refused_name_rewrites_no_embed.py` stays; both halves now read one plan.
+Kept for the history below.
 
 Recorded 2026-10-03 while priming spec 038 T4.3. Not taken in Phase 4 — it changes the
 wire contract and would need a Hashi handoff.
@@ -1953,7 +2019,13 @@ That test is the only thing standing between the two conditions and silent drift
 not delete it as redundant with the per-half tests, because neither of those can see a
 disagreement.
 
-## OPEN — a move withheld for a RUN-level reason still rewrites the staged note's embed
+## RESOLVED — a move withheld for a RUN-level reason still rewrites the staged note's embed
+
+**Resolved 2026-10-12 by spec 039 T4.4** (`186bfa5b`). The attachment plan is built before the
+render loop and sees the whole run, so a `collision` or `no_basename` source has no target and
+no embed, and `rewrite_attachment_embeds` writes nothing for it (PRD F4-AC8). Pinned by
+`test_a_run_level_collision_rewrites_nothing` in `tests/test_039_t4_4_embed_rewrite_reads_plan.py`,
+built on the reproduction below. Kept for the history below.
 
 Found 2026-10-03 by spec 038 T4.3's implementer, answering whether its gate agrees
 with `_build_move_asset_actions` on every input. It does — on the typed-name verdict.
@@ -2454,7 +2526,9 @@ in one command rather than requiring someone to think of checking.
 
 ---
 
-## No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
+## RESOLVED — No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
+
+**RESOLVED by spec 039 T1.6 (`689ead8`, `72b3381`; PRD F5-AC6):** `tests/test_039_t1_6_computed_names_pass_typed_rules.py` joins every computed name for a vault-legal source to `check_typed_name`, with a permanent negative control. Sources carrying a forbidden character stay the divergence pinned by spec 038.
 
 **Found 2026-10-11 while answering Hashi's forbidden-character question** (handoff
 `2026-10-11_tomo-to-hashi_ten-characters-one-separator-…`). Promised to them as backlogged,
@@ -2497,7 +2571,17 @@ naming scheme moves.
 
 ---
 
-## Two open refusal-class rulings for owner-typed attachment names: whitespace padding, and the link-breaking four
+## RESOLVED — two refusal-class rulings for owner-typed attachment names: whitespace padding, and the link-breaking four
+
+**Resolved 2026-10-12 by spec 039 T2.1 (`887e1284`, `5bd7343a`, `50af0d6c`; PRD F5-AC1..AC4, issue #185).**
+The rulings came out as one fourth class, `breaks_link`: `check_typed_name` refuses edge whitespace
+(never trims) and any of `#`, `^`, `[`, `]`; `{{`, `<%` and control characters are a fifth class,
+`unsafe_sequence` (F5-AC7). Verified 2026-10-13 by executing the real function: `"  a.png  "`,
+`karte#1938.png`, `a^b.png`, `a[1].png` all return `ok=False, reason='breaks_link'`;
+`karte (2).png` stays accepted; `sanitize_stem("C# Notizen")` is unchanged because the set is local
+to `typed_name_check.py` (F5-AC4). The sentence says the name would break the link, not that the
+vault forbids the filename (F5-AC3). The markdown-typed route is closed; the editor route was
+already closed from Hashi's side. Kept for the history below.
 
 **Both measured 2026-10-11** while answering Hashi's `#141` questions. ADR-5 makes the typed
 name accept-verbatim-or-refuse, never correct, and `check_typed_name`'s three reasons are a
@@ -2570,3 +2654,90 @@ acceptance criteria covers either class, so shipping new behaviour inside its cl
 document a feature with no criterion. Hashi needs neither ruling to ship #141, and their
 sanitising closes the editor route for both — the markdown-typed route is the only one left
 open, and it is entirely ours.
+
+## `embed_rewrite` fence handling: indented lines starting with three backticks count as fences, indented code blocks do not count as code
+
+**OPEN.** Found in the spec 039 T4.4 code review (2026-10-12). `_fence_spans` in
+`tomo/scripts/lib/embed_rewrite.py` opens a fence on `^[ \t]*(`{3,}|~{3,})`, so a line
+indented four or more spaces that starts with three backticks is treated as a fence
+opener. CommonMark treats that as an indented code block line, not a fence. The inverse
+also holds: a real indented code block (four-space indent, no fence) is not recognised as
+code, so a `![[...]]` inside it is rewritten. Both directions mis-classify only unusual
+notes; no measured occurrence in the test vault. Fix when it matters: cap the leading
+indent at three spaces for fence openers and add indented-code-block spans, each with a
+pinning test.
+
+## OPEN — `make_folder_listing`'s `VaultFolderLookup` branch is test-only since spec 039 T4.5
+
+**Found 2026-10-12** during spec 039 T4.5 review. Not a defect.
+
+Pass 2 now hands `validate_destinations` its shared lookup's `notes` view
+directly, so production no longer calls `make_folder_listing` with a lookup
+(`lib/render_actions.py`). The `isinstance(..., VaultFolderLookup)` branch is
+exercised only by the spec 037 / 034 / 036 tests. Drop the branch (and the
+function's client form, if nothing else uses it) when those tests migrate to
+passing `lookup.notes` directly.
+
+## RECORD — spec 039 net line counts of the three big scripts; `suggestion-parser.py` is the one that grew
+
+**Measured 2026-10-13** at the spec 039 close-out, `git diff --numstat d583cd31 HEAD` and `wc -l`
+at both refs (merge-base `d583cd31`, branch head `26ef5eb8`):
+
+| File | Lines at `d583cd31` | Lines now | Net | Added / deleted |
+|---|---|---|---|---|
+| `tomo/scripts/lib/render_actions.py` | 2877 | 2582 | **-295** | +127 / -422 |
+| `tomo/scripts/suggestion-parser.py` | 3174 | 3246 | **+72** | +116 / -44 |
+| `tomo/scripts/suggestions-reducer.py` | 2934 | 2835 | **-99** | +24 / -123 |
+| `tomo/scripts/lib/render_md.py` (for reference) | 1307 | 1280 | -27 | +137 / -164 |
+
+The spec's own decision log (2026-10-13, Phase 5 drift check) promised a size-debt item for
+`render_actions.py` "if it grew". **It did not grow**: the attachment decision moved out into the
+plan, so the file lost 295 lines. The weight went into five new modules, 775 lines in all
+(`attachment_plan.py` 267, `refusal_sentences.py` 218, `vault_folder_lookup.py` 126,
+`basename_census.py` 103, `vault_paths.py` 61), each well inside the Constitution L2 guideline
+("~300–500 LOC of dense logic"). So no split item is filed for `render_actions.py`.
+
+What is still true, and not caused by 039: all three files remain 5-10x over that guideline
+(`suggestions-reducer.py` already has its own entry above, "is 2514 LOC"). **`suggestion-parser.py`
+is the only one spec 039 made larger** (+72, the folder line and the `proposed_dir` wire field,
+T3.3) and it is the largest of the three at 3246 lines; the older `D-08` row in the Active table
+('suggestion-parser.py 1397 LOC refactor') is long out of date. The natural seam is the markdown
+walkers (`_walk_attachment_conflicts` and its siblings) against the wire builders
+(`build_from_wire*`); not examined for shared state, so check that before cutting.
+
+## OPEN — `tomo/schemas/instructions.schema.json` has drifted from the consumer's `src/schema/instructions.schema.json`
+
+**Found 2026-10-13** while building spec 039's T6.2 handoff. The two files describe the same wire
+and disagree in **29 JSON pointers unrelated to spec 039** — for example `replace_section`, the
+placement enum and `skipped_daily`. Because Tomo could not hand over its own file without shipping
+those 29 unreviewed differences, the handoff carried a **one-string `depends_on` patch** against the
+consumer's file instead (applied by Hashi as is; Tomo's `hashi-instructions.schema.json` is Hashi
+`c217f66` plus that one string, sha256 pinned in `tests/test_039_t6_2_vendored_v4.py`).
+
+**Why it matters.** The producer schema in this repo and the schema the executor validates against
+now differ in ways nobody has reviewed; a field Tomo emits may be rejected, and a value the
+consumer accepts may not be producible. Spec 038 closed this for the suggestions wire
+(byte-identical, `cmp`-checked); the instructions wire has no such check.
+
+**What closing it needs.** Produce the 29-pointer diff, classify each pointer (ours is stale / theirs
+is stale / intended asymmetry), and take it to Hashi as a handoff with the classification. Then add
+the instructions-wire equivalent of the suggestions parity test. Not a spec 039 item.
+
+## OPEN — fan wire's `attachment_conflicts` are dropped when two edited wires are combined
+
+**Out of scope of spec 039** (PRD out-of-scope list; decisions log 2026-10-11), pre-existing.
+`build_from_wire_companion` (`tomo/scripts/suggestion-parser.py:533`) combines a primary and a fan
+wire for the JSON-only companion merge but keeps only the primary's `attachment_conflicts[]`
+(inherited through the deepcopy; only `suggestions` and `proposed_mocs` are merged), so an
+attachment conflict recorded on the fan wire is dropped and never reaches Pass 2 with its remedy. Fix
+alongside the other fan-wire hygiene when companion mode is next touched; it needs a test that puts
+a conflict on the fan wire and asserts it survives the merge.
+
+## OPEN — an edited wire is not schema-validated as a whole in Pass 2
+
+**Out of scope of spec 039** (PRD out-of-scope list), pre-existing. Pass 2 checks the fields it
+reads one by one (spec 038's per-field refusals, spec 039's folder and name checks); the edited
+wire document is never run through `jsonschema` against `suggestions-doc.schema.json` first. A
+malformed field that no per-field check looks at passes through. Fix: validate
+the edited wire against its schema at load, refusing with the schema's own message, before any
+per-field check runs.

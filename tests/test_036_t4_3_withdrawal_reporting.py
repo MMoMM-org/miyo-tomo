@@ -721,11 +721,16 @@ class TestMarkdownSkippedSection:
         assert "withdrawn:" not in md
         assert "Delete withdrawn" not in md
 
-    def test_withdrawn_only_run_still_renders_skipped_heading(self):
-        """Every OTHER skip key is empty; delete_withdrawals alone must
-        still open "## Skipped — un-appliable actions" (F6-AC1) — exercises
-        the leftover/catch-all path (undeclared dependency, no guard to nest
-        under)."""
+    def test_withdrawn_only_run_reports_the_withdrawal_once(self):
+        """Every OTHER skip key is empty — the old leftover/catch-all path
+        (undeclared dependency, no guard to nest under).
+
+        Re-pinned for spec 039 T5.4 (owner ruling 2026-10-12: one report per
+        item). This used to assert that the withdrawal also opened
+        "## Skipped" with a "Delete withdrawn" block; that block only repeated
+        the "## Source Deletions" notice for the same note, word for word. F6-AC1
+        ("the withdrawal and its cause appear together") is still met by that
+        notice, which carries the cause; F6-AC2 is untouched."""
         md = render_instructions_md([], _md_metadata(
             delete_withdrawals=[{
                 "id": "D2", "action": "delete_source",
@@ -734,14 +739,16 @@ class TestMarkdownSkippedSection:
                 "causes": [{"missing_id": None, "guard": None}],
             }],
         ), CFG)
-        assert "## Skipped — un-appliable actions" in md
-        assert "⚠️ **Delete withheld:**" in md
-        assert "no reason was ever recorded for this delete" in md
+        assert "## Skipped" not in md
+        assert "⚠️ **Delete withheld:**" not in md
         assert "D2" not in md
         # "## Source Deletions" is created solely to carry this withdrawal's
-        # own notice too (Change 3b) — no delete_source action survived.
+        # own notice (Change 3b) — no delete_source action survived.
         assert "## Source Deletions" in md
-        assert "⚠️ **Not deleted:** [[Other]]" in md
+        assert md.count("[[Other]]") == 1, md
+        assert (
+            "⚠️ **Not deleted:** [[Other]] — no reason was ever recorded for this delete"
+        ) in md
 
 
 # ── 12-13. "## Source Deletions" carries a visible statement (Change 3b) ──

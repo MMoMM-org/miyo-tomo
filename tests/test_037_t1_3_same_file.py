@@ -127,7 +127,7 @@ def test_byte_identical_files_set_same_file_true():
     assert result == [{
         "source": SOURCE_A, "destination": DEST_A,
         "same_file": True, "owner_source_items": [ITEM_KEY_A],
-        "proposed_name": "karte (2).png",
+        "proposed_name": "karte (2).png", "proposed_dir": None,
     }]
     assert reader.calls == [SOURCE_A, DEST_A], (
         "source is read before destination — the documented order this "
@@ -233,7 +233,7 @@ def test_no_content_reader_produces_the_conflict_with_same_file_null():
     assert result == [{
         "source": SOURCE_A, "destination": DEST_A,
         "same_file": None, "owner_source_items": [ITEM_KEY_A],
-        "proposed_name": "karte (2).png",
+        "proposed_name": "karte (2).png", "proposed_dir": None,
     }]
 
 
@@ -478,6 +478,6 @@ def test_wiring_threads_a_real_read_file_bytes_through_main(tmp_path):
     assert doc.get("attachment_conflicts") == [{
         "source": source, "destination": dest,
         "same_file": True, "owner_source_items": [item_key],
-        "proposed_name": "karte (2).png",
+        "proposed_name": "karte (2).png", "proposed_dir": None,
     }]
     assert kado.read_calls == [source, dest]

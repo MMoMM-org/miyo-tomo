@@ -58,6 +58,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import plan_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     build_actions,
     suppress_moves_for_unfiled_attachments,
@@ -142,7 +143,8 @@ def _run_pass2(pairs: list[tuple[dict, dict]], remedies: list[dict]):
     confirmed = [c for _, c in pairs]
     actions, skipped_assets = build_actions(
         manifest, confirmed, [], [], CFG, kado_client=None,
-        attachment_conflict_remedies=remedies,
+        attachment_plan=plan_from_remedies(
+            manifest, remedies, inbox_path=INBOX, asset_folder=ASSET_FOLDER),
     )
     actions, _clashes = validate_destinations(actions)
     actions, _suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)

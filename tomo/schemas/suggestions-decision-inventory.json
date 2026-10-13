@@ -178,6 +178,14 @@
       "editable": true,
       "parser_label": ["rename"],
       "note": "The name is typed on the same checkbox line as the remedy, so this row and the remedy row share the `rename` label rather than each having one of their own."
+    },
+    {
+      "id": "D26",
+      "markdown_control": "The backtick-quoted folder on the Folder line under the Rename checkbox of an Attachment Conflicts entry: retype to choose the folder the renamed attachment moves to.",
+      "wire_field": "attachment_conflicts[].proposed_dir",
+      "editable": true,
+      "parser_label": ["- Folder:"],
+      "note": "The Folder line is not a checkbox, so its label is the line prefix rather than a checkbox word; a folder typed inside the rename backticks is still read as part of the name, not as this field."
     }
   ]
 }

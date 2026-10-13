@@ -202,7 +202,8 @@
       "source_path": "100 Inbox/Reise/Elbe.md",
       "reason": "Origin consumed by 1 atomic.",
       "depends_on": [
-        "I03"
+        "I03",
+        "I05"
       ],
       "applied": false
     },
@@ -212,7 +213,8 @@
       "source_path": "100 Inbox/Reise/Elbe.m4a",
       "reason": "Audio peer of consumed origin.",
       "depends_on": [
-        "I03"
+        "I03",
+        "I05"
       ],
       "applied": false
     },

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.63.0
+# version: 0.67.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -47,9 +47,13 @@ from lib.doc_frontmatter import (  # noqa: E402
     build_tomo_block,
     merge_tomo_block_into_markdown,
 )
-from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
+from lib.embed_rewrite import rewrite_attachment_embeds  # noqa: E402
+from lib.attachment_plan import build_attachment_plan  # noqa: E402
+from lib.basename_census import make_basename_census  # noqa: E402
+from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402
 from lib.profile_conventions import resolve_conventions  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
+from lib.kado_client import KadoClient, KadoError, observed_call_count  # noqa: E402,F401
+from lib.cost_history import append_entry, build_entry  # noqa: E402
 from lib.render_actions import (  # noqa: E402,F401
     _build_create_moc_actions,
     _build_delete_source_actions,
@@ -99,6 +103,7 @@ from lib.render_md import (  # noqa: E402,F401
     _render_withdrawn_delete_notice,
     backfill_supporting_items_parents,
     render_instructions_md,
+    unchecked_target_notices,
 )
 from lib.render_resolve import (  # noqa: E402,F401
     FOOTER_CALLOUTS,
@@ -356,6 +361,13 @@ def main() -> int:
              "tomo-tmp/tag-handler-groups (instance runtime); absent/empty → no "
              "such actions. Host/tests override.",
     )
+    p.add_argument(
+        "--cost-history",
+        default=None,
+        help="Cost-history JSONL to append this render's entry to (spec 039 "
+             "C1-AC1): Kado calls, folder listings and basename searches. "
+             "Absent → no entry is written.",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -384,10 +396,8 @@ def main() -> int:
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
     )
-    # spec 037 T3.0: {source, remedy, proposed_name} per Attachment-Conflicts
-    # entry the owner resolved in Pass 2 (suggestion-parser.py). Forwarded to
-    # build_actions -> _build_move_asset_actions, which for now accepts it
-    # and ignores it — T3.1 is the task that consults it.
+    # Remedy records per Attachment-Conflicts entry the owner resolved
+    # (suggestion-parser.py); the attachment plan reads them.
     attachment_conflict_remedies = suggestions.get(
         "attachment_conflict_remedies", []
     )
@@ -449,13 +459,29 @@ def main() -> int:
     used_filenames: set[str] = set()
     errors = 0
 
-    # spec 037 T3.3: source -> remedy dict, so a renamed attachment's owning
-    # note(s) get their embed rewritten to the new bare basename. Built once,
-    # read per item below — a note can embed more than one attachment, and
-    # the same attachment can be embedded by more than one note.
     attachment_remedies_by_source = {
         r["source"]: r for r in attachment_conflict_remedies
     }
+    # One folder lookup and one census for the whole run: the plan reads
+    # both, validate_destinations reads the lookup's notes view, and the
+    # cost-history entry reads their counters.
+    folder_lookup = VaultFolderLookup(client) if client is not None else None
+    census = make_basename_census(client) if client is not None else None
+    # The attachment plan, built before the loop because every owning note's
+    # embed is written from it there, and the same object goes to
+    # build_actions. Only items with a template render, so only their
+    # attachments are planned — an instruction-only item must not claim a
+    # target first. No client means no confirmed item, so nothing to plan.
+    attachment_plan = None
+    if client is not None and args.upstream_type != "garden-audit":
+        attachment_plan = build_attachment_plan(
+            [i for i in confirmed if i.get("template")],
+            attachment_remedies_by_source,
+            asset_folder=cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER),
+            inbox_path=inbox_path,
+            folder_lookup=folder_lookup,
+            census=census,
+        )
 
     for item in confirmed:
         item_id = item.get("id", "?")
@@ -563,15 +589,12 @@ def main() -> int:
                 file=sys.stderr,
             )
 
-        # 4c. Rewrite embed targets for attachments this run's owner renamed
-        # (spec 037 T3.3). Must happen before the write below (551) — that is
-        # the last point the body can still change. `_build_move_asset_actions`
-        # computes the actual move only after every file in this loop has
-        # already been written to disk, so the new basename is recomputed
-        # here from `proposed_name` rather than read back from a move action.
-        rendered = rewrite_renamed_embeds(
-            rendered, attachments, attachment_remedies_by_source
-        )
+        # 4c. Write the plan's embed text for every attachment this note
+        # embeds — before the write below, the last point the body changes.
+        if attachment_plan is not None:
+            rendered = rewrite_attachment_embeds(
+                rendered, attachments, attachment_plan
+            )
 
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
@@ -647,7 +670,7 @@ def main() -> int:
             tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
             parent_marker=conventions.parent_marker,
             peer_marker=conventions.peer_marker,
-            attachment_conflict_remedies=attachment_conflict_remedies,
+            attachment_plan=attachment_plan,
         )
 
     # The staging notes the action list claims before any guard runs. Paired
@@ -670,7 +693,7 @@ def main() -> int:
     # Runs for the garden-audit branch too: that branch emits no move_note, so
     # the pass is a proven no-op there rather than an untested exemption.
     actions, destination_clashes = validate_destinations(
-        actions, make_folder_listing(client) if client else None
+        actions, folder_lookup.notes if folder_lookup is not None else None
     )
     if destination_clashes:
         withheld = sum(len(c["dropped"]) for c in destination_clashes)
@@ -964,10 +987,18 @@ def main() -> int:
     # (suppress_moves_for_unfiled_attachments takes it read-only), and this sits
     # after both fatal-abort guards: a run that aborts before this point writes
     # nothing.
+    # Spec 039 T5.1: the same file also carries one line per move whose target
+    # the vault did not answer for — the line its move block carries in
+    # instructions.md, read off the final `actions` so a move a guard withdrew
+    # is never reported.
+    attachment_reports = (
+        attachment_plan.reports_by_source() if attachment_plan is not None else {}
+    )
     sync_notice_relay_file(
         out_dir.parent / WITHHELD_ATTACHMENTS_RELAY,
         args.run_id,
-        [_render_skipped_asset_notice(s) for s in skipped_assets],
+        [_render_skipped_asset_notice(s) for s in skipped_assets]
+        + unchecked_target_notices(actions, attachment_reports),
     )
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
@@ -1161,11 +1192,35 @@ def main() -> int:
             # never forwarded to the renderer — the same missing-transport gap
             # T3.0 fixed for suggestion-parser -> instruction-render.
             "attachment_conflict_remedies": attachment_conflict_remedies,
+            # spec 039 T5.1: per moved source, what the attachment plan
+            # learned — folder to be created, target not checked, embed
+            # written with path.
+            "attachment_reports": attachment_reports,
         },
         cfg,
     )
     instructions_md_path = out_dir / "instructions.md"
     instructions_md_path.write_text(md, encoding="utf-8")
+
+    if args.cost_history:
+        append_entry(
+            build_entry(
+                run_id=args.run_id or "",
+                action="render",
+                item_count=len(confirmed),
+                base_kado_calls=0,
+                total_kado_calls=observed_call_count(client) or 0,
+                folder_listing_calls=(
+                    folder_lookup.folder_listing_calls if folder_lookup else 0
+                ),
+                distinct_destination_folders=(
+                    len(folder_lookup.folders) if folder_lookup else 0
+                ),
+                basename_searches=census.searches if census else 0,
+                basename_pages=census.pages if census else 0,
+            ),
+            args.cost_history,
+        )
 
     print(
         f"instruction-render: rendered={len(manifest)} actions={len(actions)} "

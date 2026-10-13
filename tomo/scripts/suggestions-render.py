@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.1
+# version: 0.25.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -349,15 +349,16 @@ def _wire_attachment_conflict(entry: dict) -> dict:
         "source": entry["source"],
         "destination": entry["destination"],
         # Subscripted, not `.get()`: `detect_attachment_conflicts` builds every
-        # record in one literal that always sets all five keys
-        # (suggestions-reducer.py:735-741), and for these two a `None` VALUE is
-        # meaningful — "could not compare" for same_file, "no free name found"
-        # for proposed_name. `.get()` would make a dropped key indistinguishable
-        # from either, so a producer regression would project a plausible null
-        # instead of raising.
+        # record in one literal that always sets all six keys, and for these
+        # three a `None` VALUE is meaningful — "could not compare" for
+        # same_file, "no free name found" for proposed_name, "the configured
+        # asset folder" for proposed_dir. `.get()` would make a dropped key
+        # indistinguishable from any of them, so a producer regression would
+        # project a plausible null instead of raising.
         "same_file": entry["same_file"],
         "remedy": "rename" if entry["proposed_name"] is not None else "keep_in_inbox",
         "proposed_name": entry["proposed_name"],
+        "proposed_dir": entry["proposed_dir"],
     }
 
 

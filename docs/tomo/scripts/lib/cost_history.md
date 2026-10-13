@@ -69,6 +69,20 @@ step was removed and the script retired (`RETIRED_SCRIPTS` in
 Surfaced by the implementer's own unverifiable-assumption report rather than by
 a failing test — because there was no test that could fail.
 
+## WHY a Third Writer, and Two Basename Fields (spec 039 T4.5, v0.3.0)
+
+Pass 2 now spends Kado calls on attachments — one listing per target folder,
+one `byName` search per distinct basename (two for a name whose NFC and NFD
+forms differ). C1-AC1 asks for them beside the run's existing counts, so
+`instruction-render.py` appends an entry with `action: render` when given
+`--cost-history`. It goes through `build_entry` like the other two writers.
+`basename_searches` and `basename_pages` are optional and omitted when None,
+for the same reason as the folder fields: triage and the reducer run no
+census, and a zero there would assert a measurement nobody took.
+
+For `action: "render"` there is no fixed base cost in that process, so
+`base_kado_calls` is 0 by definition, not a declared figure.
+
 ## WHY `action` Is on the Entry
 
 The SDD's original field list did not name it. Without it every entry with

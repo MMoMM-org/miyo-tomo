@@ -17,11 +17,10 @@ function should not need a working Kado client and a live tag-handler module
 just to be imported. Relocating `KNOWN_FILE_EXTENSIONS` into its own module
 dropped the transitive import count for `attachment_index.py` to 4.
 
-`render_actions.py` keeps `_KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS` as a
-back-compat alias, so its own call sites (`_ensure_md_extension` and its
-callers) needed no changes. A subprocess-based test in
-`tests/test_attachment_index.py` guards against the alias and the module
-drifting apart again.
+`render_actions.py` kept `_KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS` as a
+back-compat alias until the spec 039 T4.3 tidy removed it as unused. A
+subprocess-based test in `tests/test_attachment_index.py` guards against the
+module drifting back into a heavy import.
 
 This was a deliberate, approved deviation from the SDD's "reuses the existing
 classifier" wording: the single source of truth for the allowlist moved to a

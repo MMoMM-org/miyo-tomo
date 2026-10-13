@@ -7,7 +7,7 @@
   "required": ["schema_version", "generated", "run_id", "profile", "source_items", "emit_digest", "suggestions", "proposed_mocs", "daily_updates", "tag_handler_groups", "attachment_conflicts"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "3"},
+    "schema_version": {"const": "4"},
     "generated": {"type": "string"},
     "run_id": {"type": "string"},
     "profile": {"type": "string"},
@@ -177,14 +177,15 @@
       "description": "Attachment destination conflicts (spec 037/038). One entry per colliding attachment, however many notes embed it — the owning notes are not carried here; the consumer derives them by scanning suggestions[].attachments for the same path.",
       "items": {
         "type": "object",
-        "required": ["source", "destination", "same_file", "remedy", "proposed_name"],
+        "required": ["source", "destination", "same_file", "remedy", "proposed_name", "proposed_dir"],
         "additionalProperties": false,
         "properties": {
           "source": {"type": "string", "description": "Read-only — the colliding attachment's source path; the join key against suggestions[].attachments."},
           "destination": {"type": "string", "description": "Read-only — the vault destination already occupied by this attachment."},
           "same_file": {"type": ["boolean", "null"], "description": "Read-only — whether source and destination are byte-identical. Null when the comparison could not be made."},
           "remedy": {"type": "string", "enum": ["rename", "keep_in_inbox", "ignore"], "description": "Editable — how to resolve the conflict. Default mirrors the markdown's pre-ticked remedy: rename when a free name was found, otherwise keep_in_inbox."},
-          "proposed_name": {"type": ["string", "null"], "description": "Editable — the rename target's basename. Null when Pass 1 found no free name; the owner may type one."}
+          "proposed_name": {"type": ["string", "null"], "description": "Editable — the rename target's basename. Null when Pass 1 found no free name; the owner may type one."},
+          "proposed_dir": {"type": ["string", "null"], "description": "Editable — the vault-relative folder the renamed attachment moves to, without a trailing slash. Null means the configured asset folder; Pass 1 always emits null. Used only when remedy is rename."}
         }
       }
     }

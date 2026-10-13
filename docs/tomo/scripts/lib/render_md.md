@@ -284,6 +284,8 @@ use for their own `dropped` sub-lists (`- `id`` under `- destination`). A
 separate list naming the same id would put a reader's eye two sections apart
 to confirm the connection this criterion asks to be immediate.
 
+*Superseded by spec 039 T5.4 — see below.* (The "Delete withdrawn" catch-all block and the `## Skipped` guard condition described in the next two paragraphs no longer exist.)
+
 **WHY `validate_destinations` / `suppress_moves_for_unfiled_attachments`
 attributions, `unattributed`, and undeclared withdrawals fall to a catch-all
 block instead of nesting**: those two guards render under their OWN
@@ -382,6 +384,8 @@ branch; its remedy text says nothing needs doing — `reason` (already built by
 `_build_move_asset_actions`) is what explains why.
 
 ## `## Skipped` Gains a Second, Independent Report For The Same Attachments (spec 037 T4.2, PRD C2/S2)
+
+*Superseded by spec 039 T5.4 — see below.* (An Ignore conflict whose move is still emitted is no longer listed under "Conflicts not resolved by rename"; it is reported once, at its move.)
 
 "**Attachment not filed**" (the `skipped_assets` loop above) and
 "**Conflicts not resolved by rename**" (`_render_unresolved_conflict_bullet`)
@@ -629,6 +633,8 @@ means "no executor handle dropped into prose". Action ids are already the H3
 headings of this document; they are how the owner ticks "Applied" per action.
 The annotation is a line inside the block that already carries its own id.
 
+*Superseded by spec 039 (K2): Pass 2 now looks up the final target in the vault — see below.*
+
 **The two sites carry different sentences, by the same 2026-09-27 ruling that
 governs the two "Skipped" blocks.** The annotation states the DECISION and how to
 revisit it and claims no outcome at all; the end-of-document bullet states what
@@ -737,6 +743,16 @@ confirmed item, so the owning note is always being filed, while the paired
 `delete_source` can be opted out of with "Keep source files". Asserting the
 delete would have been the fifth claim in this section corrected for saying more
 than the renderer knows.
+
+**Superseded by spec 039 F6-AC8 (v0.34.0).** Since ADR-10 the origin's delete
+waits for its attachment moves, so the 2026-09-15 end state is no longer
+reachable through Ignore: a refused move fails the delete's dependency and the
+source note stays in the inbox. The disclosure now says exactly that — "If the
+move fails, the source note that embeds it is kept in the inbox rather than
+deleted" — and no longer says the note is filed either way or points at a file
+left behind. It still never says "its source note is deleted"; with "Keep source
+files" there is no delete, and the source note is kept all the same, so the new
+sentence is true in both cases.
 
 ## Where This Lands in the User Documentation
 
@@ -936,3 +952,74 @@ opening in lower case — which is why that requirement is stated in the
 function's own docstring rather than left to the reader of four branches to
 notice. It is the kind of defect no unit test was asked to catch and a single
 real render makes obvious.
+
+## What the Plan Learned Is Reported in the Move's Own Block (spec 039 T5.1, v0.34.0)
+
+WHY "new folder", "target not checked" and "embed written with path" are lines
+in the move's block and not a section of their own: each is a fact about one
+move the owner is about to apply, and the block is where they tick it. An
+end-of-document list would need correlating back by hand — the defect the
+Ignore annotation was moved into the block to fix (owner request 2026-09-28).
+The data arrives as `metadata["attachment_reports"]`
+(`AttachmentPlan.reports_by_source`) keyed by source and is read only for moves
+still in `actions`, so a move a later guard withdrew reports nothing.
+
+- **New folder** (F2-AC8): "will be created on apply" is the executor's
+  documented contract (PRD A3), not a prediction; the folder is the one the
+  vault listed as absent.
+- **Target not checked** (F3-AC6, ADR-8): the vault did not answer, so the line
+  states only that — never "free", which would read an unanswered check as a
+  favourable one. It is a function (`_render_unchecked_target_notice`) for the
+  same reason `_render_skipped_asset_notice` is: it has a second surface, the
+  shell relay, and calling one function twice is what keeps them identical.
+- **Embed written with path** (tracking table, F4): names the reason —
+  another file has the same name, or the vault did not answer — so the new
+  embed form is auditable rather than surprising.
+
+Sentences come from `lib/refusal_sentences.py` (K16), the one home for
+owner-facing prose. No executor internals in any of them (ADR-11).
+
+## `typed_folder_refused` and `vault_occupied` Got Their Own Remedies (spec 039 T5.1)
+
+Both kinds reached `_render_skipped_asset_notice` from Phase 4 on and fell to
+the loud fallback, by design until the sentences were written here. A refused
+folder is held like a refused name, so its remedy mirrors that one's two reading
+moments with the folder as the thing to retype. An occupied target holds its
+notes too (ADR-7), so the remedy says the attachment stays in the inbox with the
+note that embeds it, and names the two ways out: free the target, or choose
+another name on the next `/inbox`.
+
+## One Report per Item, One Remedy per Kind (spec 039 T5.4, owner ruling 2026-10-12)
+
+An end-to-end read of a rendered document (the `every_kind` fixture in
+`tests/test_039_t5_1_reporting.py`) found three items reported more than once,
+with the copies disagreeing. The owner ruled one report per item and one remedy
+per withheld kind. Three changes here:
+
+- **The remedy comes from `refusal_sentences.withheld_attachment_remedy`.**
+  `_render_skipped_asset_notice` no longer carries a per-kind remedy chain; the
+  "Not filed" section (`render_actions._attachment_suppression_reason`) calls
+  the same function, so both sections and the shell relay end the same item
+  with the same fix. The reasons behind each command are in
+  `docs/tomo/scripts/lib/refusal_sentences.md`. The "Not filed" intro no longer
+  says "re-run Pass 2"; each line names its own command.
+- **An Ignore is no longer listed under "Conflicts not resolved by rename".**
+  Since 2026-09-28 the ignored move carries the "Destination was occupied"
+  disclosure in its own block; the Skipped bullet repeated it with a different
+  claim ("it will be refused unless that name has since been freed"). The shell
+  relay never carried an Ignore, so the move-block disclosure is now the one
+  report. An ignored move the plan withholds instead (a run collision, say) is
+  already an "Attachment not filed" bullet. `_render_unresolved_conflict_bullet`
+  lost its `ignore` branch with it. This supersedes the `ignore` half of the
+  spec 037 T4.2 sections above; 037's intent — the owner is told — holds.
+- **The "Delete withdrawn" catch-all is gone.** Every withdrawal is stated
+  under "## Source Deletions" with its cause (`_render_withdrawn_delete_notice`,
+  spec 035), so the catch-all only repeated that line for withdrawals with no
+  inline guard to nest under — for an attachment hold, a third report of the
+  same note. Nothing was reported only there: `withdrawn_here` is every
+  withdrawal, unconditionally. A withdrawal alone therefore no longer opens
+  "## Skipped". Spec 036 F6-AC1 ("withdrawal and its cause appear together")
+  is met by the Source Deletions line; the inline nesting under a daily,
+  relationship or MOC-link bullet stays, because F2-AC4 asks for the withheld
+  action and its withdrawn delete to read together. This supersedes the
+  catch-all paragraphs in the spec 036 T4.3 section above.

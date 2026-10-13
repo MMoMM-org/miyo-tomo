@@ -42,8 +42,11 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import (  # noqa: E402
+    move_asset_actions_from_remedies,
+    plan_from_remedies,
+)
 from lib.render_actions import (  # noqa: E402
-    _build_move_asset_actions,
     build_actions,
     suppress_moves_for_unfiled_attachments,
 )
@@ -112,7 +115,7 @@ def test_rename_emits_move_to_the_proposed_basename():
         ),
     ]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "rename", "karte (2).png")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == []
@@ -140,7 +143,7 @@ def test_keep_in_inbox_emits_no_move_and_records_vault_collision_held():
         ),
     ]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "keep_in_inbox")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert actions == [], (
@@ -170,7 +173,8 @@ def test_vault_collision_held_owning_note_is_still_filed():
     confirmed = [_confirmed_entry(source_path="karte.md")]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "keep_in_inbox")]
     actions, skipped_assets = build_actions(
-        manifest, confirmed, [], [], CFG, attachment_conflict_remedies=remedies,
+        manifest, confirmed, [], [], CFG, attachment_plan=plan_from_remedies(
+            manifest, remedies, inbox_path=INBOX, asset_folder=ASSET_FOLDER),
     )
     assert [s["kind"] for s in skipped_assets] == ["vault_collision_held"]
     kept, suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)
@@ -200,7 +204,7 @@ def test_ignore_emits_the_move_unchanged_and_skips_nothing():
         ),
     ]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "ignore")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == [], f"ignore must record nothing: {skipped}"
@@ -229,7 +233,7 @@ def test_rename_with_null_proposed_name_degrades_to_keep_in_inbox():
     confirmed = [_confirmed_entry(source_path="karte.md")]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "rename", proposed_name=None)]
 
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert actions == [], f"a nameless rename must emit no move: {actions}"
@@ -239,7 +243,8 @@ def test_rename_with_null_proposed_name_degrades_to_keep_in_inbox():
     # And the owning note is still filed, exactly as any other
     # vault_collision_held entry.
     all_actions, skipped_assets = build_actions(
-        manifest, confirmed, [], [], CFG, attachment_conflict_remedies=remedies,
+        manifest, confirmed, [], [], CFG, attachment_plan=plan_from_remedies(
+            manifest, remedies, inbox_path=INBOX, asset_folder=ASSET_FOLDER),
     )
     kept, suppressions = suppress_moves_for_unfiled_attachments(all_actions, skipped_assets)
     move_notes = [a for a in kept if a["action"] == "move_note"]
@@ -264,7 +269,7 @@ def test_unmatched_source_emits_the_plain_move():
     ]
     # attachment_conflict_remedies names a DIFFERENT source entirely.
     remedies = [_remedy("100 Inbox/Scans/other.png", "keep_in_inbox")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == []
@@ -300,7 +305,7 @@ def test_a_remedys_destination_still_goes_through_the_claimed_check():
     # "two.md"'s attachment is renamed to a basename that collides with
     # "one.md"'s attachment's (unrelated, unremedied) destination.
     remedies = [_remedy("100 Inbox/B/other.png", "rename", "orig.png")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert len(actions) == 1
@@ -335,7 +340,7 @@ def test_a_degraded_rename_is_not_reported_as_the_owners_choice():
         remedies = [
             _remedy("100 Inbox/Scans/karte.png", remedy, proposed_name=proposed_name)
         ]
-        _, skipped = _build_move_asset_actions(
+        _, skipped = move_asset_actions_from_remedies(
             manifest, INBOX, ASSET_FOLDER, [0],
             attachment_conflict_remedies=remedies,
         )

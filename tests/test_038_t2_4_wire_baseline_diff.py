@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Spec 038 T2.4 — a conflict-free wire payload differs from its pre-038 shape
 in EXACTLY the two intended ways and no others.
 
 T2.1 moved schema_version "2" -> "3"; T2.2 added the top-level
 attachment_conflicts[] array. Nothing else about build_wire_payload's
-conflict-free output should have moved. The baseline this test diffs against
+conflict-free output should have moved. Spec 039 T3.1 later moved the version
+"3" -> "4" for attachment_conflicts[].proposed_dir, which a conflict-free
+payload never carries, so the two-way diff still holds with "4". The baseline this test diffs against
 is a captured, reproducible fixture (tests/fixtures/038-wire-baseline/), not a
 hand-typed expected value -- see the comment on BASELINE below for the
 regeneration rule.
@@ -131,7 +133,9 @@ def test_conflict_free_payload_differs_from_pre_038_baseline_in_exactly_two_ways
     )
     assert today["attachment_conflicts"] == []
     assert BASELINE["schema_version"] == "2"
-    assert today["schema_version"] == "3"
+    # "4" since spec 039 T3.1; a conflict-free payload carries no
+    # proposed_dir, so the version is the only further change.
+    assert today["schema_version"] == "4"
 
 
 def test_digest_reconstructs_from_baseline_plus_only_the_two_intended_changes():
@@ -144,12 +148,12 @@ def test_digest_reconstructs_from_baseline_plus_only_the_two_intended_changes():
     today = _MOD.build_wire_payload(_today_doc())
 
     reconstructed = dict(BASELINE)
-    reconstructed["schema_version"] = "3"
+    reconstructed["schema_version"] = "4"
     reconstructed["attachment_conflicts"] = []
 
     assert compute_payload_digest(reconstructed) == today["emit_digest"]
 
     # Negative control: omitting the new key must NOT reproduce today's digest.
     reconstructed_without_new_key = dict(BASELINE)
-    reconstructed_without_new_key["schema_version"] = "3"
+    reconstructed_without_new_key["schema_version"] = "4"
     assert compute_payload_digest(reconstructed_without_new_key) != today["emit_digest"]

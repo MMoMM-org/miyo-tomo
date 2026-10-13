@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_037_t2_4_parse_remedy.py — spec 037 T2.4.
 
 `parse_attachment_conflict_remedies(text) -> list[dict]` reads the three
@@ -322,4 +322,6 @@ def test_two_attachment_conflicts_sections_only_parses_first():
         "source": "a.png",
         "remedy": "rename",
         "rename_target": "Atlas/290 Assets/295 Attachments/a (2).png",
+        # spec 039 T3.3: this hand-built markdown has no Folder line.
+        "folder_text": None,
     }]

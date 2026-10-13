@@ -30,7 +30,7 @@
       ],
       "values": {
         "schema_version": [
-          "3"
+          "4"
         ]
       }
     },
@@ -38,6 +38,10 @@
       "closed": true,
       "properties": {
         "destination": "string",
+        "proposed_dir": [
+          "null",
+          "string"
+        ],
         "proposed_name": [
           "null",
           "string"
@@ -51,6 +55,7 @@
       },
       "required": [
         "destination",
+        "proposed_dir",
         "proposed_name",
         "remedy",
         "same_file",
@@ -323,6 +328,6 @@
       "values": {}
     }
   },
-  "schema_version": "3",
+  "schema_version": "4",
   "source": "tomo/schemas/suggestions-wire.schema.json"
 }

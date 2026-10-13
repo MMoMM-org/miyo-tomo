@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -7,6 +7,8 @@ render_resolve) and the orchestrator. Pure string ops — no Kado, no I/O, no
 dependency on any other render module (keeps the module graph a DAG).
 """
 from __future__ import annotations
+
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 
 
 def _stem(path: str | None) -> str:
@@ -48,6 +50,38 @@ def resolve_source_path(
     if "/" in source_path:
         return source_path
     return f"{(inbox_path or '').rstrip('/')}/{source_path}"
+
+
+def _ensure_md_extension(path: str | None) -> str | None:
+    """Append `.md` to a wikilink-derived path unless it already names a file.
+
+    Wikilink-derived paths come in three shapes:
+      1. bare stem (`FooBar`)            — atomic note  → append `.md`
+      2. dotted note name (`Foo.Bar`)    — atomic note  → append `.md`
+      3. file with extension (`X.m4a`,
+         `Y.html`, `Z.md`)               — leave alone
+
+    The discriminator is the suffix after the basename's last dot: if it is
+    ≤4 chars and matches a known Obsidian-resolvable extension, treat as a
+    real file (case 3); otherwise it is part of a dotted note name and `.md`
+    must be appended (case 1 or 2). Mirrors Obsidian's wikilink semantics —
+    `[[FooBar]]` resolves to `FooBar.md`, `[[FooBar.m4a]]` resolves to the
+    literal media file.
+
+    Hashi consumes paths verbatim (no resolution), so the JSON `source_path`
+    must equal the `.md` peer's wikilink target byte-for-byte. See handoff
+    `_inbox/from-hashi/2026-04-29_hashi-to-tomo_audio-peer-path-emission.md`.
+    """
+    if not path:
+        return path
+    basename = path.rsplit("/", 1)[-1]
+    last_dot = basename.rfind(".")
+    if last_dot < 0:
+        return path + ".md"
+    suffix = basename[last_dot + 1:]
+    if len(suffix) <= 4 and suffix.lower() in KNOWN_FILE_EXTENSIONS:
+        return path
+    return path + ".md"
 
 
 def resolve_sibling_path(

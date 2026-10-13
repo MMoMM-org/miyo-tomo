@@ -32,6 +32,9 @@ TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
+from attachment_plan_fakes import build_actions_without_vault  # noqa: E402
 
 # Also need access to instruction-render for realistic actions[] generation
 _spec_diff = importlib.util.spec_from_file_location(
@@ -74,7 +77,7 @@ CFG = {
 
 def _build_instrs_from(manifest, confirmed, daily_updates, skipped):
     """Use instruction-render's build_actions so tests exercise the real producer."""
-    actions, _skipped_assets = ir.build_actions(manifest, confirmed, daily_updates, skipped, CFG)
+    actions, _skipped_assets = build_actions_without_vault(manifest, confirmed, daily_updates, skipped, CFG)
     return {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -322,7 +325,7 @@ def test_batched_link_to_moc_reconciles():
 
     # Real producer path: build_actions, then the main() post-processing that
     # applies the #70 merge + serialize + internal-field strip.
-    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions_without_vault(manifest, confirmed, [], [], CFG)
     merged = ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)
@@ -368,7 +371,7 @@ def test_batched_link_to_moc_coverage_gap_fails():
                 _man("S02", "Sapporo — Hokkaido capital", "Sapporo.md", "2026-04-21_1200_sapporo.md")]
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
 
-    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions_without_vault(manifest, confirmed, [], [], CFG)
     ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)

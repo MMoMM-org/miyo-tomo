@@ -56,11 +56,12 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from lib.item_key import to_filename  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     _paired_delete_candidates,
-    build_actions,
     make_folder_listing,
     validate_destinations,
     withdraw_unjustified_deletes,
 )
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 NOTES = "Atlas/202 Notes/"
@@ -470,7 +471,12 @@ def _build_golden_actions() -> list[dict]:
 
 
 def test_build_actions_still_emits_the_recorded_baseline():
-    """The baseline was recorded at 9afcf73, before any T5.3 code existed."""
+    """The baseline was recorded at 9afcf73, before any T5.3 code existed.
+
+    Only `delete_source.depends_on` was re-recorded (spec 039 T5.2): an origin's
+    delete now also names the ids of its `move_asset` actions after its note
+    ids, and this fixture's origins embed attachments. Nothing else changed.
+    """
     assert _build_golden_actions() == _golden()["actions"]
 
 

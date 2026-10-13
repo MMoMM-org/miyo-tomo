@@ -36,8 +36,11 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import (  # noqa: E402
+    move_asset_actions_from_remedies,
+    plan_from_remedies,
+)
 from lib.render_actions import (  # noqa: E402
-    _build_move_asset_actions,
     build_actions,
     suppress_moves_for_unfiled_attachments,
 )
@@ -117,7 +120,7 @@ def test_unusable_typed_name_is_refused_when_owner_supplied():
             name_is_owner_supplied=True,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert actions == [], f"a refused typed name must emit no move: {actions}"
@@ -151,7 +154,7 @@ def test_unusable_computed_name_behaves_exactly_as_today_when_not_owner_supplied
             name_is_owner_supplied=False,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == [], f"a computed name must never be refused: {skipped}"
@@ -175,7 +178,7 @@ def test_unusable_typed_name_behaves_exactly_as_today_when_flag_absent():
         ),
     ]
     remedies = [_remedy("100 Inbox/Scans/other.png", "rename", UNUSABLE_TYPED_NAME)]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == [], f"a flag-absent remedy must not be checked: {skipped}"
@@ -205,7 +208,7 @@ def test_usable_typed_name_emits_the_move_when_owner_supplied():
             name_is_owner_supplied=True,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == []
@@ -245,7 +248,7 @@ def test_usable_owner_supplied_name_that_collides_run_locally_is_collision_not_r
             name_is_owner_supplied=True,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert len(actions) == 1
@@ -284,7 +287,7 @@ def test_whitespace_only_proposed_name_reaches_the_rename_branch_and_is_refused(
             name_is_owner_supplied=True,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert actions == []
@@ -317,7 +320,7 @@ def test_whitespace_only_proposed_name_without_flag_still_degrades_as_before():
         ),
     ]
     remedies = [_remedy("100 Inbox/Scans/karte.png", "rename", " ")]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert skipped == []
@@ -348,7 +351,7 @@ def test_refused_source_produces_no_move_asset_anywhere_in_actions():
             name_is_owner_supplied=True,
         )
     ]
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     sources_in_actions = [a["source"] for a in actions if a["action"] == "move_asset"]
@@ -386,7 +389,7 @@ def test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code():
             name_is_owner_supplied=True,
         )
     ]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
     )
     assert len(skipped) == 1
@@ -454,7 +457,7 @@ def test_each_refusal_class_has_its_own_exact_prose_sentence():
                 name_is_owner_supplied=True,
             )
         ]
-        _actions, skipped = _build_move_asset_actions(
+        _actions, skipped = move_asset_actions_from_remedies(
             manifest, INBOX, ASSET_FOLDER, [0], attachment_conflict_remedies=remedies,
         )
         assert len(skipped) == 1, (expected_code, skipped)
@@ -513,7 +516,8 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
         )
     ]
     actions, skipped_assets = build_actions(
-        manifest, confirmed, [], [], CFG, attachment_conflict_remedies=remedies,
+        manifest, confirmed, [], [], CFG, attachment_plan=plan_from_remedies(
+            manifest, remedies, inbox_path=INBOX, asset_folder=ASSET_FOLDER),
     )
     assert [s["kind"] for s in skipped_assets] == ["typed_name_refused"]
     kept, suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)
@@ -532,8 +536,12 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
         "`100 Inbox/Scans/other.png` cannot be filed — typed name refused: "
         f"`{UNUSABLE_TYPED_NAME}` contains a character Obsidian does not "
         "allow in a filename — the note that embeds it is not filed "
-        "either. To fix: retype a usable name for it, then re-run Pass 2."
-    )
+        "either. To fix: correct the name in the suggestions document and run "
+        "`/inbox --pass2 --force` before you apply. If you have already "
+        "applied, the attachment is still in the inbox, and so is every note "
+        "that embeds it: run `/inbox --recover`. "
+        "The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there."
+    )  # remedy re-pinned by spec 039 T5.4: one remedy per withheld kind
     # No general containment rule over this sentence can be sound (see
     # test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code
     # for the two that failed): it quotes the owner's typed name verbatim,

@@ -324,3 +324,66 @@ error — it reports nothing withheld, which is indistinguishable from a clean r
 `TestAgentWiringGuard` pins this file's path to the writer's so that renaming
 either alone fails. The executable check on the report itself is Phase 5's live
 run.
+
+## Step 4 Also Relays Attachment Targets That Could Not Be Checked (spec 039 T5.1, v0.22.0)
+
+WHY `tomo-tmp/withheld-attachments.md` now carries a second kind of line, and
+why Step 4's wording names it instead of describing the file as "attachments
+left in the inbox" only.
+
+Spec 039 ADR-8 (owner ruling 2026-10-12): when Kado cannot answer whether a
+target folder already holds the attachment's name, Pass 2 still writes the move
+— a failed move is safe for the origin, because the origin's delete waits for
+it (ADR-10) — but the target is reported as **not checked**. An unanswered
+check is never reported as a free target (PRD F3-AC6). The owner reads the shell
+first, and a target nobody checked is exactly what they need to see before
+applying, so the line reaches the shell through the same relay file rather than
+a new one: one writer (`sync_notice_relay_file`), one staleness rule, one `cat`.
+Each line is the very line the move's block in `instructions.md` carries
+(`render_md._render_unchecked_target_notice`, called twice), so the two
+surfaces cannot drift.
+
+The runtime prompt says "could not be checked" in Step 4 because the earlier
+description — "one per attachment this run left in the inbox" — is false for
+these lines: the attachment IS moved. A model told every line is a withheld
+attachment would either drop the unchecked lines or report them as withheld.
+The no-count rule (038 C1) applies to them unchanged.
+
+**`--cost-history state/inbox-cost-history.jsonl` in Step 3b** (carried from
+T4.5). `instruction-render.py` appends a Pass 2 entry with the folder-listing
+and basename-search counters only when the flag is given; the flag defaults to
+absent so host tests never write `state/`. Until the conductor passed it, C1-AC1
+held only at the `main()` level and no live run recorded the counters. The path
+is the same default the triage and reducer scripts write to
+(`lib/cost_history.DEFAULT_HISTORY_PATH`), so all three passes land in one
+history file.
+
+## Step 4 Relay Lines Are Copied, Not Re-Told (spec 039 T6.3, v0.23.0)
+
+WHY Step 4 carries a STRICT block for the two relay files, and why the relay
+lines no longer sit inside the `>` report example.
+
+The live Pass 2 run of 2026-10-13 showed the relay was not verbatim. The
+conductor did `cat` both `tomo-tmp/withheld-deletes.md` and
+`tomo-tmp/withheld-attachments.md`, then rewrote each line into its own bullet
+("`freiberg-dom.png` — target already occupied ...") and dropped the sentence
+that tells the owner what to do about it. The unadorned imperative ("append
+every line verbatim") had been in place since v0.18.0 and was observed to fail,
+which is the condition the repo sets for a STRICT block. Its `Why:` names only
+the failure mode.
+
+Two things changed. The STRICT block names both files, requires character for
+character, one per line, and forbids rewording, shortening, merging,
+summarising, tables and counts, plus dropping a sentence from a line. The
+report example no longer shows the two `<every line from ...>` placeholders
+inside the blockquote: a blockquote line reads as template prose to fill in,
+which invites exactly the paraphrase seen. The lines are now introduced after
+the example as text to output, not text to compose.
+
+This is the first of two paraphrase layers; `/inbox` Step 3b reworded the
+conductor's report a second time (see `docs/tomo/dot_claude/commands/inbox.md`).
+The single source for the shell relay is SDD K16; traceability F2-AC5 is
+"sentence + document + shell relay". The tests are in
+`tests/test_039_t5_1_reporting.py`
+(`test_the_conductor_relays_withheld_lines_character_for_character`).
+

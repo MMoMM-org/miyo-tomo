@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.22.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -923,10 +923,11 @@ def _subtract_skipped_assets(expected: dict, skipped_assets: list[dict]) -> int:
     """Remove attachments the renderer could not file from expected move_asset.
 
     `derive_expected` counts one `move_asset` per distinct attachment path on
-    the confirmed items. `_build_move_asset_actions` emits none for a path with
-    no basename or one whose destination is already claimed by a different
-    file, and records it in `tomo.skipped_assets` instead. Each such entry is
-    one path the renderer deliberately did not file — the same subtraction
+    the confirmed items. Whatever K1 (`attachment_plan._decide`) withholds, the
+    move builder emits no `move_asset` for and records the path in
+    `tomo.skipped_assets` instead; the kind set belongs to K1 and is not
+    enumerated here. Each such entry is one path the renderer deliberately did
+    not file — the same subtraction
     `_subtract_skipped_daily` makes for a missing daily note.
 
     Present since spec 031 and only reachable once discovery became recursive

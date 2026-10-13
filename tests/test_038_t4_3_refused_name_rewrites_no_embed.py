@@ -3,8 +3,9 @@
 
 T3.2 taught `_build_move_asset_actions` (`lib/render_actions.py`) to refuse an
 owner-typed `proposed_name` and emit no `move_asset` for it. It did not touch
-`rewrite_renamed_embeds` (`lib/embed_rewrite.py`), which runs EARLIER in
-`instruction-render.py`'s per-item loop and gated only on `remedy == "rename"`
+the embed rewrite (`lib/embed_rewrite.py`, then `rewrite_renamed_embeds`),
+which runs EARLIER in `instruction-render.py`'s per-item loop and gated only
+on `remedy == "rename"`
 plus a truthy `proposed_name`. So the two halves disagreed on the same remedy
 record: the body was rewritten to a name the move then refused, leaving the
 attachment in the inbox under its old name while the note pointed elsewhere.
@@ -37,6 +38,12 @@ apart — `check_typed_name` is now called from two places that must keep
 agreeing and nothing in the type system makes them. Neither per-half test can
 catch that; drift is exactly how T3.2 produced this defect.
 
+Since spec 039 T4.4 the rewrite is `rewrite_attachment_embeds`, which reads
+the attachment plan and calls no `check_typed_name` of its own: the refusal
+is decided once, in `lib/attachment_plan.py` (decision-table row 6), and both
+halves read that one verdict. The mutations the docstrings below name — the
+gate "in the rewrite" — now apply to that row; the assertions are unchanged.
+
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
 from __future__ import annotations
@@ -50,13 +57,25 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.embed_rewrite import rewrite_renamed_embeds  # noqa: E402
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import (  # noqa: E402
+    move_asset_actions_from_remedies,
+    rewrite_from_remedies,
+)
 from lib.typed_name_check import check_typed_name  # noqa: E402
 
 SOURCE = "100 Inbox/Scans/karte.png"
 INBOX = "100 Inbox/"
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
+
+
+def _rewrite(body, attachments, remedies_by_source):
+    """spec 039 T4.4: the rewrite now reads the attachment plan; the refusal
+    it used to re-derive with `check_typed_name` is decided once, in the
+    plan (`lib/attachment_plan.py` row 6). Vault: only the inbox copies."""
+    return rewrite_from_remedies(
+        body, attachments, remedies_by_source,
+        inbox_path=INBOX, asset_folder=ASSET_FOLDER,
+    )
 
 # One body, two embeds of the same attachment, the second carrying a `|300`
 # size suffix — both shapes 037 already covers for a computed name, kept here
@@ -109,24 +128,25 @@ def _manifest_entry(sid, source_path, attachments) -> dict:
 def test_refused_separator_present_leaves_body_byte_identical():
     """A typed name carrying a path separator rewrites nothing.
 
-    Mutation: delete the `check_typed_name` gate from the loop in
-    `rewrite_renamed_embeds` that builds `renames`. The body then becomes
-    `![[Archive/karte-dresden-1938.png]]` — dangling, and hard-coding a
-    folder into the body, which this function's own docstring promises never
-    to do.
+    Mutation: delete the typed-name refusal (decision-table row 6) in
+    `attachment_plan._decide`. The plan then gives the source an embed and the
+    body becomes `![[karte-dresden-1938.png]]` — the last path component of
+    the refused name — while the move is refused, so the note points at a file
+    that never arrives.
     """
     verdict = check_typed_name(SEPARATOR_TYPED_NAME)
     assert verdict.ok is False
     assert verdict.reason == "separator_present"
 
     remedies = {SOURCE: _remedy(SEPARATOR_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 def test_refused_forbidden_character_leaves_body_byte_identical():
     """A typed name carrying `|` rewrites nothing — the quiet one.
 
-    Mutation: delete the `check_typed_name` gate. The body then becomes
+    Mutation: delete the typed-name refusal (row 6) in
+    `attachment_plan._decide`. The body then becomes
     `![[karte|1938.png]]` and `![[karte|1938.png|300]]`, which Obsidian
     reads as an embed of a note named `karte` aliased `1938.png` — not a
     dangling link that announces itself, but real content from the wrong
@@ -138,25 +158,25 @@ def test_refused_forbidden_character_leaves_body_byte_identical():
     assert verdict.reason == "forbidden_character"
 
     remedies = {SOURCE: _remedy(FORBIDDEN_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 def test_refused_blank_leaves_body_byte_identical():
     """A whitespace-only typed name rewrites nothing.
 
-    `"   "` is truthy, so the existing falsy-`proposed_name` check does not
-    stop it — only `check_typed_name`'s `blank` verdict does. Mutation:
-    delete the gate and the body becomes `![[   ]]`, an embed of
-    whitespace. A second mutation this also catches: gate on
-    `proposed_name.strip()` being falsy instead of on the verdict, which
-    would stop this case but neither of the two above.
+    `"   "` is truthy, so a falsy-`proposed_name` check does not stop it —
+    only `check_typed_name`'s `blank` verdict does. Mutation: delete the
+    typed-name refusal (row 6) in `attachment_plan._decide` and the body
+    becomes `![[   ]]`, an embed of whitespace. A second mutation this also
+    catches: refuse on `proposed_name.strip()` being falsy instead of on the
+    verdict, which would stop this case but neither of the two above.
     """
     verdict = check_typed_name(BLANK_TYPED_NAME)
     assert verdict.ok is False
     assert verdict.reason == "blank"
 
     remedies = {SOURCE: _remedy(BLANK_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == BODY
+    assert _rewrite(BODY, [SOURCE], remedies) == BODY
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +196,7 @@ def test_accepted_typed_name_rewrites_every_embed_including_the_sized_one():
     assert check_typed_name(ACCEPTED_TYPED_NAME).ok is True
 
     remedies = {SOURCE: _remedy(ACCEPTED_TYPED_NAME, name_is_owner_supplied=True)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[karte-dresden-1938.png]]\n"
         "\n"
         "Again, sized: ![[karte-dresden-1938.png|300]]\n"
@@ -197,7 +217,7 @@ def test_computed_name_still_rewrites_when_flag_is_false():
     assert check_typed_name(computed).ok is False  # would be refused if typed
 
     remedies = {SOURCE: _remedy(computed, name_is_owner_supplied=False)}
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[foo*bar (2).png]]\n\nAgain, sized: ![[foo*bar (2).png|300]]\n"
     )
 
@@ -213,7 +233,7 @@ def test_computed_name_still_rewrites_when_flag_is_absent():
     """
     computed = "foo*bar (2).png"
     remedies = {SOURCE: _remedy(computed)}  # no flag key at all
-    assert rewrite_renamed_embeds(BODY, [SOURCE], remedies) == (
+    assert _rewrite(BODY, [SOURCE], remedies) == (
         "Map: ![[foo*bar (2).png]]\n\nAgain, sized: ![[foo*bar (2).png|300]]\n"
     )
 
@@ -227,17 +247,16 @@ def test_both_halves_refuse_the_same_typed_name():
     """One refused name, fed to BOTH halves: the move builder emits
     `typed_name_refused` AND the body comes back byte-identical.
 
-    This is the only test that sees the two gate conditions drift apart.
-    `check_typed_name` is now called from `rewrite_renamed_embeds` and from
-    `_build_move_asset_actions` and nothing in the type system keeps them
-    agreeing; T3.2 produced this defect precisely by changing one and not
-    the other. Mutation: change either half's condition — gate the rewrite
-    on `proposed_name` containing `/` instead of on the verdict, say, and
-    this test fails on the `|` name while every per-half test still passes.
+    This is the only test that sees the two gate conditions drift apart:
+    the move builder and the rewrite originally each called `check_typed_name`
+    and nothing kept them agreeing; T3.2 produced this defect by changing one
+    and not the other. Since T4.4 both read the plan's row-6 verdict. Mutation:
+    make `attachment_plan._decide` row 6 refuse on a narrower condition (only
+    names containing `/`, say) and this test fails on the `|` name.
     """
     remedy = _remedy(FORBIDDEN_TYPED_NAME, name_is_owner_supplied=True)
 
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         [_manifest_entry("S01", "karte.md", [SOURCE])],
         INBOX,
         ASSET_FOLDER,
@@ -250,7 +269,7 @@ def test_both_halves_refuse_the_same_typed_name():
     assert skipped[0]["kind"] == "typed_name_refused"
     assert skipped[0]["refusal_reason"] == "forbidden_character"
 
-    assert rewrite_renamed_embeds(BODY, [SOURCE], {SOURCE: remedy}) == BODY
+    assert _rewrite(BODY, [SOURCE], {SOURCE: remedy}) == BODY
 
 
 def test_both_halves_accept_the_same_typed_name():
@@ -266,7 +285,7 @@ def test_both_halves_accept_the_same_typed_name():
     """
     remedy = _remedy(ACCEPTED_TYPED_NAME, name_is_owner_supplied=True)
 
-    actions, skipped = _build_move_asset_actions(
+    actions, skipped = move_asset_actions_from_remedies(
         [_manifest_entry("S01", "karte.md", [SOURCE])],
         INBOX,
         ASSET_FOLDER,
@@ -277,7 +296,7 @@ def test_both_halves_accept_the_same_typed_name():
     assert len(actions) == 1
     assert actions[0]["destination"] == f"{ASSET_FOLDER}{ACCEPTED_TYPED_NAME}"
 
-    rewritten = rewrite_renamed_embeds(BODY, [SOURCE], {SOURCE: remedy})
+    rewritten = _rewrite(BODY, [SOURCE], {SOURCE: remedy})
     assert rewritten == (
         "Map: ![[karte-dresden-1938.png]]\n"
         "\n"

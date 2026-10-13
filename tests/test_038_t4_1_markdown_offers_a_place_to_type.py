@@ -90,6 +90,7 @@ def test_ordinary_conflict_renders_byte_identically_to_today():
             "",
             "**Remedy — choose one:**",
             f"- [x] Rename to `{ASSET_FOLDER}karte (2).png`",
+            f"  - Folder: `{ASSET_FOLDER.rstrip('/')}`",
             "- [ ] Keep in inbox",
         ]
     )

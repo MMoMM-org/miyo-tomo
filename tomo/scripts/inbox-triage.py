@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.2
+# version: 0.40.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -8,8 +8,9 @@ coverage and drift, determines action, and emits routing-plan.json.
 
 CLI: python3 tomo/scripts/inbox-triage.py [OPTIONS]
   --inbox-path PATH     Vault-relative inbox folder (default: from vault-config.yaml)
-  --force-pass1         Force suggest action
-  --force-pass2         Force synthesize action
+  --pass1, --force-pass1   Run Pass 1 (suggest)
+  --pass2, --force-pass2   Run Pass 2 (synthesize), coverage/drift-respecting
+  --force                  Modifier: ignore coverage/drift, redo everything
   --recover             Treat captured as fresh
   --output-dir DIR      Output directory (default: tomo-tmp)
 
@@ -54,6 +55,7 @@ from lib.kado_client import (  # noqa: E402
 )
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 from lib.run_id import generate as generate_run_id  # noqa: E402
+from lib.vault_paths import nfc_lower  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
 from lib.wire_version import wire_schema_version  # noqa: E402
 
@@ -554,12 +556,12 @@ def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
     md_keys = set()
     for f in md_files:
         p = Path(f["path"])
-        md_keys.add((str(p.parent), p.stem.lower()))
+        md_keys.add((nfc_lower(str(p.parent)), nfc_lower(p.stem)))
 
     for af in audio_files:
         p = Path(af["path"])
-        safe_stem = sanitize_stem(p.stem).lower()
-        if (str(p.parent), safe_stem) not in md_keys:
+        safe_stem = nfc_lower(sanitize_stem(p.stem))
+        if (nfc_lower(str(p.parent)), safe_stem) not in md_keys:
             return True
 
     return False
@@ -1759,11 +1761,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Vault-relative inbox folder (default: from vault-config.yaml)",
     )
     p.add_argument(
-        "--force-pass1", action="store_true", default=False,
-        help="Force suggest action",
+        "--pass1", "--force-pass1", dest="force_pass1",
+        action="store_true", default=False,
+        help="Run Pass 1 (suggest), coverage/drift-respecting",
     )
     p.add_argument(
-        "--force-pass2", action="store_true", default=False,
+        "--pass2", "--force-pass2", dest="force_pass2",
+        action="store_true", default=False,
         help="Run Pass 2 (synthesize), coverage/drift-respecting — only "
              "re-synthesizes uncovered or content-changed approved docs",
     )

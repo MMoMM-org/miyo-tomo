@@ -124,8 +124,10 @@ Destination Guard".
 ## An Unfiled Attachment Is Not a Coverage Gap Either (spec 034 T5.4)
 
 `_subtract_skipped_assets` removes, from the expected `move_asset` tally, the
-attachments the renderer deliberately did not file — a path with no basename,
-or one whose destination is already claimed by a different file.
+attachments the renderer deliberately did not file — every path K1
+(`attachment_plan._decide`) withholds and records in `skipped_assets`. The kind
+set (`no_basename`, `vault_collision_held`, `typed_name_refused`,
+`typed_folder_refused`, `collision`, `vault_occupied` at time of writing) is K1's.
 
 This closes a gap that predates T5.4 and was measured on HEAD before it:
 `derive_expected` counts one expected `move_asset` per distinct attachment path
@@ -289,3 +291,11 @@ wording; a WHY doc that calls a detectable failure silent invites someone to
 build a guard against a problem the audit already catches. The audit is safe today
 because every spec 037 remedy still resolves to *at most one* `move_asset`
 per attachment (filed, renamed-and-filed, or withheld) — never more.
+
+## `_subtract_skipped_assets` Does Not Enumerate Withheld Kinds (spec 039 T4.3)
+
+WHY the docstring names K1 (`attachment_plan._decide`) instead of listing the
+withheld kinds: the plan owns the kind set and grew it in spec 039
+(`typed_folder_refused`, `vault_occupied`, ...). A list here would be a second
+copy that goes stale. The arithmetic is unchanged — one subtraction per
+`tomo.skipped_assets` entry, whatever the kind.

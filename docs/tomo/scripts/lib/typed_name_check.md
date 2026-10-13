@@ -2,7 +2,7 @@
 
 > Rationale for decisions in `tomo/scripts/lib/typed_name_check.py`.
 > A pure verdict on one owner-typed attachment name: usable, or refused with
-> one of three reason codes. Only non-obvious decisions are recorded here.
+> one of five reason codes. Only non-obvious decisions are recorded here.
 
 ## Refusal, Never Substitution (spec 038 T3.1, ADR-5, v0.1.0)
 
@@ -28,16 +28,11 @@ argument. That is a structural guarantee rather than a convention — a future
 change that wanted to trim or substitute would have to alter the dataclass's
 documented contract to do it, not just add a line.
 
-ADR-5 closes the set of permitted outcomes to two, accept-verbatim or refuse,
-and the one case that tempts a third is recorded in `check_typed_name`'s own
-docstring rather than here because it is still open: a name padded with leading
-or trailing whitespace (`"  a.png  "`) is none of the three refusal classes, so
-it is accepted padding and all. Flagged to the owner 2026-10-01 — whitespace is
-easy to type by accident and invisible once typed — and deliberately left as
-accept-as-is pending a ruling, because trimming it is the one thing ADR-5 does
-not permit and inventing a fourth class to refuse it would pre-empt the owner's
-decision. `tests/test_038_t3_1_typed_name_check.py` pins the current behaviour
-so the ruling, when it comes, arrives against a test rather than into a gap.
+ADR-5 closes the set of permitted outcomes to two, accept-verbatim or refuse.
+The padded name that spec 038 left accepted (`"  a.png  "`, flagged to the
+owner 2026-10-01) is now refused as `breaks_link` (spec 039 T2.1, #185): trimming
+stays forbidden, so the only honest answer to an invisible, accidentally typed
+edge space is to refuse it and let the owner retype.
 
 ## A Separate Module, Not a Branch in the Move Builder (spec 038 T3.1)
 
@@ -66,13 +61,13 @@ function whose entire input is one `str` and whose entire output is a frozen
 dataclass has no seam to hide behind, so the file's size is the honest size of
 the rule rather than a wrapper around one elsewhere.
 
-## Three String Classes, and Why `taken` Is Not the Fourth (spec 038 T3.1, owner 2026-10-01)
+## The String Classes, and Why `taken` Is Not One of Them (spec 038 T3.1, owner 2026-10-01)
 
-WHY `REFUSAL_REASONS` has exactly three members when F3 names four things that
+WHY `REFUSAL_REASONS` has no `taken` member when F3 names four things that
 can be wrong with a typed name — separator, forbidden character, blank, and
 *already taken*.
 
-Because `taken` is not a property of the string. The first three can be decided
+Because `taken` is not a property of the string. The original three (spec 038) can be decided
 by looking at the name and nothing else, which is what makes them answerable by
 a one-argument pure function. Occupancy is a property of the run: whether
 `karte.png` is free depends on what the other items in this same Pass 2 have
@@ -111,13 +106,11 @@ document rendered from the run in which they typed the name.
 
 The set is `frozenset` and the module docstring calls it closed, which is load-
 bearing downstream rather than decorative: `_typed_name_refusal_reason`
-(`render_actions.py:692`) has three branches and reaches its final `return` only
-for `blank`, not as a fallback for an unrecognised code. Measured at T3.5 by
-disabling that function's first branch — a separate code that fell through
-would not be re-labelled as a forbidden character, it would be announced to the
-owner as *blank*, because the function branches on the code and never
-re-inspects the string. A fourth member added to this frozenset without a
-matching branch there would ship that sentence.
+(in `render_actions.py`) delegates to `lib/refusal_sentences.py`, which raises on a code it does not
+know (spec 039 T1.5). Before that the function ended in an unguarded `return`
+of the blank sentence, so a code without a branch was announced to the owner as
+*blank*. A member added to this frozenset without a matching sentence now fails
+loudly instead.
 
 ### WHY `/` Is Reported as `separator_present` and Not `forbidden_character`
 
@@ -143,7 +136,7 @@ first owner the second instruction.
 WHY `check_typed_name(name: str)` takes nothing else — no config, no vault
 client, no `claimed` map, no run id.
 
-It is the same argument as the three classes, stated as a signature. Everything
+It is the same argument as the original three classes (spec 038), stated as a signature. Everything
 this function can decide is decidable from the string, so every additional
 parameter would be either unused or a second mechanism for something the run
 already does. The practical payoff is in the tests: each refusal class is one
@@ -159,3 +152,87 @@ grows a member whose answer depends on when the run happened. The empty
 parameter list is the cheapest available guard against that, and it is why the
 docstring names the rejected alternative rather than only describing the chosen
 one.
+
+## `breaks_link` and `unsafe_sequence` (spec 039 T2.1, ADR-6, #185)
+
+WHY two new reasons, and why the character sets live in this module.
+
+`breaks_link` covers edge whitespace and `# ^ [ ]` anywhere: a wikilink cannot
+carry them (they are heading, block and nested-link syntax), so a name with one
+would be filed but never linked to. The sentence says the name would break the
+link, never that the vault forbids the filename, because the vault does not.
+`unsafe_sequence` covers `{{`, `<%` and control characters: before it existed
+such a name reached the path-shape guard and aborted ALL of Pass 2 (exit 2);
+now only that attachment is refused and every other item is produced.
+
+The link-breaking set is local here, not added to `FORBIDDEN_CHARS`, because
+`sanitize_stem` uses `FORBIDDEN_CHARS` for note stems and `C# Notizen` must stay
+untouched (PRD F5-AC4).
+
+Check order: blank, separator, edge whitespace (`breaks_link`), `{{`/`<%` and
+control characters `[\x00-\x1f\x7f]` (`unsafe_sequence`), forbidden, `# ^ [ ]`
+(`breaks_link`). Edge whitespace precedes the unsafe checks so a tab at the edge
+reads as the whitespace problem it is. The unsafe checks precede
+`forbidden_character` because `<` and `\x00` are `FORBIDDEN_CHARS` members and
+would mask `<%` and the control-character rule, contradicting F5-AC7 ("one
+shared reason"). Spec 038 had pinned `\x00` as `forbidden_character`; spec 039
+re-pinned it to `unsafe_sequence` (review fix, T2.1) because NUL is a control
+character. Refused either way, and it never aborts the run.
+
+## One control-character predicate (spec 039 T2.1 review)
+
+WHY `is_control_char` is public: folder checks (T2.2) and the refusal sentence's
+escaping need the same definition of "control character" as `check_typed_name`,
+and a second copy is a second chance to disagree. The one deliberate exception
+is `render_actions.py`'s backstop regex `_CONTROL_CHARS_RE`, which has its own
+pattern; both must agree, and
+`test_render_backstop_regex_agrees_with_the_control_predicate` asserts it over
+`chr(0)..chr(0x9f)`.
+
+## `check_typed_folder` (spec 039 T2.2, ADR-5, K4)
+
+WHY it lives beside `check_typed_name`: one module owns "what an owner may
+type", and Pass 2 must refuse a typed folder per entry. `_check_path_shape`
+(`render_actions.py`) aborts the whole run on `../x`, and passes `a//b`,
+`a/./b` and `" a "` (research R2 section 5), so a per-entry check has to run
+first. Nine reasons, a closed set of its own (`FOLDER_REFUSAL_REASONS`), each
+with a sentence in `refusal_sentences.py`.
+
+WHY the order is blank, escapes_vault, empty_segment, edge_whitespace,
+trailing_separator, unsafe_sequence, forbidden_character, breaks_link,
+inside_inbox:
+- Structural reasons precede character reasons because `\` and `:` are
+  `FORBIDDEN_CHARS` members; `a\b` and `C:/x` must say `escapes_vault`, and
+  `<%` must say `unsafe_sequence` (same masking argument as for names).
+- A drive prefix is a letter, `:`, then `/` or end. `a:b` is not an escape; it
+  is a forbidden character. `_check_path_shape` rejects `a:b` as a drive letter,
+  the property test only needs it refused.
+- `.` segments are escapes: they are relative-path elements, and `./a` and
+  `a/./b` both reach the wire as paths that are not normal vault paths. A
+  leading `~` of any kind is refused, matching `_check_path_shape`.
+- Edge whitespace is judged per segment, so `a/ /b` (a whitespace-only
+  segment) is `edge_whitespace`, not `empty_segment`; `empty_segment` means
+  literally `//`. A segment edged with `\x1c`-`\x1f` also reports
+  `edge_whitespace` because `str.strip` treats those as whitespace (as in
+  `check_typed_name`); still refused.
+- `breaks_link` applies to folders: the folder becomes part of a qualified
+  embed, so `#`, `^`, `[`, `]` break it exactly as in a name (owner ruling
+  2026-10-12, so `C# Projekte` is refused).
+
+WHY `inside_inbox` runs last and compares NFC + casefold on segment
+boundaries: it is the only reason that depends on run configuration, and the
+vault may be case-insensitive and macOS hands back decomposed names. A
+sibling such as `100 Inbox Archive` is not inside `100 Inbox`. The config
+carries `concepts.inbox` as `100 Inbox/`, so only `inbox_path` has trailing
+slashes removed; the typed folder is never normalised. A blank `inbox_path`
+matches nothing rather than everything. Casefold is deliberately conservative
+(`ß` equals `ss`): refusing a lookalike beats filing into the inbox.
+
+No production call site yet; Phase 4 (K1) calls it when the folder is
+owner-supplied.
+
+## `inside_inbox` compares under `path_key` (spec 039 W7)
+
+The NFC + casefold comparison is `lib.vault_paths.path_key`; the private
+`_comparable` copy is gone. Same behaviour, one definition shared with every
+destination comparison (`vault_paths.md`).

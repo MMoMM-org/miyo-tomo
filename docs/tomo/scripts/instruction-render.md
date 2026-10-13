@@ -767,6 +767,8 @@ living only in three files that happen to agree.
 
 ## The Embed Rewrite Lives Between the Render and the Write, Not in `render_actions.py` (spec 037 T3.3)
 
+*Superseded by spec 039 T4.4 — the rewrite reads the attachment plan built before the loop; see the T4.4 section.*
+
 The 2026-09-15 failure this spec exists to close (README.md Context) left an
 Atlas note filed correctly while its body still embedded
 `![[Scans/karte.png]]` — an inbox path the attachment had never actually left,
@@ -996,6 +998,13 @@ not.
 
 ### Two Facts the Docstrings Do Not Carry, Both Measured
 
+*The first fact is superseded by spec 039 T4.4 — the plan is built once before
+the render loop and `rewrite_attachment_embeds` writes only the plan's decided
+`embed`, so a withheld source (embed None) never has its body rewritten and the
+note and the document no longer disagree (F4-AC8). The second fact still holds:
+the rewrite is reached only inside the per-item render loop, for items that have
+a template. What follows is the pre-T4.4 measurement, kept as history.*
+
 **The owner is told about a withheld move in a document whose staged note body
 has already been rewritten.** `rewrite_renamed_embeds` runs per entry, between
 the body being produced and written, while `build_actions` — and therefore the
@@ -1037,3 +1046,137 @@ not the prose. It catches the two failure modes that are otherwise silent in a
 live run: the instruction deleted while the writer stays, and either side
 drifting to a different filename. The executable check on the report itself is
 Phase 5's live run.
+
+## The Attachment Plan Is Built at the `build_actions` Call (spec 039 T4.3, v0.64.0)
+
+`attachment_conflict_remedies` no longer reaches `build_actions` as an
+argument: it reaches it inside the attachment plan (`attachment_plan=`), built
+here from the remedies, a `VaultFolderLookup` and a basename census over the
+run's Kado client. The 037 T3.0 transport tests now spy on
+`build_attachment_plan` for the "read AND forwarded" guarantee above; the
+mutation they exist for — read the key, never forward it — is caught the same
+way.
+
+**Only items with a template are planned.** The render loop skips an item
+without a template, so it never reaches the manifest and its attachments were
+never filed. Planning them anyway would let such an item's attachment claim a
+target first and turn a rendered item's move into a `collision` — a change no
+owner asked for. An item that has a template but fails to render *is* planned
+(SDD ADR-1 accepts this); the move builder still emits nothing for it, because
+it projects only attachments named in the manifest.
+
+**No client, no plan.** A client is created whenever there are confirmed
+items; with none (a daily-only run) the manifest is empty and there is nothing
+to file, so no lookup and no census are constructed and `build_actions` gets
+`attachment_plan=None`. A garden-audit run never reaches `build_actions`.
+
+*Superseded by spec 039 T4.4 (next section) for where the plan is built.*
+
+**Built at the call, not before the loop — for now.** T4.5 moves the build
+before the render loop so the embed rewrite (T4.4) can read the same plan; it
+sits here in T4.3 so the move builder could become a projection without
+reordering the run in the same change. Until T4.5 the folder lookup is a
+second instance beside `make_folder_listing(client)`'s, so a folder that is
+both an asset target and a note destination may be listed twice.
+
+## The Render Loop Writes the Plan's Embeds (spec 039 T4.4, v0.65.0)
+
+The embed rewrite now reads the attachment plan, so the plan has to exist
+before the first note is rendered: it is built after the confirmed list is
+final (`filter_missing_source_notes`, `backfill_supporting_items_parents`) and
+before the loop, with the same template-bearing filter and the same lookup and
+census construction T4.3 used, and the **same object** is passed to
+`build_actions`. One plan per run means the moves and the embeds cannot
+disagree, and a move withheld for a run-level reason (`collision`,
+`no_basename`) no longer leaves a staged note rewritten to a name that was never
+filed — the inconsistency recorded under "Two Facts the Docstrings Do Not
+Carry" is closed.
+
+This is the part of T4.5's relocation the rewrite cannot work without, and only
+that part. Still T4.5's: the counters (`folder_listing_calls`,
+`basename_searches`, `basename_pages`) into `cost_history`, and handing
+`validate_destinations` a view of the same `VaultFolderLookup` instead of a
+second listing through `make_folder_listing(client)`.
+
+**Garden-audit runs build no plan** and so rewrite no embed, exactly as T4.3
+built none for them. Nothing changes in practice: `garden-audit-parser.py`
+emits neither a `template` (so the loop renders none of its items) nor
+`attachment_conflict_remedies`.
+
+**A harness with a bare `MagicMock` Kado now sees qualified embeds.** The
+census cannot count through it, an unanswered count qualifies the embed
+(F4-AC6), so a test that pins the bare name gives the run a `FakeVault`
+(`tests/attachment_plan_fakes.py`) through `VaultFolderLookup` and
+`make_basename_census`.
+
+## One Lookup, One Census, One Cost Entry (spec 039 T4.5, v0.66.0)
+
+`main()` builds one `VaultFolderLookup` (K2) and one basename census (K3)
+whenever it has a Kado client, before the render loop, and every reader in the
+run asks those two objects: the attachment plan, and `validate_destinations`,
+which now receives the lookup's `notes` view instead of
+`make_folder_listing(client)`. WHY: `make_folder_listing(client)` built a
+second, private lookup, so a folder holding both an attachment target and a
+note destination (an owner typing the note's own folder for an attachment) was
+listed twice — once per guard. ADR-2 and F3-AC7 ask for one raw listing per
+folder shared by every reader; the lookup caches the raw listing precisely so
+the second reader can derive its own view from it.
+
+The lookup and census are built whenever a client exists, including on a
+garden-audit run that builds no plan. Construction costs no Kado call; a
+garden-audit run emits no `move_note`, so the note guard lists nothing, and
+its output is byte-identical to before (pinned by
+`tests/fixtures/039-t4-5-unaffected-runs/expected.json`, recorded at 0e8835a6).
+
+**The cost-history entry (C1-AC1).** With `--cost-history <path>`, the render
+appends one entry through `lib/cost_history.build_entry` — the same helper the
+reducer and triage use, so the shape cannot drift — after `instructions.md` is
+written (the same placement as the reducer's: after the last artefact, so an
+aborted run records nothing). It carries the reducer's keys plus
+`basename_searches` and `basename_pages`, read off the run's census, and
+`folder_listing_calls` / `distinct_destination_folders` read off the run's
+lookup — so they count the attachment guard and the note guard together.
+
+- `action` is `render`: triage already appends its own `synthesize` entry for
+  a Pass 2 run (`synthesize` is not in `DOWNSTREAM_COST_ENTRY_ACTIONS`), so
+  reusing that action would make one run look like two triage runs.
+- `base_kado_calls` is `0`: the base is defined as triage's fixed pipeline
+  cost (the recursive listing and the embed extraction), which the render
+  process never spends. This is a measured zero for this process, not an
+  untaken measurement.
+- A run with no Kado client (daily-only) writes measured zeros for
+  `folder_listing_calls`, `distinct_destination_folders`, `basename_searches`,
+  `basename_pages` and `total_kado_calls`. With no client no lookup could have
+  run, so the zero is a measurement — unlike `cost_history.md`'s "omit when not
+  measured" rule, which covers counters the process could have taken.
+- `total_kado_calls` is the client's own round-trip counter
+  (`observed_call_count`), never declared.
+- `item_count` is the confirmed items left after the missing-source filter.
+
+WHY the flag defaults to absent, unlike the reducer's cwd-relative default:
+dozens of host tests drive `main()` from the repo root, and a default path
+would append into the repo's `state/`. The conductor does not pass the flag
+yet; wiring it into `synthesis-conductor.md` step 3b is a separate change to a
+runtime file the LLM reads.
+
+A run with no attachment pays no census and no asset-folder listing: the plan
+asks the lookup and the census only per attachment source, so their counters
+stay at zero and the only listing is the note guard's (F3-AC7).
+
+## The Attachment Relay Also Carries Unchecked Targets (spec 039 T5.1, v0.67.0)
+
+WHY `withheld-attachments.md` holds a second kind of line rather than a third
+relay file: ADR-8 emits a move whose target the vault did not answer for and
+reports it as not checked, in the instruction document and in the shell (SDD
+Error Handling). A third file would be a third `cat` in the conductor and a
+third staleness pair for no gain — the lines are already-sanitised notices like
+the others, and `sync_notice_relay_file` does not care what they say. The
+lines come from `unchecked_target_notices(actions, reports)` over the final
+`actions`, so a move a guard withdrew is never relayed, and each is the line the
+move's block in `instructions.md` carries. One line per target, never a count
+(038 C1). The filename stays: renaming it would move the wiring guard and the
+conductor together for a cosmetic gain.
+
+`attachment_reports` (`AttachmentPlan.reports_by_source()`) is computed once
+there and handed to `render_instructions_md` in the metadata, so both surfaces
+read the same object.

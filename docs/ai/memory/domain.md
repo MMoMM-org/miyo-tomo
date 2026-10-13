@@ -37,3 +37,6 @@ folded into `compute_new_sources`. The marker is transient: Hashi's
 on `move_note`/`create_moc` apply, so the final moved note stays clean — stamping
 staging notes costs nothing cross-repo. `pending-move` is the only valid state for
 `rendered-note` in `doc-frontmatter.schema.json`.
+
+## Emptied inbox subfolders stay (owner ruling 2026-10-13)
+An inbox subfolder emptied by moving its files out is not deleted, by Tomo or by Hashi (spec 039 README decisions log).

@@ -1,0 +1,21 @@
+{
+  "garden-audit": {
+    "rc": 0,
+    "instructions.json": "{\n  \"schema_version\": \"3\",\n  \"type\": \"tomo-instructions\",\n  \"source_suggestions\": \"parsed-suggestions.json\",\n  \"generated\": \"2026-10-12T09:00:00Z\",\n  \"profile\": \"miyo\",\n  \"tomo_version\": null,\n  \"action_count\": 1,\n  \"md_peer\": \"2026-10-12_0900_instructions\",\n  \"actions\": [\n    {\n      \"id\": \"I02\",\n      \"action\": \"add_relationship\",\n      \"target_moc\": \"Rivers (MOC)\",\n      \"target_moc_path\": \"Atlas/202 Notes/Waldweg.md\",\n      \"marker\": \"up::\",\n      \"line\": \"up:: [[Rivers (MOC)]]\",\n      \"source_note_title\": null,\n      \"applied\": false\n    }\n  ],\n  \"tomo\": {\n    \"doc_type\": \"instructions\",\n    \"state\": \"pending-apply\",\n    \"run_id\": \"2026-10-12-090000-t45\",\n    \"updated_at\": \"<NORMALISED>\",\n    \"sources\": [\n      {\n        \"path\": \"100 Inbox/2026-10-12_0900_suggestions.md\",\n        \"checksum\": \"sha256:79ea5b19c8b65a98eb316cf4ead1ed9e5e66ac588e1352aa59ea623da83657a7\"\n      }\n    ],\n    \"unresolvable_moc_links\": [\n      {\n        \"id\": \"I01\",\n        \"target_moc\": \"Rivers (MOC)\",\n        \"source_note_title\": \"Waldweg\",\n        \"cause\": \"absent\"\n      }\n    ]\n  }\n}",
+    "instructions.md": "---\ntype: tomo-instructions\ntomo:\n  doc_type: instructions\n  state: pending-apply\n  run_id: 2026-10-12-090000-t45\n  updated_at: '<NORMALISED>'\n  sources:\n  - path: 100 Inbox/2026-10-12_0900_suggestions.md\n    checksum: sha256:79ea5b19c8b65a98eb316cf4ead1ed9e5e66ac588e1352aa59ea623da83657a7\ngenerated: 2026-10-12T09:00:00Z\nprofile: miyo\naction_count: 1\n---\n\n# Instructions\n\n## MOC Links\n\n### I02 — Update up:: on [[Rivers (MOC)]]\n- [ ] Applied\n- **Path:** `Atlas/202 Notes/Waldweg.md`\n- **Marker:** `up::`\n- **Replace marker line with:** `up:: [[Rivers (MOC)]]`\n\n## Skipped — un-appliable actions\n\n**MOC link not offered** — no instruction was emitted for the links below: the run could not confirm the target MOC exists, and a bullet is only ever written into a MOC the run has located. Each line says what the run learned and what to do about it — the reasons differ, and so do the remedies. The source notes are filed as usual; only the bullet on the MOC was not written:\n\n- [[Rivers (MOC)]] ← [[Waldweg]] — MOC not found — create it (or correct the name in the suggestions document) and re-run Pass 2.\n",
+    "manifest.json": "[]",
+    "kado_log": [
+      [
+        "search_by_name",
+        "Rivers (MOC)"
+      ]
+    ]
+  },
+  "daily-only": {
+    "rc": 0,
+    "instructions.json": "{\n  \"schema_version\": \"3\",\n  \"type\": \"tomo-instructions\",\n  \"source_suggestions\": \"parsed-suggestions.json\",\n  \"generated\": \"2026-10-12T09:00:00Z\",\n  \"profile\": \"miyo\",\n  \"tomo_version\": null,\n  \"action_count\": 1,\n  \"md_peer\": \"2026-10-12_0900_instructions\",\n  \"actions\": [\n    {\n      \"id\": \"I01\",\n      \"action\": \"update_tracker\",\n      \"daily_note_path\": \"Calendar/301 Daily/2026-10-11.md\",\n      \"date\": \"2026-10-11\",\n      \"field\": \"Sleep\",\n      \"value\": \"23:00\",\n      \"syntax\": \"inline_field\",\n      \"section\": null,\n      \"source_stem\": null,\n      \"reason\": null,\n      \"applied\": false\n    }\n  ],\n  \"tomo\": {\n    \"doc_type\": \"instructions\",\n    \"state\": \"pending-apply\",\n    \"run_id\": \"2026-10-12-090000-t45\",\n    \"updated_at\": \"<NORMALISED>\",\n    \"sources\": [\n      {\n        \"path\": \"100 Inbox/2026-10-12_0900_suggestions.md\",\n        \"checksum\": \"sha256:79ea5b19c8b65a98eb316cf4ead1ed9e5e66ac588e1352aa59ea623da83657a7\"\n      }\n    ]\n  }\n}",
+    "instructions.md": "---\ntype: tomo-instructions\ntomo:\n  doc_type: instructions\n  state: pending-apply\n  run_id: 2026-10-12-090000-t45\n  updated_at: '<NORMALISED>'\n  sources:\n  - path: 100 Inbox/2026-10-12_0900_suggestions.md\n    checksum: sha256:79ea5b19c8b65a98eb316cf4ead1ed9e5e66ac588e1352aa59ea623da83657a7\ngenerated: 2026-10-12T09:00:00Z\nprofile: miyo\naction_count: 1\n---\n\n# Instructions\n\n## Daily Updates\n\n### I01 — Daily update: [[2026-10-11]]\n- [ ] Applied\n- **Open:** [[2026-10-11]]\n- **Add to tracker section:**\n  `Sleep:: 23:00`\n",
+    "manifest.json": "[]",
+    "kado_log": []
+  }
+}

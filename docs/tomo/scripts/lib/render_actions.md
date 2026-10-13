@@ -5,46 +5,12 @@
 > items, and daily/skip inputs into the ordered `actions[]` list. Only
 > non-obvious decisions are recorded here.
 
-## `_asset_dest_join` Exists Because Neither Existing Path Helper Is Safe (spec 031)
+## `_dest_join` / `_asset_dest_join` Live in `lib/vault_paths.py` (spec 039 T1.4)
 
-WHY a third destination-join helper instead of reusing `_dest_join` or
-`_ensure_md_extension`: both exist for NOTE paths, and both actively corrupt
-an attachment path.
-
-- `_dest_join` hardcodes a `.md` suffix (`f"{folder}{sanitize_stem(stem)}.md"`)
-  — an attachment keeping its own extension (`.jpg`, `.m4a`, …) would come out
-  as `karte.jpg.md`.
-- `_ensure_md_extension` is the more dangerous trap because its failure mode
-  looks like success on the obvious test case: for an extension already in
-  `KNOWN_FILE_EXTENSIONS` (`lib/file_extensions.py`) — `.jpg` included — it is
-  a silent NO-OP (`foto.jpg` → `foto.jpg`), so a fixture built around `.jpg`
-  proves nothing. For any extension NOT in that allowlist — `.heic`, `.docx`,
-  `.arw`, anything a phone or scanner produces that the note-path allowlist
-  never anticipated — it silently appends `.md` (`scan.heic` → `scan.heic.md`).
-  An earlier draft of this spec's own SDD had the hazard backwards (claimed
-  `_ensure_md_extension` corrupted `.jpg` and no-op'd on everything else); the
-  measured behaviour is the opposite. This is why `test_031_t2_1_asset_dest_join.py`
-  pins the regression with `scan.heic`, not `.jpg` — the `.jpg` case cannot
-  distinguish "safe" from "silently broken".
-
-`_asset_dest_join` also does NOT run the basename through `sanitize_stem`
-(unlike `_dest_join`): an attachment's filename already exists on disk and
-the embed referencing it resolves by that exact name — rewriting it (even to
-replace an Obsidian-forbidden character) would break the very embed the
-feature exists to keep working.
-
-`_asset_dest_join` raises `ValueError` when the source path has no basename
-(empty, or ending in `/`) instead of silently returning a bare folder path.
-This is reachable, not theoretical: `build_inbox_index` indexes a malformed
-`listDir` entry like `{"path": "100 Inbox/Images/", "type": "file"}` — Kado
-mistyping a folder as a file — under the key `""`, and `resolve_attachments`
-returns index values verbatim, so a bad entry can reach this function.
-`_check_path_shape` (the wire-level path validator, `:378`) has no basename
-check, so nothing downstream would have caught a bare-folder destination
-before it reached Hashi as an instruction to move a file *to* a directory.
-`_build_move_asset_actions` catches the `ValueError` and routes that one
-attachment through the same skip-and-report path as a destination collision
-(below) rather than letting it abort the whole render.
+Both path helpers moved to `lib/vault_paths.py` so the shared folder lookup
+(`lib/vault_folder_lookup.py`) can key by them without importing this module.
+This module re-exports both names. Why `_asset_dest_join` exists at all is
+recorded in `docs/tomo/scripts/lib/vault_paths.md`.
 
 ## Global Dedup, Not Per-Item (spec 031)
 
@@ -353,13 +319,13 @@ correctness depend on an unmeasured behaviour. A listing returns the folder's
 real filenames, which puts the fold in Tomo where a test can reach it, and
 carries the vault's own spelling for the report.
 
-It is the twin of `suggestions-reducer._vault_folder_notes`, which serves the
-Pass-1 proposal: both compose through `_dest_join` and fold the same way, so the
-proposal and the guard cannot disagree about what "the same place" means. They
-are duplicated rather than shared on purpose — `docs/XDD/backlog.md` schedules
-the extraction of the whole clash surface into a `lib/` module after Phase 5
-closes, when T5.2, T5.3 and T5.4 have all landed, and moving the ground
-mid-phase is what that entry declined.
+It was the twin of the Pass-1 reducer's folder lookup until spec 039 T1.4
+re-based it on that lookup: `make_folder_listing` is now the `.md` view of
+`lib/vault_folder_lookup.VaultFolderLookup`, so Pass 1 and Pass 2 compose
+through `_dest_join` and fold the same way by construction, and a lookup handed
+in is shared with every other reader of the same folder. Why the cache holds
+the raw listing and how folder state is classified: see
+`docs/tomo/scripts/lib/vault_folder_lookup.md`.
 
 The cache key is the folder `_dest_join` derives, not the raw string. T5.2
 shipped a raw-`location` cache and fixed it in `00eb712`, where a trailing slash
@@ -1395,6 +1361,8 @@ live. A repo-wide sweep of `rstrip("/")` call sites is a separate task.
 
 ## A Parameter Accepted and Deliberately Ignored (spec 037 T3.0, v0.26.3)
 
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
+
 `_build_move_asset_actions` gained `attachment_conflict_remedies` and does not
 read it. `build_actions` forwards it and does not read it either.
 
@@ -1420,6 +1388,8 @@ test was narrowed to the unmatched case rather than deleted, since it still
 anchors something real (T3.1's own "conflict gone by Pass 2" rule).
 
 ## The Remedy Lookup Sits Between the Basename Guard and the Claimed Check (spec 037 T3.1, v0.26.4)
+
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
 
 `_build_move_asset_actions` now consults `remedy` at one specific point in the
 loop: after `_asset_dest_join(asset_folder, path)` has already succeeded (the
@@ -1477,6 +1447,8 @@ merged, because the outcome really is identical; only
 `test_a_degraded_rename_is_not_reported_as_the_owners_choice` separates them.
 Found by the T3.1 code-quality review, which read the string rather than only
 the control flow.
+
+*Superseded by spec 039 (K2): Pass 2 now looks up the final target in the vault — see below.*
 
 **Why `ignore` and "no remedy" are the same branch, not two.** Semantically
 they answer different questions Pass 1 asked — one is an owner's explicit
@@ -1551,7 +1523,7 @@ WHY `_typed_name_refusal_reason` exists as a function, and why the entry it
 feeds carries both a `reason` sentence and a separate `refusal_reason` code for
 the same fact.
 
-The three sentences it returns are not interchangeable phrasings of one
+The three sentences it returned at spec 038 T3.2 (historical; the sentences now live in `lib/refusal_sentences.py`, see the T2.1 paragraph below) are not interchangeable phrasings of one
 refusal. Each one sends the owner somewhere different: a path separator means
 they tried to express a folder in a field that takes a basename, a forbidden
 character means one character has to go, and blank means nothing arrived at all.
@@ -1576,18 +1548,36 @@ duplication. It is not: the two fields have different readers with different
 needs. A renderer that wants to branch per refusal class — which T3.4 then did —
 needs a value it can compare, and the alternative is parsing the prose, which is
 exactly the practice spec 038 exists to stop anyone having to adopt. Three
-branches keyed on an enum are also why the final branch of
-`_typed_name_refusal_reason` is reached only by `blank` and is not a silent
-fallback: the set is closed (`frozenset`, `lib/typed_name_check.py`), so an
-unrecognised code is not a possibility the function has to absorb.
+branches keyed on an enum are also why the sentence lookup (then in `_typed_name_refusal_reason`, now `typed_name_sentence`) branches on
+the code and never re-inspects the string.
 
-Measured at T3.5 by disabling the `separator_present` branch: the fall-through
+Measured at T3.5 (historical, against the pre-T1.5 inline function) by disabling the `separator_present` branch: the fall-through
 is worse than the obvious guess. Because the function branches on the CODE and
 never re-inspects the string, a disabled separator branch does not re-label a
 separator as a forbidden character — it falls past that check too and announces
 a separator to the owner as **blank**.
 `test_each_refusal_class_has_its_own_exact_prose_sentence` is red on that, which
 is why it asserts all three classes in one loop rather than one apiece.
+
+**Spec 039 T1.5 (v0.26.14): an unknown code raises.** The function used to end in
+an unguarded `return` of the blank sentence, so that measured fall-through was
+live for any code outside the three. `blank` now has its own branch and anything
+else raises `ValueError`. WHY raise instead of defaulting: a misreported reason
+tells the owner their name was blank when it was not, and the owner cannot tell
+the sentence is wrong. A raise is caught by tests the moment a fourth member joins
+`REFUSAL_REASONS`, never by an owner. It cannot fire in production today: the only
+caller, `_build_move_asset_actions`, passes `check_typed_name`'s verdict reason,
+which is drawn from the closed three-member set. (PRD F5-AC5, SDD ADR-6.)
+
+**Spec 039 T2.1 (v0.26.15): the sentences moved out.** The text above describes
+the function as it was at specs 038/039 T1.5 and is kept as history. Today the
+sentences live in `lib/refusal_sentences.py` (SDD K16) and
+`_typed_name_refusal_reason` became a one-line delegate to `typed_name_sentence`;
+the delegate was removed in the spec 039 T4.3 tidy once no production caller
+remained, and its tests call `typed_name_sentence` directly. `REFUSAL_REASONS` has five
+members (`breaks_link` and `unsafe_sequence` joined the original three). The
+branching on the code, and the `ValueError` on an unknown code, now live in
+`typed_name_sentence`; see `docs/tomo/scripts/lib/refusal_sentences.md`.
 
 ### WHY the Three Fields Divide As They Do — Following a Convention, Not Inventing One
 
@@ -1705,6 +1695,8 @@ gate reads as *tightening* a check, which is how it would get removed.
 
 ### WHY `_attachment_suppression_reason` Needed a Third Branch
 
+*Superseded by spec 039 T4.3 — the builder now projects the attachment plan; see the T4.3 section.*
+
 A reader who cannot tell which of three things happened cannot act, and the
 three remedies are genuinely different: a destination clash (`collision`) is
 fixed by renaming one of the two **files**, a refused typed name
@@ -1744,3 +1736,219 @@ mutation that can falsify it is adding `typed_name_refused` to the
 filed. An absence is the hardest kind of guarantee to protect, because nothing
 in the diff of a future change that adds the exclusion would look like a
 deletion.
+
+## The Move Builder Is a Projection of the Attachment Plan (spec 039 T4.3)
+
+`_build_move_asset_actions(manifest, plan, counter, inbox_path)` decides
+nothing. Every branch it used to hold — no basename, keep in inbox, the
+degraded nameless rename, the typed-name check, the run collision — is a row of
+the plan's decision table (`lib/attachment_plan.py`, SDD ADR-1), alongside the
+rows that need the vault (typed folder, occupied target). The rationale that
+the sections above give for each branch (why collisions are reported rather
+than renamed, why `seen` stays exact, why a refused name carries no
+destination) now applies to the plan's rows; the reason strings and entry
+shapes are byte-identical, which is what kept every pre-existing assertion
+unchanged.
+
+What stays here is projection:
+
+- **Order and ids come from the manifest.** The builder walks the manifest as
+  before and visits each attachment once, so ids and order are today's. The
+  plan is ordered by the confirmed list, which can differ.
+- **Unrendered items emit nothing.** A source only an unrendered item embeds is
+  in the plan but in no manifest entry: no move, no skipped entry, as before.
+  A withheld entry's `owner_source_items` is narrowed to owners that rendered,
+  because the plan names every owner.
+- **A manifest attachment missing from the plan raises.** It means the plan was
+  built from a different list than the one that rendered — a wiring error that
+  must not degrade into a silently unfiled attachment.
+- **The `[warn]` lines are the plan's.** It prints them when it decides; the
+  projection does not print them again.
+- **`move_ids_by_origin` names every owner.** The old builder recorded only the
+  first owner of a moved attachment. `build_actions` stores the map on the plan
+  for the delete guard (T5.2).
+
+### Two New Withheld Kinds, Two New Sentences
+
+`typed_folder_refused` and `vault_occupied` hold their owning notes in
+`suppress_moves_for_unfiled_attachments` without any change there: the pass
+excludes only `vault_collision_held`, so a new kind holds by construction (the
+same absence-of-a-line guarantee T3.3 recorded for `typed_name_refused`).
+`_attachment_suppression_reason` does need a branch for each: its `else` tells
+the owner to "correct that inbox path", which is wrong for both. The head is
+the entry's own `reason` (phrased by `lib.refusal_sentences`); the remedy names
+what to change — the folder, or the occupied target.
+
+### `build_actions` Without a Plan
+
+WHY: no production fallback. A manifest that carries attachments and no plan
+raises `ValueError`. The fallback it replaced fabricated "every folder
+unanswered, every census unknown", which silently flags every move unchecked
+and qualifies every embed with no error anywhere. A manifest with no
+attachments has nothing to plan and proceeds. The test harnesses that have no
+vault go through `build_actions_without_vault` in `tests/attachment_plan_fakes.py`.
+The rules live once, in the plan.
+
+## `validate_destinations` Asks Each Folder Once (spec 039 T4.5, v0.29.0)
+
+The vault half asked `folder_listing(folder)` once per contested-or-not
+destination. With a raw-cached lookup that costs no extra Kado call, but every
+call re-derives the folder's `.md` map from the raw entries — the T1.4 review
+measured about 4.7 ms per rebuild for a 3000-note folder, paid once per note
+filed into it. The pass now keeps the map per folder for the duration of the
+call. It holds nothing across calls: re-running Pass 2 still lists afresh.
+
+`make_folder_listing` stays, with both branches: Pass 2 no longer calls it (it
+hands `validate_destinations` its own lookup's `notes` view), but the 034/036
+destination-guard harnesses build their view through it from a client, and
+the T1.4 tests pin the lookup branch. The plan's "drop the `isinstance` path"
+was conditional on it becoming dead; it did not.
+
+## `validate_destinations` Keys by `path_key` (spec 039 W7, v0.29.2)
+
+The destination guard groups claimants and looks up the vault's `notes` view
+under `lib.vault_paths.path_key` (NFC, then casefold) — the key the view itself
+is built with. Folding case alone let an NFD-spelled destination pass beside an
+NFC note or an NFC-spelled claimant. `_unique_in_order` counts visible
+spellings (`same_spelling`, equal after NFC), so `case_only` and the
+`_CASE_NOTE` stay false for an NFC/NFD-only pair, and the sentence does not
+name one visible path twice.
+
+## `_build_create_moc_actions` Keys by `path_key` Too (spec 039 W7, v0.29.3)
+
+WHY `by_dest` moved from `casefold()` to `path_key` after this guard did: the
+guard groups `create_moc` destinations under `path_key`, so a merge keyed on
+`casefold()` alone left an NFC/NFD pair of MOC destinations unmerged, and the
+guard then dropped both as a run collision, losing the MOC and its supporting
+items. The merge must be at least as coarse as the guard it feeds. Its paired
+consumer `resolve_section_names` (`create_moc_by_dest`, `lib/render_resolve.py`)
+and the upstream parser merge (`_merge_proposed_mocs_by_name`) key the same way,
+so a `link_to_moc` with an NFD `target_moc_path` still finds its in-set NFC
+`create_moc` template and its anchor. Tests:
+`tests/test_039_t4_7_nfc_target_keys.py`.
+
+## WHY the Origin's Delete Waits for Its Attachment Moves (spec 039 T5.2, ADR-10, #186)
+
+A `move_note` never carries its attachments, so an origin's `delete_source`
+that outlived a failed or withdrawn `move_asset` would delete the only copy of
+a file the filed note still embeds. Site 3 of `_build_delete_source_actions`
+therefore appends, after the origin's `move_note` ids, the ids of the
+`move_asset` actions for the attachments that origin embeds
+(`move_ids_by_origin`, the map `_build_move_asset_actions` returns from the
+attachment plan's FULL owner list, not the first owner). The audio-peer delete
+names the identical list. Asset ids follow the move builder's emission order
+(first appearance of the attachment in the manifest), so the list is
+deterministic.
+
+- A withheld move never receives an id, so no delete can name it (F6-AC4); an
+  attachment kept in the inbox by the owner emits no move and leaves the
+  delete's `depends_on` as it was (F6-AC5).
+- A shared attachment couples every owner's delete to its single id (F6-AC3,
+  accepted trade-off): if that move is withdrawn, all of them are.
+- A `move_asset` dropped by a later guard is handled by the existing id-keyed
+  `withdraw_unjustified_deletes`, which is kind-agnostic; no new withdrawal
+  code exists.
+- Keys are joined through `_origin_key` on both sides, the same normalisation
+  site 3 already applies to its own origin bucket.
+- Kokoro accepted this as option 1 of #186 in ADR-029 §7 (2026-10-12) and
+  closed ADR-029's open item; the contract this implements is that ADR's, not
+  a Tomo-local choice.
+- The consumer's cascade (Hashi) needs no change; the vendored
+  `hashi-instructions.schema.json` was refreshed in T6.2 (F6-AC6).
+  Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
+
+## Executor trace: a failed attachment move keeps the origin (spec 039 T5.3)
+
+PRD F6-AC7: the consumer's executor needs no change, asserted against its
+dependency cascade rather than assumed. Tomo-side proof:
+`tests/test_039_t5_3_executor_needs_no_change.py` (every `delete_source.depends_on`
+id names an action in the set; every depended-on kind is allowed by the
+vendored schema; the produced set validates; the vendored schema records no
+kind order, so the ordering claim lives only in this trace). The rest is
+this trace, read from the Hashi tree, confirmed by Hashi in T6.2 (see below).
+
+Traced tree: `/Volumes/Moon/Coding/MiYo/Hashi`, branch
+`feat/attachment-conflict-control`, HEAD `4119be0598a229d46825711823e19856e4988812`
+("docs(mockup): attachment conflicts rev 3 ..."), working tree clean at
+trace time (2026-10-12). Paths below are relative to that tree.
+
+1. Kind order. `src/executor/planner.ts:39` `KIND_ORDER` lists `create_moc`,
+   `move_note`, `move_asset` (line 42) ... `delete_source` (line 54), `skip`.
+   Records are emitted kind by kind at `planner.ts:209` (`for (const kind of
+   KIND_ORDER)`), so every `move_asset` is executed before any
+   `delete_source`.
+2. Declared edges. `planner.ts:264` unions the `depends_on` ids of EVERY
+   action into the dependency edges (read structurally by
+   `declaredDependencies`, `planner.ts:285`), so `delete_source.depends_on`
+   naming `move_asset` ids needs no new planner code.
+3. Dangling ids. `findDanglingDependencies` (`planner.ts:305`) collects any
+   id absent from the same set; `computeRemaining` returns them
+   (`planner.ts:185-186`) and `InstructionExecutor.ts:360` seeds
+   `unsatisfiedIds` with them, so a delete naming an absent id is skipped.
+   Tomo's test above keeps that case at zero.
+4. Skip on an unsatisfied dependency. `InstructionExecutor.ts:416`
+   `findDependencyFailure` (defined `:755`, loops the record's dependency
+   keys and returns the first one present in `unsatisfiedIds`) feeds the
+   `skipped-dependency` outcome at `:418`, which adds the skipped record to
+   `unsatisfiedIds` itself (`:428`) so the skip cascades.
+5. What enters `unsatisfiedIds`: a `failed` handler outcome (`:486-487`), a
+   handler throw (`:479`), a failed before-hook (`:448`), a missing action
+   (`:438`), cancellation (`:409`), and a skipped dependency (`:428`).
+   `applied` and `skipped-already` do not.
+6. `move_asset` outcomes (`src/actions/moveAsset.ts`): both source and
+   destination present is `failed` "Inconsistent state" (`:73-74`); source
+   gone and destination present is `skipped-already` (`:77-78`); neither
+   present is `failed` "Source missing" (`:81-82`); otherwise the folder is
+   created and the file renamed, `applied` (`:85-88`). Illegal characters or a
+   note extension fail earlier.
+
+Verdict on a `skipped` move_asset: a `skipped-already` is NOT in
+`unsatisfiedIds`, so the dependent `delete_source` RUNS (the executor treats
+the end-state as present, and graduates it to `applied: true`,
+`InstructionExecutor.ts:537-542`). It arises only when the attachment is
+already gone from the inbox and something sits at the target. A `failed` move
+skips the delete (F6-AC2 holds): the failing cases that leave the file in the
+inbox (target occupied while the source is still present; source missing is
+the other side) are `failed`, not `skipped-already`.
+
+Consequences:
+
+- Ignore, target occupied, source still in the inbox: Tomo sends the move to
+  the original destination unchanged (F1-AC6); at apply both paths exist, so
+  the move `failed`s and the origin's delete is skipped. Origin and
+  attachment both stay in the inbox. Consistent with F6-AC2.
+- Unchecked target (Kado could not check): the move is emitted; if the target
+  turns out occupied while the source is present, same `failed`, same result.
+- The one divergence from the owner-facing sentence ("if the move fails, the
+  source note stays in the inbox"): `skipped-already` is not a failure. If the
+  inbox attachment was already removed and a file occupies the target, the
+  delete proceeds. Nothing is lost from the inbox (the attachment is not
+  there), but the file at the target is not verified to be the embedded one.
+  This does not contradict F6-AC2 (which is about a FAILED move) and is not a
+  Tomo defect; it is stated here so the owner-facing wording is not read more
+  strongly than the executor behaves.
+
+Wording divergence (resolved in T6.2): the `delete_source.depends_on`
+description said Hashi "withholds the delete unless every id here is applied
+(AND semantics)", but the executor (`InstructionExecutor.ts:536-543`) also lets
+`skipped-already` satisfy a dependency.
+
+Answer from Hashi (2026-10-13, tree `c217f66`): a `skipped-already`
+`move_asset` stays out of `unsatisfiedIds`, so a dependent `delete_source`
+runs; `failed` puts it in, so the delete ends `skipped-dependency`. This is
+intended: an interrupted apply that is re-run must still be able to delete
+origins. Hashi accepts that it does not verify the file at the target is the
+embedded one. The contract now reads "applied or already in place", applied
+verbatim to `tomo/schemas/instructions.schema.json` and to the vendored
+`hashi-instructions.schema.json` (Hashi's own file with the same one-string
+patch). Tests: `tests/test_039_t6_2_vendored_v4.py`.
+
+## `_attachment_suppression_reason` Reads Its Remedy From K16 (spec 039 T5.4)
+
+The "Not filed" line used to compose its own remedy per kind ("retype a usable
+folder for it, then re-run Pass 2"), while the "Attachments still in the inbox"
+bullet and the shell relay carried a different one for the same item. Owner
+ruling 2026-10-12: one remedy per withheld kind. The head (what was withheld
+and why) stays here; the remedy is `refusal_sentences.withheld_attachment_remedy`,
+shared with `render_md._render_skipped_asset_notice`. The command semantics
+behind each remedy are recorded in `docs/tomo/scripts/lib/refusal_sentences.md`.

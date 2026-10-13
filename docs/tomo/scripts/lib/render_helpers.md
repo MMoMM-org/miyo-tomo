@@ -136,3 +136,15 @@ added to one copy without updating the other two was caught by nothing
   GUARDS)` right after building the dict — equality, not subset: every one
   of the five guards' drops must be attributable to a report, so none may be
   missing and none extra.
+
+## `_ensure_md_extension` Lives Here (spec 039 T4.3)
+
+The owner key of an attachment — the origin note's resolved path, with `.md`
+appended to a wikilink-derived name — must be byte-identical in the attachment
+plan (`lib/attachment_plan.py`) and in `render_actions`' `source_inbox_item`,
+or a withheld attachment would hold no note. Both modules therefore call one
+function. It used to live in `render_actions`; once `render_actions` imported
+`attachment_plan`, the plan could no longer import it back without a cycle.
+It belongs beside `resolve_source_path`, whose output it always finishes, and
+it is a pure string function, so the DAG-leaf rule above holds.
+`render_actions` re-exports it for its existing callers and tests.

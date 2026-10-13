@@ -39,6 +39,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import plan_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
     build_actions,
     suppress_moves_for_unfiled_attachments,
@@ -120,7 +121,8 @@ def test_typed_name_refused_skip_holds_its_owning_note():
         )
     ]
     actions, skipped_assets = build_actions(
-        manifest, confirmed, [], [], CFG, attachment_conflict_remedies=remedies,
+        manifest, confirmed, [], [], CFG, attachment_plan=plan_from_remedies(
+            manifest, remedies, inbox_path=INBOX, asset_folder=ASSET_FOLDER),
     )
     assert [s["kind"] for s in skipped_assets] == ["typed_name_refused"]
     kept, suppressions = suppress_moves_for_unfiled_attachments(actions, skipped_assets)

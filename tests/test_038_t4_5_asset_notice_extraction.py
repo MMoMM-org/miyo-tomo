@@ -52,7 +52,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 INBOX = "100 Inbox/"
@@ -70,28 +70,38 @@ REFUSED_TYPED_NAME = "sub/dir.png"
 # ── The pre-extraction document, captured at `2a06ee9` ────────────────────
 # Whole lines, in render order. Nothing here is composed from the production
 # code's own strings — that is what makes it a pin and not a mirror.
+# Re-captured for spec 039 T5.4 (owner ruling 2026-10-12): every remedy now
+# comes from `refusal_sentences.withheld_attachment_remedy`, one per kind, with
+# the before-apply and after-apply routes as separate sentences.
 
 EXPECTED_BLOCK = [
     "**Attachments still in the inbox** — none of these were filed:",
     "",
     "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/` — the inbox path has no "
-    "filename. Inspect that inbox path directly — this is not a naming conflict.",
+    "filename. To fix: correct that inbox path in the note that embeds it — "
+    "this is not a naming conflict — then run `/inbox --pass2 --force` before "
+    "you apply. If you have already applied, every note that embeds it is "
+    "still in the inbox: correct the path there and run `/inbox --recover`.",
     "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/karte.png` — kept in inbox: "
     "the owner chose not to file it over the occupied destination "
     "`Atlas/290 Assets/295 Attachments/karte.png`. No action needed unless you "
-    "change your mind: before applying, tick Rename in the suggestions document "
-    "and run `/inbox --pass2 --force`; afterwards, rename the file in the inbox "
-    "and re-run `/inbox`.",
+    "change your mind. To file it after all, tick Rename in the suggestions "
+    "document and run `/inbox --pass2 --force` before you apply. If you have "
+    "already applied, rename the attachment in the inbox and run `/inbox` again.",
     "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/B/foto.jpg` — destination "
     "collision: it also resolves to `Atlas/290 Assets/295 Attachments/foto.jpg`, "
-    "already claimed by `100 Inbox/Scans/A/foto.jpg`. Rename one of the two "
-    "files so they no longer share "
-    "`Atlas/290 Assets/295 Attachments/foto.jpg`, then re-run `/inbox`.",
+    "already claimed by `100 Inbox/Scans/A/foto.jpg`. To fix: rename one of the "
+    "two files so they no longer share "
+    "`Atlas/290 Assets/295 Attachments/foto.jpg`, then run "
+    "`/inbox --pass2 --force` before you apply. If you have already applied, "
+    "the attachment is still in the inbox, and so is every note that embeds "
+    "it: run `/inbox --recover`. If the target is still taken, the suggestions document offers the name again; if it is free, the attachment is filed there.",
     "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/bild.png` — typed name "
     "refused: `sub/dir.png` contains a path separator, which is not allowed in "
-    "a filename. Type a usable name for it: before applying, correct the name "
-    "in the suggestions document and run `/inbox --pass2 --force`; afterwards, "
-    "it is still in the inbox, so re-run `/inbox` and name it again.",
+    "a filename. To fix: correct the name in the suggestions document and run "
+    "`/inbox --pass2 --force` before you apply. If you have already applied, "
+    "the attachment is still in the inbox, and so is every note that embeds "
+    "it: run `/inbox --recover`. The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there.",
 ]
 
 # The deliberate loud fallback (T4.5 step 3(e)): an unrecognised `kind` must
@@ -134,7 +144,7 @@ def build_four_kinds_skipped_assets() -> list[dict]:
         {"source": REFUSED_SOURCE, "remedy": "rename",
          "proposed_name": REFUSED_TYPED_NAME, "name_is_owner_supplied": True},
     ]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )

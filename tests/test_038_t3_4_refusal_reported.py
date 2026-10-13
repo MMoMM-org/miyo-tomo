@@ -57,7 +57,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions  # noqa: E402
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 
 INBOX = "100 Inbox/"
@@ -83,10 +83,16 @@ BLANK_TYPED_NAME = "   "
 TWO_OWNER_SOURCE = "100 Inbox/Scans/other.png"
 TWO_OWNER_TYPED_NAME = "sub/dir.png"
 
+# Re-pinned for spec 039 T5.4 (owner ruling 2026-10-12): one remedy per
+# withheld kind, the before-apply and after-apply routes as separate
+# sentences, and the after-apply route through `/inbox --recover` — a held
+# note's source is already captured, which a bare `/inbox` skips.
 REMEDY_LINE = (
-    "Type a usable name for it: before applying, correct the name in the "
-    "suggestions document and run `/inbox --pass2 --force`; afterwards, it "
-    "is still in the inbox, so re-run `/inbox` and name it again"
+    "To fix: correct the name in the suggestions document and run "
+    "`/inbox --pass2 --force` before you apply. If you have already applied, "
+    "the attachment is still in the inbox, and so is every note that embeds "
+    "it: run `/inbox --recover`. "
+    "The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there"
 )
 
 
@@ -107,7 +113,7 @@ def _render_refusal_bullet(source: str, typed_name: str) -> str:
         "source": source, "remedy": "rename", "proposed_name": typed_name,
         "name_is_owner_supplied": True,
     }]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )
@@ -187,7 +193,7 @@ def test_two_owning_notes_still_render_a_singular_attachment_remedy():
         "source": TWO_OWNER_SOURCE, "remedy": "rename",
         "proposed_name": TWO_OWNER_TYPED_NAME, "name_is_owner_supplied": True,
     }]
-    _actions, skipped = _build_move_asset_actions(
+    _actions, skipped = move_asset_actions_from_remedies(
         manifest, INBOX, ASSET_FOLDER, [0],
         attachment_conflict_remedies=remedies,
     )

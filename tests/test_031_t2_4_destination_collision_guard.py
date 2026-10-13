@@ -35,11 +35,12 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
 from lib.render_actions import (  # noqa: E402
-    _build_move_asset_actions,
-    build_actions,
     suppress_moves_for_unfiled_attachments,
 )
+# test-side: the plan-less vault this suite relies on; production build_actions requires a plan (spec 039 T4.3)
+from attachment_plan_fakes import build_actions_without_vault as build_actions  # noqa: E402
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"
@@ -100,7 +101,7 @@ def test_second_colliding_attachment_is_skipped_and_reported(capsys):
             attachments=["100 Inbox/Scans/karte.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     err = capsys.readouterr().err
@@ -125,7 +126,7 @@ def test_same_path_resolved_twice_is_dedup_not_collision(capsys):
             attachments=["100 Inbox/Images/karte.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     err = capsys.readouterr().err
     assert "collision" not in err.lower()
@@ -181,7 +182,7 @@ def test_no_two_move_asset_actions_share_a_destination():
             attachments=["100 Inbox/Scans/karte.jpg", "100 Inbox/Images/other.png"],
         ),
     ]
-    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, _skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     destinations = [a["destination"] for a in actions]
     assert len(destinations) == len(set(destinations))
 
@@ -201,7 +202,7 @@ def test_attachment_with_no_basename_is_skipped_and_reported(capsys):
             attachments=["100 Inbox/Images/", "100 Inbox/Images/karte.jpg"],
         ),
     ]
-    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = move_asset_actions_from_remedies(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     assert len(skipped) == 1

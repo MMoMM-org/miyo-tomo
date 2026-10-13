@@ -91,7 +91,8 @@ REMEDY_LINE = (
     "To fix: correct the name in the suggestions document and run "
     "`/inbox --pass2 --force` before you apply. If you have already applied, "
     "the attachment is still in the inbox, and so is every note that embeds "
-    "it: run `/inbox --recover` and name the attachment again"
+    "it: run `/inbox --recover`. "
+    "The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there"
 )
 
 

@@ -539,7 +539,8 @@ def test_owner_facing_suppression_sentence_names_no_inbox_path_and_no_refusal_co
         "either. To fix: correct the name in the suggestions document and run "
         "`/inbox --pass2 --force` before you apply. If you have already "
         "applied, the attachment is still in the inbox, and so is every note "
-        "that embeds it: run `/inbox --recover` and name the attachment again."
+        "that embeds it: run `/inbox --recover`. "
+        "The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there."
     )  # remedy re-pinned by spec 039 T5.4: one remedy per withheld kind
     # No general containment rule over this sentence can be sound (see
     # test_skipped_entry_reason_is_prose_and_refusal_reason_is_the_bare_code

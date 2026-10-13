@@ -95,13 +95,13 @@ EXPECTED_BLOCK = [
     "`Atlas/290 Assets/295 Attachments/foto.jpg`, then run "
     "`/inbox --pass2 --force` before you apply. If you have already applied, "
     "the attachment is still in the inbox, and so is every note that embeds "
-    "it: run `/inbox --recover` and name the attachment again.",
+    "it: run `/inbox --recover`. If the target is still taken, the suggestions document offers the name again; if it is free, the attachment is filed there.",
     "- ⚠️ **Attachment not filed:** `100 Inbox/Scans/bild.png` — typed name "
     "refused: `sub/dir.png` contains a path separator, which is not allowed in "
     "a filename. To fix: correct the name in the suggestions document and run "
     "`/inbox --pass2 --force` before you apply. If you have already applied, "
     "the attachment is still in the inbox, and so is every note that embeds "
-    "it: run `/inbox --recover` and name the attachment again.",
+    "it: run `/inbox --recover`. The re-run proposes the default name for it. If that target is taken, the suggestions document offers the name again; if it is free, the attachment is filed there.",
 ]
 
 # The deliberate loud fallback (T4.5 step 3(e)): an unrecognised `kind` must

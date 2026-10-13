@@ -65,23 +65,28 @@ def every_kind(monkeypatch, tmp_path):
 
 HELD_AFTER_APPLY = (
     "If you have already applied, the attachment is still in the inbox, and "
-    "so is every note that embeds it: run `/inbox --recover` and "
+    "so is every note that embeds it: run `/inbox --recover`. "
 )
 EXPECTED_REMEDY = {
     "typed_folder_refused": (
         "To fix: correct the folder in the suggestions document and run "
         "`/inbox --pass2 --force` before you apply. " + HELD_AFTER_APPLY
-        + "choose the attachment's folder again"
+        + "The re-run proposes the default folder for it. If that target is "
+        "taken, the suggestions document offers the folder again; if it is "
+        "free, the attachment is filed there"
     ),
     "typed_name_refused": (
         "To fix: correct the name in the suggestions document and run "
         "`/inbox --pass2 --force` before you apply. " + HELD_AFTER_APPLY
-        + "name the attachment again"
+        + "The re-run proposes the default name for it. If that target is "
+        "taken, the suggestions document offers the name again; if it is "
+        "free, the attachment is filed there"
     ),
     "vault_occupied": (
         "To fix: free that target in the vault, then run "
         "`/inbox --pass2 --force` before you apply. " + HELD_AFTER_APPLY
-        + "choose another name for the attachment, or free the target first"
+        + "If the target is still taken, the suggestions document offers the "
+        "name again; if you freed it, the attachment is filed there"
     ),
 }
 KIND_OF = {

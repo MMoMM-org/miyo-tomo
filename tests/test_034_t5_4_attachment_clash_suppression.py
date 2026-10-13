@@ -696,7 +696,7 @@ def test_the_skipped_attachment_report_is_unchanged_by_the_new_link():
         f"longer share `{ASSETS}Ufer.jpg`, then run `/inbox --pass2 --force` "
         f"before you apply. If you have already applied, the attachment is "
         f"still in the inbox, and so is every note that embeds it: run "
-        f"`/inbox --recover` and name the attachment again."
+        f"`/inbox --recover`. If the target is still taken, the suggestions document offers the name again; if it is free, the attachment is filed there."
     ), bullets[0]  # remedy re-pinned by spec 039 T5.4: one remedy per kind
     # spec 037 T4.4, measured on this very line: the skipped source appeared
     # twice — once backticked in the lead, once as a repr inside the reason —

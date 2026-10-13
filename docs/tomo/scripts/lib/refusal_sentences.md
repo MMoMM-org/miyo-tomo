@@ -163,3 +163,15 @@ The unchecked sentence stated what was not known and stopped, leaving the
 owner nothing to do. It now ends "You can apply this move as it is; to be sure
 first, check in the vault that nothing is at `<target>`" — still never calling
 the target free (F3-AC6).
+
+## The after-apply remedy promises only what Pass 1 renders (spec 039 T5.4)
+
+Owner ruling 2026-10-13: the after-apply half of a withheld-attachment remedy
+used to say "choose the folder again" or "name it again", promising a control
+that Pass 1 may not render. A Folder/name line appears in the suggestions
+document only for an `attachment_conflicts` entry, i.e. only when the target
+is still taken as Pass 1 runs again. The sentences now say what the re-run
+does: for a refused typed folder or name it proposes the default target, and
+offers the folder or name again only if that target is taken (otherwise the
+attachment is filed there); for an occupied or colliding target it offers the
+name again only if the target is still taken. Verified live in T6.3.

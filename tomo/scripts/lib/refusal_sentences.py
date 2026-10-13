@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """refusal_sentences.py — the prose the owner reads when a typed name or folder is refused.
 
 One home for every refusal sentence, so the wording of a refusal is edited in
@@ -157,7 +157,11 @@ def qualified_embed_sentence(target: str, reason: str) -> str:
 _BEFORE_APPLY = "run `/inbox --pass2 --force` before you apply"
 _HELD_AFTER_APPLY = (
     "If you have already applied, the attachment is still in the inbox, and so "
-    "is every note that embeds it: run `/inbox --recover` and "
+    "is every note that embeds it: run `/inbox --recover`. "
+)
+_RERUN_NAME = (
+    "If that target is taken, the suggestions document offers the name "
+    "again; if it is free, the attachment is filed there"
 )
 
 
@@ -171,25 +175,31 @@ def withheld_attachment_remedy(kind: str, destination: str | None = None) -> str
     if kind == "typed_folder_refused":
         return (
             f"To fix: correct the folder in the suggestions document and "
-            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}choose the attachment's "
-            f"folder again"
+            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}The re-run proposes the "
+            f"default folder for it. If that target is taken, the suggestions "
+            f"document offers the folder again; if it is free, the attachment "
+            f"is filed there"
         )
     if kind == "typed_name_refused":
         return (
             f"To fix: correct the name in the suggestions document and "
-            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}name the attachment again"
+            f"{_BEFORE_APPLY}. {_HELD_AFTER_APPLY}The re-run proposes the "
+            f"default name for it. {_RERUN_NAME}"
         )
     if kind == "vault_occupied":
         return (
             f"To fix: free that target in the vault, then {_BEFORE_APPLY}. "
-            f"{_HELD_AFTER_APPLY}choose another name for the attachment, or "
-            f"free the target first"
+            f"{_HELD_AFTER_APPLY}If the target is still "
+            f"taken, the suggestions document offers the name again; if you "
+            f"freed it, the attachment is filed there"
         )
     if kind == "collision":
         return (
             f"To fix: rename one of the two files so they no longer share "
             f"`{_visible(destination or '?')}`, then {_BEFORE_APPLY}. "
-            f"{_HELD_AFTER_APPLY}name the attachment again"
+            f"{_HELD_AFTER_APPLY}If the target is still "
+            f"taken, the suggestions document offers the name again; if it is "
+            f"free, the attachment is filed there"
         )
     if kind == "no_basename":
         return (

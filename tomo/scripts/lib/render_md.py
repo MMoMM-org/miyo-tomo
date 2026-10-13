@@ -1,4 +1,4 @@
-# version: 0.35.0
+# version: 0.35.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -650,7 +650,7 @@ assert _INLINE_WITHDRAWAL_GUARDS <= set(WITHDRAWAL_GUARDS), (
 
 def _group_delete_withdrawals(
     delete_withdrawals: list[dict],
-) -> tuple[dict[str, list[dict]], list[dict]]:
+) -> dict[str, list[dict]]:
     """Bucket withdrawals by EVERY missing id their causes name.
 
     A withdrawal's `causes` are NOT guaranteed to share one guard-and-id:
@@ -671,16 +671,12 @@ def _group_delete_withdrawals(
     guarded regardless) contributes the withdrawal to that bucket once, not
     twice.
 
-    Returns `(by_missing_id, leftover)`: `by_missing_id` maps a missing id to
-    the withdrawals that name it in any cause, for a guard rendered inside
-    "## Skipped" (`_INLINE_WITHDRAWAL_GUARDS`); `leftover` holds every
-    withdrawal with NO cause naming an inline-guard id — attributed entirely
-    to `validate_destinations` or `suppress_moves_for_unfiled_attachments`
-    (rendered under a different heading), `unattributed` (the T4.3
-    tripwire), or never declared at all.
+    Returns `by_missing_id`, mapping a missing id to the withdrawals that name
+    it in any cause, for a guard rendered inside "## Skipped"
+    (`_INLINE_WITHDRAWAL_GUARDS`). A withdrawal with no inline-guard cause is
+    not returned: it is reported once under "## Source Deletions".
     """
     by_missing_id: dict[str, list[dict]] = {}
-    leftover: list[dict] = []
     for withdrawal in delete_withdrawals:
         causes = withdrawal.get("causes") or []
         inline_missing_ids: list[str] = []
@@ -693,9 +689,7 @@ def _group_delete_withdrawals(
         if inline_missing_ids:
             for missing_id in inline_missing_ids:
                 by_missing_id.setdefault(missing_id, []).append(withdrawal)
-        else:
-            leftover.append(withdrawal)
-    return by_missing_id, leftover
+    return by_missing_id
 
 
 def _withdrawal_note_ref(withdrawal: dict) -> str:
@@ -1096,7 +1090,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # "Delete withdrawn" block repeated that statement for the rest and was
     # removed (spec 039 T5.4, owner ruling 2026-10-12: one report per item).
     # A withdrawal alone therefore no longer opens "## Skipped".
-    withdrawals_by_id, _leftover = _group_delete_withdrawals(delete_withdrawals)
+    withdrawals_by_id = _group_delete_withdrawals(delete_withdrawals)
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
             or unresolvable_links or unresolved_conflicts):
         body_parts.append("## Skipped — un-appliable actions")

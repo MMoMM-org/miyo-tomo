@@ -1854,8 +1854,7 @@ deterministic.
   closed ADR-029's open item; the contract this implements is that ADR's, not
   a Tomo-local choice.
 - The consumer's cascade (Hashi) needs no change; the vendored
-  `hashi-instructions.schema.json` is untouched until T6.2 (F6-AC6 completes
-  there). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
+  `hashi-instructions.schema.json` was refreshed in T6.2 (F6-AC6). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
 
 ## Executor trace: a failed attachment move keeps the origin (spec 039 T5.3)
 
@@ -1928,19 +1927,20 @@ Consequences:
   Tomo defect; it is stated here so the owner-facing wording is not read more
   strongly than the executor behaves.
 
-Wording divergence: the vendored schema's `delete_source.depends_on`
-description says Hashi "withholds the delete unless every id here is applied
-(AND semantics)", but the traced executor (`InstructionExecutor.ts:536-543`)
-also lets `skipped-already` satisfy a dependency, so "applied" there is
-narrower than the behaviour. Tomo's own `tomo/schemas/instructions.schema.json`
-(`delete_source.depends_on`, line 253) makes the same "applied" claim.
+Wording divergence (resolved in T6.2): the `delete_source.depends_on`
+description said Hashi "withholds the delete unless every id here is applied
+(AND semantics)", but the executor (`InstructionExecutor.ts:536-543`) also lets
+`skipped-already` satisfy a dependency.
 
-Question for Hashi to confirm in T6.2: against the tree at
-`4119be0598a2`, does a `move_asset` outcome of `skipped-already` leave its id
-out of `unsatisfiedIds` (so a dependent `delete_source` runs), while `failed`
-puts it in (so the delete ends `skipped-dependency`), is that behaviour
-intended to stay, and is "applied" in the contract meant to include
-`skipped-already`?
+Answer from Hashi (2026-10-13, tree `c217f66`): a `skipped-already`
+`move_asset` stays out of `unsatisfiedIds`, so a dependent `delete_source`
+runs; `failed` puts it in, so the delete ends `skipped-dependency`. This is
+intended: an interrupted apply that is re-run must still be able to delete
+origins. Hashi accepts that it does not verify the file at the target is the
+embedded one. The contract now reads "applied or already in place", applied
+verbatim to `tomo/schemas/instructions.schema.json` and to the vendored
+`hashi-instructions.schema.json` (Hashi's own file with the same one-string
+patch). Tests: `tests/test_039_t6_2_vendored_v4.py`.
 
 ## `_attachment_suppression_reason` Reads Its Remedy From K16 (spec 039 T5.4)
 

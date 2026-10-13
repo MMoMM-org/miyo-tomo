@@ -5,10 +5,10 @@ attachment conflict on it carries `proposed_dir`, always present, null by
 default.
 
 Spec 039 Phase 3 T3.1. The live schema and its shape manifest move together;
-the vendored consumer copy (`hashi-suggestions-wire.schema.json`) stays at
-"3" until the consumer confirms (moved in T6.2), so its const is pinned here
-too — a premature move would make the parity comparison read clean while the
-consumer's real copy still rejects every document we emit.
+the vendored consumer copy (`hashi-suggestions-wire.schema.json`) moved to
+"4" in T6.2 once the consumer confirmed, so its const is pinned here too — a
+copy left at "3" would make the consumer's real schema reject every document
+we emit.
 
 Spec: docs/XDD/specs/039-attachment-conflict-hardening/plan/phase-3.md (T3.1)
 Ref: PRD/F1-AC1; SDD/External Interfaces; SDD/ADR-4
@@ -138,8 +138,6 @@ def test_proposed_dir_is_required_and_marked_editable():
     assert prop["description"].startswith("Editable — ")
 
 
-def test_vendored_consumer_copy_still_declares_version_3():
+def test_vendored_consumer_copy_declares_version_4():
     vendored = json.loads(VENDORED_PATH.read_text(encoding="utf-8"))
-    assert vendored["properties"]["schema_version"] == {"const": "3"}
-    conflict_props = vendored["properties"]["attachment_conflicts"]["items"]["properties"]
-    assert "proposed_dir" not in conflict_props
+    assert vendored["properties"]["schema_version"] == {"const": "4"}

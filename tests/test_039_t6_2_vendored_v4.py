@@ -10,8 +10,8 @@ vendored v4 and that "applied" includes skipped-already.
 Mechanisms falsified:
 - test_vendored_suggestions_copy_is_byte_identical_to_the_live_v4_schema: a
   vendored copy left at v3 (or hand-edited) differs in bytes.
-- test_suggestions_parity_delta_is_empty: a copy that is byte-different but
-  structurally stale reports a non-empty structural delta.
+- test_suggestions_parity_delta_is_empty: implied by the byte test above; it
+  states the plan's wording ("the parity delta is empty") as its own assertion.
 - test_depends_on_description_says_applied_or_already_in_place: either
   instructions schema still carrying the old "is applied (AND semantics)".
 - test_vendored_instructions_copy_is_the_consumer_file_plus_the_one_string_patch:

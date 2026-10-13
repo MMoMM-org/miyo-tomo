@@ -1854,7 +1854,8 @@ deterministic.
   closed ADR-029's open item; the contract this implements is that ADR's, not
   a Tomo-local choice.
 - The consumer's cascade (Hashi) needs no change; the vendored
-  `hashi-instructions.schema.json` was refreshed in T6.2 (F6-AC6). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
+  `hashi-instructions.schema.json` was refreshed in T6.2 (F6-AC6).
+  Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.
 
 ## Executor trace: a failed attachment move keeps the origin (spec 039 T5.3)
 
@@ -1864,7 +1865,7 @@ dependency cascade rather than assumed. Tomo-side proof:
 id names an action in the set; every depended-on kind is allowed by the
 vendored schema; the produced set validates; the vendored schema records no
 kind order, so the ordering claim lives only in this trace). The rest is
-this trace, read from the Hashi tree, to be confirmed by Hashi in T6.2.
+this trace, read from the Hashi tree, confirmed by Hashi in T6.2 (see below).
 
 Traced tree: `/Volumes/Moon/Coding/MiYo/Hashi`, branch
 `feat/attachment-conflict-control`, HEAD `4119be0598a229d46825711823e19856e4988812`

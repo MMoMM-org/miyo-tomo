@@ -39,7 +39,7 @@ Delivers the owner documentation, the coordinated release to Hashi, a live run, 
   4. Validate: reader test — someone who has not read the spec can resolve a refused folder from the docs alone
   5. Success: `[ref: PRD/S1-AC1]` `[ref: PRD/S1-AC2]`
 
-- [ ] **T6.2 Release handoff to Hashi, then vendored copy to v4** `[activity: integration]`
+- [x] **T6.2 Release handoff to Hashi, then vendored copy to v4** `[activity: integration]`
 
   1. Prime: T1.2's reply and any answer; 038's wire-v3 handoff as the template `[ref: SDD/Deployment View; PRD/CON-1, CON-3]`
   2. Test: after Hashi confirms vendoring, the vendored suggestions copy equals Tomo's live v4 schema byte-identically and the parity test's delta is empty; the vendored instructions copy equals the consumer's updated file (`cmp`), carrying the new `depends_on` description (F6-AC6)

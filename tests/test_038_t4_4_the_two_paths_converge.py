@@ -103,6 +103,14 @@ PARSER = SCRIPTS_DIR / "suggestion-parser.py"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from attachment_plan_fakes import move_asset_actions_from_remedies  # noqa: E402
+from pass2_harness import (  # noqa: E402
+    ASSET as ASSET_DIR,
+    NOTES as NOTES_DIR,
+    CountingKado,
+    _run_main,
+    strip_provenance,
+    strip_provenance_and_default_folder,
+)
 from lib.render_md import compute_payload_digest  # noqa: E402
 
 
@@ -370,6 +378,7 @@ def _run_both(
     doc: dict,
     markdown: str,
     wire_edit=None,
+    agree=None,
 ) -> tuple[_Outcome, _Outcome]:
     """Drive `doc`/`markdown` down the markdown path and the wire path.
 
@@ -425,32 +434,9 @@ def _run_both(
         ignored = [ln for ln in lines if ln.startswith("warning: suggestions-json")]
         assert ignored == [], (name, ignored)
 
-    _assert_paths_agree_but_for_provenance(md_parsed, wire_parsed)
+    (agree or _assert_paths_agree_but_for_provenance)(md_parsed, wire_parsed)
 
     return _Outcome(md_parsed, md_stderr), _Outcome(wire_parsed, wire_stderr)
-
-
-def _strip_provenance(parsed: dict) -> dict:
-    """`parsed` with both provenance flags dropped from every remedy, and a
-    `proposed_dir` that is NOT owner-supplied read as `None`.
-
-    The folder half mirrors the one equality rule both paths converge on
-    downstream (spec 039 SDD, Pass 2 wire path step 2): a folder that is not
-    owner-supplied resolves to the configured asset folder, whatever text it
-    carries. The markdown path reports the rendered folder verbatim there and
-    the wire path reports `null`; both mean the same folder."""
-    out = dict(parsed)
-    out["attachment_conflict_remedies"] = [
-        {
-            **{
-                k: v for k, v in r.items()
-                if k not in ("name_is_owner_supplied", "dir_is_owner_supplied")
-            },
-            "proposed_dir": r["proposed_dir"] if r["dir_is_owner_supplied"] else None,
-        }
-        for r in parsed["attachment_conflict_remedies"]
-    ]
-    return out
 
 
 def _assert_paths_agree_but_for_provenance(md_parsed: dict, wire_parsed: dict) -> None:
@@ -462,7 +448,7 @@ def _assert_paths_agree_but_for_provenance(md_parsed: dict, wire_parsed: dict) -
     disagree on (T2.3 vs T4.2), and each case asserts its value on both sides
     explicitly. Spec 039 T3.3 adds the folder's spelling of the same default
     (rendered text vs `null`, both not owner-supplied), which
-    `_strip_provenance` reads as one value. This says there is nothing ELSE: a divergence introduced
+    `strip_provenance` reads as one value. This says there is nothing ELSE: a divergence introduced
     anywhere in either path fails here, not just one in the two fields a move
     is built from.
 
@@ -472,7 +458,7 @@ def _assert_paths_agree_but_for_provenance(md_parsed: dict, wire_parsed: dict) -
     comparison down to two fields and left a documented exception in the one
     test that proves the phase.
     """
-    assert _strip_provenance(md_parsed) == _strip_provenance(wire_parsed), (
+    assert strip_provenance(md_parsed) == strip_provenance(wire_parsed), (
         "the two paths diverge somewhere other than the provenance flag",
         md_parsed,
         wire_parsed,
@@ -670,13 +656,10 @@ OTHER_FOLDER = "Atlas/Other Folder"
 def _instruction_set(monkeypatch, tmp_path: Path, outcome: "_Outcome") -> dict:
     """Pass 2 over one path's parser output: `{file name: parsed JSON or text}`
     for every file the render wrote."""
-    sys.path.insert(0, str(TESTS_DIR))
-    import test_039_t4_5_wire_plan_into_pass_2 as T45  # noqa: E402
-
-    client = T45.CountingKado(
-        [SOURCE], existing_folders=[T45.ASSET, T45.NOTES, OTHER_FOLDER]
+    client = CountingKado(
+        [SOURCE], existing_folders=[ASSET_DIR, NOTES_DIR, OTHER_FOLDER]
     )
-    rc, out_dir = T45._run_main(monkeypatch, tmp_path, outcome.parsed, client)
+    rc, out_dir = _run_main(monkeypatch, tmp_path, outcome.parsed, client)
     assert rc == 0
     files = {}
     for path in sorted(out_dir.rglob("*")):
@@ -690,7 +673,7 @@ def _instruction_set(monkeypatch, tmp_path: Path, outcome: "_Outcome") -> dict:
     return files
 
 
-def _both_instruction_sets(monkeypatch, tmp_path, *, folder=None, name=None):
+def _both_instruction_sets(monkeypatch, tmp_path, *, folder=None, name=None, agree=None):
     """One decision typed on each surface, then both full instruction sets.
     `folder` / `name` of `None` leave that line as rendered / that field as Pass
     1 wrote it."""
@@ -709,7 +692,9 @@ def _both_instruction_sets(monkeypatch, tmp_path, *, folder=None, name=None):
         if name is not None:
             wire["attachment_conflicts"][0]["proposed_name"] = name
 
-    markdown, wire = _run_both(tmp_path, doc, markdown_text, wire_edit=_consumer_edits)
+    markdown, wire = _run_both(
+        tmp_path, doc, markdown_text, wire_edit=_consumer_edits, agree=agree
+    )
     md_dir, wire_dir = tmp_path / "pass2-md", tmp_path / "pass2-wire"
     md_dir.mkdir()
     wire_dir.mkdir()
@@ -785,16 +770,12 @@ def test_a_folder_equal_to_the_asset_folder_yields_the_identical_instruction_set
     markdown that is indistinguishable from the rendered line; on the wire it
     is an owner-supplied string. Falsifies K1 treating the owner-supplied
     spelling as a different folder (a different target or embed)."""
-    sys.path.insert(0, str(TESTS_DIR))
-    import test_039_t4_6_paths_converge_on_destinations as T46  # noqa: E402
-
     def _agree(md_parsed, wire_parsed):
-        assert (T46._strip_provenance_and_default_folder(md_parsed)
-                == T46._strip_provenance_and_default_folder(wire_parsed))
+        assert (strip_provenance_and_default_folder(md_parsed)
+                == strip_provenance_and_default_folder(wire_parsed))
 
-    monkeypatch.setattr(sys.modules[__name__], "_assert_paths_agree_but_for_provenance", _agree)
     md, wire = _both_instruction_sets(
-        monkeypatch, tmp_path, folder=ASSET_FOLDER.rstrip("/")
+        monkeypatch, tmp_path, folder=ASSET_FOLDER.rstrip("/"), agree=_agree
     )
     assert _the_one_move(md)["destination"] == f"{ASSET_FOLDER}{COMPUTED}"
     assert wire == md

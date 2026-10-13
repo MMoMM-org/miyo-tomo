@@ -62,6 +62,7 @@ if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
 import test_038_t4_4_the_two_paths_converge as C038  # noqa: E402
+from pass2_harness import strip_provenance_and_default_folder  # noqa: E402
 
 ASSET_FOLDER = C038.ASSET_FOLDER
 DEFAULT_DIR = ASSET_FOLDER.rstrip("/")
@@ -69,7 +70,7 @@ OTHER_FOLDER = "Atlas/Other Folder"
 FOLDER_LINE = "  - Folder: "
 
 
-def _run_with_folder(tmp_path: Path, folder: str | None):
+def _run_with_folder(tmp_path: Path, folder: str | None, agree=None):
     """Both paths for one folder decision; `None` leaves the folder untouched
     on both surfaces. The name is Pass 1's computed one throughout."""
     doc = C038._doc(C038.SOURCE, C038.COMPUTED)
@@ -81,7 +82,7 @@ def _run_with_folder(tmp_path: Path, folder: str | None):
         def wire_edit(wire: dict) -> None:
             wire["attachment_conflicts"][0]["proposed_dir"] = folder
 
-    return C038._run_both(tmp_path, doc, markdown_text, wire_edit=wire_edit)
+    return C038._run_both(tmp_path, doc, markdown_text, wire_edit=wire_edit, agree=agree)
 
 
 def _assert_same_outcome(markdown, wire) -> None:
@@ -121,28 +122,16 @@ def test_default_folder_with_trailing_separator_is_refused_on_both(tmp_path):
     _assert_same_outcome(markdown, wire)
 
 
-def _strip_provenance_and_default_folder(parsed: dict) -> dict:
-    """038's `_strip_provenance`, plus K1's equality rule: an owner-supplied
-    folder spelled exactly as the asset folder is the default (`None`)."""
-    out = C038._strip_provenance(parsed)
-    out["attachment_conflict_remedies"] = [
-        {**r, "proposed_dir": None if r["proposed_dir"] == DEFAULT_DIR else r["proposed_dir"]}
-        for r in out["attachment_conflict_remedies"]
-    ]
-    return out
-
-
-def test_typed_folder_equal_to_the_asset_folder_is_the_default_on_both(tmp_path, monkeypatch):
+def test_typed_folder_equal_to_the_asset_folder_is_the_default_on_both(tmp_path):
     # The parser records differ here — markdown (default, not owner-supplied)
     # vs wire (same text, owner-supplied) — and 038's whole-output guard only
     # folds the not-owner-supplied spelling. Every other field must still
     # agree; the folder converges in K1, which the destination below proves.
     def _agree(md_parsed, wire_parsed):
-        assert (_strip_provenance_and_default_folder(md_parsed)
-                == _strip_provenance_and_default_folder(wire_parsed)), (md_parsed, wire_parsed)
+        assert (strip_provenance_and_default_folder(md_parsed)
+                == strip_provenance_and_default_folder(wire_parsed)), (md_parsed, wire_parsed)
 
-    monkeypatch.setattr(C038, "_assert_paths_agree_but_for_provenance", _agree)
-    markdown, wire = _run_with_folder(tmp_path, DEFAULT_DIR)
+    markdown, wire = _run_with_folder(tmp_path, DEFAULT_DIR, agree=_agree)
     # The markdown cannot tell this edit from no edit; the wire calls it typed.
     assert (markdown.remedy["proposed_dir"], markdown.remedy["dir_is_owner_supplied"]) == (
         DEFAULT_DIR, False)

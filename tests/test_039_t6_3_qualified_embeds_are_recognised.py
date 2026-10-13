@@ -32,7 +32,7 @@ from attachment_plan_fakes import FakeVault, plan_from_remedies  # noqa: E402
 from lib.attachment_index import extract_attachment_embeds  # noqa: E402
 from lib.embed_rewrite import rewrite_attachment_embeds  # noqa: E402
 
-import test_039_t4_5_wire_plan_into_pass_2 as T45  # noqa: E402
+import pass2_harness as H  # noqa: E402
 
 INBOX = "100 Inbox/"
 ASSET = "Atlas/290 Assets/295 Attachments/"
@@ -43,15 +43,16 @@ QUALIFIED = f"{ASSET}karte.png"
 def test_a_note_rendered_by_pass_2_with_a_qualified_embed_is_recognised(
     monkeypatch, tmp_path
 ):
-    """Real `instruction-render.py main()`: another `karte.png` stays in the
-    vault, so the plan qualifies the embed. The rendered note body, fed to the
-    extractor, yields the qualified path."""
-    client = T45.CountingKado(
-        [SOURCE, "Archive/karte.png"], existing_folders=[T45.ASSET, T45.NOTES]
+    """Real `instruction-render.py main()` and real plan and embed rewrite
+    (the pre-rewrite note body is a stub from `render_via_script`): another
+    `karte.png` stays in the vault, so the plan qualifies the embed. The
+    rendered note body, fed to the extractor, yields the qualified path."""
+    client = H.CountingKado(
+        [SOURCE, "Archive/karte.png"], existing_folders=[H.ASSET, H.NOTES]
     )
-    rc, out_dir = T45._run_main(
+    rc, out_dir = H._run_main(
         monkeypatch, tmp_path,
-        T45._suggestions([T45._item("S01", "Eins", attachments=[SOURCE])]),
+        H._suggestions([H._item("S01", "Eins", attachments=[SOURCE])]),
         client,
     )
     assert rc == 0

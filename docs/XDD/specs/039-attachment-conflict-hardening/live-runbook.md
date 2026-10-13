@@ -811,6 +811,31 @@ vault". `schema_version "4"`, `proposed_dir: null` throughout, `base_kado_calls:
 `karte.png` conflict: Dresden was applied in cycle 1, so the runbook's expectation of it
 was wrong and is corrected above.
 
+### Editor run: cycle 1's document edited in Hashi's Suggestions Editor
+
+Not owed by T6.3; it is the Hashi #141 QA run from the handoff of the same day, executed
+on our vault. The vault was put back into the post-Pass-1 state (sources restored and
+re-stamped `12-45-52Z-9a6594`, attachments returned, filed atomics removed; all ten
+fixture hashes matched the snapshot). The owner edited `2026-10-13_1247_suggestions` in
+the editor, which saved a v4 wire with `proposed_dir` and a stub `.md` ("the sibling
+`.json` is authoritative").
+
+| Edit | Wire | Pass 2 (`13-41-28Z-9d5535`) | Apply (`tomo-hashi-run-log_2026-10-13T1552`) |
+|---|---|---|---|
+| H1 Leipzig: other folder, name typed back | `proposed_dir: "Atlas/290 Assets/293 Excalidraw"` | I09 → `293 Excalidraw/leipzig-plan.png`; embed path-qualified | applied; file = inbox copy (`480c…`); occupier `559e…` unchanged |
+| H2 Goerlitz: name with `[ ]`, folder default | `goerlitz -luftbild-.png`, `proposed_dir: null` | I08 → `295 Attachments/goerlitz -luftbild-.png`; bare embed (unique) | applied (`4551…`); `Goerlitz.md` deleted |
+| H3 Radebeul: Ignore | `remedy: ignore` | I11 unchanged + disclosure; I17 `depends_on [I06, I11]` | I11 failed, I17 `skipped-dependency (dependsOn: I11)` |
+| H4 Freiberg: occupied name | `freiberg-dom.png` | withheld `vault_occupied`; relay verbatim | `Freiberg.md` + png still in inbox |
+
+The stub `.md` has no Folder lines, so `293 Excalidraw` can only have come from the
+`.json`: the edited-wire path reads the wire. Hashi's editor already writes v4.
+Render cost: 3 listings / 3 folders, 5 searches / 5 filed basenames. Apply: 17 applied,
+1 skipped-dependency, 1 failed (the intended one).
+
+A side finding, not 039's: `/inbox --recover` stamped the run log
+`tomo-hashi-run-log_2026-10-13T1501.md` with `tomo.state: captured`. Recorded under the
+existing backlog entry on run logs being excluded by a prompt line, not by the triage.
+
 ### Runbook corrections made after the run
 
 - `withheld-attachments.md` is ordered by source path (E1 before S3), not by scenario.

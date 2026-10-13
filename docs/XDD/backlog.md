@@ -1009,6 +1009,14 @@ LLM following one line of its agent definition. It has failed before — two Pas
 previously polluted with `unreadable_result` from exactly this. Two run logs are sitting in the test
 vault's inbox as of this entry.
 
+**Second symptom, observed 2026-10-13** (spec 039 T6.3, run `2026-10-13T13-03-47Z-070715`,
+`/inbox --recover`). The prompt line held: the analyst skipped
+`tomo-hashi-run-log_2026-10-13T1501.md`. But its skip branch writes `--status done` to the state
+file, and `mark-captured.py` stamps every `done` item. The run log came out of the run carrying
+`tomo: {doc_type: source, state: captured, …}` beside its own `tomo_skip_inbox_analysis: true`.
+From then on it sits in the `captured` bucket: every `--recover` re-intakes it, and it counts as a
+captured source with no downstream document. The same triage-level exclusion closes both symptoms.
+
 **What closing this needs**: teach `inbox-triage.py` the flag so the exclusion is deterministic,
 rather than leaving a data-quality guard to prompt adherence. Directly relevant to
 [#174](https://github.com/MMoMM-org/miyo-tomo/issues/174) — this is the untestable layer that issue

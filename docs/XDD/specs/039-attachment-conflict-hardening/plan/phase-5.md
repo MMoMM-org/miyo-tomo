@@ -55,6 +55,6 @@ Delivers what the owner reads about the new outcomes, and the dependency that ke
   4. Validate: trace reviewed against the Hashi tree at a named commit
   5. Success: `[ref: PRD/F6-AC7]`; `[ref: PRD/F6-AC2]` by trace now, by live run in T6.3
 
-- [ ] **T5.4 Phase 5 validation** `[activity: validate]`
+- [x] **T5.4 Phase 5 validation** `[activity: validate]`
 
   - Full suite green; ruff clean; the rendered fixture document read end to end by a reviewer; Kokoro handoff answered before merge; a rejection reverts T5.2 on the branch (CON-2).

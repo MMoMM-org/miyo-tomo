@@ -742,7 +742,7 @@ Finally `rm -r "$HOME/.tomo-spec039-live"` once the evidence is recorded.
 | 6 | S1 | F4-AC2 | embed `![[Atlas/296 Karten/leipzig-plan.png]]` + "Embed written with path" line | both present; filed note embeds `![[Atlas/296 Karten/leipzig-plan.png]]` | Pass |
 | 7 | S1 | A3 / apply | folder created; file = inbox copy's sha; occupier unchanged | folder created; `480c…` (inbox copy); occupier `559e…` unchanged | Pass |
 | 8 | S2 | F4-AC3 | embed `![[Atlas/290 Assets/295 Attachments/pirna-markt.jpg]]` | filed note embeds `![[Atlas/290 Assets/295 Attachments/pirna-markt.jpg]]` | Pass |
-| 9 | S2 | A1 | filed note shows the Pirna image, not the `293 Excalidraw` one | embed is path-qualified to the `3c88…` copy; `293 Excalidraw` copy `3f95…` untouched. Render not eyeballed | Pass (structural) |
+| 9 | S2 | A1 | filed note shows the Pirna image, not the `293 Excalidraw` one | embed is path-qualified to the `3c88…` copy; `293 Excalidraw` copy `3f95…` untouched. Owner confirmed in Obsidian: the Pirna image renders | Pass |
 | 10 | S3 | F2-AC3 / F2-AC5 | `typed_folder_refused`; bullet text as executed above | `typed_folder_refused`; bullet with the default-folder promise | Pass |
 | 11 | S3 | F2-AC4 / F2-AC6 | no move, no default-folder fallback, `Goerlitz.md` held | no move; `Goerlitz.md` + png in inbox; `100 Inbox/Karten` never created | Pass |
 | 12 | S4 | F3-AC4 | `move_asset` sent unchanged to the occupied destination | I10 `→ 295 Attachments/radebeul-weinberg.jpg`, unchanged | Pass |
@@ -767,6 +767,7 @@ Finally `rm -r "$HOME/.tomo-spec039-live"` once the evidence is recorded.
 
 Measured 2026-10-13 in Privat-Test, Hashi 0.26.1, one container session
 (`790a0265`, $16.90 for all three passes). All 28 rows pass; row 22 is n/a by design.
+Row 9 was confirmed by the owner in Obsidian: the filed Pirna note shows the Pirna image.
 Getting there took four runs and three fixes, which are the real findings.
 
 ### Before the counted run: three findings, three fixes
@@ -818,8 +819,6 @@ was wrong and is corrected above.
 
 ### Not checked
 
-- Row 9 is structural: the embed path pins the right file, but nobody looked at the
-  rendered note.
 - F3-AC6 and F3-AC2 live stay optional probes (below).
 
 ---

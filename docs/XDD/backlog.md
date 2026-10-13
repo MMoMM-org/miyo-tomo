@@ -1206,8 +1206,9 @@ occupied destination and a Hashi refusal, with no Attachment Conflicts section
 anywhere in either document.
 
 **Updated 2026-10-13 by spec 039 (F3, `354afb9a` plan, `651ed308` projection): narrowed, still
-OPEN.** Pass 2 now checks every `move_asset` target against the vault, whatever the remedy or
-absence of one (decision-table row 8, `lib/attachment_plan.py`; PRD F3-AC1/AC2, pinned by
+OPEN.** Pass 2 now checks every `move_asset` target against the vault that has no remedy or a
+Rename/Keep remedy, except an explicit Ignore (F3-AC4) or a folder Kado could not answer for
+(row 9) (decision-table row 8, `lib/attachment_plan.py`; PRD F3-AC1/AC2, pinned by
 `test_row8_non_conflict_attachment_onto_now_occupied_target_f3_ac2` in
 `tests/test_039_t4_2_attachment_plan.py`). The force-atomic note's attachment onto an occupied
 destination is therefore withheld in Pass 2 with a named reason, its embeds untouched and the
@@ -1731,7 +1732,13 @@ the vendored snapshot against Hashi's copy by some means that does not depend on
 this fetch succeeding — the handoff itself carries the schema, so comparing
 against the artefact the consumer confirms is the obvious route.
 
-## OPEN — two reason-builders fall back silently on an unrecognised code
+## RESOLVED — two reason-builders fall back silently on an unrecognised code
+
+**Resolved by spec 039.** Both halves now raise instead of falling back: the typed-name sibling
+via `lib/refusal_sentences.py` `typed_name_sentence` (T1.5, `8eff968e`), the original
+`_attachment_suppression_reason` path via `withheld_attachment_remedy`, which raises `ValueError`
+on an unknown kind (T5.4, `587a0348`; `tests/test_039_t5_1_reporting.py`,
+`tests/test_039_t5_4_owner_wording.py`).
 
 **Two sites, one shape.** Counted 2026-10-02 over every function in
 `tomo/scripts/` that maps a code or kind to owner-facing text:
@@ -2720,8 +2727,8 @@ the instructions-wire equivalent of the suggestions parity test. Not a spec 039 
 
 **Out of scope of spec 039** (PRD out-of-scope list; decisions log 2026-10-11), pre-existing.
 `build_from_wire_companion` (`tomo/scripts/suggestion-parser.py:533`) combines a primary and a fan
-wire for the JSON-only companion merge but takes `attachment_conflicts[]` from neither side of the
-union starting from a copy of the primary (only `suggestions` and `proposed_mocs` are merged), so an
+wire for the JSON-only companion merge but keeps only the primary's `attachment_conflicts[]`
+(inherited through the deepcopy; only `suggestions` and `proposed_mocs` are merged), so an
 attachment conflict recorded on the fan wire is dropped and never reaches Pass 2 with its remedy. Fix
 alongside the other fan-wire hygiene when companion mode is next touched; it needs a test that puts
 a conflict on the fan wire and asserts it survives the merge.

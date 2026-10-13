@@ -113,7 +113,11 @@ version: "1.0"
   Architecture: breaking changes document their migration in Kokoro).
 - **CON-3** — Additive for untouched runs: a run with no conflict, no typed input
   and only vault-unique basenames produces Pass 2 output byte-identical to today
-  (PRD F1-AC7, F4-AC1, F3-AC3).
+  apart from the wire's version stamp (PRD F1-AC7, F4-AC1, F3-AC3), with two
+  owner-decided differences that hold even then: `move_asset` ids appear in a
+  `delete_source`'s `depends_on` (F6-AC1), and the Keep-in-inbox remedy sentence
+  carries the T5.4 owner wording. The golden is
+  `tests/test_039_t6_3_untouched_document_baseline.py`.
 - **CON-4** — `_asset_dest_join` stays a pure join that never sanitises (038
   CON-4). Every check runs before it.
 - **CON-5** — Constitution L1 Testing: every new refusal, the vault check and
@@ -235,6 +239,14 @@ test. Corrected at close-out (§4): this line first named
 `attachment_index.extract_attachment_embeds`, which production triage does
 not call. F6-AC2/F6-AC7 are owned by the consumer's
 executor and are asserted, not built.
+
+T6.3 also changed `tomo/dot_claude/commands/inbox.md` and
+`tomo/scripts/inbox-triage.py` as a prerequisite of the remedy (K7 relays the
+withheld-line remedy `/inbox --pass2 --force`, which only works if the owner's
+flags reach triage and the conductor's report reaches the owner verbatim):
+`f2d43533` (verbatim relay through conductor and `/inbox`), `b0d61b0c` (flags
+pass to triage unchanged), `e9a7adff` (`/inbox` stops on a failed triage),
+`fe873e99` (`--pass1` help no longer promises a force).
 
 ### Directory Map
 
@@ -656,7 +668,7 @@ only names and paths.
 
 ## Quality Requirements
 
-- Untouched-run byte identity (CON-3) — golden comparison.
+- Untouched-run byte identity (CON-3), bar the two owner-decided differences (F6-AC1 `depends_on` ids, T5.4 Keep-in-inbox wording) — golden comparison in `tests/test_039_t6_3_untouched_document_baseline.py`.
 - Every K1 decision-table row has an accepting and a rejecting test (CON-5).
 - Added Kado calls bounded as in Cost, asserted with counting fakes.
 - `ruff` clean; full suite green in one invocation before close-out.
@@ -675,7 +687,7 @@ behaviour:
 | F1-AC4 | K11 → K1 | paths converge at K1 |
 | F1-AC5 | K1 | null / equal folder → `concepts.asset` |
 | F1-AC6 | K1 | folder read only under Rename |
-| F1-AC7 | K1, K5, K6 | CON-3 golden |
+| F1-AC7 | K1, K5, K6 | CON-3 golden (`tests/test_039_t6_3_untouched_document_baseline.py`; amended proviso, requirements F1-AC7) |
 | F1-AC8 | K11 | rename-line rule unchanged |
 | F1-AC9 | K12 | D26; count 26 |
 | F1-AC11 | K1 | row 4 |

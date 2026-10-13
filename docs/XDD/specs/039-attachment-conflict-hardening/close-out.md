@@ -17,20 +17,20 @@ deduplicated): F1:11 F2:9 F3:7 F4:8 F5:7 F6:8 S1:2 C1:1. **50 trace to executed
 tests**, 2 to documentation (S1), and 1 (F6-AC2) to the live run and the
 consumer's own test, because only an executor can fail a move.
 
-The **170 node ids** (the trace tables', three CON-1 ids, and at the end the
+The **172 node ids** (the trace tables', three CON-1 ids, and at the end the
 three "Not a gap" projection tests) were run **together in one
 `pytest` invocation on 2026-10-13**, against `2ab4698e` plus the review-round
 changes committed with this revision (§4):
 
 ```
-306 passed in 2.70s
+308 passed in 2.68s
 ```
 
-170 node ids collect **306 items**: the difference is parametrisation
+172 node ids collect **308 items**: the difference is parametrisation
 (`test_refusal_reason` alone is 48 cases). Checked by script, not by eye:
 every listed node id collects at least one item, and every collected item
 belongs to a listed node id — nothing deselected, nothing extra. The full suite
-on the same tree: **4967 passed, 4 skipped** (4971 items). Three skips are
+on the same tree: **4969 passed, 4 skipped** (4973 items). Three skips are
 standing and environmental: the gitignored `_outbox/` attachment, a fixture
 absent from this checkout, and the voice model directory. The fourth comes and
 goes with the network — the upstream-schema fetch 038's close-out describes
@@ -183,6 +183,8 @@ The command, exactly as run (paths relative to the repo root):
   tests/test_039_t5_1_reporting.py::test_relay_carries_one_line_per_withheld_and_per_unchecked \
   tests/test_039_t5_1_reporting.py::test_no_executor_internals_in_any_new_sentence \
   tests/test_039_t5_1_reporting.py::test_conductor_relays_unchecked_lines_and_passes_cost_history \
+  tests/test_039_t5_1_reporting.py::test_the_conductor_relays_withheld_lines_character_for_character \
+  tests/test_039_t5_1_reporting.py::test_inbox_passes_the_conductor_report_through_unchanged \
   tests/test_039_t5_2_delete_waits_for_attachment_moves.py::test_origin_and_audio_peer_delete_name_notes_then_both_assets \
   tests/test_039_t5_2_delete_waits_for_attachment_moves.py::test_shared_attachment_is_named_by_both_origins_deletes \
   tests/test_039_t5_2_delete_waits_for_attachment_moves.py::test_withheld_attachment_id_appears_in_no_delete \
@@ -399,7 +401,7 @@ baseline test, which see the emitted bytes.
 | AC2 — blank, trailing `/`, segment-edge whitespace, forbidden character, `# ^ [ ]` | `test_039_t2_2_…::test_refusal_reason` + `::test_every_reason_is_exercised_and_set_is_closed` | — |
 | AC3 — the inbox or inside it | `test_039_t2_2_…::test_refusal_reason` (`inside_inbox`) + `::test_inbox_path_normalised_for_comparison_only` + `::test_inbox_comparison_ignores_unicode_normalisation` + `test_039_t4_7_nfc_target_keys.py::test_typed_folder_inside_an_nfd_spelled_inbox_is_refused` + `test_039_t4_2_…::test_row3_refused_typed_folder_is_withheld_without_fallback` (the plan passes the vault-relative inbox path) | row 10 (`100 Inbox/Karten`) |
 | AC4 — no move; embedding notes held | `test_039_t4_2_…::test_row3_refused_typed_folder_is_withheld_without_fallback` + `test_039_t4_3_move_builder_projection.py::test_b_typed_folder_refused_carries_every_owner` + `::test_d_typed_folder_refused_holds_the_notes` | row 11 |
-| AC5 — document and shell name the attachment and the rule, only what was verified | `test_039_t5_1_reporting.py::test_refused_folder_bullet_names_attachment_and_rule` + `::test_each_folder_reason_has_its_own_sentence_in_the_notice` + `::test_unreadable_folder_line_is_not_reported_as_left_blank` + `::test_relay_carries_one_line_per_withheld_and_per_unchecked` + `::test_no_executor_internals_in_any_new_sentence` + `test_039_t2_2_…::test_sentence_per_reason` + `::test_sentences_are_distinct_and_escape_control_chars` + `test_039_t5_4_owner_wording.py::test_one_remedy_per_withheld_kind_in_every_surface` | rows 10, 21 |
+| AC5 — document and shell name the attachment and the rule, only what was verified | `test_039_t5_1_reporting.py::test_refused_folder_bullet_names_attachment_and_rule` + `::test_each_folder_reason_has_its_own_sentence_in_the_notice` + `::test_unreadable_folder_line_is_not_reported_as_left_blank` + `::test_relay_carries_one_line_per_withheld_and_per_unchecked` + `::test_no_executor_internals_in_any_new_sentence` + `test_039_t2_2_…::test_sentence_per_reason` + `::test_sentences_are_distinct_and_escape_control_chars` + `test_039_t5_4_owner_wording.py::test_one_remedy_per_withheld_kind_in_every_surface` + `test_039_t5_1_…::test_the_conductor_relays_withheld_lines_character_for_character` + `::test_inbox_passes_the_conductor_report_through_unchanged` (the shell relay reaches the owner verbatim through the conductor and `/inbox`; added in T6.3) | rows 10, 21 |
 | AC6 — the default folder is not a fallback | `test_039_t4_2_…::test_row3_refused_typed_folder_is_withheld_without_fallback` (`destination: None`) + `test_038_t4_4_…::test_a_refused_folder_is_refused_identically_on_both_paths` (no `move_asset` on either path) + `test_039_t4_6_…::test_default_folder_with_trailing_separator_is_refused_on_both` | row 11 (`100 Inbox/Karten` never created) |
 | AC7 — one bad folder never aborts the run | `test_039_t4_2_…::test_f2_ac7_a_bad_folder_refuses_one_source_and_plans_the_rest` + `test_039_t4_5_wire_plan_into_pass_2.py::test_a_bad_typed_folder_refuses_one_item_and_never_reaches_the_path_shape_guard` | — |
 | AC8 — non-existent usable folder: move emitted, "will be created" stated | `test_039_t4_2_…::test_row10_absent_typed_folder_moves_and_will_be_created` + `::test_row10_rejected_existing_folder_is_not_created` + `test_039_t5_1_…::test_folder_to_be_created_is_listed` + `test_039_t1_4_vault_folder_lookup.py::test_absent_is_only_kados_path_not_found` | rows 5, 7 |
@@ -507,3 +509,16 @@ Verified by read-through on 2026-10-13:
    names the move; only the executor proves the skip. Both were observed
    (live, three times, and in Hashi's test), but a future executor change is
    guarded by Hashi's `assetDependsOn.test.ts`, not by anything in this repo.
+5. **F4-AC7's realistic later-run outcome is "present, unresolved".** Triage's
+   index holds inbox files only, so a qualified embed whose target already
+   left the inbox is reported present but unresolved, not resolved.
+6. **The Adoption KPI is met for 50 of 53** (S1 by documentation, F6-AC2 by
+   the live run). The Quality KPI "every delete" is a fixture-set assertion:
+   it holds for every delete in the test set, not for every delete a vault can
+   produce.
+7. **`/inbox`'s stop-on-failed-triage rule (`e9a7adff`) has no live evidence.**
+   It is backed by its runtime text and a string test
+   (`test_inbox_step_1_stops_when_triage_fails`) only.
+8. **The vendored instructions copy led the consumer by one patch.** `771a8a7a`
+   (= `c217f66` + patch) was ahead of Hashi until Hashi applied it as `a0d88f8`;
+   hash `9c9565d0…826f` was confirmed equal on both sides. Accepted inversion.

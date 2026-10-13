@@ -66,7 +66,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | D-05 | ☑ #25 | Done 2026-06-30 — WHY-docs for 6 skills created at `docs/tomo/dot_claude/skills/` |
 | D-06 | ☑ #25 | Done 2026-06-30 — post-018 deprecation banners added to 7 stale reference docs |
 | D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |
-| D-08 | ☐ #25 | `suggestion-parser.py` 1397 LOC refactor |
+| D-08 | ☐ #25 | `suggestion-parser.py` 3246 LOC refactor (+72 from spec 039); seam: markdown walkers vs `build_from_wire*` — see "RECORD — spec 039 net line counts" |
 | D-10 | **#41** | Documentation refresh (docs/ tree, coverage, screenshots) |
 | D-11 | ~~#39~~ | **Done (2026-07-02)** — `cleanup-tomo.sh` v0.3 registry-aware: `registry-only` (deregister, you delete the folder) vs `--delete-disk --force`; interactive r/d/N; non-interactive defaults to registry-only; `--instance`/`--list`; hardened path guard. |
 | D-12 | ☐ #23 | `move-tomo.sh` / instance-relocate helper |
@@ -2526,7 +2526,7 @@ in one command rather than requiring someone to think of checking.
 
 ---
 
-## No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
+## RESOLVED — No test joins `_propose_asset_name`'s output to `check_typed_name`'s verdict
 
 **RESOLVED by spec 039 T1.6 (`689ead8`, `72b3381`; PRD F5-AC6):** `tests/test_039_t1_6_computed_names_pass_typed_rules.py` joins every computed name for a vault-legal source to `check_typed_name`, with a permanent negative control. Sources carrying a forbidden character stay the divergence pinned by spec 038.
 

@@ -1,6 +1,6 @@
 ---
 title: "Live runbook — 039 T6.3 (c) and (c2)"
-status: ready
+status: executed
 prepared: 2026-10-13
 ---
 
@@ -40,6 +40,8 @@ its tests. If you want to probe it on purpose, see "Optional probes" at the end.
 ---
 
 ## Hashi is on v3, so edits go through the markdown only
+
+> This section described the pre-run state; it is superseded by Results (the editor run on v4) and T6.2.
 
 The installed plugin in the test vault is `miyo-tomo-hashi` **0.26.1** (read from
 `$V/.obsidian/plugins/miyo-tomo-hashi/manifest.json`). Its vendored suggestions schema

@@ -34,7 +34,7 @@ Why the translation was removed: live run 2026-10-13, the owner typed `/inbox --
 
 Why pass-through over a STRICT block telling the model to keep `--force`: a STRICT is a request to a model; pass-through removes the step where the model can err at all. Deterministic, and the owner's decision.
 
-A flag triage does not know (a typo, `/inbox pass2`) is rejected by argparse: exit code 2 and a usage line on stderr, no `routing-plan.json` is written. The command's Bash step fails visibly in the transcript; there is no silent fallback to a default run.
+A flag triage does not know (a typo, `/inbox pass2`) is rejected by argparse: exit code 2 and a usage line on stderr, no `routing-plan.json` is written. The command's Bash step fails visibly in the transcript; there is no silent fallback to a default run. Step 1 also tells the model to stop and show stderr on a non-zero exit, because a `routing-plan.json` left over from an earlier run would otherwise be read as if it were this run's plan.
 
 ## --pass2 Is Coverage/Drift-Respecting; --force Is the Sledgehammer (#78)
 

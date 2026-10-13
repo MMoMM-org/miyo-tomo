@@ -111,3 +111,12 @@ def test_inbox_command_passes_arguments_through_unchanged():
     assert "python3 scripts/inbox-triage.py $ARGUMENTS" in step1
     assert "force-pass" not in step1
     assert "→" not in step1
+
+
+def test_inbox_step_1_stops_when_triage_fails():
+    text = INBOX_MD.read_text(encoding="utf-8")
+    step1 = re.search(r"### 1\. Run triage(.*?)### 2\.", text, re.S).group(1)
+
+    assert "exits non-zero" in step1
+    assert "stderr" in step1
+    assert "never read" in step1.lower() and "routing-plan.json" in step1

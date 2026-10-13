@@ -25,6 +25,8 @@ argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 python3 scripts/inbox-triage.py $ARGUMENTS
 ```
 
+If triage exits non-zero, show its stderr to the user and stop. Never read `tomo-tmp/routing-plan.json` after a failed triage.
+
 ### 2. Read routing plan
 
 ```bash

@@ -125,8 +125,30 @@ def test_inbox_step_1_stops_when_triage_fails():
 def test_pass1_help_does_not_promise_a_force():
     parser = _load_module()._build_arg_parser()
 
-    action = next(a for a in parser._actions if "--pass1" in a.option_strings)
-    help_text = " ".join(action.help.split())
+    action = next((a for a in parser._actions if "--pass1" in a.option_strings), None)
+    assert action is not None
+    help_text = " ".join((action.help or "").split())
 
     assert "Run Pass 1" in help_text
     assert "Force" not in help_text
+
+
+def test_an_unknown_flag_is_rejected_and_no_routing_plan_is_written(tmp_path):
+    mod = _load_module()
+
+    with pytest.raises(SystemExit) as parse_exit:
+        mod._build_arg_parser().parse_args(["--bogus"])
+    assert parse_exit.value.code == 2
+
+    with pytest.raises(SystemExit) as main_exit:
+        mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
+                "--bogus",
+            ],
+            client_factory=_covered_client,
+        )
+    assert main_exit.value.code == 2
+    assert not (tmp_path / "routing-plan.json").exists()

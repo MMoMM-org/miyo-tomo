@@ -520,3 +520,8 @@ The option name `--force-pass2` is a misnomer kept only for compatibility: it
 is NOT "pass 2 with force" -- it is coverage/drift-respecting. Only `--force`
 ignores coverage. An unknown flag is rejected by argparse (exit 2, usage on
 stderr, no `routing-plan.json`).
+
+The `--pass1` help text was "Force suggest action" until v0.40.1, which promised
+a force the flag never gave since the alias change; it now reads "Run Pass 1
+(suggest), coverage/drift-respecting", matching `--pass2`. Pinned by
+`test_pass1_help_does_not_promise_a_force`.

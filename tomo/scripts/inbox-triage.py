@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.0
+# version: 0.40.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -1763,7 +1763,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--pass1", "--force-pass1", dest="force_pass1",
         action="store_true", default=False,
-        help="Force suggest action",
+        help="Run Pass 1 (suggest), coverage/drift-respecting",
     )
     p.add_argument(
         "--pass2", "--force-pass2", dest="force_pass2",

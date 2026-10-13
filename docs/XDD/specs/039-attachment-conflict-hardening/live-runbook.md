@@ -255,16 +255,30 @@ The five notes are below. Every embed is **path-prefixed**, as `Dresden.md`'s is
 `![[leipzig-plan.png]]` would be ambiguous *before* the run, because the occupier holds
 the same basename. That is the very defect F4 is about, and it would make discovery
 depend on which copy wins. No frontmatter and no dates: the classifier should propose
-one atomic note per item, and nothing should route to a daily note.
+one atomic note per item, and nothing should route to a daily note. Each body is over
+100 words, has headings and a list, and states one own thought, so it clears the 0.5
+atomic-worthiness gate. The first live run used ~70-word captions: all five scored
+0.3-0.4, were kept in the inbox, and the run produced no attachment conflict at all.
 
 `$I/Leipzig.md`:
 
 ```markdown
-# Leipzig
+---
+Updated: 2026-10-13 10:36
+---
+# Leipzig: die Passagen als Rundgang
 
-Stadtplan der Leipziger Innenstadt aus einem alten Reisefuehrer, abfotografiert. Er zeigt den Ring um die Altstadt mit Hauptbahnhof, Augustusplatz und Thomaskirche. Die Passagen zwischen Markt und Neumarkt sind eingezeichnet, die Maedlerpassage ist hervorgehoben.
+Ein alter Stadtplan der Leipziger Innenstadt, abfotografiert aus einem Reisefuehrer. Mich interessiert daran eine Idee: Leipzig erschliesst sich nicht ueber Strassen, sondern ueber seine Passagen und Hoefe.
 
-Als Orientierung fuer einen Stadtrundgang reicht der Plan: vom Hauptbahnhof ueber die Nikolaikirche zum Markt und weiter zur Thomaskirche sind es kaum zwei Kilometer.
+## Beobachtung
+
+- Der Ring um die Altstadt ist so kurz, dass man ihn in einer Stunde umrundet.
+- Zwischen Markt und Neumarkt fuehren die Passagen quer durch die Bloecke; die Maedlerpassage ist die bekannteste.
+- Die Passagen stammen aus der Messetradition: Haendler brauchten wettergeschuetzte Wege zwischen den Messehaeusern.
+
+## Gedanke
+
+Wer Leipzig zu Fuss plant, sollte den Rundgang nicht entlang der Strassen legen, sondern von Passage zu Passage. Dadurch wird aus zwei Kilometern zwischen Hauptbahnhof, Nikolaikirche und Thomaskirche ein Weg, der fast nie ins Freie fuehrt. Das ist fuer einen Regentag die bessere Route und zeigt nebenbei, wie die Messe die Stadtform gepraegt hat.
 
 ![[100 Inbox/Scans/leipzig-plan.png]]
 ```
@@ -272,11 +286,22 @@ Als Orientierung fuer einen Stadtrundgang reicht der Plan: vom Hauptbahnhof uebe
 `$I/Pirna.md`:
 
 ```markdown
-# Pirna
+---
+Updated: 2026-10-13 10:36
+---
+# Pirna: der Canaletto-Blick als Massstab
 
-Foto vom Marktplatz in Pirna mit dem Rathaus in der Mitte und den Buergerhaeusern ringsum. Canaletto hat genau diesen Blick im 18. Jahrhundert gemalt, und die Platzwand ist bis heute fast unveraendert.
+Ein Foto vom Marktplatz in Pirna, mit dem Rathaus in der Mitte und den Buergerhaeusern ringsum. Mich interessiert, dass sich dieser Blick seit dem 18. Jahrhundert kaum veraendert hat.
 
-Pirna ist der Ausgangspunkt fuer die Saechsische Schweiz flussaufwaerts; die Altstadt lohnt sich trotzdem fuer einen eigenen halben Tag.
+## Beobachtung
+
+- Canaletto hat genau diese Ansicht um 1753 gemalt; das Bild haengt heute in Dresden.
+- Die Platzwand ist bis auf Details identisch: Giebel, Rathausturm und Fluchten stimmen.
+- Die Stadt nutzt den Vergleich selbst und hat am Standort des Malers eine Tafel aufgestellt.
+
+## Gedanke
+
+Ein historisches Gemaelde wird hier zum Pruefstein fuer Denkmalpflege. Wer wissen will, ob eine Altstadt behutsam saniert wurde, kann sie mit einer alten Ansicht vergleichen, statt Gutachten zu lesen. Pirna besteht diesen Test, und das macht den Platz zu einem guten Ausgangspunkt fuer die Saechsische Schweiz, nicht nur zu einer Durchgangsstation.
 
 ![[100 Inbox/Bilder/pirna-markt.jpg]]
 ```
@@ -284,11 +309,22 @@ Pirna ist der Ausgangspunkt fuer die Saechsische Schweiz flussaufwaerts; die Alt
 `$I/Goerlitz.md`:
 
 ```markdown
-# Goerlitz
+---
+Updated: 2026-10-13 10:36
+---
+# Goerlitz: unzerstoert und deshalb Kulisse
 
-Luftbild der Goerlitzer Altstadt mit Peterskirche, Untermarkt und der Altstadtbruecke ueber die Neisse nach Zgorzelec. Die Stadt hat den Krieg fast ohne Zerstoerung ueberstanden, deshalb ist die Bebauung aus Gotik, Renaissance und Barock geschlossen erhalten.
+Ein Luftbild der Goerlitzer Altstadt mit Peterskirche, Untermarkt und der Altstadtbruecke ueber die Neisse nach Zgorzelec. Mich interessiert der Zusammenhang zwischen Kriegsgeschichte und Filmindustrie.
 
-Wegen dieser Kulisse wird Goerlitz oft als Drehort genutzt.
+## Beobachtung
+
+- Goerlitz hat den Zweiten Weltkrieg fast ohne Zerstoerung ueberstanden.
+- Gotik, Renaissance und Barock stehen deshalb in geschlossenen Strassenzuegen nebeneinander.
+- Produktionen wie Grand Budapest Hotel haben hier gedreht; die Stadt nennt sich Goerliwood.
+
+## Gedanke
+
+Was die Stadt nach 1990 wirtschaftlich schwach gemacht hat, die Randlage an der Grenze und der Leerstand, wurde zur Staerke als Drehort: leere, intakte Gebaeude lassen sich ohne Umbau als jede Epoche verwenden. Erhalt durch Stillstand ist hier zu einem Standortvorteil geworden, den keine neu gebaute Kulisse bieten kann.
 
 ![[100 Inbox/Scans/goerlitz-altstadt.png]]
 ```
@@ -296,11 +332,22 @@ Wegen dieser Kulisse wird Goerlitz oft als Drehort genutzt.
 `$I/Radebeul.md`:
 
 ```markdown
-# Radebeul
+---
+Updated: 2026-10-13 10:36
+---
+# Radebeul: Weinbau an der Nordgrenze
 
-Blick ueber die Weinberge von Radebeul mit dem Spitzhaus oben am Hang. Die Steillagen an der Elbe gehoeren zum Anbaugebiet Sachsen, einem der kleinsten und noerdlichsten Weinbaugebiete Deutschlands.
+Ein Blick ueber die Weinberge von Radebeul mit dem Spitzhaus oben am Hang. Mich interessiert, warum hier, so weit im Norden, ueberhaupt Wein waechst.
 
-Die Spitzhaustreppe fuehrt mit ueber dreihundert Stufen direkt durch die Rebhaenge nach oben.
+## Beobachtung
+
+- Die Steillagen liegen nach Sueden geneigt direkt ueber der Elbe.
+- Sachsen ist eines der kleinsten und noerdlichsten Weinbaugebiete Deutschlands.
+- Die Spitzhaustreppe fuehrt mit ueber dreihundert Stufen mitten durch die Rebhaenge.
+
+## Gedanke
+
+Der Weinbau funktioniert hier nur, weil drei Faktoren zusammenkommen: die Hangneigung faengt die flache Sonne ein, die Elbe speichert Waerme und daempft Frost, und die Trockenmauern geben nachts Waerme ab. Faellt einer weg, ist die Lage nicht mehr haltbar. Das erklaert, warum die Rebflaechen so klein und so teuer zu bewirtschaften sind.
 
 ![[100 Inbox/Fotos/radebeul-weinberg.jpg]]
 ```
@@ -308,11 +355,22 @@ Die Spitzhaustreppe fuehrt mit ueber dreihundert Stufen direkt durch die Rebhaen
 `$I/Freiberg.md`:
 
 ```markdown
-# Freiberg
+---
+Updated: 2026-10-13 10:36
+---
+# Freiberg: der Dom als Bilanz des Silbers
 
-Innenaufnahme des Freiberger Doms mit der Tulpenkanzel und der Silbermann-Orgel. Der Dom steht fuer den Reichtum, den der Silberbergbau der Stadt im Mittelalter gebracht hat.
+Eine Innenaufnahme des Freiberger Doms mit der Tulpenkanzel und der Silbermann-Orgel. Mich interessiert, wie direkt sich hier Bergbau in Kunst umgesetzt hat.
 
-Die Goldene Pforte am Dom gilt als eines der fruehesten Figurenportale in Deutschland.
+## Beobachtung
+
+- Freiberg war ueber Jahrhunderte das Zentrum des saechsischen Silberbergbaus.
+- Die Goldene Pforte gilt als eines der fruehesten Figurenportale in Deutschland.
+- Die Tulpenkanzel und die Orgel von Gottfried Silbermann sind Auftragswerke aus dieser Zeit.
+
+## Gedanke
+
+Der Dom ist eine Art Bilanz: Jeder Ausstattungsteil laesst sich einer Phase guter Ertraege zuordnen. Wer die Bauabschnitte datiert, liest damit indirekt die Konjunktur der Gruben ab. Kunstgeschichte wird hier zu Wirtschaftsgeschichte, und das macht den Dom fuer mich interessanter als jede Schautafel im Bergbaumuseum.
 
 ![[100 Inbox/Scans/freiberg-dom.png]]
 ```

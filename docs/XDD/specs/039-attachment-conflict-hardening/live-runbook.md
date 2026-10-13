@@ -547,7 +547,8 @@ held notes `Goerlitz.md` and `Freiberg.md` get. They must carry the **same** rem
 two bullets above (one remedy per kind, T5.4), never a second, different one.
 
 **The shell relay (T4.5 extended by T5.1).** `tomo-tmp/withheld-attachments.md` holds
-exactly the two lines above, S3 then E1, byte-identical to the instruction document's
+exactly the two lines above, ordered by source path (E1 `freiberg-dom.png` before S3
+`goerlitz-altstadt.png`), byte-identical to the instruction document's
 bullets. Its `run_id` sidecar matches this run. The Pass 2 shell report relays **each
 line verbatim, one per withheld attachment, and no count**: no "2 attachments withheld",
 no summary line standing in for them. The relay is produced by the model at runtime
@@ -609,7 +610,8 @@ comm -13 "$SNAP/attachments-before.txt" <(ls "$V/Atlas/290 Assets/295 Attachment
 ls "$V/100 Inbox"
 ```
 
-`notes-filed-cycle1.txt` should list three atomics: Leipzig's, Pirna's and Radebeul's.
+`notes-filed-cycle1.txt` should list three atomics: Leipzig's, Pirna's and Radebeul's,
+plus Dresden's if the owner approved the 037 fixture's item in the same document.
 Their titles come from the classifier, not the source names. Note any rendered atomic
 lingering in `100 Inbox/` for the held notes (`Goerlitz`, `Freiberg`) or for Radebeul.
 A lingering rendered note would be re-proposed as a fresh source in cycle 2, so it
@@ -640,8 +642,10 @@ on the agent threading both flags, and once it did not. `--recover` reaches the 
 fold through one flag.
 
 **Expect a broader run than cycle 1.** `--recover` re-intakes **every** captured inbox
-note: also `Dresden.md` (the 037 `karte.png` conflict reappears), `Bautzen.md`,
-`Meissen.md`, `Laufrunde Elbufer.md`, and `Radebeul.md` (kept by S4). That is correct
+note: also `Bautzen.md`,
+`Meissen.md`, `Laufrunde Elbufer.md`, and `Radebeul.md` (kept by S4); `Dresden.md` with
+the 037 `karte.png` conflict only if its item was not approved and applied in cycle 1.
+That is correct
 behaviour, not noise. Do **not** approve this document, and do not run Pass 2: c2 is
 Pass 1 only.
 
@@ -662,7 +666,7 @@ Pass 1 only.
   also propose a second atomic for a note already filed in cycle 1. Record that, but it
   is not a c2 failure.
 - The suggestions JSON is `schema_version: "4"`, with `proposed_dir: null` on every
-  conflict, the 037 `karte.png` conflict included.
+  conflict.
 - The triage entry for this run is in `inbox-cost-history.jsonl` (`base_kado_calls: 2`).
 
 ---
@@ -730,39 +734,93 @@ Finally `rm -r "$HOME/.tomo-spec039-live"` once the evidence is recorded.
 
 | # | Scenario | Criterion | Expected | Observed | Pass/Fail |
 |---|---|---|---|---|---|
-| 1 | all | F1-AC1 | wire `schema_version "4"`; every conflict `proposed_dir: null` | | |
-| 2 | all | F1-AC2 | Folder line under each Rename line, `Atlas/290 Assets/295 Attachments` | | |
-| 3 | S1 | F1-AC3 / F1-AC10 | parser: `proposed_dir "Atlas/296 Karten"`, owner-supplied; name `leipzig-plan.png` | | |
-| 4 | S1 | F1-AC10 | `move_asset` → `Atlas/296 Karten/leipzig-plan.png` | | |
-| 5 | S1 | F2-AC8 | "`Atlas/296 Karten` does not exist yet and will be created on apply" | | |
-| 6 | S1 | F4-AC2 | embed `![[Atlas/296 Karten/leipzig-plan.png]]` + "Embed written with path" line | | |
-| 7 | S1 | A3 / apply | folder created; file = inbox copy's sha; occupier unchanged | | |
-| 8 | S2 | F4-AC3 | embed `![[Atlas/290 Assets/295 Attachments/pirna-markt.jpg]]` | | |
-| 9 | S2 | A1 | filed note shows the Pirna image, not the `293 Excalidraw` one | | |
-| 10 | S3 | F2-AC3 / F2-AC5 | `typed_folder_refused`; bullet text as executed above | | |
-| 11 | S3 | F2-AC4 / F2-AC6 | no move, no default-folder fallback, `Goerlitz.md` held | | |
-| 12 | S4 | F3-AC4 | `move_asset` sent unchanged to the occupied destination | | |
-| 13 | S4 | F6-AC1 | `Radebeul.md` delete `depends_on` contains the asset move id | | |
-| 14 | S4 | F6-AC8 | Ignore disclosure "kept in the inbox rather than deleted"; no "filed either way"; no "Conflict remains" | | |
-| 15 | S4 | **F6-AC2** | apply: move failed; delete `skipped-dependency`; `Radebeul.md` + jpg still in inbox | | |
-| 16 | S4 | F6-AC7 | Hashi 0.26.1 needed no change: cascade fired on an asset dependency | | |
-| 17 | E1 | F3-AC1 | no move; `Freiberg.md` held | | |
-| 18 | E1 | F3-AC5 | `vault_occupied` bullet text as executed above | | |
-| 19 | S1, S2 | F6-AC1 | Leipzig/Pirna deletes depend on note move **and** asset move; both applied | | |
-| 20 | all | F4-AC8 | no embed rewritten for goerlitz/freiberg | | |
-| 21 | all | relay (T4.5/T5.1) | `withheld-attachments.md` = the two bullets, byte-identical; shell relays one per item, no count | | |
-| 22 | all | F3-AC6 | **not reproduced**: no "Target not checked" line expected or seen | | n/a |
-| 23 | all | C1-AC1 | `render` entry with `folder_listing_calls`, `distinct_destination_folders`, `basename_searches` (3), `basename_pages` | | |
-| 24 | all | F3-AC7 | each target folder listed at most once; searches ≤ distinct filed basenames | | |
-| 25 | all | base cost | triage `base_kado_calls: 2` both cycles | | |
-| 26 | S5 | c2 | `Goerlitz.md` and `Freiberg.md` re-intaken by `/inbox --recover` | | |
-| 27 | S5 | c2 | both conflicts offered again with computed name + default Folder line | | |
-| 28 | S5 | bonus | `Radebeul.md` re-intaken with its conflict ("same file") | | |
+| 1 | all | F1-AC1 | wire `schema_version "4"`; every conflict `proposed_dir: null` | `"4"`; 4 conflicts + 037 `karte.png`, all `proposed_dir: null` | Pass |
+| 2 | all | F1-AC2 | Folder line under each Rename line, `Atlas/290 Assets/295 Attachments` | Folder line under every Rename line | Pass |
+| 3 | S1 | F1-AC3 / F1-AC10 | parser: `proposed_dir "Atlas/296 Karten"`, owner-supplied; name `leipzig-plan.png` | I08 destination `Atlas/296 Karten/leipzig-plan.png` (parser output; 0852 parsed file checked directly) | Pass |
+| 4 | S1 | F1-AC10 | `move_asset` → `Atlas/296 Karten/leipzig-plan.png` | I08 `→ Atlas/296 Karten/leipzig-plan.png` | Pass |
+| 5 | S1 | F2-AC8 | "`Atlas/296 Karten` does not exist yet and will be created on apply" | present, verbatim | Pass |
+| 6 | S1 | F4-AC2 | embed `![[Atlas/296 Karten/leipzig-plan.png]]` + "Embed written with path" line | both present; filed note embeds `![[Atlas/296 Karten/leipzig-plan.png]]` | Pass |
+| 7 | S1 | A3 / apply | folder created; file = inbox copy's sha; occupier unchanged | folder created; `480c…` (inbox copy); occupier `559e…` unchanged | Pass |
+| 8 | S2 | F4-AC3 | embed `![[Atlas/290 Assets/295 Attachments/pirna-markt.jpg]]` | filed note embeds `![[Atlas/290 Assets/295 Attachments/pirna-markt.jpg]]` | Pass |
+| 9 | S2 | A1 | filed note shows the Pirna image, not the `293 Excalidraw` one | embed is path-qualified to the `3c88…` copy; `293 Excalidraw` copy `3f95…` untouched. Render not eyeballed | Pass (structural) |
+| 10 | S3 | F2-AC3 / F2-AC5 | `typed_folder_refused`; bullet text as executed above | `typed_folder_refused`; bullet with the default-folder promise | Pass |
+| 11 | S3 | F2-AC4 / F2-AC6 | no move, no default-folder fallback, `Goerlitz.md` held | no move; `Goerlitz.md` + png in inbox; `100 Inbox/Karten` never created | Pass |
+| 12 | S4 | F3-AC4 | `move_asset` sent unchanged to the occupied destination | I10 `→ 295 Attachments/radebeul-weinberg.jpg`, unchanged | Pass |
+| 13 | S4 | F6-AC1 | `Radebeul.md` delete `depends_on` contains the asset move id | I16 `depends_on [I06, I10]` | Pass |
+| 14 | S4 | F6-AC8 | Ignore disclosure "kept in the inbox rather than deleted"; no "filed either way"; no "Conflict remains" | disclosure present; neither forbidden phrase | Pass |
+| 15 | S4 | **F6-AC2** | apply: move failed; delete `skipped-dependency`; `Radebeul.md` + jpg still in inbox | I10 failed "both source and destination present"; I16 `skipped-dependency (dependsOn: I10)`; note + jpg in inbox | Pass |
+| 16 | S4 | F6-AC7 | Hashi 0.26.1 needed no change: cascade fired on an asset dependency | Hashi 0.26.1, unchanged; also fired on a *source-missing* failure (QA vault, I07→I11) | Pass |
+| 17 | E1 | F3-AC1 | no move; `Freiberg.md` held | no move; `Freiberg.md` + png in inbox | Pass |
+| 18 | E1 | F3-AC5 | `vault_occupied` bullet text as executed above | `vault_occupied` bullet; occupier `6992…` unchanged | Pass |
+| 19 | S1, S2 | F6-AC1 | Leipzig/Pirna deletes depend on note move **and** asset move; both applied | I14 `[I04, I08]`, I15 `[I05, I09]`; all four applied | Pass |
+| 20 | all | F4-AC8 | no embed rewritten for goerlitz/freiberg | no action names either attachment | Pass |
+| 21 | all | relay (T4.5/T5.1) | `withheld-attachments.md` = the two bullets, byte-identical; shell relays one per item, no count | both lines in the shell verbatim, no count (after `f2d4353`) | Pass |
+| 22 | all | F3-AC6 | **not reproduced**: no "Target not checked" line expected or seen | none seen | n/a |
+| 23 | all | C1-AC1 | `render` entry with `folder_listing_calls`, `distinct_destination_folders`, `basename_searches` (3), `basename_pages` | `basename_searches 4`, `basename_pages 4`, `folder_listing_calls 3`, `distinct 3` | Pass |
+| 24 | all | F3-AC7 | each target folder listed at most once; searches ≤ distinct filed basenames | 3 listings = 3 folders; 4 searches = 4 filed basenames (incl. `karte (2).png`) | Pass |
+| 25 | all | base cost | triage `base_kado_calls: 2` both cycles | `2` (cycle 1 suggest + synthesize), `2` (cycle 2) | Pass |
+| 26 | S5 | c2 | `Goerlitz.md` and `Freiberg.md` re-intaken by `/inbox --recover` | both re-intaken (run `13-03-47Z-070715`) | Pass |
+| 27 | S5 | c2 | both conflicts offered again with computed name + default Folder line | `freiberg-dom (2).png`, `goerlitz-altstadt (2).png`, Folder `295 Attachments` (not `100 Inbox/Karten`) | Pass |
+| 28 | S5 | bonus | `Radebeul.md` re-intaken with its conflict ("same file") | re-intaken, `same_file: true`, "the same file already in the vault" | Pass |
 
 ## Results
 
-_To be filled in after the run: one subsection per cycle, measured from the artefacts,
-in the form of 038's Results._
+Measured 2026-10-13 in Privat-Test, Hashi 0.26.1, one container session
+(`790a0265`, $16.90 for all three passes). All 28 rows pass; row 22 is n/a by design.
+Getting there took four runs and three fixes, which are the real findings.
+
+### Before the counted run: three findings, three fixes
+
+1. **Seed notes below the worthiness gate** (first Pass 1). The original ~70-word seeds
+   scored 0.3–0.4 against the 0.5 atomic-worthiness gate and stayed in the inbox, so no
+   conflict was produced at all. Seeds rewritten at 117–140 words (`f70e843`). A runbook
+   defect, not a product one.
+2. **The shell relay was paraphrased** (Pass 2, `0852`). The conductor reworded the
+   withheld lines and `/inbox` folded them into a table, so the remedy sentences never
+   reached the owner. Fixed with STRICT verbatim blocks in `synthesis-conductor.md` 0.23.0
+   and `inbox.md` 0.19.0 (`f2d4353`). This is the row-21 claim the runbook said only a live
+   run could verify, and the live run is what broke it.
+3. **`/inbox --pass2 --force` dropped `--force`** (`0852`, and the session before it). The
+   model translated the flags to `inbox-triage.py --force-pass2`, and an already-covered
+   document went idle. That breaks every 039 "run `/inbox --pass2 --force` before you
+   apply" remedy. Fixed by passing `$ARGUMENTS` through unchanged, with `--pass1`/`--pass2`
+   accepted by triage 0.40.0 (`b0d61b0`), and a stop on non-zero triage exit instead of
+   reading a stale plan (`e9a7adf`). Both fixes verified live in `0921`.
+
+### Cycle 1 (Pass 1 `12-45-52Z-9a6594`, Pass 2 `12-54-02Z-6e223e`)
+
+Every Pass 2 artefact matched §1d. Applied with Hashi in Privat-Test (run log
+`tomo-hashi-run-log_2026-10-13T1501`): 14 applied, 1 skipped-dependency, 1 failed. The one
+failure is S4's intended `move_asset`, and its `delete_source` waited for it: **F6-AC2
+observed, not argued.** Four atomics filed (Dresden's 037 item was approved too); no
+rendered atomic lingered in the inbox.
+
+The same instruction set was first applied in Hashi's QA vault, which lacks the 037
+`karte.png`. There `I07` failed with *Source missing* and `I11 delete_source Dresden.md`
+was `skipped-dependency (dependsOn: I07)`. So the #186 dependency protects the source
+note on any asset-move failure, not only on an occupied target. Recorded in the Hashi
+handoff for #141.
+
+### Cycle 2 (`/inbox --recover`, `13-03-47Z-070715`)
+
+Goerlitz, Freiberg and Radebeul re-intaken, each with its conflict and a computed
+`(2)` name. Goerlitz is offered `Atlas/290 Assets/295 Attachments`, not `100 Inbox/Karten`:
+the S3 remedy line's promise is kept. Radebeul reads "the same file already in the
+vault". `schema_version "4"`, `proposed_dir: null` throughout, `base_kado_calls: 2`. No
+`karte.png` conflict: Dresden was applied in cycle 1, so the runbook's expectation of it
+was wrong and is corrected above.
+
+### Runbook corrections made after the run
+
+- `withheld-attachments.md` is ordered by source path (E1 before S3), not by scenario.
+- Cycle 1 files four atomics when Dresden's item is approved alongside.
+- Cycle 2 re-intakes `Dresden.md` only if cycle 1 did not apply it.
+
+### Not checked
+
+- Row 9 is structural: the embed path pins the right file, but nobody looked at the
+  rendered note.
+- F3-AC6 and F3-AC2 live stay optional probes (below).
 
 ---
 

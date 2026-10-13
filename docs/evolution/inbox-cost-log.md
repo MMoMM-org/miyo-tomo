@@ -663,3 +663,25 @@ emitted filename is still sanitised.
 **Residue after the run**: four `pending-move` staging notes, each claimed by a surviving
 `move_note`/`create_moc`. Nothing orphaned. The three deleted-source actions are still pending
 apply.
+
+## Spec 039 — T6.3 live runs (attachment conflict hardening)
+
+**Date**: 2026-10-13 · **Vault**: Privat-Test · **Branch**: `spec/039-attachment-conflict-hardening`
+· **Versions**: `inbox-triage.py` 0.40.0, `inbox.md` 0.20.0, `synthesis-conductor.md` 0.23.0 · Hashi 0.26.1
+
+One container session (`790a0265`) carried cycle 1 Pass 1, Pass 2 and cycle 2 `/inbox --recover`.
+
+| time (UTC) | run | action | items | base | total | listings / folders | basename searches / pages |
+|---|---|---|---|---|---|---|---|
+| 12:47 | `12-45-52Z-9a6594` | suggest | 11 | **2** | 14 | 2 / 2 | — |
+| 12:53 | `12-53-52Z-b21442` | synthesize | 12 | **2** | 11 | — | — |
+| 12:54 | `12-54-02Z-6e223e` | render | 6 | 0 | 31 | 3 / 3 | 4 / 4 |
+| 13:05 | `13-03-47Z-070715` | suggest (`--recover`) | 11 | **2** | 11 | 2 / 2 | — |
+
+Session cost: main $4.39 (Sonnet 5.5, 120 turns), 22 subagents $12.51, **total $16.90**.
+
+The new spec 039 counters (`folder_listing_calls`, `distinct_destination_folders`,
+`basename_searches`, `basename_pages`) hold their bound: one listing per distinct target
+folder, one search per filed basename (four: `karte (2).png`, `leipzig-plan.png`,
+`pirna-markt.jpg`, `radebeul-weinberg.jpg`), one page each. `base_kado_calls: 2` on both
+triage passes. Evidence and findings: `docs/XDD/specs/039-attachment-conflict-hardening/live-runbook.md` (Results).

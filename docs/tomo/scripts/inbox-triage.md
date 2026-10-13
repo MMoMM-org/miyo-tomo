@@ -498,3 +498,25 @@ sanitized paths, so `casefold()` would pair `Straße.m4a` with `Strasse.md`,
 skip the transcription, and leave the audio with no transcript the voice tools
 recognise. The asymmetry that only the audio stem is passed through
 `sanitize_stem` is unchanged.
+
+## `--pass1`/`--pass2` Are Aliases of `--force-pass1`/`--force-pass2` (spec 039 T6.3, v0.40.0)
+
+WHY: `/inbox` forwards the owner's flags to this script unchanged
+(`inbox-triage.py $ARGUMENTS`), so the script must accept the words the owner
+types. `--pass1`/`--pass2` are second option strings on the existing arguments
+(same `dest`), and the legacy `--force-pass1`/`--force-pass2` spellings keep
+working for tests and any caller that already uses them.
+
+Live run 2026-10-13: the command used to make the model translate
+`--pass2` into `--force-pass2`. The model dropped `--force` from
+`/inbox --pass2 --force`, because the name `--force-pass2` reads as "pass 2
+plus force". Without `force_all`, `determine_action` respects coverage and an
+already-rendered doc routes to `idle`, so the before-apply remedy that spec 039
+prints in every withheld-attachment line did nothing. Removing the
+translation removes the step where a model can err; this is chosen over a
+STRICT block because it is deterministic.
+
+The option name `--force-pass2` is a misnomer kept only for compatibility: it
+is NOT "pass 2 with force" -- it is coverage/drift-respecting. Only `--force`
+ignores coverage. An unknown flag is rejected by argparse (exit 2, usage on
+stderr, no `routing-plan.json`).

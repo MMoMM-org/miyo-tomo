@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.4
+# version: 0.40.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -8,8 +8,9 @@ coverage and drift, determines action, and emits routing-plan.json.
 
 CLI: python3 tomo/scripts/inbox-triage.py [OPTIONS]
   --inbox-path PATH     Vault-relative inbox folder (default: from vault-config.yaml)
-  --force-pass1         Force suggest action
-  --force-pass2         Force synthesize action
+  --pass1, --force-pass1   Run Pass 1 (suggest)
+  --pass2, --force-pass2   Run Pass 2 (synthesize), coverage/drift-respecting
+  --force                  Modifier: ignore coverage/drift, redo everything
   --recover             Treat captured as fresh
   --output-dir DIR      Output directory (default: tomo-tmp)
 
@@ -1760,11 +1761,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Vault-relative inbox folder (default: from vault-config.yaml)",
     )
     p.add_argument(
-        "--force-pass1", action="store_true", default=False,
+        "--pass1", "--force-pass1", dest="force_pass1",
+        action="store_true", default=False,
         help="Force suggest action",
     )
     p.add_argument(
-        "--force-pass2", action="store_true", default=False,
+        "--pass2", "--force-pass2", dest="force_pass2",
+        action="store_true", default=False,
         help="Run Pass 2 (synthesize), coverage/drift-respecting — only "
              "re-synthesizes uncovered or content-changed approved docs",
     )

@@ -26,9 +26,15 @@ WHY: When the triage script determines there is nothing to process, the command 
 
 WHY: `inbox-triage.py` emits an `orphaned_state` drift indicator when source items are marked `tomo.state=captured` but every downstream doc (suggestions / instructions) has vanished — typically a suggestions doc deleted before approval, which strands the Pass-1 analysis. Triage routes such a state to `idle`, so without explicit surfacing the loss would be silent. The command lifts the indicator's `detail` out of the generic warning list and pairs it with a `/inbox --recover` recommendation. It is advisory, not action-changing: a fully-applied-then-archived batch whose captured source items still linger in the inbox is indistinguishable from a genuinely orphaned one (source items have a single terminal state and Tomo never moves them out of the inbox), so the user — not the router — decides whether to recover.
 
-## --pass1/--pass2/--force/--recover Are Flag Passthroughs to Triage
+## --pass1/--pass2/--force/--recover Are Passed to Triage Verbatim (spec 039 T6.3, v0.20.0)
 
-WHY: Force flags are passed through to `inbox-triage.py` (`--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--force` → `--force`, `--recover` → `--recover`). The triage script owns the override logic and produces the correct routing plan regardless. The command does not need to interpret these flags itself — it just forwards them and routes on whatever action the triage script decides. This keeps the override semantics in one place (triage) rather than split between the command and the script.
+WHY: Step 1 runs `python3 scripts/inbox-triage.py $ARGUMENTS`; Claude Code substitutes `$ARGUMENTS` before the model sees the command, so the model has no flag to translate. `inbox-triage.py` accepts `--pass1`/`--pass2` as aliases of its `--force-pass1`/`--force-pass2` options (same destination), so the owner's words ARE triage's words. The triage script owns all override logic; the command forwards and routes on whatever action triage decides.
+
+Why the translation was removed: live run 2026-10-13, the owner typed `/inbox --pass2 --force` twice and the model ran `inbox-triage.py --force-pass2`, dropping `--force`. The option name `--force-pass2` reads as "pass 2 plus force", so the model treated `--force` as already expressed. Without force, `determine_action` respects coverage and an already-rendered doc routes to `idle` -- so the before-apply remedy spec 039 prints in every withheld-attachment line (SDD K16) silently did nothing.
+
+Why pass-through over a STRICT block telling the model to keep `--force`: a STRICT is a request to a model; pass-through removes the step where the model can err at all. Deterministic, and the owner's decision.
+
+A flag triage does not know (a typo, `/inbox pass2`) is rejected by argparse: exit code 2 and a usage line on stderr, no `routing-plan.json` is written. The command's Bash step fails visibly in the transcript; there is no silent fallback to a default run.
 
 ## --pass2 Is Coverage/Drift-Respecting; --force Is the Sledgehammer (#78)
 

@@ -1,6 +1,6 @@
 ---
 title: "Close-out — 039 attachment conflict hardening"
-status: draft
+status: complete
 ---
 
 # Close-out

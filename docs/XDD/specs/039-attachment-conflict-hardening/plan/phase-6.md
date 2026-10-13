@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Release, live run, close-out"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 6
 ---

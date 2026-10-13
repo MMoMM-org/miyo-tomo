@@ -130,7 +130,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 2: Refusal rules](phase-2.md)
 - [x] [Phase 3: The folder reaches both surfaces](phase-3.md)
 - [x] [Phase 4: The attachment plan](phase-4.md)
-- [ ] [Phase 5: Reporting, and the delete that waits](phase-5.md)
+- [x] [Phase 5: Reporting, and the delete that waits](phase-5.md)
 - [ ] [Phase 6: Release, live run, close-out](phase-6.md)
 
 **Ordering, and why:**

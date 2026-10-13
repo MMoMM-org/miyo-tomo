@@ -650,3 +650,151 @@ def test_an_unusable_computed_name_is_refused_on_the_wire_and_filed_in_the_markd
             "owner_source_items": [OWNER],
         }
     ], wire.skipped
+
+
+# ── Spec 039 T6.3 (F1-AC4): the WHOLE instruction set converges ──────────────
+#
+# Everything above stops at the `move_asset` builder. F1-AC4 says "the outcome
+# is identical", so this section drives each path's own parser output through
+# the real Pass 2 `instruction-render.py main()` and compares `instructions.json`
+# (every action, id, destination, `depends_on`, `tomo.skipped_assets`) AND every
+# rendered note file (the embed text the owner reads). Case 2 of spec 039 T4.6
+# (`test_039_t4_6_paths_converge_on_destinations.py`) already covers the
+# destination-level cases; this adds the full-set level for the folder
+# decisions it did not carry that far.
+
+FOLDER_LINE = "  - Folder: "
+OTHER_FOLDER = "Atlas/Other Folder"
+
+
+def _instruction_set(monkeypatch, tmp_path: Path, outcome: "_Outcome") -> dict:
+    """Pass 2 over one path's parser output: `{file name: parsed JSON or text}`
+    for every file the render wrote."""
+    sys.path.insert(0, str(TESTS_DIR))
+    import test_039_t4_5_wire_plan_into_pass_2 as T45  # noqa: E402
+
+    client = T45.CountingKado(
+        [SOURCE], existing_folders=[T45.ASSET, T45.NOTES, OTHER_FOLDER]
+    )
+    rc, out_dir = T45._run_main(monkeypatch, tmp_path, outcome.parsed, client)
+    assert rc == 0
+    files = {}
+    for path in sorted(out_dir.rglob("*")):
+        if path.is_file():
+            # The out dir is the one thing that legitimately differs per run.
+            text = path.read_text(encoding="utf-8").replace(str(out_dir), "<out>")
+            files[str(path.relative_to(out_dir))] = (
+                json.loads(text) if path.suffix == ".json" else text
+            )
+    assert "instructions.json" in files, sorted(files)
+    return files
+
+
+def _both_instruction_sets(monkeypatch, tmp_path, *, folder=None, name=None):
+    """One decision typed on each surface, then both full instruction sets.
+    `folder` / `name` of `None` leave that line as rendered / that field as Pass
+    1 wrote it."""
+    doc = _doc(SOURCE, COMPUTED)
+    markdown_text = _full_md(doc)
+    if folder is not None:
+        markdown_text = _retype(markdown_text, FOLDER_LINE, f"{FOLDER_LINE}`{folder}`")
+    if name is not None:
+        markdown_text = _retype(
+            markdown_text, "] Rename to ", f"- [x] Rename to `{name}`"
+        )
+
+    def _consumer_edits(wire: dict) -> None:
+        if folder is not None:
+            wire["attachment_conflicts"][0]["proposed_dir"] = folder
+        if name is not None:
+            wire["attachment_conflicts"][0]["proposed_name"] = name
+
+    markdown, wire = _run_both(tmp_path, doc, markdown_text, wire_edit=_consumer_edits)
+    md_dir, wire_dir = tmp_path / "pass2-md", tmp_path / "pass2-wire"
+    md_dir.mkdir()
+    wire_dir.mkdir()
+    return (
+        _instruction_set(monkeypatch, md_dir, markdown),
+        _instruction_set(monkeypatch, wire_dir, wire),
+    )
+
+
+def _the_one_move(files: dict) -> dict:
+    moves = [a for a in files["instructions.json"]["actions"] if a["action"] == "move_asset"]
+    assert len(moves) == 1, files["instructions.json"]["actions"]
+    return moves[0]
+
+
+def test_a_typed_folder_alone_yields_the_identical_instruction_set(monkeypatch, tmp_path):
+    """F1-AC4, F1-AC10: the owner changes only the folder, the name stays Pass
+    1's. Falsifies "the markdown parser ignores the folder line" (the markdown
+    files under the default folder, the wire under the typed one) and "Pass 2
+    keeps a path-specific field that survives into the instruction set"."""
+    md, wire = _both_instruction_sets(monkeypatch, tmp_path, folder=OTHER_FOLDER)
+    assert _the_one_move(md)["destination"] == f"{OTHER_FOLDER}/{COMPUTED}"
+    assert wire == md
+
+
+def test_a_typed_folder_and_a_typed_name_yield_the_identical_instruction_set(
+    monkeypatch, tmp_path
+):
+    """F1-AC3, F1-AC4: folder plus name together. Falsifies the markdown
+    resolving folder and name from one line (or the wire one from the other):
+    the target must be the typed folder plus the typed name on both."""
+    md, wire = _both_instruction_sets(
+        monkeypatch, tmp_path, folder=OTHER_FOLDER, name=TYPED
+    )
+    assert _the_one_move(md)["destination"] == f"{OTHER_FOLDER}/{TYPED}"
+    # The embed text the owner reads is part of the set compared below.
+    note = md["2026-10-12_0900_dresden.md"]
+    assert f"![[{TYPED}]]" in note, note
+    assert wire == md
+
+
+def test_the_default_folder_yields_the_identical_instruction_set(monkeypatch, tmp_path):
+    """F1-AC4, F1-AC5: nothing typed. The markdown spells the default folder as
+    rendered text, the wire as `null`. Falsifies a default that survives as a
+    different destination or embed on one side only."""
+    md, wire = _both_instruction_sets(monkeypatch, tmp_path)
+    assert _the_one_move(md)["destination"] == f"{ASSET_FOLDER}{COMPUTED}"
+    assert wire == md
+
+
+def test_a_refused_folder_is_refused_identically_on_both_paths(monkeypatch, tmp_path):
+    """F1-AC4, F2: an unusable folder is refused, never repaired. Falsifies one
+    path repairing it (filing under another folder) or recording a different
+    withheld kind/reason: the whole instruction set, including
+    `tomo.skipped_assets`, must match, and no `move_asset` exists on either."""
+    md, wire = _both_instruction_sets(monkeypatch, tmp_path, folder=f"{ASSET_FOLDER}")
+    refused = md["instructions.json"]["tomo"]["skipped_assets"]
+    assert [(s["kind"], s["reason"], s["destination"]) for s in refused] == [
+        (
+            "typed_folder_refused",
+            f"typed folder refused: `{ASSET_FOLDER}` ends in a path separator",
+            None,
+        )
+    ], refused
+    assert [a for a in md["instructions.json"]["actions"] if a["action"] == "move_asset"] == []
+    assert wire == md
+
+
+def test_a_folder_equal_to_the_asset_folder_yields_the_identical_instruction_set(
+    monkeypatch, tmp_path
+):
+    """F1-AC4, F1-AC5: the owner types the configured asset folder. On the
+    markdown that is indistinguishable from the rendered line; on the wire it
+    is an owner-supplied string. Falsifies K1 treating the owner-supplied
+    spelling as a different folder (a different target or embed)."""
+    sys.path.insert(0, str(TESTS_DIR))
+    import test_039_t4_6_paths_converge_on_destinations as T46  # noqa: E402
+
+    def _agree(md_parsed, wire_parsed):
+        assert (T46._strip_provenance_and_default_folder(md_parsed)
+                == T46._strip_provenance_and_default_folder(wire_parsed))
+
+    monkeypatch.setattr(sys.modules[__name__], "_assert_paths_agree_but_for_provenance", _agree)
+    md, wire = _both_instruction_sets(
+        monkeypatch, tmp_path, folder=ASSET_FOLDER.rstrip("/")
+    )
+    assert _the_one_move(md)["destination"] == f"{ASSET_FOLDER}{COMPUTED}"
+    assert wire == md

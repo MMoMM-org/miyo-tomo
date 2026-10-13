@@ -239,9 +239,12 @@ Inconsistent state — both source and destination present
 attachment was sent anyway. This is what **Ignore** does — Tomo warned about it
 in the suggestions document and again on the action itself.
 
-It also happens if you picked **Rename** but freed nothing and the name got
-taken between Pass 1 and applying: Tomo checks the destination once, during
-Pass 1, and does not re-check it later.
+It can also happen if you picked **Rename** and the name was free when Pass 1
+looked, but something took it before you applied. Pass 2 looks at the vault
+again for the final path and reports a taken path as **occupied** (see "Pass 2
+says a target is occupied or not checked" below), so in most cases you hear
+about it before applying. A change made after Pass 2 ran is the one thing
+nothing can see in advance.
 
 **What the failure leaves behind:** the occupying file is untouched, and the
 attachment stays in your inbox. But **the note was filed anyway** — the refusal
@@ -252,13 +255,43 @@ still there.
 **Fix:**
 1. Decide which of the two files you want under that name, and free the name if
    that is the inbox one.
-2. Re-run `/inbox`. The attachment has no note in the inbox pointing at it any
-   more, so file it by hand, or move it back beside a note and re-run.
+2. Run `/inbox --recover`. The attachment has no note in the inbox pointing at
+   it any more, so file it by hand, or move it back beside a note and re-run.
 
 **Avoid it next time:** leave the pre-ticked **Rename** in place. It is the only
 remedy that files the attachment and rewrites the embed in your note to match.
 
-### I Typed a Name Pass 2 Could Not Use
+### Pass 2 Says a Target Is Occupied or Not Checked
+
+Before Pass 2 writes a move, it looks in your vault at the exact path the
+attachment would be filed under — your typed name and folder included, not
+just the folder Pass 1 looked at. It reports what it found next to the move,
+in the instruction set and in your terminal. [#185](https://github.com/MMoMM-org/miyo-tomo/issues/185)
+
+**"Target occupied"** — something is already at that path: a file, a folder, or
+a file whose name differs only in upper/lower case (some filesystems treat
+those as one). The attachment is **not** filed over it. It stays in the inbox,
+and so does every note that embeds it, listed under "Attachments still in the
+inbox".
+
+1. Decide what you want: free the target in the vault, or pick another name or
+   folder in the suggestions document.
+2. Before you apply: run `/inbox --pass2 --force`. If you already applied: run
+   `/inbox --recover`.
+3. If the target is still taken, the suggestions document offers the name (or
+   folder) again; if you freed it, the attachment is filed there.
+
+**"Target not checked"** — the vault did not answer for that path, so Tomo
+cannot say whether it is free, and it does not call it free. The move is still
+written. You can apply it as it is: if the path turns out to be taken, the
+move fails, and the attachment and its note stay in the inbox. To be sure
+first, look in the vault for the path named in the message.
+
+**"New folder … will be created on apply"** and **"Embed written with path"**
+are information, not problems: the folder you typed doesn't exist yet, or
+another file has the same name so your note links by full path.
+
+### I Typed a Name or Folder Pass 2 Could Not Use
 
 > **Not the same entry as "Inconsistent state" above.** That one is about a
 > move Pass 2 already emitted and Hashi tried and failed to apply — you see a
@@ -269,32 +302,38 @@ remedy that files the attachment and rewrites the embed in your note to match.
 > instead.
 
 **Symptom:** Nothing errors. You apply the instruction set normally, but
-afterward an attachment you typed a replacement name for — and the note that
-embeds it — are both still sitting in your inbox. Looking back at Pass 2's
-report, or at the instruction set under **"Attachments still in the inbox"**,
-you find a line naming it.
+afterward an attachment you typed a replacement name or folder for — and the
+note that embeds it — are both still sitting in your inbox. Looking back at
+Pass 2's report, or at the instruction set under **"Attachments still in the
+inbox"**, you find a line starting `typed name refused` or `typed folder
+refused`, naming what you typed and why.
 
-**Cause:** The name you typed over the computed one (in the suggestions
-document, or in Tomo Hashi's Suggestions Editor) couldn't be used, and Tomo
-never corrects a typed name to make it fit — it either files it exactly as
-typed, or refuses it. A typed name is refused only when it's blank, when it
-contains `/` (a typed name must be a plain filename, not a path), or when it
-contains a character your vault forbids (`\` `:` `*` `?` `"` `<` `>` `|`). When
-that happens, the attachment is not filed, and neither is any note in this run
-that embeds it — both are held back on purpose, so you get another chance
-rather than ending up with a silently mangled filename.
+**Cause:** What you typed over the computed name (the Rename line) or folder
+(the Folder line) in the suggestions document, or in Tomo Hashi's Suggestions
+Editor, couldn't be used. Tomo never corrects it to make it fit — it either
+files it exactly as typed, or refuses it. A name is refused when it is blank,
+contains `/`, starts or ends with a space, contains a control character, `{{`
+or `<%`, or contains one of `\ : * ? " < > |` or `# ^ [ ]`. A folder is
+refused when it is blank, leaves the vault (starts with `/`, `~` or `./`,
+contains `..`, uses `\` or a drive letter), has an empty part (`//`), has a
+part with a space at either end, ends in `/`, contains one of the characters
+above, or is the inbox or inside it. [usage.md](usage.md) lists every rule. When it happens, the
+attachment is not filed, and neither is any note in this run that embeds it —
+both are held back on purpose, so you get another chance rather than ending up
+with a silently mangled filename or a file in the wrong place.
 
 **Fix:**
-1. **If you haven't applied yet:** correct the name in the suggestions
-   document, then run `/inbox --pass2 --force`.
+1. **If you haven't applied yet:** correct the name or folder in the
+   suggestions document, then run `/inbox --pass2 --force`.
 2. **If you've already applied:** the attachment and its note are still in
-   the inbox regardless — just run `/inbox` again and type a usable name when
-   it re-proposes them.
+   the inbox regardless — run `/inbox --recover`. The re-run proposes the
+   default name or folder again; it offers yours again only if that target is
+   still taken.
 
-**Avoid it next time:** stick to a plain filename — no `/` and none of
-`\ : * ? " < > |`. Also watch for stray leading or trailing spaces: Tomo
-accepts a padded name exactly as typed rather than refusing it, so a space you
-didn't mean to type can end up in the filename.
+**Avoid it next time:** type a plain filename in the Rename line and put any
+folder on the Folder line. Watch for stray leading or trailing spaces: Tomo
+refuses a padded name rather than trimming it, so a space you didn't mean to
+type will hold the attachment back.
 
 ---
 

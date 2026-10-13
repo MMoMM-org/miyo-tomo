@@ -291,3 +291,11 @@ wording; a WHY doc that calls a detectable failure silent invites someone to
 build a guard against a problem the audit already catches. The audit is safe today
 because every spec 037 remedy still resolves to *at most one* `move_asset`
 per attachment (filed, renamed-and-filed, or withheld) — never more.
+
+## `_subtract_skipped_assets` Does Not Enumerate Withheld Kinds (spec 039 T4.3)
+
+WHY the docstring names K1 (`attachment_plan._decide`) instead of listing the
+withheld kinds: the plan owns the kind set and grew it in spec 039
+(`typed_folder_refused`, `vault_occupied`, ...). A list here would be a second
+copy that goes stale. The arithmetic is unchanged — one subtraction per
+`tomo.skipped_assets` entry, whatever the kind.

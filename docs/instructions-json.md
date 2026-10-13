@@ -1151,6 +1151,7 @@ section for the canonical line shapes. All other fields mirror
 |---|---|---|
 | `source_path` | string | Full vault-relative path of the file to delete. Byte-equal to the wikilink target rendered in the `.md` peer (with `.md` re-appended only when the target is a bare or dotted note name). |
 | `reason` | string | Human-readable justification — surface in the UI when confirming. |
+| `depends_on` | string[] | Required. Action ids this delete must not outlive: the delete is withheld unless every id is applied (AND). For a paired origin delete it names the origin's `move_note` id(s) **and the `move_asset` id of every attachment that origin embeds** (spec 039 F6, [#186](https://github.com/MMoMM-org/miyo-tomo/issues/186); Kokoro ADR-029 §7). A `move_asset` that Tomo withholds or withdraws never receives an id, so no delete names it. A shared attachment couples every embedding origin to its one move. Empty array = user-requested delete with no partner action; absent is invalid. |
 
 **Path-shape rules (Hashi consumes verbatim — no resolution):**
 

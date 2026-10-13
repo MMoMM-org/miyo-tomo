@@ -1848,6 +1848,9 @@ deterministic.
   code exists.
 - Keys are joined through `_origin_key` on both sides, the same normalisation
   site 3 already applies to its own origin bucket.
+- Kokoro accepted this as option 1 of #186 in ADR-029 §7 (2026-10-12) and
+  closed ADR-029's open item; the contract this implements is that ADR's, not
+  a Tomo-local choice.
 - The consumer's cascade (Hashi) needs no change; the vendored
   `hashi-instructions.schema.json` is untouched until T6.2 (F6-AC6 completes
   there). Tests: `tests/test_039_t5_2_delete_waits_for_attachment_moves.py`.

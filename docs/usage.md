@@ -80,15 +80,25 @@ Three remedies, one per entry. **Rename is pre-ticked** — it is the only one
 that files the attachment successfully in every case:
 
 - **Rename** — files it under a computed free name (`karte (2).png`), and
-  rewrites the embed in your note to match, so the note keeps working. **The
-  name is yours to change**: type over the text between the backticks before
-  you apply, and Tomo files it under what you typed instead of the computed
-  one. If Pass 1 couldn't find a free name at all, the backticks start out
-  **empty** — type a name there yourself. (You can type it in Tomo Hashi's
-  Suggestions Editor instead of the markdown, too — see "Two surfaces, one
-  rule" above: if this run produced a second suggestions document, save that
-  one in the editor too, or your typed name is dropped in favour of the
-  markdown.)
+  rewrites the embed in your note to match, so the note keeps working. Under
+  the Rename line sits a **Folder** line, pre-filled with the folder the
+  occupied name lives in. You can change either one before you apply:
+    - **The name is yours to change**: type over the text between the
+      backticks on the Rename line. Tomo files it under what you typed instead
+      of the computed one. If Pass 1 couldn't find a free name at all, the
+      backticks start out **empty** — type a name there yourself.
+    - **The folder is yours to change**: type over the text between the
+      backticks on the Folder line, for example to file the map into your maps
+      folder where nothing is called `karte.png`. A folder that doesn't exist
+      yet is fine; Pass 2 says it "will be created on apply". Leave the line
+      alone and the folder stays as it is. The Folder line only counts while
+      Rename is ticked.
+    - A folder never goes into the Rename line. Typing `maps/karte.png` there
+      is refused as a path — use the Folder line.
+  (You can set the name and folder in Tomo Hashi's Suggestions Editor instead
+  of the markdown, too — see "Two surfaces, one rule" above: if this run
+  produced a second suggestions document, save that one in the editor too, or
+  your typed values are dropped in favour of the markdown.) [#185](https://github.com/MMoMM-org/miyo-tomo/issues/185)
 - **Keep in inbox** — leaves the file where it is. The note is still filed; only
   the file stays behind.
 - **Ignore** — sends the move anyway. It will be refused unless you free the
@@ -105,28 +115,69 @@ so in the instruction set, both on the action and in its summary. **A typed
 name that Pass 2 refuses is the one exception** — it holds back the note as
 well; see below.
 
-**A typed name is checked, never corrected.** Tomo doesn't guess at what you
-meant by swapping out a character — it either files your name exactly as you
-typed it, or refuses it outright. A typed name is refused when it is:
+**A typed name or folder is checked, never corrected.** Tomo doesn't guess at
+what you meant by swapping out a character — it either files exactly what you
+typed, or refuses it outright. (Tomo Hashi's editor is different: when you
+type something there that the markdown would refuse, the editor cleans the
+name up for you, visibly, before it saves. Tomo itself never does.)
+
+A typed **name** is refused when it is:
 
 - **blank** — empty, or nothing but whitespace,
-- **a path, not a plain filename** — it contains `/`, or
-- **carrying a character your vault forbids** — any of `\` `:` `*` `?` `"` `<` `>` `|`.
+- **a path, not a plain filename** — it contains `/`,
+- **padded** — it starts or ends with a space or tab,
+- **unsafe** — it contains a control character, `{{` or `<%`,
+- **carrying a character your vault forbids** — any of `\` `:` `*` `?` `"` `<` `>` `|`,
+- **carrying a character that breaks links** — any of `#` `^` `[` `]`.
 
-That's the complete list of reasons a typed name gets refused. "That name is
-already taken" is deliberately not one of them — Tomo checks for that
-separately, as part of deciding whether Rename can even go ahead. One thing
-that is *not* a refusal: a name padded with stray leading or trailing spaces
-is accepted exactly as typed, not trimmed — so a space you didn't notice
-typing stays in the filename. Worth a second look before you move on.
+A typed **folder** is refused when it is:
 
-**When a typed name is refused, the attachment isn't filed — and neither is
-any note in this run that embeds it.** Both stay behind in your inbox: the
-instruction set lists them under "Attachments still in the inbox", and Pass 2
-reports them in your terminal too. To fix it: before you apply, correct the
-name in the suggestions document and run `/inbox --pass2 --force`; if you've
-already applied, the attachment and its note are still in the inbox either
-way, so just run `/inbox` again and type a usable name.
+- **blank**, or the line is damaged so it no longer holds exactly one folder in
+  backticks,
+- **leaving the vault** — it starts with `/`, `~` or `./`, uses `\`, starts
+  with a drive letter such as `C:`, or contains a `.` or `..` segment,
+- **holding an empty part** — it contains `//`,
+- **padded** — a part of the path starts or ends with a space,
+- **ending in `/`**,
+- **unsafe** — a control character, `{{` or `<%`,
+- **carrying a forbidden character** — any of `:` `*` `?` `"` `<` `>` `|`,
+- **carrying a link-breaking character** — any of `#` `^` `[` `]`,
+- **the inbox itself, or inside it** — the next run would read the file as
+  inbox material again.
+
+"That name is already taken" is deliberately not one of these reasons — Tomo
+checks that separately, against the vault, and reports it as described next.
+
+**When a typed name or folder is refused, the attachment isn't filed — and
+neither is any note in this run that embeds it.** Both stay behind in your
+inbox: the instruction set lists them under "Attachments still in the inbox",
+and Pass 2 reports them in your terminal too. To fix it, correct the name or
+folder in the suggestions document, then:
+
+- **before you apply:** run `/inbox --pass2 --force`;
+- **after you applied:** run `/inbox --recover`. The attachment and its notes
+  are still in the inbox, and the re-run proposes the default name or folder
+  again. It offers your choice again only if the target is still taken; if the
+  target is free, the attachment is simply filed there.
+
+**What Pass 2 tells you about the target.** Pass 2 looks at the vault for the
+final path before it writes the move, and reports what it found next to the
+move:
+
+- **occupied** — something is already at that path (a file, a folder, or a
+  file that differs only in upper/lower case). The attachment is not filed over
+  it and stays in the inbox together with the note. Free the target in the
+  vault, or pick another name or folder, and run `/inbox --pass2 --force`
+  before you apply (`/inbox --recover` after).
+- **not checked** — the vault did not answer for that path, so Tomo cannot say
+  whether it is free. The move is still written, and you can apply it as it is;
+  if it fails, the attachment and its note stay in the inbox. To be sure
+  first, look in the vault for the path named in the message.
+- **will be created on apply** — the folder doesn't exist yet. Nothing to do.
+- **Embed written with path** — another file in your vault has the same name,
+  so the note links to the file by its full path instead of the bare name. The
+  link works the same; the longer form is what keeps it pointing at the right
+  file. [#185](https://github.com/MMoMM-org/miyo-tomo/issues/185)
 
 To change your mind after Pass 2 has run but before you apply: tick a different
 remedy in the suggestions document, then run `/inbox --pass2 --force`.

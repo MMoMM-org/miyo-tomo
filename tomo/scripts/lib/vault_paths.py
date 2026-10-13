@@ -1,6 +1,8 @@
-# version: 0.2.1
+# version: 0.2.2
 """vault_paths.py — the destination-join helpers every vault-path comparison
-is built with, and the one key (`path_key`) every such comparison uses.
+is built with, and the one key (`path_key`) every such comparison uses. The one
+sanctioned exception is `nfc_lower`, the audio-transcript pairing key
+(`Straße.m4a` must never pair with `Strasse.md`).
 
 Lives below both `render_actions` and `vault_folder_lookup` so the folder
 lookup can key by these helpers without an import cycle; `render_actions`

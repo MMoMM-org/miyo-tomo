@@ -215,10 +215,10 @@ python3 scripts/wire-shape.py --regenerate       # write it
 | K2 | `lib/vault_folder_lookup.py` | **new** (moved from `suggestions-reducer._VaultFolderLookup`) | One raw `list_dir(folder, depth=1)` per folder per run; views `notes()`, `assets()`, `occupied_by_folder()`; `state(folder)` ∈ {`listed`, `absent`, `unanswered`}; keeps its existing `folder_listing_calls` counter (pages, via `observed_call_count`) | F3-AC7, F2-AC8, F3-AC6 (state) |
 | K3 | `lib/basename_census.py` | **new** | One `byName` per distinct case-folded basename (two for a name whose NFC and NFD forms differ — Kado does no Unicode normalisation); exact NFC-normalised, case-folded filter; `*`/`?` basenames → `None` (glob characters; path-qualified embed); a page budget (2 pages of 500) beyond which the answer is `None`; `count(basename)` or `None` when unanswered; counters for searches and pages | F4-AC2/4/6, C1-AC1 (counter) |
 | K4 | `lib/typed_name_check.py` | modified | Name reasons gain `breaks_link` and `unsafe_sequence`; new `check_typed_folder` with its own closed reason set | F5-AC1/2/4/6, F2-AC1–3 |
-| K5 | `lib/render_actions.py` | modified | `_build_move_asset_actions` projects K1; `_build_delete_source_actions` site 3 adds `move_asset` ids; `_attachment_suppression_reason` gains branches for the new kinds; `make_folder_listing` becomes a view over K2; re-exports the moved path helpers | F6-AC1/3/4, F3-AC5, F5-AC3/5, F2-AC5 (sentences) |
+| K5 | `lib/render_actions.py` | modified | `_build_move_asset_actions` projects K1; `_build_delete_source_actions` site 3 adds `move_asset` ids; `_attachment_suppression_reason` gains branches for the new kinds and delegates the remedy to K16; `make_folder_listing` becomes a view over K2; re-exports the moved path helpers | F6-AC1/3/4, F3-AC5, F5-AC3/5, F2-AC5 (sentences) |
 | K6 | `lib/embed_rewrite.py` | modified | `rewrite_attachment_embeds(body, attachments, plan)` — writes K1's embed text, matches by resolved path | F4-AC1–3/5/8, F1-AC10 |
 | K7 | `instruction-render.py` + `tomo/dot_claude/agents/synthesis-conductor.md` | modified | Builds K1 before the loop; passes it on; relays new withheld kinds and unchecked targets to the shell; appends a Pass 2 `cost_history` entry with the K2/K3 counters when `--cost-history` is given; the conductor passes it (T5.1); the conductor's relay imperative covers the new lines (WHY in its `docs/tomo/` mirror first) | F2-AC5 (shell), C1-AC1 |
-| K8 | `lib/render_md.py` | modified | Instruction-document bullets for the new kinds, unchecked targets, folders to be created; the revised Ignore disclosure | F2-AC5, F3-AC5/6, F2-AC8, F6-AC8 |
+| K8 | `lib/render_md.py` | modified | Instruction-document bullets for the new kinds, unchecked targets, folders to be created; the revised Ignore disclosure, which is the only report of an Ignore conflict (T5.4) | F2-AC5, F3-AC5/6, F2-AC8, F6-AC8 |
 | K9 | `suggestions-reducer.py` | modified | Renders the folder line; conflict records carry `proposed_dir: null`; imports K2 | F1-AC2 |
 | K10 | `suggestions-render.py` | modified | Projects `proposed_dir` onto the wire | F1-AC1 |
 | K11 | `suggestion-parser.py` | modified | Parses the folder line; joins it to `proposed_dir` + `dir_is_owner_supplied`; `build_from_wire` projects it | F1-AC3/4/8/11 |
@@ -226,7 +226,7 @@ python3 scripts/wire-shape.py --regenerate       # write it
 | K13 | User docs | modified | `docs/usage.md`, `docs/troubleshooting.md` | S1-AC1/2 |
 | K14 | Join test (`_propose_asset_name` × `check_typed_name`) | **new test** | Every computed name for a discoverable, vault-legal source passes the typed-name rules | F5-AC6 |
 | K15 | `lib/vault_paths.py` | **new** (moved from `render_actions`) | `_dest_join`, `_asset_dest_join` — so K2 can import them without a cycle; `render_actions` re-exports | — (enabler for K2) |
-| K16 | `lib/refusal_sentences.py` | **new** | One owner-facing sentence per refusal reason (names and folders) and per new withheld kind; keeps `render_actions.py` (2877 lines) from growing | F2-AC5, F5-AC3 |
+| K16 | `lib/refusal_sentences.py` | **new** | One owner-facing sentence per refusal reason and per new withheld kind, one remedy per withheld kind (`withheld_attachment_remedy`, the single source for the "Not filed" line, the Skipped bullet and the shell relay), and the per-move report lines (unchecked target, folder to be created, qualified embed); keeps `render_actions.py` (2877 lines) from growing | F2-AC5, F5-AC3, F2-AC8, F3-AC5, F3-AC6 |
 
 F4-AC7 (a qualified embed is still recognised) is owned by the existing
 `attachment_index.extract_attachment_embeds` and needs only a test — R1 §5
@@ -500,6 +500,8 @@ K2/K3 and recorded with the run's existing call counts (C1).
 | Folder existence | `absent` only on Kado's `Path not found`; any other failure → unchecked |
 | Basename uniqueness | qualified embed (also when the page budget is exhausted) |
 | Typed folder / name | n/a — pure, no I/O |
+
+Remedy commands (K16, one per withheld kind): before apply, `/inbox --pass2 --force`; after apply, `/inbox --recover`. The after-apply remedy promises a folder or name control only if the target is still taken when Pass 1 runs again (the folder line exists only for a conflict entry); verified live in T6.3 (c2).
 
 ### Security and privacy
 

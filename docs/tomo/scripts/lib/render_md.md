@@ -284,6 +284,8 @@ use for their own `dropped` sub-lists (`- `id`` under `- destination`). A
 separate list naming the same id would put a reader's eye two sections apart
 to confirm the connection this criterion asks to be immediate.
 
+*Superseded by spec 039 T5.4 — see below.* (The "Delete withdrawn" catch-all block and the `## Skipped` guard condition described in the next two paragraphs no longer exist.)
+
 **WHY `validate_destinations` / `suppress_moves_for_unfiled_attachments`
 attributions, `unattributed`, and undeclared withdrawals fall to a catch-all
 block instead of nesting**: those two guards render under their OWN
@@ -382,6 +384,8 @@ branch; its remedy text says nothing needs doing — `reason` (already built by
 `_build_move_asset_actions`) is what explains why.
 
 ## `## Skipped` Gains a Second, Independent Report For The Same Attachments (spec 037 T4.2, PRD C2/S2)
+
+*Superseded by spec 039 T5.4 — see below.* (An Ignore conflict whose move is still emitted is no longer listed under "Conflicts not resolved by rename"; it is reported once, at its move.)
 
 "**Attachment not filed**" (the `skipped_assets` loop above) and
 "**Conflicts not resolved by rename**" (`_render_unresolved_conflict_bullet`)

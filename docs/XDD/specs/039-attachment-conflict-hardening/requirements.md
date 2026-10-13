@@ -509,6 +509,16 @@ can never disagree about the vault they are based on.
   - **037 F1-AC5** — "when the vault cannot be consulted, the check degrades
     without blocking". Still never blocks, but no longer silent: F3-AC6 reports
     the target as unchecked and F4-AC6 qualifies the embed.
+  - **037 C2 — "Conflicts not resolved by rename" list** (T5.4, owner ruling
+    2026-10-12/13). Narrowed in placement, not substance: the list no longer
+    carries an Ignore conflict whose move is still emitted. The owner is told
+    once, at its move (the F6-AC8 disclosure).
+  - **036 T4.3 — "Delete withdrawn" catch-all block** (T5.4, owner ruling
+    2026-10-12/13). Narrowed in placement, not substance: the block is
+    removed. Every withdrawal is reported once under Source Deletions with
+    its cause (036 F6-AC1 still met); a withdrawal alone no longer opens
+    "## Skipped" (036 F6-AC2 unaffected); inline-guard nesting is kept
+    (036 F2-AC4).
 - **CON-6 — Unchanged rulings this spec builds on:** bare embed by default
   (2026-09-27); Keep in inbox files the note and holds only the attachment
   (2026-09-27); only Tomo's own printed folder is stripped from the rename line

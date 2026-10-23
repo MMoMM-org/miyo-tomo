@@ -112,9 +112,7 @@ daily_log:
   heading_level: 2        # 1 = "# Daily Log", 2 = "## Daily Log"
 ```
 
-Log entries and log links share this one section; there is no separate section per action type.
-
-> **Known gap:** the renderer resolves the heading from `daily_log.heading` (`instruction-render.py` `CONFIG_DEFAULTS`), not from `daily_log.section`, so a custom `section` value is ignored and the default `Daily Log` is used. `heading_level` is read correctly.
+Log entries and log links share this one section; there is no separate section per action type. An older config may spell the key `heading`; it is read only when `section` is absent.
 
 If the configured section exists in the daily note → append there.
 If the section doesn't exist → create it at end (before any footer-like content).

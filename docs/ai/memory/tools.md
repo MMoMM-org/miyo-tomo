@@ -108,9 +108,11 @@ Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.in
 
 <!-- 2026-06-06 -->
 
-## `update-tomo.sh` retires source-deleted scripts only via a hardcoded list
+## `update-tomo.sh` retires source-deleted files only via hardcoded lists
 
-Deleting a runtime `tomo/scripts/*.py` from source does NOT remove it from existing instances on `update-tomo --yolo`: the sync copies/versions present files but only retires (deletes) instance scripts named in the hardcoded `RETIRED_SCRIPTS` array (`scripts/update-tomo.sh` ~:454). Miss the entry → the orphan persists in every instance after every update. When you delete a runtime script, add its basename to `RETIRED_SCRIPTS` in the same change (021 T3.3 deleted `atomic-note-indexer.py` but missed the array; caught during instance cleanup, fixed in `99d8412`). Same mechanism + `RETIRED_SCRIPT_TESTS` for tests.
+Deleting any runtime file from `tomo/` does NOT remove it from existing instances on `update-tomo --yolo`: the sync copies/versions present files but only retires (deletes) instance files named in the hardcoded `RETIRED_*` arrays in `scripts/update-tomo.sh` — `RETIRED_AGENTS`, `RETIRED_COMMANDS`, `RETIRED_SKILLS_DIRS`, `RETIRED_SKILLS_FILES`, `RETIRED_CLAUDE_SCRIPTS`, `RETIRED_SCRIPTS`, `RETIRED_SCRIPT_TESTS`. Miss the entry → the orphan persists in every instance after every update. When you delete a runtime file, add it to the matching array in the same change and to `STALE_FILES` in `tests/test_update_tomo_sync_gaps.py`. Missed twice: 021 T3.3 `atomic-note-indexer.py` (fixed `99d8412`); 2026-10-23 audit found five more (`state-scanner.py`, `commands/tomo-tag-handler-wizard.md`, two flat wizard skills, `file-suggestion-v2.sh`).
+
+Related sync rules: versioned files need a `# version:` line (a missing header reads as `unknown` on both sides → never re-synced; the same test guards `tomo/scripts/**/*.py`); skill support files beyond `SKILL.md` (e.g. `references/`) sync bytewise.
 
 <\!-- 2026-06-24 -->
 

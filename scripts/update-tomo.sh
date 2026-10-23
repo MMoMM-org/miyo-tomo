@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.10.0
+# version: 0.11.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -117,9 +117,12 @@ mark_did() {
 # Returns the full text after the prefix verbatim — convention says number
 # only, no parenthetical. If a file violates the convention, the noise
 # leaks into update-tomo.sh's display output on purpose, so the violation
-# stays visible and gets fixed at the source.
+# stays visible and gets fixed at the source. A missing header yields
+# "unknown" (the pipeline exits with sed's status, so `|| echo` never fired).
 get_version() {
-    grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//' || echo "unknown"
+    local v
+    v=$(grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//')
+    echo "${v:-unknown}"
 }
 
 # Voice transcription wizard (XDD 009). Requires print_* helpers above.
@@ -387,6 +390,18 @@ for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
     [ -f "$src" ] || continue
     add_versioned "$src" "$INSTANCE_PATH/.claude/skills/$name/SKILL.md" "skills/$name/SKILL.md" "skills"
 done
+# Skill support files (references/ etc.) carry no version header — bytewise.
+# install-tomo.sh copies skills/ recursively; this keeps existing instances level.
+for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
+    [ -d "$d" ] || continue
+    d="${d%/}"
+    name=$(basename "$d")
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        rel="${f#"$d"/}"
+        add_bytewise "$f" "$INSTANCE_PATH/.claude/skills/$name/$rel" "skills/$name/$rel" "skills"
+    done < <(find "$d" -type f ! -name SKILL.md | sort)
+done
 
 # Commands
 for f in "$TOMO_SOURCE/dot_claude/commands/"*.md; do
@@ -455,7 +470,7 @@ for name in "${RETIRED_AGENTS[@]}"; do
         add_plan "retire" "" "$dst" "agents/$name" "retire" "removed from source" "retired"
     fi
 done
-RETIRED_COMMANDS=(execute.md)
+RETIRED_COMMANDS=(execute.md tomo-tag-handler-wizard.md)
 for name in "${RETIRED_COMMANDS[@]}"; do
     dst="$INSTANCE_PATH/.claude/commands/$name"
     if [ -f "$dst" ]; then
@@ -467,6 +482,21 @@ for skill_dir in "${RETIRED_SKILLS_DIRS[@]}"; do
     dst="$INSTANCE_PATH/.claude/skills/$skill_dir"
     if [ -d "$dst" ]; then
         add_plan "retire" "" "$dst" "skills/$skill_dir" "retire" "removed from source" "retired"
+    fi
+done
+# Flat skill files superseded by <name>/SKILL.md directories.
+RETIRED_SKILLS_FILES=(tomo-daily-log-wizard.md tomo-trackers-wizard.md)
+for name in "${RETIRED_SKILLS_FILES[@]}"; do
+    dst="$INSTANCE_PATH/.claude/skills/$name"
+    if [ -f "$dst" ]; then
+        add_plan "retire" "" "$dst" "skills/$name" "retire" "moved to skill directory" "retired"
+    fi
+done
+RETIRED_CLAUDE_SCRIPTS=(file-suggestion-v2.sh)
+for name in "${RETIRED_CLAUDE_SCRIPTS[@]}"; do
+    dst="$INSTANCE_PATH/.claude/scripts/$name"
+    if [ -f "$dst" ]; then
+        add_plan "retire" "" "$dst" ".claude/scripts/$name" "retire" "removed from source" "retired"
     fi
 done
 RETIRED_SCRIPT_TESTS=(
@@ -481,6 +511,7 @@ RETIRED_SCRIPTS=(
     inbox-discovery.py
     atomic-note-indexer.py
     record-run-cost.py
+    state-scanner.py
 )
 for name in "${RETIRED_SCRIPT_TESTS[@]}" "${RETIRED_SCRIPTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"

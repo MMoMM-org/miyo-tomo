@@ -3,7 +3,7 @@
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
 > Status: Partially stale — see update banner below
 > Children: [Inbox Analysis](../../tier-3/inbox/inbox-analysis.md) · [Suggestions Document](../../tier-3/inbox/suggestions-document.md) · [Instruction Set Generation](../../tier-3/inbox/instruction-set-generation.md) · [Instruction Set Apply](../../tier-3/inbox/instruction-set-apply.md) · [Instruction Set Cleanup](../../tier-3/inbox/instruction-set-cleanup.md) · [State Tag Lifecycle](../../tier-3/inbox/state-tag-lifecycle.md)
-> Related: [existing workflow doc](../../workflows/inbox-process.md) · [Inbox Change Detection & Pass Routing](inbox-change-detection.md) (how triage decides what changed + which action)
+> Related: [existing workflow doc](https://github.com/MMoMM-org/miyo-kokoro/blob/main/tomo/workflows/inbox-process.md) (Kokoro) · [Inbox Change Detection & Pass Routing](inbox-change-detection.md) (how triage decides what changed + which action)
 
 > **Post-018 Update (2026-05-27)**
 >
@@ -14,7 +14,7 @@
 > - **Lifecycle:** Tag-based lifecycle (`#MiYo-Tomo/captured`, `#MiYo-Tomo/active`, etc.) is replaced by frontmatter-based state (`tomo.state`, `tomo.doc_type`). `tag-captured.py` → `mark-captured.py`. State transitions via `state-promoter.py`.
 > - **Cleanup:** No vault-executor cleanup phase exists yet. The `active`/`archived` states and archival flow described in §7 are unimplemented.
 >
-> Authoritative sources: [018 SDD](../../specs/018-agent-architecture-cleanup/solution.md), agent WHY-docs at `docs/tomo/dot_claude/agents/`, skill WHY-docs at `docs/tomo/dot_claude/skills/`.
+> Authoritative sources: [018 SDD](../../../specs/018-agent-architecture-cleanup/solution.md), agent WHY-docs at `docs/tomo/dot_claude/agents/`, skill WHY-docs at `docs/tomo/dot_claude/skills/`.
 
 ---
 
@@ -71,7 +71,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 > - Phase C: Orchestrator reduces per-item results into final suggestions document
 > - `suggestion-builder` agent was **retired** (merged into orchestrator's reducer logic)
 > **Reason**: Context budget constraint — ~50 items at full context hits 200K tokens. Fan-out keeps per-subagent context under 80K.
-> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
+> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 
 **MVP execution boundary:** Tomo writes only to the inbox folder. All vault content changes outside the inbox are performed by the user. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
 
@@ -101,7 +101,7 @@ the rest of the pipeline — step 1 ("Read Inbox") discovers them the
 same way it would any other `.md` in the inbox folder. Pass 1
 classification treats them as ordinary content.
 
-**Spec**: [specs/009-voice-memo-transcription](../../specs/009-voice-memo-transcription/README.md)
+**Spec**: [specs/009-voice-memo-transcription](../../../specs/009-voice-memo-transcription/README.md)
 (adds Phase 0a to the orchestrator; Phase 0b is the pre-existing resume
 detection).
 
@@ -239,7 +239,7 @@ Discovery by filename pattern: `*_suggestions.md`, `*_instructions.md`.
 > **⚠️ Deviation**
 > **Original**: All documents tracked via lifecycle tags (proposed → confirmed → instructions → applied → archived).
 > **Actual**: Workflow documents use visible checkboxes instead of tags. Tags on workflow documents were dropped because frontmatter tags are not easily accessible to the user in Obsidian. Source items still use tags because those are Tomo-managed (user never changes them).
-> **See**: [specs/006-spec-consolidation/solution.md](../../specs/006-spec-consolidation/solution.md)
+> **See**: [specs/006-spec-consolidation/solution.md](../../../specs/006-spec-consolidation/solution.md)
 
 ### MVP Execution Boundary
 
@@ -291,7 +291,7 @@ The inbox process covers ALL unprocessed items, not just today's:
 > **⚠️ Deviation (XDD-004)**
 > **Original**: State tracked purely via lifecycle tags on vault documents.
 > **Actual**: Fan-out pipeline uses a JSONL state file (`tomo-tmp/state.jsonl`) for intra-run state tracking. Per-item entries are appended as subagents complete. The state file enables resume from partial runs and cross-item deduplication at the reducer stage. Inter-run state uses tags for source items and checkboxes for workflow documents.
-> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
+> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 
 `/inbox` is idempotent across runs. On each invocation, Tomo checks for state in this order:
 

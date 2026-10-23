@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.67.0
+# version: 0.67.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -211,6 +211,13 @@ def load_config(config_path: str) -> dict:
         if isinstance(val, str) and key.endswith(("path", "inbox")):
             val = val.strip()
         resolved[key] = val
+
+    # vault-config.yaml names the daily-log heading `section` (the wizard and
+    # vault-example.yaml write it); `heading` is an older spelling and only
+    # applies when `section` is absent.
+    section = _get_dotted(cfg, "daily_log.section")
+    if isinstance(section, str) and section.strip():
+        resolved["daily_log.heading"] = section.strip()
 
     # Coerce heading_level to int
     try:

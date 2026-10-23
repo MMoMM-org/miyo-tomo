@@ -59,10 +59,10 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | F-51 | **#37** | Phase 0b stale-state detection |
 | F-55 | **#35** | Profile-agnostic pipeline scripts |
 | F-56 | **#38** | Tracker wizard deselect/ignore |
-| D-01 | ☐ #25 | Tier-1 agent table outdated |
-| D-02 | ☐ #25 | Broken cross-reference in template-system docs |
-| D-03 | ☐ #25 | Broken cross-reference in workflow specs |
-| D-04 | ☐ #25 | Daily-note detection config examples outdated |
+| D-01 | ☑ #25 | Done 2026-10-23 — tier-1 component map, new agent table (entry point + impersonate/dispatch), workflow map incl. MOC proposal and garden audit |
+| D-02 | ☑ #25 | Done 2026-10-23 — parking-lot link points at the Kokoro source spec |
+| D-03 | ☑ #25 | Done 2026-10-23 — all 11 broken relative links under `docs/XDD/reference/` fixed (Kokoro sources, `specs/` depth) |
+| D-04 | ☑ #25 | Done 2026-10-23 — examples show the real `daily_log` keys; instruction-render now honours `daily_log.section` (it read only `heading`) |
 | D-05 | ☑ #25 | Done 2026-06-30 — WHY-docs for 6 skills created at `docs/tomo/dot_claude/skills/` |
 | D-06 | ☑ #25 | Done 2026-06-30 — post-018 deprecation banners added to 7 stale reference docs |
 | D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |

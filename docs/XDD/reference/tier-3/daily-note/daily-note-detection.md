@@ -39,18 +39,17 @@ When an inbox item has a daily-note-relevant action (tracker update, content add
 ## 3. Missing Daily Note Policy
 
 ```yaml
-# In vault-config.yaml (future, detected during /explore-vault)
-calendar:
-  daily_creation_policy: "skip" | "suggest" | "create"
+# In vault-config.yaml — written by the tomo-daily-log-wizard skill
+daily_log:
+  auto_create_if_missing:
+    past: false     # MVP: locked to false
+    today: false    # MVP: locked to false
+    future: false   # MVP: locked to false
 ```
 
-| Policy | Behavior |
-|--------|----------|
-| `skip` | Don't propose any daily note actions for missing dates. Log warning. |
-| `suggest` | Include in suggestions: "Daily note for 2026-04-09 doesn't exist. Create it?" User approves. |
-| `create` | Tomo creates the daily note from template in the inbox folder. User moves it. |
+Tomo never creates a daily note. The `auto_create_if_missing` flags record the user's intent for a post-MVP feature; no script reads them yet, and the wizard keeps them at `false`.
 
-**Default:** `suggest` — Tomo always asks.
+When the target daily note does not exist, `instruction-render.py` drops the daily-note action (`filter_missing_daily_notes`) and lists it on stderr as skipped, because Hashi modifies daily notes but never creates them. The original three-way `daily_creation_policy` (`skip` / `suggest` / `create`) was never implemented.
 
 **Why not auto-create?** The user likely has a Templater-based daily note flow (with prompts, JS, sub-templates). A Tomo-created daily note would be a simplified version. Better to suggest and let the user decide whether to create via their normal flow or accept Tomo's simplified version.
 
@@ -107,11 +106,13 @@ When adding content to an existing daily note, Tomo needs to know WHERE:
 ### Section Targeting
 
 ```yaml
-# In vault-config.yaml (future)
-calendar:
-  daily_content_section: "## Notes"    # default section for content additions
-  daily_link_section: "## Notes"       # default section for link additions
+# In vault-config.yaml
+daily_log:
+  section: "Daily Log"    # heading text, without the leading #
+  heading_level: 2        # 1 = "# Daily Log", 2 = "## Daily Log"
 ```
+
+Log entries and log links share this one section; there is no separate section per action type. An older config may spell the key `heading`; it is read only when `section` is absent.
 
 If the configured section exists in the daily note → append there.
 If the section doesn't exist → create it at end (before any footer-like content).

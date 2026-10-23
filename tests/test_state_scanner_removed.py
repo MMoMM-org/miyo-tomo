@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_state_scanner_removed.py — Tests for T4.2: delete dead state-scanner.py
 
 Verifies:
@@ -58,6 +58,10 @@ class TestStateScannerRemoved:
                 f"--glob=!{TESTS_DIR.name}/test_state_scanner_removed.py",
                 "--glob=!tests/test-phase*.sh",
                 "--glob=!tests/*.sh",
+                # Retire lists name deleted files on purpose — that is how
+                # update-tomo removes them from instances, not a caller.
+                "--glob=!**/update-tomo.sh",
+                "--glob=!**/test_update_tomo_sync_gaps.py",
             ],
             capture_output=True,
             text=True,

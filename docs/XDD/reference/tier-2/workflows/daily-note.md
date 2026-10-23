@@ -3,7 +3,7 @@
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
 > Status: Implemented (with deviations)
 > Children: [Daily Note Detection](../../tier-3/daily-note/daily-note-detection.md) · [Tracker Field Handling](../../tier-3/daily-note/tracker-field-handling.md)
-> Related: [existing workflow doc](../../workflows/daily-note.md)
+> Related: [existing workflow doc](https://github.com/MMoMM-org/miyo-kokoro/blob/main/tomo/workflows/daily-note.md) (Kokoro)
 
 ---
 
@@ -52,7 +52,7 @@ During inbox processing, the inbox-analyst identifies daily-note-relevant items:
 > - `/tomo-setup trackers` and `/tomo-setup daily-log` sub-wizards
 > - 30-day cutoff default (keeps daily-note actions bounded to realistic recency)
 > - Tomo never creates daily notes — surfaces `- [ ] Create daily note first` checkbox when missing
-> **See**: [specs/005-daily-note-workflow/solution.md](../../specs/005-daily-note-workflow/solution.md)
+> **See**: [specs/005-daily-note-workflow/solution.md](../../../specs/005-daily-note-workflow/solution.md)
 
 These become instruction set actions (type: Daily Note Update). Each action contains everything the user needs to apply it:
 

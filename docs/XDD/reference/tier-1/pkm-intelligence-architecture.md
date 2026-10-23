@@ -2,7 +2,7 @@
 
 > Parent: — (this is the root)
 > Status: Implemented
-> Source: [Brainstorm Spec](../../references/tomo-lyt-knowledge-model-spec.md)
+> Source: [Brainstorm Spec](https://github.com/MMoMM-org/miyo-kokoro/blob/main/tomo/references/tomo-lyt-knowledge-model-spec.md) (Kokoro)
 
 ---
 
@@ -188,61 +188,68 @@ LLM calls.
 | Write outside inbox | User (manually) | Tomo Hashi (Obsidian Plugin API, reads `instructions.json`) |
 | Decision logic | Tomo skills (AI) | Tomo skills (AI) |
 
-**Key implication for MVP:** The `vault-executor` agent's scope is much narrower than originally planned. It manages **inbox-side state only** (instruction set tagging, inbox item archiving). It does **not** modify content outside the inbox. Vault content changes are user actions, not agent actions.
+**Key implication for MVP:** No Tomo agent modifies content outside the inbox. Inbox-side state — suggestions and instruction documents, lifecycle state in frontmatter — is written via Kado by the pipeline scripts the agents run. Vault content changes are applied by the user or Tomo Hashi, never by an agent. (The `vault-executor` agent originally planned for inbox cleanup was retired in XDD 018.)
 
 
 ## 8. Component Map
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    Tomo (Docker)                          │
-│                                                          │
-│  ┌────────────┐  ┌──────────┐  ┌──────────────────┐    │
-│  │ Agents     │  │ Skills   │  │ Config           │    │
-│  │            │  │          │  │                  │    │
-│  │ inbox-     │  │ pkm-     │  │ vault-config.yaml│    │
-│  │ analyst    │  │ workflows│  │ discovery-cache  │    │
-│  │            │  │          │  │ profiles/*.yaml  │    │
-│  │ suggestion-│  │ lyt-     │  │                  │    │
-│  │ builder    │  │ patterns │  │                  │    │
-│  │  (Pass 1)  │  │          │  │                  │    │
-│  │            │  │ obsidian-│  │                  │    │
-│  │ instruction│  │ fields   │  │                  │    │
-│  │ -builder   │  │          │  │                  │    │
-│  │  (Pass 2)  │  │ template-│  │                  │    │
-│  │            │  │ render   │  │                  │    │
-│  │ vault-     │  │          │  │                  │    │
-│  │ executor   │  │          │  │                  │    │
-│  │ (cleanup)  │  │          │  │                  │    │
-│  │            │  │          │  │                  │    │
-│  │ vault-     │  │          │  │                  │    │
-│  │ explorer   │  │          │  │                  │    │
-│  └────────────┘  └──────────┘  └──────────────────┘    │
-│                       │                                  │
-│                       │ MCP Protocol                     │
-│                       ▼                                  │
-│               ┌──────────────┐                           │
-│               │  Kado MCP    │                           │
-│               │  (remote)    │                           │
-│               └──────────────┘                           │
-└──────────────────────────────────────────────────────────┘
-                       │
-                       ▼
-              ┌──────────────┐
-              │ Kado Plugin  │
-              │ (Obsidian)   │
-              │              │
-              │ kado-read    │
-              │ kado-write   │
-              │ kado-search  │
-              └──────────────┘
-                       │
-                       ▼
-              ┌──────────────┐
-              │ Obsidian     │
-              │ Vault        │
-              └──────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                              Tomo (Docker)                               │
+│                                                                          │
+│  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐  │
+│  │ Agents             │  │ Skills             │  │ Config             │  │
+│  │                    │  │                    │  │                    │  │
+│  │ suggestion-        │  │ suggest-handling   │  │ vault-config.yaml  │  │
+│  │  conductor (P1)    │  │ routing-plan-      │  │ discovery-cache    │  │
+│  │ inbox-analyst      │  │  consumer          │  │ profiles/*.yaml    │  │
+│  │  (per item)        │  │ template-render    │  │                    │  │
+│  │ synthesis-         │  │ lyt-patterns       │  │ Scripts            │  │
+│  │  conductor (P2)    │  │ obsidian-*         │  │                    │  │
+│  │ voice-transcriber  │  │ tomo-*-wizard      │  │ tomo/scripts/*.py  │  │
+│  │ moc-architect      │  │ … see tomo/        │  │ (deterministic     │  │
+│  │ garden-auditor     │  │   dot_claude/skills│  │  pipeline steps)   │  │
+│  │ vault-explorer     │  │                    │  │                    │  │
+│  └────────────────────┘  └────────────────────┘  └────────────────────┘  │
+│                                                                          │
+│                                     │ MCP Protocol                       │
+│                                     ▼                                    │
+│                             ┌──────────────┐                             │
+│                             │  Kado MCP    │                             │
+│                             │  (remote)    │                             │
+│                             └──────────────┘                             │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+                             ┌──────────────┐
+                             │ Kado Plugin  │
+                             │ (Obsidian)   │
+                             │              │
+                             │ kado-read    │
+                             │ kado-write   │
+                             │ kado-search  │
+                             └──────────────┘
+                                      │
+                                      ▼
+                             ┌──────────────┐
+                             │ Obsidian     │
+                             │ Vault        │
+                             └──────────────┘
 ```
+
+### Agents and how they run
+
+A command either **impersonates** an agent (the main session reads the agent file and runs its workflow itself) or **dispatches** it as a subagent via `Agent()`. Orchestrators that must dispatch further agents are always impersonated, because a dispatched subagent cannot use the `Agent` tool. Pure script runners are dispatched to keep their context isolated.
+
+| Agent | Entry point | Runs as | Role |
+|-------|-------------|---------|------|
+| `suggestion-conductor` | `/inbox` (actions `suggest`, `fan-resolve`) | Impersonated | Pass 1 orchestrator — classifies fresh inbox sources into suggestions documents |
+| `inbox-analyst` | `suggestion-conductor` | Dispatched, one per item | Classifies one inbox item and writes its `result.json` |
+| `synthesis-conductor` | `/inbox` (action `synthesize`) | Dispatched | Pass 2 orchestrator — renders instructions from approved suggestions, fan docs, MOC proposals and garden-audit documents |
+| `voice-transcriber` | `/inbox` (action `transcribe`) | Dispatched | Transcribes inbox audio with local faster-whisper |
+| `moc-architect` | `/moc-propose` | Impersonated | Proposes new MOCs for under-organised topic clusters |
+| `garden-auditor` | `/garden-audit` | Impersonated | Whole-vault structural scan written as a reviewable audit document |
+| `vault-explorer` | `/explore-vault` | Impersonated | Scans vault structure, builds the MOC tree and the discovery cache |
 
 ## 9. Workflow Map
 
@@ -252,9 +259,11 @@ Workflows describe HOW components interact. Each workflow spec (Tier 2) referenc
 
 | Workflow | Components used | Tomo agents (propose) | Executor (apply) |
 |----------|----------------|------------------------|------------------|
-| [Inbox Processing](../tier-2/workflows/inbox-processing.md) | User Config, Discovery Cache, Template System, Profiles | inbox-analyst, suggestion-builder (Pass 1), instruction-builder (Pass 2), vault-executor (cleanup) | User (MVP) / Tomo Hashi (Post-MVP) |
-| [Daily Note](../tier-2/workflows/daily-note.md) | User Config, Template System | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Tomo Hashi (Post-MVP) |
-| [LYT/MOC Linking](../tier-2/workflows/lyt-moc-linking.md) | Profiles, Discovery Cache, User Config | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Tomo Hashi (Post-MVP) |
+| [Inbox Processing](../tier-2/workflows/inbox-processing.md) | User Config, Discovery Cache, Template System, Profiles | suggestion-conductor + inbox-analyst (Pass 1), synthesis-conductor (Pass 2), voice-transcriber | User (MVP) / Tomo Hashi (Post-MVP) |
+| [Daily Note](../tier-2/workflows/daily-note.md) | User Config, Template System | suggestion-conductor + inbox-analyst, synthesis-conductor | User (MVP) / Tomo Hashi (Post-MVP) |
+| [LYT/MOC Linking](../tier-2/workflows/lyt-moc-linking.md) | Profiles, Discovery Cache, User Config | suggestion-conductor + inbox-analyst, synthesis-conductor | User (MVP) / Tomo Hashi (Post-MVP) |
+| MOC Proposal ([spec 021](../../specs/021-moc-propose-consolidation/)) | Profiles, Discovery Cache, User Config | moc-architect, then synthesis-conductor once approved | User (MVP) / Tomo Hashi (Post-MVP) |
+| Garden Audit ([spec 030](../../specs/030-garden-audit/)) | User Config, Discovery Cache | garden-auditor, then synthesis-conductor once approved | User (MVP) / Tomo Hashi (Post-MVP) |
 | [Vault Exploration](../tier-2/workflows/vault-exploration.md) | User Config, Discovery Cache | vault-explorer | n/a (read-only) |
 
 ## 10. Key Design Decisions

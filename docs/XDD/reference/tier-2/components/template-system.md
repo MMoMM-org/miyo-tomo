@@ -32,7 +32,7 @@ In both cases, Tomo only writes inside the inbox folder. The instruction set ent
 
 **MVP execution boundary:** Tomo never writes outside the inbox folder. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
 
-**Post-MVP evolution:** Tomo could learn to render Templater syntax itself, eliminating the user's manual Templater step. Parked in [parking lot](../../references/tomo-lyt-knowledge-model-spec.md#8-parking-lot).
+**Post-MVP evolution:** Tomo could learn to render Templater syntax itself, eliminating the user's manual Templater step. Parked in [parking lot](https://github.com/MMoMM-org/miyo-kokoro/blob/main/tomo/references/tomo-lyt-knowledge-model-spec.md#8-parking-lot) (Kokoro).
 
 ## 3. Template Mapping
 

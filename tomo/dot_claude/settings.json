@@ -29,11 +29,8 @@
       "Skill(*)",
       "Read(*)",
       "Edit(config/*)",
-      "Write(config/*)",
       "Edit(.claude/*)",
-      "Write(.claude/*)",
-      "Edit(tomo-tmp/*)",
-      "Write(tomo-tmp/*)"
+      "Edit(tomo-tmp/*)"
     ],
     "deny": []
   },

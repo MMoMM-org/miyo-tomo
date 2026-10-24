@@ -38,6 +38,43 @@ convention is currently hardcoded (matches the date-filter precedent in
 `lib/placeholder_detect`); promote to vault-config if a vault needs a different
 MOC marker.
 
+## `build_placeholder_targets` — names only, each once (spec 040 ADR-7)
+
+The context carries `placeholder_targets`, a sorted list of unique target names,
+instead of the `{target, referenced_by}` objects. The analyst's Condition C
+compares only the target against the item's theme; `referenced_by` was never
+read from the context, and the same target referenced by several MOCs was sent
+several times. The filter above (`build_placeholder_links`) is unchanged and
+still decides which dead links name a missing MOC; `build_placeholder_targets`
+only deduplicates its result. The discovery cache keeps the full records.
+
+The key is always written — `[]` when the vault has no placeholder MOCs — so the
+analyst's `--field placeholder_targets` read never exits 1 for an absent key.
+The old key was renamed, not reshaped in place, so any prose still expecting
+objects fails loudly instead of misreading strings.
+
+## Eligible MOCs and the delivered `name` (spec 040 ADR-1, ADR-5)
+
+Every analyst will read the *names* of all MOCs and fetch the detail of only the
+ones it nominates. A name must therefore resolve to exactly one MOC, which a
+title alone does not guarantee. `assign_names` gives each MOC its title, unless
+another eligible MOC has the same title (compared by `path_key`, so `Projects`
+and `projects` collide as they do in Obsidian). Among colliding MOCs the single
+one inside `concepts.map_note` keeps the title — that is the MOC a LYT or MiYo
+vault owner means — and the others carry their path, which is unique. When zero
+or several of them lie in the MOC folder, all carry their path: there is no
+principled way to pick one. The rule runs once here, so "every delivered name
+resolves to one MOC" holds by construction rather than by a reader's guess.
+
+MOCs tagged `MiYo/Tomo/exclude/moc` are not eligible. This supersedes spec 021
+ADR-13 B-moc for inbox link candidates only: B-moc kept such MOCs (root indexes
+like `000 Index`) in the link pool, which the owner reversed on 2026-10-23.
+`/moc-propose` still keeps them in its own pool. Exclusion runs before naming,
+so an excluded MOC never forces its namesake onto a path.
+
+`mocs[]` is sorted by path so the output is deterministic for golden baselines
+and for the prompt cache.
+
 ## `build_asset_folder` — threading `concepts.asset` to a process that can't read config (spec 031)
 
 WHY `concepts.asset` is read HERE and written into `shared-ctx.json` as

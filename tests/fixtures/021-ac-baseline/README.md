@@ -93,3 +93,22 @@ or `agent_step4_ac_contract` fields, which will legitimately change.
 
 Generated twice in sequence, SHA256 was identical both times:
 `efe09e26c0b9d95d5e36bee598420f44b2443693c54001d6f93f61c8d3ed5343`
+
+## Regenerated 2026-10-24 (spec 040 T1.4)
+
+`build_mocs()` now emits only eligible MOCs (not tagged `MiYo/Tomo/exclude/moc`),
+sorted by path, each with a delivered `name` (spec 040 ADR-1, ADR-5). None of
+the four fixtures has an excluded MOC or a title collision, so the only change
+to `mocs` is the added `name` (equal to `title`) and the path order. Both
+guard tests (`test_shared_ctx_no_accumulation.py`,
+`test_inbox_analyst_no_condition_b.py`) compare only `mocs` and
+`placeholder_links`, so only the `mocs` arrays were replaced.
+
+`placeholder_links` is unchanged: `build_placeholder_links()` still filters the
+cache-side records; spec 040 only changed what the *context* carries
+(`placeholder_targets`, built from that filter).
+
+Do not re-run `generate.py` blindly: it also rewrites `agent_step4_ac_contract`
+and `agent_version_at_capture`, which are a historical snapshot of the agent
+text before Condition B was removed. Replace the `mocs` arrays instead, as
+recorded in `_meta.regenerated`.

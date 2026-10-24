@@ -59,7 +59,7 @@ Records the "before" picture with a tool that can see spills, then gives the con
   4. Validate: RED → GREEN; ruff clean
   5. Success: one place decides "inside the MOC folders" and "excluded" `[ref: SDD/ADR-5]`
 
-- [ ] **T1.4 Eligibility, names and placeholder targets in the builder** `[activity: backend-api]`
+- [x] **T1.4 Eligibility, names and placeholder targets in the builder** `[activity: backend-api]`
 
   1. Prime: `shared-ctx-builder.py` `build_mocs`, `build_placeholder_links`, `main`; `tomo/schemas/shared-ctx.schema.json`; every caller and test listed under SDD Implementation Gotchas (`generate.py:102-103`, `test_shared_ctx_no_accumulation.py:289-339`, `test_inbox_analyst_no_condition_b.py:190-248`, `test_shared_ctx_feature5.py`, `test_shared_ctx_moc_detection.py:61-80`, `test-shared-ctx-placeholders.py`, `test_shared_ctx_inventory.py:98-232`); spec 021 ADR-13 `[ref: SDD/ADR-1, ADR-5, ADR-7, ADR-9; SDD/Data Storage Changes]`
   2. Test:
@@ -68,6 +68,13 @@ Records the "before" picture with a tool that can see spills, then gives the con
   3. Implement: `build_mocs(cache, moc_folders=())` filtering with `is_excluded_moc`, sorting, `assign_names`; `build_placeholder_targets`; `main` passes `moc_folder_prefixes(vault_cfg)`; schema edits (required `mocs[].name`, required root `placeholder_targets`, `placeholder_links` removed); update the callers and tests above deliberately, each with the reason in its docstring (including the "pure projector, not a filter" wording); regenerate `tests/fixtures/021-ac-baseline/` with the updated `generate.py` and record why in its README; add a one-line "superseded for inbox candidates by spec 040 ADR-5" note at spec 021 ADR-13 B-moc; bump the builder version
   4. Validate: RED assertions fail on `main` (swap in `git show main:` copies), pass here; full builder test set green; ruff clean
   5. Success: `[ref: PRD/F1-AC2, F1-AC3, F1-AC4, F1-AC7, F5-AC1, F5-AC2, S1-AC1]`
+
+  6. Deviations recorded during implementation (2026-10-24):
+     - `build_placeholder_links` is kept (the cache-side filter, still tested on its own); `build_placeholder_targets` only deduplicates its result. Its callers and the placeholder half of the golden baseline therefore stay unchanged.
+     - `generate.py` was not re-run as is: it would also overwrite the historical `agent_step4_ac_contract`. Only the `mocs` arrays of `ac-baseline.json` were replaced; see its README.
+     - Hand-built shared-ctx fixtures in `test_spec022_schema_additions.py` and `test_shared_ctx_no_accumulation.py` gained `name` / `placeholder_targets`; without them their rejection tests would have passed for the wrong reason (base context already invalid).
+     - The e2e eligibility check (planned for T6.1) was done here, because the e2e test broke on `placeholder_links` anyway.
+     - `tests/test-004-phase2.sh` already fails on `main` (its vault-config lacks `proposable`); it is not collected by pytest. T1.5 touches it for the summary line and fixes it there.
 
 - [ ] **T1.5 Size guards replace budget shedding; summary line** `[activity: backend-api]`
 

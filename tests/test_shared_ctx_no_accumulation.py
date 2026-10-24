@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_shared_ctx_no_accumulation.py — T3.1 tests for spec 021 (F-34).
 
 Verifies that accumulation (Condition B) has been removed from shared-ctx-builder:
@@ -55,11 +55,12 @@ def _minimal_ctx(*, include_placeholder_links: list | None = None) -> dict:
         "schema_version": "1",
         "run_id": "test-run",
         "mocs": [
-            {"path": "Atlas/Foo MOC.md", "title": "Foo MOC",
+            {"name": "Foo MOC", "path": "Atlas/Foo MOC.md", "title": "Foo MOC",
              "topics": ["foo", "bar"], "is_classification": False}
         ],
         "tag_prefixes": [],
         "classification_keywords": {},
+        "placeholder_targets": [],
     }
     if include_placeholder_links is not None:
         ctx["placeholder_links"] = include_placeholder_links
@@ -243,11 +244,12 @@ def test_schema_validates_no_accumulation_ctx():
         "schema_version": "1",
         "run_id": "schema-test",
         "mocs": [
-            {"path": "Atlas/Foo MOC.md", "title": "Foo MOC",
+            {"name": "Foo MOC", "path": "Atlas/Foo MOC.md", "title": "Foo MOC",
              "topics": ["foo"], "is_classification": False}
         ],
         "tag_prefixes": [],
         "classification_keywords": {},
+        "placeholder_targets": [],
     }
     _validate_schema(ctx)  # must not raise
 
@@ -271,6 +273,8 @@ def test_schema_rejects_accumulation_index_field():
         "mocs": [],
         "tag_prefixes": [],
         "classification_keywords": {},
+        # spec 040: otherwise valid, so the rejection is about accumulation_index alone.
+        "placeholder_targets": [],
         "accumulation_index": {"search": ["note-a"]},
     }
     try:

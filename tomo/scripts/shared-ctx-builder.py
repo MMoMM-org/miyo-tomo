@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.12.0
+# version: 1.13.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -54,6 +54,9 @@ from profile_conventions import marker_word, resolve_conventions  # type: ignore
 # (dotted-package import — needs SCRIPT_DIR itself on sys.path, not SCRIPT_DIR/lib).
 sys.path.insert(0, str(SCRIPT_DIR))
 from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402
+from lib.moc_folders import in_moc_folders, moc_folder_prefixes  # noqa: E402
+from lib.moc_tags import is_excluded_moc  # noqa: E402
+from lib.vault_paths import path_key  # noqa: E402
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -220,8 +223,14 @@ _HEADINGS_CAP = 8  # T3.2 (spec 022): max headings per MOC in shared-ctx
 _CALLOUTS_CAP = 4  # M6: max editable_callouts per MOC in shared-ctx (schema maxItems)
 
 
-def build_mocs(cache: dict) -> list[dict]:
-    """Emit MOC list with topics fallback to title when topics empty.
+def build_mocs(cache: dict, moc_folders: tuple[str, ...] = ()) -> list[dict]:
+    """Emit the eligible MOCs, sorted by path, each with its delivered `name`.
+
+    Eligible = a cache MOC not tagged MiYo/Tomo/exclude/moc (spec 040 ADR-5).
+    `name` follows the collision rule in `assign_names` (spec 040 ADR-1);
+    `moc_folders` are the `concepts.map_note` prefixes it consults.
+
+    Topics fall back to the title when empty.
 
     T3.2 (spec 022): A-trimmed inventory is copied from the cache when present:
       - headings: [{text, level}], capped at _HEADINGS_CAP (8); H2-H6 only
@@ -232,6 +241,8 @@ def build_mocs(cache: dict) -> list[dict]:
     """
     out = []
     for entry in cache.get("map_notes") or []:
+        if is_excluded_moc(entry.get("tags")):
+            continue
         title = (entry.get("title") or "").strip()
         path = (entry.get("path") or "").strip()
         topics = [t.strip() for t in (entry.get("topics") or []) if t and t.strip()]
@@ -258,7 +269,30 @@ def build_mocs(cache: dict) -> list[dict]:
             if "has_footer" in entry:
                 moc["has_footer"] = entry["has_footer"]
         out.append(moc)
+    out.sort(key=lambda m: m["path"])
+    assign_names(out, moc_folders)
     return out
+
+
+def assign_names(mocs: list[dict], moc_folders: tuple[str, ...]) -> None:
+    """Set each MOC's delivered `name` in place (spec 040 ADR-1).
+
+    The title, unless another MOC has the same title (compared by path_key).
+    Among colliding MOCs, the single one inside `moc_folders` keeps the title;
+    every other one — or all of them, when zero or several lie inside —
+    carries its path, which is unique in the vault.
+    """
+    groups: dict[str, list[dict]] = {}
+    for moc in mocs:
+        groups.setdefault(path_key(moc["title"]), []).append(moc)
+    for group in groups.values():
+        if len(group) == 1:
+            group[0]["name"] = group[0]["title"]
+            continue
+        inside = [m for m in group if in_moc_folders(m["path"], moc_folders)]
+        keeper = inside[0] if len(inside) == 1 else None
+        for moc in group:
+            moc["name"] = moc["title"] if moc is keeper else moc["path"]
 
 
 # A placeholder link is a missing MOC only when its target follows the vault's
@@ -332,6 +366,16 @@ def build_placeholder_links(cache: dict, moc_re=_MOC_NAME_RE) -> list[dict]:
             continue
         out.append({"target": target, "referenced_by": referenced_by})
     return out
+
+
+def build_placeholder_targets(cache: dict, moc_re=_MOC_NAME_RE) -> list[str]:
+    """The missing-MOC names the analyst checks, each once, sorted (spec 040 ADR-7).
+
+    The analyst compares only `target`; `referenced_by` stays in the discovery
+    cache. Always a list — empty when the vault has no placeholder MOCs — so
+    the analyst's read of this field never fails for its absence.
+    """
+    return sorted({p["target"] for p in build_placeholder_links(cache, moc_re)})
 
 
 def build_tag_prefixes(cache: dict, vault_cfg: dict) -> list[dict]:
@@ -852,12 +896,12 @@ def main() -> int:
         profile_dict=profile, profiles_dir=profiles_dir
     )
 
-    mocs = build_mocs(cache)
+    mocs = build_mocs(cache, moc_folder_prefixes(vault_cfg))
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
     asset_folder = build_asset_folder(vault_cfg)
-    placeholder_links = build_placeholder_links(cache, _moc_name_re(conventions.moc_suffix))
+    placeholder_targets = build_placeholder_targets(cache, _moc_name_re(conventions.moc_suffix))
 
     ctx: dict = {
         "schema_version": "1",
@@ -866,9 +910,8 @@ def main() -> int:
         "tag_prefixes": tag_prefixes,
         "classification_keywords": classification_keywords,
         "asset_folder": asset_folder,
+        "placeholder_targets": placeholder_targets,
     }
-    if placeholder_links:
-        ctx["placeholder_links"] = placeholder_links
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
 
@@ -896,7 +939,7 @@ def main() -> int:
         f"topics_dropped={dropped} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
-        f"placeholder_links={len(placeholder_links)} "
+        f"placeholder_targets={len(placeholder_targets)} "
         f"daily_notes_enabled={bool(daily_notes)} "
         f"asset_folder={ctx['asset_folder']} "
         f"bytes={len(data)} "

@@ -28,7 +28,7 @@ phase: 2
 
 ## Tasks
 
-Lets the analyst read the names of all MOCs and the detail of a chosen few, and refuse a context from another run.
+Lets the analyst read the names of all MOCs and the detail of a nominated few, and refuse a context from another run.
 
 - [ ] **T2.1 `--moc-names`, `--mocs-from`, `--run-id`** `[activity: backend-api]` `[parallel: true]`
 

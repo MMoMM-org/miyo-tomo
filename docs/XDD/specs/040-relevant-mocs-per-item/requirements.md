@@ -13,7 +13,7 @@ version: "1.2"
 > inventory. It also found that the obvious fix — pick a few MOCs per item in
 > advance by word overlap — would lose half of the MOC links Tomo makes today,
 > because Tomo links by meaning. This spec therefore gives every item the
-> *names* of all MOCs and the *detail* of only the MOCs it chooses.
+> *names* of all MOCs and the *detail* of only the MOCs it nominates.
 
 ## Validation Checklist
 
@@ -49,7 +49,7 @@ version: "1.2"
 | status | `COMPLETE` |
 | clarificationsRemaining | 0 |
 | acceptanceCriteria | 30 |
-| openQuestions | 1 — see Open Questions (non-blocking) |
+| openQuestions | 0 — the variance question is resolved by design (KPIs) |
 
 ### SectionStatus
 
@@ -114,7 +114,7 @@ receives more "create a new MOC" proposals for themes that already have one.
   proposed MOC against the MOCs that already exist; after this spec, two
   independent checks do.
 - **Lower and flat per-item cost.** Each item pays for MOC names plus the detail
-  of the few MOCs it chose, instead of the detail of every MOC.
+  of the few MOCs it nominated, instead of the detail of every MOC.
 
 The alternative Tomo is weighed against is its own current behaviour, plus two
 cheaper fixes that research rejected: raising the budget (blocked by the
@@ -141,7 +141,7 @@ half of today's links are by meaning, with no shared words).
 - **Demographics:** One language-model subagent per inbox item; reads the
   shared context and its item, writes one result file; cannot call other agents.
 - **Goals:** See enough about every MOC to judge relevance by meaning; see the
-  placement detail of the MOCs it chooses; get every read delivered whole.
+  placement detail of the MOCs it nominates; get every read delivered whole.
 - **Pain Points:** A read that is cut to a preview, after which it improvises;
   placement detail that was removed before it ever saw it.
 
@@ -162,7 +162,7 @@ half of today's links are by meaning, with no shared words).
 2. **Consideration:** Nothing to choose; the owner expects the same quality
    whether the vault has 65 or 300 MOCs.
 3. **Adoption:** No action needed — the change applies to every run.
-4. **Usage:** Each item's analysis sees the names of all MOCs, chooses the ones
+4. **Usage:** Each item's analysis sees the names of all MOCs, nominates the ones
    that fit by meaning, and receives the headings and callouts of those MOCs.
    The suggestions document shows each note with its MOC links and a proposed
    section.
@@ -217,11 +217,11 @@ distinct behaviour; a criterion appears under exactly one feature.
   - [ ] Given all MOC titles in the vault are distinct, When the MOC names are delivered, Then each name is delivered without a path.
   - [ ] Given two or more MOCs share a title and at least one of them lies inside the configured MOC folders, When the names are delivered, Then each colliding MOC outside those folders carries its path and the one inside does not.
   - [ ] Given two or more MOCs share a title and none — or more than one — of them lies inside the configured MOC folders, When the names are delivered, Then every colliding MOC carries its path.
-  - [ ] Given any delivered name, When the analysis chooses it, Then it resolves to exactly one MOC.
+  - [ ] Given any delivered name, When the analysis nominates it, Then it resolves to exactly one MOC.
   - [ ] Given a vault with 512 eligible MOCs whose titles are of typical length (the test instance's average), When an item reads the MOC names, Then the read is delivered whole, not as a preview; longer titles raise a size warning at build time.
   - [ ] Given a classification MOC (Dewey-numbered title), When names are delivered, Then it is included, and the analysis can still tell it is a classification MOC.
 
-#### Feature 2: Placement detail arrives for the chosen MOCs, complete
+#### Feature 2: Placement detail arrives for the nominated MOCs, complete
 
 - **User Story:** As the vault owner, I want Tomo to know the headings and
   callouts of every MOC it considers linking my note to, so that it can propose where in the
@@ -319,14 +319,14 @@ distinct behaviour; a criterion appears under exactly one feature.
 
 ## Detailed Feature Specifications
 
-### Feature: F1 + F2 + F3 — names for every MOC, detail for the chosen ones, a check before proposing
+### Feature: F1 + F2 + F3 — names for every MOC, detail for the nominated ones, a check before proposing
 
 **Description:** Today each item's analysis reads one list that carries every
 MOC with all its detail. After this spec the analysis reads the names of all
 eligible MOCs, decides by meaning which ones fit, checks a would-be new MOC
 against those names, and then obtains the placement detail of only the MOCs it
-chose. Because only the names are read for every MOC, the detail no longer has
-to be cut to fit, so it is complete for whichever MOC is chosen.
+nominated. Because only the names are read for every MOC, the detail no longer has
+to be cut to fit, so it is complete for whichever MOC is nominated.
 
 **User Flow:**
 1. Owner runs `/inbox`.
@@ -366,7 +366,7 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
   new MOC; no detail is read.
 - Item matches many MOCs → up to three candidates per thread, as today; at
   most twenty nominations per item.
-- Item split into five threads → each thread may choose its own MOCs; detail is
+- Item split into five threads → each thread may nominate its own MOCs; detail is
   obtained for the union.
 - German item, English MOC titles → chosen by meaning; no translation rule.
 - A context built before this spec (old shape) is read → the item fails with an
@@ -397,7 +397,7 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
     existing MOC title, in the after-run.
   - Zero MOC reads delivered as a preview in the after-run's analyses,
     measured by a transcript scanner built for this spec.
-  - Every chosen non-classification MOC with headings in the vault carries its
+  - Every nominated non-classification MOC with headings in the vault carries its
     headings to the analysis, at 65 and at 512 MOCs.
 - **Business Impact:** Per-item Phase-B cost does not rise above the
   2026-10-13 baseline ($0.603/item, 120k cache-write tokens/item); target at
@@ -471,7 +471,7 @@ the language model obeys them; the live run is the evidence for behaviour.
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| With names only, the analysis chooses fewer or worse MOCs than with topics in view | High | Medium | Before/after run on the same inbox with the ≥90% candidate-agreement bar; differences reviewed in the close-out |
+| With names only, the analysis chooses fewer or worse MOCs than with topics in view | High | Medium | Before/after run on the same inbox with the min(90%, before-run agreement) candidate-agreement bar; differences reviewed in the close-out |
 | The analysis skips the existing-name check and proposes a duplicate | Medium | Medium | Feature 4 safety net catches every exact normalised match |
 | A near-duplicate proposal ("Urlaub" vs "Vacation (MOC)") passes the safety net | Medium | Medium | Feature 3 instruction is the primary guard; the safety net is equality-only by design to avoid wrong merges; the owner still decides |
 | Reading detail adds a step per item and raises cost | Low | Medium | Detail is read only for nominated MOCs (~514 B per MOC entry, typically 3–6 per item); cost KPI requires no increase |
@@ -481,10 +481,10 @@ the language model obeys them; the live run is the evidence for behaviour.
 
 ## Open Questions
 
-- [ ] Does the before-run's candidate set differ from run to run by itself
-  (language-model variance)? If it does, the 90% agreement bar may need a
-  baseline of two before-runs. To be measured in the first live run; not a
-  blocker for the design.
+- [x] Does the before-run's candidate set differ from run to run by itself
+  (language-model variance)? *Resolved 2026-10-24:* two before-runs are taken
+  (plan T1.2) and the agreement bar is min(90%, their mutual agreement) — see
+  KPIs. Only the measured value itself is still to come.
 
 ---
 

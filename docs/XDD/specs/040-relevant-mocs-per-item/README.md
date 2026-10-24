@@ -37,7 +37,7 @@
 | 2026-10-24 | Spec validation (completeness/consistency/coverage/constitution/alignment): 6 FAIL, ~30 WARN, all fixed in PRD v1.2, SDD v1.1, plan v1.1 | Key fixes: names file named via `to_filename` (item_key is a path); `placeholder_targets` always written; ≤20 nominations in thread order; any reader failure fails the item via Step 11; old-shape context fails the item; mutator moved to `lib/duplicate_proposals.py` (reducer is 2835 LOC); new transcript scanner (T1.1) for the no-preview KPI; agreement bar = min(90%, before-run variance); guards vs RED assertions separated. |
 | 2026-10-24 | Classification MOCs may be nominated and become unticked candidates, as today | Owner decision. Keeps the Classification Guard unchanged. |
 | 2026-10-24 | Baseline details (MOC paths/titles) stay out of git; only counts and figures are committed | Owner decision (public repo). Details go to `tomo-instance/spec-040-baseline/` (gitignored). |
-| 2026-10-24 | Decomposition tier: Incremental | Classifier recommended Incremental (feature_count=6, rule 1; 30 ACs; 1 new component lib/moc_folders.py; no parallel markers in the SDD; the plan later tags 7 tasks parallel). Accepted. |
+| 2026-10-24 | Decomposition tier: Incremental | Classifier recommended Incremental (feature_count=6, rule 1; 30 ACs; at classification time 1 new component lib/moc_folders.py — the validation round later added lib/duplicate_proposals.py and scripts/measure-shared-ctx-reads.py, which only strengthens the recommendation; no parallel markers in the SDD; the plan tags 7 tasks parallel). Accepted. |
 | 2026-10-24 | PRD v1.1 amended per ADR-10 | F2-AC5 and the renamed-MOC edge case: an unresolved name is dropped and logged; F4-AC1 and Rule 5 name the cluster key. |
 
 ## Context

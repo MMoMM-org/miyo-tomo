@@ -93,8 +93,8 @@ When implementation requires changes from the specification:
 
 **Specification**:
 
-- `docs/XDD/specs/040-relevant-mocs-per-item/requirements.md` - Product Requirements (v1.1)
-- `docs/XDD/specs/040-relevant-mocs-per-item/solution.md` - Solution Design (ADR-1 … ADR-10)
+- `docs/XDD/specs/040-relevant-mocs-per-item/requirements.md` - Product Requirements (v1.2)
+- `docs/XDD/specs/040-relevant-mocs-per-item/solution.md` - Solution Design (v1.1, ADR-1 … ADR-10)
 - `docs/XDD/specs/040-relevant-mocs-per-item/README.md` - Decisions Log
 - GitHub issue #173 - measurements that motivated the spec
 

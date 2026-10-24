@@ -54,7 +54,7 @@ version: "1.1"
 | architecture | Name index + fetch-on-nomination inside the existing shared context |
 | validationPassed | 15 |
 | validationPending | 0 |
-| nextSteps | Decomposition (tier classification) |
+| nextSteps | Phase 1 of the plan (T1.1 scanner, T1.2 baseline runs) |
 
 ### ArchitectureSummary
 
@@ -318,6 +318,7 @@ tomo/
     └── skills/
         ├── suggest-handling/SKILL.md      MODIFY  delete-before-build, run_id note, Step 7 relay
         └── force-atomic-handling/SKILL.md MODIFY  same
+scripts/measure-shared-ctx-reads.py    NEW     transcript read-size scanner (KPI: zero previews)
 docs/tomo/                             MODIFY  mirrors of every runtime file above
 docs/tomo/scripts/lib/                 NEW     moc_folders.md, duplicate_proposals.md
 docs/XDD/specs/021-moc-propose-consolidation/solution.md  MODIFY  ADR-13 B-moc: superseded-for-inbox note
@@ -520,7 +521,7 @@ Row 2 is checked against thematic names only (Dewey-numbered names never satisfy
 | Context missing (build failed) | reader → analyst | exit 1, same handling; the skill already aborted the run |
 | Nominated name unresolved | reader | listed in `unresolved`, exit 0; analyst drops it and records an issue line |
 | More than 20 names | analyst / reader | the analyst writes at most 20 lines (thread order, then nomination order); if a file still has more, the reader resolves the first 20 and lists the rest in `omitted` |
-| Chosen MOC has no headings/callouts | analyst | anchor tiers fall back as today |
+| Nominated MOC has no headings/callouts | analyst | anchor tiers fall back as today |
 | Old-shape context (no `name`) | reader → analyst | `--moc-names` exit 1 "context predates spec 040"; item fails as above. Cannot occur within a run because the skill rebuilds (PRD edge case, amended) |
 | No placeholder targets in the vault | builder | `placeholder_targets: []` is always written, so the Step-4 read never fails for this reason |
 | Pass 2 after a failed Pass-1 build | instruction-render | no context file: tracker syntax falls back to defaults, as today with no file (fail-open, unchanged) |
@@ -680,7 +681,7 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 ### Known Technical Issues
 
 - Placement detail reflects the discovery cache (rebuilt by `/explore-vault`), not the live MOC; a MOC created or renamed since then is missing or dropped as a ghost. Unchanged by this spec.
-- `force-atomic-handling` only `mkdir -p`s `tomo-tmp/items/` (`:36-38`) and never clears it. The new `*.moc-names.txt` is keyed by `item_key` and overwritten each read, and `--run-id` guards the context, so this spec adds no stale-read path; the pre-existing items/ risk remains.
+- `force-atomic-handling` only `mkdir -p`s `tomo-tmp/items/` (`:36-38`) and never clears it. The new `*.moc-names.txt` is named by the result stem (`to_filename(item_key)`) and overwritten on each run's read, and `--run-id` guards the context, so this spec adds no stale-read path; the pre-existing items/ risk remains.
 
 ### Technical Debt
 
@@ -711,7 +712,7 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 |------|------------|---------|
 | Eligible MOC | A MOC in the discovery cache, present in the vault at reconcile, not tagged `MiYo/Tomo/exclude/moc` | Everything delivered to the analyst |
 | Delivered name | The string the analyst sees for a MOC: title, or path on collision | `mocs[].name`, `--moc-names` |
-| Nomination | A delivered name the analyst chose by meaning for an item or thread | Input to `--mocs-from` |
+| Nomination | A delivered name the analyst picked by meaning for an item or thread | Input to `--mocs-from` |
 | Thematic MOC | A MOC whose title is not Dewey-numbered | Only thematic MOCs are pre-checked, anchored, or used by the duplicate checks |
 
 ### Technical Terms

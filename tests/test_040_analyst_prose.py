@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_040_analyst_prose.py — spec 040 T4.2: the analyst's prose contract.
 
 `inbox-analyst.md` is LLM-loaded runtime prose, so the contract is asserted on
@@ -80,6 +80,7 @@ def test_step_4_nominates_by_meaning_with_the_cap():
     assert "at most 6" in step4
     assert "by meaning" in step4
     assert "0.15" in step4 and "0.5" in step4
+    assert "Keep the top 3 with `score ≥ 0.15`" in step4  # F2-AC1: up to three become candidates
     assert "W_TITLE" not in step4 and "overlap_ratio" not in step4  # the formula no longer decides
 
 
@@ -105,6 +106,16 @@ def test_step_4_anchors_read_the_fetched_detail():
     step4 = _step4()
     anchors = step4[step4.index("Anchor emission"):]
     assert "Step 7.5b" in anchors
+
+
+def test_step_4_placement_fallback_tiers_are_kept():
+    """F2-AC3: a fetched MOC without headings or callouts falls back as before."""
+    anchors = _step4()[_step4().index("Anchor emission"):]
+    tier3 = anchors[anchors.index("TIER-3 — Editable callout fallback"):anchors.index("TIER-4")]
+    tier4 = anchors[anchors.index("TIER-4 — H1 title last-resort"):]
+    assert "`moc.headings` is absent or empty AND `moc.editable_callouts` is\n  non-empty" in tier3
+    assert "absent/empty AND `moc.editable_callouts` is\n  absent/empty, use `moc.title`" in tier4
+    assert "fall back to the first body line" in tier4
 
 
 # ── Step 7.5b ────────────────────────────────────────────────────────────────

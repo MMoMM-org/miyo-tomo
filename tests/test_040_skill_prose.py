@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_040_skill_prose.py — spec 040 T4.3: both inbox skills' setup and report.
 
 Both Pass-1 paths (`suggest-handling`, `force-atomic-handling`) delete the
@@ -59,6 +59,12 @@ def test_the_report_relays_the_duplicate_count(which):
 
 def test_both_builder_commands_are_identical():
     assert _builder(_text("suggest")) == _builder(_text("force"))
+
+
+@pytest.mark.parametrize("which", ["suggest", "force"])
+def test_both_paths_dispatch_the_same_analyst(which):
+    """F6-AC1: Features 1–5 live in `inbox-analyst`, so both paths must run it."""
+    assert re.findall(r'subagent_type: "([^"]+)"', _text(which)) == ["inbox-analyst"]
 
 
 @pytest.mark.parametrize("which", ["suggest", "force"])

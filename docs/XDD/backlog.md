@@ -2742,9 +2742,9 @@ malformed field that no per-field check looks at passes through. Fix: validate
 the edited wire against its schema at load, refusing with the schema's own message, before any
 per-field check runs.
 
-## IN PROGRESS — relevant MOCs per item → [#173](https://github.com/MMoMM-org/miyo-tomo/issues/173)
+## IMPLEMENTED (2026-10-24) — relevant MOCs per item → [#173](https://github.com/MMoMM-org/miyo-tomo/issues/173)
 
-Spec [`040-relevant-mocs-per-item`](specs/040-relevant-mocs-per-item/README.md), PR #198. Every analyst reads MOC names and fetches detail only for the MOCs it nominates; budget shedding is gone; the reducer converts exact-name duplicate proposals; `MiYo/Tomo/exclude/moc` removes a MOC from inbox candidates. Kado-graph navigation stays with #82.
+Spec [`040-relevant-mocs-per-item`](specs/040-relevant-mocs-per-item/README.md), PR #198. Every analyst reads MOC names and fetches detail only for the MOCs it nominates; budget shedding is gone; the reducer converts exact-name duplicate proposals; `MiYo/Tomo/exclude/moc` removes a MOC from inbox candidates. Kado-graph navigation stays with #82. Close-out: [`close-out.md`](specs/040-relevant-mocs-per-item/close-out.md); the candidate-agreement KPI was missed and follows up in #200.
 
 ## OPEN (#199) — analyst branches on `daily_log.enabled`, which no context ever carries
 

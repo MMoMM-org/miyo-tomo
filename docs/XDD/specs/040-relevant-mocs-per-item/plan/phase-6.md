@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration and live validation"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 6
 ---
@@ -59,7 +59,7 @@ Proves the whole flow end to end, at today's size and at 512 MOCs, then on the t
      - The "longer titles" variant uses 64-character titles. At 60 characters, 512 names come to 32,258 bytes, just under the 32,768 threshold, so no warning would fire.
      - RED: 4 of 4 fail against `main`'s builder and reader.
 
-- [ ] **T6.3 After-run on the test instance** `[activity: validate]`
+- [x] **T6.3 After-run on the test instance** `[activity: validate]`
 
   1. Prime: `baseline.md`; memory notes "update-tomo is version-gated", "restart Claude after agent/skill sync", "reset tomo-tmp before a live run"
   2. Test: n/a (measurement). Checklist: `./scripts/update-tomo.sh --instance tomo-instance --yolo`; grep the instance for the new versions of every touched file; restart; reset pass-1 state; restore `tomo-instance/spec-040-baseline/inbox-set/`; run `/inbox`; capture the same fields as T1.2 including the T1.1 scanner output; check the seeded item links the existing MOC instead of proposing it (F3-AC1) and that every analyst read the names (F1-AC1)
@@ -67,7 +67,7 @@ Proves the whole flow end to end, at today's size and at 512 MOCs, then on the t
   4. Validate: all three runs logged with run ids
   5. Success: after-picture captured on the identical set `[ref: PRD/F1-AC1, F3-AC1]`
 
-- [ ] **T6.4 Close-out** `[activity: validate]`
+- [x] **T6.4 Close-out** `[activity: validate]`
 
   1. Prime: PRD KPIs and "How each criterion is verified"; `baseline.md`; spec 038/039 close-outs for the format
   2. Test: every PRD acceptance criterion traced to a node id executed in ONE pytest invocation, to a prose-contract test, or to the live run, per the PRD's verification table; KPIs evaluated with the agreement definition above, zero duplicate proposals, zero previews (scanner), cache-write/item ≥ 10% lower, $/item ≤ 0.603; every candidate difference listed with a reason (paths named only in the gitignored detail file; the close-out cites counts and item numbers)

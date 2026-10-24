@@ -2741,3 +2741,16 @@ wire document is never run through `jsonschema` against `suggestions-doc.schema.
 malformed field that no per-field check looks at passes through. Fix: validate
 the edited wire against its schema at load, refusing with the schema's own message, before any
 per-field check runs.
+
+## OPEN — analyst branches on `daily_log.enabled`, which no context ever carries
+
+**Out of scope of spec 040**, pre-existing; found by spec 040 T2.2 (2026-10-24) once the
+reader's contract fixture was built by `shared-ctx-builder.py` instead of written by hand.
+`inbox-analyst.md` Step 8 Evaluation 2 says "If `shared_ctx.daily_notes.daily_log.enabled` is
+`false` → no log at all". The builder's `_DAILY_LOG_DEFAULTS` has no `enabled` key, and
+`shared-ctx.schema.json` forbids one (`daily_log.additionalProperties: false`). The branch can
+never fire: the daily log is effectively always on, and a user has no switch to turn it off.
+The hand-written fixture modelled the field, so `TestAgainstTheRealContract` passed for months.
+Decide whether the switch should exist (then: vault-config key, builder, schema, wizard) or the
+prose line should go; until then `tests/test_read_shared_ctx.py` lists it in
+`KNOWN_DEAD_REFERENCES` so the gap stays visible.

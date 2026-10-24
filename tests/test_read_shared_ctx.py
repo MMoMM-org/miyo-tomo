@@ -11,58 +11,104 @@ The inline reaches asked for `daily_notes`, `tag_prefixes`,
 under 12 KB. This script is the sanctioned way to ask for exactly those, and
 the reason `python3 -c` can be forbidden in the analyst contract the way it
 already is in the conductor's.
+
+Spec 040 T2.2: the fixture is no longer hand-written. It drifted from the
+builder (string `placeholder_links`, `{prefix, values}` tag prefixes, no
+`is_classification`), so the contract test was checking a shape no run ever
+produces. It is now the builder's own output over a small cache.
 """
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
-SCRIPT = Path(__file__).resolve().parent.parent / "tomo" / "scripts" / "read-shared-ctx.py"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / "tomo" / "scripts" / "read-shared-ctx.py"
+BUILDER = REPO_ROOT / "tomo" / "scripts" / "shared-ctx-builder.py"
+SCHEMA = REPO_ROOT / "tomo" / "schemas" / "shared-ctx.schema.json"
+RUN_ID = "2026-09-14T14-31-06Z-311f8f"
 
 _spec = importlib.util.spec_from_file_location("read_shared_ctx", SCRIPT)
 _mod = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(_mod)
 
+_CACHE = {
+    "map_notes": [
+        {"path": "Atlas/200 Maps/Running (MOC).md", "title": "Running (MOC)",
+         "topics": ["laufen", "sport"], "tags": ["type/others/moc"],
+         "headings": [{"text": "Training", "level": 2}],
+         "editable_callouts": ["> [!blocks]- Notes"]},
+        {"path": "Atlas/200 Maps/Projects.md", "title": "Projects", "topics": ["projects"]},
+        {"path": "Efforts/Work/Projects.md", "title": "Projects", "topics": ["work"]},
+        {"path": "Atlas/200 Maps/2600 - Applied Sciences.md",
+         "title": "2600 - Applied Sciences", "topics": ["health"]},
+    ],
+    "placeholder_links": [
+        {"target": "Weinbau (MOC)", "referenced_by": "Atlas/202 Notes/Riesling.md"},
+        {"target": "Some Note", "referenced_by": "Atlas/202 Notes/Riesling.md"},
+    ],
+}
+
+_VAULT_CONFIG = {
+    "profile": "miyo",
+    "concepts": {
+        "inbox": "100 Inbox/",
+        "asset": "Atlas/290 Assets/295 Attachments/",
+        "map_note": {"paths": ["Atlas/200 Maps/"], "tags": ["type/others/moc"]},
+        "calendar": {"granularities": {"daily": {"enabled": True, "path": "Calendar/301 Daily/"}}},
+    },
+    "naming": {"calendar_patterns": {"daily": "YYYY-MM-DD"}},
+    "tags": {"prefixes": {"type": {
+        "description": "Note type", "known_values": ["note"], "wildcard": False,
+        "proposable": True, "required_for": [],
+    }}},
+    "trackers": {"daily_note_trackers": {"section": "Habit", "today_fields": [{
+        "name": "Sport", "type": "boolean", "syntax": "inline_field",
+        "description": "Did physical activity happen today?",
+        "positive_keywords": ["Laufrunde"],
+    }]}},
+    "daily_log": {"cutoff_days": 120, "date_sources": ["content"]},
+}
+
+
+@functools.cache
+def _built() -> str:
+    """The builder's real output for _CACHE/_VAULT_CONFIG, built once per session."""
+    work = Path(tempfile.mkdtemp(prefix="read-shared-ctx-fixture-"))
+    (work / "cache.yaml").write_text(yaml.safe_dump(_CACHE), encoding="utf-8")
+    (work / "vault-config.yaml").write_text(yaml.safe_dump(_VAULT_CONFIG), encoding="utf-8")
+    out = subprocess.run([
+        sys.executable, str(BUILDER),
+        "--cache", str(work / "cache.yaml"), "--vault-config", str(work / "vault-config.yaml"),
+        "--profiles-dir", str(REPO_ROOT / "tomo" / "profiles"),
+        "--run-id", RUN_ID, "--output", str(work / "ctx.json"), "--skip-reconcile",
+    ], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    return (work / "ctx.json").read_text(encoding="utf-8")
+
 
 def _ctx(tmp_path: Path, **overrides) -> Path:
-    data = {
-        "schema_version": "1",
-        "run_id": "2026-09-14T14-31-06Z-311f8f",
-        "asset_folder": "Atlas/290 Assets/295 Attachments/",
-        "tag_prefixes": [{"prefix": "type/", "values": ["note"]}],
-        "classification_keywords": {"2600": ["health"]},
-        "placeholder_links": ["Some MOC"],
-        "mocs": [{"path": "Atlas/x.md", "title": "X (MOC)", "topics": ["a"]}],
-        "daily_notes": {
-            "enabled": True,
-            "path_pattern": "Calendar/301 Daily/YYYY-MM-DD",
-            "trackers_enabled": True,
-            "date_formats": ["DD.MM.YYYY"],
-            "tracker_fields": [{"name": "Sport", "positive_keywords": ["Laufrunde"]}],
-            "daily_log": {
-                "enabled": True,
-                "cutoff_days": 120,
-                "date_sources": ["content"],
-                # Modelled because the contract names it, not because a test
-                # below asserts on it — TestAgainstTheRealContract is what
-                # noticed this fixture was missing it.
-                "time_extraction": {
-                    "enabled": True,
-                    "sources": ["content", "filename"],
-                    "fallback": "append_end_of_day",
-                },
-            },
-        },
-    }
+    data = json.loads(_built())
     data.update(overrides)
     p = tmp_path / "shared-ctx.json"
     p.write_text(json.dumps(data), encoding="utf-8")
     return p
+
+
+def test_fixture_is_a_valid_built_context():
+    import jsonschema
+
+    jsonschema.validate(json.loads(_built()), json.loads(SCHEMA.read_text()))
 
 
 def _run(capsys, *argv) -> str:
@@ -73,7 +119,8 @@ def _run(capsys, *argv) -> str:
 class TestSingleField:
     def test_top_level_container_is_json(self, tmp_path, capsys):
         out = _run(capsys, "--ctx", str(_ctx(tmp_path)), "--field", "tag_prefixes")
-        assert json.loads(out) == [{"prefix": "type/", "values": ["note"]}]
+        assert json.loads(out) == json.loads(_built())["tag_prefixes"]
+        assert json.loads(out)[0]["name"] == "type"  # non-vacuity: the prefix was built
 
     def test_nested_scalar_prints_bare(self, tmp_path, capsys):
         """Captured straight into a shell variable — no JSON quotes around it."""
@@ -145,17 +192,15 @@ class TestOutputSize:
         assert "mocs" not in json.loads(out), "Step 1 must not carry the MOC keys"
         assert len(out) < self.SPILL_FLOOR_BYTES
 
-    def test_loading_every_contract_key_stays_under_the_whole_file(self, tmp_path, capsys):
-        """Step 1 loads six named keys rather than catting. It must not cost
-        more than what it replaced, or the change is a regression dressed as a
-        refactor."""
-        ctx = _ctx(tmp_path)
-        whole = ctx.read_text()
-        batch = _run(
-            capsys, "--ctx", str(ctx), "--fields",
-            "mocs,daily_notes,placeholder_links,classification_keywords,tag_prefixes,asset_folder",
-        )
-        assert len(batch) <= len(whole)
+    def test_moc_names_cost_less_than_the_mocs_they_name(self, tmp_path, capsys):
+        """Spec 040: Step 4 reads names instead of `--field mocs`. The names
+        must be a fraction of the detail, or the change bought nothing."""
+        p = str(_ctx(tmp_path))
+        names = _run(capsys, "--ctx", p, "--moc-names")
+        detail = _run(capsys, "--ctx", p, "--field", "mocs")
+        assert len(json.loads(names)) == 4
+        assert len(names) < len(detail) / 3
+        assert len(names) < self.SPILL_FLOOR_BYTES
 
 
 class TestBatch:
@@ -188,9 +233,10 @@ class TestKeys:
     def test_keys_lists_every_top_level_key_with_a_size(self, tmp_path, capsys):
         out = _run(capsys, "--ctx", str(_ctx(tmp_path)), "--keys")
         names = [line.split()[-1] for line in out.splitlines()]
+        # spec 040 ADR-7: placeholder_targets replaced placeholder_links
         assert set(names) == {
             "schema_version", "run_id", "asset_folder", "tag_prefixes",
-            "classification_keywords", "placeholder_links", "mocs", "daily_notes",
+            "classification_keywords", "placeholder_targets", "mocs", "daily_notes",
         }
 
     def test_keys_are_ordered_largest_first(self, tmp_path, capsys):
@@ -225,6 +271,15 @@ class TestFailureModes:
 class TestAgainstTheRealContract:
     """Every dotted path `inbox-analyst.md` names must resolve on a real context."""
 
+    # The analyst prose still names these; spec 040 Phase 4 (T4.2) rewrites
+    # Step 4 to read --moc-names / --field placeholder_targets. When it does,
+    # this test fails until the set is emptied — that is the tripwire.
+    PENDING_PHASE_4 = ["placeholder_links"]
+    # Named by the prose, never emitted by the builder, forbidden by the schema:
+    # the "no log at all" branch cannot fire. Pre-existing; see docs/XDD/backlog.md
+    # "analyst branches on `daily_log.enabled`". The hand-written fixture hid it.
+    KNOWN_DEAD_REFERENCES = ["daily_notes.daily_log.enabled"]
+
     def test_every_contract_field_resolves(self, tmp_path):
         import re
 
@@ -246,7 +301,7 @@ class TestAgainstTheRealContract:
                 _mod.resolve(data, dotted)
             except SystemExit:
                 unresolved.append(dotted)
-        assert not unresolved, (
-            f"the contract names fields this fixture does not model: {unresolved}. "
-            f"Either shared-ctx-builder stopped emitting them or the fixture is stale."
+        assert unresolved == sorted(self.PENDING_PHASE_4 + self.KNOWN_DEAD_REFERENCES), (
+            f"the contract names fields a built context does not carry: {unresolved}. "
+            f"Either shared-ctx-builder stopped emitting them or the prose is stale."
         )

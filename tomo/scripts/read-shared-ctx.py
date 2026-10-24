@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # read-shared-ctx.py — Read fields from shared-ctx.json without loading it whole.
-# version: 0.3.0
+# version: 0.3.1
 #
 # Every Phase-B subagent loads the shared context, and `cat` is the only way
 # the agent definition offers. Measured over four runs and 48 subagents: 45
@@ -187,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Read fields from shared-ctx.json without loading it whole."
     )
     parser.add_argument("--ctx", default=DEFAULT_CTX, help=f"default: {DEFAULT_CTX}")
-    parser.add_argument("--field", help="One dotted field, e.g. daily_notes.daily_log.enabled")
+    parser.add_argument("--field", help="One dotted field, e.g. daily_notes.daily_log.cutoff_days")
     parser.add_argument("--fields", help="Comma-separated dotted fields; prints a JSON object")
     parser.add_argument("--keys", action="store_true", help="Top-level keys with byte sizes")
     parser.add_argument("--moc-names", action="store_true",

@@ -51,10 +51,17 @@ Lets the analyst read the names of all MOCs and the detail of a nominated few, a
      - "Distinct" means distinct lines after stripping. Two lines that resolve to the same MOC (`Projects`, `projects`) count toward the cap of 20 separately but return one entry.
      - The usage-error test asserts the rule's own text (`choose exactly one of`). Without that, the two-mode case passed on `main`, because argparse's "unrecognized arguments" also names both flags.
 
-- [ ] **T2.2 Rebuild the reader's contract fixture from the builder** `[activity: test-practices]`
+- [x] **T2.2 Rebuild the reader's contract fixture from the builder** `[activity: test-practices]`
 
   1. Prime: `tests/test_read_shared_ctx.py:32-66` (hand-written fixture: `placeholder_links` as strings, no `is_classification`, `tag_prefixes` as `{prefix, values}`), `:136-158` (spill tests: Step-1 batch and a `--fields mocs,…,placeholder_links` call), `:188-194` (`TestKeys` pins `placeholder_links`), `:225-252` (`TestAgainstTheRealContract`) `[ref: SDD/Technical Debt]`
   2. Test: the fixture validates against `shared-ctx.schema.json`; `TestKeys` expects `placeholder_targets`; the spill tests measure the Step-1 batch and `--moc-names`; `TestAgainstTheRealContract` still resolves every `shared_ctx.<path>` the current analyst prose names
   3. Implement: generate the fixture with the builder's functions over a small cache fixture; update the three test groups with the reason
   4. Validate: suite green; ruff clean
   5. Success: the contract test checks the real shape, not a stale copy `[ref: SDD/Technical Debt]`
+
+  6. Findings recorded during implementation (2026-10-24):
+     - The fixture is the builder's own output: `shared-ctx-builder.py` runs once per session over a small cache and vault-config (`_built()`), and `test_fixture_is_a_valid_built_context` validates it against the schema.
+     - The real shape surfaced a pre-existing dead reference. `inbox-analyst.md` Step 8 branches on `shared_ctx.daily_notes.daily_log.enabled`, but the builder never emits that key and the schema forbids it. The hand-written fixture modelled the key, so the contract test had passed. It is out of scope for spec 040. It is recorded in `docs/XDD/backlog.md` and listed as `KNOWN_DEAD_REFERENCES` in the test.
+     - `TestAgainstTheRealContract` now asserts the exact set of unresolved paths. `PENDING_PHASE_4 = ["placeholder_links"]` is the tripwire: once T4.2 rewrites Step 4, the test fails until that entry is removed.
+     - The spill test "loading every contract key stays under the whole file" was replaced by "`--moc-names` costs less than a third of `--field mocs`". The old call loaded `placeholder_links`, which no longer exists.
+     - `read-shared-ctx.py` 0.3.1: its `--field` help example named the dead key; it now uses `cutoff_days`.

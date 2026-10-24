@@ -354,7 +354,8 @@ to be cut to fit, so it is complete for whichever MOC is nominated.
   reduced because of the number of MOCs.
 - Rule 4: Classification MOCs are delivered by name, may be nominated and
   become unticked candidates as today, and are never pre-checked; the
-  Classification Guard behaves as today.
+  Classification Guard behaves as today. *(Superseded 2026-10-24 by #200:
+  classification MOCs are no longer nominated or listed as candidates.)*
 - Rule 5: The safety net compares normalised names for equality only (the
   proposal-grouping key: case, whitespace, punctuation, English plural, MOC
   suffix); it never merges by similarity.

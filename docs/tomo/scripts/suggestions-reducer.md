@@ -1803,3 +1803,22 @@ summary line, which both skills relay. Rationale and edge cases:
 The `--threshold` line in the module docstring said "default 3"; the argument
 has defaulted to 1 since every `needs_new_moc` began surfacing. Corrected in
 the same version.
+
+## Classification candidates dropped — `lib/classification_candidates.py` (#200, v1.62.0)
+
+WHY: a Dewey-layer MOC is a MOC-only container; it never links a note
+(`lyt-patterns`, "MOC-Only Layers"). The analyst is told not to nominate one,
+but it is an LLM, and it can tell a classification MOC only by the name's
+Dewey pattern. The context marks each MOC with `is_classification`, so the
+reducer can enforce the rule exactly: every `create_atomic_note` candidate
+whose path the context marks as classification is removed before the duplicate
+mutator, the structural-anchor demotion, render and persist. All of these
+then see the same candidate list.
+
+Fail-open, like the duplicate mutator: without a readable context nothing is
+dropped. The summary line reports `classification_candidates_dropped=` ahead of
+`duplicate_proposals_converted=`, so a run shows how often the analyst slipped.
+
+Not dropped: the item's `classification` field (Step 5) and a proposed MOC's
+parent category. Both still name the Dewey bucket, which is where a classification
+MOC belongs: as the parent of a thematic MOC, not as the home of a note.

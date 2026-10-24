@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.27.0
+# version: 0.28.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -151,8 +151,9 @@ failure block as Step 1 says.
 **Nominate by meaning.** Read every name now. Nominate once Step 7.5 has
 formed the threads: for each thread that becomes a `create_atomic_note` (one
 default thread for a short item), nominate at most 6 names whose MOC could be
-that thread's thematic home. Thematic and
-classification names may both be nominated. Also nominate any thematic name
+that thread's thematic home. Nominate thematic names only. Never nominate a
+classification name: a Dewey-numbered title such as `2900 - History &
+Geography`. Also nominate any thematic name
 that covers a MOC you would otherwise propose (decision row 2 below). Copy
 each name exactly as delivered — some names are vault paths. Step 7.5b
 fetches the detail of the nominated names once; everything below runs on
@@ -161,13 +162,13 @@ those fetched entries, per thread.
 **Score by meaning.** For each fetched MOC, set `score` to your confidence
 (0.0–1.0) that it is the thread's thematic home, using its title, topics and
 headings as evidence. Keep the top 3 with `score ≥ 0.15`. Set
-`pre_check: true` only when `score ≥ 0.5` and `is_classification` is false.
+`pre_check: true` only when `score ≥ 0.5`.
 
 **Classification Guard:** 
 
-Never pre-check a MOC with `is_classification: true`.
-If all top matches are classification-layer, flag `needs_new_moc: true` and set
-`proposed_moc_topic` to the best inferred thematic label from the item's
+Never list a MOC with `is_classification: true` in `candidate_mocs`.
+If only a classification MOC fits the thread, flag `needs_new_moc: true` and
+set `proposed_moc_topic` to the best inferred thematic label from the item's
 dominant topic tokens.
 
 **Placeholder link trigger.**
@@ -195,7 +196,7 @@ If `placeholder_targets` is empty, skip this trigger silently.
 |---|---|---|
 | 1 | A placeholder target matches the thread's theme | `needs_new_moc: true`, `proposed_moc_topic` = the target verbatim |
 | 2 | A thematic delivered name covers the MOC you would propose | keep that fetched MOC as a candidate, as scored; `needs_new_moc: false` |
-| 3 | No thematic candidate scored ≥ 0.15, or all top matches are classification | `needs_new_moc: true`, `proposed_moc_topic` = inferred thematic label |
+| 3 | No thematic candidate scored ≥ 0.15, or only a classification MOC fits | `needs_new_moc: true`, `proposed_moc_topic` = inferred thematic label |
 | 4 | Otherwise | candidates as scored; `needs_new_moc: false` |
 
 Row 2 checks thematic names only: a Dewey-numbered (classification) name never
@@ -803,9 +804,9 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
 - `alternatives` can stay `[]` when you have none.
 
 **Pre-check rule for candidate_mocs:**
-- `pre_check: true` only when `score ≥ 0.5` AND the MOC is thematic
-  (`is_classification: false` in shared-ctx). Never pre-check classification-
-  layer MOCs — emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
+- `pre_check: true` only when `score ≥ 0.5`.
+- Never list a MOC with `is_classification: true`. When only a classification
+  MOC fits, emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
 
 Step 10.3 — use the output filename
 

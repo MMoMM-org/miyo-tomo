@@ -699,3 +699,7 @@ triage passes. Evidence and findings: `docs/XDD/specs/039-attachment-conflict-ha
 
 Cache-write per item −19%, cost per item −12%. 36 shared-ctx reads, none spilled.
 Details: `docs/XDD/specs/040-relevant-mocs-per-item/baseline.md` (After-run).
+
+Second after-run `2026-10-24T18-21-04Z-d23bfc` (same session, `--force`; a first attempt died in triage on
+Kado 429 + timeout under host load): 98,863 cache-write / item, $0.567 / item, $6.80 subagents, 41 reads, 0
+spilled. After mean: **97,328** cache-write / item (−18%), **$0.553** / item (−9%).

@@ -128,3 +128,53 @@ did not: the daily-log item (`update_daily`, no MOC step), two empty test notes
 read `placeholder_targets` but skipped the names and proposed a new MOC. That
 proposal never reached the document: the atomic scored 0.15 worthiness, and the
 reducer suppresses sub-0.5 atomics before they can seed a Proposed MOC.
+
+## After-run 2 (T6.3)
+
+| Field | Value |
+|---|---|
+| run_id | 2026-10-24T18-21-04Z-d23bfc |
+| Session | the after-run 1 session, `/inbox --force` (analysts are fresh per dispatch, as for before-2) |
+| Inbox | the same 12-item set, restored by `prepare-run.sh` |
+| First attempt | 17:12 UTC, aborted in triage (Kado HTTP 429, then a read timeout on a heavily loaded host) before any analyst ran; no run id, no results |
+
+| Run | Items | Reads | Spilled | Avg cache-write / item | Avg $ / item | Subagent total |
+|---|---|---|---|---|---|---|
+| after-2 | 12 | 41 | 0 | 98,863 | 0.567 | $6.80 |
+| **after mean** | | | **0** | **97,328** | **0.553** | |
+
+Duplicate proposals 0 (the same two placeholder targets again);
+seeded item linked, score 0.9, pre-checked. 10 of 12 analysts read
+`--moc-names`; the two that did not are the two empty test notes.
+
+### Candidate agreement, all four runs
+
+Row = the run whose candidates are counted, column = the run they are looked up
+in (hits / row total).
+
+| | before-1 | before-2 | after-1 | after-2 |
+|---|---|---|---|---|
+| before-1 | — | 7/9 (78%) | 6/9 (67%) | 6/9 (67%) |
+| before-2 | 7/10 (70%) | — | 6/10 (60%) | 5/10 (50%) |
+| after-1 | 6/13 | 6/13 | — | 8/13 (62%) |
+| after-2 | 6/16 | 5/16 | 8/16 (50%) | — |
+
+Thematic candidates only (classification MOCs removed):
+
+| | before-1 | before-2 | after-1 | after-2 |
+|---|---|---|---|---|
+| before-1 | — | 6/7 | 6/7 (86%) | 5/7 (71%) |
+| before-2 | 6/7 | — | 5/7 (71%) | 4/7 (57%) |
+
+| Run | Candidates | Pre-checked |
+|---|---|---|
+| before-1 / before-2 | 9 / 10 | 1 / 1 |
+| after-1 / after-2 | 13 / 16 | 3 / 2 |
+
+**Reading.** The KPI is missed in both after-runs (67% / 60% and 67% / 50%
+against the 70% bar). It is not run noise alone: the two after-runs agree with
+each other less (62% / 50%) than the two before-runs did (78% / 70%). The after
+analysts nominate more MOCs by meaning and keep more secondary candidates
+(13–16 against 9–10), mostly two travel MOCs on the trip notes
+the before-runs left without candidates. Every before-run candidate the
+after-runs drop is a secondary pick scored 0.15–0.3.

@@ -1,7 +1,7 @@
 ---
 title: "Every item sees every MOC, by name"
 status: draft
-version: "1.0"
+version: "1.1"
 ---
 
 # Product Requirements Document
@@ -231,7 +231,7 @@ distinct behaviour; a criterion appears under exactly one feature.
   - [ ] Given a vault of any size up to 512 MOCs, When the context is built, Then no MOC loses its headings or editable callouts because of vault size.
   - [ ] Given a chosen MOC has no headings or callouts, When placement is prepared, Then placement falls back exactly as it does today for such a MOC.
   - [ ] Given the analysis chose no thematic MOC, When the item is analysed, Then no placement detail is read.
-  - [ ] Given the placement detail cannot be obtained for a chosen MOC, When placement is prepared, Then the MOC is still offered as a candidate without a placement, as today for a context without inventory.
+  - [ ] Given a chosen name does not resolve to a MOC, When placement is prepared, Then that name is dropped, the analysis records it as an issue, and the item's other candidates are unaffected. *(Amended 2026-10-24, SDD ADR-10: a name without a path cannot become a candidate.)*
 
 #### Feature 3: A new MOC is proposed only after checking existing names
 
@@ -249,7 +249,7 @@ distinct behaviour; a criterion appears under exactly one feature.
   the analysis, so that a "Proposed MOC" with the name of an existing MOC never
   appears even when the analysis misses it.
 - **Acceptance Criteria:**
-  - [ ] Given a proposed MOC whose name, normalised for case, whitespace and the vault's MOC suffix, equals the title of an eligible existing MOC, When the suggestions document is built, Then no "Proposed MOC" is shown for it.
+  - [ ] Given a proposed MOC whose name, normalised for case, whitespace, punctuation, English plural and the vault's MOC suffix (the same key that groups proposals), equals the title of an eligible thematic MOC, When the suggestions document is built, Then no "Proposed MOC" is shown for it.
   - [ ] Given that case, When the suggestions document is built, Then each item that carried the proposal is offered a link to the existing MOC, unticked.
   - [ ] Given a proposed name that only resembles an existing title (no normalised equality), When the document is built, Then the proposal is shown unchanged.
   - [ ] Given the safety net acts, When the run finishes, Then the run summary names how many proposals it converted.
@@ -351,8 +351,9 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
   reduced because of the number of MOCs.
 - Rule 4: Classification MOCs are delivered by name and never pre-checked; the
   Classification Guard behaves as today.
-- Rule 5: The safety net compares normalised names for equality only; it never
-  merges by similarity.
+- Rule 5: The safety net compares normalised names for equality only (the
+  proposal-grouping key: case, whitespace, punctuation, English plural, MOC
+  suffix); it never merges by similarity.
 - Rule 6: Every Tomo–Hashi channel keeps its shape; only which MOCs appear in
   `candidate_mocs` may differ.
 
@@ -365,8 +366,10 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
 - German item, English MOC titles → chosen by meaning; no translation rule.
 - A context built before this spec (old shape) is read → the analysis proceeds
   without placement detail, as today for a context without inventory.
-- A chosen name no longer resolves (MOC renamed between build and analysis) →
-  the MOC is offered without placement detail.
+- A chosen name does not resolve (mistyped by the analysis) → the name is
+  dropped and logged; other candidates are unaffected. Names and detail come
+  from the same per-run file, so a rename between build and analysis cannot
+  occur within a run.
 
 ## Success Metrics
 

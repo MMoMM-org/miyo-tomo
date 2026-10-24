@@ -304,3 +304,20 @@ WHY the derivation stays rather than being deleted: a config that omits
 `syntax` keeps the behaviour it has today. Only an explicit value overrides,
 and a blank string counts as omitted so an empty field never reaches the wire
 as a syntax value.
+
+## `daily_log.enabled` reaches the analyst (#199, v1.15.0)
+
+WHY: `vault-example.yaml` documents `daily_log.enabled` ("set false to disable
+daily-log updates entirely"), the daily-log wizard writes it, and the analyst's
+Step 8b Evaluation 2 branches on it. Until 1.15.0 the builder copied only the keys
+in `_DAILY_LOG_DEFAULTS`, which had no `enabled`, and the schema forbade the key.
+A user who switched the log off still got log entries, and nothing reported it.
+
+The key now sits in the defaults (`True`, so an absent key keeps today's
+behaviour) and is required by the schema, so every built context carries it. It
+switches off only the log section (`log_entry` / `log_link`); trackers have
+their own `trackers.enabled`.
+
+This went unnoticed because the reader's contract test used a hand-written
+fixture that included the field. The fixture is now built by the real builder
+(spec 040 T2.2); that is what exposed the gap.

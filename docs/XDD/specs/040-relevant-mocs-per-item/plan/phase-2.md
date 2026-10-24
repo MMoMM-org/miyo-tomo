@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Reader selector modes"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 2
 ---
@@ -30,7 +30,7 @@ phase: 2
 
 Lets the analyst read the names of all MOCs and the detail of a nominated few, and refuse a context from another run.
 
-- [ ] **T2.1 `--moc-names`, `--mocs-from`, `--run-id`** `[activity: backend-api]` `[parallel: true]`
+- [x] **T2.1 `--moc-names`, `--mocs-from`, `--run-id`** `[activity: backend-api]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/read-shared-ctx.py` (whole file); `tests/test_read_shared_ctx.py`; `docs/tomo/scripts/read-shared-ctx.md` `[ref: SDD/ADR-2, ADR-8]`
   2. Test (RED, exit codes asserted as `== 1` with the SDD's stderr text):
@@ -44,6 +44,12 @@ Lets the analyst read the names of all MOCs and the detail of a nominated few, a
   3. Implement: the two modes and the guard; docstring states the non-failing selector semantics and why; WHY in `docs/tomo/scripts/read-shared-ctx.md` (file input, cap, run id); bump version
   4. Validate: RED on `main`; GREEN here; ruff clean
   5. Success: `[ref: PRD/F1-AC1, F1-AC5, F1-AC6, F2-AC5, F6-AC2]`
+
+  6. Notes recorded during implementation (2026-10-24):
+     - Tests in `tests/test_040_reader_modes.py` run the script as a subprocess, so exit codes and stdout/stderr are asserted exactly as the analyst's Bash call sees them. RED: 23 of 23 fail against `main`'s reader.
+     - Contexts in those tests are built with the builder's `build_mocs`, so `name` follows the real collision rule.
+     - "Distinct" means distinct lines after stripping. Two lines that resolve to the same MOC (`Projects`, `projects`) count toward the cap of 20 separately but return one entry.
+     - The usage-error test asserts the rule's own text (`choose exactly one of`). Without that, the two-mode case passed on `main`, because argparse's "unrecognized arguments" also names both flags.
 
 - [ ] **T2.2 Rebuild the reader's contract fixture from the builder** `[activity: test-practices]`
 

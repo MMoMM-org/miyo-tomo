@@ -685,3 +685,17 @@ The new spec 039 counters (`folder_listing_calls`, `distinct_destination_folders
 folder, one search per filed basename (four: `karte (2).png`, `leipzig-plan.png`,
 `pirna-markt.jpg`, `radebeul-weinberg.jpg`), one page each. `base_kado_calls: 2` on both
 triage passes. Evidence and findings: `docs/XDD/specs/039-attachment-conflict-hardening/live-runbook.md` (Results).
+
+## Spec 040 — T6.3 after-run (relevant MOCs per item)
+
+**Date**: 2026-10-24 · **Vault**: Privat-Test · **Branch**: `spec/173-relevant-mocs-per-item`
+· **Versions**: `inbox-analyst.md` 0.27.0, `shared-ctx-builder.py` 1.14.0, `read-shared-ctx.py` 0.3.1,
+`suggestions-reducer.py` 1.61.0 · Run `2026-10-24T15-41-07Z-f1879d`, session `0656bb24`
+
+| run | items | avg cache-write / item | avg $ / item | subagents | session total |
+|---|---|---|---|---|---|
+| before (mean of 2) | 12 | 118,322 | 0.609 | $7.31 | — |
+| after | 12 | **95,792** | **0.538** | $6.46 | $8.36 |
+
+Cache-write per item −19%, cost per item −12%. 36 shared-ctx reads, none spilled.
+Details: `docs/XDD/specs/040-relevant-mocs-per-item/baseline.md` (After-run).

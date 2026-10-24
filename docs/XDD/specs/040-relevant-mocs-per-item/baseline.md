@@ -83,3 +83,48 @@ new one (score 0.55 and 0.5, pre-checked both times; the probe run scored
 | Avg cache-write / item | ≤ 106,490 (≥ 10% below the 118,322 mean) |
 | Avg $ / item | ≤ 0.603 |
 | Seeded item | links the existing MOC, no proposal |
+
+## After-run 1 (T6.3)
+
+| Field | Value |
+|---|---|
+| run_id | 2026-10-24T15-41-07Z-f1879d |
+| Session | fresh container session after `update-tomo.sh --instance tomo-instance` (analyst 0.27.0, builder 1.14.0, reader 0.3.1, reducer 1.61.0) |
+| Inbox | the same 12-item set, restored by `prepare-run.sh` |
+| Context build | 64 eligible, 1 excluded, `names_bytes=1189`, no size warning |
+
+| Run | Items | Reads | Spilled | Avg cache-write / item | Avg $ / item | Subagent total |
+|---|---|---|---|---|---|---|
+| after-1 | 12 | 36 | 0 | 95,792 | 0.538 | $6.46 |
+
+### Against the targets
+
+| KPI | Target | After | Verdict |
+|---|---|---|---|
+| Candidate agreement vs before-1 | ≥ 70% | 6 / 9 = 67% | 🔴 missed |
+| Candidate agreement vs before-2 | ≥ 70% | 6 / 10 = 60% | 🔴 missed |
+| Duplicate proposals | 0 | 0 | 🟢 |
+| MOC reads delivered as preview | 0 | 0 of 36 | 🟢 |
+| Avg cache-write / item | ≤ 106,490 | 95,792 (−19% vs mean) | 🟢 |
+| Avg $ / item | ≤ 0.603 | 0.538 (−12% vs mean) | 🟢 |
+| Seeded item | links existing MOC | linked, score 0.9, pre-checked; no proposal | 🟢 |
+
+**Agreement differences.** Every before-run candidate the after-run dropped was
+a secondary pick scored 0.17–0.3: 3 against before-1 (two of them one
+classification MOC), 4 against before-2 (two classification). The
+after-run lists more candidates (13 against 9 and 10) and scores them higher:
+three pre-checked candidates against one in each before-run. Thematic
+candidates alone agree 6 of 7 (86%) with before-1 and 5 of 7 (71%) with
+before-2. The per-item list is in `tomo-instance/spec-040-baseline/after-1.json`.
+
+**Proposals.** The document proposes two MOCs, both
+`placeholder_targets` entries (decision row 1), the same two the before-runs
+proposed. No eligible thematic title equals either; the one eligible title that
+shares a word with one of them is a dashboard note at the vault root. `duplicate_proposals_converted=0`.
+
+**Names read (F1-AC1).** 8 of 12 analysts read `--moc-names`. The four that
+did not: the daily-log item (`update_daily`, no MOC step), two empty test notes
+(Step 1 only, as in both before-runs), and one content-free control note that
+read `placeholder_targets` but skipped the names and proposed a new MOC. That
+proposal never reached the document: the atomic scored 0.15 worthiness, and the
+reducer suppresses sub-0.5 atomics before they can seed a Proposed MOC.

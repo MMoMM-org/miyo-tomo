@@ -51,7 +51,7 @@ Records the "before" picture with a tool that can see spills, then gives the con
   4. Validate: both run ids in the cost log; inbox set archived
   5. Success: before-picture and run-to-run variance measured `[ref: PRD/KPIs Quality, Business Impact]`
 
-- [ ] **T1.3 MOC folder helper and exclude predicate** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T1.3 MOC folder helper and exclude predicate** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: `tomo/config/vault-example.yaml:48-55`; `tomo/scripts/vault-scan.py:46-90` (the shapes of `concepts.map_note`); `lib/moc_scan.read_scope_paths` (why it is not reused); `lib/moc_tags.py`; `moc-tree-builder.py` `extract_tags` (tags arrive without `#` from frontmatter, inline form via `parse_inline_tags`) `[ref: SDD/ADR-5; SDD/Interface Specifications "lib/moc_tags.py", "lib/moc_folders.py"]`
   2. Test (RED — neither function exists): `moc_folder_prefixes` normalises `{paths:[...]}`, `{path: str}` and bare `str`; strips whitespace; adds trailing `/`; drops empties; missing key → `()`; `in_moc_folders` true for a nested path, false for `Atlas/200 Maps2/`; `is_excluded_moc` true for `MiYo/Tomo/exclude/moc`, `#MiYo/Tomo/exclude/moc`, `miyo/tomo/exclude/MOC`; false for `MiYo/Tomo/exclude/note`, `MiYo/Tomo/exclude/mocs`, `[]`, `None`

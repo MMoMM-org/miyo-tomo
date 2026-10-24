@@ -2746,7 +2746,7 @@ per-field check runs.
 
 Spec [`040-relevant-mocs-per-item`](specs/040-relevant-mocs-per-item/README.md), PR #198. Every analyst reads MOC names and fetches detail only for the MOCs it nominates; budget shedding is gone; the reducer converts exact-name duplicate proposals; `MiYo/Tomo/exclude/moc` removes a MOC from inbox candidates. Kado-graph navigation stays with #82.
 
-## OPEN — analyst branches on `daily_log.enabled`, which no context ever carries
+## OPEN (#199) — analyst branches on `daily_log.enabled`, which no context ever carries
 
 **Out of scope of spec 040**, pre-existing; found by spec 040 T2.2 (2026-10-24) once the
 reader's contract fixture was built by `shared-ctx-builder.py` instead of written by hand.

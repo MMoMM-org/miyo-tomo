@@ -257,3 +257,25 @@ separator and stating "it already ends in `/`". Both are correct in isolation;
 having both in one tree is what let the wrong one look right. `force-atomic-
 handling` carried the same defect on its own publish step and is converted to
 match — found by grepping the shape rather than the site the bug appeared in.
+
+## Why the context file is deleted before it is built (spec 040 ADR-8)
+
+A failed `shared-ctx-builder.py` call used to leave the previous run's
+`shared-ctx.json` in place, and nothing compared run ids, so analysts could
+classify against another run's MOCs while every step reported success.
+`rm -f tomo-tmp/shared-ctx.json` before the build means a failed build leaves
+no file at all, and the abort that follows is the only outcome. The analysts'
+`--run-id` check is the second layer: it holds even if a conductor ignores the
+abort.
+
+The context is still rebuilt from the local discovery cache on every run; the
+only vault traffic is the reconcile listing per MOC folder. Caching across
+runs stays in the discovery cache.
+
+## Why Step 7 relays `duplicate_proposals_converted`
+
+The reducer counts proposals it turned into existing-MOC candidates (spec 040
+ADR-6). The count is the only sign of how often the analyst missed an
+existing MOC by name — the metric the spec's zero-duplicate goal is measured
+by. Nothing else reads the reducer's stderr, so the skill repeats the number
+from the summary line; it computes nothing itself.

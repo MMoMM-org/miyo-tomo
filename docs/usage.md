@@ -249,7 +249,7 @@ So: **re-run `/explore-vault` after you've added or reorganised notes or MOCs** 
 You can tell Tomo to leave specific notes or MOCs out of its MOC suggestions by tagging them. Both tags go in the note's **frontmatter** `tags:` list:
 
 - **`MiYo/Tomo/exclude/note`** — the note is never offered as a candidate for a new MOC (it's dropped from the `/moc-propose` scan). Use it for notes that are intentionally standalone and shouldn't be clustered.
-- **`MiYo/Tomo/exclude/moc`** — the MOC is skipped by the "missing uplink" check (`/moc-propose check:moc-uplinks`). Use it for top-level maps (e.g. a root index) that correctly have no parent. The MOC stays in the cache and remains a valid link target — only the uplink nag is suppressed.
+- **`MiYo/Tomo/exclude/moc`** — the MOC is never offered as a link target for inbox items (`/inbox` leaves it out of the MOCs it considers), and it is skipped by the "missing uplink" check (`/moc-propose check:moc-uplinks`). Use it for top-level maps (e.g. a root index) that correctly have no parent and should not collect notes. The MOC stays in the cache, and other workflows (`/moc-propose`, the garden audit, `/explore-vault`) still read it. To link inbox notes to it again, remove the tag and re-run `/explore-vault`.
 
 ```yaml
 ---

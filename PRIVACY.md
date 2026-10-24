@@ -25,12 +25,19 @@ only when you run a command such as `/inbox`. During `/inbox`:
 
 - **Inbox note bodies** — the text of the notes you are processing is sent to
   the model so it can be summarised, classified, and linked.
-- **MOC structural metadata** (per specs 022/023) — to resolve *where inside a
-  target MOC* a link should be inserted, the model receives, via `shared-ctx`,
-  a per-MOC inventory of structural vault content: H2/H3 **heading text**,
-  **editable-callout opener lines**, and a `has_footer` flag. This heading and
-  callout text is real vault content sent to the model for insertion-point
-  resolution.
+- **MOC names** — the name (title, or vault path when two MOCs share a
+  title) of every MOC Tomo may link to is sent with each inbox item, so the
+  model can pick the MOCs that fit it.
+- **MOC structural metadata** (per specs 022/023/040) — only for the MOCs the
+  model picked for an item, it receives each MOC's topics, H2/H3 **heading
+  text**, **editable-callout opener lines** and a `has_footer` flag, to decide
+  *where inside the MOC* a link should go. This is real vault content. MOCs the
+  model did not pick send their name only.
+- **`MiYo/Tomo/exclude/moc`** removes a MOC from the MOCs `/inbox` considers,
+  so neither its name nor its structure is sent for inbox items. It is **not an
+  access control**: other workflows (`/moc-propose`, the garden audit,
+  `/explore-vault`) still read the MOC. Keep sensitive MOCs behind Kado's deny
+  rules instead.
 - **Note paths and titles** — appear in the per-item result so links and
   placements can be surfaced for your review.
 

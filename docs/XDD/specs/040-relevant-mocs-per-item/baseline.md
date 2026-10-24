@@ -39,10 +39,11 @@ needed after the sync anyway).
 ## Reads per item (both runs identical)
 
 - `--field mocs` result: 29,455 bytes per read (spill floor ~37,700).
-- 9 of 12 analysts read Step 1, `mocs` and `placeholder_links`.
+- 8 of 12 analysts read Step 1, `mocs` and `placeholder_links`.
 - 3 analysts read Step 1 only and skipped MOC matching entirely — one of them
-  a regular note, which ended with no candidates and no `needs_new_moc`. One
-  further analyst read `mocs` but not `placeholder_links`. This is the
+  a regular note, which ended with no candidates and no `needs_new_moc`.
+- 1 analyst read `mocs` but not `placeholder_links`, also ending with no
+  candidates and no `needs_new_moc`. This is the
   unscripted zero-match path the SDD decision table (row 3) closes.
 
 ## Candidate agreement between the before-runs

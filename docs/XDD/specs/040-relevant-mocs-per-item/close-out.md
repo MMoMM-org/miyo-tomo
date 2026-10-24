@@ -23,7 +23,7 @@ also carry the live evidence the PRD requires. F1-AC1's live evidence is
 ## 1. The single invocation
 
 The **64 node ids** in the trace table were run **together in one `pytest`
-invocation on 2026-10-24**, against `3db1de3c`:
+invocation on 2026-10-24**, against `7b2b707e`:
 
 ```
 90 passed in 25.97s
@@ -34,7 +34,7 @@ Collection was checked by script, not by eye: every listed node id collects at
 least one item, and every collected item belongs to a listed node id. Nothing
 was deselected and nothing extra was collected.
 
-The full suite ran on `06cdbb7d`, the same tree minus the three gap assertions
+The full suite ran on `8b12aefb` (then `06cdbb7d`: the branch was rewritten afterwards to strip vault titles from `baseline.md`, and the trees differ only there), the same tree minus the three gap assertions
 of §4: **5093 passed, 4 skipped**. All four skips are environmental:
 
 - the gitignored `_outbox/` attachment;
@@ -242,7 +242,7 @@ Reasons, per item:
 ## 4. Gaps the trace found
 
 Three criteria had no test that could fail. Each was closed by an assertion,
-committed as `3db1de3c`. Each assertion was proven RED by applying the
+committed as `7b2b707e`. Each assertion was proven RED by applying the
 mutation its docstring names, then restoring the file from git:
 
 | Criterion | Assertion | Mutation that turns it red |

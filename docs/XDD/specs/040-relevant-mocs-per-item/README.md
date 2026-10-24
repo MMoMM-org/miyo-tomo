@@ -48,4 +48,4 @@ GitHub issue #173: `shared-ctx.json` carries a 40 KB budget. `enforce_budget` in
 *This file is managed by the xdd-meta skill.*
 | 2026-10-24 | After-run agreement KPI missed (67%/60%); a second after-run instead of accepting or re-tuning | Owner decision. The second run missed too (67%/50%), and the after-runs agree with each other less than the before-runs did. |
 | 2026-10-24 | Document the agreement miss in the close-out; candidate stability follows up in #200 | Owner decision. Every other KPI met: cache-write −18%, $ −9%, 0 previews, 0 duplicate proposals, seeded item linked. |
-| 2026-10-24 | Implementation complete | PR #198, branch `spec/173-relevant-mocs-per-item`. Close-out: 28 criteria traced to 64 node ids run in one invocation (90 passed), 2 by document review; three gaps closed by tests (3db1de3c). Found and filed: #199, #200. |
+| 2026-10-24 | Implementation complete | PR #198, branch `spec/173-relevant-mocs-per-item`. Close-out: 28 criteria traced to 64 node ids run in one invocation (90 passed), 2 by document review; three gaps closed by tests (7b2b707e). Found and filed: #199, #200. |

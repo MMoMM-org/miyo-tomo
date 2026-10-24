@@ -76,7 +76,7 @@ Records the "before" picture with a tool that can see spills, then gives the con
      - The e2e eligibility check (planned for T6.1) was done here, because the e2e test broke on `placeholder_links` anyway.
      - `tests/test-004-phase2.sh` already fails on `main` (its vault-config lacks `proposable`); it is not collected by pytest. T1.5 touches it for the summary line and fixes it there.
 
-- [ ] **T1.5 Size guards replace budget shedding; summary line** `[activity: backend-api]`
+- [x] **T1.5 Size guards replace budget shedding; summary line** `[activity: backend-api]`
 
   1. Prime: `shared-ctx-builder.py` `enforce_budget`, module docstring (`:15-18`, "≤ max-bytes"), summary print in `main`; `tests/test_shared_ctx_inventory.py:264-384`; `tests/test_tracker_config_durability.py:182-241`; `tests/test_shared_ctx_no_accumulation.py:143-252` (including `test_max_bytes_default_is_40960`); `tests/test-004-phase2.sh:161-193` (parses the summary line); `docs/tomo/scripts/shared-ctx-builder.md:81-118` `[ref: SDD/ADR-4; SDD/Interface Specifications "shared-ctx-builder.py"; PRD/C1]`
   2. Test:
@@ -85,6 +85,12 @@ Records the "before" picture with a tool that can see spills, then gives the con
   3. Implement: **first** rewrite the WHY in `docs/tomo/scripts/shared-ctx-builder.md` (why shedding existed, why it is gone, why guards sit at the single-read level); **then** remove the three shedding passes; add `size_guards`; new default and help text; module docstring; summary line; update the shedding-order tests to assert *no* shedding with the reason; adjust `test-004-phase2.sh` to the new fields; bump version
   4. Validate: RED on `main`, GREEN here; ruff clean
   5. Success: `[ref: PRD/F2-AC2, C1-AC1]`; `[ref: SDD/Quality Requirements; Fidelity]`
+
+  6. Deviations recorded during implementation (2026-10-24):
+     - RED was proven against the pre-T1.5 builder on this branch (`git show HEAD:`), not against `main`: `main` has no `name` field yet, so every new test would fail there for a reason unrelated to shedding. Against the pre-T1.5 builder the 512-MOC test fails on `KeyError: 'headings'` and `test-004-phase2.sh` on "topics shortened".
+     - The RED tests live in a new `tests/test_040_size_guards.py`. The `step1` and `detail` reads are measured too (the four reads of ADR-4); a `read_sizes` helper is shared by the guards and the summary line.
+     - `test_shared_ctx_no_accumulation.py` lost its four `enforce_budget` tests (return shape, 40960 default, placeholder never trimmed, envelope fits) instead of having them rewritten: the default and the no-shedding behaviour are asserted in the new file, and `placeholder_links` no longer exists in the context.
+     - `test-004-phase2.sh` had a second hollow test: Test 2 (daily disabled) silently skipped because its vault-config lacked `tags.prefixes`, and a missing output file reported neither pass nor fail. Both configs now carry the full prefix shape, a missing output fails, and all three builds run with `--skip-reconcile` so the script never reaches a live Kado.
 
 - [ ] **T1.6 Phase Validation** `[activity: validate]`
 

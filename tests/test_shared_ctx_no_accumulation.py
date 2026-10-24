@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_shared_ctx_no_accumulation.py — T3.1 tests for spec 021 (F-34).
 
 Verifies that accumulation (Condition B) has been removed from shared-ctx-builder:
 
   - shared-ctx output has NO accumulation_index key
-  - enforce_budget no longer trims accumulation (Pass-6 gone)
-  - --max-bytes default is 40960
-  - placeholder_links is NEVER trimmed even under a tiny budget
-  - a corrected-placeholder envelope fits within 40960
+  - (spec 040 ADR-4 removed enforce_budget; its default and placeholder tests
+    moved to test_040_size_guards.py: default 32768, nothing is shed)
   - schema no longer declares accumulation_index AND still validates a
     no-accumulation ctx (H3)
   - golden-baseline guard: build_mocs + build_placeholder_links output is
@@ -42,30 +40,10 @@ scb = importlib.util.module_from_spec(_spec)
 sys.modules["shared_ctx_builder"] = scb
 _spec.loader.exec_module(scb)
 
-enforce_budget = scb.enforce_budget
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _minimal_ctx(*, include_placeholder_links: list | None = None) -> dict:
-    """Return the minimum valid ctx dict for enforce_budget tests."""
-    ctx = {
-        "schema_version": "1",
-        "run_id": "test-run",
-        "mocs": [
-            {"name": "Foo MOC", "path": "Atlas/Foo MOC.md", "title": "Foo MOC",
-             "topics": ["foo", "bar"], "is_classification": False}
-        ],
-        "tag_prefixes": [],
-        "classification_keywords": {},
-        "placeholder_targets": [],
-    }
-    if include_placeholder_links is not None:
-        ctx["placeholder_links"] = include_placeholder_links
-    return ctx
-
 
 def _validate_schema(obj: dict) -> None:
     """Validate obj against shared-ctx.schema.json."""
@@ -135,90 +113,6 @@ def test_output_has_no_accumulation_index(tmp_path):
         f"got keys: {list(ctx)}"
     )
     _validate_schema(ctx)
-
-
-# ---------------------------------------------------------------------------
-# T3.1-2: enforce_budget return shape is (ctx, dropped) — no accumulation tuple
-# ---------------------------------------------------------------------------
-
-def test_enforce_budget_returns_two_tuple():
-    """enforce_budget must return (ctx, moc_topics_dropped) — no acc_total/acc_kept."""
-    ctx = _minimal_ctx()
-    result = enforce_budget(ctx, max_bytes=999_999)
-    assert len(result) == 2, (
-        f"enforce_budget must return a 2-tuple (ctx, dropped), got {len(result)}-tuple: {result!r}"
-    )
-    trimmed_ctx, dropped = result
-    assert isinstance(trimmed_ctx, dict)
-    assert isinstance(dropped, int)
-
-
-# ---------------------------------------------------------------------------
-# T3.1-3: --max-bytes default is 40960
-# ---------------------------------------------------------------------------
-
-def test_max_bytes_default_is_40960():
-    """build_arg_parser() must default --max-bytes to 40960."""
-    parser = scb.build_arg_parser()
-    defaults = parser.parse_args([
-        "--cache", "x", "--vault-config", "y", "--output", "z"
-    ])
-    assert defaults.max_bytes == 40960, (
-        f"Expected --max-bytes default 40960, got {defaults.max_bytes}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T3.1-4: placeholder_links never trimmed even under tiny budget
-# ---------------------------------------------------------------------------
-
-def test_placeholder_links_never_trimmed():
-    """placeholder_links must survive enforce_budget even when ctx exceeds a tiny budget."""
-    placeholders = [
-        {"target": "Search MOC", "referenced_by": "Atlas/Foo MOC.md"},
-        {"target": "Games MOC", "referenced_by": "Atlas/Bar MOC.md"},
-    ]
-    ctx = _minimal_ctx(include_placeholder_links=placeholders)
-    # Give a budget of 1 byte — far too small; placeholder must still survive
-    trimmed, _dropped = enforce_budget(ctx, max_bytes=1)
-    assert "placeholder_links" in trimmed, (
-        "placeholder_links must survive enforce_budget regardless of budget pressure"
-    )
-    assert trimmed["placeholder_links"] == placeholders, (
-        f"placeholder_links must be unmodified, got: {trimmed['placeholder_links']!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T3.1-5: a corrected-placeholder envelope fits within 40960
-# ---------------------------------------------------------------------------
-
-def test_placeholder_envelope_fits_in_default_budget(tmp_path):
-    """A typical corrected-placeholder shared-ctx fits within the 40960-byte budget."""
-    # Build a ctx with several placeholder_links and a handful of real MOCs
-    placeholders = [
-        {"target": "Search MOC", "referenced_by": "Atlas/Software MOC.md"},
-        {"target": "Games MOC", "referenced_by": "Atlas/Entertainment MOC.md"},
-        {"target": "History MOC", "referenced_by": "Atlas/Humanities MOC.md"},
-    ]
-    mocs = [
-        {"path": f"Atlas/{i} MOC.md", "title": f"Topic {i} MOC",
-         "topics": ["topic"], "is_classification": False}
-        for i in range(20)
-    ]
-    ctx: dict = {
-        "schema_version": "1",
-        "run_id": "budget-test",
-        "mocs": mocs,
-        "tag_prefixes": [],
-        "classification_keywords": {},
-        "placeholder_links": placeholders,
-    }
-    trimmed, _dropped = enforce_budget(ctx, max_bytes=40960)
-    data = scb.serialize(trimmed)
-    assert len(data) <= 40960, (
-        f"Envelope should fit in 40960 bytes, got {len(data)} bytes"
-    )
 
 
 # ---------------------------------------------------------------------------

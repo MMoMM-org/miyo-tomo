@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.13.0
+# version: 1.14.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -12,11 +12,14 @@ Inputs (CLI):
   --profiles-dir profiles/              # default: <script-dir>/../profiles
   --run-id       unique run identifier
   --output       tomo-tmp/shared-ctx.json
-  --max-bytes    size budget (default 40960)
+  --max-bytes    per-read warning threshold in bytes (default 32768)
 
 Outputs:
-  File at --output matching schemas/shared-ctx.schema.json, ≤ max-bytes.
-  Stdout log lines summarising counts and final size.
+  File at --output matching schemas/shared-ctx.schema.json, every eligible MOC
+  with its full detail (nothing is shed for size).
+  Stderr: one WARN line per analyst read (names, step1, placeholder_targets,
+  detail) whose compact JSON exceeds --max-bytes, then one summary line of
+  counts and sizes.
 
 Exit: 0 on success, 1 on error.
 """
@@ -735,78 +738,43 @@ def warn_unusable_trackers(ctx: dict) -> list[str]:
     return unusable
 
 
-def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
-    """Trim ctx to fit within max_bytes.
+_STEP1_FIELDS = ("daily_notes", "classification_keywords", "tag_prefixes", "asset_folder")
+_DETAIL_CAP = 20  # read-shared-ctx.py --mocs-from resolves at most this many
 
-    **Only derived data is shed. User configuration is never touched.**
 
-    Budget pass order:
-    1. T3.2 (spec 022): Drop editable_callouts from mocs[] (cheapest inventory first).
-    2. T3.2 (spec 022): Greedily drop headings from mocs[] one MOC at a time
-       (heaviest first) until the ctx fits, before topics \u2014 still expensive.
-    3. Shorten mocs[].topics (original behaviour).
+def _compact_len(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
-    Everything above is rebuilt from the vault on the next run, so shedding it
-    costs a re-derivation and nothing else. `mocs` is also where the weight
-    actually is: measured 2026-09-13 on a real run, mocs held 77% of a 38.6 KB
-    ctx while every tracker field together held 9.6%.
 
-    WHAT THIS FUNCTION USED TO DO, and why it stopped: passes 1-4 trimmed
-    tracker descriptions to 200 chars and then emptied negative_keywords,
-    positive_keywords and keywords \u2014 before touching a single MOC. Those lists
-    are entered by a person through `tomo-trackers-wizard`, they are the entire
-    basis of tracker matching, and emptying them is silent: the analyst falls
-    back to the description with no complaint, so the only symptom is that
-    trackers stop matching. Shedding curated configuration to save bytes that
-    derived data is holding is the wrong trade in every direction, and it put
-    the cheapest-to-rebuild data last. Removed 2026-09-13.
+def read_sizes(ctx: dict) -> dict[str, int]:
+    """Bytes of each analyst read, serialised as read-shared-ctx.py prints it."""
+    mocs = ctx.get("mocs") or []
+    return {
+        "names": _compact_len([m.get("name") for m in mocs]),
+        "step1": _compact_len({k: ctx[k] for k in _STEP1_FIELDS if k in ctx}),
+        "placeholder_targets": _compact_len(ctx.get("placeholder_targets") or []),
+        "detail": _DETAIL_CAP * max((_compact_len(m) for m in mocs), default=0),
+    }
 
-    Never trims placeholder_links. Returns (ctx, moc_topics_dropped).
-    """
-    data = serialize(ctx)
 
-    if len(data) <= max_bytes:
-        return ctx, 0
+def size_guards(ctx: dict, max_bytes: int) -> list[str]:
+    """WARN lines for every analyst read over max_bytes. Never alters ctx."""
+    return [
+        f"WARN: shared-ctx read '{read}' is {size} bytes, over --max-bytes "
+        f"{max_bytes}. Every analyst performs this read once per item; above "
+        f"~37 KB the result reaches it as a 2 KB preview."
+        for read, size in read_sizes(ctx).items()
+        if size > max_bytes
+    ]
 
-    # Pass 1 (T3.2): drop editable_callouts from all mocs[] before touching topics
-    for moc in ctx["mocs"]:
-        moc.pop("editable_callouts", None)
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
 
-    # Pass 2 (T3.2/H3): greedily drop headings one MOC at a time — heaviest
-    # (most headings) first — re-checking the budget after each drop. This keeps
-    # headings on as many MOCs as possible (the smallest-heading MOCs survive
-    # longest) instead of an atomic all-MOC drop that defeats spec 022 tier-1.
-    heading_mocs = sorted(
-        (moc for moc in ctx["mocs"] if moc.get("headings")),
-        key=lambda m: len(m["headings"]),
-        reverse=True,
-    )
-    for moc in heading_mocs:
-        moc.pop("headings", None)
-        data = serialize(ctx)
-        if len(data) <= max_bytes:
-            return ctx, 0
-
-    # Pass 3: shorten mocs[].topics (original behaviour)
-    dropped = 0
-    while len(data) > max_bytes:
-        victim = -1
-        most = 1
-        for i, moc in enumerate(ctx["mocs"]):
-            topics = moc.get("topics") or []
-            if len(topics) > most:
-                most = len(topics)
-                victim = i
-        if victim < 0:
-            break
-        ctx["mocs"][victim]["topics"].pop()
-        dropped += 1
-        data = serialize(ctx)
-
-    return ctx, dropped
+def count_collisions(mocs: list[dict]) -> int:
+    """Distinct titles held by two or more eligible MOCs (compared by path_key)."""
+    seen: dict[str, int] = {}
+    for moc in mocs:
+        key = path_key(moc["title"])
+        seen[key] = seen.get(key, 0) + 1
+    return sum(1 for n in seen.values() if n > 1)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -824,7 +792,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--run-id", default=None, help="Unique run identifier (auto-generated if omitted)")
     p.add_argument("--output", required=True, help="Target path for shared-ctx.json")
-    p.add_argument("--max-bytes", type=int, default=40960, help="Size budget (default 40 KB)")
+    p.add_argument(
+        "--max-bytes",
+        type=int,
+        default=32768,
+        help="Per-read warning threshold in bytes (default 32768); nothing is shed",
+    )
     p.add_argument(
         "--skip-reconcile",
         action="store_true",
@@ -917,16 +890,11 @@ def main() -> int:
 
     warn_unusable_trackers(ctx)
 
-    ctx, dropped = enforce_budget(ctx, args.max_bytes)
+    for line in size_guards(ctx, args.max_bytes):
+        print(line, file=sys.stderr)
     data = serialize(ctx)
-    if len(data) > args.max_bytes:
-        print(
-            f"WARN: shared-ctx is {len(data)} bytes, over the {args.max_bytes} "
-            f"budget, and nothing derived is left to shed. Every subagent reads "
-            f"this file, so the cost is per-item. Reduce MOC inventory or raise "
-            f"--max-bytes deliberately.",
-            file=sys.stderr,
-        )
+    sizes = read_sizes(ctx)
+    excluded = sum(1 for e in cache.get("map_notes") or [] if is_excluded_moc(e.get("tags")))
 
     ensure_parent(out_path)
     out_path.write_bytes(data)
@@ -935,8 +903,11 @@ def main() -> int:
         f"mocs_total={map_notes_total_before} "
         f"mocs_after_reconcile={len(cache.get('map_notes') or [])} "
         f"mocs_reconcile_dropped={len(reconcile_dropped)} "
-        f"mocs_included={len(ctx['mocs'])} "
-        f"topics_dropped={dropped} "
+        f"eligible={len(ctx['mocs'])} "
+        f"excluded={excluded} "
+        f"collisions={count_collisions(ctx['mocs'])} "
+        f"names_bytes={sizes['names']} "
+        f"detail_bytes={_compact_len(ctx['mocs'])} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
         f"placeholder_targets={len(placeholder_targets)} "

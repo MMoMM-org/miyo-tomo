@@ -115,7 +115,59 @@ Every existing vault-config value happens to carry a single trailing slash by
 convention, which is exactly why this was easy to miss and worth normalising
 defensively rather than trusting the convention to hold.
 
-## Why the budget only sheds derived data (changed 2026-09-13)
+## Why nothing is shed any more: size guards, not a budget (spec 040 ADR-4)
+
+`enforce_budget` is gone. The builder writes every eligible MOC with the full
+detail `build_mocs` gives it, and `size_guards` only *warns*.
+
+**Why shedding existed.** Every Phase-B analyst used to read `mocs` whole
+(`--field mocs`), so the file's size was multiplied by the fan-out — twelve
+times in a normal run. A file-level budget (40960 bytes) was the only lever,
+and it was pulled by deleting derived detail: callouts first, then headings
+greedily per MOC, then topics. On a growing vault that lever fired on every
+run: measured for #173, headings vanished entirely at about 96 MOCs and the
+file overflowed even with nothing left to shed at about 216. A MOC without
+headings cannot be anchored (spec 022 tier-1), so the analyst's placement got
+worse exactly as the vault got richer — silently, because a missing heading
+looks like a MOC that has none.
+
+**Why it is gone.** Since spec 040 no reader loads `mocs` whole. Each analyst
+reads the name list (`--moc-names`) and fetches detail only for the MOCs it
+nominates (`--mocs-from`, at most 20). The cost that the budget protected
+against no longer scales with the file, so shedding buys nothing and still
+costs fidelity. PRD F2-AC2 requires the nominated MOC to arrive with its
+headings and callouts intact; any shedding pass contradicts that.
+
+**Why the guards sit at the single-read level.** What reaches a subagent's
+context is a *read*, not the file. So `size_guards` measures the reads an
+analyst actually performs, each serialised the way `read-shared-ctx.py`
+prints it (compact JSON):
+
+| read | what is measured |
+|---|---|
+| `names` | the `--moc-names` output |
+| `step1` | the Step-1 `--fields daily_notes,classification_keywords,tag_prefixes,asset_folder` object |
+| `placeholder_targets` | the `--field placeholder_targets` output |
+| `detail` | 20 × the largest single `mocs[]` entry — the worst `--mocs-from` result |
+
+Each read over `--max-bytes` produces one `WARN:` line naming the read and its
+size; the file is still written. The default dropped from 40960 to 32768
+because it is now a per-read threshold, kept under the smallest observed
+tool-result spill (~37.7 KB, `SPILL_FLOOR_BYTES` in
+`tests/test_read_shared_ctx.py`; SDD CON-3): above that a Bash result reaches
+the model as a 2 KB preview, so a warning must fire before a read gets there. A warning, not an automatic fix: an extreme vault
+(e.g. 512 MOCs with 60-character titles, about 32 KB of names) is told so and
+the fix is a follow-up, not a silent degradation. The skills already repeat
+every `WARN:` line from this call (see below), so the guard reaches the user.
+
+The total file size is still reported (`bytes=`) but no longer judged: the
+file is never read whole by an analyst.
+
+## History: why the budget only shed derived data (2026-09-13 to spec 040)
+
+The section below records the earlier fix. Its lesson — curated configuration
+(tracker keyword lists) is never shed to save bytes — still holds: with no
+shedding pass at all, nothing in the context is altered for size.
 
 `enforce_budget` used to run seven passes. The first four trimmed tracker
 descriptions to 200 characters and then emptied `negative_keywords`,

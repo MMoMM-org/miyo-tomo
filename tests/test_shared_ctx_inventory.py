@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_shared_ctx_inventory.py — T3.2 tests for spec 022 / Phase 3.
 
 Verifies that shared-ctx-builder copies heading/callout inventory from the
-moc-structure cache into mocs[] entries (A-trimmed), with budget-trim ordering.
+moc-structure cache into mocs[] entries (A-trimmed). Spec 040 ADR-4 removed
+budget shedding: the inventory now always survives.
 
 Spec 022 T3.2 requirements:
   - build_mocs copies headings (A-trimmed: headings only, no editable_callouts
     from cache entries) and editable_callouts from cache map_notes entries.
   - headings are capped at 8 per MOC.
   - Classification MOCs (is_classification==True) carry NO inventory at all.
-  - enforce_budget drops headings + editable_callouts BEFORE topics under
-    tight --max-bytes pressure.
+  - (spec 040) size_guards never drops headings, editable_callouts or topics,
+    however tight --max-bytes is.
   - A representative shared-ctx delta stays <= 8192 bytes on the fixture.
 
 RED before GREEN discipline (spec 022 / TDD).
@@ -37,7 +38,7 @@ sys.modules["shared_ctx_builder"] = scb
 _spec.loader.exec_module(scb)
 
 build_mocs = scb.build_mocs
-enforce_budget = scb.enforce_budget
+size_guards = scb.size_guards
 serialize = scb.serialize
 
 
@@ -231,7 +232,7 @@ def test_t21_build_mocs_omits_has_footer_when_absent_from_cache():
 
 
 # ---------------------------------------------------------------------------
-# T3.2-2: enforce_budget drops inventory before topics
+# T3.2-2 (superseded by spec 040 ADR-4): inventory is never shed
 # ---------------------------------------------------------------------------
 
 def _ctx_with_inventory(
@@ -261,120 +262,18 @@ def _ctx_with_inventory(
     }
 
 
-def test_t32_enforce_budget_drops_inventory_before_topics():
-    """T3.2: Under tight budget pressure, enforce_budget removes headings and
-    editable_callouts from mocs[] BEFORE it shortens topics.
-
-    This means after enforce_budget: no moc has headings or editable_callouts,
-    but topics may still be present (partially or fully).
-    """
-    ctx = _ctx_with_inventory(n_mocs=2, n_topics=6, n_headings=4, n_callouts=2)
-
-    # Budget that's tight enough to force trimming but allows topics to survive
-    # We calculate a budget that removes inventory but keeps at least some topics.
-    # Remove inventory and measure that size.
-    import copy
-    ctx_no_inv = copy.deepcopy(ctx)
-    for moc in ctx_no_inv["mocs"]:
-        moc.pop("headings", None)
-        moc.pop("editable_callouts", None)
-    no_inv_bytes = len(serialize(ctx_no_inv))
-
-    # Budget: between no-inventory size and full size (forces inventory trim)
-    budget = no_inv_bytes + 10  # just above no-inventory size
-
-    trimmed_ctx, dropped = enforce_budget(ctx, budget)
-
-    # After trimming: inventory must be gone (or empty), topics may survive
-    for moc in trimmed_ctx["mocs"]:
-        headings = moc.get("headings")
-        editable_callouts = moc.get("editable_callouts")
-        assert not headings, (
-            f"MOC {moc['path']} still has headings after enforce_budget: {headings}"
-        )
-        assert not editable_callouts, (
-            f"MOC {moc['path']} still has editable_callouts after enforce_budget: {editable_callouts}"
-        )
-
-
-def test_t32_enforce_budget_drops_editable_callouts_then_headings():
-    """T3.2: editable_callouts are dropped BEFORE headings within the inventory
-    trim pass.
-
-    Proving the order requires a budget that lands BETWEEN the size with
-    editable_callouts removed (headings still present) and the size with all
-    inventory removed. At that budget the correct order leaves headings intact
-    after dropping editable_callouts; a reversed order would fail this test.
+def test_inventory_and_topics_survive_any_threshold():
+    """Spec 040 ADR-4: the three shedding passes (callouts, then headings, then
+    topics) are gone. They existed because every analyst read `mocs` whole;
+    now each reads names and fetches detail for its nominations, and shedding
+    would break PRD F2-AC2 (a nominated MOC arrives with its headings and
+    callouts). A 1-byte threshold only warns.
     """
     import copy
     ctx = _ctx_with_inventory(n_mocs=3, n_topics=8, n_headings=6, n_callouts=3)
-
-    size_full = len(serialize(ctx))
-
-    ctx_no_callouts = copy.deepcopy(ctx)
-    for moc in ctx_no_callouts["mocs"]:
-        moc.pop("editable_callouts", None)
-    size_no_callouts = len(serialize(ctx_no_callouts))
-
-    # Sanity: the full ctx must exceed the no-callouts size (so a budget set at
-    # the no-callouts size still forces a trim, but only of editable_callouts).
-    assert size_full > size_no_callouts, (
-        "fixture must have editable_callouts large enough to keep size_full > size_no_callouts"
-    )
-
-    # Budget = exactly the no-callouts size: dropping editable_callouts is enough
-    # to fit, so headings are NOT yet trimmed. A reversed drop order would have
-    # emptied headings first and left editable_callouts — failing the asserts below.
-    budget = size_no_callouts
-
-    trimmed_ctx, dropped = enforce_budget(ctx, budget)
-
-    for moc in trimmed_ctx["mocs"]:
-        # editable_callouts dropped first → gone
-        assert not moc.get("editable_callouts"), (
-            f"editable_callouts must be dropped first in {moc['path']}"
-        )
-        # headings dropped only AFTER editable_callouts → still present at this budget
-        assert moc.get("headings"), (
-            f"headings must STILL be present in {moc['path']} — they are dropped "
-            "only after editable_callouts (reversed order would empty them here)"
-        )
-    # topics untouched — inventory trim happens before the topic-shorten pass
-    assert dropped == 0, f"topics must not be dropped at this budget; got dropped={dropped}"
-
-
-def test_t32_enforce_budget_inventory_trim_is_ordered_before_topics():
-    """T3.2: Verify the budget trim order: inventory is removed BEFORE topics are
-    shortened. A budget that exactly forces inventory removal but not topic
-    removal leaves topics intact.
-    """
-    import copy
-    ctx = _ctx_with_inventory(n_mocs=2, n_topics=4, n_headings=3, n_callouts=2)
-
-    ctx_no_inv = copy.deepcopy(ctx)
-    for moc in ctx_no_inv["mocs"]:
-        moc.pop("headings", None)
-        moc.pop("editable_callouts", None)
-    size_no_inv = len(serialize(ctx_no_inv))
-
-    # Budget just above no-inventory size — inventory must be removed, topics kept
-    budget = size_no_inv + 1
-
-    trimmed_ctx, dropped = enforce_budget(ctx, budget)
-
-    # Topics must be untouched (dropped == 0) since budget accommodates no-inv state
-    assert dropped == 0, (
-        f"Topics must not be dropped when budget accommodates no-inventory ctx; "
-        f"got dropped={dropped}"
-    )
-    # All topics still present
-    for moc in trimmed_ctx["mocs"]:
-        original_entry = next(
-            m for m in ctx_no_inv["mocs"] if m["path"] == moc["path"]
-        )
-        assert moc.get("topics") == original_entry["topics"], (
-            f"Topics were dropped prematurely in {moc['path']}"
-        )
+    before = copy.deepcopy(ctx)
+    assert size_guards(ctx, 1)  # non-vacuity: the threshold is crossed
+    assert ctx == before
 
 
 # ---------------------------------------------------------------------------

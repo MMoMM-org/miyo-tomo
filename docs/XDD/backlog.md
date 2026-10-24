@@ -2746,7 +2746,7 @@ per-field check runs.
 
 Spec [`040-relevant-mocs-per-item`](specs/040-relevant-mocs-per-item/README.md), PR #198. Every analyst reads MOC names and fetches detail only for the MOCs it nominates; budget shedding is gone; the reducer converts exact-name duplicate proposals; `MiYo/Tomo/exclude/moc` removes a MOC from inbox candidates. Kado-graph navigation stays with #82. Close-out: [`close-out.md`](specs/040-relevant-mocs-per-item/close-out.md); the candidate-agreement KPI was missed and follows up in #200.
 
-## OPEN (#199) — analyst branches on `daily_log.enabled`, which no context ever carries
+## RESOLVED (#199, 2026-10-24) — analyst branches on `daily_log.enabled`, which no context ever carries
 
 **Out of scope of spec 040**, pre-existing; found by spec 040 T2.2 (2026-10-24) once the
 reader's contract fixture was built by `shared-ctx-builder.py` instead of written by hand.
@@ -2758,3 +2758,5 @@ The hand-written fixture modelled the field, so `TestAgainstTheRealContract` pas
 Decide whether the switch should exist (then: vault-config key, builder, schema, wizard) or the
 prose line should go; until then `tests/test_read_shared_ctx.py` lists it in
 `KNOWN_DEAD_REFERENCES` so the gap stays visible.
+
+**Resolution:** the switch already existed for users (`vault-example.yaml`, the daily-log wizard); only the builder dropped it. `shared-ctx-builder.py` 1.15.0 carries `enabled` (default `true`), the schema requires it, and `KNOWN_DEAD_REFERENCES` is empty.

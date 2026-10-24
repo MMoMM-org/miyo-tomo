@@ -241,6 +241,7 @@
         "daily_log": {
           "type": "object",
           "required": [
+            "enabled",
             "section",
             "heading_level",
             "date_sources",
@@ -251,6 +252,10 @@
           ],
           "additionalProperties": false,
           "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "false switches the daily-note log section off (no log_entry or log_link); trackers are separate."
+            },
             "section": {
               "type": "string"
             },

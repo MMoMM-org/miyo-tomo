@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.14.0
+# version: 1.15.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -598,6 +598,7 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
 
 
 _DAILY_LOG_DEFAULTS: dict = {
+    "enabled": True,
     "section": "Daily Log",
     "heading_level": 1,
     "date_sources": ["content", "frontmatter", "filename"],

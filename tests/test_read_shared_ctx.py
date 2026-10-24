@@ -271,10 +271,8 @@ class TestFailureModes:
 class TestAgainstTheRealContract:
     """Every dotted path `inbox-analyst.md` names must resolve on a real context."""
 
-    # Named by the prose, never emitted by the builder, forbidden by the schema:
-    # the "no log at all" branch cannot fire. Pre-existing; see docs/XDD/backlog.md
-    # "analyst branches on `daily_log.enabled`". The hand-written fixture hid it.
-    KNOWN_DEAD_REFERENCES = ["daily_notes.daily_log.enabled"]
+    # Empty since #199. A path listed here is named by the prose but never built.
+    KNOWN_DEAD_REFERENCES: list[str] = []
 
     def test_every_contract_field_resolves(self, tmp_path):
         import re

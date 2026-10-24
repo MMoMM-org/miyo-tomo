@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Runtime prose: analyst and skills"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 4
 ---
@@ -75,6 +75,10 @@ The analyst reads names, nominates by meaning, fetches detail once, and checks p
      - The count is reported only when it is above zero (WHY in `docs/tomo/dot_claude/skills/suggest-handling.md`).
      - RED: 5 of 9 tests in `tests/test_040_skill_prose.py` fail against `main`. The 4 that pass there are the planned guards: identical builder commands, the WARN relay (×2), and reset clearing the context and the names files.
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean. Read the analyst file top to bottom once as the model would: no reference to `shared_ctx.mocs`, `--field mocs`, `placeholder_links` or the lexical formula as the decider remains. `rg -n "placeholder_links|--field mocs" tomo/dot_claude tomo/scripts` (untruncated) — only the cache-side producer may still mention `placeholder_links`.
+  - Result (2026-10-24, at e2c00454): 5087 passed, 5 skipped. The skips are environment-dependent: an offline upstream schema fetch, gitignored or absent fixtures, no whisper model. None is a spec 040 test. Ruff is clean. Read-through: the analyst file has no `shared_ctx.mocs`, `--field mocs`, `placeholder_links` or overlap formula left. Step 5's "keyword-overlap" is classification and unchanged. The untruncated `rg` over `tomo/dot_claude tomo/scripts` leaves three kinds of hits:
+    - the cache-side producers (`moc-tree-builder`, `cache-builder`, `shared-ctx-builder`'s cache filter, `vault-summary`)
+    - `lyt-patterns:90`, which is cache-side and correct for `moc-architect`/`vault-explorer`; the analyst's Step 4 states it is overridden
+    - two historical measurements in `read-shared-ctx.py`'s header docstring

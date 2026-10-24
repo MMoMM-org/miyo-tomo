@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reducer duplicate mutator"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 3
 ---
@@ -29,7 +29,7 @@ phase: 3
 
 A proposed MOC that already exists by name never reaches the owner; the item is offered the existing MOC instead, unticked.
 
-- [ ] **T3.1 `lib/duplicate_proposals.py` and the reducer call** `[activity: backend-api]` `[parallel: true]`
+- [x] **T3.1 `lib/duplicate_proposals.py` and the reducer call** `[activity: backend-api]` `[parallel: true]`
 
   1. Prime: `suggestions-reducer.py` `moc_link_line`, `persist_candidate_anchors`, `demote_structural_anchors`, the render of "Link to MOC" / "No good thematic MOC matched", `load_asset_folder`, the action loop, cluster collection, the summary print; `lib/topic_clusters.py` `strip_moc_marker`, `normalise_topic`; `suggestions-render.py` `_wire_selected` and the candidate projection (the C3 shape is built there, not in the reducer) `[ref: SDD/ADR-6]`
   2. Test (RED via the exact count — the summary key `duplicate_proposals_converted` does not exist on `main`):
@@ -41,6 +41,16 @@ A proposed MOC that already exists by name never reaches the owner; the item is 
   3. Implement: `lib/duplicate_proposals.py` (`load_eligible_mocs`, `convert_duplicate_proposal`; WHY docstring; `# version: 0.1.0`); one call next to `demote_structural_anchors`; counter into the summary line; fix the stale threshold docstring (`:12`); `docs/tomo/scripts/lib/duplicate_proposals.md` and a pointer in `docs/tomo/scripts/suggestions-reducer.md`; bump the reducer version
   4. Validate: RED on `main`; GREEN here; existing reducer and render tests green; ruff clean
   5. Success: `[ref: PRD/F4-AC1, F4-AC2, F4-AC3, F4-AC4 (count), F5-AC3]`
+
+  6. Deviations recorded during implementation (2026-10-24):
+     - `load_eligible_mocs(shared_ctx_path, suffix)` takes the profile's MOC suffix, because the cluster key strips it. The SDD signature has one argument.
+     - The fixture in `tests/test_040_duplicate_proposals.py` converts **4** actions, not the 2 the plan's wording implies:
+       - "Vacations"
+       - "Project"
+       - its cluster partner "Projects", which proves all-or-nothing
+       - the action that already lists the Vacation path, which must itself propose a duplicate, otherwise "no duplicate path" is untested
+     - RED: 7 of 8 tests fail against `main`'s reducer. The one that passes is the guard: unconverted and suppressed actions stay unchanged.
+     - The reducer call site has its own comment, placed above the existing #71 comment rather than under it.
 
 - [ ] **T3.2 Phase Validation** `[activity: validate]`
 

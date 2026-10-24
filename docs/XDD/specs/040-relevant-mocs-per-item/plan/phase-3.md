@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reducer duplicate mutator"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 3
 ---
@@ -52,6 +52,7 @@ A proposed MOC that already exists by name never reaches the owner; the item is 
      - RED: 7 of 8 tests fail against `main`'s reducer. The one that passes is the guard: unconverted and suppressed actions stay unchanged.
      - The reducer call site has its own comment, placed above the existing #71 comment rather than under it.
 
-- [ ] **T3.2 Phase Validation** `[activity: validate]`
+- [x] **T3.2 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean. Pass-2 tests (`suggestion-parser`, `instruction-render`, `instructions-diff`) unchanged and green — a converted action produces no `create_moc` downstream; `instruction-render` with no context file still falls back to default tracker syntax (guard).
+  - Result (2026-10-24, at faf6776e): 5064 passed, 3 skipped; ruff clean. The Pass-2 tests ran in that same suite, unchanged and green. A converted action seeds no `proposed_mocs` entry, so no `create_moc` can follow (`test_only_unconverted_topics_reach_proposed_mocs`). `instruction-render` without a context file still falls back to default tracker syntax (`test_162_tracker_syntax_and_section.py:158`, existing guard).

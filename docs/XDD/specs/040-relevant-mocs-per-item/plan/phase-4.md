@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Runtime prose: analyst and skills"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 4
 ---
@@ -32,7 +32,7 @@ phase: 4
 
 The analyst reads names, nominates by meaning, fetches detail once, and checks proposals; both inbox paths build a fresh context and relay the duplicate count.
 
-- [ ] **T4.1 WHY first: analyst and skill docs** `[activity: technical-writing]`
+- [x] **T4.1 WHY first: analyst and skill docs** `[activity: technical-writing]`
 
   1. Prime: `docs/tomo/dot_claude/agents/inbox-analyst.md` (Step-1 and read-shared-ctx sections); `docs/tomo/dot_claude/skills/suggest-handling.md`; `docs/tomo/dot_claude/skills/force-atomic-handling.md` `[ref: SDD/ADR-3, ADR-8; CLAUDE.md WHY-persistence rule]`
   2. Test: n/a (document). Checklist: why the full list is never read (spill, cost, recall data); why names come from a file named by `to_filename`; why detail is fetched after Step 7.5 and capped at 20 in thread order; why score is by meaning (25 of 52 zero-overlap picks); why the name-check sits before `needs_new_moc` and excludes classification names; why any reader failure fails the item; why the context is deleted before build and checked by run id

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Reader selector modes"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 2
 ---

@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-23 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Current Phase** | Ready |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-10-23 |
 
 ## Documents
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 6 Must, 2 Should, 1 Could; 30 acceptance criteria |
 | solution.md | completed | ADR-1…ADR-10 confirmed 2026-10-24; 30 EARS criteria, 1:1 with the PRD |
-| plan/ | pending | |
+| plan/ | completed | 6 phases, 19 tasks (8 parallel) |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -34,6 +34,7 @@
 | 2026-10-23 | Quality bar: before/after live run on the same inbox in tomo-instance, comparing candidate sets and Phase-B cost | Owner decision. Measures agreement with today's LLM picks, not ground-truth correctness. |
 | 2026-10-23 | PRD approved; transition to SDD | Owner approval. |
 | 2026-10-24 | SDD ADR-1…ADR-10 confirmed | Scoring by meaning (confidence 0-1, thresholds kept); duplicate key = proposal-grouping cluster key; an index hit is an ordinary candidate; colliding titles → all paths offered unticked; freshness = delete-before-build + `--run-id` check (context still rebuilt per run from the local discovery cache). |
+| 2026-10-24 | Decomposition tier: Incremental | Classifier recommended Incremental (feature_count=6, rule 1; 30 ACs; 1 new component lib/moc_folders.py; no parallel markers). Accepted. |
 | 2026-10-24 | PRD v1.1 amended per ADR-10 | F2-AC5 and the renamed-MOC edge case: an unresolved name is dropped and logged; F4-AC1 and Rule 5 name the cluster key. |
 
 ## Context

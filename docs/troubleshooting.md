@@ -483,6 +483,14 @@ bash scripts/cleanup-tomo.sh --force --keep-home
 
 The cleanup script refuses any path outside the repo root as a safety check.
 
+### An inbox item fails with `shared_ctx_unavailable`
+
+**Symptom:** After `/inbox`, an item is listed under needs-attention with `shared_ctx_unavailable` and a message such as `shared-ctx belongs to run …, expected …` or `context predates spec 040`.
+
+**Cause:** The item's analysis found no usable shared context for this run. It refuses to classify against a context from another run, or one built by an older Tomo, so it stops instead of linking to the wrong MOCs.
+
+**Solution:** Run `/inbox` again. Every run rebuilds the context first. If it keeps failing, check the start of the run for a `shared-ctx-builder` error (for example a missing discovery cache — run `/explore-vault`), and make sure the instance is up to date (`update-tomo.sh`).
+
 ### Resetting Working State Between Test Runs
 
 **Symptom:** You're iterating on Pass 1 / Pass 2 changes and need a clean `tomo-tmp/` between runs without re-installing the whole instance.

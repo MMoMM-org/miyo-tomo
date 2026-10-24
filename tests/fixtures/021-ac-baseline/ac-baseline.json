@@ -10,7 +10,8 @@
     "conditions_captured": [
       "A (Classification Guard)",
       "C (Placeholder link trigger)"
-    ]
+    ],
+    "regenerated": "2026-10-24, spec 040 T1.4: mocs[] now carry the delivered `name` and are sorted by path (ADR-1). Only the mocs arrays were replaced; placeholder_links and the historical agent_step4_ac_contract / agent_version_at_capture are kept from the T3.0 capture."
   },
   "agent_step4_ac_contract": {
     "condition_a": "**Classification Guard:** \n\nNever pre-check a MOC with `is_classification: true`.\nIf all top matches are classification-layer, flag `needs_new_moc: true` and set\n`proposed_moc_topic` to the best inferred thematic label from the item's\ndominant topic tokens.",
@@ -22,16 +23,6 @@
       "source": "tests/fixtures/test-015-t4-1/scenario_a_accumulation_match.json",
       "mocs": [
         {
-          "path": "Atlas/200 MOCs/Software MOC.md",
-          "title": "Software MOC",
-          "topics": [
-            "python",
-            "software",
-            "programming"
-          ],
-          "is_classification": false
-        },
-        {
           "path": "Atlas/200 MOCs/Games MOC.md",
           "title": "Games MOC",
           "topics": [
@@ -39,7 +30,19 @@
             "games",
             "strategy"
           ],
-          "is_classification": false
+          "is_classification": false,
+          "name": "Games MOC"
+        },
+        {
+          "path": "Atlas/200 MOCs/Software MOC.md",
+          "title": "Software MOC",
+          "topics": [
+            "python",
+            "software",
+            "programming"
+          ],
+          "is_classification": false,
+          "name": "Software MOC"
         }
       ],
       "placeholder_links": [],
@@ -66,7 +69,8 @@
             "hobbies",
             "food"
           ],
-          "is_classification": false
+          "is_classification": false,
+          "name": "Hobbies MOC"
         }
       ],
       "placeholder_links": [],
@@ -92,7 +96,8 @@
             "hobbies",
             "games"
           ],
-          "is_classification": false
+          "is_classification": false,
+          "name": "Hobbies MOC"
         }
       ],
       "placeholder_links": [
@@ -124,7 +129,8 @@
             "software",
             "programming"
           ],
-          "is_classification": false
+          "is_classification": false,
+          "name": "Software MOC"
         }
       ],
       "placeholder_links": [],

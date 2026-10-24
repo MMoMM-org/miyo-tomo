@@ -1,7 +1,7 @@
 #!/bin/bash
 # test-004-phase2.sh — Acceptance tests for spec 004 Plan Phase 2.
 #   Covers: shared-ctx-builder. (state-init removed F-47 T3.4 — deleted script)
-# version: 0.2.0
+# version: 0.3.0
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -77,8 +77,11 @@ naming:
 tags:
   prefixes:
     topic:
+      description: "Topic tags"
       wildcard: true
       known_values: [applied/shell]
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]
@@ -92,6 +95,7 @@ if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
+    --skip-reconcile \
     --run-id "test-004" \
     --output "$OUT" 2>"$FIXTURE_DIR/shared-ctx.log"; then
     pass "shared-ctx-builder exits 0"
@@ -107,6 +111,12 @@ if [ -f "$OUT" ]; then
     else
         fail "shared-ctx.json too large: $SIZE"
     fi
+
+    SUMMARY=$(grep '^mocs_total=' "$FIXTURE_DIR/shared-ctx.log" | tail -1)
+    case "$SUMMARY" in
+        *" eligible=3 excluded=0 collisions=0 names_bytes="*" placeholder_targets=0 "*) pass "summary line carries the spec 040 fields" ;;
+        *) fail "summary line fields: $SUMMARY" ;;
+    esac
 
     "$PYTHON" - "$OUT" <<'PY' && pass "shared-ctx.json content checks" || fail "shared-ctx.json content checks"
 import json, sys
@@ -137,6 +147,14 @@ concepts:
     granularities:
       daily:
         enabled: false
+tags:
+  prefixes:
+    topic:
+      description: "Topic tags"
+      wildcard: true
+      known_values: [applied/shell]
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]
@@ -147,6 +165,7 @@ OUT2="$FIXTURE_DIR/tomo-tmp/shared-ctx-no-daily.json"
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-no-daily.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
+    --skip-reconcile \
     --run-id "test-004-no-daily" \
     --output "$OUT2" 2>/dev/null || true
 
@@ -156,10 +175,12 @@ import json, sys
 ctx = json.load(open(sys.argv[1]))
 assert 'daily_notes' not in ctx
 PY
+else
+    fail "shared-ctx-builder (daily disabled) wrote no output"
 fi
 
-# ── Test 3: size-budget enforcement ─────────────────────────────────────────
-# Construct a cache with huge topic lists so the builder must trim them.
+# ── Test 3: size guards warn, nothing is shed (spec 040 ADR-4) ──────────────
+# Huge topic lists push the per-read detail estimate over --max-bytes.
 cat > "$FIXTURE_DIR/config/discovery-cache-large.yaml" <<'YAML'
 cache_version: 1
 last_scan: '2026-04-15T00:00:00Z'
@@ -178,19 +199,25 @@ OUT3="$FIXTURE_DIR/tomo-tmp/shared-ctx-large.json"
     --cache "$FIXTURE_DIR/config/discovery-cache-large.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
+    --skip-reconcile \
     --run-id "test-004-large" \
     --max-bytes 15360 \
     --output "$OUT3" 2>"$FIXTURE_DIR/large.log" || true
 
 if [ -f "$OUT3" ]; then
-    SIZE3=$(wc -c < "$OUT3" | tr -d ' ')
-    "$PYTHON" - "$OUT3" "$SIZE3" <<'PY' && pass "budget enforcement keeps all 50 MOCs, trims topics" || fail "budget enforcement"
+    "$PYTHON" - "$OUT3" <<'PY' && pass "all 50 MOCs keep all 100 topics" || fail "topics were shed"
 import json, sys
 ctx = json.load(open(sys.argv[1]))
-size = int(sys.argv[2])
 assert len(ctx['mocs']) == 50, f'dropped MOCs: kept only {len(ctx["mocs"])}'
-assert size <= 15360, f'still over budget: {size}'
+assert all(len(m['topics']) == 100 for m in ctx['mocs']), 'topics shortened'
 PY
+    if grep -q "^WARN: shared-ctx read 'detail' is " "$FIXTURE_DIR/large.log"; then
+        pass "detail read over --max-bytes is warned about"
+    else
+        fail "no detail WARN line"
+    fi
+else
+    fail "shared-ctx-builder (large cache) wrote no output"
 fi
 
 # Tests 4 and 5 (state-init skip-suffix logic + live run) removed F-47 T3.4.

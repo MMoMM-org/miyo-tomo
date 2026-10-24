@@ -16,7 +16,8 @@ A **placeholder link** = any dead `[[wikilink]]` in a MOC body (detected by
 missing MOC OR a missing regular note. Only the subset matching the MOC naming
 convention above are **missing MOCs**. Condition C (offer MOC creation) consumes
 only that subset — filtered at `shared-ctx-builder.build_placeholder_links`, not
-in the cache. Do not call the whole dead-link list "missing MOCs".
+in the cache; `build_placeholder_targets` reduces it to the unique target names
+that reach the analyst as `shared_ctx.placeholder_targets`. Do not call the whole dead-link list "missing MOCs".
 
 ## Periodic notes are never placeholder MOCs
 Date-shaped targets (`YYYY-MM-DD` daily, `YYYY-Www` weekly, `YYYY-MM` monthly)
@@ -40,3 +41,8 @@ staging notes costs nothing cross-repo. `pending-move` is the only valid state f
 
 ## Emptied inbox subfolders stay (owner ruling 2026-10-13)
 An inbox subfolder emptied by moving its files out is not deleted, by Tomo or by Hashi (spec 039 README decisions log).
+
+<!-- 2026-10-24 -->
+- **Analysts never read `--field mocs`: names via `--moc-names`, detail via `--mocs-from <file>` (cap 20), each read with `--run-id`** — a whole-list read spills past ~37.7 KB. → Analyst prose reads names first, then nominated detail.
+- **`MiYo/Tomo/exclude/moc` removes a MOC from /inbox link candidates only** — /moc-propose, garden audit and /explore-vault still read it. → Never call it an access control; sensitive MOCs belong behind Kado deny rules.
+- **The shared-ctx builder sheds nothing; `size_guards` only warns when one read exceeds `--max-bytes` (32768)** — the file grows with the vault. → Answer a size WARN by changing what a read returns, never by trimming the file.

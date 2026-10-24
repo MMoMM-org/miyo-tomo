@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tracker_config_durability.py — curated tracker config must survive.
 
 Two mechanisms were destroying tracker configuration silently, and between
@@ -14,7 +14,8 @@ them they made every tracker in a live vault inert:
    positive_keywords, then keywords — before touching a single MOC — whenever
    the context exceeded 40 KB. Measured 2026-09-13 on the live instance: the
    untrimmed context was 42104 bytes, so this fired on EVERY run while MOC
-   data held 77% of the payload.
+   data held 77% of the payload. (Spec 040 ADR-4 later removed shedding
+   altogether; the guard below now runs against `size_guards`.)
 
 Neither had a test. Both failed silently: the schema does not require
 keywords, the config still validates, and the analyst degrades to a
@@ -180,7 +181,7 @@ class TestWriterPreservesCuratedValues:
 
 
 class TestBudgetNeverShedsConfiguration:
-    """The enforce_budget path."""
+    """The size-guard path (was enforce_budget until spec 040 ADR-4)."""
 
     def _ctx_with_trackers(self, moc_count: int) -> dict:
         return {
@@ -218,27 +219,25 @@ class TestBudgetNeverShedsConfiguration:
         """The defect: keyword lists were shed BEFORE any MOC data."""
         ctx = self._ctx_with_trackers(moc_count=40)
         assert len(_ctx.serialize(ctx)) > 4000
-        trimmed, _ = _ctx.enforce_budget(ctx, 4000)
-        field = trimmed["daily_notes"]["tracker_fields"][0]
+        _ctx.size_guards(ctx, 4000)
+        field = ctx["daily_notes"]["tracker_fields"][0]
         assert field["positive_keywords"] == ["laufen", "gelaufen", "joggen"]
         assert field["negative_keywords"] == ["video"]
         assert field["keywords"] == ["sport"]
 
     def test_the_description_survives_too(self):
         ctx = self._ctx_with_trackers(moc_count=40)
-        trimmed, _ = _ctx.enforce_budget(ctx, 4000)
-        assert trimmed["daily_notes"]["tracker_fields"][0]["description"] == (
+        _ctx.size_guards(ctx, 4000)
+        assert ctx["daily_notes"]["tracker_fields"][0]["description"] == (
             "Did physical exercise today."
         )
 
-    def test_derived_moc_data_is_what_gets_shed(self):
-        """Non-vacuity: the budget must still actually shrink something."""
+    def test_pressure_warns_instead_of_shedding(self):
+        """Non-vacuity: the threshold is crossed, and nothing at all is shed."""
         ctx = self._ctx_with_trackers(moc_count=40)
-        before = len(_ctx.serialize(ctx))
-        trimmed, _ = _ctx.enforce_budget(ctx, 4000)
-        after = len(_ctx.serialize(trimmed))
-        assert after < before
-        assert not any(m.get("editable_callouts") for m in trimmed["mocs"])
+        before = _ctx.serialize(ctx)
+        assert _ctx.size_guards(ctx, 4000)
+        assert _ctx.serialize(ctx) == before
 
 
 class TestUnusableTrackersAreReported:

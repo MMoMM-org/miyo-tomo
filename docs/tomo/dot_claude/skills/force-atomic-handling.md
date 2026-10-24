@@ -101,3 +101,11 @@ can see whether it ran.
 Do not re-add one. `inbox-triage.py` writes no entry for this action, so a
 second append here would double-record the run. See
 `docs/tomo/scripts/lib/cost_history.md`.
+
+## Delete-before-build and the duplicate count (spec 040)
+
+Same as `suggest-handling`: `rm -f tomo-tmp/shared-ctx.json` before the build,
+so a failed build cannot leave a previous run's context for the analysts, and
+the report relays `duplicate_proposals_converted` from the reducer's summary
+line. See `suggest-handling.md` for the reasoning. The two builder commands
+stay identical so the fan path classifies against the same context shape.

@@ -110,3 +110,52 @@ wearing a performance question's clothes.
 
 Left as an open question deliberately. A byte saving is not worth guessing at
 that.
+
+## Spec 040: names for everyone, detail on nomination (v0.3.0)
+
+The open question above was answered by spec 040 (#173). MOC matching now runs
+per thread, after Step 7.5, and the analyst no longer reads `mocs` at all. It
+reads `--moc-names` in Step 4 and, once threads exist, fetches the detail of
+the MOCs it nominated with `--mocs-from` (Step 7.5b). An item with no atomic
+note pays only for the name list: about 1.2 KB at 64 MOCs, under 12 KB at 512.
+
+**Why the names come from a file, not the command line.** MOC titles contain
+characters that break shell quoting (`'`, `&`, `(`, `$`). The analyst already
+writes files under `items_dir`, so it writes one name per line to
+`<result stem>.moc-names.txt` and passes the path. No title ever enters a shell
+command (SDD CON-4).
+
+**Why an unknown name does not fail the call.** `--fields` fails the batch on
+one unknown name, because a missing field is a contract break. A nominated
+name is an LLM's transcription of a list it read; a typo there should cost one
+candidate, not every MOC's headings for the item. So `--mocs-from` lists such
+names in `unresolved` and exits 0; the analyst drops them and records an issue
+line. The opposite semantics of the two modes is deliberate and stated in the
+script header.
+
+**Why the loose match must be unique.** Exact match on the delivered `name`
+first; only then NFC + casefold + whitespace collapse. If the loose form
+matches two delivered names (`Wine (MOC)` and `wine  (MOC)` can both exist),
+guessing would silently link the wrong MOC, so the name is unresolved instead.
+NFC matters because macOS file names arrive decomposed (`Café`) while
+titles typed by the analyst are composed.
+
+**Why the cap of 20.** The analyst nominates at most 6 per thread and writes at
+most 20 lines. The reader enforces the same number as a safety net: 20 × the
+largest entry (~1.4 KB) stays under the ~37.7 KB spill floor, above which the
+result reaches the analyst as a 2 KB preview. Names past the 20th are listed in
+`omitted` rather than dropped silently.
+
+**Why `--run-id`.** A failed build used to leave the previous run's context on
+disk, and nothing compared run ids, so an analyst could classify against
+another run's MOCs without any sign. Every analyst read passes
+`--run-id {run_id}`; a mismatch exits 1 with `shared-ctx belongs to run <x>,
+expected <id>`, and the analyst fails the item. It is checked in every mode,
+including `--fields`, because the Step-1 batch is just as stale. It holds even
+when a conductor ignores a build failure (SDD ADR-8; the skills also delete the
+file before building).
+
+**Why "context predates spec 040".** A context without `mocs[].name` cannot be
+resolved by name. Within a run this cannot happen (the skill rebuilds), so the
+reader fails loudly rather than inventing names from titles, which would
+reintroduce the collision problem `name` exists to solve.

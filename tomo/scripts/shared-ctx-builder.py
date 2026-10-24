@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.12.0
+# version: 1.14.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -12,11 +12,14 @@ Inputs (CLI):
   --profiles-dir profiles/              # default: <script-dir>/../profiles
   --run-id       unique run identifier
   --output       tomo-tmp/shared-ctx.json
-  --max-bytes    size budget (default 40960)
+  --max-bytes    per-read warning threshold in bytes (default 32768)
 
 Outputs:
-  File at --output matching schemas/shared-ctx.schema.json, ≤ max-bytes.
-  Stdout log lines summarising counts and final size.
+  File at --output matching schemas/shared-ctx.schema.json, every eligible MOC
+  with its full detail (nothing is shed for size).
+  Stderr: one WARN line per analyst read (names, step1, placeholder_targets,
+  detail) whose compact JSON exceeds --max-bytes, then one summary line of
+  counts and sizes.
 
 Exit: 0 on success, 1 on error.
 """
@@ -54,6 +57,9 @@ from profile_conventions import marker_word, resolve_conventions  # type: ignore
 # (dotted-package import — needs SCRIPT_DIR itself on sys.path, not SCRIPT_DIR/lib).
 sys.path.insert(0, str(SCRIPT_DIR))
 from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402
+from lib.moc_folders import in_moc_folders, moc_folder_prefixes  # noqa: E402
+from lib.moc_tags import is_excluded_moc  # noqa: E402
+from lib.vault_paths import path_key  # noqa: E402
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -220,8 +226,14 @@ _HEADINGS_CAP = 8  # T3.2 (spec 022): max headings per MOC in shared-ctx
 _CALLOUTS_CAP = 4  # M6: max editable_callouts per MOC in shared-ctx (schema maxItems)
 
 
-def build_mocs(cache: dict) -> list[dict]:
-    """Emit MOC list with topics fallback to title when topics empty.
+def build_mocs(cache: dict, moc_folders: tuple[str, ...] = ()) -> list[dict]:
+    """Emit the eligible MOCs, sorted by path, each with its delivered `name`.
+
+    Eligible = a cache MOC not tagged MiYo/Tomo/exclude/moc (spec 040 ADR-5).
+    `name` follows the collision rule in `assign_names` (spec 040 ADR-1);
+    `moc_folders` are the `concepts.map_note` prefixes it consults.
+
+    Topics fall back to the title when empty.
 
     T3.2 (spec 022): A-trimmed inventory is copied from the cache when present:
       - headings: [{text, level}], capped at _HEADINGS_CAP (8); H2-H6 only
@@ -232,6 +244,8 @@ def build_mocs(cache: dict) -> list[dict]:
     """
     out = []
     for entry in cache.get("map_notes") or []:
+        if is_excluded_moc(entry.get("tags")):
+            continue
         title = (entry.get("title") or "").strip()
         path = (entry.get("path") or "").strip()
         topics = [t.strip() for t in (entry.get("topics") or []) if t and t.strip()]
@@ -258,7 +272,30 @@ def build_mocs(cache: dict) -> list[dict]:
             if "has_footer" in entry:
                 moc["has_footer"] = entry["has_footer"]
         out.append(moc)
+    out.sort(key=lambda m: m["path"])
+    assign_names(out, moc_folders)
     return out
+
+
+def assign_names(mocs: list[dict], moc_folders: tuple[str, ...]) -> None:
+    """Set each MOC's delivered `name` in place (spec 040 ADR-1).
+
+    The title, unless another MOC has the same title (compared by path_key).
+    Among colliding MOCs, the single one inside `moc_folders` keeps the title;
+    every other one — or all of them, when zero or several lie inside —
+    carries its path, which is unique in the vault.
+    """
+    groups: dict[str, list[dict]] = {}
+    for moc in mocs:
+        groups.setdefault(path_key(moc["title"]), []).append(moc)
+    for group in groups.values():
+        if len(group) == 1:
+            group[0]["name"] = group[0]["title"]
+            continue
+        inside = [m for m in group if in_moc_folders(m["path"], moc_folders)]
+        keeper = inside[0] if len(inside) == 1 else None
+        for moc in group:
+            moc["name"] = moc["title"] if moc is keeper else moc["path"]
 
 
 # A placeholder link is a missing MOC only when its target follows the vault's
@@ -332,6 +369,16 @@ def build_placeholder_links(cache: dict, moc_re=_MOC_NAME_RE) -> list[dict]:
             continue
         out.append({"target": target, "referenced_by": referenced_by})
     return out
+
+
+def build_placeholder_targets(cache: dict, moc_re=_MOC_NAME_RE) -> list[str]:
+    """The missing-MOC names the analyst checks, each once, sorted (spec 040 ADR-7).
+
+    The analyst compares only `target`; `referenced_by` stays in the discovery
+    cache. Always a list — empty when the vault has no placeholder MOCs — so
+    the analyst's read of this field never fails for its absence.
+    """
+    return sorted({p["target"] for p in build_placeholder_links(cache, moc_re)})
 
 
 def build_tag_prefixes(cache: dict, vault_cfg: dict) -> list[dict]:
@@ -691,78 +738,43 @@ def warn_unusable_trackers(ctx: dict) -> list[str]:
     return unusable
 
 
-def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
-    """Trim ctx to fit within max_bytes.
+_STEP1_FIELDS = ("daily_notes", "classification_keywords", "tag_prefixes", "asset_folder")
+_DETAIL_CAP = 20  # read-shared-ctx.py --mocs-from resolves at most this many
 
-    **Only derived data is shed. User configuration is never touched.**
 
-    Budget pass order:
-    1. T3.2 (spec 022): Drop editable_callouts from mocs[] (cheapest inventory first).
-    2. T3.2 (spec 022): Greedily drop headings from mocs[] one MOC at a time
-       (heaviest first) until the ctx fits, before topics \u2014 still expensive.
-    3. Shorten mocs[].topics (original behaviour).
+def _compact_len(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
-    Everything above is rebuilt from the vault on the next run, so shedding it
-    costs a re-derivation and nothing else. `mocs` is also where the weight
-    actually is: measured 2026-09-13 on a real run, mocs held 77% of a 38.6 KB
-    ctx while every tracker field together held 9.6%.
 
-    WHAT THIS FUNCTION USED TO DO, and why it stopped: passes 1-4 trimmed
-    tracker descriptions to 200 chars and then emptied negative_keywords,
-    positive_keywords and keywords \u2014 before touching a single MOC. Those lists
-    are entered by a person through `tomo-trackers-wizard`, they are the entire
-    basis of tracker matching, and emptying them is silent: the analyst falls
-    back to the description with no complaint, so the only symptom is that
-    trackers stop matching. Shedding curated configuration to save bytes that
-    derived data is holding is the wrong trade in every direction, and it put
-    the cheapest-to-rebuild data last. Removed 2026-09-13.
+def read_sizes(ctx: dict) -> dict[str, int]:
+    """Bytes of each analyst read, serialised as read-shared-ctx.py prints it."""
+    mocs = ctx.get("mocs") or []
+    return {
+        "names": _compact_len([m.get("name") for m in mocs]),
+        "step1": _compact_len({k: ctx[k] for k in _STEP1_FIELDS if k in ctx}),
+        "placeholder_targets": _compact_len(ctx.get("placeholder_targets") or []),
+        "detail": _DETAIL_CAP * max((_compact_len(m) for m in mocs), default=0),
+    }
 
-    Never trims placeholder_links. Returns (ctx, moc_topics_dropped).
-    """
-    data = serialize(ctx)
 
-    if len(data) <= max_bytes:
-        return ctx, 0
+def size_guards(ctx: dict, max_bytes: int) -> list[str]:
+    """WARN lines for every analyst read over max_bytes. Never alters ctx."""
+    return [
+        f"WARN: shared-ctx read '{read}' is {size} bytes, over --max-bytes "
+        f"{max_bytes}. Every analyst performs this read once per item; above "
+        f"~37 KB the result reaches it as a 2 KB preview."
+        for read, size in read_sizes(ctx).items()
+        if size > max_bytes
+    ]
 
-    # Pass 1 (T3.2): drop editable_callouts from all mocs[] before touching topics
-    for moc in ctx["mocs"]:
-        moc.pop("editable_callouts", None)
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
 
-    # Pass 2 (T3.2/H3): greedily drop headings one MOC at a time — heaviest
-    # (most headings) first — re-checking the budget after each drop. This keeps
-    # headings on as many MOCs as possible (the smallest-heading MOCs survive
-    # longest) instead of an atomic all-MOC drop that defeats spec 022 tier-1.
-    heading_mocs = sorted(
-        (moc for moc in ctx["mocs"] if moc.get("headings")),
-        key=lambda m: len(m["headings"]),
-        reverse=True,
-    )
-    for moc in heading_mocs:
-        moc.pop("headings", None)
-        data = serialize(ctx)
-        if len(data) <= max_bytes:
-            return ctx, 0
-
-    # Pass 3: shorten mocs[].topics (original behaviour)
-    dropped = 0
-    while len(data) > max_bytes:
-        victim = -1
-        most = 1
-        for i, moc in enumerate(ctx["mocs"]):
-            topics = moc.get("topics") or []
-            if len(topics) > most:
-                most = len(topics)
-                victim = i
-        if victim < 0:
-            break
-        ctx["mocs"][victim]["topics"].pop()
-        dropped += 1
-        data = serialize(ctx)
-
-    return ctx, dropped
+def count_collisions(mocs: list[dict]) -> int:
+    """Distinct titles held by two or more eligible MOCs (compared by path_key)."""
+    seen: dict[str, int] = {}
+    for moc in mocs:
+        key = path_key(moc["title"])
+        seen[key] = seen.get(key, 0) + 1
+    return sum(1 for n in seen.values() if n > 1)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -780,7 +792,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--run-id", default=None, help="Unique run identifier (auto-generated if omitted)")
     p.add_argument("--output", required=True, help="Target path for shared-ctx.json")
-    p.add_argument("--max-bytes", type=int, default=40960, help="Size budget (default 40 KB)")
+    p.add_argument(
+        "--max-bytes",
+        type=int,
+        default=32768,
+        help="Per-read warning threshold in bytes (default 32768); nothing is shed",
+    )
     p.add_argument(
         "--skip-reconcile",
         action="store_true",
@@ -852,12 +869,12 @@ def main() -> int:
         profile_dict=profile, profiles_dir=profiles_dir
     )
 
-    mocs = build_mocs(cache)
+    mocs = build_mocs(cache, moc_folder_prefixes(vault_cfg))
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
     asset_folder = build_asset_folder(vault_cfg)
-    placeholder_links = build_placeholder_links(cache, _moc_name_re(conventions.moc_suffix))
+    placeholder_targets = build_placeholder_targets(cache, _moc_name_re(conventions.moc_suffix))
 
     ctx: dict = {
         "schema_version": "1",
@@ -866,24 +883,18 @@ def main() -> int:
         "tag_prefixes": tag_prefixes,
         "classification_keywords": classification_keywords,
         "asset_folder": asset_folder,
+        "placeholder_targets": placeholder_targets,
     }
-    if placeholder_links:
-        ctx["placeholder_links"] = placeholder_links
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
 
     warn_unusable_trackers(ctx)
 
-    ctx, dropped = enforce_budget(ctx, args.max_bytes)
+    for line in size_guards(ctx, args.max_bytes):
+        print(line, file=sys.stderr)
     data = serialize(ctx)
-    if len(data) > args.max_bytes:
-        print(
-            f"WARN: shared-ctx is {len(data)} bytes, over the {args.max_bytes} "
-            f"budget, and nothing derived is left to shed. Every subagent reads "
-            f"this file, so the cost is per-item. Reduce MOC inventory or raise "
-            f"--max-bytes deliberately.",
-            file=sys.stderr,
-        )
+    sizes = read_sizes(ctx)
+    excluded = sum(1 for e in cache.get("map_notes") or [] if is_excluded_moc(e.get("tags")))
 
     ensure_parent(out_path)
     out_path.write_bytes(data)
@@ -892,11 +903,14 @@ def main() -> int:
         f"mocs_total={map_notes_total_before} "
         f"mocs_after_reconcile={len(cache.get('map_notes') or [])} "
         f"mocs_reconcile_dropped={len(reconcile_dropped)} "
-        f"mocs_included={len(ctx['mocs'])} "
-        f"topics_dropped={dropped} "
+        f"eligible={len(ctx['mocs'])} "
+        f"excluded={excluded} "
+        f"collisions={count_collisions(ctx['mocs'])} "
+        f"names_bytes={sizes['names']} "
+        f"detail_bytes={_compact_len(ctx['mocs'])} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
-        f"placeholder_links={len(placeholder_links)} "
+        f"placeholder_targets={len(placeholder_targets)} "
         f"daily_notes_enabled={bool(daily_notes)} "
         f"asset_folder={ctx['asset_folder']} "
         f"bytes={len(data)} "

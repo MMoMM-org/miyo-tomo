@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_shared_ctx_feature5.py — T3.4 Feature 5 regression tests for spec 021 (F-34).
 
 Verifies that shared_ctx.mocs is the complete, corrected tag-discovered MOC set:
@@ -220,9 +220,10 @@ def test_f5_2b_template_vault_excluded_prefix_never_in_map_notes():
     filtering is moc_scan's responsibility, not build_mocs'.
 
     This test documents that contract explicitly and makes the single-source
-    responsibility visible: build_mocs is a pure projector, not a filter.
-    If this test fails (build_mocs has its own filter), F5#3 must also be
-    revisited.
+    responsibility visible: build_mocs has no PATH filter. Its one filter is
+    the MiYo/Tomo/exclude/moc tag (spec 040 ADR-5), an explicit owner opt-out
+    that moc_scan does not apply. If this test fails (build_mocs has grown a
+    path filter), F5#3 must also be revisited.
     """
     # Artificially inject a template-vault entry into map_notes to confirm
     # build_mocs does NOT silently drop it (that would mean a hidden filter).
@@ -239,8 +240,8 @@ def test_f5_2b_template_vault_excluded_prefix_never_in_map_notes():
     result = build_mocs(cache)
     paths = [m["path"] for m in result]
 
-    # build_mocs is a pure projector — it passes all map_notes entries through.
-    # Exclusion is moc_scan's job; build_mocs trusts the cache.
+    # build_mocs applies no path filter — it passes every untagged map_notes
+    # entry through. Path exclusion is moc_scan's job; build_mocs trusts the cache.
     assert "X/Templates/Software MOC Template.md" in paths, (
         f"build_mocs must pass map_notes entries through without its own path "
         f"filter — filtering is moc_scan's responsibility. If this assertion "

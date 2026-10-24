@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t2_2_analyst_contract.py — inbox-analyst.md carries item_key end to end.
 
 Covers T2.2 (XDD 034 Phase 2): T2.4 made `--item-key` a required argument of
@@ -158,10 +158,15 @@ def test_result_filename_helper_wraps_the_real_encoding():
 def test_step_10_writes_to_the_item_key_filename_not_bare_stem():
     text = _agent_text()
     step10 = text[text.index("### Step 10 —"): text.index("### Step 10b")]
-    assert "item-result-filename.py" in step10, (
-        "Step 10 must compute the output filename via the shared helper, not "
+    # spec 040 T4.2: the helper call moved to Step 7.5b, which needs the result
+    # stem for the names file; Step 10 reuses the captured value. Still one
+    # derivation through the shared helper, never a hand-assembled name.
+    step75b = text[text.index("### Step 7.5b"): text.index("### Step 8 ")]
+    assert "item-result-filename.py" in step75b, (
+        "Step 7.5b must compute the output filename via the shared helper, not "
         "hand-assemble <stem>.result.json"
     )
+    assert "<result_filename>" in step10 and "Step 7.5b" in step10
     assert "<stem>.result.json" not in step10.replace("<items_dir>/<stem>.result.json", "")
     # The literal old instruction must be gone, not merely supplemented.
     assert "Write` tool to\n```\n<items_dir>/<stem>.result.json" not in step10

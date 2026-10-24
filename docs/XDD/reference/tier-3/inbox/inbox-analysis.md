@@ -6,7 +6,7 @@
 
 > **⚠️ Deviation (XDD-004)**
 > **Original**: `inbox-analyst` processes all inbox items in a single monolithic pass, producing analysis objects consumed by `suggestion-builder`.
-> **Actual**: `inbox-analyst` runs as a per-item subagent, spawned by `inbox-orchestrator`. Each subagent receives distilled shared context (~10KB) and processes exactly one item, returning structured JSON. The orchestrator's reducer aggregates results. `suggestion-builder` was retired.
+> **Actual**: `inbox-analyst` runs as a per-item subagent, spawned by `inbox-orchestrator`. Each subagent reads distilled shared context by field (never whole) and processes exactly one item, returning structured JSON. The orchestrator's reducer aggregates results. `suggestion-builder` was retired.
 > **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 
 > **Post-018 Update (2026-05-27)**
@@ -15,6 +15,13 @@
 > - `suggestion-builder` references below are historical — that agent never existed post-004.
 > - Tag-based lifecycle refs (`#MiYo-Tomo/captured`, `#MiYo-Tomo/proposed`, etc.) are superseded by frontmatter `tomo.state`. Source items get `tomo.state=captured` via `mark-captured.py`, not `tag-captured.py`.
 > - The analysis output format (§8) and per-item classification logic remain accurate. The agent itself is unchanged.
+
+> **Post-040 Update (2026-10-24) — MOC matching per item** ([spec 040](../../../specs/040-relevant-mocs-per-item/solution.md), #173)
+>
+> - **Names for every item, detail on nomination.** The analyst reads the delivered names of all eligible MOCs (`read-shared-ctx.py --moc-names`) and the placeholder targets. After segmenting (Step 7.5), it nominates up to 6 names per atomic thread by meaning. It then fetches full entries (topics, headings, editable callouts, `has_footer`) for at most 20 nominated names in one call (`--mocs-from`, Step 7.5b). It never reads the full MOC list.
+> - **Score by meaning.** `score` is the analyst's confidence that a MOC is the thread's thematic home. The thresholds are unchanged: keep at ≥ 0.15, pre-check at ≥ 0.5 for thematic MOCs only. Before proposing a new MOC, the analyst checks the name against the thematic delivered names. The reducer converts any remaining exact-name duplicate into an unticked candidate.
+> - **Run-id check.** Every read passes `--run-id`. A context built by another run (or before spec 040) fails the item instead of being read silently. Both skills delete the context before rebuilding it.
+> - **`MiYo/Tomo/exclude/moc` in the inbox.** A tagged MOC is not eligible: its name never reaches the analyst, so it is never a link candidate for an inbox item. This supersedes spec 021 ADR-13 (B-moc) for the inbox only. `/moc-propose` still uses the tag only to suppress the missing-uplink check.
 
 ---
 

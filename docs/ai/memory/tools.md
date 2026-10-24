@@ -147,3 +147,6 @@ Only `write_frontmatter` re-raises the optimistic-concurrency failure as the typ
 <!-- 2026-10-13 -->
 - **A live-run seed note under 100 words misses the analyst's length points and falls below the atomic-worthiness gate** — the item gets no atomic note. → Write seed notes over 100 words when the run needs one.
 - **`spec037-fixture.sh restore` deletes every non-baseline note in `202 Notes`** — notes another run created vanish with it. → Restore single files by hand when other notes must survive.
+
+<!-- 2026-10-24 -->
+- **`scripts/measure-shared-ctx-reads.py` finds shared-ctx reads and spills in Docker transcripts** — it sits beside `measure-inbox-phase-b-token-cost.py`. → Run both after a live /inbox run to compare reads and cost.

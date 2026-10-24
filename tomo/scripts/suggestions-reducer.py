@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.60.4
+# version: 1.61.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -9,7 +9,7 @@ Inputs (CLI):
   --run-id     Run identifier
   --profile    Active profile name (e.g. "miyo")
   --output     tomo-tmp/suggestions-doc.json
-  --threshold  Minimum cluster size for Proposed MOC (default 3)
+  --threshold  Minimum cluster size for Proposed MOC (default 1)
 
 Outputs:
   JSON file matching schemas/suggestions-doc.schema.json. Each section carries
@@ -66,6 +66,7 @@ from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
 from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402 — spec 039 T1.4
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
+from lib.duplicate_proposals import convert_duplicate_proposal, load_eligible_mocs  # noqa: E402 — spec 040 ADR-6
 from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash; spec 037 T1.1
     DEFAULT_ASSET_FOLDER,
     _asset_dest_join,
@@ -2300,6 +2301,10 @@ def main() -> int:
     # #71: count structural-heading tier-1 anchors demoted to tier-2 this run
     # (metadata-only telemetry — a count, never note content).
     structural_demotions: int = 0
+    # spec 040 ADR-6: proposals for a MOC that already exists, turned into
+    # unticked candidates (metadata-only telemetry — a count).
+    eligible_mocs = load_eligible_mocs(args.shared_ctx, moc_suffix)
+    duplicate_conversions: int = 0
 
     # spec 034 T2.3: items whose analyst result cannot be read. The loop used to
     # `continue` in silence, so a `done` item simply vanished from the run with
@@ -2449,6 +2454,12 @@ def main() -> int:
                     # instead of the full atomic-note proposal.
                     rendered = render_suppressed_atomic(action, stem, source_link)
                 else:
+                    # spec 040 ADR-6: a proposed MOC that already exists becomes
+                    # an unticked candidate BEFORE render, persist and cluster
+                    # collection, so all three see the same action.
+                    duplicate_conversions += convert_duplicate_proposal(
+                        action, eligible_mocs, moc_suffix
+                    )
                     # #71 gate backstop: demote structural-heading tier-1 anchors
                     # in place BEFORE render + persist (both read candidate_mocs).
                     structural_demotions += demote_structural_anchors(action, stem)
@@ -2825,6 +2836,7 @@ def main() -> int:
         f"target_missing:{guard_tally['target_missing']}/"
         f"marker_missing:{guard_tally['marker_missing']}/"
         f"target_unresolved:{guard_tally['target_unresolved']} "
+        f"duplicate_proposals_converted={duplicate_conversions} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )

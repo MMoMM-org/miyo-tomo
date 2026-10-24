@@ -568,16 +568,35 @@ name against the thematic delivered names, and if one covers it, nominates
 that name instead. It sits before row 3 because row 3 ("nothing thematic
 scored") is exactly when a duplicate gets proposed. Classification
 (Dewey-numbered) names never satisfy it: a theme is not a duplicate of a
-classification bucket, and the Classification Guard keeps those unticked.
+classification bucket, and the Classification Guard never lists those (#200).
 The reducer's mutator (`lib/duplicate_proposals.py`) is the deterministic
 backstop for exact-name misses; this instruction is the primary guard because
 only it can catch a near-duplicate by meaning.
 
-### Why classification MOCs may be nominated
+### Why classification MOCs are never nominated (#200)
 
-Owner decision, 2026-10-24. They become unticked candidates, as before: the
-Classification Guard still forbids pre-checking them and still triggers
-`needs_new_moc` when they are all that matched.
+Owner decision, 2026-10-24, after the spec 040 after-runs. It reverses the
+earlier decision of the same day, which let classification MOCs stay unticked
+candidates "as before".
+
+**Why.** Dewey-layer MOCs are MOC-only containers (`lyt-patterns`, "MOC-Only
+Layers"). They link to thematic MOCs, never to a note. Offering one as a note's
+candidate, even unticked, offers the link the guard forbids. It also adds
+noise: in the two after-runs, a classification MOC was the secondary candidate
+that came and went between runs most often. Removing classification MOCs raised
+after↔after agreement from 62%/50% to 70%/58%. A higher keep threshold did not
+help: agreement stayed at 50–67% at every threshold from 0.15 to 0.35.
+
+**What stays the same.** The item's category still comes from Step 5
+(`classification_keywords`), and a proposed MOC still takes that category as
+its parent. When only a classification MOC fits a thread, row 3 proposes a new
+thematic MOC. That is the Classification Guard's own fallback, now without the
+classification MOC listed beside the proposal.
+
+**Backstop.** The analyst tells a classification name by its Dewey pattern,
+because names carry no flag. The reducer drops any candidate the context marks
+`is_classification: true` (`lib/classification_candidates.py`), so a slip does
+not reach the owner.
 
 ### Why the placeholder trigger reads `placeholder_targets`
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.61.0
+# version: 1.62.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -67,6 +67,10 @@ from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402 — spec 039
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
 from lib.duplicate_proposals import convert_duplicate_proposal, load_eligible_mocs  # noqa: E402 — spec 040 ADR-6
+from lib.classification_candidates import (  # noqa: E402 — #200
+    drop_classification_candidates,
+    load_classification_paths,
+)
 from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash; spec 037 T1.1
     DEFAULT_ASSET_FOLDER,
     _asset_dest_join,
@@ -2305,6 +2309,9 @@ def main() -> int:
     # unticked candidates (metadata-only telemetry — a count).
     eligible_mocs = load_eligible_mocs(args.shared_ctx, moc_suffix)
     duplicate_conversions: int = 0
+    # #200: classification MOCs are MOC-only, never a note candidate.
+    classification_paths = load_classification_paths(args.shared_ctx)
+    classification_drops: int = 0
 
     # spec 034 T2.3: items whose analyst result cannot be read. The loop used to
     # `continue` in silence, so a `done` item simply vanished from the run with
@@ -2454,6 +2461,11 @@ def main() -> int:
                     # instead of the full atomic-note proposal.
                     rendered = render_suppressed_atomic(action, stem, source_link)
                 else:
+                    # #200: drop classification candidates first, so the
+                    # mutator, the demotion, render and persist see one list.
+                    classification_drops += drop_classification_candidates(
+                        action, classification_paths
+                    )
                     # spec 040 ADR-6: a proposed MOC that already exists becomes
                     # an unticked candidate BEFORE render, persist and cluster
                     # collection, so all three see the same action.
@@ -2836,6 +2848,7 @@ def main() -> int:
         f"target_missing:{guard_tally['target_missing']}/"
         f"marker_missing:{guard_tally['marker_missing']}/"
         f"target_unresolved:{guard_tally['target_unresolved']} "
+        f"classification_candidates_dropped={classification_drops} "
         f"duplicate_proposals_converted={duplicate_conversions} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,

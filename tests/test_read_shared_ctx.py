@@ -271,10 +271,6 @@ class TestFailureModes:
 class TestAgainstTheRealContract:
     """Every dotted path `inbox-analyst.md` names must resolve on a real context."""
 
-    # The analyst prose still names these; spec 040 Phase 4 (T4.2) rewrites
-    # Step 4 to read --moc-names / --field placeholder_targets. When it does,
-    # this test fails until the set is emptied — that is the tripwire.
-    PENDING_PHASE_4 = ["placeholder_links"]
     # Named by the prose, never emitted by the builder, forbidden by the schema:
     # the "no log at all" branch cannot fire. Pre-existing; see docs/XDD/backlog.md
     # "analyst branches on `daily_log.enabled`". The hand-written fixture hid it.
@@ -301,7 +297,7 @@ class TestAgainstTheRealContract:
                 _mod.resolve(data, dotted)
             except SystemExit:
                 unresolved.append(dotted)
-        assert unresolved == sorted(self.PENDING_PHASE_4 + self.KNOWN_DEAD_REFERENCES), (
+        assert unresolved == self.KNOWN_DEAD_REFERENCES, (
             f"the contract names fields a built context does not carry: {unresolved}. "
             f"Either shared-ctx-builder stopped emitting them or the prose is stale."
         )

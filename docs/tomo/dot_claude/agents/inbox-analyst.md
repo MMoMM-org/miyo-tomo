@@ -585,3 +585,21 @@ The context now carries the unique sorted target names instead of
 `{target, referenced_by}` pairs (spec 040 ADR-7): the analyst only ever
 compared the target. The key is always present (possibly `[]`), so the old
 "absent or empty → skip silently" branch became "empty → skip".
+
+### Why Step 4 names `lyt-patterns` as overridden
+
+The analyst loads the `lyt-patterns` skill, whose MOC Matching Algorithm is
+lexical ("`overlap_count == 0` → skip this MOC") and whose placeholder rule
+points at the discovery cache's `placeholder_links`. Both contradict Step 4
+since spec 040: matching is by meaning, and the analyst reads
+`placeholder_targets` from the context, not the cache. The skill cannot simply
+be rewritten: `moc-architect` and `vault-explorer` load it too and do read the
+cache. So Step 4 opens with one line saying its rules replace those two
+sections for this agent — two conflicting instructions with no stated
+precedence leave the choice to the model, which is how runtime branches drift.
+
+The old paragraph "omit `anchor` when `shared_ctx.mocs[].headings` and
+`editable_callouts` are both absent (old shared-ctx artifact)" was removed
+rather than rewritten: an old artifact can no longer reach the analyst (the
+reader refuses a context without `name`), and a fetched entry without
+inventory is already handled by TIER-4.

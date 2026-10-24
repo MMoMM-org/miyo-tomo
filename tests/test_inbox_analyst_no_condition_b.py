@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_inbox_analyst_no_condition_b.py — Contract tests for T3.2 (spec 021, F-34).
 
 Verifies that Condition B (Accumulation cluster trigger) has been removed from
@@ -120,12 +120,17 @@ def test_condition_c_placeholder_trigger_present():
     )
 
 
-def test_condition_c_placeholder_links_reference_present():
-    """Condition C must still reference placeholder_links."""
+def test_condition_c_placeholder_targets_reference_present():
+    """Condition C must reference placeholder_targets.
+
+    spec 040 ADR-7: the context carries `placeholder_targets` (unique target
+    names) instead of `placeholder_links` ({target, referenced_by} pairs).
+    """
     step4 = _step4_text()
-    assert "placeholder_links" in step4, (
-        "Step 4 missing 'placeholder_links' reference — Condition C text must remain"
+    assert "placeholder_targets" in step4, (
+        "Step 4 missing 'placeholder_targets' reference — Condition C text must remain"
     )
+    assert "placeholder_links" not in step4
 
 
 def test_condition_c_verbatim_casing_instruction_present():
@@ -149,12 +154,14 @@ def test_condition_c_placeholder_wins_precedence_present():
     )
 
 
-def test_condition_c_silent_skip_when_absent_present():
-    """Condition C must still instruct skipping silently when placeholder_links is absent/empty."""
+def test_condition_c_silent_skip_when_empty_present():
+    """Condition C must still skip silently when there are no placeholder targets.
+
+    spec 040 ADR-7: `placeholder_targets` is always written (possibly `[]`), so
+    "absent or empty" became "empty" — the absent case cannot occur.
+    """
     step4 = _step4_text()
-    assert "absent or empty" in step4, (
-        "Step 4 missing 'absent or empty' guard for placeholder_links — Condition C silent-skip must remain"
-    )
+    assert "If `placeholder_targets` is empty, skip this trigger silently" in step4
 
 
 # ---------------------------------------------------------------------------

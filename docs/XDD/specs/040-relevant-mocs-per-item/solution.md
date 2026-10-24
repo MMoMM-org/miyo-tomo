@@ -1,7 +1,7 @@
 ---
 title: "Every item sees every MOC, by name"
-status: draft
-version: "1.0"
+status: complete
+version: "1.1"
 ---
 
 # Solution Design Document
@@ -14,7 +14,10 @@ version: "1.0"
 > (`--mocs-from <file>`). Because nothing reads the detail whole, the budget
 > passes that cut headings and callouts are removed and replaced by warnings on
 > the size of each single read. A duplicate-name check runs twice: once as an
-> analyst imperative, once as a deterministic mutator in the reducer.
+> analyst imperative, once as a deterministic mutator called by the reducer.
+>
+> **Line references** are as of commit `4ec22186`. For files this spec rewrites,
+> the named symbol (function, step heading) is authoritative; the line is a hint.
 
 ## Validation Checklist
 
@@ -58,7 +61,7 @@ version: "1.0"
 | Field | Value |
 |-------|-------|
 | pattern | One per-run context file, read through narrow selector modes; deterministic backstop in the reducer |
-| keyComponents | shared-ctx-builder, read-shared-ctx, inbox-analyst (Step 4 / Step 7.5b), suggestions-reducer duplicate mutator, suggest-handling + force-atomic-handling skills |
+| keyComponents | shared-ctx-builder, read-shared-ctx, inbox-analyst (Step 4 / Step 7.5b), lib/duplicate_proposals (called by suggestions-reducer), suggest-handling + force-atomic-handling skills |
 | externalIntegrations | Kado (unchanged: one `listDir` per MOC parent folder for reconcile) |
 
 ### SectionStatus
@@ -150,7 +153,7 @@ version: "1.0"
 ```yaml
 - file: tomo/scripts/shared-ctx-builder.py
   relevance: HIGH
-  why: "build_mocs :223-261, build_placeholder_links :302-334, enforce_budget :694-765, main :780-910"
+  why: "build_mocs :223-261, build_placeholder_links :302-334, enforce_budget :694-765, build_arg_parser :770, main :792-910, module docstring :15-18"
 - file: tomo/scripts/read-shared-ctx.py
   relevance: HIGH
   why: "CLI :111-141, resolve :52-71; gains --moc-names, --mocs-from, --run-id"
@@ -165,13 +168,21 @@ version: "1.0"
   why: "strip_moc_marker :96-132, normalise_topic :134-155 (the cluster key)"
 - file: tomo/scripts/lib/moc_tags.py
   relevance: MEDIUM
-  why: "EXCLUDE_MOC_TAG; comment :20-21 must change"
+  why: "EXCLUDE_MOC_TAG; comment :20-21 must change; gains is_excluded_moc()"
+
+- file: tomo/scripts/lib/item_key.py, tomo/scripts/item-result-filename.py
+  relevance: HIGH
+  why: "to_filename names every per-item file; the names file reuses it"
+
+- file: tomo/scripts/suggestions-render.py
+  relevance: MEDIUM
+  why: "Builds the C3 wire candidate (_wire_selected :222-226, :300-308) from what the reducer persists"
 - file: tomo/schemas/shared-ctx.schema.json
   relevance: HIGH
   why: "additionalProperties:false at root (:14) and per MOC (:31)"
 - file: tomo/dot_claude/skills/suggest-handling/SKILL.md, force-atomic-handling/SKILL.md
   relevance: HIGH
-  why: "Setup (:36-59 / :36-50), dispatch prompt (:99-121 / :72-96), Step 7 report (:172-175)"
+  why: "Setup (:35-59 / :31-54), dispatch prompt (:99-121 / :76-99), Step 7 report (:165-169 in suggest-handling)"
 - file: scripts/reset-tomo-tmp.sh
   relevance: LOW
   why: "--pass1 already removes shared-ctx.json (:155-167); unchanged"
@@ -193,7 +204,7 @@ version: "1.0"
   - `daily_notes`, `classification_keywords`, `tag_prefixes`, `asset_folder` keys and the Step-1 batch.
   - The discovery cache shape (including `placeholder_links` with `referenced_by` in the cache).
   - `/moc-propose` behaviour of `MiYo/Tomo/exclude/moc`.
-- **Can Modify:** `mocs[]` entry (add `name`), the placeholder key in shared-ctx, `enforce_budget`, `read-shared-ctx.py` CLI, analyst Step 4 / Step 7.5 prose, both skills' setup and Step 7 report, reducer action loop.
+- **Can Modify:** `mocs[]` entry (add `name`, sort order), the placeholder key in shared-ctx, `enforce_budget`, `read-shared-ctx.py` CLI, analyst Step 4 / Step 7.5 / Step 10.3 order prose, both skills' setup and Step 7 report, one call in the reducer's action loop, `lib/moc_tags.py`, spec 021 ADR-13 (a superseded note only).
 - **Must Not Touch:** discovery-cache producers (`moc-tree-builder.py`, `cache-builder`), Pass 2 scripts, Hashi-facing schemas (`suggestions-wire`, `hashi-suggestions-wire`, instructions), `tomo-privat`.
 
 ### External Interfaces
@@ -232,9 +243,9 @@ data:
   - name: "tomo-tmp/shared-ctx.json"
     type: internal JSON, rebuilt per run
     changes: "mocs[].name added; placeholder_targets replaces placeholder_links"
-  - name: "tomo-tmp/items/<item_key>.moc-names.txt"
+  - name: "tomo-tmp/items/<result stem>.moc-names.txt"
     type: internal text, written by the analyst
-    changes: "new; one delivered name per line"
+    changes: "new; <result stem> = item-result-filename.py output without .result.json; one delivered name per line, at most 20"
 ```
 
 ### Cross-Component Boundaries
@@ -271,7 +282,7 @@ graph LR
     C --> R[read-shared-ctx<br/>--moc-names / --mocs-from / --run-id]
     R --> A[inbox-analyst<br/>nominate, fetch, score, name-check]
     A --> I[(items/*.result.json)]
-    I --> D[suggestions-reducer<br/>duplicate mutator]
+    I --> D[suggestions-reducer<br/>calls lib/duplicate_proposals]
     C --> D
     S[skills<br/>delete-before-build, relay counts] --> B
     S --> A
@@ -283,7 +294,7 @@ graph LR
 | **shared-ctx-builder** | Decide eligibility, compute each MOC's `name`, write full detail and the placeholder targets, warn on oversized reads, report sizes | F1-AC2/3/4/7, F2-AC2, F5-AC1/2, S1-AC1, C1 |
 | **read-shared-ctx** | Deliver the name list; deliver detail for a named subset; refuse a context from another run | F1-AC1/5/6, F6-AC2 |
 | **inbox-analyst (prose)** | Nominate by meaning, fetch detail once per item, score, place, check proposed names | F2-AC1/3/4/5, F3-AC1/2/3, S1-AC2 |
-| **suggestions-reducer (duplicate mutator)** | Convert proposals whose cluster key equals an eligible thematic title | F4-AC1/2/3/4, F5-AC3 |
+| **lib/duplicate_proposals (called by suggestions-reducer)** | Convert proposals whose cluster key equals an eligible thematic title | F4-AC1/2/3/4, F5-AC3 |
 | **skills (suggest-handling, force-atomic-handling)** | Delete the old context before build; pass `run_id`; relay the conversion count | F6-AC1/3, F4-AC4 (relay) |
 | **docs** | WHY pages, PRIVACY.md, reference docs | S2-AC1/2 |
 
@@ -296,9 +307,10 @@ tomo/
 ├── scripts/
 │   ├── shared-ctx-builder.py          MODIFY  eligibility, name, placeholder_targets, guards, summary
 │   ├── read-shared-ctx.py             MODIFY  --moc-names, --mocs-from, --run-id
-│   ├── suggestions-reducer.py         MODIFY  convert_duplicate_proposals mutator + loader + count
+│   ├── suggestions-reducer.py         MODIFY  one call per action + count in the summary line
 │   └── lib/
-│       ├── moc_tags.py                MODIFY  comment: B-moc superseded for inbox candidates
+│       ├── duplicate_proposals.py     NEW     load_eligible_mocs, convert_duplicate_proposal
+│       ├── moc_tags.py                MODIFY  is_excluded_moc(); comment: B-moc superseded for inbox
 │       └── moc_folders.py             NEW     normalise concepts.map_note → folder prefixes
 ├── schemas/shared-ctx.schema.json     MODIFY  mocs[].name, placeholder_targets
 └── dot_claude/
@@ -307,6 +319,8 @@ tomo/
         ├── suggest-handling/SKILL.md      MODIFY  delete-before-build, run_id note, Step 7 relay
         └── force-atomic-handling/SKILL.md MODIFY  same
 docs/tomo/                             MODIFY  mirrors of every runtime file above
+docs/tomo/scripts/lib/                 NEW     moc_folders.md, duplicate_proposals.md
+docs/XDD/specs/021-moc-propose-consolidation/solution.md  MODIFY  ADR-13 B-moc: superseded-for-inbox note
 PRIVACY.md                             MODIFY  lines 26-32
 docs/XDD/reference/tier-2/workflows/inbox-processing.md  MODIFY
 tests/                                 NEW/MODIFY  see Acceptance Criteria
@@ -319,7 +333,8 @@ tests/                                 NEW/MODIFY  see Acceptance Criteria
 `tomo-tmp/shared-ctx.json` (internal, rebuilt every run):
 
 ```yaml
-mocs[]:                       # eligible MOCs only (exclude/moc removed); never trimmed
+mocs[]:                       # eligible MOCs only (exclude/moc removed); never trimmed;
+                              # sorted by path (deterministic for baselines and caching)
   name: string                # NEW, required: the delivered name (title, or path on collision)
   path: string                # unchanged
   title: string               # unchanged
@@ -328,11 +343,12 @@ mocs[]:                       # eligible MOCs only (exclude/moc removed); never 
   headings: [{text, level}]   # unchanged, <= 8, thematic only
   editable_callouts: [...]    # unchanged, <= 4, thematic only
   has_footer: bool            # unchanged
-placeholder_targets: [string] # NEW, replaces placeholder_links; unique, sorted
+placeholder_targets: [string] # NEW, required, always written ([] when none); unique, sorted;
+                              # replaces placeholder_links
 placeholder_links:            # REMOVED from shared-ctx (stays in the discovery cache)
 ```
 
-`tomo-tmp/items/<item_key>.moc-names.txt` (new, written by the analyst): UTF-8, one delivered name per line, no quoting.
+`tomo-tmp/items/<result stem>.moc-names.txt` (new, written by the analyst): `<result stem>` is the output of `item-result-filename.py --item-key <item_key>` without `.result.json` (`lib/item_key.to_filename`; the item key itself is a vault path with `/` and spaces and cannot name a file). UTF-8, one delivered name per line, at most 20 lines, in thread order and within a thread in nomination order (most relevant first), no quoting.
 
 #### Internal API Changes
 
@@ -345,24 +361,44 @@ placeholder_links:            # REMOVED from shared-ctx (stays in the discovery 
     stdin of names: <file>, one per line; blank lines ignored; duplicates collapsed.
     match: exact on mocs[].name; else a unique match after NFC + casefold +
            whitespace-collapse on name; else unresolved.
-    cap: first 20 distinct names resolved; the rest reported as omitted.
+    cap: first 20 distinct names resolved; the rest reported as omitted (a safety net:
+         the analyst writes at most 20 lines).
     stdout: {"mocs":[<full mocs[] entry>...], "unresolved":[name...], "omitted":[name...]}
     exit 0 even when unresolved/omitted are non-empty.
 --run-id <id>   (combinable with every mode)
     if ctx.run_id != <id>: stderr "shared-ctx belongs to run <x>, expected <id>", exit 1.
-exit 1 also for: missing file, invalid JSON, unreadable <file>.
+exit 1 also for: missing or invalid context, missing or unreadable <file>; every exit 1
+    prints one stderr line naming the cause. Unknown flags stay argparse's exit 2.
 ```
 
 **`shared-ctx-builder.py`**
 
 ```
-build_mocs(cache, moc_folders) -> list[dict]       # filters EXCLUDE_MOC_TAG, sets name
+build_mocs(cache, moc_folders=()) -> list[dict]    # filters is_excluded_moc, sorts by path, sets name
 assign_names(mocs, moc_folders) -> None            # collision rule, see ADR-1
-build_placeholder_targets(cache, moc_re) -> list[str]
+build_placeholder_targets(cache, moc_re) -> list[str]   # always a list, possibly empty
 size_guards(ctx, max_bytes) -> list[str]           # WARN lines; replaces enforce_budget
 --max-bytes  default 32768: per-read warning threshold (no longer a file budget)
-stderr summary line adds: eligible=<n> excluded=<n> collisions=<n>
-                          names_bytes=<n> detail_bytes=<n> placeholder_targets=<n>
+stderr summary line (full, in order):
+    mocs_total mocs_after_reconcile mocs_reconcile_dropped
+    eligible=<len(mocs)>            # replaces mocs_included
+    excluded=<MOCs dropped by the exclude tag>
+    collisions=<distinct titles shared by 2+ eligible MOCs>
+    names_bytes=<len of compact JSON of --moc-names output>
+    detail_bytes=<len of compact JSON of mocs[]>
+    tag_prefixes_included classification_categories
+    placeholder_targets=<n>         # replaces placeholder_links
+    daily_notes_enabled asset_folder bytes run_id
+    (topics_dropped is removed: nothing is shed)
+```
+
+**`lib/moc_tags.py`**
+
+```
+is_excluded_moc(tags) -> bool
+    True when any tag equals EXCLUDE_MOC_TAG after stripping one leading '#'
+    and casefolding (Obsidian tags are case-insensitive). orphan_link's exact
+    membership check is left unchanged (out of scope; noted as debt).
 ```
 
 **`lib/moc_folders.py`** (new)
@@ -374,7 +410,7 @@ moc_folder_prefixes(vault_cfg) -> tuple[str, ...]
 in_moc_folders(path, prefixes) -> bool             # startswith on any prefix
 ```
 
-**`suggestions-reducer.py`**
+**`lib/duplicate_proposals.py`** (new; the reducer imports it and adds one call)
 
 ```
 load_eligible_mocs(shared_ctx_path) -> dict[str, list[str]]
@@ -383,7 +419,7 @@ load_eligible_mocs(shared_ctx_path) -> dict[str, list[str]]
 convert_duplicate_proposal(action, eligible, suffix) -> bool
     called in the action loop next to demote_structural_anchors, before render/persist/
     cluster collection; skipped for suppressed atomics.
-stderr summary adds: duplicate_proposals_converted=<n>
+reducer stderr summary adds: duplicate_proposals_converted=<n>
 ```
 
 #### Application Data Models
@@ -458,9 +494,9 @@ def test_mocs_from_reports_unresolved_without_failing(tmp_ctx, tmp_path):
 1. Skill setup: `rm -f tomo-tmp/shared-ctx.json`, then build (both skills). On build failure: abort (existing prose), and no stale file exists to read.
 2. Dispatch carries `run_id`, `items_dir`, `shared_ctx_path` (unchanged).
 3. Analyst Step 1: `read-shared-ctx.py --run-id {run_id} --fields daily_notes,classification_keywords,tag_prefixes,asset_folder` (unchanged keys).
-4. Analyst Step 4: `--run-id {run_id} --moc-names` and `--run-id {run_id} --field placeholder_targets`. Nominate up to 6 thematic names by meaning for the whole item (or per thread later).
+4. Analyst Step 4: `--run-id {run_id} --moc-names` and `--run-id {run_id} --field placeholder_targets`. Nominate up to 6 names by meaning (thematic or classification) for the whole item (or per thread later).
 5. Step 7.5 segments threads (unchanged); each thread nominates up to 6 names.
-6. **Step 7.5b (new):** Write the union of nominated names to `{items_dir}/{item_key}.moc-names.txt`; run `--run-id {run_id} --mocs-from <file>`. Skip if the union is empty.
+6. **Step 7.5b (new):** Run `item-result-filename.py --item-key <item_key>` (moved here from Step 10.3; Step 10.3 reuses the captured value). Write the union of nominated names — at most 20, thread order, then nomination order — to `{items_dir}/<result stem>.moc-names.txt`; run `--run-id {run_id} --mocs-from <file>`. Skip the read if nothing was nominated.
 7. Score each fetched MOC by meaning (0-1, topics as evidence); keep top 3 with score ≥ 0.15 per thread; pre_check when score ≥ 0.5 and not classification; Classification Guard; placeholder trigger; name-check before `needs_new_moc`; anchor tiers from the fetched detail.
 8. Result written; validate-result unchanged.
 9. Reducer: `convert_duplicate_proposal` per action before render; summary line carries the count; skill Step 7 relays it.
@@ -480,12 +516,14 @@ Row 2 is checked against thematic names only (Dewey-numbered names never satisfy
 
 | Error | Where | Handling |
 |---|---|---|
-| Context from another run | reader | exit 1; analyst follows its existing "required read failed" path (abort item with issue) |
-| Context missing (build failed) | reader | exit 1, same path; the skill already aborted the run |
+| Context from another run | reader → analyst | reader exit 1; the analyst treats any non-zero reader exit as a failure of the item: Step 11 failure block (`--status failed`) with an issue naming the reader's stderr line |
+| Context missing (build failed) | reader → analyst | exit 1, same handling; the skill already aborted the run |
 | Nominated name unresolved | reader | listed in `unresolved`, exit 0; analyst drops it and records an issue line |
-| More than 20 names | reader | first 20 resolved, rest in `omitted`; analyst keeps the top-ranked 20 nominations |
+| More than 20 names | analyst / reader | the analyst writes at most 20 lines (thread order, then nomination order); if a file still has more, the reader resolves the first 20 and lists the rest in `omitted` |
 | Chosen MOC has no headings/callouts | analyst | anchor tiers fall back as today |
-| Old-shape context (no `name`) | reader | `--moc-names` exit 1 "context predates spec 040"; cannot occur within a run because the skill rebuilds |
+| Old-shape context (no `name`) | reader → analyst | `--moc-names` exit 1 "context predates spec 040"; item fails as above. Cannot occur within a run because the skill rebuilds (PRD edge case, amended) |
+| No placeholder targets in the vault | builder | `placeholder_targets: []` is always written, so the Step-4 read never fails for this reason |
+| Pass 2 after a failed Pass-1 build | instruction-render | no context file: tracker syntax falls back to defaults, as today with no file (fail-open, unchanged) |
 | Reducer cannot read the context | reducer | fail-open: no conversions, count 0 |
 | A single read exceeds `--max-bytes` | builder | WARN line on stderr, relayed by the skill; build continues |
 | Missing `tags` on a cache entry | builder | treated as not excluded |
@@ -498,7 +536,7 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 ### Cost
 
-- Per item: name list (~1.2 KB at 65 MOCs, ~9.5 KB at 512 with 15.5-char titles) + placeholder targets + detail for ≤ 20 MOCs (typically 3-6 × ~512 B).
+- Per item: name list (~1.2 KB at 65 MOCs, ~9.5 KB at 512 with 15.5-char titles) + placeholder targets + detail for ≤ 20 MOCs (typically 3–6 full entries × ~514 B).
 - One extra Bash call per item (Step 7.5b); zero new Kado calls; zero new LLM calls.
 
 ### Fail direction
@@ -509,14 +547,14 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 ### Security and privacy
 
-- Names of all eligible MOCs reach every item's analysis; headings and callouts reach it only for nominated MOCs. `PRIVACY.md` states this.
+- Names of all eligible MOCs reach every item's analysis; headings and callouts reach it only for nominated MOCs. `PRIVACY.md` states this, and states that `MiYo/Tomo/exclude/moc` is not an access control: other workflows (`/moc-propose`, garden audit, vault exploration) still read such MOCs; sensitive MOCs belong behind Kado's deny rules.
 - MOC titles never enter a shell command line (written to a file, read by the script).
 
 ## Architecture Decisions
 
 ### ADR-1 — One context file; the builder owns each MOC's `name`
 
-- **Choice:** keep `shared-ctx.json` as the only per-run context; add `mocs[].name` computed once by the builder with the collision rule (title, or path when colliding outside the MOC folders; all paths when zero or 2+ colliding MOCs lie inside).
+- **Choice:** keep `shared-ctx.json` as the only per-run context; add `mocs[].name` computed once by the builder with the collision rule (title, or path when colliding outside the MOC folders; all paths when zero or 2+ colliding MOCs lie inside); sort `mocs[]` by path.
 - **Rationale:** bytes cost only when read; one file keeps one lifecycle (build, reset, schema). Computing `name` once makes resolution exact and keeps the collision rule in one place.
 - **Trade-offs:** the file grows with the vault (~512 B per MOC on disk); harmless because only scripts read it whole.
 - **User confirmed:** Yes (2026-10-24); index form confirmed 2026-10-23.
@@ -551,16 +589,16 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 ### ADR-6 — Reducer duplicate mutator on the cluster key
 
-- **Choice:** `convert_duplicate_proposal` in the action loop next to `demote_structural_anchors`; key = `normalise_topic(strip_moc_marker(·, suffix))` on both sides; only eligible thematic titles; on a hit clear the proposal and append every matching path as `{path, score:0.0, pre_check:false}` (no anchor, appended, deduplicated); skip suppressed atomics; count in the summary line.
-- **Rationale:** one mutation before render/persist/cluster collection keeps C3, C4 and clusters consistent (precedent #71); the cluster key converts a cluster all-or-nothing.
+- **Choice:** `convert_duplicate_proposal` in a new `lib/duplicate_proposals.py`, called from the reducer's action loop next to `demote_structural_anchors`; key = `normalise_topic(strip_moc_marker(·, suffix))` on both sides; only eligible thematic titles; on a hit clear the proposal and append every matching path as `{path, score:0.0, pre_check:false}` (no anchor, appended, deduplicated); skip suppressed atomics; count in the summary line.
+- **Rationale:** one mutation before render/persist/cluster collection keeps C3, C4 and clusters consistent (precedent #71); the cluster key converts a cluster all-or-nothing. A lib module keeps the 2835-line reducer from growing (Constitution L2).
 - **Trade-offs:** plural/punctuation folding goes beyond "case, whitespace, suffix" (PRD amended, ADR-10). English plural fold only.
 - **User confirmed:** Yes (normaliser, collision handling 2026-10-24).
 
 ### ADR-7 — `placeholder_targets` replaces `placeholder_links` in the context
 
-- **Choice:** the builder emits sorted unique target strings; the discovery cache keeps `{target, referenced_by}`.
+- **Choice:** the builder always emits `placeholder_targets` (required; `[]` when none) as sorted unique strings; the discovery cache keeps `{target, referenced_by}`.
 - **Rationale:** no context reader uses `referenced_by`; a renamed key prevents prose that still expects objects from silently mis-reading strings.
-- **Trade-offs:** `tests/test-shared-ctx-placeholders.py` and the hand-written fixture in `tests/test_read_shared_ctx.py` change.
+- **Trade-offs:** `tests/test-shared-ctx-placeholders.py`, `tests/test_shared_ctx_moc_detection.py`, the hand-written fixture in `tests/test_read_shared_ctx.py`, and the analyst's "absent or empty" placeholder wording (pinned by `tests/test_inbox_analyst_no_condition_b.py`) change deliberately.
 - **User confirmed:** Yes (2026-10-24).
 
 ### ADR-8 — Freshness: delete before build + `--run-id` check on read
@@ -572,23 +610,23 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 ### ADR-9 — Schema edits without a version bump; golden baseline regenerated deliberately
 
-- **Choice:** `shared-ctx.schema.json` adds `mocs[].name` (required) and `placeholder_targets`, removes `placeholder_links`; `schema_version` stays `"1"`. `tests/fixtures/021-ac-baseline/` is regenerated with `generate.py` and the reason recorded in its README.
+- **Choice:** `shared-ctx.schema.json` adds `mocs[].name` (required) and root `placeholder_targets` (required), removes `placeholder_links`; `schema_version` stays `"1"`. Schemas carry no `# version:` header; `update-tomo.sh` ships them by byte comparison. `tests/fixtures/021-ac-baseline/` is regenerated with `generate.py` and the reason recorded in its README.
 - **Rationale:** internal schema (CON-5); the file is rebuilt every run, so no reader meets an old shape within a run.
 - **Trade-offs:** the baseline loses its byte-identity history; the README note preserves why.
 - **User confirmed:** Yes (2026-10-24).
 
 ### ADR-10 — PRD amendments
 
-- **Choice:** F2-AC5 and the "renamed MOC" edge case become "an unresolved name is dropped and logged"; F4-AC1's normalisation names the cluster key.
+- **Choice:** F2-AC5 and the "renamed MOC" edge case become "an unresolved name is dropped and logged"; F4-AC1's normalisation names the cluster key. Validation round (PRD v1.2): "chosen" → "nominated" for detail reads; F4-AC2 offers every colliding path; the old-shape context fails the item; F1-AC6 holds for typical title lengths; Rule 1 includes the reconcile; classification MOCs may be nominated (owner, 2026-10-24).
 - **Rationale:** a name without a path cannot become a candidate (`path` is required); the normaliser follows ADR-6.
 - **User confirmed:** Yes (2026-10-24).
 
 ## Quality Requirements
 
 - **Performance:** at 512 eligible MOCs (synthetic, duplicated as in #173) the `--moc-names` output ≤ 12 KB with test-instance title lengths; every analyst read ≤ 32 KB; `--mocs-from` with 20 names ≤ 30 KB.
-- **Fidelity:** at 64 and 512 MOCs every eligible thematic MOC in the context carries the same headings/callouts as `build_mocs` produces before budget (no shedding).
+- **Fidelity:** at 65 and 512 MOCs every eligible thematic MOC in the context carries the same headings/callouts as `build_mocs` produces before budget (no shedding).
 - **Cost:** live before/after run on the same inbox: per-item cache-write tokens ≥ 10% lower; $/item not above 0.603.
-- **Quality:** ≥ 90% of before-run candidates appear after; zero proposed MOCs whose cluster key equals an eligible thematic title; zero analyst MOC reads delivered as preview.
+- **Quality:** candidate agreement ≥ min(90%, before-run-1 vs before-run-2 agreement), computed on per-item unions of candidate paths; zero proposed MOCs whose cluster key equals an eligible thematic title; zero analyst MOC reads delivered as preview (transcript scanner).
 - **Reliability:** wrong-run context never read (exit 1); unresolved names never abort an item.
 
 ## Acceptance Criteria
@@ -599,14 +637,14 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 - [ ] IF titles collide and exactly one colliding MOC lies inside the MOC folders, THEN that one SHALL keep the title and the others SHALL carry their path. (F1-AC3)
 - [ ] IF titles collide and zero or 2+ colliding MOCs lie inside, THEN every colliding MOC SHALL carry its path. (F1-AC4)
 - [ ] WHEN `--mocs-from` receives a delivered name, THE SYSTEM SHALL return exactly one entry for it. (F1-AC5)
-- [ ] WHILE the vault has 512 eligible MOCs, `--moc-names` output SHALL stay ≤ 12 KB (test-instance title lengths). (F1-AC6)
+- [ ] WHILE the vault has 512 eligible MOCs with test-instance title lengths, `--moc-names` output SHALL stay ≤ 12 KB, and longer titles SHALL raise a size warning at build. (F1-AC6)
 - [ ] THE SYSTEM SHALL include classification MOCs in the names with `is_classification` in their detail. (F1-AC7)
 
 **F2 — detail**
 - [ ] WHEN the analyst has nominations after Step 7.5, THE SYSTEM SHALL deliver detail for the union in one call at today's caps. (F2-AC1)
 - [ ] THE SYSTEM SHALL NOT remove headings or editable callouts from any MOC because of vault size, up to 512 MOCs. (F2-AC2)
 - [ ] WHEN a fetched MOC has no headings or callouts, THE analyst SHALL apply today's anchor fallback. (F2-AC3)
-- [ ] IF the union of nominations is empty, THEN THE analyst SHALL NOT call `--mocs-from`. (F2-AC4)
+- [ ] IF the analyst nominated no MOC at all, THEN THE analyst SHALL NOT call `--mocs-from`. (F2-AC4)
 - [ ] IF a nominated name is unresolved, THEN THE SYSTEM SHALL report it in `unresolved`, exit 0, and the analyst SHALL drop it and log an issue. (F2-AC5, amended)
 
 **F3 — analyst name-check**
@@ -616,26 +654,26 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 **F4 — reducer mutator**
 - [ ] IF a proposal's cluster key equals an eligible thematic title's key, THEN THE reducer SHALL clear the proposal before render. (F4-AC1, amended)
-- [ ] WHEN it converts, THE reducer SHALL append every matching path as an unticked, unanchored candidate, once. (F4-AC2)
+- [ ] WHEN it converts, THE reducer SHALL append every matching path (all colliding paths when titles collide) as an unticked, unanchored candidate, once. (F4-AC2)
 - [ ] IF keys differ, THEN THE reducer SHALL leave the proposal unchanged. (F4-AC3)
 - [ ] THE reducer SHALL print `duplicate_proposals_converted=<n>` and both skills SHALL relay it in the Step 7 report. (F4-AC4)
 
 **F5 — exclude**
-- [ ] WHERE a MOC carries `MiYo/Tomo/exclude/moc` (frontmatter or inline), THE builder SHALL omit it from `mocs[]`. (F5-AC1)
-- [ ] THE SYSTEM SHALL leave `/moc-propose` exclude behaviour unchanged. (F5-AC2)
+- [ ] WHERE a MOC carries `MiYo/Tomo/exclude/moc` (frontmatter or inline, any case, with or without `#`), THE builder SHALL omit it from `mocs[]`; a MOC tagged only `MiYo/Tomo/exclude/note` SHALL stay eligible. (F5-AC1)
+- [ ] THE SYSTEM SHALL leave `/moc-propose` exclude behaviour unchanged; its cache-based link-candidate pool SHALL still contain the excluded MOC. (F5-AC2)
 - [ ] IF a proposal's key equals only an excluded MOC's title, THEN THE reducer SHALL leave the proposal unchanged. (F5-AC3)
 
 **F6 — parity and freshness**
 - [ ] THE force-atomic skill SHALL run the same delete-before-build, build and dispatch inputs as suggest-handling. (F6-AC1)
-- [ ] IF `ctx.run_id` differs from `--run-id`, THEN THE reader SHALL exit 1 without output. (F6-AC2)
+- [ ] IF `ctx.run_id` differs from `--run-id`, THEN THE reader SHALL exit 1 with the stderr line "shared-ctx belongs to run <x>, expected <id>" and no stdout, AND the analyst SHALL fail the item via Step 11. (F6-AC2)
 - [ ] WHEN `reset-tomo-tmp.sh --pass1` runs, THE SYSTEM SHALL leave no shared-ctx.json or `*.moc-names.txt`. (F6-AC3)
 
 **S1, S2, C1**
-- [ ] THE builder SHALL emit `placeholder_targets` as sorted unique strings. (S1-AC1)
+- [ ] THE builder SHALL always emit `placeholder_targets` as sorted unique strings (`[]` when none). (S1-AC1)
 - [ ] WHEN a placeholder target matches, THE analyst SHALL propose it verbatim. (S1-AC2)
-- [ ] `PRIVACY.md` SHALL state the name/detail split. (S2-AC1)
+- [ ] `PRIVACY.md` SHALL state the name/detail split and that the exclude tag is not an access control. (S2-AC1)
 - [ ] The tier-2 inbox-processing reference SHALL describe names, detail, and the exclude tag's inbox meaning. (S2-AC2)
-- [ ] THE builder summary line SHALL report eligible, excluded, collisions, names_bytes, detail_bytes, placeholder_targets. (C1-AC1)
+- [ ] THE builder summary line SHALL carry exactly the fields listed under Interface Specifications, in that order. (C1-AC1)
 
 ## Risks and Technical Debt
 
@@ -646,16 +684,22 @@ No new runtime component. Delivery is `update-tomo.sh` (version-gated): every ed
 
 ### Technical Debt
 
-- The reducer docstring still says the cluster threshold defaults to 3 (`:12`); the code uses 1 (`:2118`). Fix while editing.
-- `tests/test_read_shared_ctx.py` fixture (`:33-66`) is hand-written and already diverges from the schema (`placeholder_links` as strings, no `is_classification`). Rebuild it from the builder.
+- The reducer docstring still says the cluster threshold defaults to 3 (`:12`); the code uses 1 (`--threshold`, `:2117`). Fix while editing.
+- `suggestions-reducer.py` (2835 lines) and `shared-ctx-builder.py` (~910 lines) exceed the Constitution L2 size guidance. This spec adds to neither beyond a call site and small helpers; splitting them is separate work.
+- `lib/orphan_link.py` compares `EXCLUDE_MOC_TAG` by exact membership, while the builder now compares case-insensitively and `#`-tolerant. Aligning orphan_link is out of scope.
+- `tests/test_read_shared_ctx.py` fixture (`:32-66`) is hand-written and already diverges from the schema (`placeholder_links` as strings, no `is_classification`, `tag_prefixes` as `{prefix, values}` instead of `{name, wildcard, known_values}`). Rebuild it from the builder.
 - `docs/XDD/reference/tier-2/workflows/inbox-processing.md:68-74` is stale ("~10KB/subagent").
 
 ### Implementation Gotchas
 
 - `TestAgainstTheRealContract` (`tests/test_read_shared_ctx.py:225-252`) resolves every `shared_ctx.<path>` named in the analyst prose against its fixture; new prose references need fixture entries.
-- `test_inbox_analyst_no_condition_b.py` requires the strings "Classification Guard", "is_classification", "needs_new_moc", "Placeholder link trigger", "placeholder_links", "verbatim", "casing" inside Step 4 — rename "placeholder_links" there deliberately and update the test with the reason.
+- `test_inbox_analyst_no_condition_b.py` requires the strings "Classification Guard", "is_classification", "needs_new_moc", "Placeholder link trigger", "placeholder_links", "verbatim", "casing", "takes precedence" and "absent or empty" inside Step 4, and holds a second copy of the golden-baseline guard (`:190-248`). Rename "placeholder_links" and retire "absent or empty" deliberately, with the reason in the test.
+- Callers of the one-argument `build_mocs(cache)` / `build_placeholder_links(cache)`: `tests/fixtures/021-ac-baseline/generate.py:102-103`, `tests/test_shared_ctx_no_accumulation.py:289-339`, `tests/test_inbox_analyst_no_condition_b.py:190-248`, `tests/test_shared_ctx_feature5.py` (:88, :200, :239, :287; its docstring calls `build_mocs` "a pure projector, not a filter" — update the wording), `tests/test_shared_ctx_moc_detection.py:61-80`. `moc_folders=()` as a default keeps the first group calling; the placeholder callers move to `build_placeholder_targets`.
+- `tests/test_shared_ctx_no_accumulation.py` pins `--max-bytes` 40960 (`test_max_bytes_default_is_40960`), "placeholder_links never trimmed", and builds contexts without `name` (`:195-252`).
+- `tests/integration/test_moc_propose_e2e.py:1462-1469` asserts `placeholder_links` with `referenced_by` passes through.
 - Step headings used by prose tests must keep their exact text; Step 7.5b must be a new heading that does not disturb "### Step 7.5" and "### Step 8".
 - `test_034_t2_2_analyst_contract.py:76` counts state-update bash blocks; the new bash blocks must not call state-update.
+- Several planned assertions are already true on `main` (identical builder commands in both skills, reset removing `items/`, unchanged proposals in negative cases, argparse's non-zero exit on unknown flags). They are guards, not RED proofs; each task names at least one assertion that fails on `main`, asserts exit code `1` exactly with the stderr text, and asserts the exact conversion count.
 - WHY content moves to `docs/tomo/` before it is removed from runtime files (the Step-1 STRICT rationale, the budget rationale).
 - Bump `# version:` on every runtime file touched.
 

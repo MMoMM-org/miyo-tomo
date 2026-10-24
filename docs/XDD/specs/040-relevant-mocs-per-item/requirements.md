@@ -1,7 +1,7 @@
 ---
 title: "Every item sees every MOC, by name"
-status: draft
-version: "1.1"
+status: complete
+version: "1.2"
 ---
 
 # Product Requirements Document
@@ -218,20 +218,20 @@ distinct behaviour; a criterion appears under exactly one feature.
   - [ ] Given two or more MOCs share a title and at least one of them lies inside the configured MOC folders, When the names are delivered, Then each colliding MOC outside those folders carries its path and the one inside does not.
   - [ ] Given two or more MOCs share a title and none — or more than one — of them lies inside the configured MOC folders, When the names are delivered, Then every colliding MOC carries its path.
   - [ ] Given any delivered name, When the analysis chooses it, Then it resolves to exactly one MOC.
-  - [ ] Given a vault with 512 eligible MOCs, When an item reads the MOC names, Then the read is delivered whole, not as a preview.
+  - [ ] Given a vault with 512 eligible MOCs whose titles are of typical length (the test instance's average), When an item reads the MOC names, Then the read is delivered whole, not as a preview; longer titles raise a size warning at build time.
   - [ ] Given a classification MOC (Dewey-numbered title), When names are delivered, Then it is included, and the analysis can still tell it is a classification MOC.
 
 #### Feature 2: Placement detail arrives for the chosen MOCs, complete
 
 - **User Story:** As the vault owner, I want Tomo to know the headings and
-  callouts of every MOC it links my note to, so that it can propose where in the
+  callouts of every MOC it considers linking my note to, so that it can propose where in the
   MOC the link belongs, regardless of how large my vault is.
 - **Acceptance Criteria:**
-  - [ ] Given the analysis has chosen thematic MOCs for an item (or for each of its threads), When it prepares placement, Then it has the headings, editable callouts and footer flag of each chosen MOC, at the same caps as today (8 headings, 4 callouts).
+  - [ ] Given the analysis has nominated MOCs for an item (up to six per thread, at most twenty per item), When it prepares placement, Then it has the headings, editable callouts and footer flag of each nominated MOC, at the same caps as today (8 headings, 4 callouts); up to three per thread become candidates.
   - [ ] Given a vault of any size up to 512 MOCs, When the context is built, Then no MOC loses its headings or editable callouts because of vault size.
-  - [ ] Given a chosen MOC has no headings or callouts, When placement is prepared, Then placement falls back exactly as it does today for such a MOC.
-  - [ ] Given the analysis chose no thematic MOC, When the item is analysed, Then no placement detail is read.
-  - [ ] Given a chosen name does not resolve to a MOC, When placement is prepared, Then that name is dropped, the analysis records it as an issue, and the item's other candidates are unaffected. *(Amended 2026-10-24, SDD ADR-10: a name without a path cannot become a candidate.)*
+  - [ ] Given a nominated MOC has no headings or callouts, When placement is prepared, Then placement falls back exactly as it does today for such a MOC.
+  - [ ] Given the analysis nominated no MOC at all, When the item is analysed, Then no placement detail is read.
+  - [ ] Given a nominated name does not resolve to a MOC, When placement is prepared, Then that name is dropped, the analysis records it as an issue, and the item's other candidates are unaffected. *(Amended 2026-10-24, SDD ADR-10: a name without a path cannot become a candidate.)*
 
 #### Feature 3: A new MOC is proposed only after checking existing names
 
@@ -250,7 +250,7 @@ distinct behaviour; a criterion appears under exactly one feature.
   appears even when the analysis misses it.
 - **Acceptance Criteria:**
   - [ ] Given a proposed MOC whose name, normalised for case, whitespace, punctuation, English plural and the vault's MOC suffix (the same key that groups proposals), equals the title of an eligible thematic MOC, When the suggestions document is built, Then no "Proposed MOC" is shown for it.
-  - [ ] Given that case, When the suggestions document is built, Then each item that carried the proposal is offered a link to the existing MOC, unticked.
+  - [ ] Given that case, When the suggestions document is built, Then each item that carried the proposal is offered a link to the existing MOC — to every MOC with that title when titles collide — unticked.
   - [ ] Given a proposed name that only resembles an existing title (no normalised equality), When the document is built, Then the proposal is shown unchanged.
   - [ ] Given the safety net acts, When the run finishes, Then the run summary names how many proposals it converted.
 
@@ -289,7 +289,7 @@ distinct behaviour; a criterion appears under exactly one feature.
 - **User Story:** As the vault owner, I want the privacy notes and the
   documentation to describe which MOC data reaches the model and when.
 - **Acceptance Criteria:**
-  - [ ] Given this spec ships, When the owner reads the privacy notes, Then they state that MOC names reach every item's analysis and MOC headings and callouts reach it only for the MOCs it chose.
+  - [ ] Given this spec ships, When the owner reads the privacy notes, Then they state that MOC names reach every item's analysis, that MOC headings and callouts reach it only for the MOCs it nominated, and that the `MiYo/Tomo/exclude/moc` tag only removes a MOC from inbox link candidates and is not an access control.
   - [ ] Given this spec ships, When the owner reads the reference documentation for inbox processing, Then it describes the name list, the per-MOC detail, and the exclude tag's new meaning for inbox candidates.
 
 ### Could Have Features
@@ -333,23 +333,27 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
 2. System builds the run's context: eligible MOC names (with paths only where
    titles collide), full detail for every eligible MOC, and the placeholder names.
 3. Each item's analysis reads the names, splits a long item into threads as
-   today, and chooses up to three thematic MOCs per thread.
+   today, and nominates up to six MOCs per thread by meaning.
 4. If no existing MOC fits, the analysis checks its proposed name against the
    names before proposing a new MOC.
-5. The analysis obtains the detail for its chosen MOCs and proposes placement.
+5. The analysis obtains the detail for its nominated MOCs (one read per
+   item), keeps up to three per thread as candidates, and proposes placement.
 6. The suggestions document is built; any proposal whose normalised name equals
-   an eligible MOC's title is turned into an unticked link to that MOC.
+   an eligible thematic MOC's title is turned into an unticked link to that MOC.
 7. Owner reviews the suggestions as today.
 
 **Business Rules:**
-- Rule 1: A MOC is eligible when it is a MOC in the discovery cache and is not
-  tagged `MiYo/Tomo/exclude/moc`.
+- Rule 1: A MOC is eligible when it is a MOC in the discovery cache, is still
+  present in the vault when the context is built, and is not tagged
+  `MiYo/Tomo/exclude/moc` (compared case-insensitively, with or without a
+  leading `#`).
 - Rule 2: A name carries a path only when its title collides with another
   eligible MOC's title; when exactly one of the colliding MOCs lies inside the
   configured MOC folders, that one stays bare.
 - Rule 3: Placement detail is complete per MOC at today's caps; it is never
   reduced because of the number of MOCs.
-- Rule 4: Classification MOCs are delivered by name and never pre-checked; the
+- Rule 4: Classification MOCs are delivered by name, may be nominated and
+  become unticked candidates as today, and are never pre-checked; the
   Classification Guard behaves as today.
 - Rule 5: The safety net compares normalised names for equality only (the
   proposal-grouping key: case, whitespace, punctuation, English plural, MOC
@@ -360,13 +364,18 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
 **Edge Cases:**
 - Vault with zero eligible MOCs → names list is empty; every item may propose a
   new MOC; no detail is read.
-- Item matches many MOCs → up to three per thread, as today.
+- Item matches many MOCs → up to three candidates per thread, as today; at
+  most twenty nominations per item.
 - Item split into five threads → each thread may choose its own MOCs; detail is
   obtained for the union.
 - German item, English MOC titles → chosen by meaning; no translation rule.
-- A context built before this spec (old shape) is read → the analysis proceeds
-  without placement detail, as today for a context without inventory.
-- A chosen name does not resolve (mistyped by the analysis) → the name is
+- A context built before this spec (old shape) is read → the item fails with an
+  issue naming the cause. This cannot occur within a run, because every run
+  rebuilds the context before analysis. *(Amended 2026-10-24.)*
+- Pass 2 runs after a Pass 1 whose context build failed → no context file
+  exists; tracker syntax falls back to defaults, exactly as today when the
+  file is missing.
+- A nominated name does not resolve (mistyped by the analysis) → the name is
   dropped and logged; other candidates are unaffected. Names and detail come
   from the same per-run file, so a rename between build and analysis cannot
   occur within a run.
@@ -379,24 +388,39 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
   configuration switch).
 - **Engagement:** Unchanged by design; the owner's workflow does not change.
 - **Quality:**
-  - On the same inbox before and after, at least 90% of the MOC candidates the
-    before-run produced appear among the after-run's candidates for the same
-    item; every difference is listed in the close-out with a reason.
+  - On the same inbox before and after, candidate agreement is at least
+    min(90%, the agreement between the two before-runs). Agreement is the share
+    of before-run candidate MOC paths — the per-item union over all of the
+    item's actions — that also appear in the after-run's union for that item.
+    Every difference is listed in the close-out with a reason.
   - Zero "Proposed MOC" entries whose normalised name equals an eligible
     existing MOC title, in the after-run.
-  - Zero MOC reads delivered as a preview in the after-run's analyses.
+  - Zero MOC reads delivered as a preview in the after-run's analyses,
+    measured by a transcript scanner built for this spec.
   - Every chosen non-classification MOC with headings in the vault carries its
     headings to the analysis, at 65 and at 512 MOCs.
 - **Business Impact:** Per-item Phase-B cost does not rise above the
   2026-10-13 baseline ($0.603/item, 120k cache-write tokens/item); target at
   least 10% fewer cache-write tokens per item at today's vault size.
 
+### How each criterion is verified
+
+| Method | Criteria |
+|---|---|
+| Deterministic test (scripts) | F1-AC2…AC7, F2-AC2, F2-AC5 (reader side), F4-AC1…AC4, F5-AC1…AC3, F6-AC2, F6-AC3, S1-AC1, C1-AC1 |
+| Prose contract test (runtime instructions say it) | F2-AC1, F2-AC3, F2-AC4, F2-AC5 (analysis side), F3-AC2, F3-AC3, F6-AC1, S1-AC2 |
+| Live run on the test instance (transcripts and results) | F1-AC1, F3-AC1 (a seeded inbox item whose obvious proposal is an existing MOC's name), plus every KPI |
+| Document review | S2-AC1, S2-AC2 |
+
+Prose contract tests prove that the instructions say the right thing, not that
+the language model obeys them; the live run is the evidence for behaviour.
+
 ### Tracking Requirements
 
 | Event | Properties | Purpose |
 |-------|------------|---------|
 | Context build summary | eligible MOC count, excluded MOC count, title collisions, name-list bytes, full-detail bytes | Shows growth and exclusions per run (C1) |
-| Analysis MOC reads (from subagent transcripts) | bytes per read, delivered whole or as preview | Proves the no-preview metric |
+| Analysis MOC reads (transcript scanner over the analyst subagent transcripts) | bytes per read, delivered whole or as preview | Proves the no-preview metric |
 | Safety-net conversions | count of proposals converted, names | Proves the zero-duplicate metric and shows how often the analysis missed |
 | Phase-B cost per item | cache-write, cache-read tokens, $ per item, run id | Cost KPI, recorded in the inbox cost log |
 | Candidate comparison | per item: before candidates, after candidates, differences | Quality KPI, recorded in the close-out |
@@ -450,8 +474,8 @@ to be cut to fit, so it is complete for whichever MOC is chosen.
 | With names only, the analysis chooses fewer or worse MOCs than with topics in view | High | Medium | Before/after run on the same inbox with the ≥90% candidate-agreement bar; differences reviewed in the close-out |
 | The analysis skips the existing-name check and proposes a duplicate | Medium | Medium | Feature 4 safety net catches every exact normalised match |
 | A near-duplicate proposal ("Urlaub" vs "Vacation (MOC)") passes the safety net | Medium | Medium | Feature 3 instruction is the primary guard; the safety net is equality-only by design to avoid wrong merges; the owner still decides |
-| Reading detail adds a step per item and raises cost | Low | Medium | Detail is read only for chosen MOCs (~0.5 KB per item); cost KPI requires no increase |
-| The name list itself outgrows a whole read in a very large vault | Medium | Low | Titles cost ~18 B per MOC (~9 KB at 512); a metric checks 512 |
+| Reading detail adds a step per item and raises cost | Low | Medium | Detail is read only for nominated MOCs (~514 B per MOC entry, typically 3–6 per item); cost KPI requires no increase |
+| The name list itself outgrows a whole read in a very large vault | Medium | Low | Titles cost ~18.5 B per MOC (~9.5 KB at 512 with typical titles); the build warns when the list would exceed the per-read limit; a test checks 512 |
 | Excluding `exclude/moc` MOCs removes a link target the owner relied on | Low | Low | The owner set the tag deliberately; documented in S2 |
 | Downstream consumers relied on every MOC appearing in candidates | Low | Low | Research found none: no script re-reads the MOC list or checks candidates against it |
 
@@ -494,7 +518,8 @@ Agent-team research on 2026-10-23, four perspectives:
 
 ### Market Data
 
-Measured sizes on the test instance (65 MOCs): full MOC entry 514 B average;
-title only ~18.5 B; detail for one MOC (headings, callouts, footer) ~153 B.
+Measured sizes on the test instance (65 MOCs): full MOC entry — what a
+detail read returns per MOC — 514 B average (headings, callouts and footer
+account for ~153 B of it); title only ~18.5 B.
 Name list at 512 MOCs ≈ 9.5 KB. Per-item MOC cost at full detail ≈ 14.7k
 tokens today.

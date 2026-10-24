@@ -1,7 +1,7 @@
 ---
 title: "Every item sees every MOC, by name"
-status: draft
-version: "1.0"
+status: complete
+version: "1.1"
 ---
 
 # Implementation Plan
@@ -38,16 +38,16 @@ version: "1.0"
 |-------|-------|
 | specId | 040-relevant-mocs-per-item |
 | title | Every item sees every MOC, by name |
-| status | `IN_REVIEW` |
-| totalTasks | 19 |
-| parallelTasks | 8 |
+| status | `COMPLETE` |
+| totalTasks | 20 |
+| parallelTasks | 7 |
 | clarificationsRemaining | 0 |
 
 ### PhaseStatus
 
 | Phase | Name | Tasks | File |
 |-------|------|-------|------|
-| 1 | Baseline run and builder | 5 | phase-1.md |
+| 1 | Baseline run and builder | 6 | phase-1.md |
 | 2 | Reader selector modes | 2 | phase-2.md |
 | 3 | Reducer duplicate mutator | 2 | phase-3.md |
 | 4 | Runtime prose: analyst and skills | 4 | phase-4.md |
@@ -103,7 +103,7 @@ When implementation requires changes from the specification:
 - **ADR-1**: One context file; the builder computes each MOC's `name` (title, or path on collision) once.
 - **ADR-2/3**: The analyst reads names (`--moc-names`), nominates by meaning, and fetches detail once after Step 7.5 (`--mocs-from <file>`); `score` is confidence by meaning, thresholds 0.15 / 0.5 kept.
 - **ADR-4**: Budget shedding removed; per-read size warnings at `--max-bytes` (default 32768).
-- **ADR-6**: Reducer mutator converts proposals whose cluster key equals an eligible thematic title into unticked candidates.
+- **ADR-6**: `lib/duplicate_proposals.py`, called by the reducer, converts proposals whose cluster key equals an eligible thematic title into unticked candidates.
 - **ADR-8**: Delete the context before build; every analyst read passes `--run-id`.
 
 **Implementation Context**:
@@ -134,7 +134,9 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-Order: Phase 1 first (its T1.1 baseline must run before any change reaches the test instance). Phases 2 and 3 can run in parallel after Phase 1. Phase 4 needs 2 and 3. Phase 5 can run alongside Phase 4. Phase 6 last.
+Order: Phase 1 first (its T1.2 baseline must run before any change reaches the test instance). Phases 2 and 3 can run in parallel after Phase 1. Phase 4 needs 2 and 3. Phase 5 can run alongside Phase 4. Phase 6 last. Phases 1–4 ship together: nothing is synced to `tomo-instance` before Phase 6.
+
+Per-item baseline details (MOC paths, titles) live in `tomo-instance/spec-040-baseline/` (gitignored); git receives counts and figures only.
 
 - [ ] [Phase 1: Baseline run and builder](phase-1.md)
 - [ ] [Phase 2: Reader selector modes](phase-2.md)
@@ -161,20 +163,26 @@ Order: Phase 1 first (its T1.1 baseline must run before any change reaches the t
 
 ### PRD acceptance criteria → tasks
 
-| PRD AC | Task |
-|---|---|
-| F1-AC1, F1-AC5, F1-AC6 | T2.1 (reader), T6.2 (512 size) |
-| F1-AC2, F1-AC3, F1-AC4, F1-AC7 | T1.3 |
-| F2-AC1, F2-AC3, F2-AC4, F2-AC5 | T4.2 (prose), T2.1 (unresolved semantics) |
-| F2-AC2 | T1.4, T6.2 |
-| F3-AC1, F3-AC2, F3-AC3 | T4.2 |
-| F4-AC1, F4-AC2, F4-AC3, F4-AC4 | T3.1, T4.3 (relay) |
-| F5-AC1, F5-AC2 | T1.2, T1.3 |
-| F5-AC3 | T3.1 |
-| F6-AC1, F6-AC3 | T4.3 |
-| F6-AC2 | T2.1, T4.3 |
-| S1-AC1 | T1.3 |
-| S1-AC2 | T4.2 |
-| S2-AC1, S2-AC2 | T5.1 |
-| C1-AC1 | T1.4 |
-| KPIs (quality, cost) | T1.1, T6.3, T6.4 |
+| PRD AC | Task | Verified by |
+|---|---|---|
+| F1-AC1 | T2.1 (reader), T6.3 (every analyst read the names) | test + live |
+| F1-AC2, F1-AC3, F1-AC4, F1-AC7 | T1.4 | test |
+| F1-AC5 | T2.1 | test |
+| F1-AC6 | T2.1, T6.2 | test |
+| F2-AC1, F2-AC3, F2-AC4 | T4.2 | prose contract |
+| F2-AC2 | T1.5, T6.2 | test |
+| F2-AC5 | T2.1 (reader), T4.2 (analyst) | test + prose contract |
+| F3-AC1 | T6.3 (seeded item) | live |
+| F3-AC2, F3-AC3 | T4.2 | prose contract |
+| F4-AC1, F4-AC2, F4-AC3 | T3.1 | test |
+| F4-AC4 | T3.1 (count), T4.3 (relay) | test + prose contract |
+| F5-AC1, F5-AC2 | T1.3 (predicate), T1.4 (builder, pool guard) | test |
+| F5-AC3 | T3.1 | test |
+| F6-AC1 | T4.3 | prose contract |
+| F6-AC2 | T2.1 (reader), T4.2 (analyst passes `--run-id`, fails the item) | test + prose contract |
+| F6-AC3 | T4.3 (guard) | test |
+| S1-AC1 | T1.4 | test |
+| S1-AC2 | T4.2 | prose contract |
+| S2-AC1, S2-AC2 | T5.1 | document review |
+| C1-AC1 | T1.5 | test |
+| KPIs (quality, cost, previews) | T1.1 (scanner), T1.2, T6.3, T6.4 | live |

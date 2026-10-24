@@ -1,7 +1,7 @@
 ---
 title: "Phase 3: Reducer duplicate mutator"
 status: pending
-version: "1.0"
+version: "1.1"
 phase: 3
 ---
 
@@ -12,15 +12,16 @@ phase: 3
 **GATE**: Read all referenced files before starting this phase.
 
 **Specification References**:
-- `[ref: SDD/ADR-6]` — mutator placement, key, collision handling
+- `[ref: SDD/ADR-6]` — placement, key, collision handling, lib module
 - `[ref: SDD/Implementation Examples; "duplicate mutator (traced)"]`
-- `[ref: SDD/Interface Specifications; "suggestions-reducer.py"]`
+- `[ref: SDD/Interface Specifications; "lib/duplicate_proposals.py"]`
 
 **Key Decisions**:
 - One mutation per action, before render, persist and cluster collection — so C3, C4 and the proposed-MOC list agree by construction (precedent: `demote_structural_anchors`, #71).
-- The reducer reads eligibility from the context; it never recomputes it.
+- The logic lives in `lib/duplicate_proposals.py`; the 2835-line reducer gets one call and one counter.
+- Eligibility comes from the context; it is never recomputed.
 
-**Dependencies**: Phase 1 (T1.3 — eligible `mocs[]` with `name`, `path`, `title`, `is_classification`). Independent of Phase 2.
+**Dependencies**: Phase 1 (T1.4). Independent of Phase 2.
 
 ---
 
@@ -28,14 +29,19 @@ phase: 3
 
 A proposed MOC that already exists by name never reaches the owner; the item is offered the existing MOC instead, unticked.
 
-- [ ] **T3.1 `convert_duplicate_proposal` and its loader** `[activity: backend-api]` `[parallel: true]`
+- [ ] **T3.1 `lib/duplicate_proposals.py` and the reducer call** `[activity: backend-api]` `[parallel: true]`
 
-  1. Prime: `suggestions-reducer.py:182-290` (`moc_link_line`, `persist_candidate_anchors`, `demote_structural_anchors`), `:790-822` (render), `:1756-1769` (`load_asset_folder`), `:2104-2118`, `:2440-2660` (action loop, clusters), `:2818-2830` (summary); `lib/topic_clusters.py:96-155`; `tests/test_suggestions_reducer_*` patterns `[ref: SDD/ADR-6]`
-  2. Test (RED): the four rows of the traced example (Vacations → converted; Project → both paths appended; Urlaub → unchanged; Dewey title → unchanged); an existing candidate with the same path is not duplicated; appended candidates come after the analyst's own (`mocs[0]` unchanged); the "No good thematic MOC matched … Proposed MOCs" note disappears and no `proposed_mocs` entry forms for a converted action; a cluster of two items ("Project", "Projects") converts all-or-nothing; a suppressed atomic is untouched; a proposal equal only to an excluded MOC title stays a proposal (the excluded MOC is absent from the context); missing or invalid context → zero conversions, no error; rendered markdown shows `- [ ] [[path]]` without a Placement line; C3 wire candidate is `selected:false, source:"tomo"`; summary line has `duplicate_proposals_converted=<n>`
-  3. Implement: `load_eligible_mocs` (fail-open, thematic only, key → [paths]); `convert_duplicate_proposal` called next to `demote_structural_anchors`; counter into the summary line; fix the stale docstring threshold (`:12` says 3, code uses 1); WHY into `docs/tomo/scripts/suggestions-reducer.md`; bump version
-  4. Validate: RED on main; GREEN here; existing reducer and render tests green; ruff clean
+  1. Prime: `suggestions-reducer.py` `moc_link_line`, `persist_candidate_anchors`, `demote_structural_anchors`, the render of "Link to MOC" / "No good thematic MOC matched", `load_asset_folder`, the action loop, cluster collection, the summary print; `lib/topic_clusters.py` `strip_moc_marker`, `normalise_topic`; `suggestions-render.py` `_wire_selected` and the candidate projection (the C3 shape is built there, not in the reducer) `[ref: SDD/ADR-6]`
+  2. Test (RED via the exact count — the summary key `duplicate_proposals_converted` does not exist on `main`):
+     - one fixture holding all four traced rows at once (Vacations → converted; Project → both paths appended; Urlaub → unchanged; Dewey title → unchanged) plus a suppressed atomic proposing "Vacation", an action that already lists the Vacation path, and a proposal equal only to an excluded MOC's title; assert `duplicate_proposals_converted=2` exactly and each action's resulting state
+     - appended candidates follow the analyst's own (`mocs[0]` unchanged); no duplicate path
+     - the "No good thematic MOC matched … Proposed MOCs" note is absent and no `proposed_mocs` entry forms for converted actions; a two-item cluster ("Project", "Projects") converts all-or-nothing
+     - rendered markdown shows `- [ ] [[path]]` without a Placement line; through `suggestions-render.py`, the C3 wire candidate is `selected:false, source:"tomo"`
+     - missing or invalid context → `duplicate_proposals_converted=0`, no error
+  3. Implement: `lib/duplicate_proposals.py` (`load_eligible_mocs`, `convert_duplicate_proposal`; WHY docstring; `# version: 0.1.0`); one call next to `demote_structural_anchors`; counter into the summary line; fix the stale threshold docstring (`:12`); `docs/tomo/scripts/lib/duplicate_proposals.md` and a pointer in `docs/tomo/scripts/suggestions-reducer.md`; bump the reducer version
+  4. Validate: RED on `main`; GREEN here; existing reducer and render tests green; ruff clean
   5. Success: `[ref: PRD/F4-AC1, F4-AC2, F4-AC3, F4-AC4 (count), F5-AC3]`
 
 - [ ] **T3.2 Phase Validation** `[activity: validate]`
 
-  - Full suite green, ruff clean. Pass-2 tests (`suggestion-parser`, `instruction-render`, `instructions-diff`) unchanged and green — a converted action produces no `create_moc` downstream.
+  - Full suite green, ruff clean. Pass-2 tests (`suggestion-parser`, `instruction-render`, `instructions-diff`) unchanged and green — a converted action produces no `create_moc` downstream; `instruction-render` with no context file still falls back to default tracker syntax (guard).

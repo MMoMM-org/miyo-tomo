@@ -178,3 +178,29 @@ analysts nominate more MOCs by meaning and keep more secondary candidates
 (13–16 against 9–10), mostly two travel MOCs on the trip notes
 the before-runs left without candidates. Every before-run candidate the
 after-runs drop is a secondary pick scored 0.15–0.3.
+
+## Follow-up runs for #200 (classification MOCs no longer candidates)
+
+Analyst 0.28.0, reducer 1.62.0 (`lib/classification_candidates.py` 0.1.0), same
+12-item set, fresh session.
+
+| Run | run_id | Candidates | Classification | Pre-checked | Reads / spilled | Avg cache-write / item | Avg $ / item |
+|---|---|---|---|---|---|---|---|
+| after-3 | 2026-10-24T19-38-10Z-9737ad | 10 | 0 | 2 | 37 / 0 | 99,125 | 0.561 |
+| after-4 | 2026-10-24T19-55-38Z-7b2b5a | 13 | 0 | 2 | 37 / 0 | 96,240 | 0.546 |
+
+`classification_candidates_dropped=0` in both runs: the analyst followed the
+prose, and the reducer backstop had nothing to remove. Duplicate proposals 0;
+seeded item linked and pre-checked in both runs.
+
+| Pair | Agreement (both directions) |
+|---|---|
+| before-1 ↔ before-2 | 78% / 70% |
+| after-1 ↔ after-2 (analyst 0.27.0) | 62% / 50% |
+| **after-3 ↔ after-4 (analyst 0.28.0)** | **100% / 77%** |
+| before-1 → after-3 / after-4 | 67% / 67% |
+| before-2 → after-3 / after-4 | 60% / 60% |
+
+Run-to-run stability is now above the before-runs. Agreement with the pre-040
+candidates stays at 60–67%: the before-runs' classification candidates are
+gone by design, which costs 2–3 of their 9–10 candidates.

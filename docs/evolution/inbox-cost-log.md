@@ -703,3 +703,15 @@ Details: `docs/XDD/specs/040-relevant-mocs-per-item/baseline.md` (After-run).
 Second after-run `2026-10-24T18-21-04Z-d23bfc` (same session, `--force`; a first attempt died in triage on
 Kado 429 + timeout under host load): 98,863 cache-write / item, $0.567 / item, $6.80 subagents, 41 reads, 0
 spilled. After mean: **97,328** cache-write / item (−18%), **$0.553** / item (−9%).
+
+## #200 — classification MOCs no longer candidates
+
+**Date**: 2026-10-24 · **Branch**: `fix/200-secondary-moc-stability` · **Versions**: `inbox-analyst.md` 0.28.0,
+`suggestions-reducer.py` 1.62.0 · Session `d2e0cb52`
+
+| run | items | avg cache-write / item | avg $ / item | subagents |
+|---|---|---|---|---|
+| `19-38-10Z-9737ad` | 12 | 99,125 | 0.561 | $6.73 |
+| `19-55-38Z-7b2b5a` | 12 | 96,240 | 0.546 | $6.55 |
+
+Cost unchanged against the spec 040 after-runs (mean 97,328 / $0.553). 74 reads, none spilled.

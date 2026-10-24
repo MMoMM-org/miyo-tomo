@@ -138,7 +138,7 @@ Order: Phase 1 first (its T1.2 baseline must run before any change reaches the t
 
 Per-item baseline details (MOC paths, titles) live in `tomo-instance/spec-040-baseline/` (gitignored); git receives counts and figures only.
 
-- [ ] [Phase 1: Baseline run and builder](phase-1.md)
+- [x] [Phase 1: Baseline run and builder](phase-1.md)
 - [ ] [Phase 2: Reader selector modes](phase-2.md)
 - [ ] [Phase 3: Reducer duplicate mutator](phase-3.md)
 - [ ] [Phase 4: Runtime prose: analyst and skills](phase-4.md)

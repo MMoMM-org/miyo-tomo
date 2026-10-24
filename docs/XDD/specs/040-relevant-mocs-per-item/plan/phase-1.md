@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Baseline run and builder"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 1
 ---
@@ -92,6 +92,7 @@ Records the "before" picture with a tool that can see spills, then gives the con
      - `test_shared_ctx_no_accumulation.py` lost its four `enforce_budget` tests (return shape, 40960 default, placeholder never trimmed, envelope fits) instead of having them rewritten: the default and the no-shedding behaviour are asserted in the new file, and `placeholder_links` no longer exists in the context.
      - `test-004-phase2.sh` had a second hollow test: Test 2 (daily disabled) silently skipped because its vault-config lacked `tags.prefixes`, and a missing output file reported neither pass nor fail. Both configs now carry the full prefix shape, a missing output fails, and all three builds run with `--skip-reconcile` so the script never reaches a live Kado.
 
-- [ ] **T1.6 Phase Validation** `[activity: validate]`
+- [x] **T1.6 Phase Validation** `[activity: validate]`
 
   - Full suite green (`./venv/bin/python -m pytest -q tests`), ruff clean. Build a context from `tomo-instance/config/discovery-cache.yaml` with `--skip-reconcile` into `$TMPDIR` and check it validates against the schema. Do **not** sync to the instance in this phase.
+  - Result (2026-10-24, at 37c4042a): 5032 passed, 3 skipped; ruff clean; `test-004-phase2.sh` green. The context built from `tomo-instance/config/discovery-cache.yaml` validates against the schema: 64 eligible MOCs (1 excluded, 0 collisions), 42 of them with headings, `names_bytes=1189`, `detail_bytes=34474`, file 43133 bytes, no WARN line. Nothing was synced.

@@ -43,7 +43,7 @@ Records the "before" picture with a tool that can see spills, then gives the con
   4. Validate: RED → GREEN; ruff clean
   5. Success: the "zero previews" KPI is measurable `[ref: PRD/KPIs Quality]`
 
-- [ ] **T1.2 Baseline runs on the test instance** `[activity: validate]`
+- [x] **T1.2 Baseline runs on the test instance** `[activity: validate]`
 
   1. Prime: T1.1; `docs/evolution/inbox-cost-log.md`; `scripts/measure-inbox-phase-b-token-cost.py --help`; memory notes "sync before any live walk", "reset tomo-tmp before a live run" `[ref: PRD/Success Metrics; How each criterion is verified]`
   2. Test: n/a (measurement). Checklist: a fixed inbox set of 10–12 items, **including one seeded item** whose obvious new-MOC proposal is an existing MOC's name (for F3-AC1), copied to `tomo-instance/spec-040-baseline/inbox-set/`; `tomo-instance` on current `main`; **two** before-runs on the same set; per run record run id, per-item union of `candidate_mocs` paths with `pre_check`, proposed MOC names, T1.1 scanner output, per-item cache-write tokens and $

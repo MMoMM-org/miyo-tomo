@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Baseline run and builder"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 1
 ---
@@ -35,7 +35,7 @@ phase: 1
 
 Records the "before" picture with a tool that can see spills, then gives the context its new shape: eligible MOCs only, sorted, each with a delivered name, uncut detail, placeholder targets always present, and size warnings instead of shedding.
 
-- [ ] **T1.1 Transcript read-size scanner** `[activity: backend-api]` `[parallel: true]`
+- [x] **T1.1 Transcript read-size scanner** `[activity: backend-api]` `[parallel: true]`
 
   1. Prime: `scripts/measure-inbox-phase-b-token-cost.py` (how it finds a run's subagent transcripts); `scripts/tomo-session-inspect.py:81`; memory "Docker session transcripts"; the spill marker as it appears in a real transcript (inspect one analyst `agent-*.jsonl` from session 790a0265) `[ref: PRD/Tracking Requirements; PRD/KPIs Quality]`
   2. Test (RED — script does not exist): for a fixture transcript, reports per analyst subagent every `read-shared-ctx.py` call with its mode (`--field mocs`, `--moc-names`, `--mocs-from`, `--fields`), result bytes, and whether it was delivered as a preview; a run-level summary counts previews; output contains no note content (paths of transcript files and byte counts only)

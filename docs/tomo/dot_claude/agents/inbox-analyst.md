@@ -481,3 +481,125 @@ and no behavioural change, and keeps every call under the spill threshold.
 
 The byte saving remains available and remains blocked on the same open
 question — see `docs/tomo/scripts/read-shared-ctx.md`.
+
+## Spec 040: names in Step 4, nominated detail in Step 7.5b (v0.27.0)
+
+Issue #173. The sections above ("Why Step 1 stops short of the MOC keys", the
+F-05 weighting) describe the shape this replaces; they stay as history.
+
+### Why the full MOC list is never read any more
+
+`--field mocs` was 29 KB at 64 MOCs and grew with every MOC, loaded by every
+analyst for every item — three items per run loaded it and never produced a
+candidate. Past ~37.7 KB a read spills into a 2 KB preview, and the builder
+was already deleting headings to stay under its 40 KB budget, which broke
+anchor placement silently. Step 4 now reads `--moc-names` (about 1.2 KB at 64
+MOCs, under 12 KB at 512) and `--field placeholder_targets`; the analyst
+fetches full detail only for MOCs it nominates. The Step-1 STRICT is kept and
+retargeted: it already guarded the observed failure (loading MOC data into
+the Step-1 call and spilling), and `mocs` is still the key that would cause
+it, so it now forbids `--field mocs` everywhere.
+
+### Why no word-overlap pre-filter decides which MOCs an item sees
+
+A replay over 105 analyst transcripts found 25 of 52 thematic MOC picks had
+zero word overlap with the item; top-K recall of the documented overlap
+scoring stayed at 0.50 from K=3 to K=30. The picks are explained by MOC
+titles, read by meaning. A lexical filter in front of the analyst would hide
+half of what it actually chooses, so every item sees every eligible name and
+the analyst selects.
+
+### Why score is a confidence by meaning, not the overlap formula
+
+The same replay is why the F-05 formula stops being the decider: applied as
+written it would drop about half of today's picks. `score` becomes the
+analyst's 0–1 confidence that the MOC is the note's thematic home, with topics
+as evidence. The thresholds keep their meaning and their values — keep at
+`≥ 0.15`, pre-check at `≥ 0.5` for thematic MOCs only — so the reducer, the
+renderer and the wire read the number exactly as before. It was never
+computed by code, so nothing downstream depended on the formula itself.
+
+### Why nomination is capped at 6 per thread and 20 per item
+
+Six covers the "top 3 kept" rule with room for candidates that score below
+0.15 after the detail arrives. Twenty is the reader's cap: 20 × the largest
+entry (~1.4 KB) stays under the spill floor. Thread order, then nomination
+order, decides which names survive the cap, so the first thread — usually the
+item's main topic — is never the one cut.
+
+### Why detail is fetched once, in Step 7.5b
+
+Threads exist only after Step 7.5, and each thread is matched separately. A
+fetch in Step 4 would either happen before the threads are known or be
+repeated per thread. Step 7.5b collects the union once and reads it in one
+call. Nothing nominated → no read, so a pure daily-note item pays only for the
+name list.
+
+### Why the names go into a file named after the result
+
+Names are MOC titles, and titles break shell quoting (`'`, `&`, `$`, `(`);
+note-derived text never goes on a command line (CON-4). The analyst writes
+one name per line with the `Write` tool and passes the path. The file is
+named `<result stem>.moc-names.txt`, where the result stem is
+`item-result-filename.py`'s output minus `.result.json`. That script is the
+only place an item key becomes a filename, so the call moves from Step 10.3
+to Step 7.5b and Step 10.3 reuses the captured value: one derivation, two
+uses, and two items with the same stem in different folders cannot share a
+names file. `reset-tomo-tmp.sh --pass1` removes `items/`, so the file does not
+outlive the run.
+
+### Why an unresolved name is dropped, not fatal
+
+The reader lists names it cannot resolve in `unresolved` and exits 0. A
+mistyped name costs one candidate; the analyst drops it and records an issue
+line so the miss is visible in the result.
+
+### Why any reader failure fails the item
+
+A non-zero exit means the context is missing, from another run (`--run-id`),
+or from before spec 040. Continuing would classify against the wrong MOCs or
+none, and the result would look healthy. Step 11's failure block records it
+with the reader's stderr line, and the item reappears for the next run.
+
+### Why the name-check comes before `needs_new_moc`
+
+Decision row 2: before proposing a new MOC, the analyst checks the would-be
+name against the thematic delivered names, and if one covers it, nominates
+that name instead. It sits before row 3 because row 3 ("nothing thematic
+scored") is exactly when a duplicate gets proposed. Classification
+(Dewey-numbered) names never satisfy it: a theme is not a duplicate of a
+classification bucket, and the Classification Guard keeps those unticked.
+The reducer's mutator (`lib/duplicate_proposals.py`) is the deterministic
+backstop for exact-name misses; this instruction is the primary guard because
+only it can catch a near-duplicate by meaning.
+
+### Why classification MOCs may be nominated
+
+Owner decision, 2026-10-24. They become unticked candidates, as before: the
+Classification Guard still forbids pre-checking them and still triggers
+`needs_new_moc` when they are all that matched.
+
+### Why the placeholder trigger reads `placeholder_targets`
+
+The context now carries the unique sorted target names instead of
+`{target, referenced_by}` pairs (spec 040 ADR-7): the analyst only ever
+compared the target. The key is always present (possibly `[]`), so the old
+"absent or empty → skip silently" branch became "empty → skip".
+
+### Why Step 4 names `lyt-patterns` as overridden
+
+The analyst loads the `lyt-patterns` skill, whose MOC Matching Algorithm is
+lexical ("`overlap_count == 0` → skip this MOC") and whose placeholder rule
+points at the discovery cache's `placeholder_links`. Both contradict Step 4
+since spec 040: matching is by meaning, and the analyst reads
+`placeholder_targets` from the context, not the cache. The skill cannot simply
+be rewritten: `moc-architect` and `vault-explorer` load it too and do read the
+cache. So Step 4 opens with one line saying its rules replace those two
+sections for this agent — two conflicting instructions with no stated
+precedence leave the choice to the model, which is how runtime branches drift.
+
+The old paragraph "omit `anchor` when `shared_ctx.mocs[].headings` and
+`editable_callouts` are both absent (old shared-ctx artifact)" was removed
+rather than rewritten: an old artifact can no longer reach the analyst (the
+reader refuses a context without `name`), and a fetched entry without
+inventory is already handled by TIER-4.

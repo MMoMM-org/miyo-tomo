@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.11.0
+# version: 0.12.0
 
 ## When to Activate
 
@@ -46,6 +46,10 @@ python3 scripts/run-id.py --out tomo-tmp/.run_id
 ```
 
 Capture stdout as `RUN_ID`.
+
+```bash
+rm -f tomo-tmp/shared-ctx.json
+```
 
 ```bash
 python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
@@ -167,3 +171,10 @@ If mark-captured fails, report the error but still proceed to the report.
 > "Pass 1 complete: {N} items analysed, suggestions written to
 > [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
 > then re-run `/inbox`."
+
+Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
+(step 4). When `<n>` is greater than 0, add:
+
+> "{n} proposed MOC(s) already existed in the vault and are offered as
+> unticked links instead."
+

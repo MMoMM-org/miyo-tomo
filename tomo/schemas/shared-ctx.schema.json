@@ -9,7 +9,8 @@
     "run_id",
     "mocs",
     "tag_prefixes",
-    "classification_keywords"
+    "classification_keywords",
+    "placeholder_targets"
   ],
   "additionalProperties": false,
   "properties": {
@@ -25,6 +26,7 @@
       "items": {
         "type": "object",
         "required": [
+          "name",
           "path",
           "title",
           "topics",
@@ -32,6 +34,11 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The delivered name the analyst reads and nominates by (spec 040 ADR-1): the title, or the vault path when another eligible MOC shares the title. Unique across mocs[]."
+          },
           "path": {
             "type": "string",
             "minLength": 1
@@ -118,26 +125,13 @@
         }
       }
     },
-    "placeholder_links": {
+    "placeholder_targets": {
       "type": "array",
-      "description": "Wikilink targets in MOC bodies that don't resolve to any known note. Phase-B subagents use these as Condition C triggers (Mental Squeeze Point §2.C): when an item's topics match a placeholder name, propose creating a thematic MOC to resolve the dead link.",
+      "description": "Missing-MOC names: wikilink targets in MOC bodies that follow the MOC naming convention and resolve to no note. Unique, sorted, always present (empty when none). Phase-B subagents use them as Condition C triggers (Mental Squeeze Point §2.C). Spec 040 ADR-7 replaced the former placeholder_links objects; referenced_by stays in the discovery cache.",
+      "uniqueItems": true,
       "items": {
-        "type": "object",
-        "required": [
-          "target",
-          "referenced_by"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "target": {
-            "type": "string",
-            "minLength": 1
-          },
-          "referenced_by": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "type": "string",
+        "minLength": 1
       }
     },
     "classification_keywords": {

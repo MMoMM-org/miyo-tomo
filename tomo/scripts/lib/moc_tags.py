@@ -1,8 +1,8 @@
-# version: 1.1.0
+# version: 1.2.0
 """moc_tags.py — Hardwired tag constants for MOC-proposal exclude semantics (ADR-13).
 
-Single home for exclude-tag strings consumed by orphan_link.py and
-moc-discovery.py.  Import from here — do not inline strings.
+Single home for exclude-tag strings consumed by orphan_link.py,
+moc-discovery.py and shared-ctx-builder.py. Import from here — do not inline strings.
 
 FRONTMATTER OR INLINE (#50): these tags are read via
 moc-tree-builder.extract_tags, which merges the YAML frontmatter `tags:` list
@@ -18,9 +18,23 @@ Spec: docs/XDD/specs/021-moc-propose-consolidation/ — SDD ADR-13 B-moc, B-note
 from __future__ import annotations
 
 # ADR-13 B-moc: skip entry in emit_orphan_suggestions(kinds=("moc",));
-# the MOC STAYS in the cache + link-candidate pool.
+# the MOC STAYS in the cache. Spec 040 ADR-5 supersedes B-moc for inbox link
+# candidates only: shared-ctx drops excluded MOCs (is_excluded_moc below).
 EXCLUDE_MOC_TAG = "MiYo/Tomo/exclude/moc"
 
 # ADR-13 B-note: filter at the scan candidate source (_handle_scan, cache-based)
 # so a tagged note is never clustered into a proposed MOC.
 EXCLUDE_NOTE_TAG = "MiYo/Tomo/exclude/note"
+
+_EXCLUDE_MOC_KEY = EXCLUDE_MOC_TAG.casefold()
+
+
+def is_excluded_moc(tags) -> bool:
+    """True when `tags` holds EXCLUDE_MOC_TAG — case-insensitive, one leading '#' allowed."""
+    for tag in tags or []:
+        if not isinstance(tag, str):
+            continue
+        bare = tag[1:] if tag.startswith("#") else tag
+        if bare.strip().casefold() == _EXCLUDE_MOC_KEY:
+            return True
+    return False

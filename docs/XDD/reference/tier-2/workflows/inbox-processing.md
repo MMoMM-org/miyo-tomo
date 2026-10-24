@@ -66,7 +66,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 > **⚠️ Deviation (XDD-004)**
 > **Original**: 4-agent sequential model — `inbox-analyst` analyses all items, then `suggestion-builder` generates a monolithic suggestions document.
 > **Actual**: Fan-out pipeline with `inbox-orchestrator` + per-item `inbox-analyst` subagents + reducer.
-> - Phase A: Orchestrator builds JSONL state file + distilled shared context (~10KB/subagent vs 75KB full cache)
+> - Phase A: Orchestrator builds JSONL state file + distilled shared context (`shared-ctx.json`). Since spec 040 no subagent reads it whole: each reads the MOC names (~1.2 KB at 64 MOCs) plus a ~8 KB settings batch, and fetches full detail only for the MOCs it nominates (at most 20). See [spec 040](../../../specs/040-relevant-mocs-per-item/solution.md).
 > - Phase B: 3-5 parallel subagents, one per inbox item, each returns structured JSON
 > - Phase C: Orchestrator reduces per-item results into final suggestions document
 > - `suggestion-builder` agent was **retired** (merged into orchestrator's reducer logic)

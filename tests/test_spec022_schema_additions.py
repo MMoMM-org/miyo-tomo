@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_spec022_schema_additions.py — Schema addition tests for spec 022 Phase 2.
 
 Three additive optional fields:
@@ -75,6 +75,7 @@ def _make_item_result(candidate_mocs: list) -> dict:
 def _make_shared_ctx(moc_extra: dict | None = None) -> dict:
     """Minimal valid shared-ctx with one moc item, optionally extended."""
     moc = {
+        "name": "Tech (MOC)",
         "path": "Atlas/200 Maps/Tech (MOC).md",
         "title": "Tech (MOC)",
         "topics": ["software", "engineering"],
@@ -88,6 +89,8 @@ def _make_shared_ctx(moc_extra: dict | None = None) -> dict:
         "mocs": [moc],
         "tag_prefixes": [],
         "classification_keywords": {},
+        # spec 040: required, so the rejection tests below fail on their own field.
+        "placeholder_targets": [],
     }
 
 

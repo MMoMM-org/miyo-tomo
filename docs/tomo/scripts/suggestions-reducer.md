@@ -1788,3 +1788,18 @@ builds its `notes`, `assets` and `occupied_by_folder` maps with. A
 NFD-spelled destination, however the lookup keyed its maps. `_clash_reason`
 says "differs … only in case" only when the spellings differ after NFC
 (`same_spelling`).
+
+## Duplicate proposals become candidates (spec 040 ADR-6, v1.61.0)
+
+The action loop calls `lib.duplicate_proposals.convert_duplicate_proposal` on
+every non-suppressed atomic, next to `demote_structural_anchors` and for the
+same reason: one mutation before render, persist and cluster collection keeps
+all three consistent. A `needs_new_moc` proposal whose cluster key matches an
+eligible thematic MOC is cleared, and the existing MOC(s) are appended as
+unticked candidates. The count is `duplicate_proposals_converted=` in the
+summary line, which both skills relay. Rationale and edge cases:
+[`lib/duplicate_proposals.md`](lib/duplicate_proposals.md).
+
+The `--threshold` line in the module docstring said "default 3"; the argument
+has defaulted to 1 since every `needs_new_moc` began surfacing. Corrected in
+the same version.

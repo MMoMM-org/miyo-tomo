@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_moc_propose_e2e.py — F-43 T6.1 + spec 021 T4.1: Producer-side end-to-end integration tests.
 
 Tests the full Tomo pipeline for /moc-propose:
@@ -1374,10 +1374,12 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
     full main() path including build_mocs + build_placeholder_links.
 
     Assertions:
-      - shared_ctx["mocs"] contains all kind==moc entries from the cache
+      - shared_ctx["mocs"] is exactly the ELIGIBLE kind==moc entries: a MOC
+        tagged MiYo/Tomo/exclude/moc is absent (spec 040 ADR-5)
       - "accumulation_index" is NOT in the output
-      - shared_ctx["placeholder_links"] carries the cache's placeholder_links
-        (Condition C preserved)
+      - shared_ctx["placeholder_targets"] carries the cache's placeholder
+        target names (Condition C preserved; spec 040 ADR-7 replaced
+        placeholder_links in the context)
 
     Maps to spec 021 SDD §shared-ctx-builder removal, F-34 Condition A, C.
     """
@@ -1408,12 +1410,17 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
          "up_state": "absent", "up_target": None, "up_source": None,
          "tags": ["type/others/moc"], "classification": None, "linked_notes": 5},
     ]
+    excluded_moc = {"path": "Atlas/200 Maps/000 Index.md", "title": "000 Index",
+                    "kind": "moc", "topics": ["index"], "up_state": "absent",
+                    "up_target": None, "up_source": None,
+                    "tags": ["type/others/moc", "MiYo/Tomo/exclude/moc"],
+                    "classification": None, "linked_notes": 9}
     placeholder_links = [
         {"target": "Search MOC", "referenced_by": "Atlas/200 Maps/Dataview (MOC).md"},
     ]
 
     cache = {
-        "map_notes": [e for e in moc_entries],  # shared-ctx reads map_notes directly
+        "map_notes": [e for e in moc_entries] + [excluded_moc],  # shared-ctx reads map_notes directly
         "placeholder_links": placeholder_links,
     }
 
@@ -1445,13 +1452,14 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
     assert rc == 0, f"shared-ctx-builder.main() returned {rc}"
     ctx = json.loads(out_file.read_text(encoding="utf-8"))
 
-    # Condition A: shared_ctx.mocs must be the complete MOC set (both entries)
+    # Condition A: shared_ctx.mocs must be exactly the eligible MOC set
     moc_paths_in_ctx = {m["path"] for m in ctx["mocs"]}
     expected_paths = {e["path"] for e in moc_entries}
-    assert expected_paths <= moc_paths_in_ctx, (
-        f"shared_ctx.mocs must include all MOC cache entries (Condition A link targets).\n"
+    assert moc_paths_in_ctx == expected_paths, (
+        f"shared_ctx.mocs must be every eligible MOC and no excluded one.\n"
         f"Expected: {expected_paths}\nGot: {moc_paths_in_ctx}"
     )
+    assert excluded_moc["path"] not in moc_paths_in_ctx
 
     # No accumulation_index (T3.1 removal; Condition B retired)
     assert "accumulation_index" not in ctx, (
@@ -1459,13 +1467,11 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
         f"got keys: {list(ctx.keys())}"
     )
 
-    # Condition C: placeholder_links must be present and un-trimmed
-    assert "placeholder_links" in ctx, (
-        "placeholder_links must be present in shared_ctx (Condition C trigger)"
-    )
-    assert ctx["placeholder_links"] == placeholder_links, (
-        f"placeholder_links must pass through unchanged (Condition C).\n"
-        f"Expected: {placeholder_links}\nGot: {ctx['placeholder_links']}"
+    # Condition C: the placeholder target names reach the context, each once
+    assert "placeholder_links" not in ctx
+    assert ctx["placeholder_targets"] == ["Search MOC"], (
+        f"placeholder_targets must carry the cache's placeholder names (Condition C).\n"
+        f"Got: {ctx.get('placeholder_targets')}"
     )
 
 

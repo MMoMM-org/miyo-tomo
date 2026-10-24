@@ -38,6 +38,43 @@ convention is currently hardcoded (matches the date-filter precedent in
 `lib/placeholder_detect`); promote to vault-config if a vault needs a different
 MOC marker.
 
+## `build_placeholder_targets` — names only, each once (spec 040 ADR-7)
+
+The context carries `placeholder_targets`, a sorted list of unique target names,
+instead of the `{target, referenced_by}` objects. The analyst's Condition C
+compares only the target against the item's theme; `referenced_by` was never
+read from the context, and the same target referenced by several MOCs was sent
+several times. The filter above (`build_placeholder_links`) is unchanged and
+still decides which dead links name a missing MOC; `build_placeholder_targets`
+only deduplicates its result. The discovery cache keeps the full records.
+
+The key is always written — `[]` when the vault has no placeholder MOCs — so the
+analyst's `--field placeholder_targets` read never exits 1 for an absent key.
+The old key was renamed, not reshaped in place, so any prose still expecting
+objects fails loudly instead of misreading strings.
+
+## Eligible MOCs and the delivered `name` (spec 040 ADR-1, ADR-5)
+
+Every analyst will read the *names* of all MOCs and fetch the detail of only the
+ones it nominates. A name must therefore resolve to exactly one MOC, which a
+title alone does not guarantee. `assign_names` gives each MOC its title, unless
+another eligible MOC has the same title (compared by `path_key`, so `Projects`
+and `projects` collide as they do in Obsidian). Among colliding MOCs the single
+one inside `concepts.map_note` keeps the title — that is the MOC a LYT or MiYo
+vault owner means — and the others carry their path, which is unique. When zero
+or several of them lie in the MOC folder, all carry their path: there is no
+principled way to pick one. The rule runs once here, so "every delivered name
+resolves to one MOC" holds by construction rather than by a reader's guess.
+
+MOCs tagged `MiYo/Tomo/exclude/moc` are not eligible. This supersedes spec 021
+ADR-13 B-moc for inbox link candidates only: B-moc kept such MOCs (root indexes
+like `000 Index`) in the link pool, which the owner reversed on 2026-10-23.
+`/moc-propose` still keeps them in its own pool. Exclusion runs before naming,
+so an excluded MOC never forces its namesake onto a path.
+
+`mocs[]` is sorted by path so the output is deterministic for golden baselines
+and for the prompt cache.
+
 ## `build_asset_folder` — threading `concepts.asset` to a process that can't read config (spec 031)
 
 WHY `concepts.asset` is read HERE and written into `shared-ctx.json` as
@@ -78,7 +115,59 @@ Every existing vault-config value happens to carry a single trailing slash by
 convention, which is exactly why this was easy to miss and worth normalising
 defensively rather than trusting the convention to hold.
 
-## Why the budget only sheds derived data (changed 2026-09-13)
+## Why nothing is shed any more: size guards, not a budget (spec 040 ADR-4)
+
+`enforce_budget` is gone. The builder writes every eligible MOC with the full
+detail `build_mocs` gives it, and `size_guards` only *warns*.
+
+**Why shedding existed.** Every Phase-B analyst used to read `mocs` whole
+(`--field mocs`), so the file's size was multiplied by the fan-out — twelve
+times in a normal run. A file-level budget (40960 bytes) was the only lever,
+and it was pulled by deleting derived detail: callouts first, then headings
+greedily per MOC, then topics. On a growing vault that lever fired on every
+run: measured for #173, headings vanished entirely at about 96 MOCs and the
+file overflowed even with nothing left to shed at about 216. A MOC without
+headings cannot be anchored (spec 022 tier-1), so the analyst's placement got
+worse exactly as the vault got richer — silently, because a missing heading
+looks like a MOC that has none.
+
+**Why it is gone.** Since spec 040 no reader loads `mocs` whole. Each analyst
+reads the name list (`--moc-names`) and fetches detail only for the MOCs it
+nominates (`--mocs-from`, at most 20). The cost that the budget protected
+against no longer scales with the file, so shedding buys nothing and still
+costs fidelity. PRD F2-AC2 requires the nominated MOC to arrive with its
+headings and callouts intact; any shedding pass contradicts that.
+
+**Why the guards sit at the single-read level.** What reaches a subagent's
+context is a *read*, not the file. So `size_guards` measures the reads an
+analyst actually performs, each serialised the way `read-shared-ctx.py`
+prints it (compact JSON):
+
+| read | what is measured |
+|---|---|
+| `names` | the `--moc-names` output |
+| `step1` | the Step-1 `--fields daily_notes,classification_keywords,tag_prefixes,asset_folder` object |
+| `placeholder_targets` | the `--field placeholder_targets` output |
+| `detail` | 20 × the largest single `mocs[]` entry — the worst `--mocs-from` result |
+
+Each read over `--max-bytes` produces one `WARN:` line naming the read and its
+size; the file is still written. The default dropped from 40960 to 32768
+because it is now a per-read threshold, kept under the smallest observed
+tool-result spill (~37.7 KB, `SPILL_FLOOR_BYTES` in
+`tests/test_read_shared_ctx.py`; SDD CON-3): above that a Bash result reaches
+the model as a 2 KB preview, so a warning must fire before a read gets there. A warning, not an automatic fix: an extreme vault
+(e.g. 512 MOCs with 60-character titles, about 32 KB of names) is told so and
+the fix is a follow-up, not a silent degradation. The skills already repeat
+every `WARN:` line from this call (see below), so the guard reaches the user.
+
+The total file size is still reported (`bytes=`) but no longer judged: the
+file is never read whole by an analyst.
+
+## History: why the budget only shed derived data (2026-09-13 to spec 040)
+
+The section below records the earlier fix. Its lesson — curated configuration
+(tracker keyword lists) is never shed to save bytes — still holds: with no
+shedding pass at all, nothing in the context is altered for size.
 
 `enforce_budget` used to run seven passes. The first four trimmed tracker
 descriptions to 200 characters and then emptied `negative_keywords`,

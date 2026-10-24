@@ -5,8 +5,8 @@
 
 ## Files
 - [general.md](general.md) — conventions, style, naming [updated: 2026-10-13]
-- [tools.md](tools.md) — CI, build, local dev [updated: 2026-10-13]
-- [domain.md](domain.md) — business rules, data models [updated: 2026-10-13]
+- [tools.md](tools.md) — CI, build, local dev [updated: 2026-10-24]
+- [domain.md](domain.md) — business rules, data models [updated: 2026-10-24]
 - [decisions.md](decisions.md) — architecture choices [updated: 2026-09-04]
 - [context.md](context.md) — current focus [updated: 2026-06-30]
 - [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-07-03]
@@ -17,6 +17,7 @@
 - archive/2026-06/ — resolved troubleshooting + context bug-fix entries (cleanup 2026-06-29); R11/R13 resolved + 2026-05 open blocks relocated (cleanup 2026-06-30)
 
 ## Critical Documentation
+- [Spec 040 close-out](../../XDD/specs/040-relevant-mocs-per-item/close-out.md) — 28 of 30 PRD criteria traced to 64 node ids run in ONE pytest invocation (90 passed), S2 by document review. The trace found three criteria no test could fail (three-candidate cap, placement fallback, both paths running the same analyst), all closed by RED-proven assertions. Live: cost −18% cache-write and −9% $ per item, 0 previews, 0 duplicate proposals; the candidate-agreement KPI was missed in both after-runs, and the owner chose to document it (#200).
 - [Spec 039 close-out](../../XDD/specs/039-attachment-conflict-hardening/close-out.md) — 50 of 53 PRD criteria traced to 172 node ids that ran together in ONE pytest invocation (308 passed), S1 by documentation, F6-AC2 by live runs and the consumer's test; the trace found four gaps, all closed by tests or documents rather than production code (F4-AC7 had been asserted through an extractor production never calls, so it was re-traced through triage's real embed resolver); F1-AC7's proviso was amended by the owner; F3-AC6 (a Kado listing that errors instead of `Path not found`) has never happened live and stays open.
 - [Spec 038 close-out](../../XDD/specs/038-every-editable-decision-reaches-the-wire/close-out.md) — all 38 PRD criteria traced to node ids executed in ONE pytest invocation (95 passed); the trace itself found F4-AC4 asserted by no test that could fail, the second spec running where the close-out rule caught a real gap rather than confirming the work; C1 stays deliberately unticked with the capability delivered twice; and the inventory's two never-exercised columns (`editable: false`, `wire_field: null`) named rather than read as proven.
 - [Spec 038 Phase 1 findings](../../XDD/specs/038-every-editable-decision-reaches-the-wire/phase-1-findings.md) — all 20 Phase 1 discrepancies grouped by disposition (resolved/withdrawn/backlog/accepted-limitation), each with a concrete recommendation; none came from a failing test — every one came from counting or executing something a document asserted.

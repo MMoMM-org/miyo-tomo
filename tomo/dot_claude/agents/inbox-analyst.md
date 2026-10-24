@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.26.0
+# version: 0.27.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -63,14 +63,18 @@ python3 scripts/state-update.py \
 ### Step 1 — Load shared context
 
 ```bash
-python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --fields daily_notes,classification_keywords,tag_prefixes,asset_folder
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --run-id "<run_id>" --fields daily_notes,classification_keywords,tag_prefixes,asset_folder
 ```
 
-The output is a JSON object keyed by those names. Step 4 adds `mocs` and
-`placeholder_links`; together they are what later steps call `shared_ctx`.
+The output is a JSON object keyed by those names. Step 4 adds
+`placeholder_targets`; together they are what later steps call `shared_ctx`.
 
-# STRICT — do NOT add `mocs` or `placeholder_links` to this call.
-# Why: the six keys together exceed the tool-result size limit, so the result
+If this or any later `read-shared-ctx.py` call exits non-zero, stop and run
+Step 11's failure block with `--error-kind shared_ctx_unavailable` and the
+script's stderr line as `--error-msg`.
+
+# STRICT — NEVER pass `mocs` to `--field` or `--fields`.
+# Why: the full MOC list exceeds the tool-result size limit, so the result
 # is written to a file and you receive a 2 KB preview and a path — which you
 # then cannot read without the inline Python this contract forbids.
 
@@ -128,26 +132,36 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 
 ### Step 4 — Match MOCs
 
-Load the two MOC keys now, as separate calls:
+The rules in this step replace the `lyt-patterns` skill's MOC Matching Algorithm and Placeholder link awareness for this agent.
+
+Load the MOC names and the placeholder targets, as separate calls:
 
 ```bash
-python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field mocs
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --run-id "<run_id>" --moc-names
 ```
 
 ```bash
-python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --field placeholder_links
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --run-id "<run_id>" --field placeholder_targets
 ```
 
-For each MOC in `shared_ctx.mocs`:
-- Extract item topics by tokenising body + tags, lowercase, strip stopwords
-- Assign each topic ONE weight: W_TITLE=2 if its normalized form is a substring of
-  the item's OR the MOC's title (lowercased, stripped, whitespace-collapsed);
-  W_BASE=1 otherwise
-- Compute weighted_shared = Σ weight(t) for t in (item_topics ∩ moc_topics)
-- Compute weighted_union  = Σ weight(t) for t in (item_topics ∪ moc_topics)
-- overlap_ratio = weighted_shared / weighted_union
-- Score = overlap_ratio + (0 if `is_classification` else 0.1 depth_bonus)
-- Keep top 3 with score ≥ 0.15
+The first prints a JSON array of delivered MOC names, the second the JSON
+array `shared_ctx.placeholder_targets`. If either exits non-zero, run Step 11's
+failure block as Step 1 says.
+
+**Nominate by meaning.** Read every name now. Nominate once Step 7.5 has
+formed the threads: for each thread that becomes a `create_atomic_note` (one
+default thread for a short item), nominate at most 6 names whose MOC could be
+that thread's thematic home. Thematic and
+classification names may both be nominated. Also nominate any thematic name
+that covers a MOC you would otherwise propose (decision row 2 below). Copy
+each name exactly as delivered — some names are vault paths. Step 7.5b
+fetches the detail of the nominated names once; everything below runs on
+those fetched entries, per thread.
+
+**Score by meaning.** For each fetched MOC, set `score` to your confidence
+(0.0–1.0) that it is the thread's thematic home, using its title, topics and
+headings as evidence. Keep the top 3 with `score ≥ 0.15`. Set
+`pre_check: true` only when `score ≥ 0.5` and `is_classification` is false.
 
 **Classification Guard:** 
 
@@ -158,11 +172,10 @@ dominant topic tokens.
 
 **Placeholder link trigger.**
 
-When `shared_ctx.placeholder_links` is present, scan it AFTER scoring MOCs
-and BEFORE finalising `needs_new_moc`. For each placeholder entry
-`{target, referenced_by}`, treat `target` as a candidate thematic label
-and compare it (case-insensitive, normalised) against the item's dominant
-topic tokens. If any placeholder `target` matches:
+Scan `shared_ctx.placeholder_targets` AFTER scoring MOCs and BEFORE finalising
+`needs_new_moc`. Treat each target as a candidate thematic label and compare
+it (case-insensitive, normalised) against the thread's dominant topic tokens.
+If any target matches:
 
 - Set `needs_new_moc: true`.
 - Set `proposed_moc_topic = <target>` (use the placeholder name verbatim,
@@ -172,18 +185,27 @@ topic tokens. If any placeholder `target` matches:
 
 A placeholder match takes precedence over the Classification-Guard
 fallback above: if both fire on the same item, prefer the placeholder
-name over the inferred topic label, because the placeholder is a
-deliberate dead link the user already wrote and it is a higher-confidence
-signal of intent than a freshly-inferred label.
+name over the inferred topic label.
 
-If `placeholder_links` is absent or empty, skip this trigger silently —
-the field is optional in the schema.
+If `placeholder_targets` is empty, skip this trigger silently.
+
+**Decide the proposal — per thread, first matching row wins:**
+
+| # | Condition | Outcome |
+|---|---|---|
+| 1 | A placeholder target matches the thread's theme | `needs_new_moc: true`, `proposed_moc_topic` = the target verbatim |
+| 2 | A thematic delivered name covers the MOC you would propose | keep that fetched MOC as a candidate, as scored; `needs_new_moc: false` |
+| 3 | No thematic candidate scored ≥ 0.15, or all top matches are classification | `needs_new_moc: true`, `proposed_moc_topic` = inferred thematic label |
+| 4 | Otherwise | candidates as scored; `needs_new_moc: false` |
+
+Row 2 checks thematic names only: a Dewey-numbered (classification) name never
+satisfies it.
 
 **Anchor emission (four Pass-1 placement tiers) — thematic MOCs only.**
 
 For each pre-checked thematic MOC (those with `pre_check: true` after the
-Classification Guard above), resolve one `anchor` object using the inventory
-in `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts`.
+Classification Guard above), resolve one `anchor` object using the `headings`,
+`editable_callouts` and `has_footer` of its entry fetched in Step 7.5b.
 Evaluate the Pass-1 placement tiers in strict order — first tier that fires wins:
 
 - **Pass-1 placement TIER-1 — Semantic heading fit (confidence-gated).**
@@ -235,7 +257,7 @@ Evaluate the Pass-1 placement tiers in strict order — first tier that fires wi
 
 - **Pass-1 placement TIER-4 — H1 title last-resort.**
   If `moc.headings` is absent/empty AND `moc.editable_callouts` is
-  absent/empty, use `moc.title` (the MOC's own H1 title from shared-ctx):
+  absent/empty, use `moc.title` (the MOC's own H1 title from the fetched entry):
   ```json
   {"type": "heading", "value": "<moc.title>", "placement": "after", "new_section": null}
   ```
@@ -244,9 +266,6 @@ Evaluate the Pass-1 placement tiers in strict order — first tier that fires wi
   {"type": "line", "value": "<first body line>", "placement": "after", "new_section": null}
   ```
 
-If `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts` are
-both absent (old shared-ctx artifact without inventory), omit the `anchor` key
-entirely for that MOC — downstream consumers degrade gracefully.
 
 ### Step 5 — Match classification category
 
@@ -350,7 +369,7 @@ Worked examples:
 **Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
 against that thread's own text only (never your summary, never the whole item). Each
 thread independently gets its own `atomic_note_worthiness`, `suggested_title`, MOC
-matches (Steps 4–5), and tags (Step 6). `force_atomic=true` applies to every thread.
+nominations (Step 4, scored after Step 7.5b), classification (Step 5), and tags (Step 6). `force_atomic=true` applies to every thread.
 
 **Classify each thread.**
 - Thread worthiness ≥ 0.5 (or `force_atomic`) → one `create_atomic_note` in Step 9.
@@ -369,6 +388,43 @@ matches (Steps 4–5), and tags (Step 6). `force_atomic=true` applies to every t
 topic. Do NOT collapse merely because segmentation feels effortful or uncertain — if
 Pass A surfaced multiple distinct-domain bullets, keep them as separate threads.
 Never drop the item or lose content.
+
+### Step 7.5b — Fetch detail for the nominated MOCs
+
+Run this first, always — Step 10.4 writes to its output:
+
+```bash
+python3 scripts/item-result-filename.py --item-key "<item_key>"
+```
+
+Capture stdout as `<result_filename>`. `<result_stem>` is `<result_filename>`
+without its trailing `.result.json`.
+
+Collect the names nominated in Step 4 across all threads: at most 20,
+in thread order, then in nomination order within a thread, each name once.
+If nothing was nominated, skip the rest of this step.
+
+Write the names, one per line, with the `Write` tool to
+`<items_dir>/<result_stem>.moc-names.txt`. Never put a MOC name inside a Bash
+command; the file carries them.
+
+```bash
+python3 scripts/read-shared-ctx.py --ctx "<shared_ctx_path>" --run-id "<run_id>" --mocs-from "<items_dir>/<result_stem>.moc-names.txt"
+```
+
+The output is `{"mocs": [...], "unresolved": [...], "omitted": [...]}`; each
+entry in `mocs` is a full MOC entry (`path`, `title`, `topics`,
+`is_classification`, and `headings`, `editable_callouts`, `has_footer` when
+the MOC has them). If the call exits non-zero, run Step 11's failure block as
+Step 1 says.
+
+For each name in `unresolved` or `omitted`, add one string to `issues[]`
+(`"MOC name not resolved: <name>"` or `"MOC name over the cap: <name>"`) and
+drop it.
+
+Now apply Step 4's scoring, Classification Guard, placeholder trigger,
+decision table and anchor emission to the fetched entries, per thread.
+`candidate_mocs[].path` is the fetched entry's `path`.
 
 ### Step 8 — Detect date relevance
 
@@ -751,13 +807,9 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
   (`is_classification: false` in shared-ctx). Never pre-check classification-
   layer MOCs — emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
 
-Step 10.3 — compute the output filename
+Step 10.3 — use the output filename
 
-```bash
-python3 scripts/item-result-filename.py --item-key "<item_key>"
-```
-
-Capture stdout as `<result_filename>`.
+Use `<result_filename>` as captured in Step 7.5b. Do not derive it again.
 
 Step 10.4 — write the filled JSON
 
@@ -793,7 +845,8 @@ python3 scripts/state-update.py \
   --status done --run-id "<run_id>"
 ```
 
-On failure (caught exception, malformed source, schema-invalid output):
+On failure (caught exception, malformed source, schema-invalid output, or a
+`read-shared-ctx.py` call that exited non-zero — `shared_ctx_unavailable`):
 
 ```bash
 python3 scripts/state-update.py \

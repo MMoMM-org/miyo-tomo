@@ -279,3 +279,7 @@ ADR-6). The count is the only sign of how often the analyst missed an
 existing MOC by name — the metric the spec's zero-duplicate goal is measured
 by. Nothing else reads the reducer's stderr, so the skill repeats the number
 from the summary line; it computes nothing itself.
+
+The line is added only when the count is above zero: a "0 converted" line on
+every healthy run is noise the owner learns to skip, and the zero still sits
+in the reducer's summary line in the transcript for anyone measuring it.

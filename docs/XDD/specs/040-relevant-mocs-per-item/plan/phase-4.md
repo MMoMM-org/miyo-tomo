@@ -40,7 +40,7 @@ The analyst reads names, nominates by meaning, fetches detail once, and checks p
   4. Validate: every rationale that T4.2/T4.3 will remove from runtime files is present here
   5. Success: no institutional knowledge lost by the prose edits `[ref: CLAUDE.md rule]`
 
-- [ ] **T4.2 Analyst prose: Step 1, Step 4, Step 7.5b, Step 10.3, output rules** `[activity: prompt-authoring]`
+- [x] **T4.2 Analyst prose: Step 1, Step 4, Step 7.5b, Step 10.3, output rules** `[activity: prompt-authoring]`
 
   1. Prime: T4.1; `tomo/dot_claude/agents/inbox-analyst.md` Step 1, Step 4, Step 7.5, Step 10.3, Step 11, output rules; `tests/test_inbox_analyst_no_condition_b.py`; `tests/test_inbox_analyst_segmentation.py`; `tests/test_034_t2_2_analyst_contract.py:76`; `tests/test_read_shared_ctx.py` `TestAgainstTheRealContract` `[ref: SDD/ADR-3; SDD/Runtime View]`
   2. Test (prose contract):
@@ -51,7 +51,17 @@ The analyst reads names, nominates by meaning, fetches detail once, and checks p
   4. Validate: RED on `main`; GREEN here; all prose-contract tests green
   5. Success: `[ref: PRD/F2-AC1, F2-AC3, F2-AC4, F2-AC5, F3-AC2, F3-AC3, F6-AC2 (analyst side), S1-AC2]`; F3-AC1 is proven in the live run (T6.3)
 
-- [ ] **T4.3 Skills: delete-before-build, run-id reads, Step 7 relay** `[activity: prompt-authoring]`
+  6. Deviations recorded during implementation (2026-10-24):
+     - Path placeholders follow the file's own convention: `<items_dir>/<result_stem>.moc-names.txt`, not the SDD's `{items_dir}/…`.
+     - Nomination covers only threads that become a `create_atomic_note`. The reducer gives suppressed atomics no MOC framing, and a pure daily item should pay only for the name list. The Step-4 wording separates "read every name now" from "nominate once Step 7.5 has formed the threads", because Step 4 is read before Step 7.5 runs.
+     - Row 2 of the decision table keeps an already-fetched MOC. The name-check therefore runs at nomination time ("also nominate any thematic name that covers a MOC you would otherwise propose"), so the covering MOC is in the single Step-7.5b fetch.
+     - A failing reader is recorded with `--error-kind shared_ctx_unavailable` (free string, no enum in `state-update.py`).
+     - Step 4 now opens with a precedence line: its rules replace `lyt-patterns`' MOC Matching Algorithm and Placeholder link awareness for this agent. The skill is shared with `moc-architect` and `vault-explorer`, which read the cache, so it stays unchanged.
+     - The "old shared-ctx artifact → omit anchor" paragraph is removed. That case can no longer reach the analyst, and TIER-4 covers an entry without inventory.
+     - Deliberate test changes, each with its reason in the test: `test_034_t2_2_analyst_contract.py` (the helper call moved to Step 7.5b); `test_inbox_analyst_no_condition_b.py` (`placeholder_targets`, "empty" instead of "absent or empty"); `test_read_shared_ctx.py` (the Phase-4 tripwire fired as designed and is removed).
+     - RED: 16 of 16 in `tests/test_040_analyst_prose.py` fail against `main`'s agent.
+
+- [x] **T4.3 Skills: delete-before-build, run-id reads, Step 7 relay** `[activity: prompt-authoring]`
 
   1. Prime: T4.1; `tomo/dot_claude/skills/suggest-handling/SKILL.md` setup (`:35-59`), dispatch (`:99-121`), Step 7 (`:165-169`); `tomo/dot_claude/skills/force-atomic-handling/SKILL.md` setup (`:31-54`), dispatch (`:76-99`), report; `scripts/reset-tomo-tmp.sh` `reset_pass1` `[ref: SDD/ADR-8; PRD/F6]`
   2. Test (prose contract):
@@ -60,6 +70,10 @@ The analyst reads names, nominates by meaning, fetches detail once, and checks p
   3. Implement: edit both skills; bump versions
   4. Validate: RED on `main`; GREEN here
   5. Success: `[ref: PRD/F6-AC1, F6-AC3, F4-AC4 (relay)]`
+
+  6. Notes recorded during implementation (2026-10-24):
+     - The count is reported only when it is above zero (WHY in `docs/tomo/dot_claude/skills/suggest-handling.md`).
+     - RED: 5 of 9 tests in `tests/test_040_skill_prose.py` fail against `main`. The 4 that pass there are the planned guards: identical builder commands, the WARN relay (×2), and reset clearing the context and the names files.
 
 - [ ] **T4.4 Phase Validation** `[activity: validate]`
 

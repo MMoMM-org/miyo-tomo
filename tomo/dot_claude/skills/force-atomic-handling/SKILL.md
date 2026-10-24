@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.13.0
+# version: 0.14.0
 
 ## When to Activate
 
@@ -41,6 +41,10 @@ python3 scripts/run-id.py --out tomo-tmp/.run_id
 ```
 
 Capture stdout as `RUN_ID`.
+
+```bash
+rm -f tomo-tmp/shared-ctx.json
+```
 
 ```bash
 python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
@@ -128,3 +132,10 @@ python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --
 
 > "FAN resolve complete — {N} items expanded into suggestions-fan doc.
 > Review + resolve in Hashi (or Obsidian), check the **Approved** box, then re-run `/inbox`."
+
+Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
+(step 4). When `<n>` is greater than 0, add:
+
+> "{n} proposed MOC(s) already existed in the vault and are offered as
+> unticked links instead."
+

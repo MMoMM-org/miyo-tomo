@@ -60,6 +60,11 @@ Each attempt is a wording change to Step 4 (0.24.0, unsynced); partial run first
 |---|---|---|---|
 | 1 | Report-level STRICT (RESULT verbatim; no internals; relay consecutive and last; no lines outside the template) + 3c pointer + 3a stamped-line fix | partial, 3 runs | `RED (PARTIAL SUITE …) 2/3 cases · withheld-notices-relayed: 2-delete-2-verbatim (run 0), 3-attachment-verbatim (run 0), 4-deletes-then-attachment-last (run 0) · runs 3 · $0.20 · 47 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-30-55Z` |
 
+| 2 | Relay lines: literal `- ⚠️ **` shape (fenced example outside the template blockquote), keep `- ` on every line; NEVER introduce the relay block | partial, 3 runs | `GREEN (PARTIAL SUITE …) 3/3 cases · runs 3 · $0.20 · 45 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-34-07Z` |
+| 2 | same | **full suite, 9 runs** | `GREEN 3/3 cases · runs 9 · $0.59 · 121 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-34-58Z` |
+
+Attempt 2 meets T3.2: every gate grader passed in 3/3 runs of every case. F7-AC6's three consecutive full-suite GREENs on the merge candidate are the close-out's job (T5.1), after Phase 4's RED proofs.
+
 Attempt 1: no-leak green in every case (was 0/3); RESULT line verbatim; audit gates unchanged. Remaining: the conductor dropped the leading `- ` from relay lines 2 and 3 (the baseline's markup loss, 1/3 on 0.23.0) and wrote an introduction line before the block (`- [[Meeting Notes Q3]] and [[Reading List]] were withheld as shown below.`) despite the "no line outside the template" rule.
 
 ## Spend

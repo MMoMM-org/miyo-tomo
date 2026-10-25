@@ -51,7 +51,7 @@ version: "1.0"
 |-------|------|--------|------|
 | 1 | Runner, verdict and stub kit | completed | phase-1.md |
 | 2 | Cases and the baseline on `main` | completed | phase-2.md |
-| 3 | Conductor Step 4 fix | pending | phase-3.md |
+| 3 | Conductor Step 4 fix | completed | phase-3.md |
 | 4 | RED proofs and gate documentation | pending | phase-4.md |
 | 5 | Close-out | pending | phase-5.md |
 
@@ -137,7 +137,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 - [x] [Phase 1: Runner, verdict and stub kit](phase-1.md)
 - [x] [Phase 2: Cases and the baseline on main](phase-2.md)
-- [ ] [Phase 3: Conductor Step 4 fix](phase-3.md)
+- [x] [Phase 3: Conductor Step 4 fix](phase-3.md)
 - [ ] [Phase 4: RED proofs and gate documentation](phase-4.md)
 - [ ] [Phase 5: Close-out](phase-5.md)
 

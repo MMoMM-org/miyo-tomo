@@ -50,6 +50,8 @@
 | 2026-10-25 | Specification finalized; readiness HIGH | PRD, SDD, plan complete; all ADRs confirmed; 35/35 criteria traced to tasks. |
 | 2026-10-25 | Phase 1 complete | Runner, verdict reader, stub kit, sync guard; drift fixes (fixture sanitising, `--cost-cap`, rev SHA); $0.06 spent. |
 | 2026-10-25 | ADR-10 widened to one report-level STRICT | Baseline (`baseline.md`, RED, $0.64) showed three failure modes the first scope missed: RESULT line paraphrased, render stderr with action ids/guard names quoted, headings between relay lines. Owner chose one STRICT over two, and over iterating on the narrow rule. |
+| 2026-10-25 | Failed-step line names the note | Code review: with several docs, `<step> exited <code>.` could not say which doc failed. Owner chose to fix in 041: `<step> exited <code> for "<note>".`, note name only, never a path. |
+| 2026-10-25 | Phase 3 complete | Conductor 0.24.0: full suite GREEN 9/9 on attempts 2 and 3; synced to tomo-instance only; phase spend $1.78. |
 | 2026-10-25 | Phase 2 complete | Three cases (incl. a second F4-AC4 grader for copies), conductor-case tests split out; baseline recorded; phase spend $0.90. |
 
 ## Context

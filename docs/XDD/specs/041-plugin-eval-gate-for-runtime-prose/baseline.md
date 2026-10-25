@@ -63,7 +63,12 @@ Each attempt is a wording change to Step 4 (0.24.0, unsynced); partial run first
 | 2 | Relay lines: literal `- ⚠️ **` shape (fenced example outside the template blockquote), keep `- ` on every line; NEVER introduce the relay block | partial, 3 runs | `GREEN (PARTIAL SUITE …) 3/3 cases · runs 3 · $0.20 · 45 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-34-07Z` |
 | 2 | same | **full suite, 9 runs** | `GREEN 3/3 cases · runs 9 · $0.59 · 121 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-34-58Z` |
 
-Attempt 2 meets T3.2: every gate grader passed in 3/3 runs of every case. F7-AC6's three consecutive full-suite GREENs on the merge candidate are the close-out's job (T5.1), after Phase 4's RED proofs.
+| 3 | Failed-step line names the note (`<step> exited <code> for "<note>".`; owner decision after code review); template placeholder without nested brackets | partial, 3 runs | `GREEN (PARTIAL SUITE …) 3/3 cases · runs 3 · $0.20 · 46 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T16-16-07Z` |
+| 3 | same | **full suite, 9 runs** | `GREEN 3/3 cases · runs 9 · $0.59 · 113 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T16-16-59Z` |
+
+No case exercises a failed upload or state flip, so the attempt-3 failure line itself is unmeasured; attempt 3 proves only that the change did not regress the covered behaviour.
+
+Attempt 2 meets T3.2 (attempt 3 keeps it): every gate grader passed in 3/3 runs of every case. F7-AC6's three consecutive full-suite GREENs on the merge candidate are the close-out's job (T5.1), after Phase 4's RED proofs.
 
 Attempt 1: no-leak green in every case (was 0/3); RESULT line verbatim; audit gates unchanged. Remaining: the conductor dropped the leading `- ` from relay lines 2 and 3 (the baseline's markup loss, 1/3 on 0.23.0) and wrote an introduction line before the block (`- [[Meeting Notes Q3]] and [[Reading List]] were withheld as shown below.`) despite the "no line outside the template" rule.
 

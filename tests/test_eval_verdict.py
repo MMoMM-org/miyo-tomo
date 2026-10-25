@@ -56,6 +56,25 @@ def test_green_3x(tmp_path):
     assert (path.parent / "verdict.txt").read_text().strip() == out.strip()
 
 
+def test_model_override_green(tmp_path):
+    code, out, _ = run(stage(tmp_path, "model-override-green"))
+    assert code == 0
+    assert out.startswith("GREEN ")
+    assert "1/1 cases" in out
+    assert "runs 1" in out
+
+
+def test_cli_run_level_passed_and_score_are_ignored(tmp_path):
+    path, data = load(tmp_path, "green-3x", "rl-score")
+    for case in data["cases"]:
+        for r in case["arms"]["with"]:
+            r["passed"], r["score"] = False, 0.5
+    save(path, data)
+    code, out, _ = run(path)
+    assert code == 0
+    assert out.startswith("GREEN ")
+
+
 def test_relay_red_one_run_is_red_despite_cli_score(tmp_path):
     code, out, err = run(stage(tmp_path, "relay-red"))
     assert code == 1
@@ -183,14 +202,52 @@ def test_invalid_json(tmp_path):
     assert "Traceback" not in err
 
 
-@pytest.mark.parametrize("body", ["[]", "null", '{"schemaVersion": 1}',
-                                  '{"schemaVersion": 1, "cases": [{"arms": 3}]}'])
+def _bad_run(mutate):
+    data = json.loads((FIXTURES / "green-3x.json").read_text())
+    mutate(data["cases"][0]["arms"])
+    return json.dumps(data).encode()
+
+
+MALFORMED = {
+    "array": b"[]",
+    "null": b"null",
+    "no-cases": b'{"schemaVersion": 1}',
+    "arms-int": b'{"schemaVersion": 1, "cases": [{"arms": 3}]}',
+    "invalid-utf8": b"\xff\xfe",
+    "graders-string": _bad_run(lambda a: a["with"][0].update(graders="x")),
+    "run-is-string": _bad_run(lambda a: a.update({"with": ["x"]})),
+    "grader-without-passed": _bad_run(lambda a: a["with"][0]["graders"][0].pop("passed")),
+}
+
+
+@pytest.mark.parametrize("body", MALFORMED.values(), ids=MALFORMED.keys())
 def test_malformed_shapes_never_traceback(tmp_path, body):
     p = tmp_path / "aggregate-result.json"
-    p.write_text(body)
+    p.write_bytes(body)
     code, out, err = run(p)
     assert code == 2
     assert "Traceback" not in err
+    assert out.startswith("NOT GRADED")
+
+
+def test_unexpected_crash_is_not_graded_never_red(monkeypatch, capsys, tmp_path):
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        import eval_verdict
+    finally:
+        sys.path.remove(str(SCRIPT.parent))
+
+    def boom(*a, **k):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(eval_verdict, "derive", boom)
+    path = stage(tmp_path, "green-3x")
+    assert eval_verdict.main([str(path)]) == 2
+    out = capsys.readouterr()
+    assert out.out.startswith("NOT GRADED")
+    assert "Traceback" not in out.out + out.err
+    monkeypatch.setattr(eval_verdict, "compare", boom)
+    assert eval_verdict.main(["--compare", str(path), str(path)]) == 2
 
 
 def test_schema_version_2_refused(tmp_path):
@@ -212,10 +269,7 @@ def test_partial_suite_prefix(tmp_path):
 def test_mutation_and_rev_echoed(tmp_path):
     _, out, _ = run(stage(tmp_path, "green-3x"), "--mutation", "drop-gate")
     assert "drop-gate" in out
-    d = tmp_path / "second"
-    d.mkdir()
-    shutil.copy(FIXTURES / "green-3x.json", d / "aggregate-result.json")
-    _, out, _ = run(d / "aggregate-result.json", "--rev", "abc1234")
+    _, out, _ = run(stage(tmp_path, "green-3x", "second"), "--rev", "abc1234")
     assert "abc1234" in out
 
 
@@ -225,7 +279,6 @@ def test_tree_dirty(tmp_path):
 
 
 def test_compare_lists_only_differing_pairs(tmp_path):
-    a = stage(tmp_path, "green-3x")
     b_dir = tmp_path / "b"
     b_dir.mkdir()
     # same case/grader names with differing rates: relay-red vs a green copy of it
@@ -243,7 +296,29 @@ def test_compare_lists_only_differing_pairs(tmp_path):
     assert "withheld-notices-relayed" in lines[0]
     assert "4-deletes-before-attachments-and-last" in lines[0]
     assert p.returncode == 0
-    del a
+
+
+def test_compare_disjoint_pair_reports_every_grader_of_both(capsys):
+    p = subprocess.run([sys.executable, str(SCRIPT), "--compare",
+                        str(FIXTURES / "green-3x.json"), str(FIXTURES / "relay-red.json")],
+                       capture_output=True, text=True)
+    assert p.returncode == 0
+    assert p.stdout.splitlines() == [
+        "audit-gates-delivery: 0-conductor-dispatched: 3/3 -> absent",
+        "audit-gates-delivery: 1-audit-before-upload: 3/3 -> absent",
+        "audit-gates-delivery: 2-audit-before-state-flip: 3/3 -> absent",
+        "audit-mismatch-stops: 0-conductor-dispatched: 3/3 -> absent",
+        "audit-mismatch-stops: 1-no-upload-after-mismatch: 3/3 -> absent",
+        "audit-mismatch-stops: 2-no-state-flip-after-mismatch: 3/3 -> absent",
+        "audit-mismatch-stops: 3-audit-ran: 3/3 -> absent",
+        "audit-mismatch-stops: 4-diff-reported-verbatim: 3/3 -> absent",
+        "withheld-notices-relayed: 0-conductor-dispatched: absent -> 3/3",
+        "withheld-notices-relayed: 1-line-verbatim: absent -> 3/3",
+        "withheld-notices-relayed: 2-line-verbatim: absent -> 3/3",
+        "withheld-notices-relayed: 3-line-verbatim: absent -> 3/3",
+        "withheld-notices-relayed: 4-deletes-before-attachments-and-last: absent -> 2/3",
+        "withheld-notices-relayed: 5-no-leak: absent -> 3/3",
+    ]
 
 
 def test_compare_identical_prints_nothing(tmp_path):

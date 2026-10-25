@@ -5,7 +5,7 @@ Tests copy them to `tmp_path` before running the reader so `verdict.txt` never l
 
 | Fixture | Source | Represents | Keys of note |
 |---|---|---|---|
-| `green-3x.json` | spike/results/conductor-cases-green-3x.json | Every grader of every run passed (3 cases, `audit-*`) | `partial: false`, per-run `error: null` |
+| `green-3x.json` | spike/results/conductor-cases-green-3x.json | Every grader of every run passed (2 cases x 3 runs: `audit-gates-delivery`, `audit-mismatch-stops`) | `partial: false`, per-run `error: null` |
 | `relay-red.json` | spike/results/relay-red-one-run.json | One of three runs failed one grader; the CLI case score is 0.944 | run 0 grader `4-deletes-before-attachments-and-last` failed; CLI `passed` is not trusted |
 | `pre-4350ddd-red.json` | spike/results/pre-4350ddd-red.json | Two cases, both ordering graders failing, before the fix commit | `tool_order` graders failed in both cases |
 | `eperm-in-sandbox.json` | spike/results/eperm-in-sandbox.json | Run could not start inside the Bash sandbox | run `error` = "run could not start (EPERM) ...", `graders: []`, `score: 0` |

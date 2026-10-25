@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Turn a `claude plugin eval` aggregate-result.json into one verdict line.
 
 Why this exists: the CLI's own `passed`/`score` are not a merge gate (a case with one
@@ -41,6 +41,8 @@ def load(path):
         text = Path(path).read_text()
     except OSError as e:
         raise NotGraded(f"no result: {e.strerror or e}")
+    except UnicodeDecodeError:
+        raise NotGraded("no result: file is not valid UTF-8")
     if not text.strip():
         raise NotGraded("no result: file is empty")
     try:
@@ -106,6 +108,7 @@ def derive(data):
                 not_graded.append(f"({name}, run {i}): {reason}")
                 bad_cases.add(name)
                 continue
+            # run-level passed/score from the CLI are deliberately ignored: GREEN is derived per grader
             for g in run["graders"]:
                 if g["passed"] is False:
                     failures.append((name, g["name"], i))
@@ -183,6 +186,10 @@ def compare(a, b):
     return lines
 
 
+def _oneline(e):
+    return f"{type(e).__name__}: {e}".replace("\n", " ")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("result", nargs="?")
@@ -197,13 +204,16 @@ def main(argv=None):
         try:
             for ln in compare(*args.compare):
                 print(ln)
-        except (NotGraded, KeyError, TypeError, AttributeError) as e:
-            print(f"NOT GRADED · cannot compare: {e}")
+        except Exception as e:  # a crash must never share exit 1 with RED
+            print(f"NOT GRADED · cannot compare: {_oneline(e)}")
             return 2
         return 0
     if not args.result:
         ap.error("result path required")
-    code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev)
+    try:
+        code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev)
+    except Exception as e:  # a crash must never share exit 1 with RED
+        code, line, detail = 2, f"NOT GRADED · unexpected error ({_oneline(e)})", []
     print(line)
     for d in detail:
         print(d, file=sys.stderr)

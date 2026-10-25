@@ -49,7 +49,7 @@ version: "1.0"
 
 | Phase | Name | Status | File |
 |-------|------|--------|------|
-| 1 | Runner, verdict and stub kit | pending | phase-1.md |
+| 1 | Runner, verdict and stub kit | completed | phase-1.md |
 | 2 | Cases and the baseline on `main` | pending | phase-2.md |
 | 3 | Conductor Step 4 fix | pending | phase-3.md |
 | 4 | RED proofs and gate documentation | pending | phase-4.md |
@@ -135,7 +135,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-- [ ] [Phase 1: Runner, verdict and stub kit](phase-1.md)
+- [x] [Phase 1: Runner, verdict and stub kit](phase-1.md)
 - [ ] [Phase 2: Cases and the baseline on main](phase-2.md)
 - [ ] [Phase 3: Conductor Step 4 fix](phase-3.md)
 - [ ] [Phase 4: RED proofs and gate documentation](phase-4.md)

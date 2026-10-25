@@ -417,15 +417,17 @@ Command: scripts/run-evals.sh [options]
   stdout: exactly one verdict line (also written to verdict.txt), e.g.
     GREEN 3/3 cases · runs 3 · $1.04 · 214 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T12-00-00Z
     RED 2/3 cases · withheld-notices-relayed: 4-relay-lines-last (run 1) · $1.10 · …
-    NOT GRADED · cost cap $5 reached after 7/9 runs · …
+    NOT GRADED · cost cap $5 reached after 7 graded runs · …
     GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · …
 ```
 
 **C2 — `scripts/lib/eval_verdict.py`**
 
 ```yaml
-Command: python3 scripts/lib/eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean] [--mutation <name>|--rev <rev>]
+Command: python3 scripts/lib/eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean] [--mutation <name>|--rev <rev>] [--cost-cap <usd>]
   stdout: the verdict line; stderr: per-failure detail lines
+  --cost-cap: C1 always passes its cap so a cost-ceiling partial names it; the JSON carries neither the cap
+              nor the planned run count, so the line counts graded runs only (added in Phase 1 drift fix)
   exit:   0 | 1 | 2 (same meaning as C1; C1 forwards it)
   refuses: schemaVersion != 1 → exit 2 "unknown result schema"
   missing / unreadable / invalid JSON → exit 2 "no result" (never a traceback, never exit 1)

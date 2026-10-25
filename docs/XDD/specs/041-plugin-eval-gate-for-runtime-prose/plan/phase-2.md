@@ -22,6 +22,12 @@ phase: 2
 - This is the first phase that spends money. Every paid run happens outside the Claude Code Bash sandbox (ADR-9) and after the user approved the sandbox bypass for that command.
 - The baseline runs on the conductor **exactly as on `main`** (0.23.0). It is expected to be RED on the relay case and on the leak guard; that red is the evidence Phase 3's STRICT block rests on. Do not touch the conductor in this phase.
 
+**Carried over from the Phase 1 drift check (2026-10-25)** — T2.1's shape tests (`tests/test_eval_suite_shape.py` part 2) must also assert:
+- every `case.yaml` has `runs: 3` — the T1.1 cost-cap capture passed `--runs 2` and got `runsPerCase: 1` from a `runs: 1` case.yaml, so case.yaml may override the runner's `--runs 3`; the verdict does not check the per-case run count;
+- `case.yaml` `name` equals the case directory name — the runner's `--case` preflight matches directory names, the CLI matches `name:`;
+- every non-underscore subdirectory of `evals/` is a recognised case (holds `case.yaml`) — the runner silently skips others, so they would escape the leak-guard identity check;
+- the first paid run confirms the CLI's case loader tolerates `evals/_mutations/` (only `_lib/` was verified in the spike); if `_mutations/` does not exist yet, confirm it in Phase 4's first mutation run instead.
+
 **Dependencies**: Phase 1.
 
 ---

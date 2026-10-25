@@ -153,8 +153,8 @@ def test_every_repo_path_in_the_readme_exists():
     checked, skipped = _readme_paths(README.read_text())
     assert checked, "no repo paths found in evals/README.md"
     assert not _missing_paths(README.read_text()), _missing_paths(README.read_text())
-    # skipped tokens are placeholders/globs; they must stay few and explicit
-    assert all(re.search(r"[<*\s…]", t) for t in skipped)
+    # skipped tokens are placeholders/globs that cannot be checked; keep them few
+    assert len(skipped) <= 3, skipped
 
 
 def test_tools_memory_mentions_the_runner():

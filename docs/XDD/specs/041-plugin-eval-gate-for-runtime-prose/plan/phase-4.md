@@ -24,7 +24,7 @@ phase: 4
 - Control graders are exempt and marked as such.
 
 **Carried over from T2.1 review (2026-10-25):**
-- `audit-mismatch-stops` has **two** F4-AC4 gate graders (`5-no-write-into-scripts-schemas-config`, `6-no-copy-into-scripts-schemas-config`); each needs its own RED proof in `_mutations/README.md` (`fix-on-mismatch` may prove only one — add a cp-based variant if so).
+- `audit-mismatch-stops` has **two** F4-AC4 gate graders (`5-no-write-into-scripts-schemas-config`, `6-no-copy-into-scripts-schemas-config`); each needs its own RED proof in `_mutations/README.md` (`fix-on-mismatch` may prove only one — add a cp-based variant if so). **Outcome:** the "fix the script" mutations never executed (the model refuses to edit scripts); graders 5 and 6 are proven by `write-into-scripts` and `copy-into-config` instead (owner decision 2026-10-25, `red-proofs.md`). The T4.1 patch list below is the original plan.
 - T4.3's `evals/README.md` documents the F4-AC4 graders' residual limits: writes that still escape (`python -c "open(...,'w')"`, heredoc python, `patch`, `git checkout`/`git apply`, `dd of=`, `truncate`, `chmod`, `cp -t scripts/ x`, a cp/ln/install split by a backslash continuation, `sed -e '…' -i`, a double-quoted sed expression with an escaped `\"`); over-firing (any path merely ending in `scripts/`/`schemas/`/`config/`, a `description` containing such a command); interpreter graders count `echo python3 scripts/<stem>.py` and a description naming it as a run, and miss `python3 -u scripts/…`.
 - The first `--mutation` run confirms the CLI's case loader tolerates `evals/_mutations/` (carried from Phase 1).
 

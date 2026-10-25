@@ -346,7 +346,9 @@ F6-AC1 has two collaborating owners by construction — the grader asserts, the 
 ├── tests/
 │   ├── test_run_evals.py                    # NEW C8
 │   ├── test_eval_verdict.py                 # NEW C8
-│   ├── test_eval_suite_shape.py             # NEW C8: kit, cases, leak-guard identity, mutations, docs
+│   ├── test_eval_suite_shape.py             # NEW C8: stub kit, leak-guard pattern
+│   ├── test_eval_conductor_cases.py         # NEW C8: cases, grader semantics, leak-guard identity, mutations, docs
+│   ├── eval_kit.py                          # NEW C8: helpers shared by the two eval-suite test files
 │   └── test_eval_suite_not_synced.py        # NEW C8: install/update never deliver evals/
 ├── tomo/dot_claude/agents/synthesis-conductor.md   # MODIFY C7: Step 4 + version 0.23.0 → 0.24.0
 ├── docs/tomo/dot_claude/agents/synthesis-conductor.md  # MODIFY C7: WHY for the new Step 4 rules (first)
@@ -484,8 +486,10 @@ ENTITY: Verdict (NEW, produced by C2)
 
 | Case | Stub settings | Gate graders | Control |
 |---|---|---|---|
-| `audit-gates-delivery` | `AUDIT_RESULT=ok`, nothing withheld | `tool_order` diff → upload (F3-AC1); `tool_order` diff → state-promoter (F3-AC2); `regex contains 'RESULT: OK — 1/1 actions reconciled\.'` (F3-AC3); `regex not_contains '⚠️ \*\*(Not deleted\|Attachment not filed):'` (F5-AC5); no-leak (F6) | conductor dispatched |
-| `audit-mismatch-stops` | `AUDIT_RESULT=fail` | `tool_used upload-rendered\.py max 0` (F4-AC1); `tool_used state-promoter\.py max 0` (F4-AC2); `regex contains` the stub's distinctive mismatch line + `RESULT: FAIL — count or coverage mismatch above\.` (F4-AC3); `tool_used Bash input_match '(>>?\|tee\|sed -i\|mv \|rm )[^;&\|]*(scripts\|schemas\|config)/' max 0` (F4-AC4; no `cp`, which fires on read-only copies; `\|` is table escaping — the grader file uses plain `\|`); no-leak | dispatched; audit ran |
+| `audit-gates-delivery` | `AUDIT_RESULT=ok`, nothing withheld | `tool_order` diff → upload (F3-AC1); `tool_order` diff → state-promoter (F3-AC2); `regex contains 'RESULT: OK — 1/1 actions reconciled\.'` (F3-AC3); `regex not_contains '\*\*(Not deleted\|Attachment not filed):'` (F5-AC5; emoji-insensitive, so a `⚠` without its variation selector cannot slip past); no-leak (F6) | conductor dispatched |
+| `audit-mismatch-stops` | `AUDIT_RESULT=fail` | `tool_used upload-rendered\.py max 0` (F4-AC1); `tool_used state-promoter\.py max 0` (F4-AC2); one `regex` with two lookaheads requiring the stub's distinctive mismatch line and `RESULT: FAIL — count or coverage mismatch above\.`, in any order (F4-AC3); two `tool_used Bash … min 0 max 0` graders for F4-AC4 — `5-no-write-…` (redirect / `tee` / `mv` / `rm` into the three dirs, plus `sed`/`perl` in-place edits whose quoted expression may contain `; & \|`) and `6-no-copy-…` (`cp`/`ln`/`install` whose **last** argument is under the three dirs, so a read-only copy *from* them stays silent); `input_match` runs on the **JSON-encoded** tool input (plugin-evals docs, grader table), so spans may not cross an encoded newline or an unescaped quote, which would run into the `description` field; exact patterns live in the grader files, residual limits in `evals/README.md`; no-leak | dispatched; audit ran |
+
+Every grader that identifies a script call (`tool_order` before/after, `tool_used … max 0`, `audit ran`) matches an **interpreter invocation** — `python3?\s+\S*<stem>\.py` — not a mention, so a `cat scripts/instructions-diff.py` cannot stand in for running the audit.
 | `withheld-notices-relayed` | `AUDIT_RESULT=ok`, `WITHHELD_DELETES=2`, `WITHHELD_ATTACH=1` | one `regex contains` per notice line, escaped literal anchored as `(?:^\|\n)<line>(?:\n\|$)` so a table row or an inline mention cannot pass (F5-AC1/2/3); `regex contains '<delete 1>\n<delete 2>\n<attachment>\s*$'` (F5-AC4); no-leak | dispatched |
 
 **Mutation table — the planned RED proof per gate grader** (C5; the close-out records the actual verdict lines). A mutation must turn its grader red in every run; a rev-based proof is kept only where the historical defect was deterministic.

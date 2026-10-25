@@ -111,7 +111,7 @@ When implementation requires changes from the specification:
 
 ```bash
 # Testing (always the venv — memory: run Tomo tests under ./venv/bin/python)
-./venv/bin/python -m pytest tests/test_eval_verdict.py tests/test_run_evals.py tests/test_eval_suite_shape.py tests/test_eval_suite_not_synced.py
+./venv/bin/python -m pytest tests/test_eval_verdict.py tests/test_run_evals.py tests/test_eval_suite_shape.py tests/test_eval_conductor_cases.py tests/test_eval_suite_not_synced.py
 ./venv/bin/python -m pytest tests/                       # full suite, phase gates
 
 # Quality

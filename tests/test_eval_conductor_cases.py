@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 from eval_kit import (
@@ -455,3 +457,191 @@ def test_no_copy_grader_shape():
     assert {k: g[k] for k in ("type", "tool", "min", "max")} == {
         "type": "tool_used", "tool": "Bash", "min": 0, "max": 0,
     }
+
+
+# ── C5: mutation patches and the RED-proof index (T4.1, F7-AC4/AC5) ─────────
+
+MUTATIONS = EVALS / "_mutations"
+MUTATIONS_README = MUTATIONS / "README.md"
+CONDUCTOR_IN_PLUGIN = "agents/synthesis-conductor.md"
+EXPECTED_MUTATIONS = (
+    "drop-audit-line", "always-notice", "summarise-mismatch", "fix-on-mismatch",
+    "copy-fix-on-mismatch", "paraphrase-relay", "files-used-after",
+    "attachments-first", "report-run-id",
+)
+GRADER_REF = re.compile(r"`([a-z-]+)/(\d-[a-z0-9-]+)`")
+NO_WRITE, NO_COPY = "5-no-write-into-scripts-schemas-config", "6-no-copy-into-scripts-schemas-config"
+
+
+def _assemble_plugin(tmp_path: Path) -> Path:
+    """The working-tree half of run-evals.sh's assembly: agents/skills/commands."""
+    plugin = tmp_path / "plugin"
+    for d in ("agents", "skills", "commands"):
+        shutil.copytree(REPO / "tomo" / "dot_claude" / d, plugin / d)
+    return plugin
+
+
+def _patch(plugin: Path, name: str, dry_run: bool) -> subprocess.CompletedProcess:
+    argv = ["patch", "-p1", "--forward", "-i", str(MUTATIONS / f"{name}.patch")]
+    if dry_run:
+        argv.insert(1, "--dry-run")
+    return subprocess.run(argv, cwd=plugin, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+
+
+def _readme_section(title: str) -> str:
+    text = MUTATIONS_README.read_text(encoding="utf-8")
+    m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+    assert m, f"_mutations/README.md has no '## {title}' section"
+    return m.group(1)
+
+
+def _table_rows(section: str) -> list[list[str]]:
+    rows = [
+        [c.strip() for c in line.strip().strip("|").split("|")]
+        for line in section.splitlines() if line.startswith("|")
+    ]
+    return [r for r in rows[1:] if not set("".join(r)) <= set("-: ")]
+
+
+def _proofs() -> list[dict]:
+    """One dict per row of the Proofs table: proof, cases, expected, side."""
+    out = []
+    for proof, cases, expected, side in _table_rows(_readme_section("Proofs")):
+        m = re.fullmatch(r"`--(mutation|rev) ([^`]+)`", proof)
+        assert m, f"proof cell is neither `--mutation <name>` nor `--rev <rev>`: {proof}"
+        out.append({
+            "kind": m.group(1), "arg": m.group(2),
+            "cases": set(re.findall(r"`([a-z-]+)`", cases)),
+            "expected": set(GRADER_REF.findall(expected)),
+            "side": set(GRADER_REF.findall(side)),
+        })
+    return out
+
+
+def _controls() -> set[tuple[str, str]]:
+    return {
+        (re.sub(r"`", "", case), re.sub(r"`", "", g))
+        for case, g, *_ in _table_rows(_readme_section("Controls"))
+    }
+
+
+def _clauses(name: str) -> dict[str, list[str]]:
+    section = _readme_section("Clauses")
+    m = re.search(rf"^### {re.escape(name)}\n(.*?)(?=^### |\Z)", section, re.S | re.M)
+    assert m, f"_mutations/README.md Clauses has no '### {name}'"
+    out = {"removes": [], "adds": []}
+    for kind, clause in re.findall(r'^- (removes|adds): "(.*)"$', m.group(1), re.M):
+        out[kind].append(clause)
+    return out
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def test_readme_mutations_match_the_patch_files():
+    named = {p["arg"] for p in _proofs() if p["kind"] == "mutation"}
+    files = {p.stem for p in MUTATIONS.glob("*.patch")}
+    assert named == files == set(EXPECTED_MUTATIONS)
+
+
+@pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
+def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
+    result = _patch(_assemble_plugin(tmp_path), name, dry_run=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "offset" not in result.stdout and "fuzz" not in result.stdout, result.stdout
+
+
+@pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
+def test_mutation_touches_only_the_conductor(name):
+    text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
+    assert set(re.findall(r"^\+\+\+ b/(\S+)", text, re.M)) == {CONDUCTOR_IN_PLUGIN}
+    assert set(re.findall(r"^--- a/(\S+)", text, re.M)) == {CONDUCTOR_IN_PLUGIN}
+
+
+@pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
+def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
+    """A mutation that only adds a bad instruction while a surviving STRICT
+    forbids it is a weak proof: every contradicting clause it neutralises is
+    declared in the README and checked gone here."""
+    plugin = _assemble_plugin(tmp_path)
+    before = _norm((plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8"))
+    result = _patch(plugin, name, dry_run=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    after = _norm((plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8"))
+    clauses = _clauses(name)
+    assert clauses["removes"] and clauses["adds"], name
+    for clause in clauses["removes"]:
+        assert _norm(clause) in before, f"{name}: declared removal not in the conductor: {clause}"
+        assert _norm(clause) not in after, f"{name}: still present after the patch: {clause}"
+    for clause in clauses["adds"]:
+        assert _norm(clause) not in before, f"{name}: declared addition already present: {clause}"
+        assert _norm(clause) in after, f"{name}: missing after the patch: {clause}"
+
+
+def test_every_gate_grader_is_an_expected_red_of_a_proof():
+    expected = set().union(*(p["expected"] for p in _proofs()))
+    for case, controls in CONTROL_GRADERS.items():
+        for g in sorted(grader_names(case) - controls):
+            assert (case, g) in expected, f"gate {case}/{g} has no RED proof"
+
+
+def test_every_control_is_listed_and_never_a_proof_target():
+    flat = {(case, g) for case, gs in CONTROL_GRADERS.items() for g in gs}
+    assert _controls() == flat
+    named = set().union(*(p["expected"] | p["side"] for p in _proofs()))
+    assert not flat & named
+
+
+def test_proof_rows_name_real_graders_of_their_cases():
+    for p in _proofs():
+        assert p["cases"] and p["expected"], p
+        assert p["cases"] <= set(CASE_SETTINGS), p
+        for case, g in p["expected"] | p["side"]:
+            assert case in p["cases"], (p["arg"], case)
+            assert g in grader_names(case), (p["arg"], case, g)
+        assert not p["expected"] & p["side"], p
+
+
+def test_report_run_id_is_proven_in_every_case():
+    (row,) = [p for p in _proofs() if p["arg"] == "report-run-id"]
+    assert row["cases"] == set(CASE_SETTINGS)
+    assert {(c, "9-no-leak") for c in CASE_SETTINGS} <= row["expected"]
+
+
+def test_f4_ac4_graders_have_distinct_proofs():
+    rows = _proofs()
+    for own, other in ((NO_WRITE, NO_COPY), (NO_COPY, NO_WRITE)):
+        assert any(
+            (MISMATCH, own) in p["expected"] and (MISMATCH, other) not in p["expected"] | p["side"]
+            for p in rows
+        ), own
+
+
+def test_rev_proofs_resolve_to_a_conductor():
+    for p in (p for p in _proofs() if p["kind"] == "rev"):
+        result = subprocess.run(
+            ["git", "-C", str(REPO), "cat-file", "-e", f"{p['arg']}:tomo/dot_claude/agents/synthesis-conductor.md"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, p["arg"]
+
+
+@pytest.mark.parametrize(("name", "fires", "silent"), [
+    ("fix-on-mismatch", NO_WRITE, NO_COPY),
+    ("copy-fix-on-mismatch", NO_COPY, NO_WRITE),
+])
+def test_fix_mutations_inject_a_command_their_grader_observes(tmp_path, name, fires, silent):
+    """The injected command (placeholder filled) is what the claimed grader
+    observes — and not the sibling grader, so each F4-AC4 proof is its own."""
+    plugin = _assemble_plugin(tmp_path)
+    _patch(plugin, name, dry_run=False)
+    text = (plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8")
+    commands = [
+        line.strip().replace("<fix>", "s/sys.exit(1)/sys.exit(0)/")
+        for line in text.splitlines() if re.match(r"\s*(sed|cp) ", line)
+    ]
+    assert commands, name
+    pat = {g: re.compile(grader(MISMATCH, g)["input_match"]) for g in (fires, silent)}
+    assert any(pat[fires].search(bash_input(c)) for c in commands), commands
+    assert not any(pat[silent].search(bash_input(c)) for c in commands), commands

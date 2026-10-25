@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -404,6 +405,49 @@ def test_dirty_tree_is_reported_not_refused(env):
     assert "tree dirty" in _line(proc)
 
 
+def test_runner_leaves_every_tomo_instance_unchanged(env):
+    """F1-AC2 for instances: the runner's own tree check skips gitignored paths, so
+    this proves directly that neither a repo-local instance (gitignored, as in the
+    real repo) nor a registered instance outside the repo changes. Falsified by a
+    runner that writes into either."""
+    with open(env.repo / ".gitignore", "a") as f:
+        f.write("tomo-instance/\n")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--all", "--message", "ignore instance")
+    local = env.repo / "tomo-instance"
+    outside = env.tmp / "elsewhere" / "tomo-registered"
+    for inst in (local, outside):
+        _write(inst / ".claude" / "agents" / "probe-agent.md", AGENT_TEXT)
+        _write(inst / "config" / "vault-config.yaml", "inbox: Inbox\n")
+    _write(env.home / ".tomo" / "instances.json",
+           json.dumps({"instances": [{"name": "registered", "path": str(outside)}]}) + "\n")
+    before = {inst: _dir_state(inst) for inst in (local, outside)}
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "tree clean" in _line(proc)
+    for inst, state in before.items():
+        assert _dir_state(inst) == state, f"runner changed the instance at {inst}"
+
+
+def test_results_dir_is_a_utc_timestamp_named_in_the_verdict(env):
+    """F1-AC3: results land in tomo-tmp/evals/<UTC timestamp>/ and the verdict line names it."""
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = Path(env.flag(env.eval_calls()[0], "--output-dir"))
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\dZ(?:-\d+)?", out.name), out.name
+    assert str(out) in _line(proc)
+
+
+def test_results_location_not_gitignored_is_refused(env):
+    """F1-AC3: the runner writes results only where git ignores them."""
+    (env.repo / ".gitignore").write_text("evals/results/\n")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--all", "--message", "unignore tomo-tmp")
+    proc = env.run()
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "not gitignored" in proc.stderr
+    assert env.calls() == []
+    assert not (env.repo / "tomo-tmp").exists()
+
+
 # ── preflight refusals (exit 3, nothing spent) ────────────────
 
 
@@ -411,6 +455,7 @@ def test_old_claude_version_refused_before_eval(env):
     proc = env.run(FAKE_VERSION="2.1.268 (Claude Code)")
     assert proc.returncode == 3
     assert "2.1.268" in proc.stderr
+    assert "2.1.269" in proc.stderr  # F1-AC5: the refusal names the required version
     assert env.calls() == [["--version"]]
 
 

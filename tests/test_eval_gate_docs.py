@@ -144,6 +144,15 @@ def test_root_claude_md_rule_names_readme_and_green():
     assert "GREEN" in _claude_eval_bullet()
 
 
+def test_claude_md_rule_states_the_pr_record_and_the_exemption():
+    """F7-AC2: the whole suite, before merge, with verdict, cost and results path in
+    the PR; a single-case run does not count. F7-AC3: other files need no run."""
+    bullet = _claude_eval_bullet()
+    for needle in ("full-suite GREEN", "before merge", "verdict line", "cost", "results path",
+                   "`--case` run does not count", "Other files need no run"):
+        assert needle in bullet, f"CLAUDE.md eval rule lacks: {needle}"
+
+
 def test_claude_md_rule_tracks_the_coverage_table():
     problems = _rule_sync_problems(_coverage_rows(), _claude_eval_bullet())
     assert not problems, problems

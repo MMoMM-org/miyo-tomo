@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Conductor Step 4 fix"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

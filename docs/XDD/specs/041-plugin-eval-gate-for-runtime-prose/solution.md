@@ -193,7 +193,7 @@ CON-7 **The eval harness cannot run inside Claude Code's Bash sandbox.** Observe
 ### Implementation Boundaries
 
 - **Must Preserve**: everything `install-tomo.sh` / `update-tomo.sh` copy, except C7's edit to `synthesis-conductor.md`; the conductor's step order and STRICT audit stop; `test_synthesis_conductor_step_order.py` green; the `/inbox` dispatch prompt.
-- **Can Modify**: `tomo/dot_claude/agents/synthesis-conductor.md` Step 4 and its version header (C7); `docs/tomo/dot_claude/agents/synthesis-conductor.md`; root `CLAUDE.md` Rules; `docs/ai/memory/tools.md`; `README.md` (one pointer).
+- **Can Modify**: `tomo/dot_claude/agents/synthesis-conductor.md` Step 4 and its version header (C7), plus one sentence each in Step 3c (the stop report follows Step 4's report rule — the mismatch case's leak comes from that stop report) and Step 3a (its "relay the stamped stderr line" instruction contradicted the no-internals rule) — added during Phase 3 review; `docs/tomo/dot_claude/agents/synthesis-conductor.md`; root `CLAUDE.md` Rules; `docs/ai/memory/tools.md`; `README.md` (one pointer).
 - **Must Not Touch**: `install-tomo.sh`, `update-tomo.sh`, `tomo/scripts/**`, `tomo/schemas/**`, every other runtime file, `tomo-privat`, `~/.tomo`.
 
 ### External Interfaces

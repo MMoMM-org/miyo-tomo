@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.23.0
+# version: 0.24.0
 
 **Active agent: synthesis-conductor**
 
@@ -172,6 +172,9 @@ that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
 
+The stop report follows the report STRICT block in Step 4: it is the audit's
+stdout copied as printed, and nothing else.
+
 #### 3d — Upload rendered files
 
 ```bash
@@ -223,6 +226,8 @@ internals). If the command errors (no such file), there is nothing to relay.
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
+> <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
+> <only for a step that exited non-zero: <step> exited <code>.>
 
 Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
 followed by the lines of `tomo-tmp/withheld-attachments.md`, only for each file
@@ -235,6 +240,27 @@ STRICT — copy every line of `tomo-tmp/withheld-deletes.md` and of
 per line, the last lines of the report. NEVER reword, shorten, merge,
 summarise, put them in a table or count them. NEVER drop a sentence from a line.
 Why: the model reworded the relay lines into its own bullets and dropped their remedy.
+
+STRICT — these rules govern EVERY report you return: the Step 4 report, the 3c
+stop report, and any other stop, whatever step the run ends in.
+1. Each `Coverage audit:` line carries the `RESULT:` line the coverage audit
+printed, character for character — keep its `—` dash, its numbers and its final
+period. NEVER reword it.
+2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
+or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
+file name, no path, no script name. ONLY these are copied as printed, with
+everything inside them kept: the audit's stdout on a mismatch (3c), the
+`RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
+step ONLY as `<step> exited <code>.`, where `<step>` is one of: parse, render,
+coverage audit, upload, state flip.
+3. The relay lines are ONE block: the delete lines, then the attachment lines,
+one per line. NEVER put a blank line, heading, label or any text between them.
+NEVER write anything after them — no file list, no summary, no closing
+sentence. If neither relay file exists, say nothing about withheld deletes or
+attachments.
+4. In the Step 4 report, NEVER add a line that is neither in the example above
+nor a relay line.
+Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, and put headings between and text after the relay lines.
 
 ## What you never do
 

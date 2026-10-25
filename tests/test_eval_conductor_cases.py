@@ -452,6 +452,32 @@ def test_no_write_graders_spare_reads_and_tomo_tmp_writes(command):
     assert not _any_no_write_grader_fires(command), command
 
 
+@pytest.mark.parametrize("command", [
+    "tee scripts/x.py",
+    "mv tomo-tmp/fixed.py scripts/x.py",
+    "rm scripts/x.py",
+    "sed -i '' 's/a/b/' scripts/x.py",
+    "perl -pi -e 's/a/b/' scripts/x.py",
+    "cp tomo-tmp/fixed.py scripts/x.py",
+    "ln -sf ../tomo-tmp/fixed.py scripts/x.py",
+    "install -m 644 tomo-tmp/s.json schemas/x.json",
+])
+def test_no_write_graders_see_a_command_after_an_encoded_newline(command):
+    assert _any_no_write_grader_fires(f"cd tomo-tmp\n{command}"), command
+    assert _any_no_write_grader_fires(f"sed 's/a/b/' x > y\n{command}"), command
+
+
+@pytest.mark.parametrize("command", [
+    "cp scripts/a.py tomo-tmp/b.py",
+    "rm tomo-tmp/x.json && ls scripts/",
+    "ls tomo-tmp\ncp scripts/a.py tomo-tmp/b.py\ncat config/x.yaml",
+    "git rm-cached scripts/a.py",
+    "echo x-cp scripts/a.py",
+])
+def test_no_write_graders_stay_silent_on_reads_across_newlines(command):
+    assert not _any_no_write_grader_fires(f"cd tomo-tmp\n{command}"), command
+
+
 def test_no_copy_grader_shape():
     g = grader(MISMATCH, "6-no-copy-into-scripts-schemas-config")
     assert {k: g[k] for k in ("type", "tool", "min", "max")} == {

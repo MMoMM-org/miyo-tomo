@@ -499,6 +499,68 @@ the stop and partial-failure paths (3b exit 2, 3d exit 1/2, 3e exit 1/2) are
 exactly where the model reaches for stderr. The owner needs which step and
 that it failed; the stderr stays in the maintainer's trace.
 
+WHY `<step>` is a closed list (parse, render, coverage audit, upload, state
+flip) rather than "name the step": an open placeholder was filled by a literal
+model with what it had at hand — the script names (`instruction-render.py`,
+`upload-rendered.py`, …), which rule 2 bans. Five fixed words, one per
+sub-step 3a–3e, leave nothing to improvise and still tell the owner where the
+run broke.
+
+### WHY a Failed-Step Line Names the Note (spec 041 T3.2, owner decision 2026-10-25)
+
+Owner decision after code review on 2026-10-25: the failure line is
+`<step> exited <code> for "<note>".`, where `<note>` is the source doc's note
+name — the last segment of the entry's `path` (`VAULT_PATH`) from the routing
+plan, without the folder and without `.md`.
+
+WHY: with several approved docs in one run, 3d ("surface to user") and 3e
+("report and continue") let the run go on past a failure, so a bare
+`upload exited 1.` cannot say WHICH doc failed. Rule 2 bans paths and file
+names, so before this change the model had no permitted way to identify the
+doc, and the owner had to re-run blind. A note name is not an internal: it is
+what the owner sees in Obsidian's file list and tab title, and it is the one
+thing they need to find the doc again. The folder is dropped because it adds
+nothing the owner needs to recognise the doc and would reintroduce a path —
+the very thing rule 2 forbids and the leak guard
+(`evals/_lib/no-leak.md`) watches for. The runtime says explicitly that the
+note name is the ONLY doc identifier allowed in a report and is never a path,
+so a literal model does not read the new placeholder as a licence to quote
+the cache path, the vault path, or the parsed working files.
+
+Leak-guard compatibility, checked with Python `re` against the canonical
+pattern in `evals/_lib/no-leak.md`: a note name such as
+`2026-10-24_1200_suggestions`, and the full line
+`state flip exited 1 for "2026-10-24_1200_suggestions".`, match none of its
+alternatives (its run-id alternative needs a `T…Z-<hex>` time part; its path
+alternatives need a `/`).
+
+### WHY the Step 4 Template Has Two Conditional Placeholder Lines
+
+The Step 4 example carries two lines that appear only on a condition:
+
+- `Stamped N acknowledged advisory(ies).` — only when the garden-audit parser
+  in 3a reported stamped advisories (see "WHY the garden-audit … relay is
+  reported in plain words" above).
+- `<step> exited <code> for "<note>".` — only for a step that exited
+  non-zero, one line per failure.
+
+WHY the failed-step line is written as the line itself followed by the
+condition in parentheses, not as `<only for …: <step> exited <code>.>`: the
+earlier form nested angle brackets, so the placeholder's own delimiters
+wrapped the line's placeholders, and a literal reader could print the outer
+brackets and the condition text into the report. With the line first, what to
+print and when to print it are visibly separate.
+
+### WHY the Fenced Relay Example Shows Three Lines
+
+The fenced `text` example below the Step 4 template shows three relay lines
+because it mirrors the relay case the eval suite exercises: two withheld
+deletes followed by one withheld attachment — deletes first, then
+attachments, as rule 3 orders them. It is a shape, not a count: the model
+copies however many lines the two files hold. When neither file exists there
+is no relay output at all — rule 3 forbids saying anything about withheld
+deletes or attachments — so the example never implies a minimum.
+
 ### WHY the Relay Lines Are Consecutive and Last
 
 The owner reads the shell; the relay lines are the last thing they see before

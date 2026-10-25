@@ -52,6 +52,16 @@ Offending lines, quoted from the conductor's reports (stub output only — no va
 - **Relay lines paraphrased** (relay case, 1/3) — the `- ⚠️ **…:**` markup dropped: `Not deleted: [[Meeting Notes Q3]] — …`.
 - **Audit RESULT line paraphrased** (gates case, 2/3) — `Coverage audit: RESULT: OK, 1/1 actions reconciled.` (comma for the em dash). **Not predicted by the SDD**: ADR-10 names the relay and the internals, not the RESULT line.
 
+## After — Phase 3 attempts (T3.2)
+
+Each attempt is a wording change to Step 4 (0.24.0, unsynced); partial run first (`--case '*' --runs 1`), full suite once a partial is green.
+
+| # | Change | Run | Verdict |
+|---|---|---|---|
+| 1 | Report-level STRICT (RESULT verbatim; no internals; relay consecutive and last; no lines outside the template) + 3c pointer + 3a stamped-line fix | partial, 3 runs | `RED (PARTIAL SUITE …) 2/3 cases · withheld-notices-relayed: 2-delete-2-verbatim (run 0), 3-attachment-verbatim (run 0), 4-deletes-then-attachment-last (run 0) · runs 3 · $0.20 · 47 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T15-30-55Z` |
+
+Attempt 1: no-leak green in every case (was 0/3); RESULT line verbatim; audit gates unchanged. Remaining: the conductor dropped the leading `- ` from relay lines 2 and 3 (the baseline's markup loss, 1/3 on 0.23.0) and wrote an introduction line before the block (`- [[Meeting Notes Q3]] and [[Reading List]] were withheld as shown below.`) despite the "no line outside the template" rule.
+
 ## Spend
 
 | Run | Purpose | Cost |

@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -46,8 +47,11 @@ ALLOWED_OUTSIDE_TOMO = (
 # Path variables that are copy destinations, never sources.
 DEST_VARS = {"INSTANCE_PATH", "HOME_DIR", "dst", "INSTANCE_ROOT", "BACKUP_DIR"}
 # Bare loop/helper variables: their roots are checked on the `for ... in` /
-# `add_*` line that binds them, which this scan also covers.
+# `add_*` line that binds them, which this scan also covers. Recognised so
+# they are not reported as unclassified.
 DYNAMIC_VARS = {"f", "d", "src", "file", "name"}
+# A `..` path segment can climb out of a tomo-rooted prefix into evals/.
+TRAVERSAL = re.compile(r"(^|/)\.\.(/|$)")
 
 COPY_LINE = re.compile(r"^\s*(cp|rsync|ditto|install|sed|for|add_\w+|python3)\b|\|\|\s*cp\b")
 PATH_TOKEN = re.compile(r"""["']?(\$\{?[A-Za-z_]+\}?[^\s"'|;)]*)""")
@@ -75,16 +79,23 @@ def _normalise(token: str) -> str:
     return re.sub(r"\$\{([A-Za-z_]+)\}", r"$\1", token)
 
 
-def scan_copy_sources(text: str) -> tuple[list[str], list[str], int]:
+class ScanResult(NamedTuple):
+    violations: list[str]
+    unclassified: list[str]
+    rooted: int
+
+
+def scan_copy_sources(text: str) -> ScanResult:
     """Classify path tokens on copy/loop/helper lines.
 
-    Returns (violations, unclassified, dynamic_count). A violation is a rooted
-    source outside tomo/ and the allowlist; unclassified is a `$VAR/...` token
-    whose variable the scan does not know (so it cannot be silently skipped).
+    A violation is a rooted source outside tomo/ and the allowlist, or any
+    source with a `..` segment; unclassified is a `$VAR/...` token whose
+    variable the scan does not know (so it cannot be silently skipped);
+    rooted counts the tomo-rooted sources seen.
     """
     violations: list[str] = []
     unclassified: list[str] = []
-    dynamic = 0
+    rooted = 0
     for no, line in _logical_lines(text):
         if not COPY_LINE.search(line):
             continue
@@ -94,34 +105,33 @@ def scan_copy_sources(text: str) -> tuple[list[str], list[str], int]:
             if re.search(r"[:,]", tok):  # sed address pattern, not a path
                 continue
             if "/" not in tok:
-                if var in DYNAMIC_VARS:
-                    dynamic += 1
                 continue
             if var in DEST_VARS:
                 continue
-            if tok.startswith(TOMO_ROOTED) or tok.startswith(ALLOWED_OUTSIDE_TOMO):
+            if TRAVERSAL.search(tok):
+                violations.append(f"line {no}: {tok}")
+                continue
+            if tok.startswith(TOMO_ROOTED):
+                rooted += 1
+                continue
+            if tok.startswith(ALLOWED_OUTSIDE_TOMO):
                 continue
             if var in {"REPO_ROOT", "SCRIPT_DIR", "TOMO_SOURCE", "PROFILES_DIR", "HOME"}:
                 violations.append(f"line {no}: {tok}")
-            elif var in DYNAMIC_VARS:
-                dynamic += 1
-            else:
+            elif var not in DYNAMIC_VARS:
                 unclassified.append(f"line {no}: {tok}")
-    return violations, unclassified, dynamic
+    return ScanResult(violations, unclassified, rooted)
 
 
 @pytest.mark.parametrize("script", sorted(SCRIPTS))
 def test_copy_sources_are_rooted_under_tomo(script: str) -> None:
     text = SCRIPTS[script].read_text(encoding="utf-8")
-    violations, unclassified, dynamic = scan_copy_sources(text)
+    violations, unclassified, rooted = scan_copy_sources(text)
     assert not violations, f"{script}: copy source outside $TOMO_SOURCE: {violations}"
     assert not unclassified, f"{script}: copy path the scan cannot classify: {unclassified}"
-    assert "evals" not in text, f"{script} mentions evals/"
+    assert re.search(r"\bevals\b", text) is None, f"{script} mentions evals"
     # Guard against the scan matching nothing (a silently empty check).
-    rooted = [t for _, ln in _logical_lines(text) if COPY_LINE.search(ln)
-              for t in (_normalise(m.group(1)) for m in PATH_TOKEN.finditer(ln))
-              if t.startswith(TOMO_ROOTED)]
-    assert len(rooted) >= 10, f"{script}: scan saw only {len(rooted)} tomo-rooted sources"
+    assert rooted >= 10, f"{script}: scan saw only {rooted} tomo-rooted sources"
 
 
 @pytest.mark.parametrize(
@@ -131,6 +141,8 @@ def test_copy_sources_are_rooted_under_tomo(script: str) -> None:
         'for f in "$REPO_ROOT/evals/"*.json; do',
         'add_bytewise "$REPO_ROOT/evals/x.json" "$HOME_DIR/x.json" "x" "evals"',
         'cp -R "$SCRIPT_DIR/../evals/." "$INSTANCE_PATH/evals/"',
+        'cp -R "$TOMO_SOURCE/../evals/." "$INSTANCE_PATH/evals/"',
+        'cp "$REPO_ROOT/tomo/../evals/x" "$INSTANCE_PATH/x"',
     ],
 )
 def test_scan_is_red_for_a_source_outside_tomo(bad_line: str) -> None:

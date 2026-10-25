@@ -54,7 +54,7 @@ STALE_PATCH = """--- a/agents/probe-agent.md
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
 """Fake claude: logs argv, snapshots the plugin dir, writes a canned result."""
-import json, os, shutil, sys
+import json, os, shutil, subprocess, sys
 from pathlib import Path
 
 with open(os.environ["FAKE_LOG"], "a") as f:
@@ -75,6 +75,16 @@ if touch:
     p = Path(os.environ["FAKE_REPO"]) / touch
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("written during the run\n")
+scaf = os.environ.get("FAKE_SCAFFOLD_CASE")
+if scaf:
+    ws = Path(os.environ["FAKE_SCAFFOLD_WS"])
+    ws.mkdir(parents=True)
+    rc = subprocess.run(["bash", str(plugin / "evals" / scaf / "scaffold.sh")], cwd=ws).returncode
+    Path(os.environ["FAKE_SCAFFOLD_REPORT"]).write_text(json.dumps({
+        "rc": rc,
+        "routing_plan": (ws / "tomo-tmp" / "routing-plan.json").is_file(),
+        "run_id": (ws / "scripts" / "run-id.py").is_file(),
+    }))
 result = os.environ.get("FAKE_RESULT")
 if result:
     out = Path(args[args.index("--json") + 1])
@@ -305,6 +315,15 @@ def test_keep_temp_passes_through_and_keeps_copy(env):
     assert env.plugin_path().exists()
 
 
+def test_scaffold_runs_from_the_assembled_copy(env):
+    report = env.tmp / "scaffold-report.json"
+    proc = env.run(FAKE_SCAFFOLD_CASE="probe-case", FAKE_SCAFFOLD_WS=str(env.tmp / "ws"),
+                   FAKE_SCAFFOLD_REPORT=str(report))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    got = json.loads(report.read_text())
+    assert got == {"rc": 0, "routing_plan": True, "run_id": True}, got
+
+
 # ── RED proofs: --rev and --mutation ──────────────────────────
 
 
@@ -321,7 +340,15 @@ def test_rev_takes_runtime_dirs_from_commit_and_evals_from_worktree(env):
     assert (env.snap / "agents" / "probe-agent.md").read_text() == AGENT_TEXT
     assert (env.snap / "evals" / "probe-case" / "graders" / "2-new.md").exists()
     assert (env.snap / "evals" / "probe-case" / "graders" / "3-uncommitted.md").exists()
-    assert f"rev {old_sha}" in _line(proc)
+    assert f"rev {old_sha[:12]}" in _line(proc)
+
+
+def test_rev_symbolic_name_is_resolved_to_a_sha_in_the_verdict(env):
+    head = _git(env.repo, "rev-parse", "--short=12", "HEAD").strip()
+    proc = env.run("--rev", "HEAD")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    line = _line(proc)
+    assert f"rev HEAD={head}" in line, line
 
 
 def test_unknown_rev_is_refused(env):
@@ -399,6 +426,12 @@ def test_max_cost_flag_and_env_reach_cli_and_default_returns(env):
     assert env.run().returncode == 0
     costs = [env.flag(c, "--max-cost-usd") for c in env.eval_calls()]
     assert costs == ["9", "9", "5"]
+
+
+def test_cost_cap_verdict_names_the_cap_that_was_passed(env):
+    proc = env.run("--max-cost-usd", "7", FAKE_RESULT=str(RESULTS / "cost-cap-partial.json"), FAKE_EXIT="2")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert _line(proc).startswith("NOT GRADED · cost cap $7 reached after 1 graded run ·"), _line(proc)
 
 
 def test_invalid_max_cost_refused(env):
@@ -484,7 +517,8 @@ def test_help_documents_contract(env):
     assert proc.returncode == 0
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
-                   "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN"):
+                   "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
+                   "Typical cost: about $0.50", "hard cap $5"):
         assert needle in h, needle
     assert env.calls() == []
 

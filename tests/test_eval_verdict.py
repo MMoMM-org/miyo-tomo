@@ -98,7 +98,33 @@ def test_cost_cap_partial_not_graded_though_runs_passed(tmp_path):
     code, out, err = run(path)
     assert code == 2
     assert out.startswith("NOT GRADED")
-    assert "cost_ceiling" in out
+    assert out.startswith("NOT GRADED · cost cap reached after 1 graded run ·"), out
+
+
+def test_cost_cap_names_the_cap_when_given(tmp_path):
+    code, out, _ = run(stage(tmp_path, "cost-cap-partial"), "--cost-cap", "5")
+    assert code == 2
+    assert out.startswith("NOT GRADED · cost cap $5 reached after 1 graded run ·"), out
+
+
+def test_cost_cap_counts_runs_plural(tmp_path):
+    path, data = load(tmp_path, "green-3x", "cp")
+    data["partial"] = True
+    data["partialReason"] = "cost_ceiling"
+    save(path, data)
+    code, out, _ = run(path)
+    assert code == 2
+    assert out.startswith("NOT GRADED · cost cap reached after 6 graded runs ·"), out
+
+
+def test_other_partial_reason_keeps_generic_wording(tmp_path):
+    path, data = load(tmp_path, "green-3x", "pr")
+    data["partial"] = True
+    data["partialReason"] = "rate_limit"
+    save(path, data)
+    code, out, _ = run(path)
+    assert code == 2
+    assert out.startswith("NOT GRADED · partial run (rate_limit) ·"), out
 
 
 def test_partial_without_reason_still_not_graded(tmp_path):

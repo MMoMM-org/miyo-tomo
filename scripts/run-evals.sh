@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.1.1
+# version: 0.1.2
 set -e
 set -o pipefail
 
@@ -43,6 +43,9 @@ Options:
                         debugging (the CLI seals them mode 000; chmod 700 to
                         inspect).
   -h, --help            Show this help and exit.
+
+Typical cost: about $0.50-2 per full suite (3 cases x 3 runs); hard cap $5
+(--max-cost-usd / EVAL_MAX_COST_USD).
 
 Fixed flags passed to the CLI:
   --ablation none --threshold 1.0 --runs 3 -j 2 --no-publish --trust-plugin
@@ -181,9 +184,10 @@ if [ -n "$MUTATION" ]; then
     [ -f "$PATCH_FILE" ] || refuse "no such mutation: evals/_mutations/$MUTATION.patch"
 fi
 
+REV_SHA=""
 if [ -n "$REV" ]; then
-    git -C "$ROOT" rev-parse --verify --quiet "$REV^{commit}" >/dev/null \
-        || refuse "--rev '$REV' is not a commit"
+    REV_SHA="$(git -C "$ROOT" rev-parse --verify --quiet --short=12 "$REV^{commit}" 2>/dev/null)" \
+        && [ -n "$REV_SHA" ] || refuse "--rev '$REV' is not a commit"
 fi
 
 git -C "$ROOT" check-ignore --quiet tomo-tmp/evals/probe \
@@ -266,8 +270,8 @@ mkdir -p "$PLUGIN/.claude-plugin" "$WORK/src"
 printf '{"name": "tomo"}\n' > "$PLUGIN/.claude-plugin/plugin.json"
 
 if [ -n "$REV" ]; then
-    git -C "$ROOT" archive "$REV" tomo/dot_claude/agents tomo/dot_claude/skills tomo/dot_claude/commands \
-        | tar -x -C "$WORK/src" || refuse "git archive of $REV failed"
+    git -C "$ROOT" archive "$REV_SHA" tomo/dot_claude/agents tomo/dot_claude/skills tomo/dot_claude/commands \
+        | tar -x -C "$WORK/src" || refuse "git archive of $REV ($REV_SHA) failed"
     for d in agents skills commands; do mv "$WORK/src/tomo/dot_claude/$d" "$PLUGIN/$d"; done
 else
     for d in agents skills commands; do cp -R "$DOT_CLAUDE/$d" "$PLUGIN/$d"; done
@@ -332,7 +336,10 @@ esac
 set -- "$OUT/aggregate-result.json" --tree "$TREE"
 [ -n "$CASE_GLOB" ] && set -- "$@" --partial-suite
 [ -n "$MUTATION" ] && set -- "$@" --mutation "$MUTATION"
-[ -n "$REV" ] && set -- "$@" --rev "$REV"
+if [ -n "$REV" ]; then
+    if [ "$REV" = "$REV_SHA" ]; then set -- "$@" --rev "$REV_SHA"; else set -- "$@" --rev "$REV=$REV_SHA"; fi
+fi
+set -- "$@" --cost-cap "$MAX_COST"
 
 VERDICT_RC=0
 VERDICT_LINE="$(python3 "$VERDICT_PY" "$@")" || VERDICT_RC=$?

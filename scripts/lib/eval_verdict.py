@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """Turn a `claude plugin eval` aggregate-result.json into one verdict line.
 
 Why this exists: the CLI's own `passed`/`score` are not a merge gate (a case with one
@@ -11,7 +11,7 @@ poisons the whole suite. No input can produce GREEN unless that rule holds.
 
 Usage:
   eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean]
-                  [--mutation <name> | --rev <rev>]
+                  [--mutation <name> | --rev <rev>] [--cost-cap <usd>]
   eval_verdict.py --compare <a.json> <b.json>
 
 stdout: the verdict line (also written to verdict.txt beside the result).
@@ -63,14 +63,27 @@ def _runs(case):
     return runs
 
 
-def derive(data):
+def _count_runs(cases):
+    return sum(len(c["arms"]["with"]) for c in cases if isinstance(c, dict))
+
+
+def _partial_reason(data, cases, cost_cap):
+    reason = data.get("partialReason")
+    if reason == "cost_ceiling":
+        n = _count_runs(cases)
+        cap = f" ${cost_cap}" if cost_cap else ""
+        return f"cost cap{cap} reached after {n} graded {'run' if n == 1 else 'runs'}"
+    return f"partial run ({reason or 'partial'})"
+
+
+def derive(data, cost_cap=None):
     """Return (cases_passed, cases_total, runs, failures, not_graded)."""
     cases = data.get("cases")
     if not isinstance(cases, list):
         raise NotGraded("malformed result: cases is not a list")
     failures, not_graded = [], []
     if data.get("partial"):
-        not_graded.append(f"partial run ({data.get('partialReason') or 'partial'})")
+        not_graded.append(_partial_reason(data, cases, cost_cap))
     if data.get("aborted"):
         not_graded.append("aborted run")
     if not cases:
@@ -141,12 +154,12 @@ def tail(data, path, tree, mutation, rev):
     return " · ".join(parts)
 
 
-def verdict(path, partial_suite=False, tree="unknown", mutation=None, rev=None):
+def verdict(path, partial_suite=False, tree="unknown", mutation=None, rev=None, cost_cap=None):
     """Return (exit_code, line, detail_lines)."""
     data = None
     try:
         data = load(path)
-        passed, total, runs, failures, not_graded = derive(data)
+        passed, total, runs, failures, not_graded = derive(data, cost_cap)
     except NotGraded as e:
         return 2, f"NOT GRADED · {e} · " + tail(data, path, tree, mutation, rev), []
     except (KeyError, TypeError, AttributeError, IndexError) as e:
@@ -198,6 +211,7 @@ def main(argv=None):
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--mutation")
     g.add_argument("--rev")
+    ap.add_argument("--cost-cap", help="the USD ceiling the run was given; named in the cost-cap verdict")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"))
     args = ap.parse_args(argv)
     if args.compare:
@@ -211,7 +225,7 @@ def main(argv=None):
     if not args.result:
         ap.error("result path required")
     try:
-        code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev)
+        code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev, args.cost_cap)
     except Exception as e:  # a crash must never share exit 1 with RED
         code, line, detail = 2, f"NOT GRADED · unexpected error ({_oneline(e)})", []
     print(line)

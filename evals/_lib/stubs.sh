@@ -9,10 +9,13 @@
 # of those changes, re-check the copy:
 #   audit RESULT lines   tomo/scripts/instructions-diff.py:762-765
 #   run id format        tomo/scripts/run-id.py:5  (YYYY-MM-DDTHH-MM-SSZ-<6 hex>)
-#   delete notice        tomo/scripts/lib/render_md.py:838-850 (_render_withdrawn_delete_notice)
+#   delete notice        tomo/scripts/lib/render_md.py:838-854 (_render_withdrawn_delete_notice)
 #                        reasons: tomo/scripts/lib/render_helpers.py:213-219
-#   attachment notice    tomo/scripts/lib/render_md.py:853-890 (_render_skipped_asset_notice);
-#                        remedy: lib/refusal_sentences.withheld_attachment_remedy
+#   attachment notice    tomo/scripts/lib/render_md.py:857-890 (_render_skipped_asset_notice);
+#                        reason (kind vault_collision_held, owner chose keep_in_inbox):
+#                        tomo/scripts/lib/attachment_plan.py:150-154;
+#                        remedy: tomo/scripts/lib/refusal_sentences.py:157,211-217
+#                        (withheld_attachment_remedy)
 #   relay files          tomo/scripts/instruction-render.py:270-271,981,1005 (next to the
 #                        output dir; unlinked when empty, :317-320)
 #   routing plan         tomo/schemas/routing-plan.schema.json
@@ -57,7 +60,7 @@ DELETES = [
     "- ⚠️ **Not deleted:** [[Reading List]] — the related note could not be found",
 ]
 ATTACH = [
-    "- ⚠️ **Attachment not filed:** `100 Inbox/whiteboard.png` — the destination already holds a different file with this name. No action needed unless you change your mind. To file it after all, tick Rename in the suggestions document and run `/inbox --pass2 --force` before you apply. If you have already applied, rename the attachment in the inbox and run `/inbox` again.",
+    "- ⚠️ **Attachment not filed:** `100 Inbox/whiteboard.png` — kept in inbox: the owner chose not to file it over the occupied destination `Attachments/whiteboard.png`. No action needed unless you change your mind. To file it after all, tick Rename in the suggestions document and run `/inbox --pass2 --force` before you apply. If you have already applied, rename the attachment in the inbox and run `/inbox` again.",
 ]
 out_dir = pathlib.Path("tomo-tmp/rendered")
 if "--output-dir" in sys.argv:
@@ -79,6 +82,8 @@ PY
   printf '%s' "$_stub_head" > scripts/instructions-diff.py
   if [ "$AUDIT_RESULT" = "fail" ]; then
     cat >> scripts/instructions-diff.py <<'PY'
+# COVERAGE-GAP-91c2 is a synthetic marker (the real mismatch output is a [DIFF]/[MISSING]
+# table, instructions-diff.py:719-752); only the two RESULT: lines are copied (:762-765).
 print("COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)")
 print("RESULT: FAIL — count or coverage mismatch above.")
 sys.exit(1)

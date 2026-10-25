@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-25T10:43:01.499Z",
+  "durationSeconds": 24,
+  "costUsd": 0.051210885,
+  "partial": false,
+  "suite": {
+    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo",
+    "ablation": "none",
+    "modelOverride": "claude-sonnet-5-5",
+    "caseFilter": "audit-gates-delivery",
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "audit-gates-delivery",
+      "dir": "evals/audit-gates-delivery",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-audit-before-upload",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "upload-rendered\\.py"
+            }
+          }
+        },
+        {
+          "name": "2-audit-before-state-flip",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "state-promoter\\.py"
+            }
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.051210885,
+            "judgeCostUsd": 0,
+            "durationSeconds": 24,
+            "startedAt": "2026-10-25T10:43:01.522Z",
+            "error": null,
+            "tracePath": "/private/tmp/e-gxhx7X/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-audit-before-upload",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@5 precedes Bash@6",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-audit-before-state-flip",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@5 precedes Bash@7",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

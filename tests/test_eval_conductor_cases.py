@@ -655,6 +655,10 @@ def test_f4_ac4_graders_have_distinct_proofs():
 
 
 def test_rev_proofs_resolve_to_a_conductor():
+    inside = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-inside-work-tree"],
+                            capture_output=True, text=True)
+    if inside.returncode != 0:
+        pytest.skip("no git history (e.g. a `git archive` export) — rev proofs need one")
     for p in (p for p in _proofs() if p["kind"] == "rev"):
         result = subprocess.run(
             ["git", "-C", str(REPO), "cat-file", "-e", f"{p['arg']}:tomo/dot_claude/agents/synthesis-conductor.md"],

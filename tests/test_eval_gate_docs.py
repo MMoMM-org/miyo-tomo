@@ -13,19 +13,20 @@ REPO = Path(__file__).resolve().parent.parent
 EVALS = REPO / "evals"
 README = EVALS / "README.md"
 
-COVERED = (
+# F7-AC1 names these three; the table may list more, never fewer.
+PRD_NAMED = (
     "tomo/dot_claude/agents/synthesis-conductor.md",
     "tomo/dot_claude/commands/inbox.md",
     "tomo/dot_claude/settings.json",
 )
 
 
-def _coverage_rows() -> list[tuple[str, str]]:
+def _coverage_rows(readme: Path = README) -> list[tuple[str, str]]:
     """(first cell, second cell) of the table whose first header is 'Runtime file'."""
-    assert README.is_file(), "evals/README.md is missing"
+    assert readme.is_file(), "evals/README.md is missing"
     rows: list[tuple[str, str]] = []
     in_table = False
-    for line in README.read_text().splitlines():
+    for line in readme.read_text().splitlines():
         if line.startswith("|"):
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if cells and cells[0].lower().startswith("runtime file"):
@@ -37,6 +38,55 @@ def _coverage_rows() -> list[tuple[str, str]]:
             break
     assert rows, "no coverage table found in evals/README.md"
     return rows
+
+
+def _table_paths(rows: list[tuple[str, str]]) -> set[str]:
+    return {re.sub(r"[`\s]", "", first) for first, _ in rows}
+
+
+def _case_dirs() -> list[str]:
+    return [
+        d.name for d in sorted(EVALS.iterdir())
+        if d.is_dir() and not d.name.startswith("_") and (d / "case.yaml").is_file()
+    ]
+
+
+PATH_PREFIXES = ("evals/", "scripts/", "tests/", "tomo/")
+
+
+def _readme_paths(text: str) -> tuple[list[str], list[str]]:
+    """(checkable, skipped) repo paths from the inline-backticked tokens of a README."""
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    checked: list[str] = []
+    skipped: list[str] = []
+    for token in re.findall(r"`([^`\n]+)`", text):
+        if not token.startswith(PATH_PREFIXES):
+            continue
+        token = token.rstrip(".,:;)")
+        if re.search(r"[<*\s…]", token):
+            skipped.append(token)
+        else:
+            checked.append(token)
+    return checked, skipped
+
+
+def _missing_paths(text: str) -> list[str]:
+    return [p for p in _readme_paths(text)[0] if not (REPO / p).exists()]
+
+
+def _claude_eval_bullet(claude_md: Path = REPO / "CLAUDE.md") -> str:
+    rules = _section(claude_md, "Rules")
+    bullets = [b for b in rules.split("\n- ") if "evals/README.md" in b]
+    assert bullets, "no Rules bullet names evals/README.md"
+    return bullets[0]
+
+
+def _rule_sync_problems(rows: list[tuple[str, str]], bullet: str) -> list[str]:
+    table = _table_paths(rows)
+    named = set(re.findall(r"`(tomo/[^`\s]+)`", bullet))
+    problems = [f"table path missing from the CLAUDE.md rule: {p}" for p in sorted(table - named)]
+    problems += [f"CLAUDE.md rule names a path not in the table: {p}" for p in sorted(named - table)]
+    return problems
 
 
 def _section(path: Path, heading: str) -> str:
@@ -52,19 +102,22 @@ def test_every_covered_path_exists():
             assert (REPO / p).exists(), f"coverage table names a missing path: {p}"
 
 
-def test_the_three_runtime_files_are_listed_with_cases():
-    rows = {re.sub(r"[`\s]", "", first): second for first, second in _coverage_rows()}
-    for f in COVERED:
-        assert f in rows, f"{f} not in the coverage table"
-        assert re.search(r"[a-z]+-[a-z-]+", rows[f]), f"{f} lists no covering case"
+def test_prd_named_files_are_in_the_table():
+    table = _table_paths(_coverage_rows())
+    for f in PRD_NAMED:
+        assert f in table, f"{f} not in the coverage table"
+
+
+def test_every_table_row_names_an_existing_case():
+    existing = set(_case_dirs())
+    for first, second in _coverage_rows():
+        named = set(re.findall(r"`([a-z][a-z0-9-]+)`", second))
+        assert named & existing, f"{first} lists no existing case directory"
 
 
 def test_every_case_directory_appears_in_the_table():
     table = "\n".join(f"{a} {b}" for a, b in _coverage_rows())
-    cases = [
-        d.name for d in sorted(EVALS.iterdir())
-        if d.is_dir() and not d.name.startswith("_") and (d / "case.yaml").is_file()
-    ]
+    cases = _case_dirs()
     assert cases, "no cases found"
     for name in cases:
         assert name in table, f"case {name} missing from the coverage table"
@@ -78,17 +131,30 @@ def test_every_case_named_in_the_table_exists():
 
 def test_readme_covers_run_exit_codes_and_adding_a_case():
     text = README.read_text()
-    for needle in ("scripts/run-evals.sh", "GREEN", "RED", "NOT GRADED", "REFUSED",
-                   "AUDIT_RESULT", "WITHHELD_DELETES", "WITHHELD_ATTACH",
+    for code, verdict in ((0, "GREEN"), (1, "RED"), (2, "NOT GRADED"), (3, "REFUSED")):
+        assert re.search(rf"^\|\s*{code}\s*\|\s*{verdict}\s*\|", text, re.M), (
+            f"exit-code table lacks the row for {code} {verdict}"
+        )
+    for needle in ("scripts/run-evals.sh", "AUDIT_RESULT", "WITHHELD_DELETES", "WITHHELD_ATTACH",
                    "evals/_lib/no-leak.md", "evals/_mutations/README.md"):
         assert needle in text, f"evals/README.md lacks {needle}"
 
 
 def test_root_claude_md_rule_names_readme_and_green():
-    rules = _section(REPO / "CLAUDE.md", "Rules")
-    bullets = [b for b in rules.split("\n- ") if "evals/README.md" in b]
-    assert bullets, "no Rules bullet names evals/README.md"
-    assert "GREEN" in bullets[0]
+    assert "GREEN" in _claude_eval_bullet()
+
+
+def test_claude_md_rule_tracks_the_coverage_table():
+    problems = _rule_sync_problems(_coverage_rows(), _claude_eval_bullet())
+    assert not problems, problems
+
+
+def test_every_repo_path_in_the_readme_exists():
+    checked, skipped = _readme_paths(README.read_text())
+    assert checked, "no repo paths found in evals/README.md"
+    assert not _missing_paths(README.read_text()), _missing_paths(README.read_text())
+    # skipped tokens are placeholders/globs; they must stay few and explicit
+    assert all(re.search(r"[<*\s…]", t) for t in skipped)
 
 
 def test_tools_memory_mentions_the_runner():

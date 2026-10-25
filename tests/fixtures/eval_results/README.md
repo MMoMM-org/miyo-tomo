@@ -15,3 +15,7 @@ Tests copy them to `tmp_path` before running the reader so `verdict.txt` never l
 Deviation from the plan: the `scaffold-probe` scaffold was sanitised before the capture (the spike
 version dumped `env | sort` into the model output); the captured run writes only `dollar0=probe` and the
 sibling marker, so no environment values are in a committed fixture.
+
+Local absolute paths (`suite.root`, `plugins[].path`, every run's `tracePath`) were sanitised to neutral
+placeholders (`/tmp/eval/tomo`, `/tmp/eval/out/trace.jsonl`) because this repository is public; nothing else
+was changed. `promptMarkdown` fields are synthetic eval text, not user data.

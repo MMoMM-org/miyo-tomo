@@ -6,14 +6,14 @@
   "costUsd": 0.20368159499999997,
   "partial": false,
   "suite": {
-    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/ce7bfaf4-fce7-4a55-b540-e0ec4bcdf164/scratchpad/eval-tomo-prefix",
+    "root": "/tmp/eval/tomo",
     "ablation": "none",
     "threshold": 1,
     "concurrency": 2,
     "plugins": [
       {
         "name": "tomo",
-        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/ce7bfaf4-fce7-4a55-b540-e0ec4bcdf164/scratchpad/eval-tomo-prefix"
+        "path": "/tmp/eval/tomo"
       }
     ]
   },
@@ -78,7 +78,7 @@
             "durationSeconds": 27,
             "startedAt": "2026-10-24T21:18:33.909Z",
             "error": null,
-            "tracePath": "/private/tmp/e-IaYTaJ/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -186,7 +186,7 @@
             "durationSeconds": 36,
             "startedAt": "2026-10-24T21:18:33.910Z",
             "error": null,
-            "tracePath": "/private/tmp/e-O8ERZl/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {

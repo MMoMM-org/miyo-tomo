@@ -7,7 +7,7 @@
   "partial": true,
   "partialReason": "cost_ceiling",
   "suite": {
-    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/4f4c60e1-a1d8-43cf-bb58-106f222de917/scratchpad/capture/tomo",
+    "root": "/tmp/eval/tomo",
     "ablation": "none",
     "modelOverride": "sonnet",
     "caseFilter": "scaffold-probe",
@@ -16,7 +16,7 @@
     "plugins": [
       {
         "name": "tomo",
-        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/4f4c60e1-a1d8-43cf-bb58-106f222de917/scratchpad/capture/tomo"
+        "path": "/tmp/eval/tomo"
       }
     ]
   },
@@ -64,7 +64,7 @@
             "durationSeconds": 4,
             "startedAt": "2026-10-25T13:19:43.378Z",
             "error": null,
-            "tracePath": "/private/tmp/e-E2VM6G/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {

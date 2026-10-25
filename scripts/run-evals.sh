@@ -6,9 +6,13 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.1.0
+# version: 0.1.1
 set -e
 set -o pipefail
+
+# fd 3 is the real stdout: every verdict line goes there, so a redirect of fd 1 into a
+# scratch file (tree snapshots) can never swallow it.
+exec 3>&1
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERDICT_PY="$SCRIPT_DIR/lib/eval_verdict.py"
@@ -113,7 +117,8 @@ CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 if [ -n "$RUNS" ]; then
     [ -n "$CASE_GLOB" ] || [ -n "$MUTATION" ] || [ -n "$REV" ] \
         || refuse "--runs needs --case, --mutation or --rev; a full-suite gate run is always 3 runs"
-    case "$RUNS" in ''|*[!0-9]*|0) refuse "--runs must be a positive integer, got '$RUNS'" ;; esac
+    echo "$RUNS" | grep -Eq '^[1-9][0-9]*$' \
+        || refuse "--runs must be a positive integer without leading zeros, got '$RUNS'"
 fi
 echo "$MAX_COST" | grep -Eq '^[0-9]+(\.[0-9]+)?$' \
     || refuse "--max-cost-usd / EVAL_MAX_COST_USD must be a number, got '$MAX_COST'"
@@ -217,12 +222,12 @@ cleanup() {
             echo "REFUSED · runner error (exit $rc) before anything was spent" >&2
             exit 3
         fi
-        echo "NOT GRADED · runner error (exit $rc)"
+        echo "NOT GRADED · runner error (exit $rc)" >&3
         exit 2
     fi
 }
 trap cleanup EXIT
-trap 'DELIBERATE=true; echo "NOT GRADED · interrupted"; exit 2' INT TERM
+trap 'DELIBERATE=true; echo "NOT GRADED · interrupted" >&3; exit 2' INT TERM
 
 WORK="$(mktemp -d "$TMP_BASE/tomo-evals.XXXXXX")"
 
@@ -308,7 +313,7 @@ tree_state > "$WORK/tree.after"
 not_graded() {
     DELIBERATE=true
     line="NOT GRADED · $* · claude $CLAUDE_VERSION · tree $TREE · $OUT"
-    echo "$line"
+    echo "$line" >&3
     echo "$line" > "$OUT/verdict.txt"
     exit 2
 }
@@ -335,7 +340,10 @@ VERDICT_LINE="$(python3 "$VERDICT_PY" "$@")" || VERDICT_RC=$?
 if [ "$VERDICT_RC" -eq 0 ] && [ "$CLI_RC" -ne 0 ]; then
     not_graded "claude exited $CLI_RC but the result reads GREEN"
 fi
-case "$VERDICT_RC" in 0|1|2) ;; *) VERDICT_RC=2 ;; esac
-echo "$VERDICT_LINE"
+case "$VERDICT_RC" in
+    0|1|2) [ -n "$VERDICT_LINE" ] || not_graded "verdict script failed (exit $VERDICT_RC, empty verdict)" ;;
+    *) not_graded "verdict script failed (exit $VERDICT_RC)" ;;
+esac
+echo "$VERDICT_LINE" >&3
 DELIBERATE=true
 exit "$VERDICT_RC"

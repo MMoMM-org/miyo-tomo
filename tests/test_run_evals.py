@@ -423,7 +423,7 @@ def test_known_case_is_partial_suite(env):
 
 def test_no_cases_refused(env):
     shutil.rmtree(env.repo / "evals" / "probe-case")
-    proc = env.run(expect_tree_change=False)
+    proc = env.run()
     assert proc.returncode == 3
     assert env.calls() == []
 
@@ -438,6 +438,13 @@ def test_case_without_identical_leak_guard_refused(env, mangle):
     proc = env.run()
     assert proc.returncode == 3
     assert "probe-case" in proc.stderr
+    assert env.calls() == []
+
+
+@pytest.mark.parametrize("bad", ["0", "00", "007", "-1", "x", "1.5"])
+def test_invalid_runs_refused(env, bad):
+    proc = env.run("--runs", bad, "--case", "probe-case")
+    assert proc.returncode == 3
     assert env.calls() == []
 
 
@@ -479,4 +486,74 @@ def test_help_documents_contract(env):
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN"):
         assert needle in h, needle
+    assert env.calls() == []
+
+
+# ── unexpected-failure mapping, cleanup guard, verdict-script failure ──
+
+
+def _shim(env: "Env", name: str, body: str) -> str:
+    """Write an executable `name` into a bin dir; return a PATH with that dir first."""
+    d = env.tmp / "shims"
+    _write(d / name, "#!/bin/bash\n" + body)
+    (d / name).chmod(0o755)
+    return f"{d}:{env.env['PATH']}"
+
+
+def _failing_hash_object_shim(env: "Env", fail_from: int) -> str:
+    """git shim: delegates to the real git, but `hash-object` calls number >= fail_from exit 1."""
+    real_git = shutil.which("git")
+    counter = env.tmp / "hash-object.count"
+    return _shim(env, "git", f'''
+for a in "$@"; do
+    if [ "$a" = hash-object ]; then
+        n=$(cat "{counter}" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "{counter}"
+        [ "$n" -ge {fail_from} ] && exit 1
+        break
+    fi
+done
+exec "{real_git}" "$@"
+''')
+
+
+def test_stray_failure_before_cli_is_refused(env):
+    proc = env.run(PATH=_failing_hash_object_shim(env, 1))
+    assert proc.returncode == 3
+    assert "REFUSED · runner error" in proc.stderr
+    assert env.eval_calls() == []
+
+
+def test_stray_failure_after_cli_is_not_graded(env):
+    proc = env.run(PATH=_failing_hash_object_shim(env, 2))
+    assert proc.returncode == 2
+    assert _line(proc).startswith("NOT GRADED")
+    assert len(env.eval_calls()) == 1
+
+
+def test_cleanup_refuses_to_remove_a_path_it_did_not_create(env):
+    victim = env.tmp / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("precious\n")
+    path = _shim(env, "mktemp", f'echo "{victim}"\n')
+    proc = env.run(PATH=path)
+    assert (victim / "keep.txt").read_text() == "precious\n"
+    assert "refusing to remove unexpected path" in proc.stderr
+
+
+def test_verdict_script_failure_is_not_graded_with_one_line(env):
+    real_py = shutil.which("python3")
+    path = _shim(env, "python3", f'''
+for a in "$@"; do
+    case "$a" in *eval_verdict.py) exit 127 ;; esac
+done
+exec "{real_py}" "$@"
+''')
+    proc = env.run(PATH=path)
+    assert proc.returncode == 2
+    assert _line(proc).startswith("NOT GRADED · verdict script failed (exit 127)")
+
+
+def test_rev_and_mutation_together_refused(env):
+    proc = env.run("--rev", "HEAD", "--mutation", "flip")
+    assert proc.returncode == 3
     assert env.calls() == []

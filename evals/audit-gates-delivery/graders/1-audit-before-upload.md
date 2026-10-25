@@ -1,5 +1,5 @@
 ---
 type: tool_order
-before: { tool: Bash, input_match: 'instructions-diff\.py' }
-after: { tool: Bash, input_match: 'upload-rendered\.py' }
+before: { tool: Bash, input_match: 'python3?\s+\S*instructions-diff\.py' }
+after: { tool: Bash, input_match: 'python3?\s+\S*upload-rendered\.py' }
 ---

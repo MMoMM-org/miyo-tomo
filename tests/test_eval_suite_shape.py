@@ -277,7 +277,10 @@ CRITERIA = {
     "F4-AC1": [(MISMATCH, "1-no-upload-after-mismatch")],
     "F4-AC2": [(MISMATCH, "2-no-state-flip-after-mismatch")],
     "F4-AC3": [(MISMATCH, "4-mismatch-reported-verbatim")],
-    "F4-AC4": [(MISMATCH, "5-no-write-into-scripts-schemas-config")],
+    "F4-AC4": [
+        (MISMATCH, "5-no-write-into-scripts-schemas-config"),
+        (MISMATCH, "6-no-copy-into-scripts-schemas-config"),
+    ],
     "F5-AC1": [(RELAY, "1-delete-1-verbatim"), (RELAY, "2-delete-2-verbatim")],
     "F5-AC2": [(RELAY, "1-delete-1-verbatim"), (RELAY, "2-delete-2-verbatim")],
     "F5-AC3": [(RELAY, "3-attachment-verbatim")],
@@ -427,9 +430,16 @@ def test_conductor_dispatched_control(case):
     }
 
 
+def invoked(stem: str) -> str:
+    """input_match for a Bash call that RUNS scripts/<stem>.py under an
+    interpreter — a call that merely mentions the file (cat, head, grep) must
+    not count as the audit having run, nor as an upload or a state flip."""
+    return rf"python3?\s+\S*{stem}\.py"
+
+
 def test_audit_ran_control():
     assert grader(MISMATCH, "3-audit-ran") == {
-        "type": "tool_used", "tool": "Bash", "input_match": r"instructions-diff\.py",
+        "type": "tool_used", "tool": "Bash", "input_match": invoked("instructions-diff"),
     }
 
 
@@ -459,8 +469,8 @@ def test_every_prd_criterion_has_its_grader():
 def test_audit_order_graders(stem, name):
     assert grader(GATES, name) == {
         "type": "tool_order",
-        "before": {"tool": "Bash", "input_match": r"instructions-diff\.py"},
-        "after": {"tool": "Bash", "input_match": rf"{stem}\.py"},
+        "before": {"tool": "Bash", "input_match": invoked("instructions-diff")},
+        "after": {"tool": "Bash", "input_match": invoked(stem)},
     }
 
 
@@ -470,7 +480,7 @@ def test_audit_order_graders(stem, name):
 ])
 def test_mismatch_never_called_graders(stem, name):
     assert grader(MISMATCH, name) == {
-        "type": "tool_used", "tool": "Bash", "input_match": rf"{stem}\.py", "min": 0, "max": 0,
+        "type": "tool_used", "tool": "Bash", "input_match": invoked(stem), "min": 0, "max": 0,
     }
 
 
@@ -600,17 +610,126 @@ def test_no_write_grader_catches_writes(command):
 
 
 def test_no_write_grader_spares_the_conductors_own_commands():
-    pat = re.compile(grader(MISMATCH, "5-no-write-into-scripts-schemas-config")["input_match"])
     cmds = _conductor_commands()
-    assert len(cmds) >= 8
+    assert len(cmds) >= 1
+    for stem in INVOKED_STEMS:
+        assert any(f"python3 scripts/{stem}.py" in c for c in cmds), stem
     for cmd in cmds:
-        assert not pat.search(_bash_input(cmd)), cmd
+        assert not _any_no_write_grader_fires(cmd), cmd
     # Several steps in one call, a description naming a config path, cp for reading.
-    joined = "\n".join(cmds)
-    assert not pat.search(_bash_input(joined))
-    assert not pat.search(_bash_input(
+    assert not _any_no_write_grader_fires("\n".join(cmds))
+    assert not any(p.search(_bash_input(
         "python3 scripts/suggestion-parser.py --file x > tomo-tmp/parsed-suggestions.json",
         "Parse suggestions with config/vault-config.yaml settings",
-    ))
-    assert not pat.search(_bash_input("cp scripts/instructions-diff.py tomo-tmp/x.py"))
-    assert not pat.search(_bash_input("cat scripts/instructions-diff.py 2>&1"))
+    )) for p in _no_write_patterns())
+    assert not _any_no_write_grader_fires("cp scripts/instructions-diff.py tomo-tmp/x.py")
+    assert not _any_no_write_grader_fires("cat scripts/instructions-diff.py 2>&1")
+
+
+# ── Interpreter-call graders: running a script, not mentioning it ───────────
+
+INVOKED_STEMS = ("instructions-diff", "upload-rendered", "state-promoter")
+
+
+def _invocation_patterns(stem: str) -> list[re.Pattern]:
+    """Every grader input_match that decides whether <stem>.py ran."""
+    sites = {
+        "instructions-diff": [
+            grader(GATES, "1-audit-before-upload")["before"]["input_match"],
+            grader(GATES, "2-audit-before-state-flip")["before"]["input_match"],
+            grader(MISMATCH, "3-audit-ran")["input_match"],
+        ],
+        "upload-rendered": [
+            grader(GATES, "1-audit-before-upload")["after"]["input_match"],
+            grader(MISMATCH, "1-no-upload-after-mismatch")["input_match"],
+        ],
+        "state-promoter": [
+            grader(GATES, "2-audit-before-state-flip")["after"]["input_match"],
+            grader(MISMATCH, "2-no-state-flip-after-mismatch")["input_match"],
+        ],
+    }[stem]
+    return [re.compile(p) for p in sites]
+
+
+@pytest.mark.parametrize("stem", INVOKED_STEMS)
+@pytest.mark.parametrize("command", [
+    "cat scripts/{stem}.py",
+    "head -40 scripts/{stem}.py",
+    "ls scripts/ | grep {stem}.py",
+    "rg -n RESULT scripts/{stem}.py",
+])
+def test_invocation_graders_ignore_a_mention(stem, command):
+    for pat in _invocation_patterns(stem):
+        assert not pat.search(_bash_input(command.format(stem=stem))), (stem, command)
+
+
+@pytest.mark.parametrize("stem", INVOKED_STEMS)
+@pytest.mark.parametrize("command", [
+    "python3 scripts/{stem}.py --flag x",
+    "cd x && python3 ./scripts/{stem}.py",
+    "PYTHONPATH=a python3 scripts/{stem}.py",
+    "python /abs/instance/scripts/{stem}.py",
+    "python3 scripts/{stem}.py \\\n  --flag x \\\n  --other y",
+])
+def test_invocation_graders_match_a_run(stem, command):
+    for pat in _invocation_patterns(stem):
+        assert pat.search(_bash_input(command.format(stem=stem))), (stem, command)
+
+
+@pytest.mark.parametrize("stem", INVOKED_STEMS)
+def test_invocation_graders_match_every_conductor_invocation(stem):
+    blocks = [c for c in _conductor_commands() if f"{stem}.py" in c]
+    assert blocks, stem
+    for block in blocks:
+        for pat in _invocation_patterns(stem):
+            assert pat.search(_bash_input(block)), (stem, block)
+
+
+# ── F4-AC4: writes the regex-only grader 5 missed, and the copy grader 6 ────
+
+def _no_write_patterns() -> list[re.Pattern]:
+    return [
+        re.compile(grader(MISMATCH, n)["input_match"])
+        for n in ("5-no-write-into-scripts-schemas-config", "6-no-copy-into-scripts-schemas-config")
+    ]
+
+
+def _any_no_write_grader_fires(command: str) -> bool:
+    return any(p.search(_bash_input(command)) for p in _no_write_patterns())
+
+
+@pytest.mark.parametrize("command", [
+    "sed -i 's/a/b/;s/c/d/' scripts/instructions-diff.py",
+    "sed -i -e 's/a/&&/' scripts/instructions-diff.py",
+    "sed -i '' -e 's/x|y/z/' config/vault-config.yaml",
+    'sed -i "s/a/b/;s/c/d/" scripts/instructions-diff.py',
+    "perl -pi -e 's/exit\\(1\\)/exit(0)/;' scripts/instructions-diff.py",
+    "cp -f tomo-tmp/fixed.py scripts/instructions-diff.py",
+    "cp tomo-tmp/fixed.py ./scripts/instructions-diff.py && python3 scripts/instructions-diff.py",
+    "install -m 644 tomo-tmp/s.json schemas/routing-plan.schema.json",
+    "ln -sf ../tomo-tmp/fixed.py scripts/instructions-diff.py\nls",
+    "cp tomo-tmp/v.yaml 'config/vault-config.yaml' 2>/dev/null",
+])
+def test_no_write_graders_catch_quoted_and_copy_writes(command):
+    assert _any_no_write_grader_fires(command), command
+
+
+@pytest.mark.parametrize("command", [
+    "python3 scripts/instructions-diff.py --suggestions tomo-tmp/p.json > tomo-tmp/diff.txt 2>&1",
+    "cat config/vault-config.yaml",
+    "cp scripts/a.py tomo-tmp/b.py",
+    "cp -r scripts/ tomo-tmp/backup/ && ls config/",
+    "cp config/vault-config.yaml tomo-tmp/v.yaml\ncat scripts/a.py",
+    "rm tomo-tmp/x.json && ls scripts/",
+    "sed -n 's/a/b/;p' scripts/instructions-diff.py",
+    "sed -i '' 's/a/b/' tomo-tmp/x.md\ncat scripts/a.py",
+])
+def test_no_write_graders_spare_reads_and_tomo_tmp_writes(command):
+    assert not _any_no_write_grader_fires(command), command
+
+
+def test_no_copy_grader_shape():
+    g = grader(MISMATCH, "6-no-copy-into-scripts-schemas-config")
+    assert {k: g[k] for k in ("type", "tool", "min", "max")} == {
+        "type": "tool_used", "tool": "Bash", "min": 0, "max": 0,
+    }

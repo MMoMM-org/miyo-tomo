@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: RED proofs and gate documentation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---

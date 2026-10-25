@@ -491,10 +491,13 @@ MUTATIONS = EVALS / "_mutations"
 MUTATIONS_README = MUTATIONS / "README.md"
 CONDUCTOR_IN_PLUGIN = "agents/synthesis-conductor.md"
 EXPECTED_MUTATIONS = (
-    "drop-audit-line", "always-notice", "summarise-mismatch", "fix-on-mismatch",
-    "copy-fix-on-mismatch", "paraphrase-relay", "files-used-after",
+    "drop-audit-line", "always-notice", "summarise-mismatch", "write-into-scripts",
+    "copy-into-config", "paraphrase-relay", "files-used-after",
     "attachments-first", "report-run-id",
 )
+# Neutral-write proofs inject an innocent bookkeeping step that no clause
+# forbids, so they declare `removes: none` instead of quoted removals.
+NEUTRAL_WRITE_MUTATIONS = ("write-into-scripts", "copy-into-config")
 GRADER_REF = re.compile(r"`([a-z-]+)/(\d-[a-z0-9-]+)`")
 NO_WRITE, NO_COPY = "5-no-write-into-scripts-schemas-config", "6-no-copy-into-scripts-schemas-config"
 
@@ -555,7 +558,7 @@ def _clauses(name: str) -> dict[str, list[str]]:
     section = _readme_section("Clauses")
     m = re.search(rf"^### {re.escape(name)}\n(.*?)(?=^### |\Z)", section, re.S | re.M)
     assert m, f"_mutations/README.md Clauses has no '### {name}'"
-    out = {"removes": [], "adds": []}
+    out = {"removes": [], "adds": [], "removes_none": bool(re.search(r"^- removes: none\b", m.group(1), re.M))}
     for kind, clause in re.findall(r'^- (removes|adds): "(.*)"$', m.group(1), re.M):
         out[kind].append(clause)
     return out
@@ -596,7 +599,14 @@ def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     assert result.returncode == 0, result.stdout + result.stderr
     after = _norm((plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8"))
     clauses = _clauses(name)
-    assert clauses["removes"] and clauses["adds"], name
+    assert clauses["adds"], name
+    if name in NEUTRAL_WRITE_MUTATIONS:
+        assert clauses["removes_none"] and not clauses["removes"], name
+        patch_text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
+        removed = [line for line in patch_text.splitlines() if line.startswith("-") and not line.startswith("---")]
+        assert not removed, f"{name}: a neutral-write mutation must only add: {removed}"
+    else:
+        assert clauses["removes"] and not clauses["removes_none"], name
     for clause in clauses["removes"]:
         assert _norm(clause) in before, f"{name}: declared removal not in the conductor: {clause}"
         assert _norm(clause) not in after, f"{name}: still present after the patch: {clause}"
@@ -653,19 +663,33 @@ def test_rev_proofs_resolve_to_a_conductor():
         assert result.returncode == 0, p["arg"]
 
 
-@pytest.mark.parametrize(("name", "fires", "silent"), [
-    ("fix-on-mismatch", NO_WRITE, NO_COPY),
-    ("copy-fix-on-mismatch", NO_COPY, NO_WRITE),
+def _injected_bash_commands(before: str, after: str) -> list[str]:
+    """Commands of the ```bash blocks the patch added (absent before it)."""
+    fence = re.compile(r"^```bash\n(.*?)^```", re.S | re.M)
+    existing = fence.findall(before)
+    return [b.strip() for b in fence.findall(after) if b not in existing]
+
+
+@pytest.mark.parametrize(("name", "fires"), [
+    ("write-into-scripts", NO_WRITE),
+    ("copy-into-config", NO_COPY),
 ])
-def test_fix_mutations_inject_a_command_their_grader_observes(tmp_path, name, fires, silent):
+def test_neutral_write_mutations_trip_only_their_grader(tmp_path, name, fires):
     """The injected command, as written, is what the claimed grader observes —
-    and not the sibling grader, so each F4-AC4 proof is its own."""
+    and no other Bash gate grader of the case, so each F4-AC4 proof is its own
+    and the run otherwise behaves normally."""
     plugin = _assemble_plugin(tmp_path)
+    before = (plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8")
     _patch(plugin, name, dry_run=False)
-    text = (plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8")
-    commands = [line.strip() for line in text.splitlines() if re.match(r"\s*(sed|cp) ", line)]
-    assert not any("<" in c for c in commands), commands
-    assert commands, name
-    pat = {g: re.compile(grader(MISMATCH, g)["input_match"]) for g in (fires, silent)}
-    assert any(pat[fires].search(bash_input(c)) for c in commands), commands
-    assert not any(pat[silent].search(bash_input(c)) for c in commands), commands
+    after = (plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8")
+    commands = _injected_bash_commands(before, after)
+    assert len(commands) == 1 and "<" not in commands[0], commands
+    bash_gates = {
+        g for g in grader_names(MISMATCH) - CONTROL_GRADERS[MISMATCH]
+        if grader(MISMATCH, g)["type"] == "tool_used" and grader(MISMATCH, g)["tool"] == "Bash"
+    }
+    assert {NO_WRITE, NO_COPY} <= bash_gates
+    tripped = {g for g in bash_gates if re.search(grader(MISMATCH, g)["input_match"], bash_input(commands[0]))}
+    assert tripped == {fires}, (commands[0], tripped)
+    # The step precedes the audit, so it runs on the mismatch path too.
+    assert after.index(commands[0]) < after.index("python3 scripts/instructions-diff.py")

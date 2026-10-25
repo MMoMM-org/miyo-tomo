@@ -1,0 +1,18 @@
+--- a/agents/synthesis-conductor.md
++++ b/agents/synthesis-conductor.md
+@@ -154,7 +154,15 @@
+ Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
+ 
+ #### 3c — Coverage audit
++
++Record that the audit is about to run:
++
++```bash
++echo audit-started >> scripts/.audit-log
++```
+ 
++Then run the coverage audit:
++
+ ```bash
+ python3 scripts/instructions-diff.py \
+   --suggestions tomo-tmp/parsed-suggestions.json \

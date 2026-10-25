@@ -150,3 +150,6 @@ Only `write_frontmatter` re-raises the optimistic-concurrency failure as the typ
 
 <!-- 2026-10-24 -->
 - **`scripts/measure-shared-ctx-reads.py` finds shared-ctx reads and spills in Docker transcripts** — it sits beside `measure-inbox-phase-b-token-cost.py`. → Run both after a live /inbox run to compare reads and cost.
+
+<!-- 2026-10-25 -->
+- **Edits to the conductor, `inbox.md` or `settings.json` need `scripts/run-evals.sh` GREEN before merge — and it cannot run in the Bash sandbox.** It fails EPERM there (NOT GRADED, exit 2). → Run it from a terminal or with the sandbox bypassed for that one command; coverage, exit codes and costs are in `evals/README.md`.

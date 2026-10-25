@@ -141,6 +141,7 @@ miyo-tomo/
 │   ├── test-vault-config-writer.py # tags section writer
 │   └── test-shared-ctx-tags.py   # shared-ctx prefix filtering
 ├── tomo/schemas/          # JSON schemas (suggestions, item-result, instructions)
+├── evals/                 # Runtime-prose eval gate ([evals/README.md](evals/README.md))
 ├── docs/                  # Setup, troubleshooting, specs
 ├── docker/                # Dockerfile and entrypoint (source of truth)
 ├── tomo-instance/         # (gitignored) Docker workspace — created by installer

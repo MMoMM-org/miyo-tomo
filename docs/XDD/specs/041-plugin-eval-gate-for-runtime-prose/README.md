@@ -48,6 +48,9 @@
 | 2026-10-25 | Decomposition tier: Incremental | Classifier recommended Incremental (rule 1: 7 Must features, 7 new components; no parallel markers). Accepted. Hard ordering: gate → red baseline → C7 fix → regenerate mutations → RED proofs → 3× green close-out. |
 | 2026-10-25 | Plan v1.0: 5 phases, 19 tasks; independent plan review (2 blocking, 11 should-fix) folded into plan + SDD v1.1 + PRD F7-AC6 wording; real eval results archived in `spike/results/` as fixtures | Review found fixtures without a source and tests writing into the real repo; both resolved by design, not by deferral. |
 | 2026-10-25 | Specification finalized; readiness HIGH | PRD, SDD, plan complete; all ADRs confirmed; 35/35 criteria traced to tasks. |
+| 2026-10-25 | Phase 1 complete | Runner, verdict reader, stub kit, sync guard; drift fixes (fixture sanitising, `--cost-cap`, rev SHA); $0.06 spent. |
+| 2026-10-25 | ADR-10 widened to one report-level STRICT | Baseline (`baseline.md`, RED, $0.64) showed three failure modes the first scope missed: RESULT line paraphrased, render stderr with action ids/guard names quoted, headings between relay lines. Owner chose one STRICT over two, and over iterating on the narrow rule. |
+| 2026-10-25 | Phase 2 complete | Three cases (incl. a second F4-AC4 grader for copies), conductor-case tests split out; baseline recorded; phase spend $0.90. |
 
 ## Context
 

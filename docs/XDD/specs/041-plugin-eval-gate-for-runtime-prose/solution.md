@@ -294,7 +294,7 @@ graph LR
 | **C4 Cases** `evals/<case>/` | One behaviour each: its prompt, its scaffold parameters, its graders (including the canonical leak guard). Owns *what is asserted*. |
 | **C5 Mutations** `evals/_mutations/` | Named, reproducible prose/stub changes that must turn named graders red. Owns *the proof that a grader can fail*. |
 | **C6 Gate documentation** `evals/README.md` + `CLAUDE.md` rule + `docs/ai/memory/tools.md` | The coverage list, the merge rule, how to run, how to add a case. Owns *when the suite must run*. |
-| **C7 Conductor prose fix** `tomo/dot_claude/agents/synthesis-conductor.md` Step 4 | Make the report end at the relay lines and carry no internals. Owns nothing in the gate — it is the subject the gate found wanting. |
+| **C7 Conductor prose fix** `tomo/dot_claude/agents/synthesis-conductor.md` Step 4 | Make the report carry the audit RESULT line verbatim, carry no internals, and end at consecutive relay lines. Owns nothing in the gate — it is the subject the gate found wanting. |
 | **C8 Runner tests** `tests/test_run_evals.py`, `tests/test_eval_verdict.py` | Prove C1/C2 behave without spending money (fake `claude` binary, canned results). |
 
 **Responsibility matrix (PRD criterion → owning component):**
@@ -734,7 +734,7 @@ Not applicable beyond the CLI. The verdict line is the UX: one line, starts with
 
 - **Communication Patterns**: synchronous subprocess calls only.
 - **Data Consistency**: n/a.
-- **Shared Code**: the stub kit is the only shared code; the leak guard is shared by copy, enforced identical by preflight and by `test_eval_suite_shape.py`.
+- **Shared Code**: the stub kit is the only shared code; the leak guard is shared by copy, enforced identical by preflight and by `test_eval_conductor_cases.py`.
 - **Service Discovery / Circuit Breakers / Distributed Tracing**: n/a.
 
 ## Architecture Decisions
@@ -764,7 +764,7 @@ Not applicable beyond the CLI. The verdict line is the UX: one line, starts with
   - User confirmed: 2026-10-25
 
 - [x] **ADR-5 Leak guard = planted bait + format patterns, one canonical grader copied into every case**
-  - Choice: `evals/_lib/no-leak.md` (pattern above), copied byte-identical as `graders/9-no-leak.md`; preflight and `test_eval_suite_shape.py` refuse a case without it (F6-AC2). The kit plants bait (real-format run id, `act-…` ids, guard names) on the render stub's stderr.
+  - Choice: `evals/_lib/no-leak.md` (pattern above), copied byte-identical as `graders/9-no-leak.md`; preflight and `test_eval_conductor_cases.py` refuse a case without it (F6-AC2). The kit plants bait (real-format run id, `act-…` ids, guard names) on the render stub's stderr.
   - Rationale: the CLI has no suite-wide graders; a copy plus an identity check is the only way to make "every case carries it" mechanical. Bait makes the `not_contains` falsifiable — a guard with nothing to catch passes vacuously.
   - Trade-offs: the pattern lists guard names by hand; a new guard name must be added (named in `evals/README.md`'s "adding a case" section).
   - User confirmed: 2026-10-25
@@ -794,10 +794,10 @@ Not applicable beyond the CLI. The verdict line is the UX: one line, starts with
   - User confirmed: 2026-10-25
 
 - [x] **ADR-10 Conductor Step 4 prose fix inside this spec**
-  - Choice: Step 4 gains: the relay lines are the last lines — nothing after them; the report carries no run id, no file name, no path, no script name. One STRICT block, `Why:` = "the model appended a Files used list of temp paths after the relay lines and wrote the run id into the report." Version 0.23.0 → 0.24.0; WHY written to `docs/tomo/dot_claude/agents/synthesis-conductor.md` first; instance synced.
-  - Rationale: owner decision (fix within 041); the deviation is observed by the gate, which is the STRICT lever's precondition.
-  - Trade-offs: touches the runtime tree; needs an instance sync and a live-free proof (the suite itself, 3 consecutive green runs).
-  - User confirmed: 2026-10-25
+  - Choice: Step 4 gains **one report-level STRICT block** (widened 2026-10-25 after the T2.2 baseline, see `baseline.md`): (1) the `Coverage audit:` line carries the `RESULT:` line from `instructions-diff.py` character for character; (2) the report carries no internals — no run id, action id, guard or function name, raw script stderr line, file name, path or script name; (3) the relay lines are consecutive — nothing between them — and are the last lines of the report, nothing after. The block does not name `withheld-deletes.md` (`test_039_t5_1_reporting.py:412-425`). `Why:` = one line naming the observed deviations: "the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, and put headings between and text after the relay lines." Version 0.23.0 → 0.24.0; WHY written to `docs/tomo/dot_claude/agents/synthesis-conductor.md` first; instance synced.
+  - Rationale: owner decision (fix within 041); the deviations are observed by the gate, which is the STRICT lever's precondition. The baseline found three failure modes the first scope (relay last; no run id/file/path/script name) did not cover — a paraphrased RESULT line (F3-AC3 1/3), quoted render stderr with action ids and guard names (F6-AC1 0/3), headings between relay lines (F5-AC4 0/3) — and F7-AC6 needs three consecutive full-suite GREENs, so the owner widened the rule instead of iterating on a narrower one.
+  - Trade-offs: touches the runtime tree; needs an instance sync and a live-free proof (the suite itself, 3 consecutive green runs). One STRICT carrying three rules is heavier than one carrying two; chosen over two STRICT blocks to keep the emergency lever used once.
+  - User confirmed: 2026-10-25 (original scope); widened 2026-10-25 after the baseline
 
 ## Quality Requirements
 
@@ -865,7 +865,7 @@ Not applicable beyond the CLI. The verdict line is the UX: one line, starts with
 
 ### Known Technical Issues
 
-- **The conductor fails two gate graders on `main` today** (relay last-lines 1/3; run id in the report, caught once the stub prints the real format). Addressed by C7; the close-out shows before/after.
+- **The conductor fails gate graders on `main` today** — measured in `baseline.md` (T2.2): no-leak 0/3 in every case, relay adjacency-and-last 0/3, relay lines verbatim 2/3, RESULT line 1/3; step order, audit stop and no-tamper 3/3. (The spike's earlier "two graders, relay last-lines 1/3" is superseded.) Addressed by C7 as widened in ADR-10; the close-out shows before/after.
 - **Subagent visibility in traces is observed, not documented.** A Claude Code change could make `tool_used`/`tool_order` blind to subagent calls; every case's control `0-conductor-dispatched` plus the gate graders' RED proofs would expose it (a mutation that no longer turns red).
 - **No dry-run/validate mode in the CLI**: a malformed case is found only by a run. Preflight checks what it can (files present, leak guard identical); `case.yaml` keys are copied from a known-good spike file.
 

@@ -37,7 +37,7 @@ Makes the conductor's report end at the relay lines and carry no internals, prov
 - [ ] **T3.1 WHY for the new Step 4 rules** `[activity: documentation]`
 
   1. Prime: `baseline.md`; the existing Step 4 section of `docs/tomo/dot_claude/agents/synthesis-conductor.md` `[ref: SDD/ADR-10]`
-  2. Test: n/a (documentation). Checklist: the observed deviations (trailing `Files used:` block with absolute paths; run id in the report) with the baseline's pass counts; why the report must end at the relay lines (the owner reads the shell, the lines are the last thing seen); why no run id / file / path / script name (ADR-11, Constitution L2); that the gate case `withheld-notices-relayed` + the leak guard are what keep this true
+  2. Test: n/a (documentation). Checklist: the observed deviations with the baseline's pass counts — trailing `Files used:` block with absolute paths; run id in the report; raw render stderr quoted with action ids and guard names (`9-no-leak` 0/3 in every case); headings between the relay lines (`4-deletes-then-attachment-last` 0/3); relay markup dropped (2/3); `RESULT:` line paraphrased (`3-audit-result-in-report` 1/3); why the `Coverage audit:` line is the RESULT line verbatim (the owner and the gate read the audit's own words); why the relay lines are consecutive and last (the owner reads the shell, the lines are the last thing seen); why no internals — run id, action id, guard/function name, raw stderr, file, path, script name (ADR-11, Constitution L2); why one STRICT carries all three rules (owner decision, ADR-10 widened 2026-10-25); that the three cases + the leak guard are what keep this true
   3. Implement: edit `docs/tomo/dot_claude/agents/synthesis-conductor.md`
   4. Validate: every claim cites `baseline.md` or a file:line
   5. Success: the rationale exists before the runtime imperative does `[ref: CLAUDE.md Rules]`
@@ -46,9 +46,9 @@ Makes the conductor's report end at the relay lines and carry no internals, prov
 
   1. Prime: T3.1; `synthesis-conductor.md:199-237` (Step 4) and `:239-247` ("What you never do") `[ref: SDD/ADR-10]`
   2. Test (RED — recorded in T2.2): `scripts/run-evals.sh --case withheld-notices-relayed` and the full no-leak graders are RED on 0.23.0; after the edit the full suite is GREEN; `tests/test_synthesis_conductor_step_order.py` and `tests/test_039_t5_1_reporting.py` stay green unmodified
-  3. Implement: Step 4 report template and rules: nothing after the relay lines; no run id, file name, path or script name anywhere in the report; one STRICT block, `Why:` "the model appended a Files used list of temp paths after the relay lines and wrote the run id into the report."; `# version: 0.23.0` → `0.24.0`
+  3. Implement: Step 4 report template and rules, as **one report-level STRICT block** (ADR-10 as widened): the `Coverage audit:` line carries the `RESULT:` line from `instructions-diff.py` character for character; no internals anywhere in the report — run id, action id, guard or function name, raw script stderr line, file name, path, script name; the relay lines consecutive with nothing between them and nothing after them. The block must not name `withheld-deletes.md`. `Why:` "the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, and put headings between and text after the relay lines."; `# version: 0.23.0` → `0.24.0`
   4. Validate: full suite `scripts/run-evals.sh` GREEN once; if not GREEN, iterate on the imperative wording only (each iteration a partial `--case` run first), record each attempt's verdict line in `baseline.md` under "after"
-  5. Success: `main`-candidate conductor passes every gate grader in 3/3 runs `[ref: PRD/F5-AC4, F6-AC1]`
+  5. Success: `main`-candidate conductor passes every gate grader in 3/3 runs `[ref: PRD/F3-AC3, F5-AC1…AC4, F6-AC1]`
 
 - [ ] **T3.3 Instance sync** `[activity: validate]`
 

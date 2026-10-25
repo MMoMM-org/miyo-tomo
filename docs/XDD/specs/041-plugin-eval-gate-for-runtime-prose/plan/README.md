@@ -50,7 +50,7 @@ version: "1.0"
 | Phase | Name | Status | File |
 |-------|------|--------|------|
 | 1 | Runner, verdict and stub kit | completed | phase-1.md |
-| 2 | Cases and the baseline on `main` | pending | phase-2.md |
+| 2 | Cases and the baseline on `main` | completed | phase-2.md |
 | 3 | Conductor Step 4 fix | pending | phase-3.md |
 | 4 | RED proofs and gate documentation | pending | phase-4.md |
 | 5 | Close-out | pending | phase-5.md |
@@ -136,7 +136,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Runner, verdict and stub kit](phase-1.md)
-- [ ] [Phase 2: Cases and the baseline on main](phase-2.md)
+- [x] [Phase 2: Cases and the baseline on main](phase-2.md)
 - [ ] [Phase 3: Conductor Step 4 fix](phase-3.md)
 - [ ] [Phase 4: RED proofs and gate documentation](phase-4.md)
 - [ ] [Phase 5: Close-out](phase-5.md)
@@ -149,7 +149,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 |---|---|---|---|---|
 | F1-AC1, AC2, AC3, AC5, AC6 | T1.3 | | F5-AC1…AC5 | T2.1 (graders), T3.2 (green) |
 | F1-AC4 | T1.4 | | F6-AC1 | T1.2 (pattern, bait), T2.1 |
-| F2-AC1, AC2, AC3, AC5 | T1.1 | | F6-AC2 | T1.2 (shape test), T1.3 (preflight) |
+| F2-AC1, AC2, AC3, AC5 | T1.1 | | F6-AC2 | T2.1 (case identity test), T1.3 (preflight) |
 | F2-AC4, AC6 | T1.3 | | F7-AC1, AC2, AC3 | T4.3 |
 | F3-AC1…AC3 | T2.1 | | F7-AC4, AC5 | T4.1, T4.2 |
 | F4-AC1…AC4 | T2.1 | | F7-AC6 | T5.1 |

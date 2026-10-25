@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Cases and the baseline on main"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---

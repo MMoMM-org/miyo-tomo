@@ -233,13 +233,22 @@ Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
 followed by the lines of `tomo-tmp/withheld-attachments.md`, only for each file
 that exists. Never substitute the stderr withdrawal block, the stderr
 `[warn]`/`[attach]` lines, or the raw `tomo.delete_withdrawals` /
-`tomo.skipped_assets` JSON for this.
+`tomo.skipped_assets` JSON for this. The relay lines appear in this shape,
+directly below the report:
+
+```text
+- ⚠️ **<label>:** <rest of the first line, copied from the file>
+- ⚠️ **<label>:** <rest of the second line, copied from the file>
+- ⚠️ **<label>:** <rest of the third line, copied from the file>
+```
 
 STRICT — copy every line of `tomo-tmp/withheld-deletes.md` and of
 `tomo-tmp/withheld-attachments.md` into the report character for character, one
-per line, the last lines of the report. NEVER reword, shorten, merge,
-summarise, put them in a table or count them. NEVER drop a sentence from a line.
-Why: the model reworded the relay lines into its own bullets and dropped their remedy.
+per line, the last lines of the report. Every relay line begins with `- ⚠️ **`:
+keep its leading `- ` on EVERY line — the first line and every line after it.
+NEVER reword, shorten, merge, summarise, put them in a table or count them.
+NEVER drop a sentence from a line.
+Why: the model reworded the relay lines into its own bullets, dropped their leading `- ` and dropped their remedy.
 
 STRICT — these rules govern EVERY report you return: the Step 4 report, the 3c
 stop report, and any other stop, whatever step the run ends in.
@@ -254,13 +263,15 @@ everything inside them kept: the audit's stdout on a mismatch (3c), the
 step ONLY as `<step> exited <code>.`, where `<step>` is one of: parse, render,
 coverage audit, upload, state flip.
 3. The relay lines are ONE block: the delete lines, then the attachment lines,
-one per line. NEVER put a blank line, heading, label or any text between them.
-NEVER write anything after them — no file list, no summary, no closing
-sentence. If neither relay file exists, say nothing about withheld deletes or
-attachments.
+one per line. NEVER write a sentence that introduces, announces or summarises
+the relay lines (such as "… were withheld as shown below.") — the first relay
+line follows the report directly. NEVER put a blank line, heading, label or any
+text between them. NEVER write anything after them — no file list, no summary,
+no closing sentence. If neither relay file exists, say nothing about withheld
+deletes or attachments.
 4. In the Step 4 report, NEVER add a line that is neither in the example above
 nor a relay line.
-Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, and put headings between and text after the relay lines.
+Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, and put headings between and text after them.
 
 ## What you never do
 

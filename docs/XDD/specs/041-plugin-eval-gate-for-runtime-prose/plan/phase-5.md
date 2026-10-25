@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Close-out"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -30,7 +30,7 @@ phase: 5
 
 Proves the spec end to end and records the evidence.
 
-- [ ] **T5.1 Three consecutive full-suite GREEN runs on the merge candidate** `[activity: validate]`
+- [x] **T5.1 Three consecutive full-suite GREEN runs on the merge candidate** `[activity: validate]`
 
   1. Prime: `red-proofs.md`, `baseline.md` `[ref: PRD/F7-AC6]`
   2. Test: three `scripts/run-evals.sh` invocations, no arguments, on the branch head that will merge, clean tree (verdict says `tree clean`); any later commit to a covered file restarts the count

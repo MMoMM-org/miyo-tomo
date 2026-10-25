@@ -80,3 +80,15 @@ Attempt 1: no-leak green in every case (was 0/3); RESULT line verbatim; audit ga
 | T2.1 `--case '*' --runs 1` | cases load and grade | $0.26 |
 | T2.2 full suite | this baseline | $0.64 |
 | **Phase 2 total** | | **$0.90** (spec total so far $0.96) |
+
+## Close-out — three consecutive full-suite runs (T5.1)
+
+On the merge candidate `0492b0c5` (conductor 0.24.0, graders 5/6 with the encoded-newline fix `1612c943`), clean tree, `scripts/run-evals.sh` with no arguments. Run 1 is also the first full-suite run after that grader change.
+
+| # | Verdict |
+|---|---|
+| 1 | `GREEN 3/3 cases · runs 9 · $0.58 · 106 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T18-31-39Z` |
+| 2 | `GREEN 3/3 cases · runs 9 · $0.59 · 103 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T18-33-29Z` |
+| 3 | `GREEN 3/3 cases · runs 9 · $0.59 · 110 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T18-35-17Z` |
+
+3/3 GREEN; median cost $0.59 (target ≤ $2), longest 110 s (target ≤ 5 min). Phase 5 spend $1.76; spec total $8.60.

@@ -53,7 +53,7 @@ version: "1.0"
 | 2 | Cases and the baseline on `main` | completed | phase-2.md |
 | 3 | Conductor Step 4 fix | completed | phase-3.md |
 | 4 | RED proofs and gate documentation | completed | phase-4.md |
-| 5 | Close-out | pending | phase-5.md |
+| 5 | Close-out | in_progress | phase-5.md |
 
 ---
 

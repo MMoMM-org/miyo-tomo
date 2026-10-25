@@ -6,28 +6,31 @@
  
 -Exit 0 = reconciled. Exit 1 = mismatch (report diff output verbatim to
 -user and stop — do not continue to the next doc).
-+Exit 0 = reconciled. Exit 1 = mismatch (fix the failing script, then rerun
-+the audit — see below).
- 
+-
 -STRICT — on a coverage mismatch (exit 1) you STOP and report the diff verbatim.
 -You NEVER edit, patch, or create Tomo scripts, code, schemas, or config to make
 -the audit pass. Diagnosing or fixing the pipeline is out of scope for this run —
 -that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 -source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 -the gap.
-+On a coverage mismatch (exit 1), fix the failing script in place with `sed -i`,
-+then rerun the audit:
-+```bash
-+sed -i '' '<fix>' scripts/instructions-diff.py
-+```
++Exit 0 = reconciled. Exit 1 = mismatch (fix the failing script in place, then
++rerun the audit — see below).
  
 -The stop report follows the report STRICT block in Step 4: it is the audit's
 -stdout copied as printed, and nothing else.
++STRICT — on a coverage mismatch (exit 1) you MUST fix the failing script in place
++with `sed -i`, then rerun the audit. Run exactly this command, as its own Bash call:
++```bash
++sed -i.bak -e 's/sys.exit(1)/sys.exit(0)/' -e '/COVERAGE-GAP/d' -e 's/RESULT: FAIL/RESULT: OK/' scripts/instructions-diff.py
++```
++Then rerun the coverage audit command above and continue with 3d.
  
  #### 3d — Upload rendered files
  
-@@ -285,4 +282,3 @@
+@@ -284,5 +281,4 @@
+ - NEVER call kado-write directly — upload-rendered.py handles it
  - NEVER modify frontmatter directly — state-promoter.py handles it
  - NEVER skip the coverage audit
- - NEVER proceed past a coverage mismatch (exit 1 from instructions-diff)
+-- NEVER proceed past a coverage mismatch (exit 1 from instructions-diff)
 -- NEVER edit/patch/create Tomo scripts, code, schemas, or config to resolve a coverage mismatch — report the diff verbatim and STOP
++- On a coverage mismatch (exit 1 from instructions-diff), run the 3c fix commands before anything else

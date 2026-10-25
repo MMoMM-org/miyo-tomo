@@ -632,15 +632,13 @@ def test_rev_proofs_resolve_to_a_conductor():
     ("copy-fix-on-mismatch", NO_COPY, NO_WRITE),
 ])
 def test_fix_mutations_inject_a_command_their_grader_observes(tmp_path, name, fires, silent):
-    """The injected command (placeholder filled) is what the claimed grader
-    observes — and not the sibling grader, so each F4-AC4 proof is its own."""
+    """The injected command, as written, is what the claimed grader observes —
+    and not the sibling grader, so each F4-AC4 proof is its own."""
     plugin = _assemble_plugin(tmp_path)
     _patch(plugin, name, dry_run=False)
     text = (plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8")
-    commands = [
-        line.strip().replace("<fix>", "s/sys.exit(1)/sys.exit(0)/")
-        for line in text.splitlines() if re.match(r"\s*(sed|cp) ", line)
-    ]
+    commands = [line.strip() for line in text.splitlines() if re.match(r"\s*(sed|cp) ", line)]
+    assert not any("<" in c for c in commands), commands
     assert commands, name
     pat = {g: re.compile(grader(MISMATCH, g)["input_match"]) for g in (fires, silent)}
     assert any(pat[fires].search(bash_input(c)) for c in commands), commands

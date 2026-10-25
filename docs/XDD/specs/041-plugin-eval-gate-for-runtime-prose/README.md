@@ -50,6 +50,8 @@
 | 2026-10-25 | Specification finalized; readiness HIGH | PRD, SDD, plan complete; all ADRs confirmed; 35/35 criteria traced to tasks. |
 | 2026-10-25 | Phase 1 complete | Runner, verdict reader, stub kit, sync guard; drift fixes (fixture sanitising, `--cost-cap`, rev SHA); $0.06 spent. |
 | 2026-10-25 | ADR-10 widened to one report-level STRICT | Baseline (`baseline.md`, RED, $0.64) showed three failure modes the first scope missed: RESULT line paraphrased, render stderr with action ids/guard names quoted, headings between relay lines. Owner chose one STRICT over two, and over iterating on the narrow rule. |
+| 2026-10-25 | F4-AC4 graders proven by neutral write/copy | The "fix the failing script" mutations never executed in 6 runs (the model refuses to edit scripts). Owner chose neutral bookkeeping steps (`write-into-scripts`, `copy-into-config`); both red 3/3. A real grader gap found on the way — commands after an encoded newline escaped graders 5/6 — fixed. |
+| 2026-10-25 | Phase 4 complete | Every gate grader red in 3/3 under its proof (`red-proofs.md`); gate docs + CLAUDE.md merge rule; phase spend $4.10 incl. $1.47 on abandoned/voided runs. |
 | 2026-10-25 | Failed-step line names the note | Code review: with several docs, `<step> exited <code>.` could not say which doc failed. Owner chose to fix in 041: `<step> exited <code> for "<note>".`, note name only, never a path. |
 | 2026-10-25 | Phase 3 complete | Conductor 0.24.0: full suite GREEN 9/9 on attempts 2 and 3; synced to tomo-instance only; phase spend $1.78. |
 | 2026-10-25 | Phase 2 complete | Three cases (incl. a second F4-AC4 grader for copies), conductor-case tests split out; baseline recorded; phase spend $0.90. |

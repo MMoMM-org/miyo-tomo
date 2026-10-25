@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: RED proofs and gate documentation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -36,7 +36,7 @@ phase: 4
 
 Delivers the proof that every gate grader can fail, and the documentation that says when the gate must run.
 
-- [ ] **T4.1 Mutation patches and index** `[activity: backend-api]` `[component: C5]`
+- [x] **T4.1 Mutation patches and index** `[activity: backend-api]` `[component: C5]`
 
   1. Prime: SDD Mutation table; post-Phase-3 `synthesis-conductor.md` `[ref: SDD/Application Data Models; Mutation table]`
   2. Test: `tests/test_eval_conductor_cases.py` (RED — no `_mutations/` yet): every patch in `evals/_mutations/` applies cleanly (`patch --dry-run -p1`) to a fresh assembly of the working tree; every gate grader of every case is named in `_mutations/README.md` by at least one mutation or rev; every grader not named is listed as a control; every mutation named in the README has a patch file and vice versa `[ref: PRD/F7-AC4, F7-AC5]`
@@ -44,7 +44,7 @@ Delivers the proof that every gate grader can fail, and the documentation that s
   4. Validate: shape test green; each patch reviewed against the grader it claims (the patch changes what the grader observes, not a neighbouring behaviour)
   5. Success: every gate grader has a named, reproducible proof `[ref: SDD/ADR-7]`
 
-- [ ] **T4.2 Run every proof** `[activity: validate]` `[component: C5]`
+- [x] **T4.2 Run every proof** `[activity: validate]` `[component: C5]`
 
   1. Prime: T4.1 `[ref: PRD/F7-AC4]`
   2. Test: each proof run (`scripts/run-evals.sh --rev 4350ddd^ --case <c>` / `--mutation <m> --case <c>`, `--runs 3`) is RED on its expected graders in 3/3 runs, and on no gate grader outside expected ∪ side-effect (an unexpected red is investigated, not ignored); `report-run-id` is run once per case
@@ -52,7 +52,7 @@ Delivers the proof that every gate grader can fail, and the documentation that s
   4. Validate: every gate grader red in 3/3 under its proof; cost total noted
   5. Success: no gate grader is unproven `[ref: PRD/F7-AC4]`
 
-- [ ] **T4.3 Gate documentation** `[activity: documentation]` `[parallel: true]` `[component: C6]`
+- [x] **T4.3 Gate documentation** `[activity: documentation]` `[parallel: true]` `[component: C6]`
 
   1. Prime: `CLAUDE.md` Rules; `docs/ai/memory/tools.md`; `README.md`; memory "CLI change → grep dot_claude/skills" `[ref: SDD/Building Block View; C6]`
   2. Test: `tests/test_eval_conductor_cases.py` (RED — docs absent): every path in the `evals/README.md` coverage table exists; every case directory appears in it; root `CLAUDE.md` Rules contains the gate rule naming `evals/README.md`. Plus the checklist — `evals/README.md` lists every covered runtime file (`tomo/dot_claude/agents/synthesis-conductor.md`; `tomo/dot_claude/commands/inbox.md`, whose dispatch prompt the cases reproduce; `tomo/dot_claude/settings.json`, whose `model` the gate pins) with the cases covering it `[ref: PRD/F7-AC1]`; explains how to run (sandbox bypass or `!`), what each exit code means, how to add a case (kit variables, the leak-guard copy, adding new guard names to the pattern, a mutation per gate grader); root `CLAUDE.md` Rules: a change to a file in that list needs a full-suite GREEN before merge, verdict line in the PR `[ref: PRD/F7-AC2]`, and nothing for other files `[ref: PRD/F7-AC3]`; `docs/ai/memory/tools.md` entry; one `README.md` pointer; `docs/ai/memory/memory.md` Critical Documentation line (docs/CLAUDE.md rule)
@@ -60,6 +60,6 @@ Delivers the proof that every gate grader can fail, and the documentation that s
   4. Validate: every path named in the docs exists (`rg` each); the coverage list matches the cases' actual targets
   5. Success: a coding session can tell from the repo alone whether its change needs the gate `[ref: PRD/F7-AC2, F7-AC3]`
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Shape test green incl. mutations; full pytest green; ruff clean; `red-proofs.md` complete; docs paths verified.

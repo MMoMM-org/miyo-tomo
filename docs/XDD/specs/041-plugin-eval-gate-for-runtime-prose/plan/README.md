@@ -52,7 +52,7 @@ version: "1.0"
 | 1 | Runner, verdict and stub kit | completed | phase-1.md |
 | 2 | Cases and the baseline on `main` | completed | phase-2.md |
 | 3 | Conductor Step 4 fix | completed | phase-3.md |
-| 4 | RED proofs and gate documentation | pending | phase-4.md |
+| 4 | RED proofs and gate documentation | completed | phase-4.md |
 | 5 | Close-out | pending | phase-5.md |
 
 ---
@@ -138,7 +138,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Runner, verdict and stub kit](phase-1.md)
 - [x] [Phase 2: Cases and the baseline on main](phase-2.md)
 - [x] [Phase 3: Conductor Step 4 fix](phase-3.md)
-- [ ] [Phase 4: RED proofs and gate documentation](phase-4.md)
+- [x] [Phase 4: RED proofs and gate documentation](phase-4.md)
 - [ ] [Phase 5: Close-out](phase-5.md)
 
 **Ordering, and why it cannot be changed:** Phase 2's baseline must run on the conductor as it is on `main` (it is the "before" that justifies Phase 3's STRICT block). Phase 4's Step-4 mutations are patches against prose, so they are written after Phase 3 changes Step 4. Phase 5's three consecutive GREEN runs are only meaningful once every gate grader has been seen red (Phase 4).

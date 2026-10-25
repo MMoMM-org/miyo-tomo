@@ -227,7 +227,7 @@ internals). If the command errors (no such file), there is nothing to relay.
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
 > <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
-> <only for a step that exited non-zero: <step> exited <code>.>
+> <step> exited <code> for "<note>".   (only for a step that exited non-zero)
 
 Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
 followed by the lines of `tomo-tmp/withheld-attachments.md`, only for each file
@@ -260,8 +260,12 @@ or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
 file name, no path, no script name. ONLY these are copied as printed, with
 everything inside them kept: the audit's stdout on a mismatch (3c), the
 `RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
-step ONLY as `<step> exited <code>.`, where `<step>` is one of: parse, render,
-coverage audit, upload, state flip.
+step ONLY as `<step> exited <code> for "<note>".`, where `<step>` is one of:
+parse, render, coverage audit, upload, state flip, and `<note>` is the note
+name of the entry's `VAULT_PATH`: its last segment, without the folder and
+without `.md` (`100 Inbox/2026-10-24_1200_suggestions.md` →
+`"2026-10-24_1200_suggestions"`). The note name is the ONLY doc identifier
+allowed in a report; it is never a path.
 3. The relay lines are ONE block: the delete lines, then the attachment lines,
 one per line. NEVER write a sentence that introduces, announces or summarises
 the relay lines (such as "… were withheld as shown below.") — the first relay

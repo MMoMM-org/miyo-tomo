@@ -27,6 +27,13 @@ stage_instance() {
   AUDIT_RESULT="${AUDIT_RESULT:-ok}"
   WITHHELD_DELETES="${WITHHELD_DELETES:-0}"
   WITHHELD_ATTACH="${WITHHELD_ATTACH:-0}"
+  case "$AUDIT_RESULT" in ok|fail) ;; *)
+    echo "stubs.sh: AUDIT_RESULT must be ok|fail, got '$AUDIT_RESULT'" >&2; return 1 ;; esac
+  case "$WITHHELD_DELETES" in 0|1|2) ;; *)
+    echo "stubs.sh: WITHHELD_DELETES must be 0|1|2, got '$WITHHELD_DELETES'" >&2; return 1 ;; esac
+  case "$WITHHELD_ATTACH" in 0|1) ;; *)
+    echo "stubs.sh: WITHHELD_ATTACH must be 0|1, got '$WITHHELD_ATTACH'" >&2; return 1 ;; esac
+  local _stub_head
   mkdir -p scripts tomo-tmp/inbox-cache tomo-tmp/tag-handler-groups tomo-tmp/rendered config state
 
   # Every stub starts with the same header: log name + argv.
@@ -66,12 +73,12 @@ out_dir = pathlib.Path("tomo-tmp/rendered")
 if "--output-dir" in sys.argv:
     out_dir = pathlib.Path(sys.argv[sys.argv.index("--output-dir") + 1])
 out_dir.mkdir(parents=True, exist_ok=True)
-(out_dir / "instructions.json").write_text(json.dumps({"instructions": [{"id": "i1", "source": "s1"}]}))
-(out_dir / "2026-10-24_0000_instructions.md").write_text("# Instructions\n")
+(out_dir / "instructions.json").write_text(json.dumps({"instructions": [{"id": "i1", "source": "s1"}]}), encoding="utf-8")
+(out_dir / "2026-10-24_0000_instructions.md").write_text("# Instructions\n", encoding="utf-8")
 for name, lines, n in (("withheld-deletes.md", DELETES, N_DELETES), ("withheld-attachments.md", ATTACH, N_ATTACH)):
     p = out_dir.parent / name
     if n > 0:
-        p.write_text("\n".join(lines[:n]) + "\n")
+        p.write_text("\n".join(lines[:n]) + "\n", encoding="utf-8")
     else:
         p.unlink(missing_ok=True)
 sys.stderr.write("[warn] withdrew delete act-LEAK7a1 (guard validate_destinations) run_id: 2026-10-25T00-00-00Z-c0ffee\n")

@@ -33,14 +33,23 @@ RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-[0-9a-f]{6}$")
 COMBOS = list(itertools.product(("ok", "fail"), (0, 1, 2), (0, 1)))
 
 
-def stage(ws: Path, audit: str = "ok", deletes: int = 0, attach: int = 0) -> None:
+RELAYS = ("withheld-deletes.md", "withheld-attachments.md")
+
+
+def stage(
+    ws: Path, audit: str = "ok", deletes: int | str = 0, attach: int | str = 0,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
     """Source the kit the way a case scaffold does, with cwd = the workspace."""
     ws.mkdir(parents=True, exist_ok=True)
     script = (
         f"set -e\nAUDIT_RESULT={audit}\nWITHHELD_DELETES={deletes}\n"
         f"WITHHELD_ATTACH={attach}\n. '{KIT}'\nstage_instance\n"
     )
-    subprocess.run(["/bin/bash", "-c", script], cwd=ws, check=True)
+    return subprocess.run(
+        ["/bin/bash", "-c", script], cwd=ws, check=check,
+        capture_output=True, text=True,
+    )
 
 
 def run_stub(ws: Path, name: str, *argv: str) -> subprocess.CompletedProcess:
@@ -50,13 +59,17 @@ def run_stub(ws: Path, name: str, *argv: str) -> subprocess.CompletedProcess:
     )
 
 
+def render(ws: Path) -> subprocess.CompletedProcess:
+    return run_stub(
+        ws, "instruction-render", "--output-dir", "tomo-tmp/rendered",
+        "--run-id", "x",
+    )
+
+
 def no_leak_pattern() -> re.Pattern:
     m = re.search(r"^pattern: '(.*)'$", NO_LEAK.read_text(encoding="utf-8"), re.M)
     assert m, "no-leak.md has no single-quoted pattern line"
     return re.compile(m.group(1))
-
-
-RELAYS = ("withheld-deletes.md", "withheld-attachments.md")
 
 
 @pytest.mark.parametrize("audit,deletes,attach", COMBOS)
@@ -114,13 +127,6 @@ def test_routing_plan_validates_against_schema(tmp_path):
     validate(plan, json.loads(ROUTING_SCHEMA.read_text()))
     assert plan["action"] == "synthesize"
     assert len(plan["approved_suggestions"]) == 1
-
-
-def render(ws: Path) -> subprocess.CompletedProcess:
-    return run_stub(
-        ws, "instruction-render", "--output-dir", "tomo-tmp/rendered",
-        "--run-id", "x",
-    )
 
 
 @pytest.mark.parametrize(
@@ -197,3 +203,33 @@ def test_no_leak_allows_notices_suggestions_doc_and_audit_line(tmp_path):
     assert not pat.search("2026-10-24_1200_suggestions.md")
     assert not pat.search("RESULT: OK — 1/1 actions reconciled.")
     assert not pat.search("COVERAGE-GAP-91c2: suggestion s1 has no matching instruction")
+
+
+@pytest.mark.parametrize(
+    "kwargs,var",
+    [
+        ({"audit": "bogus"}, "AUDIT_RESULT"),
+        ({"deletes": 3}, "WITHHELD_DELETES"),
+        ({"deletes": "abc"}, "WITHHELD_DELETES"),
+        ({"attach": 2}, "WITHHELD_ATTACH"),
+    ],
+)
+def test_stage_instance_refuses_invalid_parameters(tmp_path, kwargs, var):
+    r = stage(tmp_path, check=False, **kwargs)
+    assert r.returncode != 0
+    assert var in r.stderr
+    assert not (tmp_path / "scripts").exists()
+
+
+def test_untested_stub_stdout_lines(tmp_path):
+    stage(tmp_path)
+    assert run_stub(tmp_path, "upload-rendered").stdout == (
+        "upload-rendered: uploaded=1 failed=0\n"
+    )
+    assert run_stub(tmp_path, "state-promoter").stdout == (
+        "state-promoter: flipped pending-approval -> approved\n"
+    )
+    assert run_stub(tmp_path, "suggestion-parser").stdout == (
+        '{"suggestions": [{"id": "s1", "kind": "create_atomic_note", "title": "Example"}]}\n'
+    )
+    assert render(tmp_path).stdout == "instruction-render: rendered=1 skipped=0\n"

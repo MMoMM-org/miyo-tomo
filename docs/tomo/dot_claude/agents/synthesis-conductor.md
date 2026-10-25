@@ -475,7 +475,24 @@ WHY the garden-audit `stamped N acknowledged advisory(ies)` relay is reported
 in plain words rather than exempted: its stderr line also carries the script
 name and the pushback-ledger path (`tomo/scripts/garden-audit-parser.py:800-804`).
 Step 4's example gains a `Stamped N acknowledged advisory(ies).` line, so the
-confirmation still reaches the owner without either.
+confirmation still reaches the owner without either. Step 3a changed too: it
+used to tell the model to relay that stderr line, which contradicts rule 2
+(the line is not exempt). It now says only to note the count N for the Step 4
+line, so no instruction anywhere asks for stderr to be reported.
+
+WHY rule 4 ("In the Step 4 report, NEVER add a line that is neither in the
+example above nor a relay line") exists: it is the catch-all that makes rules 2
+and 3 enforceable against lines no one predicted. The baseline saw the model
+close the report with "Please review them before relying on this run's output."
+(`baseline.md:50`), a sentence that is neither internals nor a relay line, so
+rules 2 and 3 alone name nothing to refuse it by. Rule 3 forbids text after the
+relay lines only when relay lines exist; rule 4 covers the report with none.
+`4-no-notice-when-none-withheld` (`baseline.md:23`) grades exactly that case.
+
+WHY only two touches outside Step 4: the 3c pointer sentence (the mismatch
+stop never reaches Step 4, so it must send the model to the block) and the 3a
+sentence above (it contradicted rule 2). Everything else lives in the Step 4
+block.
 
 WHY a failed or rejected step is reported in plain words with its exit code:
 the stop and partial-failure paths (3b exit 2, 3d exit 1/2, 3e exit 1/2) are

@@ -530,6 +530,28 @@ section: ADR-10 places it in Step 4, and `###` step headers are pinned by
 model to it, and the block's first line says
 it governs every report, whatever step the run ends in.
 
+### WHY the Relay Lines Name Their Literal Prefix and Forbid an Introduction (T3.2 iteration 2)
+
+The first paid run on 0.24.0 (relay case, run 0) passed the leak, `RESULT:`
+and ordering graders but failed twice in the relay block. First, the leading
+`- ` was dropped from the second and third relay lines (`⚠️ **Not deleted:** …`
+instead of `- ⚠️ **Not deleted:** …`), the same markup loss the 0.23.0 baseline
+showed in 1/3 runs: "character for character" never told a literal-minded
+Haiku that the `- ` is part of the line, and it read the first line's `- ` as
+list formatting it could drop once the list "continued". Second, the model
+wrote its own line before the block (`- [[…]] and [[…]] were withheld as shown
+below.`), which rule 4 already forbade in the abstract — "a line that is
+neither in the example nor a relay line" asks the model to classify its own
+sentence, and it classified it as part of the relay. The wording change is the
+smallest that names both shapes: the relay STRICT now gives the literal prefix
+`- ⚠️ **` and says to keep the leading `- ` on every line, backed by a fenced
+three-line shape example placed after the `> Pass 2 complete` blockquote (the
+blockquote paragraph must carry no relay marker, `tests/test_039_t5_1_reporting.py:424`);
+rule 3 of the report block now forbids, by name, any sentence that introduces,
+announces or summarises the relay lines. No new STRICT block was added — both
+changes adjust existing rules, and each `Why:` gained only the newly observed
+failure mode.
+
 ### What Keeps This True
 
 The three eval cases — `audit-gates-delivery` (RESULT verbatim, no notice when

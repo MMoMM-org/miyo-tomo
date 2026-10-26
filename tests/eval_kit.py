@@ -26,13 +26,20 @@ RELAYS = ("withheld-deletes.md", "withheld-attachments.md")
 
 def stage(
     ws: Path, audit: str = "ok", deletes: int | str = 0, attach: int | str = 0,
-    check: bool = True,
+    check: bool = True, upload: str | None = None, flip: str | None = None,
 ) -> subprocess.CompletedProcess:
-    """Source the kit the way a case scaffold does, with cwd = the workspace."""
+    """Source the kit the way a case scaffold does, with cwd = the workspace.
+    `upload`/`flip` None leaves UPLOAD_RESULT/FLIP_RESULT unset, as the three
+    original scaffolds do."""
     ws.mkdir(parents=True, exist_ok=True)
+    optional = "".join(
+        f"{var}={value}\n"
+        for var, value in (("UPLOAD_RESULT", upload), ("FLIP_RESULT", flip))
+        if value is not None
+    )
     script = (
         f"set -e\nAUDIT_RESULT={audit}\nWITHHELD_DELETES={deletes}\n"
-        f"WITHHELD_ATTACH={attach}\n. '{KIT}'\nstage_instance\n"
+        f"WITHHELD_ATTACH={attach}\n{optional}. '{KIT}'\nstage_instance\n"
     )
     return subprocess.run(
         ["/bin/bash", "-c", script], cwd=ws, check=check,

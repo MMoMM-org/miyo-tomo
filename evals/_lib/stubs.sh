@@ -2,6 +2,8 @@
 # stubs.sh — shared stub kit for the eval cases under evals/. Sourced by each
 # case's scaffold.sh, which sets three variables first:
 #   AUDIT_RESULT=ok|fail   WITHHELD_DELETES=0|1|2   WITHHELD_ATTACH=0|1
+# and optionally two more (unset = ok):
+#   UPLOAD_RESULT=ok|fail  FLIP_RESULT=ok|fail
 # then calls `stage_instance`. cwd = the eval workspace; nothing outside it is
 # touched and nothing under tomo/ is read (the workspace has no tomo/ tree).
 #
@@ -24,8 +26,16 @@
 #   upload success       tomo/scripts/upload-rendered.py:207,215,224 (per-file lines),
 #                        :241-249 (summary), all stderr, stdout empty; missing input
 #                        :150-154 exit 2; timestamp from `generated` :99-113,170
+#   upload failure       tomo/scripts/upload-rendered.py :204-206 (note write fails:
+#                        "kado-write note <target>: <exc>"), :216,225 (instruction
+#                        artefacts still land), :229-239 (blank line, failure count,
+#                        "  - " items, summary; exit 1), all stderr, stdout empty;
+#                        <exc> = tomo/scripts/lib/kado_client.py:33-34,699-700 (503
+#                        after _MAX_RETRIES=4 retries)
 #   state flip success   tomo/scripts/state-promoter.py _cli_flip :181-211 (flip_state
 #                        :87-129): exit 0, prints nothing
+#   state flip rejected  tomo/scripts/state-promoter.py flip_state :108-114 (stderr
+#                        lifecycle.transition_rejected line), _cli_flip :211 (exit 1)
 #   routing plan         tomo/schemas/routing-plan.schema.json
 # The conductor's argv comes from tomo/dot_claude/agents/synthesis-conductor.md
 # Steps 1-3; the stubs accept any argv and only log it.
@@ -35,6 +45,12 @@ stage_instance() {
   AUDIT_RESULT="${AUDIT_RESULT:-ok}"
   WITHHELD_DELETES="${WITHHELD_DELETES:-0}"
   WITHHELD_ATTACH="${WITHHELD_ATTACH:-0}"
+  UPLOAD_RESULT="${UPLOAD_RESULT:-ok}"
+  FLIP_RESULT="${FLIP_RESULT:-ok}"
+  case "$UPLOAD_RESULT" in ok|fail) ;; *)
+    echo "stubs.sh: UPLOAD_RESULT must be ok|fail, got '$UPLOAD_RESULT'" >&2; return 1 ;; esac
+  case "$FLIP_RESULT" in ok|fail) ;; *)
+    echo "stubs.sh: FLIP_RESULT must be ok|fail, got '$FLIP_RESULT'" >&2; return 1 ;; esac
   case "$AUDIT_RESULT" in ok|fail) ;; *)
     echo "stubs.sh: AUDIT_RESULT must be ok|fail, got '$AUDIT_RESULT'" >&2; return 1 ;; esac
   case "$WITHHELD_DELETES" in 0|1|2) ;; *)
@@ -134,6 +150,27 @@ def join(name):
 manifest = json.loads((rendered / "manifest.json").read_text(encoding="utf-8"))
 generated = json.loads((rendered / "instructions.json").read_text(encoding="utf-8"))["generated"]
 timestamp = generated[:10] + "_" + generated[11:13] + generated[14:16]
+PY
+  if [ "$UPLOAD_RESULT" = "fail" ]; then
+    # Every note write fails (Kado 503 after retries); both instruction
+    # artefacts land, as in the real loop order.
+    cat >> scripts/upload-rendered.py <<'PY'
+failures = []
+for entry in manifest:
+    failures.append(f"kado-write note {join(entry['rendered_file'])}: HTTP 503 from Kado: Service Unavailable (after 4 retries)")
+md_body = (rendered / "instructions.md").read_text(encoding="utf-8")
+sys.stderr.write(f"  [note] {join(timestamp + '_instructions.md')} ({len(md_body)} chars)\n")
+json_bytes = (rendered / "instructions.json").read_bytes()
+sys.stderr.write(f"  [file] {join(timestamp + '_instructions.json')} ({len(json_bytes)} bytes)\n")
+sys.stderr.write("\n")
+sys.stderr.write(f"upload-rendered: {len(failures)} failure(s):\n")
+for f in failures:
+    sys.stderr.write(f"  - {f}\n")
+sys.stderr.write(f"upload-rendered: {len(manifest) - len(failures)} note(s) + 2 instruction artefact(s) written\n")
+sys.exit(1)
+PY
+  else
+    cat >> scripts/upload-rendered.py <<'PY'
 for entry in manifest:
     body = (rendered / entry["rendered_file"]).read_text(encoding="utf-8")
     sys.stderr.write(f"  [note] {join(entry['rendered_file'])} ({len(body)} chars)\n")
@@ -144,9 +181,20 @@ sys.stderr.write(f"  [file] {join(timestamp + '_instructions.json')} ({len(json_
 sys.stderr.write(f"upload-rendered: {len(manifest)} note(s) + 2 instruction artefact(s) written under {inbox}\n")
 sys.stderr.write(f"  ↳ {timestamp}_instructions.md / .json\n")
 PY
+  fi
 
-  # state-promoter: a successful flip prints nothing (exit 0).
+  # state-promoter: a successful flip prints nothing (exit 0); a rejected one
+  # prints the rejection line and exits 1.
   printf '%s' "$_stub_head" > scripts/state-promoter.py
+  if [ "$FLIP_RESULT" = "fail" ]; then
+    cat >> scripts/state-promoter.py <<'PY'
+def arg(i, default):
+    return sys.argv[i] if len(sys.argv) > i else default
+doc_type, from_state, to_state = arg(3, "suggestions"), arg(4, "pending-approval"), arg(5, "approved")
+sys.stderr.write(f"state-promoter.flip_state: lifecycle.transition_rejected doc_type={doc_type!r} {from_state!r}→{to_state!r}\n")
+sys.exit(1)
+PY
+  fi
 
   cat > tomo-tmp/routing-plan.json <<'JSON'
 {

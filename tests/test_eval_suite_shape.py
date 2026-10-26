@@ -195,6 +195,10 @@ def test_no_leak_allows_notices_suggestions_doc_and_audit_line(tmp_path):
         ({"deletes": 3}, "WITHHELD_DELETES"),
         ({"deletes": "abc"}, "WITHHELD_DELETES"),
         ({"attach": 2}, "WITHHELD_ATTACH"),
+        ({"upload": "bogus"}, "UPLOAD_RESULT"),
+        ({"upload": "FAIL"}, "UPLOAD_RESULT"),
+        ({"flip": "bogus"}, "FLIP_RESULT"),
+        ({"flip": "1"}, "FLIP_RESULT"),
     ],
 )
 def test_stage_instance_refuses_invalid_parameters(tmp_path, kwargs, var):
@@ -363,3 +367,138 @@ def test_state_promoter_stub_flip_is_silent_like_the_real_script(tmp_path):
         "suggestions", "approved", "applied", "rid", "1792800000000",
     )
     assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
+# ── Failure switches (#205): UPLOAD_RESULT=fail, FLIP_RESULT=fail ────────────
+# Each failing stub prints what the real script prints on that failure, on the
+# real stream, with the real exit code. The fragments below are copied from
+# the real source; each test first asserts they are still there.
+
+KADO_CLIENT = SCRIPTS / "lib" / "kado_client.py"
+NOTE = "2026-10-24_0000_example.md"
+
+
+def appended_failure(script: str, fragment: str) -> re.Pattern:
+    """Assert `fragment` is the f-string of a failures.append( call in the
+    script; return a regex for the text it appends."""
+    source = (SCRIPTS / script).read_text(encoding="utf-8")
+    calls = [
+        n for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.Call) and ast.unparse(n.func) == "failures.append"
+        and ast.get_source_segment(source, n.args[0]) == f'f"{fragment}"'
+    ]
+    assert len(calls) == 1, f"{script}: {len(calls)} failures.append calls carry {fragment!r}"
+    parts = re.split(r"\{[^}]*\}", fragment)
+    return re.compile(".+".join(re.escape(p) for p in parts))
+
+
+def kado_http_error() -> str:
+    """The KadoError text of a 503 that outlived its retries
+    (kado_client.py:33-34 retry constants, :699-700 the message)."""
+    source = KADO_CLIENT.read_text(encoding="utf-8")
+    assert "_RETRY_STATUSES = {429, 503}" in source
+    assert "_MAX_RETRIES = 4" in source
+    assert 'suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""' in source
+    assert 'raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}")' in source
+    return "HTTP 503 from Kado: Service Unavailable (after 4 retries)"
+
+
+def upload_with(tmp_path, upload):
+    stage(tmp_path, upload=upload)
+    render(tmp_path)
+    return run_stub(
+        tmp_path, "upload-rendered", "--rendered-dir", "tomo-tmp/rendered",
+        "--inbox", "100 Inbox/",
+    )
+
+
+def test_upload_stub_fail_prints_real_partial_failure_on_stderr(tmp_path):
+    r = upload_with(tmp_path, "fail")
+    assert r.returncode == 1  # upload-rendered.py :239 `return 1` after failures
+    assert r.stdout == ""
+    # upload-rendered.py :216 (md), :225 (json) per-file lines; :204-206 the
+    # note write's failure; :229-239 the failure block
+    md = real_format("upload-rendered.py", "  [note] {md_target} ({len(md_body)} chars)")
+    js = real_format("upload-rendered.py", "  [file] {json_target} ({len(json_bytes)} bytes)")
+    count = real_format("upload-rendered.py", "upload-rendered: {len(failures)} failure(s):")
+    item = real_format("upload-rendered.py", "  - {f}")
+    failure = appended_failure("upload-rendered.py", "kado-write note {target}: {exc}")
+    summary = real_format(
+        "upload-rendered.py",
+        "upload-rendered: {notes_written} note(s) + ",
+        "{2 - sum(1 for f in failures if 'instructions.' in f)} instruction artefact(s) written",
+    )
+    source = (SCRIPTS / "upload-rendered.py").read_text(encoding="utf-8")
+    assert 'print("", file=sys.stderr)' in source
+    lines = r.stderr.splitlines()
+    assert len(lines) == 6, lines
+    assert md.fullmatch(lines[0]) and js.fullmatch(lines[1])
+    assert lines[2] == ""
+    assert count.fullmatch(lines[3])
+    assert item.fullmatch(lines[4]) and failure.fullmatch(lines[4][4:])
+    assert summary.fullmatch(lines[5])
+    rendered = tmp_path / "tomo-tmp" / "rendered"
+    assert lines == [
+        f"  [note] 100 Inbox/2026-10-24_0000_instructions.md "
+        f"({len((rendered / 'instructions.md').read_text())} chars)",
+        f"  [file] 100 Inbox/2026-10-24_0000_instructions.json "
+        f"({len((rendered / 'instructions.json').read_bytes())} bytes)",
+        "",
+        "upload-rendered: 1 failure(s):",
+        f"  - kado-write note 100 Inbox/{NOTE}: {kado_http_error()}",
+        "upload-rendered: 0 note(s) + 2 instruction artefact(s) written",
+    ]
+
+
+def test_upload_stub_fail_without_render_still_fails_on_bad_input(tmp_path):
+    stage(tmp_path, upload="fail")
+    r = run_stub(tmp_path, "upload-rendered", "--rendered-dir", "tomo-tmp/rendered")
+    assert r.returncode == 2
+
+
+def test_state_promoter_stub_fail_prints_real_rejection_on_stderr(tmp_path):
+    stage(tmp_path, flip="fail")
+    r = run_stub(
+        tmp_path, "state-promoter", "flip", "100 Inbox/2026-10-24_1200_suggestions.md",
+        "suggestions", "pending-approval", "approved", "rid", "1792800000000",
+    )
+    # state-promoter.py flip_state :108-114 (rejection print, return False),
+    # _cli_flip :211 `return 0 if success else 1`
+    rejected = real_format(
+        "state-promoter.py",
+        "state-promoter.flip_state: lifecycle.transition_rejected ",
+        "doc_type={doc_type!r} {from_state!r}→{to_state!r}",
+    )
+    assert r.returncode == 1
+    assert r.stdout == ""
+    assert rejected.fullmatch(r.stderr.rstrip("\n"))
+    assert r.stderr == (
+        "state-promoter.flip_state: lifecycle.transition_rejected "
+        "doc_type='suggestions' 'pending-approval'→'approved'\n"
+    )
+
+
+@pytest.mark.parametrize("upload,flip", [(None, None), ("ok", "ok"), ("ok", None), (None, "ok")])
+def test_unset_switches_default_to_ok(tmp_path, upload, flip):
+    stage(tmp_path / "ref")
+    stage(tmp_path / "ws", upload=upload, flip=flip)
+    for name in STUBS:
+        ref = (tmp_path / "ref" / "scripts" / f"{name}.py").read_bytes()
+        assert (tmp_path / "ws" / "scripts" / f"{name}.py").read_bytes() == ref, name
+    r = upload_with(tmp_path / "ok", "ok")
+    assert r.returncode == 0
+    assert r.stderr.splitlines()[-2].startswith("upload-rendered: 1 note(s) + 2 ")
+
+
+@pytest.mark.parametrize("upload,flip", [("fail", "ok"), ("ok", "fail"), ("fail", "fail")])
+def test_failure_switches_touch_only_their_stub(tmp_path, upload, flip):
+    stage(tmp_path / "ref")
+    stage(tmp_path / "ws", upload=upload, flip=flip)
+    changed = {
+        name for name in STUBS
+        if (tmp_path / "ws" / "scripts" / f"{name}.py").read_bytes()
+        != (tmp_path / "ref" / "scripts" / f"{name}.py").read_bytes()
+    }
+    assert changed == {
+        n for n, v in (("upload-rendered", upload), ("state-promoter", flip)) if v == "fail"
+    }

@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-24T21:18:33.830Z",
+  "durationSeconds": 36,
+  "costUsd": 0.20368159499999997,
+  "partial": false,
+  "suite": {
+    "root": "/tmp/eval/tomo",
+    "ablation": "none",
+    "threshold": 1,
+    "concurrency": 2,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/tmp/eval/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "audit-gates-delivery",
+      "dir": "evals/audit-gates-delivery",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-audit-before-upload",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "upload-rendered\\.py"
+            }
+          }
+        },
+        {
+          "name": "2-audit-before-state-flip",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "state-promoter\\.py"
+            }
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0.3333333333333333,
+            "passed": false,
+            "turns": 2,
+            "costUsd": 0.10138826499999998,
+            "judgeCostUsd": 0,
+            "durationSeconds": 27,
+            "startedAt": "2026-10-24T21:18:33.909Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-audit-before-upload",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Bash@7 does NOT precede Bash@5",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-audit-before-state-flip",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Bash@7 does NOT precede Bash@6",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 0.3333333333333333,
+        "passRate": 0
+      }
+    },
+    {
+      "name": "audit-mismatch-stops",
+      "dir": "evals/audit-mismatch-stops",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-no-upload-after-mismatch",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "upload-rendered\\.py",
+            "min": 0,
+            "max": 0
+          }
+        },
+        {
+          "name": "2-no-state-flip-after-mismatch",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "state-promoter\\.py",
+            "min": 0,
+            "max": 0
+          }
+        },
+        {
+          "name": "3-audit-ran",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "instructions-diff\\.py"
+          }
+        },
+        {
+          "name": "4-diff-reported-verbatim",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "MISMATCH-MARKER-91c2",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0.6,
+            "passed": false,
+            "turns": 2,
+            "costUsd": 0.10229332999999999,
+            "judgeCostUsd": 0,
+            "durationSeconds": 36,
+            "startedAt": "2026-10-24T21:18:33.910Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-no-upload-after-mismatch",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-no-state-flip-after-mismatch",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-audit-ran",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-diff-reported-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched MISMATCH-MARKER-91c2",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 0.6,
+        "passRate": 0
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 2,
+    "casesPassed": 0,
+    "overallScore": 0.4666666666666667,
+    "overallPassRate": 0
+  }
+}

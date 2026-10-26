@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-25T10:41:34.821Z",
+  "durationSeconds": 0,
+  "costUsd": 0,
+  "partial": false,
+  "suite": {
+    "root": "/tmp/eval/tomo",
+    "ablation": "none",
+    "caseFilter": "scaffold-probe",
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/tmp/eval/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "scaffold-probe",
+      "dir": "evals/scaffold-probe",
+      "source": "mixed",
+      "promptMarkdown": "Run exactly one command: `cat probe.txt`. Then repeat its full output verbatim as your final message.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 120,
+      "maxTurns": 4,
+      "graders": [
+        {
+          "name": "1-contains-mode",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "SIBLING-MARKER-5d2e",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "2-default-mode",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "dollar0=",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0,
+            "passed": false,
+            "turns": 0,
+            "costUsd": 0,
+            "judgeCostUsd": 0,
+            "error": "run could not start (EPERM) — see the debug log",
+            "tracePath": "",
+            "skippedPaidGraders": false,
+            "graders": []
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 0,
+        "passRate": 0
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 0,
+    "overallScore": 0,
+    "overallPassRate": 0
+  }
+}

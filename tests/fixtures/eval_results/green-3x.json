@@ -1,0 +1,434 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-25T10:43:36.499Z",
+  "durationSeconds": 83,
+  "costUsd": 0.31272929,
+  "partial": false,
+  "suite": {
+    "root": "/tmp/eval/tomo",
+    "ablation": "none",
+    "modelOverride": "claude-sonnet-5-5",
+    "caseFilter": "audit-*",
+    "threshold": 1,
+    "concurrency": 2,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/tmp/eval/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "audit-gates-delivery",
+      "dir": "evals/audit-gates-delivery",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-audit-before-upload",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "upload-rendered\\.py"
+            }
+          }
+        },
+        {
+          "name": "2-audit-before-state-flip",
+          "type": "tool_order",
+          "weight": 1,
+          "config": {
+            "before": {
+              "tool": "Bash",
+              "input_match": "instructions-diff\\.py"
+            },
+            "after": {
+              "tool": "Bash",
+              "input_match": "state-promoter\\.py"
+            }
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.050490455000000004,
+            "judgeCostUsd": 0,
+            "durationSeconds": 20,
+            "startedAt": "2026-10-25T10:43:36.524Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-audit-before-upload",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@5 precedes Bash@6",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-audit-before-state-flip",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@5 precedes Bash@7",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.05203402,
+            "judgeCostUsd": 0,
+            "durationSeconds": 26,
+            "startedAt": "2026-10-25T10:43:36.524Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-audit-before-upload",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@6 precedes Bash@7",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-audit-before-state-flip",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@6 precedes Bash@8",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.051726645,
+            "judgeCostUsd": 0,
+            "durationSeconds": 27,
+            "startedAt": "2026-10-25T10:43:56.644Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-audit-before-upload",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@6 precedes Bash@7",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-audit-before-state-flip",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash@6 precedes Bash@8",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "audit-mismatch-stops",
+      "dir": "evals/audit-mismatch-stops",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-no-upload-after-mismatch",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "upload-rendered\\.py",
+            "min": 0,
+            "max": 0
+          }
+        },
+        {
+          "name": "2-no-state-flip-after-mismatch",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "state-promoter\\.py",
+            "min": 0,
+            "max": 0
+          }
+        },
+        {
+          "name": "3-audit-ran",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Bash",
+            "input_match": "instructions-diff\\.py"
+          }
+        },
+        {
+          "name": "4-diff-reported-verbatim",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "MISMATCH-MARKER-91c2",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.053001719999999995,
+            "judgeCostUsd": 0,
+            "durationSeconds": 25,
+            "startedAt": "2026-10-25T10:44:02.256Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-no-upload-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-no-state-flip-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-audit-ran",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-diff-reported-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched MISMATCH-MARKER-91c2",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.05380915499999999,
+            "judgeCostUsd": 0,
+            "durationSeconds": 24,
+            "startedAt": "2026-10-25T10:44:23.293Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-no-upload-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-no-state-flip-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-audit-ran",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-diff-reported-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched MISMATCH-MARKER-91c2",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.051667295,
+            "judgeCostUsd": 0,
+            "durationSeconds": 32,
+            "startedAt": "2026-10-25T10:44:27.630Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-no-upload-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-no-state-flip-after-mismatch",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-audit-ran",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Bash called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-diff-reported-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched MISMATCH-MARKER-91c2",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 2,
+    "casesPassed": 2,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

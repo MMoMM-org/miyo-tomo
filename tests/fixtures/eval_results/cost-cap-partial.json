@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-25T13:19:43.351Z",
+  "durationSeconds": 4,
+  "costUsd": 0.0640915,
+  "partial": true,
+  "partialReason": "cost_ceiling",
+  "suite": {
+    "root": "/tmp/eval/tomo",
+    "ablation": "none",
+    "modelOverride": "sonnet",
+    "caseFilter": "scaffold-probe",
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/tmp/eval/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "scaffold-probe",
+      "dir": "evals/scaffold-probe",
+      "source": "mixed",
+      "promptMarkdown": "Run exactly one command: `cat probe.txt`. Then repeat its full output verbatim as your final message.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 120,
+      "maxTurns": 4,
+      "graders": [
+        {
+          "name": "1-contains-mode",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "SIBLING-MARKER-5d2e",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "2-default-mode",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "dollar0=",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.0640915,
+            "judgeCostUsd": 0,
+            "durationSeconds": 4,
+            "startedAt": "2026-10-25T13:19:43.378Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "1-contains-mode",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched SIBLING-MARKER-5d2e",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-default-mode",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched dollar0=",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

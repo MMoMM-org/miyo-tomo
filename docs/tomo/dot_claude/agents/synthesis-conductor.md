@@ -387,3 +387,240 @@ The single source for the shell relay is SDD K16; traceability F2-AC5 is
 `tests/test_039_t5_1_reporting.py`
 (`test_the_conductor_relays_withheld_lines_character_for_character`).
 
+## Every Report Carries the Audit's Own Words, No Internals, Relay Lines Last (spec 041 T3.1, v0.24.0)
+
+WHY the conductor gains one report-level STRICT block governing every report
+it returns — the Step 4 report and every stop report, including the 3c
+coverage-mismatch stop — and what each of its three rules answers.
+
+### The Observed Deviations
+
+Spec 041's eval suite ran the conductor at 0.23.0 (byte-identical to `main`)
+3 cases × 3 runs, against stub scripts that print bait an owner must never see
+(`docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/baseline.md:7-13`; all `baseline.md` lines below are this file). The step order, the audit stop and the no-tamper rule
+held in every run (`baseline.md:40`). Everything that failed was in the report
+the conductor itself returned, not in the main session's relay of it
+(`baseline.md:44`):
+
+- **Run id in the report** — all 9 runs (`baseline.md:48`).
+- **Working-file names, temp paths, a trailing `Files used:` block of absolute
+  paths** — all 9 runs (`baseline.md:49`). The `Files used:` block is the
+  defect the SDD's spike 3 first saw (`docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/README.md:44`).
+- **Raw render stderr quoted** — `[warn] withdrew delete act-… (guard
+  validate_destinations)` and `[attach] skipped_assets … action=act-…`, in every
+  case, also when no relay file existed, sometimes followed by "please review"
+  (`baseline.md:50`). Together with the two above: `9-no-leak` **0/3 in every
+  case** (`baseline.md:24`, `:32`, `:38`). The mismatch case leaked too
+  (`baseline.md:32`) — its report is the 3c STOP report, which never reaches
+  Step 4, so a rule scoped to Step 4 alone would leave it red.
+- **Headings between the relay lines** — e.g. `Withheld-attachment relay
+  (…):` between the delete and the attachment lines:
+  `4-deletes-then-attachment-last` **0/3** (`baseline.md:37`, `:51`).
+- **Relay markup dropped** — the `- ⚠️ **…:**` prefix removed: the three
+  verbatim graders **2/3** each (`baseline.md:34-36`, `:52`).
+- **`RESULT:` line paraphrased** — `RESULT: OK, 1/1 actions reconciled.`, a
+  comma for the em dash: `3-audit-result-in-report` **1/3**
+  (`baseline.md:22`, `:53`). The SDD had not predicted this one
+  (`baseline.md:53`).
+
+The existing Step 4 STRICT (v0.23.0, section above) only forbids rewording the
+relay lines and substituting stderr *for* them. Nothing forbade quoting stderr
+*beside* them, nothing forbade a heading between them, and nothing governed the
+`Coverage audit:` line or any stop report. The unadorned imperatives that did
+exist ("report the diff verbatim", "the last lines of the report") were
+observed failing — the repo's precondition for a STRICT block (root
+`CLAUDE.md`, Rules).
+
+### WHY the `Coverage audit:` Line Is the `RESULT:` Line Verbatim
+
+The owner and the gate both read the audit's own words. `instructions-diff.py`
+prints exactly one of two fixed lines (`tomo/scripts/instructions-diff.py:762-765`);
+a paraphrase — even a comma for a dash — is a sentence the audit never said,
+and the owner cannot tell a reworded OK from a reworded FAIL by shape. PRD
+F3-AC3 requires the line unchanged in the final message
+(`docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/solution.md:830`), and the mismatch report's diff and `RESULT: FAIL` line are
+required unchanged too (F4-AC3, `solution.md:835`). The runtime rule names the
+dash, the numbers and the final period because those are what the model
+changed.
+
+### WHY No Internals — and What Is Exempt
+
+ADR-11: no executor internals in user-facing text (spec 038 CON-6,
+`docs/XDD/specs/038-every-editable-decision-reaches-the-wire/solution.md:107`;
+substantive treatment `docs/tomo/scripts/lib/render_md.md:506-511`; spec 041
+widened its leak guard on it, `docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/README.md:45`). The conductor's report is the
+owner's only surface for a Pass 2 run (section "Step 4 Relays the Sanitized
+Markdown Notice…" above). A run id, an action id (`act-…`), a guard or function
+name, a raw script stderr line, a working-file name, a path or a script name
+tells the owner nothing they can act on and teaches them to skim the report.
+The stderr surface is the maintainer's debugging trace by design (same section
+above): copying it into chat duplicates an operation trace into a second store,
+against the metadata-only rule for traces (Constitution L2, Privacy &
+Security, `~/Kouzou/projects/miyo/miyo-constitution.md:41`), and returns fields
+the reader does not need (Constitution L2, Performance, "only the fields the
+AI actually needs").
+
+Exempt, and named as exempt in the runtime rule: text the conductor is told to
+copy as printed — the coverage audit's stdout on a mismatch (3c), the `RESULT:`
+line, the drift warnings from Step 1, and the relay lines. WHY the exemption
+must be explicit: the relay lines themselves contain paths
+(`` `100 Inbox/whiteboard.png` ``) and a command (`/inbox --pass2 --force`) —
+the stub kit words them as production does (`evals/_lib/stubs.sh:69-70`) —
+and a real mismatch diff carries document paths and item ids. A literal-minded
+haiku given "no paths" without the exemption would redact the very lines the
+verbatim rules require, and in production could hide the coverage gap 3c
+exists to surface.
+
+WHY the garden-audit `stamped N acknowledged advisory(ies)` relay is reported
+in plain words rather than exempted: its stderr line also carries the script
+name and the pushback-ledger path (`tomo/scripts/garden-audit-parser.py:800-804`).
+Step 4's example gains a `Stamped N acknowledged advisory(ies).` line, so the
+confirmation still reaches the owner without either. Step 3a changed too: it
+used to tell the model to relay that stderr line, which contradicts rule 2
+(the line is not exempt). It now says only to note the count N for the Step 4
+line, so no instruction anywhere asks for stderr to be reported.
+
+WHY rule 4 ("In the Step 4 report, NEVER add a line that is neither in the
+example above nor a relay line") exists: it is the catch-all that makes rules 2
+and 3 enforceable against lines no one predicted. The baseline saw the model
+close the report with "Please review them before relying on this run's output."
+(`baseline.md:50`), a sentence that is neither internals nor a relay line, so
+rules 2 and 3 alone name nothing to refuse it by. Rule 3 forbids text after the
+relay lines only when relay lines exist; rule 4 covers the report with none.
+`4-no-notice-when-none-withheld` (`baseline.md:23`) grades exactly that case.
+
+WHY only two touches outside Step 4: the 3c pointer sentence (the mismatch
+stop never reaches Step 4, so it must send the model to the block) and the 3a
+sentence above (it contradicted rule 2). Everything else lives in the Step 4
+block.
+
+WHY a failed or rejected step is reported in plain words with its exit code:
+the stop and partial-failure paths (3b exit 2, 3d exit 1/2, 3e exit 1/2) are
+exactly where the model reaches for stderr. The owner needs which step and
+that it failed; the stderr stays in the maintainer's trace.
+
+WHY `<step>` is a closed list (parse, render, coverage audit, upload, state
+flip) rather than "name the step": an open placeholder was filled by a literal
+model with what it had at hand — the script names (`instruction-render.py`,
+`upload-rendered.py`, …), which rule 2 bans. Five fixed words, one per
+sub-step 3a–3e, leave nothing to improvise and still tell the owner where the
+run broke.
+
+### WHY a Failed-Step Line Names the Note (spec 041 T3.2, owner decision 2026-10-25)
+
+Owner decision after code review on 2026-10-25: the failure line is
+`<step> exited <code> for "<note>".`, where `<note>` is the source doc's note
+name — the last segment of the entry's `path` (`VAULT_PATH`) from the routing
+plan, without the folder and without `.md`.
+
+WHY: with several approved docs in one run, 3d ("surface to user") and 3e
+("report and continue") let the run go on past a failure, so a bare
+`upload exited 1.` cannot say WHICH doc failed. Rule 2 bans paths and file
+names, so before this change the model had no permitted way to identify the
+doc, and the owner had to re-run blind. A note name is not an internal: it is
+what the owner sees in Obsidian's file list and tab title, and it is the one
+thing they need to find the doc again. The folder is dropped because it adds
+nothing the owner needs to recognise the doc and would reintroduce a path —
+the very thing rule 2 forbids and the leak guard
+(`evals/_lib/no-leak.md`) watches for. The runtime says explicitly that the
+note name is the ONLY doc identifier allowed in a report and is never a path,
+so a literal model does not read the new placeholder as a licence to quote
+the cache path, the vault path, or the parsed working files.
+
+Leak-guard compatibility, checked with Python `re` against the canonical
+pattern in `evals/_lib/no-leak.md`: a note name such as
+`2026-10-24_1200_suggestions`, and the full line
+`state flip exited 1 for "2026-10-24_1200_suggestions".`, match none of its
+alternatives (its run-id alternative needs a `T…Z-<hex>` time part; its path
+alternatives need a `/`).
+
+### WHY the Step 4 Template Has Two Conditional Placeholder Lines
+
+The Step 4 example carries two lines that appear only on a condition:
+
+- `Stamped N acknowledged advisory(ies).` — only when the garden-audit parser
+  in 3a reported stamped advisories (see "WHY the garden-audit … relay is
+  reported in plain words" above).
+- `<step> exited <code> for "<note>".` — only for a step that exited
+  non-zero, one line per failure.
+
+WHY the failed-step line is written as the line itself followed by the
+condition in parentheses, not as `<only for …: <step> exited <code>.>`: the
+earlier form nested angle brackets, so the placeholder's own delimiters
+wrapped the line's placeholders, and a literal reader could print the outer
+brackets and the condition text into the report. With the line first, what to
+print and when to print it are visibly separate.
+
+### WHY the Fenced Relay Example Shows Three Lines
+
+The fenced `text` example below the Step 4 template shows three relay lines
+because it mirrors the relay case the eval suite exercises: two withheld
+deletes followed by one withheld attachment — deletes first, then
+attachments, as rule 3 orders them. It is a shape, not a count: the model
+copies however many lines the two files hold. When neither file exists there
+is no relay output at all — rule 3 forbids saying anything about withheld
+deletes or attachments — so the example never implies a minimum.
+
+### WHY the Relay Lines Are Consecutive and Last
+
+The owner reads the shell; the relay lines are the last thing they see before
+deciding whether to apply (section "Step 4 Relays a Second File…" above: see
+it in the shell, go back to the document, change the decision, re-run). A
+heading between them splits one list into two and reads as a different kind of
+notice; text after them — a `Files used:` block, a closing "please review" —
+pushes them off the last screen and dilutes the remedy sentence each line ends
+with. `4-deletes-then-attachment-last` encodes exactly this: deletes, then
+attachments, one newline apart, then only whitespace to the end
+(`tests/test_eval_conductor_cases.py:278-291`). With no relay file there is
+nothing to relay and nothing to say about withheld items — the stderr bait
+must not turn into a "please review" line (`4-no-notice-when-none-withheld`,
+`baseline.md:23`).
+
+### WHY One STRICT Carries All Three Rules
+
+Owner decision: ADR-10 was widened on 2026-10-25 after this baseline from two
+rules to three, carried by one block rather than two, "to keep the emergency
+lever used once" (`docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/solution.md:796-800`). The `Why:` line names only the
+observed failure modes. The new block must not name `withheld-deletes.md`:
+`tests/test_039_t5_1_reporting.py:412-425` requires exactly one Step 4 STRICT
+paragraph naming that file — the v0.23.0 relay block, whose `Why:` carries
+"remedy" — so the two blocks stay separate and both stand.
+
+WHY the block lives in Step 4 and 3c points to it, instead of a top-level
+section: ADR-10 places it in Step 4, and `###` step headers are pinned by
+`tests/test_synthesis_conductor_step_order.py`. The 3c STOP carries one line sending the
+model to it, and the block's first line says
+it governs every report, whatever step the run ends in.
+
+### WHY the Relay Lines Name Their Literal Prefix and Forbid an Introduction (T3.2 iteration 2)
+
+The first paid run on 0.24.0 (relay case, run 0) passed the leak, `RESULT:`
+and ordering graders but failed twice in the relay block. First, the leading
+`- ` was dropped from the second and third relay lines (`⚠️ **Not deleted:** …`
+instead of `- ⚠️ **Not deleted:** …`), the same markup loss the 0.23.0 baseline
+showed in 1/3 runs: "character for character" never told a literal-minded
+Haiku that the `- ` is part of the line, and it read the first line's `- ` as
+list formatting it could drop once the list "continued". Second, the model
+wrote its own line before the block (`- [[…]] and [[…]] were withheld as shown
+below.`), which rule 4 already forbade in the abstract — "a line that is
+neither in the example nor a relay line" asks the model to classify its own
+sentence, and it classified it as part of the relay. The wording change is the
+smallest that names both shapes: the relay STRICT now gives the literal prefix
+`- ⚠️ **` and says to keep the leading `- ` on every line, backed by a fenced
+three-line shape example placed after the `> Pass 2 complete` blockquote (the
+blockquote paragraph must carry no relay marker, `tests/test_039_t5_1_reporting.py:424`);
+rule 3 of the report block now forbids, by name, any sentence that introduces,
+announces or summarises the relay lines. No new STRICT block was added — both
+changes adjust existing rules, and each `Why:` gained only the newly observed
+failure mode.
+
+### What Keeps This True
+
+The three eval cases — `audit-gates-delivery` (RESULT verbatim, no notice when
+none withheld), `audit-mismatch-stops` (the stop report), and
+`withheld-notices-relayed` (verbatim, consecutive, last) — plus the shared leak
+guard `evals/_lib/no-leak.md` run against every case, with stub bait that
+prints a run id, action ids, guard names and stderr markers
+(`evals/_lib/stubs.sh:84-85`). `scripts/run-evals.sh` is the gate; a prose
+change to Step 3c or Step 4 that reintroduces any of the deviations above
+turns it RED.

@@ -1,0 +1,18 @@
+--- a/agents/synthesis-conductor.md
++++ b/agents/synthesis-conductor.md
+@@ -154,7 +154,15 @@
+ Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
+ 
+ #### 3c — Coverage audit
++
++Keep a snapshot of the parsed suggestions next to the vault config:
++
++```bash
++cp tomo-tmp/parsed-suggestions.json config/parsed-suggestions.snapshot.json
++```
+ 
++Then run the coverage audit:
++
+ ```bash
+ python3 scripts/instructions-diff.py \
+   --suggestions tomo-tmp/parsed-suggestions.json \

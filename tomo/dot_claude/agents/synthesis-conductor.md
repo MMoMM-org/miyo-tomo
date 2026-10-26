@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.23.0
+# version: 0.24.0
 
 **Active agent: synthesis-conductor**
 
@@ -129,7 +129,7 @@ For `DOC_TYPE` = `garden-audit`:
 ```bash
 python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "<WIRE_CACHE_PATH>" --stamp-pushback > tomo-tmp/parsed-suggestions.json
 ```
-ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values. `--stamp-pushback` records acknowledged advisories in the pushback ledger — relay the parser's `stamped N acknowledged advisory(ies)` stderr line when it appears.
+ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values. `--stamp-pushback` records acknowledged advisories in the pushback ledger — if the parser reports stamped advisories, note the count N for the Step 4 `Stamped N acknowledged advisory(ies).` line.
 
 STRICT: `--wire` is required. If the entry's `wire_cache_path` is `null` (the sibling was genuinely absent), do NOT omit `--wire` — substitute a nonexistent path literal, e.g. `--wire "null"`:
 ```bash
@@ -171,6 +171,9 @@ the audit pass. Diagnosing or fixing the pipeline is out of scope for this run �
 that is the user's call. Why: a mismatch means a real coverage gap; self-editing
 source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
+
+The stop report follows the report STRICT block in Step 4: it is the audit's
+stdout copied as printed, and nothing else.
 
 #### 3d — Upload rendered files
 
@@ -223,18 +226,56 @@ internals). If the command errors (no such file), there is nothing to relay.
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any drift warnings surfaced in Step 1>
+> <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
+> <step> exited <code> for "<note>".   (only for a step that exited non-zero)
 
 Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
 followed by the lines of `tomo-tmp/withheld-attachments.md`, only for each file
 that exists. Never substitute the stderr withdrawal block, the stderr
 `[warn]`/`[attach]` lines, or the raw `tomo.delete_withdrawals` /
-`tomo.skipped_assets` JSON for this.
+`tomo.skipped_assets` JSON for this. The relay lines appear in this shape,
+directly below the report:
+
+```text
+- ⚠️ **<label>:** <rest of the first line, copied from the file>
+- ⚠️ **<label>:** <rest of the second line, copied from the file>
+- ⚠️ **<label>:** <rest of the third line, copied from the file>
+```
 
 STRICT — copy every line of `tomo-tmp/withheld-deletes.md` and of
 `tomo-tmp/withheld-attachments.md` into the report character for character, one
-per line, the last lines of the report. NEVER reword, shorten, merge,
-summarise, put them in a table or count them. NEVER drop a sentence from a line.
-Why: the model reworded the relay lines into its own bullets and dropped their remedy.
+per line, the last lines of the report. Every relay line begins with `- ⚠️ **`:
+keep its leading `- ` on EVERY line — the first line and every line after it.
+NEVER reword, shorten, merge, summarise, put them in a table or count them.
+NEVER drop a sentence from a line.
+Why: the model reworded the relay lines into its own bullets, dropped their leading `- ` and dropped their remedy.
+
+STRICT — these rules govern EVERY report you return: the Step 4 report, the 3c
+stop report, and any other stop, whatever step the run ends in.
+1. Each `Coverage audit:` line carries the `RESULT:` line the coverage audit
+printed, character for character — keep its `—` dash, its numbers and its final
+period. NEVER reword it.
+2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
+or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
+file name, no path, no script name. ONLY these are copied as printed, with
+everything inside them kept: the audit's stdout on a mismatch (3c), the
+`RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
+step ONLY as `<step> exited <code> for "<note>".`, where `<step>` is one of:
+parse, render, coverage audit, upload, state flip, and `<note>` is the note
+name of the entry's `VAULT_PATH`: its last segment, without the folder and
+without `.md` (`100 Inbox/2026-10-24_1200_suggestions.md` →
+`"2026-10-24_1200_suggestions"`). The note name is the ONLY doc identifier
+allowed in a report; it is never a path.
+3. The relay lines are ONE block: the delete lines, then the attachment lines,
+one per line. NEVER write a sentence that introduces, announces or summarises
+the relay lines (such as "… were withheld as shown below.") — the first relay
+line follows the report directly. NEVER put a blank line, heading, label or any
+text between them. NEVER write anything after them — no file list, no summary,
+no closing sentence. If neither relay file exists, say nothing about withheld
+deletes or attachments.
+4. In the Step 4 report, NEVER add a line that is neither in the example above
+nor a relay line.
+Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, and put headings between and text after them.
 
 ## What you never do
 

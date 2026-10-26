@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.310",
+  "startedAt": "2026-10-25T10:48:20.275Z",
+  "durationSeconds": 44,
+  "costUsd": 0.15943438499999998,
+  "partial": false,
+  "suite": {
+    "root": "/tmp/eval/tomo",
+    "ablation": "none",
+    "modelOverride": "claude-sonnet-5-5",
+    "caseFilter": "withheld-notices-relayed",
+    "threshold": 1,
+    "concurrency": 2,
+    "plugins": [
+      {
+        "name": "tomo",
+        "path": "/tmp/eval/tomo"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "withheld-notices-relayed",
+      "dir": "evals/withheld-notices-relayed",
+      "source": "mixed",
+      "promptMarkdown": "Use the Agent tool once: subagent_type `tomo:synthesis-conductor`, prompt \"Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly.\" Do not run any command yourself. When it returns, repeat its final report verbatim.",
+      "runsPerCase": 1,
+      "timeoutSeconds": 600,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "0-conductor-dispatched",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "synthesis-conductor"
+          }
+        },
+        {
+          "name": "1-line-verbatim",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "- ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Meeting Notes Q3\\]\\] — the destination note was claimed by another approved item",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "2-line-verbatim",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "- ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "3-line-verbatim",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "- ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "4-deletes-before-attachments-and-last",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "- ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found\\s*\\n\\s*- ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.\\s*$",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "5-no-leak",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "run_id|evalLEAK|act-LEAK|validate_destinations|vault_collision_held|skipped_assets|\\[warn\\]|\\[attach\\]",
+            "flags": "",
+            "match": "not_contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0.8333333333333334,
+            "passed": false,
+            "turns": 2,
+            "costUsd": 0.05432717,
+            "judgeCostUsd": 0,
+            "durationSeconds": 22,
+            "startedAt": "2026-10-25T10:48:20.307Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Meeting Notes Q3\\]\\] — the destination note was claimed by another approved item",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-deletes-before-attachments-and-last",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in last_message",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "5-no-leak",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.053207304999999996,
+            "judgeCostUsd": 0,
+            "durationSeconds": 23,
+            "startedAt": "2026-10-25T10:48:20.307Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Meeting Notes Q3\\]\\] — the destination note was claimed by another approved item",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-deletes-before-attachments-and-last",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found\\s*\\n\\s*- ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.\\s*$",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "5-no-leak",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.051899909999999994,
+            "judgeCostUsd": 0,
+            "durationSeconds": 22,
+            "startedAt": "2026-10-25T10:48:42.296Z",
+            "error": null,
+            "tracePath": "/tmp/eval/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "0-conductor-dispatched",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "1-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Meeting Notes Q3\\]\\] — the destination note was claimed by another approved item",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "2-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "3-line-verbatim",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "4-deletes-before-attachments-and-last",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched - ⚠\ufe0f \\*\\*Not deleted:\\*\\* \\[\\[Reading List\\]\\] — the related note could not be found\\s*\\n\\s*- ⚠\ufe0f \\*\\*Attachment not filed:\\*\\* `100 Inbox\\/whiteboard\\.png` — the destination already holds a different file with this name\\. No action needed unless you change your mind\\. To file it after all, tick Rename in the suggestions document and run `\\/inbox --pass2 --force` before you apply\\. If you have already applied, rename the attachment in the inbox and run `\\/inbox` again\\.\\s*$",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "5-no-leak",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 0.9444444444444445,
+        "passRate": 0.6666666666666666
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 0,
+    "overallScore": 0.9444444444444445,
+    "overallPassRate": 0.6666666666666666
+  }
+}

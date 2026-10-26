@@ -2,7 +2,7 @@
 
 ## Nature of this directory
 
-**Only user-invoked shell scripts live here.** Runtime code, tests, and
+**Only user-invoked scripts live here** (shell, plus the one Python helper the eval runner calls). Runtime code, tests, and
 install-time helpers were split out on 2026-04-22 after a test cascade
 (`test-phase1.sh` → `install-tomo.sh` at default path → `rm -rf`) wiped
 real installations. The new layout contains the blast radius: anything
@@ -27,6 +27,12 @@ Contents:
   `$HOME`, the repo root, non-absolute, and shallow paths before any
   deletion. `--list` shows registered instances.
 - `download-whisper-model.sh` — fetches a faster-whisper model dir.
+- `run-evals.sh` — runs the `evals/` suite with `claude plugin eval`
+  against the runtime prose and prints one verdict line (GREEN / RED /
+  NOT GRADED). Costs money: run it only as `evals/README.md` says.
+- `lib/eval_verdict.py` — reads the aggregate result of `run-evals.sh`
+  and derives the verdict line and exit code; `--compare` diffs two
+  results. Python, not shell.
 - `lib/configure-voice.sh` — sourced by install/update for the voice
   wizard.
 - `lib/begin-tomo.sh.template` — launcher template substituted by

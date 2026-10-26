@@ -7,6 +7,7 @@ eval_kit.py. Everything runs in tmp_path; nothing writes into the repo.
 
 from __future__ import annotations
 
+import ast
 import itertools
 import json
 import re
@@ -194,16 +195,37 @@ def test_suggestion_parser_stub_stdout_line(tmp_path):
 # The three stubs below print what the real script prints on success. Each
 # expected line is built from the real script's f-string fragments, copied
 # here as they appear in the source; the test first asserts every fragment is
-# still in that source, so a change to the real format turns this test red.
+# still in ONE print( call of that source and that the call writes to
+# sys.stderr, so a change to the real format or stream turns this test red.
 SCRIPTS = REPO / "tomo" / "scripts"
 
 
+def print_calls(node: ast.AST) -> list[ast.Call]:
+    return [
+        n for n in ast.walk(node)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print"
+    ]
+
+
+def writes_to_stderr(call: ast.Call) -> bool:
+    return any(
+        k.arg == "file" and ast.unparse(k.value) == "sys.stderr" for k in call.keywords
+    )
+
+
 def real_format(script: str, *fragments: str) -> re.Pattern:
-    """Assert each f-string fragment is in tomo/scripts/<script>; return a
-    regex for the line(s) they print, with every {field} matching any text."""
+    """Assert the f-string fragments sit in one print(..., file=sys.stderr) call
+    of tomo/scripts/<script>; return a regex for the line(s) that call prints,
+    with every {field} matching any text."""
     source = (SCRIPTS / script).read_text(encoding="utf-8")
     for frag in fragments:
         assert f'f"{frag}"' in source, f"{script} no longer prints {frag!r}"
+    calls = [
+        c for c in print_calls(ast.parse(source))
+        if all(f'f"{frag}"' in ast.get_source_segment(source, c) for frag in fragments)
+    ]
+    assert len(calls) == 1, f"{script}: {len(calls)} print calls carry {fragments!r}"
+    assert writes_to_stderr(calls[0]), f"{script} prints {fragments[0]!r} to stdout"
     template = "".join(fragments).replace("\\n", "\n")
     parts = re.split(r"\{[^}]*\}", template)
     return re.compile(".+".join(re.escape(p) for p in parts))
@@ -289,10 +311,34 @@ def test_upload_stub_without_render_fails_like_the_real_script(tmp_path):
 
 def test_state_promoter_stub_flip_is_silent_like_the_real_script(tmp_path):
     stage(tmp_path)
-    # state-promoter.py:_cli_flip — success returns 0 and prints nothing.
+    # state-promoter.py flip_state :87-129, _handle_concurrency_retry, _cli_flip
+    # :181-211 — success returns 0 and prints nothing: the only prints on the
+    # flip path are these error/rejection lines, all on stderr. A new print
+    # (a success line) changes the pinned set.
     source = (SCRIPTS / "state-promoter.py").read_text(encoding="utf-8")
-    flip = source.split("def _cli_flip", 1)[1].split("\ndef ", 1)[0]
-    assert "return 0 if success else 1" in flip
+    funcs = {
+        f.name: f for f in ast.parse(source).body if isinstance(f, ast.FunctionDef)
+    }
+
+    def leads(name):
+        out = []
+        for call in print_calls(funcs[name]):
+            assert writes_to_stderr(call), f"{name} prints to stdout"
+            arg = call.args[0]
+            out.append(arg.value if isinstance(arg, ast.Constant) else arg.values[0].value)
+        return sorted(out)
+
+    assert leads("flip_state") == [
+        "state-promoter.flip_state: lifecycle.transition_rejected doc_type=",
+    ]
+    assert leads("_handle_concurrency_retry") == []
+    assert leads("_cli_flip") == [
+        "Usage: state-promoter.py flip <path> <doc_type> <from_state> <to_state> "
+        "<run_id> [expected_modified]",
+        "state-promoter: expected_modified must be an integer, got ",
+        "state-promoter: persistent concurrency conflict on ",
+    ]
+    assert "return 0 if success else 1" in ast.get_source_segment(source, funcs["_cli_flip"])
     r = run_stub(
         tmp_path, "state-promoter", "flip", "100 Inbox/2026-10-24_1200_suggestions.md",
         "suggestions", "approved", "applied", "rid", "1792800000000",

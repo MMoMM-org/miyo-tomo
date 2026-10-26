@@ -20,11 +20,12 @@
 #                        output dir; unlinked when empty, :317-320)
 #   render success       tomo/scripts/instruction-render.py:1232-1241 (stderr; stdout empty);
 #                        files: manifest.json :657, instructions.json :1171,
-#                        instructions.md :1209, note <YYYY-MM-DD_HHMM>_<slug>.md :463,607
+#                        instructions.md :1209, note <YYYY-MM-DD_HHMM>_<slug>.md :463,608
 #   upload success       tomo/scripts/upload-rendered.py:207,215,224 (per-file lines),
 #                        :241-249 (summary), all stderr, stdout empty; missing input
 #                        :150-154 exit 2; timestamp from `generated` :99-113,170
-#   state flip success   tomo/scripts/state-promoter.py _cli_flip: exit 0, prints nothing
+#   state flip success   tomo/scripts/state-promoter.py _cli_flip :181-211 (flip_state
+#                        :87-129): exit 0, prints nothing
 #   routing plan         tomo/schemas/routing-plan.schema.json
 # The conductor's argv comes from tomo/dot_claude/agents/synthesis-conductor.md
 # Steps 1-3; the stubs accept any argv and only log it.

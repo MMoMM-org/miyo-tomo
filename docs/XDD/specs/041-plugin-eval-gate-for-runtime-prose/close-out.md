@@ -23,17 +23,17 @@ The results directories (`tomo-tmp/evals/<TS>/`) are gitignored and local. This 
 
 ## 1. The single invocation
 
-The **118 node ids** in the trace table ran **together in one `pytest` invocation on 2026-10-26**, on the Phase 5 drift-fix tree (the 105 ids of 2026-10-25 plus the 13 added by `183b38f5`, `c261cc0b`, `8f28ae44` and `5d3db600`; the 2026-10-25 run was `232 passed in 23.50s`):
+The **115 node ids** in the trace table ran **together in one `pytest` invocation on 2026-10-26**, on the Phase 5 drift-fix tree (the 105 ids of 2026-10-25 plus the 10 added by `183b38f5`, `c261cc0b`, `8f28ae44` and `5d3db600`; the 2026-10-25 run was `232 passed in 23.50s`):
 
 ```
-245 passed in 26.71s
+242 passed in 26.34s
 ```
 
-118 node ids collect **245 items**. The difference is parametrisation. Collection was checked by script, not by eye: the sorted list of cited node ids and the sorted list of collected node ids (parameters stripped) are identical. Nothing was deselected and nothing extra was collected.
+115 node ids collect **242 items**. The difference is parametrisation. Collection was checked by script, not by eye: the sorted list of cited node ids and the sorted list of collected node ids (parameters stripped) are identical. Nothing was deselected and nothing extra was collected.
 
 The full suite and `ruff` results are in §6.
 
-**The 3× GREEN (G) is being re-run.** The stubs changed after G was recorded (`c261cc0b`, `5d3db600`: they now print the real scripts' success formats on the real stream), and the verdict line changed (`183b38f5`). G below is the 2026-10-25 record on `0492b0c5`; the re-run on the changed tree is appended after it by the orchestrator once it has been paid for.
+**G was re-run after the drift fixes.** The stubs (`c261cc0b`, `5d3db600`: the real scripts' success formats on the real stream) and the verdict line (`183b38f5`) changed after the first T5.1 runs on `0492b0c5`, so those runs are superseded. G below is the re-run on `69f845c0`.
 
 <details><summary>The command, exactly as run</summary>
 
@@ -153,10 +153,7 @@ The full suite and `ruff` results are in §6.
   tests/test_eval_verdict.py::test_compare_directory_without_aggregate_is_a_clear_error \
   tests/test_run_evals.py::test_verdict_line_and_file_carry_a_repo_relative_results_path \
   tests/test_run_evals.py::test_runner_generated_not_graded_line_is_repo_relative \
-  tests/test_eval_suite_shape.py::test_render_stub_prints_real_summary_on_stderr \
-  tests/test_eval_suite_shape.py::test_upload_stub_prints_real_success_lines_on_stderr \
-  tests/test_eval_suite_shape.py::test_upload_stub_without_render_fails_like_the_real_script \
-  tests/test_eval_suite_shape.py::test_state_promoter_stub_flip_is_silent_like_the_real_script
+  tests/test_eval_suite_shape.py::test_render_stub_prints_real_summary_on_stderr
 ```
 
 </details>
@@ -165,7 +162,10 @@ The full suite and `ruff` results are in §6.
 
 Eval-run shorthand used in the table:
 
-- **G** is the three consecutive full-suite GREENs on the merge candidate `0492b0c5` (T5.1, [`baseline.md`](baseline.md) "Close-out"). Each is `GREEN 3/3 cases · runs 9`. Results: `tomo-tmp/evals/2026-10-25T18-31-39Z`, `…T18-33-29Z`, `…T18-35-17Z`.
+- **G** is the three consecutive full-suite GREENs on the merge candidate `69f845c0` (T5.1 re-run after the drift fixes, [`baseline.md`](baseline.md) "Re-run after the drift fixes"; it supersedes the 2026-10-25 runs on `0492b0c5`). Verbatim:
+  - `GREEN 3/3 cases · runs 9 · $0.64 · 100 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-08-08Z`
+  - `GREEN 3/3 cases · runs 9 · $0.59 · 103 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-09-57Z`
+  - `GREEN 3/3 cases · runs 9 · $0.59 · 111 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-11-45Z`
 - **R** is the RED proof named in §3, from [`red-proofs.md`](red-proofs.md).
 
 | Criterion | Method | Evidence |
@@ -182,7 +182,7 @@ Eval-run shorthand used in the table:
 | F2-AC4 | deterministic | `tests/test_run_evals.py::test_max_cost_flag_and_env_reach_cli_and_default_returns`<br>`tests/test_run_evals.py::test_invalid_max_cost_refused` |
 | F2-AC5 | deterministic | `tests/test_eval_verdict.py::test_run_error_rate_limit_not_graded`<br>`tests/test_eval_verdict.py::test_other_partial_reason_keeps_generic_wording`<br>`tests/test_eval_verdict.py::test_partial_without_reason_still_not_graded`<br>`tests/test_eval_verdict.py::test_run_aborted_not_graded`<br>`tests/test_eval_verdict.py::test_skipped_paid_graders_not_graded`<br>`tests/test_eval_verdict.py::test_unscored_grader_is_not_a_pass`<br>`tests/test_eval_verdict.py::test_run_without_graders_not_graded`<br>`tests/test_eval_verdict.py::test_not_graded_beats_red`<br>`tests/test_eval_verdict.py::test_eperm_in_sandbox_hint`<br>`tests/test_eval_verdict.py::test_malformed_shapes_never_traceback`<br>`tests/test_eval_verdict.py::test_unexpected_crash_is_not_graded_never_red`<br>`tests/test_run_evals.py::test_cli_exit_2_without_result_is_not_graded`<br>`tests/test_run_evals.py::test_cli_nonzero_with_green_result_is_never_green`<br>`tests/test_run_evals.py::test_stray_failure_after_cli_is_not_graded`<br>`tests/test_run_evals.py::test_verdict_script_failure_is_not_graded_with_one_line` |
 | F2-AC6 | deterministic | `tests/test_run_evals.py::test_model_follows_settings_json`<br>`tests/test_run_evals.py::test_default_run_passes_fixed_flags_and_three_outputs` (`--model sonnet`)<br>`tests/test_run_evals.py::test_unreadable_settings_model_is_refused`<br>`tests/test_run_evals.py::test_snapshot_shape_and_agents_byte_identical` (agent frontmatter, including `model:`, reaches the plugin unchanged) |
-| F3-AC1 | grader shape + live: G, R `--rev 4350ddd^` | `tests/test_eval_conductor_cases.py::test_audit_order_graders`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_ignore_a_mention`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_match_a_run`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_match_every_conductor_invocation`<br>`tests/test_eval_conductor_cases.py::test_prompt_is_the_production_dispatch_namespaced`<br>`tests/test_eval_conductor_cases.py::test_every_prd_criterion_has_its_grader`<br>`tests/test_eval_suite_shape.py::test_upload_stub_prints_real_success_lines_on_stderr`<br>`tests/test_eval_suite_shape.py::test_upload_stub_without_render_fails_like_the_real_script`<br>`tests/test_eval_suite_shape.py::test_state_promoter_stub_flip_is_silent_like_the_real_script` |
+| F3-AC1 | grader shape + live: G, R `--rev 4350ddd^` | `tests/test_eval_conductor_cases.py::test_audit_order_graders`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_ignore_a_mention`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_match_a_run`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_match_every_conductor_invocation`<br>`tests/test_eval_conductor_cases.py::test_prompt_is_the_production_dispatch_namespaced`<br>`tests/test_eval_conductor_cases.py::test_every_prd_criterion_has_its_grader` |
 | F3-AC2 | grader shape + live: G, R `--rev 4350ddd^` | as F3-AC1 (the `state-promoter` parameter of `test_audit_order_graders`) |
 | F3-AC3 | grader shape + live: G, R `drop-audit-line` | `tests/test_eval_conductor_cases.py::test_audit_ok_line_is_the_kit_line`<br>`tests/test_eval_suite_shape.py::test_audit_stub_ok` |
 | F4-AC1 | grader shape + live: G, R `--rev 4350ddd^` | `tests/test_eval_conductor_cases.py::test_mismatch_never_called_graders`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_ignore_a_mention`<br>`tests/test_eval_conductor_cases.py::test_invocation_graders_match_a_run` |
@@ -201,7 +201,7 @@ Eval-run shorthand used in the table:
 | F7-AC3 | deterministic | `tests/test_eval_gate_docs.py::test_claude_md_rule_states_the_pr_record_and_the_exemption` (new, §4)<br>`tests/test_eval_gate_docs.py::test_claude_md_rule_tracks_the_coverage_table` (the rule names exactly the table's files) |
 | F7-AC4 | deterministic + live: §3 | `tests/test_eval_conductor_cases.py::test_every_gate_grader_is_an_expected_red_of_a_proof`<br>`tests/test_eval_conductor_cases.py::test_proof_rows_name_real_graders_of_their_cases`<br>`tests/test_eval_conductor_cases.py::test_report_run_id_is_proven_in_every_case`<br>`tests/test_eval_conductor_cases.py::test_f4_ac4_graders_have_distinct_proofs`<br>`tests/test_eval_conductor_cases.py::test_rev_proofs_resolve_to_a_conductor`<br>`tests/test_eval_conductor_cases.py::test_readme_mutations_match_the_patch_files`<br>`tests/test_eval_conductor_cases.py::test_mutation_applies_cleanly_to_a_fresh_assembly`<br>`tests/test_eval_conductor_cases.py::test_mutation_touches_only_the_conductor`<br>`tests/test_eval_conductor_cases.py::test_mutation_removes_and_adds_its_declared_clauses` |
 | F7-AC5 | deterministic; §3 marks controls | `tests/test_eval_conductor_cases.py::test_every_control_is_listed_and_never_a_proof_target`<br>`tests/test_eval_conductor_cases.py::test_graders_split_into_controls_and_mapped_gates`<br>`tests/test_eval_conductor_cases.py::test_conductor_dispatched_control`<br>`tests/test_eval_conductor_cases.py::test_audit_ran_control` |
-| F7-AC6 | live | G: three consecutive `GREEN 3/3 cases · runs 9` on `0492b0c5` with `tree clean`. No covered file changed after `0492b0c5`. `ea2703d3` and this close-out touch only `docs/` and `tests/` |
+| F7-AC6 | live | G: three consecutive `GREEN 3/3 cases · runs 9` on `69f845c0` with `tree clean`. `git diff 69f845c0..HEAD --stat` at commit time shows only `docs/` files: no covered file (`tomo/dot_claude/agents/synthesis-conductor.md`, `tomo/dot_claude/commands/inbox.md`, `tomo/dot_claude/settings.json`), no stub and no runner changed after it |
 | F8-AC1 | deterministic | `tests/test_run_evals.py::test_known_case_is_partial_suite`<br>`tests/test_eval_verdict.py::test_partial_suite_prefix`<br>`tests/test_run_evals.py::test_runs_with_case_reaches_cli` |
 | F8-AC2 | deterministic | `tests/test_run_evals.py::test_unknown_case_refused_listing_cases` |
 | F9-AC1 | deterministic | `tests/test_eval_verdict.py::test_compare_lists_only_differing_pairs`<br>`tests/test_eval_verdict.py::test_compare_disjoint_pair_reports_every_grader_of_both`<br>`tests/test_eval_verdict.py::test_compare_identical_prints_nothing`<br>`tests/test_eval_verdict.py::test_compare_accepts_results_directories`<br>`tests/test_eval_verdict.py::test_compare_directory_without_aggregate_is_a_clear_error` |
@@ -214,7 +214,7 @@ Eval-run shorthand used in the table:
 
 ## 3. Gate graders: proof, RED, GREEN
 
-Every gate grader was red in **3/3** runs under its proof (plan Phase 4 rule: red in every run). Each was then green in all 9 runs of each T5.1 run on the merge candidate. Proof patches and the clause each removes are in [`evals/_mutations/README.md`](../../../../evals/_mutations/README.md). The full RED verdict lines are in [`red-proofs.md`](red-proofs.md).
+Every gate grader was red in **3/3** runs under its proof (plan Phase 4 rule: red in every run). Each was then green in all 9 runs of each T5.1 re-run on the merge candidate `69f845c0`. Proof patches and the clause each removes are in [`evals/_mutations/README.md`](../../../../evals/_mutations/README.md). The full RED verdict lines are in [`red-proofs.md`](red-proofs.md).
 
 | Case | Grader | PRD | Proof | RED | Proof results | GREEN on merge candidate |
 |---|---|---|---|---|---|---|
@@ -272,8 +272,8 @@ Four criteria had a part that no test could fail. Each was closed by an assertio
 |---|---|---|---|
 | Gate graders proven red | 100% | 16/16, each red 3/3 | 🟢 |
 | Full-suite GREEN on the merge candidate | 3 consecutive | 3/3 (G) | 🟢 |
-| Cost per full suite | median ≤ $2, cap $5 | median $0.59 ($0.58, $0.59, $0.59) | 🟢 |
-| Wall-clock per full suite | ≤ 5 min | max 110 s (106, 103, 110) | 🟢 |
+| Cost per full suite | median ≤ $2, cap $5 | median $0.59 ($0.64, $0.59, $0.59) | 🟢 |
+| Wall-clock per full suite | ≤ 5 min | max 111 s (100, 103, 111) | 🟢 |
 | Adoption (PRs touching a covered file carry a verdict) | 100% | first instance is this spec's own PR (T5.3) | open, measured from here on |
 
 | Phase | Spend |
@@ -282,15 +282,15 @@ Four criteria had a part that no test could fail. Each was closed by an assertio
 | Phase 2 (cases load + baseline) | $0.90 |
 | Phase 3 (conductor fix, partial + full runs) | $1.78 |
 | Phase 4 (RED proofs; incl. $1.47 abandoned or voided) | $4.10 |
-| Phase 5 (three close-out runs) | $1.76 |
-| **Spec total** | **$8.60** |
+| Phase 5 (three close-out runs $1.76, re-run after the drift fixes $1.82) | $3.58 |
+| **Spec total** | **$10.42** |
 
 The $1.47 in Phase 4 went to two groups of runs. $0.84 went to the "fix the failing script" mutations, which never executed (§7). $0.43 went to two rev proofs voided by `NOT GRADED · tree changed during run`, because agents were writing to the worktree. The remaining $0.20 was the `always-notice` diagnosis rerun.
 
 ## 6. Validation
 
-- **Full pytest:** `5406 passed, 4 skipped, 1 warning in 181.44s`, on the tree this close-out commits. The skips are environmental and are not 041 tests. The warning is a pre-existing `return` in `tests/test-008-phase1.py`.
-- **ruff:** `ruff check .` is clean.
+- **Full pytest:** `5421 passed, 4 skipped, 1 warning in 188.73s` (2026-10-26), on the tree this close-out commits. The skips are environmental and are not 041 tests. The warning is a pre-existing `return` in `tests/test-008-phase1.py`.
+- **ruff:** `ruff check .` is clean (`All checks passed!`, 2026-10-26).
 - **`scripts/run-evals.sh --help` against `evals/README.md`:** they agree on the options, the exit codes 0–3 and their meanings, the results location, the cost cap and its overrides, and the sandbox requirement. One soft difference is not a contradiction. `--help` says "about $0.50-2 per full suite" and the README says "about $0.60 … measured". The measured figure lies inside the help's range.
 
 ## 7. Open items
@@ -298,6 +298,7 @@ The $1.47 in Phase 4 went to two groups of runs. $0.84 went to the "fix the fail
 - **Stub drift.** The cases run against stubs whose output is copied from the real scripts. Since `c261cc0b` and `5d3db600` the upload, render and state-promoter stubs print the real success formats on the real stream (stderr; the state flip is silent), and `ast`-based drift guards in `tests/test_eval_suite_shape.py` pin those strings to the scripts' source. There is still no runtime contract check tying a stub to its script, by owner decision (PRD Won't Have): a script whose output format changes in a way the guards do not read can leave a case green against output production no longer produces. Mitigation today: one kit (`evals/_lib/stubs.sh`), with the source of each string named, plus the guards.
 - **Verdict-line path.** Since `183b38f5` the verdict line carries a repo-relative results path (`--root`). The lines quoted in `baseline.md` and `red-proofs.md` were recorded before that and their absolute prefix was shortened to the repo-relative form by hand when the documents were written; the printed lines of those runs were not repo-relative. The results directories named there are unaffected.
 - **Drift-validation findings fixed in this batch.** The spike archive no longer contains local absolute paths or the `env | sort` dump (`test_spike_archive_carries_no_local_paths_or_environment_dump`); `scripts/CLAUDE.md` lists `run-evals.sh` and `lib/eval_verdict.py` (`test_scripts_claude_md_lists_the_runner_and_the_verdict_reader`); the SDD directory map lists `tests/test_eval_gate_docs.py`; the PRD and SDD acceptance checkboxes are ticked for the 35 criteria traced above; `evals/_mutations/README.md` now gives the `report-run-id` invocation the recorded proof used (`--case '*'`, which is why its verdict line is `PARTIAL SUITE`; the exact glob was not recorded and is inferred from the three cases it ran).
+- **Stub fidelity is pinned by tests that evidence no single criterion.** `test_upload_stub_prints_real_success_lines_on_stderr`, `test_upload_stub_without_render_fails_like_the_real_script` and `test_state_promoter_stub_flip_is_silent_like_the_real_script` (`tests/test_eval_suite_shape.py`) keep the upload and state-promoter stubs on the real scripts' formats and stream. They guard the fidelity of the fixtures behind F3–F5 and are not part of the §1 invocation.
 - **Hand-listed guard names in the leak guard.** `evals/_lib/no-leak.md` lists guard and function names by hand. A new internal name that can reach the report must be added there and re-copied into every case (`evals/README.md` "Adding a case", step 3). Nothing detects the omission.
 - **Stale `tomo/skills/` mention in root `CLAUDE.md`.** The "Runtime files in `tomo/`" bullet under Rules still names `tomo/skills/`, which no longer exists. This predates the spec, is out of scope, and is noted for a docs sweep.
 - **The failed-step line is unmeasured.** No case drives a failed upload or state flip. The conductor's `<step> exited <code> for "<note>".` line (attempt 3, owner decision after code review) is therefore not graded. Attempt 3 proves only that the change did not regress the covered behaviour.

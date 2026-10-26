@@ -92,3 +92,15 @@ On the merge candidate `0492b0c5` (conductor 0.24.0, graders 5/6 with the encode
 | 3 | `GREEN 3/3 cases · runs 9 · $0.59 · 110 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-25T18-35-17Z` |
 
 3/3 GREEN; median cost $0.59 (target ≤ $2), longest 110 s (target ≤ 5 min). Phase 5 spend $1.76; spec total $8.60.
+
+### Re-run after the drift fixes
+
+The stubs now print the real scripts' success formats on the real stream (`c261cc0b`, `5d3db600`) and the verdict line carries a repo-relative results path (`183b38f5`), so the runs on `0492b0c5` above are superseded as the merge-candidate evidence. Three further consecutive full-suite runs on `69f845c0`, clean tree, no arguments:
+
+| # | Verdict |
+|---|---|
+| 1 | `GREEN 3/3 cases · runs 9 · $0.64 · 100 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-08-08Z` |
+| 2 | `GREEN 3/3 cases · runs 9 · $0.59 · 103 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-09-57Z` |
+| 3 | `GREEN 3/3 cases · runs 9 · $0.59 · 111 s · claude 2.1.310 · tree clean · tomo-tmp/evals/2026-10-26T06-11-45Z` |
+
+3/3 GREEN; median cost $0.59, longest 111 s. Re-run spend $1.82; Phase 5 total $3.58; spec total $10.42.

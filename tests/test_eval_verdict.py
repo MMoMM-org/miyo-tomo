@@ -357,3 +357,82 @@ def test_compare_identical_prints_nothing(tmp_path):
 
 def test_never_writes_into_fixtures():
     assert not list(FIXTURES.glob("verdict.txt"))
+
+
+# ── repo-relative results path, errored-run cap count, --compare on directories ──
+
+
+def _tail_path(out):
+    return out.strip().split(" · ")[-1]
+
+
+def test_results_path_is_relative_to_the_given_root(tmp_path):
+    path = stage(tmp_path, "green-3x", "seed")
+    nested = tmp_path / "tomo-tmp" / "evals" / "2026-10-25T18-35-17Z"
+    nested.mkdir(parents=True)
+    dest = nested / "aggregate-result.json"
+    shutil.copy(path, dest)
+    code, out, _ = run(dest, "--root", str(tmp_path))
+    assert code == 0
+    assert _tail_path(out) == "tomo-tmp/evals/2026-10-25T18-35-17Z", out
+    assert str(tmp_path) not in out
+
+
+def test_results_path_outside_root_is_never_resolved_absolute(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    path = stage(tmp_path, "green-3x", "elsewhere")
+    code, out, _ = run(path, "--root", str(root))
+    assert code == 0
+    assert _tail_path(out) == str(path.parent), out
+
+
+def test_results_path_relative_input_stays_as_given(tmp_path):
+    stage(tmp_path, "green-3x", "res")
+    p = subprocess.run([sys.executable, str(SCRIPT), "res/aggregate-result.json"],
+                       capture_output=True, text=True, cwd=tmp_path)
+    assert _tail_path(p.stdout) == "res", p.stdout
+
+
+def test_not_graded_line_path_is_relative_too(tmp_path):
+    nested = tmp_path / "tomo-tmp" / "evals" / "T"
+    nested.mkdir(parents=True)
+    code, out, _ = run(nested / "missing.json", "--root", str(tmp_path))
+    assert code == 2
+    assert _tail_path(out) == "tomo-tmp/evals/T", out
+
+
+def test_cost_cap_counts_only_runs_without_an_error(tmp_path):
+    path, data = load(tmp_path, "green-3x", "cp2")
+    data["partial"] = True
+    data["partialReason"] = "cost_ceiling"
+    runs = data["cases"][0]["arms"]["with"]
+    runs[0]["error"] = "rate limited"
+    total = sum(len(c["arms"]["with"]) for c in data["cases"])
+    save(path, data)
+    code, out, _ = run(path)
+    assert code == 2
+    assert out.startswith(f"NOT GRADED · cost cap reached after {total - 1} graded runs ·"), out
+
+
+def test_compare_accepts_results_directories(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    shutil.copy(FIXTURES / "green-3x.json", a / "aggregate-result.json")
+    shutil.copy(FIXTURES / "relay-red.json", b / "aggregate-result.json")
+    p = subprocess.run([sys.executable, str(SCRIPT), "--compare", str(a), str(b)],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "withheld-notices-relayed: 0-conductor-dispatched: absent -> 3/3" in p.stdout.splitlines()
+
+
+def test_compare_directory_without_aggregate_is_a_clear_error(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    p = subprocess.run([sys.executable, str(SCRIPT), "--compare", str(empty), str(FIXTURES / "green-3x.json")],
+                       capture_output=True, text=True)
+    assert p.returncode == 2
+    assert p.stdout.startswith("NOT GRADED · cannot compare:"), p.stdout
+    assert "aggregate-result.json" in p.stdout
+    assert "Traceback" not in p.stdout + p.stderr

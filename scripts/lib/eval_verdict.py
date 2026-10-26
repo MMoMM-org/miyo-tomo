@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """Turn a `claude plugin eval` aggregate-result.json into one verdict line.
 
 Why this exists: the CLI's own `passed`/`score` are not a merge gate (a case with one
@@ -11,8 +11,8 @@ poisons the whole suite. No input can produce GREEN unless that rule holds.
 
 Usage:
   eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean]
-                  [--mutation <name> | --rev <rev>] [--cost-cap <usd>]
-  eval_verdict.py --compare <a.json> <b.json>
+                  [--mutation <name> | --rev <rev>] [--cost-cap <usd>] [--root <repo-root>]
+  eval_verdict.py --compare <a> <b>      (each a result file or a results directory)
 
 stdout: the verdict line (also written to verdict.txt beside the result).
 stderr: one detail line per failure / ungraded run.
@@ -63,14 +63,19 @@ def _runs(case):
     return runs
 
 
-def _count_runs(cases):
-    return sum(len(c["arms"]["with"]) for c in cases if isinstance(c, dict))
+def _count_runs(cases, graded_only=False):
+    return sum(
+        1
+        for c in cases if isinstance(c, dict)
+        for run in c["arms"]["with"]
+        if not (graded_only and isinstance(run, dict) and run.get("error"))
+    )
 
 
 def _partial_reason(data, cases, cost_cap):
     reason = data.get("partialReason")
     if reason == "cost_ceiling":
-        n = _count_runs(cases)
+        n = _count_runs(cases, graded_only=True)
         cap = f" ${cost_cap}" if cost_cap else ""
         return f"cost cap{cap} reached after {n} graded {'run' if n == 1 else 'runs'}"
     return f"partial run ({reason or 'partial'})"
@@ -135,7 +140,23 @@ def _num(data, key):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
-def tail(data, path, tree, mutation, rev):
+def results_dir_label(path, root=None):
+    """The results directory as printed in the verdict line.
+
+    The line is pasted into public PRs, so it must not leak the user's home: with `root`
+    the directory is shown relative to it (`tomo-tmp/evals/<TS>`). A directory outside
+    `root`, or no `root`, is shown as given (`Path(path).parent`, never resolved).
+    """
+    parent = Path(path).parent
+    if root:
+        try:
+            return Path(parent.resolve()).relative_to(Path(root).resolve()).as_posix() or "."
+        except ValueError:
+            pass
+    return str(parent)
+
+
+def tail(data, path, tree, mutation, rev, root=None):
     parts = []
     cost = _num(data, "costUsd") if data else None
     dur = _num(data, "durationSeconds") if data else None
@@ -150,22 +171,22 @@ def tail(data, path, tree, mutation, rev):
         parts.append(f"mutation {mutation}")
     if rev:
         parts.append(f"rev {rev}")
-    parts.append(str(Path(path).resolve().parent))
+    parts.append(results_dir_label(path, root))
     return " · ".join(parts)
 
 
-def verdict(path, partial_suite=False, tree="unknown", mutation=None, rev=None, cost_cap=None):
+def verdict(path, partial_suite=False, tree="unknown", mutation=None, rev=None, cost_cap=None, root=None):
     """Return (exit_code, line, detail_lines)."""
     data = None
     try:
         data = load(path)
         passed, total, runs, failures, not_graded = derive(data, cost_cap)
     except NotGraded as e:
-        return 2, f"NOT GRADED · {e} · " + tail(data, path, tree, mutation, rev), []
+        return 2, f"NOT GRADED · {e} · " + tail(data, path, tree, mutation, rev, root), []
     except (KeyError, TypeError, AttributeError, IndexError) as e:
-        return 2, f"NOT GRADED · malformed result ({type(e).__name__}: {e}) · " + tail(data, path, tree, mutation, rev), []
+        return 2, f"NOT GRADED · malformed result ({type(e).__name__}: {e}) · " + tail(data, path, tree, mutation, rev, root), []
     prefix_ps = f" ({PARTIAL_PREFIX})" if partial_suite else ""
-    t = tail(data, path, tree, mutation, rev)
+    t = tail(data, path, tree, mutation, rev, root)
     if not_graded:
         detail = [f"NOT GRADED {n}" for n in not_graded]
         return 2, f"NOT GRADED{prefix_ps} · {not_graded[0]} · " + t, detail
@@ -176,8 +197,17 @@ def verdict(path, partial_suite=False, tree="unknown", mutation=None, rev=None, 
     return 0, f"GREEN{prefix_ps} {passed}/{total} cases · runs {runs} · " + t, []
 
 
+def _result_file(path):
+    p = Path(path)
+    if p.is_dir():
+        p = p / "aggregate-result.json"
+        if not p.is_file():
+            raise NotGraded(f"no result: {p} not found")
+    return p
+
+
 def rates(path):
-    data = load(path)
+    data = load(_result_file(path))
     out = {}
     for case in data["cases"]:
         for run in _runs(case):
@@ -212,6 +242,7 @@ def main(argv=None):
     g.add_argument("--mutation")
     g.add_argument("--rev")
     ap.add_argument("--cost-cap", help="the USD ceiling the run was given; named in the cost-cap verdict")
+    ap.add_argument("--root", help="repo root; the results directory is printed relative to it")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"))
     args = ap.parse_args(argv)
     if args.compare:
@@ -219,13 +250,13 @@ def main(argv=None):
             for ln in compare(*args.compare):
                 print(ln)
         except Exception as e:  # a crash must never share exit 1 with RED
-            print(f"NOT GRADED · cannot compare: {_oneline(e)}")
+            print(f"NOT GRADED · cannot compare: {e if isinstance(e, NotGraded) else _oneline(e)}")
             return 2
         return 0
     if not args.result:
         ap.error("result path required")
     try:
-        code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev, args.cost_cap)
+        code, line, detail = verdict(args.result, args.partial_suite, args.tree, args.mutation, args.rev, args.cost_cap, args.root)
     except Exception as e:  # a crash must never share exit 1 with RED
         code, line, detail = 2, f"NOT GRADED · unexpected error ({_oneline(e)})", []
     print(line)

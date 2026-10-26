@@ -426,17 +426,18 @@ Command: scripts/run-evals.sh [options]
 **C2 — `scripts/lib/eval_verdict.py`**
 
 ```yaml
-Command: python3 scripts/lib/eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean] [--mutation <name>|--rev <rev>] [--cost-cap <usd>]
+Command: python3 scripts/lib/eval_verdict.py <aggregate-result.json> [--partial-suite] [--tree dirty|clean] [--mutation <name>|--rev <rev>] [--cost-cap <usd>] [--root <repo-root>]
   stdout: the verdict line; stderr: per-failure detail lines
+  --root: C1 passes the repo root; the trailing results path is printed relative to it (never absolute)
   --cost-cap: C1 always passes its cap so a cost-ceiling partial names it; the JSON carries neither the cap
-              nor the planned run count, so the line counts graded runs only (added in Phase 1 drift fix)
+              nor the planned run count, so the line counts graded runs only, errored runs excluded (added in Phase 1 drift fix)
   exit:   0 | 1 | 2 (same meaning as C1; C1 forwards it)
   refuses: schemaVersion != 1 → exit 2 "unknown result schema"
   missing / unreadable / invalid JSON → exit 2 "no result" (never a traceback, never exit 1)
   NOT GRADED reasons never depend on partialReason/aborted alone: observed keys are schemaVersion,
   partial, costUsd, durationSeconds, claudeVersion, cases[].arms.with[].{score, passed, error,
   skippedPaidGraders, graders[]}; partialReason/aborted are read if present (documented, unobserved)
-Command: python3 scripts/lib/eval_verdict.py --compare <a.json> <b.json>     # F9, Could
+Command: python3 scripts/lib/eval_verdict.py --compare <a> <b>     # a result file or a results directory (<dir>/aggregate-result.json); F9, Could
   stdout: one line per (case, grader) whose pass rate differs
 ```
 

@@ -434,7 +434,7 @@ def test_results_dir_is_a_utc_timestamp_named_in_the_verdict(env):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     out = Path(env.flag(env.eval_calls()[0], "--output-dir"))
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\dZ(?:-\d+)?", out.name), out.name
-    assert str(out) in _line(proc)
+    assert f"tomo-tmp/evals/{out.name}" in _line(proc)
 
 
 def test_results_location_not_gitignored_is_refused(env):
@@ -636,3 +636,15 @@ def test_rev_and_mutation_together_refused(env):
     proc = env.run("--rev", "HEAD", "--mutation", "flip")
     assert proc.returncode == 3
     assert env.calls() == []
+
+
+def test_verdict_line_and_file_carry_a_repo_relative_results_path(env):
+    """The line is pasted into public PRs: no absolute path through the user's home."""
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = Path(env.flag(env.eval_calls()[0], "--output-dir"))
+    rel = f"tomo-tmp/evals/{out.name}"
+    line = _line(proc)
+    assert line.endswith(f" · {rel}"), line
+    assert str(env.repo) not in line and str(env.tmp) not in line
+    assert (out / "verdict.txt").read_text().strip() == line

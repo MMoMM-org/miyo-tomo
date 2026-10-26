@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.1.2
+# version: 0.1.3
 set -e
 set -o pipefail
 
@@ -316,7 +316,7 @@ tree_state > "$WORK/tree.after"
 
 not_graded() {
     DELIBERATE=true
-    line="NOT GRADED · $* · claude $CLAUDE_VERSION · tree $TREE · $OUT"
+    line="NOT GRADED · $* · claude $CLAUDE_VERSION · tree $TREE · ${OUT#"$ROOT"/}"
     echo "$line" >&3
     echo "$line" > "$OUT/verdict.txt"
     exit 2
@@ -339,7 +339,7 @@ set -- "$OUT/aggregate-result.json" --tree "$TREE"
 if [ -n "$REV" ]; then
     if [ "$REV" = "$REV_SHA" ]; then set -- "$@" --rev "$REV_SHA"; else set -- "$@" --rev "$REV=$REV_SHA"; fi
 fi
-set -- "$@" --cost-cap "$MAX_COST"
+set -- "$@" --cost-cap "$MAX_COST" --root "$ROOT"
 
 VERDICT_RC=0
 VERDICT_LINE="$(python3 "$VERDICT_PY" "$@")" || VERDICT_RC=$?

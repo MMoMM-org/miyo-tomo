@@ -840,3 +840,36 @@ def test_no_state_flip_after_failed_upload_grader():
 ])
 def test_failing_script_ran_controls(case, name, stem):
     assert grader(case, name) == {"type": "tool_used", "tool": "Bash", "input_match": invoked(stem)}
+
+
+PARAPHRASED_LEAKS = (
+    "transition rejected", "the transition was rejected", "HTTP 503", "Service Unavailable",
+    "Kado returned an error", "Kado is unavailable", "kado write failed", "after 4 retries",
+    "retried", "upload-rendered.py failed", "state-promoter failed", "[note] x", "stderr shows",
+    "2026-10-24_0000_instructions.md", "0 note(s) written",
+)
+EXPECTED_REPORT_LINES = (
+    "Pass 2 complete — instructions rendered for 1 source doc(s).",
+    "Coverage audit: RESULT: OK — 1/1 actions reconciled.",
+    'upload exited 1 for "2026-10-24_1200_suggestions".',
+    'state flip exited 1 for "2026-10-24_1200_suggestions".',
+)
+
+
+@pytest.mark.parametrize("case", list(DETAIL_GRADER))
+@pytest.mark.parametrize("leak", PARAPHRASED_LEAKS)
+def test_no_failure_detail_grader_catches_paraphrased_leaks(case, leak):
+    assert re.search(grader(case, DETAIL_GRADER[case])["pattern"], leak), leak
+
+
+@pytest.mark.parametrize("case", list(DETAIL_GRADER))
+@pytest.mark.parametrize("line", EXPECTED_REPORT_LINES)
+def test_no_failure_detail_grader_spares_the_expected_report_lines(case, line):
+    pat = re.compile(grader(case, DETAIL_GRADER[case])["pattern"])
+    assert not pat.search(line), line
+    assert not pat.search(f"> {line}"), line
+
+
+def test_no_failure_detail_graders_are_byte_identical():
+    a, b = (EVALS / c / "graders" / f"{DETAIL_GRADER[c]}.md" for c in DETAIL_GRADER)
+    assert a.read_bytes() == b.read_bytes()

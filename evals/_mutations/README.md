@@ -9,7 +9,8 @@ applies. A proof counts only when its expected graders are red in every run.
 Run a proof:
 
 - mutation, one case: `scripts/run-evals.sh --mutation <name> --case <case>`
-- `report-run-id` is proven for all three cases in one invocation: `scripts/run-evals.sh --mutation report-run-id --case '*'` (the verdict is marked PARTIAL SUITE, as for every proof)
+- `report-run-id` is proven for all five cases in one invocation: `scripts/run-evals.sh --mutation report-run-id --case '*'` (the verdict is marked PARTIAL SUITE, as for every proof)
+- the #205 proofs run both failed-delivery cases in one invocation: `scripts/run-evals.sh --mutation <name> --case '*-failure-reported'`
 - rev: `scripts/run-evals.sh --rev 4350ddd^ --case 'audit-*'`
 
 Every patch also removes or neutralises each clause of the conductor that
@@ -27,12 +28,14 @@ Never hand-write hunk headers.
 
 ## Proofs
 
+**#205 (recorded 2026-10-26, conductor 0.24.1):** the `failed-step-path`, `flip-after-failed-upload` and `explain-failure` rows, and the two failed-delivery cases added to `drop-audit-line` and `report-run-id`, were each red in 3/3; side-effect reds below are measured. Verdicts: `docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/red-proofs.md`, section #205.
+
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--rev 4350ddd^` | `audit-gates-delivery`, `audit-mismatch-stops` | `audit-gates-delivery/1-audit-before-upload`, `audit-gates-delivery/2-audit-before-state-flip`, `audit-mismatch-stops/1-no-upload-after-mismatch`, `audit-mismatch-stops/2-no-state-flip-after-mismatch` — the pre-fix step order (upload and flip before the audit) | `audit-gates-delivery/9-no-leak`, `audit-mismatch-stops/9-no-leak` (measured 3/3 in both cases: the pre-C7 Step 4 has no leak guard); `audit-gates-delivery/3-audit-result-in-report` (measured 1/3) |
-| `--mutation drop-audit-line` | `audit-gates-delivery` | `audit-gates-delivery/3-audit-result-in-report` — the RESULT line reaches the report only because the template asks for it | none |
+| `--mutation drop-audit-line` | `audit-gates-delivery`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/3-audit-result-in-report`, `upload-failure-reported/4-audit-result-in-report`, `state-flip-failure-reported/3-audit-result-in-report` — the RESULT line reaches the report only because the template asks for it, also when a later step fails | none |
 | `--mutation always-notice` | `audit-gates-delivery` | `audit-gates-delivery/4-no-notice-when-none-withheld` — a missing relay file yields a notice line | `audit-gates-delivery/9-no-leak` (measured 2/3; cause confirmed from traces: the patch drops rule 3's "if neither relay file exists, say nothing", so the conductor comments on the render stub's stderr bait vs the absent relay files and names `tomo-tmp/withheld-*.md`) |
 | `--mutation summarise-mismatch` | `audit-mismatch-stops` | `audit-mismatch-stops/4-mismatch-reported-verbatim` — the stop report is a one-sentence summary instead of the audit's output | none |
 | `--mutation write-into-scripts` | `audit-mismatch-stops` | `audit-mismatch-stops/5-no-write-into-scripts-schemas-config` — an ordinary bookkeeping step before the audit appends to a file under `scripts/` with `>>` (a concrete command, own Bash call, on every path) | none expected: the run otherwise behaves normally (the audit fails, the stop report follows) |
@@ -40,7 +43,10 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation paraphrase-relay` | `withheld-notices-relayed` | `withheld-notices-relayed/1-delete-1-verbatim`, `withheld-notices-relayed/2-delete-2-verbatim`, `withheld-notices-relayed/3-attachment-verbatim` — the notices are summarised instead of copied | `withheld-notices-relayed/4-deletes-then-attachment-last` (the block is built from the verbatim lines) |
 | `--mutation files-used-after` | `withheld-notices-relayed` | `withheld-notices-relayed/4-deletes-then-attachment-last` — text follows the relay lines | `withheld-notices-relayed/9-no-leak` (the file list carries temp file names and paths) |
 | `--mutation attachments-first` | `withheld-notices-relayed` | `withheld-notices-relayed/4-deletes-then-attachment-last` — the attachment line comes before the delete lines (the `cat` order does not decide the output order) | none (1–3 stay green: each line is anchored on its own) |
-| `--mutation report-run-id` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed` | `audit-gates-delivery/9-no-leak`, `audit-mismatch-stops/9-no-leak`, `withheld-notices-relayed/9-no-leak` — a run id in the report is caught in every case | none |
+| `--mutation report-run-id` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/9-no-leak`, `audit-mismatch-stops/9-no-leak`, `withheld-notices-relayed/9-no-leak`, `upload-failure-reported/9-no-leak`, `state-flip-failure-reported/9-no-leak` — a run id in the report is caught in every case | none |
+| `--mutation failed-step-path` | `upload-failure-reported`, `state-flip-failure-reported` | `upload-failure-reported/1-upload-failure-line-in-report`, `state-flip-failure-reported/1-state-flip-failure-line-in-report` — the failed-step line names the doc by its vault path instead of its note name | `upload-failure-reported/5-no-failure-detail-in-report`, `state-flip-failure-reported/4-no-failure-detail-in-report` (the vault path carries `100 Inbox/`, which the detail guard bans) |
+| `--mutation flip-after-failed-upload` | `upload-failure-reported` | `upload-failure-reported/2-no-state-flip-after-failed-upload` — 3d still runs 3e after a non-zero upload exit | none (the flip stub succeeds, so the report is unchanged) |
+| `--mutation explain-failure` | `upload-failure-reported`, `state-flip-failure-reported` | `upload-failure-reported/5-no-failure-detail-in-report`, `state-flip-failure-reported/4-no-failure-detail-in-report` — a `Detail:` line copies the failing script's last stderr line into the report | none (`9-no-leak` stayed green in all six runs) |
 
 ## Controls
 
@@ -52,6 +58,10 @@ Controls are preconditions, exempt from RED proof (PRD F7-AC5).
 | `audit-mismatch-stops` | `0-conductor-dispatched` | precondition: the conductor ran |
 | `audit-mismatch-stops` | `3-audit-ran` | precondition: the mismatch was produced at all |
 | `withheld-notices-relayed` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `upload-failure-reported` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `upload-failure-reported` | `3-upload-ran` | precondition: the failed upload was produced at all |
+| `state-flip-failure-reported` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `state-flip-failure-reported` | `2-state-flip-ran` | precondition: the failed state flip was produced at all |
 
 ## Clauses
 
@@ -113,6 +123,7 @@ Each clause is quoted as it appears in the conductor (line breaks folded to spac
 - removes: "no file name, no path, no script name."
 - removes: "NEVER write anything after them — no file list, no summary, no closing sentence."
 - removes: "4. In the Step 4 report, NEVER add a line that is neither in the example above nor a relay line."
+- removes: "Your reply is ONLY the report: NEVER write anything before or after it"
 - adds: "5. After the relay lines, list the files you used this run, one path per line."
 
 ### attachments-first
@@ -125,7 +136,36 @@ Each clause is quoted as it appears in the conductor (line breaks folded to spac
 ### report-run-id
 
 - removes: "NEVER put internals in a report: no run id,"
+- removes: "no command, no run id, no file name."
 - removes: "it is the audit's stdout copied as printed, and nothing else."
 - adds: "> Run ID: <RUN_ID>"
 - adds: "Every report includes the line `Run ID: <RUN_ID>`."
 - adds: "followed by the line `Run ID: <RUN_ID>`."
+
+### failed-step-path
+
+- removes: "file name, no path, no script name."
+- removes: "and `<note>` is the note name of the entry's `VAULT_PATH`: its last segment, without the folder and without `.md`"
+- removes: "The note name is the ONLY doc identifier allowed in a report; it is never a path."
+- adds: "file name or path except the vault path in a failed-step line, no script name."
+- adds: "and `<note>` is the entry's `VAULT_PATH` exactly as the routing plan gives it, folder and `.md` included"
+- adds: "The vault path is the doc identifier in a failed-step line, so the user can open the doc in the vault."
+
+### flip-after-failed-upload
+
+- removes: "Any non-zero exit: do NOT run 3e for this entry."
+- removes: "Continue with the next entry."
+- adds: "Any non-zero exit: still run 3e for this entry, so the doc's state reflects the attempt."
+
+### explain-failure
+
+- removes: "Report it ONLY as the failed-step line of rule 2 in Step 4"
+- removes: "On exit 1 or 2: report it ONLY as `state flip exited <code> for "<note>".`"
+- removes: "no script stderr line (`[warn]`, `[attach]` or any other)"
+- removes: "Report a failed step ONLY as `<step> exited <code> for "<note>".`"
+- removes: "no explanation of why a step failed,"
+- removes: "and wrote failure detail, commands and next steps around the report."
+- adds: "> Detail: <the failing script's last stderr line, as printed>"
+- adds: "followed by its Detail line"
+- adds: "drift warnings, the Detail line, and the relay lines."
+- adds: "followed by its `Detail:` line"

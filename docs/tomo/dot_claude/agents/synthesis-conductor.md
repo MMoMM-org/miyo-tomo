@@ -624,3 +624,82 @@ prints a run id, action ids, guard names and stderr markers
 (`evals/_lib/stubs.sh:84-85`). `scripts/run-evals.sh` is the gate; a prose
 change to Step 3c or Step 4 that reintroduces any of the deviations above
 turns it RED.
+
+## A Failed Upload Holds the Flip; Nothing Is Written Outside the Report (#205, v0.24.1)
+
+WHY Step 3d now spells out what happens after a non-zero upload exit, and why
+rule 4 of the report STRICT now covers the whole reply instead of "the Step 4
+report".
+
+### The Observed Deviation
+
+The paid baseline of 2026-10-26 ran conductor 0.24.0 against the new case
+`evals/upload-failure-reported`, whose upload stub exits 1 (partial failure)
+and prints Kado failure detail on stderr. The flip was held in all three runs
+(`2-no-state-flip-after-failed-upload` 3/3), and the failed-step line
+`upload exited 1 for "2026-10-24_1200_suggestions".` was in the blockquote
+report every time. But in 2 of 3 runs the conductor wrote text outside the
+blockquote: a preface ("Pass 2 is partly done…"), a section headed "Notes for
+you, outside the report:", the failure detail ("HTTP 503 from Kado after 4
+retries", "Service Unavailable"), the full `state-promoter.py flip` command
+line with vault path and run id, a "Run ID:" bullet, a working-file name
+(`tomo-tmp/withheld-deletes.md`) and "Next step" advice.
+`5-no-failure-detail-in-report` and `9-no-leak` failed in those runs; the clean
+run returned only the three report lines.
+
+Two sentences in the prose invited it:
+
+- 3d said "Exit 1 = partial failure (surface to user, do not retry batch)".
+  "Surface to user" reads as "explain it", and nothing said whether 3e runs
+  after it, so the model reasoned about the flip in prose and handed the owner
+  the command to finish it.
+- Rule 4 said "In the Step 4 report, NEVER add a line …". A literal model read
+  "the Step 4 report" as the blockquote, so everything before and after the
+  blockquote seemed outside the rule.
+
+### WHY a Failed Upload Skips the State Flip
+
+Owner decision (#205): after ANY non-zero exit of `upload-rendered.py` for an
+entry, 3e does not run for that entry, nothing is retried, the failure is
+reported only as the failed-step line, and the run continues with the next
+entry. A flipped source doc says "this was delivered": with instructions
+missing from the inbox, the flip would hide the gap — the next `/inbox` would
+treat the doc as done and never deliver them. Left `pending`, the doc is
+picked up again by a later run, which retries the upload. Retrying inside the
+run is not the conductor's call: the upload script already retries a
+rate-limited Kado write itself, and a second batch attempt would rewrite the
+files that did land without fixing what made the others fail.
+Exit 2 (bad input) is covered by the same rule — nothing landed or the input
+is broken, so a flip would be just as false.
+
+A failed flip (3e non-zero) keeps its meaning: it is reported only as
+`state flip exited <code> for "<note>".` and the run continues. 3e now points
+at that line instead of a bare "report", so the model has one shape for both
+failures.
+
+### WHY the Report Rule Now Covers the Whole Reply
+
+The conductor's reply is the report: the main session relays it verbatim and
+the owner reads nothing else. A rule scoped to "the Step 4 report" left a
+gap the model used — the same internals rule 2 bans inside the report came
+back as "notes" outside it. Rule 4 now says the reply as a whole is only the
+report and names the observed shapes (preface, notes, explanation of why a
+step failed, next steps, command, run id, file name), because rule 2's
+abstract ban was already in force and did not stop them.
+
+### WHY No Failure Detail
+
+ADR-11: no executor internals in user-facing text (see "WHY No Internals"
+above). The owner needs to know which step failed for which note — that is
+what the failed-step line carries, and it is enough to act: re-run Pass 2 for
+that doc. The HTTP status, the retry count and the Kado message belong to the
+script's stderr and logs, the maintainer's trace; copying them into chat
+duplicates an operation trace and reads as something the owner must fix.
+
+### What Keeps This True
+
+`evals/upload-failure-reported` (failed-step line present, no flip after the
+failed upload, no failure detail, no leak) and
+`evals/state-flip-failure-reported` (failed-step line for the flip, no failure
+detail, no leak). Both stub kits print failure bait on stderr, so a reply that
+explains the failure outside the report turns the gate RED.

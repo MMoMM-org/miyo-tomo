@@ -563,7 +563,7 @@ def test_help_documents_contract(env):
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
-                   "Typical cost: about $0.50", "hard cap $5"):
+                   "Typical cost: about $1 per full suite (5 cases x 3 runs", "hard cap $5"):
         assert needle in h, needle
     assert env.calls() == []
 

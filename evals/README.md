@@ -8,9 +8,9 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 
 | Runtime file | Cases |
 |---|---|
-| `tomo/dot_claude/agents/synthesis-conductor.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed` |
-| `tomo/dot_claude/commands/inbox.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed` |
-| `tomo/dot_claude/settings.json` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed` |
+| `tomo/dot_claude/agents/synthesis-conductor.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
+| `tomo/dot_claude/commands/inbox.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
+| `tomo/dot_claude/settings.json` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
 
 - The conductor is the subject. Every case dispatches it with the prompt from `inbox.md`'s Pass 2 dispatch, reproduced verbatim (agent name namespaced as `tomo:synthesis-conductor`).
 - `inbox.md` is listed because the cases reproduce its dispatch prompt: if that prompt changes, the cases must change with it.
@@ -37,7 +37,7 @@ Exit codes:
 
 Results land in `tomo-tmp/evals/<TS>/` (gitignored): `aggregate-result.json`, `report.html`, `verdict.txt`.
 
-Cost: about $0.60 per full suite (3 cases x 3 runs, measured); about $0.20 per case at 3 runs. The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it gives NOT GRADED.
+Cost: about $0.20 per case at 3 runs (measured on the first three cases: $0.60 for 3 cases x 3 runs), so about $1.00 for the five cases (not yet measured). The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it gives NOT GRADED.
 
 ## Reading a failure
 
@@ -52,6 +52,7 @@ Cost: about $0.60 per full suite (3 cases x 3 runs, measured); about $0.20 per c
    - `AUDIT_RESULT=ok|fail`
    - `WITHHELD_DELETES=0|1|2`
    - `WITHHELD_ATTACH=0|1`
+   - optional, `ok` when unset: `UPLOAD_RESULT=ok|fail` (upload exits 1 with its partial-failure block), `FLIP_RESULT=ok|fail` (state flip exits 1, transition rejected)
    - `. "$(dirname "$0")/../_lib/stubs.sh"` then `stage_instance`
 3. Every case carries the leak guard: copy `evals/_lib/no-leak.md` to `graders/9-no-leak.md` byte for byte. The runner refuses a case without it (exit 3). When a new internal name (script, filter, file, run-id format) can reach the user-facing report, add it to the guard's `pattern` in `evals/_lib/no-leak.md` and re-copy it into every case.
 4. A grader that only confirms a precondition (for example `3-audit-ran`) is a control. Every other grader needs a mutation that turns it red: see `evals/_mutations/README.md` for the mutations and the RED proofs.
@@ -67,5 +68,7 @@ Residual limits of the F4-AC4 graders (`5-no-write-into-scripts-schemas-config`,
 
 Known gaps:
 
-- No case drives a failed upload or state flip, so the conductor's `<step> exited <code> for "<note>".` line is unmeasured.
+- `upload-failure-reported` and `state-flip-failure-reported` (#205) measure the conductor's `<step> exited <code> for "<note>".` line. Every one of their gate graders was red in 3/3 under its mutation (`evals/_mutations/README.md`; verdicts in `docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/red-proofs.md`, section #205).
+- No grader checks that the reply is only the report. On conductor 0.24.1 the conductor still wrote a plain-language status sentence around the report in 1 of 6 runs (no internals in it, so every grader stayed green). Tracked in #207.
+- The eval's outer session sometimes adds its own sentence when it repeats the conductor's report (seen in 2 of 6 runs). A grader on the whole reply's shape therefore cannot target `last_message`: it would have to read the conductor's own return (the Agent tool_result) in the trace.
 - Subagent tool calls appearing in traces is observed (spike), not documented by Anthropic. The `3-audit-ran` control is the canary: if it goes red with no prose change, suspect the trace first.

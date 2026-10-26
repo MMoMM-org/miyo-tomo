@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.1.3
+# version: 0.1.4
 set -e
 set -o pipefail
 
@@ -44,8 +44,8 @@ Options:
                         inspect).
   -h, --help            Show this help and exit.
 
-Typical cost: about $0.50-2 per full suite (3 cases x 3 runs); hard cap $5
-(--max-cost-usd / EVAL_MAX_COST_USD).
+Typical cost: about $1 per full suite (5 cases x 3 runs; estimated, not yet
+measured); hard cap $5 (--max-cost-usd / EVAL_MAX_COST_USD).
 
 Fixed flags passed to the CLI:
   --ablation none --threshold 1.0 --runs 3 -j 2 --no-publish --trust-plugin

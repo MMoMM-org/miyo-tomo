@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.24.0
+# version: 0.24.1
 
 **Active agent: synthesis-conductor**
 
@@ -183,8 +183,10 @@ python3 scripts/upload-rendered.py \
   --inbox "<inbox_path>"
 ```
 
-Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
-do not retry batch). Exit 2 = bad input, stop.
+Exit 0 = all uploads landed: continue to 3e.
+Any non-zero exit: do NOT run 3e for this entry. Do NOT retry the upload.
+Report it ONLY as the failed-step line of rule 2 in Step 4
+(`upload exited <code> for "<note>".`). Continue with the next entry.
 
 #### 3e — Flip source doc state
 
@@ -194,8 +196,9 @@ python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <T
 
 `MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
 
-Exit 0 = success. Exit 1 = transition rejected (report and continue).
-Exit 2 = concurrency conflict (report and continue).
+Exit 0 = success. Exit 1 = transition rejected. Exit 2 = concurrency conflict.
+On exit 1 or 2: report it ONLY as `state flip exited <code> for "<note>".`
+and continue.
 
 Repeat 3a–3e for the next entry in the work list.
 
@@ -274,8 +277,10 @@ text between them. NEVER write anything after them — no file list, no summary,
 no closing sentence. If neither relay file exists, say nothing about withheld
 deletes or attachments.
 4. In the Step 4 report, NEVER add a line that is neither in the example above
-nor a relay line.
-Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, and put headings between and text after them.
+nor a relay line. Your reply is ONLY the report: NEVER write anything before
+or after it — no preface, no notes, no explanation of why a step failed, no
+next steps, no command, no run id, no file name.
+Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
 
 ## What you never do
 

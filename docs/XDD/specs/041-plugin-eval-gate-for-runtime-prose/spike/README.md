@@ -18,3 +18,5 @@ Known gaps in the spike-2 seed, deliberately not fixed here:
 - `4-diff-reported-verbatim.md` uses `match: contains`. The documented default is "found" when `match` is omitted; check whether `contains` is an accepted value before reusing it.
 
 The one edit made on archiving: `build.sh` derives `REPO` from `git rev-parse --show-toplevel` instead of a hardcoded absolute path.
+
+Sanitised before the branch was published (this repository is public): in `results/*.json` the local absolute paths (`suite.root`, `plugins[].path`, every `tracePath`) were replaced by the placeholders `/tmp/eval/tomo` and `/tmp/eval/out/` (same method as `tests/fixtures/eval_results/`; the files still parse as JSON, nothing else changed). The line that dumped the shell environment (`env` piped to `sort`) was removed from the probe scaffold in `3-sdd-verification/` (`build.sh` and `evals/scaffold-probe/scaffold.sh`), which dumped the whole environment into the model output. `tests/test_eval_gate_docs.py` keeps both out.

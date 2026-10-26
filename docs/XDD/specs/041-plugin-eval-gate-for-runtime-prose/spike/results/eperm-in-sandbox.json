@@ -6,7 +6,7 @@
   "costUsd": 0,
   "partial": false,
   "suite": {
-    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo",
+    "root": "/tmp/eval/tomo",
     "ablation": "none",
     "caseFilter": "scaffold-probe",
     "threshold": 1,
@@ -14,7 +14,7 @@
     "plugins": [
       {
         "name": "tomo",
-        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo"
+        "path": "/tmp/eval/tomo"
       }
     ]
   },

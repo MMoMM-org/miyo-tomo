@@ -6,7 +6,7 @@
   "costUsd": 0.051210885,
   "partial": false,
   "suite": {
-    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo",
+    "root": "/tmp/eval/tomo",
     "ablation": "none",
     "modelOverride": "claude-sonnet-5-5",
     "caseFilter": "audit-gates-delivery",
@@ -15,7 +15,7 @@
     "plugins": [
       {
         "name": "tomo",
-        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo"
+        "path": "/tmp/eval/tomo"
       }
     ]
   },
@@ -80,7 +80,7 @@
             "durationSeconds": 24,
             "startedAt": "2026-10-25T10:43:01.522Z",
             "error": null,
-            "tracePath": "/private/tmp/e-gxhx7X/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {

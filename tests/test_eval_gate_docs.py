@@ -177,3 +177,27 @@ def test_root_readme_links_the_eval_readme():
 def test_memory_index_lists_the_eval_readme_as_critical_documentation():
     crit = _section(REPO / "docs/ai/memory/memory.md", "Critical Documentation")
     assert "evals/README.md" in crit
+
+
+SPIKE = REPO / "docs" / "XDD" / "specs" / "041-plugin-eval-gate-for-runtime-prose" / "spike"
+LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "/private/tmp/", "/private/var/", "/tmp/claude-")
+
+
+def test_spike_archive_carries_no_local_paths_or_environment_dump():
+    """The repository is public: the archived spike keeps neither local absolute
+    paths nor the `env | sort` dump the probe scaffold once wrote."""
+    offenders: list[str] = []
+    for f in sorted(p for p in SPIKE.rglob("*") if p.is_file()):
+        text = f.read_text(errors="replace")
+        rel = f.relative_to(SPIKE).as_posix()
+        offenders += [f"{rel}: {m}" for m in LOCAL_PATH_MARKERS if m in text]
+        if re.search(r"\benv\s*\|\s*sort\b", text):
+            offenders.append(f"{rel}: env | sort")
+    assert not offenders, offenders
+
+
+def test_scripts_claude_md_lists_the_runner_and_the_verdict_reader():
+    text = (REPO / "scripts" / "CLAUDE.md").read_text()
+    for name in ("run-evals.sh", "lib/eval_verdict.py"):
+        assert name in text, f"scripts/CLAUDE.md does not name {name}"
+        assert (REPO / "scripts" / name).is_file()

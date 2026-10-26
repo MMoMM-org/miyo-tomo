@@ -6,7 +6,7 @@
   "costUsd": 0.31272929,
   "partial": false,
   "suite": {
-    "root": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo",
+    "root": "/tmp/eval/tomo",
     "ablation": "none",
     "modelOverride": "claude-sonnet-5-5",
     "caseFilter": "audit-*",
@@ -15,7 +15,7 @@
     "plugins": [
       {
         "name": "tomo",
-        "path": "/private/tmp/claude-501/-Volumes-Moon-Coding-MiYo-Tomo/b1efe0e3-c148-4664-8001-c7574f79c371/scratchpad/v2/tomo"
+        "path": "/tmp/eval/tomo"
       }
     ]
   },
@@ -80,7 +80,7 @@
             "durationSeconds": 20,
             "startedAt": "2026-10-25T10:43:36.524Z",
             "error": null,
-            "tracePath": "/private/tmp/e-tjctOe/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -118,7 +118,7 @@
             "durationSeconds": 26,
             "startedAt": "2026-10-25T10:43:36.524Z",
             "error": null,
-            "tracePath": "/private/tmp/e-Gq2i9V/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -156,7 +156,7 @@
             "durationSeconds": 27,
             "startedAt": "2026-10-25T10:43:56.644Z",
             "error": null,
-            "tracePath": "/private/tmp/e-zHCDgS/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -264,7 +264,7 @@
             "durationSeconds": 25,
             "startedAt": "2026-10-25T10:44:02.256Z",
             "error": null,
-            "tracePath": "/private/tmp/e-cNYiMv/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -318,7 +318,7 @@
             "durationSeconds": 24,
             "startedAt": "2026-10-25T10:44:23.293Z",
             "error": null,
-            "tracePath": "/private/tmp/e-wPiYPt/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {
@@ -372,7 +372,7 @@
             "durationSeconds": 32,
             "startedAt": "2026-10-25T10:44:27.630Z",
             "error": null,
-            "tracePath": "/private/tmp/e-xx204w/out/trace.jsonl",
+            "tracePath": "/tmp/eval/out/trace.jsonl",
             "skippedPaidGraders": false,
             "graders": [
               {

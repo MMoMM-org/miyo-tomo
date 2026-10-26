@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -330,3 +331,27 @@ class TestSwitchesDefaultToOn:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+WIZARD_SKILL = REPO_ROOT / "tomo" / "dot_claude" / "skills" / "tomo-trackers-wizard" / "SKILL.md"
+
+
+def _wizard_allowed_field_keys() -> set[str]:
+    text = WIZARD_SKILL.read_text(encoding="utf-8")
+    start = text.index("allowed keys per field are EXACTLY:")
+    end = text.index("Group-level", start)
+    return set(re.findall(r"`([a-z_]+)`", text[start:end]))
+
+
+class TestWizardMayWriteCuratedKeys:
+    """#38: the wizard listed its allowed keys as a closed set and never added
+    `active`, so it was told not to write the one key that switches a tracker
+    off. Every key the writer preserves as curated must be one the wizard may
+    write — `keywords` excepted, which the wizard does not curate."""
+
+    def test_every_curated_key_is_allowed(self):
+        curated = set(_writer.TRACKER_CURATED_KEYS) - {"keywords"}
+        assert curated <= _wizard_allowed_field_keys()
+
+    def test_allowed_keys_are_known_to_the_writer(self):
+        assert _wizard_allowed_field_keys() <= _writer.TRACKER_FIELD_ALLOWED

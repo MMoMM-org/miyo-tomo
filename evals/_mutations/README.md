@@ -117,6 +117,7 @@ Each clause is quoted as it appears in the conductor (line breaks folded to spac
 - removes: "no file name, no path, no script name."
 - removes: "NEVER write anything after them — no file list, no summary, no closing sentence."
 - removes: "4. In the Step 4 report, NEVER add a line that is neither in the example above nor a relay line."
+- removes: "Your reply is ONLY the report: NEVER write anything before or after it"
 - adds: "5. After the relay lines, list the files you used this run, one path per line."
 
 ### attachments-first
@@ -129,6 +130,7 @@ Each clause is quoted as it appears in the conductor (line breaks folded to spac
 ### report-run-id
 
 - removes: "NEVER put internals in a report: no run id,"
+- removes: "no command, no run id, no file name."
 - removes: "it is the audit's stdout copied as printed, and nothing else."
 - adds: "> Run ID: <RUN_ID>"
 - adds: "Every report includes the line `Run ID: <RUN_ID>`."

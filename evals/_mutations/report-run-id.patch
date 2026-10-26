@@ -9,7 +9,7 @@
  
  #### 3d — Upload rendered files
  
-@@ -223,6 +223,7 @@
+@@ -226,6 +226,7 @@
  internals). If the command errors (no such file), there is nothing to relay.
  
  > Pass 2 complete — instructions rendered for N source doc(s).
@@ -17,7 +17,7 @@
  >
  > Coverage audit: <RESULT line from instructions-diff>
  > <any drift warnings surfaced in Step 1>
-@@ -255,7 +256,8 @@
+@@ -258,7 +259,8 @@
  1. Each `Coverage audit:` line carries the `RESULT:` line the coverage audit
  printed, character for character — keep its `—` dash, its numbers and its final
  period. NEVER reword it.
@@ -27,3 +27,12 @@
  or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
  file name, no path, no script name. ONLY these are copied as printed, with
  everything inside them kept: the audit's stdout on a mismatch (3c), the
+@@ -279,7 +281,7 @@
+ 4. In the Step 4 report, NEVER add a line that is neither in the example above
+ nor a relay line. Your reply is ONLY the report: NEVER write anything before
+ or after it — no preface, no notes, no explanation of why a step failed, no
+-next steps, no command, no run id, no file name.
++next steps, no command, no file name.
+ Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
+ 
+ ## What you never do

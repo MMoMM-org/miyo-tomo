@@ -648,3 +648,15 @@ def test_verdict_line_and_file_carry_a_repo_relative_results_path(env):
     assert line.endswith(f" · {rel}"), line
     assert str(env.repo) not in line and str(env.tmp) not in line
     assert (out / "verdict.txt").read_text().strip() == line
+
+
+def test_runner_generated_not_graded_line_is_repo_relative(env):
+    """The runner's own NOT GRADED line (not the reader's) is pasted into PRs too."""
+    proc = env.run(FAKE_TOUCH="tomo/dot_claude/agents/leaked.md", expect_tree_change=True)
+    assert proc.returncode == 2
+    line = _line(proc)
+    out = Path(env.flag(env.eval_calls()[0], "--output-dir"))
+    assert line.startswith("NOT GRADED · tree changed during run")
+    assert line.endswith(f" · tomo-tmp/evals/{out.name}"), line
+    assert str(env.repo) not in line and str(env.tmp) not in line
+    assert (out / "verdict.txt").read_text().strip() == line

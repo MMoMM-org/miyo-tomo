@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Close-out"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -46,6 +46,6 @@ Proves the spec end to end and records the evidence.
   4. Validate: full pytest green; ruff clean; `scripts/run-evals.sh --help` matches the docs
   5. Success: 35/35 PRD criteria traced to executed evidence `[ref: SDD/Acceptance Criteria]`
 
-- [ ] **T5.3 Phase Validation** `[activity: validate]`
+- [x] **T5.3 Phase Validation** `[activity: validate]`
 
   - Full pytest green; ruff clean; the PR description carries the latest full-suite verdict line (the gate's own rule applies to this PR, since it changes `synthesis-conductor.md`).

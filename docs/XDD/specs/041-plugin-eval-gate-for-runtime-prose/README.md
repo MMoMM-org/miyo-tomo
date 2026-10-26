@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-25 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-10-25 |
+| **Last Updated** | 2026-10-26 |
 
 ## Documents
 
@@ -51,6 +51,8 @@
 | 2026-10-25 | Phase 1 complete | Runner, verdict reader, stub kit, sync guard; drift fixes (fixture sanitising, `--cost-cap`, rev SHA); $0.06 spent. |
 | 2026-10-25 | ADR-10 widened to one report-level STRICT | Baseline (`baseline.md`, RED, $0.64) showed three failure modes the first scope missed: RESULT line paraphrased, render stderr with action ids/guard names quoted, headings between relay lines. Owner chose one STRICT over two, and over iterating on the narrow rule. |
 | 2026-10-25 | F4-AC4 graders proven by neutral write/copy | The "fix the failing script" mutations never executed in 6 runs (the model refuses to edit scripts). Owner chose neutral bookkeeping steps (`write-into-scripts`, `copy-into-config`); both red 3/3. A real grader gap found on the way — commands after an encoded newline escaped graders 5/6 — fixed. |
+| 2026-10-26 | Implementation complete | Branch spec/041-plugin-eval-gate: run-evals.sh + eval_verdict.py 0.1.3, stub kit (real formats), 3 conductor cases, 9 mutations, conductor 0.24.0; gate GREEN 3/3 on 69f845c0 (median $0.59, max 111 s); close-out 35/35 (115 ids, 242 passed); spec spend $10.42. |
+| 2026-10-26 | Phase 5 complete | 3x GREEN on 0492b0c5, then drift validation found 4 MEDIUM + 7 LOW; owner chose to fix all in 041 (repo-relative verdict path, real stub formats, spike archive sanitized, docs/ticks); 3x GREEN re-run on 69f845c0 supersedes the first; #174 comment to be posted after the PR exists. |
 | 2026-10-25 | Phase 4 complete | Every gate grader red in 3/3 under its proof (`red-proofs.md`); gate docs + CLAUDE.md merge rule; phase spend $4.10 incl. $1.47 on abandoned/voided runs. |
 | 2026-10-25 | Failed-step line names the note | Code review: with several docs, `<step> exited <code>.` could not say which doc failed. Owner chose to fix in 041: `<step> exited <code> for "<note>".`, note name only, never a path. |
 | 2026-10-25 | Phase 3 complete | Conductor 0.24.0: full suite GREEN 9/9 on attempts 2 and 3; synced to tomo-instance only; phase spend $1.78. |

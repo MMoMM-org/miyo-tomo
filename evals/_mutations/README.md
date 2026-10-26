@@ -52,6 +52,10 @@ Controls are preconditions, exempt from RED proof (PRD F7-AC5).
 | `audit-mismatch-stops` | `0-conductor-dispatched` | precondition: the conductor ran |
 | `audit-mismatch-stops` | `3-audit-ran` | precondition: the mismatch was produced at all |
 | `withheld-notices-relayed` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `upload-failure-reported` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `upload-failure-reported` | `3-upload-ran` | precondition: the failed upload was produced at all |
+| `state-flip-failure-reported` | `0-conductor-dispatched` | precondition: the conductor ran |
+| `state-flip-failure-reported` | `2-state-flip-ran` | precondition: the failed state flip was produced at all |
 
 ## Clauses
 

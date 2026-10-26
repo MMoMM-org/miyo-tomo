@@ -1,4 +1,5 @@
-"""Shape tests for the three conductor eval cases (spec 041, part 3 — T2.1).
+"""Shape tests for the conductor eval cases (spec 041, part 3 — T2.1; the two
+failed-delivery cases, #205).
 
 Every expected notice / audit line is read from what the case's own scaffold
 stages (the kit), never retyped here. Shared helpers live in eval_kit.py.
@@ -7,6 +8,7 @@ Everything runs in tmp_path; nothing writes into the repo.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -25,6 +27,9 @@ from eval_kit import (
     js_escape,
     js_unescape,
     kit_lines,
+    render,
+    run_scaffold,
+    run_stub,
 )
 
 INBOX_CMD = REPO / "tomo" / "dot_claude" / "commands" / "inbox.md"
@@ -34,10 +39,18 @@ CASE_SETTINGS = {
     "audit-gates-delivery": {"AUDIT_RESULT": "ok", "WITHHELD_DELETES": "0", "WITHHELD_ATTACH": "0"},
     "audit-mismatch-stops": {"AUDIT_RESULT": "fail", "WITHHELD_DELETES": "0", "WITHHELD_ATTACH": "0"},
     "withheld-notices-relayed": {"AUDIT_RESULT": "ok", "WITHHELD_DELETES": "2", "WITHHELD_ATTACH": "1"},
+    "upload-failure-reported": {
+        "AUDIT_RESULT": "ok", "WITHHELD_DELETES": "0", "WITHHELD_ATTACH": "0", "UPLOAD_RESULT": "fail",
+    },
+    "state-flip-failure-reported": {
+        "AUDIT_RESULT": "ok", "WITHHELD_DELETES": "0", "WITHHELD_ATTACH": "0", "FLIP_RESULT": "fail",
+    },
 }
 GATES = "audit-gates-delivery"
 MISMATCH = "audit-mismatch-stops"
 RELAY = "withheld-notices-relayed"
+UPLOAD_FAIL = "upload-failure-reported"
+FLIP_FAIL = "state-flip-failure-reported"
 
 # Controls are preconditions, exempt from RED proof (F7-AC5); every other
 # grader in a case is a gate.
@@ -45,6 +58,8 @@ CONTROL_GRADERS = {
     GATES: {"0-conductor-dispatched"},
     MISMATCH: {"0-conductor-dispatched", "3-audit-ran"},
     RELAY: {"0-conductor-dispatched"},
+    UPLOAD_FAIL: {"0-conductor-dispatched", "3-upload-ran"},
+    FLIP_FAIL: {"0-conductor-dispatched", "2-state-flip-ran"},
 }
 
 # PRD F3–F6 grader-backed criterion → the gate grader(s) that decide it.
@@ -70,6 +85,24 @@ CRITERIA = {
     "F5-AC4": [(RELAY, "4-deletes-then-attachment-last")],
     "F5-AC5": [(GATES, "4-no-notice-when-none-withheld")],
     "F6-AC1": [(c, "9-no-leak") for c in CASE_SETTINGS],
+}
+
+# Issue #205 (owner decisions): a failed upload or state flip reaches the
+# report only as the failed-step line; no state flip after a failed upload.
+ISSUE_205 = {
+    "failed-step-line": [
+        (UPLOAD_FAIL, "1-upload-failure-line-in-report"),
+        (FLIP_FAIL, "1-state-flip-failure-line-in-report"),
+    ],
+    "no-flip-after-failed-upload": [(UPLOAD_FAIL, "2-no-state-flip-after-failed-upload")],
+    "audit-line-still-reported": [
+        (UPLOAD_FAIL, "4-audit-result-in-report"),
+        (FLIP_FAIL, "3-audit-result-in-report"),
+    ],
+    "no-failure-detail": [
+        (UPLOAD_FAIL, "5-no-failure-detail-in-report"),
+        (FLIP_FAIL, "4-no-failure-detail-in-report"),
+    ],
 }
 
 LINE_START, LINE_END = "(?:^|\\n)", "(?:\\n|$)"
@@ -174,7 +207,9 @@ def test_audit_ran_control():
 
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_graders_split_into_controls_and_mapped_gates(case):
-    mapped = {g for pairs in CRITERIA.values() for c, g in pairs if c == case}
+    mapped = {
+        g for pairs in [*CRITERIA.values(), *ISSUE_205.values()] for c, g in pairs if c == case
+    }
     assert grader_names(case) == CONTROL_GRADERS[case] | mapped
     assert not CONTROL_GRADERS[case] & mapped
     for name in grader_names(case):
@@ -366,10 +401,13 @@ def _invocation_patterns(stem: str) -> list[re.Pattern]:
         "upload-rendered": [
             grader(GATES, "1-audit-before-upload")["after"]["input_match"],
             grader(MISMATCH, "1-no-upload-after-mismatch")["input_match"],
+            grader(UPLOAD_FAIL, "3-upload-ran")["input_match"],
         ],
         "state-promoter": [
             grader(GATES, "2-audit-before-state-flip")["after"]["input_match"],
             grader(MISMATCH, "2-no-state-flip-after-mismatch")["input_match"],
+            grader(UPLOAD_FAIL, "2-no-state-flip-after-failed-upload")["input_match"],
+            grader(FLIP_FAIL, "2-state-flip-ran")["input_match"],
         ],
     }[stem]
     return [re.compile(p) for p in sites]
@@ -697,3 +735,108 @@ def test_neutral_write_mutations_trip_only_their_grader(tmp_path, name, fires):
     assert tripped == {fires}, (commands[0], tripped)
     # The step precedes the audit, so it runs on the mismatch path too.
     assert after.index(commands[0]) < after.index("python3 scripts/instructions-diff.py")
+
+
+# ── #205: a failed upload / state flip reaches the report as one line ───────
+
+FAILED_STEP = {UPLOAD_FAIL: "upload", FLIP_FAIL: "state flip"}
+FAILED_STEP_GRADER = {
+    UPLOAD_FAIL: "1-upload-failure-line-in-report",
+    FLIP_FAIL: "1-state-flip-failure-line-in-report",
+}
+AUDIT_LINE_GRADER = {UPLOAD_FAIL: "4-audit-result-in-report", FLIP_FAIL: "3-audit-result-in-report"}
+DETAIL_GRADER = {UPLOAD_FAIL: "5-no-failure-detail-in-report", FLIP_FAIL: "4-no-failure-detail-in-report"}
+NOT_A_WORD_CHAR = r"(?<![\w-])"
+
+
+def staged_note_name(tmp_path: Path, case: str) -> str:
+    """The note name of the one entry the case's own scaffold stages: the last
+    segment of its VAULT_PATH, without .md (conductor Step 4 rule 2)."""
+    ws = run_scaffold(tmp_path, case)
+    plan = json.loads((ws / "tomo-tmp" / "routing-plan.json").read_text(encoding="utf-8"))
+    (entry,) = plan["approved_suggestions"]
+    assert not any(plan[k] for k in ("approved_fan", "approved_moc_proposals", "approved_garden_audits"))
+    return entry["path"].rsplit("/", 1)[-1].removesuffix(".md")
+
+
+def failure_stderr(tmp_path: Path, case: str) -> list[str]:
+    """The stderr lines the case's failing stub prints, run as the conductor runs it."""
+    ws = run_scaffold(tmp_path, case)
+    render(ws)
+    if case == UPLOAD_FAIL:
+        r = run_stub(ws, "upload-rendered", "--rendered-dir", "tomo-tmp/rendered", "--inbox", "100 Inbox/")
+    else:
+        r = run_stub(
+            ws, "state-promoter", "flip", "100 Inbox/2026-10-24_1200_suggestions.md", "suggestions",
+            "pending-approval", "approved", "2026-10-25T00-00-00Z-c0ffee", "1792800000000",
+        )
+    assert r.returncode == 1 and r.stdout == ""
+    return [x for x in r.stderr.splitlines() if x]
+
+
+@pytest.mark.parametrize("case", list(FAILED_STEP))
+def test_failed_step_grader_is_the_conductor_line_with_the_staged_note(tmp_path, case):
+    note = staged_note_name(tmp_path, case)
+    assert note == "2026-10-24_1200_suggestions"
+    line = f'{FAILED_STEP[case]} exited 1 for "{note}".'
+    g = grader(case, FAILED_STEP_GRADER[case])
+    assert g == {
+        "type": "regex", "target": "last_message", "match": "contains",
+        "pattern": NOT_A_WORD_CHAR + js_escape(line),
+    }
+    pat = re.compile(g["pattern"])
+    assert pat.search(line)
+    assert pat.search(f"> Coverage audit: RESULT: OK — 1/1 actions reconciled.\n> {line}\n")
+    assert pat.search(f"Pass 2 complete.\n{line}")
+    for wrong in (
+        line.replace(f'"{note}"', f'"100 Inbox/{note}.md"'),  # a path, not the note name
+        line.replace(f'"{note}"', f'"{note}.md"'),
+        line.replace(f'"{note}"', note),  # unquoted
+        line.replace("exited 1", "exited 2"),
+        line.replace("exited 1", "failed"),
+        line[:-1],  # final period dropped
+        f"re-{line}",
+    ):
+        assert not pat.search(wrong), wrong
+
+
+@pytest.mark.parametrize("case", list(FAILED_STEP))
+def test_failed_case_audit_line_is_the_kit_line(tmp_path, case):
+    assert grader(case, AUDIT_LINE_GRADER[case]) == grader(GATES, "3-audit-result-in-report")
+    assert [js_unescape(grader(case, AUDIT_LINE_GRADER[case])["pattern"])] == kit_lines(tmp_path, case)["audit"]
+
+
+@pytest.mark.parametrize("case", list(FAILED_STEP))
+def test_no_failure_detail_grader_hits_every_stub_detail_line(tmp_path, case):
+    g = grader(case, DETAIL_GRADER[case])
+    assert set(g) == {"type", "target", "match", "pattern"}
+    assert (g["type"], g["target"], g["match"]) == ("regex", "last_message", "not_contains")
+    assert {grader(c, DETAIL_GRADER[c])["pattern"] for c in DETAIL_GRADER} == {g["pattern"]}
+    pat = re.compile(g["pattern"])
+    lines = failure_stderr(tmp_path, case)
+    assert lines
+    for line in lines:
+        assert pat.search(line), line
+    note = staged_note_name(tmp_path / "n", case)
+    report = (
+        "Pass 2 complete — instructions rendered for 1 source doc(s).\n\n"
+        "> Coverage audit: RESULT: OK — 1/1 actions reconciled.\n"
+        f'> {FAILED_STEP[case]} exited 1 for "{note}".\n'
+    )
+    assert not pat.search(report)
+    for other in FAILED_STEP.values():
+        assert not pat.search(f'{other} exited 1 for "{note}".')
+
+
+def test_no_state_flip_after_failed_upload_grader():
+    assert grader(UPLOAD_FAIL, "2-no-state-flip-after-failed-upload") == {
+        "type": "tool_used", "tool": "Bash", "input_match": invoked("state-promoter"), "min": 0, "max": 0,
+    }
+
+
+@pytest.mark.parametrize("case,name,stem", [
+    (UPLOAD_FAIL, "3-upload-ran", "upload-rendered"),
+    (FLIP_FAIL, "2-state-flip-ran", "state-promoter"),
+])
+def test_failing_script_ran_controls(case, name, stem):
+    assert grader(case, name) == {"type": "tool_used", "tool": "Bash", "input_match": invoked(stem)}

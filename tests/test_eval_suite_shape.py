@@ -17,6 +17,7 @@ from eval_kit import NO_LEAK, RELAYS, REPO, render, run_stub, stage
 from jsonschema import validate
 
 ROUTING_SCHEMA = REPO / "tomo" / "schemas" / "routing-plan.schema.json"
+RENDER_HELPERS = REPO / "tomo" / "scripts" / "lib" / "render_helpers.py"
 
 STUBS = (
     "run-id",
@@ -142,16 +143,34 @@ def test_no_leak_matches_observed_leaks():
         "2026-10-25T00-00-00Z-c0ffee",  # synthetic: hex run id
         "/var/folders/ab/cd/T/x",  # synthetic
         "/Volumes/Moon/vault",  # synthetic
-        "validate_destinations",
-        "suppress_moves_for_unfiled_attachments",
-        "filter_unresolvable_moc_links",
-        "filter_missing_daily_notes",
-        "filter_unappliable_relationships",
         "act-LEAK7a1",  # synthetic
     ],
 )
 def test_no_leak_matches_synthetic_leaks(text):
     assert no_leak_pattern().search(text)
+
+
+def withdrawal_guards() -> tuple[str, ...]:
+    """WITHDRAWAL_GUARDS as written in render_helpers.py, read without importing it."""
+    tree = ast.parse(RENDER_HELPERS.read_text(encoding="utf-8"))
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+        if any(isinstance(t, ast.Name) and t.id == "WITHDRAWAL_GUARDS" for t in targets):
+            return tuple(ast.literal_eval(node.value))
+    raise AssertionError("render_helpers.py defines no WITHDRAWAL_GUARDS")
+
+
+def test_no_leak_names_every_withdrawal_guard():
+    # instruction-render.py prints these names on stderr ("dropped by <guard>"),
+    # so a new or renamed guard must turn this red rather than slip past the guard.
+    guards = withdrawal_guards()
+    assert guards, "WITHDRAWAL_GUARDS is empty"
+    pat = no_leak_pattern()
+    missing = [g for g in guards if not pat.fullmatch(g)]
+    assert not missing, (
+        f"no-leak pattern lacks withdrawal guard(s) {missing}: add them to "
+        "evals/_lib/no-leak.md and every evals/*/9-no-leak.md copy"
+    )
 
 
 def test_no_leak_allows_notices_suggestions_doc_and_audit_line(tmp_path):

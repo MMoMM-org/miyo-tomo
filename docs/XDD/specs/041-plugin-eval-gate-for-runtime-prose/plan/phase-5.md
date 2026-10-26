@@ -38,7 +38,7 @@ Proves the spec end to end and records the evidence.
   4. Validate: 3/3 GREEN; median cost ≤ $2, each ≤ 5 min `[ref: PRD/KPIs Business Impact; SDD/Quality Requirements]`
   5. Success: the gate is green and stable on the code that will merge `[ref: PRD/F7-AC6]`
 
-- [ ] **T5.2 Close-out document** `[activity: documentation]`
+- [x] **T5.2 Close-out document** `[activity: documentation]`
 
   1. Prime: all PRD criteria; `tests/test_eval_*.py`, `tests/test_run_evals.py`; `red-proofs.md`; `baseline.md` `[ref: SDD/Acceptance Criteria]`
   2. Test: one `./venv/bin/python -m pytest <every node id cited>` invocation, all green; every PRD criterion row cites node ids or a recorded run; every gate grader row cites its proof and its red verdict; controls marked; open items (stub drift, hand-listed guard names, stale `tomo/skills/` mention in root `CLAUDE.md`) named

@@ -1,0 +1,15 @@
+--- a/agents/synthesis-conductor.md
++++ b/agents/synthesis-conductor.md
+@@ -184,9 +184,9 @@
+ ```
+ 
+ Exit 0 = all uploads landed: continue to 3e.
+-Any non-zero exit: do NOT run 3e for this entry. Do NOT retry the upload.
+-Report it ONLY as the failed-step line of rule 2 in Step 4
+-(`upload exited <code> for "<note>".`). Continue with the next entry.
++Any non-zero exit: still run 3e for this entry, so the doc's state reflects the
++attempt. Do NOT retry the upload. Report it ONLY as the failed-step line of
++rule 2 in Step 4 (`upload exited <code> for "<note>".`).
+ 
+ #### 3e — Flip source doc state
+ 

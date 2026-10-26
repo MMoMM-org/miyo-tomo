@@ -532,6 +532,7 @@ EXPECTED_MUTATIONS = (
     "drop-audit-line", "always-notice", "summarise-mismatch", "write-into-scripts",
     "copy-into-config", "paraphrase-relay", "files-used-after",
     "attachments-first", "report-run-id",
+    "failed-step-path", "flip-after-failed-upload", "explain-failure",
 )
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
 # forbids, so they declare `removes: none` instead of quoted removals.

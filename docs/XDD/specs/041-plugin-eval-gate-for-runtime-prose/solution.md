@@ -347,6 +347,7 @@ F6-AC1 has two collaborating owners by construction — the grader asserts, the 
 │   ├── test_run_evals.py                    # NEW C8
 │   ├── test_eval_verdict.py                 # NEW C8
 │   ├── test_eval_suite_shape.py             # NEW C8: stub kit, leak-guard pattern
+│   ├── test_eval_gate_docs.py               # NEW C8: evals/README.md, CLAUDE.md rule, scripts/CLAUDE.md and spike archive
 │   ├── test_eval_conductor_cases.py         # NEW C8: cases, grader semantics, leak-guard identity, mutations, docs
 │   ├── eval_kit.py                          # NEW C8: helpers shared by the two eval-suite test files
 │   └── test_eval_suite_not_synced.py        # NEW C8: install/update never deliver evals/
@@ -812,57 +813,57 @@ Not applicable beyond the CLI. The verdict line is the UX: one line, starts with
 ## Acceptance Criteria
 
 **Runner — F1**
-- [ ] WHEN `scripts/run-evals.sh` runs with no arguments, THE SYSTEM SHALL evaluate every case in `evals/` against `agents/`, `skills/`, `commands/` copied from the working tree. (F1-AC1)
-- [ ] THE SYSTEM SHALL leave `git status --porcelain`, the tracked-file hash, every Tomo instance and `~/.tomo` unchanged by a run; IF the post-run check differs, THEN THE SYSTEM SHALL report NOT GRADED and list the paths. (F1-AC2)
-- [ ] WHEN a run finishes, THE SYSTEM SHALL write `aggregate-result.json`, `report.html` and `verdict.txt` to `tomo-tmp/evals/<UTC timestamp>/` and print that path in the verdict line. (F1-AC3)
-- [ ] WHEN `install-tomo.sh` or `update-tomo.sh` populates an instance, THE SYSTEM SHALL copy no file from `evals/`. (F1-AC4)
-- [ ] IF `claude --version` is below 2.1.269, THEN THE SYSTEM SHALL exit 3 before invoking the eval, naming the required version. (F1-AC5)
-- [ ] WHEN `--help` is given, THE SYSTEM SHALL print what is run, the approximate cost, the results location and the meaning of exit codes 0–3. (F1-AC6)
+- [x] WHEN `scripts/run-evals.sh` runs with no arguments, THE SYSTEM SHALL evaluate every case in `evals/` against `agents/`, `skills/`, `commands/` copied from the working tree. (F1-AC1)
+- [x] THE SYSTEM SHALL leave `git status --porcelain`, the tracked-file hash, every Tomo instance and `~/.tomo` unchanged by a run; IF the post-run check differs, THEN THE SYSTEM SHALL report NOT GRADED and list the paths. (F1-AC2)
+- [x] WHEN a run finishes, THE SYSTEM SHALL write `aggregate-result.json`, `report.html` and `verdict.txt` to `tomo-tmp/evals/<UTC timestamp>/` and print that path in the verdict line. (F1-AC3)
+- [x] WHEN `install-tomo.sh` or `update-tomo.sh` populates an instance, THE SYSTEM SHALL copy no file from `evals/`. (F1-AC4)
+- [x] IF `claude --version` is below 2.1.269, THEN THE SYSTEM SHALL exit 3 before invoking the eval, naming the required version. (F1-AC5)
+- [x] WHEN `--help` is given, THE SYSTEM SHALL print what is run, the approximate cost, the results location and the meaning of exit codes 0–3. (F1-AC6)
 
 **Verdict — F2**
-- [ ] WHEN every grader passed in every run, THE SYSTEM SHALL print `GREEN …` with cost and exit 0. (F2-AC1)
-- [ ] WHEN any grader failed in any graded run, THE SYSTEM SHALL print `RED …`, name each (case, grader, run) on stderr, and exit 1. (F2-AC2)
-- [ ] IF the cost cap is reached, THEN THE SYSTEM SHALL start no further run and exit 2 with `NOT GRADED · cost cap …`. (F2-AC3)
-- [ ] WHERE `--max-cost-usd` or `EVAL_MAX_COST_USD` is given, THE SYSTEM SHALL apply that cap to this invocation only. (F2-AC4)
-- [ ] IF any run ended on an API error, rate limit, scaffold failure or harness error, THEN THE SYSTEM SHALL exit 2 with `NOT GRADED` and the reason, regardless of other runs. (F2-AC5)
-- [ ] THE SYSTEM SHALL pass `--model` with the value of `model` in `tomo/dot_claude/settings.json` and SHALL NOT override any agent's frontmatter model. (F2-AC6)
+- [x] WHEN every grader passed in every run, THE SYSTEM SHALL print `GREEN …` with cost and exit 0. (F2-AC1)
+- [x] WHEN any grader failed in any graded run, THE SYSTEM SHALL print `RED …`, name each (case, grader, run) on stderr, and exit 1. (F2-AC2)
+- [x] IF the cost cap is reached, THEN THE SYSTEM SHALL start no further run and exit 2 with `NOT GRADED · cost cap …`. (F2-AC3)
+- [x] WHERE `--max-cost-usd` or `EVAL_MAX_COST_USD` is given, THE SYSTEM SHALL apply that cap to this invocation only. (F2-AC4)
+- [x] IF any run ended on an API error, rate limit, scaffold failure or harness error, THEN THE SYSTEM SHALL exit 2 with `NOT GRADED` and the reason, regardless of other runs. (F2-AC5)
+- [x] THE SYSTEM SHALL pass `--model` with the value of `model` in `tomo/dot_claude/settings.json` and SHALL NOT override any agent's frontmatter model. (F2-AC6)
 
 **Case audit-gates-delivery — F3**
-- [ ] WHEN the audit stub reports OK, THE SYSTEM SHALL record the `instructions-diff.py` Bash call before the `upload-rendered.py` call. (F3-AC1)
-- [ ] WHEN the audit stub reports OK, THE SYSTEM SHALL record the `instructions-diff.py` call before the `state-promoter.py` call. (F3-AC2)
-- [ ] WHEN the conductor finishes, THE SYSTEM SHALL find `RESULT: OK — 1/1 actions reconciled.` in the final message. (F3-AC3)
+- [x] WHEN the audit stub reports OK, THE SYSTEM SHALL record the `instructions-diff.py` Bash call before the `upload-rendered.py` call. (F3-AC1)
+- [x] WHEN the audit stub reports OK, THE SYSTEM SHALL record the `instructions-diff.py` call before the `state-promoter.py` call. (F3-AC2)
+- [x] WHEN the conductor finishes, THE SYSTEM SHALL find `RESULT: OK — 1/1 actions reconciled.` in the final message. (F3-AC3)
 
 **Case audit-mismatch-stops — F4**
-- [ ] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero `upload-rendered.py` calls. (F4-AC1)
-- [ ] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero `state-promoter.py` calls. (F4-AC2)
-- [ ] WHEN the audit stub exits 1, THE SYSTEM SHALL find the stub's mismatch line and `RESULT: FAIL — count or coverage mismatch above.` unchanged in the final message. (F4-AC3)
-- [ ] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero Bash calls that write into `scripts/`, `schemas/` or `config/`. (F4-AC4)
+- [x] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero `upload-rendered.py` calls. (F4-AC1)
+- [x] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero `state-promoter.py` calls. (F4-AC2)
+- [x] WHEN the audit stub exits 1, THE SYSTEM SHALL find the stub's mismatch line and `RESULT: FAIL — count or coverage mismatch above.` unchanged in the final message. (F4-AC3)
+- [x] WHEN the audit stub exits 1, THE SYSTEM SHALL record zero Bash calls that write into `scripts/`, `schemas/` or `config/`. (F4-AC4)
 
 **Case withheld-notices-relayed — F5**
-- [ ] WHEN one or more deletes were withheld, THE SYSTEM SHALL find each `- ⚠️ **Not deleted:** …` line, remedy included, as an exact substring of the final message. (F5-AC1)
-- [ ] WHEN two deletes were withheld, THE SYSTEM SHALL find both lines exactly, each on its own line (anchored at line start and end) with its leading `- `. (F5-AC2)
-- [ ] WHEN an attachment was withheld, THE SYSTEM SHALL find its `- ⚠️ **Attachment not filed:** …` line exactly. (F5-AC3)
-- [ ] WHEN both kinds were withheld, THE SYSTEM SHALL find delete 1, delete 2 and the attachment line consecutively in that order, and nothing but whitespace after them. (F5-AC4)
-- [ ] WHEN nothing was withheld, THE SYSTEM SHALL find no `⚠️ **Not deleted:**` or `⚠️ **Attachment not filed:**` in the final message. (F5-AC5)
+- [x] WHEN one or more deletes were withheld, THE SYSTEM SHALL find each `- ⚠️ **Not deleted:** …` line, remedy included, as an exact substring of the final message. (F5-AC1)
+- [x] WHEN two deletes were withheld, THE SYSTEM SHALL find both lines exactly, each on its own line (anchored at line start and end) with its leading `- `. (F5-AC2)
+- [x] WHEN an attachment was withheld, THE SYSTEM SHALL find its `- ⚠️ **Attachment not filed:** …` line exactly. (F5-AC3)
+- [x] WHEN both kinds were withheld, THE SYSTEM SHALL find delete 1, delete 2 and the attachment line consecutively in that order, and nothing but whitespace after them. (F5-AC4)
+- [x] WHEN nothing was withheld, THE SYSTEM SHALL find no `⚠️ **Not deleted:**` or `⚠️ **Attachment not filed:**` in the final message. (F5-AC5)
 
 **Leak guard — F6**
-- [ ] THE SYSTEM SHALL fail any case whose final message matches the canonical leak pattern (run-id format, `run_id`, `act-…`, guard and function names, `tomo-tmp/`, working-file names, absolute paths). (F6-AC1)
-- [ ] IF a case lacks `graders/9-no-leak.md` byte-identical to `evals/_lib/no-leak.md`, THEN THE SYSTEM SHALL exit 3 before spending, and the shape test SHALL fail. (F6-AC2)
+- [x] THE SYSTEM SHALL fail any case whose final message matches the canonical leak pattern (run-id format, `run_id`, `act-…`, guard and function names, `tomo-tmp/`, working-file names, absolute paths). (F6-AC1)
+- [x] IF a case lacks `graders/9-no-leak.md` byte-identical to `evals/_lib/no-leak.md`, THEN THE SYSTEM SHALL exit 3 before spending, and the shape test SHALL fail. (F6-AC2)
 
 **Gate documentation and proof — F7**
-- [ ] THE SYSTEM SHALL list in `evals/README.md` every covered runtime file and the cases covering it. (F7-AC1)
-- [ ] THE SYSTEM SHALL state in root `CLAUDE.md` Rules that a change to a listed file requires a full-suite GREEN before merge, with the verdict line in the PR. (F7-AC2)
-- [ ] WHILE a change touches no listed file, THE SYSTEM SHALL impose no run requirement. (F7-AC3)
-- [ ] WHEN the spec closes, THE SYSTEM SHALL have a close-out row per gate grader: mutation or rev, the RED verdict line, and the GREEN verdict on `main`. (F7-AC4)
-- [ ] THE SYSTEM SHALL mark control graders (`0-conductor-dispatched`, `audit-ran`) as controls in `_mutations/README.md` and the close-out, exempt from RED proof. (F7-AC5)
-- [ ] WHEN the spec closes, THE SYSTEM SHALL show three consecutive full-suite GREEN verdicts on the merge candidate (the branch head, clean tree). (F7-AC6)
+- [x] THE SYSTEM SHALL list in `evals/README.md` every covered runtime file and the cases covering it. (F7-AC1)
+- [x] THE SYSTEM SHALL state in root `CLAUDE.md` Rules that a change to a listed file requires a full-suite GREEN before merge, with the verdict line in the PR. (F7-AC2)
+- [x] WHILE a change touches no listed file, THE SYSTEM SHALL impose no run requirement. (F7-AC3)
+- [x] WHEN the spec closes, THE SYSTEM SHALL have a close-out row per gate grader: mutation or rev, the RED verdict line, and the GREEN verdict on `main`. (F7-AC4)
+- [x] THE SYSTEM SHALL mark control graders (`0-conductor-dispatched`, `audit-ran`) as controls in `_mutations/README.md` and the close-out, exempt from RED proof. (F7-AC5)
+- [x] WHEN the spec closes, THE SYSTEM SHALL show three consecutive full-suite GREEN verdicts on the merge candidate (the branch head, clean tree). (F7-AC6)
 
 **Single case — F8**
-- [ ] WHERE `--case` is given, THE SYSTEM SHALL run only matching cases and mark the verdict `PARTIAL SUITE — does not satisfy the merge rule`. (F8-AC1)
-- [ ] IF `--case` matches no case, THEN THE SYSTEM SHALL exit 3 before spending and list the existing cases. (F8-AC2)
+- [x] WHERE `--case` is given, THE SYSTEM SHALL run only matching cases and mark the verdict `PARTIAL SUITE — does not satisfy the merge rule`. (F8-AC1)
+- [x] IF `--case` matches no case, THEN THE SYSTEM SHALL exit 3 before spending and list the existing cases. (F8-AC2)
 
 **Compare — F9 (Could)**
-- [ ] WHEN `eval_verdict.py --compare a b` runs, THE SYSTEM SHALL print each (case, grader) whose pass rate differs between the two results. (F9-AC1)
+- [x] WHEN `eval_verdict.py --compare a b` runs, THE SYSTEM SHALL print each (case, grader) whose pass rate differs between the two results. (F9-AC1)
 
 ## Risks and Technical Debt
 

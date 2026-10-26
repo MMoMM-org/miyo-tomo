@@ -211,68 +211,68 @@ read the report to know it was not one.
   eval suite against the current runtime prose, so that checking a prose edit
   costs no setup and cannot damage anything.
 - **Acceptance Criteria:**
-  - [ ] Given a clean checkout, When the maintainer runs the eval command with no arguments, Then every case in the suite runs against the agent, skill and command files currently in the working tree
-  - [ ] Given the command has run, When the working tree, the runtime source tree, any Tomo instance and `~/.tomo` are compared with their state before the run, Then none of them has changed
-  - [ ] Given the command has run, When the maintainer looks for the results, Then they are in a timestamped directory under a gitignored location, and the command printed that path
-  - [ ] Given `install-tomo.sh` or `update-tomo.sh` runs after the suite exists, When it copies the runtime tree into an instance, Then no file of the eval suite reaches the instance
-  - [ ] Given the installed Claude Code is older than the version plugin evals require, When the command runs, Then it stops before any paid run and names the required version
-  - [ ] Given the maintainer asks for help, When they run the command with `--help`, Then it describes what it runs, what it costs roughly, where results go and what each exit status means
+  - [x] Given a clean checkout, When the maintainer runs the eval command with no arguments, Then every case in the suite runs against the agent, skill and command files currently in the working tree
+  - [x] Given the command has run, When the working tree, the runtime source tree, any Tomo instance and `~/.tomo` are compared with their state before the run, Then none of them has changed
+  - [x] Given the command has run, When the maintainer looks for the results, Then they are in a timestamped directory under a gitignored location, and the command printed that path
+  - [x] Given `install-tomo.sh` or `update-tomo.sh` runs after the suite exists, When it copies the runtime tree into an instance, Then no file of the eval suite reaches the instance
+  - [x] Given the installed Claude Code is older than the version plugin evals require, When the command runs, Then it stops before any paid run and names the required version
+  - [x] Given the maintainer asks for help, When they run the command with `--help`, Then it describes what it runs, what it costs roughly, where results go and what each exit status means
 
 #### Feature 2: A verdict that means what it says
 
 - **User Story:** As the maintainer, I want the command's result to be green only when every case held in every run, so that a green result is something I can merge on.
 - **Acceptance Criteria:**
-  - [ ] Given every grader of every case passed in all three runs, When the suite finishes, Then the command exits successfully and prints a green verdict with the total cost
-  - [ ] Given one grader failed in one run of one case, When the suite finishes, Then the command exits non-successfully and names the case and the grader that failed
-  - [ ] Given the suite would exceed the cost cap, When the cap is reached, Then no further run starts, and the command exits non-successfully, reporting a partial run that is not a pass
-  - [ ] Given the maintainer raises the cost cap for one invocation, When the suite runs, Then the raised cap applies to that invocation only
-  - [ ] Given a run ends on an API error or a rate limit, When the suite finishes, Then the command exits non-successfully and says the run could not be graded, distinct from a grader failure
-  - [ ] Given the suite runs, When the main session's model is chosen, Then it is the same pinned model on every run, and each subagent runs on the model its own definition names, as in production
+  - [x] Given every grader of every case passed in all three runs, When the suite finishes, Then the command exits successfully and prints a green verdict with the total cost
+  - [x] Given one grader failed in one run of one case, When the suite finishes, Then the command exits non-successfully and names the case and the grader that failed
+  - [x] Given the suite would exceed the cost cap, When the cap is reached, Then no further run starts, and the command exits non-successfully, reporting a partial run that is not a pass
+  - [x] Given the maintainer raises the cost cap for one invocation, When the suite runs, Then the raised cap applies to that invocation only
+  - [x] Given a run ends on an API error or a rate limit, When the suite finishes, Then the command exits non-successfully and says the run could not be graded, distinct from a grader failure
+  - [x] Given the suite runs, When the main session's model is chosen, Then it is the same pinned model on every run, and each subagent runs on the model its own definition names, as in production
 
 #### Feature 3: Case — the coverage audit gates delivery
 
 - **User Story:** As the maintainer, I want a case that fails if the synthesis conductor delivers anything before its coverage audit has run, so that the `4350ddd` defect cannot return.
 - **Acceptance Criteria:**
-  - [ ] Given an approved document whose coverage audit passes, When the conductor processes it, Then the audit runs before the rendered instructions are uploaded
-  - [ ] Given the same run, When the conductor processes it, Then the audit runs before the document's state is flipped
-  - [ ] Given the same run, When the conductor finishes, Then its report carries the audit's result line
+  - [x] Given an approved document whose coverage audit passes, When the conductor processes it, Then the audit runs before the rendered instructions are uploaded
+  - [x] Given the same run, When the conductor processes it, Then the audit runs before the document's state is flipped
+  - [x] Given the same run, When the conductor finishes, Then its report carries the audit's result line
 
 #### Feature 4: Case — a coverage mismatch stops the conductor
 
 - **User Story:** As the maintainer, I want a case that fails if the conductor delivers anything after a failed coverage audit, so that the `STRICT` stop is checked rather than assumed.
 - **Acceptance Criteria:**
-  - [ ] Given an approved document whose coverage audit reports a mismatch, When the conductor processes it, Then no rendered instructions are uploaded
-  - [ ] Given the same run, When the conductor processes it, Then the document's state is not flipped
-  - [ ] Given the same run, When the conductor finishes, Then the audit's mismatch output reaches the final message unchanged
-  - [ ] Given the same run, When the conductor stops, Then it has not created or edited any script, schema or configuration file
+  - [x] Given an approved document whose coverage audit reports a mismatch, When the conductor processes it, Then no rendered instructions are uploaded
+  - [x] Given the same run, When the conductor processes it, Then the document's state is not flipped
+  - [x] Given the same run, When the conductor finishes, Then the audit's mismatch output reaches the final message unchanged
+  - [x] Given the same run, When the conductor stops, Then it has not created or edited any script, schema or configuration file
 
 #### Feature 5: Case — withheld notices reach the user unchanged
 
 - **User Story:** As the vault owner's proxy (the maintainer), I want a case that fails if a withheld-delete or withheld-attachment notice is missing from the final message or altered, so that the owner, who reads the shell and not the suggestions document, always learns what was held back and what to do about it.
 - **Acceptance Criteria:**
-  - [ ] Given a run in which one delete was withheld, When the conductor finishes, Then the notice line appears in the final message character for character, including its remedy
-  - [ ] Given a run in which two deletes were withheld, When the conductor finishes, Then both notice lines appear, each character for character, and neither is merged, counted or put in a table
-  - [ ] Given a run in which an attachment was left in the inbox, When the conductor finishes, Then its notice line appears in the final message character for character
-  - [ ] Given a run with both a withheld delete and a withheld attachment, When the conductor finishes, Then the delete notices come before the attachment notices, and both are the last lines of the report
-  - [ ] Given a run in which nothing was withheld, When the conductor finishes, Then the final message contains no withheld notice
+  - [x] Given a run in which one delete was withheld, When the conductor finishes, Then the notice line appears in the final message character for character, including its remedy
+  - [x] Given a run in which two deletes were withheld, When the conductor finishes, Then both notice lines appear, each character for character, and neither is merged, counted or put in a table
+  - [x] Given a run in which an attachment was left in the inbox, When the conductor finishes, Then its notice line appears in the final message character for character
+  - [x] Given a run with both a withheld delete and a withheld attachment, When the conductor finishes, Then the delete notices come before the attachment notices, and both are the last lines of the report
+  - [x] Given a run in which nothing was withheld, When the conductor finishes, Then the final message contains no withheld notice
 
 #### Feature 6: Every case guards against internal leaks
 
 - **User Story:** As the maintainer, I want every case to fail if internal identifiers reach the final message, so that the `836602c` defect class is checked on every run at no extra cost.
 - **Acceptance Criteria:**
-  - [ ] Given any case in the suite, When its run finishes, Then the final message contains no run id, no action id, no internal guard or function name, no name of an internal working file and no absolute path (v1.1, owner 2026-10-25: the SDD spike observed the conductor writing a run id, absolute paths and working-file names into its report)
-  - [ ] Given a case is added to the suite, When it is reviewed, Then it carries the same leak guard, and a case without it is not part of the gate
+  - [x] Given any case in the suite, When its run finishes, Then the final message contains no run id, no action id, no internal guard or function name, no name of an internal working file and no absolute path (v1.1, owner 2026-10-25: the SDD spike observed the conductor writing a run id, absolute paths and working-file names into its report)
+  - [x] Given a case is added to the suite, When it is reviewed, Then it carries the same leak guard, and a case without it is not part of the gate
 
 #### Feature 7: The gate is documented and its graders are proven
 
 - **User Story:** As the coding session, I want to know which runtime files the suite covers, when I must run it, and that every gate check in it has been seen failing, so that "the suite is green" is evidence and not a formality.
 - **Acceptance Criteria:**
-  - [ ] Given the suite, When anyone asks which runtime files it covers, Then one list in the suite names every covered file and the cases that cover it
-  - [ ] Given a change to a covered file, When the coding session reads the repo's rules, Then a rule tells it to run the whole suite before merge and to record the verdict, the cost and the results path in the PR
-  - [ ] Given a change only to files that are not covered, When the coding session reads the rule, Then the rule does not require a run
-  - [ ] Given every gate grader in the suite, When the spec closes, Then each has been shown failing against a named mutation — the pre-fix commit where one exists, otherwise a deliberate change to the prose or the stub — and the mutation and its failing result are recorded in the close-out
-  - [ ] Given a grader that only confirms a precondition (for example, that the audit ran at all), When the close-out lists the graders, Then it is marked as a control and exempt from the failing-proof requirement
-  - [ ] Given the suite on the merge candidate (the branch head with this spec complete, clean tree), When it is run three consecutive times, Then all three runs are green
+  - [x] Given the suite, When anyone asks which runtime files it covers, Then one list in the suite names every covered file and the cases that cover it
+  - [x] Given a change to a covered file, When the coding session reads the repo's rules, Then a rule tells it to run the whole suite before merge and to record the verdict, the cost and the results path in the PR
+  - [x] Given a change only to files that are not covered, When the coding session reads the rule, Then the rule does not require a run
+  - [x] Given every gate grader in the suite, When the spec closes, Then each has been shown failing against a named mutation — the pre-fix commit where one exists, otherwise a deliberate change to the prose or the stub — and the mutation and its failing result are recorded in the close-out
+  - [x] Given a grader that only confirms a precondition (for example, that the audit ran at all), When the close-out lists the graders, Then it is marked as a control and exempt from the failing-proof requirement
+  - [x] Given the suite on the merge candidate (the branch head with this spec complete, clean tree), When it is run three consecutive times, Then all three runs are green
 
 ### Should Have Features
 
@@ -280,8 +280,8 @@ read the report to know it was not one.
 
 - **User Story:** As the maintainer, I want to run a single named case while investigating a red result, so that I do not pay for the whole suite on every attempt.
 - **Acceptance Criteria:**
-  - [ ] Given a case name, When the maintainer runs the command for that case, Then only that case runs, and the verdict states that it is a partial suite that does not satisfy the merge rule
-  - [ ] Given a case name that does not exist, When the command runs, Then it stops before any paid run and lists the existing cases
+  - [x] Given a case name, When the maintainer runs the command for that case, Then only that case runs, and the verdict states that it is a partial suite that does not satisfy the merge rule
+  - [x] Given a case name that does not exist, When the command runs, Then it stops before any paid run and lists the existing cases
 
 ### Could Have Features
 
@@ -289,7 +289,7 @@ read the report to know it was not one.
 
 - **User Story:** As the maintainer, I want to compare two result directories, so that I can see which graders changed between a red and a green run.
 - **Acceptance Criteria:**
-  - [ ] Given two result directories, When the maintainer compares them, Then the output lists every case and grader whose outcome differs between them
+  - [x] Given two result directories, When the maintainer compares them, Then the output lists every case and grader whose outcome differs between them
 
 ### Won't Have (This Phase)
 

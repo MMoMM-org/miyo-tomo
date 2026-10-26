@@ -9,7 +9,7 @@ applies. A proof counts only when its expected graders are red in every run.
 Run a proof:
 
 - mutation, one case: `scripts/run-evals.sh --mutation <name> --case <case>`
-- `report-run-id` is proven once per case: run it without `--case`
+- `report-run-id` is proven for all three cases in one invocation: `scripts/run-evals.sh --mutation report-run-id --case '*'` (the verdict is marked PARTIAL SUITE, as for every proof)
 - rev: `scripts/run-evals.sh --rev 4350ddd^ --case 'audit-*'`
 
 Every patch also removes or neutralises each clause of the conductor that

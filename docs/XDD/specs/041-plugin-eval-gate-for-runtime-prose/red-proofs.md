@@ -2,6 +2,8 @@
 
 Measured 2026-10-25, Claude Code 2.1.310, against the post-Phase-3 conductor (0.24.0) or the pre-fix revision `4350ddd^` (= `836602c827af`). Each proof is one `scripts/run-evals.sh` invocation, `--runs 3`, clean tree. A proof counts only if its grader is red in **every** run (plan Phase 4). Patches and the clause each removes: `evals/_mutations/README.md`.
 
+`report-run-id` is the one proof that ran all three cases in a single invocation. `PARTIAL SUITE` is printed only when `--case` is given (`scripts/run-evals.sh`), so that invocation had a `--case` glob matching all three cases, most likely `--case '*'`; the exact glob was not recorded. `evals/_mutations/README.md` first said to run it without `--case`; it now gives `--case '*'`, which is what the verdict line shows.
+
 ## Gate grader → proof
 
 | Case | Gate grader | PRD | Proof | Red |

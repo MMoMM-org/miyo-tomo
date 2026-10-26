@@ -451,6 +451,7 @@ Inputs (shell variables set by the case scaffold before sourcing):
 Effects (in the eval workspace, cwd):
   scripts/{run-id,suggestion-parser,instruction-render,instructions-diff,upload-rendered,state-promoter}.py
     each appends its own name + argv to tomo-tmp/calls.log, prints the real script's output format
+    on the real stream (render and upload report on stderr; a successful state flip prints nothing)
   tomo-tmp/routing-plan.json   schema-valid (action, timestamp, inbox_path + 4 buckets), one approved suggestions doc
   tomo-tmp/inbox-cache/<doc>.md, tomo-tmp/suggestions-doc.json, config/vault-config.yaml, state/inbox-cost-history.jsonl
   the relay files are written BY the instruction-render stub (as production does), not pre-staged;

@@ -184,15 +184,117 @@ def test_stage_instance_refuses_invalid_parameters(tmp_path, kwargs, var):
     assert not (tmp_path / "scripts").exists()
 
 
-def test_untested_stub_stdout_lines(tmp_path):
+def test_suggestion_parser_stub_stdout_line(tmp_path):
     stage(tmp_path)
-    assert run_stub(tmp_path, "upload-rendered").stdout == (
-        "upload-rendered: uploaded=1 failed=0\n"
-    )
-    assert run_stub(tmp_path, "state-promoter").stdout == (
-        "state-promoter: flipped pending-approval -> approved\n"
-    )
     assert run_stub(tmp_path, "suggestion-parser").stdout == (
         '{"suggestions": [{"id": "s1", "kind": "create_atomic_note", "title": "Example"}]}\n'
     )
-    assert render(tmp_path).stdout == "instruction-render: rendered=1 skipped=0\n"
+
+
+# The three stubs below print what the real script prints on success. Each
+# expected line is built from the real script's f-string fragments, copied
+# here as they appear in the source; the test first asserts every fragment is
+# still in that source, so a change to the real format turns this test red.
+SCRIPTS = REPO / "tomo" / "scripts"
+
+
+def real_format(script: str, *fragments: str) -> re.Pattern:
+    """Assert each f-string fragment is in tomo/scripts/<script>; return a
+    regex for the line(s) they print, with every {field} matching any text."""
+    source = (SCRIPTS / script).read_text(encoding="utf-8")
+    for frag in fragments:
+        assert f'f"{frag}"' in source, f"{script} no longer prints {frag!r}"
+    template = "".join(fragments).replace("\\n", "\n")
+    parts = re.split(r"\{[^}]*\}", template)
+    return re.compile(".+".join(re.escape(p) for p in parts))
+
+
+def render_upload(tmp_path):
+    stage(tmp_path)
+    render(tmp_path)
+    return run_stub(
+        tmp_path, "upload-rendered", "--rendered-dir", "tomo-tmp/rendered",
+        "--inbox", "100 Inbox/",
+    )
+
+
+def test_render_stub_prints_real_summary_on_stderr(tmp_path):
+    stage(tmp_path)
+    r = render(tmp_path)
+    assert r.returncode == 0
+    assert r.stdout == ""
+    # instruction-render.py:1232-1241 — two print calls: a summary, three paths
+    summary = real_format(
+        "instruction-render.py",
+        "instruction-render: rendered={len(manifest)} actions={len(actions)} ",
+        "errors={errors} out={out_dir}",
+    )
+    paths = real_format(
+        "instruction-render.py",
+        "  manifest={manifest_path}\\n",
+        "  instructions.json={instructions_json_path}\\n",
+        "  instructions.md={instructions_md_path}",
+    )
+    tail = r.stderr.splitlines()[-4:]
+    assert summary.fullmatch(tail[0])
+    assert paths.fullmatch("\n".join(tail[1:]))
+    assert tail == [
+        "instruction-render: rendered=1 actions=1 errors=0 out=tomo-tmp/rendered",
+        "  manifest=tomo-tmp/rendered/manifest.json",
+        "  instructions.json=tomo-tmp/rendered/instructions.json",
+        "  instructions.md=tomo-tmp/rendered/instructions.md",
+    ]
+    for line in tail[1:]:
+        assert (tmp_path / line.split("=", 1)[1]).is_file(), line
+
+
+def test_upload_stub_prints_real_success_lines_on_stderr(tmp_path):
+    r = render_upload(tmp_path)
+    assert r.returncode == 0
+    assert r.stdout == ""
+    # upload-rendered.py:207,215,224 (per-file lines), :241-249 (summary)
+    note = real_format("upload-rendered.py", "  [note] {target} ({len(body)} chars)")
+    md = real_format("upload-rendered.py", "  [note] {md_target} ({len(md_body)} chars)")
+    js = real_format("upload-rendered.py", "  [file] {json_target} ({len(json_bytes)} bytes)")
+    summary = real_format(
+        "upload-rendered.py",
+        "upload-rendered: {notes_written} note(s) + 2 instruction artefact(s) ",
+        "written under {args.inbox}",
+    )
+    arrow = real_format("upload-rendered.py", "  ↳ {timestamp}_instructions.md / .json")
+    lines = r.stderr.splitlines()
+    for pattern, line in zip((note, md, js, summary, arrow), lines, strict=True):
+        assert pattern.fullmatch(line), line
+    rendered = tmp_path / "tomo-tmp" / "rendered"
+    assert lines == [
+        f"  [note] 100 Inbox/2026-10-24_0000_example.md "
+        f"({len((rendered / '2026-10-24_0000_example.md').read_text())} chars)",
+        f"  [note] 100 Inbox/2026-10-24_0000_instructions.md "
+        f"({len((rendered / 'instructions.md').read_text())} chars)",
+        f"  [file] 100 Inbox/2026-10-24_0000_instructions.json "
+        f"({len((rendered / 'instructions.json').read_bytes())} bytes)",
+        "upload-rendered: 1 note(s) + 2 instruction artefact(s) written under 100 Inbox/",
+        "  ↳ 2026-10-24_0000_instructions.md / .json",
+    ]
+
+
+def test_upload_stub_without_render_fails_like_the_real_script(tmp_path):
+    stage(tmp_path)
+    r = run_stub(tmp_path, "upload-rendered", "--rendered-dir", "tomo-tmp/rendered")
+    assert r.returncode == 2
+    # upload-rendered.py:153
+    fmt = real_format("upload-rendered.py", "error: required file missing: {required}")
+    assert fmt.fullmatch(r.stderr.rstrip("\n"))
+
+
+def test_state_promoter_stub_flip_is_silent_like_the_real_script(tmp_path):
+    stage(tmp_path)
+    # state-promoter.py:_cli_flip — success returns 0 and prints nothing.
+    source = (SCRIPTS / "state-promoter.py").read_text(encoding="utf-8")
+    flip = source.split("def _cli_flip", 1)[1].split("\ndef ", 1)[0]
+    assert "return 0 if success else 1" in flip
+    r = run_stub(
+        tmp_path, "state-promoter", "flip", "100 Inbox/2026-10-24_1200_suggestions.md",
+        "suggestions", "approved", "applied", "rid", "1792800000000",
+    )
+    assert (r.returncode, r.stdout, r.stderr) == (0, "", "")

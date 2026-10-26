@@ -18,6 +18,13 @@
 #                        (withheld_attachment_remedy)
 #   relay files          tomo/scripts/instruction-render.py:270-271,981,1005 (next to the
 #                        output dir; unlinked when empty, :317-320)
+#   render success       tomo/scripts/instruction-render.py:1232-1241 (stderr; stdout empty);
+#                        files: manifest.json :657, instructions.json :1171,
+#                        instructions.md :1209, note <YYYY-MM-DD_HHMM>_<slug>.md :463,607
+#   upload success       tomo/scripts/upload-rendered.py:207,215,224 (per-file lines),
+#                        :241-249 (summary), all stderr, stdout empty; missing input
+#                        :150-154 exit 2; timestamp from `generated` :99-113,170
+#   state flip success   tomo/scripts/state-promoter.py _cli_flip: exit 0, prints nothing
 #   routing plan         tomo/schemas/routing-plan.schema.json
 # The conductor's argv comes from tomo/dot_claude/agents/synthesis-conductor.md
 # Steps 1-3; the stubs accept any argv and only log it.
@@ -73,8 +80,11 @@ out_dir = pathlib.Path("tomo-tmp/rendered")
 if "--output-dir" in sys.argv:
     out_dir = pathlib.Path(sys.argv[sys.argv.index("--output-dir") + 1])
 out_dir.mkdir(parents=True, exist_ok=True)
-(out_dir / "instructions.json").write_text(json.dumps({"instructions": [{"id": "i1", "source": "s1"}]}), encoding="utf-8")
-(out_dir / "2026-10-24_0000_instructions.md").write_text("# Instructions\n", encoding="utf-8")
+note = "2026-10-24_0000_example.md"
+(out_dir / note).write_text("# Example\n", encoding="utf-8")
+(out_dir / "manifest.json").write_text(json.dumps([{"rendered_file": note}]), encoding="utf-8")
+(out_dir / "instructions.json").write_text(json.dumps({"generated": "2026-10-24T00:00:00Z", "instructions": [{"id": "i1", "source": "s1"}]}), encoding="utf-8")
+(out_dir / "instructions.md").write_text("# Instructions\n", encoding="utf-8")
 for name, lines, n in (("withheld-deletes.md", DELETES, N_DELETES), ("withheld-attachments.md", ATTACH, N_ATTACH)):
     p = out_dir.parent / name
     if n > 0:
@@ -83,7 +93,12 @@ for name, lines, n in (("withheld-deletes.md", DELETES, N_DELETES), ("withheld-a
         p.unlink(missing_ok=True)
 sys.stderr.write("[warn] withdrew delete act-LEAK7a1 (guard validate_destinations) run_id: 2026-10-25T00-00-00Z-c0ffee\n")
 sys.stderr.write("[attach] skipped_assets kind=vault_collision_held action=act-LEAK7a2\n")
-print("instruction-render: rendered=1 skipped=0")
+sys.stderr.write(
+    f"instruction-render: rendered=1 actions=1 errors=0 out={out_dir}\n"
+    f"  manifest={out_dir / 'manifest.json'}\n"
+    f"  instructions.json={out_dir / 'instructions.json'}\n"
+    f"  instructions.md={out_dir / 'instructions.md'}\n"
+)
 PY
 
   printf '%s' "$_stub_head" > scripts/instructions-diff.py
@@ -101,11 +116,36 @@ print("RESULT: OK — 1/1 actions reconciled.")
 PY
   fi
 
+  # upload-rendered: reads what the render stub wrote; uploads nothing.
   printf '%s' "$_stub_head" > scripts/upload-rendered.py
-  printf 'print("upload-rendered: uploaded=1 failed=0")\n' >> scripts/upload-rendered.py
+  cat >> scripts/upload-rendered.py <<'PY'
+import pathlib
+def arg(name, default):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
+rendered = pathlib.Path(arg("--rendered-dir", "tomo-tmp/rendered"))
+inbox = arg("--inbox", "100 Inbox/")
+for required in ("manifest.json", "instructions.md", "instructions.json"):
+    if not (rendered / required).is_file():
+        sys.stderr.write(f"error: required file missing: {rendered / required}\n")
+        sys.exit(2)
+def join(name):
+    return inbox.rstrip("/") + "/" + name
+manifest = json.loads((rendered / "manifest.json").read_text(encoding="utf-8"))
+generated = json.loads((rendered / "instructions.json").read_text(encoding="utf-8"))["generated"]
+timestamp = generated[:10] + "_" + generated[11:13] + generated[14:16]
+for entry in manifest:
+    body = (rendered / entry["rendered_file"]).read_text(encoding="utf-8")
+    sys.stderr.write(f"  [note] {join(entry['rendered_file'])} ({len(body)} chars)\n")
+md_body = (rendered / "instructions.md").read_text(encoding="utf-8")
+sys.stderr.write(f"  [note] {join(timestamp + '_instructions.md')} ({len(md_body)} chars)\n")
+json_bytes = (rendered / "instructions.json").read_bytes()
+sys.stderr.write(f"  [file] {join(timestamp + '_instructions.json')} ({len(json_bytes)} bytes)\n")
+sys.stderr.write(f"upload-rendered: {len(manifest)} note(s) + 2 instruction artefact(s) written under {inbox}\n")
+sys.stderr.write(f"  ↳ {timestamp}_instructions.md / .json\n")
+PY
 
+  # state-promoter: a successful flip prints nothing (exit 0).
   printf '%s' "$_stub_head" > scripts/state-promoter.py
-  printf 'print("state-promoter: flipped pending-approval -> approved")\n' >> scripts/state-promoter.py
 
   cat > tomo-tmp/routing-plan.json <<'JSON'
 {

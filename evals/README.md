@@ -68,5 +68,7 @@ Residual limits of the F4-AC4 graders (`5-no-write-into-scripts-schemas-config`,
 
 Known gaps:
 
-- `upload-failure-reported` and `state-flip-failure-reported` (#205) measure the conductor's `<step> exited <code> for "<note>".` line, but their gate graders have no RED proof in `evals/_mutations/README.md` yet.
+- `upload-failure-reported` and `state-flip-failure-reported` (#205) measure the conductor's `<step> exited <code> for "<note>".` line. Their gate graders have mutations in `evals/_mutations/README.md`, but those proofs are pending: not run yet.
+- No grader checks that the reply is only the report. On conductor 0.24.1 the conductor still wrote a plain-language status sentence around the report in 1 of 6 runs (no internals in it, so every grader stayed green). Tracked in #207.
+- The eval's outer session sometimes adds its own sentence when it repeats the conductor's report (seen in 2 of 6 runs). A grader on the whole reply's shape therefore cannot target `last_message`: it would have to read the conductor's own return (the Agent tool_result) in the trace.
 - Subagent tool calls appearing in traces is observed (spike), not documented by Anthropic. The `3-audit-ran` control is the canary: if it goes red with no prose change, suspect the trace first.

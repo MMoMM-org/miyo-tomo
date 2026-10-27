@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-27 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-10-27 |
 
@@ -13,7 +13,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | v1.0 draft; 6 Must, 1 Should, 1 Could; 28 acceptance criteria |
+| requirements.md | completed | v1.1; 6 Must, 1 Should, 1 Could; 29 acceptance criteria |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -36,6 +36,7 @@
 | 2026-10-27 | `around:<MOC>` proposes the MOC's MISSING members (a new proposal type: extend an existing MOC); ≥ 1 missing member suffices | Owner decision; recommendation was to refuse. Widens scope: new doc section type and apply path. |
 | 2026-10-27 | Applying an extension: each ticked member gets `up:: [[MOC]]` (existing-up / Override rules unchanged) AND the MOC gets a link bullet | Owner decision; reuses `add_relationship` and `link_to_moc`. |
 | 2026-10-27 | Budget exhausted: keep what was found, propose the rest without link members, say so in the report; no abort | Owner decision. |
+| 2026-10-27 | PRD v1.1 approved; F5 gains: a rate-limited lookup waits Kado's stated retry time and retries before it counts as failed; retries count toward the budget | Owner: "bei Kado nur schauen, dass wir den Backoff unterstützen". |
 | 2026-10-27 | Kado limiter is per IP, 20 req / 5 s, in the container too; a per-run graph-call cap is required wherever the run happens | Research (Kado `server.ts:105-157`, `canonical.ts:685-686`), verified in code. Corrects the earlier "container has no limit" memory. |
 
 ## Context

@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
-status: draft
-version: "1.0"
+status: complete
+version: "1.1"
 ---
 
 # Product Requirements Document
@@ -140,6 +140,7 @@ None. Tomo is single-user; the Hashi executor and `/inbox` are system consumers,
 - **Acceptance Criteria:**
   - [ ] Given a run whose link lookups would exceed the per-run budget, When the budget is reached, Then lookups stop, proposals are still written, clusters not looked up carry no link members, and the run report states how many clusters were not looked up because of the budget
   - [ ] Given a run, When it completes, Then it has not exceeded the per-run budget of link lookups and has not triggered a Kado rate-limit abort
+  - [ ] Given Kado answers a link lookup with a rate-limit response that names a wait time, When the run handles it, Then it waits that time and retries the lookup before treating it as failed, and every retry counts toward the per-run budget
   - [ ] Given a link lookup that Kado refuses or that fails, When the run continues, Then that cluster carries no link members, the run report names the failure count, and no other part of the proposal changes
   - [ ] Given the `around:` seed lookup fails, When the run ends, Then no proposal is written and the run reports the failure rather than "fewer than 3 notes"
 

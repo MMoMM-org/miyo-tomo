@@ -1,6 +1,6 @@
 ---
 name: tomo-trackers-wizard
-description: Use when configuring or refining tracker fields in vault-config.yaml. Triggers on tracker setup, missing tracker descriptions or keywords, syntax assignment for daily-note tracker fields. Invoked from /tomo-setup or directly when 25 tracker fields have no description.
+description: Use when configuring or refining tracker fields in vault-config.yaml. Triggers on tracker setup, missing tracker descriptions or keywords, syntax assignment for daily-note tracker fields, switching off (or back on) a tracker the user does not use. Invoked from /tomo-setup or directly when 25 tracker fields have no description.
 allowed-tools: Read, Edit, AskUserQuestion, Bash
 argument-hint: "no arguments needed"
 model: sonnet
@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Trackers Wizard
-# version: 0.4.0
+# version: 0.5.0
 
 ## Persona
 
@@ -39,6 +39,7 @@ Field {
   description?: string
   positive_keywords?: string[]
   negative_keywords?: string[]
+  active?: boolean                // absent = active; only `false` is ever written
 }
 
 Group {
@@ -54,7 +55,7 @@ State {
 
 **In scope:** Filling in `syntax`, `description`, `positive_keywords`,
 `negative_keywords` for fields that already exist in vault-config. Setting
-group-level `section`.
+group-level `section`. Switching a field off (`active: false`) and back on.
 
 **Out of scope:** Adding new tracker fields. Removing fields. Renaming
 fields. Inventing new top-level sections (e.g. `navigation:`). Restructuring
@@ -73,8 +74,11 @@ the schema.
 **Never:**
 - Write any YAML key that is not defined in `tomo/config/vault-example.yaml`'s
   `trackers:` section. The allowed keys per field are EXACTLY: `name`, `type`,
-  `syntax`, `description`, `positive_keywords`, `negative_keywords`, `scale`.
+  `syntax`, `description`, `positive_keywords`, `negative_keywords`, `scale`,
+  `active`.
   Group-level: `section`. NOTHING ELSE.
+- Write `active: true`. To reactivate a field, delete its `active` line.
+- Delete a field entry to stop it being proposed. Set `active: false` instead.
 - Invent new top-level sections like `navigation:`. If you see content in
   the user's daily template that doesn't fit the schema (week/month/quarter
   navigation links, inline Templater calls, callouts), it belongs in the
@@ -121,9 +125,10 @@ Also read group-level `section`:
 - `trackers.end_of_day_fields.section` (default: "End of the Day")
 
 For each field record: `name`, `type`, existing `section`, `syntax`,
-`description`, `positive_keywords[]`, `negative_keywords[]`. Any may be absent.
+`description`, `positive_keywords[]`, `negative_keywords[]`, `active`. Any may
+be absent.
 
-Report a count: "Found N tracker fields across M groups."
+Report a count: "Found N tracker fields across M groups (K deactivated)."
 
 ### 2. Configure group-level section (one per group)
 
@@ -151,7 +156,31 @@ Syntax      : <current or "not set">
 Description : <current or "not set">
 Pos keywords: <current or "none">
 Neg keywords: <current or "none">
+Active      : <"no — deactivated" if active is false, else "yes">
 ```
+
+#### 3.1a Keep, deactivate or reactivate — AskUserQuestion
+
+If the field is active (no `active` key, or `active: true`):
+
+"Do you track `<field>`?"
+- Options:
+  - `Configure` (Recommended) — continue at 3.2
+  - `Deactivate` — Tomo stops proposing this tracker; its definition is kept
+  - `Skip` — leave unchanged, move to the next field
+
+On `Deactivate`: **Edit** the field entry to add `active: false`. Change no
+other key. Record the field as deactivated and move to the next field.
+
+If the field has `active: false`:
+
+"`<field>` is deactivated. Turn it back on?"
+- Options:
+  - `Keep off` (Recommended) — leave unchanged, move to the next field
+  - `Reactivate` — Tomo proposes this tracker again
+
+On `Reactivate`: **Edit** the field entry to delete the `active: false` line.
+Change no other key. Continue at 3.2.
 
 #### 3.2 Syntax — AskUserQuestion
 
@@ -246,6 +275,15 @@ YAML shape per field (memorize — write nothing else):
     positive_keywords: [ran, workout, gym, yoga]
     negative_keywords: [watched, video about]
 
+A deactivated field carries `active: false` directly after `description`:
+
+  - name: Meditation
+    type: boolean
+    syntax: task_checkbox
+    description: "Practised meditation today"
+    active: false
+    positive_keywords: [meditated, meditiert]
+
 Keywords are flat YAML lists (`positive_keywords: [...]`), NEVER nested
 under a `keywords:` parent.
 
@@ -265,8 +303,14 @@ Tracker semantics configured for N of M fields.
   ✓ Sport          — inline_field, 5 positive kw, 2 negative kw
   ✓ WakeUpEnergy   — inline_field, 6 positive kw
   ✗ DayJournal     — skipped
+  – Meditation     — deactivated
+  + Coding         — reactivated, inline_field, 7 positive kw
 
 Sections: <values>
 
 Run /inbox to see the improved classification.
 ```
+
+N counts fields written through 3.6 Accept, reactivated ones included. Mark every
+skipped field `✗` (at 3.1a or 3.6), a field deactivated now or kept off `–`, and
+a reactivated field `+`.

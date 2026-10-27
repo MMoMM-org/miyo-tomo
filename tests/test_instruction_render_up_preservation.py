@@ -27,6 +27,7 @@ Filter tests (spec 024 follow-up):
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -64,6 +65,8 @@ class _FakeKadoClient:
         self,
         notes: dict[str, tuple[str, str]],
         existing_paths: set[str] | None = None,
+        out_of_scope: set[str] | None = None,
+        resolved_paths: dict[str, str] | None = None,
     ) -> None:
         # notes: stem → (vault_path, body_content)
         self._notes = dict(notes)
@@ -73,6 +76,9 @@ class _FakeKadoClient:
             self._existing: set[str] = set(self._notes.keys())
         else:
             self._existing = set(existing_paths)
+        self._out_of_scope = set(out_of_scope or ())
+        self._resolved = dict(resolved_paths or {})
+        self.graph_calls: list[tuple[str, str]] = []
 
     def resolve_stem_to_path(self, stem: str) -> str | None:
         if stem not in self._notes:
@@ -90,6 +96,29 @@ class _FakeKadoClient:
 
     def path_exists(self, target: str) -> bool:
         return target in self._existing
+
+    def graph(self, operation: str, path: str, limit: int | None = None) -> list[dict]:
+        """kado-graph over the source note's wikilinks, shaped like Kado's nodes.
+
+        A link target in ``existing_paths`` resolves (``outgoing``), one in
+        ``out_of_scope`` resolves to a note the key cannot read (omitted from
+        both lists, as Kado does), anything else is ``dangling``.
+        ``resolved_paths`` overrides the resolved path of a target.
+        """
+        self.graph_calls.append((operation, path))
+        body = self.read_note(path)["content"]
+        targets = [t.split("|")[0].strip() for t in re.findall(r"\[\[([^\]]+)\]\]", body)]
+        if operation == "outgoing":
+            return [
+                {"path": self._resolved.get(t, f"{t}.md"), "relation": "outgoing"}
+                for t in targets if t in self._existing
+            ]
+        if operation == "dangling":
+            return [
+                {"path": t, "relation": "dangling", "count": 1}
+                for t in targets if t not in self._existing and t not in self._out_of_scope
+            ]
+        raise AssertionError(f"unexpected graph operation {operation!r}")
 
 
 def _counter() -> list[int]:
@@ -557,3 +586,72 @@ def test_assembler_wires_up_preservation_for_moc_proposal() -> None:
     paths = {a["target_moc_path"] for a in rel_actions}
     assert "Atlas/202 Notes/zsh-aliases.md" in paths
     assert "Atlas/202 Notes/oh-my-zsh.md" in paths
+
+
+# ── #82: the existing up:: target is checked against kado-graph ───────────────
+
+
+def _up_child(target: str, **kw) -> "_FakeKadoClient":
+    body = f"# child\n\nup:: [[{target}]]\n"
+    return _FakeKadoClient(notes={"child": ("Atlas/202 Notes/child.md", body)}, **kw)
+
+
+def test_broken_up_target_with_a_similarly_named_note_is_dropped() -> None:
+    """`up:: [[Map]]` with no note Map is broken even though `Mapping Method.md` exists.
+
+    The old byName substring search resolved "Map" to "Mapping Method.md" and
+    Rule 4.2 carried the dead link into related::. Obsidian lists it as
+    dangling, so Rule 4.3 applies: one up:: action, no related::.
+    """
+    kado = _up_child("Map", existing_paths={"Mapping Method"})
+    kado.resolve_stem_to_path = lambda stem: (
+        "Atlas/202 Notes/child.md" if stem == "child" else "Atlas/Mapping Method.md"
+    )
+    actions = ir.emit_up_preservation_actions(
+        "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
+    )
+    assert _action_markers(actions) == [("up::", "up:: [[New MOC]]")]
+
+
+def test_up_target_outside_the_key_scope_is_kept() -> None:
+    """A target that is neither outgoing nor dangling resolved to an unreadable note.
+
+    Dropping it would delete a parent link the user set; Rule 4.2 keeps it
+    as related::.
+    """
+    kado = _up_child("Private Parent", existing_paths=set(), out_of_scope={"Private Parent"})
+    actions = ir.emit_up_preservation_actions(
+        "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
+    )
+    assert _action_markers(actions) == [
+        ("up::", "up:: [[New MOC]]"),
+        ("related::", "related:: [[Private Parent]]"),
+    ]
+
+
+def test_up_target_matches_a_resolved_path_case_insensitively() -> None:
+    """Obsidian resolves links case-insensitively and accepts path-qualified links."""
+    kado = _up_child(
+        "atlas/maps/tools moc",
+        existing_paths={"atlas/maps/tools moc"},
+        resolved_paths={"atlas/maps/tools moc": "Atlas/Maps/Tools MOC.md"},
+    )
+    actions = ir.emit_up_preservation_actions(
+        "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
+    )
+    assert [m for m, _ in _action_markers(actions)] == ["up::", "related::"]
+    # Matched on outgoing itself — not waved through as out-of-scope.
+    assert kado.graph_calls == [("outgoing", "Atlas/202 Notes/child.md")]
+
+
+def test_a_resolved_target_costs_one_graph_call() -> None:
+    """dangling is asked only when outgoing has no match."""
+    kado = _up_child(
+        "Parent MOC",
+        existing_paths={"Parent MOC"},
+        resolved_paths={"Parent MOC": "Atlas/Maps/Parent MOC.md"},
+    )
+    ir.emit_up_preservation_actions(
+        "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
+    )
+    assert kado.graph_calls == [("outgoing", "Atlas/202 Notes/child.md")]

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -118,6 +119,14 @@ class _FakeKado:
             if p == path:
                 return {"content": body}
         raise ra.KadoError(f"NOT_FOUND path: {path!r}")
+
+    def graph(self, operation: str, path: str, limit=None) -> list[dict]:
+        """kado-graph: a link to a registered stem resolves, any other dangles."""
+        body = self.read_note(path)["content"]
+        targets = [t.split("|")[0].strip() for t in re.findall(r"\[\[([^\]]+)\]\]", body)]
+        if operation == "outgoing":
+            return [{"path": self._notes[t][0]} for t in targets if t in self._notes]
+        return [{"path": t, "count": 1} for t in targets if t not in self._notes]
 
 
 def test_emit_up_preservation_child_missing_uses_parent_marker():

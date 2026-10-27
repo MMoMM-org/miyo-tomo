@@ -1952,3 +1952,43 @@ ruling 2026-10-12: one remedy per withheld kind. The head (what was withheld
 and why) stays here; the remedy is `refusal_sentences.withheld_attachment_remedy`,
 shared with `render_md._render_skipped_asset_notice`. The command semantics
 behind each remedy are recorded in `docs/tomo/scripts/lib/refusal_sentences.md`.
+
+## An Existing `up::` Target Is Checked Against Obsidian's Link Graph (#82, v0.31.0)
+
+`emit_up_preservation_actions` has to know whether a child's existing
+`up:: [[X]]` points to a real note. Before v0.31.0 it asked
+`resolve_stem_to_path(X)`, a `kado-search byName` substring search that falls
+back to "any .md" when no stem matches exactly. That was wrong in two ways:
+
+- **A broken target could look valid.** `up:: [[Map]]` with no note `Map`
+  but a note `Mapping Method.md` resolved to that note. Rule 4.2 then moved
+  the dead `[[Map]]` into `related::` instead of dropping it (Rule 4.3).
+- **A target outside the key's scope looked broken.** Kado search filters by
+  scope, so a real parent the key cannot read returned nothing, and Rule 4.3
+  silently dropped a link the user had set.
+
+Now the check is two-sided, from the child note's own links as Obsidian
+resolved them (`kado-graph`, `KadoClient.graph`):
+
+- **Valid** when a node of `outgoing` matches the target: its stem, or its
+  path without `.md` for a path-qualified link, compared case-insensitively
+  like Obsidian. `outgoing` includes frontmatter links (verified live
+  2026-10-27: `020 Active MOC.md` links `000 Index` only in `up:`, and
+  `outgoing` returned `000 Index.md`).
+- **Broken** only when `dangling` lists the target (raw link text, alias
+  stripped).
+- **Neither** means the target resolved to a note outside the key's scope:
+  `kado-graph` omits such nodes from `outgoing`, and they are not dangling.
+  The link is kept as valid. Keeping a link the user set is the safe side;
+  dropping it is not reversible from the instruction set.
+
+`outgoing` cannot say which of the child's links is the `up::` link; it is a
+flat, deduplicated path list that can include the note itself. So the target
+name still comes from `extract_first_up_marker`, and the graph only answers
+"does this name resolve". `dangling` is called only when `outgoing` has no
+match, so the common case stays one call — the same count as the `byName`
+search it replaces.
+
+The child's own path is still found with `resolve_stem_to_path`: there is no
+source note to start a graph walk from. That substring risk is unchanged and
+out of scope here.

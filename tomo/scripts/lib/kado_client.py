@@ -1,4 +1,4 @@
-# version: 0.12.0
+# version: 0.13.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -457,6 +457,21 @@ class KadoClient:
             if "expectedModified" in msg and "mismatch" in msg:
                 raise KadoConcurrencyError(msg) from exc
             raise
+
+    def graph(self, operation: str, path: str, limit: int | None = None) -> list[dict]:
+        """Link-graph walk from one note → its ``nodes`` list.
+
+        ``operation`` is one of backlinks | outgoing | neighbors | related |
+        dangling. Nodes are ``{path, relation, via?, count?}``; ``path`` is a
+        resolved vault path, except for ``dangling`` where it is the raw link
+        text. Kado omits resolved nodes outside the key's scope. ``limit``
+        omitted returns all nodes.
+        """
+        args: dict = {"operation": operation, "path": path}
+        if limit is not None:
+            args["limit"] = limit
+        res = self._call_tool("kado-graph", args)
+        return res.get("nodes", []) if isinstance(res, dict) else []
 
     def graph_audit(self, *, include: list | None = None, limit: int | None = None) -> dict:
         """Vault-wide link audit → {"orphans":[{path}], "deadLinks":[{source,target,count}], "total":{...}}.

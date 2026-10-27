@@ -1,4 +1,4 @@
-# version: 0.30.0
+# version: 0.31.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -232,6 +232,31 @@ def extract_first_up_marker(content: str, parent_marker: str = "up::") -> str | 
     return target or None
 
 
+def _link_key(text: str) -> str:
+    """Normalise a wikilink target or vault path for comparison, as Obsidian does."""
+    key = text.split("|", 1)[0].split("#", 1)[0].strip()
+    if key.lower().endswith(".md"):
+        key = key[:-3]
+    return key.casefold()
+
+
+def up_target_is_broken(kado_client, child_path: str, target: str) -> bool:
+    """True only when Obsidian lists ``target`` among the child's dangling links.
+
+    A target matching an ``outgoing`` node resolves. A target in neither list
+    resolved to a note outside the key's scope; it counts as not broken.
+    """
+    key = _link_key(target)
+    for node in kado_client.graph("outgoing", child_path):
+        resolved = _link_key(node.get("path", ""))
+        if key == resolved or key == resolved.rsplit("/", 1)[-1]:
+            return False
+    return any(
+        _link_key(node.get("path", "")) == key
+        for node in kado_client.graph("dangling", child_path)
+    )
+
+
 def _make_add_rel(
     counter: list[int],
     target_note_path: str,
@@ -334,9 +359,7 @@ def emit_up_preservation_actions(
         # Self-link guard: existing parent link already points to the new MOC → no-op
         pass
     else:
-        # existing_up_target is a stem — resolve to verify it exists
-        old_target_path = kado_client.resolve_stem_to_path(existing_up_target)
-        if old_target_path:
+        if not up_target_is_broken(kado_client, child_path, existing_up_target):
             if override_flag:
                 # Rule 4.5 — keep existing parent link, new MOC becomes peer
                 actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))

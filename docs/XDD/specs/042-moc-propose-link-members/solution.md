@@ -362,14 +362,15 @@ KadoClient (lib/kado_client.py, additive):
   attempt_count: int            # +1 before every HTTP send, retries included
   attempt_gate: Callable[[], bool] | None   # consulted before every send; False → raise KadoBudgetExhausted
   min_interval: float = 0.0     # seconds between sends (monotonic); moc-discovery sets 0.3
+  # KadoBudgetExhausted subclasses KadoError (callers that catch KadoError degrade on it)
 
 lib/link_members.py (new):
   NodeEligibility(cache, profile, vault_cfg)
-    .check(path: str) -> tuple[bool, str]        # (eligible, reason) — reason never logged with the path for out-of-scope
+    .check(path: str) -> tuple[bool, str]        # reason ∈ ok|not-md|inbox|periodic|moc|out-of-scope|excluded-tag|uncached, first failing rule in that order; never printed or logged
     .is_periodic(path) / .is_moc(path) -> bool
-  LinkLookup(client, budget: int = 60)
-    .neighbors(path: str) -> list[str] | LookupFailed | BudgetExhausted   # memoised by path
-    .remaining() -> int ; .attempts ; .failed
+  LinkLookup(client, budget: int = 60)   # context manager: installs client.attempt_gate and min_interval=0.3 on enter; close()/__exit__ restores the previous values
+    .neighbors(path) -> list[str] | LookupFailed | BudgetExhausted   # memoised by path (failures too; budget refusals not)
+    .remaining() -> int ; .cached(path) -> bool ; .attempts ; .lookups ; .failed
   augment_clusters(clusters, stem_to_path, lookup, eligibility, cache, threshold=2) -> AugmentResult
     # clusters: the rendered slice, each {cluster_id, items:[stems], ...}
     # mutates nothing; returns per-cluster link_members + status
@@ -431,13 +432,17 @@ external:
 
 ```python
 def augment_one(cluster, stem_to_path, lookup, elig, cache, threshold=2):
+    if any(s not in stem_to_path for s in cluster["items"]):
+        return [], "failed"                      # caller bug; no call, this cluster only
     member_paths = [stem_to_path[s] for s in cluster["items"]]
     if lookup.remaining() < sum(1 for p in member_paths if not lookup.cached(p)):
         return [], "skipped_budget"              # all-or-nothing per cluster (ADR-4)
     hits: dict[str, set[str]] = {}
     for stem, path in zip(cluster["items"], member_paths):
         result = lookup.neighbors(path)          # memoised across clusters
-        if isinstance(result, (LookupFailed, BudgetExhausted)):
+        if isinstance(result, BudgetExhausted):
+            return [], "skipped_budget"
+        if isinstance(result, LookupFailed):
             return [], "failed"
         for node in result:
             if node in member_paths:
@@ -460,7 +465,7 @@ Traced with cluster `C = [A, B, D]` (topic "energy"):
 #### Example: budget gate across retries
 
 ```python
-client.attempt_gate = lambda: lookup.attempts_left() > 0   # set by LinkLookup
+client.attempt_gate = lambda: lookup.remaining() > 0   # set by LinkLookup on enter, restored on close
 # _call_tool: before EVERY send (first try and each retry):
 #   if self.attempt_gate and not self.attempt_gate(): raise KadoBudgetExhausted
 #   self.attempt_count += 1 ; sleep_until(last_send + min_interval)
@@ -473,7 +478,7 @@ client.attempt_gate = lambda: lookup.attempts_left() > 0   # set by LinkLookup
 def test_a_hub_never_bridges():
     # daily note links A and B; X links only A → X has 1 hit, not 2
     ...
-    assert [m.stem for m in res["C1"].link_members] == []
+    assert [m.stem for m in res.clusters["C1"].link_members] == []
 
 def test_retries_count_toward_the_budget():
     # fake transport: 429 Retry-After 0 twice, then 200 → attempt_count == 3
@@ -529,7 +534,7 @@ sequenceDiagram
 | Error | Where | Handling | User sees |
 |---|---|---|---|
 | 429 with Retry-After | KadoClient | existing backoff; every attempt counted; gate stops retries when budget is spent | nothing unless the budget runs out |
-| Budget exhausted mid-run | LinkLookup / augment | current cluster gets nothing (all-or-nothing); remaining clusters `skipped_budget` | `Discovery:` line "(S skipped: budget)" |
+| Budget exhausted mid-run | LinkLookup / augment | current cluster `skipped_budget` with no link members (all-or-nothing); later clusters needing uncached lookups `skipped_budget`; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
 | Lookup error (Kado error, 503 after retries) | augment | that cluster `failed`, no link members; others continue | "lookups failed: F" note in `Aborts/notes` |
 | Seed lookup fails | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason |
 | Seed not in cache / not found | around builder | no proposal | "around: '<X>' not found — rebuild the cache or give a path" |
@@ -641,7 +646,7 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: squelch, D3 and confidence stay topic-only for free; ≈ 45 vs ≈ 180 calls on the reference vault.
   - Trade-offs: clusters below the rendered slice never get link members (they are not shown anyway).
   - User confirmed: 2026-10-28
-- [x] ADR-3 Eligibility offline from cache + profile + vault-config: `.md`, atomic-note path, not periodic (calendar base + granularity paths + `exclude_paths`), not a MOC (cache kind / map_notes / name suffix), no `exclude/note` tag, present in the cache. Uncached nodes are skipped and counted.
+- [x] ADR-3 Eligibility offline from cache + profile + vault-config: `.md`, not inbox, atomic-note path (vault-config `concepts.atomic_note`/`inbox` over profile `concept_defaults`), not periodic (union of profile and vault-config calendar base + granularity paths, plus `tomo.moc_structure_cache.exclude_paths`; prefixes stripped and `/`-terminated), not a MOC (cache kind / map_notes / profile `map_note.name_suffix` via `profile_conventions.moc_suffix`; vault-config has no suffix key), no `exclude/note` tag, present in the cache. Uncached nodes are skipped and counted.
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28

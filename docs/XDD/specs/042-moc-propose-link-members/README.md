@@ -7,7 +7,7 @@
 | **Created** | 2026-10-27 |
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-10-27 |
+| **Last Updated** | 2026-10-28 |
 
 ## Documents
 
@@ -41,6 +41,7 @@
 | 2026-10-28 | `around:` details: uncached target → not-found (no name-search fallback; a path argument works); new-MOC title = seed stem + profile MOC suffix; periodic seed refused; `around:` proposals are not squelched; link counts go on the existing `Discovery:` report line | Owner decisions. |
 | 2026-10-28 | SDD v1.0 approved; decomposition tier **Incremental** (classifier recommendation, owner confirmed) | Rule 1: feature_count 6 ≥ 2 and component_count ≥ 2 (link_members, around builder, extension builder, render filter); 29 acceptance criteria. |
 | 2026-10-27 | Kado limiter is per IP, 20 req / 5 s, in the container too; a per-run graph-call cap is required wherever the run happens | Research (Kado `server.ts:105-157`, `canonical.ts:685-686`), verified in code. Corrects the earlier "container has no limit" memory. |
+| 2026-10-28 | Phase 1 drift: budget stop mid-cluster → skipped_budget | Owner: the cause is the budget; PRD requires it on the Discovery line. SDD A1–A6 amended (unmapped stem → failed, LinkLookup context manager, ADR-3 sources and reason tokens). |
 
 ## Context
 

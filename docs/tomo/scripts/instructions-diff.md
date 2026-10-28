@@ -315,6 +315,8 @@ and this script has no Kado access. The renderer records each extension in
 `no_relationship`. This script trusts those records only for what the
 renderer saw in Kado. The member list comes from `parsed-suggestions.json`.
 
+WHY the member list is de-duplicated (order-preserving, case-insensitive) before counting or checking: the renderer expands a member listed twice in `supporting_items` once, so the raw list would make the diff expect link lines that are never emitted and hard-fail a correct render.
+
 For each member of each extension it checks:
 
 - **One `add_relationship` set:** at least one `add_relationship` on the

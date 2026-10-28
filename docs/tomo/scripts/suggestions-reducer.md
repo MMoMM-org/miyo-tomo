@@ -1857,6 +1857,28 @@ classification sentence still counts topic members only.
 A report without `link_members` (older reports, or none found) renders
 byte-identically to the pre-042 renderer; a missing key means no link members.
 
+## An `around:` proposal states the seed in "Why", not a topic overlap (spec 042 T3.2, F2-AC1)
+
+WHY: `moc-discovery --around <note>` builds one cluster whose only topic
+member is the seed; every other member is a link member. The topic sentence
+would read "1 notes with topic overlap <seed's topics> have no dedicated MOC",
+which is false (the seed's topics did not select the cluster). The renderer
+keys on `report["mode"] == "around"` and writes "N notes link with [[seed]] and
+have no dedicated MOC." (singular: "1 note links with ... has no ...") instead.
+The "N more members came through links." sentence is dropped for the same
+report: all members came through links, so it would repeat the first.
+The classification sentence ("K of them have up:: ...") is dropped too: it
+counts topic members only, which is the seed alone, so "them" would be wrong.
+
+Unchanged on purpose: `**Trigger:**` and the frontmatter carry
+`around:<argument as typed>` (the existing `mode:trigger_arg` rule needs no
+code); `**Confidence:**` and `**Cluster:**` keep their shape because
+`suggestion-parser` reads both. Cluster therefore shows the topic count (1, the
+seed) with the seed's topics, and Children counts seed plus neighbours. The
+seed is `- [x]`, neighbours `- [ ] ... — linked with [[seed]]`, by the T2.2 rules.
+
+[ref: PRD/F2-AC1]
+
 ## `--moc-proposal-mode` Reads `max_results` From Config (spec 042, owner decision O3)
 
 WHY: The proposal-doc renders `clusters[:max_results]` and moc-discovery looks

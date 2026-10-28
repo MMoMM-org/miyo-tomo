@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.65.0
+# version: 1.66.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1509,7 +1509,7 @@ def _render_cluster_section(
         f"**Template:** [[{template}]]",
         "",
         f"**Trigger:** {trigger_arg}",
-        f"**Confidence:** {int(round(confidence * 100))}%",
+        *([] if around_seed else [f"**Confidence:** {int(round(confidence * 100))}%"]),
         f"**Cluster:** {n_topic} Notes — {topics_csv}",
         "",
         "#### Parent",

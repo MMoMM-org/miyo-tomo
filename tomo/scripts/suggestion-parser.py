@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.4
+# version: 0.43.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1436,6 +1436,14 @@ RE_CLUSTER_LINE = re.compile(
 RE_CHILD_WIKILINK = re.compile(r"`?\[\[([^\]]+)\]\]`?")
 
 
+RE_AROUND_TRIGGER = re.compile(r"^\*\*Trigger:\*\*\s*around:", re.IGNORECASE)
+
+
+def _is_around_block(block_lines: list[str]) -> bool:
+    """True when the section's `**Trigger:**` line names an `around:` proposal."""
+    return any(RE_AROUND_TRIGGER.match(bl.strip()) for bl in block_lines)
+
+
 def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:
     """Split document lines into ``### MOCxx`` blocks.
 
@@ -1490,6 +1498,8 @@ def enumerate_all_moc_sections(
 
     # ── Extract stems + keywords from each block ─────────────────────────────
     for moc_id, title, block_lines in moc_blocks:
+        if _is_around_block(block_lines):
+            continue
         topic_keywords: list[str] = []
         candidate_stems: list[str] = []
         in_children_section = False
@@ -1604,7 +1614,7 @@ def enumerate_moc_sections_split(
 
         if is_ticked:
             ticked.append(cluster)
-        else:
+        elif not _is_around_block(block_lines):
             unticked.append(cluster)
 
     return ticked, unticked

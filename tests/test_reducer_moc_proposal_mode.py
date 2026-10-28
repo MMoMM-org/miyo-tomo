@@ -721,3 +721,14 @@ def test_around_why_is_singular_for_one_neighbour() -> None:
     why = _around_body(report).split("#### Why this proposal")[1]
 
     assert "1 note links with [[knowledge]] and has no dedicated MOC." in why
+
+
+# ── around: carries no Confidence line (spec 042, owner decision B) ──────────
+
+
+def test_around_section_has_no_confidence_line() -> None:
+    """The seed is a user choice, not a measured score: no **Confidence:** line."""
+    body = _around_body()
+
+    assert "**Confidence:**" not in body
+    assert "**Trigger:** around:knowledge\n**Cluster:** 1 Notes" in body

@@ -206,3 +206,65 @@ Interactive note-orphan handling (pick a parent, create a new MOC for an orphan
 note) is deferred to Garden-Audit (#30) where it belongs — a separate workflow,
 not a sidebar in a cluster proposal.
 
+
+## Link Members: Augmenting the Rendered Slice (spec 042 ADR-2, T2.1)
+
+WHY: Topic clustering only finds notes that share a normalised topic. Notes the
+user linked to several members of a proposed MOC belong there too, but carry
+different topics. `_run_pipeline` therefore asks `kado-graph neighbors` for each
+member of a cluster and adds every eligible non-member that appears in at least
+two members' neighbour lists (`lib/link_members.augment_clusters`; rules and
+budget in `docs/tomo/scripts/lib/link_members.md`).
+
+**Insertion point — after D3 and the confidence sort, before Phase 6.5.** The
+lookups cost Kado calls under a per-run attempt budget (60, ADR-4). Running
+them before Phase 6 / D3 would spend budget on clusters that are then dropped
+as duplicates, squelched or absorbed. The confidence sort moved up from after
+Phase 6.5 to directly after D3 so the slice is known before the lookups; Phase
+6.5 decorates clusters in place and keeps their order, so the emitted order is
+unchanged.
+
+**Only the rendered slice — `clusters[:max_results]`.** The reducer renders at
+most `max_results` cluster sections; a lookup for a cluster nobody sees is
+wasted budget. Clusters beyond the slice get `link_lookup_status:
+not_rendered`, `link_members: []` and cause no call. The slice is cut in
+confidence order so the budget goes to the proposals the user reads first.
+
+**Squelch, D3 and confidence stay topic-only.** Augmentation runs after all
+three and only adds the `link_members` / `link_lookup_status` fields; it never
+touches `items`, `candidate_stems` or `confidence`. A squelch signature
+(`compute_topic_signature`, topics + top-5 stems) must stay stable across runs
+so a rejected proposal stays muted — if link members fed the signature, a new
+link in the vault would un-mute a proposal the user already rejected.
+Confidence is "topic members / candidates"; counting link members would rank a
+cluster by how linked it is, not by how well its topic covers the scope. D3
+compares topic memberships; link members are allowed to appear in several
+clusters (F1-AC4) and must not trigger an inter-cluster drop.
+
+**Members are re-checked by `NodeEligibility` before lookups.** Pass 2
+(`--phase1-input`) trusts the candidate list the agent hands back without
+re-filtering, so a periodic note, MOC or inbox note can arrive as a topic
+member. Such a member is not looked up and cannot act as a bridge. A member
+that is merely missing from the cache (`uncached`) is still looked up:
+folder/tag/class candidates come from live Kado and may be newer than the
+cache build; that is no reason to lose their links.
+
+**The lookup map is built by path, rendered by stem.** Phase 6.5 builds
+`stem → path` with last-wins on a stem collision. Reused for lookups, two
+candidates sharing a stem would lose one path: it would never be looked up and
+could reappear as a link member of its own cluster under the member's stem.
+The augmentation expands each cluster stem to every candidate path with that
+stem, looks up each path, and maps `linked_with` back to stems for rendering.
+
+**`--emit-phase1` makes no graph call.** Pass 1 exits before the pipeline; the
+two-pass flow counts as one run, and Pass 2 does the lookups once.
+
+**`_NullKadoClient.graph` raises.** Without Kado the run still emits
+proposals: every rendered cluster gets `failed` with no link members, and the
+exit code is the one the run would have without link members.
+
+**Report fields are additive.** `topic_clusters[i].link_members`,
+`topic_clusters[i].link_lookup_status` and the top-level `link_stats` are new
+keys; nothing existing changes. `link_stats` is part of `empty_report` (all
+zeros) so abort and dry-run reports keep one shape for the reducer's
+`Discovery:` line.

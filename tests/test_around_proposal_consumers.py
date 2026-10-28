@@ -247,3 +247,41 @@ def test_accepted_extend_section_is_not_a_confirmed_moc_proposal() -> None:
     body = _EXTEND_DOC.replace("{trigger}", "**Trigger:** around:Health MOC")
 
     assert _parser.parse_moc_proposal_doc(_tick_accept(body), filename=_EXTEND_NAME) == []
+
+
+# ── `**Extends:**` counts only in the section header (spec 042 Phase 4 H1) ──
+
+
+_CREATE_WITH_EXTENDS_IN_WHY = _EXTEND_DOC.replace("{trigger}", "").replace(
+    "### MOC01 — Extend [[Health MOC]]", "### MOC01 — Sleep Habits",
+).replace("**Extends:** [[Health MOC]]\n", "").replace(
+    "2 notes link with [[Health MOC]] but have no up:: to it.",
+    "2 notes link with [[Health MOC]].\n**Extends:** [[Health MOC]]",
+)
+
+
+def test_extends_line_in_a_why_body_does_not_hide_a_create_section() -> None:
+    body = _CREATE_WITH_EXTENDS_IN_WHY
+    assert body.count("**Extends:**") == 1
+
+    assert [s[0] for s in _parser.enumerate_all_moc_sections(body)] == ["MOC01"]
+    assert len(_parser.enumerate_moc_sections_split(_untick_accept(body))[1]) == 1
+
+
+def test_create_section_with_extends_in_its_why_body_is_squelched(tmp_path: Path) -> None:
+    reg = tmp_path / "moc-squelch.json"
+
+    n = squelch_persist.persist_rejected_clusters(
+        _untick_accept(_CREATE_WITH_EXTENDS_IN_WHY), filename=_EXTEND_NAME,
+        registry_path=reg, config={"squelch_runs": 3},
+    )
+
+    assert n == 1
+
+
+def test_parsers_agree_a_why_body_extends_line_is_a_create_section() -> None:
+    body = _tick_accept(_CREATE_WITH_EXTENDS_IN_WHY)
+
+    assert len(_parser.parse_moc_proposal_doc(body, filename=_EXTEND_NAME)) == 1
+    items = _moc_parser.parse_moc_proposal(body)["confirmed_items"]
+    assert [i["action"] for i in items] == ["create_moc"]

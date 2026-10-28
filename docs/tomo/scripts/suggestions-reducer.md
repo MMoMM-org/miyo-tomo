@@ -1853,3 +1853,17 @@ classification sentence still counts topic members only.
 
 A report without `link_members` (older reports, or none found) renders
 byte-identically to the pre-042 renderer; a missing key means no link members.
+
+## `--moc-proposal-mode` Reads `max_results` From Config (spec 042, owner decision O3)
+
+WHY: The proposal-doc renders `clusters[:max_results]` and moc-discovery looks
+up link members for exactly that same slice (spec 042 ADR-2). Both therefore
+have to read the same `tomo.moc_proposal.max_results` (default 5), otherwise a
+configured value of 3 would render 3 sections' worth of link lookups under 5
+sections (or the reverse) and the unrendered ones would carry
+`link_lookup_status: not_rendered`. The reducer used to hardcode 5 (F-43), which
+only held while nobody configured the key. `--config` (default
+`config/vault-config.yaml`, cwd-relative like moc-discovery's) points at the
+vault-config, and the value comes from the same loader moc-discovery and
+shared-ctx-builder use (`load_moc_proposal_config`), so a missing file, a
+missing block or a missing key all fall back to the same default.

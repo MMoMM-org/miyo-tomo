@@ -105,8 +105,15 @@ WHY the gate is installed on the client: the pre-check per cluster counts
 lookups, which is a lower bound on attempts. Retries can still spend the rest of
 the budget mid-cluster. `LinkLookup` therefore installs `client.attempt_gate`, so
 the client refuses the send that would exceed the budget (`KadoBudgetExhausted`,
-nothing sent) instead of the run overrunning it. The gate and pacing stay
-installed for the rest of the run: the budget is per run, not per cluster.
+nothing sent) instead of the run overrunning it.
+
+WHY the settings are restored on close: the client's gate applies to every Kado
+tool, not only graph. Left installed, the 61st attempt of any later read, search
+or write on the same client would raise `KadoBudgetExhausted` and be paced.
+`LinkLookup` therefore installs gate and pacing for its lifetime and restores the
+previous values on `close()` (idempotent). Callers use
+`with LinkLookup(client) as lookup:`; the budget is per run, not per cluster, so
+one lookup spans all clusters of the run.
 
 ## Augmenting Clusters (SDD Complex Logic)
 
@@ -115,6 +122,12 @@ remaining budget is skipped whole (`skipped_budget`) before any call. Half a
 cluster's lookups would yield link members found through some members only,
 which looks complete but is not. Skipping continues to the next cluster: a
 smaller or already-cached cluster may still fit.
+
+WHY an unmapped stem is `failed`: a cluster stem missing from `stem_to_path` is a
+caller bug. Dropping it would score the cluster on a partial member set and still
+report `done`, which looks complete but is not. The cluster gets no link members,
+no `neighbors` call is made for it, and other clusters are unaffected. Raising
+would abort the whole run over an optional enhancement.
 
 WHY a mid-cluster budget stop is `failed`: when the gate refuses a send inside a
 cluster (retries spent what the pre-check could not foresee), that cluster's

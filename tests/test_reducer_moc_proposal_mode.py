@@ -731,4 +731,12 @@ def test_around_section_has_no_confidence_line() -> None:
     body = _around_body()
 
     assert "**Confidence:**" not in body
-    assert "**Trigger:** around:knowledge\n**Cluster:** 1 Notes" in body
+    assert "**Trigger:** around:knowledge\n**Cluster:** 3 Notes" in body
+
+
+def test_around_cluster_line_counts_all_members_and_names_the_seed() -> None:
+    """Owner decision W2: total members (seed + links), not the topic count of 1."""
+    body = _around_body()
+
+    assert "**Cluster:** 3 Notes — linked around [[knowledge]]\n" in body
+    assert "#### Children (3)" in body

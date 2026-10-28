@@ -79,7 +79,8 @@ def test_around_doc_has_no_confidence_and_parsers_agree_on_the_rest() -> None:
 
     ticked_c, unticked_c = _parser.enumerate_moc_sections_split(ticked)
     assert [c["moc_id"] for c in ticked_c] == ["MOC01"]
-    assert ticked_c[0]["topic_keywords"] == ["habits", "goals"]
+    # the split reader still parses the ticked around Cluster line (W2 text, no real topics)
+    assert ticked_c[0]["topic_keywords"] == ["linked around [[knowledge]]"]
     assert unticked_c == []
 
     parsed = _moc_parser.parse_moc_proposal(ticked)

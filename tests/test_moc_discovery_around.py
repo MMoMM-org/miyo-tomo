@@ -39,7 +39,7 @@ assert _spec.loader is not None
 sys.modules["moc_discovery_around"] = _moc_disc
 _spec.loader.exec_module(_moc_disc)
 
-from lib.kado_client import KadoBudgetExhausted, KadoError  # noqa: E402
+from lib.kado_client import KadoBudgetExhausted, KadoError, KadoNotFoundError, KadoToolError  # noqa: E402
 
 _BASE = "Atlas/202 Notes/"
 SEED = f"{_BASE}knowledge.md"
@@ -320,6 +320,15 @@ def test_seed_lookup_failure_is_reported_not_as_too_few(tmp_path, monkeypatch, f
     assert report["abort_reason"] == "seed-lookup-failed"
     assert "seed lookup failed" in report["abort_message"]
     assert "fewer than 3" not in report["abort_message"]
+    assert report["topic_clusters"] == []
+
+
+@pytest.mark.parametrize("error", [KadoNotFoundError("gone"), KadoToolError("denied")])
+def test_cached_seed_that_kado_refuses_is_a_seed_lookup_failure(tmp_path, monkeypatch, error):
+    """Owner decision W1: a cached seed Kado refuses is not 'not found'; it names the seed."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, "knowledge", _GraphFake(graph_error=error))
+    assert report["abort_reason"] == "seed-lookup-failed"
+    assert "knowledge" in report["abort_message"]
     assert report["topic_clusters"] == []
 
 

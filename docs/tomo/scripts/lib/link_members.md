@@ -68,6 +68,17 @@ subdirectories) / `concept_defaults.inbox`. MOC detection ORs three signals
 note tagged as a MOC outside the map folder, a suffix-named MOC the tag scan did
 not see, a cache entry typed by the builder.
 
+WHY the MOC suffix comes from the profile only: the vault-config schema has no
+`map_note.name_suffix` key (`tomo/config/vault-example.yaml` `concepts.map_note`
+carries only paths and tags), so there is nothing to layer over the profile value.
+
+WHY a null vault-config concept falls back to the profile: `concepts.atomic_note`
+or `concepts.inbox` set to null is treated as absent here and the profile default
+applies. That is the safe side for scope (narrower than no scope at all).
+Siblings differ: `moc-discovery.py` `_atomic_note_paths` reads the profile only and
+never looks at vault-config; `lib/moc_scan.read_scope_paths` reads vault-config
+only and treats null as absent with no profile fallback (an empty scope).
+
 Two sibling readers resolve atomic-note paths too: `moc-discovery.py`
 `_atomic_note_paths` and `lib/moc_scan.read_scope_paths`. A change to how
 atomic-note paths are resolved must check all three.
@@ -107,6 +118,11 @@ the budget mid-cluster. `LinkLookup` therefore installs `client.attempt_gate`, s
 the client refuses the send that would exceed the budget (`KadoBudgetExhausted`,
 nothing sent) instead of the run overrunning it.
 
+WHY gate and pacing install on enter, not on construction: a `LinkLookup` that is
+built but never entered or closed would otherwise leave its gate on the client for
+good. Installation happens on `__enter__` (or lazily on the first `neighbors`
+call, so an unentered use is still budget-gated) and `close()` restores.
+
 WHY the settings are restored on close: the client's gate applies to every Kado
 tool, not only graph. Left installed, the 61st attempt of any later read, search
 or write on the same client would raise `KadoBudgetExhausted` and be paced.
@@ -129,10 +145,17 @@ report `done`, which looks complete but is not. The cluster gets no link members
 no `neighbors` call is made for it, and other clusters are unaffected. Raising
 would abort the whole run over an optional enhancement.
 
-WHY a mid-cluster budget stop is `failed`: when the gate refuses a send inside a
-cluster (retries spent what the pre-check could not foresee), that cluster's
-answer is incomplete, so it gets no link members and is marked `failed` like any
-lookup error. The rest of the proposal is unchanged.
+WHY a mid-cluster budget stop is `skipped_budget`: when the gate refuses a send
+inside a cluster (retries spent what the pre-check could not foresee), that
+cluster's answer is incomplete, so it gets no link members. Its status is
+`skipped_budget`, not `failed`, and it is counted in `clusters_skipped_budget`:
+the cause is the budget, not a Kado fault, and the PRD requires the user to see
+budget skips on the Discovery line ("(S skipped: budget)"). Only a `KadoError`
+lookup failure is `failed`. The rest of the proposal is unchanged.
+
+WHY `lookups` counts sends made: a lookup the gate refused before its first send
+did not reach Kado, so it is not counted; a successful lookup and a `KadoError`
+one are. `attempts` and `lookups` then agree on what "spent" means.
 
 WHY two members (threshold 2): one link is common and weak; a note linked from
 two or more members of the same topic is a member the topic missed. A node that

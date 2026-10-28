@@ -41,3 +41,6 @@ nothing fails. `min_interval` (seconds, monotonic clock) sleeps the difference
 between the previous send and this one, after the gate check so a refused send
 never waits. Default 0 and `attempt_gate=None` leave every existing caller
 unchanged; only the discovery path opts in.
+
+A failed send still stamps the pacing timestamp, because it is an attempt Kado's
+limiter counted.

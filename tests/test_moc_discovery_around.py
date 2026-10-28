@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_moc_discovery_around.py — `--around` resolver and new-MOC builder (spec 042 T3.1).
+# version: 0.2.0
+"""test_moc_discovery_around.py — `--around` resolver, new-MOC and extension builders (spec 042 T3.1, T4.1).
 
 Drives moc-discovery main() in-process with a graph-capable fake Kado client
 (no live Kado, no ~/.tomo, no tomo-instance). Fixture vault (miyo profile):
@@ -11,6 +11,12 @@ Drives moc-discovery main() in-process with a graph-capable fake Kado client
   solar      a note AND a MOC with that stem (ambiguous)
   twin       two notes with that stem (ambiguous)
   2026-01-02 a cached daily note (periodic)
+  Gardening (MOC)  links argon (no up), neon (inline up to it), fm-kid
+             (frontmatter up to it), dirty-kid (list-repr up to it), elsewhere
+             (up to solar), the MOC solar, an uncached and a daily note
+             → 2 missing members
+  Full (MOC)   links full-kid (up to it) and the MOC solar → none missing
+  Single (MOC) links argon → 1 missing member
 """
 from __future__ import annotations
 
@@ -57,6 +63,12 @@ DAILY_UNCACHED = "Calendar/301 Daily/2026-01-01.md"
 INBOX_NOTE = "100 Inbox/raw-idea.md"
 OUTSIDE_NOTE = "Projects/Elsewhere/stray.md"
 EXCLUDED_NOTE = f"{_BASE}secret.md"
+FM_KID = f"{_BASE}fm-kid.md"
+DIRTY_KID = f"{_BASE}dirty-kid.md"
+ELSEWHERE = f"{_BASE}elsewhere.md"
+FULL_KID = f"{_BASE}full-kid.md"
+FULL_MOC = "Atlas/200 Maps/Full (MOC).md"
+SINGLE_MOC = "Atlas/200 Maps/Single (MOC).md"
 
 _NOTES = [
     {"path": SEED, "topics": ["habits", "goals"]},
@@ -71,11 +83,21 @@ _NOTES = [
     {"path": INBOX_NOTE, "topics": ["raw"]},
     {"path": OUTSIDE_NOTE, "topics": ["stray"]},
     {"path": EXCLUDED_NOTE, "topics": ["secret"], "tags": ["MiYo/Tomo/exclude/note"]},
+    {"path": FM_KID, "topics": ["soil"], "up_state": "valid",
+     "up_target": "Gardening (MOC)", "up_source": "frontmatter"},
+    {"path": DIRTY_KID, "topics": ["compost"], "up_state": "valid",
+     "up_target": "['gardening (moc)']", "up_source": "frontmatter"},
+    {"path": ELSEWHERE, "topics": ["sun"], "up_state": "valid", "up_target": "solar"},
+    {"path": FULL_KID, "topics": ["full"], "up_state": "valid", "up_target": "Full (MOC)"},
 ]
 
 _LINKS = {
     SEED: [ARGON, NEON, UNCACHED, DAILY_UNCACHED, MOC_PATH],
     LONELY: [NEON, UNCACHED, DAILY_UNCACHED, MOC_PATH],
+    MOC_PATH: [ARGON, NEON, FM_KID, DIRTY_KID, ELSEWHERE, SOLAR_MOC, UNCACHED,
+               DAILY_UNCACHED],
+    FULL_MOC: [FULL_KID, SOLAR_MOC],
+    SINGLE_MOC: [ARGON],
 }
 
 
@@ -137,12 +159,15 @@ def _write_cache(tmp_path: Path) -> Path:
         {"path": MOC_PATH, "kind": "moc", "title": "Gardening (MOC)",
          "topics": ["gardening"], "tags": []},
         {"path": SOLAR_MOC, "kind": "moc", "title": "solar", "topics": ["solar"], "tags": []},
+        {"path": FULL_MOC, "kind": "moc", "title": "Full (MOC)", "topics": ["full"], "tags": []},
+        {"path": SINGLE_MOC, "kind": "moc", "title": "Single (MOC)", "topics": [], "tags": []},
     ]
     for n in _NOTES:
         entries.append({
             "path": n["path"], "kind": "note", "stem": _stem(n["path"]),
             "topics": n["topics"], "tags": n.get("tags", []),
             "up_state": n.get("up_state", "absent"), "up_target": n.get("up_target"),
+            "up_source": n.get("up_source", "inline" if n.get("up_target") else None),
         })
     cache = {
         "moc_cache_version": 1,
@@ -241,13 +266,16 @@ def test_periodic_seed_is_refused(tmp_path, monkeypatch, target):
     assert fake.graph_calls == []
 
 
-def test_moc_seed_routes_to_extension_stub(tmp_path, monkeypatch):
-    """F3 routing: a MOC seed resolves to kind moc and reaches the Phase 4 stub."""
-    _, report, fake = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
+def test_moc_seed_routes_to_the_extension_builder(tmp_path, monkeypatch):
+    """F3 routing: a MOC seed resolves to kind moc and gets an extension, not a new MOC."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
     assert report["around"] == {"kind": "moc", "path": MOC_PATH, "stem": "Gardening (MOC)"}
-    assert report["abort_reason"] == "around-moc-pending"
+    assert report["extension"] is not None
     assert report["topic_clusters"] == []
-    assert fake.graph_calls == []
+
+
+def test_moc_pending_stub_is_gone():
+    assert "around-moc-pending" not in _moc_disc.ABORT_MESSAGES
 
 
 @pytest.mark.parametrize("target, reason", [
@@ -355,6 +383,85 @@ def test_around_never_reads_or_writes_the_squelch_registry(tmp_path, monkeypatch
     assert not (tmp_path / "state" / "moc-squelch.json").exists()
 
 
+# ── Extension builder — F3-AC1, F3-AC2 ──────────────────────────────────────
+
+
+def _member(path, up_state="absent", up_target=None, moc="Gardening (MOC)"):
+    return {"stem": _stem(path), "path": path, "linked_with": [moc],
+            "up_state": up_state, "up_target": up_target}
+
+
+def test_moc_target_lists_neighbours_without_up_to_it(tmp_path, monkeypatch):
+    """F3-AC1: argon (no up) and elsewhere (up to solar) are missing; neon (inline
+    up), fm-kid (frontmatter up) and dirty-kid (list-repr up, other case) are present."""
+    code, report, fake = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
+    assert code == 0
+    assert report["abort_reason"] is None
+    assert report["extension"] == {
+        "moc_stem": "Gardening (MOC)",
+        "moc_path": MOC_PATH,
+        "members": [
+            _member(ARGON),
+            _member(ELSEWHERE, "valid", "solar"),
+        ],
+    }
+    assert report["topic_clusters"] == []
+    assert fake.graph_calls == [("neighbors", MOC_PATH, None)]
+    assert fake.read_calls == []
+
+
+def test_extension_members_carry_no_tick(tmp_path, monkeypatch):
+    """Rule 5: members start unticked — the report has no tick flag to set."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
+    for m in report["extension"]["members"]:
+        assert set(m) == {"stem", "path", "linked_with", "up_state", "up_target"}
+
+
+def test_parent_moc_among_neighbours_is_never_a_member(tmp_path, monkeypatch):
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
+    paths = [m["path"] for m in report["extension"]["members"]]
+    assert SOLAR_MOC not in paths
+    assert report["link_stats"]["members_total"] == 2
+    assert report["link_stats"]["skipped_uncached"] == 1
+    assert report["link_stats"]["attempts"] == 1
+
+
+def test_one_missing_member_is_enough(tmp_path, monkeypatch):
+    """Rule 4: no 3-note floor for an extension."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Single (MOC)")
+    assert report["abort_reason"] is None
+    assert report["extension"]["members"] == [_member(ARGON, moc="Single (MOC)")]
+
+
+def test_moc_without_missing_members_writes_no_proposal(tmp_path, monkeypatch):
+    """F3-AC2: every eligible neighbour already has up:: to the MOC."""
+    _, report, fake = _run_around(tmp_path, monkeypatch, "Full (MOC)")
+    assert report["abort_reason"] == "no-missing-members"
+    assert "no missing members" in report["abort_message"]
+    assert "Full (MOC)" in report["abort_message"]
+    assert report["extension"] is None
+    assert report["topic_clusters"] == []
+    assert report["around"]["kind"] == "moc"
+    assert fake.graph_calls == [("neighbors", FULL_MOC, None)]
+
+
+@pytest.mark.parametrize("fake_kwargs", [
+    {"graph_error": KadoError("boom")},
+    {"attempts_per_call": 61},
+])
+def test_moc_lookup_failure_is_seed_lookup_failed(tmp_path, monkeypatch, fake_kwargs):
+    """ADR-4: a failed MOC lookup is never 'no missing members'."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Gardening (MOC)", _GraphFake(**fake_kwargs))
+    assert report["abort_reason"] == "seed-lookup-failed"
+    assert "Gardening (MOC)" in report["abort_message"]
+    assert report["extension"] is None
+
+
+def test_note_seed_report_has_no_extension(tmp_path, monkeypatch):
+    _, report, _ = _run_around(tmp_path, monkeypatch, "knowledge")
+    assert report["extension"] is None
+
+
 # ── CLI surface ──────────────────────────────────────────────────────────────
 
 
@@ -399,3 +506,7 @@ def test_around_with_two_pass_or_check_flags_is_fatal(tmp_path, monkeypatch, fla
 
 def test_empty_report_has_around_none():
     assert _moc_disc.empty_report("scan", "", "miyo")["around"] is None
+
+
+def test_empty_report_has_extension_none():
+    assert _moc_disc.empty_report("scan", "", "miyo")["extension"] is None

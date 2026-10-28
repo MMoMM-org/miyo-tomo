@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.1
+# version: 0.24.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -72,6 +72,7 @@ from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
 from lib.profile_conventions import ensure_suffix, moc_suffix, resolve_conventions  # noqa: E402
+from lib.render_md import bare_stem, unwrap_list_repr  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content, up_marker_re  # noqa: E402
 from lib.squelch import (  # noqa: E402
@@ -125,10 +126,6 @@ ABORT_MESSAGES: dict[str, str] = {
         "Too many notes without cache entry — please run /explore-vault first."
     ),
     "around-periodic": "around: periodic notes cannot be a MOC seed",
-    # `{stem}` template, formatted only in `_run_around_extension` (Phase 4 replaces it).
-    "around-moc-pending": (
-        "around: extending an existing MOC ('{stem}') is not available yet"
-    ),
     "cache-rebuild-failed": (
         "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
         "found). Please run /explore-vault and check the vault configuration."
@@ -394,6 +391,7 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "cache_miss_batches_used": 0,
         "link_stats": dict(_EMPTY_LINK_STATS),
         "around": None,
+        "extension": None,
     }
 
 
@@ -2080,20 +2078,11 @@ def _around_abort(report: dict, reason: str, message: str) -> dict:
     return report
 
 
-def _run_around_extension(report: dict, seed: AroundSeed) -> dict:
-    """around:<MOC> — STUB until spec 042 Phase 4: abort, no Kado call."""
-    return _around_abort(
-        report, "around-moc-pending",
-        ABORT_MESSAGES["around-moc-pending"].format(stem=seed.stem),
-    )
-
-
-def _build_around_note(
-    report: dict, seed: AroundSeed, cache: dict, profile_dict: dict,
-    eligibility: NodeEligibility,
-) -> dict:
-    """around:<note> — one `neighbors` lookup → one new-MOC cluster or an abort."""
-    kado_client = _build_kado_client()
+def _around_lookup(
+    report: dict, seed: AroundSeed, cache: dict, eligibility: NodeEligibility,
+    kado_client,
+):
+    """One budgeted `neighbors(seed)` → ClusterLinks, or None after a seed-lookup abort."""
     with LinkLookup(kado_client) as lookup:
         result = augment_clusters(
             [{"cluster_id": AROUND_CLUSTER_ID, "items": [seed.path]}],
@@ -2105,13 +2094,65 @@ def _build_around_note(
         f"around: status={links.status} neighbours={len(links.link_members)} "
         + " ".join(f"{k}={v}" for k, v in result.stats.items())
     )
-
     if links.status != _LINKS_DONE:
-        return _around_abort(
+        _around_abort(
             report, "seed-lookup-failed",
             f"around: seed lookup failed for '{seed.stem}' — check that Kado is "
             f"reachable and its key can read the note",
         )
+        return None
+    return links
+
+
+def _up_targets_stem(up_target, stem: str) -> bool:
+    """True when a cached `up_target` (stem, wikilink, path or list) names `stem`."""
+    value = unwrap_list_repr(up_target)
+    targets = value if isinstance(value, (list, tuple)) else [value]
+    folded = stem.casefold()
+    return any(t and bare_stem(t).casefold() == folded for t in targets)
+
+
+def _run_around_extension(
+    report: dict, seed: AroundSeed, cache: dict, eligibility: NodeEligibility
+) -> dict:
+    """around:<MOC> — neighbours without cached up:: to the MOC → report.extension."""
+    links = _around_lookup(report, seed, cache, eligibility, _build_kado_client())
+    if links is None:
+        return report
+    missing = [m for m in links.link_members if not _up_targets_stem(m.up_target, seed.stem)]
+    report["link_stats"]["members_total"] = len(missing)
+    if not missing:
+        return _around_abort(
+            report, "no-missing-members",
+            f"around: '{seed.stem}' has no missing members — every eligible "
+            f"linked note already has up:: to it",
+        )
+    report["extension"] = {
+        "moc_stem": seed.stem,
+        "moc_path": seed.path,
+        "members": [
+            {
+                "stem": m.stem,
+                "path": m.path,
+                "linked_with": [seed.stem],
+                "up_state": m.up_state,
+                "up_target": m.up_target,
+            }
+            for m in missing
+        ],
+    }
+    return report
+
+
+def _build_around_note(
+    report: dict, seed: AroundSeed, cache: dict, profile_dict: dict,
+    eligibility: NodeEligibility,
+) -> dict:
+    """around:<note> — one `neighbors` lookup → one new-MOC cluster or an abort."""
+    kado_client = _build_kado_client()
+    links = _around_lookup(report, seed, cache, eligibility, kado_client)
+    if links is None:
+        return report
     if len(links.link_members) < AROUND_MIN_NEIGHBOURS:
         return _around_abort(
             report, "fewer-than-3-notes",
@@ -2190,7 +2231,7 @@ def _run_around(
     report["around"] = {"kind": seed.kind, "path": seed.path, "stem": seed.stem}
     _log(f"around: resolved kind={seed.kind}")
     if seed.kind == "moc":
-        return _run_around_extension(report, seed)
+        return _run_around_extension(report, seed, cache, eligibility)
     return _build_around_note(report, seed, cache, profile_dict, eligibility)
 
 

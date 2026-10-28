@@ -159,3 +159,62 @@ def test_empty_seed_stem_still_renders_as_around_not_topic() -> None:
     _, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
     assert "**Confidence:**" not in body
+
+
+# ── An Extend section is never squelch input (ADR-5) ─────────────────────────
+
+
+_EXTEND_DOC = """---
+type: tomo-proposal
+proposal_kind: moc-extension
+trigger: around:Health MOC
+status: pending
+tomo:
+  doc_type: moc-proposal
+  state: pending-accept
+---
+
+# MOC Proposal
+
+### MOC01 — Extend [[Health MOC]]
+
+- [ ] Accept
+
+**Extends:** [[Health MOC]]
+{trigger}
+#### Missing members (2)
+
+- [ ] [[Cold Showers]] (no up:: yet) — linked with [[Health MOC]]
+- [ ] [[Sleep Debt]] (existing up:: [[Psychology MOC]] → becomes `related::`) — linked with [[Health MOC]]
+
+#### Why this proposal
+
+2 notes link with [[Health MOC]] but have no up:: to it.
+"""
+_EXTEND_NAME = "2026-10-28_1810_moc-proposal-health-moc.md"
+
+
+def test_rejecting_an_extend_section_writes_no_registry_entry(tmp_path: Path) -> None:
+    body = _EXTEND_DOC.replace("{trigger}", "**Trigger:** around:Health MOC")
+    reg = tmp_path / "moc-squelch.json"
+
+    n = squelch_persist.persist_rejected_clusters(
+        _untick_accept(body), filename=_EXTEND_NAME, registry_path=reg,
+        config={"squelch_runs": 3},
+    )
+
+    assert n == 0
+    assert not reg.exists()
+
+
+def test_extend_section_without_its_trigger_line_would_be_squelched(tmp_path: Path) -> None:
+    """Control: the skip above rests on the `**Trigger:** around:` line alone."""
+    body = _EXTEND_DOC.replace("{trigger}", "")
+    reg = tmp_path / "moc-squelch.json"
+
+    n = squelch_persist.persist_rejected_clusters(
+        _untick_accept(body), filename=_EXTEND_NAME, registry_path=reg,
+        config={"squelch_runs": 3},
+    )
+
+    assert n == 1

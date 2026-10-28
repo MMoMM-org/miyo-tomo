@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.0"
+version: "1.1"
 ---
 
 # Solution Design Document
@@ -273,7 +273,7 @@ graph LR
     Red[suggestions-reducer: link suffix + extension section]
     SP[suggestion-parser + squelch_persist: link lines out of signature]
     MPP[moc-proposal-parser: extend_moc]
-    IR[instruction-render: filter_missing_extension_targets]
+    IR[instruction-render: calls filter_missing_extension_targets]
     RA[render_actions: _build_moc_extension_actions]
     Diff[instructions-diff: extend_moc coverage]
 
@@ -297,7 +297,7 @@ graph LR
 | Reducer | Render link suffixes, the "Why" link count, the extension section | F3-AC5, F4-AC1…AC3 |
 | suggestion-parser + squelch_persist | Keep link lines out of the squelch signature while still returning them as children; the parser skips `around:` sections so they never reach the squelch registry (squelch_persist is affected only through that parser skip, no code change in it) | F4-AC4 (squelch side) |
 | moc-proposal-parser | Emit `extend_moc` from an `**Extends:**` section; link lines parse as children | F1-AC5 (parse side), F4-AC4 (parse side) |
-| instruction-render filter | Withhold an extension whose target MOC is gone | PRD edge case "MOC renamed/deleted" |
+| `filter_missing_extension_targets` (`lib/render_resolve.py`, called from `instruction-render.py`) | Resolve the extension target by Kado name search; withhold an extension whose target MOC is absent, ambiguous or unverifiable | PRD edge case "MOC renamed/deleted" |
 | `_build_moc_extension_actions` | Expand `extend_moc` into `add_relationship` + `link_to_moc`, skipping already-linked members | F3-AC3, F3-AC4 |
 | instructions-diff | Verify extension coverage in the hard gate | F3-AC3 (gate side) |
 | moc-architect / moc-propose prose | Route `around:`; print link counts on the `Discovery:` line | F2-AC4 (prefix), F7-AC1, F7-AC2 |
@@ -312,7 +312,7 @@ graph LR
 │   ├── suggestions-reducer.py           # MODIFY: link suffix, Why count, _render_extension_section
 │   ├── suggestion-parser.py             # MODIFY: link lines excluded from candidate_stems
 │   ├── moc-proposal-parser.py           # MODIFY: **Extends:** → extend_moc
-│   ├── instruction-render.py            # MODIFY: filter_missing_extension_targets, pass client
+│   ├── instruction-render.py            # MODIFY: call filter_missing_extension_targets, pass client
 │   ├── instructions-diff.py             # MODIFY: extend_moc expectations
 │   └── lib/
 │       ├── link_members.py              # NEW: NodeEligibility, LinkLookup, augment_clusters
@@ -397,10 +397,18 @@ DiscoveryReport (additive fields):
   link_stats: {lookups, attempts, failed, clusters_skipped_budget, members_total, skipped_uncached}
   around: {kind: note|moc, path, stem} | None
   extension: {moc_stem, moc_path, members: list[LinkMember]} | None   # around:<MOC> only
+  # in extension mode link_stats.members_total = number of missing members
 
 Parsed item (moc-proposal-parser, internal, never on the wire):
   {action: "extend_moc", id, target_moc: <stem>, supporting_items: [ticked stems],
    override_preserve_existing_up: bool, source_path: None}
+  skipped extension entry: {target_moc, disposition: rejected | no_ticked_members | malformed_extension}
+    # malformed_extension = an **Extends:** header line with no wikilink: skipped, stderr line
+    # accepted with no ticked member: skipped (no_ticked_members), stderr line
+
+Render records (instructions.json permissive `tomo` block, no schema change):
+  tomo.extensions[]: {id, target_moc, target_moc_path, members, already_linked, outgoing_checked, no_relationship}
+  tomo.withheld_extensions[]: {id, target_moc, kind: absent|ambiguous|unverifiable, reason, paths, member_count}
 ```
 
 #### Integration Points
@@ -529,8 +537,8 @@ sequenceDiagram
 #### Secondary flows
 
 - **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; Phase 6.5 existing-up check on the seed (one `read_note`, outside the graph budget); no squelch read, decrement or write. Rendered with no `**Confidence:**` line; Why: "N notes link with [[seed]] and have no dedicated MOC." (singular "1 note links with [[seed]] and has no dedicated MOC." for 1); no "more members came through links" and no classification sentence.
-- **`around:<MOC>`:** resolve → `neighbors(moc)` → eligible nodes whose cached `up_target` is not this MOC → if none → "no missing members" → `report.extension`. Reducer renders `### MOC01 — Extend [[X]]`, `- [ ] Accept`, `**Extends:** [[X]]`, `#### Missing members (n)`, Override, Why.
-- **Apply (extension):** `moc-proposal-parser` → `extend_moc` → `filter_missing_extension_targets` (withhold + report if MOC gone) → `_build_moc_extension_actions`: per ticked member `emit_up_preservation_actions(member, moc_stem, override)`; one `outgoing(moc)` call; `link_to_moc` (`line_to_add: "- [[member]]"`, anchor via the existing resolver) only for members not in it → instructions-diff checks one `add_relationship` set per member and `link_to_moc` count = ticked − already linked.
+- **`around:<MOC>`:** resolve → `neighbors(moc)` → eligible nodes that are not yet members → if none → "no missing members" → `report.extension` (`link_stats.members_total` = missing members). A neighbour is already a member when the MOC is its cached `up_target` or any element of its cached `up_value` (frontmatter list), compared by bare stem, case-insensitive (`_up_targets_stem`, `_run_around_extension`). Residual limit: the cache keeps only the first inline `up::`, so a note whose first inline parent is another note but which also names the MOC (second inline line, or frontmatter after an inline win) is still proposed, unticked (PRD Rule 5). Reducer renders `### MOC01 — Extend [[X]]`, `- [ ] Accept`, `**Extends:** [[X]]`, `#### Missing members (n)`, Override, Why.
+- **Apply (extension):** `moc-proposal-parser` → `extend_moc` → `filter_missing_extension_targets` (`lib/render_resolve.py`; withhold + report if MOC gone) → `_build_moc_extension_actions`: members de-duplicated case-insensitively (first spelling kept); per ticked member `emit_up_preservation_actions(member, moc_stem, override)`; one `outgoing(moc)` call; `link_to_moc` (`line_to_add: "- [[member]]"`, anchor via the existing resolver) only for members not in it → instructions-diff checks one `add_relationship` set per member and `link_to_moc` count = ticked − already linked.
 
 ### Error Handling
 
@@ -547,7 +555,9 @@ sequenceDiagram
 | < 2 eligible neighbours | around builder | no proposal | "fewer than 3 notes" |
 | `--around` combined with `--emit-phase1` / `--phase1-input` / `--check-moc-uplinks` | moc-discovery CLI | exit 2, no report | FATAL usage line on stderr |
 | MOC has no missing members | around builder | no proposal | "no missing members" |
-| Extension target MOC gone at /inbox | instruction-render filter | item withheld, reported like a missing source | instructions.md withheld notice |
+| Extension target MOC gone at /inbox | `filter_missing_extension_targets` (`lib/render_resolve.py`) | Kado name search, exact-stem `.md` hits: 0 hits `absent`, 2+ hits `ambiguous` (both paths listed; deliberately unlike `link_to_moc`'s first-hit resolver because the extension writes `up::` into N notes), search failure `unverifiable`; all withheld with a stated cause, kept items get `target_moc_path` | instructions.md withheld notice with the cause |
+| Extension doc section malformed or empty | moc-proposal-parser | `**Extends:**` header line with no wikilink → skipped (`malformed_extension`); accepted with no ticked member → skipped (`no_ticked_members`); both write a stderr line; skipped entries carry `target_moc` and `disposition` | stderr line |
+| No Kado client at render | instruction-render | extension not built; instructions-diff hard-fails "MISSING — not rendered" (cannot happen on a real /inbox run: the client is built whenever confirmed items exist) | instructions-diff FAIL |
 | `outgoing(moc)` fails at render | extension builder | emit link lines for all ticked members, report "already-linked check unavailable" | instructions.md note |
 | MOC has no anchor | existing resolver | `anchor.value` null, action still emitted (existing behaviour) | existing "(unresolved callout…)" line |
 | `_NullKadoClient` (no Kado) | discovery | `graph` raises → every cluster `failed`, run continues | notes line |
@@ -589,7 +599,7 @@ None. No Kado or Hashi release needed; no handoff.
   why: "docs/tomo mirrors written before each runtime change"
 - pattern: Withdrawal / pre-build item filters (instruction-render)
   relevance: MEDIUM
-  why: "filter_missing_extension_targets mirrors filter_missing_source_notes"
+  why: "filter_missing_extension_targets (lib/render_resolve.py, next to filter_missing_source_notes) mirrors it"
 - pattern (new): budgeted, memoised graph lookups (lib/link_members.LinkLookup)
   relevance: HIGH
   why: "First per-run Kado call budget; reusable by later graph features"
@@ -631,6 +641,8 @@ None. No Kado or Hashi release needed; no handoff.
 #### Why this proposal
 2 notes link with [[Health MOC]] but have no up:: to it.
 ```
+
+With one missing member the Why reads "1 note links with [[Health MOC]] but has no up:: to it."
 
 #### UI Visualization Guide: `around:<note>`
 
@@ -681,15 +693,15 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28
-- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch; the Extend section renders `**Trigger:** around:<MOC>` on its own line (the parser's `RE_AROUND_TRIGGER` is anchored at line start), which the around skip relies on (Phase 4 must keep it).
+- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal` with frontmatter `proposal_kind: moc-extension` and filename slug `moc-proposal-extend-<moc slug>`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch; the Extend section renders `**Trigger:** around:<MOC>` on its own line (the parser's `RE_AROUND_TRIGGER` is anchored at line start), which the around skip relies on (Phase 4 must keep it).
   - Rationale: promoter, triage and the eval-gated conductor stay untouched; a non-`MOCxx` heading would be swallowed into the previous block by the parser.
   - Trade-offs: the `MOCxx` id no longer implies "create"; the parser branches on `**Extends:**`.
   - User confirmed: 2026-10-28
-- [x] ADR-6 Already-linked check at render time: `instruction-render` calls `outgoing(moc)` once per extension and emits `link_to_moc` only for members the MOC does not link; failure → emit all and report.
+- [x] ADR-6 Already-linked check at render time: `instruction-render` calls `outgoing(moc)` once per extension and emits `link_to_moc` only for members the MOC does not link; failure → emit all and report. Members are de-duplicated case-insensitively (first spelling kept) in the renderer and in instructions-diff; instructions-diff is a paired consumer of the render record (`tomo.extensions`) and checks per member against the renderer's `already_linked` / `no_relationship`, not an independent `outgoing` call.
   - Rationale: reflects the MOC as it is when `/inbox` runs, not when the doc was written.
   - Trade-offs: one Kado call per accepted extension at apply time.
   - User confirmed: 2026-10-28
-- [x] ADR-7 Member line contract: `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`; the member wikilink stays first; `suggestion-parser` and `squelch_persist` exclude lines carrying ` — linked with ` from `candidate_stems` but return them as children. `suggestion-parser` also skips sections whose `**Trigger:**` starts with `around:` in `enumerate_all_moc_sections` and in the unticked list of `enumerate_moc_sections_split`, so around proposals never reach the squelch registry.
+- [x] ADR-7 Member line contract: `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`; the member wikilink stays first; `suggestion-parser` and `squelch_persist` exclude lines carrying ` — linked with ` from `candidate_stems` but return them as children. `suggestion-parser` also skips sections whose `**Trigger:**` starts with `around:` or whose header (before the first `####`) carries an `**Extends:**` line, in `enumerate_all_moc_sections`, `enumerate_moc_sections_split` and `parse_moc_proposal_doc`, so around and extension proposals never reach the squelch registry.
   - Rationale: rejected proposals must not resurface because link members changed the top-5 stems of the signature.
   - Trade-offs: the marker text is a parse contract and must not be localised.
   - User confirmed: 2026-10-28
@@ -715,10 +727,10 @@ None. No Kado or Hashi release needed; no handoff.
 - [ ] F2-AC2: IF fewer than 2 eligible neighbours remain, THEN THE SYSTEM SHALL write no proposal and report "fewer than 3 notes".
 - [ ] F2-AC3: IF the target is not in the cache, THEN THE SYSTEM SHALL write no proposal and report "around: '<X>' not found — rebuild the cache or give a path". A cached target that Kado refuses or cannot read fails the seed lookup and is reported per F5-AC5 ("seed lookup failed", naming the seed and the key-readability remedy).
 - [ ] F2-AC4: THE SYSTEM SHALL route only the exact lowercase `around:` prefix; any other casing SHALL fall to free text.
-- [ ] F2-AC5: IF a section's `**Trigger:**` starts with `around:`, THEN the parser SHALL omit it from `enumerate_all_moc_sections` and from the unticked list of `enumerate_moc_sections_split`, so neither discovery nor rejection reads or writes the squelch registry for it (README decision 2026-10-28; no PRD criterion).
+- [ ] F2-AC5: IF a section's `**Trigger:**` starts with `around:` or its header carries an `**Extends:**` line, THEN the parser SHALL omit it from `enumerate_all_moc_sections`, from the unticked list of `enumerate_moc_sections_split` and from `parse_moc_proposal_doc`, so neither discovery nor rejection reads or writes the squelch registry for it (README decision 2026-10-28; no PRD criterion).
 
 **F3 — around:<MOC>**
-- [ ] F3-AC1: WHEN `--around` names a MOC, THE SYSTEM SHALL emit `report.extension` with every eligible neighbour whose cached `up_target` is not that MOC, unticked.
+- [ ] F3-AC1: WHEN `--around` names a MOC, THE SYSTEM SHALL emit `report.extension` with every eligible neighbour that is not yet a member (the MOC is neither its cached `up_target` nor any element of its cached `up_value`, bare stem, case-insensitive), unticked.
 - [ ] F3-AC2: IF there are none, THEN THE SYSTEM SHALL write no proposal and report "no missing members".
 - [ ] F3-AC3: WHEN an accepted extension is rendered, THE SYSTEM SHALL emit `add_relationship` per ticked member via `emit_up_preservation_actions(member, moc, override)` and `link_to_moc` per ticked member not in `outgoing(moc)`; instructions-diff SHALL verify both.
 - [ ] F3-AC4: IF a ticked member is in `outgoing(moc)`, THEN THE SYSTEM SHALL emit its `add_relationship` and no `link_to_moc`.
@@ -763,6 +775,7 @@ None. No Kado or Hashi release needed; no handoff.
 - `neighbors` loses direction; "MOC already links it" needs `outgoing`, never `neighbors`.
 - Phase 6.5 builds `stem_to_path` with last-wins on stem collisions; build the augmentation map from candidates by path and render by stem.
 - `--emit-phase1` must make zero graph calls; Pass 2 trusts `--phase1-input` candidates without re-filtering — re-apply eligibility to members before lookups.
+- Extension members are de-duplicated case-insensitively (first spelling kept) in `_build_moc_extension_actions` and in instructions-diff; the two must agree or the gate flags a phantom member.
 - A non-`MOCxx` heading is swallowed into the previous section by `moc-proposal-parser` — the extension must keep `### MOCxx`.
 - `instruction-render` skips template-less items before the manifest; `extend_moc` must be built from `confirmed`, not from the manifest.
 - `_NullKadoClient` needs a `graph` that raises.

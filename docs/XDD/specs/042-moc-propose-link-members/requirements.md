@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.2"
+version: "1.3"
 ---
 
 # Product Requirements Document
@@ -185,7 +185,7 @@ None. Tomo is single-user; the Hashi executor and `/inbox` are system consumers,
 6. User applies the instruction set (Hashi or by hand), as today.
 
 **Business Rules:**
-- Rule 1: A member is missing when it is linked with the MOC in either direction, passes Feature 6's filters, and has no `up::` to that MOC.
+- Rule 1: A member is missing when it is linked with the MOC in either direction, passes Feature 6's filters, and has no `up::` to that MOC, inline or in frontmatter (compared by note name, case-insensitive). Limit: only a note's first inline `up::` is known to discovery, so a note whose first inline parent is another note but which also names the MOC is still proposed, unticked.
 - Rule 2: A missing member that has an `up::` to another note follows the same existing-`up::` and Override rules as a new MOC's child.
 - Rule 3: The MOC gets a link line only for ticked members it does not already link; a note linked from the MOC body is never linked twice.
 - Rule 4: One missing member suffices for a proposal.
@@ -195,7 +195,7 @@ None. Tomo is single-user; the Hashi executor and `/inbox` are system consumers,
 **Edge Cases:**
 - The named target matches both a MOC and a non-MOC note by name → Expected: the run stops and names both, asking the user to give a path.
 - The MOC itself has `up::` to one of its linked notes (a parent MOC) → Expected: that parent is not proposed as a member (it is a MOC, Feature 6).
-- A linked note has `up::` to this MOC through frontmatter rather than an inline field → Expected: it counts as already a member and is not proposed.
+- A linked note has `up::` to this MOC through frontmatter rather than an inline field (including a list of parents) → Expected: it counts as already a member and is not proposed.
 - The MOC has no body anchor where a link line can be placed → Expected: the member still gets `up::`; the run reports that the MOC line could not be placed, as other MOC-placement failures are reported today.
 - The MOC is renamed or deleted between proposal and `/inbox` → Expected: the section is withheld with a stated cause, as for any proposal whose target is gone.
 

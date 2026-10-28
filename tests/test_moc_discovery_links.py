@@ -416,3 +416,16 @@ def test_colliding_stems_count_by_path_and_render_shared_name_once(tmp_path, mon
     _, report = _run_phase1_input(tmp_path, cands, notes=notes)
     members = _members(_by_topic(report)["energy"])
     assert members["xenon"]["linked_with"] == ["alpha"]
+
+
+def test_phase1_input_uncached_topic_member_is_still_looked_up(tmp_path, monkeypatch):
+    """A topic member missing from the cache has eligibility reason `uncached`;
+    it is kept and looked up (only periodic/excluded members are dropped)."""
+    uncached_member = f"{_BASE}unlisted.md"
+    fake = _GraphFake(links={A: [], B: [], C: [], uncached_member: []})
+    monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: fake)
+    cands = _candidates((A, ["energy"]), (B, ["energy"]), (C, ["energy"]),
+                        (uncached_member, ["energy"]))
+    _, report = _run_phase1_input(tmp_path, cands)
+    assert _by_topic(report)["energy"]["link_lookup_status"] == "done"
+    assert uncached_member in {path for _, path, _ in fake.graph_calls}

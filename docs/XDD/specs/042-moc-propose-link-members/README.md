@@ -14,7 +14,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.1; 6 Must, 1 Should, 1 Could; 29 acceptance criteria |
-| solution.md | pending | |
+| solution.md | in_progress | v1.0 draft; 11 components, ADR-1…ADR-7 confirmed 2026-10-28; 29 EARS criteria, 1:1 with the PRD |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -37,6 +37,8 @@
 | 2026-10-27 | Applying an extension: each ticked member gets `up:: [[MOC]]` (existing-up / Override rules unchanged) AND the MOC gets a link bullet | Owner decision; reuses `add_relationship` and `link_to_moc`. |
 | 2026-10-27 | Budget exhausted: keep what was found, propose the rest without link members, say so in the report; no abort | Owner decision. |
 | 2026-10-27 | PRD v1.1 approved; F5 gains: a rate-limited lookup waits Kado's stated retry time and retries before it counts as failed; retries count toward the budget | Owner: "bei Kado nur schauen, dass wir den Backoff unterstützen". |
+| 2026-10-28 | SDD ADRs confirmed: ADR-1 live `kado-graph neighbors`; ADR-2 augment only the rendered top clusters, after D3 + sort, before Phase 6.5, memoised per member; ADR-3 eligibility offline from cache + profile, uncached nodes skipped and counted; ADR-4 budget 60 attempts per run incl. retries, ~0.3 s pacing, all-or-nothing per cluster; ADR-5 extension stays a `moc-proposal` doc (`### MOCxx — Extend [[X]]`, `**Extends:**`), parser emits `extend_moc`, not squelched; ADR-6 "MOC already links it" checked at render time via `outgoing(MOC)`; ADR-7 line format `- [ ] [[stem]] (up) — linked with [[A]], [[B]]`, link lines outside the squelch signature | Owner confirmed all recommendations. |
+| 2026-10-28 | `around:` details: uncached target → not-found (no name-search fallback; a path argument works); new-MOC title = seed stem + profile MOC suffix; periodic seed refused; `around:` proposals are not squelched; link counts go on the existing `Discovery:` report line | Owner decisions. |
 | 2026-10-27 | Kado limiter is per IP, 20 req / 5 s, in the container too; a per-run graph-call cap is required wherever the run happens | Research (Kado `server.ts:105-157`, `canonical.ts:685-686`), verified in code. Corrects the earlier "container has no limit" memory. |
 
 ## Context

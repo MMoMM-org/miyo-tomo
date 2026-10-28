@@ -44,6 +44,8 @@
 | 2026-10-28 | Phase 1 drift: budget stop mid-cluster → skipped_budget | Owner: the cause is the budget; PRD requires it on the Discovery line. SDD A1–A6 amended (unmapped stem → failed, LinkLookup context manager, ADR-3 sources and reason tokens). |
 | 2026-10-28 | Phase 2 T2.1 review: reducer reads max_results from config; colliding stems count by path | Owner: O3 fix the pre-existing F-43 hardcode so ADR-2 holds for any configured value; O4 keep path counting, documented and pinned by a test. |
 | 2026-10-28 | around: seed follows member eligibility (owner decision A) | Nothing the user excluded (inbox, exclude/note, outside atomic folders) is ticked into a new MOC. |
+| 2026-10-28 | around: proposals render no Confidence line (owner decision B) | Confidence measures topic overlap; meaningless for a single seed. No consumer reads the field. |
+| 2026-10-28 | around: rejection writes no squelch entry | Found during Phase 3: rejecting an around doc wrote a registry entry via suggestion-parser.enumerate_all_moc_sections → squelch_persist; the parser now skips sections whose **Trigger:** is around:, enforcing the 'not squelched' decision on the rejection path too. |
 
 ## Context
 

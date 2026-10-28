@@ -295,7 +295,7 @@ graph LR
 | around builder (`moc-discovery.py`) | Resolve `around:` target, build one new-MOC or extension proposal | F2-AC1…AC4, F3-AC1, F3-AC2, F5-AC5 |
 | `KadoClient` (additive) | Count every HTTP attempt; refuse a retry when the gate says the budget is spent; pace sends | F5-AC3 (mechanism) |
 | Reducer | Render link suffixes, the "Why" link count, the extension section | F3-AC5, F4-AC1…AC3 |
-| suggestion-parser + squelch_persist | Keep link lines out of the squelch signature while still returning them as children | F4-AC4 (squelch side) |
+| suggestion-parser + squelch_persist | Keep link lines out of the squelch signature while still returning them as children; the parser skips `around:` sections so they never reach the squelch registry (squelch_persist is affected only through that parser skip, no code change in it) | F4-AC4 (squelch side) |
 | moc-proposal-parser | Emit `extend_moc` from an `**Extends:**` section; link lines parse as children | F1-AC5 (parse side), F4-AC4 (parse side) |
 | instruction-render filter | Withhold an extension whose target MOC is gone | PRD edge case "MOC renamed/deleted" |
 | `_build_moc_extension_actions` | Expand `extend_moc` into `add_relationship` + `link_to_moc`, skipping already-linked members | F3-AC3, F3-AC4 |
@@ -528,7 +528,7 @@ sequenceDiagram
 
 #### Secondary flows
 
-- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; no squelch check.
+- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; no squelch check. Rendered with no `**Confidence:**` line; Why: "N notes link with [[seed]] and have no dedicated MOC." (singular "1 note links with [[seed]] and has no dedicated MOC." for 1); no "more members came through links" and no classification sentence.
 - **`around:<MOC>`:** resolve → `neighbors(moc)` → eligible nodes whose cached `up_target` is not this MOC → if none → "no missing members" → `report.extension`. Reducer renders `### MOC01 — Extend [[X]]`, `- [ ] Accept`, `**Extends:** [[X]]`, `#### Missing members (n)`, Override, Why.
 - **Apply (extension):** `moc-proposal-parser` → `extend_moc` → `filter_missing_extension_targets` (withhold + report if MOC gone) → `_build_moc_extension_actions`: per ticked member `emit_up_preservation_actions(member, moc_stem, override)`; one `outgoing(moc)` call; `link_to_moc` (`line_to_add: "- [[member]]"`, anchor via the existing resolver) only for members not in it → instructions-diff checks one `add_relationship` set per member and `link_to_moc` count = ticked − already linked.
 
@@ -630,6 +630,21 @@ None. No Kado or Hashi release needed; no handoff.
 2 notes link with [[Health MOC]] but have no up:: to it.
 ```
 
+#### UI Visualization Guide: `around:<note>`
+
+```
+### MOC01 — Energy Level (Thought) (MOC)
+- [ ] Accept
+**Title:** `Energy Level (Thought) (MOC)`  **Location:** `Atlas/200 Maps/`  **Template:** [[t_moc_tomo]]
+**Trigger:** around:Energy Level (Thought)   **Cluster:** 3 Notes — energy
+#### Children (3)
+- [x] [[Energy Level (Thought)]] (no up:: yet)
+- [ ] [[Afternoon Slump]] (no up:: yet) — linked with [[Energy Level (Thought)]]
+- [ ] [[Caffeine Timing]] (no up:: yet) — linked with [[Energy Level (Thought)]]
+#### Why this proposal
+2 notes link with [[Energy Level (Thought)]] and have no dedicated MOC.
+```
+
 ### System-Wide Patterns
 - **Security:** only paths Kado returns (scope-filtered) are ever named; ineligible-node reasons are counted, not logged by name.
 - **Error handling:** degrade per cluster; only an `around:` seed failure ends a run without a doc.
@@ -654,11 +669,11 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28
-- [x] ADR-4 Budget: 60 HTTP attempts per run including retries and the `around:` lookup; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; a cluster is looked up all-or-nothing.
+- [x] ADR-4 Budget: 60 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; a cluster is looked up all-or-nothing.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28
-- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch.
+- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch; the Extend section renders `**Trigger:** around:<MOC>`, which the parser's around skip relies on (Phase 4 must keep it).
   - Rationale: promoter, triage and the eval-gated conductor stay untouched; a non-`MOCxx` heading would be swallowed into the previous block by the parser.
   - Trade-offs: the `MOCxx` id no longer implies "create"; the parser branches on `**Extends:**`.
   - User confirmed: 2026-10-28
@@ -666,7 +681,7 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: reflects the MOC as it is when `/inbox` runs, not when the doc was written.
   - Trade-offs: one Kado call per accepted extension at apply time.
   - User confirmed: 2026-10-28
-- [x] ADR-7 Member line contract: `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`; the member wikilink stays first; `suggestion-parser` and `squelch_persist` exclude lines carrying ` — linked with ` from `candidate_stems` but return them as children.
+- [x] ADR-7 Member line contract: `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`; the member wikilink stays first; `suggestion-parser` and `squelch_persist` exclude lines carrying ` — linked with ` from `candidate_stems` but return them as children. `suggestion-parser` also skips sections whose `**Trigger:**` starts with `around:` in `enumerate_all_moc_sections` and in the unticked list of `enumerate_moc_sections_split`, so around proposals never reach the squelch registry.
   - Rationale: rejected proposals must not resurface because link members changed the top-5 stems of the signature.
   - Trade-offs: the marker text is a parse contract and must not be localised.
   - User confirmed: 2026-10-28
@@ -704,7 +719,7 @@ None. No Kado or Hashi release needed; no handoff.
 - [ ] F4-AC1: THE SYSTEM SHALL suffix each link member line with ` — linked with ` and its `linked_with` stems as wikilinks.
 - [ ] F4-AC2: WHEN a link member has an existing `up::`, THE SYSTEM SHALL render the existing annotation before the link suffix.
 - [ ] F4-AC3: WHEN a cluster has link members, THE SYSTEM SHALL append "N more members came through links." (singular "1 more member came through links.") to "Why this proposal".
-- [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature.
+- [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature. The parser also skips sections whose `**Trigger:**` starts with `around:` in `enumerate_all_moc_sections` and in the unticked list of `enumerate_moc_sections_split`, so around proposals never reach the squelch registry.
 
 **F5 — budget and degradation**
 - [ ] F5-AC1: WHEN the next cluster's uncached lookups exceed the remaining budget, THE SYSTEM SHALL skip it (`skipped_budget`), still write proposals, and count it on the `Discovery:` line.

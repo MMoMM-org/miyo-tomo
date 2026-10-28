@@ -322,8 +322,46 @@ class TestLookup:
         assert lookup.failed == 1
         assert len(client.graph_calls) == 1
 
+    def test_close_restores_previous_gate_and_pacing(self):
+        client, _, _, _ = _world({})
+        prev_gate = lambda: True  # noqa: E731
+        client.attempt_gate = prev_gate
+        client.min_interval = 0.05
+        lookup = LinkLookup(client)
+        assert client.attempt_gate is not prev_gate
+        assert client.min_interval == 0.3
+        lookup.close()
+        lookup.close()
+        assert client.attempt_gate is prev_gate
+        assert client.min_interval == 0.05
+
+    def test_with_block_restores_on_exit_and_on_error(self):
+        client, _, _, _ = _world({})
+        with LinkLookup(client) as lookup:
+            assert isinstance(lookup, LinkLookup)
+            assert client.min_interval == 0.3
+        assert client.attempt_gate is None and client.min_interval == 0.0
+        with pytest.raises(RuntimeError):
+            with LinkLookup(client):
+                raise RuntimeError("boom")
+        assert client.attempt_gate is None and client.min_interval == 0.0
+
 
 class TestAugment:
+    def test_unmapped_stem_fails_cluster_without_graph_calls(self):
+        client, cache, s2p, elig = _world({"A": ["X"], "B": ["X"], "C": ["Y"], "D": ["Y"]})
+        lookup = LinkLookup(client)
+        result = augment_clusters(
+            [_cluster("bad", "A", "Nope"), _cluster("ok", "C", "D")],
+            s2p, lookup, elig, cache,
+        )
+        assert result.clusters["bad"].status == "failed"
+        assert result.clusters["bad"].link_members == []
+        assert result.clusters["ok"].status == "done"
+        called = {c[1] for c in client.graph_calls}
+        assert f"{N}A.md" not in called
+        assert called == {f"{N}C.md", f"{N}D.md"}
+
     def test_traced_example(self):
         # SDD traced example: C=[A,B,D]; X hits {A,B}, Y hits {A,D};
         # the daily and MOC Z are never counted.

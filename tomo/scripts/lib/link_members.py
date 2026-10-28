@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.2.1
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -175,23 +175,38 @@ class BudgetExhausted:
 class LinkLookup:
     """Memoised `kado-graph neighbors` lookups under an attempt budget.
 
-    Installs the budget as the client's attempt gate and sets its pacing; both
-    stay installed for the rest of the run.
+    Installs the budget as the client's attempt gate and sets its pacing for its
+    lifetime; `close()` restores the previous values. Use as a context manager.
     """
 
     def __init__(self, client, budget: int = LOOKUP_BUDGET):
         self._client = client
         self._budget = budget
-        self._base = getattr(client, "attempt_count", 0)
+        self._base = client.attempt_count
         self._memo: dict[str, list[str] | LookupFailed] = {}
         self.lookups = 0
         self.failed = 0
+        self._prev_gate = client.attempt_gate
+        self._prev_interval = client.min_interval
+        self._open = True
         client.attempt_gate = lambda: self.remaining() > 0
         client.min_interval = LOOKUP_PACING_S
 
+    def close(self) -> None:
+        if self._open:
+            self._client.attempt_gate = self._prev_gate
+            self._client.min_interval = self._prev_interval
+            self._open = False
+
+    def __enter__(self) -> "LinkLookup":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     @property
     def attempts(self) -> int:
-        return getattr(self._client, "attempt_count", 0) - self._base
+        return self._client.attempt_count - self._base
 
     def remaining(self) -> int:
         return max(0, self._budget - self.attempts)
@@ -255,7 +270,10 @@ def _link_member(path: str, linked_with: list[str], entry: dict) -> LinkMember:
 def _augment_one(
     cluster, stem_to_path, lookup, eligibility, entries, threshold, uncached
 ) -> ClusterLinks:
-    members = [(s, stem_to_path[s]) for s in cluster.get("items") or [] if s in stem_to_path]
+    stems = cluster.get("items") or []
+    if any(s not in stem_to_path for s in stems):
+        return ClusterLinks(FAILED)
+    members = [(s, stem_to_path[s]) for s in stems]
     member_paths = {p for _, p in members}
     need = sum(1 for p in member_paths if not lookup.cached(p))
     if need > lookup.remaining():

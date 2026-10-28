@@ -1498,3 +1498,28 @@ the upstream half of `_build_create_moc_actions`' `by_dest`, and the two must
 agree on what one destination is (Rule 2: paths compare ignoring case and
 Unicode normalisation form). The `casefold()` rationale above still holds;
 `path_key` is NFC then `casefold()`.
+
+## Link Member Lines Are Children but Never Candidate Stems (spec 042 T2.3, SDD ADR-7)
+
+WHY `enumerate_all_moc_sections` and `enumerate_moc_sections_split` skip a
+Children line carrying `LINK_MEMBER_MARKER` (` — linked with `) when they build
+`candidate_stems`, while `children` still lists it: the squelch signature hashes
+the top five sorted `candidate_stems`. A link member that sorts into the top five
+would change the signature of a proposal the user already rejected, and the
+rejected proposal would resurface. Link members are found through the link graph,
+which drifts between runs; topic members are the stable identity of a cluster.
+
+A link line is `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`. The
+member wikilink stays first, so the first wikilink on the line is the member and
+the bridge wikilinks after the marker are never read as members. The marker is
+one constant in `lib/link_members.py`; this script imports it and holds no copy.
+The text is a parse contract and must not be localised.
+
+`parse_moc_proposal_doc` and `moc-proposal-parser.py` need no marker logic: a
+ticked link line is a ticked Children line, so it reaches `children` /
+`supporting_items` like a topic member, and an unticked one does not.
+
+Recognition is by the marker substring on a Children line, not by position. A
+member whose own stem contains ` — linked with ` would be treated as a link line
+and left out of the signature only; it is still a child. Accepted: such a title
+is vanishingly rare and the cost is one stem missing from the hash input.

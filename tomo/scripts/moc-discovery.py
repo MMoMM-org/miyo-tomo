@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -14,6 +14,7 @@ through the six discovery phases described in the SDD §Pseudocode (lines
     Phase 4   — Title generation (per-profile suffix rules + mode override)
     Phase 5   — Parent resolution (classification keyword overlap, top-3)
     Phase 6   — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
+    Links     — Link members for the rendered clusters (lib.link_members)
     Phase 6.5 — Existing-up:: validation per candidate (absent/valid/broken)
 
 The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
@@ -55,6 +56,15 @@ sys.path.insert(0, os.path.dirname(__file__))
 # detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
+from lib.link_members import (  # noqa: E402
+    FAILED,
+    UNCACHED,
+    AugmentResult,
+    ClusterLinks,
+    LinkLookup,
+    NodeEligibility,
+    augment_clusters,
+)
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
@@ -326,6 +336,16 @@ def resolve_profile(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+_EMPTY_LINK_STATS: dict[str, int] = {
+    "lookups": 0,
+    "attempts": 0,
+    "failed": 0,
+    "clusters_skipped_budget": 0,
+    "members_total": 0,
+    "skipped_uncached": 0,
+}
+
+
 def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
     """Build a minimal DiscoveryReport with all phase-derived fields zeroed.
 
@@ -353,6 +373,7 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "abort_message": None,
         "extracted_via_llm_count": 0,
         "cache_miss_batches_used": 0,
+        "link_stats": dict(_EMPTY_LINK_STATS),
     }
 
 
@@ -1610,6 +1631,14 @@ def _build_kado_client():
         def read_note(self, *_a, **_k):  # pragma: no cover
             self._fail()
 
+        # LinkLookup reads and installs these; graph() fails every lookup.
+        attempt_count = 0
+        attempt_gate = None
+        min_interval = 0.0
+
+        def graph(self, *_a, **_k):
+            self._fail()
+
     try:
         return _KC()
     except _KE as exc:
@@ -1696,6 +1725,94 @@ def _run_moc_uplink_check(
     return report
 
 
+NOT_RENDERED = "not_rendered"
+# Client attributes LinkLookup needs; a client lacking any fails every lookup.
+_GRAPH_SURFACE = ("graph", "attempt_count", "attempt_gate", "min_interval")
+
+
+def _item_stem(item) -> str:
+    """Cluster item → stem; items are stems, enriched dicts carry `stem`."""
+    if isinstance(item, dict):
+        return str(item.get("stem") or "")
+    return str(item)
+
+
+def _augment_rendered_clusters(
+    clusters: list[dict],
+    candidates: list[Candidate],
+    kado_client,
+    cache: dict,
+    profile_dict: dict,
+    vault_cfg: dict,
+    max_results: int,
+) -> dict[str, int]:
+    """Attach `link_members` + `link_lookup_status` to every cluster; return `link_stats`.
+
+    Only ``clusters[:max_results]`` (already confidence-sorted) are looked up;
+    the rest get ``not_rendered`` and cause no call. Lookups are keyed by
+    member PATH: a stem expands to every eligible candidate path carrying it,
+    and ``linked_with`` is mapped back to stems. Candidate paths that fail
+    ``NodeEligibility`` (except ``uncached``) are not looked up. Mutates the
+    clusters in place; never touches items, candidate_stems or confidence.
+    """
+    eligibility = NodeEligibility(cache, profile_dict, vault_cfg)
+    paths_by_stem: dict[str, list[str]] = {}
+    for cand in candidates:
+        if not cand.stem or not cand.path:
+            continue
+        paths = paths_by_stem.setdefault(cand.stem, [])
+        ok, reason = eligibility.check(cand.path)
+        if (ok or reason == UNCACHED) and cand.path not in paths:
+            paths.append(cand.path)
+    path_to_stem = {p: s for s, paths in paths_by_stem.items() for p in paths}
+    path_map = {p: p for p in path_to_stem}
+
+    rendered = clusters[: max(0, max_results)]
+    lookup_clusters: list[dict] = []
+    for cluster in rendered:
+        keys: list[str] = []
+        for stem in (_item_stem(i) for i in cluster.get("items") or []):
+            # An unknown stem stays as a key with no path → augment marks the
+            # cluster failed without a call.
+            for key in paths_by_stem.get(stem, [stem]):
+                if key not in keys:
+                    keys.append(key)
+        lookup_clusters.append({"cluster_id": cluster["cluster_id"], "items": keys})
+
+    if all(hasattr(kado_client, a) for a in _GRAPH_SURFACE):
+        with LinkLookup(kado_client) as lookup:
+            result = augment_clusters(lookup_clusters, path_map, lookup, eligibility, cache)
+    else:
+        result = AugmentResult(
+            {c["cluster_id"]: ClusterLinks(FAILED) for c in lookup_clusters},
+            dict(_EMPTY_LINK_STATS),
+        )
+
+    for cluster in clusters:
+        cluster["link_lookup_status"] = NOT_RENDERED
+        cluster["link_members"] = []
+    for cluster in rendered:
+        links = result.clusters[cluster["cluster_id"]]
+        cluster["link_lookup_status"] = links.status
+        cluster["link_members"] = [
+            {
+                "stem": m.stem,
+                "path": m.path,
+                "linked_with": sorted({path_to_stem[p] for p in m.linked_with}),
+                "up_state": m.up_state,
+                "up_target": m.up_target,
+            }
+            for m in links.link_members
+        ]
+
+    stats = dict(result.stats)
+    _log(
+        f"links: rendered={len(rendered)} not_rendered={len(clusters) - len(rendered)} "
+        + " ".join(f"{k}={v}" for k, v in stats.items())
+    )
+    return stats
+
+
 def _run_pipeline(
     args,
     cache: dict,
@@ -1706,7 +1823,7 @@ def _run_pipeline(
     trigger_arg: str,
     pre_loaded_candidates: list[Candidate] | None = None,
 ) -> tuple[dict | None, int]:
-    """Execute Phase 1 → Phase 6.5 and return (report_dict, exit_code).
+    """Execute Phase 1 → Phase 6.5 (+ link members) and return (report_dict, exit_code).
 
     Called by main() after the pre-flight checks (cache-empty, squelch
     decrement) have passed. Returns (None, exit_code) when an abort-report
@@ -1794,14 +1911,20 @@ def _run_pipeline(
     duplicates_skipped.extend(d3_drops)
     _log(f"d3: kept={len(kept_clusters)} inter-cluster-drops={len(d3_drops)}")
 
+    kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
+
+    # Link members — rendered slice only, after D3 + sort (spec 042 ADR-2)
+    link_stats = _augment_rendered_clusters(
+        kept_clusters, candidates_with_topics, kado_client, cache,
+        profile_dict, _load_yaml(config_path), moc_config.max_results,
+    )
+
     # Phase 6.5 — Existing up:: validation
     kept_clusters = phase65_validate_existing_up(
         kept_clusters, candidates_with_topics, kado_client, cache,
         parent_marker=_conventions.parent_marker,
     )
     _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
-
-    kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
 
     # ADR-13 D1: the note-orphan pass is REMOVED from the cluster pipeline.
     # Orphan suggestions are produced ONLY by _run_moc_uplink_check
@@ -1834,6 +1957,7 @@ def _run_pipeline(
         "orphan_suggestions": [],
         "orphan_total": 0,
         "orphan_overflow": 0,
+        "link_stats": link_stats,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")

@@ -372,11 +372,14 @@ lib/link_members.py (new):
     .neighbors(path) -> list[str] | LookupFailed | BudgetExhausted   # memoised by path (failures too; budget refusals not)
     .remaining() -> int ; .cached(path) -> bool ; .attempts ; .lookups ; .failed
   augment_clusters(clusters, stem_to_path, lookup, eligibility, cache, threshold=2) -> AugmentResult
-    # clusters: the rendered slice, each {cluster_id, items:[stems], ...}
+    # clusters: the rendered slice, each {cluster_id, items:[member keys], ...}; stem_to_path maps each key to a path. moc-discovery passes member paths with an identity map (lookups by path, O4) and maps linked_with back to stems.
     # mutates nothing; returns per-cluster link_members + status
 
 moc-discovery.py CLI:
   --around NAME_OR_PATH          # new member of the scope group; single pass
+
+suggestions-reducer.py CLI (--moc-proposal-mode):
+  --config PATH                  # vault-config.yaml; tomo.moc_proposal.max_results via load_moc_proposal_config (default config/vault-config.yaml, missing file/key → 5) — owner decision O3
 ```
 
 #### Application Data Models
@@ -499,7 +502,7 @@ def test_link_lines_do_not_change_the_squelch_signature():
 2. P1 → P6, D3, sort by confidence: unchanged.
 3. **New:** take `clusters[:max_results]` (the slice the reducer renders); `augment_clusters` with `LinkLookup(budget=60)`; attach `link_members` + `link_lookup_status`; fill `link_stats`.
 4. P6.5 validates existing `up::` for topic members as today; link members already carry cache up state.
-5. Reducer renders link members after topic members, unticked, with the suffix; "Why" adds "N members came through links".
+5. Reducer renders link members after topic members, unticked, with the suffix; "Why" adds "N more members came through links." (singular "1 more member …"), only when N > 0.
 6. Architect prints `Discovery: OK — N candidates → M clusters; links: K members, L lookups (S skipped: budget)`.
 
 ```mermaid
@@ -612,7 +615,7 @@ None. No Kado or Hashi release needed; no handoff.
 #### up::-Handling Override
 - [ ] **Keep existing up::, add new MOC as `related::`** (applies to all 5 children)
 #### Why this proposal
-3 notes with topic overlap "energy" have no dedicated MOC. 2 more members came through links.
+3 notes with topic overlap energy have no dedicated MOC. 2 more members came through links.
 
 ### MOC01 — Extend [[Health MOC]]
 - [ ] Accept
@@ -699,7 +702,7 @@ None. No Kado or Hashi release needed; no handoff.
 **F4 — provenance**
 - [ ] F4-AC1: THE SYSTEM SHALL suffix each link member line with ` — linked with ` and its `linked_with` stems as wikilinks.
 - [ ] F4-AC2: WHEN a link member has an existing `up::`, THE SYSTEM SHALL render the existing annotation before the link suffix.
-- [ ] F4-AC3: WHEN a cluster has link members, THE SYSTEM SHALL append "N more members came through links" to "Why this proposal".
+- [ ] F4-AC3: WHEN a cluster has link members, THE SYSTEM SHALL append "N more members came through links." (singular "1 more member came through links.") to "Why this proposal".
 - [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature.
 
 **F5 — budget and degradation**
@@ -739,6 +742,7 @@ None. No Kado or Hashi release needed; no handoff.
 - `instruction-render` skips template-less items before the manifest; `extend_moc` must be built from `confirmed`, not from the manifest.
 - `_NullKadoClient` needs a `graph` that raises.
 - Colliding stems are counted as distinct members by path; the reason line shows the shared stem once (owner decision 2026-10-28).
+- A non-member note sharing a topic member's stem renders `[[stem]]` twice (ticked and unticked); accepted with O4.
 - Calendar paths may carry a trailing space in vault-config (`"Calendar/301 Daily/ "`); normalise before prefix matching.
 
 ## Glossary

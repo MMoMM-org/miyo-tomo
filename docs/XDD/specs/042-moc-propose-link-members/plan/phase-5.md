@@ -33,7 +33,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
 
   1. Prime: WHY sections first in `docs/tomo/dot_claude/commands/moc-propose.md` and `docs/tomo/dot_claude/agents/moc-architect.md`
   2. Test: `tests/test_042_prose.py` (new, pattern of `tests/test_040_skill_prose.py`) (RED): `around:` is in the whitelist and the mode mapping, lowercase exact `[ref: PRD/F2-AC4]`; around runs take the single-pass branch; the STRICT block still has six fields and the `Discovery:` template contains `links: <K> members, <L> lookups` with the `(S skipped: budget)` suffix rule and the K = 0 case `[ref: PRD/F7-AC1, F7-AC2]`; `tomo-help.md` lists `around:` and no longer lists the removed "placeholder" mode
-  3. Implement: prose edits; bump `# version:` on each file
+  3. Implement: prose edits; bump `# version:` on each file; pass `--config config/vault-config.yaml` to the reducer call in moc-architect.md (matches every discovery call)
   4. Validate: tests green; `/skill-author`-style audit of the agent file; ruff clean
   5. Success: `[ref: PRD/F2-AC4, F7-AC1, F7-AC2]`
 

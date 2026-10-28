@@ -1544,3 +1544,26 @@ section only in the unticked list; a ticked one is still returned, because
 ticked sections feed instruction building, not the registry.
 `parse_moc_proposal_doc` is untouched: an accepted around section is a normal
 proposal.
+
+## Extension Sections Are Skipped Entirely, Keyed on `**Extends:**` (spec 042 T4.3, SDD ADR-5, v0.44.0)
+
+WHY: an `around:<MOC>` extension section (`### MOCxx — Extend [[X]]`) proposes
+missing members of an existing MOC. It has no topic cluster, so it must never
+produce a squelch signature, and it is not a new-MOC proposal, so it must never
+appear as one. `moc-proposal-parser.py` is the only reader that turns it into
+an item (`extend_moc`).
+
+WHY a second key next to the `around:` Trigger skip: the Trigger skip rests on
+one rendered line. If that line is missing or edited by the user, the section
+would fall through to the squelch registry and a rejected extension would hide
+a later topic proposal sharing its stems. The `**Extends:**` line is what makes
+the section an extension, so the skip keys on it too. The regex is anchored at
+the line start, like `RE_AROUND_TRIGGER`.
+
+WHY "entirely": unlike an `around:<note>` section, an extension is dropped from
+all three readers — `enumerate_all_moc_sections`, BOTH lists of
+`enumerate_moc_sections_split` (an accepted one is not instruction-builder
+input here either), and `parse_moc_proposal_doc`. The last matters for the
+CLI's moc-proposal branch: a `ConfirmedMOCProposal` built from an extension
+would carry the MOC's name as a title to create. `squelch_persist` needs no
+change: it hashes `enumerate_all − accepted`, and an extension is in neither.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.1
+# version: 0.23.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -300,9 +300,21 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
 
     by_item: dict[str, dict] = {}
     id_index: dict[str, dict] = {}
+    extensions: list[dict] = []
     for item in confirmed:
         item_id = item.get("id", "?")
         id_index[item_id] = item
+        if item.get("action") == "extend_moc":
+            # No file action: one link per member until the renderer's
+            # already-linked record is subtracted (_reconcile_extensions).
+            members = _parse_supporting_items(item.get("supporting_items"))
+            extensions.append({
+                "id": item_id,
+                "target_moc": _moc_stem(item.get("target_moc")),
+                "members": members,
+            })
+            counts["link_to_moc"] += len(members)
+            continue
         parents = item.get("parent_mocs") or []
         if not parents and item.get("parent_moc"):
             parents = [item["parent_moc"]]
@@ -504,6 +516,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         "expected_daily": expected_daily,
         "expected_deletions": expected_deletions,
         "expected_skips": expected_skips,
+        "extensions": extensions,
     }
 
 
@@ -1041,6 +1054,79 @@ def _unresolvable_link_notes(records: list[dict]) -> list[str]:
     return notes
 
 
+def _reconcile_extensions(
+    expected: dict, instrs: dict, unresolvable: list[dict],
+) -> tuple[list[str], list[str], bool]:
+    """Check each extend_moc member against the renderer's tomo.extensions record.
+
+    Per member: an add_relationship naming [[MOC]] unless the record lists the
+    member in no_relationship; exactly one link_to_moc into the MOC unless
+    already linked (or withheld as unresolvable), else none. Subtracts the
+    links not owed from expected link_to_moc. Returns (lines, notes, hard_fail).
+    """
+    tomo_block = instrs.get("tomo") or {}
+    records = {r.get("id"): r for r in tomo_block.get("extensions") or []}
+    withheld = {w.get("id"): w for w in tomo_block.get("withheld_extensions") or []}
+    actions = instrs.get("actions") or []
+    lines: list[str] = []
+    notes: list[str] = []
+    hard_fail = False
+    for ext in expected.get("extensions") or []:
+        moc, members = ext["target_moc"], ext["members"]
+        if ext["id"] in withheld:
+            expected["counts"]["link_to_moc"] -= len(members)
+            w = withheld[ext["id"]]
+            notes.append(
+                f"extension of [[{moc}]] ({ext['id']}) withheld — "
+                f"{w.get('reason', '?')}; {len(members)} member(s) not applied, "
+                "see \"MOC extension not applied\" in instructions.md"
+            )
+            lines.append(f"    {ext['id']:<6s} extend_moc  [[{moc}]] withheld")
+            continue
+        record = records.get(ext["id"])
+        if record is None:
+            hard_fail = True
+            lines.append(f"    {ext['id']:<6s} extend_moc  [[{moc}]] [MISSING — not rendered]")
+            continue
+        already = set(record.get("already_linked") or []) & set(members)
+        no_rel = {n.get("member") for n in record.get("no_relationship") or []}
+        withheld_links = {
+            r.get("source_note_title") for r in unresolvable
+            if _moc_stem(r.get("target_moc")) == moc
+        }
+        for member in members:
+            owes_link = member not in already and member not in withheld_links
+            if not owes_link:
+                expected["counts"]["link_to_moc"] -= 1
+            has_rel = any(
+                a["action"] == "add_relationship"
+                and _stem(a.get("target_moc_path")) == member
+                and f"[[{moc}]]" in (a.get("line") or "")
+                for a in actions
+            )
+            n_links = sum(
+                1 for a in actions
+                if a["action"] == "link_to_moc" and _moc_stem(a.get("target_moc")) == moc
+                and (a.get("source_note_title") == member
+                     or member in _bullet_titles(a.get("line_to_add")))
+            )
+            rel_ok = has_rel == (member not in no_rel)
+            link_ok = n_links == (1 if owes_link else 0)
+            if not (rel_ok and link_ok):
+                hard_fail = True
+            lines.append(
+                f"    {ext['id']:<6s} extend_moc  {member[:40]:<40s} "
+                f"rel={'[OK]' if rel_ok else '[DIFF]'} "
+                f"link={'[OK]' if link_ok else f'[DIFF want={int(owes_link)} got={n_links}]'}"
+            )
+        if not record.get("outgoing_checked", True):
+            notes.append(
+                f"extension of [[{moc}]] ({ext['id']}): already-linked check "
+                "unavailable at render — a line was emitted for every member"
+            )
+    return lines, notes, hard_fail
+
+
 def run_diff(
     parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
 ) -> tuple[int, list[str]]:
@@ -1084,9 +1170,14 @@ def run_diff(
     unresolvable_links = tomo_block.get("unresolvable_moc_links") or []
     _subtract_unresolvable_links(expected, unresolvable_links)
 
+    # Extensions are checked per member against the renderer's record.
+    ext_lines, ext_notes, ext_fail = _reconcile_extensions(
+        expected, instrs, unresolvable_links
+    )
+
     lines: list[str] = []
-    observations: list[str] = []
-    hard_fail = False
+    observations: list[str] = list(ext_notes)
+    hard_fail = ext_fail
 
     # Header
     total_conf = len(parsed.get("confirmed_items") or [])
@@ -1155,6 +1246,11 @@ def run_diff(
             f"    {item_id:<6s} {info['kind']:<11s} {title_short:<52s} "
             f"file={file_mark} links={link_mark}"
         )
+
+    if ext_lines:
+        lines.append("")
+        lines.append("  extension coverage (add_relationship + link_to_moc per member):")
+        lines.extend(ext_lines)
 
     # Daily coverage
     if expected["expected_daily"] or any(actual["daily_by_kind"].values()):

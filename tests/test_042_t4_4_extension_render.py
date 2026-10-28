@@ -408,6 +408,20 @@ def test_diff_fails_on_an_extra_link_to_moc(rendered):
     assert diff.run_diff(parsed, bad)[0] == 1
 
 
+def test_diff_fails_on_a_link_sitting_on_the_wrong_member(rendered, capsys):
+    """Total link_to_moc count is right, but Sleep Debt (already linked) got
+    the line Other Up was owed."""
+    parsed, doc = rendered
+    bad = copy.deepcopy(doc)
+    links = [a for a in bad["actions"] if a["action"] == "link_to_moc"]
+    moved = next(a for a in links if a["source_note_title"] == "Other Up")
+    moved.update(source_note_title="Sleep Debt", line_to_add="- [[Sleep Debt]]")
+    assert len(links) == 2
+    rc, _obs = diff.run_diff(parsed, bad)
+    assert rc == 1
+    assert "[DIFF want=" in capsys.readouterr().out
+
+
 def test_diff_fails_when_the_extension_was_never_rendered(rendered):
     parsed, doc = rendered
     bad = copy.deepcopy(doc)

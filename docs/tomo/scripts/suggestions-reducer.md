@@ -1822,3 +1822,34 @@ dropped. The summary line reports `classification_candidates_dropped=` ahead of
 Not dropped: the item's `classification` field (Step 5) and a proposed MOC's
 parent category. Both still name the Dewey bucket, which is where a classification
 MOC belongs: as the parent of a thematic MOC, not as the home of a note.
+
+## Link members render after topic members, unticked, marker first-class (spec 042 T2.2, ADR-7)
+
+WHY: a link member is a note the link graph proposed, not one the topic
+overlap found, so the reviewer needs the reason on the line and a default of
+"not included". The line is `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`:
+
+- The member wikilink stays FIRST. `suggestion-parser` and `moc-proposal-parser`
+  read a member as the first wikilink on the line, so everything after it is
+  free text to them and a ticked link line yields the same stem as before the
+  suffix existed.
+- Link members are ALWAYS unticked. Ticking is the user's act of accepting a
+  note nobody has judged by topic.
+- The marker text is a parse contract: the parsers use it to keep link lines
+  out of the squelch signature (a rejected proposal must not resurface because
+  link members changed the top-5 stems). The reducer imports
+  `LINK_MEMBER_MARKER` from `lib/link_members.py` and never spells it, and it
+  is never localised.
+- The up annotation comes from the same `_child_annotation` as for topic
+  members, fed with the link member's `up_state` / `up_target`. A broken `up::`
+  therefore reads exactly as it does for a topic member.
+
+Counts: the Children heading and the Override line ("applies to all N
+children") count topic plus link members, because the Override applies to
+every ticked child. The `**Cluster:**` header keeps the topic count: it states
+the topic overlap that justifies the cluster. "Why this proposal" appends
+"N more members came through links." only when N > 0 (singular for 1). The
+classification sentence still counts topic members only.
+
+A report without `link_members` (older reports, or none found) renders
+byte-identically to the pre-042 renderer; a missing key means no link members.

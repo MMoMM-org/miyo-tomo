@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Runtime prose, end-to-end and live validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -29,7 +29,7 @@ phase: 5
 
 Delivers the user-facing entry, the proof across the whole chain, and the close-out.
 
-- [ ] **T5.1 Prose: around: routing and the Discovery line** `[activity: docs]` `[component: moc-architect, moc-propose]`
+- [x] **T5.1 Prose: around: routing and the Discovery line** `[activity: docs]` `[component: moc-architect, moc-propose]`
 
   1. Prime: WHY sections first in `docs/tomo/dot_claude/commands/moc-propose.md` and `docs/tomo/dot_claude/agents/moc-architect.md`
   2. Test: `tests/test_042_prose.py` (new, pattern of `tests/test_040_skill_prose.py`) (RED): `around:` is in the whitelist and the mode mapping, lowercase exact `[ref: PRD/F2-AC4]`; around runs take the single-pass branch; the STRICT block still has six fields and the `Discovery:` template contains `links: <K> members, <L> lookups` with the `(S skipped: budget)` suffix rule and the K = 0 case `[ref: PRD/F7-AC1, F7-AC2]`; `tomo-help.md` lists `around:` and no longer lists the removed "placeholder" mode
@@ -37,7 +37,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: tests green; `/skill-author`-style audit of the agent file; ruff clean
   5. Success: `[ref: PRD/F2-AC4, F7-AC1, F7-AC2]`
 
-- [ ] **T5.2 End-to-end through the pipeline** `[activity: test]`
+- [x] **T5.2 End-to-end through the pipeline** `[activity: test]`
 
   1. Prime: `tests/integration/test_moc_propose_e2e.py`
   2. Test: extend it (RED → GREEN) with a graph-capable fake vault: (a) tag run → doc with link members → tick one, Accept → `moc-proposal-parser` → `instruction-render` → instructions contain `add_relationship` for the ticked link member and nothing for the unticked one; (b) `around:<MOC>` → extension doc → tick 2 of 3 (one already linked) → instructions: 2 relationship sets, 1 `link_to_moc`; instructions-diff green; (c) budget 0 → doc still written, `skipped_budget` reported

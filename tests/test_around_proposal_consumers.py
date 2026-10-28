@@ -207,8 +207,8 @@ def test_rejecting_an_extend_section_writes_no_registry_entry(tmp_path: Path) ->
     assert not reg.exists()
 
 
-def test_extend_section_without_its_trigger_line_would_be_squelched(tmp_path: Path) -> None:
-    """Control: the skip above rests on the `**Trigger:** around:` line alone."""
+def test_extend_section_without_its_trigger_line_is_still_not_squelched(tmp_path: Path) -> None:
+    """The skip keys on `**Extends:**` too, not on the Trigger line alone (T4.3)."""
     body = _EXTEND_DOC.replace("{trigger}", "")
     reg = tmp_path / "moc-squelch.json"
 
@@ -217,4 +217,33 @@ def test_extend_section_without_its_trigger_line_would_be_squelched(tmp_path: Pa
         config={"squelch_runs": 3},
     )
 
+    assert n == 0
+    assert not reg.exists()
+
+
+def test_section_without_extends_and_trigger_lines_is_squelched(tmp_path: Path) -> None:
+    """Control: drop both marker lines and the same section is squelch input."""
+    body = _EXTEND_DOC.replace("{trigger}", "").replace("**Extends:** [[Health MOC]]\n", "")
+    assert "**Extends:**" not in body
+    reg = tmp_path / "moc-squelch.json"
+
+    n = squelch_persist.persist_rejected_clusters(
+        _untick_accept(body), filename=_EXTEND_NAME, registry_path=reg,
+        config={"squelch_runs": 3},
+    )
+
     assert n == 1
+
+
+def test_extend_section_is_in_no_split_list_ticked_or_not() -> None:
+    body = _EXTEND_DOC.replace("{trigger}", "")
+
+    assert _parser.enumerate_moc_sections_split(_untick_accept(body)) == ([], [])
+    assert _parser.enumerate_moc_sections_split(_tick_accept(body)) == ([], [])
+    assert _parser.enumerate_all_moc_sections(body) == []
+
+
+def test_accepted_extend_section_is_not_a_confirmed_moc_proposal() -> None:
+    body = _EXTEND_DOC.replace("{trigger}", "**Trigger:** around:Health MOC")
+
+    assert _parser.parse_moc_proposal_doc(_tick_accept(body), filename=_EXTEND_NAME) == []

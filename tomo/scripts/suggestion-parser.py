@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.43.1
+# version: 0.44.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1445,6 +1445,15 @@ def _is_around_block(block_lines: list[str]) -> bool:
     return any(RE_AROUND_TRIGGER.match(bl.strip()) for bl in block_lines)
 
 
+# Must match the reducer's extension section (`**Extends:** [[X]]`); moc-proposal-parser.py reads it into extend_moc.
+RE_EXTENDS = re.compile(r"^\*\*Extends:\*\*", re.IGNORECASE)
+
+
+def _is_extension_block(block_lines: list[str]) -> bool:
+    """True when the section extends an existing MOC (`**Extends:**` line)."""
+    return any(RE_EXTENDS.match(bl.strip()) for bl in block_lines)
+
+
 def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:
     """Split document lines into ``### MOCxx`` blocks.
 
@@ -1499,7 +1508,7 @@ def enumerate_all_moc_sections(
 
     # ── Extract stems + keywords from each block ─────────────────────────────
     for moc_id, title, block_lines in moc_blocks:
-        if _is_around_block(block_lines):
+        if _is_around_block(block_lines) or _is_extension_block(block_lines):
             continue
         topic_keywords: list[str] = []
         candidate_stems: list[str] = []
@@ -1569,6 +1578,8 @@ def enumerate_moc_sections_split(
     unticked: list[dict] = []
 
     for moc_id, title, block_lines in moc_blocks:
+        if _is_extension_block(block_lines):
+            continue
         # ── Accept check ─────────────────────────────────────────────────────
         is_ticked = any(
             RE_CHECKED.match(bl.strip()) and
@@ -1654,6 +1665,8 @@ def parse_moc_proposal_doc(
 
     # ── Parse each block ────────────────────────────────────────────────────
     for moc_id, heading_title, block_lines in moc_blocks:
+        if _is_extension_block(block_lines):
+            continue
         # ── Accept gate ──────────────────────────────────────────────────────
         accepted = False
         for bl in block_lines:

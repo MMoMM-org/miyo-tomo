@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.44.0
+# version: 0.44.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1450,8 +1450,14 @@ RE_EXTENDS = re.compile(r"^\*\*Extends:\*\*", re.IGNORECASE)
 
 
 def _is_extension_block(block_lines: list[str]) -> bool:
-    """True when the section extends an existing MOC (`**Extends:**` line)."""
-    return any(RE_EXTENDS.match(bl.strip()) for bl in block_lines)
+    """True when the section header (lines before the first `#### `) has an `**Extends:**` line."""
+    for bl in block_lines:
+        stripped = bl.strip()
+        if stripped.startswith("#### "):
+            return False
+        if RE_EXTENDS.match(stripped):
+            return True
+    return False
 
 
 def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:

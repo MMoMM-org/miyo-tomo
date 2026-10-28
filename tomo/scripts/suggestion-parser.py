@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.43.0
+# version: 0.43.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1436,6 +1436,7 @@ RE_CLUSTER_LINE = re.compile(
 RE_CHILD_WIKILINK = re.compile(r"`?\[\[([^\]]+)\]\]`?")
 
 
+# Must match the reducer's `{mode}:{trigger_arg}` Trigger rendering (`trigger_field` in suggestions-reducer.py).
 RE_AROUND_TRIGGER = re.compile(r"^\*\*Trigger:\*\*\s*around:", re.IGNORECASE)
 
 

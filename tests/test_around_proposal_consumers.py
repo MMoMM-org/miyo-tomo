@@ -133,3 +133,28 @@ def test_unticked_topic_section_is_still_handed_to_squelch_unticked() -> None:
     _, unticked = _parser.enumerate_moc_sections_split(_untick_accept(body))
 
     assert [c["moc_id"] for c in unticked] == ["MOC01"]
+
+
+# ── A ticked neighbour line reaches the MOC proposal parser's supporting_items ──
+
+
+def test_ticked_neighbour_line_is_a_supporting_item_and_unticked_is_not() -> None:
+    _, body = _around_doc()
+    ticked = _tick_accept(body)
+    line = "- [ ] [[argon]] (no up:: yet) — linked with [[knowledge]]"
+    assert line in ticked
+    ticked = ticked.replace(line, line.replace("- [ ]", "- [x]", 1), 1)
+
+    item = _moc_parser.parse_moc_proposal(ticked)["confirmed_items"][0]
+
+    assert item["supporting_items"] == ["knowledge", "argon"]
+    assert "neon" not in item["supporting_items"]
+
+
+def test_empty_seed_stem_still_renders_as_around_not_topic() -> None:
+    report = json.loads(AROUND_FIXTURE.read_text(encoding="utf-8"))
+    report["around"]["stem"] = ""
+
+    _, body = _reducer.render_moc_proposal_doc(report, _Cfg())
+
+    assert "**Confidence:**" not in body

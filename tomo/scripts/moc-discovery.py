@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.23.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -125,7 +125,7 @@ ABORT_MESSAGES: dict[str, str] = {
         "Too many notes without cache entry — please run /explore-vault first."
     ),
     "around-periodic": "around: periodic notes cannot be a MOC seed",
-    # `{stem}` is filled by `_run_around_extension`.
+    # `{stem}` template, formatted only in `_run_around_extension` (Phase 4 replaces it).
     "around-moc-pending": (
         "around: extending an existing MOC ('{stem}') is not available yet"
     ),

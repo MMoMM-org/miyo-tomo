@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.6.0
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -24,6 +24,14 @@ def _stem(path: str | None) -> str:
 def _moc_stem(name: str | None) -> str:
     """Normalise a MOC reference to its bare stem."""
     return _stem(name)
+
+
+def exact_stem_paths(hits: list[dict], stem: str) -> list[str]:
+    """Paths of the `.md` search hits whose file stem is exactly `stem`, in hit order."""
+    return [
+        h["path"] for h in hits or []
+        if (h.get("path") or "").endswith(".md") and _stem(h["path"]) == stem
+    ]
 
 
 def resolve_source_path(

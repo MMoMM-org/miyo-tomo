@@ -317,6 +317,8 @@ renderer saw in Kado. The member list comes from `parsed-suggestions.json`.
 
 WHY the member list is de-duplicated (order-preserving, case-insensitive) before counting or checking: the renderer expands a member listed twice in `supporting_items` once, so the raw list would make the diff expect link lines that are never emitted and hard-fail a correct render.
 
+WHY `already_linked` and `no_relationship` names are matched case-insensitively (casefold, v0.23.2): the member list is de-duplicated case-insensitively, so the record's spelling of a member and the parsed spelling can differ only in case. An exact-case check would treat such a member as not already linked (or as owing a relationship) and hard-fail a correct render.
+
 For each member of each extension it checks:
 
 - **One `add_relationship` set:** at least one `add_relationship` on the

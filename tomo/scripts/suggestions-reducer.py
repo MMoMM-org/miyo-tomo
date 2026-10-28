@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.67.0
+# version: 1.67.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1469,7 +1469,7 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
 
 
 def _link_member_lines(link_members: list[dict]) -> list[str]:
-    """`- [ ] [[stem]] (<up annotation>) — linked with [[A]], …` per member (ADR-7)."""
+    """One `- [ ] [[stem]] (<up annotation>)` + LINK_MEMBER_MARKER + linked-with wikilinks line per member (ADR-7)."""
     link_up_rows = [
         {"stem": m.get("stem"), "state": m.get("up_state", "absent"), "target": m.get("up_target")}
         for m in link_members

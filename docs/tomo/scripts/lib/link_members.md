@@ -3,7 +3,8 @@
 > Rationale for decisions in `tomo/scripts/lib/link_members.py` (spec 042,
 > `/moc-propose` finds MOC members through the link graph).
 > The module decides which `kado-graph` neighbours may become "link members" of a
-> proposed MOC. This page covers `NodeEligibility`.
+> proposed MOC. This page covers `NodeEligibility`, `LinkLookup` and
+> `augment_clusters`.
 
 ## Eligibility Rule (SDD ADR-3)
 
@@ -76,3 +77,61 @@ atomic-note paths are resolved must check all three.
 WHY: Out-of-scope paths can belong to sensitive folders (Constitution: vault
 content is sensitive; audit metadata only). The module neither prints nor logs;
 callers aggregate reason counts and never emit the path of an out-of-scope node.
+
+## Link Lookups (SDD ADR-1, ADR-4)
+
+WHY `neighbors`: a link member is found through `kado-graph` `neighbors`
+(deduplicated outgoing and backlinks, source excluded). Direction does not matter
+for "these notes are linked"; it matters only for "the MOC already links it",
+which uses `outgoing` elsewhere.
+
+WHY `limit` is never passed: Kado applies `limit` BEFORE its scope filter, so a
+limited answer can silently drop in-scope nodes behind out-of-scope ones. The full
+list is requested and filtered here.
+
+WHY memoised by path: clusters share members. A second cluster containing A reuses
+`neighbors(A)` without a call. A failed lookup is memoised too: asking again would
+spend budget on a note that just failed, and every cluster containing it is marked
+`failed` the same way.
+
+WHY the budget counts HTTP attempts, not lookups: Kado rate-limits per IP and
+counts every request, retries included (20 per 5 s, shared with the container).
+`LinkLookup` reads `KadoClient.attempt_count` deltas, so a 429 retry costs budget
+like any first send. The budget is 60 attempts per run; sends are paced at least
+0.3 s apart. Both are module constants (`LOOKUP_BUDGET`, `LOOKUP_PACING_S`), not
+config keys.
+
+WHY the gate is installed on the client: the pre-check per cluster counts
+lookups, which is a lower bound on attempts. Retries can still spend the rest of
+the budget mid-cluster. `LinkLookup` therefore installs `client.attempt_gate`, so
+the client refuses the send that would exceed the budget (`KadoBudgetExhausted`,
+nothing sent) instead of the run overrunning it. The gate and pacing stay
+installed for the rest of the run: the budget is per run, not per cluster.
+
+## Augmenting Clusters (SDD Complex Logic)
+
+WHY all-or-nothing per cluster: a cluster whose uncached lookups exceed the
+remaining budget is skipped whole (`skipped_budget`) before any call. Half a
+cluster's lookups would yield link members found through some members only,
+which looks complete but is not. Skipping continues to the next cluster: a
+smaller or already-cached cluster may still fit.
+
+WHY a mid-cluster budget stop is `failed`: when the gate refuses a send inside a
+cluster (retries spent what the pre-check could not foresee), that cluster's
+answer is incomplete, so it gets no link members and is marked `failed` like any
+lookup error. The rest of the proposal is unchanged.
+
+WHY two members (threshold 2): one link is common and weak; a note linked from
+two or more members of the same topic is a member the topic missed. A node that
+is already a topic member is never added again.
+
+WHY the hub rule (no bridge): a neighbour is counted only when `NodeEligibility`
+accepts it. A daily note linking A and B never becomes a member and never raises
+anything's count, so two notes written on the same day do not look related.
+
+WHY up state comes from the cache: each link member carries the cached `up_state`
+and `up_target` so the renderer can show an existing `up::` without a read.
+
+WHY the caller slices: `augment_clusters` receives only the rendered slice
+(`clusters[:max_results]`). Marking the rest `not_rendered` is the caller's job,
+so no lookup is ever spent on a cluster the user will not see.

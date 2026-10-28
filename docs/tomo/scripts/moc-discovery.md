@@ -261,7 +261,12 @@ two-pass flow counts as one run, and Pass 2 does the lookups once.
 
 **`_NullKadoClient.graph` raises.** Without Kado the run still emits
 proposals: every rendered cluster gets `failed` with no link members, and the
-exit code is the one the run would have without link members.
+exit code is the one the run would have without link members. A client that
+lacks the graph surface altogether (`graph`, `attempt_count`, `attempt_gate`,
+`min_interval` — e.g. an older stand-in that only reads notes) is treated the
+same way: every rendered cluster `failed`, no `LinkLookup` is built. The Kado
+client is duck-typed at every phase boundary; a missing capability degrades the
+proposal, it never aborts it.
 
 **Report fields are additive.** `topic_clusters[i].link_members`,
 `topic_clusters[i].link_lookup_status` and the top-level `link_stats` are new

@@ -256,17 +256,27 @@ could reappear as a link member of its own cluster under the member's stem.
 The augmentation expands each cluster stem to every candidate path with that
 stem, looks up each path, and maps `linked_with` back to stems for rendering.
 
+**Colliding stems count by path (owner decision O4, 2026-10-28).** The
+2-member threshold counts distinct member PATHS. Two notes that share a stem
+(`Atlas/202 Notes/alpha.md`, `Atlas/202 Notes/2021 Thoughts/alpha.md`) are two
+different notes, so a note linked from both qualifies, and the rendered reason
+shows the shared name once (`linked with [[alpha]]`). Collapsing by stem would
+make the reason line honest about the name but drop a real second link; the
+owner chose to keep path counting and pin it with a test.
+
+**Test fakes carry the graph surface.** The Kado client is not duck-typed
+around the graph: any stand-in handed to the pipeline must expose `graph`,
+`attempt_count`, `attempt_gate` and `min_interval`, the way `_NullKadoClient`
+does (a `graph()` that raises `KadoError` degrades every rendered cluster to
+`failed`). A branch that silently tolerated a missing surface would hide a
+wiring mistake instead of failing it.
+
 **`--emit-phase1` makes no graph call.** Pass 1 exits before the pipeline; the
 two-pass flow counts as one run, and Pass 2 does the lookups once.
 
 **`_NullKadoClient.graph` raises.** Without Kado the run still emits
 proposals: every rendered cluster gets `failed` with no link members, and the
-exit code is the one the run would have without link members. A client that
-lacks the graph surface altogether (`graph`, `attempt_count`, `attempt_gate`,
-`min_interval` — e.g. an older stand-in that only reads notes) is treated the
-same way: every rendered cluster `failed`, no `LinkLookup` is built. The Kado
-client is duck-typed at every phase boundary; a missing capability degrades the
-proposal, it never aborts it.
+exit code is the one the run would have without link members.
 
 **Report fields are additive.** `topic_clusters[i].link_members`,
 `topic_clusters[i].link_lookup_status` and the top-level `link_stats` are new

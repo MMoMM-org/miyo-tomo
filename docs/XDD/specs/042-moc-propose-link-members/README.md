@@ -48,6 +48,10 @@
 | 2026-10-28 | around: rejection writes no squelch entry | Found during Phase 3: rejecting an around doc wrote a registry entry via suggestion-parser.enumerate_all_moc_sections → squelch_persist; the parser now skips sections whose **Trigger:** is around:, enforcing the 'not squelched' decision on the rejection path too. |
 | 2026-10-28 | F2-AC3 narrowed: unreadable seed reported as seed lookup failure (owner, W1) | The key-readability remedy is more useful than 'not found'; PRD v1.2. |
 | 2026-10-28 | around: Cluster line shows total members, linked around [[seed]] (owner, W2) | The topic count (1) next to Children (3) misled. |
+| 2026-10-28 | around:<MOC> also reads cached up_value | Code-quality review W1: the cache keeps one up_target, so a multi-valued frontmatter up naming the MOC later was proposed. Residual limit (second inline parent) documented; members start unticked. |
+| 2026-10-28 | Extension target resolution withholds ambiguous / unverifiable MOCs | 2+ exact-stem hits or a failed search withholds the extension with a stated cause; it writes up:: into N notes, so first-hit resolution was unsafe. |
+| 2026-10-28 | Phase 4 drift: SDD/PRD amended (owner: "SDD nachziehen") | Nine implementation details recorded: up_value, members_total, proposal_kind/slug, extension skip dispositions, Extends skip key, target resolution kinds, filter in lib/render_resolve.py, member de-dup, no-client render. |
+| 2026-10-28 | Phase 4 hardening (owner: "Jetzt fixen") | Malformed **Extends:** header is skipped instead of becoming create_moc; Extends skip key read only in the section header; diff membership checks case-insensitive. |
 
 ## Context
 

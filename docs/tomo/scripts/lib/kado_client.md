@@ -25,9 +25,9 @@ across lookups. `attempt_gate` is a zero-argument callable consulted before
 with an exhausted budget still make one more request per call.
 
 On a 429 with `Retry-After` the existing delay is honoured (clamped to 60 s),
-and the gate is asked again after that sleep: the wait must not be spent
-against a budget that ran out meanwhile, and the owner requires backoff support
-rather than skipping the retry.
+and the owner requires backoff support rather than skipping the retry. The gate
+is asked again after that sleep, so no send goes out against a budget that ran
+out meanwhile.
 
 `KadoBudgetExhausted` subclasses `KadoError`, not `KadoToolError`: it is not an
 MCP tool failure, and callers that already degrade on `KadoError` (the base for

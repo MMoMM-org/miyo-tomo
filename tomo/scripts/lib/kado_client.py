@@ -1,4 +1,4 @@
-# version: 0.14.0
+# version: 0.14.1
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -690,6 +690,7 @@ class KadoClient:
         KadoNotFoundError    — 404 HTTP response or tool not-found error
         KadoToolError        — MCP tool returned isError: true
         KadoError            — any other protocol/server error
+        KadoBudgetExhausted  — attempt_gate refused a send; nothing was sent
         """
         self._req_id += 1
         # Before the request, not after: a call that raises still consumed a

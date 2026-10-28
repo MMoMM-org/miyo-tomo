@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: around:<note>"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -29,7 +29,7 @@ phase: 3
 
 Delivers F2: one new-MOC proposal built from a seed note's links.
 
-- [ ] **T3.1 `--around` resolver and new-MOC builder** `[activity: backend-api]` `[component: around builder]`
+- [x] **T3.1 `--around` resolver and new-MOC builder** `[activity: backend-api]` `[component: around builder]`
 
   1. Prime: WHY section first in `docs/tomo/scripts/moc-discovery.md` — resolution rules, refusals, why no squelch, why single pass
   2. Test: `tests/test_moc_discovery_around.py` (RED):
@@ -43,7 +43,7 @@ Delivers F2: one new-MOC proposal built from a seed note's links.
   4. Validate: tests green; existing CLI/route tests unchanged; ruff clean
   5. Success: `[ref: PRD/F2-AC1, F2-AC2, F2-AC3, F5-AC5]`
 
-- [ ] **T3.2 Reducer renders an around: proposal** `[activity: frontend-ui]` `[component: Reducer]`
+- [x] **T3.2 Reducer renders an around: proposal** `[activity: frontend-ui]` `[component: Reducer]`
 
   1. Prime: T2.2 line contract
   2. Test: extend `tests/test_reducer_moc_proposal_mode.py` (RED): an `around:` report renders one `### MOC01 — <stem> (MOC)` section with the seed `- [x]`, neighbours `- [ ] … — linked with [[seed]]`, `**Trigger:** around:<arg>`, and the Why sentence naming the seed
@@ -51,6 +51,6 @@ Delivers F2: one new-MOC proposal built from a seed note's links.
   4. Validate: reducer suite green; ruff clean
   5. Success: `[ref: PRD/F2-AC1]` visible in the doc
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   - Full suite + ruff; drift check of Phase 3 against the SDD secondary flow and the README `around:` decisions.

@@ -316,10 +316,8 @@ proposal type (extend the existing MOC, F3) and is routed to its own builder.
 
 **The seed follows member eligibility (owner decision A, 2026-10-28).** A note seed that is not eligible as a link member (`NodeEligibility.check`: not Markdown, still in the inbox, outside the atomic-note folders, tagged `exclude/note`) is refused with `abort_reason: around-ineligible` and a message naming the reason in user terms, before any Kado call. Without this, a note the user excluded would end up as the ticked member of a new MOC, while the same note would have been withheld as a link member. The check runs after the periodic and MOC routing, so those keep their own messages.
 
-**MOC seed stub (until Phase 4).** `_run_around_extension` currently emits an
-abort report with `abort_reason: around-moc-pending`, `around.kind: moc` and
-makes no Kado call. Phase 4 replaces that function body with the extension
-builder; the routing in front of it stays.
+**A MOC seed goes to the extension builder** (`_run_around_extension`, see
+`around:<MOC>` below); the routing in front of it is the same resolver.
 
 **Exactly one lookup, from the same budget.** The seed's `neighbors` call runs
 inside `with LinkLookup(client)`, so it is paced and counted against the 60
@@ -367,3 +365,47 @@ other proposal.
 `empty_report`, so every report has one shape. Every `around:` abort report
 still carries `around` (when resolved) and `link_stats`, so the `Discovery:`
 line can show the one attempt.
+
+## `around:<MOC>`: The MOC's Missing Members (spec 042 F3, T4.1)
+
+WHY: Notes drift into a topic without ever getting `up::` to its MOC: the
+user links them from the MOC body, or they link the MOC, and the parent is
+never set. `--around <MOC>` lists those notes so the user can tick them in.
+
+**Rule 1 — a missing member** is a neighbour of the MOC (`neighbors`, either
+link direction) that passes member eligibility (`NodeEligibility`) and whose
+cached `up_target` is not this MOC. The lookup reuses the `around:<note>` path
+— `augment_clusters` with the MOC as the one-member cluster and threshold 1 —
+so pacing, the 60-attempt budget, the uncached count and "seed lookup failed"
+on a Kado error or budget refusal are the same code (ADR-4). A neighbour that
+is itself a MOC (the MOC's own parent, a sibling hub) fails eligibility and is
+never a member (PRD edge case "parent MOC").
+
+**Why the cached `up_target`, not a read.** The MOC-structure cache already
+holds each note's parent, resolved by `up_parse` from inline `up::` *and*
+frontmatter `up:`. A frontmatter parent therefore counts as present (PRD edge
+case), and the run costs one Kado call however many neighbours the MOC has; a
+`read_note` per neighbour would cost one per note, outside the graph budget.
+A stale cache can list a note that was parented since — the user leaves it
+unticked, and the apply side's existing-`up::` check sees the real note.
+The comparison is on the bare stem, case-insensitive (`bare_stem`: strips
+`[[ ]]`, a folder and `.md`, unwraps a dirty list-repr and checks every
+element), because Obsidian resolves `up::` the same way and older caches
+hold list-shaped values.
+
+**One missing member suffices** (Rule 4) — there is no 3-note floor: the MOC
+already exists, one stray note is worth proposing. **None missing** → no
+proposal, `abort_reason: no-missing-members`, message naming the MOC
+(F3-AC2), so the user knows the MOC was checked rather than that the lookup
+failed.
+
+**Report shape.** `report.extension = {moc_stem, moc_path, members}`, each
+member a `LinkMember` with `linked_with: [<moc stem>]` and the cached
+`up_state` / `up_target` (Rule 2: the reducer shows the existing parent and
+the Override applies at render time). Members are all unticked (Rule 5) —
+the ticks live in the doc, so the report carries no tick flag. `topic_clusters`
+stays empty: an extension is not a new MOC, has no title, parent or template,
+and must not run through Phase 6/D3 or the squelch registry. `link_stats`
+reports the one lookup, with `members_total` set to the missing members (not
+every eligible neighbour), so the `Discovery:` line counts what is proposed.
+`extension` is `None` in `empty_report`, like `around`.

@@ -460,3 +460,13 @@ def test_diff_does_not_expect_a_move_for_an_extension():
     assert expected["counts"]["move_note"] == 0
     assert expected["counts"]["delete_source"] == 0
     assert "MOC01" not in expected["by_item"]
+
+
+def test_diff_accepts_a_member_listed_twice(monkeypatch, tmp_path):
+    """The renderer expands a repeated member once; the diff must expect the same."""
+    members = ("Fresh Note", "fresh note", "Other Up")
+    ext = _extension(members)
+    _rc, doc, _md = _run_main(monkeypatch, tmp_path, _vault(), [ext])
+    parsed = {"confirmed_items": [ext], "daily_updates": [], "skipped": []}
+    rc, _obs = diff.run_diff(parsed, doc)
+    assert rc == 0

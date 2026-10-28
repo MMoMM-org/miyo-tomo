@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.23.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -225,6 +225,17 @@ def _same_note_as_any(key: str, keys: list[str]) -> bool:
     return any(_keys_match(key, other) or _keys_match(other, key) for other in keys)
 
 
+def _unique_members(members: list[str]) -> list[str]:
+    """Drop repeats (case-insensitive), keeping the first spelling and order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in members:
+        if m.casefold() not in seen:
+            seen.add(m.casefold())
+            out.append(m)
+    return out
+
+
 def _parse_supporting_items(raw: str | list | None) -> list[str]:
     """Parse supporting_items — list (moc-proposal-parser) or str (SNN IDs)."""
     if not raw:
@@ -307,7 +318,9 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         if item.get("action") == "extend_moc":
             # No file action: one link per member until the renderer's
             # already-linked record is subtracted (_reconcile_extensions).
-            members = _parse_supporting_items(item.get("supporting_items"))
+            members = _unique_members(
+                _parse_supporting_items(item.get("supporting_items"))
+            )
             extensions.append({
                 "id": item_id,
                 "target_moc": _moc_stem(item.get("target_moc")),

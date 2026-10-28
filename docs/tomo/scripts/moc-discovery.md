@@ -283,3 +283,82 @@ exit code is the one the run would have without link members.
 keys; nothing existing changes. `link_stats` is part of `empty_report` (all
 zeros) so abort and dry-run reports keep one shape for the reducer's
 `Discovery:` line.
+
+
+## `--around`: One Proposal From a Seed's Links (spec 042 F2, T3.1)
+
+WHY: A note that grew links to several others is a MOC in waiting, but it
+shares no topic with its neighbours, so no topic mode finds it. `--around
+NAME_OR_PATH` builds one proposal from the seed's links alone: the seed is the
+ticked member, every eligible neighbour (`NodeEligibility`) is an unticked link
+member with `linked_with: [seed]`.
+
+**Resolution reads the cache only.** The argument is matched against the
+MOC-structure cache entries; there is no Kado name search (owner decision,
+2026-10-28). A name search would turn a typo into a silent pick of some other
+note; an uncached seed is reported as not found with the remedy ("rebuild the
+cache or give a path"). Accepted forms: `stem`, `[[stem]]` (an `|alias` is
+dropped), `stem.md`, and a vault path (anything containing `/`, `.md`
+optional). A path is matched against entry paths, a name against entry stems.
+Both comparisons ignore case: Obsidian resolves links case-insensitively, and
+the resolved seed always carries the cache's own spelling, so Kado is never
+sent the user's casing. Several matches are never guessed between — the run
+stops and lists every matching path, whether the duplicates are two notes or a
+note and a MOC, so the user can repeat the run with a path.
+
+**Refusals, in order:** ambiguous → not found → periodic → MOC. A path
+argument is checked for periodic before the cache lookup, because periodic
+folders are usually outside the cache: without that, a daily note given by
+path would read "not found" instead of the real reason. A periodic note links
+everything of its day; a MOC around it is a day log, not a topic, so it is
+refused ("periodic notes cannot be a MOC seed"). A MOC seed is a different
+proposal type (extend the existing MOC, F3) and is routed to its own builder.
+
+**MOC seed stub (until Phase 4).** `_run_around_extension` currently emits an
+abort report with `abort_reason: around-moc-pending`, `around.kind: moc` and
+makes no Kado call. Phase 4 replaces that function body with the extension
+builder; the routing in front of it stays.
+
+**Exactly one lookup, from the same budget.** The seed's `neighbors` call runs
+inside `with LinkLookup(client)`, so it is paced and counted against the 60
+attempt budget like any other lookup, and `link_stats` reports it. The lookup
+reuses `augment_clusters` with a one-member cluster and threshold 1: the
+eligibility rules, the uncached count and the failure statuses are the same
+code as for topic clusters.
+
+**A failed seed lookup is its own abort.** If the lookup fails (Kado error or
+budget refusal), the run stops with "seed lookup failed" — never "fewer than 3
+notes". The second message would tell the user the hub has no links when we
+simply could not ask, and they would stop looking (F5-AC5). This is the only
+place a Kado failure ends a run without a document: without the lookup there
+is nothing to propose.
+
+**Three notes minimum.** Fewer than 2 eligible neighbours → no proposal, reason
+"fewer than 3 notes" (owner decision 2026-10-27: same floor as `min_notes`).
+
+**Title, parents, confidence.** The title is the seed stem plus the profile MOC
+suffix (`profile_conventions.moc_suffix`, applied once) — the seed names the
+hub, a Title-Cased topic would rename the user's note. Parent options come
+from Phase 5 run on the seed's cached topics; the seed stem is not a keyword,
+or a note called "Energy" would score against a Dewey "energy" category by
+its name alone. Confidence follows the topic formula (topic members /
+candidates), which is 1.0 for the single seed; nothing ranks it against other
+proposals.
+
+**Single pass, no squelch, no Phase 2/3/6/D3.** There is no topic extraction
+to hand to the agent, so `--emit-phase1` / `--phase1-input` have nothing to
+carry; combining either (or `--check-moc-uplinks`) with `--around` is a fatal
+usage error (exit 2) rather than silently running the other flow — the agent
+would otherwise wait for a Pass 1 file that never names the seed. The squelch
+registry is neither read nor decremented: an `around:` run is an explicit
+request for one note, so a past rejection of a topic proposal must not hide
+it, and an `around:` run must not age other rejections (owner decision,
+2026-10-28). Phase 6 and D3 compare proposals with existing MOCs and with each
+other by topic; with one proposal and no topic they have nothing to compare.
+Phase 6.5 does run on the seed so its `(up)` annotation is the same as in any
+other proposal.
+
+**Report shape.** `around: {kind, path, stem}` is a top-level field, `None` in
+`empty_report`, so every report has one shape. Every `around:` abort report
+still carries `around` (when resolved) and `link_stats`, so the `Discovery:`
+line can show the one attempt.

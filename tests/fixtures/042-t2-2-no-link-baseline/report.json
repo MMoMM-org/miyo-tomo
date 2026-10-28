@@ -1,0 +1,84 @@
+{
+  "schema_version": "1",
+  "run_id": "test-run-id",
+  "mode": "tag",
+  "trigger_arg": "topic/applied/zsh",
+  "profile": "miyo",
+  "candidates_total": 0,
+  "candidates_after_prefilter": 0,
+  "candidates_capped": false,
+  "candidates": [],
+  "topic_clusters": [
+    {
+      "cluster_id": "MOC01",
+      "title": "Energy Management (MOC)",
+      "confidence": 0.82,
+      "candidate_stems": [
+        "Energy Level (Thought)",
+        "Sleep Debt",
+        "Recovery Days"
+      ],
+      "topic_keywords": [
+        "energy",
+        "sleep"
+      ],
+      "slug": "energy-management-(moc)",
+      "location": "Atlas/200 Maps/",
+      "template": "t_moc_tomo",
+      "existing_up": [
+        {
+          "stem": "Energy Level (Thought)",
+          "state": "absent",
+          "target": null
+        },
+        {
+          "stem": "Sleep Debt",
+          "state": "valid",
+          "target": "Health MOC"
+        },
+        {
+          "stem": "Recovery Days",
+          "state": "broken",
+          "target": "Gone"
+        }
+      ]
+    },
+    {
+      "cluster_id": "MOC02",
+      "title": "Zsh Tips (MOC)",
+      "confidence": 0.6,
+      "candidate_stems": [
+        "alias-basics",
+        "prompt-themes"
+      ],
+      "topic_keywords": [
+        "zsh"
+      ],
+      "slug": "zsh-tips-(moc)",
+      "location": "Atlas/200 Maps/",
+      "template": "t_moc_tomo",
+      "existing_up": []
+    }
+  ],
+  "parent_options_per_cluster": {
+    "MOC01": [
+      {
+        "moc_stem": "Health MOC",
+        "confidence": 0.8,
+        "label": "2600 - Applied Sciences"
+      },
+      {
+        "moc_stem": "Life MOC",
+        "confidence": 0.4,
+        "label": "Life"
+      }
+    ]
+  },
+  "duplicates_skipped": [],
+  "squelched": [],
+  "orphan_suggestions": [],
+  "abort_reason": null,
+  "abort_message": null,
+  "extracted_via_llm_count": 0,
+  "cache_miss_batches_used": 0
+}

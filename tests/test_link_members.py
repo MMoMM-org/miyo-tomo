@@ -565,7 +565,14 @@ class TestLinkMemberMarker:
         spec.loader.exec_module(mod)
         assert mod.LINK_MEMBER_MARKER is LINK_MEMBER_MARKER
 
-        # No second copy of the text in the parsers; the reducer is wired by T2.2.
-        for rel in ("suggestion-parser.py", "moc-proposal-parser.py", "lib/squelch_persist.py"):
+        # No second copy of the text in the parsers or the renderer.
+        for rel in (
+            "suggestion-parser.py",
+            "moc-proposal-parser.py",
+            "lib/squelch_persist.py",
+            "suggestions-reducer.py",
+        ):
             src = (scripts / rel).read_text(encoding="utf-8")
             assert "linked with" not in src.replace("LINK_MEMBER_MARKER", ""), rel
+        reducer_src = (scripts / "suggestions-reducer.py").read_text(encoding="utf-8")
+        assert "from lib.link_members import LINK_MEMBER_MARKER" in reducer_src

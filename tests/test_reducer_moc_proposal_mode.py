@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
 Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
@@ -21,6 +21,7 @@ tests/test_suggestions_reducer_orphan_render.py (gate-named), not here.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -460,3 +461,159 @@ def test_cli_malformed_json_input(tmp_path: Path) -> None:
         f"Expected exit 1 for malformed JSON, got {result.returncode};\n"
         f"stderr: {result.stderr.decode()}"
     )
+
+
+# ── Link members (spec 042 T2.2, PRD F4) ─────────────────────────────────────
+
+FIXTURE_DIR = TESTS_DIR / "fixtures" / "042-t2-2-no-link-baseline"
+LINK_SUFFIX = " — linked with "  # spelled out on purpose: the test pins the contract text
+
+
+def _link_member(
+    stem: str,
+    linked_with: list[str],
+    *,
+    up_state: str = "absent",
+    up_target: str | None = None,
+) -> dict:
+    return {
+        "stem": stem,
+        "path": f"Atlas/202 Notes/{stem}.md",
+        "linked_with": linked_with,
+        "up_state": up_state,
+        "up_target": up_target,
+    }
+
+
+def _link_report(link_members: list[dict] | None) -> dict:
+    report = _empty_report()
+    cluster = _cluster(
+        "MOC01",
+        title="Energy (MOC)",
+        confidence=0.8,
+        candidate_stems=["Energy Level", "Sleep Debt", "Recovery Days"],
+        topic_keywords=["energy"],
+        existing_up=[
+            {"stem": "Energy Level", "state": "absent", "target": None},
+            {"stem": "Sleep Debt", "state": "valid", "target": "Health MOC"},
+            {"stem": "Recovery Days", "state": "absent", "target": None},
+        ],
+    )
+    if link_members is not None:
+        cluster["link_members"] = link_members
+    report["topic_clusters"] = [cluster]
+    return report
+
+
+def _body_after_frontmatter(doc: str) -> str:
+    return doc[doc.index("\n---\n", 4) + len("\n---\n"):]
+
+
+def _link_lines(body: str) -> list[str]:
+    return [ln for ln in body.splitlines() if LINK_SUFFIX in ln]
+
+
+TWO_LINK_MEMBERS = [
+    _link_member("Afternoon Slump", ["Energy Level", "Sleep Debt"]),
+    _link_member(
+        "Caffeine Timing",
+        ["Recovery Days", "Sleep Debt"],
+        up_state="valid",
+        up_target="Habits MOC",
+    ),
+]
+
+
+def test_link_members_render_after_topic_members() -> None:
+    """F4-AC1: unticked link lines follow the topic members, member wikilink first."""
+    _, body = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+
+    lines = body.splitlines()
+    kids = lines[lines.index("#### Children (5)") + 2:]
+    kids = kids[: kids.index("")]
+    assert kids[:3] == [
+        "- [x] [[Energy Level]] (no up:: yet)",
+        "- [x] [[Sleep Debt]] (existing up:: [[Health MOC]] → becomes `related::`)",
+        "- [x] [[Recovery Days]] (no up:: yet)",
+    ]
+    assert kids[3] == (
+        "- [ ] [[Afternoon Slump]] (no up:: yet)"
+        " — linked with [[Energy Level]], [[Sleep Debt]]"
+    )
+    assert kids[4].startswith("- [ ] [[Caffeine Timing]] ")
+    assert len(kids) == 5
+
+
+def test_existing_up_annotation_precedes_link_suffix() -> None:
+    """F4-AC2: valid and broken existing up:: read as for a topic member, then the suffix."""
+    members = [
+        _link_member("Caffeine Timing", ["Sleep Debt"], up_state="valid", up_target="Habits MOC"),
+        _link_member("Old Note", ["Sleep Debt"], up_state="broken", up_target="Gone"),
+    ]
+    _, body = render_moc_proposal_doc(_link_report(members), _Cfg())
+
+    assert (
+        "- [ ] [[Caffeine Timing]] (existing up:: [[Habits MOC]] → becomes `related::`)"
+        " — linked with [[Sleep Debt]]"
+    ) in body
+    assert (
+        "- [ ] [[Old Note]] (existing up:: broken — ignored) — linked with [[Sleep Debt]]"
+    ) in body
+
+
+def test_why_counts_link_members_only_when_present() -> None:
+    """F4-AC3: the sentence appears for N > 0 (singular for 1), never for 0 or a missing key."""
+    _, two = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+    _, one = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS[:1]), _Cfg())
+    _, empty = render_moc_proposal_doc(_link_report([]), _Cfg())
+    _, missing = render_moc_proposal_doc(_link_report(None), _Cfg())
+
+    why = two.split("#### Why this proposal")[1]
+    assert why.splitlines()[2] == (
+        "3 notes with topic overlap energy have no dedicated MOC."
+        " 2 more members came through links."
+    )
+    assert "1 more member came through links." in one
+    assert "1 more members" not in one
+    assert "came through links" not in empty
+    assert "came through links" not in missing
+
+
+def test_children_count_includes_link_members() -> None:
+    """Children heading and Override count both groups; the Cluster header keeps the topic count."""
+    _, body = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+
+    assert "#### Children (5)" in body
+    assert "(applies to all 5 children)" in body
+    assert "**Cluster:** 3 Notes — energy" in body
+    assert len(_link_lines(body)) == 2
+
+
+def test_report_without_link_members_is_byte_identical() -> None:
+    """A report without link members renders as the pre-042 renderer did (captured fixture)."""
+    report = json.loads((FIXTURE_DIR / "report.json").read_text(encoding="utf-8"))
+    expected = json.loads((FIXTURE_DIR / "rendered.json").read_text(encoding="utf-8"))
+
+    _, body = render_moc_proposal_doc(report, _Cfg())
+
+    assert _body_after_frontmatter(body) == expected["body_after_frontmatter"]
+
+
+def test_link_lines_round_trip_through_the_suggestion_parser() -> None:
+    """Renderer and parser agree on ADR-7: link lines add children, not candidate stems."""
+    spec = importlib.util.spec_from_file_location(
+        "suggestion_parser_rt", SCRIPTS_DIR / "suggestion-parser.py"
+    )
+    parser = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(parser)
+
+    _, plain = render_moc_proposal_doc(_link_report(None), _Cfg())
+    _, linked = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+    plain_sections = parser.enumerate_all_moc_sections(plain)
+    linked_sections = parser.enumerate_all_moc_sections(linked)
+
+    assert len(plain_sections) == len(linked_sections) == 1
+    # tuple = (moc_id, title, candidate_stems, topic_keywords)
+    assert linked_sections[0][2] == plain_sections[0][2]
+    assert linked_sections[0][2] == ["Energy Level", "Sleep Debt", "Recovery Days"]

@@ -347,6 +347,9 @@ its name alone. Confidence follows the topic formula (topic members /
 candidates), which is 1.0 for the single seed; nothing ranks it against other
 proposals.
 
+The report keeps `confidence: 1.0`; the reducer does not render it for `around:`
+sections (owner decision B, see suggestions-reducer.md).
+
 **Single pass, no squelch, no Phase 2/3/6/D3.** There is no topic extraction
 to hand to the agent, so `--emit-phase1` / `--phase1-input` have nothing to
 carry; combining either (or `--check-moc-uplinks`) with `--around` is a fatal

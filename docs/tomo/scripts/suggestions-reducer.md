@@ -1908,3 +1908,17 @@ Omitting is safe because nothing reads the line from a rendered doc:
 `moc-proposal-parser.py` and the state promoter parse Cluster, Title, Location,
 Template, Parent and Children, never Confidence. The `(confidence N%)` text
 that the parser does match belongs to parent options and inbox Type fields.
+
+## An `around:` Cluster Line Counts All Members and Names the Seed (spec 042, owner decision W2)
+
+WHY: the topic Cluster line reads `N Notes — kw1, kw2`, where N counts topic
+candidates. For an `around:` proposal that count is 1 (the seed) while
+`#### Children` lists 3, which misled the reader. The reducer therefore renders
+`**Cluster:** <N> Notes — linked around [[<seed stem>]]` with N = total members
+(seed + link members, equal to the Children count), and no keyword list, since
+the seed is not a topic. Topic mode is unchanged (byte-identity baseline).
+
+`suggestion-parser` never reads this line for around sections in
+`enumerate_all_moc_sections` (skipped by `_is_around_block`). `enumerate_moc_sections_split`
+still parses it for a ticked around section, yielding `topic_keywords` of
+`["linked around [[seed]]"]`; no squelch registry entry can match that signature.

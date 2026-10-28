@@ -36,7 +36,7 @@ Delivers F3 end to end: from `around:<MOC>` to instructions that add `up::` to e
 - [ ] **T4.1 Discovery: missing members of a MOC** `[activity: backend-api]` `[component: around builder]`
 
   1. Prime: WHY section in `docs/tomo/scripts/moc-discovery.md` — Rule 1 (missing member), why cached `up_target`
-  2. Test: extend `tests/test_moc_discovery_around.py` (RED): MOC target → `report.extension` with eligible neighbours whose cached `up_target` is not the MOC (frontmatter-`up` member counts as present), all unticked, `linked_with=[moc]` `[ref: PRD/F3-AC1]`; none missing → abort "no missing members" `[ref: PRD/F3-AC2]`; a parent MOC among the neighbours is never a member; one missing member suffices
+  2. Test: extend `tests/test_moc_discovery_around.py` (RED): MOC target → `report.extension` with eligible neighbours whose cached `up_target` is not the MOC (frontmatter-`up` member counts as present), all unticked, `linked_with=[moc]` `[ref: PRD/F3-AC1]`; none missing → abort "no missing members" `[ref: PRD/F3-AC2]`; a parent MOC among the neighbours is never a member; one missing member suffices; replace `test_moc_seed_routes_to_extension_stub` (keep the `around.kind == moc` routing assertion) and delete `ABORT_MESSAGES['around-moc-pending']` and the `_run_around_extension` stub; add a rejection-path squelch test for an Extend section (its `**Trigger:** around:<MOC>` on its own line)
   3. Implement: extension branch of the builder; bump version
   4. Validate: tests green; ruff clean
   5. Success: `[ref: PRD/F3-AC1, F3-AC2]`

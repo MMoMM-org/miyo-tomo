@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.1"
+version: "1.2"
 ---
 
 # Product Requirements Document
@@ -115,7 +115,7 @@ None. Tomo is single-user; the Hashi executor and `/inbox` are system consumers,
 - **Acceptance Criteria:**
   - [ ] Given a seed note that is not a MOC with at least 2 linked notes left after filtering, When the user runs `/moc-propose around:<note>`, Then one new-MOC proposal is written with the seed ticked and each linked note unticked
   - [ ] Given a seed note with fewer than 2 linked notes left after filtering, When the user runs `around:<note>`, Then no proposal is written and the run reports that fewer than 3 notes were found
-  - [ ] Given a seed that does not exist or that Tomo's key cannot read, When the user runs `around:<note>`, Then no proposal is written and the run names the seed as not found
+  - [ ] Given a seed that is not in the cache, When the user runs `around:<note>`, Then no proposal is written and the run names the seed as not found; given a cached seed that Kado refuses or Tomo's key cannot read, Then no proposal is written and the run reports a seed lookup failure (per the seed-lookup criterion below) naming the seed
   - [ ] Given `Around:<note>` or another casing of the prefix, When the user runs it, Then it is treated as free text, consistent with the existing case-sensitive prefixes
 
 #### Feature 3: `around:<MOC>` — extend an existing MOC with its missing members

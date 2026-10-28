@@ -528,7 +528,7 @@ sequenceDiagram
 
 #### Secondary flows
 
-- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; no squelch check. Rendered with no `**Confidence:**` line; Why: "N notes link with [[seed]] and have no dedicated MOC." (singular "1 note links with [[seed]] and has no dedicated MOC." for 1); no "more members came through links" and no classification sentence.
+- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; Phase 6.5 existing-up check on the seed (one `read_note`, outside the graph budget); no squelch read, decrement or write. Rendered with no `**Confidence:**` line; Why: "N notes link with [[seed]] and have no dedicated MOC." (singular "1 note links with [[seed]] and has no dedicated MOC." for 1); no "more members came through links" and no classification sentence.
 - **`around:<MOC>`:** resolve → `neighbors(moc)` → eligible nodes whose cached `up_target` is not this MOC → if none → "no missing members" → `report.extension`. Reducer renders `### MOC01 — Extend [[X]]`, `- [ ] Accept`, `**Extends:** [[X]]`, `#### Missing members (n)`, Override, Why.
 - **Apply (extension):** `moc-proposal-parser` → `extend_moc` → `filter_missing_extension_targets` (withhold + report if MOC gone) → `_build_moc_extension_actions`: per ticked member `emit_up_preservation_actions(member, moc_stem, override)`; one `outgoing(moc)` call; `link_to_moc` (`line_to_add: "- [[member]]"`, anchor via the existing resolver) only for members not in it → instructions-diff checks one `add_relationship` set per member and `link_to_moc` count = ticked − already linked.
 
@@ -539,12 +539,13 @@ sequenceDiagram
 | 429 with Retry-After | KadoClient | existing backoff; every attempt counted; gate stops retries when budget is spent | nothing unless the budget runs out |
 | Budget exhausted mid-run | LinkLookup / augment | current cluster `skipped_budget` with no link members (all-or-nothing); later clusters needing uncached lookups `skipped_budget`; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
 | Lookup error (Kado error, 503 after retries) | augment | that cluster `failed`, no link members; others continue | "lookups failed: F" note in `Aborts/notes` |
-| Seed lookup fails | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason |
+| Seed lookup fails (Kado error, key cannot read the seed, budget refusal) | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason naming the seed |
 | Seed not in cache / not found | around builder | no proposal | "around: '<X>' not found — rebuild the cache or give a path" |
-| Seed name matches MOC and note | around builder | no proposal | both paths listed |
+| Seed name matches several cached notes (MOC + note, or two notes) | around builder | no proposal | "around: '<X>' matches several notes — give a path: <paths>" |
 | Seed is periodic | around builder | no proposal | "around: periodic notes cannot be a MOC seed" |
 | Seed not eligible (inbox / outside atomic folders / exclude/note) | around builder | no proposal | "around: '<X>' cannot seed a MOC — <reason>" |
 | < 2 eligible neighbours | around builder | no proposal | "fewer than 3 notes" |
+| `--around` combined with `--emit-phase1` / `--phase1-input` / `--check-moc-uplinks` | moc-discovery CLI | exit 2, no report | FATAL usage line on stderr |
 | MOC has no missing members | around builder | no proposal | "no missing members" |
 | Extension target MOC gone at /inbox | instruction-render filter | item withheld, reported like a missing source | instructions.md withheld notice |
 | `outgoing(moc)` fails at render | extension builder | emit link lines for all ticked members, report "already-linked check unavailable" | instructions.md note |
@@ -620,7 +621,8 @@ None. No Kado or Hashi release needed; no handoff.
 
 ### MOC01 — Extend [[Health MOC]]
 - [ ] Accept
-**Extends:** [[Health MOC]]   **Trigger:** around:Health MOC
+**Extends:** [[Health MOC]]
+**Trigger:** around:Health MOC
 #### Missing members (2)
 - [ ] [[Cold Showers]] (no up:: yet) — linked with [[Health MOC]]
 - [ ] [[Sleep Debt]] (existing up:: [[Psychology MOC]] → becomes `related::`) — linked with [[Health MOC]]
@@ -636,11 +638,17 @@ None. No Kado or Hashi release needed; no handoff.
 ### MOC01 — Energy Level (Thought) (MOC)
 - [ ] Accept
 **Title:** `Energy Level (Thought) (MOC)`  **Location:** `Atlas/200 Maps/`  **Template:** [[t_moc_tomo]]
-**Trigger:** around:Energy Level (Thought)   **Cluster:** 3 Notes — energy
+**Trigger:** around:Energy Level (Thought)
+**Cluster:** 3 Notes — linked around [[Energy Level (Thought)]]
+#### Parent
+- [x] up:: [[Personal Management]] (confidence 0.80)
+- [ ] no parent (top-level MOC)
 #### Children (3)
 - [x] [[Energy Level (Thought)]] (no up:: yet)
 - [ ] [[Afternoon Slump]] (no up:: yet) — linked with [[Energy Level (Thought)]]
 - [ ] [[Caffeine Timing]] (no up:: yet) — linked with [[Energy Level (Thought)]]
+#### up::-Handling Override
+- [ ] **Keep existing up::, add new MOC as `related::`** (applies to all 3 children)
 #### Why this proposal
 2 notes link with [[Energy Level (Thought)]] and have no dedicated MOC.
 ```
@@ -648,7 +656,7 @@ None. No Kado or Hashi release needed; no handoff.
 ### System-Wide Patterns
 - **Security:** only paths Kado returns (scope-filtered) are ever named; ineligible-node reasons are counted, not logged by name.
 - **Error handling:** degrade per cluster; only an `around:` seed failure ends a run without a doc.
-- **Performance:** ≤ 60 attempts, ≥ 0.3 s apart (≤ 18 s worst case); memoised lookups.
+- **Performance:** ≤ 60 kado-graph attempts per run (incl. retries and the `around:` seed lookup), ≥ 0.3 s apart (≤ 18 s worst case); memoised lookups. Other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget and its pacing.
 - **Logging/Auditing:** counters in the report and on the `Discovery:` line; no note content.
 
 ### Multi-Component Patterns (if applicable)
@@ -673,7 +681,7 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28
-- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch; the Extend section renders `**Trigger:** around:<MOC>`, which the parser's around skip relies on (Phase 4 must keep it).
+- [x] ADR-5 Extension doc shape: stays `doc_type: moc-proposal`; section `### MOCxx — Extend [[X]]` with `**Extends:** [[X]]` and `#### Missing members (n)`; parser emits `extend_moc`; extensions are excluded from squelch; the Extend section renders `**Trigger:** around:<MOC>` on its own line (the parser's `RE_AROUND_TRIGGER` is anchored at line start), which the around skip relies on (Phase 4 must keep it).
   - Rationale: promoter, triage and the eval-gated conductor stay untouched; a non-`MOCxx` heading would be swallowed into the previous block by the parser.
   - Trade-offs: the `MOCxx` id no longer implies "create"; the parser branches on `**Extends:**`.
   - User confirmed: 2026-10-28
@@ -688,7 +696,7 @@ None. No Kado or Hashi release needed; no handoff.
 
 ## Quality Requirements
 
-- **Performance:** ≤ 60 Kado attempts per run (assert in tests via `attempt_count`); ≥ 0.3 s between sends; added wall time ≤ 20 s on the reference vault (64 MOCs / 295 notes).
+- **Performance:** ≤ 60 kado-graph attempts per run (assert in tests via `LinkLookup.attempts` / `link_stats.attempts` — `KadoClient.attempt_count` also counts non-graph calls); ≥ 0.3 s between kado-graph sends; added wall time ≤ 20 s on the reference vault (64 MOCs / 295 notes).
 - **Usability:** every link member shows its reason; docs without link members are byte-identical to today's.
 - **Security:** no out-of-scope or ineligible note named anywhere; metadata-only counters.
 - **Reliability:** no Kado failure aborts a non-`around:` run; 0 rate-limit aborts across validation runs; every ticked member reaches `instructions.json` (instructions-diff hard gate stays green).
@@ -705,8 +713,9 @@ None. No Kado or Hashi release needed; no handoff.
 **F2 — around:<note>**
 - [ ] F2-AC1: WHEN `--around` names a non-MOC, non-periodic cached note with ≥ 2 eligible neighbours, THE SYSTEM SHALL emit one new-MOC cluster: seed ticked, neighbours unticked, title `<stem><name_suffix>`.
 - [ ] F2-AC2: IF fewer than 2 eligible neighbours remain, THEN THE SYSTEM SHALL write no proposal and report "fewer than 3 notes".
-- [ ] F2-AC3: IF the target is not in the cache or not readable, THEN THE SYSTEM SHALL write no proposal and report it as not found.
+- [ ] F2-AC3: IF the target is not in the cache, THEN THE SYSTEM SHALL write no proposal and report "around: '<X>' not found — rebuild the cache or give a path". A cached target that Kado refuses or cannot read fails the seed lookup and is reported per F5-AC5 ("seed lookup failed", naming the seed and the key-readability remedy).
 - [ ] F2-AC4: THE SYSTEM SHALL route only the exact lowercase `around:` prefix; any other casing SHALL fall to free text.
+- [ ] F2-AC5: IF a section's `**Trigger:**` starts with `around:`, THEN the parser SHALL omit it from `enumerate_all_moc_sections` and from the unticked list of `enumerate_moc_sections_split`, so neither discovery nor rejection reads or writes the squelch registry for it (README decision 2026-10-28; no PRD criterion).
 
 **F3 — around:<MOC>**
 - [ ] F3-AC1: WHEN `--around` names a MOC, THE SYSTEM SHALL emit `report.extension` with every eligible neighbour whose cached `up_target` is not that MOC, unticked.
@@ -719,11 +728,11 @@ None. No Kado or Hashi release needed; no handoff.
 - [ ] F4-AC1: THE SYSTEM SHALL suffix each link member line with ` — linked with ` and its `linked_with` stems as wikilinks.
 - [ ] F4-AC2: WHEN a link member has an existing `up::`, THE SYSTEM SHALL render the existing annotation before the link suffix.
 - [ ] F4-AC3: WHEN a cluster has link members, THE SYSTEM SHALL append "N more members came through links." (singular "1 more member came through links.") to "Why this proposal".
-- [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature. The parser also skips sections whose `**Trigger:**` starts with `around:` in `enumerate_all_moc_sections` and in the unticked list of `enumerate_moc_sections_split`, so around proposals never reach the squelch registry.
+- [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature.
 
 **F5 — budget and degradation**
 - [ ] F5-AC1: WHEN the next cluster's uncached lookups exceed the remaining budget, THE SYSTEM SHALL skip it (`skipped_budget`), still write proposals, and count it on the `Discovery:` line.
-- [ ] F5-AC2: THE SYSTEM SHALL NOT exceed 60 attempts per run and SHALL pace sends ≥ 0.3 s apart.
+- [ ] F5-AC2: THE SYSTEM SHALL NOT exceed 60 kado-graph attempts per run (retries and the `around:` seed lookup included) and SHALL pace those sends ≥ 0.3 s apart; other Kado calls are outside this budget (ADR-4).
 - [ ] F5-AC3: WHEN Kado answers 429 with `Retry-After`, THE SYSTEM SHALL wait as stated, retry, count each attempt, and stop retrying when the gate reports the budget spent.
 - [ ] F5-AC4: WHEN a lookup fails, THE SYSTEM SHALL mark that cluster `failed` with no link members, count it, and leave the rest of the proposal unchanged.
 - [ ] F5-AC5: IF the `around:` seed lookup fails, THEN THE SYSTEM SHALL write no proposal and report the failure, not "fewer than 3 notes".
@@ -779,7 +788,7 @@ None. No Kado or Hashi release needed; no handoff.
 | Term | Definition | Context |
 |------|------------|---------|
 | Rendered slice | `clusters[:max_results]` after D3 and confidence sort | The only clusters looked up |
-| Attempt | One HTTP send to Kado, first try or retry | Budget unit (ADR-4) |
+| Attempt | One kado-graph HTTP send made while a `LinkLookup` is open, first try or retry | Budget unit (ADR-4); other Kado calls do not count |
 | Squelch signature | sha1 of sorted topics + top-5 sorted candidate stems | Mutes rejected proposals; must exclude link members |
 
 ### API/Interface Terms

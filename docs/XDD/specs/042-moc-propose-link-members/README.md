@@ -46,6 +46,8 @@
 | 2026-10-28 | around: seed follows member eligibility (owner decision A) | Nothing the user excluded (inbox, exclude/note, outside atomic folders) is ticked into a new MOC. |
 | 2026-10-28 | around: proposals render no Confidence line (owner decision B) | Confidence measures topic overlap; meaningless for a single seed. No consumer reads the field. |
 | 2026-10-28 | around: rejection writes no squelch entry | Found during Phase 3: rejecting an around doc wrote a registry entry via suggestion-parser.enumerate_all_moc_sections → squelch_persist; the parser now skips sections whose **Trigger:** is around:, enforcing the 'not squelched' decision on the rejection path too. |
+| 2026-10-28 | F2-AC3 narrowed: unreadable seed reported as seed lookup failure (owner, W1) | The key-readability remedy is more useful than 'not found'; PRD v1.2. |
+| 2026-10-28 | around: Cluster line shows total members, linked around [[seed]] (owner, W2) | The topic count (1) next to Children (3) misled. |
 
 ## Context
 

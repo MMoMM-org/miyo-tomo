@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Link members in topic proposals"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -31,7 +31,7 @@ phase: 2
 
 Delivers F1, F4 and the run counters for every existing mode: rendered topic proposals gain unticked link members with their reason, and a rejected proposal still stays muted.
 
-- [ ] **T2.1 Augmentation in the discovery pipeline** `[activity: backend-api]` `[component: moc-discovery]`
+- [x] **T2.1 Augmentation in the discovery pipeline** `[activity: backend-api]` `[component: moc-discovery]`
 
   1. Prime: WHY section first in `docs/tomo/scripts/moc-discovery.md` — insertion point, rendered slice, why squelch/D3/confidence stay topic-only `[ref: SDD/ADR-2]`
   2. Test: extend `tests/test_moc_discovery_main.py` (RED) with a graph-capable fake: a tag run whose top cluster has a note linked with 2 members → `topic_clusters[0].link_members` holds it with `linked_with`; clusters beyond `max_results` get `not_rendered` and cause no call; `link_stats` counts lookups/attempts/failed/skipped/members/uncached; `--emit-phase1` run → fake records zero graph calls; `_NullKadoClient.graph` raises → every rendered cluster `failed`, run exit unchanged; squelch signature and `confidence` of a cluster are identical with and without link members; members are re-checked by `NodeEligibility` before lookups (Pass 2 trusts `--phase1-input`); stem-collision case builds the map by path
@@ -39,7 +39,7 @@ Delivers F1, F4 and the run counters for every existing mode: rendered topic pro
   4. Validate: all `tests/test_moc_discovery_*.py` green unchanged except the new cases; ruff clean
   5. Success: `[ref: PRD/F1-AC1…AC4, F5-AC1, F5-AC4]` in the real pipeline; `[ref: SDD/ADR-2]`
 
-- [ ] **T2.2 Rendering link members and the Why count** `[activity: frontend-ui]` `[component: Reducer]` `[parallel: true]`
+- [x] **T2.2 Rendering link members and the Why count** `[activity: frontend-ui]` `[component: Reducer]` `[parallel: true]`
 
   1. Prime: WHY section first in `docs/tomo/scripts/suggestions-reducer.md` — the line contract and why the member link stays first `[ref: SDD/ADR-7]`
   2. Test: extend `tests/test_reducer_moc_proposal_mode.py` (RED): link members render after topic members as `- [ ] [[stem]] (<annotation>) — linked with [[A]], [[B]]` `[ref: PRD/F4-AC1]`; an existing-`up::` annotation precedes the suffix `[ref: PRD/F4-AC2]`; "Why this proposal" gains "N more members came through links" only when N > 0 `[ref: PRD/F4-AC3]`; the Children count includes link members; a report without link members renders byte-identical to a fixture captured from the current renderer before the change
@@ -47,7 +47,7 @@ Delivers F1, F4 and the run counters for every existing mode: rendered topic pro
   4. Validate: every existing reducer test green unchanged; ruff clean
   5. Success: `[ref: PRD/F4-AC1, F4-AC2, F4-AC3]`
 
-- [ ] **T2.3 Parsing link lines; squelch stays topic-only** `[activity: backend-api]` `[component: suggestion-parser, squelch_persist, moc-proposal-parser]` `[parallel: true]`
+- [x] **T2.3 Parsing link lines; squelch stays topic-only** `[activity: backend-api]` `[component: suggestion-parser, squelch_persist, moc-proposal-parser]` `[parallel: true]`
 
   1. Prime: WHY sections first in `docs/tomo/scripts/suggestion-parser.md` and `docs/tomo/scripts/lib/squelch_persist.md` (create if missing) `[ref: SDD/ADR-7]`
   2. Test (RED):
@@ -59,6 +59,6 @@ Delivers F1, F4 and the run counters for every existing mode: rendered topic pro
   4. Validate: mutation check in a `git archive` copy — remove the exclusion and the squelch test must fail; ruff clean
   5. Success: `[ref: PRD/F4-AC4, F1-AC5]`; rejected proposals do not resurface `[ref: PRD/Risks]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Full suite + ruff. Drift check of Phase 2 against SDD ADR-2/ADR-7. Confirm no change to `lib/topic_clusters.py`, `state-promoter.py`, `inbox-triage.py`, `synthesis-conductor.md`.

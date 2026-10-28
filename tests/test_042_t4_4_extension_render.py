@@ -374,6 +374,20 @@ def test_main_withholds_an_extension_whose_moc_is_gone(monkeypatch, tmp_path):
     ) in md
 
 
+def test_a_member_listed_twice_is_expanded_once(monkeypatch, tmp_path):
+    """supporting_items may repeat a member, in any case; each gets one set of actions."""
+    members = ("Fresh Note", "fresh note", "Other Up", "Fresh Note")
+    rc, doc, _md = _run_main(monkeypatch, tmp_path, _vault(), [_extension(members)])
+    assert rc == 0
+    rels = [a for a in doc["actions"] if a["action"] == "add_relationship"]
+    links = [a for a in doc["actions"] if a["action"] == "link_to_moc"]
+    keys = [(a["target_moc_path"], a["line"]) for a in rels]
+    assert len(keys) == len(set(keys))
+    assert not any("fresh note" in k[0] for k in keys)
+    assert len(links) == 2
+    assert doc["tomo"]["extensions"][0]["members"] == ["Fresh Note", "Other Up"]
+
+
 # ── instructions-diff ───────────────────────────────────────────────────────
 
 

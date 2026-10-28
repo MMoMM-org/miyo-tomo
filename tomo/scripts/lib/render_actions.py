@@ -1,4 +1,4 @@
-# version: 0.32.0
+# version: 0.32.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -2546,7 +2546,12 @@ def _build_moc_extension_actions(
         if item.get("action") != "extend_moc":
             continue
         moc = _moc_stem(item.get("target_moc") or "")
-        members = _parse_supporting_items(item.get("supporting_items"))
+        members = []
+        seen: set[str] = set()
+        for m in _parse_supporting_items(item.get("supporting_items")):
+            if m.casefold() not in seen:
+                seen.add(m.casefold())
+                members.append(m)
         if not moc or not members:
             continue
         override = bool(item.get("override_preserve_existing_up", False))

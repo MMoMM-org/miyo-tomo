@@ -617,3 +617,49 @@ def test_link_lines_round_trip_through_the_suggestion_parser() -> None:
     # tuple = (moc_id, title, candidate_stems, topic_keywords)
     assert linked_sections[0][2] == plain_sections[0][2]
     assert linked_sections[0][2] == ["Energy Level", "Sleep Debt", "Recovery Days"]
+
+
+# ── max_results comes from vault-config (spec 042, owner decision O3) ────────
+
+
+def _render_via_cli(tmp_path: Path, config_text: str | None) -> str:
+    report = _empty_report()
+    report["candidates"] = [_candidate(f"note-{i}") for i in range(7)]
+    report["topic_clusters"] = [
+        _cluster(
+            f"MOC{i+1:02d}",
+            title=f"Topic {i+1} (MOC)",
+            confidence=round(0.90 - i * 0.05, 2),
+            candidate_stems=[f"note-{i}"],
+            slug=f"topic-{i+1}-moc",
+        )
+        for i in range(7)
+    ]
+    inp = tmp_path / "report.json"
+    inp.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "out"
+    argv = [sys.executable, _SCRIPT, "--moc-proposal-mode", "--input", str(inp),
+            "--output-dir", str(out)]
+    if config_text is not None:
+        cfg = tmp_path / "vault-config.yaml"
+        cfg.write_text(config_text, encoding="utf-8")
+        argv += ["--config", str(cfg)]
+    result = subprocess.run(argv, capture_output=True, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr.decode()
+    return Path(result.stdout.decode().strip()).read_text(encoding="utf-8")
+
+
+def test_cli_max_results_from_vault_config(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, "tomo:\n  moc_proposal:\n    max_results: 3\n")
+    assert body.count("### MOC") == 3
+    assert "4 additional cluster(s) found" in body
+
+
+def test_cli_max_results_defaults_to_five_when_key_missing(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, "tomo:\n  moc_proposal:\n    min_notes: 2\n")
+    assert body.count("### MOC") == 5
+
+
+def test_cli_max_results_defaults_to_five_without_config_file(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, None)
+    assert body.count("### MOC") == 5

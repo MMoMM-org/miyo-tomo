@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.63.0
+# version: 1.64.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -2112,6 +2112,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         # operationally unavoidable.
         help="Directory to write the proposal-doc (required when --moc-proposal-mode is set).",
     )
+    p.add_argument(
+        "--config",
+        default="config/vault-config.yaml",
+        help="vault-config.yaml supplying tomo.moc_proposal.max_results "
+             "(--moc-proposal-mode only; default: config/vault-config.yaml).",
+    )
     # ── Inbox mode (existing) ─────────────────────────────────────────────────
     # Instance-correct cwd-relative defaults (instance runtime cwd = instance root).
     # Host/test runs override. --output is dual-use (moc-proposal-mode wants a dir)
@@ -2154,6 +2160,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _load_moc_proposal_config(config_path: Path):
+    """MocProposalConfig from vault-config via shared-ctx-builder's loader."""
+    _name = "shared_ctx_builder"
+    if _name not in sys.modules:
+        _spec = _ilu.spec_from_file_location(
+            _name, str(Path(__file__).resolve().parent / "shared-ctx-builder.py")
+        )
+        _mod = _ilu.module_from_spec(_spec)
+        sys.modules[_name] = _mod
+        _spec.loader.exec_module(_mod)
+    return sys.modules[_name].load_moc_proposal_config(config_path)
+
+
 def _main_moc_proposal(args: argparse.Namespace) -> int:
     """Handle --moc-proposal-mode: read DiscoveryReport, render proposal-doc, write to disk."""
     if not args.input:
@@ -2175,12 +2194,7 @@ def _main_moc_proposal(args: argparse.Namespace) -> int:
 
     output_dir = Path(args.output_dir) if args.output_dir else Path(".")
 
-    # Duck-typed config: only max_results is consulted by render_moc_proposal_doc.
-    # max_results comes from MocProposalConfig (not a CLI flag — spec AC-3.1).
-    class _InlineCfg:
-        max_results: int = 5
-
-    cfg = _InlineCfg()
+    cfg = _load_moc_proposal_config(Path(args.config))
 
     filename, body = render_moc_proposal_doc(report, cfg)
     output_dir.mkdir(parents=True, exist_ok=True)

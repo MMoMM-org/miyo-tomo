@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.66.2
+# version: 1.67.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1468,6 +1468,55 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
     return "(no up:: yet)"
 
 
+def _link_member_lines(link_members: list[dict]) -> list[str]:
+    """`- [ ] [[stem]] (<up annotation>) — linked with [[A]], …` per member (ADR-7)."""
+    link_up_rows = [
+        {"stem": m.get("stem"), "state": m.get("up_state", "absent"), "target": m.get("up_target")}
+        for m in link_members
+    ]
+    lines: list[str] = []
+    for member in link_members:
+        stem = member.get("stem", "")
+        annotation = _child_annotation(stem, link_up_rows)
+        reason = ", ".join(f"[[{w}]]" for w in member.get("linked_with") or [])
+        lines.append(f"- [ ] [[{stem}]] {annotation}{LINK_MEMBER_MARKER}{reason}")
+    return lines
+
+
+def _render_extension_section(moc_id: str, extension: dict, trigger_arg: str) -> str:
+    """Render the `### MOCxx — Extend [[X]]` section of an around:<MOC> report (ADR-5)."""
+    moc_stem = extension.get("moc_stem", "")
+    members: list[dict] = extension.get("members") or []
+    n = len(members)
+    why = (
+        f"1 note links with [[{moc_stem}]] but has no up:: to it."
+        if n == 1
+        else f"{n} notes link with [[{moc_stem}]] but have no up:: to it."
+    )
+    lines: list[str] = [
+        f"### {moc_id} — Extend [[{moc_stem}]]",
+        "",
+        "- [ ] Accept",
+        "",
+        f"**Extends:** [[{moc_stem}]]",
+        f"**Trigger:** {trigger_arg}",
+        "",
+        f"#### Missing members ({n})",
+        "",
+        *_link_member_lines(members),
+        "",
+        "#### up::-Handling Override",
+        "",
+        f"- [ ] **Keep existing up::, add [[{moc_stem}]] as `related::`**"
+        " (applies to all ticked members)",
+        "",
+        "#### Why this proposal",
+        "",
+        why,
+    ]
+    return "\n".join(lines)
+
+
 def _render_cluster_section(
     moc_id: str,
     cluster: dict,
@@ -1536,15 +1585,7 @@ def _render_cluster_section(
     for stem in candidate_stems:
         annotation = _child_annotation(stem, existing_up_rows)
         lines.append(f"- [x] [[{stem}]] {annotation}")
-    link_up_rows = [
-        {"stem": m.get("stem"), "state": m.get("up_state", "absent"), "target": m.get("up_target")}
-        for m in link_members
-    ]
-    for member in link_members:
-        stem = member.get("stem", "")
-        annotation = _child_annotation(stem, link_up_rows)
-        reason = ", ".join(f"[[{w}]]" for w in member.get("linked_with") or [])
-        lines.append(f"- [ ] [[{stem}]] {annotation}{LINK_MEMBER_MARKER}{reason}")
+    lines.extend(_link_member_lines(link_members))
     lines.append("")
 
     lines.append("#### up::-Handling Override")
@@ -1646,6 +1687,9 @@ def render_moc_proposal_doc(
     now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
     date_str = time.strftime("%Y-%m-%d", time.localtime())
     hhmm_str = time.strftime("%H%M", time.localtime())
+    extension: dict | None = report.get("extension") if mode == "around" else None
+    if extension:
+        top_slug = slugify(f"extend {extension.get('moc_stem', '')}") or "moc"
     filename = f"{date_str}_{hhmm_str}_moc-proposal-{top_slug}.md"
 
     # Frontmatter
@@ -1666,7 +1710,7 @@ def render_moc_proposal_doc(
     frontmatter_lines = [
         "---",
         "type: tomo-proposal",
-        "proposal_kind: moc",
+        "proposal_kind: moc-extension" if extension else "proposal_kind: moc",
         f"created: {now_str}",
         f"trigger: {trigger_field}",
         "status: pending",
@@ -1683,6 +1727,10 @@ def render_moc_proposal_doc(
         "# MOC Uplink Check" if check_mode else "# MOC Proposal",
         "",
     ]
+
+    if extension:
+        body_lines.append(_render_extension_section("MOC01", extension, trigger_field))
+        body_lines.append("")
 
     rendered = clusters[:max_results]
     overflow = len(clusters) - len(rendered)

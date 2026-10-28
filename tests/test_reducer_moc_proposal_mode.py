@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
 Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
@@ -740,3 +740,109 @@ def test_around_cluster_line_counts_all_members_and_names_the_seed() -> None:
 
     assert "**Cluster:** 3 Notes — linked around [[knowledge]]\n" in body
     assert "#### Children (3)" in body
+
+
+# ── around:<MOC> extension section (spec 042 T4.2, PRD F3-AC5) ───────────────
+
+EXTENSION_FIXTURE = TESTS_DIR / "fixtures" / "042-t4-2-extension-report" / "report.json"
+_EXT_MOC = "Gardening (MOC)"
+
+
+def _extension_report() -> dict:
+    """The real `moc-discovery --around 'Gardening (MOC)'` report (captured via T4.1's harness)."""
+    return json.loads(EXTENSION_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _extension_doc(report: dict | None = None) -> tuple[str, str]:
+    return render_moc_proposal_doc(report or _extension_report(), _Cfg())
+
+
+def _extension_section(body: str) -> list[str]:
+    section = body.split("### MOC01", 1)[1]
+    return [ln for ln in ("### MOC01" + section).splitlines() if ln.strip()]
+
+
+def test_extension_section_shape() -> None:
+    """F3-AC5: the extension renders as a MOCxx Extend section in the SDD's exact line order."""
+    _, body = _extension_doc()
+
+    assert body.count("### MOC") == 1
+    assert _extension_section(body) == [
+        f"### MOC01 — Extend [[{_EXT_MOC}]]",
+        "- [ ] Accept",
+        f"**Extends:** [[{_EXT_MOC}]]",
+        f"**Trigger:** around:{_EXT_MOC}",
+        "#### Missing members (2)",
+        f"- [ ] [[argon]] (no up:: yet) — linked with [[{_EXT_MOC}]]",
+        f"- [ ] [[elsewhere]] (existing up:: [[solar]] → becomes `related::`)"
+        f" — linked with [[{_EXT_MOC}]]",
+        "#### up::-Handling Override",
+        f"- [ ] **Keep existing up::, add [[{_EXT_MOC}]] as `related::`**"
+        " (applies to all ticked members)",
+        "#### Why this proposal",
+        f"2 notes link with [[{_EXT_MOC}]] but have no up:: to it.",
+    ]
+
+
+def test_extension_has_no_create_fields() -> None:
+    """F3-AC5: the MOC exists — no Title/Location/Template, no Parent, no Children, no Confidence."""
+    _, body = _extension_doc()
+
+    assert f"### MOC01 — Extend [[{_EXT_MOC}]]" in body
+    for absent in ("**Title:**", "**Location:**", "**Template:**", "#### Parent",
+                   "#### Children", "**Confidence:**", "**Cluster:**"):
+        assert absent not in body, absent
+
+
+def test_extension_trigger_is_on_its_own_line() -> None:
+    """ADR-5: suggestion-parser's RE_AROUND_TRIGGER is anchored at line start."""
+    _, body = _extension_doc()
+
+    assert f"\n**Trigger:** around:{_EXT_MOC}\n" in body
+
+
+def test_extension_why_is_singular_for_one_member() -> None:
+    report = _extension_report()
+    report["extension"]["members"] = report["extension"]["members"][:1]
+
+    _, body = _extension_doc(report)
+
+    assert "#### Missing members (1)" in body
+    assert f"1 note links with [[{_EXT_MOC}]] but has no up:: to it." in body
+
+
+def test_extension_broken_up_reads_as_for_topic_members() -> None:
+    """ADR-7: one annotation format — a broken up:: reads as `_child_annotation` writes it."""
+    report = _extension_report()
+    report["extension"]["members"][0].update(up_state="broken", up_target=None)
+
+    _, body = _extension_doc(report)
+
+    assert f"- [ ] [[argon]] (existing up:: broken — ignored) — linked with [[{_EXT_MOC}]]" in body
+
+
+def test_extension_frontmatter_and_filename() -> None:
+    """proposal_kind marks the extension; doc_type stays moc-proposal; filename keeps _moc-proposal."""
+    import re
+
+    filename, body = _extension_doc()
+    frontmatter = body.split("\n---\n", 1)[0]
+
+    assert "\nproposal_kind: moc-extension\n" in frontmatter
+    assert "proposal_kind: moc\n" not in frontmatter
+    assert "doc_type: moc-proposal" in frontmatter
+    assert f"\ntrigger: around:{_EXT_MOC}\n" in frontmatter
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{4}_moc-proposal-extend-gardening-moc\.md", filename)
+
+
+def test_extension_accept_line_is_promoted_by_the_state_promoter() -> None:
+    """The existing `check_tick` regex promotes a ticked extension; unticked stays pending."""
+    spec = importlib.util.spec_from_file_location(
+        "state_promoter_t42", SCRIPTS_DIR / "state-promoter.py"
+    )
+    promoter = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(promoter)  # type: ignore[union-attr]
+    _, body = _extension_doc()
+
+    assert promoter.check_tick(body, "moc-proposal") is False
+    assert promoter.check_tick(body.replace("- [ ] Accept", "- [x] Accept", 1), "moc-proposal") is True

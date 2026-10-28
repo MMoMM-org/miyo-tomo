@@ -1,0 +1,59 @@
+{
+  "schema_version": "1",
+  "run_id": "4bfe449f492f4b4b9a39f030fafbca2a",
+  "mode": "around",
+  "trigger_arg": "Gardening (MOC)",
+  "profile": "miyo",
+  "candidates_total": 0,
+  "candidates_after_prefilter": 0,
+  "candidates_capped": false,
+  "candidates": [],
+  "topic_clusters": [],
+  "parent_options_per_cluster": {},
+  "duplicates_skipped": [],
+  "squelched": [],
+  "orphan_suggestions": [],
+  "orphan_total": 0,
+  "orphan_overflow": 0,
+  "abort_reason": null,
+  "abort_message": null,
+  "extracted_via_llm_count": 0,
+  "cache_miss_batches_used": 0,
+  "link_stats": {
+    "lookups": 1,
+    "attempts": 1,
+    "failed": 0,
+    "clusters_skipped_budget": 0,
+    "members_total": 2,
+    "skipped_uncached": 1
+  },
+  "around": {
+    "kind": "moc",
+    "path": "Atlas/200 Maps/Gardening (MOC).md",
+    "stem": "Gardening (MOC)"
+  },
+  "extension": {
+    "moc_stem": "Gardening (MOC)",
+    "moc_path": "Atlas/200 Maps/Gardening (MOC).md",
+    "members": [
+      {
+        "stem": "argon",
+        "path": "Atlas/202 Notes/argon.md",
+        "linked_with": [
+          "Gardening (MOC)"
+        ],
+        "up_state": "absent",
+        "up_target": null
+      },
+      {
+        "stem": "elsewhere",
+        "path": "Atlas/202 Notes/elsewhere.md",
+        "linked_with": [
+          "Gardening (MOC)"
+        ],
+        "up_state": "valid",
+        "up_target": "solar"
+      }
+    ]
+  }
+}

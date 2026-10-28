@@ -78,11 +78,17 @@ def test_around_has_its_own_single_pass_branch():
         'python3 scripts/moc-discovery.py --around "<trigger_arg>" --config config/vault-config.yaml)'
     ]
     assert "Skip Steps 3a/3b/3c and go to Step 4" in branch
+    assert "surface stderr and stop" in branch
 
 
 def test_around_is_not_in_the_two_pass_table():
     table = _section(_text(AGENT), "#### Step 3a", "#### Step 3b")
     assert "| around" not in table and "--around" not in table
+
+
+def test_step3a_abort_reports_zero_link_counts():
+    step3a = _section(_text(AGENT), "#### Step 3a", "#### Step 3b")
+    assert "links: 0 members, 0 lookups" in step3a
 
 
 def test_step5_reuses_disc_json_from_the_around_branch():
@@ -122,11 +128,23 @@ def test_discovery_template_carries_link_counts():
     assert "(<S> skipped: budget)" in line
 
 
-def test_discovery_fill_rules_cover_k_zero_and_the_budget_suffix():
+def test_discovery_fill_rule_reads_members_and_lookups_from_link_stats():
     out = _text(AGENT)[_text(AGENT).index("## Output"):]
     assert "`link_stats.members_total`" in out and "`link_stats.lookups`" in out
+
+
+def test_discovery_fill_rule_keeps_zero_member_form_when_k_is_zero():
+    out = _text(AGENT)[_text(AGENT).index("## Output"):]
     assert "links: 0 members, <L> lookups" in out
+
+
+def test_discovery_fill_rule_shows_budget_suffix_only_when_clusters_skipped():
+    out = _text(AGENT)[_text(AGENT).index("## Output"):]
     assert "only when `link_stats.clusters_skipped_budget` > 0" in out
+
+
+def test_discovery_fill_rule_names_failed_lookups():
+    out = _text(AGENT)[_text(AGENT).index("## Output"):]
     assert "lookups failed: <F>" in out
 
 

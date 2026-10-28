@@ -1180,3 +1180,45 @@ conductor together for a cosmetic gain.
 `attachment_reports` (`AttachmentPlan.reports_by_source()`) is computed once
 there and handed to `render_instructions_md` in the metadata, so both surfaces
 read the same object.
+
+## An Extension Whose MOC Is Gone Is Withheld Before the Build (spec 042 T4.4)
+
+`filter_missing_extension_targets` runs right after
+`filter_missing_source_notes`, for the same reason: it takes an item out of
+`confirmed` before anything uses it, so no `up::` and no MOC line is emitted
+for a MOC that was renamed or deleted after the proposal was written (PRD edge
+case "MOC renamed or deleted"). If the item were kept, every member would get
+`up:: [[X]]`, a link that leads nowhere.
+
+WHY exact-stem hits only: Kado's `byName` matches substrings, so "Health MOC"
+also finds "Health MOC Archive". Only a hit whose file stem equals the name is
+that MOC.
+
+WHY three withheld kinds (`absent`, `unverifiable`, `ambiguous`), and none of
+them kept: `absent` means Kado answered and no note has that name.
+`unverifiable` means the lookup failed. As with an unreadable source note,
+nothing is written for a MOC the run could not confirm. `ambiguous` means two
+notes have that exact stem in different folders. Every member would get
+`up:: [[X]]`, and Obsidian picks one of the two notes. The run cannot know
+which one the user meant, so it asks for a path rather than guessing. The
+existing `link_to_moc` resolver takes the first hit in that case; an extension
+withholds instead, because it writes N links, not one.
+
+WHY no Kado client means keep: `client is None` happens only when nothing is
+confirmed (main builds a client whenever `confirmed` is non-empty), and
+`filter_missing_source_notes` keeps everything in that case too.
+
+The kept item carries `target_moc_path`, so `_build_moc_extension_actions`
+asks `outgoing` about the same MOC that was checked here. Withheld items are
+reported in `tomo.withheld_extensions` (for `instructions-diff`) and under
+"## Skipped" in `instructions.md`. Each builder record is reported in
+`tomo.extensions`, and a failed already-linked check gets its own note in
+`instructions.md`.
+
+WHY the render loop names an extension instead of printing
+`SKIP: no template`: the extension is not skipped. Its actions come from
+`confirmed` in `build_actions`, and a "SKIP" line made a working extension look
+dropped.
+
+The filter drops a confirmed item, not an action, so it is not a withdrawal
+guard. `drop_sources` and `WITHDRAWAL_GUARDS` stay at five.

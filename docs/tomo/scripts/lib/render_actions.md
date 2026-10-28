@@ -1992,3 +1992,49 @@ search it replaces.
 The child's own path is still found with `resolve_stem_to_path`: there is no
 source note to start a graph walk from. That substring risk is unchanged and
 out of scope here.
+
+## An Accepted Extension Expands Into Existing Action Kinds (spec 042 T4.4, ADR-6, v0.32.0)
+
+`_build_moc_extension_actions` turns each `extend_moc` item (an accepted
+`around:<MOC>` extension) into `add_relationship` and `link_to_moc` actions.
+`extend_moc` itself never reaches the wire: Hashi's schema has no such kind,
+and both halves of the change already have one.
+
+WHY it reads `confirmed`, not the manifest: the render loop only puts items
+with a template into the manifest. An extension has no template (it creates
+no note), so it is never in the manifest.
+
+WHY `emit_up_preservation_actions` is reused unchanged: the PRD asks for "the
+same existing-`up::` and Override rules as a new MOC's children" (F1-AC5,
+F3-AC3). A second copy of Rule 4.x would drift. Its quirks (first inline `up::`
+only, exact comparison to the MOC name) apply to extension members too.
+
+WHY one `outgoing(moc)` call decides which members get a MOC line (Rule 3,
+F3-AC4): only `outgoing` keeps direction. `neighbors` also holds backlinks, so
+a member that links to the MOC would read as "already listed" and never get its
+line. The comparison is the one `up_target_is_broken` uses (stem or path,
+case-insensitive), so a member counts as linked exactly when Obsidian
+resolves a link from the MOC to it. `limit` is never passed, because Kado
+applies it before the scope filter.
+
+WHY a failed `outgoing` emits a line for every member, not none: a missing
+line is silent, while a duplicate line is visible in the MOC and cheap to
+delete. The run says the check could not run (`outgoing_checked: false`), so
+the user knows to look for duplicates.
+
+WHY the builder reports to a caller-owned list (`extension_reports`) instead
+of putting fields on the actions: `add_relationship` and `link_to_moc` are
+`additionalProperties: false` on the wire. Every Tomo-only field on them has
+to be stripped again later; a separate record needs no stripping. The record
+holds only names and flags (Constitution L2): `members`, `already_linked`,
+`outgoing_checked`, and `no_relationship`, a list of members that got no
+`add_relationship` and why (`up-already-points-to-moc`, or the sentinel error
+`child-missing` / `non-markdown-asset` that `filter_unappliable_relationships`
+drops later). `instructions-diff` needs all of these to tell a correct run
+from a lost action.
+
+WHY the MOC path comes from the item: `filter_missing_extension_targets`
+(instruction-render) already resolved it and stamped `target_moc_path`. Asking
+Kado again could return a different answer. When nothing was stamped (a direct
+`build_actions` caller), the builder resolves the MOC itself with the same
+lookup.

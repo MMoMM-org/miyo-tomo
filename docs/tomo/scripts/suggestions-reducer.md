@@ -415,8 +415,9 @@ WHY the per-item `**Attachments:**` line renders ONLY the resolved source path(s
 never a destination: AC-F3.1 reads as if the destination belonged next to each
 attachment, but the destination (`concepts.asset`) is a single value for the WHOLE
 RUN, not a per-attachment fact — and at the point this line renders, the reducer has
-no config access at all (no `--config`/`--vault-config` flag, unlike
-`instruction-render.py`). Repeating one folder on every item's line would also be
+no config access at all in inbox and fan-resolve modes (no
+`--config`/`--vault-config` flag there, unlike `instruction-render.py`; only
+`--moc-proposal-mode` takes `--config`, see the `--moc-proposal-mode` section below). Repeating one folder on every item's line would also be
 noise the user has to read past N times. The destination half of AC-F3.1 is a
 separate, RUN-LEVEL preamble (below); the per-item line's job is narrower: let the
 user sanity-check WHICH file resolution picked, via the full vault-relative path in
@@ -517,8 +518,10 @@ render anything — the scan, not a config flag, is the gate.
 
 WHY the folder value is threaded through `shared-ctx.json` (a channel the reducer
 already opened for the field→section map, since removed with #162) rather than the
-reducer reading `vault-config.yaml` directly: the reducer has never had a
-`--config`/`--vault-config` CLI argument — only `instruction-render.py` does. Adding
+reducer reading `vault-config.yaml` directly: in inbox and fan-resolve modes the reducer has no
+`--config`/`--vault-config` CLI argument — only `instruction-render.py` does
+(`--moc-proposal-mode` has `--config`, see the `--moc-proposal-mode` Reads
+`max_results` From Config section). Adding
 a second, independent config reader to the reducer would duplicate
 `instruction-render.py`'s `load_config`/`CONFIG_DEFAULTS` machinery for one string.
 `shared-ctx-builder.py` already reads `vault-config.yaml` once per run and already

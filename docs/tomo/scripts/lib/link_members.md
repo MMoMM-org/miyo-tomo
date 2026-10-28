@@ -173,3 +173,10 @@ and `up_target` so the renderer can show an existing `up::` without a read.
 WHY the caller slices: `augment_clusters` receives only the rendered slice
 (`clusters[:max_results]`). Marking the rest `not_rendered` is the caller's job,
 so no lookup is ever spent on a cluster the user will not see.
+
+WHY `LINK_MEMBER_MARKER` (` — linked with `) is a shared parse contract (ADR-7), not
+display text: it is never localised. The reducer renders every link member line with
+it, and `suggestion-parser` recognises the same constant to exclude marked lines from
+the squelch signature, so link members never change a proposal's identity. Changing
+the string breaks both consumers at once. See `suggestions-reducer.md` (link members
+render after topic members) and `suggestion-parser.md`.

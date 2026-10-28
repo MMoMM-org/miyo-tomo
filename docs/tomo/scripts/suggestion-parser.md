@@ -1560,6 +1560,12 @@ a later topic proposal sharing its stems. The `**Extends:**` line is what makes
 the section an extension, so the skip keys on it too. The regex is anchored at
 the line start, like `RE_AROUND_TRIGGER`.
 
+WHY only the section header counts (lines before the first `#### `, v0.44.1):
+`moc-proposal-parser` reads `**Extends:**` only there. Matching the line
+anywhere let an `**Extends:**` text in a create section's Why body hide that
+create section from squelch and from parsing, while moc-proposal-parser still
+created it — the two parsers disagreed about the same section.
+
 WHY "entirely": unlike an `around:<note>` section, an extension is dropped from
 all three readers — `enumerate_all_moc_sections`, BOTH lists of
 `enumerate_moc_sections_split` (an accepted one is not instruction-builder

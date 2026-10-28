@@ -547,3 +547,25 @@ class TestAugment:
         _run([_cluster("c1", "A", "B")], {"A": ["X"], "B": ["X"]}, fail={"A"})
         out = capsys.readouterr()
         assert out.out == "" and out.err == ""
+
+
+class TestLinkMemberMarker:
+    def test_link_member_marker_is_the_shared_constant(self):
+        """One definition: parsers import it, nobody else spells the text (ADR-7)."""
+        import importlib.util
+
+        from lib.link_members import LINK_MEMBER_MARKER
+
+        assert LINK_MEMBER_MARKER == " — linked with "
+        scripts = REPO_ROOT / "tomo" / "scripts"
+        spec = importlib.util.spec_from_file_location(
+            "_sp_marker", scripts / "suggestion-parser.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert mod.LINK_MEMBER_MARKER is LINK_MEMBER_MARKER
+
+        # No second copy of the text in the parsers; the reducer is wired by T2.2.
+        for rel in ("suggestion-parser.py", "moc-proposal-parser.py", "lib/squelch_persist.py"):
+            src = (scripts / rel).read_text(encoding="utf-8")
+            assert "linked with" not in src.replace("LINK_MEMBER_MARKER", ""), rel

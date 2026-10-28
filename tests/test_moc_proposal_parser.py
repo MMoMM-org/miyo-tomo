@@ -192,3 +192,25 @@ def test_no_parent_means_empty():
 def test_daily_updates_always_empty():
     result = parse_moc_proposal(MINIMAL_PROPOSAL)
     assert result["daily_updates"] == []
+
+
+LINK_MEMBER_PROPOSAL = MINIMAL_PROPOSAL.replace(
+    "- [ ] `[[Note C]]` (kein up:: bisher)\n",
+    "- [ ] `[[Note C]]` (kein up:: bisher)\n"
+    "- [x] [[Linked Ticked]] (no up:: yet) — linked with [[Note A]], [[Note B]]\n"
+    "- [ ] [[Linked Unticked]] (no up:: yet) — linked with [[Note A]], [[Note B]]\n",
+)
+
+
+def test_ticked_link_line_is_supporting_item():
+    assert "Linked Ticked" in LINK_MEMBER_PROPOSAL
+    stems = parse_moc_proposal(LINK_MEMBER_PROPOSAL)["confirmed_items"][0]["supporting_items"]
+    assert "Linked Ticked" in stems
+    assert "Note A" in stems and "Note B" in stems
+    # the bridges after the marker are not read as members
+    assert stems.count("Note A") == 1
+
+
+def test_unticked_link_line_is_not_supporting_item():
+    stems = parse_moc_proposal(LINK_MEMBER_PROPOSAL)["confirmed_items"][0]["supporting_items"]
+    assert "Linked Unticked" not in stems

@@ -374,7 +374,8 @@ never set. `--around <MOC>` lists those notes so the user can tick them in.
 
 **Rule 1 — a missing member** is a neighbour of the MOC (`neighbors`, either
 link direction) that passes member eligibility (`NodeEligibility`) and whose
-cached `up_target` is not this MOC. The lookup reuses the `around:<note>` path
+cached parent does not name this MOC — neither the cached `up_target` nor any
+element of the cached `up_value`. The lookup reuses the `around:<note>` path
 — `augment_clusters` with the MOC as the one-member cluster and threshold 1 —
 so pacing, the 60-attempt budget, the uncached count and "seed lookup failed"
 on a Kado error or budget refusal are the same code (ADR-4). A neighbour that
@@ -386,12 +387,37 @@ holds each note's parent, resolved by `up_parse` from inline `up::` *and*
 frontmatter `up:`. A frontmatter parent therefore counts as present (PRD edge
 case), and the run costs one Kado call however many neighbours the MOC has; a
 `read_note` per neighbour would cost one per note, outside the graph budget.
-A stale cache can list a note that was parented since — the user leaves it
-unticked, and the apply side's existing-`up::` check sees the real note.
-The comparison is on the bare stem, case-insensitive (`bare_stem`: strips
-`[[ ]]`, a folder and `.md`, unwraps a dirty list-repr and checks every
-element), because Obsidian resolves `up::` the same way and older caches
-hold list-shaped values.
+
+**Why `up_value` too.** `up_parse` keeps ONE parent in `up_target` — the
+first inline `up::`, else the first element of a frontmatter `up:` list. A
+note with `up: ["[[Other]]", "[[MOC]]"]` is cached `up_target: Other`; read
+alone, it would be proposed as missing although it already points at the
+MOC. The cache entry also stores the frontmatter value as parsed
+(`up_value`, list or scalar; `None` for an inline parent), so every element
+of it is checked. The member lookup goes by the neighbour's path into the
+cache entries, because `LinkMember` carries only `up_target` and the reducer
+consumes that shape unchanged.
+
+**The comparison.** Each candidate is reduced to a bare stem — `[[ ]]`, an
+`|alias`, a `#heading`, a folder and `.md` stripped — and compared
+case-insensitively, because Obsidian resolves `up::` the same way. A
+`up_target` that an older cache persisted as the str repr of the whole
+frontmatter list (`"['Other', 'MOC']"`, no `up_value`) is unwrapped
+(`unwrap_list_repr`) and every element is checked, not just the first.
+
+**Residual limit — inline parents.** The cache keeps no second inline
+parent and does not record a frontmatter `up:` once an inline `up::` won
+(`up_value` is then `None`). A note with two inline `up::` lines whose
+second names the MOC, or with an inline `up::` to another note plus a
+frontmatter `up:` to the MOC, is therefore still proposed as missing. The
+user sees it unticked (Rule 5) and leaves it so. The apply side is NOT a
+backstop for this: `emit_up_preservation_actions` reads only the FIRST
+inline `up::` (frontmatter stripped) and compares it exactly. For a ticked
+note whose first inline parent is another note it applies Rule 4.2 — adds
+`up:: [[MOC]]` and moves the other parent to `related::` — although the
+note already named the MOC. A stale cache (a note parented since the last
+explore) behaves the same way: the guard only no-ops when the note's FIRST
+inline `up::` is exactly the MOC.
 
 **One missing member suffices** (Rule 4) — there is no 3-note floor: the MOC
 already exists, one stray note is worth proposing. **None missing** → no

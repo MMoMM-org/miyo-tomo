@@ -1,6 +1,6 @@
 ---
 name: moc-architect
-description: "Use PROACTIVELY when the user types /moc-propose, when topic-density discovery is requested, when proposing a new MOC for a topic/folder/classification, when a tag-based MOC discovery is needed, or when seeding a MOC from a title or free-text description. Discovers topic clusters in the user vault, proposes new MOCs, and emits a proposal-doc to the inbox. <example>User types: /moc-propose tag:topic/applied/zsh</example> <example>User types: /moc-propose folder:Atlas/202 Notes/DevOps</example> <example>User types: /moc-propose title:Zettelkasten methods</example> <example>User types: /moc-propose check:moc-uplinks</example>"
+description: "Use PROACTIVELY when the user types /moc-propose, when topic-density discovery is requested, when proposing a new MOC for a topic/folder/classification, when a tag-based MOC discovery is needed, when seeding a MOC from a title, a free-text description or one note and its links, or when an existing MOC should gain its missing members. Discovers topic clusters in the user vault, proposes new MOCs, and emits a proposal-doc to the inbox. <example>User types: /moc-propose tag:topic/applied/zsh</example> <example>User types: /moc-propose folder:Atlas/202 Notes/DevOps</example> <example>User types: /moc-propose title:Zettelkasten methods</example> <example>User types: /moc-propose around:Health MOC</example> <example>User types: /moc-propose check:moc-uplinks</example>"
 model: sonnet
 effort: medium
 color: green
@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.7.0
+# version: 0.8.0
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -47,9 +47,12 @@ Parse the slash-command argument into `mode` + `trigger_arg`.
 - Argument starts with `folder:` → `folder` mode; `trigger_arg` = vault-relative folder path
 - Argument starts with `class:` → `class` mode; `trigger_arg` = classification label
 - Argument starts with `title:` → `title` mode; `trigger_arg` = title seed string
+- Argument starts with `around:` → `around` mode; `trigger_arg` = note name, MOC name or vault path after `around:`
 - Argument starts with `check:` → `check-moc-uplinks` mode; `trigger_arg` = value after `check:` (expected: `moc-uplinks`)
 - Non-empty argument with no recognised prefix → `free-text` mode; `trigger_arg` = raw argument
 - Empty or no argument → `scan` mode; `trigger_arg` = `""`
+
+Prefixes match exact and lowercase only: `Around:`, `Tag:` and other capitalised variants → `free-text` mode.
 
 **MUST** log the resolved mode and trigger_arg to the user before proceeding
 (e.g. `Mode: tag | Trigger: topic/applied/zsh`). This surfaces routing errors early.
@@ -92,6 +95,18 @@ DISC_JSON=$(python3 scripts/moc-discovery.py --check-moc-uplinks --config config
 ```
 
 Capture stdout as `DISC_JSON`. Do NOT append `2>&1`. Skip Steps 3a/3b/3c and go to Step 4.
+
+#### Step 3 (around mode) — single pass
+
+If `mode == "around"`, run discovery ONCE with `--around` (no `--emit-phase1`, no topic extraction):
+
+```bash
+RUN_ID=$(date +%s)
+DISC_JSON=$(python3 scripts/moc-discovery.py --around "<trigger_arg>" --config config/vault-config.yaml)
+```
+
+Capture stdout as `DISC_JSON`. Do NOT append `2>&1`. A non-zero exit code means the script
+failed at the process level; surface stderr and stop. Skip Steps 3a/3b/3c and go to Step 4.
 
 #### Step 3 (all other modes) — 2-pass: Phase 1 → topic extraction → Phase 2-6.5
 
@@ -140,7 +155,7 @@ Read `$PHASE1_TMP` with the `Read` tool. The payload shape:
 **STRICT:** Check `abort_reason` first. If set (`cache-miss-cap-exceeded`,
 `zero-candidates`, etc.), surface the `abort_message` from the file verbatim and skip
 Steps 3b/3c — no proposal-doc is written. Jump to Step 9 (Emit final report) with
-`Discovery: <abort_reason>`.
+`Discovery: <abort_reason>; links: 0 members, 0 lookups`.
 
 #### Step 3b — Extract topics for cache misses
 
@@ -204,7 +219,7 @@ proposal-doc. Emit the final report in the output format with `Proposal-doc: no 
 
 ### Step 5 — Write DiscoveryReport JSON to temp path
 
-`DISC_JSON` was captured in Step 3c (or the check-mode branch of Step 3). Reuse the
+`DISC_JSON` was captured in Step 3c (or the check-mode or around-mode branch of Step 3). Reuse the
 `$RUN_ID` from Step 3 and write the DiscoveryReport to a sibling temp file:
 
 ```bash
@@ -223,7 +238,7 @@ Invoke the reducer with `--output-dir tomo-tmp/`. Capture
 stdout into `LOCAL_PROPOSAL`:
 
 ```bash
-LOCAL_PROPOSAL=$(python3 scripts/suggestions-reducer.py --moc-proposal-mode --input tomo-tmp/moc-discovery-${RUN_ID}.json --output-dir tomo-tmp/)
+LOCAL_PROPOSAL=$(python3 scripts/suggestions-reducer.py --moc-proposal-mode --input tomo-tmp/moc-discovery-${RUN_ID}.json --output-dir tomo-tmp/ --config config/vault-config.yaml)
 ```
 
 **STRICT:**
@@ -285,20 +300,27 @@ Before emitting the final report, verify:
 **STRICT:** Every run MUST end with this exact block — no deviations, no prose after it.
 
 ```
-Mode: <tag|folder|class|title|free-text|scan|check-moc-uplinks>
+Mode: <tag|folder|class|title|around|free-text|scan|check-moc-uplinks>
 Trigger arg: <verbatim trigger_arg, or "(none)" for scan mode>
 Profile: <miyo|lyt>
-Discovery: <abort reason if aborted, or "OK — N candidates → M clusters">
+Discovery: <abort_reason, or "OK — N candidates → M clusters">; links: <K> members, <L> lookups[ (<S> skipped: budget)]
 Proposal-doc: <inbox-relative path, or "no doc written (abort)">
 Aborts/notes: <bulleted list of warnings/overflows, or "none">
 ```
+
+**STRICT — `Discovery:` line fill rules** (read every value from the DiscoveryReport JSON):
+- `N` = `candidates_total`; `M` = number of entries in `topic_clusters`.
+- `K` = `link_stats.members_total`; `L` = `link_stats.lookups`. Print the `links:` part on EVERY run, aborts included.
+- When `K` is 0, still print it: `links: 0 members, <L> lookups`. When the payload has no `link_stats`, print `links: 0 members, 0 lookups`.
+- Append ` (<S> skipped: budget)` with `S` = `link_stats.clusters_skipped_budget` only when `link_stats.clusters_skipped_budget` > 0.
+- When `link_stats.failed` > 0, add the bullet `lookups failed: <F>` (`F` = `link_stats.failed`) to `Aborts/notes:`.
 
 **Example (success):**
 ```
 Mode: tag
 Trigger arg: topic/applied/zsh
 Profile: miyo
-Discovery: OK — 12 candidates → 2 clusters
+Discovery: OK — 12 candidates → 2 clusters; links: 3 members, 9 lookups (1 skipped: budget)
 Proposal-doc: 100 Inbox/2026-05-08_1430_moc-proposal-zsh-shell-tools.md
 Aborts/notes:
   - Reducer reported 1 additional cluster beyond max_results
@@ -309,7 +331,7 @@ Aborts/notes:
 Mode: tag
 Trigger arg: topic/applied/nonexistent
 Profile: miyo
-Discovery: zero-candidates
+Discovery: zero-candidates; links: 0 members, 0 lookups
 Proposal-doc: no doc written (abort)
 Aborts/notes:
   - abort_message: "No notes found for this topic."

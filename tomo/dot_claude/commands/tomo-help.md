@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.20
+# version: 0.2.21
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -151,10 +151,12 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 
 - **moc-propose / propose moc / create moc / new moc / moc creation** →
   - `/moc-propose` discovers under-organised topic clusters and proposes a new MOC
-  - Six input modes: `topic` (free-text keyword), `folder` (vault path), `classification`
-    (Dewey sub-code or topic prefix), `tag` (notes carrying a given tag),
-    `placeholder` (unresolved wikilink with no backing file), `whole-vault` (full atlas scan)
-  - Writes a proposal doc to `+/moc-proposals/<topic-slug>.md` — review, tick Accept,
+  - Input modes: `tag:X` (notes carrying a tag), `folder:X` (vault path), `class:X`
+    (Dewey sub-code or topic prefix), `title:X` (seed by proposed title), free text (keyword),
+    `around:X` (a note → new MOC from it and its links; a MOC → its missing members),
+    `check:moc-uplinks` (MOCs missing a parent), no argument (whole-vault scan)
+  - Topic proposals also list unticked notes linked with ≥ 2 members ("linked with …")
+  - Writes a proposal doc to your inbox folder — review, tick Accept,
     then run `/inbox` to materialise the MOC via the normal `create_moc` + `add_relationship` actions
   - Profile-aware: miyo profile uses Dewey classification; LYT profile uses thematic grouping
   - Requires Hashi 0.2.0+ for the destination-collision guard

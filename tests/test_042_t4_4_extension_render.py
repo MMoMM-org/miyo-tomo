@@ -470,3 +470,26 @@ def test_diff_accepts_a_member_listed_twice(monkeypatch, tmp_path):
     parsed = {"confirmed_items": [ext], "daily_updates": [], "skipped": []}
     rc, _obs = diff.run_diff(parsed, doc)
     assert rc == 0
+
+
+def test_diff_matches_already_linked_case_insensitively(rendered):
+    """A record spelling the already-linked member in another case still names it (H2)."""
+    parsed, doc = rendered
+    assert diff.run_diff(parsed, doc)[0] == 0
+    respelled = copy.deepcopy(doc)
+    record = respelled["tomo"]["extensions"][0]
+    assert record["already_linked"] == ["Sleep Debt"]
+    record["already_linked"] = ["sleep debt"]
+    assert diff.run_diff(parsed, respelled)[0] == 0
+
+
+def test_diff_matches_no_relationship_case_insensitively(monkeypatch, tmp_path):
+    """A no_relationship member spelled in another case still exempts it (H2)."""
+    ext = _extension(["Ghost", "Fresh Note"])
+    _rc, doc, _md = _run_main(monkeypatch, tmp_path, _vault(), [ext])
+    parsed = {"confirmed_items": [ext], "daily_updates": [], "skipped": []}
+    assert diff.run_diff(parsed, doc)[0] == 0
+    record = doc["tomo"]["extensions"][0]
+    assert [n["member"] for n in record["no_relationship"]] == ["Ghost"]
+    record["no_relationship"][0]["member"] = "ghost"
+    assert diff.run_diff(parsed, doc)[0] == 0

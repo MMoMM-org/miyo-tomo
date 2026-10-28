@@ -1,6 +1,6 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
-status: draft
+status: complete
 version: "1.0"
 ---
 

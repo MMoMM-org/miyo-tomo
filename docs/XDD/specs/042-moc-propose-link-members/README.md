@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-27 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Current Phase** | Ready |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-10-27 |
 
 ## Documents
@@ -14,8 +14,8 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.1; 6 Must, 1 Should, 1 Could; 29 acceptance criteria |
-| solution.md | in_progress | v1.0 draft; 11 components, ADR-1…ADR-7 confirmed 2026-10-28; 29 EARS criteria, 1:1 with the PRD |
-| plan/ | pending | |
+| solution.md | completed | v1.0; 11 components, ADR-1…ADR-7 confirmed 2026-10-28; 29 EARS criteria, 1:1 with the PRD |
+| plan/ | completed | 5 phases, 17 tasks (3 parallel); 29 criteria mapped in plan/README.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -39,6 +39,7 @@
 | 2026-10-27 | PRD v1.1 approved; F5 gains: a rate-limited lookup waits Kado's stated retry time and retries before it counts as failed; retries count toward the budget | Owner: "bei Kado nur schauen, dass wir den Backoff unterstützen". |
 | 2026-10-28 | SDD ADRs confirmed: ADR-1 live `kado-graph neighbors`; ADR-2 augment only the rendered top clusters, after D3 + sort, before Phase 6.5, memoised per member; ADR-3 eligibility offline from cache + profile, uncached nodes skipped and counted; ADR-4 budget 60 attempts per run incl. retries, ~0.3 s pacing, all-or-nothing per cluster; ADR-5 extension stays a `moc-proposal` doc (`### MOCxx — Extend [[X]]`, `**Extends:**`), parser emits `extend_moc`, not squelched; ADR-6 "MOC already links it" checked at render time via `outgoing(MOC)`; ADR-7 line format `- [ ] [[stem]] (up) — linked with [[A]], [[B]]`, link lines outside the squelch signature | Owner confirmed all recommendations. |
 | 2026-10-28 | `around:` details: uncached target → not-found (no name-search fallback; a path argument works); new-MOC title = seed stem + profile MOC suffix; periodic seed refused; `around:` proposals are not squelched; link counts go on the existing `Discovery:` report line | Owner decisions. |
+| 2026-10-28 | SDD v1.0 approved; decomposition tier **Incremental** (classifier recommendation, owner confirmed) | Rule 1: feature_count 6 ≥ 2 and component_count ≥ 2 (link_members, around builder, extension builder, render filter); 29 acceptance criteria. |
 | 2026-10-27 | Kado limiter is per IP, 20 req / 5 s, in the container too; a per-run graph-call cap is required wherever the run happens | Research (Kado `server.ts:105-157`, `canonical.ts:685-686`), verified in code. Corrects the earlier "container has no limit" memory. |
 
 ## Context

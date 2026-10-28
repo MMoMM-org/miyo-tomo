@@ -25,3 +25,14 @@ missing a parent `up::`, distinct from the notes-discovery scan. It is a prefix
 (not a bare keyword) for the same reason as `tag:`/`folder:`/`class:`/`title:`:
 exact-match prefixes avoid misrouting free-text queries that happen to contain
 the word.
+
+## `around:` Prefix Routes to a Single-Seed Proposal (spec 042, F2/F3)
+
+WHY: `around:<note>` builds one new-MOC proposal from a seed note's links, and
+`around:<MOC>` proposes an existing MOC's missing members (linked notes without
+`up::` to it). It is a sixth whitelisted prefix rather than a keyword for the
+same reason as the others: only the exact lowercase `around:` routes (F2-AC4);
+`Around:X` falls to free text so a title containing a colon is never misrouted.
+The command file only adds the prefix to the whitelist and the usage list — the
+seed resolution (note vs. MOC, ambiguity, periodic and eligibility refusals)
+lives entirely in `moc-discovery.py --around`, so the shim carries no decision.

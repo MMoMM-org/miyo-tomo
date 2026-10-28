@@ -68,3 +68,58 @@ the contiguous step renumbering, and the agent-author lean-pass. 0.6.0 added the
 Step transport change (inline kado-write → `kado-write-file.py`) + `tools`
 minimisation. `update-tomo.sh` skips unchanged versions, so the change only ships
 if the version header advances.
+
+## around Mode Is Single Pass (spec 042, F2/F3)
+
+WHY: `moc-discovery.py --around` resolves the seed from the discovery cache,
+makes one `kado-graph neighbors` lookup and builds the proposal (or the
+extension) in one invocation. There is no topic extraction to hand to the LLM —
+members come from links, not from topics — so the `--emit-phase1` /
+`--phase1-input` round-trip has nothing to do. The script exits 2 (FATAL usage)
+if `--around` is combined with `--emit-phase1`, `--phase1-input` or
+`--check-moc-uplinks`, so the agent routes `around` through its own single-pass
+branch, like `check-moc-uplinks`, and then straight to the reducer. The
+`trigger_arg` is quoted in the call because seed names often contain spaces
+(`around:Health MOC`).
+
+The around aborts (`around-not-found`, `around-ambiguous`, `around-periodic`,
+`around-ineligible`, `seed-lookup-failed`, `fewer-than-3-notes`,
+`no-missing-members`) carry an `abort_message` the script fills with the seed
+name, the candidate paths or the remedy. The agent relays it verbatim through
+the existing Step 4 rule; it never classifies or rewords an around abort itself,
+so a new abort reason in the script needs no prose change.
+
+## Link Counts Ride the `Discovery:` Line (spec 042, F7)
+
+WHY: The six-field STRICT output block is a fixed contract (rules/authoring
+"fixed output format"); adding a seventh field would break every reader of the
+block and the earlier examples. Link evidence is therefore appended to the
+existing `Discovery:` line as `; links: K members, L lookups`, read from the
+DiscoveryReport's `link_stats` (`members_total`, `lookups`). It is printed on
+every run, including `K = 0`, because "no link members" is itself the signal the
+owner needs to judge whether link discovery ran (F7-AC2) — an omitted suffix
+would be indistinguishable from a run where the feature never fired. The
+` (S skipped: budget)` suffix appears only when `clusters_skipped_budget > 0`:
+the 60-attempt graph budget (ADR-4) degrades silently per cluster, and this is
+the one place the user learns proposals were written without link evidence.
+Failed lookups (`link_stats.failed`) go to `Aborts/notes` as
+`lookups failed: F`, matching the SDD error table, because a failure is a
+warning about the run rather than a count of what it produced. When the payload
+has no `link_stats` (a Pass-1 abort from the `--emit-phase1` file), the counts
+are 0 rather than omitted, so the line shape never varies.
+
+## Reducer Gets `--config` (spec 042)
+
+WHY: `suggestions-reducer.py --moc-proposal-mode` reads
+`tomo.moc_proposal.max_results` from `--config` (default
+`config/vault-config.yaml`, cwd-relative). Passing it explicitly makes the
+reducer call match every discovery call and keeps the rendered slice and the
+slice `moc-discovery.py` augments with link members reading the same file —
+discovery augments exactly `clusters[:max_results]`, so a reducer reading a
+different config would render clusters that were never looked up.
+
+## Version 0.8.0
+
+WHY: Bumped from 0.7.0 for the `around` mode (routing, single-pass branch), the
+link counts on the `Discovery:` line and the reducer `--config` argument.
+`update-tomo.sh` skips unchanged versions.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_moc_discovery_around.py — `--around` resolver, new-MOC and extension builders (spec 042 T3.1, T4.1).
 
 Drives moc-discovery main() in-process with a graph-capable fake Kado client
@@ -69,6 +69,8 @@ ELSEWHERE = f"{_BASE}elsewhere.md"
 FULL_KID = f"{_BASE}full-kid.md"
 FULL_MOC = "Atlas/200 Maps/Full (MOC).md"
 SINGLE_MOC = "Atlas/200 Maps/Single (MOC).md"
+MULTI_MOC = "Atlas/200 Maps/Multi (MOC).md"
+MULTI_KID = f"{_BASE}multi-kid.md"
 
 _NOTES = [
     {"path": SEED, "topics": ["habits", "goals"]},
@@ -98,6 +100,7 @@ _LINKS = {
                DAILY_UNCACHED],
     FULL_MOC: [FULL_KID, SOLAR_MOC],
     SINGLE_MOC: [ARGON],
+    MULTI_MOC: [ARGON, MULTI_KID],
 }
 
 
@@ -154,20 +157,22 @@ def _write_config(tmp_path: Path) -> Path:
     return p
 
 
-def _write_cache(tmp_path: Path) -> Path:
+def _write_cache(tmp_path: Path, notes=None) -> Path:
     entries = [
         {"path": MOC_PATH, "kind": "moc", "title": "Gardening (MOC)",
          "topics": ["gardening"], "tags": []},
         {"path": SOLAR_MOC, "kind": "moc", "title": "solar", "topics": ["solar"], "tags": []},
         {"path": FULL_MOC, "kind": "moc", "title": "Full (MOC)", "topics": ["full"], "tags": []},
         {"path": SINGLE_MOC, "kind": "moc", "title": "Single (MOC)", "topics": [], "tags": []},
+        {"path": MULTI_MOC, "kind": "moc", "title": "Multi (MOC)", "topics": [], "tags": []},
     ]
-    for n in _NOTES:
+    for n in (_NOTES if notes is None else notes):
         entries.append({
             "path": n["path"], "kind": "note", "stem": _stem(n["path"]),
             "topics": n["topics"], "tags": n.get("tags", []),
             "up_state": n.get("up_state", "absent"), "up_target": n.get("up_target"),
             "up_source": n.get("up_source", "inline" if n.get("up_target") else None),
+            "up_value": n.get("up_value"),
         })
     cache = {
         "moc_cache_version": 1,
@@ -192,10 +197,10 @@ def _run(argv: list[str]) -> tuple[int, dict | None]:
     return code, (json.loads(text) if text else None)
 
 
-def _run_around(tmp_path, monkeypatch, target, fake=None, extra=()):
+def _run_around(tmp_path, monkeypatch, target, fake=None, extra=(), notes=None):
     fake = fake if fake is not None else _GraphFake()
     config = _write_config(tmp_path)
-    cache = _write_cache(tmp_path)
+    cache = _write_cache(tmp_path, notes)
     squelch = tmp_path / "state" / "moc-squelch.json"
     monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: fake)
     code, report = _run([
@@ -443,6 +448,42 @@ def test_moc_without_missing_members_writes_no_proposal(tmp_path, monkeypatch):
     assert report["topic_clusters"] == []
     assert report["around"]["kind"] == "moc"
     assert fake.graph_calls == [("neighbors", FULL_MOC, None)]
+
+
+def _multi_kid_paths(tmp_path, monkeypatch, **up) -> list[str]:
+    """Member paths of Multi (MOC), whose neighbours are argon and multi-kid (cached with `up`)."""
+    kid = {"path": MULTI_KID, "topics": ["multi"], "up_state": "valid", **up}
+    _, report, _ = _run_around(tmp_path, monkeypatch, "Multi (MOC)", notes=[*_NOTES, kid])
+    assert report["abort_reason"] is None
+    return [m["path"] for m in report["extension"]["members"]]
+
+
+@pytest.mark.parametrize("up_value", [
+    ["[[Other]]", "[[Multi (MOC)]]"],
+    ["[[Other]]", "[[multi (moc)|hub]]"],
+    ["Other", "[[Atlas/200 Maps/Multi (MOC)#Notes]]"],
+])
+def test_frontmatter_up_list_naming_the_moc_later_is_present(tmp_path, monkeypatch, up_value):
+    """Rule 1 edge case: the cache keeps only the FIRST frontmatter parent as up_target;
+    the MOC in a later element of up_value still counts as up to it (review W1)."""
+    paths = _multi_kid_paths(tmp_path, monkeypatch, up_target="Other",
+                             up_source="frontmatter", up_value=up_value)
+    assert paths == [ARGON]
+
+
+def test_frontmatter_up_list_without_the_moc_is_missing(tmp_path, monkeypatch):
+    """Control for the W1 fix: an up_value list that never names the MOC stays a member."""
+    paths = _multi_kid_paths(tmp_path, monkeypatch, up_target="Other",
+                             up_source="frontmatter", up_value=["[[Other]]", "[[Third]]"])
+    assert paths == [ARGON, MULTI_KID]
+
+
+def test_dirty_list_repr_up_target_naming_the_moc_second_is_present(tmp_path, monkeypatch):
+    """Older caches persisted the whole frontmatter list as its str repr in up_target
+    (no up_value); the MOC as its SECOND element still counts as present."""
+    paths = _multi_kid_paths(tmp_path, monkeypatch,
+                             up_target="['Other', 'Multi (MOC)']", up_source="frontmatter")
+    assert paths == [ARGON]
 
 
 @pytest.mark.parametrize("fake_kwargs", [

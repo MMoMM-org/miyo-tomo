@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.0
+# version: 0.24.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -2104,12 +2104,22 @@ def _around_lookup(
     return links
 
 
-def _up_targets_stem(up_target, stem: str) -> bool:
-    """True when a cached `up_target` (stem, wikilink, path or list) names `stem`."""
-    value = unwrap_list_repr(up_target)
-    targets = value if isinstance(value, (list, tuple)) else [value]
+def _ref_stem(ref) -> str:
+    """Bare stem of one parent ref: `[[ ]]`, alias, heading, folder and `.md` stripped."""
+    s = str(ref).strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2]
+    return bare_stem(s.split("|", 1)[0].split("#", 1)[0])
+
+
+def _up_targets_stem(entry: dict, stem: str) -> bool:
+    """True when a cache entry's `up_target` or any `up_value` element names `stem`."""
+    targets: list = []
+    for raw in (entry.get("up_target"), entry.get("up_value")):
+        value = unwrap_list_repr(raw)
+        targets.extend(value if isinstance(value, (list, tuple)) else [value])
     folded = stem.casefold()
-    return any(t and bare_stem(t).casefold() == folded for t in targets)
+    return any(t is not None and _ref_stem(t).casefold() == folded for t in targets)
 
 
 def _run_around_extension(
@@ -2119,7 +2129,10 @@ def _run_around_extension(
     links = _around_lookup(report, seed, cache, eligibility, _build_kado_client())
     if links is None:
         return report
-    missing = [m for m in links.link_members if not _up_targets_stem(m.up_target, seed.stem)]
+    entries = {e.get("path"): e for e in cache.get("entries") or [] if isinstance(e, dict)}
+    missing = [
+        m for m in links.link_members if not _up_targets_stem(entries[m.path], seed.stem)
+    ]
     report["link_stats"]["members_total"] = len(missing)
     if not missing:
         return _around_abort(

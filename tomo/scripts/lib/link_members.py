@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.1.1
 """link_members.py — Which linked notes may become MOC link members (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -14,6 +14,7 @@ Rationale: docs/tomo/scripts/lib/link_members.md — SDD ADR-3.
 from __future__ import annotations
 
 from lib.moc_tags import EXCLUDE_NOTE_TAG
+from lib.profile_conventions import moc_suffix
 
 OK = "ok"
 NOT_MD = "not-md"
@@ -107,10 +108,8 @@ class NodeEligibility:
             + list(exclude or [])
         )
 
-        suffix = _dict(concepts.get("map_note")).get("name_suffix")
-        if suffix is None:
-            suffix = _dict(defaults.get("map_note")).get("name_suffix")
-        self._moc_suffix = suffix.casefold() if isinstance(suffix, str) and suffix else ""
+        suffix = moc_suffix(profile)
+        self._moc_suffix = suffix.casefold() if isinstance(suffix, str) else ""
 
     def is_periodic(self, path: str) -> bool:
         return any(path.startswith(p) for p in self._periodic)

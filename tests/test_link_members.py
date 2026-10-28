@@ -152,12 +152,6 @@ class TestEligibility:
         e = _make([_entry(p)])
         assert e.check(p) == (False, "moc")
 
-    def test_moc_suffix_from_vault_config(self):
-        cfg = copy.deepcopy(VAULT_CFG)
-        cfg["concepts"]["map_note"] = {"name_suffix": " Index"}
-        p = "Vault/Notes/Cooking Index.md"
-        assert _make([_entry(p)], vault_cfg=cfg).check(p) == (False, "moc")
-
     @pytest.mark.parametrize("tag", ["MiYo/Tomo/exclude/note", "#MiYo/Tomo/exclude/note"])
     def test_exclude_note_tag(self, tag):
         p = "Vault/Notes/Hidden.md"

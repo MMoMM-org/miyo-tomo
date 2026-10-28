@@ -62,10 +62,14 @@ WHY: Layer precedence is User Config > Profile. The atomic-note paths and the
 inbox path are read from vault-config `concepts.atomic_note` / `concepts.inbox`
 when set, else from the profile `concept_defaults.atomic_note` (base path plus
 subdirectories) / `concept_defaults.inbox`. MOC detection ORs three signals
-(cache `kind == "moc"`, the cache's `map_notes`, the `name_suffix` of the
-vault-config or profile `map_note`) because each alone misses a real case: a
+(cache `kind == "moc"`, the cache's `map_notes`, the profile's `map_note`
+`name_suffix`, read through `profile_conventions.moc_suffix`) because each alone misses a real case: a
 note tagged as a MOC outside the map folder, a suffix-named MOC the tag scan did
 not see, a cache entry typed by the builder.
+
+Two sibling readers resolve atomic-note paths too: `moc-discovery.py`
+`_atomic_note_paths` and `lib/moc_scan.read_scope_paths`. A change to how
+atomic-note paths are resolved must check all three.
 
 ## Reasons Are Returned, Never Logged
 

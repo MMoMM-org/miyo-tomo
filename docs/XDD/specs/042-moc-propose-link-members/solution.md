@@ -642,11 +642,11 @@ None. No Kado or Hashi release needed; no handoff.
   - Rationale: Obsidian-resolved paths including frontmatter links, current, scope-filtered; the point of #82.
   - Trade-offs: costs Kado calls → budget and pacing (ADR-4); an offline cache adjacency would cost zero calls but reintroduce name guessing and up to a day of staleness.
   - User confirmed: 2026-10-28
-- [x] ADR-2 Insertion point: after D3 + confidence sort, only for the `max_results` clusters the reducer renders, before Phase 6.5; lookups memoised per unique member path; a note qualifies when it is in ≥ 2 members' neighbour lists.
+- [x] ADR-2 Insertion point: after D3 + confidence sort, only for the `max_results` clusters the reducer renders, before Phase 6.5; lookups memoised per unique member path; a note qualifies when it is in ≥ 2 members' neighbour lists. The reducer and discovery read the same `tomo.moc_proposal.max_results` (default 5).
   - Rationale: squelch, D3 and confidence stay topic-only for free; ≈ 45 vs ≈ 180 calls on the reference vault.
   - Trade-offs: clusters below the rendered slice never get link members (they are not shown anyway).
   - User confirmed: 2026-10-28
-- [x] ADR-3 Eligibility offline from cache + profile + vault-config: `.md`, not inbox, atomic-note path (vault-config `concepts.atomic_note`/`inbox` over profile `concept_defaults`), not periodic (union of profile and vault-config calendar base + granularity paths, plus `tomo.moc_structure_cache.exclude_paths`; prefixes stripped and `/`-terminated), not a MOC (cache kind / map_notes / profile `map_note.name_suffix` via `profile_conventions.moc_suffix`; vault-config has no suffix key), no `exclude/note` tag, present in the cache. Uncached nodes are skipped and counted.
+- [x] ADR-3 Eligibility offline from cache + profile + vault-config: `.md`, not inbox, atomic-note path (vault-config `concepts.atomic_note`/`inbox` over profile `concept_defaults`), not periodic (union of profile and vault-config calendar base + granularity paths, plus `tomo.moc_structure_cache.exclude_paths`; prefixes stripped and `/`-terminated), not a MOC (cache kind / map_notes / profile `map_note.name_suffix` via `profile_conventions.moc_suffix`; vault-config has no suffix key), no `exclude/note` tag, present in the cache. Uncached nodes are skipped and counted. Topic members are looked up even when uncached (tag/folder candidates come from live Kado and may be newer than the cache); only other ineligible members are dropped before lookups.
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28
@@ -738,6 +738,7 @@ None. No Kado or Hashi release needed; no handoff.
 - A non-`MOCxx` heading is swallowed into the previous section by `moc-proposal-parser` — the extension must keep `### MOCxx`.
 - `instruction-render` skips template-less items before the manifest; `extend_moc` must be built from `confirmed`, not from the manifest.
 - `_NullKadoClient` needs a `graph` that raises.
+- Colliding stems are counted as distinct members by path; the reason line shows the shared stem once (owner decision 2026-10-28).
 - Calendar paths may carry a trailing space in vault-config (`"Calendar/301 Daily/ "`); normalise before prefix matching.
 
 ## Glossary

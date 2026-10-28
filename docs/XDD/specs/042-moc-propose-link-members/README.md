@@ -42,6 +42,7 @@
 | 2026-10-28 | SDD v1.0 approved; decomposition tier **Incremental** (classifier recommendation, owner confirmed) | Rule 1: feature_count 6 ≥ 2 and component_count ≥ 2 (link_members, around builder, extension builder, render filter); 29 acceptance criteria. |
 | 2026-10-27 | Kado limiter is per IP, 20 req / 5 s, in the container too; a per-run graph-call cap is required wherever the run happens | Research (Kado `server.ts:105-157`, `canonical.ts:685-686`), verified in code. Corrects the earlier "container has no limit" memory. |
 | 2026-10-28 | Phase 1 drift: budget stop mid-cluster → skipped_budget | Owner: the cause is the budget; PRD requires it on the Discovery line. SDD A1–A6 amended (unmapped stem → failed, LinkLookup context manager, ADR-3 sources and reason tokens). |
+| 2026-10-28 | Phase 2 T2.1 review: reducer reads max_results from config; colliding stems count by path | Owner: O3 fix the pre-existing F-43 hardcode so ADR-2 holds for any configured value; O4 keep path counting, documented and pinned by a test. |
 
 ## Context
 

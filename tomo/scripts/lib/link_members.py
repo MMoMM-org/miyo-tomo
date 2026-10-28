@@ -1,4 +1,4 @@
-# version: 0.2.1
+# version: 0.2.2
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -175,8 +175,9 @@ class BudgetExhausted:
 class LinkLookup:
     """Memoised `kado-graph neighbors` lookups under an attempt budget.
 
-    Installs the budget as the client's attempt gate and sets its pacing for its
-    lifetime; `close()` restores the previous values. Use as a context manager.
+    Installs the budget as the client's attempt gate and sets its pacing on enter
+    (or on the first `neighbors` call); `close()` restores the previous values.
+    Use as a context manager.
     """
 
     def __init__(self, client, budget: int = LOOKUP_BUDGET):
@@ -186,19 +187,24 @@ class LinkLookup:
         self._memo: dict[str, list[str] | LookupFailed] = {}
         self.lookups = 0
         self.failed = 0
-        self._prev_gate = client.attempt_gate
-        self._prev_interval = client.min_interval
-        self._open = True
-        client.attempt_gate = lambda: self.remaining() > 0
-        client.min_interval = LOOKUP_PACING_S
+        self._installed = False
+
+    def _install(self) -> None:
+        if not self._installed:
+            self._prev_gate = self._client.attempt_gate
+            self._prev_interval = self._client.min_interval
+            self._client.attempt_gate = lambda: self.remaining() > 0
+            self._client.min_interval = LOOKUP_PACING_S
+            self._installed = True
 
     def close(self) -> None:
-        if self._open:
+        if self._installed:
             self._client.attempt_gate = self._prev_gate
             self._client.min_interval = self._prev_interval
-            self._open = False
+            self._installed = False
 
     def __enter__(self) -> "LinkLookup":
+        self._install()
         return self
 
     def __exit__(self, *exc) -> None:
@@ -217,12 +223,16 @@ class LinkLookup:
     def neighbors(self, path: str) -> list[str] | LookupFailed | BudgetExhausted:
         if path in self._memo:
             return self._memo[path]
-        self.lookups += 1
+        self._install()
+        sent_before = self._client.attempt_count
         try:
             nodes = self._client.graph("neighbors", path)
         except KadoBudgetExhausted:
+            if self._client.attempt_count > sent_before:
+                self.lookups += 1
             return BudgetExhausted()
         except KadoError:
+            self.lookups += 1
             self.failed += 1
             self._memo[path] = LookupFailed()
             return self._memo[path]
@@ -231,6 +241,7 @@ class LinkLookup:
             node_path = node.get("path") if isinstance(node, dict) else None
             if isinstance(node_path, str) and node_path != path and node_path not in result:
                 result.append(node_path)
+        self.lookups += 1
         self._memo[path] = result
         return result
 
@@ -282,7 +293,9 @@ def _augment_one(
     hits: dict[str, set[str]] = {}
     for stem, path in members:
         result = lookup.neighbors(path)
-        if isinstance(result, (LookupFailed, BudgetExhausted)):
+        if isinstance(result, BudgetExhausted):
+            return ClusterLinks(SKIPPED_BUDGET)
+        if isinstance(result, LookupFailed):
             return ClusterLinks(FAILED)
         for node in result:
             if node in member_paths:

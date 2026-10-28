@@ -292,6 +292,7 @@ class TestLookup:
     def test_installs_gate_and_pacing_and_counts_attempts(self):
         client, _, s2p, _ = _world({"A": ["X"]}, attempts={"A": 3})
         lookup = LinkLookup(client, budget=10)
+        lookup.__enter__()
         assert client.min_interval == 0.3
         assert client.attempt_gate is not None
         lookup.neighbors(s2p["A"])
@@ -328,6 +329,7 @@ class TestLookup:
         client.attempt_gate = prev_gate
         client.min_interval = 0.05
         lookup = LinkLookup(client)
+        lookup.__enter__()
         assert client.attempt_gate is not prev_gate
         assert client.min_interval == 0.3
         lookup.close()
@@ -345,6 +347,48 @@ class TestLookup:
             with LinkLookup(client):
                 raise RuntimeError("boom")
         assert client.attempt_gate is None and client.min_interval == 0.0
+
+
+class TestLookupCounting:
+    def test_gate_refused_lookup_is_not_counted(self):
+        client, _, s2p, _ = _world({"A": ["X"]})
+        with LinkLookup(client, budget=0) as lookup:
+            lookup.neighbors(s2p["A"])
+            assert lookup.lookups == 0
+
+    def test_successful_and_kado_error_lookups_are_counted(self):
+        client, _, s2p, _ = _world({"A": ["X"]}, fail={"B"})
+        with LinkLookup(client) as lookup:
+            lookup.neighbors(s2p["A"])
+            assert lookup.lookups == 1
+            lookup.neighbors(s2p["B"])
+            assert lookup.lookups == 2
+
+    def test_construction_alone_leaves_client_untouched(self):
+        client, _, _, _ = _world({})
+        LinkLookup(client)
+        assert client.attempt_gate is None and client.min_interval == 0.0
+
+    def test_unentered_neighbors_is_still_gated_and_close_restores(self):
+        client, _, s2p, _ = _world({"A": ["X"]}, attempts={"A": 3})
+        lookup = LinkLookup(client, budget=2)
+        assert not isinstance(lookup.neighbors(s2p["A"]), list)
+        assert client.attempt_count == 2
+        lookup.close()
+        assert client.attempt_gate is None and client.min_interval == 0.0
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            [{"path": "n/B.md"}, "junk", None, 7, {"path": 5}, {"relation": "x"},
+             {"path": "n/B.md"}, {"path": "n/A.md"}, {"path": "n/C.md"}],
+        ],
+    )
+    def test_malformed_neighbors_payload_keeps_only_valid_unique_non_self(self, payload):
+        client, _, _, _ = _world({})
+        client.graph = lambda op, path, limit=None: payload
+        with LinkLookup(client) as lookup:
+            assert lookup.neighbors("n/A.md") == ["n/B.md", "n/C.md"]
 
 
 class TestAugment:
@@ -447,14 +491,21 @@ class TestAugment:
         assert _stems(result, "c2") == ["X"]
         assert len(client.graph_calls) == 2
 
-    def test_budget_spent_mid_cluster_by_retries_marks_failed(self):
+    def test_budget_refused_mid_cluster_is_skipped_budget_and_counted(self):
         adjacency = {"A": ["X"], "B": ["X"]}
         result, client, lookup = _run(
             [_cluster("c1", "A", "B")], adjacency, budget=3, attempts={"A": 3}
         )
-        assert result.clusters["c1"].status == "failed"
+        assert result.clusters["c1"].status == "skipped_budget"
         assert result.clusters["c1"].link_members == []
+        assert result.stats["clusters_skipped_budget"] == 1
+        assert result.stats["failed"] == 0
         assert client.attempt_count == 3
+
+    def test_kado_error_lookup_is_failed_not_skipped_budget(self):
+        result, _, _ = _run([_cluster("c1", "A", "B")], {"A": ["X"]}, fail={"B"})
+        assert result.clusters["c1"].status == "failed"
+        assert result.stats["clusters_skipped_budget"] == 0
 
     def test_failed_lookup_fails_only_its_cluster(self):  # F5-AC4
         adjacency = {"A": ["X"], "B": ["X"], "D": ["Y"], "E": ["Y"]}

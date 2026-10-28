@@ -1523,3 +1523,24 @@ Recognition is by the marker substring on a Children line, not by position. A
 member whose own stem contains ` — linked with ` would be treated as a link line
 and left out of the signature only; it is still a child. Accepted: such a title
 is vanishingly rare and the cost is one stem missing from the hash input.
+
+## `around:` Sections Never Reach the Squelch Registry (spec 042, owner decision)
+
+WHY: the owner decided that `around:` proposals are not squelched. Discovery
+already neither reads nor writes the registry for `--around`, but rejection is a
+second door: `lib/squelch_persist.persist_rejected_clusters` hashes every
+section `enumerate_all_moc_sections` returns that is not accepted, and
+`enumerate_moc_sections_split` hands its unticked list to `squelch-unticked.py`.
+Without a filter, unticking the seed of an `around:` proposal would store a
+signature for a hand-picked seed and silently hide a later topic proposal that
+happens to share its stems.
+
+Both functions therefore skip a section whose body has a line starting
+`**Trigger:** around:`. That line is rendered by the reducer into every section
+(not only the frontmatter), so the marker travels with the section and needs no
+new field. The prefix is anchored at the value start: a topic trigger such as
+`tag:around` does not match. `enumerate_moc_sections_split` skips an around
+section only in the unticked list; a ticked one is still returned, because
+ticked sections feed instruction building, not the registry.
+`parse_moc_proposal_doc` is untouched: an accepted around section is a normal
+proposal.

@@ -1872,8 +1872,8 @@ counts topic members only, which is the seed alone, so "them" would be wrong.
 
 Unchanged on purpose: `**Trigger:**` and the frontmatter carry
 `around:<argument as typed>` (the existing `mode:trigger_arg` rule needs no
-code); `**Confidence:**` and `**Cluster:**` keep their shape because
-`suggestion-parser` reads both. Cluster therefore shows the topic count (1, the
+code); `**Cluster:**` keeps its shape because `suggestion-parser` reads it
+(see "No Confidence line" below for the other field). Cluster therefore shows the topic count (1, the
 seed) with the seed's topics, and Children counts seed plus neighbours. The
 seed is `- [x]`, neighbours `- [ ] ... — linked with [[seed]]`, by the T2.2 rules.
 
@@ -1892,3 +1892,19 @@ only held while nobody configured the key. `--config` (default
 vault-config, and the value comes from the same loader moc-discovery and
 shared-ctx-builder use (`load_moc_proposal_config`), so a missing file, a
 missing block or a missing key all fall back to the same default.
+
+## An `around:` Proposal Has No `**Confidence:**` Line (spec 042, owner decision B)
+
+WHY: the confidence of a topic cluster is a signal strength of the overlap
+analysis. An `around:` section is not produced by that analysis: its seed is
+named by the user and its members come from the link graph, so the report has
+no confidence to state, and printing the number (100% in the captured
+fixture) would present a user choice as a measured score. The reducer therefore
+omits the line when `mode == "around"`; every other mode renders it as before
+(the byte-identity baseline fixture guards that).
+
+Omitting is safe because nothing reads the line from a rendered doc:
+`suggestion-parser` (`parse_moc_proposal_doc`, `enumerate_*`),
+`moc-proposal-parser.py` and the state promoter parse Cluster, Title, Location,
+Template, Parent and Children, never Confidence. The `(confidence N%)` text
+that the parser does match belongs to parent options and inbox Type fields.

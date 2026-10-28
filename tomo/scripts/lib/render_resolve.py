@@ -1,4 +1,4 @@
-# version: 0.5.1
+# version: 0.6.0
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -14,7 +14,7 @@ import re
 import sys
 
 import lib.moc_structure as moc_structure
-from lib.render_helpers import _moc_stem, _stem, resolve_source_path
+from lib.render_helpers import _moc_stem, _stem, exact_stem_paths, resolve_source_path
 from lib.render_io import read_template
 from lib.vault_paths import path_key
 
@@ -825,6 +825,51 @@ def filter_missing_source_notes(
                 continue
         kept.append(item)
     return kept, dropped
+
+
+EXTENSION_WITHHELD_REASONS = {
+    "absent": "no note by this name",
+    "unverifiable": "Kado could not confirm this MOC",
+    "ambiguous": "several notes have this name",
+}
+
+
+def filter_missing_extension_targets(
+    confirmed: list[dict], client,
+) -> tuple[list[dict], list[dict]]:
+    """Withhold each extend_moc item whose target MOC is not exactly one note.
+
+    A kept item gets `target_moc_path` stamped. A withheld record is
+    metadata only: id, target_moc, kind (absent | unverifiable | ambiguous),
+    reason, and the exact-stem paths found. No client keeps everything.
+    Other items pass through untouched.
+    """
+    if client is None:
+        return confirmed, []
+    kept: list[dict] = []
+    withheld: list[dict] = []
+    for item in confirmed:
+        if item.get("action") != "extend_moc":
+            kept.append(item)
+            continue
+        moc = _moc_stem(item.get("target_moc") or "")
+        try:
+            paths = exact_stem_paths(client.search_by_name(moc), moc)
+            kind = None if len(paths) == 1 else ("absent" if not paths else "ambiguous")
+        except Exception:  # noqa: BLE001 — transport/validation: not a verdict
+            paths, kind = [], "unverifiable"
+        if kind is None:
+            kept.append({**item, "target_moc_path": paths[0]})
+            continue
+        withheld.append({
+            "id": item.get("id"),
+            "target_moc": moc,
+            "kind": kind,
+            "reason": EXTENSION_WITHHELD_REASONS[kind],
+            "paths": paths,
+            "member_count": len(item.get("supporting_items") or []),
+        })
+    return kept, withheld
 
 
 def filter_unappliable_relationships(

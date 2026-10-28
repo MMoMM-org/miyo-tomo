@@ -314,6 +314,8 @@ everything of its day; a MOC around it is a day log, not a topic, so it is
 refused ("periodic notes cannot be a MOC seed"). A MOC seed is a different
 proposal type (extend the existing MOC, F3) and is routed to its own builder.
 
+**The seed follows member eligibility (owner decision A, 2026-10-28).** A note seed that is not eligible as a link member (`NodeEligibility.check`: not Markdown, still in the inbox, outside the atomic-note folders, tagged `exclude/note`) is refused with `abort_reason: around-ineligible` and a message naming the reason in user terms, before any Kado call. Without this, a note the user excluded would end up as the ticked member of a new MOC, while the same note would have been withheld as a link member. The check runs after the periodic and MOC routing, so those keep their own messages.
+
 **MOC seed stub (until Phase 4).** `_run_around_extension` currently emits an
 abort report with `abort_reason: around-moc-pending`, `around.kind: moc` and
 makes no Kado call. Phase 4 replaces that function body with the extension

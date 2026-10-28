@@ -528,7 +528,7 @@ sequenceDiagram
 
 #### Secondary flows
 
-- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; no squelch check.
+- **`around:<note>`:** resolve (cache only; path argument allowed) → refuse MOC-ambiguous / periodic / not-found → refuse a seed that fails member eligibility → `neighbors(seed)` (1 attempt) → eligible nodes → if < 2 → "fewer than 3 notes" → else one cluster: title `<seed stem><name_suffix>`, items `[seed]` (ticked) + link members `linked_with=[seed]`; parents via P5 from the seed's cached topics; no squelch check.
 - **`around:<MOC>`:** resolve → `neighbors(moc)` → eligible nodes whose cached `up_target` is not this MOC → if none → "no missing members" → `report.extension`. Reducer renders `### MOC01 — Extend [[X]]`, `- [ ] Accept`, `**Extends:** [[X]]`, `#### Missing members (n)`, Override, Why.
 - **Apply (extension):** `moc-proposal-parser` → `extend_moc` → `filter_missing_extension_targets` (withhold + report if MOC gone) → `_build_moc_extension_actions`: per ticked member `emit_up_preservation_actions(member, moc_stem, override)`; one `outgoing(moc)` call; `link_to_moc` (`line_to_add: "- [[member]]"`, anchor via the existing resolver) only for members not in it → instructions-diff checks one `add_relationship` set per member and `link_to_moc` count = ticked − already linked.
 
@@ -543,6 +543,7 @@ sequenceDiagram
 | Seed not in cache / not found | around builder | no proposal | "around: '<X>' not found — rebuild the cache or give a path" |
 | Seed name matches MOC and note | around builder | no proposal | both paths listed |
 | Seed is periodic | around builder | no proposal | "around: periodic notes cannot be a MOC seed" |
+| Seed not eligible (inbox / outside atomic folders / exclude/note) | around builder | no proposal | "around: '<X>' cannot seed a MOC — <reason>" |
 | < 2 eligible neighbours | around builder | no proposal | "fewer than 3 notes" |
 | MOC has no missing members | around builder | no proposal | "no missing members" |
 | Extension target MOC gone at /inbox | instruction-render filter | item withheld, reported like a missing source | instructions.md withheld notice |

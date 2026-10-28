@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.62.0
+# version: 1.63.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -54,6 +54,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     normalise_topic,  # re-export for tests/test-004-phase3.sh
     strip_moc_marker,
 )
+from lib.link_members import LINK_MEMBER_MARKER  # noqa: E402 — spec 042 T2.2 link member suffix
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.cost_history import (  # noqa: E402 — spec 034 T6.1
     DEFAULT_HISTORY_PATH,
@@ -1491,7 +1492,9 @@ def _render_cluster_section(
     candidate_stems = cluster.get("candidate_stems") or []
     existing_up_rows: list[dict] = cluster.get("existing_up") or []
 
-    n_children = len(candidate_stems)
+    link_members: list[dict] = cluster.get("link_members") or []
+    n_topic = len(candidate_stems)
+    n_children = n_topic + len(link_members)
     topics_csv = ", ".join(str(t) for t in topic_keywords) if topic_keywords else title.lower()
 
     lines: list[str] = [
@@ -1505,7 +1508,7 @@ def _render_cluster_section(
         "",
         f"**Trigger:** {trigger_arg}",
         f"**Confidence:** {int(round(confidence * 100))}%",
-        f"**Cluster:** {n_children} Notes — {topics_csv}",
+        f"**Cluster:** {n_topic} Notes — {topics_csv}",
         "",
         "#### Parent",
         "",
@@ -1527,6 +1530,15 @@ def _render_cluster_section(
     for stem in candidate_stems:
         annotation = _child_annotation(stem, existing_up_rows)
         lines.append(f"- [x] [[{stem}]] {annotation}")
+    link_up_rows = [
+        {"stem": m.get("stem"), "state": m.get("up_state", "absent"), "target": m.get("up_target")}
+        for m in link_members
+    ]
+    for member in link_members:
+        stem = member.get("stem", "")
+        annotation = _child_annotation(stem, link_up_rows)
+        reason = ", ".join(f"[[{w}]]" for w in member.get("linked_with") or [])
+        lines.append(f"- [ ] [[{stem}]] {annotation}{LINK_MEMBER_MARKER}{reason}")
     lines.append("")
 
     lines.append("#### up::-Handling Override")
@@ -1551,7 +1563,10 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_children} notes with topic overlap {topics_csv} have no dedicated MOC."
+    first = f"{n_topic} notes with topic overlap {topics_csv} have no dedicated MOC."
+    if link_members:
+        noun = "member" if len(link_members) == 1 else "members"
+        first += f" {len(link_members)} more {noun} came through links."
     last = "This MOC would fill the gap."
     if parent_label and k_classified > 0:
         middle = f"{k_classified} of them have up:: to classification {parent_label}."

@@ -70,3 +70,25 @@ deliberately neither `skip` nor `delete_source`: those two drive `skip` and
 A rejected extension (Accept unticked) goes to `skipped` with
 `disposition: "rejected"`, like a rejected new-MOC section. It is never
 squelched — see `docs/tomo/scripts/suggestion-parser.md`.
+
+## An `**Extends:**` Line Without a Wikilink Is Skipped as Malformed (spec 042 Phase 4 H1, v0.3.1)
+
+WHY the extension branch keys on the PRESENCE of the `**Extends:**` header
+line, not on a wikilink in it: a hand-edited line such as `**Extends:** none`
+used to leave the target empty, so the section fell through to `create_moc`
+and would have created a new MOC named after the section heading — the
+opposite of what an extension section asks. suggestion-parser already treats
+any `**Extends:**` header line as an extension, so both parsers now agree on
+which sections are extensions.
+
+WHY such a section goes to `skipped` with `disposition: "malformed_extension"`
+(accepted or not) and a `reason`, plus one stderr line: there is no target MOC
+to extend and nothing safe to create, so the only honest outcome is to drop it
+and tell the user. The disposition is neither `skip` nor `delete_source`, the
+only two values the consumers act on (`render_actions` builds `skip` /
+`delete_source` actions from them, `instructions-diff` expects those actions
+from them), so the entry is inert downstream like `no_ticked_members`.
+
+WHY only header lines count (before the first `####`): an `**Extends:**` text
+in a create section's Why body is prose, not the section's kind. The same
+header-only rule is applied in suggestion-parser.

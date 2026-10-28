@@ -1,7 +1,9 @@
-"""Spec 042 T1.2 — NodeEligibility: which linked notes may become link members.
+"""Spec 042 T1.2/T1.3 — NodeEligibility, LinkLookup and augment_clusters.
 
-Every test starts from ONE eligible cached note and changes exactly one thing,
-so each rule is falsified on its own (PRD F6-AC1, F6-AC2, F6-AC4).
+Eligibility tests start from ONE eligible cached note and change exactly one
+thing, so each rule is falsified on its own (PRD F6-AC1, F6-AC2, F6-AC4).
+Lookup/augment tests run against a graph fake that counts attempts and honours
+the client's attempt gate like KadoClient does (PRD F1, F5-AC1, F5-AC4, F6-AC3).
 """
 from __future__ import annotations
 
@@ -15,7 +17,13 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
 
-from lib.link_members import NodeEligibility  # noqa: E402
+from lib.kado_client import KadoBudgetExhausted, KadoError  # noqa: E402
+from lib.link_members import (  # noqa: E402
+    LinkLookup,
+    LinkMember,
+    NodeEligibility,
+    augment_clusters,
+)
 
 GOOD = "Vault/Notes/Idea.md"
 
@@ -177,5 +185,269 @@ class TestEligibility:
         e = _make()
         for p in (GOOD, "Elsewhere/x.md", "Vault/Notes/New.md"):
             e.check(p)
+        out = capsys.readouterr()
+        assert out.out == "" and out.err == ""
+
+
+# ── T1.3: LinkLookup and augment_clusters ─────────────────────────────────────
+
+N = "Vault/Notes/"
+DAILY = "Vault/Cal/Days/2025-06-04.md"
+
+
+class FakeGraphClient:
+    """kado-graph `neighbors` over a fixed adjacency, shaped like Kado's nodes.
+
+    Copied in spirit from tests/test_instruction_render_up_preservation.py.
+    Each call spends ``attempts[path]`` HTTP attempts (default 1, i.e. retries
+    when > 1); the attempt gate is consulted before every attempt, as in
+    KadoClient._call_tool. Paths in ``fail`` raise KadoError after sending.
+    """
+
+    def __init__(self, adjacency, attempts=None, fail=()):
+        self._adj = adjacency
+        self._attempts = dict(attempts or {})
+        self._fail = set(fail)
+        self.graph_calls: list[tuple[str, str, object]] = []
+        self.attempt_count = 0
+        self.attempt_gate = None
+        self.min_interval = 0.0
+
+    def graph(self, operation: str, path: str, limit: int | None = None) -> list[dict]:
+        self.graph_calls.append((operation, path, limit))
+        for _ in range(self._attempts.get(path, 1)):
+            if self.attempt_gate is not None and not self.attempt_gate():
+                raise KadoBudgetExhausted("budget")
+            self.attempt_count += 1
+        if path in self._fail:
+            raise KadoError("HTTP 500 from Kado")
+        assert operation == "neighbors"
+        return [{"path": p, "relation": "outgoing"} for p in self._adj.get(path, [])]
+
+
+def _note(stem, kind="note", up_state="absent", up_target=None, folder=N):
+    return {
+        "path": f"{folder}{stem}.md",
+        "stem": stem,
+        "kind": kind,
+        "tags": [],
+        "up_state": up_state,
+        "up_target": up_target,
+    }
+
+
+def _world(adjacency, notes=(), **client_kw):
+    """Cache with A..Y as plain notes plus `notes`; adjacency keyed by stem."""
+    entries = [_note(s) for s in ("A", "B", "C", "D", "E", "F", "X", "Y", "W")]
+    entries.append(_note("Z", kind="moc"))
+    entries.append(_note("2025-06-04", folder="Vault/Cal/Days/"))
+    entries += list(notes)
+    cache = {"entries": entries, "map_notes": [e for e in entries if e["kind"] == "moc"]}
+    stem_to_path = {e["stem"]: e["path"] for e in entries}
+
+    def p(stem):
+        return stem_to_path.get(stem, f"{N}{stem}.md")
+
+    adj = {p(k): [p(v) for v in vs] for k, vs in adjacency.items()}
+    client = FakeGraphClient(adj, **{
+        k: ({p(s): n for s, n in v.items()} if k == "attempts" else {p(s) for s in v})
+        for k, v in client_kw.items()
+    })
+    elig = NodeEligibility(cache, PROFILE, VAULT_CFG)
+    return client, cache, stem_to_path, elig
+
+
+def _cluster(cid, *stems):
+    return {"cluster_id": cid, "items": list(stems)}
+
+
+def _run(clusters, adjacency, budget=60, notes=(), **client_kw):
+    client, cache, stem_to_path, elig = _world(adjacency, notes, **client_kw)
+    lookup = LinkLookup(client, budget=budget)
+    result = augment_clusters(clusters, stem_to_path, lookup, elig, cache)
+    return result, client, lookup
+
+
+def _stems(result, cid):
+    return [m.stem for m in result.clusters[cid].link_members]
+
+
+class TestLookup:
+    def test_neighbors_returns_paths_and_never_passes_limit(self):
+        client, _, s2p, _ = _world({"A": ["X", "Y"]})
+        lookup = LinkLookup(client)
+        assert lookup.neighbors(s2p["A"]) == [s2p["X"], s2p["Y"]]
+        assert client.graph_calls == [("neighbors", s2p["A"], None)]
+
+    def test_memoised_across_clusters(self):
+        adjacency = {"A": ["X"], "B": ["X"], "C": ["X"]}
+        result, client, lookup = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "A", "C")], adjacency
+        )
+        called = [c[1] for c in client.graph_calls]
+        assert called.count(f"{N}A.md") == 1
+        assert len(called) == 3
+        assert lookup.cached(f"{N}A.md")
+
+    def test_installs_gate_and_pacing_and_counts_attempts(self):
+        client, _, s2p, _ = _world({"A": ["X"]}, attempts={"A": 3})
+        lookup = LinkLookup(client, budget=10)
+        assert client.min_interval == 0.3
+        assert client.attempt_gate is not None
+        lookup.neighbors(s2p["A"])
+        assert lookup.attempts == 3
+        assert lookup.remaining() == 7
+
+    def test_attempts_are_counted_from_construction(self):
+        client, _, s2p, _ = _world({"A": ["X"]})
+        client.attempt_count = 5
+        lookup = LinkLookup(client, budget=10)
+        lookup.neighbors(s2p["A"])
+        assert lookup.attempts == 1 and lookup.remaining() == 9
+
+    def test_gate_refuses_send_past_budget(self):
+        client, _, s2p, _ = _world({"A": ["X"]}, attempts={"A": 3})
+        lookup = LinkLookup(client, budget=2)
+        result = lookup.neighbors(s2p["A"])
+        assert not isinstance(result, list)
+        assert client.attempt_count == 2
+        assert lookup.remaining() == 0
+
+    def test_failed_lookup_is_counted_and_memoised(self):
+        client, _, s2p, _ = _world({}, fail={"A"})
+        lookup = LinkLookup(client)
+        first = lookup.neighbors(s2p["A"])
+        second = lookup.neighbors(s2p["A"])
+        assert not isinstance(first, list) and not isinstance(second, list)
+        assert lookup.failed == 1
+        assert len(client.graph_calls) == 1
+
+
+class TestAugment:
+    def test_traced_example(self):
+        # SDD traced example: C=[A,B,D]; X hits {A,B}, Y hits {A,D};
+        # the daily and MOC Z are never counted.
+        adjacency = {"A": ["X", "2025-06-04", "Y"], "B": ["X", "2025-06-04"], "D": ["Y", "Z"]}
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B", "D"), _cluster("c2", "A", "E")], adjacency
+        )
+        c1 = result.clusters["c1"]
+        assert c1.status == "done"
+        assert c1.link_members == [
+            LinkMember(stem="X", path=f"{N}X.md", linked_with=["A", "B"],
+                       up_state="absent", up_target=None),
+            LinkMember(stem="Y", path=f"{N}Y.md", linked_with=["A", "D"],
+                       up_state="absent", up_target=None),
+        ]
+        called = [c[1] for c in client.graph_calls]
+        assert called == [f"{N}A.md", f"{N}B.md", f"{N}D.md", f"{N}E.md"]
+
+    def test_linked_with_is_sorted_and_up_state_from_cache(self):
+        w = _note("W", up_state="valid", up_target="Cooking (MOC)")
+        adjacency = {"F": ["W"], "B": ["W"]}
+        result, _, _ = _run([_cluster("c1", "F", "B")], adjacency, notes=[w])
+        (m,) = result.clusters["c1"].link_members
+        assert m.linked_with == ["B", "F"]
+        assert (m.up_state, m.up_target) == ("valid", "Cooking (MOC)")
+
+    def test_node_in_one_member_list_is_not_added(self):  # F1-AC2
+        adjacency = {"A": ["X"], "B": ["Y"]}
+        result, _, _ = _run([_cluster("c1", "A", "B")], adjacency)
+        assert result.clusters["c1"].status == "done"
+        assert _stems(result, "c1") == []
+
+    def test_existing_member_is_not_added(self):  # F1-AC3
+        adjacency = {"A": ["B"], "B": ["A"], "D": ["A", "B"]}
+        result, _, _ = _run([_cluster("c1", "A", "B", "D")], adjacency)
+        assert _stems(result, "c1") == []
+
+    def test_node_qualifying_in_two_clusters_is_in_both(self):  # F1-AC4
+        adjacency = {"A": ["X"], "B": ["X"], "D": ["X"], "E": ["X"]}
+        result, _, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "D", "E")], adjacency
+        )
+        assert _stems(result, "c1") == ["X"]
+        assert _stems(result, "c2") == ["X"]
+
+    def test_periodic_hub_never_counts(self):  # F6-AC3
+        adjacency = {"A": ["2025-06-04"], "B": ["2025-06-04"]}
+        result, _, _ = _run([_cluster("c1", "A", "B")], adjacency)
+        assert result.clusters["c1"].status == "done"
+        assert _stems(result, "c1") == []
+
+    def test_moc_hub_never_counts(self):  # F6-AC3
+        adjacency = {"A": ["Z"], "B": ["Z"]}
+        result, _, _ = _run([_cluster("c1", "A", "B")], adjacency)
+        assert _stems(result, "c1") == []
+
+    def test_uncached_neighbours_are_counted_not_added(self):
+        adjacency = {"A": ["New"], "B": ["New"]}
+        result, _, _ = _run([_cluster("c1", "A", "B")], adjacency)
+        assert _stems(result, "c1") == []
+        assert result.stats["skipped_uncached"] == 1
+
+    def test_budget_skips_whole_cluster_then_smaller_runs(self):  # F5-AC1
+        adjacency = {"A": ["X"], "B": ["X"], "C": ["X"], "D": ["Y"], "E": ["Y"]}
+        result, client, lookup = _run(
+            [_cluster("big", "A", "B", "C"), _cluster("small", "D", "E")],
+            adjacency,
+            budget=2,
+        )
+        assert result.clusters["big"].status == "skipped_budget"
+        assert result.clusters["big"].link_members == []
+        assert result.clusters["small"].status == "done"
+        assert _stems(result, "small") == ["Y"]
+        assert [c[1] for c in client.graph_calls] == [f"{N}D.md", f"{N}E.md"]
+        assert result.stats["clusters_skipped_budget"] == 1
+
+    def test_cached_lookups_need_no_budget(self):
+        adjacency = {"A": ["X"], "B": ["X"]}
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "B", "A")], adjacency, budget=2
+        )
+        assert result.clusters["c2"].status == "done"
+        assert _stems(result, "c2") == ["X"]
+        assert len(client.graph_calls) == 2
+
+    def test_budget_spent_mid_cluster_by_retries_marks_failed(self):
+        adjacency = {"A": ["X"], "B": ["X"]}
+        result, client, lookup = _run(
+            [_cluster("c1", "A", "B")], adjacency, budget=3, attempts={"A": 3}
+        )
+        assert result.clusters["c1"].status == "failed"
+        assert result.clusters["c1"].link_members == []
+        assert client.attempt_count == 3
+
+    def test_failed_lookup_fails_only_its_cluster(self):  # F5-AC4
+        adjacency = {"A": ["X"], "B": ["X"], "D": ["Y"], "E": ["Y"]}
+        result, _, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "D", "E")], adjacency, fail={"B"}
+        )
+        assert result.clusters["c1"].status == "failed"
+        assert result.clusters["c1"].link_members == []
+        assert result.clusters["c2"].status == "done"
+        assert _stems(result, "c2") == ["Y"]
+        assert result.stats["failed"] == 1
+
+    def test_stats(self):
+        adjacency = {"A": ["X"], "B": ["X", "Y"], "D": ["Y"]}
+        result, _, _ = _run([_cluster("c1", "A", "B", "D")], adjacency, attempts={"D": 2})
+        assert result.stats == {
+            "lookups": 3,
+            "attempts": 4,
+            "failed": 0,
+            "clusters_skipped_budget": 0,
+            "members_total": 2,
+            "skipped_uncached": 0,
+        }
+
+    def test_input_clusters_are_not_mutated(self):
+        clusters = [_cluster("c1", "A", "B")]
+        before = copy.deepcopy(clusters)
+        _run(clusters, {"A": ["X"], "B": ["X"]})
+        assert clusters == before
+
+    def test_never_prints(self, capsys):
+        _run([_cluster("c1", "A", "B")], {"A": ["X"], "B": ["X"]}, fail={"A"})
         out = capsys.readouterr()
         assert out.out == "" and out.err == ""

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_moc_propose_e2e.py — F-43 T6.1 + spec 021 T4.1: Producer-side end-to-end integration tests.
 
 Tests the full Tomo pipeline for /moc-propose:
@@ -1580,3 +1580,393 @@ def _load_moc_tree_builder():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Spec 042 T5.2 — link members end to end through the pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Every step runs the way production runs it (moc-architect.md + synthesis-
+# conductor.md), except where a Kado client is needed:
+#   moc-discovery.py     in process — main() with `_build_kado_client` patched
+#                        (tag: `--emit-phase1` then `--phase1-input`; around:
+#                        one `--around` pass)
+#   suggestions-reducer  subprocess, `--moc-proposal-mode --input --output-dir`
+#   moc-proposal-parser  subprocess, `--file <doc>` → stdout parsed-suggestions
+#   instruction-render   in process — main() with `KadoClient` patched (036 seam)
+#   instructions-diff    subprocess, `--suggestions --instructions --groups-dir`
+# Both patched steps get the SAME fake over one on-disk vault, so the link graph
+# discovery reads is the link graph the render step reads.
+
+from .conftest import instruction_render_mod  # noqa: E402
+from .test_036_delete_justification_e2e import _VaultBackedKado  # noqa: E402
+
+_T52_ENV = {**__import__("os").environ, "PYTHONPATH": str(SCRIPTS_DIR)}
+_T52_NOTES = "Atlas/202 Notes/"
+_T52_MAPS = "Atlas/200 Maps/"
+_T52_TEMPLATER = "X/900 Support/930 Templater"
+_T52_GARDEN = f"{_T52_MAPS}Gardening (MOC).md"
+
+# stem → (topics, tags, body). Topic members alpha/beta/gamma carry tag
+# `science`; xenon is linked FROM alpha and beta, yttrium from alpha and gamma
+# (each a link member of the energy cluster); zinc only from alpha (never one).
+# Gardening (MOC) links argon and neon; krypton links the MOC; none of the three
+# has an up:: to it → three missing members.
+_T52_VAULT: dict[str, tuple[list[str], list[str], str]] = {
+    "alpha": (["energy"], ["science"], "# alpha\n\n[[xenon]] [[yttrium]] [[zinc]]\n"),
+    "beta": (["energy"], ["science"], "# beta\n\n[[xenon]]\n"),
+    "gamma": (["energy"], ["science"], "# gamma\n\n[[yttrium]]\n"),
+    "xenon": (["noble"], [], "# xenon\n\nProse.\n"),
+    "yttrium": (["metal"], [], "# yttrium\n\nProse.\n"),
+    "zinc": (["metal"], [], "# zinc\n\nProse.\n"),
+    "argon": (["noble"], [], "# argon\n\nProse.\n"),
+    "neon": (["noble"], [], "# neon\n\nProse.\n"),
+    "krypton": (["noble"], [], "# krypton\n\nSee [[Gardening (MOC)]].\n"),
+}
+_T52_GARDEN_BODY = (
+    "---\ntags:\n  - type/others/moc\n---\n# Gardening (MOC)\n\n"
+    "> [!blocks] Members\n> - [[argon]]\n> - [[neon]]\n"
+)
+
+
+class _LinkGraphVault(_VaultBackedKado):
+    """`_VaultBackedKado` plus the surfaces discovery and the extension use.
+
+    `graph` answers from the vault's real wikilinks: `outgoing` = resolved links
+    of the note, `neighbors` = outgoing ∪ incoming, `dangling` = unresolved
+    links. The attempt counter / gate mirror KadoClient's budget surface.
+    """
+
+    def __init__(self, root: Path, tag_paths: dict[str, list[str]]):
+        super().__init__(root)
+        self._tag_paths = tag_paths
+        self.graph_calls: list[tuple[str, str]] = []
+        self.attempt_count = 0
+        self.attempt_gate = None
+        self.min_interval = 0.0
+
+    def _all(self) -> list[str]:
+        return sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*.md"))
+
+    def _links(self, path: str) -> tuple[list[str], list[str]]:
+        import re as _re
+        body = (self.root / path).read_text(encoding="utf-8")
+        resolved, dangling = [], []
+        for target in _re.findall(r"\[\[([^\]|#]+)", body):
+            hits = self.search_by_name(target.strip())
+            (resolved if hits else dangling).append(hits[0]["path"] if hits else target)
+        return resolved, dangling
+
+    def graph(self, operation: str, path: str, limit=None) -> list[dict]:
+        from lib.kado_client import KadoBudgetExhausted, KadoError
+        self.graph_calls.append((operation, path))
+        if self.attempt_gate is not None and not self.attempt_gate():
+            raise KadoBudgetExhausted("budget")
+        self.attempt_count += 1
+        if not (self.root / path).is_file():
+            raise KadoError(f"not found: {path}")
+        outgoing, dangling = self._links(path)
+        if operation == "outgoing":
+            return [{"path": p, "relation": "outgoing"} for p in outgoing]
+        if operation == "dangling":
+            return [{"path": t, "relation": "dangling", "count": 1} for t in dangling]
+        if operation == "neighbors":
+            incoming = [p for p in self._all() if p != path and path in self._links(p)[0]]
+            nodes = list(dict.fromkeys(outgoing + incoming))
+            return [{"path": p, "relation": "neighbor"} for p in nodes]
+        raise AssertionError(f"unexpected graph operation {operation!r}")
+
+    def search_by_tag(self, tag: str, limit: int = 500) -> list[dict]:
+        return [{"path": p} for p in self._tag_paths.get(tag.lstrip("#").rstrip("*"), [])]
+
+    def search_by_name(self, name: str, limit: int = 500) -> list[dict]:
+        return super().search_by_name(name)
+
+    def _call_tool(self, tool: str, args: dict) -> dict:
+        assert tool == "kado-search" and args.get("operation") == "byName", (tool, args)
+        query = args["query"]
+        return {"items": [
+            {"path": p} for p in self._all()
+            if query in p.rsplit("/", 1)[-1].lower()
+        ]}
+
+
+def _t52_build(tmp_path: Path) -> dict:
+    """Vault on disk + matching fresh cache + config + squelch → paths."""
+    import shutil
+    from datetime import datetime, timezone
+
+    import yaml
+
+    vault = tmp_path / "vault"
+    (vault / _T52_NOTES).mkdir(parents=True)
+    (vault / _T52_MAPS).mkdir(parents=True)
+    (vault / "100 Inbox").mkdir(parents=True)
+    (vault / _T52_TEMPLATER).mkdir(parents=True)
+    shutil.copy2(
+        PRIVAT_TEST_ROOT / _T52_TEMPLATER / "t_moc_tomo.md",
+        vault / _T52_TEMPLATER / "t_moc_tomo.md",
+    )
+    for stem, (_topics, _tags, body) in _T52_VAULT.items():
+        (vault / _T52_NOTES / f"{stem}.md").write_text(body, encoding="utf-8")
+    (vault / _T52_GARDEN).write_text(_T52_GARDEN_BODY, encoding="utf-8")
+
+    entries = [{"path": _T52_GARDEN, "kind": "moc", "title": "Gardening (MOC)",
+                "topics": ["gardening"], "tags": ["type/others/moc"]}]
+    for stem, (topics, tags, _body) in _T52_VAULT.items():
+        entries.append({
+            "path": f"{_T52_NOTES}{stem}.md", "kind": "note", "stem": stem,
+            "topics": topics, "tags": tags, "up_state": "absent",
+            "up_target": None, "up_source": None,
+        })
+    cache = {
+        "moc_cache_version": 1,
+        "last_scan": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ttl_days": 1, "scope_paths": [], "exclude_paths": [],
+        "moc_tag": "type/others/moc", "entries": entries, "placeholder_links": [],
+    }
+    cache_path = tmp_path / "moc-structure-cache.yaml"
+    cache_path.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
+
+    config = {
+        "profile": "miyo",
+        "concepts": {
+            "inbox": "100 Inbox/",
+            "asset": "Atlas/290 Assets/295 Attachments/",
+            "calendar": {"granularities": {"daily": {"path": "Calendar/301 Daily/"}}},
+        },
+        "daily_log": {"heading": "Daily Log", "heading_level": 2},
+        "tomo": {"moc_proposal": {
+            "min_notes": 2, "confidence_threshold": 0.10, "max_results": 5,
+            "candidate_cap": 200, "squelch_runs": 3,
+        }},
+    }
+    config_path = tmp_path / "vault-config.yaml"
+    config_path.write_text(yaml.dump(config, allow_unicode=True), encoding="utf-8")
+
+    squelch = tmp_path / "moc-squelch.json"
+    squelch.write_text(
+        json.dumps({"schema_version": "1", "last_run_id": "", "rejections": []}),
+        encoding="utf-8",
+    )
+    tmp = tmp_path / "tomo-tmp"
+    (tmp / "tag-handler-groups").mkdir(parents=True)
+    tag_paths = {
+        "science": [f"{_T52_NOTES}{s}.md" for s, v in _T52_VAULT.items() if "science" in v[1]],
+    }
+    return {
+        "vault": vault, "cache": cache_path, "config": config_path,
+        "squelch": squelch, "tmp": tmp,
+        "kado": _LinkGraphVault(vault, tag_paths),
+    }
+
+
+def _t52_discover(env: dict, monkeypatch, argv: list[str]) -> dict:
+    """moc-discovery main() in process; tag modes run the production 2 passes."""
+    import contextlib
+    import io
+
+    common = ["--config", str(env["config"]), "--cache", str(env["cache"]),
+              "--squelch-state", str(env["squelch"])]
+    monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: env["kado"])
+
+    def _main(args: list[str]) -> str:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = _moc_disc.main(args)
+        assert code in (0, 1), f"moc-discovery exited {code} for {args}"
+        return out.getvalue()
+
+    if argv[0] == "--around":
+        stdout = _main([*argv, *common])
+    else:
+        phase1 = env["tmp"] / "moc-phase1.json"
+        assert _main([*argv, *common, "--emit-phase1", str(phase1)]).strip() == ""
+        payload = json.loads(phase1.read_text(encoding="utf-8"))
+        assert payload["abort_reason"] is None, payload
+        # Step 3b: every candidate is a cache hit here, so the agent's rewrite
+        # only drops body_excerpt — nothing to extract.
+        assert all(c.get("topics") for c in payload["candidates"]), payload
+        stdout = _main(["--phase1-input", str(phase1), *common])
+    report = json.loads(stdout)
+    disc = env["tmp"] / "moc-discovery.json"
+    disc.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+    return report
+
+
+def _t52_script(*cmd: str) -> subprocess.CompletedProcess:
+    out = subprocess.run(
+        [sys.executable, *cmd], capture_output=True, text=True, env=_T52_ENV
+    )
+    assert out.returncode == 0, f"{cmd[0]} exited {out.returncode}:\n{out.stderr}"
+    return out
+
+
+def _t52_render_doc(env: dict) -> Path:
+    out = _t52_script(
+        str(SCRIPTS_DIR / "suggestions-reducer.py"), "--moc-proposal-mode",
+        "--input", str(env["tmp"] / "moc-discovery.json"),
+        "--output-dir", str(env["tmp"]), "--config", str(env["config"]),
+    )
+    return Path(out.stdout.strip())
+
+
+def _t52_tick(body: str, *lines: str) -> str:
+    for line in lines:
+        assert body.count(line) == 1, f"expected exactly one {line!r} in:\n{body}"
+        body = body.replace(line, line.replace("- [ ]", "- [x]", 1))
+    return body
+
+
+def _t52_pass2(env: dict, monkeypatch, doc: Path) -> tuple[dict, list[dict], str]:
+    """parser → instruction-render → instructions-diff; returns (parsed, actions, diff out)."""
+    parsed_path = env["tmp"] / "parsed-suggestions.json"
+    parsed = _t52_script(str(SCRIPTS_DIR / "moc-proposal-parser.py"), "--file", str(doc))
+    parsed_path.write_text(parsed.stdout, encoding="utf-8")
+
+    out_dir = env["tmp"] / "rendered"
+    monkeypatch.setattr(instruction_render_mod, "KadoClient", lambda: env["kado"])
+    monkeypatch.setattr(sys, "argv", [
+        "instruction-render.py",
+        "--suggestions", str(parsed_path),
+        "--output-dir", str(out_dir),
+        "--config", str(env["config"]),
+        "--shared-ctx", str(env["tmp"] / "absent-shared-ctx.json"),
+        "--upstream-type", "moc-proposal",
+        "--upstream-path", f"100 Inbox/{doc.name}",
+        "--upstream-body", str(doc),
+        "--run-id", "e2e-042-t52",
+        "--tag-handler-groups-dir", str(env["tmp"] / "tag-handler-groups"),
+        "--cost-history", str(env["tmp"] / "inbox-cost-history.jsonl"),
+    ])
+    assert instruction_render_mod.main() == 0
+    instructions = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
+
+    diff = _t52_script(
+        str(SCRIPTS_DIR / "instructions-diff.py"),
+        "--suggestions", str(parsed_path),
+        "--instructions", str(out_dir / "instructions.json"),
+        "--groups-dir", str(env["tmp"] / "tag-handler-groups"),
+    )
+    return json.loads(parsed.stdout), instructions["actions"], diff.stdout
+
+
+def _t52_rel_paths(actions: list[dict]) -> list[str]:
+    return [a["target_moc_path"] for a in actions if a["action"] == "add_relationship"]
+
+
+@pytest.mark.integration
+def test_042_tag_run_ticked_link_member_reaches_the_instructions(tmp_path, monkeypatch):
+    """(a) tag run → link members in the doc → tick xenon only → xenon gets its
+    add_relationship to the new MOC, unticked yttrium gets nothing.
+
+    Falsified by: the reducer dropping link_members, the parser not reading a
+    ticked link member line, or the renderer skipping a supporting item.
+    """
+    env = _t52_build(tmp_path)
+    report = _t52_discover(env, monkeypatch, ["--tag", "science"])
+
+    (cluster,) = report["topic_clusters"]
+    assert cluster["link_lookup_status"] == "done"
+    assert [m["stem"] for m in cluster["link_members"]] == ["xenon", "yttrium"]
+
+    doc = _t52_render_doc(env)
+    body = doc.read_text(encoding="utf-8")
+    xenon = "- [ ] [[xenon]] (no up:: yet) — linked with [[alpha]], [[beta]]"
+    yttrium = "- [ ] [[yttrium]] (no up:: yet) — linked with [[alpha]], [[gamma]]"
+    assert xenon in body and yttrium in body
+    assert "[[zinc]]" not in body
+    doc.write_text(_t52_tick(body, "- [ ] Accept", xenon), encoding="utf-8")
+
+    parsed, actions, _diff = _t52_pass2(env, monkeypatch, doc)
+    (item,) = parsed["confirmed_items"]
+    assert item["action"] == "create_moc"
+
+    (create,) = [a for a in actions if a["action"] == "create_moc"]
+    moc_title = create["title"]
+    rel_paths = _t52_rel_paths(actions)
+    assert f"{_T52_NOTES}xenon.md" in rel_paths
+    assert f"{_T52_NOTES}yttrium.md" not in rel_paths
+    assert not any("yttrium" in json.dumps(a) for a in actions), actions
+    xenon_rel = [a for a in actions if a["action"] == "add_relationship"
+                 and a["target_moc_path"] == f"{_T52_NOTES}xenon.md"]
+    assert [(a["marker"], a["line"]) for a in xenon_rel] == [
+        ("up::", f"up:: [[{moc_title}]]")
+    ]
+    # Topic members (pre-ticked) still reach the wire beside the link member.
+    for stem in ("alpha", "beta", "gamma"):
+        assert f"{_T52_NOTES}{stem}.md" in rel_paths
+
+
+@pytest.mark.integration
+def test_042_around_moc_extension_reaches_the_instructions(tmp_path, monkeypatch):
+    """(b) around:Gardening (MOC) → extension doc with 3 missing members → tick
+    argon (already linked by the MOC) and krypton → 2 relationship sets, ONE
+    link_to_moc (krypton), nothing for neon; instructions-diff green.
+
+    Falsified by: the builder ignoring outgoing(moc) (2 link_to_moc), the parser
+    dropping a ticked member, or the reducer rendering no member lines.
+    """
+    env = _t52_build(tmp_path)
+    report = _t52_discover(env, monkeypatch, ["--around", "Gardening (MOC)"])
+    assert report["abort_reason"] is None, report.get("abort_message")
+    assert [m["stem"] for m in report["extension"]["members"]] == ["argon", "krypton", "neon"]
+
+    doc = _t52_render_doc(env)
+    body = doc.read_text(encoding="utf-8")
+    assert "### MOC01 — Extend [[Gardening (MOC)]]" in body
+    assert "**Extends:** [[Gardening (MOC)]]" in body
+    assert "#### Missing members (3)" in body
+    argon = next(line for line in body.splitlines() if line.startswith("- [ ] [[argon]]"))
+    krypton = next(line for line in body.splitlines() if line.startswith("- [ ] [[krypton]]"))
+    doc.write_text(_t52_tick(body, "- [ ] Accept", argon, krypton), encoding="utf-8")
+
+    parsed, actions, diff_out = _t52_pass2(env, monkeypatch, doc)
+    (item,) = parsed["confirmed_items"]
+    assert item["action"] == "extend_moc"
+    assert sorted(item["supporting_items"]) == ["argon", "krypton"]
+
+    rels = [a for a in actions if a["action"] == "add_relationship"]
+    assert sorted(a["target_moc_path"] for a in rels) == [
+        f"{_T52_NOTES}argon.md", f"{_T52_NOTES}krypton.md",
+    ]
+    assert all(a["line"] == "up:: [[Gardening (MOC)]]" for a in rels), rels
+    links = [a for a in actions if a["action"] == "link_to_moc"]
+    assert len(links) == 1, links
+    assert "krypton" in json.dumps(links[0]) and "argon" not in json.dumps(links[0])
+    assert links[0]["target_moc_path"] == _T52_GARDEN
+    assert not any("neon" in json.dumps(a) for a in actions), actions
+    assert not any(a["action"] in ("create_moc", "extend_moc") for a in actions)
+    assert "MISMATCH" not in diff_out.upper(), diff_out
+
+
+@pytest.mark.integration
+def test_042_budget_zero_still_writes_the_doc_and_reports_skipped(tmp_path, monkeypatch):
+    """(c) a zero lookup budget → no graph call, the doc is still written with
+    the topic children, no link member lines, and the report counts the cluster
+    as skipped_budget.
+
+    No production knob sets the budget: `LinkLookup(kado_client)` takes the
+    default. The test injects `budget=0` at the name moc-discovery resolves.
+    """
+    import functools
+
+    from lib.link_members import LinkLookup
+
+    env = _t52_build(tmp_path)
+    monkeypatch.setattr(_moc_disc, "LinkLookup", functools.partial(LinkLookup, budget=0))
+    report = _t52_discover(env, monkeypatch, ["--tag", "science"])
+
+    (cluster,) = report["topic_clusters"]
+    assert cluster["link_lookup_status"] == "skipped_budget"
+    assert cluster["link_members"] == []
+    assert report["link_stats"]["clusters_skipped_budget"] == 1
+    assert report["link_stats"]["lookups"] == 0
+    assert [c for c in env["kado"].graph_calls if c[0] == "neighbors"] == []
+
+    doc = _t52_render_doc(env)
+    body = doc.read_text(encoding="utf-8")
+    assert "- [ ] Accept" in body
+    for stem in ("alpha", "beta", "gamma"):
+        assert f"- [x] [[{stem}]]" in body
+    assert " — linked with " not in body

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.23.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -123,6 +123,11 @@ ABORT_MESSAGES: dict[str, str] = {
     ),
     "cache-miss-cap-exceeded": (
         "Too many notes without cache entry — please run /explore-vault first."
+    ),
+    "around-periodic": "around: periodic notes cannot be a MOC seed",
+    # `{stem}` is filled by `_run_around_extension`.
+    "around-moc-pending": (
+        "around: extending an existing MOC ('{stem}') is not available yet"
     ),
     "cache-rebuild-failed": (
         "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
@@ -1987,7 +1992,13 @@ def _run_pipeline(
 
 AROUND_CLUSTER_ID = "MOC01"
 AROUND_MIN_NEIGHBOURS = 2  # seed + 2 neighbours = the 3-note floor
-AROUND_PERIODIC_MESSAGE = "around: periodic notes cannot be a MOC seed"
+# Why a note seed fails member eligibility, in user terms (owner decision A).
+AROUND_INELIGIBLE_REASONS = {
+    "not-md": "it is not a Markdown note",
+    "inbox": "it is still in the inbox",
+    "out-of-scope": "it is outside the atomic-note folders",
+    "excluded-tag": "it is tagged exclude/note",
+}
 
 
 @dataclass
@@ -2020,11 +2031,12 @@ def resolve_around_seed(
     """Resolve `arg` against the cache → (seed, abort_reason, abort_message).
 
     Case-insensitive match on entry paths (path argument) or stems (name).
-    Refusal order: periodic path argument → ambiguous → not found → periodic.
+    Refusal order: periodic path argument → ambiguous → not found → periodic →
+    (note seeds only) member eligibility.
     """
     key, is_path = _around_key(arg)
     if is_path and eligibility.is_periodic(key):
-        return None, "around-periodic", AROUND_PERIODIC_MESSAGE
+        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
 
     folded = key.casefold()
     matches: dict[str, dict] = {}
@@ -2048,8 +2060,15 @@ def resolve_around_seed(
 
     path, entry = next(iter(matches.items()))
     if eligibility.is_periodic(path):
-        return None, "around-periodic", AROUND_PERIODIC_MESSAGE
+        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
     kind = "moc" if eligibility.is_moc(path) else "note"
+    if kind == "note":
+        eligible, why = eligibility.check(path)
+        if not eligible:
+            reason_text = AROUND_INELIGIBLE_REASONS.get(why, f"it is not eligible ({why})")
+            return None, "around-ineligible", (
+                f"around: '{_stem_from_path(path)}' cannot seed a MOC — {reason_text}"
+            )
     topics = [str(t) for t in entry.get("topics") or [] if t]
     return AroundSeed(kind, path, _stem_from_path(path), topics), None, None
 
@@ -2065,7 +2084,7 @@ def _run_around_extension(report: dict, seed: AroundSeed) -> dict:
     """around:<MOC> — STUB until spec 042 Phase 4: abort, no Kado call."""
     return _around_abort(
         report, "around-moc-pending",
-        f"around: extending an existing MOC ('{seed.stem}') is not available yet",
+        ABORT_MESSAGES["around-moc-pending"].format(stem=seed.stem),
     )
 
 

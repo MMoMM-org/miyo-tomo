@@ -54,6 +54,9 @@ TWIN_B = f"{_BASE}2021 Thoughts/twin.md"
 MOC_PATH = "Atlas/200 Maps/Gardening (MOC).md"
 DAILY_CACHED = "Calendar/301 Daily/2026-01-02.md"
 DAILY_UNCACHED = "Calendar/301 Daily/2026-01-01.md"
+INBOX_NOTE = "100 Inbox/raw-idea.md"
+OUTSIDE_NOTE = "Projects/Elsewhere/stray.md"
+EXCLUDED_NOTE = f"{_BASE}secret.md"
 
 _NOTES = [
     {"path": SEED, "topics": ["habits", "goals"]},
@@ -65,6 +68,9 @@ _NOTES = [
     {"path": TWIN_A, "topics": ["twin"]},
     {"path": TWIN_B, "topics": ["twin"]},
     {"path": DAILY_CACHED, "topics": ["day"]},
+    {"path": INBOX_NOTE, "topics": ["raw"]},
+    {"path": OUTSIDE_NOTE, "topics": ["stray"]},
+    {"path": EXCLUDED_NOTE, "topics": ["secret"], "tags": ["MiYo/Tomo/exclude/note"]},
 ]
 
 _LINKS = {
@@ -135,7 +141,7 @@ def _write_cache(tmp_path: Path) -> Path:
     for n in _NOTES:
         entries.append({
             "path": n["path"], "kind": "note", "stem": _stem(n["path"]),
-            "topics": n["topics"], "tags": [],
+            "topics": n["topics"], "tags": n.get("tags", []),
             "up_state": n.get("up_state", "absent"), "up_target": n.get("up_target"),
         })
     cache = {
@@ -240,6 +246,21 @@ def test_moc_seed_routes_to_extension_stub(tmp_path, monkeypatch):
     _, report, fake = _run_around(tmp_path, monkeypatch, "Gardening (MOC)")
     assert report["around"] == {"kind": "moc", "path": MOC_PATH, "stem": "Gardening (MOC)"}
     assert report["abort_reason"] == "around-moc-pending"
+    assert report["topic_clusters"] == []
+    assert fake.graph_calls == []
+
+
+@pytest.mark.parametrize("target, reason", [
+    (INBOX_NOTE, "it is still in the inbox"),
+    (OUTSIDE_NOTE, "it is outside the atomic-note folders"),
+    (EXCLUDED_NOTE, "it is tagged exclude/note"),
+], ids=["inbox", "out-of-scope", "excluded-tag"])
+def test_ineligible_note_seed_is_refused_with_its_reason(tmp_path, monkeypatch, target, reason):
+    """Owner decision A: a seed must pass the same eligibility as a link member."""
+    _, report, fake = _run_around(tmp_path, monkeypatch, target)
+    stem = _stem(target)
+    assert report["abort_reason"] == "around-ineligible"
+    assert report["abort_message"] == f"around: '{stem}' cannot seed a MOC — {reason}"
     assert report["topic_clusters"] == []
     assert fake.graph_calls == []
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.3
+# version: 0.42.4
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1480,7 +1480,7 @@ def enumerate_all_moc_sections(
     rejected clusters (enumerate_all − accepted).
 
     Extraction strategy:
-    - ``candidate_stems``  — wikilinks from ``#### Children`` items
+    - ``candidate_stems``  — wikilinks from ``#### Children`` items, excluding LINK_MEMBER_MARKER lines (signature input)
     - ``topic_keywords``   — comma-separated list from ``**Cluster:** N Notes — kw1, kw2``
     """
     lines = content.splitlines()
@@ -1530,7 +1530,7 @@ def enumerate_moc_sections_split(
         moc_id          — e.g. "MOC01"
         title           — heading title string
         children        — list of wikilink stem strings from #### Children
-        candidate_stems — same list (alias for topic_signature computation)
+        candidate_stems — children minus link member lines (LINK_MEMBER_MARKER); signature input
         topic_keywords  — list from **Cluster:** N Notes — kw1, kw2 line
         topic_signature — 16-char hex from topic_signature.compute_topic_signature
 

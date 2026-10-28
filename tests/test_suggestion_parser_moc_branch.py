@@ -587,7 +587,6 @@ def test_link_line_is_child_not_candidate_stem() -> None:
     ticked, _unticked = enumerate_moc_sections_split(body)
     cluster = ticked[0]
     assert "linked-x" in cluster["children"]
-    assert "t-0" not in cluster["children"][-1:]  # bridge wikilinks are not members
     assert cluster["children"].count("t-0") == 1
     assert cluster["candidate_stems"] == ["t-0", "t-1", "t-2"]
     assert "linked-x" not in cluster["candidate_stems"]

@@ -2038,3 +2038,7 @@ WHY the MOC path comes from the item: `filter_missing_extension_targets`
 Kado again could return a different answer. When nothing was stamped (a direct
 `build_actions` caller), the builder resolves the MOC itself with the same
 lookup.
+
+WHY the extension's members are de-duplicated (case-insensitive by stem, order
+kept): `_parse_supporting_items` does not de-duplicate, and a member listed
+twice would otherwise get two `add_relationship` and two `link_to_moc` actions.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.0
+# version: 0.21.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -57,10 +57,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
 from lib.link_members import (  # noqa: E402
-    FAILED,
     UNCACHED,
-    AugmentResult,
-    ClusterLinks,
     LinkLookup,
     NodeEligibility,
     augment_clusters,
@@ -1726,8 +1723,6 @@ def _run_moc_uplink_check(
 
 
 NOT_RENDERED = "not_rendered"
-# Client attributes LinkLookup needs; a client lacking any fails every lookup.
-_GRAPH_SURFACE = ("graph", "attempt_count", "attempt_gate", "min_interval")
 
 
 def _item_stem(item) -> str:
@@ -1779,14 +1774,8 @@ def _augment_rendered_clusters(
                     keys.append(key)
         lookup_clusters.append({"cluster_id": cluster["cluster_id"], "items": keys})
 
-    if all(hasattr(kado_client, a) for a in _GRAPH_SURFACE):
-        with LinkLookup(kado_client) as lookup:
-            result = augment_clusters(lookup_clusters, path_map, lookup, eligibility, cache)
-    else:
-        result = AugmentResult(
-            {c["cluster_id"]: ClusterLinks(FAILED) for c in lookup_clusters},
-            dict(_EMPTY_LINK_STATS),
-        )
+    with LinkLookup(kado_client) as lookup:
+        result = augment_clusters(lookup_clusters, path_map, lookup, eligibility, cache)
 
     for cluster in clusters:
         cluster["link_lookup_status"] = NOT_RENDERED
@@ -1844,6 +1833,7 @@ def _run_pipeline(
 
     profile_path = DEFAULT_PROFILES_DIR / f"{profile_name}.yaml"
     profile_dict = _load_yaml(profile_path)
+    vault_cfg = _load_yaml(config_path)
     kado_client = _build_kado_client()
 
     if pre_loaded_candidates is not None:
@@ -1916,7 +1906,7 @@ def _run_pipeline(
     # Link members — rendered slice only, after D3 + sort (spec 042 ADR-2)
     link_stats = _augment_rendered_clusters(
         kept_clusters, candidates_with_topics, kado_client, cache,
-        profile_dict, _load_yaml(config_path), moc_config.max_results,
+        profile_dict, vault_cfg, moc_config.max_results,
     )
 
     # Phase 6.5 — Existing up:: validation

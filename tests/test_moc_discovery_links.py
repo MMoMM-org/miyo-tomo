@@ -403,23 +403,16 @@ def test_stem_collision_builds_lookup_map_by_path(tmp_path, monkeypatch):
     assert members["xenon"]["linked_with"] == ["alpha", "beta"]
 
 
-def test_client_without_graph_surface_fails_rendered_clusters(tmp_path, monkeypatch):
-    """A stand-in that only reads notes (no graph / attempt_count) degrades like no
-    Kado: rendered clusters failed, beyond the slice not_rendered, report emitted."""
-
-    class _ReadOnlyKado:
-        def search_by_tag(self, query):
-            return [{"path": p} for p in (A, B, C, D, E)]
-
-        def read_note(self, path):
-            return {"content": "# stub\n"}
-
-    code, report = _run_tag(tmp_path, monkeypatch, _ReadOnlyKado(), max_results=1)
-    assert code in (0, 1)
-    clusters = _by_topic(report)
-    assert clusters["energy"]["link_lookup_status"] == "failed"
-    assert clusters["solar"]["link_lookup_status"] == "not_rendered"
-    assert report["link_stats"] == {
-        "lookups": 0, "attempts": 0, "failed": 0,
-        "clusters_skipped_budget": 0, "members_total": 0, "skipped_uncached": 0,
-    }
+def test_colliding_stems_count_by_path_and_render_shared_name_once(tmp_path, monkeypatch):
+    """Owner decision O4: two notes named `alpha` that both link X make X a link
+    member (2 distinct member paths); the reason shows `alpha` once."""
+    a2 = f"{_BASE}2021 Thoughts/alpha.md"
+    notes = [*_NOTES, {"path": a2, "topics": ["energy", "a2"]}]
+    links = {A: [X], a2: [X], B: [], C: []}
+    fake = _GraphFake(links=links)
+    monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: fake)
+    cands = _candidates((A, ["energy"]), (a2, ["energy"]), (B, ["energy"]),
+                        (C, ["energy"]))
+    _, report = _run_phase1_input(tmp_path, cands, notes=notes)
+    members = _members(_by_topic(report)["energy"])
+    assert members["xenon"]["linked_with"] == ["alpha"]

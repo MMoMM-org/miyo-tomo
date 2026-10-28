@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
 Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
@@ -663,3 +663,61 @@ def test_cli_max_results_defaults_to_five_when_key_missing(tmp_path: Path) -> No
 def test_cli_max_results_defaults_to_five_without_config_file(tmp_path: Path) -> None:
     body = _render_via_cli(tmp_path, None)
     assert body.count("### MOC") == 5
+
+
+# ── around: proposal (spec 042 T3.2, PRD F2-AC1) ─────────────────────────────
+
+AROUND_FIXTURE = TESTS_DIR / "fixtures" / "042-t3-2-around-report" / "report.json"
+
+
+def _around_body(report: dict | None = None) -> str:
+    """Render the real `moc-discovery --around knowledge` report (captured, not invented)."""
+    report = report or json.loads(AROUND_FIXTURE.read_text(encoding="utf-8"))
+    _, body = render_moc_proposal_doc(report, _Cfg())
+    return body
+
+
+def test_around_report_renders_seed_ticked_and_neighbours_linked() -> None:
+    """F2-AC1: one MOC01 section, seed ticked, neighbours unticked with the seed as reason."""
+    body = _around_body()
+
+    assert body.count("### MOC") == 1
+    assert "### MOC01 — knowledge (MOC)" in body
+    lines = body.splitlines()
+    assert "#### Children (3)" in lines
+    kids = lines[lines.index("#### Children (3)") + 2:]
+    assert kids[:3] == [
+        "- [x] [[knowledge]] (existing up:: [[Gardening (MOC)]] → becomes `related::`)",
+        "- [ ] [[argon]] (no up:: yet) — linked with [[knowledge]]",
+        "- [ ] [[neon]] (existing up:: [[Gardening (MOC)]] → becomes `related::`)"
+        " — linked with [[knowledge]]",
+    ]
+
+
+def test_around_trigger_label() -> None:
+    """The Trigger field and the frontmatter carry `around:<argument as typed>`."""
+    body = _around_body()
+
+    assert "**Trigger:** around:knowledge" in body
+    assert "\ntrigger: around:knowledge\n" in body
+
+
+def test_around_why_names_the_seed() -> None:
+    """Why names the seed and does not use the topic-overlap or link-count sentences."""
+    why = _around_body().split("#### Why this proposal")[1].strip()
+
+    assert why == (
+        "2 notes link with [[knowledge]] and have no dedicated MOC.\n"
+        "This MOC would fill the gap."
+    )
+    assert "topic overlap" not in why
+    assert "came through links" not in why
+
+
+def test_around_why_is_singular_for_one_neighbour() -> None:
+    report = json.loads(AROUND_FIXTURE.read_text(encoding="utf-8"))
+    report["topic_clusters"][0]["link_members"] = report["topic_clusters"][0]["link_members"][:1]
+
+    why = _around_body(report).split("#### Why this proposal")[1]
+
+    assert "1 note links with [[knowledge]] and has no dedicated MOC." in why

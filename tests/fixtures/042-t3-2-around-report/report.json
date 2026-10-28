@@ -1,0 +1,105 @@
+{
+  "schema_version": "1",
+  "run_id": "66e21f84013f4cd3a2cece313f58f8a6",
+  "mode": "around",
+  "trigger_arg": "knowledge",
+  "profile": "miyo",
+  "candidates_total": 1,
+  "candidates_after_prefilter": 1,
+  "candidates_capped": false,
+  "candidates": [
+    {
+      "stem": "knowledge",
+      "path": "Atlas/202 Notes/knowledge.md",
+      "topics": [
+        "habits",
+        "goals"
+      ],
+      "existing_up": null,
+      "classification": null,
+      "level": 0
+    }
+  ],
+  "topic_clusters": [
+    {
+      "topic": "knowledge",
+      "items": [
+        "knowledge"
+      ],
+      "parent": null,
+      "tags": [],
+      "cluster_id": "MOC01",
+      "title": "knowledge (MOC)",
+      "confidence": 1.0,
+      "candidate_stems": [
+        "knowledge"
+      ],
+      "topic_keywords": [
+        "habits",
+        "goals"
+      ],
+      "location": "Atlas/200 Maps/",
+      "template": "t_moc_tomo",
+      "slug": "knowledge-moc",
+      "existing_up": [
+        {
+          "stem": "knowledge",
+          "state": "valid",
+          "target": "Gardening (MOC)"
+        }
+      ],
+      "link_lookup_status": "done",
+      "link_members": [
+        {
+          "stem": "argon",
+          "path": "Atlas/202 Notes/argon.md",
+          "linked_with": [
+            "knowledge"
+          ],
+          "up_state": "absent",
+          "up_target": null
+        },
+        {
+          "stem": "neon",
+          "path": "Atlas/202 Notes/neon.md",
+          "linked_with": [
+            "knowledge"
+          ],
+          "up_state": "valid",
+          "up_target": "Gardening (MOC)"
+        }
+      ]
+    }
+  ],
+  "parent_options_per_cluster": {
+    "MOC01": [
+      {
+        "moc_stem": "2100 - Personal Management",
+        "confidence": 1.0,
+        "label": "Personal Management (Dewey 2100)"
+      }
+    ]
+  },
+  "duplicates_skipped": [],
+  "squelched": [],
+  "orphan_suggestions": [],
+  "orphan_total": 0,
+  "orphan_overflow": 0,
+  "abort_reason": null,
+  "abort_message": null,
+  "extracted_via_llm_count": 0,
+  "cache_miss_batches_used": 0,
+  "link_stats": {
+    "lookups": 1,
+    "attempts": 1,
+    "failed": 0,
+    "clusters_skipped_budget": 0,
+    "members_total": 2,
+    "skipped_uncached": 1
+  },
+  "around": {
+    "kind": "note",
+    "path": "Atlas/202 Notes/knowledge.md",
+    "stem": "knowledge"
+  }
+}

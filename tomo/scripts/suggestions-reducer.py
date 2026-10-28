@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.64.0
+# version: 1.65.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1473,6 +1473,7 @@ def _render_cluster_section(
     cluster: dict,
     parent_opts: list[dict],
     trigger_arg: str,
+    around_seed: str | None = None,
 ) -> str:
     """Render one `### MOCxx — <Title>` section for the proposal-doc body.
 
@@ -1481,6 +1482,7 @@ def _render_cluster_section(
         cluster:      Enriched topic_cluster dict from DiscoveryReport.
         parent_opts:  parent_options_per_cluster[cluster_id] list.
         trigger_arg:  The original discovery trigger (for **Trigger:** field).
+        around_seed:  Seed stem of an `around:` report; None for every other mode.
     """
     title = (cluster.get("title") or "").strip()
     confidence = cluster.get("confidence", 0.0)
@@ -1563,16 +1565,24 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_topic} notes with topic overlap {topics_csv} have no dedicated MOC."
-    if link_members:
-        noun = "member" if len(link_members) == 1 else "members"
-        first += f" {len(link_members)} more {noun} came through links."
-    last = "This MOC would fill the gap."
-    if parent_label and k_classified > 0:
-        middle = f"{k_classified} of them have up:: to classification {parent_label}."
-        why = f"{first}\n{middle} {last}"
+    if around_seed:
+        n_links = len(link_members)
+        if n_links == 1:
+            first = f"1 note links with [[{around_seed}]] and has no dedicated MOC."
+        else:
+            first = f"{n_links} notes link with [[{around_seed}]] and have no dedicated MOC."
+        why = f"{first}\nThis MOC would fill the gap."
     else:
-        why = f"{first}\n{last}"
+        first = f"{n_topic} notes with topic overlap {topics_csv} have no dedicated MOC."
+        if link_members:
+            noun = "member" if len(link_members) == 1 else "members"
+            first += f" {len(link_members)} more {noun} came through links."
+        last = "This MOC would fill the gap."
+        if parent_label and k_classified > 0:
+            middle = f"{k_classified} of them have up:: to classification {parent_label}."
+            why = f"{first}\n{middle} {last}"
+        else:
+            why = f"{first}\n{last}"
     lines.append(why)
 
     return "\n".join(lines)
@@ -1608,6 +1618,10 @@ def render_moc_proposal_doc(
     max_results: int = getattr(config, "max_results", 5)
     trigger_arg: str = report.get("trigger_arg") or ""
     mode: str = report.get("mode") or "tag"
+
+    around_seed: str | None = (
+        (report.get("around") or {}).get("stem") if mode == "around" else None
+    )
 
     clusters: list[dict] = list(report.get("topic_clusters") or [])
     parent_options: dict[str, list[dict]] = report.get("parent_options_per_cluster") or {}
@@ -1673,7 +1687,9 @@ def render_moc_proposal_doc(
         moc_id = f"MOC{i:02d}"
         cluster_id = cluster.get("cluster_id") or moc_id
         opts = parent_options.get(cluster_id) or parent_options.get(moc_id) or []
-        section = _render_cluster_section(moc_id, cluster, opts, trigger_field)
+        section = _render_cluster_section(
+            moc_id, cluster, opts, trigger_field, around_seed=around_seed
+        )
         body_lines.append(section)
         body_lines.append("")
 

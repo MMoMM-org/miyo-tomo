@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.2
+# version: 0.42.3
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -35,6 +35,7 @@ from lib.supporting_items import (  # noqa: E402
 )
 from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.vault_paths import path_key  # noqa: E402
+from lib.link_members import LINK_MEMBER_MARKER  # noqa: E402 — spec 042 ADR-7
 from lib.render_md import compute_payload_digest  # noqa: E402
 from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
@@ -1512,7 +1513,7 @@ def enumerate_all_moc_sections(
                 continue
             if in_children_section:
                 wl = RE_CHILD_WIKILINK.search(bl)
-                if wl:
+                if wl and LINK_MEMBER_MARKER not in bl:
                     candidate_stems.append(wl.group(1).strip())
 
         results.append((moc_id, title, candidate_stems, topic_keywords))
@@ -1575,6 +1576,7 @@ def enumerate_moc_sections_split(
 
         # ── Extract children from #### Children section ───────────────────────
         children: list[str] = []
+        topic_stems: list[str] = []  # children minus link members: signature input
         in_children = False
         for bl in block_lines:
             stripped = bl.strip()
@@ -1587,13 +1589,15 @@ def enumerate_moc_sections_split(
                 wl = RE_CHILD_WIKILINK.search(bl)
                 if wl:
                     children.append(wl.group(1).strip())
+                    if LINK_MEMBER_MARKER not in bl:
+                        topic_stems.append(wl.group(1).strip())
 
         # ── Build cluster dict ────────────────────────────────────────────────
         cluster: dict = {
             "moc_id": moc_id,
             "title": title,
             "children": children,
-            "candidate_stems": children,  # children ARE the candidate stems here
+            "candidate_stems": topic_stems,  # topic members only (ADR-7)
             "topic_keywords": topic_keywords,
         }
         cluster["topic_signature"] = compute_topic_signature(cluster)

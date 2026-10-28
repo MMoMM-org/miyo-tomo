@@ -1,4 +1,4 @@
-# version: 0.2.3
+# version: 0.2.4
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -34,6 +34,7 @@ UNCACHED = "uncached"
 LOOKUP_BUDGET = 60  # HTTP attempts per run, retries included (ADR-4)
 LOOKUP_PACING_S = 0.3  # minimum seconds between sends
 MEMBER_THRESHOLD = 2  # members a node must be linked with
+LINK_MEMBER_MARKER = " — linked with "  # parse contract of a link member line (ADR-7); never localise
 
 DONE = "done"
 SKIPPED_BUDGET = "skipped_budget"

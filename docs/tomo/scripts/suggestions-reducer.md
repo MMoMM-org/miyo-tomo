@@ -1922,3 +1922,54 @@ the seed is not a topic. Topic mode is unchanged (byte-identity baseline).
 `enumerate_all_moc_sections` (skipped by `_is_around_block`). `enumerate_moc_sections_split`
 still parses it for a ticked around section, yielding `topic_keywords` of
 `["linked around [[seed]]"]`; no squelch registry entry can match that signature.
+
+## An `around:<MOC>` Report Renders an Extension Section (spec 042 T4.2, ADR-5, F3-AC5)
+
+WHY: when `--around` names an existing MOC, discovery does not propose a new
+MOC; it lists the MOC's linked neighbours that have no `up::` to it
+(`report["extension"]`, `topic_clusters == []`). The reducer renders that as
+one section of the same proposal doc, so the lifecycle (state promoter,
+`/inbox` pickup, `doc_type: moc-proposal`) needs no new doc type:
+
+```
+### MOC01 — Extend [[X]]
+- [ ] Accept
+**Extends:** [[X]]
+**Trigger:** around:<argument as typed>
+#### Missing members (n)
+- [ ] [[stem]] (<up annotation>) — linked with [[X]]
+#### up::-Handling Override
+- [ ] **Keep existing up::, add [[X]] as `related::`** (applies to all ticked members)
+#### Why this proposal
+n notes link with [[X]] but have no up:: to it.
+```
+
+- The heading keeps `### MOCxx`: `moc-proposal-parser` swallows any other
+  heading into the previous section. `**Extends:**` is what the parser branches
+  on to emit `extend_moc` instead of a create.
+- No Title, Location, Template or `#### Parent`: the MOC exists, so there is
+  nothing to create or place (F3-AC5).
+- `**Trigger:**` stays on its own line: `suggestion-parser`'s
+  `RE_AROUND_TRIGGER` is anchored at line start, and the squelch skip for
+  around sections relies on it (ADR-5).
+- `- [ ] Accept` is the same line as for a create section, so the state
+  promoter's existing Accept regex promotes an accepted extension unchanged.
+- Member lines are built by the same link-member line helper as a cluster's
+  link members (`_child_annotation` + `LINK_MEMBER_MARKER`), so a broken or
+  existing `up::` reads exactly as it does elsewhere and the parsers see one
+  line format. Members are unticked: the link graph proposed them, the user
+  decides.
+- The Override names the MOC and says "all ticked members", because there is
+  no "new MOC" and only ticked members are written.
+- "Why" states the gap the extension closes (singular for one member: "1 note
+  links with [[X]] but has no up:: to it."); there is no confidence to report.
+
+Frontmatter carries `proposal_kind: moc-extension` (create docs keep
+`proposal_kind: moc`; the byte-identity baseline guards that) so a reader of
+the file can tell the two apart without opening the body; `tomo.doc_type`
+stays `moc-proposal`. The filename keeps `_moc-proposal-` and takes the slug of
+`extend <MOC stem>` (e.g. `..._moc-proposal-extend-gardening-moc.md`), because
+there is no cluster to take the slug from and the owner reads filenames as the
+signal of what a doc is.
+
+[ref: PRD/F3-AC5]

@@ -121,7 +121,9 @@ nothing sent) instead of the run overrunning it.
 WHY gate and pacing install on enter, not on construction: a `LinkLookup` that is
 built but never entered or closed would otherwise leave its gate on the client for
 good. Installation happens on `__enter__` (or lazily on the first `neighbors`
-call, so an unentered use is still budget-gated) and `close()` restores.
+call, so an unentered use is still budget-gated) and `close()` restores. Callers
+that do not use the `with` block must call `close()` after `neighbors()`,
+otherwise the gate stays installed on the client.
 
 WHY the settings are restored on close: the client's gate applies to every Kado
 tool, not only graph. Left installed, the 61st attempt of any later read, search

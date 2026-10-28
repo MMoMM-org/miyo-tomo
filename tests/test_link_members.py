@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
 
 from lib.kado_client import KadoBudgetExhausted, KadoError  # noqa: E402
 from lib.link_members import (  # noqa: E402
+    BudgetExhausted,
     LinkLookup,
     LinkMember,
     NodeEligibility,
@@ -376,6 +377,12 @@ class TestLookupCounting:
         assert client.attempt_count == 2
         lookup.close()
         assert client.attempt_gate is None and client.min_interval == 0.0
+
+    def test_lookup_refused_on_retry_after_one_send_still_counts(self):
+        client, _, s2p, _ = _world({"A": ["X"]}, attempts={"A": 3})
+        with LinkLookup(client, budget=2) as lookup:
+            assert isinstance(lookup.neighbors(s2p["A"]), BudgetExhausted)
+            assert lookup.lookups == 1
 
     @pytest.mark.parametrize(
         "payload",

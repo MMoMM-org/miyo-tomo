@@ -1,4 +1,4 @@
-# version: 0.2.2
+# version: 0.2.3
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -177,7 +177,8 @@ class LinkLookup:
 
     Installs the budget as the client's attempt gate and sets its pacing on enter
     (or on the first `neighbors` call); `close()` restores the previous values.
-    Use as a context manager.
+    Use as a context manager. Callers that do not use the `with` block must call
+    `close()` after `neighbors()`, otherwise the gate stays installed on the client.
     """
 
     def __init__(self, client, budget: int = LOOKUP_BUDGET):

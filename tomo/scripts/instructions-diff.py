@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.1
+# version: 0.23.2
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -1101,14 +1101,16 @@ def _reconcile_extensions(
             hard_fail = True
             lines.append(f"    {ext['id']:<6s} extend_moc  [[{moc}]] [MISSING — not rendered]")
             continue
-        already = set(record.get("already_linked") or []) & set(members)
-        no_rel = {n.get("member") for n in record.get("no_relationship") or []}
+        already = {m.casefold() for m in record.get("already_linked") or []}
+        no_rel = {(n.get("member") or "").casefold()
+                  for n in record.get("no_relationship") or []}
         withheld_links = {
             r.get("source_note_title") for r in unresolvable
             if _moc_stem(r.get("target_moc")) == moc
         }
         for member in members:
-            owes_link = member not in already and member not in withheld_links
+            owes_link = (member.casefold() not in already
+                         and member not in withheld_links)
             if not owes_link:
                 expected["counts"]["link_to_moc"] -= 1
             has_rel = any(
@@ -1123,7 +1125,7 @@ def _reconcile_extensions(
                 and (a.get("source_note_title") == member
                      or member in _bullet_titles(a.get("line_to_add")))
             )
-            rel_ok = has_rel == (member not in no_rel)
+            rel_ok = has_rel == (member.casefold() not in no_rel)
             link_ok = n_links == (1 if owes_link else 0)
             if not (rel_ok and link_ok):
                 hard_fail = True

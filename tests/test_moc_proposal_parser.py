@@ -321,3 +321,51 @@ def test_extension_followed_by_new_moc_parses_as_two_blocks():
     assert by_id["MOC01"]["supporting_items"] == ["Cold Showers"]
     assert by_id["MOC02"]["action"] == "create_moc"
     assert by_id["MOC02"]["supporting_items"] == ["Note A", "Note B"]
+
+
+# ── Malformed / hand-edited extension headers (spec 042 Phase 4 H1) ──────────
+
+
+def _malformed_extension_doc(accept="x") -> str:
+    return _extension_doc(accept=accept, cold="x").replace(
+        "**Extends:** [[Health MOC]]", "**Extends:** none",
+    )
+
+
+def test_extends_line_without_wikilink_is_skipped_as_malformed_not_created():
+    result = parse_moc_proposal(_malformed_extension_doc())
+
+    assert result["confirmed_items"] == []
+    assert result["total_skipped"] == 1
+    skipped = result["skipped"][0]
+    assert skipped["id"] == "MOC01"
+    assert skipped["disposition"] == "malformed_extension"
+    assert skipped["reason"]
+
+
+def test_rejected_malformed_extension_is_still_malformed():
+    result = parse_moc_proposal(_malformed_extension_doc(accept=" "))
+
+    assert result["confirmed_items"] == []
+    assert result["skipped"][0]["disposition"] == "malformed_extension"
+
+
+def test_malformed_extension_is_reported_on_stderr(tmp_path, monkeypatch, capsys):
+    doc = tmp_path / "2026-10-28_1810_moc-proposal-health-moc.md"
+    doc.write_text(_malformed_extension_doc(), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["moc-proposal-parser.py", "--file", str(doc)])
+
+    assert _mod.main() == 0
+
+    err = capsys.readouterr().err
+    assert "MOC01" in err and "malformed extension" in err
+
+
+def test_extends_text_inside_why_body_does_not_make_a_create_section_an_extension():
+    doc = MINIMAL_PROPOSAL + "\n#### Why this proposal\n\n**Extends:** [[Bar]]\n"
+
+    result = parse_moc_proposal(doc)
+
+    assert result["skipped"] == []
+    assert result["confirmed_items"][0]["action"] == "create_moc"
+    assert result["confirmed_items"][0]["title"] == "My Test MOC"

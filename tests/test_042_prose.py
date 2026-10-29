@@ -159,6 +159,42 @@ def test_abort_example_shows_zero_link_counts():
     assert re.search(r"^Discovery: \S+; links: 0 members, \d+ lookups$", out, re.M)
 
 
+# ── Pass 2 exit 1 is a partial result ───────────────────────────────────────
+
+OLD_EXIT_RULE = "A non-zero exit code means the script"
+
+
+def test_around_branch_stops_only_on_exit_2():
+    branch = _section(_text(AGENT), "#### Step 3 (around mode)", "#### Step 3 (all other modes)")
+    assert OLD_EXIT_RULE not in branch
+    assert "Exit 2" in branch and "exit 0 or 1" in branch
+
+
+def test_step3c_stops_only_on_exit_2_and_parses_stdout_on_exit_1():
+    step3c = _section(_text(AGENT), "#### Step 3c", "### Step 4")
+    assert OLD_EXIT_RULE not in step3c
+    assert "Exit 2" in step3c and "surface stderr and stop" in step3c
+    assert "exit 0 or 1" in step3c
+
+
+def test_agent_has_no_blanket_nonzero_rule_for_discovery():
+    assert OLD_EXIT_RULE not in _text(AGENT)
+
+
+def test_discovery_template_carries_sampled_suffix_before_skipped():
+    (line,) = [
+        line for line in _output_block(_text(AGENT)).splitlines() if line.startswith("Discovery:")
+    ]
+    assert "(<P> sampled: budget)" in line
+    assert line.index("(<P> sampled: budget)") < line.index("(<S> skipped: budget)")
+
+
+def test_discovery_fill_rule_shows_sampled_suffix_only_when_clusters_sampled():
+    out = _text(AGENT)[_text(AGENT).index("## Output"):]
+    assert "`link_stats.clusters_sampled`" in out
+    assert "only when `link_stats.clusters_sampled` > 0" in out
+
+
 # ── tomo-help ───────────────────────────────────────────────────────────────
 
 
@@ -184,5 +220,5 @@ def _version(path: Path) -> tuple[int, ...]:
 
 def test_versions_were_bumped():
     assert _version(COMMAND) > (0, 3, 0)
-    assert _version(AGENT) > (0, 7, 0)
+    assert _version(AGENT) > (0, 8, 0)
     assert _version(HELP) > (0, 2, 20)

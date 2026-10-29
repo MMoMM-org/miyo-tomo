@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.8.0
+# version: 0.8.1
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -105,8 +105,8 @@ RUN_ID=$(date +%s)
 DISC_JSON=$(python3 scripts/moc-discovery.py --around "<trigger_arg>" --config config/vault-config.yaml)
 ```
 
-Capture stdout as `DISC_JSON`. Do NOT append `2>&1`. A non-zero exit code means the script
-failed at the process level; surface stderr and stop. Skip Steps 3a/3b/3c and go to Step 4.
+Capture stdout as `DISC_JSON`. Do NOT append `2>&1`. Exit 2 → surface stderr and stop.
+On exit 0 or 1 parse stdout as the DiscoveryReport. Skip Steps 3a/3b/3c and go to Step 4.
 
 #### Step 3 (all other modes) — 2-pass: Phase 1 → topic extraction → Phase 2-6.5
 
@@ -204,8 +204,8 @@ DISC_JSON=$(python3 scripts/moc-discovery.py --phase1-input "$PHASE1_TMP" --conf
 ```
 
 **STRICT:** Capture stdout as the raw JSON `DiscoveryReport`. Do NOT append `2>&1` —
-stderr must stay separate. A non-zero exit code means the script failed at the process
-level (distinct from a JSON-level `abort_reason`); surface stderr and stop.
+stderr must stay separate. Exit 2 → surface stderr and stop. On exit 0 or 1, stdout holds
+the full DiscoveryReport: parse it and continue to Step 4.
 
 ### Step 4 — Handle abort_reason
 
@@ -303,7 +303,7 @@ Before emitting the final report, verify:
 Mode: <tag|folder|class|title|around|free-text|scan|check-moc-uplinks>
 Trigger arg: <verbatim trigger_arg, or "(none)" for scan mode>
 Profile: <miyo|lyt>
-Discovery: <abort_reason, or "OK — N candidates → M clusters">; links: <K> members, <L> lookups[ (<S> skipped: budget)]
+Discovery: <abort_reason, or "OK — N candidates → M clusters">; links: <K> members, <L> lookups[ (<P> sampled: budget)][ (<S> skipped: budget)]
 Proposal-doc: <inbox-relative path, or "no doc written (abort)">
 Aborts/notes: <bulleted list of warnings/overflows, or "none">
 ```
@@ -312,6 +312,7 @@ Aborts/notes: <bulleted list of warnings/overflows, or "none">
 - `N` = `candidates_total`; `M` = number of entries in `topic_clusters`.
 - `K` = `link_stats.members_total`; `L` = `link_stats.lookups`. Print the `links:` part on EVERY run, aborts included.
 - When `K` is 0, still print it: `links: 0 members, <L> lookups`. When the payload has no `link_stats`, print `links: 0 members, 0 lookups`.
+- Append ` (<P> sampled: budget)` with `P` = `link_stats.clusters_sampled` only when `link_stats.clusters_sampled` > 0.
 - Append ` (<S> skipped: budget)` with `S` = `link_stats.clusters_skipped_budget` only when `link_stats.clusters_skipped_budget` > 0.
 - When `link_stats.failed` > 0, add the bullet `lookups failed: <F>` (`F` = `link_stats.failed`) to `Aborts/notes:`.
 

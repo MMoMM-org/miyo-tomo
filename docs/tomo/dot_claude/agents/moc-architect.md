@@ -118,8 +118,38 @@ slice `moc-discovery.py` augments with link members reading the same file —
 discovery augments exactly `clusters[:max_results]`, so a reducer reading a
 different config would render clusters that were never looked up.
 
+## Pass 2 Exit 1 Is a Partial Result, Not a Failure (spec 042)
+
+WHY: `moc-discovery.py` exits 0 (clean), 1 (partial) or 2 (fatal). Exit 1 means
+the scan finished and printed the full DiscoveryReport but dropped some clusters
+(D3 duplicates, squelched clusters). A live run on 2026-10-29 stopped on exit 1
+after D3 dropped 104 duplicate clusters, so a perfectly usable report never
+reached the reducer. The agent therefore stops only on exit 2 and parses stdout
+on exit 0 or 1. The same wording is used in the `around` single-pass branch even
+though `--around` returns only 0 or 2: one uniform rule for every
+`moc-discovery.py` call that returns a report is simpler than a per-mode table.
+`--emit-phase1` (Step 3a) and `--check-moc-uplinks` keep their rules, because
+exit 1 cannot occur there. The reducer and transport rules are unchanged:
+non-zero there is a real failure.
+
+## Sampled Clusters Are Shown on the `Discovery:` Line (spec 042, F7)
+
+WHY: A cluster whose members were looked up only in part (graph budget ran out
+mid-cluster) is rendered with fewer link members than exist. The
+` (P sampled: budget)` suffix, read from `link_stats.clusters_sampled`, tells
+the user which share of proposals rests on partial link evidence. It sits before
+the ` (S skipped: budget)` suffix because sampled clusters are rendered and
+skipped ones are not; like the skipped suffix it appears only when its count is
+above 0.
+
 ## Version 0.8.0
 
 WHY: Bumped from 0.7.0 for the `around` mode (routing, single-pass branch), the
 link counts on the `Discovery:` line and the reducer `--config` argument.
 `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.1
+
+WHY: Bumped from 0.8.0 for the exit-code rule (exit 2 fatal, exit 0 or 1 parse
+stdout) in the `around` and Pass 2 steps and the `sampled` suffix on the
+`Discovery:` line. `update-tomo.sh` skips unchanged versions.

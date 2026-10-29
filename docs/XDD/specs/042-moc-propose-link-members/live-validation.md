@@ -136,6 +136,22 @@ Discovery: zero-candidates; links: 0 members, 0 lookups
 Proposal-doc: no doc written (abort)
 ```
 
+## Follow-up check — graph lookups under a 429 storm (#216)
+
+Host run against live Kado on 2026-10-29 (script kept out of the repo; read-only on
+the test vault). Three threads fired `kado-search` calls continuously to saturate
+Kado's per-IP limit while one `LinkLookup` ran `neighbors()` over 30 cached note paths.
+
+```
+lookups=26 attempts=120 failed=20 remaining=0
+results={'ok': 5, 'budget': 5, 'failed': 20} wall=477.4s storm_sent=1915 storm_errors=0
+```
+
+- 95 `HTTP 429 on kado-graph` retries, each sleeping Kado's stated wait (4.0 s / 5.0 s).
+- Attempts stopped at exactly 120; the last 5 lookups were refused by the budget gate.
+- 20 lookups failed after 4 tries and were counted as `failed`; the run ended normally.
+- The budget caps attempts, not wall time: under a sustained storm this took ≈ 8 min.
+
 ## Observations outside spec 042 (backlog candidates)
 
 - Topic clustering yields titles such as "(Quote) (MOC)" and "§ (MOC)".

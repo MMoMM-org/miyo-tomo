@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.2"
+version: "1.3"
 ---
 
 # Solution Design Document
@@ -450,7 +450,7 @@ def augment_one(cluster, stem_to_path, lookup, elig, cache, share, threshold=2):
     if uncached and share == 0:
         return [], "skipped_budget"              # no share left for this cluster (ADR-4)
     looked_up = [p for p in member_paths if lookup.cached(p) or p in uncached[:share]]
-    status = "done" if len(uncached) <= share else "sampled"   # first `share` uncached, item order
+    status = "done" if len(uncached) <= share else "sampled"   # first `share` uncached, casefolded path order (v1.3)
     hits: dict[str, set[str]] = {}
     for stem, path in ((s, p) for s, p in zip(cluster["items"], member_paths) if p in looked_up):
         result = lookup.neighbors(path)          # memoised across clusters
@@ -548,8 +548,8 @@ sequenceDiagram
 | Error | Where | Handling | User sees |
 |---|---|---|---|
 | 429 with Retry-After | KadoClient | existing backoff; every attempt counted; gate stops retries when budget is spent | nothing unless the budget runs out |
-| Cluster larger than its budget share | augment | share = remaining // clusters still to do; memoised members are free; the first `share` uncached members (item order) are looked up, status `sampled`; ≥ 2 hits counted among those | `Discovery:` line "(P sampled: budget)" |
-| Budget exhausted mid-run | LinkLookup / augment | a cluster with share 0, or whose retries spend the budget mid-cluster, is `skipped_budget` with no link members; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
+| Cluster larger than its budget share | augment | share = remaining // clusters still to do; memoised members are free; the first `share` uncached members in casefolded path order (v1.3; was item order) are looked up, status `sampled`; ≥ 2 hits counted among those | `Discovery:` line "(P sampled: budget)" |
+| Budget exhausted mid-run | LinkLookup / augment | a cluster with share 0 is `skipped_budget`; a cluster whose retries spend the budget mid-cluster keeps the hits of the members already looked up or memoised and is `sampled` (v1.3; was `skipped_budget`), or `skipped_budget` when none was; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
 | Pass 2 exits 1 (partial: D3/duplicate or squelched clusters dropped) | moc-architect | stdout holds the full DiscoveryReport; parse it and continue; only exit 2 (fatal) stops the run | none |
 | Lookup error (Kado error, 503 after retries) | augment | that cluster `failed`, no link members; others continue | "lookups failed: F" note in `Aborts/notes` |
 | Seed lookup fails (Kado error, key cannot read the seed, budget refusal) | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason naming the seed |

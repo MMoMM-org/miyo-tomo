@@ -58,6 +58,7 @@
 | 2026-10-29 | T5.3d: an existing `up::` is never dropped. A target that is not a MOC, or does not exist, becomes `related::` like a valid one (Rule 4.3 retired); the doc labels say so (`not-a-moc` plain, `unresolved` with "note not found") | Live review: 41 notes labelled "existing up:: broken — ignored" while render kept resolving targets as `related::`. Owner: "unresolved sollte auch related werden, mit der Anmerkung, dass die Notiz nicht existiert — vielleicht wollte der Nutzer die MOC ja erstellen." |
 | 2026-10-29 | Engagement KPI (≥ half of shown link members ticked) missed at 5 of 14; documented, no tuning | Owner: "es ist gut so — ich wusste nicht, dass ich x % anhaken sollte, ist sowieso eine blöde KPI." The owner ticked by judgment, which is the intended use; the ratio is not a quality signal for this spec. |
 | 2026-10-29 | Implementation complete | Branch spec/042-moc-propose-link-members; close-out.md traces 29 PRD + 30 SDD criteria (119 node ids, one invocation, 140 passed); live-validation.md records 4 container runs and the apply. PR pending owner approval. |
+| 2026-10-29 | SDD v1.3 (follow-up #216): sampled members are taken in casefolded path order; a mid-cluster budget stop keeps partial hits as `sampled` | Kado's listing order made the sample non-deterministic across fresh scans; discarding already-looked-up hits wasted budget. Owner delegated the follow-ups ("fix the things"). |
 
 ## Context
 

@@ -608,7 +608,7 @@ stated two-consumer scope, so deliberately left alone:
 - `tomo/scripts/voice-precheck.py:52`
 - `tomo/scripts/garden-audit.py:381`
 - `tomo/scripts/shared-ctx-builder.py:204`
-- `tomo/scripts/moc-discovery.py:422` (`_is_md_file`) — added by T3.1's reviewer
+- `tomo/scripts/lib/moc_discovery_phase1.py:45` (`_is_md_file`, moved out of `moc-discovery.py` by #216) — added by T3.1's reviewer
 - `tomo/scripts/vault-scan.py:259` (root-scan folder check) — added by T3.1's reviewer
 
 Each classifies Kado `listDir` entries independently. `tomo/scripts/lib/attachment_index.py`

@@ -693,7 +693,7 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28
-- [x] ADR-4 Budget: 120 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; each rendered cluster gets a fair share (remaining // clusters still to do), larger clusters are `sampled` (first `share` uncached members in item order). v1.2: was 60 and all-or-nothing; the T5.3 live run left 3 of 5 rendered clusters (62/45/17 members) without lookups.
+- [x] ADR-4 Budget: 120 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; each rendered cluster gets a fair share (remaining // clusters still to do), larger clusters are `sampled` (first `share` uncached members in casefolded path order; a mid-cluster stop keeps partial hits). v1.3: path order and kept partial hits. v1.2: was 60 and all-or-nothing; the T5.3 live run left 3 of 5 rendered clusters (62/45/17 members) without lookups.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28

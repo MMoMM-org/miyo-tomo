@@ -177,7 +177,7 @@ is not expressible against it. The named mutation could never bite, which the
 T3.3 compliance review spotted and measurement confirmed.
 
 Being several owners is a property of the *loop*, not of this function —
-`owner_source_items` (`render_actions.py:720`) is a list precisely because
+`owner_source_items` (`render_withhold.py:48`) is a list precisely because
 several confirmed items can embed one attachment. So the assertion moved to
 `test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten`,
 which runs the real render loop over two items and reads both files off disk.

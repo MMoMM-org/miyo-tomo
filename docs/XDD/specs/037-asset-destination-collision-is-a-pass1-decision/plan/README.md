@@ -90,7 +90,7 @@ Read before starting any phase:
 - `tomo/scripts/suggestions-reducer.py:1946-2016` — the T5.2 note-clash pass this
   spec extends; read it before writing anything, because the shape to follow is
   already there
-- `tomo/scripts/lib/render_actions.py:691-782` — `_build_move_asset_actions`
+- `tomo/scripts/lib/render_withhold.py:19-110` — `_build_move_asset_actions`
 - `tomo/scripts/instructions-diff.py:922-946` — `_subtract_skipped_assets`
 
 Project commands:

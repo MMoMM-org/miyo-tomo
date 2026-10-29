@@ -446,11 +446,11 @@ The undeclared case, which **must** be withdrawn (T2.3, distinct from the row ab
 **Why this example**: it is the design's honest limit, and the reason Feature 3 is a separate fix.
 
 ```python
-# _build_insert_under_marker_actions, render_actions.py:1836-1839
+# _build_insert_under_marker_actions, render_source_actions.py:225-228
 if not target_path:
     continue          # no action built -> NO ID EXISTS
 
-# _build_delete_source_actions, site 4, render_actions.py:1728-1744
+# _build_delete_source_actions, site 4, render_source_actions.py:117-133
 target = group.get("target_path") or ""       # read only for the reason string
 out.append({... "reason": f"Source consolidated into {target} by ..."})
 ```

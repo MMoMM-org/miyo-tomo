@@ -4,6 +4,45 @@
 > Pass-2 coverage audit: parsed-suggestions.json vs instructions.json — the
 > conductor's mandatory coverage audit step.
 
+## Version 0.24.0 — logic split into `lib/instructions_diff_*.py` (#216)
+
+The script grew to 1427 lines, past the Constitution's ~300–500 LOC guideline
+for core-behaviour files. The logic moved into six lib modules, cut along the
+audit's own seams. The CLI file stays at its path and becomes thin. The
+function-level rationale in the sections below still applies; only the file
+that holds each function changed.
+
+| Module | Holds |
+|---|---|
+| `instructions-diff.py` | CLI: argparse, `load_json` (exit 2), `_load_tag_handler_groups`, `main`, re-exports |
+| `lib/instructions_diff_keys.py` | identity and parsing helpers: `_stem`, `_moc_stem`, `_key_segments`, `_keys_match`, `_confirmed_key`, `_daily_key`, `_same_note_as_any`, `_unique_members`, `_parse_supporting_items`, `_bullet_titles` |
+| `lib/instructions_diff_expected.py` | `derive_expected`, `summarize_actual`, the `group_id` load from `tag-handler-group.py` |
+| `lib/instructions_diff_reconcile.py` | `_CLASH_WITHDRAWAL_GUARDS`, every `_subtract_*`, `_unresolvable_link_notes` |
+| `lib/instructions_diff_extensions.py` | `_reconcile_extensions` (extend_moc per-member check) |
+| `lib/instructions_diff_garden.py` | garden-audit mode: `GARDEN_ACTION_ORDER`, `_GARDEN_EXPECTED_KINDS`, `_is_garden_parsed`, `_garden_item_covered`, `run_diff_garden` |
+| `lib/instructions_diff_report.py` | `ACTION_ORDER`, `run_diff` (suggestions-mode report and exit code) |
+
+WHY the CLI stays at `tomo/scripts/instructions-diff.py` with unchanged args,
+exit codes and output: `synthesis-conductor.md` calls it by path and relays its
+`RESULT:` line verbatim. That file is eval-gated, so the split had to be
+invisible to it. The output was checked byte for byte before and after on 79
+recorded `run_diff` inputs plus the missing-file, invalid-JSON and `--help` paths.
+
+WHY every moved name is re-exported from the CLI: tests load the script by path
+via importlib and reach `derive_expected`, `run_diff`, `_subtract_*`,
+`_GARDEN_EXPECTED_KINDS` and others as attributes of the loaded module. No test
+patches a name on this module, so no call site has to look a name up through it.
+
+WHY `group_id` is loaded in `instructions_diff_expected.py`, not in the CLI:
+`derive_expected` is its only user. The load mirrors `lib/render_actions.py`,
+which resolves `tag-handler-group.py` relative to `scripts/lib/`. It runs once
+per process, when the lib module is first imported, instead of on every load
+of the CLI file.
+
+WHY `load_json` and `_load_tag_handler_groups` stay in the CLI: they are the
+script's file I/O, and `load_json` owns exit code 2. The lib modules take
+parsed dicts and stay I/O-free except for printing the report.
+
 ## Version 0.7.0 — dedicated garden-audit mode (2026-07-23)
 
 WHY garden-shaped envelopes (confirmed_items carrying `garden_action`) route to
@@ -219,7 +258,7 @@ correct instruction set. Pinned by a garden-shaped case in
 
 Spec 037 gave Pass 1 three attachment-collision remedies (`rename`,
 `keep_in_inbox`, `ignore`) plus a degraded-rename fallback, all consulted by
-`_build_move_asset_actions` (`render_actions.py:691-845`). ADR-3 claimed this
+`_build_move_asset_actions` (`lib/render_inbox_actions.py:65-125`). ADR-3 claimed this
 file needed no change to account for any of them. `tests/test_037_t3_2_audit_
 needs_no_new_arithmetic.py` demonstrates that claim instead of asserting it —
 `git diff main...HEAD -- '*instructions-diff*'` for spec 037 is empty, and the

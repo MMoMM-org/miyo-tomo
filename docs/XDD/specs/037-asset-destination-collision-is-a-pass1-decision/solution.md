@@ -102,8 +102,8 @@ without touching the paired consumer.
 | `tomo/scripts/suggestions-reducer.py:1946-2016` | The Kado client opened once for Pass-1 vault checks; `_folder_cache`, `_vault_folder_notes`, `folder_listing_calls`, and the T5.2 clash pass for notes |
 | `tomo/scripts/suggestions-reducer.py:1363` | `load_asset_folder(shared_ctx_path)` — the reducer already reads the configured destination |
 | `tomo/scripts/suggestions-reducer.py:1452` | `render_attachments_preamble` — the document already has an attachments voice to extend |
-| `tomo/scripts/lib/render_actions.py:691-782` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
-| `tomo/scripts/lib/render_actions.py:509` | `_asset_dest_join` — the only place a destination is computed |
+| `tomo/scripts/lib/render_withhold.py:19-110` | `_build_move_asset_actions`: in-run collisions, `skipped_assets`, `kind`, `owner_source_items` |
+| `tomo/scripts/lib/render_actions.py:262` | `_asset_dest_join` — the only place a destination is computed |
 | `tomo/scripts/instructions-diff.py:922-946` | `_subtract_skipped_assets` — the audit already lowers expected `move_asset` per skipped entry |
 | `tomo/scripts/lib/kado_client.py:313,176` | `path_exists`, `read_file_bytes` — probed live on a PNG, 2026-09-15 |
 
@@ -321,7 +321,7 @@ claimed that exact name first.
 
 **The outcome is a held note, not a mis-filed one.** Only
 `vault_collision_held` is excluded from `suppress_moves_for_unfiled_attachments`
-(`render_actions.py:1447`); a `collision` entry still suppresses the owning
+(`render_moc_actions.py:153`); a `collision` entry still suppresses the owning
 note's move. So the note stays in the inbox **with its attachment**, and the
 collision is reported. There is no cross-folder dangling embed and no data loss
 — the 2026-09-15 failure mode is not reachable this way.
@@ -344,7 +344,7 @@ correctly; the pass holds no memo of the earlier clash
 
 #### `vault_collision_held` does not hold the owning note
 
-`suppress_moves_for_unfiled_attachments` (`render_actions.py:1331`) keeps an owning
+`suppress_moves_for_unfiled_attachments` (`render_attachment_withhold.py:161`) keeps an owning
 note in the inbox for **every** `skipped_assets` entry, so a new `kind` is held back
 by default rather than by choice. `vault_collision_held` is excluded from that pass:
 the note is filed and only the file stays behind.

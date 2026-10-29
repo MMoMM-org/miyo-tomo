@@ -16,7 +16,7 @@ phase: 4
 - `[ref: SDD/Implementation Gotchas]`
 - `[ref: PRD/Feature 5]`, `[ref: PRD/Risks; row 1 — Likelihood High]`
 - `[ref: docs/XDD/specs/031-inbox-attachment-filing/plan/phase-4.md]` — the same checklist, already worked through for `move_asset`. Read it; do not rediscover it.
-- Source to read: `instructions-diff.py:168-177`, `:429-433`, `:645-659`; `instructions-dryrun.py:25-33`; `render_md.py:31-46`, `:239`; `render_actions.py:204-219`; `tests/test_tomo_schema_parity.py` (`MIRROR_ONLY_ACTIONS`)
+- Source to read: `instructions-diff.py:168-177`, `:429-433`, `:645-659`; `instructions-dryrun.py:25-33`; `render_md.py:31-46`, `:239`; `render_up_preservation.py:123-138`; `tests/test_tomo_schema_parity.py` (`MIRROR_ONLY_ACTIONS`)
 
 **Key Decisions**:
 - **This phase exists because the work it contains is the work that gets forgotten.** Spec 031 hit the identical trap one spec ago. Folding registration into the emission task is how a kind ends up emitted but unaudited.
@@ -159,7 +159,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
 
 - [x] **T4.5 Path validation** `[activity: backend-logic]` `[parallel: true]`
 
-  1. **Prime**: `_REQUIRED_PATH_FIELDS` at `render_actions.py:204-219`; an unlisted kind is silently skipped by `_validate_action_paths`.
+  1. **Prime**: `_REQUIRED_PATH_FIELDS` at `render_up_preservation.py:123-138`; an unlisted kind is silently skipped by `_validate_action_paths`.
   2. **Test** (RED): an `edit_frontmatter` with an empty `path` is rejected, proving the kind is no longer skipped.
   3. **Implement**: add the entry.
   4. **Validate**: unit tests pass.

@@ -60,7 +60,7 @@ version: "1.0"
 - **CON-4** — The instruction set handed to Hashi keeps its current shape. Whatever identifier
   this design introduces internally, the emitted `source_stem` / `target_stem` values stay
   bare filenames. Verified: `render_helpers._stem()` (`:12-18`) already enforces this at the
-  emission boundary (`render_actions.py:857,873,888`).
+  emission boundary (`render_withhold.py:185,201,216`).
 - **CON-5** — Runtime files under `tomo/dot_claude/` and `tomo/skills/` are LLM-loaded verbatim.
   They carry imperatives only; every rationale in this document belongs in `docs/tomo/`, not in
   the file it explains.
@@ -667,7 +667,7 @@ existing_patterns_used:
     applied_to: "the cost history writer — a measurement failure must not fail a run"
 
   - pattern: "claimed-destination guard with a reported skip"
-    example: "_build_move_asset_actions (render_actions.py:630-690)"
+    example: "_build_move_asset_actions (render_inbox_actions.py:66-123)"
     applied_to: "the destination validation pass, with a deliberately different outcome
                  (halt both, rather than first-claim-wins) — see ADR-4"
 

@@ -5,6 +5,42 @@
 > items, and daily/skip inputs into the ordered `actions[]` list. Only
 > non-obvious decisions are recorded here.
 
+## Module Layout: a Facade Over Nine Builder Modules (#216)
+
+WHY the file was split: at 2682 lines it was far past the Constitution's
+~300–500 LOC of dense logic per file. The split moved code verbatim along the
+seams below; no behaviour changed. `render_actions.py` stays the public facade
+and re-exports every name it used to define, so `from lib.render_actions
+import X` keeps working for every caller and test.
+
+| Module | Holds |
+|---|---|
+| `render_actions.py` | `build_actions`, the path-shape contract (`_check_path_shape`, `_validate_action_paths`, `_CONTROL_CHARS_RE`), `assert_no_dangling_dependencies`, `DEFAULT_ASSET_FOLDER`, `_build_skip_actions`, re-exports |
+| `render_emit.py` | `_next_id`, `_inbox_join`, `_wikilink`, `_origin_key`, `_disambiguate_filename` |
+| `render_up_preservation.py` | Rule 4.x: `extract_first_up_marker`, `emit_up_preservation_actions`, `_build_up_preservation_actions`, related:: aggregation |
+| `render_moc_actions.py` | `_build_create_moc_actions`, `_link_to_moc_action`, `_build_link_to_moc_actions`, `_build_moc_extension_actions`, `_moc_linked_members`, `_link_key` |
+| `render_garden_actions.py` | `build_garden_audit_actions`, edit_note_text and edit_frontmatter builders, `UnsupportedShapeError` |
+| `render_inbox_actions.py` | `_build_move_note_actions`, `_build_move_asset_actions`, `_resolve_daily_path`, `_build_daily_update_actions` |
+| `render_source_actions.py` | `group_id` loader, `_tag_handler_group_has_resolvable_target`, insert_under_marker and delete_source builders |
+| `render_withhold.py` | `validate_destinations` and its clash helpers, the shared withdrawal machinery, `withdraw_unjustified_deletes` |
+| `render_attachment_withhold.py` | `suppress_moves_for_unfiled_attachments`, `claimed_rendered_files`, `manifest_without_withheld_staging` |
+| `render_contested_links.py` | `contested_note_names`, `qualify_contested_moc_links` |
+
+WHY the path-shape contract stayed in the facade: `instruction-render.py`
+imports `_validate_action_paths` from here, and a test patches
+`render_actions._check_path_shape` to watch the guard run. A function looks
+names up in its own module, so the guard and the function it calls stay
+together where the patch lands.
+
+WHY the gate, the insert builder and the delete builder share one module:
+the gate is ADR-5's single predicate, and a test patches it once to prove
+both builders consult it. That only works when both builders read it from
+the same module, so all three moved together and the test now patches
+`lib.render_source_actions`.
+
+The rationale sections below still apply. Each names the function it
+explains; the table says which module holds it now.
+
 ## `_dest_join` / `_asset_dest_join` Live in `lib/vault_paths.py` (spec 039 T1.4)
 
 Both path helpers moved to `lib/vault_paths.py` so the shared folder lookup

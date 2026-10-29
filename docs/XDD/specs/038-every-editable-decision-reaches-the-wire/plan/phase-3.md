@@ -31,7 +31,7 @@ phase: 3
   refused name is the opposite `[ref: SDD/ADR-6]`.
 - `_asset_dest_join` is **not** changed. What stays as defence in depth is
   **basename extraction**, not truncation — `source_path.rsplit("/", 1)[-1]`
-  (`lib/render_actions.py:571`). So an unguarded typed `a/b.png` yields
+  (`lib/render_moc_actions.py:65`). So an unguarded typed `a/b.png` yields
   `<asset_folder>/b.png` today: the prefix is silently dropped, which is a wrong
   name rather than a traversal. The PRD states this correctly at
   `requirements.md:515` — "the existing helper already discards everything before
@@ -56,7 +56,7 @@ produce a typed name at all.
 
   1. Prime: read `lib/obsidian_filename.py`'s `sanitize_stem` (`:36-44`) — to
      understand precisely what is **not** being reused and why — and
-     `_asset_dest_join` (`render_actions.py:560-575`) to see what the string would
+     `_asset_dest_join` (`render_moc_actions.py:54-69`) to see what the string would
      otherwise flow into.
 
      **Measured 2026-10-01 (T2.5) — the control an owner edits renders a full
@@ -82,7 +82,7 @@ produce a typed name at all.
      (`a/b.png`, `../../x.png`, `/abs.png`); forbidden character (each of
      `: * ? " < > |` and backslash); blank and whitespace-only (`""`, `" "` —
      note `not " "` is `False`, so **two** existing truthiness guards each let it
-     through, both measured 2026-10-01: `lib/render_actions.py:788`'s
+     through, both measured 2026-10-01: `lib/render_withhold.py:116`'s
      `not remedy_entry.get("proposed_name")`, which is why `" "` does **not**
      degrade to `keep_in_inbox` the way a `None` does, and `_asset_dest_join`'s
      `if not basename` at `:572`, which is why it then returns a destination
@@ -90,7 +90,7 @@ produce a typed name at all.
      **Three classes, not four** — owner ruling 2026-10-01, after this task was
      blocked for specifying an untestable one. `taken` is a property of the run,
      not of the string, and the run already decides it at
-     `lib/render_actions.py:945`, which a remedy-chosen destination reaches by
+     `lib/render_withhold.py:273`, which a remedy-chosen destination reaches by
      design (`:940-944`). So this module takes **one argument** and stays a pure
      function on a string; do not add a `taken`/`claimed` parameter, and do not
      reach for a vault listing — there is none on this path (`path_exists` appears
@@ -115,7 +115,7 @@ produce a typed name at all.
 
 - [x] **T3.2 The move builder consumes the verdict** `[activity: backend-api]`
 
-  1. Prime: read `_build_move_asset_actions` (`lib/render_actions.py:691`), its
+  1. Prime: read `_build_move_asset_actions` (`lib/render_withhold.py:19`), its
      rename branch (`:825-830`), and the existing `skipped_assets` kinds
      (`no_basename`, `vault_collision_held`, `collision`).
 
@@ -201,7 +201,7 @@ produce a typed name at all.
      rename it `[ref: SDD/ADR-6]`.
   4. Validate: the 037 suite stays green — particularly the degraded-rename path
      (`proposed_name` null still degrades to `keep_in_inbox`,
-     `render_actions.py:787-789`). Note that guard is a truthiness test, so `" "`
+     `render_withhold.py:115-117`). Note that guard is a truthiness test, so `" "`
      does **not** degrade; it reaches the rename branch and is refused there when
      the flag is `True`.
   5. Success:
@@ -216,7 +216,7 @@ produce a typed name at all.
 
 - [x] **T3.3 The owning note is held** `[activity: backend-api]`
 
-  1. Prime: read `suppress_moves_for_unfiled_attachments` (`render_actions.py:1516`)
+  1. Prime: read `suppress_moves_for_unfiled_attachments` (`render_inbox_actions.py:128`)
      including the docstring explaining why `vault_collision_held` is **excluded**,
      and 037's `requirements.md:374-382` where that exclusion was measured rather
      than assumed.
@@ -226,7 +226,7 @@ produce a typed name at all.
      this before briefing anyone, or the brief will ask for work that is done.
 
      - **There is no exclusion *list*.** The exclusion is a single equality at
-       `render_actions.py:1569` — `if entry.get("kind") == "vault_collision_held":
+       `render_inbox_actions.py:181` — `if entry.get("kind") == "vault_collision_held":
        continue`. So a new kind is never excluded by construction; it falls through
        to the suppressing default with no edit at all. Step 3's "that is the whole
        change" is literally a no-op, not shorthand for a small change. The task
@@ -321,7 +321,7 @@ produce a typed name at all.
      collision sentence** (owner ruling 2026-10-02). It had asked whether a
      collision on an owner-**typed** name should read differently from one on a
      Tomo-computed name, since the shared string
-     (`render_actions.py:953`) says *"destination collision: it also resolves to
+     (`render_withhold.py:281`) says *"destination collision: it also resolves to
      `<dest>`, already claimed by `<claimant>`"* and never mentions that a name
      was typed. The ruling: F3's sixth criterion covers the **three string
      classes** T3.1 decides, not the fourth criterion's run-local collision, and
@@ -332,7 +332,7 @@ produce a typed name at all.
      typed and computed names alike. Measured before the ruling, in case a later
      reader wants the cost: the skipped entry carries no provenance at all
      (`{source, destination, reason, kind, owner_source_items}` —
-     `render_actions.py:956-959`), so either alternative needed a new field or a
+     `render_withhold.py:284-287`), so either alternative needed a new field or a
      forked string, and the owner already knows they typed the name because the
      document is rendered from the run in which they typed it.
   3. Implement: one bullet per refusal, in the existing skipped block — a new

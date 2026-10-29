@@ -6,7 +6,7 @@ with global de-duplication.
 _build_move_asset_actions(manifest, inbox_path, asset_folder, counter) reads
 `m.get("attachments")` off each manifest entry and emits one move_asset action
 per unique resolved path across the WHOLE manifest — not per item, unlike the
-audio_peer set at render_actions.py:922, which dedups within one origin-stem
+audio_peer set at render_withhold.py:250, which dedups within one origin-stem
 group only. Returns (actions, skipped) — skipped attachments (no basename, or
 a destination collision) are covered in test_031_t2_4_destination_collision_guard.py.
 """

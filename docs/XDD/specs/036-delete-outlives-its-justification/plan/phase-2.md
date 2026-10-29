@@ -42,7 +42,7 @@ Turns the relation from Phase 1 into enforcement.
 
 - [x] **T2.1 The withdrawal pass** `[activity: domain-modeling]`
 
-  Landed `bb840ca` as `render_actions.py:2354`; **not** wired into `instruction-render.py` — that is
+  Landed `bb840ca` as `render_garden_actions.py:248`; **not** wired into `instruction-render.py` — that is
   T2.3. Eleven tests (14 items) after the TDD guardian BLOCKed the plan's seven: a delete with **no**
   `depends_on` key at all was unconstructed by any of them, so an implementation reading absence as
   grounds to withdraw would have passed the lot. Version `0.20.0` → `0.21.0`.

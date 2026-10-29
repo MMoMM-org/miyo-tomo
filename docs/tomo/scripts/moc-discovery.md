@@ -5,6 +5,36 @@
 > This file documents the WHY behind every significant design choice;
 > the HOW lives in the script itself and its inline docstrings.
 
+## Module Map: the Script Orchestrates, the Phases Live in lib/ (#216)
+
+WHY: the script reached 2560 lines. It was split along its phase seams with no
+behaviour change: same path, flags, exit codes and stdout/stderr text.
+`moc-discovery.py` re-exports every moved name, so the sections below still
+name functions as `moc-discovery.<name>`.
+
+| Module (`tomo/scripts/lib/`) | Holds |
+|---|---|
+| `moc_discovery_common.py` | `_log` / `LOG_PREFIX`, `ABORT_MESSAGES`, `DEFAULT_PROFILES_DIR`, `_load_yaml`, `Candidate`, `_stem_from_path`, `_load_moc_config` |
+| `moc_discovery_args.py` | default paths, `build_parser`, `route_input`, `resolve_profile` |
+| `moc_discovery_phase1.py` | Phase 1: mode handlers, atomic-note pre-filter, caps, `validate_cache_loaded` |
+| `moc_discovery_topics.py` | Phase 2 (cache-first topics + LLM batching) and Phase 3 (clusters) |
+| `moc_discovery_enrich.py` | Phase 4 titles, Phase 5 parents, `_enrich_cluster`, `_moc_location` |
+| `moc_discovery_dedupe.py` | Phase 6 (exact title / weighted overlap / squelch) and D3 member overlap |
+| `moc_discovery_existing_up.py` | Phase 6.5 existing-`up::` validation |
+| `moc_discovery_rendered_links.py` | link members: lookup plan and result write-back for the rendered slice |
+| `moc_discovery_around.py` | `--around` seed resolution and the cluster / extension builders |
+| `moc_discovery_uplinks.py` | `--check-moc-uplinks` audit and `_cap_orphans` |
+| `moc_discovery_phase1_io.py` | `--emit-phase1` writer and `--phase1-input` reader |
+| `moc_discovery_report.py` | `empty_report`, candidate rows, pipeline / abort report, JSON emission |
+
+WHY some orchestration stays in the script: `_build_kado_client` and
+`LinkLookup` are patched by tests on the loaded script module, and the script is
+loaded under several module names. Every function that calls either name stays
+in the script so the patch still reaches it: `_augment_rendered_clusters`,
+`_run_pipeline`, `_around_lookup`, `_run_around_extension`, `_build_around_note`,
+`_run_around` and `main`. The same goes for `load_moc_cache` and the squelch
+helpers, which only `main` calls.
+
 ## Scan Mode: Cache-Sourced Orphans (T5.1, ADR-11)
 
 WHY: The original `_handle_scan` enumerated atomic-note candidates via a live

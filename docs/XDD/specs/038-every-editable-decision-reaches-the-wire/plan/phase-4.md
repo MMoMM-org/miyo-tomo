@@ -339,7 +339,7 @@ surface, landing into an already-guarded path.
        `None` and hand Pass 2 `_asset_dest_join(folder, None)`". That was wrong,
        and it was wrong in the implementer's brief too. Something does stop it:
        `_build_move_asset_actions` tests `remedy == "rename" and not
-       remedy_entry.get("proposed_name")` (`render_actions.py:848-849` as of
+       remedy_entry.get("proposed_name")` (`render_withhold.py:176-177` as of
        2026-10-02) — a **falsy** test, so `""` takes it as well as `None` — and
        that branch precedes the `name_is_owner_supplied` gate at `:902` by 53
        lines. The destination-less move has been unreachable on this route since
@@ -391,7 +391,7 @@ surface, landing into an already-guarded path.
      rendered bullet — the bullet assertion is vacuous.** Measured 2026-10-02 by
      removing the override's veto on provenance: no `typed_name_refused` bullet is
      emitted under the mutation either, because `''` is falsy and the degrade at
-     `render_actions.py:848-849` fires before provenance is ever consulted. The
+     `render_withhold.py:176-177` fires before provenance is ever consulted. The
      refusal bullet for a name nobody typed is unreachable today for **structural**
      reasons, not because the ordering is right — so a test written only against
      the bullet, which is what (c) above literally asks for, passes the mutation

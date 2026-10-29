@@ -1218,7 +1218,7 @@ def main() -> int:
             "unresolvable_moc_links": unresolvable_links,
             "delete_withdrawals": delete_withdrawals,
             # spec 037 T4.2: reaches `main()` at line ~374 already, but was
-            # used only for the embed rewrite (render_actions.py:439-441) and
+            # used only for the embed rewrite (render_actions.py:232-234) and
             # never forwarded to the renderer — the same missing-transport gap
             # T3.0 fixed for suggestion-parser -> instruction-render.
             "attachment_conflict_remedies": attachment_conflict_remedies,

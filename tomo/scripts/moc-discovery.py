@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.0
+# version: 0.27.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -21,9 +21,9 @@ through the six discovery phases described in the SDD §Pseudocode (lines
 cache, look up its neighbours once, emit one new-MOC cluster (seed + link
 members) — no Phase 1-3, no Phase 6 / D3, no squelch.
 
-The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
-routing (`route_input`), profile resolution, and the `--dry-run` JSON path so
-downstream tasks have a stable scaffold to fill in.
+This file orchestrates; the phases live in `lib/moc_discovery_*.py` and every
+name is re-exported here. The functions that call `_build_kado_client` or
+`LinkLookup` stay in this file so both names resolve on this module.
 
 Usage:
     python3 moc-discovery.py [--tag X | --folder X | --class X | --title X | --around X]
@@ -42,51 +42,136 @@ Exit codes (SDD §Error Handling):
 """
 from __future__ import annotations
 
-import argparse
 import json
-import math
 import os
 import sys
-import uuid
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
-
-import yaml
 
 # Allow importing from scripts/lib/
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Available for downstream phases (filename slug derivation in T2.6+ duplicate
-# detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
-# the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
-# only, so this is wired ahead of use.
 from lib.link_members import (  # noqa: E402
     DONE as _LINKS_DONE,
-    UNCACHED,
     LinkLookup,
     NodeEligibility,
     augment_clusters,
 )
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
-from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
-from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
-from lib.profile_conventions import ensure_suffix, moc_suffix, resolve_conventions  # noqa: E402
-from lib.render_md import bare_stem, unwrap_list_repr  # noqa: E402
-from lib.slugify import slugify  # noqa: E402, F401
-from lib.up_parse import parse_up_from_content, up_marker_re  # noqa: E402
-from lib.up_state import BROKEN, classify_up_target  # noqa: E402
+from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
     load_registry as _squelch_load_registry,
     save_registry_atomic as _squelch_save_registry_atomic,
 )
-from lib.topic_signature import (  # noqa: E402
-    candidate_stems as _lib_candidate_stems,
-    cluster_topic_set as _lib_cluster_topic_set,
-    compute_topic_signature as _lib_compute_topic_signature,
+
+# Re-exports: tests and callers reach every phase through this module.
+from lib.moc_discovery_args import (  # noqa: E402, F401
+    DEFAULT_CACHE_PATH,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_SQUELCH_STATE_PATH,
+    build_parser,
+    resolve_profile,
+    route_input,
 )
-from lib.topic_match import weighted_overlap  # noqa: E402
+from lib.moc_discovery_around import (  # noqa: E402, F401
+    AROUND_CLUSTER_ID,
+    AROUND_INELIGIBLE_REASONS,
+    AROUND_MIN_NEIGHBOURS,
+    AroundSeed,
+    _around_abort,
+    _around_key,
+    _ref_stem,
+    _up_targets_stem,
+    apply_around_extension,
+    around_too_few,
+    build_around_cluster,
+    fill_around_note_report,
+    resolve_around_seed,
+)
+from lib.moc_discovery_common import (  # noqa: E402, F401
+    ABORT_MESSAGES,
+    DEFAULT_PROFILES_DIR,
+    LOG_PREFIX,
+    Candidate,
+    _load_moc_config,
+    _load_yaml,
+    _log,
+    _stem_from_path,
+)
+from lib.moc_discovery_dedupe import (  # noqa: E402, F401
+    JACCARD_DUP_THRESHOLD,
+    _MEMBER_OVERLAP_THRESHOLD,
+    _candidate_stems,
+    _cluster_topic_set,
+    _compute_topic_signature,
+    _dedupe_overlapping_clusters,
+    _find_exact_title_match,
+    _find_jaccard_match,
+    _moc_topic_set,
+    _normalise_title,
+    phase6_dedupe,
+)
+from lib.moc_discovery_enrich import (  # noqa: E402, F401
+    ParentOption,
+    _category_keywords,
+    _cluster_topic_keywords,
+    _enrich_cluster,
+    _format_parent_label,
+    _format_parent_stem,
+    _moc_location,
+    _serialise_parents,
+    _topic_title,
+    phase4_title,
+    phase5_resolve_parents,
+)
+from lib.moc_discovery_existing_up import (  # noqa: E402, F401
+    _moc_stems_from_cache,
+    _note_stems_from_cache,
+    phase65_validate_existing_up,
+)
+from lib.moc_discovery_phase1 import (  # noqa: E402, F401
+    _atomic_note_paths,
+    _candidate_from_path,
+    _handle_class,
+    _handle_folder,
+    _handle_scan,
+    _handle_tag,
+    _handle_title_or_freetext,
+    _is_md_file,
+    _resolve_class_subdir,
+    phase1_select_candidates,
+    restrict_to_atomic_note_paths,
+    validate_cache_loaded,
+)
+from lib.moc_discovery_phase1_io import (  # noqa: E402, F401
+    _BODY_EXCERPT_CHARS,
+    _load_phase1_input,
+    _write_phase1_emit,
+)
+from lib.moc_discovery_rendered_links import (  # noqa: E402, F401
+    NOT_RENDERED,
+    _item_stem,
+    _member_up_fields,
+    apply_link_results,
+    plan_link_lookups,
+)
+from lib.moc_discovery_report import (  # noqa: E402, F401
+    _EMPTY_LINK_STATS,
+    _emit_abort_report,
+    build_pipeline_report,
+    candidate_rows,
+    emit_report,
+    empty_report,
+)
+from lib.moc_discovery_topics import (  # noqa: E402, F401
+    LLM_BATCH_SIZE,
+    LLMClient,
+    _batch_llm_extract,
+    _build_topics_index,
+    phase2_extract_topics,
+    phase3_cluster,
+)
+from lib.moc_discovery_uplinks import _cap_orphans, _run_moc_uplink_check  # noqa: E402, F401
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -95,1546 +180,11 @@ from lib.topic_match import weighted_overlap  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
-DEFAULT_CONFIG_PATH = "config/vault-config.yaml"
-# spec 021 T2.1: moc-discovery now reads the MOC-structure cache via
-# lib/moc_cache_loader (TTL + rebuild-if-stale + entries[kind==moc]→map_notes
-# shim), not discovery-cache.yaml directly. The loader rebuilds inline when the
-# cache is stale/missing/corrupt (ADR-3).
-DEFAULT_CACHE_PATH = "config/moc-structure-cache.yaml"
-DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
-# ADR-8: squelch sidecar at tomo-instance/state/moc-squelch.json. Default
-# resolves relative to TOMO_INSTANCE env var (Docker runtime) or cwd (tests /
-# host dev runs). The `--squelch-state` flag overrides this default.
-DEFAULT_SQUELCH_STATE_PATH = str(
-    Path(os.environ.get("TOMO_INSTANCE", ".")) / "state" / "moc-squelch.json"
-)
-
-LOG_PREFIX = "[moc-discovery]"
-
-# User-facing abort messages (SDD §Error Handling, lines 830-833). German strings
-# match the user vault locale; cache-empty intentionally English because it
-# instructs the user to run a Tomo command (`/explore-vault`).
-ABORT_MESSAGES: dict[str, str] = {
-    "cache-empty": (
-        "MOC proposal requires vault cache. Please run /explore-vault first to "
-        "populate discovery-cache.yaml."
-    ),
-    "zero-candidates": "No notes found for this topic.",
-    "candidate-cap-exceeded": (
-        "Too many candidates found — narrow the search scope."
-    ),
-    "cache-miss-cap-exceeded": (
-        "Too many notes without cache entry — please run /explore-vault first."
-    ),
-    "around-periodic": "around: periodic notes cannot be a MOC seed",
-    "cache-rebuild-failed": (
-        "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
-        "found). Please run /explore-vault and check the vault configuration."
-    ),
-}
-
-# Phase 2 LLM batching — fixed at 10 per SDD §Pseudocode line 864 (chunk(misses, 10)).
-LLM_BATCH_SIZE = 10
-
-
-def _log(msg: str) -> None:
-    """Write a stderr progress line — matches sibling moc-tree-builder style."""
-    print(f"{LOG_PREFIX} {msg}", file=sys.stderr)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CLI parsing + mode routing
+# Kado client + link lookups (kept here: tests patch these names on this module)
 # ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Construct the argparse parser. Kept as a separate helper for testing."""
-    parser = argparse.ArgumentParser(
-        prog="moc-discovery",
-        description=(
-            "Discover MOC candidates and emit a DiscoveryReport JSON.\n\n"
-            "Output: JSON to stdout. Progress and warnings: stderr."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    # Mutually-exclusive scope flags. `class` is reserved → dest="klass".
-    scope = parser.add_mutually_exclusive_group()
-    scope.add_argument(
-        "--tag",
-        metavar="PREFIX",
-        help="Tag-prefix scan via kado-search byTag with glob `*`.",
-    )
-    scope.add_argument(
-        "--folder",
-        metavar="PATH",
-        help="Recursive listDir, client-side .md filter.",
-    )
-    scope.add_argument(
-        "--class",
-        dest="klass",
-        metavar="NNNN",
-        help="Profile-aware classification subdirectory scan (e.g. 2600).",
-    )
-    scope.add_argument(
-        "--title",
-        metavar="TEXT",
-        help="Title-seeded discovery; user input becomes the proposed MOC title.",
-    )
-    scope.add_argument(
-        "--around",
-        metavar="NAME_OR_PATH",
-        help=(
-            "One new-MOC proposal from a cached seed note's links (stem, [[stem]], "
-            "stem.md or vault path). Single pass: not combinable with "
-            "--emit-phase1 / --phase1-input / --check-moc-uplinks."
-        ),
-    )
-
-    # Free-text positional — used when none of the scope flags match.
-    parser.add_argument(
-        "free_text",
-        nargs="?",
-        default=None,
-        metavar="FREE_TEXT",
-        help="Free-text topic match (default when no scope flag is given).",
-    )
-
-    parser.add_argument(
-        "--config",
-        metavar="PATH",
-        default=DEFAULT_CONFIG_PATH,
-        help=f"Path to vault-config.yaml (default: {DEFAULT_CONFIG_PATH}).",
-    )
-    parser.add_argument(
-        "--profile",
-        metavar="NAME",
-        default=None,
-        help="Profile name override (default: read from vault-config.yaml).",
-    )
-    parser.add_argument(
-        "--cache",
-        metavar="PATH",
-        default=DEFAULT_CACHE_PATH,
-        help=f"Path to the MOC-structure cache (default: {DEFAULT_CACHE_PATH}). "
-             "Loaded via moc_cache_loader (rebuild-if-stale + map_notes shim).",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Emit a minimal DiscoveryReport JSON and skip discovery phases.",
-    )
-    parser.add_argument(
-        "--candidate-cap",
-        type=int,
-        metavar="N",
-        default=None,
-        help="Override candidate_cap (default 500: vault-config tomo.moc_proposal).",
-    )
-    parser.add_argument(
-        "--check-moc-uplinks",
-        action="store_true",
-        help="Audit MOC parentage only: run the orphan link-or-create pass over "
-             "kind==moc entries (skip the clustering pipeline). Emits a "
-             "check-moc-uplinks DiscoveryReport.",
-    )
-    parser.add_argument(
-        "--squelch-state",
-        metavar="PATH",
-        default=DEFAULT_SQUELCH_STATE_PATH,
-        help=(
-            f"Path to moc-squelch.json sidecar (ADR-8). "
-            f"Default: $TOMO_INSTANCE/state/moc-squelch.json "
-            f"(currently resolves to {DEFAULT_SQUELCH_STATE_PATH})."
-        ),
-    )
-
-    # T6.5: agent-side LLM split. `--emit-phase1` exits after Phase 1 writing
-    # candidate paths + cache-resolved topics (null for cache misses) so the
-    # moc-architect agent can extract missing topics LLM-side and feed them
-    # back via `--phase1-input`. The two flags are mutually exclusive.
-    phase1_io = parser.add_mutually_exclusive_group()
-    phase1_io.add_argument(
-        "--emit-phase1",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Run Phase 1 only; write candidates JSON to PATH with topics from "
-            "cache (null for misses); exit before Phase 2."
-        ),
-    )
-    phase1_io.add_argument(
-        "--phase1-input",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Skip Phase 1; load candidates (with pre-populated topics) from "
-            "PATH. Phase 2 short-circuits on candidates whose topics are "
-            "already set — no LLMClient needed."
-        ),
-    )
-
-    return parser
-
-
-def route_input(args: argparse.Namespace) -> tuple[str, str]:
-    """Map parsed CLI args to (mode, trigger_arg).
-
-    Precedence (PRD/AC-1.1-1.7):
-      --tag X     → ("tag", X)
-      --folder X  → ("folder", X)
-      --class X   → ("class", X)
-      --title X   → ("title", X)
-      --around X  → ("around", X)           # spec 042 F2; `around:X` free text is NOT parsed here
-      free-text X → ("free-text", X)        # AC-1.7: `foo:bar` stays free-text
-      no args     → ("scan", "")            # AC-1.6: whole-vault density scan
-
-    Each scope flag uses an explicit `is not None` check (not truthiness) so
-    that an accidental empty string (`--tag ""`) raises ValueError instead of
-    silently falling through to scan mode.
-    """
-    for attr, mode, label in (
-        ("tag", "tag", "--tag"),
-        ("folder", "folder", "--folder"),
-        ("klass", "class", "--class"),
-        ("title", "title", "--title"),
-        ("around", "around", "--around"),
-        ("free_text", "free-text", "free-text positional"),
-    ):
-        value = getattr(args, attr, None)
-        if value is not None:
-            if value == "":
-                raise ValueError(f"{label} requires a non-empty value")
-            return (mode, value)
-    return ("scan", "")
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Profile resolution
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _load_yaml(path: Path) -> dict[str, Any]:
-    """Read a YAML file → dict; empty / missing → {}."""
-    if not path.exists():
-        return {}
-    with path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
-    return data if isinstance(data, dict) else {}
-
-
-def resolve_profile(
-    config_path: Path,
-    profile_override: str | None,
-    profiles_dir: Path = DEFAULT_PROFILES_DIR,
-) -> str:
-    """Resolve the active profile name; raise FileNotFoundError if it's missing.
-
-    Order:
-      1. CLI `--profile` override (if given).
-      2. `vault-config.yaml::profile` (default `"miyo"` per shared-ctx-builder).
-    """
-    if profile_override:
-        name = profile_override
-    else:
-        cfg = _load_yaml(config_path)
-        name = str(cfg.get("profile") or "miyo")
-
-    profile_path = profiles_dir / f"{name}.yaml"
-    if not profile_path.exists():
-        raise FileNotFoundError(
-            f"profile YAML not found: {profile_path} (resolved name={name!r})"
-        )
-    return name
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# DiscoveryReport scaffolding
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-_EMPTY_LINK_STATS: dict[str, int] = {
-    "lookups": 0,
-    "attempts": 0,
-    "failed": 0,
-    "clusters_skipped_budget": 0,
-    "clusters_sampled": 0,
-    "members_total": 0,
-    "skipped_uncached": 0,
-}
-
-
-def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
-    """Build a minimal DiscoveryReport with all phase-derived fields zeroed.
-
-    Schema mirrors SDD §Application Data Models lines 534-553. Filled-in
-    versions land in T2.2-T2.7 as each phase produces real data.
-    """
-    return {
-        "schema_version": "1",
-        "run_id": uuid.uuid4().hex,
-        "mode": mode,
-        "trigger_arg": trigger_arg,
-        "profile": profile,
-        "candidates_total": 0,
-        "candidates_after_prefilter": 0,
-        "candidates_capped": False,
-        "candidates": [],
-        "topic_clusters": [],
-        "parent_options_per_cluster": {},
-        "duplicates_skipped": [],
-        "squelched": [],
-        "orphan_suggestions": [],
-        "orphan_total": 0,
-        "orphan_overflow": 0,
-        "abort_reason": None,
-        "abort_message": None,
-        "extracted_via_llm_count": 0,
-        "cache_miss_batches_used": 0,
-        "link_stats": dict(_EMPTY_LINK_STATS),
-        "around": None,
-        "extension": None,
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 1 — Candidate selection
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class Candidate:
-    """One atomic-note candidate considered for a Proposed MOC.
-
-    Phase 1 only fills `stem` and `path`. Subsequent phases enrich each
-    candidate in-place with `topics`, `existing_up`, `classification`, and
-    `level`. Keeping the dataclass loose (mutable, default-empty) is
-    deliberate — phase boundaries hand a list of these between handlers
-    without copy-on-write.
-    """
-
-    stem: str
-    path: str
-    topics: list[str] = field(default_factory=list)
-    existing_up: str | None = None
-    classification: str | None = None
-    level: int = 0
-
-
-def _stem_from_path(path: str) -> str:
-    """`Atlas/202 Notes/2611 Code Snippets/zsh.md` → `zsh`."""
-    name = os.path.basename(path)
-    if name.endswith(".md"):
-        name = name[:-3]
-    return name
-
-
-def _candidate_from_path(path: str) -> Candidate:
-    """Build a Phase-1 Candidate from a vault-relative `.md` path."""
-    return Candidate(stem=_stem_from_path(path), path=path)
-
-
-def _atomic_note_paths(profile: dict) -> list[str]:
-    """Allowed prefixes for atomic-note pre-filter.
-
-    Returns the union of `concept_defaults.atomic_note.base_path` and each
-    `subdirectories[].path`. Trailing `/` is preserved — callers do prefix
-    comparison against these strings, so consistency matters.
-    """
-    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
-    out: list[str] = []
-    base = cd.get("base_path")
-    if base:
-        out.append(base)
-    for sd in cd.get("subdirectories") or []:
-        if isinstance(sd, dict) and sd.get("path"):
-            out.append(sd["path"])
-    return out
-
-
-def _is_md_file(item: dict) -> bool:
-    """Client-side `.md` filter for kado-read listDir results (ADR-6).
-
-    Folders carry `type: 'folder'`; files may be `.md`, `.canvas`, images,
-    binaries — only `.md` count as atomic-note candidates. The Kado client
-    guarantees `path` is present, so we require `path` to end in `.md` —
-    no `name` fallback (would yield blank-path candidates downstream).
-    """
-    if item.get("type") == "folder":
-        return False
-    path = item.get("path", "") or ""
-    return path.endswith(".md")
-
-
-def _handle_tag(trigger_arg: str, kado_client) -> list[Candidate]:
-    """Tag mode (ADR-7): `byTag` query is `#<tag>*` — literal `*` glob suffix."""
-    query = f"#{trigger_arg}*"
-    _log(f"phase1: byTag query={query!r}")
-    items = kado_client.search_by_tag(query)
-    out: list[Candidate] = []
-    for item in items:
-        path = item.get("path", "") or ""
-        if path.endswith(".md"):
-            out.append(_candidate_from_path(path))
-    return out
-
-
-def _handle_folder(trigger_arg: str, kado_client) -> list[Candidate]:
-    """Folder mode: recursive listDir + client-side `.md` filter (ADR-6)."""
-    _log(f"phase1: listDir folder={trigger_arg!r} depth=10")
-    items = kado_client.list_dir(trigger_arg, depth=10)
-    return [_candidate_from_path(item.get("path", "")) for item in items if _is_md_file(item)]
-
-
-def _resolve_class_subdir(klass: str, profile: dict) -> str | None:
-    """Resolve a Dewey class (e.g. `2600`) to its atomic-note subdirectory.
-
-    Returns the first subdirectory whose `dewey_parent` matches `int(klass)`,
-    or None if no match. Profiles without `dewey_parent` (e.g. lyt.yaml)
-    return None — class mode is miyo-specific by design (the Dewey numbering
-    is part of the miyo conventions).
-    """
-    try:
-        target = int(klass)
-    except (TypeError, ValueError):
-        return None
-    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
-    for sd in cd.get("subdirectories") or []:
-        if isinstance(sd, dict) and sd.get("dewey_parent") == target:
-            return sd.get("path")
-    return None
-
-
-def _handle_class(trigger_arg: str, profile: dict, kado_client) -> list[Candidate]:
-    """Class mode: resolve Dewey class via profile → listDir on the subdir."""
-    subdir = _resolve_class_subdir(trigger_arg, profile)
-    if not subdir:
-        _log(
-            f"WARN: --class {trigger_arg!r} did not match any atomic-note "
-            f"subdirectory in profile (no dewey_parent={trigger_arg})"
-        )
-        return []
-    _log(f"phase1: class={trigger_arg!r} → listDir {subdir!r} depth=10")
-    items = kado_client.list_dir(subdir, depth=10)
-    return [_candidate_from_path(item.get("path", "")) for item in items if _is_md_file(item)]
-
-
-def _handle_title_or_freetext(trigger_arg: str, cache: dict) -> list[Candidate]:
-    """Title / free-text mode: substring-match against `cache.map_notes[].topics`.
-
-    The discovery cache already holds topics per note — title/free-text
-    discovery does not need Kado at all in Phase 1, only the cache. A
-    candidate is selected when ANY of its cached topics contains the
-    trigger string (case-insensitive).
-    """
-    needle = (trigger_arg or "").strip().lower()
-    if not needle:
-        return []
-    out: list[Candidate] = []
-    seen_paths: set[str] = set()
-    for entry in cache.get("map_notes") or []:
-        path = (entry.get("path") or "").strip()
-        if not path or path in seen_paths:
-            continue
-        topics = entry.get("topics") or []
-        if any(needle in (str(t) or "").lower() for t in topics):
-            seen_paths.add(path)
-            out.append(_candidate_from_path(path))
-    _log(f"phase1: title/free-text {trigger_arg!r} matched {len(out)} cached note(s)")
-    return out
-
-
-def _handle_scan(cache: dict) -> list[Candidate]:
-    """Scan mode: source candidates from cache orphans (kind==note, up_state==absent).
-
-    ADR-11: The old live list_dir enumeration counted EVERY atomic note (including
-    already-MOC-linked notes) toward the candidate cap, causing candidate-cap-exceeded
-    on whole-vault /moc-propose runs. The fix: source only orphans from the cache
-    (up_state==absent means no existing up:: link). No live Kado call is made.
-    """
-    seen: set[str] = set()
-    out: list[Candidate] = []
-    for entry in cache.get("entries") or []:
-        if entry.get("kind") != "note":
-            continue
-        if entry.get("up_state") != "absent":
-            continue
-        # ADR-13 B-note: notes tagged exclude/note are never clustered.
-        if EXCLUDE_NOTE_TAG in (entry.get("tags") or []):
-            continue
-        path = (entry.get("path") or "").strip()
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        stem = (entry.get("stem") or _stem_from_path(path))
-        topics = [str(t) for t in (entry.get("topics") or []) if t]
-        out.append(Candidate(stem=stem, path=path, topics=topics))
-    _log(f"phase1: scan sourced {len(out)} orphan candidate(s) from cache (up_state==absent)")
-    return out
-
-
-def restrict_to_atomic_note_paths(
-    candidates: list[Candidate], profile: dict
-) -> list[Candidate]:
-    """Strict pre-filter: keep only candidates whose path lies under atomic-note.
-
-    Emits a stderr WARN when candidates fall outside the allowed prefixes
-    and continues with only the in-scope intersection (no abort here — the
-    caller checks `len(candidates) == 0` after pre-filter for the
-    `zero-candidates` abort).
-    """
-    allowed = _atomic_note_paths(profile)
-    if not allowed:
-        # Nothing to constrain against → pass through unchanged.
-        return list(candidates)
-
-    in_scope: list[Candidate] = []
-    out_of_scope: list[Candidate] = []
-    for c in candidates:
-        if any(c.path.startswith(prefix) for prefix in allowed):
-            in_scope.append(c)
-        else:
-            out_of_scope.append(c)
-
-    if out_of_scope:
-        _log(
-            f"WARN: {len(out_of_scope)} candidate(s) outside atomic-note paths — "
-            f"intersected to {len(in_scope)} in-scope candidate(s)"
-        )
-
-    return in_scope
-
-
-def phase1_select_candidates(
-    mode: str,
-    trigger_arg: str,
-    profile: dict,
-    cache: dict,
-    kado_client,
-    config,
-) -> tuple[list[Candidate], str | None]:
-    """Run mode handler → pre-filter → cap/zero checks.
-
-    Returns
-    -------
-    (candidates, abort_reason)
-        On success: (list of in-scope Candidates, None).
-        On `zero-candidates` or `candidate-cap-exceeded`: ([], abort_reason).
-    """
-    if mode == "tag":
-        raw = _handle_tag(trigger_arg, kado_client)
-    elif mode == "folder":
-        raw = _handle_folder(trigger_arg, kado_client)
-    elif mode == "class":
-        raw = _handle_class(trigger_arg, profile, kado_client)
-    elif mode in ("title", "free-text"):
-        raw = _handle_title_or_freetext(trigger_arg, cache)
-    elif mode == "scan":
-        raw = _handle_scan(cache)
-    else:  # pragma: no cover — route_input only emits the six modes above.
-        raise ValueError(f"phase1: unknown mode {mode!r}")
-
-    _log(f"phase1: {len(raw)} raw candidate(s) before pre-filter")
-    filtered = restrict_to_atomic_note_paths(raw, profile)
-    _log(f"phase1: {len(filtered)} candidate(s) after atomic-note pre-filter")
-
-    if len(filtered) == 0:
-        return ([], "zero-candidates")
-
-    cap = getattr(config, "candidate_cap", 500)
-    if len(filtered) > cap:
-        _log(f"phase1: candidate-cap-exceeded ({len(filtered)} > {cap})")
-        return ([], "candidate-cap-exceeded")
-
-    return (filtered, None)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Cache-empty pre-check (SDD §Pseudocode line 851 — fires BEFORE Phase 1)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def validate_cache_loaded(cache: dict | None) -> str | None:
-    """Return `"cache-empty"` when the discovery cache is unusable, else None.
-
-    NOTE (spec 021 T2.1): main() no longer calls this — cache loading + the
-    cache-empty determination now live in lib/moc_cache_loader.load_moc_cache
-    (which mirrors this contract: a fresh cache with no kind==moc map_notes →
-    "cache-empty"). Retained as the documented, separately-tested predicate.
-
-    A cache is "loaded" when it carries a non-empty `map_notes` list. Any of
-    the three failure modes — file missing (cache=None from a guarded loader),
-    file present but `map_notes` key absent, file present but `map_notes: []` —
-    short-circuits the rest of the pipeline. Per SDD §Error Handling this
-    yields `abort_reason="cache-empty"` and a user-facing message asking the
-    user to run `/explore-vault` first.
-
-    The pre-check is separable so `main()` can fire it before mode routing /
-    Phase 1, matching the spec's pseudocode (`1. VALIDATE → cache exists →
-    else abort cache-empty`). Tests exercise it directly without spinning up
-    the full pipeline.
-    """
-    if cache is None:
-        return "cache-empty"
-    if not isinstance(cache, dict):
-        return "cache-empty"
-    map_notes = cache.get("map_notes")
-    if not map_notes:  # None, missing, or [] all collapse to "no usable cache"
-        return "cache-empty"
-    return None
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 2 — Topic extraction (cache lookup + bounded LLM batching)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class LLMClient(Protocol):
-    """Minimal LLM-batch-extract surface consumed by Phase 2.
-
-    Implementations take a list of cache-miss `Candidate`s and return one
-    dict per candidate, shaped `{"path": str, "topics": list[str]}`. Phase 2
-    splits misses into chunks of `LLM_BATCH_SIZE` (10) and fans out one call
-    per chunk; the real production client lives outside T2.3 and gets wired
-    in `main()` later (T2.8).
-    """
-
-    def batch_extract(self, batch: list["Candidate"]) -> list[dict]: ...  # pragma: no cover
-
-
-def _build_topics_index(cache: dict) -> dict[str, list[str]]:
-    """Index cache entries by path → topics for O(1) hit lookup in Phase 2.
-
-    Indexes two sources (last-writer-wins on duplicate paths — the cache-builder
-    dedupes, this is a defensive belt-and-braces):
-
-    1. `cache["entries"]` (kind==moc AND kind==note) — covers scan-mode candidates
-       whose topics come from the cache entry rather than from an LLM call.
-       Before T5.1 this was a miss for kind==note paths, forcing spurious LLM
-       batching for every scan candidate.
-
-    2. `cache["map_notes"]` (kind==moc shim, populated by apply_shim in the
-       loader) — kept for backward compat with title/free-text mode, which
-       constructs candidates from map_notes and needs its hits to resolve here.
-    """
-    out: dict[str, list[str]] = {}
-
-    # Pass 1: all entries (moc + note) from the unified entries list.
-    for entry in cache.get("entries") or []:
-        if not isinstance(entry, dict):
-            continue
-        path = (entry.get("path") or "").strip()
-        if not path:
-            continue
-        topics = [str(t) for t in (entry.get("topics") or []) if t]
-        out[path] = topics
-
-    # Pass 2: map_notes shim — applies on top so MOC hits from the shim layer
-    # are never shadowed by a stale entries pass.
-    for entry in cache.get("map_notes") or []:
-        if not isinstance(entry, dict):
-            continue
-        path = (entry.get("path") or "").strip()
-        if not path:
-            continue
-        topics = [str(t) for t in (entry.get("topics") or []) if t]
-        out[path] = topics
-
-    return out
-
-
-def _batch_llm_extract(
-    candidates: list[Candidate],
-    llm_client: LLMClient,
-    batch_size: int = LLM_BATCH_SIZE,
-) -> list[Candidate]:
-    """Chunk cache-miss candidates and call the LLM once per chunk.
-
-    Returns the input candidates with their `topics` field populated from the
-    LLM response. Order is preserved within and across chunks so callers can
-    re-merge with cache hits without losing per-mode ordering.
-
-    Pre-condition: caller has already verified `ceil(len(candidates)/batch_size)
-    <= cache_miss_max_batches`. This helper does NOT enforce the cap — that
-    decision is the caller's so the abort path can short-circuit before any
-    LLM contact.
-    """
-    if not candidates:
-        return []
-
-    # Index input candidates by path so we can apply the LLM response onto
-    # the same instances (preserving any existing fields downstream phases set).
-    by_path: dict[str, Candidate] = {c.path: c for c in candidates}
-
-    for start in range(0, len(candidates), batch_size):
-        chunk = candidates[start : start + batch_size]
-        response = llm_client.batch_extract(chunk)
-        for entry in response or []:
-            path = entry.get("path")
-            topics = entry.get("topics") or []
-            if not path or path not in by_path:
-                continue
-            by_path[path].topics = [str(t) for t in topics if t]
-
-    return candidates
-
-
-def phase2_extract_topics(
-    candidates: list[Candidate],
-    cache: dict,
-    config,
-    llm_client: LLMClient | None,
-) -> tuple[list[Candidate], str | None]:
-    """Resolve topics per candidate via cache-first lookup + bounded LLM fallback.
-
-    Returns
-    -------
-    (candidates_with_topics, abort_reason)
-        On success: (merged hits + LLM-extracted misses, None).
-        On `cache-miss-cap-exceeded`: ([], "cache-miss-cap-exceeded").
-
-    Algorithm (SDD §Pseudocode lines 861-867):
-      hits   := [c for c in candidates if c in cache]
-      misses := [c for c in candidates if c not in cache]
-      batches := chunk(misses, 10)
-      if len(batches) > config.cache_miss_max_batches → abort
-      extracted := llm_batch_extract(batches)
-      candidates_with_topics := merge(hits, extracted)
-    """
-    topics_by_path = _build_topics_index(cache)
-
-    hits: list[Candidate] = []
-    misses: list[Candidate] = []
-    for c in candidates:
-        # T6.5: short-circuit on pre-populated topics (--phase1-input flow).
-        # The moc-architect agent ran a topic-extract subagent between
-        # --emit-phase1 and --phase1-input, so cache misses are already
-        # resolved at the candidate level — no LLM call needed here.
-        if c.topics:
-            hits.append(c)
-            continue
-        cached = topics_by_path.get(c.path)
-        if cached is not None:
-            # Copy onto the candidate so downstream phases see populated topics.
-            c.topics = list(cached)
-            hits.append(c)
-        else:
-            misses.append(c)
-
-    cap = getattr(config, "cache_miss_max_batches", 5)
-    batches_needed = math.ceil(len(misses) / LLM_BATCH_SIZE) if misses else 0
-    if batches_needed > cap:
-        _log(
-            f"phase2: cache-miss-cap-exceeded "
-            f"(misses={len(misses)} → batches={batches_needed} > cap={cap})"
-        )
-        return ([], "cache-miss-cap-exceeded")
-
-    _log(
-        f"phase2: cache-hits={len(hits)} cache-misses={len(misses)} "
-        f"batches={batches_needed}"
-    )
-
-    if misses:
-        if llm_client is None:
-            # Caller has not wired an LLM client yet (T2.8 production wiring).
-            # Surface clearly rather than silently emitting empty topics.
-            raise RuntimeError(
-                "phase2_extract_topics: llm_client is required when there are "
-                "cache misses. Pass a real LLMClient or ensure the cache covers "
-                "every Phase 1 candidate."
-            )
-        _batch_llm_extract(misses, llm_client)
-
-    # Merge preserves input order: a candidate's position in the output
-    # matches its position in the input list. Each candidate appears exactly
-    # once because hits and misses are disjoint by construction.
-    return (list(candidates), None)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def phase3_cluster(
-    candidates_with_topics: list[Candidate], config, moc_suffix: str | None = None
-) -> list[dict]:
-    """Group candidates by normalised topic — thin wrapper around T1.5.
-
-    `moc_suffix` is the active profile's MOC suffix, threaded into
-    `build_topic_clusters` for topic normalisation (F-55 / spec 028 T2.2).
-
-    Each candidate from Phase 2 carries `topics: list[str]` (one or more).
-    The reducer's existing algorithm operates on one `ClusterCandidate` per
-    `(candidate, topic)` pair, so a candidate that carries `[shell, terminal]`
-    contributes to BOTH the `shell` cluster and the `terminal` cluster — the
-    "shared note across clusters" case the SDD calls out for `/moc-propose`.
-
-    Per SDD §Pseudocode lines 869-871:
-        clusters := topic_clusters(candidates_with_topics, threshold=config.min_notes)
-        if len(clusters) == 0 → return empty report (NOT an abort; the user-facing
-                                "no significant clusters" message is surfaced by
-                                the outer pipeline).
-
-    Phase 3 itself never aborts — empty output is a valid normal outcome.
-    Aborts in this pipeline live in Phase 1 (zero-candidates,
-    candidate-cap-exceeded) and Phase 2 (cache-miss-cap-exceeded).
-
-    Args:
-        candidates_with_topics: Phase-2-enriched Candidates with `topics`
-            populated (cache hits + LLM-extracted misses, merged in input order).
-        config: Anything exposing `min_notes: int` — typically a
-            `MocProposalConfig` from `shared-ctx-builder.load_moc_proposal_config`.
-
-    Returns:
-        `list[Cluster]` from `lib.topic_clusters.build_topic_clusters` (a list
-        of `{topic, items, parent, tags}` TypedDicts). `items` carries the
-        contributing candidate stems (preserved as `section_id` upstream).
-        Pure: input is not mutated; a fresh list is returned each call.
-    """
-    # Local import keeps the lib dependency colocated with its only consumer
-    # in this module (mirrors the other helpers' file-local-import pattern).
-    from lib.topic_clusters import ClusterCandidate, build_topic_clusters
-
-    # Explode one ClusterCandidate per (candidate, topic) pair. Candidates
-    # without topics are skipped — `build_topic_clusters` would drop them
-    # anyway via its empty-topic guard, but skipping here is explicit and
-    # avoids feeding the lib pointless rows.
-    items: list[ClusterCandidate] = []
-    for c in candidates_with_topics:
-        for topic in c.topics or []:
-            items.append(
-                ClusterCandidate(
-                    section_id=c.stem,
-                    topic=topic,
-                    # No parent at Phase 3 — parent_options land in Phase 5.
-                    parent="",
-                    # Candidate carries no leaf tags in Phase 3 yet; tag-fold
-                    # in `_compute_moc_tags` is a no-op on empty input.
-                    tags=[],
-                )
-            )
-
-    threshold = getattr(config, "min_notes", 3)
-    return build_topic_clusters(items, threshold=threshold, suffix=moc_suffix)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 4 — Title generation (per-profile suffix + mode override)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _topic_title(cluster: dict) -> str:
-    """Title-case a cluster's normalised topic into a TopicTitle.
-
-    Phase 3's reducer normalises topics (lowercase, plural-fold) and emits the
-    cluster keyed off the normalised form. For display we Title-Case it —
-    "shell" → "Shell". Multi-word topics have their internal whitespace
-    preserved ("knowledge management" → "Knowledge Management").
-    """
-    topic_raw = (cluster.get("topic") or "").strip()
-    if not topic_raw:
-        return ""
-    # `str.title()` is good enough here: cluster topics are short
-    # noun-phrases produced by Phase 2's topic extractor and Phase 3's
-    # normalisation already lower-cased them.
-    return topic_raw.title()
-
-
-def phase4_title(
-    cluster: dict,
-    profile: dict,
-    mode: str,
-    trigger_arg: str,
-) -> str:
-    """Per-cluster title generation, profile- and mode-aware.
-
-    Args:
-        cluster: A Phase-3 `Cluster` dict (`{topic, items, parent, tags}`).
-        profile: The active profile dict (post-`yaml.safe_load`). The MOC-title
-            suffix is read from its `concept_defaults.map_note.name_suffix`
-            (via `resolve_conventions`), not a name-keyed hardcoded table.
-        mode: The /moc-propose run mode (`tag` / `folder` / `class` / `title`
-            / `free-text` / `scan`).
-        trigger_arg: The mode's argument; used verbatim when `mode == "title"`.
-
-    Returns:
-        The proposed MOC title string.
-
-    Behaviour:
-      - `mode == "title"` → user input wins regardless of profile.
-      - Otherwise: TitleCase(cluster.topic) + profile suffix (apply-once).
-
-    Pure: input dicts are not mutated.
-    """
-    # User-provided title — verbatim, untouched (PRD AC-2.4).
-    if mode == "title":
-        return trigger_arg
-
-    topic_title = _topic_title(cluster)
-    suffix = resolve_conventions(
-        profile_dict=profile, profiles_dir=DEFAULT_PROFILES_DIR
-    ).moc_suffix
-    if suffix and topic_title.endswith(" MOC"):
-        topic_title = topic_title[:-4]
-    if topic_title.strip().upper() == "MOC":
-        return topic_title
-    return ensure_suffix(topic_title, suffix)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 5 — Parent resolution (classification keyword overlap)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class ParentOption:
-    """One offered parent for a Proposed MOC.
-
-    Per SDD §Application Data Models line 547:
-        parent_options_per_cluster: dict[cluster_id, list of {moc_stem,
-                                                              confidence,
-                                                              label}]
-    """
-
-    moc_stem: str
-    confidence: float
-    label: str
-
-
-def _cluster_topic_keywords(cluster: dict) -> list[str]:
-    """Extract the keyword bag a cluster will be scored against.
-
-    Two shapes are supported:
-      - Phase-3 default: only `cluster.topic` (single normalised string).
-        Returns `[topic]`.
-      - Future / explicit: `cluster.topic_keywords: list[str]` set upstream
-        by callers carrying multi-keyword context.
-
-    The result is lower-cased, whitespace-trimmed, and de-duplicated — same
-    treatment the lib applies to candidates.
-    """
-    raw: list[str] = []
-    if isinstance(cluster.get("topic_keywords"), list):
-        raw.extend(str(t) for t in cluster["topic_keywords"] if t)
-    if cluster.get("topic"):
-        raw.append(str(cluster["topic"]))
-
-    seen: set[str] = set()
-    out: list[str] = []
-    for t in raw:
-        norm = t.strip().lower()
-        if norm and norm not in seen:
-            seen.add(norm)
-            out.append(norm)
-    return out
-
-
-def _category_keywords(cat: dict) -> list[str]:
-    """Lower-cased, deduplicated keyword list from a profile category."""
-    raw = cat.get("keywords") or []
-    seen: set[str] = set()
-    out: list[str] = []
-    for t in raw:
-        norm = str(t).strip().lower()
-        if norm and norm not in seen:
-            seen.add(norm)
-            out.append(norm)
-    return out
-
-
-def _format_parent_label(klass: str, name: str) -> str:
-    """Human-readable label, e.g. `"Applied Sciences (Dewey 2600)"`."""
-    return f"{name} (Dewey {klass})"
-
-
-def _format_parent_stem(klass: str, name: str) -> str:
-    """Canonical classification-MOC stem, e.g. `"2600 - Applied Sciences"`.
-
-    Mirrors the existing convention seen across miyo vault MOCs and the
-    tier-3 docs (e.g. `Atlas/200 Maps/2600 - Applied Sciences.md`).
-    """
-    return f"{klass} - {name}"
-
-
-def phase5_resolve_parents(
-    cluster: dict,
-    profile: dict,
-    cache: dict,
-) -> list[ParentOption]:
-    """Match cluster topics against profile classification → top-3 ParentOptions.
-
-    Args:
-        cluster: Phase-3 `Cluster` (or enriched with `topic_keywords`).
-        profile: The active profile dict. Reads
-            `profile.classification.categories` — a mapping
-            `{NNNN: {name, keywords}}`.
-        cache: The discovery cache. Reserved for future MOC-level matching
-            (per SDD line 877 — `cache.moc_likes`); currently unused by the
-            classification-only resolver.
-
-    Returns:
-        List of `ParentOption` sorted by `confidence` DESC, capped at 3
-        entries. Categories with zero keyword overlap are excluded. An
-        empty list signals "no confident parent" (the caller should fall
-        back to top-level placement per SDD §Pseudocode line 877 +
-        tier-3/lyt-moc/moc-matching.md §5).
-
-    Pure: input dicts are not mutated.
-    """
-    del cache  # reserved for MOC-level matching in T2.6+
-
-    classification = profile.get("classification") or {}
-    categories = classification.get("categories") or {}
-    if not categories:
-        return []
-
-    cluster_keywords = _cluster_topic_keywords(cluster)
-    if not cluster_keywords:
-        return []
-    cluster_set = set(cluster_keywords)
-
-    scored: list[ParentOption] = []
-    for klass_key, cat in categories.items():
-        if not isinstance(cat, dict):
-            continue
-        klass = str(klass_key)
-        name = (cat.get("name") or "").strip()
-        cat_keywords = _category_keywords(cat)
-        if not cat_keywords:
-            continue
-        cat_set = set(cat_keywords)
-        overlap = cluster_set & cat_set
-        if not overlap:
-            continue
-        # Overlap-ratio score, denominator = max(len(cluster_keywords), 1)
-        # to prevent div-by-zero on degenerate empty input (already
-        # short-circuited above, but kept defensive).
-        confidence = len(overlap) / max(len(cluster_keywords), 1)
-        scored.append(
-            ParentOption(
-                moc_stem=_format_parent_stem(klass, name),
-                confidence=round(confidence, 4),
-                label=_format_parent_label(klass, name),
-            )
-        )
-
-    # Sort descending by confidence; stable on ties (insertion order = profile
-    # iteration order, which is YAML-key order — deterministic).
-    scored.sort(key=lambda p: p.confidence, reverse=True)
-    return scored[:3]
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Jaccard threshold for duplicate detection (SDD §Implementation Examples /
-# Example 3, line 704). A cluster whose topic-set has ≥ 0.80 set-similarity
-# with any existing MOC's topic-set is treated as a duplicate and skipped.
-JACCARD_DUP_THRESHOLD = 0.80
-
-
-def _cluster_topic_set(cluster: dict) -> set[str]:
-    """Normalised topic bag for Jaccard comparison.
-
-    Delegates to lib.topic_signature.cluster_topic_set — single implementation
-    shared with squelch-persist (T5.2 factoring).
-    """
-    return _lib_cluster_topic_set(cluster)
-
-
-def _moc_topic_set(map_note: dict) -> set[str]:
-    """Lowercased topic-set for an existing MOC entry from `cache.map_notes`."""
-    topics = map_note.get("topics") or []
-    out: set[str] = set()
-    for t in topics:
-        if t:
-            norm = str(t).strip().lower()
-            if norm:
-                out.add(norm)
-    return out
-
-
-def _candidate_stems(cluster: dict) -> list[str]:
-    """Pull the cluster's per-candidate identifiers for signature stability.
-
-    Delegates to lib.topic_signature.candidate_stems — single implementation
-    shared with squelch-persist (T5.2 factoring).
-    """
-    return _lib_candidate_stems(cluster)
-
-
-def _compute_topic_signature(cluster: dict) -> str:
-    """Stable hash for squelch keying — SDD §Implementation Examples / Example 2.
-
-    Delegates to lib.topic_signature.compute_topic_signature — single
-    implementation shared with squelch-persist (T5.2 factoring).
-    """
-    return _lib_compute_topic_signature(cluster)
-
-
-def _normalise_title(title: str) -> str:
-    """Case-insensitive title comparator — strip + lower."""
-    return (title or "").strip().lower()
-
-
-def _find_exact_title_match(
-    cluster_title: str, map_notes: list[dict]
-) -> str | None:
-    """Return the matching MOC's title (or stem) on a case-insensitive title hit."""
-    needle = _normalise_title(cluster_title)
-    if not needle:
-        return None
-    for entry in map_notes or []:
-        if not isinstance(entry, dict):
-            continue
-        existing_title = _normalise_title(entry.get("title") or "")
-        if existing_title and existing_title == needle:
-            # Prefer the human-readable title for the report; fall back to
-            # path stem so the agent always has something to surface.
-            return (
-                str(entry.get("title")
-                    or _stem_from_path(entry.get("path") or ""))
-            )
-    return None
-
-
-def _find_jaccard_match(
-    cluster_topics: set[str], cluster_title: str, map_notes: list[dict]
-) -> tuple[str | None, float]:
-    """Scan map_notes for the first MOC whose weighted topic overlap ≥ 0.80.
-
-    Uses Ruzicka-style weighted overlap (via lib.topic_match.weighted_overlap)
-    so that a topic appearing in a title receives W_TITLE weight (×2).
-    A cluster whose flat Jaccard would clear 0.80 but whose title theme
-    disagrees with the MOC's title theme may score below the threshold and
-    will NOT be flagged as a duplicate (spec-029 SDD Runtime View Flow A).
-
-    Returns (existing_moc_label, weighted_score) — `(None, 0.0)` when no MOC
-    clears the threshold. Stops on the first hit so the report names a single
-    "winning" duplicate (matches SDD Example 3's early-return).
-    """
-    if not cluster_topics:
-        return (None, 0.0)
-    for entry in map_notes or []:
-        if not isinstance(entry, dict):
-            continue
-        moc_topics = _moc_topic_set(entry)
-        if not moc_topics:
-            continue
-        score = weighted_overlap(
-            cluster_topics,
-            cluster_title,
-            moc_topics,
-            entry.get("title") or "",
-        )
-        if score >= JACCARD_DUP_THRESHOLD:
-            label = (
-                str(entry.get("title")
-                    or _stem_from_path(entry.get("path") or ""))
-            )
-            return (label, score)
-    return (None, 0.0)
-
-
-def phase6_dedupe(
-    clusters: list[dict],
-    cache: dict,
-    squelch_registry: dict,
-    config,
-) -> tuple[list[dict], list[dict], list[dict]]:
-    """Filter near-duplicate clusters and consult the squelch registry.
-
-    Three skip checks run in order, each short-circuiting before the next:
-
-      1. **Exact-title match** — cluster's proposed title (case-insensitive)
-         equals any `cache.map_notes[].title`. Reported as
-         ``reason="exact-title"``.
-      2. **Jaccard ≥ 0.80** — cluster's topic-set against each existing MOC's
-         topic-set. Reported as ``reason="80-percent-overlap"``.
-      3. **Active squelch** — topic signature (sha1 of normalised topic +
-         sorted candidate stems) is present in `squelch_registry` with
-         ``runs_remaining > 0``. Reported in the ``squelched`` list.
-
-    Squelch is **read-only** in this phase. Decrement / persist / append on
-    user rejection happens in Phase 5 wiring (T5.1, T5.2) — Phase 6 only
-    consults `lib.squelch.is_active`.
-
-    Args:
-        clusters: Phase-3 (or Phase-4-enriched) `Cluster` dicts. Each carries
-            ``topic`` (str) plus optional ``topic_keywords`` (list[str]),
-            ``title`` (str — set by Phase 4), ``items`` (list[str]).
-        cache: Discovery cache dict; Phase 6 reads ``map_notes`` only.
-        squelch_registry: ``dict[str, SquelchEntry]`` from
-            `lib.squelch.load_registry`. Empty dict = no entries active.
-        config: Reserved for future tuning (e.g. configurable threshold).
-            Not read in this phase — accepting it keeps the signature stable
-            for downstream tasks.
-
-    Returns:
-        ``(kept_clusters, duplicates_skipped, squelched)`` — matching the
-        DiscoveryReport shape (SDD lines 548-549).
-
-        - ``kept_clusters``: subset of `clusters` (identity-preserved) that
-          passed all three checks.
-        - ``duplicates_skipped``: list of
-          ``{cluster_id, reason, existing_moc}`` dicts.
-        - ``squelched``: list of ``{cluster_id, runs_remaining}`` dicts.
-
-    Pure: input lists / dicts are not mutated. The squelch registry is
-    never decremented or rewritten here.
-    """
-    del config  # reserved — Phase 6 reads no config fields today.
-
-    map_notes: list[dict] = list(cache.get("map_notes") or [])
-
-    kept: list[dict] = []
-    duplicates_skipped: list[dict] = []
-    squelched: list[dict] = []
-
-    # Local import keeps the lib dependency colocated with its only caller in
-    # this module — same pattern as `phase3_cluster`.
-    from lib.squelch import is_active as _squelch_is_active
-
-    for idx, cluster in enumerate(clusters or [], start=1):
-        cluster_id = f"MOC{idx:02d}"
-
-        # ── 1. Exact-title match ────────────────────────────────────────────
-        existing = _find_exact_title_match(cluster.get("title") or "", map_notes)
-        if existing is not None:
-            duplicates_skipped.append({
-                "cluster_id": cluster_id,
-                "reason": "exact-title",
-                "existing_moc": existing,
-            })
-            _log(
-                f"phase6: cluster {cluster_id!r} title={cluster.get('title')!r} "
-                f"matches existing MOC {existing!r} — skipping (exact-title)"
-            )
-            continue
-
-        # ── 2. Jaccard overlap ≥ 0.80 ──────────────────────────────────────
-        cluster_topics = _cluster_topic_set(cluster)
-        match_label, score = _find_jaccard_match(
-            cluster_topics, cluster.get("title") or "", map_notes
-        )
-        if match_label is not None:
-            duplicates_skipped.append({
-                "cluster_id": cluster_id,
-                "reason": "80-percent-overlap",
-                "existing_moc": match_label,
-            })
-            _log(
-                f"phase6: cluster {cluster_id!r} topic-set overlaps "
-                f"{match_label!r} (weighted={score:.2f}) — skipping"
-            )
-            continue
-
-        # ── 3. Squelch lookup (read-only) ──────────────────────────────────
-        signature = _compute_topic_signature(cluster)
-        if _squelch_is_active(squelch_registry or {}, signature):
-            entry = (squelch_registry or {}).get(signature)
-            runs_remaining = entry.runs_remaining if entry is not None else 0
-            squelched.append({
-                "cluster_id": cluster_id,
-                "runs_remaining": runs_remaining,
-            })
-            _log(
-                f"phase6: cluster {cluster_id!r} signature={signature!r} is "
-                f"squelched (runs_remaining={runs_remaining}) — skipping"
-            )
-            continue
-
-        kept.append(cluster)
-
-    _log(
-        f"phase6: kept={len(kept)} duplicates={len(duplicates_skipped)} "
-        f"squelched={len(squelched)}"
-    )
-
-    return (kept, duplicates_skipped, squelched)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# D3 — Inter-cluster member-overlap dedup (SDD ADR-13 D3, spec 021 T7.4)
-# ──────────────────────────────────────────────────────────────────────────────
-
-_MEMBER_OVERLAP_THRESHOLD: float = 0.80
-
-
-def _dedupe_overlapping_clusters(
-    clusters: list[dict],
-) -> tuple[list[dict], list[dict]]:
-    """Drop proposed clusters whose members are ≥80% inside a larger proposed cluster.
-
-    This is a NEW pass over PROPOSED clusters only — it does NOT touch
-    phase6_dedupe's topics-vs-existing-MOC logic.  The denominator is always
-    the SMALLER cluster's member count.
-
-    Sort order (stable, deterministic): size DESC, then cluster_id ASC.
-    When sizes tie the lower cluster_id is treated as the 'larger' reference so
-    the higher id is dropped — giving a deterministic outcome independent of
-    input order.
-
-    A dropped cluster is never re-evaluated as a 'larger' reference because only
-    clusters in `live` are iterated as refs — a dropped cluster is never appended
-    to `live`.
-
-    Returns (kept, drops) where drops entries share the duplicates_skipped
-    shape: {cluster_id, reason, existing_moc}.
-    """
-    if len(clusters) <= 1:
-        return list(clusters), []
-
-    sorted_clusters = sorted(
-        clusters,
-        key=lambda c: (-len(c.get("candidate_stems") or []), c.get("cluster_id", "")),
-    )
-
-    # Each entry: (cluster_dict, frozenset_of_members) — member sets built once.
-    live: list[tuple[dict, frozenset[str]]] = []
-    drops: list[dict] = []
-
-    for candidate in sorted_clusters:
-        cid = candidate.get("cluster_id", "")
-        cand_members = frozenset(candidate.get("candidate_stems") or [])
-        cand_size = len(cand_members)
-
-        if cand_size == 0:
-            # Empty cluster cannot be absorbed — treat as surviving.
-            live.append((candidate, cand_members))
-            continue
-
-        absorbed = False
-        for ref, ref_members in live:
-            overlap = len(cand_members & ref_members) / cand_size
-            if overlap >= _MEMBER_OVERLAP_THRESHOLD:
-                drops.append({
-                    "cluster_id": cid,
-                    "reason": "member-overlap",
-                    "existing_moc": ref.get("cluster_id", ""),
-                })
-                _log(
-                    f"d3: cluster {cid!r} member-overlap={overlap:.2f} "
-                    f"vs {ref.get('cluster_id')!r} — dropping"
-                )
-                absorbed = True
-                break
-
-        if not absorbed:
-            live.append((candidate, cand_members))
-
-    # Restore original input order for the kept set to keep downstream stable.
-    kept_ids = {c.get("cluster_id", "") for c, _ in live}
-    kept = [c for c in clusters if c.get("cluster_id", "") in kept_ids]
-    return kept, drops
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 6.5 — Existing-`up::` validation per candidate
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Match a single inline parent-marker relationship line whose target is a
-# wikilink. T2.2: target RESOLUTION goes through lib/up_parse.parse_up_from_content
-# (dual-up: inline + frontmatter). The inline-count regex is retained ONLY to
-# count inline markers for the multi-marker malformed-note warning — it no longer
-# resolves the target. The marker literal is injected from the active profile
-# (spec 028 T3.3) via lib.up_parse.up_marker_re, so the warning matches what
-# up_parse would pick as the inline candidate.
-
-
-def _moc_stems_from_cache(cache: dict) -> set[str]:
-    """Build a stem-set of every MOC indexed in `cache.map_notes`.
-
-    Phase 6.5 consults this set to decide whether an extracted `up::`
-    target is "valid" (target stem present in cache) or "broken"
-    (target stem absent). Path is reduced to its basename without
-    `.md` to match the wikilink-target shape (which carries the stem,
-    not the full path).
-    """
-    stems: set[str] = set()
-    for entry in cache.get("map_notes") or []:
-        if not isinstance(entry, dict):
-            continue
-        path = (entry.get("path") or "").strip()
-        if path:
-            stems.add(_stem_from_path(path))
-        # Honour explicit titles too — a wikilink target may use the
-        # human-readable title rather than the file stem when they differ.
-        title = (entry.get("title") or "").strip()
-        if title:
-            stems.add(title)
-    return stems
-
-
-def _note_stems_from_cache(cache: dict) -> set[str]:
-    """Stems of every cached non-MOC note (`entries` with kind == "note")."""
-    stems: set[str] = set()
-    for entry in cache.get("entries") or []:
-        if not isinstance(entry, dict) or entry.get("kind") != "note":
-            continue
-        stem = entry.get("stem") or _stem_from_path((entry.get("path") or "").strip())
-        if stem:
-            stems.add(stem)
-    return stems
-
-
-def phase65_validate_existing_up(
-    clusters: list[dict],
-    candidates: list[Candidate],
-    kado_client,
-    cache: dict,
-    parent_marker: str = "up::",
-) -> list[dict]:
-    """Decorate each cluster's children with their existing-`up::` state.
-
-    For every child stem in ``cluster.items``, read the candidate's note
-    body via Kado, extract the first `up::` marker, and classify it
-    against `cache.map_notes`:
-
-      - No `up::` line                 → state="absent",  target=None
-      - `up:: [[X]]` and X in cache    → state="valid",   target="X"
-      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X",
-        reason="not-a-moc" (X is a cached non-MOC note) or "unresolved"
-
-    Multiple `up::` lines on the same child surface as a stderr WARN —
-    Phase 6.5 keeps the first match and downstream Rule 4.2 / 4.5 logic
-    operates on it. Reading from Kado is the only side-effect.
-
-    .. note::
-        The plan signature is documented as ``(clusters, kado_client)``;
-        the implementation accepts ``candidates`` and ``cache`` too because
-        (a) Phase-3 clusters carry stems but not paths, so we need the
-        upstream candidates list to resolve stem → path for Kado reads,
-        and (b) cache.map_notes is the authoritative MOC index used to
-        classify `valid` vs. `broken` targets without an extra Kado round
-        trip per candidate. Documented as a deviation in plan/phase-2.md
-        T2.7.
-
-    Args:
-        clusters: Phase-6-kept clusters (`{topic, items, parent, tags,
-            ...}`). Each cluster's `items` is a list of candidate stems.
-        candidates: The Phase-1/2 candidate list, used to resolve
-            stem → path. Stems missing from the lookup map are skipped
-            (defensive — should never happen in normal flow).
-        kado_client: Anything exposing ``read_note(path) -> {"content": str, ...}``.
-        cache: Discovery cache dict; Phase 6.5 reads `map_notes` only.
-
-    Returns:
-        The input clusters, each augmented in-place with an
-        ``existing_up: list[{stem, state, target[, reason]}]`` field. Order follows
-        ``cluster.items`` for deterministic downstream rendering.
-
-    Side effects:
-        - One `kado_client.read_note` call per candidate.
-        - Stderr WARN per multi-`up::` body.
-        - Stderr WARN per failed Kado read (treated as absent, loop continues).
-    """
-    stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
-    moc_stems = _moc_stems_from_cache(cache)
-    note_stems = _note_stems_from_cache(cache)
-    inline_marker_re = up_marker_re(parent_marker)
-
-    multi_up_count = 0
-
-    for cluster in clusters or []:
-        rows: list[dict] = []
-        for item in cluster.get("items") or []:
-            # Cluster items can be plain stems (Phase-3 default) OR enriched
-            # dicts (forward-compat with downstream tasks). Normalise here.
-            if isinstance(item, str):
-                stem = item
-            elif isinstance(item, dict):
-                stem = item.get("stem") or item.get("path") or ""
-            else:
-                continue
-            if not stem:
-                continue
-
-            path = stem_to_path.get(stem)
-            if not path:
-                # Defensive: cluster references a stem that never appeared
-                # in candidates — skip rather than guess at a path.
-                _log(
-                    f"phase6.5: WARN: cluster item {stem!r} not in candidate "
-                    f"list; skipping existing-up:: validation for this child"
-                )
-                continue
-
-            # Guard against Kado read failures (note deleted between
-            # candidate collection and Phase 6.5, network error, permission
-            # denied, …). A single failing read must NOT abort decoration of
-            # the remaining candidates — we treat the unreadable child as
-            # `state="absent"` so downstream rendering keeps moving.
-            try:
-                note = kado_client.read_note(path)
-            except Exception as exc:  # noqa: BLE001 — defensive boundary
-                _log(
-                    f"phase6.5: WARN: kado read_note({path!r}) failed "
-                    f"({type(exc).__name__}: {exc}); treating as absent"
-                )
-                rows.append({"stem": stem, "state": "absent", "target": None})
-                continue
-
-            content = note.get("content", "") if isinstance(note, dict) else ""
-
-            # Multi-inline-`up::` detection: count inline marker hits before
-            # resolving so the warning fires per-note, not per-cluster. (The
-            # warning is inline-specific — a single frontmatter `up:` plus one
-            # inline `up::` is the normal conflict case, resolved by inline-wins,
-            # not a malformed multi-marker note.)
-            inline_targets = inline_marker_re.findall(content)
-            if len(inline_targets) > 1:
-                multi_up_count += 1
-                _log(
-                    f"WARN: multiple {parent_marker} markers in {path}; using first "
-                    f"({inline_targets[0]!r}, dropped {len(inline_targets) - 1} more)"
-                )
-
-            # T2.2 (C1/ADR-6): resolve the `up` relationship from the SAME
-            # read_note content via the up_parse SSoT — recognises both inline
-            # `up:: [[X]]` and frontmatter `up:` (inline wins on conflict),
-            # splitting the frontmatter block locally with no extra Kado call.
-            target = parse_up_from_content(content, parent_marker).target
-            state, reason = classify_up_target(target, moc_stems, note_stems)
-            row = {"stem": stem, "state": state, "target": target}
-            if state == BROKEN:
-                row["reason"] = reason
-            rows.append(row)
-
-        cluster["existing_up"] = rows
-
-    _log(
-        f"phase6.5: decorated {len(clusters or [])} cluster(s); "
-        f"multi-up:: warnings={multi_up_count}"
-    )
-    return list(clusters or [])
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Main
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _load_moc_config(config_path: Path):
-    """Lazy-load MocProposalConfig from shared-ctx-builder to avoid import cycle.
-
-    The sys.modules registration is required because Python 3.14's dataclass
-    machinery inspects the owning module's ``__dict__`` during class processing
-    (same fix applied in test_moc_proposal_config.py).
-    """
-    import importlib.util as _ilu
-
-    _name = "shared_ctx_builder"
-    if _name not in sys.modules:
-        _path = SCRIPT_DIR / "shared-ctx-builder.py"
-        _spec = _ilu.spec_from_file_location(_name, _path)
-        _mod = _ilu.module_from_spec(_spec)
-        sys.modules[_name] = _mod
-        _spec.loader.exec_module(_mod)
-    return sys.modules[_name].load_moc_proposal_config(config_path)
 
 
 def _build_kado_client():
@@ -1681,108 +231,6 @@ def _build_kado_client():
         return _NullKadoClient()
 
 
-def _enrich_cluster(
-    cluster: dict,
-    idx: int,
-    profile_dict: dict,
-    cache: dict,
-    mode: str,
-    trigger_arg: str,
-    denom: int,
-    moc_location: str,
-) -> tuple[dict, list[dict]]:
-    """Apply Phase 4 (title) + Phase 5 (parents) + metadata to one raw cluster.
-
-    Returns (enriched_cluster, parent_options_list). Pure — does not mutate input.
-    """
-    cluster_id = f"MOC{idx:02d}"
-    title = phase4_title(cluster, profile_dict, mode, trigger_arg)
-    parent_opts = phase5_resolve_parents(cluster, profile_dict, cache)
-
-    confidence = round(len(cluster.get("items") or []) / denom, 4)
-    topic_kw = [cluster["topic"]] if cluster.get("topic") else []
-
-    enriched = dict(cluster)
-    enriched.update({
-        "cluster_id": cluster_id,
-        "title": title,
-        "confidence": confidence,
-        "candidate_stems": list(cluster.get("items") or []),
-        "topic_keywords": topic_kw,
-        "location": moc_location,
-        "template": "t_moc_tomo",
-        "slug": slugify(title),
-        "existing_up": [],
-    })
-    return enriched, _serialise_parents(parent_opts)
-
-
-def _serialise_parents(parent_opts: list[ParentOption]) -> list[dict]:
-    return [
-        {"moc_stem": p.moc_stem, "confidence": p.confidence, "label": p.label}
-        for p in parent_opts
-    ]
-
-
-def _moc_location(profile_dict: dict) -> str:
-    """Folder for a new MOC: the profile's first `map_note.paths` entry."""
-    map_note_cfg = (profile_dict.get("concept_defaults") or {}).get("map_note") or {}
-    return (map_note_cfg.get("paths") or ["Atlas/200 Maps/"])[0]
-
-
-def _cap_orphans(
-    suggestions: list[dict], cap: int
-) -> tuple[list[dict], int, int]:
-    """Truncate a (pre-ordered) orphan-suggestion list to `cap` (ADR-12).
-
-    `suggestions` arrives link-first ordered from emit_orphan_suggestions, so the
-    head is the most-actionable. Returns (kept, total, overflow). A cap < 0 (or
-    a total at/under the cap) keeps everything with overflow 0.
-    """
-    total = len(suggestions)
-    if cap is not None and cap >= 0 and total > cap:
-        return suggestions[:cap], total, total - cap
-    return suggestions, total, 0
-
-
-def _run_moc_uplink_check(
-    cache: dict, config_path: Path, profile_name: str
-) -> dict:
-    """Focused MOC-parentage audit (ADR-12 / `--check-moc-uplinks`).
-
-    Runs ONLY the orphan link-or-create pass over `kind=="moc"` entries — no
-    clustering pipeline — and returns a `check-moc-uplinks` DiscoveryReport with
-    the (capped) MOC orphan suggestions.
-    """
-    moc_config = _load_moc_config(config_path)
-    orphan_all = emit_orphan_suggestions(cache.get("entries") or [], kinds=("moc",))
-    kept, total, overflow = _cap_orphans(orphan_all, moc_config.orphan_display_cap)
-    _log(f"check-moc-uplinks: {total} orphan MOC(s) → {len(kept)} shown (overflow {overflow})")
-    report = empty_report("check-moc-uplinks", "", profile_name)
-    report["orphan_suggestions"] = kept
-    report["orphan_total"] = total
-    report["orphan_overflow"] = overflow
-    return report
-
-
-NOT_RENDERED = "not_rendered"
-
-
-def _item_stem(item) -> str:
-    """Cluster item → stem; items are stems, enriched dicts carry `stem`."""
-    if isinstance(item, dict):
-        return str(item.get("stem") or "")
-    return str(item)
-
-
-def _member_up_fields(member) -> dict:
-    """The up:: fields of a member dict; the cached reason only when broken."""
-    fields = {"up_state": member.up_state, "up_target": member.up_target}
-    if member.up_state == "broken":
-        fields["up_broken_reason"] = member.up_broken_reason
-    return fields
-
-
 def _augment_rendered_clusters(
     clusters: list[dict],
     candidates: list[Candidate],
@@ -1794,62 +242,18 @@ def _augment_rendered_clusters(
 ) -> dict[str, int]:
     """Attach `link_members` + `link_lookup_status` to every cluster; return `link_stats`.
 
-    Only ``clusters[:max_results]`` (already confidence-sorted) are looked up;
-    the rest get ``not_rendered`` and cause no call. Lookups are keyed by
-    member PATH: a stem expands to every eligible candidate path carrying it,
-    and ``linked_with`` is mapped back to stems. Candidate paths that fail
-    ``NodeEligibility`` (except ``uncached``) are not looked up. Mutates the
-    clusters in place; never touches items, candidate_stems or confidence.
+    Plans the rendered slice's lookups, runs them in one `LinkLookup` session
+    and writes the result back (lib/moc_discovery_rendered_links.py).
     """
     eligibility = NodeEligibility(cache, profile_dict, vault_cfg)
-    paths_by_stem: dict[str, list[str]] = {}
-    for cand in candidates:
-        if not cand.stem or not cand.path:
-            continue
-        paths = paths_by_stem.setdefault(cand.stem, [])
-        ok, reason = eligibility.check(cand.path)
-        if (ok or reason == UNCACHED) and cand.path not in paths:
-            paths.append(cand.path)
-    path_to_stem = {p: s for s, paths in paths_by_stem.items() for p in paths}
-    path_map = {p: p for p in path_to_stem}
-
-    rendered = clusters[: max(0, max_results)]
-    lookup_clusters: list[dict] = []
-    for cluster in rendered:
-        keys: list[str] = []
-        for stem in (_item_stem(i) for i in cluster.get("items") or []):
-            # An unknown stem stays as a key with no path → augment marks the
-            # cluster failed without a call.
-            for key in paths_by_stem.get(stem, [stem]):
-                if key not in keys:
-                    keys.append(key)
-        lookup_clusters.append({"cluster_id": cluster["cluster_id"], "items": keys})
+    rendered, lookup_clusters, path_map, path_to_stem = plan_link_lookups(
+        clusters, candidates, eligibility, max_results
+    )
 
     with LinkLookup(kado_client) as lookup:
         result = augment_clusters(lookup_clusters, path_map, lookup, eligibility, cache)
 
-    for cluster in clusters:
-        cluster["link_lookup_status"] = NOT_RENDERED
-        cluster["link_members"] = []
-    for cluster in rendered:
-        links = result.clusters[cluster["cluster_id"]]
-        cluster["link_lookup_status"] = links.status
-        cluster["link_members"] = [
-            {
-                "stem": m.stem,
-                "path": m.path,
-                "linked_with": sorted({path_to_stem[p] for p in m.linked_with}),
-                **_member_up_fields(m),
-            }
-            for m in links.link_members
-        ]
-
-    stats = dict(result.stats)
-    _log(
-        f"links: rendered={len(rendered)} not_rendered={len(clusters) - len(rendered)} "
-        + " ".join(f"{k}={v}" for k, v in stats.items())
-    )
-    return stats
+    return apply_link_results(clusters, rendered, result, path_to_stem)
 
 
 def _run_pipeline(
@@ -1965,6 +369,7 @@ def _run_pipeline(
     )
     _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
 
+
     # ADR-13 D1: the note-orphan pass is REMOVED from the cluster pipeline.
     # Orphan suggestions are produced ONLY by _run_moc_uplink_check
     # (--check-moc-uplinks). The per-note orphan section (### Oxx) no longer
@@ -1973,31 +378,12 @@ def _run_pipeline(
     # emit_orphan_suggestions / _cap_orphans remain in scope — used by the
     # check path above.
 
-    report = empty_report(mode, trigger_arg, profile_name)
-    report.update({
-        "candidates_total": candidates_total,
-        "candidates_after_prefilter": len(candidates),
-        "candidates_capped": False,
-        "candidates": [
-            {
-                "stem": c.stem,
-                "path": c.path,
-                "topics": c.topics,
-                "existing_up": c.existing_up,
-                "classification": c.classification,
-                "level": c.level,
-            }
-            for c in candidates_with_topics
-        ],
-        "topic_clusters": kept_clusters,
-        "parent_options_per_cluster": parent_options_per_cluster,
-        "duplicates_skipped": duplicates_skipped,
-        "squelched": squelched,
-        "orphan_suggestions": [],
-        "orphan_total": 0,
-        "orphan_overflow": 0,
-        "link_stats": link_stats,
-    })
+    report = build_pipeline_report(
+        mode, trigger_arg, profile_name,
+        candidates_total, len(candidates), candidates_with_topics,
+        kept_clusters, parent_options_per_cluster, duplicates_skipped, squelched,
+        link_stats,
+    )
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
     partial = (len(duplicates_skipped) > 0 or len(squelched) > 0) and len(kept_clusters) > 0
@@ -2005,97 +391,8 @@ def _run_pipeline(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# --around — one new-MOC proposal from a seed note's links (spec 042 F2)
+# --around — the lookup half (spec 042 F2); builders in lib/moc_discovery_around.py
 # ──────────────────────────────────────────────────────────────────────────────
-
-AROUND_CLUSTER_ID = "MOC01"
-AROUND_MIN_NEIGHBOURS = 2  # seed + 2 neighbours = the 3-note floor
-# Why a note seed fails member eligibility, in user terms (owner decision A).
-AROUND_INELIGIBLE_REASONS = {
-    "not-md": "it is not a Markdown note",
-    "inbox": "it is still in the inbox",
-    "out-of-scope": "it is outside the atomic-note folders",
-    "excluded-tag": "it is tagged exclude/note",
-}
-
-
-@dataclass
-class AroundSeed:
-    """The resolved `--around` target."""
-
-    kind: str  # "note" | "moc"
-    path: str
-    stem: str
-    topics: list[str]
-
-
-def _around_key(arg: str) -> tuple[str, bool]:
-    """`--around` argument → (match key, is_path).
-
-    `[[stem]]` / `[[stem|alias]]` unwrap to the stem; anything with a `/` is a
-    vault path (`.md` added when missing); otherwise a trailing `.md` is dropped.
-    """
-    key = arg.strip()
-    if key.startswith("[[") and key.endswith("]]"):
-        key = key[2:-2].split("|", 1)[0].strip()
-    if "/" in key:
-        return (key if key.endswith(".md") else f"{key}.md"), True
-    return key.removesuffix(".md"), False
-
-
-def resolve_around_seed(
-    arg: str, cache: dict, eligibility: NodeEligibility
-) -> tuple[AroundSeed | None, str | None, str | None]:
-    """Resolve `arg` against the cache → (seed, abort_reason, abort_message).
-
-    Case-insensitive match on entry paths (path argument) or stems (name).
-    Refusal order: periodic path argument → ambiguous → not found → periodic →
-    (note seeds only) member eligibility.
-    """
-    key, is_path = _around_key(arg)
-    if is_path and eligibility.is_periodic(key):
-        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
-
-    folded = key.casefold()
-    matches: dict[str, dict] = {}
-    for entry in list(cache.get("entries") or []) + list(cache.get("map_notes") or []):
-        path = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(path, str):
-            continue
-        name = path if is_path else _stem_from_path(path)
-        if name.casefold() == folded:
-            matches.setdefault(path, entry)
-
-    if len(matches) > 1:
-        listed = ", ".join(sorted(matches))
-        return None, "around-ambiguous", (
-            f"around: '{arg}' matches several notes — give a path: {listed}"
-        )
-    if not matches:
-        return None, "around-not-found", (
-            f"around: '{arg}' not found — rebuild the cache or give a path"
-        )
-
-    path, entry = next(iter(matches.items()))
-    if eligibility.is_periodic(path):
-        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
-    kind = "moc" if eligibility.is_moc(path) else "note"
-    if kind == "note":
-        eligible, why = eligibility.check(path)
-        if not eligible:
-            reason_text = AROUND_INELIGIBLE_REASONS.get(why, f"it is not eligible ({why})")
-            return None, "around-ineligible", (
-                f"around: '{_stem_from_path(path)}' cannot seed a MOC — {reason_text}"
-            )
-    topics = [str(t) for t in entry.get("topics") or [] if t]
-    return AroundSeed(kind, path, _stem_from_path(path), topics), None, None
-
-
-def _around_abort(report: dict, reason: str, message: str) -> dict:
-    report["abort_reason"] = reason
-    report["abort_message"] = message
-    _log(f"around: abort → {reason!r}")
-    return report
 
 
 def _around_lookup(
@@ -2121,24 +418,6 @@ def _around_lookup(
     return links
 
 
-def _ref_stem(ref) -> str:
-    """Bare stem of one parent ref: `[[ ]]`, alias, heading, folder and `.md` stripped."""
-    s = str(ref).strip()
-    if s.startswith("[[") and s.endswith("]]"):
-        s = s[2:-2]
-    return bare_stem(s.split("|", 1)[0].split("#", 1)[0])
-
-
-def _up_targets_stem(entry: dict, stem: str) -> bool:
-    """True when a cache entry's `up_target` or any `up_value` element names `stem`."""
-    targets: list = []
-    for raw in (entry.get("up_target"), entry.get("up_value")):
-        value = unwrap_list_repr(raw)
-        targets.extend(value if isinstance(value, (list, tuple)) else [value])
-    folded = stem.casefold()
-    return any(t is not None and _ref_stem(t).casefold() == folded for t in targets)
-
-
 def _run_around_extension(
     report: dict, seed: AroundSeed, cache: dict, eligibility: NodeEligibility
 ) -> dict:
@@ -2146,31 +425,7 @@ def _run_around_extension(
     links = _around_lookup(report, seed, cache, eligibility, _build_kado_client())
     if links is None:
         return report
-    entries = {e.get("path"): e for e in cache.get("entries") or [] if isinstance(e, dict)}
-    missing = [
-        m for m in links.link_members if not _up_targets_stem(entries[m.path], seed.stem)
-    ]
-    report["link_stats"]["members_total"] = len(missing)
-    if not missing:
-        return _around_abort(
-            report, "no-missing-members",
-            f"around: '{seed.stem}' has no missing members — every eligible "
-            f"linked note already has up:: to it",
-        )
-    report["extension"] = {
-        "moc_stem": seed.stem,
-        "moc_path": seed.path,
-        "members": [
-            {
-                "stem": m.stem,
-                "path": m.path,
-                "linked_with": [seed.stem],
-                **_member_up_fields(m),
-            }
-            for m in missing
-        ],
-    }
-    return report
+    return apply_around_extension(report, seed, cache, links)
 
 
 def _build_around_note(
@@ -2182,67 +437,20 @@ def _build_around_note(
     links = _around_lookup(report, seed, cache, eligibility, kado_client)
     if links is None:
         return report
-    if len(links.link_members) < AROUND_MIN_NEIGHBOURS:
-        return _around_abort(
-            report, "fewer-than-3-notes",
-            f"around: fewer than 3 notes — '{seed.stem}' has "
-            f"{len(links.link_members)} eligible linked note(s), "
-            f"{AROUND_MIN_NEIGHBOURS} are needed",
-        )
+    aborted = around_too_few(report, seed, links)
+    if aborted is not None:
+        return aborted
 
     conventions = resolve_conventions(
         profile_dict=profile_dict, profiles_dir=DEFAULT_PROFILES_DIR
     )
-    title = ensure_suffix(seed.stem, moc_suffix(profile_dict))
-    parents = phase5_resolve_parents({"topic_keywords": seed.topics}, profile_dict, cache)
-    cluster = {
-        "topic": seed.stem,
-        "items": [seed.stem],
-        "parent": None,
-        "tags": [],
-        "cluster_id": AROUND_CLUSTER_ID,
-        "title": title,
-        "confidence": 1.0,  # topic formula: 1 member / 1 candidate
-        "candidate_stems": [seed.stem],
-        "topic_keywords": list(seed.topics),
-        "location": _moc_location(profile_dict),
-        "template": "t_moc_tomo",
-        "slug": slugify(title),
-        "existing_up": [],
-        "link_lookup_status": links.status,
-        "link_members": [
-            {
-                "stem": m.stem,
-                "path": m.path,
-                "linked_with": [seed.stem],
-                **_member_up_fields(m),
-            }
-            for m in links.link_members
-        ],
-    }
+    cluster, parents = build_around_cluster(seed, links, profile_dict, cache)
     candidate = Candidate(stem=seed.stem, path=seed.path, topics=list(seed.topics))
     clusters = phase65_validate_existing_up(
         [cluster], [candidate], kado_client, cache,
         parent_marker=conventions.parent_marker,
     )
-
-    report.update({
-        "candidates_total": 1,
-        "candidates_after_prefilter": 1,
-        "candidates": [
-            {
-                "stem": candidate.stem,
-                "path": candidate.path,
-                "topics": candidate.topics,
-                "existing_up": candidate.existing_up,
-                "classification": candidate.classification,
-                "level": candidate.level,
-            }
-        ],
-        "topic_clusters": clusters,
-        "parent_options_per_cluster": {AROUND_CLUSTER_ID: _serialise_parents(parents)},
-    })
-    return report
+    return fill_around_note_report(report, candidate, clusters, parents)
 
 
 def _run_around(
@@ -2264,138 +472,6 @@ def _run_around(
         report = _build_around_note(report, seed, cache, profile_dict, eligibility)
     _log("links: " + " ".join(f"{k}={v}" for k, v in report["link_stats"].items()))
     return report
-
-
-def _emit_abort_report(
-    mode: str, trigger_arg: str, profile_name: str, abort_reason: str
-) -> int:
-    """Write a DiscoveryReport with `abort_reason` set and return exit 0.
-
-    Per SDD §Error Handling, all four `abort_reason` values are user-facing
-    states (not fatal errors): the agent reads the JSON, surfaces the
-    German/English message, and the user retries. Fatal exits are reserved
-    for unresolved profiles and unreachable Kado.
-    """
-    report = empty_report(mode, trigger_arg, profile_name)
-    report["abort_reason"] = abort_reason
-    report["abort_message"] = ABORT_MESSAGES.get(abort_reason, abort_reason)
-    json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-    sys.stdout.write("\n")
-    return 0
-
-
-def _load_phase1_input(path: Path) -> tuple[str, str, str, list[Candidate]]:
-    """Load a phase1-input JSON file → (mode, trigger_arg, profile, candidates).
-
-    Raises ValueError on malformed input. Used by the `--phase1-input` flow
-    after the moc-architect agent has populated topics for cache-miss
-    candidates between the `--emit-phase1` and `--phase1-input` passes.
-    """
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("phase1-input must be a JSON object")
-    mode = payload.get("mode")
-    trigger_arg = payload.get("trigger_arg", "")
-    profile = payload.get("profile")
-    raw_candidates = payload.get("candidates")
-    if not isinstance(mode, str) or not isinstance(profile, str):
-        raise ValueError("phase1-input requires string `mode` and `profile`")
-    if not isinstance(raw_candidates, list):
-        raise ValueError("phase1-input requires list `candidates`")
-
-    candidates: list[Candidate] = []
-    for entry in raw_candidates:
-        if not isinstance(entry, dict):
-            continue
-        topics_raw = entry.get("topics")
-        topics = [str(t) for t in topics_raw if t] if isinstance(topics_raw, list) else []
-        candidates.append(
-            Candidate(
-                stem=str(entry.get("stem") or ""),
-                path=str(entry.get("path") or ""),
-                topics=topics,
-                existing_up=entry.get("existing_up"),
-                classification=entry.get("classification"),
-                level=int(entry.get("level") or 0),
-            )
-        )
-    return mode, str(trigger_arg), profile, candidates
-
-
-_BODY_EXCERPT_CHARS = 800  # cap per-note body included in phase1 JSON for agent extraction
-
-
-def _write_phase1_emit(
-    path: Path,
-    mode: str,
-    trigger_arg: str,
-    profile_name: str,
-    candidates: list[Candidate],
-    cache: dict,
-    moc_config,
-    kado_client,
-) -> str | None:
-    """Write the --emit-phase1 JSON: candidates with cache-resolved topics or null.
-
-    For each cache-miss candidate, includes a `body_excerpt` (first
-    `_BODY_EXCERPT_CHARS` characters) so the moc-architect agent can extract
-    topics inline without needing Kado MCP access. The agent rewrites the
-    file with all topics populated, then re-invokes the script with
-    `--phase1-input`.
-
-    Enforces the cache-miss cap (CON-6: 5 batches × 10 notes = 50) here too,
-    since phase 2's enforcement is skipped on the --phase1-input flow.
-
-    Returns the abort_reason if the cap was exceeded, otherwise None.
-    """
-    topics_by_path = _build_topics_index(cache)
-    misses_count = sum(1 for c in candidates if c.path not in topics_by_path)
-    cap = getattr(moc_config, "cache_miss_max_batches", 5)
-    max_misses = cap * LLM_BATCH_SIZE
-    abort_reason: str | None = None
-    if misses_count > max_misses:
-        _log(
-            f"emit-phase1: cache-miss-cap-exceeded "
-            f"(misses={misses_count} > cap={max_misses})"
-        )
-        abort_reason = "cache-miss-cap-exceeded"
-
-    out_candidates: list[dict] = []
-    for c in candidates:
-        if c.path in topics_by_path:
-            out_candidates.append(
-                {"stem": c.stem, "path": c.path, "topics": list(topics_by_path[c.path])}
-            )
-            continue
-        # Cache miss — fetch body for agent-side topic extraction (unless aborting).
-        body_excerpt = ""
-        if abort_reason is None:
-            try:
-                note = kado_client.read_note(c.path)
-                content = (note.get("content") if isinstance(note, dict) else "") or ""
-                body_excerpt = content[:_BODY_EXCERPT_CHARS]
-            except Exception as exc:  # noqa: BLE001 — kado errors are heterogeneous
-                _log(f"emit-phase1: read_note failed for {c.path}: {exc}; body_excerpt empty")
-        out_candidates.append(
-            {
-                "stem": c.stem,
-                "path": c.path,
-                "topics": None,
-                "body_excerpt": body_excerpt,
-            }
-        )
-
-    out = {
-        "schema_version": "1",
-        "mode": mode,
-        "trigger_arg": trigger_arg,
-        "profile": profile_name,
-        "abort_reason": abort_reason,
-        "abort_message": ABORT_MESSAGES.get(abort_reason) if abort_reason else None,
-        "candidates": out_candidates,
-    }
-    path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return abort_reason
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2446,8 +522,7 @@ def main(argv: list[str] | None = None) -> int:
             mode, trigger_arg, pre_loaded_candidates=pre_loaded,
         )
         if report is not None:
-            json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-            sys.stdout.write("\n")
+            emit_report(report)
         return exit_code
 
     # ── Normal flow + --emit-phase1 branch ───────────────────────────────────
@@ -2472,8 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         _log("dry-run — emitting minimal DiscoveryReport, skipping discovery phases")
         report = empty_report(mode, trigger_arg, profile_name)
-        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-        sys.stdout.write("\n")
+        emit_report(report)
         return 0
 
     # Cache load (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
@@ -2491,8 +565,7 @@ def main(argv: list[str] | None = None) -> int:
     # ── --around branch: single pass, no squelch (spec 042 F2) ──────────────
     if mode == "around":
         report = _run_around(cache, config_path, profile_name, trigger_arg)
-        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-        sys.stdout.write("\n")
+        emit_report(report)
         return 0
 
     # ── --check-moc-uplinks branch: MOC-parentage audit only, no clustering ──
@@ -2501,8 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     # never combines them).
     if args.check_moc_uplinks:
         report = _run_moc_uplink_check(cache, config_path, profile_name)
-        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-        sys.stdout.write("\n")
+        emit_report(report)
         return 0
 
     # ── --emit-phase1 branch: run Phase 1 only, write JSON, exit ─────────────
@@ -2551,8 +623,7 @@ def main(argv: list[str] | None = None) -> int:
         args, cache, squelch_registry, config_path, profile_name, mode, trigger_arg
     )
     if report is not None:
-        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
-        sys.stdout.write("\n")
+        emit_report(report)
     return exit_code
 
 

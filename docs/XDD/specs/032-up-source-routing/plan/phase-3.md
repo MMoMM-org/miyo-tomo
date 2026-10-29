@@ -17,7 +17,7 @@ phase: 3
 - `[ref: SDD/Implementation Examples; "expected_absent is not reachable here"]`
 - `[ref: SDD/Architecture Decisions; ADR-2, ADR-3, ADR-5, ADR-6]`
 - `[ref: PRD/Feature 2]`, `[ref: PRD/Feature 3]`, `[ref: PRD/Feature 6]`, `[ref: PRD/Business rules 2-8]`
-- Source to read: `garden-audit-parser.py:520-542` (both decision branches today), `lib/render_actions.py:1215-1240` (the `garden_action` dispatch)
+- Source to read: `garden-audit-parser.py:520-542` (both decision branches today), `lib/render_attachment_withhold.py:45-70` (the `garden_action` dispatch)
 
 **Key Decisions**:
 - **ADR-5** — the fallback to a body-oriented action is **forbidden**, not merely discouraged. It reproduces the defect while looking like graceful degradation.
@@ -120,7 +120,7 @@ The behavioural change. Everything before this was plumbing.
   >    SDD names it (Integration Points); use that name.
   >
   > **Two things that are easy to miss**, from `build_garden_audit_actions`' own docstring
-  > (`render_actions.py:1210-1213`):
+  > (`render_attachment_withhold.py:40-43`):
   > - *"Every action is stamped applied=False (build_actions does this centrally; this assembler
   >   bypasses it, so it stamps here)."* The new branch must stamp it itself — `applied` is a
   >   declared `$ref: applied_field` in the schema, and a happy-path fixture that does not check
@@ -131,7 +131,7 @@ The behavioural change. Everything before this was plumbing.
   > Extend the docstring's `garden_action -> actions` table with the new kind — it is the
   > WHY-persistence for this builder.
 
-  1. **Prime**: Read the `garden_action` dispatch at `render_actions.py:1215-1240` and the action contract `[ref: SDD/Constraints; CON-1]`.
+  1. **Prime**: Read the `garden_action` dispatch at `render_attachment_withhold.py:45-70` and the action contract `[ref: SDD/Constraints; CON-1]`.
   2. **Test** (RED):
      - a routed finding produces one `edit_frontmatter` with `path`, `property`, `operation`, `expected` and, for `set`, `value`
      - `property` is derived via `marker_word(parent_marker)` — a profile configured with a different marker yields a different property name `[ref: PRD/AC-F2.5, ADR-6]`

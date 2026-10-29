@@ -44,10 +44,10 @@ Delivers every refusal the plan will need, fully tested, before any surface can 
 
 - [x] **T2.2 `check_typed_folder`** `[activity: domain-modeling]` `[parallel: true]`
 
-  1. Prime: research.md R2 §5 (the measured `_asset_dest_join` / `_check_path_shape` table); `render_actions.py:389-410` `[ref: SDD/ADR-5]`
+  1. Prime: research.md R2 §5 (the measured `_asset_dest_join` / `_check_path_shape` table); `render_actions.py:182-203` `[ref: SDD/ADR-5]`
   2. Test: table-driven, one row per reason and at least one accepting row each side — `""`/`"  "` `blank`; `../x`, `a/../b`, `/abs`, `~/x`, `./a`, `a/./b`, `a\b`, `C:/x` `escapes_vault` (a `.` segment is a relative-path element, pinned here); `a//b` `empty_segment`; `" a"`, `"a /b"` `edge_whitespace`; `"a/"` `trailing_separator`; `a:b`, `a*b` `forbidden_character`; `a#b`, `C# Projekte`, `a[b` `breaks_link` (owner ruling 2026-10-12); `a/{{x}}`, `a<%b`, `a\x01b` `unsafe_sequence`; the inbox folder itself, a descendant, and a case-variant of it `inside_inbox`; accepted: `Atlas/290 Assets/296 Maps`, `Ä/ü ß`, a sibling whose name merely starts with the inbox name (`100 Inbox Archive` when the inbox is `100 Inbox`)
   3. Implement: `check_typed_folder(folder, *, inbox_path)` and `FOLDER_REFUSAL_REASONS`; one sentence per reason in `lib/refusal_sentences.py` (K16, used by T5.1)
-  4. Validate: property — for every input `_check_path_shape` (`render_actions.py:389-410`, incl. `{{`/`<%` and `_CONTROL_CHARS_RE` at `:111`) rejects as a folder, `check_typed_folder` refuses too; ruff clean
+  4. Validate: property — for every input `_check_path_shape` (`render_actions.py:182-203`, incl. `{{`/`<%` and `_CONTROL_CHARS_RE` at `:111`) rejects as a folder, `check_typed_folder` refuses too; ruff clean
   5. Success: `[ref: PRD/F2-AC1]` `[ref: PRD/F2-AC2]` `[ref: PRD/F2-AC3]` `[ref: PRD/F2-AC9]`; sentences for `[ref: PRD/F2-AC5]`
 
 - [x] **T2.3 Phase 2 validation** `[activity: validate]`

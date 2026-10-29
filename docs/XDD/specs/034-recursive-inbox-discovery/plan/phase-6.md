@@ -166,7 +166,7 @@ phase: 6
   approved must say so. Raised by T6.0c's implementer as the assumption its diff could not verify.
 
   **Model it on the record that already exists, do not invent one.** `validate_destinations`
-  (`render_actions.py:1030`) carries `case_only: bool` beside `kind`, and `_CASE_NOTE`
+  (`render_withhold.py:358`) carries `case_only: bool` beside `kind`, and `_CASE_NOTE`
   (`:827`) is appended to the reason when it is set. `render_md.py:592-611` renders that as a
   lead section before the action list. Reuse that struct and that structural pattern.
 
@@ -232,7 +232,7 @@ phase: 6
   the order implementation-defined, which the two-stage fixture is the only case that exposes.
 
   **The record is a group per surviving name, not a pair.** `validate_destinations` already
-  carries `dropped: [...]` inside one clash record (`render_actions.py:1034`) rather than one
+  carries `dropped: [...]` inside one clash record (`render_withhold.py:362`) rather than one
   record per dropped claimant. Follow that: survivor plus a **list** of absorbed spellings. A
   pairwise `(survivor, absorbed)` tuple is the more natural first guess and it breaks the
   two-stage fixture below — a three-way collapse would emit two records where the plan asserts

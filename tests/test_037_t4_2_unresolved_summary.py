@@ -14,7 +14,7 @@ un-appliable actions" section:
    rendered it (`tests/test_037_t3_1_remedy_outcomes.py`).
 2. PRD C2/S2 (spec 037): an `ignore`d conflict reaches NO report anywhere —
    `_build_move_asset_actions` emits its move unchanged against the occupied
-   destination and records nothing (`render_actions.py:819-823`). This file
+   destination and records nothing (`render_withhold.py:147-151`). This file
    adds "**Conflicts not resolved by rename**", built from the union of
    `skipped_assets` (`kind == "vault_collision_held"`) and
    `attachment_conflict_remedies` (`remedy == "ignore"`) — two source lists,
@@ -196,7 +196,7 @@ def test_degraded_rename_is_reported_despite_its_remedy_field_saying_rename():
     """Mutation: `[r for r in attachment_conflict_remedies if r.get("remedy")
     != "rename"]` in place of the two-list union. SDD:292 — a rename whose
     `proposed_name` came back null degrades to keep-in-inbox at render time
-    (`render_actions.py:780-784`) and lands in `skipped_assets` with
+    (`render_withhold.py:108-112`) and lands in `skipped_assets` with
     `kind: "vault_collision_held"`, but the `attachment_conflict_remedies`
     entry that PRODUCED it still says `"remedy": "rename"` — filtering that
     list on `!= "rename"` drops it. Sourcing from `skipped_assets` instead

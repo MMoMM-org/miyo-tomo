@@ -127,11 +127,11 @@ phase: 5
 
   | `file:line` | emits | guard | behind the drop? |
   |---|---|---|---|
-  | `render_actions.py:592-593` | `move_note.source_inbox_item` | `if "/" not in ...` | yes — inert unless the filter fails open |
-  | `render_actions.py:605-606` | `move_note.audio_peer` | same | yes — same |
-  | `render_actions.py:947` | `delete_source` (skipped items) | `sp if "/" in sp` | **no** — walks `skipped` |
-  | **`render_actions.py:967`** | **`delete_source` (daily-only stems)** | **none at all** | **no** — walks `daily_updates` |
-  | `render_actions.py:1063-1064` | `skip.source_path` | `if sp and "/" not in sp` | **no** — walks `skipped` |
+  | `render_inbox_actions.py:28-29` | `move_note.source_inbox_item` | `if "/" not in ...` | yes — inert unless the filter fails open |
+  | `render_inbox_actions.py:41-42` | `move_note.audio_peer` | same | yes — same |
+  | `render_withhold.py:275` | `delete_source` (skipped items) | `sp if "/" in sp` | **no** — walks `skipped` |
+  | **`render_withhold.py:295`** | **`delete_source` (daily-only stems)** | **none at all** | **no** — walks `daily_updates` |
+  | `render_withhold.py:391-392` | `skip.source_path` | `if sp and "/" not in sp` | **no** — walks `skipped` |
 
   All four Pass-2 files ignore the key entirely: `instruction-render.py`, `render_resolve.py`,
   `render_io.py`, `render_actions.py` — **0 occurrences of `item_key` in each.**
@@ -147,7 +147,7 @@ phase: 5
   Provenance: `suggestions-reducer.py:1727` binds `for idx, (stem, item_key, _entry) in
   enumerate(done_items, ...)` — `stem` is the bare display name and **`item_key` sits unused right
   beside it**. It reaches `daily_updates[].log_entries[].source_stem` at `:1831`/`:1841`, then
-  `render_actions.py:963`, then `:967`.
+  `render_withhold.py:291`, then `:967`.
 
   So for a subfolder note whose content is fully captured in the daily note:
   - with no root note of that name, the emitted delete targets a path that does not exist — the
@@ -355,7 +355,7 @@ phase: 5
 
 - [x] **T5.2 Pass 1 proposes a distinct name on a destination clash** `[activity: backend]`
 
-  1. **Prime**: Read `_dest_join` (`lib/render_actions.py:484`) — it builds the destination from
+  1. **Prime**: Read `_dest_join` (`lib/render_emit.py:41`) — it builds the destination from
      the title with no collision check — and `_disambiguate_filename` (`:444`), which guards
      only the intermediate rendered file within one render run, not the vault destination.
   **Amended 2026-09-07 after the TDD gate blocked the original four cases.** Two were
@@ -365,7 +365,7 @@ phase: 5
     existence check). No new vault access is needed for the third case. But it **fails open** —
     no Kado config or an unreachable Kado leaves `kado_client = None` — and it is skipped entirely
     under `--fan-resolve` and `--no-kado`.
-  - **`_dest_join` (`lib/render_actions.py:489`)** builds the destination from the title with no
+  - **`_dest_join` (`lib/render_emit.py:46`)** builds the destination from the title with no
     collision check, and **`_disambiguate_filename` (`:449`)** guards only the intermediate
     rendered file within one render run, never the vault destination. Both confirmed.
 
@@ -423,7 +423,7 @@ phase: 5
 - [x] **T5.3 Pass 2 validates destinations** `[activity: backend]`
 
   1. **Prime**: Read `[ref: SDD/Complex Logic]` — the four-action walkthrough — and
-     `_build_move_asset_actions` (`lib/render_actions.py:630-690`) as the reporting pattern to
+     `_build_move_asset_actions` (`lib/render_inbox_actions.py:66-123`) as the reporting pattern to
      follow.
 
      **Copy its reporting shape, invert its resolution.** That guard is **first-claim-wins**: the
@@ -567,7 +567,7 @@ phase: 5
      - `test_collision_does_not_suppress_the_notes_own_move_note` is still at
        `test_031_t2_4_destination_collision_guard.py:121`. The instruction points at real code.
      - `seen` and `claimed` are still distinct in `_build_move_asset_actions`
-       (`render_actions.py:651-679`). T5.3 reworked this file heavily; the distinction survived.
+       (`render_inbox_actions.py:87-115`). T5.3 reworked this file heavily; the distinction survived.
      - **T5.3's `validate_destinations` does not touch attachments.** It filters on
        `action == "move_note"` and `delete_source` only, never `move_asset`. So the two guards
        do not collide — and that is exactly why the gap below exists.
@@ -612,9 +612,9 @@ phase: 5
      settles it rather than leaving it to taste:
 
      ```
-     render_actions.py:1841   move_notes    = _build_move_note_actions(...)
-     render_actions.py:1843   move_assets, skipped_assets = _build_move_asset_actions(...)
-     render_actions.py:1852   out.extend(_build_delete_source_actions(...))
+     render_source_actions.py:230   move_notes    = _build_move_note_actions(...)
+     render_source_actions.py:232   move_assets, skipped_assets = _build_move_asset_actions(...)
+     render_source_actions.py:241   out.extend(_build_delete_source_actions(...))
      ```
 
      The paired `delete_source` actions do not exist yet when `_build_move_asset_actions` runs.
@@ -629,7 +629,7 @@ phase: 5
      **But a skipped asset does not currently say whose note it is — and that is your first
      change.** Corrected 2026-09-07 after a gate caught the claim above overstating the case.
      A skipped entry is `{"source", "destination", "reason", "kind"}`
-     (`render_actions.py:643-676`); nothing on it names the note that embedded the attachment,
+     (`render_inbox_actions.py:79-112`); nothing on it names the note that embedded the attachment,
      so a post-pass receiving it cannot tell which move to suppress.
 
      The information is already in scope and merely unrecorded. The loop is

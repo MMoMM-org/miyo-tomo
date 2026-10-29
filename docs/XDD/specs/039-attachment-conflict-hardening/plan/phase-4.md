@@ -22,7 +22,7 @@ phase: 4
 
 **Key Decisions**:
 - K1 is the **only** place an attachment's fate is decided. After T4.3/T4.4, `_build_move_asset_actions` and the embed rewrite contain no decision logic of their own (grep for `check_typed_name`, `remedy ==`, `claimed` in them → only K1).
-- Owners are collected in full, not first-only (`render_actions.py:820-829` today) — T5.2 depends on it.
+- Owners are collected in full, not first-only (`render_withhold.py:148-157` today) — T5.2 depends on it.
 - The census subtracts every inbox source this run moves; forgetting it makes every attachment ambiguous.
 - `ignore` skips the occupancy row only — a run collision still withholds it (PRD Rule 4).
 - K1 is built in two passes: outcomes for every source first, embeds second (SDD Decision table).
@@ -47,7 +47,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
 
 - [x] **T4.2 The plan `lib/attachment_plan.py`** `[activity: domain-modeling]`
 
-  1. Prime: everything in Phase Context; `_build_move_asset_actions` `render_actions.py:723-970` in full — every branch there becomes a row here `[ref: SDD/ADR-1; SDD/Decision table]`
+  1. Prime: everything in Phase Context; `_build_move_asset_actions` `render_withhold.py:51-298` in full — every branch there becomes a row here `[ref: SDD/ADR-1; SDD/Decision table]`
   2. Test: table-driven against fake K2/K3, one test per decision-table row with an accepting and a rejecting variant; plus: two Ignores onto one target → the second `collision` (Rule 4); a default folder with a trailing `/` refused `trailing_separator` on both paths; a folder equal to `concepts.asset` but owner-supplied → treated as default; a source withheld late in Pass A is not counted in Pass B; null folder and folder == `dirname(destination)` → `concepts.asset` from Pass 2 config (F1-AC5); folder under Keep/Ignore ignored (F1-AC6); original name in a new folder accepted (F1-AC10); empty name + typed folder → `blank` (F1-AC11); typed folder refused → no fallback target (F2-AC6); a bad folder in one source leaves the others planned (F2-AC7); K2 `absent` → move + `folder_created` (F2-AC8); non-conflict attachment onto a now-occupied target → `vault_occupied` (F3-AC2); Ignore onto occupied → move (F3-AC4); K2 `unanswered` → move + `unchecked` (F3-AC6); census: unique → bare when renamed / untouched when not (F4-AC1), others ≥ 1 incl. occupier or another in-run target → full path (F4-AC2), unrenamed default-folder ambiguous → full path (F4-AC3), inbox copy and other moved inbox sources not counted (F4-AC4), `None` → full path (F4-AC6); two sources → same target: second `collision`; case-only occupier → occupied; owners complete for a shared attachment
   3. Implement: `AttachmentDecision`, `AttachmentPlan`, `build_attachment_plan(...)` per SDD K1 (two passes); `plan_from_remedies(...)` test helper. Carried from Phase 3: call `check_typed_folder` with the vault-relative inbox path (`concepts.inbox`, e.g. `100 Inbox/`) or `inside_inbox` never matches; the parser hands over `""` owner-supplied for an empty, malformed (no or broken backticks) or self-contradicting duplicate folder line — K1 must refuse it (`blank`), never fall back to the default folder
   4. Validate: every row has both polarities; mutation check — delete the census subtraction and watch F4-AC4's test fail; ruff clean
@@ -55,7 +55,7 @@ Delivers the single decision site and rewires both of today's decision sites to 
 
 - [x] **T4.3 The move builder becomes a projection of the plan** `[activity: backend]`
 
-  1. Prime: `render_actions.py:723-970, 1494-1531, 1534-1637, 2786-2877`; `instruction-render.py:643-651` `[ref: SDD/ADR-1, ADR-7; SDD/Interface Specifications K5]`
+  1. Prime: `render_withhold.py:51-298, render_moc_actions.py:200-217, render_inbox_actions.py:146-238, render_actions.py:2786-2877`; `instruction-render.py:643-651` `[ref: SDD/ADR-1, ADR-7; SDD/Interface Specifications K5]`
   2. Test: `_build_move_asset_actions(manifest, plan)` emits one `move_asset` per planned move whose owners include a rendered manifest item, in today's order and id sequence; returns `skipped_assets` for withheld decisions with the new kinds and `owner_source_items`; returns `move_ids_by_origin` with **every** owner; `suppress_moves_for_unfiled_attachments` holds the notes for `typed_folder_refused` and `vault_occupied` and still not for `vault_collision_held`; `_attachment_suppression_reason` gives each new kind its own sentence (no "correct that inbox path" for them); the full 036/037/038 suite green with **no assertion changed** (F1-AC7, F3-AC3)
   3. Implement: projection; `build_actions(..., attachment_plan=plan)`; remove the decision branches from the builder; `instruction-render.py` builds the plan (with K2 and a census) at the `build_actions` call so the suite stays green — T4.5 moves the build before the loop; migrate harnesses via `plan_from_remedies`
   4. Validate: grep — no `check_typed_name` / `remedy ==` / `claimed` left in the builder; golden comparison on the 038 baseline byte-identical

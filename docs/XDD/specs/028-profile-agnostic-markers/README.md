@@ -39,7 +39,7 @@ Epic #20 (Profile-Agnostic Pipeline). Makes relationship markers (`up::`/`relate
 - Profiles already define `relationship_defaults.parent.marker`/`peer.marker` (miyo.yaml:106-113, lyt.yaml:98-105).
 - Markers are IDENTICAL across both current profiles (`up::`/`related::`) → F-16 is future-proofing, zero behavioral change today.
 - Only the MOC suffix differs today: miyo `" (MOC)"` vs lyt `""`.
-- Hardcoded seams: `lib/up_parse.py:55`, `lib/render_actions.py:110-111,169,274,319-369` (writer paths), `lib/topic_clusters.py:32`, `suggestions-reducer.py:483-528`, `shared-ctx-builder.py:261`, `moc-discovery.py:888-891` (`_PROFILE_TITLE_SUFFIX`) & `:1410`, `suggestion-parser.py:1211`.
+- Hardcoded seams: `lib/up_parse.py:55`, `lib/render_up_preservation.py:53-54,render_actions.py:124,render_up_preservation.py:185,230-264` (writer paths), `lib/topic_clusters.py:32`, `suggestions-reducer.py:483-528`, `shared-ctx-builder.py:261`, `moc-discovery.py:888-891` (`_PROFILE_TITLE_SUFFIX`) & `:1410`, `suggestion-parser.py:1211`.
 - **Design problem for SDD:** none of the 4 core scripts currently receive shared-ctx (instruction-render → vault-config.yaml; moc-discovery → loads profile directly; moc-tree-builder + suggestion-parser → nothing). A marker/suffix delivery channel must be designed per script.
 - New profile key to add: `map_note.name_suffix` (both profiles).
 

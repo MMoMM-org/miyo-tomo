@@ -458,10 +458,12 @@ reason next to the state.
   `entries`, else `unresolved`. `absent` and `valid` rows keep their
   three keys: no reason applies to them, and the row shape every existing
   consumer and test pins stays unchanged. This
-  mirrors `moc-tree-builder.py` `_resolve_up_state`, which writes the same
-  values into the cache as `up_broken_reason`. It is mirrored, not imported:
-  `moc-tree-builder.py` is a hyphenated script whose import pulls in the
-  whole cache build; the rule is three comparisons. `valid` keeps its own
+  uses the same classification as `moc-tree-builder.py`, which writes the
+  same values into the cache as `up_broken_reason`: both call
+  `lib/up_state.classify_up_target` (#216). Until then the rule was mirrored
+  here because importing the hyphenated builder pulls in the whole cache
+  build; a library module removes that cost and the drift risk of two copies.
+  `valid` keeps its own
   test (`_moc_stems_from_cache`, stems and titles), so this change only splits
   `broken` and moves no row between states.
 - **Link members, around and extension members.** `LinkMember` carries the

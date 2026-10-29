@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_moc_tree_builder.py — Behavioural tests for the rebuilt MOC-structure
 cache builder (spec 021, Phase 1 T1.4).
 
@@ -214,36 +214,8 @@ def test_caller_resolves_up_state_absent_valid_broken():
     assert by_path[stray]["up_value"] is None
 
 
-def test_resolve_up_state_reports_why():
-    """Spec 033 T1.1 / PRD F1: _resolve_up_state takes the note-stem set as a
-    third argument and returns (up_state, up_broken_reason). up_state's three
-    values are unchanged (ADR-2); up_broken_reason is a second, additive
-    return value that is None for "absent"/"valid" and non-None ("not-a-moc"
-    or "unresolved") for the two "broken" cases.
-    """
-    moc_stems = {"Home", "Shared"}
-    note_stems = {"Idea", "Shared"}
-
-    # target is a MOC stem → valid, no reason.
-    assert _builder._resolve_up_state("Home", moc_stems, note_stems) == ("valid", None)
-
-    # target is an in-scope note stem (not a MOC) → broken, not-a-moc.
-    assert _builder._resolve_up_state("Idea", moc_stems, note_stems) == (
-        "broken",
-        "not-a-moc",
-    )
-
-    # target is in neither set → broken, unresolved.
-    assert _builder._resolve_up_state("Nonexistent", moc_stems, note_stems) == (
-        "broken",
-        "unresolved",
-    )
-
-    # target is None → absent, no reason (unchanged).
-    assert _builder._resolve_up_state(None, moc_stems, note_stems) == ("absent", None)
-
-    # a stem in BOTH sets (a MOC also listed as a note) → MOC wins, valid.
-    assert _builder._resolve_up_state("Shared", moc_stems, note_stems) == ("valid", None)
+# The classification rule itself (formerly _resolve_up_state) is pinned in
+# tests/test_up_state.py, with a parity test against build_entries (#216).
 
 
 def test_cache_entry_carries_up_broken_reason_not_a_moc_vs_unresolved():

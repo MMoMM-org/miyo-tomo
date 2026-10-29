@@ -44,7 +44,8 @@ a sibling script, not a library.
 WHY: `up_state` — "absent" / "valid" / "broken" — requires knowledge of which
 notes currently exist in the vault (the MOC stem set). That knowledge lives with
 the caller (moc-tree-builder.py `build_entries`, moc-discovery.py
-`phase65_resolve_up`), not inside the parser. Embedding the stem-set lookup
+`phase65_validate_existing_up`, both through `lib/up_state.classify_up_target`
+since #216), not inside the parser. Embedding the stem-set lookup
 here would force every test to fabricate a full vault state and would tangle the
 parser's concerns with the discovery context. M1 (SDD spec 021 Phase 1 T1.1)
 explicitly states: "parse_up_from_content does NOT emit up_state; the caller

@@ -126,7 +126,7 @@ that do not use the `with` block must call `close()` after `neighbors()`,
 otherwise the gate stays installed on the client.
 
 WHY the settings are restored on close: the client's gate applies to every Kado
-tool, not only graph. Left installed, the 61st attempt of any later read, search
+tool, not only graph. Left installed, the first attempt past the budget of any later read, search
 or write on the same client would raise `KadoBudgetExhausted` and be paced.
 `LinkLookup` therefore installs gate and pacing for its lifetime and restores the
 previous values on `close()` (idempotent). Callers use

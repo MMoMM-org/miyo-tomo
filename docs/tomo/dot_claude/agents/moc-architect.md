@@ -100,8 +100,9 @@ every run, including `K = 0`, because "no link members" is itself the signal the
 owner needs to judge whether link discovery ran (F7-AC2) — an omitted suffix
 would be indistinguishable from a run where the feature never fired. The
 ` (S skipped: budget)` suffix appears only when `clusters_skipped_budget > 0`:
-the 60-attempt graph budget (ADR-4) degrades silently per cluster, and this is
-the one place the user learns proposals were written without link evidence.
+the 120-attempt graph budget (ADR-4) degrades silently per cluster, and this
+suffix and ` (P sampled: budget)` are the one place the user learns proposals
+were written without, or with only partial, link evidence.
 Failed lookups (`link_stats.failed`) go to `Aborts/notes` as
 `lookups failed: F`, matching the SDD error table, because a failure is a
 warning about the run rather than a count of what it produced. When the payload

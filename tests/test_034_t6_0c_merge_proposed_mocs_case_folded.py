@@ -340,7 +340,7 @@ def _manifest_for(confirmed: list[dict]) -> list[dict]:
 
 
 def test_derive_expected_counts_one_create_moc_and_the_audit_completes(tmp_path):
-    """`derive_expected` (instructions-diff.py:278) counts one expected
+    """`derive_expected` (instructions_diff_expected.py:119) counts one expected
     create_moc per confirmed item with no destination comparison of its own.
     With the merge folded, the confirmation carries ONE item, so the count
     matches what T6.0's folded `by_dest` emits — and the audit's own outcome is

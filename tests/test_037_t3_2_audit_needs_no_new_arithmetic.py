@@ -11,10 +11,10 @@ evidence, not by a docstring.
 Verified fact this whole file turns on (Prime step,
 `docs/XDD/specs/037-asset-destination-collision-is-a-pass1-decision/plan/
 phase-3.md` T3.2 bullet 1): `derive_expected`'s attachment block
-(`instructions-diff.py:481-493`) keys `move_asset` on the SOURCE path via
+(`instructions_diff_expected.py:288-300`) keys `move_asset` on the SOURCE path via
 `attachments_seen: set[str]` and counts with `len()`; `summarize_actual`
-(`:520-523`) is a raw per-kind tally over `instrs["actions"]`.
-`_subtract_skipped_assets` (`:922-946`) decrements the expected count once per
+(`instructions_diff_expected.py:328-331`) is a raw per-kind tally over `instrs["actions"]`.
+`_subtract_skipped_assets` (`instructions_diff_reconcile.py:184-209`) decrements the expected count once per
 entry in `tomo.skipped_assets`, regardless of any `kind` field. True when this
 file was written: `instruction-render.py` did not write `kind` into that JSON
 block at all. **Spec 038 T3.2 changed that premise** — `kind` is now
@@ -121,7 +121,7 @@ def _atomic(item_key: str, title: str, *, idx: int, attachment: str) -> tuple[di
         "item_key": item_key,
         "parent_mocs": [],
         # derive_expected counts move_asset from the CONFIRMED item's
-        # attachments (instructions-diff.py:491-492), not the manifest's —
+        # attachments (instructions_diff_expected.py:298-299), not the manifest's —
         # a fixture that omits it would test the audit against a shape the
         # parser never produces (see test_034_t5_4_attachment_clash_
         # suppression.py:126-130).

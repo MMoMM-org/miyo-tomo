@@ -9,7 +9,7 @@
 #
 # Output formats below are COPIED from Tomo's scripts, not generated; when one
 # of those changes, re-check the copy:
-#   audit RESULT lines   tomo/scripts/instructions-diff.py:762-765
+#   audit RESULT lines   tomo/scripts/lib/instructions_diff_report.py:276-283
 #   run id format        tomo/scripts/run-id.py:5  (YYYY-MM-DDTHH-MM-SSZ-<6 hex>)
 #   delete notice        tomo/scripts/lib/render_md.py:838-854 (_render_withdrawn_delete_notice)
 #                        reasons: tomo/scripts/lib/render_helpers.py:213-219
@@ -122,7 +122,7 @@ PY
   if [ "$AUDIT_RESULT" = "fail" ]; then
     cat >> scripts/instructions-diff.py <<'PY'
 # COVERAGE-GAP-91c2 is a synthetic marker (the real mismatch output is a [DIFF]/[MISSING]
-# table, instructions-diff.py:719-752); only the two RESULT: lines are copied (:762-765).
+# table, instructions_diff_report.py:101-152); only the two RESULT: lines are copied (:276-283).
 print("COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)")
 print("RESULT: FAIL — count or coverage mismatch above.")
 sys.exit(1)

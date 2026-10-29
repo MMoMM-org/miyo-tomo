@@ -434,7 +434,7 @@ observed failing — the repo's precondition for a STRICT block (root
 ### WHY the `Coverage audit:` Line Is the `RESULT:` Line Verbatim
 
 The owner and the gate both read the audit's own words. `instructions-diff.py`
-prints exactly one of two fixed lines (`tomo/scripts/instructions-diff.py:762-765`);
+prints exactly one of two fixed lines (`tomo/scripts/lib/instructions_diff_report.py:276-283`);
 a paraphrase — even a comma for a dash — is a sentence the audit never said,
 and the owner cannot tell a reworded OK from a reworded FAIL by shape. PRD
 F3-AC3 requires the line unchanged in the final message

@@ -77,7 +77,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: focused + full suite green; ruff clean
   5. Success: the user knows from the doc alone to review, tick Accept and run `/inbox`
 
-- [ ] **T5.3d An existing up:: is always kept; the doc says what happens** `[activity: backend]`
+- [x] **T5.3d An existing up:: is always kept; the doc says what happens** `[activity: backend]`
 
   1. Prime: `tomo/scripts/lib/render_actions.py` `emit_up_preservation_actions` (Rules 4.2 / 4.3 / 4.5) and `up_target_is_broken`; `moc-tree-builder.py` `_resolve_up_state` (`up_broken_reason`: `not-a-moc` / `unresolved`); `moc-discovery.py` Phase 6.5 (`phase65_validate_existing_up`); `lib/link_members.py` `_link_member`; `suggestions-reducer.py` `_child_annotation`; live finding: 19 `not-a-moc` + 22 `unresolved` notes labelled "existing up:: broken — ignored" while render keeps a resolving target as `related::` `[ref: SDD/Error Handling]`
   2. Test: render — an existing `up::` whose target is not a MOC, or does not exist, is handled like a valid one (Override unticked → new MOC `up::`, old target `related::`; ticked → old `up::` kept, new MOC `related::`); no `kado-graph` call for the check; self-link guard unchanged. Doc — topic and link members label `not-a-moc` as `(existing up:: [[X]] → becomes \`related::\`)` and `unresolved` as `(existing up:: [[X]] — note not found → becomes \`related::\`)`; `valid` and `absent` unchanged; no doc says "broken — ignored"

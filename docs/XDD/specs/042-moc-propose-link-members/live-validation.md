@@ -109,11 +109,25 @@ The review surfaced a usability gap: the doc did not say what to do with it. T5.
 owner-approved `> **How to use this proposal**` block under `# MOC Proposal`
 (`suggestions-reducer` 1.68.0). The four docs above predate it.
 
+## "existing up:: broken — ignored" (fixed in T5.3d)
+
+The docs labelled 41 members "existing up:: broken — ignored": 19 whose `up::` names a
+non-MOC note (`up_broken_reason: not-a-moc`, e.g. `Architect` → `Architects & Gardeners`)
+and 22 whose target is not in the scan (`unresolved`). Render actually kept a resolving
+target as `related::` (Rule 4.2) and dropped only a dangling one (Rule 4.3), so the label
+contradicted the instructions. Owner decision: no user-written `up::` is ever dropped. Rule
+4.3 and its per-child `kado-graph` check are retired; every existing target follows Rule
+4.2 / 4.5, and the doc says so (`render_actions` 0.33.0, `moc-discovery` 0.25.0,
+`link_members` 0.4.0, `suggestions-reducer` 1.69.0). Host render of `around:Mapping Method`
+against live Kado after the fix:
+
+```
+- [ ] [[Architect]] (existing up:: [[Architects & Gardeners]] → becomes `related::`) — linked with [[Mapping Method]]
+- [ ] [[Mental Squeeze Point]] (existing up:: [[FlowCreation MOC]] — note not found → becomes `related::`) — linked with [[Mapping Method]]
+```
+
 ## Observations outside spec 042 (backlog candidates)
 
-- Phase 6.5 labels an `up::` to an existing non-MOC note "existing up:: broken — ignored"
-  (`moc-discovery.py` Phase 6.5: target not in the MOC stems → `broken`). Misleading wording;
-  ticking such a member replaces that `up::`.
 - Topic clustering yields titles such as "(Quote) (MOC)" and "§ (MOC)".
 - The agent skipped Step 2 on repeated runs in one session and used `date +%s` instead of
   `run-id.py` for the run id; no effect on the output.
@@ -124,3 +138,7 @@ owner-approved `> **How to use this proposal**` block under `# MOC Proposal`
 - Code-review suggestions not taken: stderr tests for the seed-lookup and fewer-than-3
   aborts, a WHY sentence that resolve aborts log no `links:` line, a mid-cluster budget stop
   discarding a sampled cluster's partial hits (pinned behaviour).
+- The `not-a-moc` / `unresolved` classification is mirrored in `moc-discovery.py` Phase 6.5
+  and `moc-tree-builder._resolve_up_state` with no parity test; a shared helper in `lib/`
+  or one parity test would stop drift. A broken row without a reason (cache from before
+  spec 033) gets the plain `→ becomes related::` label by design.

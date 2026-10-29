@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.67.1
+# version: 1.68.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1633,6 +1633,22 @@ def _render_cluster_section(
     return "\n".join(lines)
 
 
+_MOC_PROPOSAL_HOWTO = "\n".join(
+    [
+        "> **How to use this proposal**",
+        "> 1. Review each section below. Untick members that do not",
+        f">    belong; tick link members (`{LINK_MEMBER_MARKER.strip()} …`) that do.",
+        "> 2. Check the parent, and tick the up::-Handling Override if",
+        ">    existing `up::` links should stay.",
+        "> 3. Tick **Accept** on every section you want. Sections",
+        ">    without Accept are ignored.",
+        "> 4. Run `/inbox`. Tomo turns the accepted sections into an",
+        ">    instruction set; apply it with Hashi to create or extend",
+        ">    the MOC, add the `up::` links and list the members.",
+    ]
+)
+
+
 def render_moc_proposal_doc(
     report: dict,
     config,
@@ -1727,6 +1743,8 @@ def render_moc_proposal_doc(
         "# MOC Uplink Check" if check_mode else "# MOC Proposal",
         "",
     ]
+    if not check_mode:
+        body_lines.extend([_MOC_PROPOSAL_HOWTO, ""])
 
     if extension:
         body_lines.append(_render_extension_section("MOC01", extension, trigger_field))

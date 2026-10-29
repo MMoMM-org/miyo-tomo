@@ -1973,3 +1973,29 @@ there is no cluster to take the slug from and the owner reads filenames as the
 signal of what a doc is.
 
 [ref: PRD/F3-AC5]
+
+## The proposal-doc header carries a how-to block (spec 042 T5.3c)
+
+WHY: a `/moc-propose` doc is the only surface the owner sees; nothing says what
+to do with it. Pass-1 docs carry a `>` guidance block for the same reason, and
+the MOC proposal now does too, between `# MOC Proposal` and the first `###`.
+The text is owner-approved and rendered verbatim (`_MOC_PROPOSAL_HOWTO`).
+
+- It is rendered for create, around and extension docs and NOT for the
+  `check-moc-uplinks` audit doc, which is read, not accepted section by section.
+- It parses to nothing in every reader, by construction and by test: every
+  line starts with `>`, so no checkbox regex (`_RE_ACCEPT`, `RE_CHECKED`)
+  matches, `**Accept**` sits mid-line, and the section splitter only collects
+  lines from the first `### MOCxx` on, so the header is never inside a block.
+  The text contains the link-line marker ("— linked with") as prose; the
+  readers apply `LINK_MEMBER_MARKER` only to lines inside a `#### Children`
+  section, so the header never reaches that check.
+- The doc is written fresh by `render_moc_proposal_doc` on every run (it
+  returns filename and body; nothing appends to an existing doc), so the block
+  cannot appear twice.
+- The wording is prose for the owner, not a parse contract. Changing it needs
+  no reader change, but the surrounding `# MOC Proposal` + blank line + block
+  + blank line layout is pinned by `tests/test_moc_proposal_howto_block.py`.
+- The block names the link-line marker through `LINK_MEMBER_MARKER.strip()`,
+  not as literal text: `test_link_members.py` forbids a second copy of the
+  marker in the reducer source (ADR-7), and the rendered text is identical.

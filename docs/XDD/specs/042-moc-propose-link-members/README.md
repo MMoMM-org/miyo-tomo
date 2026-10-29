@@ -13,8 +13,8 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.1; 6 Must, 1 Should, 1 Could; 29 acceptance criteria |
-| solution.md | completed | v1.0; 11 components, ADR-1…ADR-7 confirmed 2026-10-28; 29 EARS criteria, 1:1 with the PRD |
+| requirements.md | completed | v1.4; 6 Must, 1 Should, 1 Could; 29 acceptance criteria |
+| solution.md | completed | v1.2; 11 components, ADR-1…ADR-7 confirmed 2026-10-28 (ADR-4 amended 2026-10-29); 30 EARS criteria, 29 1:1 with the PRD plus F2-AC5 |
 | plan/ | completed | 5 phases, 20 tasks incl. 5 phase validations (5 parallel); 29 criteria mapped in plan/README.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`

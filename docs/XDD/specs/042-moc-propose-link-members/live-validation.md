@@ -18,7 +18,7 @@ test vault's `100 Inbox/`. Lines quoted in code blocks are copied byte for byte.
 | Attempts ≤ budget per run | ✅ 102 / 120 (scan), 1 (each `around:`) |
 | 0 rate-limit aborts | ✅ 0; 429s occurred only on non-graph calls and were retried |
 | No periodic note, MOC, attachment or out-of-scope note proposed | ✅ all 20 scan link members pass `NodeEligibility`, all under `Atlas/202 Notes/`; `around:` members likewise atomic notes |
-| Owner review and tick ratio | ✅ 5 of 14 link members ticked in "Definition (MOC)" (36 %); 39 of 45 topic members kept |
+| Owner review and tick ratio | ❌ engagement target (≥ half of link members ticked, PRD Success Metrics) missed: 5 of 14 in the reviewed "Definition (MOC)" section (36 %); 39 of 45 topic members kept. Recorded as T5.3 requires; see close-out |
 | Every ticked member reaches the instructions | ✅ 44 / 44 ticked → `up::` + MOC body; 0 of 15 unticked; instructions-diff OK |
 
 ## Run 1a — default scan, first attempt (aborted)

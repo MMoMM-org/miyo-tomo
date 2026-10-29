@@ -94,8 +94,8 @@ When implementation requires changes from the specification:
 *GATE: Read all files in this section before starting any implementation.*
 
 **Specification**:
-- `docs/XDD/specs/042-moc-propose-link-members/requirements.md` - Product Requirements (v1.1, 29 criteria)
-- `docs/XDD/specs/042-moc-propose-link-members/solution.md` - Solution Design (v1.0, ADR-1…ADR-7)
+- `docs/XDD/specs/042-moc-propose-link-members/requirements.md` - Product Requirements (v1.4, 29 criteria)
+- `docs/XDD/specs/042-moc-propose-link-members/solution.md` - Solution Design (v1.2, ADR-1…ADR-7)
 - `docs/XDD/specs/042-moc-propose-link-members/README.md` - Owner decisions and the live `kado-graph` probe
 - `docs/tomo/scripts/moc-discovery.md`, `docs/tomo/scripts/lib/render_actions.md` - WHY layers that get new sections
 
@@ -103,7 +103,7 @@ When implementation requires changes from the specification:
 - **ADR-1**: Link source is live `kado-graph neighbors` via `KadoClient.graph`; never pass `limit`.
 - **ADR-2**: Augment only `clusters[:max_results]`, after D3 + sort, before Phase 6.5; memoise per member path; ≥ 2 member hits.
 - **ADR-3**: Eligibility offline from cache + profile + vault-config; uncached nodes skipped and counted.
-- **ADR-4**: 60 attempts per run incl. retries; ≥ 0.3 s pacing; `attempt_count` + `attempt_gate`; all-or-nothing per cluster.
+- **ADR-4** (v1.2): 120 attempts per run incl. retries; ≥ 0.3 s pacing; `attempt_count` + `attempt_gate`; fair share per rendered cluster, larger clusters `sampled`.
 - **ADR-5/6/7**: Extension stays a `moc-proposal` doc (`### MOCxx — Extend [[X]]`, `**Extends:**`) → `extend_moc`; already-linked via `outgoing(moc)` at render time; link lines (` — linked with `) stay out of the squelch signature.
 
 **Implementation Context**:

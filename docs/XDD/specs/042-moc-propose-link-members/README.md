@@ -56,6 +56,7 @@
 | 2026-10-29 | ADR-4 v1.2: budget 120 attempts, fair share per rendered cluster, larger clusters `sampled` (first `share` uncached members, item order) | Live scan: 60 all-or-nothing left 3 of 5 rendered clusters (62/45/17 members) without lookups, 2 proposals with link members. Owner: "1 plus mehr budget". SDD v1.2, PRD v1.4. |
 | 2026-10-29 | T5.3c: proposal-doc header gets a `> **How to use this proposal**` block (review, tick/untick, Accept, run `/inbox`, apply with Hashi) | Owner after the live tick review: the doc did not say what to do with it. Text approved verbatim; in spec 042, not a separate issue. |
 | 2026-10-29 | T5.3d: an existing `up::` is never dropped. A target that is not a MOC, or does not exist, becomes `related::` like a valid one (Rule 4.3 retired); the doc labels say so (`not-a-moc` plain, `unresolved` with "note not found") | Live review: 41 notes labelled "existing up:: broken — ignored" while render kept resolving targets as `related::`. Owner: "unresolved sollte auch related werden, mit der Anmerkung, dass die Notiz nicht existiert — vielleicht wollte der Nutzer die MOC ja erstellen." |
+| 2026-10-29 | Engagement KPI (≥ half of shown link members ticked) missed at 5 of 14; documented, no tuning | Owner: "es ist gut so — ich wusste nicht, dass ich x % anhaken sollte, ist sowieso eine blöde KPI." The owner ticked by judgment, which is the intended use; the ratio is not a quality signal for this spec. |
 
 ## Context
 

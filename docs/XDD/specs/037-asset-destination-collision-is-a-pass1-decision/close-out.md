@@ -116,7 +116,7 @@ unlocked.
 
 So ADR-5 could be written as "no wire field" **because** the permissive seam was
 already there. T4.1's mutation is the counterfactual, executed: append any stray
-key to the `move_asset` dict (`render_actions.py:839-844`) and the consumer's
+key to the `move_asset` dict (`render_withhold.py:167-172`) and the consumer's
 `additionalProperties: false` (`:105-116`) rejects the set. That is what
 "anywhere else" would have cost.
 
@@ -294,7 +294,7 @@ Two mechanisms, both working as written:
    move_note origins, tag-handler groups) and an attachment move is none of
    them. By 036's own logic the delete IS justified: the note's content was
    captured by the atomic.
-2. ADR-6's residue rule (`render_actions.py:1410`) cannot fire here at all —
+2. ADR-6's residue rule (`render_moc_actions.py:116`) cannot fire here at all —
    not because `ignore` was excluded, but because it keys on `skipped_assets`
    and an `ignore`d conflict never produces an entry there. The exclusion that
    IS explicit covers `vault_collision_held`, per the owner's 2026-09-27

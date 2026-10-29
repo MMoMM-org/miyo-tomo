@@ -174,7 +174,7 @@ version: "1.3"
   - Byte-identical proposal docs for runs with no link members (every existing reducer test).
   - Squelch signatures of topic clusters; the `drop_sources == WITHDRAWAL_GUARDS` assert; the anchor no-leak contract; `applied=False` stamping.
   - The two-pass flow: `--emit-phase1` makes zero graph calls.
-  - The `create_moc` proposal gate keyed on `override_preserve_existing_up` (`render_actions.py:1511, :2121`).
+  - The `create_moc` proposal gate keyed on `override_preserve_existing_up` (`render_moc_actions.py:217, render_garden_actions.py:17`).
 - **Can Modify**: `moc-discovery.py`, `kado_client.py` (additive), reducer, both parsers, `instruction-render.py`, `render_actions.py`, `instructions-diff.py`, `moc-propose.md`, `moc-architect.md`, their `docs/tomo/` mirrors and tests.
 - **Must Not Touch**: `synthesis-conductor.md`, `inbox.md`, `settings.json`, `instructions.schema.json`, `hashi-instructions.schema.json`, `state-promoter.py`, `inbox-triage.py`, `lib/topic_clusters.py` (shared with the reducer).
 

@@ -220,7 +220,7 @@ def test_keep_in_inbox_conflict_passes_the_audit(capsys):
 def test_ignore_conflict_passes_the_audit_move_counted_as_any_other(capsys):
     """`[ref: SDD/Interface Specifications]` `ignore` emits the move
     unchanged and records NOTHING in `skipped_assets`
-    (`render_actions.py:730-731, 819-823`) — the audit never learns a
+    (`render_withhold.py:58-59, 147-151`) — the audit never learns a
     conflict existed, and must still reconcile because the move it sees is
     indistinguishable from a conflict-free one."""
     pairs = [_atomic(ITEM_KEY, "Karte", idx=1, attachment=ATTACHMENT)]
@@ -246,7 +246,7 @@ def test_successful_rename_passes_the_audit_destination_agnostic(capsys):
 def test_degraded_rename_passes_the_audit_load_bearing_variant(capsys):
     """`[ref: SDD/Runtime View — A rename that lost its name]` The
     load-bearing rename variant: `proposed_name: null` degrades to
-    `keep_in_inbox` (`render_actions.py:782-812`) and DOES add a
+    `keep_in_inbox` (`render_withhold.py:110-140`) and DOES add a
     `vault_collision_held`-shaped entry to `skipped_assets` — unlike a
     successful rename. Only `_subtract_skipped_assets` reconciling that entry
     keeps this run at `RESULT: OK` instead of `[DIFF]` — expected `move_asset`

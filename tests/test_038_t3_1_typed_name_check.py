@@ -10,7 +10,7 @@ exact defect this spec closes, wearing a different hat.
 
 THREE refusal classes (owner ruling 2026-10-01 — `taken` is a property of
 the run, not of the string, and is already decided at
-render_actions.py:945):
+render_withhold.py:273):
 
   1. separator present   -- a name is not a bare basename
   2. forbidden character -- one of FORBIDDEN_CHARS (10 members, incl. NUL)
@@ -199,7 +199,7 @@ def test_empty_string_is_refused():
 def test_whitespace_only_is_refused():
     """" " is refused as blank -- closing the gap the two existing
     truthiness guards leave (`not " "` is False, so
-    render_actions.py:788's `not remedy_entry.get("proposed_name")` and
+    render_withhold.py:116's `not remedy_entry.get("proposed_name")` and
     `_asset_dest_join`'s `if not basename` at :572 both let it through
     today). This check must precede both.
 

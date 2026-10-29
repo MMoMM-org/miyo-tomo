@@ -25,7 +25,7 @@ What this file pins:
   * no bare-stem composition survives in the Pass-2 render stage.
 
 CASE 0 (`TestCase0DailyOnlyDeleteReachability`) is the reachability fixture
-for `render_actions.py:967`, the one site that emits a `delete_source` with
+for `render_withhold.py:295`, the one site that emits a `delete_source` with
 no guard at all. It is asserted separately and first because it is the only
 site in this task that can destroy user data.
 
@@ -150,7 +150,7 @@ def _daily_only_result(stem: str, item_key: str) -> dict:
 
     This is what makes an item `daily-only`: the reducer emits no per-item
     section for it, so it appears in the run ONLY as a daily-note entry
-    carrying a bare `source_stem`. That is the input to `render_actions.py:967`.
+    carrying a bare `source_stem`. That is the input to `render_withhold.py:295`.
     """
     return {
         "schema_version": "1",
@@ -275,7 +275,7 @@ def _drive(work: Path, results: dict[str, dict], *, accept_all: bool) -> dict:
 
 
 # ===========================================================================
-# CASE 0 — is render_actions.py:967 reachable?
+# CASE 0 — is render_withhold.py:295 reachable?
 # ===========================================================================
 
 @pytest.fixture(scope="module")
@@ -300,7 +300,7 @@ def _delete_sources(parsed: dict) -> list[dict]:
 
 
 class TestCase0DailyOnlyDeleteReachability:
-    """Reachability of the unguarded root composition at render_actions.py:967.
+    """Reachability of the unguarded root composition at render_withhold.py:295.
 
     Reported either way: if a `daily_updates` entry cannot in practice carry a
     subfolder note's stem, that is a finding, not a failure.

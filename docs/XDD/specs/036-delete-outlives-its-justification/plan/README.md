@@ -165,7 +165,7 @@ When implementation requires changes from the specification:
   what it does. Editing a safety-critical pure function for tidiness carries risk without return.
 
 - **2026-09-16 — T2.2 widened one line and had to close three consequences the plan does not name.**
-  The task is "widen the claimant filter to `{move_note, create_moc}`". That is `render_actions.py:998`,
+  The task is "widen the claimant filter to `{move_note, create_moc}`". That is `render_withhold.py:326`,
   one line. Making a `create_moc` droppable then reached three places the plan never mentions, each
   found by review rather than by the suite — all four commits were green throughout.
 
@@ -233,7 +233,7 @@ When implementation requires changes from the specification:
   `depends_on: []` is unchanged — kept unconditionally, a declared assertion, not silence. Both
   states were previously identical outcomes and are now different, asserted directly by
   `tests/test_036_withdraw_unjustified_deletes.py::test_missing_key_and_empty_list_are_different_outcomes`
-  (new) rather than left implied. `withdraw_unjustified_deletes` (`render_actions.py:2455`),
+  (new) rather than left implied. `withdraw_unjustified_deletes` (`render_withhold.py:460`),
   its docstring, `solution.md`'s reference implementation and traced walkthrough, and
   `docs/tomo/scripts/lib/render_actions.md` were all updated to state the corrected rule — the
   deviation protocol's "update the SDD when the deviation improves the design" step, since the SDD's

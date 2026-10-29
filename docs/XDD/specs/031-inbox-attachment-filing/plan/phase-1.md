@@ -16,7 +16,7 @@ phase: 1
 - `[ref: SDD/Implementation Examples; "Resolution — traced walkthrough"]` — the five-file inbox table with all four outcomes
 - `[ref: SDD/Architecture Decisions; ADR-1, ADR-2]`
 - `[ref: PRD/Feature 1]`, `[ref: PRD/Feature 2]`, `[ref: PRD/Detailed Feature Specifications; business rules 1-4, 10]`
-- Source to read: `tomo/scripts/lib/render_actions.py:59-100` (`_KNOWN_FILE_EXTENSIONS`, `_ensure_md_extension`), `tomo/scripts/topic-extract.py:308-325` (`_strip_link_target`)
+- Source to read: `tomo/scripts/lib/render_emit.py:16-23` (`_KNOWN_FILE_EXTENSIONS`, `_ensure_md_extension`), `tomo/scripts/topic-extract.py:308-325` (`_strip_link_target`)
 
 **Key Decisions**:
 - **ADR-1** — resolution is a basename lookup against a per-run index of the inbox subtree. Ambiguity is an outcome, not an error to paper over.
@@ -32,7 +32,7 @@ Establishes the detection and resolution capability as a pure, fully unit-testab
 
 - [x] **T1.1 Embed extraction** `[activity: domain-modeling]`
 
-  1. **Prime**: Read the extraction example `[ref: SDD/Implementation Examples]` and the classifier at `tomo/scripts/lib/render_actions.py:59-66`. Note that the frozenset contains `md` — the test is two-step, not a membership check.
+  1. **Prime**: Read the extraction example `[ref: SDD/Implementation Examples]` and the classifier at `tomo/scripts/lib/render_emit.py:16-21`. Note that the frozenset contains `md` — the test is two-step, not a membership check.
   2. **Test** (RED):
      - `![[karte.jpg]]` → `["karte.jpg"]` `[ref: PRD/AC-F1.1]`
      - `[[karte.jpg]]` (plain link, no bang) → `[]` `[ref: PRD/AC-F1.3]`

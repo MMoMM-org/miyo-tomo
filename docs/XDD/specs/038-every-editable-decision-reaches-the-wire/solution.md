@@ -99,7 +99,7 @@ version: "1.0"
   produces no error, only a wire path that stops being used.
 - **CON-3** — Additive only. Every conflict-free run's output stays
   byte-identical apart from the version stamp.
-- **CON-4** — `_asset_dest_join` (`render_actions.py:560-575`) deliberately does
+- **CON-4** — `_asset_dest_join` (`render_moc_actions.py:54-69`) deliberately does
   not sanitise, because it must preserve a real attachment's basename verbatim.
   That stays true; the new check sits **before** it rather than inside it.
 - **CON-5** — Constitution L1 (Testing): vault-mutating paths owe a happy path
@@ -245,7 +245,7 @@ scanning `suggestions[].attachments` for the same path, which ADR-8 makes safe.
 
 **`taken` is deliberately not one of C7's reasons** (owner ruling 2026-10-01).
 The other three are properties of the string; `taken` is a property of the run,
-and the run already decides it — `render_actions.py:945`'s claimed check, which a
+and the run already decides it — `render_withhold.py:273`'s claimed check, which a
 remedy-chosen destination passes through by design (`:940-944`), emitting
 `kind: "collision"`. Giving C7 a fourth reason would mean handing it run state,
 duplicating a check that already fires. The vault-side reading of "taken" is a

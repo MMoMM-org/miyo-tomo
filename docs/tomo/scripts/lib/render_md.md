@@ -396,7 +396,7 @@ this file" with full detail (`_build_move_asset_actions`'s own `reason`
 string). The second answers "which approved conflicts did Pass 2 NOT resolve
 by rename", a strictly narrower and reader-facing question the PRD (C2/S2)
 asks for by name, and the ONLY place an `ignore`d conflict is reported at
-all — `ignore` never touches `skipped_assets` (`render_actions.py:819-823`
+all — `ignore` never touches `skipped_assets` (`render_withhold.py:147-151`
 emits its move unchanged and records nothing), so before this task an
 `ignore`d source appeared nowhere in the rendered document. Two overlapping
 answers to two different questions is not duplication in the sense CON-2
@@ -481,7 +481,7 @@ not one. The single-list shortcut, `[r for r in attachment_conflict_remedies
 if remedy != "rename"]`, reads as equivalent and is not: a degraded rename's
 OWN `attachment_conflict_remedies` entry still says `"remedy": "rename"` —
 only its `proposed_name` came back null. `_build_move_asset_actions` is what
-performs the degrade (`render_actions.py:780-784`), and it performs it INTO
+performs the degrade (`render_withhold.py:108-112`), and it performs it INTO
 `skipped_assets`, not back onto the `attachment_conflict_remedies` record
 that caused it. Filtering the latter on `remedy != "rename"` silently drops
 every degraded rename from this report — the exact class of loss `remedy:
@@ -727,7 +727,7 @@ reproduced**.
 Both mechanisms behaved as written. `delete_source` depends on the note move,
 and spec 036's contract covers four delete sources of which an attachment move
 is none; by that logic the delete is justified, since the atomic captured the
-note's content. And ADR-6's residue rule (`render_actions.py:1410`) cannot fire
+note's content. And ADR-6's residue rule (`render_moc_actions.py:116`) cannot fire
 here at all — not because `ignore` was excluded, but because it keys on
 `skipped_assets` and an ignored conflict never produces an entry there. The
 explicit exclusion covers `vault_collision_held` only.
@@ -788,7 +788,7 @@ file that is not where the sentence says it is.
 
 A `vault_collision_held` note **is filed**. The owner chose *keep in inbox* for
 the attachment, not for the note, so that kind is excluded from
-`suppress_moves_for_unfiled_attachments` (`render_actions.py:1569`) and the move
+`suppress_moves_for_unfiled_attachments` (`render_inbox_actions.py:181`) and the move
 goes ahead. Read after applying, the source note is gone and the suggestions
 document is spent, so the only thing left to act on is the attachment still
 sitting in the inbox — hence "afterwards, rename the file in the inbox and

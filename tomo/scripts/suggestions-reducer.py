@@ -501,7 +501,7 @@ def detect_attachment_conflicts(
     notes.
 
     The destination is computed through `_asset_dest_join` — the SAME helper
-    Pass 2's `_build_move_asset_actions` uses `[ref: render_actions.py:691-782]`,
+    Pass 2's `_build_move_asset_actions` uses `[ref: render_withhold.py:19-110]`,
     so the two cannot disagree about what "the same place" means.
 
     Dedup key is the EXACT SOURCE PATH, not the case-folded destination

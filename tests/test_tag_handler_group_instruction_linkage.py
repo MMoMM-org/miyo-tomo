@@ -54,7 +54,6 @@ _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 _render_mod = _load("instruction_render", "instruction-render.py")
 _diff_mod = _load("instructions_diff", "instructions-diff.py")
 
-import lib.render_actions as _render_actions_mod  # noqa: E402
 import lib.render_source_actions as _render_source_actions_mod  # noqa: E402
 
 group_id = _group_mod.group_id

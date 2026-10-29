@@ -16,7 +16,7 @@ phase: 2
 - `[ref: SDD/Implementation Examples; "Destination join — the trap"]`
 - `[ref: SDD/Complex Logic; "Global deduplication across the run"]`
 - `[ref: PRD/Feature 4]`, `[ref: PRD/Feature 6]`, `[ref: PRD/Business rules 5, 6, 7, 8]`
-- Source to read: `tomo/scripts/lib/render_actions.py:559` (`_build_move_note_actions`, the template), `:920-935` (the audio-peer dedup — note it is *per group*), `:1275-1327` (`build_actions` ordering), `:488-498` (`_dest_join`, the trap), `:204-219` (`_REQUIRED_PATH_FIELDS`)
+- Source to read: `tomo/scripts/lib/render_moc_actions.py:53` (`_build_move_note_actions`, the template), `:920-935` (the audio-peer dedup — note it is *per group*), `:1275-1327` (`build_actions` ordering), `:488-498` (`_dest_join`, the trap), `:204-219` (`_REQUIRED_PATH_FIELDS`)
 
 **Key Decisions**:
 - **ADR-5** — the emitter reads the **manifest**, not `move_notes`. It must not touch the `move_note` action.
@@ -49,7 +49,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
 
 - [x] **T2.2 move_asset emission with global de-duplication** `[activity: backend-logic]`
 
-  1. **Prime**: Read `[ref: SDD/Complex Logic]`. The audio-peer set at `render_actions.py:927` dedups *within* an origin-stem group; attachments dedup **globally**.
+  1. **Prime**: Read `[ref: SDD/Complex Logic]`. The audio-peer set at `render_withhold.py:255` dedups *within* an origin-stem group; attachments dedup **globally**.
   2. **Test** (RED):
      - one item with one attachment → one action, correct source and destination `[ref: PRD/AC-F4.1]`
      - two items embedding the same path → **one** action `[ref: PRD/AC-F4.2]`
@@ -89,7 +89,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
 
 - [x] **T2.5 Path validation and config default** `[activity: backend-logic]` `[parallel: true]`
 
-  1. **Prime**: Read `_REQUIRED_PATH_FIELDS` at `render_actions.py:204-219` and `CONFIG_DEFAULTS` at `instruction-render.py:105-111`. `concepts.asset` is absent from the latter — verified.
+  1. **Prime**: Read `_REQUIRED_PATH_FIELDS` at `render_up_preservation.py:123-138` and `CONFIG_DEFAULTS` at `instruction-render.py:105-111`. `concepts.asset` is absent from the latter — verified.
   2. **Test** (RED):
      - `_validate_action_paths` rejects a `move_asset` with an empty `source` or `destination` — proving the kind is no longer skipped
      - resolving `concepts.asset` on a profile that omits the key returns the default instead of raising `KeyError` `[ref: SDD/Known Technical Issues]`

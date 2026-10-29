@@ -5,7 +5,7 @@
 ADR-5 (`solution.md:506`) says spec 037 reaches Hashi through no new wire
 field: a `rename` and an `ignore` both fall through to the same
 `move_asset` dict `_build_move_asset_actions` has always emitted
-(`render_actions.py:838-843`), and `keep_in_inbox` is reported only through
+(`render_withhold.py:166-171`), and `keep_in_inbox` is reported only through
 the existing, permissive `tomo.skipped_assets[]` block. This file proves
 that by absence — the ONE assertion with a reachable mutation validates a
 rendered three-remedy instruction set against Tomo's own copy of Hashi's
@@ -25,7 +25,7 @@ decision/plan/phase-4.md` T4.1:
      pretending otherwise.
   3. The rendered instruction set validates against the strict mirror
      schema — mutation: append a stray key (e.g. `"remedy": remedy`) to the
-     `move_asset` dict built at `render_actions.py:838-843`, the block both
+     `move_asset` dict built at `render_withhold.py:166-171`, the block both
      `rename` and `ignore` fall through to. `additionalProperties: false`
      at `hashi-instructions.schema.json:105-116` rejects any such key. RED
      evidence for this mutation is recorded in the close-out (proven in a
@@ -166,7 +166,7 @@ def test_three_remedy_set_renders_two_move_asset_shapes_and_one_skip():
 def test_rendered_three_remedy_set_validates_against_hashi_mirror_schema(schema):
     """THE reachable-mutation assertion. Mutation: append a stray key (e.g.
     `"remedy": "rename"`) to the `move_asset` dict `_build_move_asset_actions`
-    builds at `render_actions.py:838-843` — the block both `rename` and
+    builds at `render_withhold.py:166-171` — the block both `rename` and
     `ignore` fall through to. `additionalProperties: false` at
     `hashi-instructions.schema.json:105-116` turns this red. Every other
     action-shape claim in this file is a fixture-shape check; this is the

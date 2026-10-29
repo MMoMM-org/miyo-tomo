@@ -275,7 +275,7 @@ reject every instruction set if Tomo bumped it.
 `tests/test_hashi_instructions_schema.py`.
 
 The producer is **not** the deterministic renderer — `_build_move_note_actions`
-(`lib/render_actions.py:559`) only ever moves Tomo-rendered `.md` notes, and `_dest_join` (`:498`)
+(`lib/render_moc_actions.py:53`) only ever moves Tomo-rendered `.md` notes, and `_dest_join` (`:498`)
 hardcodes a `.md` suffix. `move_asset` comes from **session-composed instruction sets**: the
 cross-vault import that surfaced the need wrote `tomo-tmp/rendered-hashi/instructions.json` by
 hand, with 13 `move_note` + **8 `move_asset`** actions for `.jpg`/`.png` map images, moving
@@ -1796,7 +1796,7 @@ strictly future — every kind that exists today has correct text.
 
 ### Sibling, found 2026-10-02 by T3.5's mutation audit: `_typed_name_refusal_reason`
 
-`_typed_name_refusal_reason` (`tomo/scripts/lib/render_actions.py:692`) has the same
+`_typed_name_refusal_reason` (`tomo/scripts/lib/render_withhold.py:20`) has the same
 shape one layer down, and is slightly worse because **its own docstring denies it**:
 
 > `refusal_reason` is one of `lib.typed_name_check.REFUSAL_REASONS` — a closed set of
@@ -1855,7 +1855,7 @@ fail on measurement.
 **There are no existing skip counts.** Nothing in Pass 2 renders a count of skips.
 The only count anywhere in the instruction document is `action_count` in the
 frontmatter (`render_md.py:841`); Pass 2's stderr carries per-item warnings
-(`instruction-render.py:449,467`, `render_actions.py:815,937`), not a run summary.
+(`instruction-render.py:449,467`, `render_withhold.py:143,265`), not a run summary.
 So a new count has nothing to appear alongside.
 
 **Counting here is already ruled against, twice, in the file C1 would touch.**
@@ -1907,7 +1907,7 @@ proposed_name='Archive/x.png' flag=True -> skipped typed_name_refused  separator
 ```
 
 `_build_move_asset_actions` tests `remedy == "rename" and not
-remedy_entry.get("proposed_name")` (`render_actions.py:848-849` as of 2026-10-02) —
+remedy_entry.get("proposed_name")` (`render_withhold.py:176-177` as of 2026-10-02) —
 a **falsy** test — and that branch precedes the `name_is_owner_supplied` gate at
 `:902` by fifty-three lines. So the guard never sees `""`.
 
@@ -2630,9 +2630,9 @@ reason code:
 
 | Site | Reads | Branches on the code? |
 |---|---|---|
-| `render_actions.py:710,715` `_typed_name_refusal_reason` | `refusal_reason` | **yes** — the only one |
+| `render_withhold.py:38,43` `_typed_name_refusal_reason` | `refusal_reason` | **yes** — the only one |
 | `render_md.py:838,1179` | `entry.get("reason")` — the prose | no |
-| `render_actions.py:1494` `_attachment_suppression_reason` | `entry.get("kind")` | no — `kind`, not the reason |
+| `render_moc_actions.py:200` `_attachment_suppression_reason` | `entry.get("kind")` | no — `kind`, not the reason |
 
 So a fourth class costs: one frozenset member, one check in `check_typed_name`, one branch in
 `_typed_name_refusal_reason`, and tests. That is a small, contained change.

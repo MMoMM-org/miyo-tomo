@@ -63,7 +63,7 @@ file already there is the same one.
 
 - [x] **T1.2 An occupied destination becomes a recorded conflict** `[activity: domain-modeling]`
 
-  1. Prime: Read `_build_move_asset_actions` for how attachments are deduplicated globally and how `owner_source_items` is accumulated `[ref: render_actions.py:691-782]`; read `load_asset_folder` `[ref: suggestions-reducer.py:1462]`. **Both refs corrected 2026-09-22** — the plan's originals (`640-728`, `1363`) predate specs 034–036 and point at neighbouring code.
+  1. Prime: Read `_build_move_asset_actions` for how attachments are deduplicated globally and how `owner_source_items` is accumulated `[ref: render_withhold.py:19-110]`; read `load_asset_folder` `[ref: suggestions-reducer.py:1462]`. **Both refs corrected 2026-09-22** — the plan's originals (`640-728`, `1363`) predate specs 034–036 and point at neighbouring code.
   2. Test:
      - **A free destination leaves the emitted document unchanged**, anchored: render a
        zero-conflict fixture, and assert the resulting document equals the one the pre-change
@@ -94,7 +94,7 @@ file already there is the same one.
   does not discover them mid-task and guess:
   - **Intra-run collision** — two different inbox attachments whose source paths resolve to one
     destination basename. Already handled, in Pass 2, by `_build_move_asset_actions`' `claimed`
-    dict (`render_actions.py:761-774`), which emits a skip entry of `kind: "collision"`. The PRD
+    dict (`render_withhold.py:89-102`), which emits a skip entry of `kind: "collision"`. The PRD
     does not mention it. Do not merge it into `attachment_conflicts[]`; two mechanisms reporting
     one concept under two names is the drift this repo keeps designing out.
   - **Self-collision** — a source that already sits at its own destination. Not reachable through
@@ -247,7 +247,7 @@ file already there is the same one.
   1. Prime: Read `detect_attachment_conflicts`' `by_dest` loop and the docstring paragraph
      that argues for the destination key `[ref: suggestions-reducer.py:~600-630]`. That
      argument is not wrong about what it claims — it is about the wrong key. Read
-     `_asset_dest_join` `[ref: render_actions.py:560-575]`: the destination is the asset
+     `_asset_dest_join` `[ref: render_moc_actions.py:54-69]`: the destination is the asset
      folder plus the source's basename, which is exactly why two sources can share one.
   2. Test:
      - **Two different sources sharing a basename yield TWO entries**, each naming only its

@@ -371,7 +371,7 @@ def test_two_confirmed_items_embedding_one_renamed_attachment_are_both_rewritten
     map from its arguments on every call, so "rewrite only the first owner"
     is not expressible against it — the named mutation could never bite.
     Measured 2026-09-27. The plan bullet is a property of the RENDER LOOP
-    (`owner_source_items`, `render_actions.py:720`, is a list because several
+    (`owner_source_items`, `render_withhold.py:48`, is a list because several
     confirmed items can embed one attachment), so it is asserted here,
     through the loop, against both files on disk.
     """

@@ -41,7 +41,7 @@ Clears the ground: the owed handoffs go out, the stale vendored schema is correc
 - [x] **T1.2 Interim reply to Hashi's `proposed_dir` handoff** `[activity: technical-writing]` `[parallel: true]`
 
   1. Prime: `_inbox/from-hashi/2026-10-11_hashi-to-tomo_attachment-conflicts-need-an-editable-target-folder.md`; PRD CON-3; SDD External Interfaces
-  2. Test: n/a. Checklist: §1 accepted as `string | null`, required, released as `schema_version` 4 (coordinated); §2 our measurement — the risk exists **today** (three code paths, R1 §3) and our ruling (path only when ambiguous); states that Obsidian's resolution of an ambiguous bare basename stays unmeasured (PRD A1 — neither side can probe Obsidian); §4 confirmed with file:line (`render_actions.py:849/886`, `embed_rewrite.py:136`) and `proposed_dir` follows the same rule; #185 ruling (one reason, refused not trimmed on the markdown route) and the `unsafe_sequence` ruling; F1-AC11 ruling; folder refusal classes (incl. `# ^ [ ]`) so their picker can pre-empt them; that a missing folder is allowed because their executor creates it, asking whether several missing levels are created at once if their code or the Obsidian API docs settle it (A3)
+  2. Test: n/a. Checklist: §1 accepted as `string | null`, required, released as `schema_version` 4 (coordinated); §2 our measurement — the risk exists **today** (three code paths, R1 §3) and our ruling (path only when ambiguous); states that Obsidian's resolution of an ambiguous bare basename stays unmeasured (PRD A1 — neither side can probe Obsidian); §4 confirmed with file:line (`render_withhold.py:177/886`, `embed_rewrite.py:136`) and `proposed_dir` follows the same rule; #185 ruling (one reason, refused not trimmed on the markdown route) and the `unsafe_sequence` ruling; F1-AC11 ruling; folder refusal classes (incl. `# ^ [ ]`) so their picker can pre-empt them; that a missing folder is allowed because their executor creates it, asking whether several missing levels are created at once if their code or the Obsidian API docs settle it (A3)
   3. Implement: `_outbox/for-hashi/2026-10-12_tomo-to-hashi_<slug>.md`; set the inbound handoff `status: done`
   4. Validate: owner reads it before it is marked sent
   5. Success: Hashi's three asks answered `[ref: PRD/CON-3]`
@@ -56,7 +56,7 @@ Clears the ground: the owed handoffs go out, the stale vendored schema is correc
 
 - [x] **T1.4 Shared folder lookup `lib/vault_folder_lookup.py`** `[activity: domain-modeling]` `[parallel: true]`
 
-  1. Prime: `suggestions-reducer.py:311-421` (`_VaultFolderLookup`) and its WHY in `docs/tomo/scripts/suggestions-reducer.md:1000-1040`; `render_actions.py:542-576` (the join helpers), `:991-1033` (`make_folder_listing`); `kado_client.py:54, 253-272, 686, 861-863` `[ref: SDD/ADR-2; SDD/Components K2, K15]`
+  1. Prime: `suggestions-reducer.py:311-421` (`_VaultFolderLookup`) and its WHY in `docs/tomo/scripts/suggestions-reducer.md:1000-1040`; `render_moc_actions.py:36-70` (the join helpers), `:991-1033` (`make_folder_listing`); `kado_client.py:54, 253-272, 686, 861-863` `[ref: SDD/ADR-2; SDD/Components K2, K15]`
   2. Test: `state()` returns `listed` / `absent` (KadoNotFoundError carrying Kado's `Path not found`) / `unanswered` (an endpoint 404 and any other KadoError); `assets()` keys by `_asset_dest_join`, includes non-`.md` only; one `list_dir` per folder however many views are read (counting fake); `make_folder_listing` built on it returns exactly today's map for a fixture; reducer behaviour unchanged (existing 037 tests)
   3. Implement: first move the WHY to `docs/tomo/scripts/lib/vault_folder_lookup.md` (WHY first, strip second); move `_dest_join`/`_asset_dest_join` to `lib/vault_paths.py` (K15) with re-exports from `render_actions` so K2 imports no cycle; move the class to lib (public name) with a `# version:` header and why-docstring, add `state()`, keep the `folder_listing_calls` counter name the reducer and `cost_history` read; reducer imports it; `make_folder_listing(client_or_lookup)` becomes a `.md` view over the same raw cache
   4. Validate: full suite green with no expectation changed; ruff clean
@@ -64,7 +64,7 @@ Clears the ground: the owed handoffs go out, the stale vendored schema is correc
 
 - [x] **T1.5 `_typed_name_refusal_reason` no longer defaults to "blank"** `[activity: backend]` `[parallel: true]`
 
-  1. Prime: `render_actions.py:692-720`; `backlog.md:1757` `[ref: SDD/ADR-6]`
+  1. Prime: `render_withhold.py:20-48`; `backlog.md:1757` `[ref: SDD/ADR-6]`
   2. Test: an unrecognised reason code raises (`ValueError`) rather than returning the blank sentence — RED against today's fall-through; the three known codes keep their exact sentences (038 mutation table `test_038_t3_2_*:434-442`)
   3. Implement: explicit `blank` branch; raise on anything else
   4. Validate: suite green; docstring at `:706-708` corrected

@@ -51,14 +51,14 @@ told its embed was retargeted to a file it never owned.** The user approves a re
 and a different note is modified.
 
 The intra-run half of this is deliberately Pass 2's (`_build_move_asset_actions`' `claimed` dict,
-`render_actions.py:761-774`), and that boundary stands — this is not a request to detect it here.
+`render_withhold.py:89-102`), and that boundary stands — this is not a request to detect it here.
 What this phase owes is that its rendering and its remedies cannot mislead when an entry carries
 owners of more than one source. Decide it explicitly: render per-source rather than per-destination,
 split the entry, or state why the shape cannot reach a user.
 
 **Decided 2026-09-22 — in the data, not the display. This phase owes nothing further.**
 The third option was checked and refuted rather than assumed: `_asset_dest_join`
-(`render_actions.py:571-575`) builds the destination from the asset folder plus the source's
+(`render_moc_actions.py:65-69`) builds the destination from the asset folder plus the source's
 basename, and spec 034 shipped recursive inbox discovery, so two attachments sharing a filename in
 different inbox subfolders genuinely reach one entry. The owner chose to fix the key rather than
 teach the renderer a special case — **Phase 1 T1.5** groups by exact source path, keeping the
@@ -85,7 +85,7 @@ Establishes the surface the owner reads and the tick the pipeline reads back.
   1. Prime: Read `resolve_destination_clashes`' candidate loop — `f"{title} ({n})"`,
      `range(2, 101)`, first free wins, and the recorded decision that 99 taken names is not
      a situation a rename can rescue `[ref: suggestions-reducer.py:~466-478]`. Read
-     `_asset_dest_join` `[ref: render_actions.py:560-575]`: an attachment's basename
+     `_asset_dest_join` `[ref: render_moc_actions.py:54-69]`: an attachment's basename
      survives verbatim, extension included, or the embed stops resolving.
   2. Test:
      - **The counter goes before the extension**: `karte.png` proposes

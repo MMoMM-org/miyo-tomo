@@ -2,7 +2,7 @@
 """test_038_t3_3_owning_note_held.py — spec 038 T3.3.
 
 T3.3's production change is a non-change: `suppress_moves_for_unfiled_
-attachments`'s exclusion at `lib/render_actions.py:1569` names exactly one
+attachments`'s exclusion at `lib/render_inbox_actions.py:181` names exactly one
 kind — `vault_collision_held` — and only that kind, by a single equality.
 There is no exclusion list. A new kind (`typed_name_refused`, from T3.2) is
 therefore never excluded by construction; it falls through to the

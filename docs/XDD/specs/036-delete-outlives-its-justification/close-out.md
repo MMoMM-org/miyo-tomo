@@ -243,7 +243,7 @@ The suite has grown from 4147 at Phase 3's close to 4235 — +88, all of it Phas
 
 **The contract's `depends_on` description named the wrong action kinds** (`96c1778`). It told the
 consumer the field carries "Action ids (move_note/move_asset)". `move_asset` ids never appear —
-site 3 filters on `action == "move_note"` (`render_actions.py:1904`) before collecting — and three
+site 3 filters on `action == "move_note"` (`render_source_actions.py:293`) before collecting — and three
 of the five emission sites name something else entirely: site 2 names the origin's daily actions
 (`update_tracker` / `update_log_entry` / `update_log_link`, `:1881`), site 4 the tag-handler's
 `insert_under_marker` (`:2003`). A consumer implementing "withhold unless every named move is

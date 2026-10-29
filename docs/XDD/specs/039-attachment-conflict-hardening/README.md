@@ -27,7 +27,7 @@
 |------|----------|-----------|
 | 2026-10-11 | Spec opened | Three inputs share one subject — what happens to an attachment between the owner's decision and the vault: Hashi's request for an editable target folder (`_inbox/from-hashi/2026-10-11_hashi-to-tomo_attachment-conflicts-need-an-editable-target-folder.md`), #185 (two input classes pass `check_typed_name`) and #186 (a failed `move_asset` does not stop its origin's delete). Research while answering Hashi found a fourth: Pass 2's vault-occupancy guard does not cover `move_asset`. |
 | 2026-10-11 | Accept `proposed_dir`, released as a required-nullable field under wire `schema_version` 4 | Owner. Hashi's preferred shape (matches `proposed_name`); the change is coordinated either way because `attachment_conflicts[]` items are `additionalProperties: false` on their side. The markdown gets an editable folder counterpart and the inventory a new row. |
-| 2026-10-11 | Pass 2 validates `move_asset` destinations against the vault | Owner, after the finding that `validate_destinations` claims only `move_note` and `create_moc` (`render_actions.py:1306`): an owner-typed name onto an occupied file reaches the wire unchecked, fails at apply, and — through #186 — still deletes its origin. |
+| 2026-10-11 | Pass 2 validates `move_asset` destinations against the vault | Owner, after the finding that `validate_destinations` claims only `move_note` and `create_moc` (`render_attachment_withhold.py:136`): an owner-typed name onto an occupied file reaches the wire unchecked, fails at apply, and — through #186 — still deletes its origin. |
 | 2026-10-11 | Path-qualified embed only when the final basename is not unique in the vault | Owner, choosing this over "Hashi measures first" and "path whenever a folder was picked". Bare basename stays the default (owner ruling 2026-09-27). Requires a vault-wide basename check through Kado; Obsidian's resolution of an ambiguous basename is not measured by Tomo. |
 | 2026-10-11 | #185: one new refusal reason covering both whitespace padding and `# ^ [ ]` | Owner. `FORBIDDEN_CHARS` is not widened (it also feeds `sanitize_stem`) and `forbidden_character` is not reused (its prose is false for these four characters). |
 | 2026-10-11 | #186: option 1 — an origin's `delete_source` depends on its `move_asset` actions too | Owner. The executor's existing `skipped-dependency` cascade does the rest with no Hashi change. The proposal then goes to Kokoro, which owes ADR-029's open item a position once Tomo proposes one. |
@@ -71,7 +71,7 @@
 
 Verified before opening (2026-10-11):
 
-- `proposed_name` is consumed only when `remedy` is `rename` (`render_actions.py:849/886`, `embed_rewrite.py:136`) — Hashi's §4 question.
+- `proposed_name` is consumed only when `remedy` is `rename` (`render_withhold.py:177/886`, `embed_rewrite.py:136`) — Hashi's §4 question.
 - The markdown shows the target folder but does not let the owner change it: only the prefix Tomo printed is stripped, any other folder is refused `separator_present` (`suggestion-parser.py:2530`, owner ruling 2026-10-02).
 - Pass 1's free-name search consults only the asset folder's listing (`suggestions-reducer.py:698`), never the vault.
 

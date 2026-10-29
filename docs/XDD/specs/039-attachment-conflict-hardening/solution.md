@@ -130,7 +130,7 @@ version: "1.0"
   whole-run abort, and nothing an owner types can reach it any more (ADR-5) —
   which requires the typed checks to refuse **every** class `_check_path_shape`
   rejects, including `{{`, `<%` and control characters
-  (`render_actions.py:401-408, 111`).
+  (`render_actions.py:194-201, render_up_preservation.py:54`).
 - **CON-8** — Runtime file discipline (repo CLAUDE.md): rationale goes to the
   `docs/tomo/` mirror of each changed script; runtime agent/skill files change
   only where a CLI contract changes.
@@ -206,7 +206,7 @@ python3 scripts/wire-shape.py --regenerate       # write it
    the whole-run path check.
 5. **Reuse the suppression pass.** Every withheld outcome is a `skipped_assets`
    entry; the existing ADR-6 pass holds the owning notes for every kind except
-   the owner's own Keep in inbox (`render_actions.py:1587`), so no new holding
+   the owner's own Keep in inbox (`render_inbox_actions.py:199`), so no new holding
    logic is written.
 
 ## Building Block View
@@ -625,7 +625,7 @@ only names and paths.
 
 - **Choice:** `vault_occupied` for rows 8; Ignore skips row 8.
 - **Rationale:** `suppress_moves_for_unfiled_attachments` already holds notes for
-  every kind but `vault_collision_held` (`render_actions.py:1587`), so the owner
+  every kind but `vault_collision_held` (`render_inbox_actions.py:199`), so the owner
   ruling "hold the notes" costs no new holding logic. Ignore exempt per owner.
 - **Trade-offs:** The occupancy check is not added to `validate_destinations`
   (which stays note-only); asset and note checks live in different passes but
@@ -757,7 +757,7 @@ behaviour:
   (`_IDENTIFIER_RE`) — no "296 Maps" in D26's note.
 - **The census sees the inbox copy.** Subtract every moved inbox source, or every
   attachment reads as ambiguous.
-- **Owners are first-only today** for emitted moves (`render_actions.py:820-829`);
+- **Owners are first-only today** for emitted moves (`render_withhold.py:148-157`);
   K1 must collect all of them or F6-AC3 fails silently.
 - **~43 call sites in ~25 test files** use the old `build_actions(...,
   attachment_conflict_remedies=…)`, `_build_move_asset_actions` and

@@ -718,7 +718,7 @@ section per kind with fields, execution semantics, and idempotency.
 > the separate **[`move_asset`](#move_asset--move--rename-an-attachment)** kind.
 >
 > The **renderer** cannot trip this guard: `move_note.destination` is built by `_dest_join`
-> (`lib/render_actions.py:498`), which hardcodes `.md`, and `source` is always a Tomo-rendered
+> (`lib/render_emit.py:55`), which hardcodes `.md`, and `source` is always a Tomo-rendered
 > note. Session-composed instruction sets can — route by extension there, notes to `move_note` and
 > everything else to `move_asset`. Before 0.20.1 an attachment *was*
 > accepted, and `vault.process` round-tripped the bytes through a UTF-8 string, persisting `U+FFFD`

@@ -118,7 +118,7 @@ an added property on a **closed** node as consumer-affecting, and
 schema copies, a regenerated `shapes/suggestions-wire.shape.json`, and a handoff.
 
 **This is the first owner-typed string to become a vault write destination
-anywhere in the codebase.** `_asset_dest_join` (`render_actions.py:560-575`)
+anywhere in the codebase.** `_asset_dest_join` (`render_moc_actions.py:54-69`)
 deliberately does *not* sanitise — correct while `proposed_name` could only ever
 be Tomo-computed, and reachable for the first time once it is typed. Known gaps
 at that point: `/` and `../` are truncated silently rather than refused;

@@ -165,3 +165,15 @@ the outcome. The agent tells the two apart by `around.kind` (set from the resolv
 seed in `moc-discovery.py`; `moc` means the extension path, which also fills
 `extension`) and takes the name from `around.stem`. The `; links: …` part is
 unchanged. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.3 — Step 2 on every run, run id from the script (spec 042, #216)
+
+WHY: In the live validation the agent ran `/moc-propose` several times in one
+session and, from the second run on, skipped Step 2 ("already resolved this
+session") and generated `RUN_ID` with `date +%s`. Two deviations were observed,
+so both carry a STRICT with a one-line `Why:`. Step 2 reads `vault-config.yaml`
+each time because the config can change between runs and a skipped read leaves
+`INBOX_PATH` unverified. `scripts/run-id.py` is the single source of run ids
+(`YYYY-MM-DDTHH-MM-SSZ-<hex>`), so tomo-tmp file names and the cost log join on one
+format; an epoch from `date` collides within a second and does not sort with the
+rest. `update-tomo.sh` skips unchanged versions.

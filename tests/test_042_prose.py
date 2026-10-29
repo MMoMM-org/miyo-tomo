@@ -256,3 +256,23 @@ def test_discovery_around_forms_keep_the_links_part():
     )
 
 
+
+
+def test_step2_runs_on_every_invocation():
+    step2 = _section(_text(AGENT), "### Step 2", "### Step 3")
+    assert "STRICT" in step2
+    assert "every invocation" in step2
+    assert "even when" in step2
+
+
+def test_run_id_comes_from_run_id_script():
+    text = _text(AGENT)
+    assert "date +%s" not in text
+    assert text.count("RUN_ID=$(python3 scripts/run-id.py)") == 3
+
+
+def test_run_id_strict_forbids_other_sources():
+    step3 = _section(_text(AGENT), "### Step 3", "### Step 4")
+    assert "`scripts/run-id.py`" in step3
+    assert re.search(r"STRICT.*run id", step3, re.S | re.I)
+    assert "never `date`" in step3 or "NEVER `date`" in step3

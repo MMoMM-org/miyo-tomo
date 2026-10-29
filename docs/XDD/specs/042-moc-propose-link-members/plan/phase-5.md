@@ -69,7 +69,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: focused + full suite green; ruff clean; host re-run of Pass 2 on the live Phase-1 file shows all rendered clusters looked up and attempts ≤ 120
   5. Success: no rendered cluster is skipped while budget remains
 
-- [ ] **T5.3c How-to block in the proposal-doc header** `[activity: backend]`
+- [x] **T5.3c How-to block in the proposal-doc header** `[activity: backend]`
 
   1. Prime: `tomo/scripts/suggestions-reducer.py` (`# MOC Proposal` header, ~line 1727); every reader of the doc body: `moc-proposal-parser.py`, `suggestion-parser.py`, `inbox-triage.py` (`_RE_ACCEPT`), squelch signature; the Pass-1 doc's `>` guidance block as the pattern `[ref: SDD/Primary flow step 5]`
   2. Test: a `moc-proposal` doc (new MOC, around, extension) carries the owner-approved `> **How to use this proposal**` block under `# MOC Proposal`, before the first `###`; the MOC Uplink Check doc does not; the block parses to nothing (no Accept hit, no member, no link line, no section) in every reader; existing docs without the block still parse identically

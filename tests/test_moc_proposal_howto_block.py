@@ -31,6 +31,7 @@ _triage = _load("inbox_triage_howto", "inbox-triage.py")
 AROUND = TESTS_DIR / "fixtures" / "042-t3-2-around-report" / "report.json"
 EXTENSION = TESTS_DIR / "fixtures" / "042-t4-2-extension-report" / "report.json"
 
+# Literal on purpose: pins the owner-approved wording; do not import it from the reducer.
 HOWTO = (
     "> **How to use this proposal**\n"
     "> 1. Review each section below. Untick members that do not\n"

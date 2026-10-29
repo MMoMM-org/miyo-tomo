@@ -77,6 +77,14 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: focused + full suite green; ruff clean
   5. Success: the user knows from the doc alone to review, tick Accept and run `/inbox`
 
+- [ ] **T5.3d An existing up:: is always kept; the doc says what happens** `[activity: backend]`
+
+  1. Prime: `tomo/scripts/lib/render_actions.py` `emit_up_preservation_actions` (Rules 4.2 / 4.3 / 4.5) and `up_target_is_broken`; `moc-tree-builder.py` `_resolve_up_state` (`up_broken_reason`: `not-a-moc` / `unresolved`); `moc-discovery.py` Phase 6.5 (`phase65_validate_existing_up`); `lib/link_members.py` `_link_member`; `suggestions-reducer.py` `_child_annotation`; live finding: 19 `not-a-moc` + 22 `unresolved` notes labelled "existing up:: broken — ignored" while render keeps a resolving target as `related::` `[ref: SDD/Error Handling]`
+  2. Test: render — an existing `up::` whose target is not a MOC, or does not exist, is handled like a valid one (Override unticked → new MOC `up::`, old target `related::`; ticked → old `up::` kept, new MOC `related::`); no `kado-graph` call for the check; self-link guard unchanged. Doc — topic and link members label `not-a-moc` as `(existing up:: [[X]] → becomes \`related::\`)` and `unresolved` as `(existing up:: [[X]] — note not found → becomes \`related::\`)`; `valid` and `absent` unchanged; no doc says "broken — ignored"
+  3. Implement: WHY in `docs/tomo/scripts/lib/render_actions.md`, `docs/tomo/scripts/moc-discovery.md`, `docs/tomo/scripts/suggestions-reducer.md` first; drop Rule 4.3 and `up_target_is_broken`; carry the reason through Phase 6.5 rows and link members; bump `# version:`
+  4. Validate: focused + full suite green; ruff clean
+  5. Success: the label in the doc matches what the instructions do, and no user-written `up::` is dropped
+
 - [ ] **T5.4 Close-out** `[activity: docs]`
 
   - `close-out.md`: every one of the 29 PRD criteria traced to a test node id that was actually executed (one pytest invocation, count recorded) or to a T5.3 live record; any criterion no test could fail gets a RED-proven assertion before the spec is finalised. Update `docs/ai/memory/memory.md` Critical Documentation; README phase → Implemented via xdd-meta Finalize.

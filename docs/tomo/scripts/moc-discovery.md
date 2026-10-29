@@ -366,6 +366,14 @@ other proposal.
 still carries `around` (when resolved) and `link_stats`, so the `Discovery:`
 line can show the one attempt.
 
+**The stderr `links:` line is the report's `link_stats`, logged once at the end.**
+WHY: the agent reads stderr to write the `Discovery:` line. `around:<MOC>` rewrites
+`members_total` to the number of MISSING members after the lookup, so a stat line
+logged straight from the lookup said 17 members while the report said 7 (T5.3 live
+run). `_around_lookup` therefore logs only status and neighbour count; `_run_around`
+logs `links: ` plus every `link_stats` value from the finished report, on success,
+`no-missing-members` and seed-lookup aborts alike. Stderr and report cannot diverge.
+
 ## `around:<MOC>`: The MOC's Missing Members (spec 042 F3, T4.1)
 
 WHY: Notes drift into a topic without ever getting `up::` to its MOC: the

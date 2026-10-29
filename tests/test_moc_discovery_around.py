@@ -24,6 +24,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import sys
 from argparse import Namespace
 from datetime import datetime, timezone
@@ -551,3 +552,20 @@ def test_empty_report_has_around_none():
 
 def test_empty_report_has_extension_none():
     assert _moc_disc.empty_report("scan", "", "miyo")["extension"] is None
+
+
+# ── stderr link stats equal the report's — T5.3 live finding ─────────────────
+
+
+def _stderr_members_totals(err: str) -> list[int]:
+    return [int(n) for n in re.findall(r"members_total=(\d+)", err)]
+
+
+@pytest.mark.parametrize("target", ["Gardening (MOC)", "Full (MOC)", "knowledge"])
+def test_stderr_link_stats_equal_the_reports(tmp_path, monkeypatch, capsys, target):
+    """Every `members_total=` the script logs equals report.link_stats; at least one is
+    logged. MOC targets: neighbours > missing (Gardening 4+ vs 2, Full 1 vs 0 abort)."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, target)
+    seen = _stderr_members_totals(capsys.readouterr().err)
+    assert seen, "no members_total logged"
+    assert set(seen) == {report["link_stats"]["members_total"]}

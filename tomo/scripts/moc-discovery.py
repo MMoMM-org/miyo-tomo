@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.2
+# version: 0.24.3
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -2091,10 +2091,7 @@ def _around_lookup(
         )
     report["link_stats"] = dict(result.stats)
     links = result.clusters[AROUND_CLUSTER_ID]
-    _log(
-        f"around: status={links.status} neighbours={len(links.link_members)} "
-        + " ".join(f"{k}={v}" for k, v in result.stats.items())
-    )
+    _log(f"around: status={links.status} neighbours={len(links.link_members)}")
     if links.status != _LINKS_DONE:
         _around_abort(
             report, "seed-lookup-failed",
@@ -2245,8 +2242,11 @@ def _run_around(
     report["around"] = {"kind": seed.kind, "path": seed.path, "stem": seed.stem}
     _log(f"around: resolved kind={seed.kind}")
     if seed.kind == "moc":
-        return _run_around_extension(report, seed, cache, eligibility)
-    return _build_around_note(report, seed, cache, profile_dict, eligibility)
+        report = _run_around_extension(report, seed, cache, eligibility)
+    else:
+        report = _build_around_note(report, seed, cache, profile_dict, eligibility)
+    _log("links: " + " ".join(f"{k}={v}" for k, v in report["link_stats"].items()))
+    return report
 
 
 def _emit_abort_report(

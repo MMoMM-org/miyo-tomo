@@ -250,19 +250,23 @@ def test_link_stats_count_lookups_attempts_members_and_uncached(tmp_path, monkey
     }
 
 
-def test_retries_spending_the_budget_skip_the_cluster_and_the_rest(tmp_path, monkeypatch):
-    """F5-AC1/F5-AC2: 50-attempt lookups spend the 120 budget mid-energy; energy and
-    solar are skipped_budget, attempts stop at 120, proposals and exit code unchanged."""
+def test_retries_spending_the_budget_keep_partial_hits_and_skip_the_rest(tmp_path, monkeypatch):
+    """F5-AC1/F5-AC2, #216: 50-attempt lookups spend the 120 budget mid-energy.
+    alpha and beta were looked up, so energy keeps their hit (xenon) as sampled;
+    solar gets share 0 and is skipped_budget. Attempts stop at 120, proposals and
+    exit code unchanged."""
     (tmp_path / "base").mkdir()
     (tmp_path / "budget").mkdir()
     code_base, _ = _run_tag(tmp_path / "base", monkeypatch, _GraphFake(links={}))
     fake = _GraphFake(attempts_per_call=50)
     code, report = _run_tag(tmp_path / "budget", monkeypatch, fake)
     clusters = _by_topic(report)
-    assert clusters["energy"]["link_lookup_status"] == "skipped_budget"
+    assert clusters["energy"]["link_lookup_status"] == "sampled"
+    assert _members(clusters["energy"])["xenon"]["linked_with"] == ["alpha", "beta"]
     assert clusters["solar"]["link_lookup_status"] == "skipped_budget"
     assert clusters["solar"]["link_members"] == []
-    assert report["link_stats"]["clusters_skipped_budget"] == 2
+    assert report["link_stats"]["clusters_skipped_budget"] == 1
+    assert report["link_stats"]["clusters_sampled"] == 1
     assert report["link_stats"]["attempts"] == 120
     assert code == code_base
 

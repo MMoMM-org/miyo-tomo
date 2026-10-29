@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.6.0
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -307,14 +307,19 @@ def _augment_one(
     status = DONE if len(todo) <= share else SAMPLED
 
     hits: dict[str, set[str]] = {}
+    looked_up = False
     for stem, path in members:
         if path not in fresh and not lookup.cached(path):
             continue
         result = lookup.neighbors(path)
         if isinstance(result, BudgetExhausted):
-            return ClusterLinks(SKIPPED_BUDGET)
+            if not looked_up:
+                return ClusterLinks(SKIPPED_BUDGET)
+            status = SAMPLED
+            break
         if isinstance(result, LookupFailed):
             return ClusterLinks(FAILED)
+        looked_up = True
         for node in result:
             if node in member_paths:
                 continue

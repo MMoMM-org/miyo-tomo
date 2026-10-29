@@ -170,13 +170,25 @@ report `done`, which looks complete but is not. The cluster gets no link members
 no `neighbors` call is made for it, and other clusters are unaffected. Raising
 would abort the whole run over an optional enhancement.
 
-WHY a mid-cluster budget stop is `skipped_budget`: when the gate refuses a send
-inside a cluster (retries spent more than the share counted on), that
-cluster's answer is incomplete, so it gets no link members. Its status is
-`skipped_budget`, not `failed`, and it is counted in `clusters_skipped_budget`:
-the cause is the budget, not a Kado fault, and the PRD requires the user to see
-budget skips on the Discovery line ("(S skipped: budget)"). Only a `KadoError`
-lookup failure is `failed`. The rest of the proposal is unchanged.
+WHY a mid-cluster budget stop keeps its partial hits as `sampled`: when the gate
+refuses a send inside a cluster (retries spent more than the share counted on),
+the members already looked up, or memoised from an earlier cluster, still gave
+real neighbours. Their hits are kept, the two-member rule is applied to them,
+and the cluster is `sampled`, the same lower bound as a cluster larger than its
+share: everything proposed really is linked from two looked-up members, and the
+Discovery line already tells the user the cluster was cut short by the budget
+("(P sampled: budget)"). The first design discarded those hits and reported
+`skipped_budget`, which threw away lookups the run had paid for; the spec 042
+review (suggestion 3) and the owner chose to keep them (#216).
+
+WHY a stop before any member was looked up is still `skipped_budget`: with no
+looked-up or memoised member there are no hits to keep, so the cluster has no
+answer at all. Its status is `skipped_budget`, not `failed`, and it is counted in
+`clusters_skipped_budget`: the cause is the budget, not a Kado fault, and the
+PRD requires the user to see budget skips on the Discovery line ("(S skipped:
+budget)"). A lookup the gate refused after some of its retries were sent gave no
+neighbours and does not count as looked up. Only a `KadoError` lookup failure is
+`failed`. The rest of the proposal is unchanged.
 
 WHY `lookups` counts sends made: a lookup the gate refused before its first send
 did not reach Kado, so it is not counted; a successful lookup and a `KadoError`

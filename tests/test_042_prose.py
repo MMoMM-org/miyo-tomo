@@ -222,5 +222,71 @@ def _version(path: Path) -> tuple[int, ...]:
 
 def test_versions_were_bumped():
     assert _version(COMMAND) > (0, 3, 0)
-    assert _version(AGENT) > (0, 8, 0)
+    assert _version(AGENT) > (0, 8, 1)
     assert _version(HELP) > (0, 2, 20)
+
+
+# ── #216 follow-ups: around Discovery line, Step 2, run id, 429 attribution ─
+
+
+def _agent_out() -> str:
+    return _text(AGENT)[_text(AGENT).index("## Output"):]
+
+
+def test_discovery_template_has_around_forms():
+    block = _output_block(_text(AGENT))
+    line = next(x for x in block.splitlines() if x.startswith("Discovery:"))
+    assert "around:<seed> → new MOC" in line
+    assert "around:<MOC> → extension" in line
+
+
+def test_discovery_around_fill_rule_names_report_fields():
+    out = _agent_out()
+    assert "`around.kind`" in out
+    assert "`around.stem`" in out
+    assert "`extension`" in out
+    assert "OK — around:<seed> → new MOC" in out
+    assert "OK — around:<MOC> → extension" in out
+
+
+def test_discovery_around_forms_keep_the_links_part():
+    out = _agent_out()
+    assert re.search(
+        r"OK — around:<seed> → new MOC; links: <K> members, <L> lookups", out
+    )
+
+
+
+
+def test_step2_runs_on_every_invocation():
+    step2 = _section(_text(AGENT), "### Step 2", "### Step 3")
+    assert "STRICT" in step2
+    assert "every invocation" in step2
+    assert "even when" in step2
+
+
+def test_run_id_comes_from_run_id_script():
+    text = _text(AGENT)
+    assert "date +%s" not in text
+    assert text.count("RUN_ID=$(python3 scripts/run-id.py)") == 3
+
+
+def test_run_id_strict_forbids_other_sources():
+    step3 = _section(_text(AGENT), "### Step 3", "### Step 4")
+    assert "`scripts/run-id.py`" in step3
+    assert re.search(r"STRICT.*run id", step3, re.S | re.I)
+    assert "never `date`" in step3 or "NEVER `date`" in step3
+
+
+def test_retries_are_attributed_as_stderr_names_them():
+    text = _text(AGENT)
+    assert "[kado-retry] HTTP 429 on <tool>" in text
+    assert "kado-graph" in text[text.index("[kado-retry] HTTP 429 on <tool>"):]
+    assert "link lookups" in text
+
+
+def test_no_strict_why_carries_a_date_or_history():
+    whys = re.findall(r"Why:[^\n]*", _text(AGENT))
+    assert whys
+    for why in whys:
+        assert not re.search(r"\d{4}-\d{2}-\d{2}|observed|docs/tomo|spec \d+|#\d+", why), why

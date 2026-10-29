@@ -154,3 +154,46 @@ link counts on the `Discovery:` line and the reducer `--config` argument.
 WHY: Bumped from 0.8.0 for the exit-code rule (exit 2 fatal, exit 0 or 1 parse
 stdout) in the `around` and Pass 2 steps and the `sampled` suffix on the
 `Discovery:` line. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.2 — `around` Discovery line (spec 042, #216)
+
+WHY: Live runs printed `OK — 1 candidates → 1 clusters` for `around:<note>` and
+`OK — 0 candidates → 1 clusters` for `around:<MOC>`. In `around` mode
+`candidates_total` and `topic_clusters` describe the engine's internals, not what
+the owner got: one new MOC, or an extension of an existing one. The line now names
+the outcome. The agent tells the two apart by `around.kind` (set from the resolved
+seed in `moc-discovery.py`; `moc` means the extension path, which also fills
+`extension`) and takes the name from `around.stem`. The `; links: …` part is
+unchanged. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.3 — Step 2 on every run, run id from the script (spec 042, #216)
+
+WHY: In the live validation the agent ran `/moc-propose` several times in one
+session and, from the second run on, skipped Step 2 ("already resolved this
+session") and generated `RUN_ID` with `date +%s`. Two deviations were observed,
+so both carry a STRICT with a one-line `Why:`. Step 2 reads `vault-config.yaml`
+each time because the config can change between runs and a skipped read leaves
+`INBOX_PATH` unverified. `scripts/run-id.py` is the single source of run ids
+(`YYYY-MM-DDTHH-MM-SSZ-<hex>`), so tomo-tmp file names and the cost log join on one
+format; an epoch from `date` collides within a second and does not sort with the
+rest. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.4 — 429 attribution (spec 042, #216)
+
+WHY: In the live validation the agent wrote "Kado returned HTTP 429 on about 18
+reads during link lookup". The retries were Phase 6.5 `kado-read` calls, which sit
+outside the 120-attempt graph budget; `lookups failed` was 0. Link-lookup
+evidence comes from `link_stats`, while retries are only visible as
+`[kado-retry] HTTP 429 on <tool>` stderr lines (`lib/kado_client.py`). The tool name
+on that line is the only attribution the agent can verify, so a report that says
+"link lookups" for a non-`kado-graph` tool misleads the owner about whether the
+graph budget is under pressure. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.5 — STRICT `Why:` lines carry only the failure mode (#216)
+
+WHY: The transport STRICT's `Why:` carried an observation date and a pointer to
+this file. Runtime files are loaded line by line, so history there is noise the
+model may act on. The history stays in the "Transport via kado-write-file.py"
+section above; the `Why:` keeps the one-line failure mode (an inlined 100 KB+
+proposal-doc exceeds the output-token budget and fails). `update-tomo.sh` skips
+unchanged versions.

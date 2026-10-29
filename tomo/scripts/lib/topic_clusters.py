@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.5.0
+# version: 0.6.1
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -155,6 +155,65 @@ def normalise_topic(topic: str) -> str:
     return t
 
 
+_BRACKET_PAIRS = {"(": ")", "[": "]", "{": "}"}
+
+
+def clean_display_topic(topic: str) -> str:
+    """Strip wrapping brackets plus edge punctuation from a display topic.
+
+    One bracket pair wrapping the WHOLE topic is removed ("(quote)" → "quote");
+    then leading/trailing non-word characters and whitespace go. Both steps
+    repeat until the string is stable, so a pair exposed by the edge strip
+    (" -- (quote)") is removed too. A bracket that
+    pairs with another one inside the topic stays: "Gesundheit (Lebensbereich)"
+    is unchanged. Rationale in docs/tomo/scripts/lib/topic_clusters.md.
+    """
+    t = topic.strip()
+    while True:
+        before = t
+        t = _strip_edges(_strip_wrapping_pairs(t))
+        if t == before:
+            return t
+
+
+def _strip_wrapping_pairs(t: str) -> str:
+    while len(t) > 2 and _BRACKET_PAIRS.get(t[0]) == t[-1] and _wraps_whole(t):
+        t = t[1:-1].strip()
+    return t
+
+
+def _strip_edges(t: str) -> str:
+    closers = set(_BRACKET_PAIRS.values())
+    while t:
+        first, last = t[0], t[-1]
+        if not (first.isalnum() or first == "_") and not (
+            first in _BRACKET_PAIRS and _BRACKET_PAIRS[first] in t[1:]
+        ):
+            t = t[1:].strip()
+        elif not (last.isalnum() or last == "_") and not (
+            last in closers
+            and next(o for o, c in _BRACKET_PAIRS.items() if c == last) in t[:-1]
+        ):
+            t = t[:-1].strip()
+        else:
+            break
+    return t
+
+
+def _wraps_whole(t: str) -> bool:
+    """True when the opener at t[0] is closed only by the final char."""
+    opener, closer = t[0], t[-1]
+    depth = 0
+    for i, ch in enumerate(t):
+        if ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                return i == len(t) - 1
+    return False
+
+
 def _compute_moc_tags(items_tags: list[list[str]]) -> list[str]:
     """Compute shared parent tags for a Proposed MOC.
 
@@ -231,6 +290,8 @@ def build_topic_clusters(
         if not topic_raw:
             continue
         norm = normalise_topic(topic_raw)
+        if not norm:  # punctuation-only ("§") carries no topic (#216)
+            continue
         grouped.setdefault(norm, []).append(
             (
                 candidate.section_id,
@@ -244,7 +305,7 @@ def build_topic_clusters(
     for _norm, hits in grouped.items():
         if len(hits) < threshold:
             continue
-        display_topic = hits[0][1]  # first occurrence's bare casing
+        display_topic = clean_display_topic(hits[0][1])  # first occurrence's casing
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
         # Tags: compute shared parent tags instead of dumping all leaf tags.

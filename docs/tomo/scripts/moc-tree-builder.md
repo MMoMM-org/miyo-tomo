@@ -93,15 +93,17 @@ safe. Inline-tag parsing lives in `moc-tree-builder.parse_inline_tags`.
 ## `up_state` Resolved by Caller, Not by `up_parse` (M1)
 
 WHY: `up_parse.parse_up_from_content` returns `{target, source}` only.
-`_resolve_up_state` in this builder maps the target against the MOC stem set
-(`moc_stem_set`) to produce "absent" / "valid" / "broken". The stem set is
+`lib/up_state.classify_up_target` maps the target against the MOC stem set
+(`moc_stem_set`) to produce "absent" / "valid" / "broken". The rule is shared
+with `moc-discovery.py` Phase 6.5 (#216, see `lib/up_state.md`). The stem set is
 built once in `build_entries` and reused for all notes. This keeps up_parse
 independent of vault state (testable in isolation) while keeping the resolution
 logic co-located with the data that makes it possible.
 
 ## `up_broken_reason` Distinguishes WHY `up_state` Is Broken (spec 033 T1.1/T1.2 / ADR-2, ADR-3)
 
-WHY: `_resolve_up_state` now returns `(up_state, up_broken_reason)` instead of
+WHY: the classification (`_resolve_up_state` until #216, now
+`lib/up_state.classify_up_target`) returns `(up_state, up_broken_reason)` instead of
 `up_state` alone. `up_state`'s three values (`absent` / `valid` / `broken`)
 are deliberately UNCHANGED (ADR-2) — three existing consumers key on
 `up_state == "absent"` (`_check_unparented`) or `== "broken"`

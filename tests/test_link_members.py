@@ -499,10 +499,14 @@ class TestAugment:
         assert result.stats["clusters_skipped_budget"] == 0
         assert result.stats["clusters_sampled"] == 1
 
-    def test_sample_follows_item_order(self):  # ADR-4
-        result, client, _ = _run([_cluster("c1", "C", "B", "A")], {}, budget=2)
-        assert result.clusters["c1"].status == "sampled"
-        assert [c[1] for c in client.graph_calls] == [f"{N}C.md", f"{N}B.md"]
+    def test_sample_is_casefolded_path_order_whatever_the_item_order(self):  # #216
+        # Item order follows Kado's listing order; the sample must not. A plain
+        # sort would put B and C before a; casefolded, a comes first.
+        lower = _note("a")
+        for order in (("C", "B", "a"), ("a", "C", "B"), ("B", "a", "C")):
+            result, client, _ = _run([_cluster("c1", *order)], {}, budget=2, notes=[lower])
+            assert result.clusters["c1"].status == "sampled"
+            assert [c[1] for c in client.graph_calls] == [f"{N}a.md", f"{N}B.md"]
 
     def test_hits_count_looked_up_members_only(self):  # ADR-4
         adjacency = {"A": ["C", "Y"], "B": ["C", "Y"]}
@@ -565,10 +569,45 @@ class TestAugment:
         assert result.clusters["c1"].status == "done"
         assert [c[1] for c in client.graph_calls] == [f"{N}A.md", f"{N}B.md"]
 
-    def test_budget_refused_mid_cluster_is_skipped_budget_and_counted(self):
+    def test_budget_refused_mid_cluster_keeps_partial_hits_as_sampled(self):  # #216
+        # A and B looked up (both link X), C's retries hit the gate: the hits so
+        # far are kept, the two-member rule applies to them, status sampled.
+        adjacency = {"A": ["X"], "B": ["X"], "C": ["X"]}
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B", "C")], adjacency, budget=4, attempts={"C": 5}
+        )
+        assert result.clusters["c1"].status == "sampled"
+        assert _stems(result, "c1") == ["X"]
+        assert result.clusters["c1"].link_members[0].linked_with == ["A", "B"]
+        assert result.stats["clusters_sampled"] == 1
+        assert result.stats["clusters_skipped_budget"] == 0
+        assert result.stats["failed"] == 0
+        assert client.attempt_count == 4
+
+    def test_partial_hits_below_threshold_give_no_member(self):  # #216
         adjacency = {"A": ["X"], "B": ["X"]}
-        result, client, lookup = _run(
+        result, client, _ = _run(
             [_cluster("c1", "A", "B")], adjacency, budget=3, attempts={"A": 3}
+        )
+        assert result.clusters["c1"].status == "sampled"
+        assert result.clusters["c1"].link_members == []
+        assert result.stats["clusters_skipped_budget"] == 0
+        assert client.attempt_count == 3
+
+    def test_memoised_members_count_as_looked_up_on_a_budget_stop(self):  # #216
+        # c1 looks up A and B; in c2 both are memoised, C is refused by the gate.
+        adjacency = {"A": ["X"], "B": ["X"]}
+        result, _, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "A", "B", "C")],
+            adjacency, budget=4, attempts={"C": 5},
+        )
+        assert result.clusters["c2"].status == "sampled"
+        assert _stems(result, "c2") == ["X"]
+
+    def test_budget_refused_before_any_lookup_is_skipped_budget(self):  # #216
+        adjacency = {"A": ["X"], "B": ["X"]}
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B")], adjacency, budget=3, attempts={"A": 5}
         )
         assert result.clusters["c1"].status == "skipped_budget"
         assert result.clusters["c1"].link_members == []

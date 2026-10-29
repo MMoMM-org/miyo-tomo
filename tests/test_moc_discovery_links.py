@@ -250,19 +250,23 @@ def test_link_stats_count_lookups_attempts_members_and_uncached(tmp_path, monkey
     }
 
 
-def test_retries_spending_the_budget_skip_the_cluster_and_the_rest(tmp_path, monkeypatch):
-    """F5-AC1/F5-AC2: 50-attempt lookups spend the 120 budget mid-energy; energy and
-    solar are skipped_budget, attempts stop at 120, proposals and exit code unchanged."""
+def test_retries_spending_the_budget_keep_partial_hits_and_skip_the_rest(tmp_path, monkeypatch):
+    """F5-AC1/F5-AC2, #216: 50-attempt lookups spend the 120 budget mid-energy.
+    alpha and beta were looked up, so energy keeps their hit (xenon) as sampled;
+    solar gets share 0 and is skipped_budget. Attempts stop at 120, proposals and
+    exit code unchanged."""
     (tmp_path / "base").mkdir()
     (tmp_path / "budget").mkdir()
     code_base, _ = _run_tag(tmp_path / "base", monkeypatch, _GraphFake(links={}))
     fake = _GraphFake(attempts_per_call=50)
     code, report = _run_tag(tmp_path / "budget", monkeypatch, fake)
     clusters = _by_topic(report)
-    assert clusters["energy"]["link_lookup_status"] == "skipped_budget"
+    assert clusters["energy"]["link_lookup_status"] == "sampled"
+    assert _members(clusters["energy"])["xenon"]["linked_with"] == ["alpha", "beta"]
     assert clusters["solar"]["link_lookup_status"] == "skipped_budget"
     assert clusters["solar"]["link_members"] == []
-    assert report["link_stats"]["clusters_skipped_budget"] == 2
+    assert report["link_stats"]["clusters_skipped_budget"] == 1
+    assert report["link_stats"]["clusters_sampled"] == 1
     assert report["link_stats"]["attempts"] == 120
     assert code == code_base
 
@@ -296,6 +300,27 @@ def test_small_budget_samples_the_first_cluster_and_reports_it(tmp_path, monkeyp
     assert report["link_stats"]["clusters_skipped_budget"] == 0
     assert report["link_stats"]["attempts"] == 3
     assert [p for _, p, _ in fake.graph_calls] == [A, D, E]
+
+
+def test_sampled_members_do_not_depend_on_candidate_order(tmp_path, monkeypatch):
+    """#216: budget 3 samples one energy member; two Phase-1 candidate orders
+    (Kado listing order) look up the same members."""
+    import functools
+
+    from lib.link_members import LinkLookup
+
+    monkeypatch.setattr(_moc_disc, "LinkLookup", functools.partial(LinkLookup, budget=3))
+    forward = _candidates(*((p, ["energy"]) for p in (A, B, C)),
+                          *((p, ["solar"]) for p in (D, E)))
+    calls = []
+    for name, cands in (("fwd", forward), ("rev", forward[::-1])):
+        (tmp_path / name).mkdir()
+        fake = _GraphFake()
+        monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda f=fake: f)
+        _, report = _run_phase1_input(tmp_path / name, cands)
+        assert _by_topic(report)["energy"]["link_lookup_status"] == "sampled"
+        calls.append(sorted(p for _, p, _ in fake.graph_calls))
+    assert calls[0] == calls[1] == sorted([A, D, E])
 
 
 def test_failed_lookup_marks_only_that_cluster(tmp_path, monkeypatch):

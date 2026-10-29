@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.25.0
+# version: 0.26.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -75,6 +75,7 @@ from lib.profile_conventions import ensure_suffix, moc_suffix, resolve_conventio
 from lib.render_md import bare_stem, unwrap_list_repr  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content, up_marker_re  # noqa: E402
+from lib.up_state import BROKEN, classify_up_target  # noqa: E402
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
     load_registry as _squelch_load_registry,
@@ -1597,16 +1598,11 @@ def phase65_validate_existing_up(
             # `up:: [[X]]` and frontmatter `up:` (inline wins on conflict),
             # splitting the frontmatter block locally with no extra Kado call.
             target = parse_up_from_content(content, parent_marker).target
-            if target is None:
-                rows.append({"stem": stem, "state": "absent", "target": None})
-            elif target in moc_stems:
-                rows.append({"stem": stem, "state": "valid", "target": target})
-            else:
-                # Mirrors moc-tree-builder._resolve_up_state's up_broken_reason.
-                reason = "not-a-moc" if target in note_stems else "unresolved"
-                rows.append(
-                    {"stem": stem, "state": "broken", "target": target, "reason": reason}
-                )
+            state, reason = classify_up_target(target, moc_stems, note_stems)
+            row = {"stem": stem, "state": state, "target": target}
+            if state == BROKEN:
+                row["reason"] = reason
+            rows.append(row)
 
         cluster["existing_up"] = rows
 

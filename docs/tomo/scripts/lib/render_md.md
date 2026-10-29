@@ -1023,3 +1023,29 @@ per withheld kind. Three changes here:
   relationship or MOC-link bullet stays, because F2-AC4 asks for the withheld
   action and its withdrawn delete to read together. This supersedes the
   catch-all paragraphs in the spec 036 T4.3 section above.
+
+## Extension Notes: "MOC extensions" and "MOC extension not applied" (spec 042, T4.4)
+
+WHY there are two places an `extend_moc` item can speak, and they differ in what
+the owner must do.
+
+- **"## MOC extensions" / "Already-linked check unavailable".** Rendered from
+  `metadata["extension_reports"]` for each report whose `outgoing_checked` is
+  false. The extension is still applied; only the duplicate guard failed. Kado
+  could not list the MOC's outgoing links, so `render_actions` added a line for
+  every ticked member instead of only the ones the MOC lacks. The note names the
+  MOC and tells the owner to remove any duplicate line after applying. Reports
+  with `outgoing_checked` true print nothing: a check that worked needs no
+  disclosure.
+- **"**MOC extension not applied**" (under "## Skipped — un-appliable actions").
+  Rendered from `metadata["withheld_extensions"]`, the records
+  `render_resolve.filter_missing_extension_targets` produced before the build.
+  Here the extension is NOT applied: no `up::` was written on any member and no
+  line went into the MOC, because the target is absent, ambiguous or could not
+  be verified. Opening the section when only this list is non-empty is why
+  `withheld_extensions` is part of the section's trigger condition. One bullet per
+  MOC (`_render_withheld_extension`) names the MOC, the reason, the exact-stem
+  paths found (so an ambiguous name shows the notes to rename), the member count
+  and a remedy chosen by `kind` (`_WITHHELD_EXTENSION_REMEDIES`). An unknown kind
+  prints a loud "no remedy defined" text instead of inheriting another kind's
+  advice, the same rule the attachment remedies follow.

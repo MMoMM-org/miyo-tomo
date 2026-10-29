@@ -293,3 +293,39 @@ def _legacy_topic_clusters(
             "tags": all_tags,
         })
     return out
+
+
+# ── #216: punctuation-only and bracket-wrapped topics ───────────────────────
+
+
+def test_punctuation_only_topic_never_forms_or_joins_a_cluster():
+    """'§' normalises to '' and must not cluster, alone or merged with others."""
+    from lib.topic_clusters import ClusterCandidate, build_topic_clusters
+
+    items = [
+        ClusterCandidate(section_id="§ A", topic="§"),
+        ClusterCandidate(section_id="§ B", topic="§"),
+        ClusterCandidate(section_id="§ C", topic="!!!"),
+        ClusterCandidate(section_id="n1", topic="shell"),
+    ]
+    assert build_topic_clusters(items, threshold=2) == []
+
+
+def test_display_topic_drops_wrapping_brackets_but_keeps_internal_ones():
+    from lib.topic_clusters import ClusterCandidate, build_topic_clusters
+
+    def topic_of(raw: str) -> str:
+        items = [ClusterCandidate(section_id=f"s{i}", topic=raw) for i in range(3)]
+        (cluster,) = build_topic_clusters(items, threshold=3)
+        return cluster["topic"]
+
+    assert topic_of("(quote)") == "quote"
+    assert topic_of("[Quote]") == "Quote"
+    assert topic_of(" -- Quote: ") == "Quote"
+    assert topic_of("Gesundheit (Lebensbereich)") == "Gesundheit (Lebensbereich)"
+    assert topic_of("(a) b (c)") == "(a) b (c)"
+    assert topic_of("(quote") == "quote"
+    assert topic_of(" -- (quote)") == "quote"
+    assert topic_of("(quote).") == "quote"
+    assert topic_of("(x) -- ") == "x"
+    assert topic_of("((x))") == "x"

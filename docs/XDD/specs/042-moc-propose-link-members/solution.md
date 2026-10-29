@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.2"
+version: "1.3"
 ---
 
 # Solution Design Document
@@ -450,7 +450,7 @@ def augment_one(cluster, stem_to_path, lookup, elig, cache, share, threshold=2):
     if uncached and share == 0:
         return [], "skipped_budget"              # no share left for this cluster (ADR-4)
     looked_up = [p for p in member_paths if lookup.cached(p) or p in uncached[:share]]
-    status = "done" if len(uncached) <= share else "sampled"   # first `share` uncached, item order
+    status = "done" if len(uncached) <= share else "sampled"   # first `share` uncached, casefolded path order (v1.3)
     hits: dict[str, set[str]] = {}
     for stem, path in ((s, p) for s, p in zip(cluster["items"], member_paths) if p in looked_up):
         result = lookup.neighbors(path)          # memoised across clusters
@@ -548,8 +548,8 @@ sequenceDiagram
 | Error | Where | Handling | User sees |
 |---|---|---|---|
 | 429 with Retry-After | KadoClient | existing backoff; every attempt counted; gate stops retries when budget is spent | nothing unless the budget runs out |
-| Cluster larger than its budget share | augment | share = remaining // clusters still to do; memoised members are free; the first `share` uncached members (item order) are looked up, status `sampled`; ≥ 2 hits counted among those | `Discovery:` line "(P sampled: budget)" |
-| Budget exhausted mid-run | LinkLookup / augment | a cluster with share 0, or whose retries spend the budget mid-cluster, is `skipped_budget` with no link members; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
+| Cluster larger than its budget share | augment | share = remaining // clusters still to do; memoised members are free; the first `share` uncached members in casefolded path order (v1.3; was item order) are looked up, status `sampled`; ≥ 2 hits counted among those | `Discovery:` line "(P sampled: budget)" |
+| Budget exhausted mid-run | LinkLookup / augment | a cluster with share 0 is `skipped_budget`; a cluster whose retries spend the budget mid-cluster keeps the hits of the members already looked up or memoised and is `sampled` (v1.3; was `skipped_budget`), or `skipped_budget` when none was; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
 | Pass 2 exits 1 (partial: D3/duplicate or squelched clusters dropped) | moc-architect | stdout holds the full DiscoveryReport; parse it and continue; only exit 2 (fatal) stops the run | none |
 | Lookup error (Kado error, 503 after retries) | augment | that cluster `failed`, no link members; others continue | "lookups failed: F" note in `Aborts/notes` |
 | Seed lookup fails (Kado error, key cannot read the seed, budget refusal) | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason naming the seed |
@@ -693,7 +693,7 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28
-- [x] ADR-4 Budget: 120 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; each rendered cluster gets a fair share (remaining // clusters still to do), larger clusters are `sampled` (first `share` uncached members in item order). v1.2: was 60 and all-or-nothing; the T5.3 live run left 3 of 5 rendered clusters (62/45/17 members) without lookups.
+- [x] ADR-4 Budget: 120 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; each rendered cluster gets a fair share (remaining // clusters still to do), larger clusters are `sampled` (first `share` uncached members in casefolded path order; a mid-cluster stop keeps partial hits). v1.3: path order and kept partial hits. v1.2: was 60 and all-or-nothing; the T5.3 live run left 3 of 5 rendered clusters (62/45/17 members) without lookups.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28

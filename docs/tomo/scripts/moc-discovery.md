@@ -372,7 +372,10 @@ WHY: the agent reads stderr to write the `Discovery:` line. `around:<MOC>` rewri
 logged straight from the lookup said 17 members while the report said 7 (T5.3 live
 run). `_around_lookup` therefore logs only status and neighbour count; `_run_around`
 logs `links: ` plus every `link_stats` value from the finished report, on success,
-`no-missing-members` and seed-lookup aborts alike. Stderr and report cannot diverge.
+`no-missing-members`, `fewer-than-3-notes` and seed-lookup aborts alike. Stderr and
+report cannot diverge. Resolve aborts (`around-not-found`, `around-ambiguous`,
+`around-periodic`, `around-ineligible`) return before any lookup: they log no
+`links:` line and their report carries the zeroed `link_stats` of `empty_report`.
 
 ## `around:<MOC>`: The MOC's Missing Members (spec 042 F3, T4.1)
 
@@ -412,6 +415,22 @@ case-insensitively, because Obsidian resolves `up::` the same way. A
 `up_target` that an older cache persisted as the str repr of the whole
 frontmatter list (`"['Other', 'MOC']"`, no `up_value`) is unwrapped
 (`unwrap_list_repr`) and every element is checked, not just the first.
+
+**Why `_ref_stem` is not `up_parse._clean_target`.** Both strip an `|alias`
+and a `#heading`, but they answer different questions and differ on purpose
+(#216, pinned by `tests/test_ref_stem_vs_clean_target.py`). `_clean_target` is
+a step inside the parser: its input is the text between `[[` and `]]`, and its
+output is the cached `up_target`, the link target as the user wrote it. It
+keeps a folder path and a `.md`, because a path-qualified link is how the user
+disambiguates two notes with the same name, and the classification and the
+renderers must see that literal target. `_ref_stem` is a lenient matcher over
+already-cached values of any shape: it also strips `[[ ]]` (an `up_value`
+element is the raw frontmatter string), a folder and `.md`, and unwraps a list
+repr, so that a note whose parent is written `[[Maps/Gardening (MOC).md]]` is
+not proposed as missing. Merging them would either rewrite every cached
+`up_target` that carries a path (a behaviour change for the cache, the
+classification and the renderers) or make the around match strict and
+propose notes that already point at the MOC.
 
 **Residual limit — inline parents.** The cache keeps no second inline
 parent and does not record a frontmatter `up:` once an inline `up::` won
@@ -458,10 +477,12 @@ reason next to the state.
   `entries`, else `unresolved`. `absent` and `valid` rows keep their
   three keys: no reason applies to them, and the row shape every existing
   consumer and test pins stays unchanged. This
-  mirrors `moc-tree-builder.py` `_resolve_up_state`, which writes the same
-  values into the cache as `up_broken_reason`. It is mirrored, not imported:
-  `moc-tree-builder.py` is a hyphenated script whose import pulls in the
-  whole cache build; the rule is three comparisons. `valid` keeps its own
+  uses the same classification as `moc-tree-builder.py`, which writes the
+  same values into the cache as `up_broken_reason`: both call
+  `lib/up_state.classify_up_target` (#216). Until then the rule was mirrored
+  here because importing the hyphenated builder pulls in the whole cache
+  build; a library module removes that cost and the drift risk of two copies.
+  `valid` keeps its own
   test (`_moc_stems_from_cache`, stems and titles), so this change only splits
   `broken` and moves no row between states.
 - **Link members, around and extension members.** `LinkMember` carries the

@@ -260,6 +260,20 @@ class TestAtomicNoteLine:
             f"Note line must show bare topic; got: {note_line}"
         )
 
+    def test_note_line_shows_cleaned_topic_like_proposed_mocs_section(self):
+        """#216: a punctuated topic reads the same here as in Proposed MOCs."""
+        action = {
+            "action": "create_atomic_note",
+            "suggested_title": "Quote Note",
+            "needs_new_moc": True,
+            "proposed_moc_topic": " -- (Quote) (MOC)",
+            "tags_to_add": [],
+            "candidate_mocs": [],
+        }
+        result = _sr_mod.render_create_atomic_note(action, "inbox-item", " (MOC)")
+        note_line = next(line for line in result.split("\n") if "No good thematic MOC" in line)
+        assert "(topic: *Quote*)" in note_line, note_line
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Real-case regression: 3 items (2 bare + 1 with suffix) → EXACTLY one MOC

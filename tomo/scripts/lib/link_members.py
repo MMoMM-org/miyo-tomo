@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.6.0
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -7,7 +7,8 @@ module decides, offline, which neighbours are allowed to be proposed
 adds every eligible non-member linked from at least two looked-up members of a
 cluster (`augment_clusters`). Each cluster gets a fair share of the budget
 (`remaining // clusters still to do`); a cluster larger than its share is
-`sampled`: its first `share` uncached members, in item order, are looked up.
+`sampled`: its first `share` uncached members, in casefolded path order, are
+looked up.
 Periodic notes (hubs that link everything) and MOCs are neither members nor
 bridges.
 
@@ -292,7 +293,9 @@ def _augment_one(
     stems = cluster.get("items") or []
     if any(s not in stem_to_path for s in stems):
         return ClusterLinks(FAILED)
-    members = [(s, stem_to_path[s]) for s in stems]
+    members = sorted(
+        ((s, stem_to_path[s]) for s in stems), key=lambda m: (m[1].casefold(), m[1])
+    )
     member_paths = {p for _, p in members}
     todo = []
     for _, path in members:
@@ -304,14 +307,19 @@ def _augment_one(
     status = DONE if len(todo) <= share else SAMPLED
 
     hits: dict[str, set[str]] = {}
+    looked_up = False
     for stem, path in members:
         if path not in fresh and not lookup.cached(path):
             continue
         result = lookup.neighbors(path)
         if isinstance(result, BudgetExhausted):
-            return ClusterLinks(SKIPPED_BUDGET)
+            if not looked_up:
+                return ClusterLinks(SKIPPED_BUDGET)
+            status = SAMPLED
+            break
         if isinstance(result, LookupFailed):
             return ClusterLinks(FAILED)
+        looked_up = True
         for node in result:
             if node in member_paths:
                 continue

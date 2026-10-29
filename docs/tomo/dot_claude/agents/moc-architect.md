@@ -177,3 +177,14 @@ each time because the config can change between runs and a skipped read leaves
 (`YYYY-MM-DDTHH-MM-SSZ-<hex>`), so tomo-tmp file names and the cost log join on one
 format; an epoch from `date` collides within a second and does not sort with the
 rest. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.4 — 429 attribution (spec 042, #216)
+
+WHY: In the live validation the agent wrote "Kado returned HTTP 429 on about 18
+reads during link lookup". The retries were Phase 6.5 `kado-read` calls, which sit
+outside the 120-attempt graph budget; `lookups failed` was 0. Link-lookup
+evidence comes from `link_stats`, while retries are only visible as
+`[kado-retry] HTTP 429 on <tool>` stderr lines (`lib/kado_client.py`). The tool name
+on that line is the only attribution the agent can verify, so a report that says
+"link lookups" for a non-`kado-graph` tool misleads the owner about whether the
+graph budget is under pressure. `update-tomo.sh` skips unchanged versions.

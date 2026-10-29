@@ -276,3 +276,10 @@ def test_run_id_strict_forbids_other_sources():
     assert "`scripts/run-id.py`" in step3
     assert re.search(r"STRICT.*run id", step3, re.S | re.I)
     assert "never `date`" in step3 or "NEVER `date`" in step3
+
+
+def test_retries_are_attributed_as_stderr_names_them():
+    text = _text(AGENT)
+    assert "[kado-retry] HTTP 429 on <tool>" in text
+    assert "kado-graph" in text[text.index("[kado-retry] HTTP 429 on <tool>"):]
+    assert "link lookups" in text

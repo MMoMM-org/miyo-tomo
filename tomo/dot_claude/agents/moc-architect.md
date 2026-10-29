@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.8.3
+# version: 0.8.4
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -320,6 +320,8 @@ Aborts/notes: <bulleted list of warnings/overflows, or "none">
 - Append ` (<P> sampled: budget)` with `P` = `link_stats.clusters_sampled` only when `link_stats.clusters_sampled` > 0.
 - Append ` (<S> skipped: budget)` with `S` = `link_stats.clusters_skipped_budget` only when `link_stats.clusters_skipped_budget` > 0.
 - When `link_stats.failed` > 0, add the bullet `lookups failed: <F>` (`F` = `link_stats.failed`) to `Aborts/notes:`.
+
+**STRICT** (Why: Phase 6.5 `kado-read` retries were reported as link-lookup retries): when you mention rate-limit retries in `Aborts/notes:`, attribute them only as the stderr lines name them (`[kado-retry] HTTP 429 on <tool>`), and NEVER call them link lookups unless `<tool>` is `kado-graph`.
 
 **Example (success):**
 ```

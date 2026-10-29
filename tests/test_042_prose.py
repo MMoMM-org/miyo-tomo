@@ -167,12 +167,14 @@ OLD_EXIT_RULE = "A non-zero exit code means the script"
 def test_around_branch_stops_only_on_exit_2():
     branch = _section(_text(AGENT), "#### Step 3 (around mode)", "#### Step 3 (all other modes)")
     assert OLD_EXIT_RULE not in branch
+    assert "non-zero" not in branch.lower()
     assert "Exit 2" in branch and "exit 0 or 1" in branch
 
 
 def test_step3c_stops_only_on_exit_2_and_parses_stdout_on_exit_1():
     step3c = _section(_text(AGENT), "#### Step 3c", "### Step 4")
     assert OLD_EXIT_RULE not in step3c
+    assert "non-zero" not in step3c.lower()
     assert "Exit 2" in step3c and "surface stderr and stop" in step3c
     assert "exit 0 or 1" in step3c
 

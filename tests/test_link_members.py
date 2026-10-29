@@ -270,7 +270,7 @@ def _run(clusters, adjacency, budget=120, notes=(), **client_kw):
 
 
 def _cache_entries_for(cache):
-    return {e['path']: e for e in cache['entries']}
+    return {e["path"]: e for e in cache["entries"]}
 
 
 def _stems(result, cid):
@@ -556,6 +556,14 @@ class TestAugment:
         assert result.clusters["c2"].status == "done"
         assert _stems(result, "c2") == ["X"]
         assert len(client.graph_calls) == 2
+
+    def test_stems_sharing_a_path_cost_one_lookup(self):  # ADR-4
+        client, cache, s2p, elig = _world({"A": ["X"], "B": ["X"]})
+        s2p["A2"] = s2p["A"]
+        lookup = LinkLookup(client, budget=2)
+        result = augment_clusters([_cluster("c1", "A", "A2", "B")], s2p, lookup, elig, cache)
+        assert result.clusters["c1"].status == "done"
+        assert [c[1] for c in client.graph_calls] == [f"{N}A.md", f"{N}B.md"]
 
     def test_budget_refused_mid_cluster_is_skipped_budget_and_counted(self):
         adjacency = {"A": ["X"], "B": ["X"]}

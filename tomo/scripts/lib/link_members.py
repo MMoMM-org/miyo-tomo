@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -7,8 +7,9 @@ module decides, offline, which neighbours are allowed to be proposed
 adds every eligible non-member linked from at least two looked-up members of a
 cluster (`augment_clusters`). Each cluster gets a fair share of the budget
 (`remaining // clusters still to do`); a cluster larger than its share is
-`sampled`: its first `share` uncached members, in item order, are looked up. Periodic notes (hubs that link everything) and MOCs are
-neither members nor bridges.
+`sampled`: its first `share` uncached members, in item order, are looked up.
+Periodic notes (hubs that link everything) and MOCs are neither members nor
+bridges.
 
 Eligibility reads only the discovery cache, the profile and vault-config — no
 Kado call. Uncached nodes are ineligible (`uncached`) and only counted. Reasons

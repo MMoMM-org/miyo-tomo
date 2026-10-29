@@ -217,7 +217,7 @@ two members' neighbour lists (`lib/link_members.augment_clusters`; rules and
 budget in `docs/tomo/scripts/lib/link_members.md`).
 
 **Insertion point — after D3 and the confidence sort, before Phase 6.5.** The
-lookups cost Kado calls under a per-run attempt budget (60, ADR-4). Running
+lookups cost Kado calls under a per-run attempt budget (120, ADR-4 v1.2, shared fairly across the rendered clusters). Running
 them before Phase 6 / D3 would spend budget on clusters that are then dropped
 as duplicates, squelched or absorbed. The confidence sort moved up from after
 Phase 6.5 to directly after D3 so the slice is known before the lookups; Phase
@@ -320,7 +320,7 @@ proposal type (extend the existing MOC, F3) and is routed to its own builder.
 `around:<MOC>` below); the routing in front of it is the same resolver.
 
 **Exactly one lookup, from the same budget.** The seed's `neighbors` call runs
-inside `with LinkLookup(client)`, so it is paced and counted against the 60
+inside `with LinkLookup(client)`, so it is paced and counted against the 120
 attempt budget like any other lookup, and `link_stats` reports it. The lookup
 reuses `augment_clusters` with a one-member cluster and threshold 1: the
 eligibility rules, the uncached count and the failure statuses are the same
@@ -377,7 +377,7 @@ link direction) that passes member eligibility (`NodeEligibility`) and whose
 cached parent does not name this MOC — neither the cached `up_target` nor any
 element of the cached `up_value`. The lookup reuses the `around:<note>` path
 — `augment_clusters` with the MOC as the one-member cluster and threshold 1 —
-so pacing, the 60-attempt budget, the uncached count and "seed lookup failed"
+so pacing, the 120-attempt budget, the uncached count and "seed lookup failed"
 on a Kado error or budget refusal are the same code (ADR-4). A neighbour that
 is itself a MOC (the MOC's own parent, a sibling hub) fails eligibility and is
 never a member (PRD edge case "parent MOC").

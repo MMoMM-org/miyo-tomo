@@ -108,11 +108,11 @@ spend budget on a note that just failed, and every cluster containing it is mark
 WHY the budget counts HTTP attempts, not lookups: Kado rate-limits per IP and
 counts every request, retries included (20 per 5 s, shared with the container).
 `LinkLookup` reads `KadoClient.attempt_count` deltas, so a 429 retry costs budget
-like any first send. The budget is 60 attempts per run; sends are paced at least
+like any first send. The budget is 120 attempts per run (60 until ADR-4 v1.2); sends are paced at least
 0.3 s apart. Both are module constants (`LOOKUP_BUDGET`, `LOOKUP_PACING_S`), not
 config keys.
 
-WHY the gate is installed on the client: the pre-check per cluster counts
+WHY the gate is installed on the client: the fair share per cluster counts
 lookups, which is a lower bound on attempts. Retries can still spend the rest of
 the budget mid-cluster. `LinkLookup` therefore installs `client.attempt_gate`, so
 the client refuses the send that would exceed the budget (`KadoBudgetExhausted`,
@@ -135,11 +135,24 @@ one lookup spans all clusters of the run.
 
 ## Augmenting Clusters (SDD Complex Logic)
 
-WHY all-or-nothing per cluster: a cluster whose uncached lookups exceed the
-remaining budget is skipped whole (`skipped_budget`) before any call. Half a
-cluster's lookups would yield link members found through some members only,
-which looks complete but is not. Skipping continues to the next cluster: a
-smaller or already-cached cluster may still fit.
+WHY a fair share per cluster, not all-or-nothing: the first design skipped a
+cluster whole when its uncached lookups exceeded the remaining budget (60). The
+T5.3 live run then left 3 of 5 rendered clusters (62/45/17 members) without any
+lookup, because the first cluster ate the budget. ADR-4 v1.2 raises the budget
+to 120 and gives each cluster `share = remaining // clusters still to do`.
+Memoised members are free. The first `share` uncached members in item order are
+looked up; the status is `done` when every uncached member fit and `sampled`
+when some did not. A cluster with uncached members and a share of 0 is
+`skipped_budget`. Unused share flows on to the later clusters because `share` is
+recomputed from what is left. No rendered cluster is skipped while budget remains.
+
+WHY `sampled` link members are still proposed: a sampled cluster yields link
+members found through the looked-up members only. The result is a lower bound
+(everything proposed really is linked from at least two looked-up members) and
+never a false positive, so it is shown with the Discovery line
+"(P sampled: budget)" instead of being dropped. The two-member rule counts hits
+among looked-up members only; a node that is any member of the cluster, looked
+up or not, is still excluded from the hits.
 
 WHY an unmapped stem is `failed`: a cluster stem missing from `stem_to_path` is a
 caller bug. Dropping it would score the cluster on a partial member set and still
@@ -148,7 +161,7 @@ no `neighbors` call is made for it, and other clusters are unaffected. Raising
 would abort the whole run over an optional enhancement.
 
 WHY a mid-cluster budget stop is `skipped_budget`: when the gate refuses a send
-inside a cluster (retries spent what the pre-check could not foresee), that
+inside a cluster (retries spent more than the share counted on), that
 cluster's answer is incomplete, so it gets no link members. Its status is
 `skipped_budget`, not `failed`, and it is counted in `clusters_skipped_budget`:
 the cause is the budget, not a Kado fault, and the PRD requires the user to see

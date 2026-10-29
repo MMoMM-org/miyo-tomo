@@ -262,11 +262,15 @@ def _cluster(cid, *stems):
     return {"cluster_id": cid, "items": list(stems)}
 
 
-def _run(clusters, adjacency, budget=60, notes=(), **client_kw):
+def _run(clusters, adjacency, budget=120, notes=(), **client_kw):
     client, cache, stem_to_path, elig = _world(adjacency, notes, **client_kw)
     lookup = LinkLookup(client, budget=budget)
     result = augment_clusters(clusters, stem_to_path, lookup, elig, cache)
     return result, client, lookup
+
+
+def _cache_entries_for(cache):
+    return {e['path']: e for e in cache['entries']}
 
 
 def _stems(result, cid):
@@ -475,19 +479,74 @@ class TestAugment:
         assert _stems(result, "c1") == []
         assert result.stats["skipped_uncached"] == 1
 
-    def test_budget_skips_whole_cluster_then_smaller_runs(self):  # F5-AC1
+    def test_budget_constant_is_120(self):  # ADR-4 v1.2
+        from lib.link_members import LOOKUP_BUDGET
+
+        assert LOOKUP_BUDGET == 120
+
+    def test_big_cluster_is_sampled_in_item_order_and_small_still_runs(self):  # ADR-4
         adjacency = {"A": ["X"], "B": ["X"], "C": ["X"], "D": ["Y"], "E": ["Y"]}
-        result, client, lookup = _run(
+        result, client, _ = _run(
             [_cluster("big", "A", "B", "C"), _cluster("small", "D", "E")],
             adjacency,
-            budget=2,
+            budget=4,
         )
-        assert result.clusters["big"].status == "skipped_budget"
-        assert result.clusters["big"].link_members == []
+        assert result.clusters["big"].status == "sampled"
+        assert _stems(result, "big") == ["X"]  # A and B looked up, both link X
         assert result.clusters["small"].status == "done"
         assert _stems(result, "small") == ["Y"]
-        assert [c[1] for c in client.graph_calls] == [f"{N}D.md", f"{N}E.md"]
+        assert [c[1] for c in client.graph_calls] == [f"{N}{s}.md" for s in "ABDE"]
+        assert result.stats["clusters_skipped_budget"] == 0
+        assert result.stats["clusters_sampled"] == 1
+
+    def test_sample_follows_item_order(self):  # ADR-4
+        result, client, _ = _run([_cluster("c1", "C", "B", "A")], {}, budget=2)
+        assert result.clusters["c1"].status == "sampled"
+        assert [c[1] for c in client.graph_calls] == [f"{N}C.md", f"{N}B.md"]
+
+    def test_hits_count_looked_up_members_only(self):  # ADR-4
+        adjacency = {"A": ["C", "Y"], "B": ["C", "Y"]}
+        clusters = [_cluster("big", "A", "B", "C"), _cluster("small", "D")]
+        one, _, _ = _run(clusters, adjacency, budget=2)  # share 1: only A looked up
+        assert one.clusters["big"].status == "sampled"
+        assert _stems(one, "big") == []  # Y has one looked-up hit
+        two, _, _ = _run(clusters, adjacency, budget=4)  # share 2: A and B
+        assert _stems(two, "big") == ["Y"]  # C is a cluster member, never a hit
+
+    def test_zero_share_with_uncached_members_is_skipped_budget(self):  # ADR-4
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "D")], {"D": ["X"]}, budget=1
+        )
+        assert result.clusters["c1"].status == "skipped_budget"
+        assert result.clusters["c1"].link_members == []
+        assert result.clusters["c2"].status == "done"
+        assert [c[1] for c in client.graph_calls] == [f"{N}D.md"]
         assert result.stats["clusters_skipped_budget"] == 1
+
+    def test_unused_share_flows_to_later_clusters(self):  # ADR-4
+        adjacency = {"A": ["X"], "B": ["X"]}
+        result, client, _ = _run(
+            [_cluster("c1", "A", "B"), _cluster("c2", "C", "D", "E", "F")],
+            adjacency,
+            budget=6,
+        )  # c1 share 3 uses 2; c2 share 4 covers all four
+        assert result.clusters["c1"].status == "done"
+        assert result.clusters["c2"].status == "done"
+        assert len(client.graph_calls) == 6
+
+    def test_cached_cluster_runs_with_zero_share(self):  # ADR-4
+        from lib.link_members import _augment_one
+
+        client, cache, s2p, elig = _world({"A": ["X"], "B": ["X"]})
+        lookup = LinkLookup(client, budget=10)
+        lookup.neighbors(s2p["A"])
+        lookup.neighbors(s2p["B"])
+        links = _augment_one(
+            _cluster("c1", "A", "B"), s2p, lookup, elig, _cache_entries_for(cache), 2, set(), 0
+        )
+        assert links.status == "done"
+        assert [m.stem for m in links.link_members] == ["X"]
+        assert len(client.graph_calls) == 2
 
     def test_cached_lookups_need_no_budget(self):
         adjacency = {"A": ["X"], "B": ["X"]}
@@ -533,6 +592,7 @@ class TestAugment:
             "attempts": 4,
             "failed": 0,
             "clusters_skipped_budget": 0,
+            "clusters_sampled": 0,
             "members_total": 2,
             "skipped_uncached": 0,
         }

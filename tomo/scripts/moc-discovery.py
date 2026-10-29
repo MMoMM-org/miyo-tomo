@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.1
+# version: 0.24.2
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -357,6 +357,7 @@ _EMPTY_LINK_STATS: dict[str, int] = {
     "attempts": 0,
     "failed": 0,
     "clusters_skipped_budget": 0,
+    "clusters_sampled": 0,
     "members_total": 0,
     "skipped_uncached": 0,
 }

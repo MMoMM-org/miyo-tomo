@@ -245,25 +245,56 @@ def test_link_stats_count_lookups_attempts_members_and_uncached(tmp_path, monkey
     _, report = _run_tag(tmp_path, monkeypatch, _GraphFake())
     assert report["link_stats"] == {
         "lookups": 5, "attempts": 5, "failed": 0,
-        "clusters_skipped_budget": 0, "members_total": 2, "skipped_uncached": 1,
+        "clusters_skipped_budget": 0, "clusters_sampled": 0, "members_total": 2, "skipped_uncached": 1,
     }
 
 
-def test_budget_exhausted_cluster_is_skipped_and_counted(tmp_path, monkeypatch):
-    """F5-AC1: three 20-attempt lookups spend the 60 budget; solar is skipped_budget,
-    proposals are still written and the exit code is unchanged."""
+def test_retries_spending_the_budget_skip_the_cluster_and_the_rest(tmp_path, monkeypatch):
+    """F5-AC1/F5-AC2: 50-attempt lookups spend the 120 budget mid-energy; energy and
+    solar are skipped_budget, attempts stop at 120, proposals and exit code unchanged."""
     (tmp_path / "base").mkdir()
     (tmp_path / "budget").mkdir()
     code_base, _ = _run_tag(tmp_path / "base", monkeypatch, _GraphFake(links={}))
-    fake = _GraphFake(attempts_per_call=20)
+    fake = _GraphFake(attempts_per_call=50)
     code, report = _run_tag(tmp_path / "budget", monkeypatch, fake)
     clusters = _by_topic(report)
-    assert clusters["energy"]["link_lookup_status"] == "done"
+    assert clusters["energy"]["link_lookup_status"] == "skipped_budget"
     assert clusters["solar"]["link_lookup_status"] == "skipped_budget"
     assert clusters["solar"]["link_members"] == []
-    assert report["link_stats"]["clusters_skipped_budget"] == 1
-    assert report["link_stats"]["attempts"] == 60
+    assert report["link_stats"]["clusters_skipped_budget"] == 2
+    assert report["link_stats"]["attempts"] == 120
     assert code == code_base
+
+
+def test_fair_share_looks_up_every_rendered_cluster_under_120(tmp_path, monkeypatch):
+    """ADR-4 v1.2: 24 attempts per lookup (5 members = 120) still reaches both clusters."""
+    fake = _GraphFake(attempts_per_call=24)
+    _, report = _run_tag(tmp_path, monkeypatch, fake)
+    clusters = _by_topic(report)
+    assert clusters["energy"]["link_lookup_status"] == "done"
+    assert clusters["solar"]["link_lookup_status"] == "done"
+    assert report["link_stats"]["attempts"] == 120
+    assert report["link_stats"]["clusters_skipped_budget"] == 0
+
+
+def test_small_budget_samples_the_first_cluster_and_reports_it(tmp_path, monkeypatch):
+    """ADR-4: budget 3 → energy share 1 (alpha only, sampled), solar share 2 (done)."""
+    import functools
+
+    from lib.link_members import LinkLookup
+
+    monkeypatch.setattr(_moc_disc, "LinkLookup", functools.partial(LinkLookup, budget=3))
+    fake = _GraphFake()
+    _, report = _run_tag(tmp_path, monkeypatch, fake)
+    clusters = _by_topic(report)
+    assert clusters["energy"]["link_lookup_status"] == "sampled"
+    assert clusters["energy"]["link_members"] == []
+    assert clusters["solar"]["link_lookup_status"] == "done"
+    assert set(_members(clusters["solar"])) == {"xenon"}
+    assert report["link_stats"]["clusters_sampled"] == 1
+    assert report["link_stats"]["clusters_skipped_budget"] == 0
+    assert report["link_stats"]["attempts"] == 3
+    assert [p for _, p, _ in fake.graph_calls] == [A, D, E]
 
 
 def test_failed_lookup_marks_only_that_cluster(tmp_path, monkeypatch):

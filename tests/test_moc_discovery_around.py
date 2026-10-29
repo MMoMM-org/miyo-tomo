@@ -345,7 +345,7 @@ def test_fewer_than_two_eligible_neighbours_abort(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("fake_kwargs", [
     {"graph_error": KadoError("boom")},
-    {"attempts_per_call": 61},
+    {"attempts_per_call": 121},
 ])
 def test_seed_lookup_failure_is_reported_not_as_too_few(tmp_path, monkeypatch, fake_kwargs):
     """F5-AC5: a failed (or budget-refused) seed lookup never reads 'fewer than 3 notes'."""
@@ -370,7 +370,7 @@ def test_healthy_seed_costs_exactly_one_attempt(tmp_path, monkeypatch):
     assert fake.graph_calls == [("neighbors", SEED, None)]
     assert report["link_stats"] == {
         "lookups": 1, "attempts": 1, "failed": 0,
-        "clusters_skipped_budget": 0, "members_total": 2, "skipped_uncached": 1,
+        "clusters_skipped_budget": 0, "clusters_sampled": 0, "members_total": 2, "skipped_uncached": 1,
     }
     assert fake.attempt_gate is None  # LinkLookup restored the client
 
@@ -488,7 +488,7 @@ def test_dirty_list_repr_up_target_naming_the_moc_second_is_present(tmp_path, mo
 
 @pytest.mark.parametrize("fake_kwargs", [
     {"graph_error": KadoError("boom")},
-    {"attempts_per_call": 61},
+    {"attempts_per_call": 121},
 ])
 def test_moc_lookup_failure_is_seed_lookup_failed(tmp_path, monkeypatch, fake_kwargs):
     """ADR-4: a failed MOC lookup is never 'no missing members'."""

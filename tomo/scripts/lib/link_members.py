@@ -1,18 +1,20 @@
-# version: 0.2.4
+# version: 0.3.0
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
 module decides, offline, which neighbours are allowed to be proposed
 (`NodeEligibility`), runs the lookups under an attempt budget (`LinkLookup`) and
-adds every eligible non-member linked from at least two members of a cluster
-(`augment_clusters`). Periodic notes (hubs that link everything) and MOCs are
+adds every eligible non-member linked from at least two looked-up members of a
+cluster (`augment_clusters`). Each cluster gets a fair share of the budget
+(`remaining // clusters still to do`); a cluster larger than its share is
+`sampled`: its first `share` uncached members, in item order, are looked up. Periodic notes (hubs that link everything) and MOCs are
 neither members nor bridges.
 
 Eligibility reads only the discovery cache, the profile and vault-config — no
 Kado call. Uncached nodes are ineligible (`uncached`) and only counted. Reasons
 are fixed tokens, never paths; nothing here prints or logs.
 
-Rationale: docs/tomo/scripts/lib/link_members.md — SDD ADR-3.
+Rationale: docs/tomo/scripts/lib/link_members.md — SDD ADR-3, ADR-4.
 """
 from __future__ import annotations
 
@@ -31,12 +33,13 @@ OUT_OF_SCOPE = "out-of-scope"
 EXCLUDED_TAG = "excluded-tag"
 UNCACHED = "uncached"
 
-LOOKUP_BUDGET = 60  # HTTP attempts per run, retries included (ADR-4)
+LOOKUP_BUDGET = 120  # HTTP attempts per run, retries included (ADR-4)
 LOOKUP_PACING_S = 0.3  # minimum seconds between sends
 MEMBER_THRESHOLD = 2  # members a node must be linked with
 LINK_MEMBER_MARKER = " — linked with "  # parse contract of a link member line (ADR-7); never localise
 
 DONE = "done"
+SAMPLED = "sampled"
 SKIPPED_BUDGET = "skipped_budget"
 FAILED = "failed"
 
@@ -281,19 +284,26 @@ def _link_member(path: str, linked_with: list[str], entry: dict) -> LinkMember:
 
 
 def _augment_one(
-    cluster, stem_to_path, lookup, eligibility, entries, threshold, uncached
+    cluster, stem_to_path, lookup, eligibility, entries, threshold, uncached, share
 ) -> ClusterLinks:
     stems = cluster.get("items") or []
     if any(s not in stem_to_path for s in stems):
         return ClusterLinks(FAILED)
     members = [(s, stem_to_path[s]) for s in stems]
     member_paths = {p for _, p in members}
-    need = sum(1 for p in member_paths if not lookup.cached(p))
-    if need > lookup.remaining():
+    todo = []
+    for _, path in members:
+        if not lookup.cached(path) and path not in todo:
+            todo.append(path)
+    if todo and share == 0:
         return ClusterLinks(SKIPPED_BUDGET)
+    fresh = set(todo[:share])
+    status = DONE if len(todo) <= share else SAMPLED
 
     hits: dict[str, set[str]] = {}
     for stem, path in members:
+        if path not in fresh and not lookup.cached(path):
+            continue
         result = lookup.neighbors(path)
         if isinstance(result, BudgetExhausted):
             return ClusterLinks(SKIPPED_BUDGET)
@@ -313,7 +323,7 @@ def _augment_one(
         for node, by in hits.items()
         if len(by) >= threshold
     ]
-    return ClusterLinks(DONE, sorted(link_members, key=lambda m: m.stem))
+    return ClusterLinks(status, sorted(link_members, key=lambda m: m.stem))
 
 
 def augment_clusters(
@@ -322,20 +332,23 @@ def augment_clusters(
     """Link members per cluster of the rendered slice, in the given order.
 
     ``clusters`` is the rendered slice only; the caller marks the rest
-    ``not_rendered``. Inputs are not mutated.
+    ``not_rendered``. Inputs are not mutated. Cluster ``i`` of ``n`` may look up
+    at most ``lookup.remaining() // (n - i)`` uncached members.
     """
     entries = _cache_entries(cache)
     uncached: set[str] = set()
     out: dict[str, ClusterLinks] = {}
-    for cluster in clusters:
+    for i, cluster in enumerate(clusters):
+        share = lookup.remaining() // (len(clusters) - i)
         out[cluster["cluster_id"]] = _augment_one(
-            cluster, stem_to_path, lookup, eligibility, entries, threshold, uncached
+            cluster, stem_to_path, lookup, eligibility, entries, threshold, uncached, share
         )
     stats = {
         "lookups": lookup.lookups,
         "attempts": lookup.attempts,
         "failed": lookup.failed,
         "clusters_skipped_budget": sum(1 for c in out.values() if c.status == SKIPPED_BUDGET),
+        "clusters_sampled": sum(1 for c in out.values() if c.status == SAMPLED),
         "members_total": sum(len(c.link_members) for c in out.values()),
         "skipped_uncached": len(uncached),
     }

@@ -416,6 +416,22 @@ case-insensitively, because Obsidian resolves `up::` the same way. A
 frontmatter list (`"['Other', 'MOC']"`, no `up_value`) is unwrapped
 (`unwrap_list_repr`) and every element is checked, not just the first.
 
+**Why `_ref_stem` is not `up_parse._clean_target`.** Both strip an `|alias`
+and a `#heading`, but they answer different questions and differ on purpose
+(#216, pinned by `tests/test_ref_stem_vs_clean_target.py`). `_clean_target` is
+a step inside the parser: its input is the text between `[[` and `]]`, and its
+output is the cached `up_target`, the link target as the user wrote it. It
+keeps a folder path and a `.md`, because a path-qualified link is how the user
+disambiguates two notes with the same name, and the classification and the
+renderers must see that literal target. `_ref_stem` is a lenient matcher over
+already-cached values of any shape: it also strips `[[ ]]` (an `up_value`
+element is the raw frontmatter string), a folder and `.md`, and unwraps a list
+repr, so that a note whose parent is written `[[Maps/Gardening (MOC).md]]` is
+not proposed as missing. Merging them would either rewrite every cached
+`up_target` that carries a path (a behaviour change for the cache, the
+classification and the renderers) or make the around match strict and
+propose notes that already point at the MOC.
+
 **Residual limit — inline parents.** The cache keeps no second inline
 parent and does not record a frontmatter `up:` once an inline `up::` won
 (`up_value` is then `None`). A note with two inline `up::` lines whose

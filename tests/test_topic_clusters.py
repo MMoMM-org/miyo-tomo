@@ -325,3 +325,7 @@ def test_display_topic_drops_wrapping_brackets_but_keeps_internal_ones():
     assert topic_of("Gesundheit (Lebensbereich)") == "Gesundheit (Lebensbereich)"
     assert topic_of("(a) b (c)") == "(a) b (c)"
     assert topic_of("(quote") == "quote"
+    assert topic_of(" -- (quote)") == "quote"
+    assert topic_of("(quote).") == "quote"
+    assert topic_of("(x) -- ") == "x"
+    assert topic_of("((x))") == "x"

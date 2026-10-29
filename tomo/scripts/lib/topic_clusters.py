@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.6.0
+# version: 0.6.1
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -162,13 +162,27 @@ def clean_display_topic(topic: str) -> str:
     """Strip wrapping brackets plus edge punctuation from a display topic.
 
     One bracket pair wrapping the WHOLE topic is removed ("(quote)" → "quote");
-    then leading/trailing non-word characters and whitespace go. A bracket that
+    then leading/trailing non-word characters and whitespace go. Both steps
+    repeat until the string is stable, so a pair exposed by the edge strip
+    (" -- (quote)") is removed too. A bracket that
     pairs with another one inside the topic stays: "Gesundheit (Lebensbereich)"
     is unchanged. Rationale in docs/tomo/scripts/lib/topic_clusters.md.
     """
     t = topic.strip()
+    while True:
+        before = t
+        t = _strip_edges(_strip_wrapping_pairs(t))
+        if t == before:
+            return t
+
+
+def _strip_wrapping_pairs(t: str) -> str:
     while len(t) > 2 and _BRACKET_PAIRS.get(t[0]) == t[-1] and _wraps_whole(t):
         t = t[1:-1].strip()
+    return t
+
+
+def _strip_edges(t: str) -> str:
     closers = set(_BRACKET_PAIRS.values())
     while t:
         first, last = t[0], t[-1]

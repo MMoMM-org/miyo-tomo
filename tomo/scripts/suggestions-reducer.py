@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.69.0
+# version: 1.69.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -51,6 +51,7 @@ from lib.doc_frontmatter import build_tomo_block, body_after_frontmatter  # noqa
 from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
+    clean_display_topic,
     normalise_topic,  # re-export for tests/test-004-phase3.sh
     strip_moc_marker,
 )
@@ -801,7 +802,9 @@ def render_create_atomic_note(
             lines.append(moc_link_line(moc))
 
     if action.get("needs_new_moc"):
-        topic = strip_moc_marker(action.get("proposed_moc_topic") or "", moc_suffix)
+        topic = clean_display_topic(
+            strip_moc_marker(action.get("proposed_moc_topic") or "", moc_suffix)
+        )
         if topic:
             lines.append("")
             lines.append(

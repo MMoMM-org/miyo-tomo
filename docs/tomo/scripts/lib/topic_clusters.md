@@ -37,3 +37,27 @@ builder stays untouched.
 Trade-off: a trailing symbol that is part of a name (`C++`, `C#`) is also
 dropped from the display. The grouping key already lost it (`c`), so the
 cluster was never distinguishable from "C"; the spec accepted this.
+
+### Wrap-strip and edge-strip iterate together (#216 follow-up)
+
+Running the wrap-strip once and then the edge-strip left a pair that the edge
+strip had just exposed: `" -- (quote)"` became `"(quote)"`, `"(quote)."` became
+`"(quote)"` and `"(x) -- "` became `"(x)"`. `clean_display_topic` now repeats
+both steps until the string stops changing, so all three give the bare word.
+Results the tests pin stay as they were: `"(a) (b)"` and
+`"Gesundheit (Lebensbereich)"` are unchanged, `"((x))"` gives `"x"`,
+`"(a (b))"` gives `"a (b)"`, `"()"` is unchanged.
+
+### One-off: squelch signatures of bracketed or punctuated topics
+
+`compute_topic_signature` hashes the cleaned topic. A squelch registry entry
+recorded earlier under a bracketed or punctuated topic (for example
+`(Quote)`) therefore gets a new signature, and that cluster may resurface
+once. This is acceptable: its title was the broken one.
+
+### Pass-1 per-item note uses the same spelling
+
+The per-item "Proposed MOC" note in `suggestions-reducer.py` printed the raw
+`proposed_moc_topic`, while the Proposed MOCs section showed the cleaned
+cluster topic. The note now passes the topic through `clean_display_topic`
+after the marker strip, so both places show the same spelling.

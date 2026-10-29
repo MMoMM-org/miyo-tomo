@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.68.0
+# version: 1.69.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1448,30 +1448,35 @@ def render_attachment_conflicts_block(
 def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
     """Return the parenthetical annotation for a child stem.
 
-    Three branches (per SDD UI Guide §1015-1019 + ADR-1):
-      - state="absent"  → `(no up:: yet)`
-      - state="valid"   → `(existing up:: [[<target>]] → becomes related::)`
-      - state="broken"  → `(existing up:: broken — ignored)`
+    Every existing up:: is kept at render, so the label states that outcome:
+      - state="absent"                       → `(no up:: yet)`
+      - state="valid", or "broken" with reason "not-a-moc" or no reason
+                                             → `(existing up:: [[X]] → becomes related::)`
+      - state="broken", reason="unresolved"  → `(existing up:: [[X]] — note not found → becomes related::)`
 
-    Falls back to absent if the stem has no row in existing_up_rows.
+    Falls back to absent if the stem has no row or the row has no target.
     """
     for row in existing_up_rows:
         if row.get("stem") == stem:
             state = row.get("state", "absent")
             target = row.get("target")
-            if state == "valid" and target:
-                return f"(existing up:: [[{target}]] → becomes `related::`)"
-            elif state == "broken":
-                return "(existing up:: broken — ignored)"
-            else:
+            if state not in ("valid", "broken") or not target:
                 return "(no up:: yet)"
+            if state == "broken" and row.get("reason") == "unresolved":
+                return f"(existing up:: [[{target}]] — note not found → becomes `related::`)"
+            return f"(existing up:: [[{target}]] → becomes `related::`)"
     return "(no up:: yet)"
 
 
 def _link_member_lines(link_members: list[dict]) -> list[str]:
     """One `- [ ] [[stem]] (<up annotation>)` + LINK_MEMBER_MARKER + linked-with wikilinks line per member (ADR-7)."""
     link_up_rows = [
-        {"stem": m.get("stem"), "state": m.get("up_state", "absent"), "target": m.get("up_target")}
+        {
+            "stem": m.get("stem"),
+            "state": m.get("up_state", "absent"),
+            "target": m.get("up_target"),
+            "reason": m.get("up_broken_reason"),
+        }
         for m in link_members
     ]
     lines: list[str] = []

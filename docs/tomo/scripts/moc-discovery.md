@@ -453,9 +453,11 @@ the user may have meant to create that MOC (owner decision 2026-10-29).
 "Broken" alone cannot tell the two cases apart, so the report now carries the
 reason next to the state.
 
-- **Topic members (Phase 6.5).** Each `existing_up` row gains `reason`:
-  `null` for `absent` and `valid`; for `broken`, `not-a-moc` when the target
-  stem is a non-MOC note among the cache `entries`, else `unresolved`. This
+- **Topic members (Phase 6.5).** Each `broken` row gains `reason`:
+  `not-a-moc` when the target stem is a non-MOC note among the cache
+  `entries`, else `unresolved`. `absent` and `valid` rows keep their
+  three keys: no reason applies to them, and the row shape every existing
+  consumer and test pins stays unchanged. This
   mirrors `moc-tree-builder.py` `_resolve_up_state`, which writes the same
   values into the cache as `up_broken_reason`. It is mirrored, not imported:
   `moc-tree-builder.py` is a hyphenated script whose import pulls in the
@@ -464,9 +466,11 @@ reason next to the state.
   `broken` and moves no row between states.
 - **Link members, around and extension members.** `LinkMember` carries the
   cache entry's `up_broken_reason`; `_augment_rendered_clusters`,
-  `_build_around_note` and `_run_around_extension` copy it into each member
-  dict as `up_broken_reason`. No read is added: the reason is in the cache
-  entry the member already came from.
+  `_build_around_note` and `_run_around_extension` copy it into a member
+  dict as `up_broken_reason` when the member's `up_state` is `broken`, the
+  same rule as for topic rows: the reason is present exactly when the state
+  is broken. No read is added: the reason is in the cache entry the member
+  already came from.
 - **Old reports and old caches.** A row or member without a reason still
   renders; the reducer falls back to the `not-a-moc` wording (see
   `docs/tomo/scripts/suggestions-reducer.md`). A cache that predates spec 033

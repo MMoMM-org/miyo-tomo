@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Spec 042 T4.4 — an accepted around:<MOC> extension, from confirmed item to wire.
 
 Covers PRD F1-AC5, F3-AC3, F3-AC4 and the extension edge cases:
@@ -202,7 +202,7 @@ def test_no_client_keeps_the_extension():
 RULE_CASES = {
     "4.1 no up, default": ("# c\n", False),
     "4.2 valid up, default": ("up:: [[Fitness MOC]]\n", False),
-    "4.3 broken up, default": ("up:: [[Gone MOC]]\n", False),
+    "unresolved up, default (4.3 retired)": ("up:: [[Gone MOC]]\n", False),
     "4.4 no up, override": ("# c\n", True),
     "4.5 valid up, override": ("up:: [[Fitness MOC]]\n", True),
     "self-link": (f"up:: [[{MOC}]]\n", False),

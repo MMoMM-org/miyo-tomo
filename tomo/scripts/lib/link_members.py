@@ -1,4 +1,4 @@
-# version: 0.3.1
+# version: 0.4.0
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -259,6 +259,7 @@ class LinkMember:
     linked_with: list[str]
     up_state: str
     up_target: str | None
+    up_broken_reason: str | None = None
 
 
 @dataclass
@@ -281,6 +282,7 @@ def _link_member(path: str, linked_with: list[str], entry: dict) -> LinkMember:
         linked_with=linked_with,
         up_state=entry.get("up_state") or "absent",
         up_target=entry.get("up_target"),
+        up_broken_reason=entry.get("up_broken_reason"),
     )
 
 

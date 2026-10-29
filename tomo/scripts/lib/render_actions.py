@@ -1,4 +1,4 @@
-# version: 0.32.1
+# version: 0.33.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -241,23 +241,6 @@ def _link_key(text: str) -> str:
     return key.casefold()
 
 
-def up_target_is_broken(kado_client, child_path: str, target: str) -> bool:
-    """True only when Obsidian lists ``target`` among the child's dangling links.
-
-    A target matching an ``outgoing`` node resolves. A target in neither list
-    resolved to a note outside the key's scope; it counts as not broken.
-    """
-    key = _link_key(target)
-    for node in kado_client.graph("outgoing", child_path):
-        resolved = _link_key(node.get("path", ""))
-        if key == resolved or key == resolved.rsplit("/", 1)[-1]:
-            return False
-    return any(
-        _link_key(node.get("path", "")) == key
-        for node in kado_client.graph("dangling", child_path)
-    )
-
-
 def _make_add_rel(
     counter: list[int],
     target_note_path: str,
@@ -302,8 +285,8 @@ def emit_up_preservation_actions(
                    up:: <newMOC> + related:: <X>
       4.5        — checked Override + valid existing up:: <X> →
                    related:: <newMOC> (existing up:: kept, not touched)
-      4.3        — unchecked Override + broken existing up:: →
-                   up:: <newMOC> only (broken target silently dropped)
+      4.3        — retired: an existing up:: whose target is not a MOC or
+                   does not exist follows 4.2 / 4.5 like a valid one
 
     Edge cases:
       - Self-link: if existing_up_target == new_moc_stem → no actions emitted.
@@ -359,18 +342,13 @@ def emit_up_preservation_actions(
     elif existing_up_target == new_moc_stem:
         # Self-link guard: existing parent link already points to the new MOC → no-op
         pass
+    elif override_flag:
+        # Rule 4.5 — keep existing parent link, new MOC becomes peer
+        actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
     else:
-        if not up_target_is_broken(kado_client, child_path, existing_up_target):
-            if override_flag:
-                # Rule 4.5 — keep existing parent link, new MOC becomes peer
-                actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
-            else:
-                # Rule 4.2 — new MOC becomes parent, existing target moves to peer
-                actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
-                actions.append(_make_add_rel(counter, child_path, peer_marker, existing_up_target))
-        else:
-            # Rule 4.3 — broken existing parent link (target not found); just set new parent
-            actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
+        # Rule 4.2 — new MOC becomes parent, existing target moves to peer
+        actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
+        actions.append(_make_add_rel(counter, child_path, peer_marker, existing_up_target))
 
     return actions
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_moc_discovery_around.py — `--around` resolver, new-MOC and extension builders (spec 042 T3.1, T4.1).
 
 Drives moc-discovery main() in-process with a graph-capable fake Kado client
@@ -174,6 +174,7 @@ def _write_cache(tmp_path: Path, notes=None) -> Path:
             "up_state": n.get("up_state", "absent"), "up_target": n.get("up_target"),
             "up_source": n.get("up_source", "inline" if n.get("up_target") else None),
             "up_value": n.get("up_value"),
+            **({"up_broken_reason": n["up_broken_reason"]} if "up_broken_reason" in n else {}),
         })
     cache = {
         "moc_cache_version": 1,
@@ -569,3 +570,34 @@ def test_stderr_link_stats_equal_the_reports(tmp_path, monkeypatch, capsys, targ
     seen = _stderr_members_totals(capsys.readouterr().err)
     assert seen, "no members_total logged"
     assert set(seen) == {report["link_stats"]["members_total"]}
+
+
+# ── T5.3d: a broken member carries its cached reason ────────────────────────
+
+
+def _with_broken_argon():
+    notes = [dict(n) for n in _NOTES]
+    for n in notes:
+        if n["path"] == ARGON:
+            n.update(up_state="broken", up_target="Gone MOC", up_broken_reason="unresolved")
+    return notes
+
+
+def test_around_note_link_member_carries_the_broken_reason(tmp_path, monkeypatch):
+    _, report, _ = _run_around(tmp_path, monkeypatch, "knowledge", notes=_with_broken_argon())
+    [cluster] = report["topic_clusters"]
+    argon = next(m for m in cluster["link_members"] if m["stem"] == "argon")
+    assert argon["up_broken_reason"] == "unresolved"
+    neon = next(m for m in cluster["link_members"] if m["stem"] == "neon")
+    assert "up_broken_reason" not in neon
+
+
+def test_extension_member_carries_the_broken_reason(tmp_path, monkeypatch):
+    _, report, _ = _run_around(
+        tmp_path, monkeypatch, "Gardening (MOC)", notes=_with_broken_argon(),
+    )
+    argon = next(m for m in report["extension"]["members"] if m["stem"] == "argon")
+    assert argon == {
+        "stem": "argon", "path": ARGON, "linked_with": ["Gardening (MOC)"],
+        "up_state": "broken", "up_target": "Gone MOC", "up_broken_reason": "unresolved",
+    }

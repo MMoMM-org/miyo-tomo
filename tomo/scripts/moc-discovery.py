@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.3
+# version: 0.25.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1468,6 +1468,18 @@ def _moc_stems_from_cache(cache: dict) -> set[str]:
     return stems
 
 
+def _note_stems_from_cache(cache: dict) -> set[str]:
+    """Stems of every cached non-MOC note (`entries` with kind == "note")."""
+    stems: set[str] = set()
+    for entry in cache.get("entries") or []:
+        if not isinstance(entry, dict) or entry.get("kind") != "note":
+            continue
+        stem = entry.get("stem") or _stem_from_path((entry.get("path") or "").strip())
+        if stem:
+            stems.add(stem)
+    return stems
+
+
 def phase65_validate_existing_up(
     clusters: list[dict],
     candidates: list[Candidate],
@@ -1483,7 +1495,8 @@ def phase65_validate_existing_up(
 
       - No `up::` line                 → state="absent",  target=None
       - `up:: [[X]]` and X in cache    → state="valid",   target="X"
-      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X"
+      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X",
+        reason="not-a-moc" (X is a cached non-MOC note) or "unresolved"
 
     Multiple `up::` lines on the same child surface as a stderr WARN —
     Phase 6.5 keeps the first match and downstream Rule 4.2 / 4.5 logic
@@ -1510,7 +1523,7 @@ def phase65_validate_existing_up(
 
     Returns:
         The input clusters, each augmented in-place with an
-        ``existing_up: list[{stem, state, target}]`` field. Order follows
+        ``existing_up: list[{stem, state, target[, reason]}]`` field. Order follows
         ``cluster.items`` for deterministic downstream rendering.
 
     Side effects:
@@ -1520,6 +1533,7 @@ def phase65_validate_existing_up(
     """
     stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
     moc_stems = _moc_stems_from_cache(cache)
+    note_stems = _note_stems_from_cache(cache)
     inline_marker_re = up_marker_re(parent_marker)
 
     multi_up_count = 0
@@ -1584,13 +1598,15 @@ def phase65_validate_existing_up(
             # splitting the frontmatter block locally with no extra Kado call.
             target = parse_up_from_content(content, parent_marker).target
             if target is None:
-                state: str = "absent"
+                rows.append({"stem": stem, "state": "absent", "target": None})
             elif target in moc_stems:
-                state = "valid"
+                rows.append({"stem": stem, "state": "valid", "target": target})
             else:
-                state = "broken"
-
-            rows.append({"stem": stem, "state": state, "target": target})
+                # Mirrors moc-tree-builder._resolve_up_state's up_broken_reason.
+                reason = "not-a-moc" if target in note_stems else "unresolved"
+                rows.append(
+                    {"stem": stem, "state": "broken", "target": target, "reason": reason}
+                )
 
         cluster["existing_up"] = rows
 
@@ -1763,6 +1779,14 @@ def _item_stem(item) -> str:
     return str(item)
 
 
+def _member_up_fields(member) -> dict:
+    """The up:: fields of a member dict; the cached reason only when broken."""
+    fields = {"up_state": member.up_state, "up_target": member.up_target}
+    if member.up_state == "broken":
+        fields["up_broken_reason"] = member.up_broken_reason
+    return fields
+
+
 def _augment_rendered_clusters(
     clusters: list[dict],
     candidates: list[Candidate],
@@ -1819,8 +1843,7 @@ def _augment_rendered_clusters(
                 "stem": m.stem,
                 "path": m.path,
                 "linked_with": sorted({path_to_stem[p] for p in m.linked_with}),
-                "up_state": m.up_state,
-                "up_target": m.up_target,
+                **_member_up_fields(m),
             }
             for m in links.link_members
         ]
@@ -2146,8 +2169,7 @@ def _run_around_extension(
                 "stem": m.stem,
                 "path": m.path,
                 "linked_with": [seed.stem],
-                "up_state": m.up_state,
-                "up_target": m.up_target,
+                **_member_up_fields(m),
             }
             for m in missing
         ],
@@ -2197,8 +2219,7 @@ def _build_around_note(
                 "stem": m.stem,
                 "path": m.path,
                 "linked_with": [seed.stem],
-                "up_state": m.up_state,
-                "up_target": m.up_target,
+                **_member_up_fields(m),
             }
             for m in links.link_members
         ],

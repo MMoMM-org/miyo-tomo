@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
 Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
@@ -329,8 +329,10 @@ def test_per_child_existing_up_annotation() -> None:
     # Absent: "no up:: yet"
     assert "no up:: yet" in body, f"Absent annotation not found in:\n{body}"
 
-    # Broken: full annotation string
-    assert "(existing up:: broken — ignored)" in body, f"Broken annotation not found in:\n{body}"
+    # Broken without a reason (pre-T5.3d report): kept as related::, not ignored
+    assert "(existing up:: [[NonExistentMOC]] → becomes `related::`)" in body, (
+        f"Broken annotation not found in:\n{body}"
+    )
 
 
 def test_template_why_narrative() -> None:
@@ -557,7 +559,7 @@ def test_existing_up_annotation_precedes_link_suffix() -> None:
         " — linked with [[Sleep Debt]]"
     ) in body
     assert (
-        "- [ ] [[Old Note]] (existing up:: broken — ignored) — linked with [[Sleep Debt]]"
+        "- [ ] [[Old Note]] (existing up:: [[Gone]] → becomes `related::`) — linked with [[Sleep Debt]]"
     ) in body
 
 
@@ -814,11 +816,14 @@ def test_extension_why_is_singular_for_one_member() -> None:
 def test_extension_broken_up_reads_as_for_topic_members() -> None:
     """ADR-7: one annotation format — a broken up:: reads as `_child_annotation` writes it."""
     report = _extension_report()
-    report["extension"]["members"][0].update(up_state="broken", up_target=None)
+    report["extension"]["members"][0].update(up_state="broken", up_target="Gone")
 
     _, body = _extension_doc(report)
 
-    assert f"- [ ] [[argon]] (existing up:: broken — ignored) — linked with [[{_EXT_MOC}]]" in body
+    assert (
+        f"- [ ] [[argon]] (existing up:: [[Gone]] → becomes `related::`)"
+        f" — linked with [[{_EXT_MOC}]]"
+    ) in body
 
 
 def test_extension_frontmatter_and_filename() -> None:

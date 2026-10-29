@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_links.py — link-member augmentation in _run_pipeline (spec 042 T2.1).
 
 Drives moc-discovery main() in-process with a graph-capable fake Kado client
@@ -136,6 +136,7 @@ def _write_cache(tmp_path: Path, notes=_NOTES) -> Path:
             "path": n["path"], "kind": "note", "stem": _stem(n["path"]),
             "topics": n["topics"], "tags": n.get("tags", []),
             "up_state": n.get("up_state", "absent"), "up_target": n.get("up_target"),
+            **({"up_broken_reason": n["up_broken_reason"]} if "up_broken_reason" in n else {}),
         })
     cache = {
         "moc_cache_version": 1,
@@ -460,3 +461,17 @@ def test_phase1_input_uncached_topic_member_is_still_looked_up(tmp_path, monkeyp
     _, report = _run_phase1_input(tmp_path, cands)
     assert _by_topic(report)["energy"]["link_lookup_status"] == "done"
     assert uncached_member in {path for _, path, _ in fake.graph_calls}
+
+
+# ── T5.3d: a broken link member carries its cached reason ───────────────────
+
+
+def test_broken_link_member_carries_the_cached_reason(tmp_path, monkeypatch):
+    notes = [dict(n) for n in _NOTES]
+    for n in notes:
+        if n["path"] == X:
+            n.update(up_state="broken", up_target="Plain Note", up_broken_reason="not-a-moc")
+    _, report = _run_tag(tmp_path, monkeypatch, _GraphFake(), notes=notes)
+    xenon = _members(report["topic_clusters"][0])["xenon"]
+    assert xenon["up_broken_reason"] == "not-a-moc"
+    assert xenon["up_state"] == "broken"

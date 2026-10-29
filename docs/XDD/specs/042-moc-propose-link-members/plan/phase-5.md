@@ -61,7 +61,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: prose tests green; full suite green; ruff clean
   5. Success: a scan whose D3 drops clusters reaches the reducer
 
-- [ ] **T5.3b Fair-share link budget (ADR-4 v1.2)** `[activity: backend]` `[parallel: true]`
+- [x] **T5.3b Fair-share link budget (ADR-4 v1.2)** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/lib/link_members.py` (`augment_clusters`, `_augment_one`, `LOOKUP_BUDGET`); `tomo/scripts/moc-discovery.py` `_augment_rendered_clusters`; SDD ADR-4, Complex Logic, Error Handling `[ref: SDD/ADR-4; Complex Logic]`
   2. Test: budget 120; share = remaining // clusters still to do; memoised members free; first `share` uncached members in item order → `sampled`; share 0 → `skipped_budget`; unused share flows on; `link_stats.clusters_sampled`; ≥ 2 hits counted among looked-up members only; around seed unchanged

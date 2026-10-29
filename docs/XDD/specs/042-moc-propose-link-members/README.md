@@ -54,6 +54,7 @@
 | 2026-10-28 | Phase 4 hardening (owner: "Jetzt fixen") | Malformed **Extends:** header is skipped instead of becoming create_moc; Extends skip key read only in the section header; diff membership checks case-insensitive. |
 | 2026-10-29 | T5.3 live: Pass 2 exit 1 is a partial result; moc-architect parses stdout on exit 0/1, stops only on 2 | Live scan stopped after D3 dropped 104 duplicate clusters; the exit-1 rule predates 042 (F-43). Owner: fix the agent prose, not the script. |
 | 2026-10-29 | ADR-4 v1.2: budget 120 attempts, fair share per rendered cluster, larger clusters `sampled` (first `share` uncached members, item order) | Live scan: 60 all-or-nothing left 3 of 5 rendered clusters (62/45/17 members) without lookups, 2 proposals with link members. Owner: "1 plus mehr budget". SDD v1.2, PRD v1.4. |
+| 2026-10-29 | T5.3c: proposal-doc header gets a `> **How to use this proposal**` block (review, tick/untick, Accept, run `/inbox`, apply with Hashi) | Owner after the live tick review: the doc did not say what to do with it. Text approved verbatim; in spec 042, not a separate issue. |
 
 ## Context
 

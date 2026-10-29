@@ -69,6 +69,14 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: focused + full suite green; ruff clean; host re-run of Pass 2 on the live Phase-1 file shows all rendered clusters looked up and attempts ≤ 120
   5. Success: no rendered cluster is skipped while budget remains
 
+- [ ] **T5.3c How-to block in the proposal-doc header** `[activity: backend]`
+
+  1. Prime: `tomo/scripts/suggestions-reducer.py` (`# MOC Proposal` header, ~line 1727); every reader of the doc body: `moc-proposal-parser.py`, `suggestion-parser.py`, `inbox-triage.py` (`_RE_ACCEPT`), squelch signature; the Pass-1 doc's `>` guidance block as the pattern `[ref: SDD/Primary flow step 5]`
+  2. Test: a `moc-proposal` doc (new MOC, around, extension) carries the owner-approved `> **How to use this proposal**` block under `# MOC Proposal`, before the first `###`; the MOC Uplink Check doc does not; the block parses to nothing (no Accept hit, no member, no link line, no section) in every reader; existing docs without the block still parse identically
+  3. Implement: WHY in `docs/tomo/scripts/suggestions-reducer.md` first; then the reducer; bump `# version:`
+  4. Validate: focused + full suite green; ruff clean
+  5. Success: the user knows from the doc alone to review, tick Accept and run `/inbox`
+
 - [ ] **T5.4 Close-out** `[activity: docs]`
 
   - `close-out.md`: every one of the 29 PRD criteria traced to a test node id that was actually executed (one pytest invocation, count recorded) or to a T5.3 live record; any criterion no test could fail gets a RED-proven assertion before the spec is finalised. Update `docs/ai/memory/memory.md` Critical Documentation; README phase → Implemented via xdd-meta Finalize.

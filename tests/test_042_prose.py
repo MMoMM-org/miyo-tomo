@@ -222,5 +222,37 @@ def _version(path: Path) -> tuple[int, ...]:
 
 def test_versions_were_bumped():
     assert _version(COMMAND) > (0, 3, 0)
-    assert _version(AGENT) > (0, 8, 0)
+    assert _version(AGENT) > (0, 8, 1)
     assert _version(HELP) > (0, 2, 20)
+
+
+# ── #216 follow-ups: around Discovery line, Step 2, run id, 429 attribution ─
+
+
+def _agent_out() -> str:
+    return _text(AGENT)[_text(AGENT).index("## Output"):]
+
+
+def test_discovery_template_has_around_forms():
+    block = _output_block(_text(AGENT))
+    line = next(x for x in block.splitlines() if x.startswith("Discovery:"))
+    assert "around:<seed> → new MOC" in line
+    assert "around:<MOC> → extension" in line
+
+
+def test_discovery_around_fill_rule_names_report_fields():
+    out = _agent_out()
+    assert "`around.kind`" in out
+    assert "`around.stem`" in out
+    assert "`extension`" in out
+    assert "OK — around:<seed> → new MOC" in out
+    assert "OK — around:<MOC> → extension" in out
+
+
+def test_discovery_around_forms_keep_the_links_part():
+    out = _agent_out()
+    assert re.search(
+        r"OK — around:<seed> → new MOC; links: <K> members, <L> lookups", out
+    )
+
+

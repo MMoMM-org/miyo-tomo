@@ -154,3 +154,14 @@ link counts on the `Discovery:` line and the reducer `--config` argument.
 WHY: Bumped from 0.8.0 for the exit-code rule (exit 2 fatal, exit 0 or 1 parse
 stdout) in the `around` and Pass 2 steps and the `sampled` suffix on the
 `Discovery:` line. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.2 — `around` Discovery line (spec 042, #216)
+
+WHY: Live runs printed `OK — 1 candidates → 1 clusters` for `around:<note>` and
+`OK — 0 candidates → 1 clusters` for `around:<MOC>`. In `around` mode
+`candidates_total` and `topic_clusters` describe the engine's internals, not what
+the owner got: one new MOC, or an extension of an existing one. The line now names
+the outcome. The agent tells the two apart by `around.kind` (set from the resolved
+seed in `moc-discovery.py`; `moc` means the extension path, which also fills
+`extension`) and takes the name from `around.stem`. The `; links: …` part is
+unchanged. `update-tomo.sh` skips unchanged versions.

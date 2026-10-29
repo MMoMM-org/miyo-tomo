@@ -188,3 +188,12 @@ evidence comes from `link_stats`, while retries are only visible as
 on that line is the only attribution the agent can verify, so a report that says
 "link lookups" for a non-`kado-graph` tool misleads the owner about whether the
 graph budget is under pressure. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.8.5 — STRICT `Why:` lines carry only the failure mode (#216)
+
+WHY: The transport STRICT's `Why:` carried an observation date and a pointer to
+this file. Runtime files are loaded line by line, so history there is noise the
+model may act on. The history stays in the "Transport via kado-write-file.py"
+section above; the `Why:` keeps the one-line failure mode (an inlined 100 KB+
+proposal-doc exceeds the output-token budget and fails). `update-tomo.sh` skips
+unchanged versions.

@@ -283,3 +283,10 @@ def test_retries_are_attributed_as_stderr_names_them():
     assert "[kado-retry] HTTP 429 on <tool>" in text
     assert "kado-graph" in text[text.index("[kado-retry] HTTP 429 on <tool>"):]
     assert "link lookups" in text
+
+
+def test_no_strict_why_carries_a_date_or_history():
+    whys = re.findall(r"Why:[^\n]*", _text(AGENT))
+    assert whys
+    for why in whys:
+        assert not re.search(r"\d{4}-\d{2}-\d{2}|observed|docs/tomo|spec \d+|#\d+", why), why

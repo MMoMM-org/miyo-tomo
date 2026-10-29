@@ -372,7 +372,10 @@ WHY: the agent reads stderr to write the `Discovery:` line. `around:<MOC>` rewri
 logged straight from the lookup said 17 members while the report said 7 (T5.3 live
 run). `_around_lookup` therefore logs only status and neighbour count; `_run_around`
 logs `links: ` plus every `link_stats` value from the finished report, on success,
-`no-missing-members` and seed-lookup aborts alike. Stderr and report cannot diverge.
+`no-missing-members`, `fewer-than-3-notes` and seed-lookup aborts alike. Stderr and
+report cannot diverge. Resolve aborts (`around-not-found`, `around-ambiguous`,
+`around-periodic`, `around-ineligible`) return before any lookup: they log no
+`links:` line and their report carries the zeroed `link_stats` of `empty_report`.
 
 ## `around:<MOC>`: The MOC's Missing Members (spec 042 F3, T4.1)
 

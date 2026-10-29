@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_moc_discovery_around.py — `--around` resolver, new-MOC and extension builders (spec 042 T3.1, T4.1).
 
 Drives moc-discovery main() in-process with a graph-capable fake Kado client
@@ -570,6 +570,45 @@ def test_stderr_link_stats_equal_the_reports(tmp_path, monkeypatch, capsys, targ
     seen = _stderr_members_totals(capsys.readouterr().err)
     assert seen, "no members_total logged"
     assert set(seen) == {report["link_stats"]["members_total"]}
+
+
+def _stderr_links_lines(err: str) -> list[dict[str, int]]:
+    return [
+        {k: int(v) for k, v in re.findall(r"(\w+)=(\d+)", line)}
+        for line in err.splitlines()
+        if "links: " in line
+    ]
+
+
+@pytest.mark.parametrize("target, fake_kwargs, reason", [
+    ("knowledge", {"graph_error": KadoError("boom")}, "seed-lookup-failed"),
+    ("knowledge", {"attempts_per_call": 121}, "seed-lookup-failed"),
+    ("lonely", {}, "fewer-than-3-notes"),
+])
+def test_stderr_link_stats_equal_the_reports_on_lookup_aborts(
+    tmp_path, monkeypatch, capsys, target, fake_kwargs, reason,
+):
+    """#216: the seed-lookup and too-few aborts log exactly one `links:` line, and
+    every value on it equals report.link_stats."""
+    _, report, _ = _run_around(tmp_path, monkeypatch, target, _GraphFake(**fake_kwargs))
+    assert report["abort_reason"] == reason
+    lines = _stderr_links_lines(capsys.readouterr().err)
+    assert lines == [report["link_stats"]]
+    assert report["link_stats"]["attempts"] >= 1
+
+
+@pytest.mark.parametrize("target", ["Unknown Note", "2026-01-02"])
+def test_resolve_aborts_log_no_links_line_and_carry_zeroed_stats(
+    tmp_path, monkeypatch, capsys, target,
+):
+    """#216: an abort before the seed lookup (not found, refused seed) makes no call,
+    logs no `links:` line, and its report carries zeroed link_stats."""
+    _, report, fake = _run_around(tmp_path, monkeypatch, target)
+    assert report["abort_reason"] in ("around-not-found", "around-periodic")
+    assert fake.graph_calls == []
+    assert _stderr_links_lines(capsys.readouterr().err) == []
+    assert report["link_stats"] == dict.fromkeys(report["link_stats"], 0)
+    assert report["link_stats"]
 
 
 # ── T5.3d: a broken member carries its cached reason ────────────────────────

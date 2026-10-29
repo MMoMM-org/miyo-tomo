@@ -50,8 +50,24 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   1. Prime: memory notes on syncing (`update-tomo` is version-gated, needs `--yolo`), container visibility, per-IP limiter
   2. Test: sync with `./scripts/update-tomo.sh --instance tomo-instance --yolo` (never `tomo-privat`); in the container run a default scan, `/moc-propose around:<a real hub note>`, `/moc-propose around:<a real MOC>`; record per run the `Discovery:` line verbatim (byte-copied), proposals with link members, attempts, 429 count, wall time
   3. Implement: fixes for any defect found, each with a RED test first
-  4. Validate: ≥ 3 default-scan proposals carry a link member, or the shortfall is recorded with its cause; attempts ≤ 60 per run; 0 rate-limit aborts; no periodic note, MOC, attachment or out-of-scope note proposed (checked against the doc); owner reviews one doc and ticks — the tick ratio is recorded `[ref: PRD/Success Metrics]`
+  4. Validate: ≥ 3 default-scan proposals carry a link member, or the shortfall is recorded with its cause; attempts ≤ 120 per run; 0 rate-limit aborts; no periodic note, MOC, attachment or out-of-scope note proposed (checked against the doc); owner reviews one doc and ticks — the tick ratio is recorded `[ref: PRD/Success Metrics]`
   5. Success: KPIs recorded in `docs/XDD/specs/042-moc-propose-link-members/live-validation.md` with verbatim output lines
+
+- [ ] **T5.3a Pass 2 exit 1 is a partial result, not a failure** `[activity: runtime-prose]` `[parallel: true]`
+
+  1. Prime: `tomo/scripts/moc-discovery.py` exit codes (docstring: 0 clean, 1 partial, 2 fatal); `tomo/dot_claude/agents/moc-architect.md` Steps 3 and 3c; live run 2026-10-29 stopped on exit 1 after D3 dropped 104 duplicate clusters `[ref: SDD/Error Handling]`
+  2. Test: prose tests — Steps 3 and 3c treat exit 2 as fatal (surface stderr, stop) and parse stdout on exit 0 or 1; the Discovery fill rules print `(<P> sampled: budget)` from `link_stats.clusters_sampled` when > 0
+  3. Implement: WHY in `docs/tomo/dot_claude/agents/moc-architect.md` first; then the prose; bump `# version:`
+  4. Validate: prose tests green; full suite green; ruff clean
+  5. Success: a scan whose D3 drops clusters reaches the reducer
+
+- [ ] **T5.3b Fair-share link budget (ADR-4 v1.2)** `[activity: backend]` `[parallel: true]`
+
+  1. Prime: `tomo/scripts/lib/link_members.py` (`augment_clusters`, `_augment_one`, `LOOKUP_BUDGET`); `tomo/scripts/moc-discovery.py` `_augment_rendered_clusters`; SDD ADR-4, Complex Logic, Error Handling `[ref: SDD/ADR-4; Complex Logic]`
+  2. Test: budget 120; share = remaining // clusters still to do; memoised members free; first `share` uncached members in item order → `sampled`; share 0 → `skipped_budget`; unused share flows on; `link_stats.clusters_sampled`; ≥ 2 hits counted among looked-up members only; around seed unchanged
+  3. Implement: WHY in `docs/tomo/scripts/lib/link_members.md` and `docs/tomo/scripts/moc-discovery.md` first; then code; bump `# version:`
+  4. Validate: focused + full suite green; ruff clean; host re-run of Pass 2 on the live Phase-1 file shows all rendered clusters looked up and attempts ≤ 120
+  5. Success: no rendered cluster is skipped while budget remains
 
 - [ ] **T5.4 Close-out** `[activity: docs]`
 

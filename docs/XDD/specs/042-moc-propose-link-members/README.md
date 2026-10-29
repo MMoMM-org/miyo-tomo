@@ -7,7 +7,7 @@
 | **Created** | 2026-10-27 |
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
-| **Last Updated** | 2026-10-28 |
+| **Last Updated** | 2026-10-29 |
 
 ## Documents
 
@@ -52,6 +52,8 @@
 | 2026-10-28 | Extension target resolution withholds ambiguous / unverifiable MOCs | 2+ exact-stem hits or a failed search withholds the extension with a stated cause; it writes up:: into N notes, so first-hit resolution was unsafe. |
 | 2026-10-28 | Phase 4 drift: SDD/PRD amended (owner: "SDD nachziehen") | Nine implementation details recorded: up_value, members_total, proposal_kind/slug, extension skip dispositions, Extends skip key, target resolution kinds, filter in lib/render_resolve.py, member de-dup, no-client render. |
 | 2026-10-28 | Phase 4 hardening (owner: "Jetzt fixen") | Malformed **Extends:** header is skipped instead of becoming create_moc; Extends skip key read only in the section header; diff membership checks case-insensitive. |
+| 2026-10-29 | T5.3 live: Pass 2 exit 1 is a partial result; moc-architect parses stdout on exit 0/1, stops only on 2 | Live scan stopped after D3 dropped 104 duplicate clusters; the exit-1 rule predates 042 (F-43). Owner: fix the agent prose, not the script. |
+| 2026-10-29 | ADR-4 v1.2: budget 120 attempts, fair share per rendered cluster, larger clusters `sampled` (first `share` uncached members, item order) | Live scan: 60 all-or-nothing left 3 of 5 rendered clusters (62/45/17 members) without lookups, 2 proposals with link members. Owner: "1 plus mehr budget". SDD v1.2, PRD v1.4. |
 
 ## Context
 

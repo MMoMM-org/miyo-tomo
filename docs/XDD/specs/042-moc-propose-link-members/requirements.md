@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.3"
+version: "1.4"
 ---
 
 # Product Requirements Document
@@ -138,7 +138,7 @@ None. Tomo is single-user; the Hashi executor and `/inbox` are system consumers,
 #### Feature 5: Bounded link lookups with graceful degradation
 - **User Story:** As the vault owner, I want a large run to finish and tell me what it skipped so that link lookups never stall or break `/moc-propose`.
 - **Acceptance Criteria:**
-  - [ ] Given a run whose link lookups would exceed the per-run budget, When the budget is reached, Then lookups stop, proposals are still written, clusters not looked up carry no link members, and the run report states how many clusters were not looked up because of the budget
+  - [ ] Given a run whose link lookups would exceed the per-run budget, When the budget is shared out, Then every proposal shown gets a fair share of lookups, a cluster larger than its share is looked up only in part, proposals are still written, clusters not looked up carry no link members, and the run report states how many clusters were looked up only in part and how many not at all because of the budget
   - [ ] Given a run, When it completes, Then it has not exceeded the per-run budget of link lookups and has not triggered a Kado rate-limit abort
   - [ ] Given Kado answers a link lookup with a rate-limit response that names a wait time, When the run handles it, Then it waits that time and retries the lookup before treating it as failed, and every retry counts toward the per-run budget
   - [ ] Given a link lookup that Kado refuses or that fails, When the run continues, Then that cluster carries no link members, the run report names the failure count, and no other part of the proposal changes
@@ -253,7 +253,7 @@ Tracking records counts and note paths only, never note content (MiYo Constituti
 - [x] Unticked by default (owner)
 - [x] `around:<MOC>` extends with missing members; `up::` plus MOC link line; ≥ 1 member (owner)
 - [x] Budget exhausted → truncate and report (owner)
-- [ ] The exact per-run lookup budget (research suggests about 60 lookups); to be fixed in the SDD with the measured vault numbers.
+- [x] The exact per-run lookup budget: 120 attempts (SDD ADR-4 v1.2; 60 left 3 of 5 shown proposals without lookups in the live run).
 
 ---
 

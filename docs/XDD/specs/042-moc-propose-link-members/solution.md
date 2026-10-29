@@ -1,7 +1,7 @@
 ---
 title: "/moc-propose finds MOC members through the link graph"
 status: complete
-version: "1.1"
+version: "1.2"
 ---
 
 # Solution Design Document
@@ -291,7 +291,7 @@ graph LR
 |---|---|---|
 | `NodeEligibility` | Decide from path + cache + profile whether a node may be a member; never reads Kado | F6-AC1, F6-AC2, F6-AC3, F6-AC4 |
 | `LinkLookup` | Budgeted, paced, memoised `neighbors` lookups; counts attempts incl. retries | F5-AC2, F5-AC3 |
-| `augment_clusters` | Add ≥ 2-member link members to the rendered clusters, all-or-nothing per cluster; record status | F1-AC1…AC4, F5-AC1, F5-AC4 (cluster part) |
+| `augment_clusters` | Add ≥ 2-member link members to the rendered clusters, each within its fair share of the budget (sampled when the share is short); record status | F1-AC1…AC4, F5-AC1, F5-AC4 (cluster part) |
 | around builder (`moc-discovery.py`) | Resolve `around:` target, build one new-MOC or extension proposal | F2-AC1…AC4, F3-AC1, F3-AC2, F5-AC5 |
 | `KadoClient` (additive) | Count every HTTP attempt; refuse a retry when the gate says the budget is spent; pace sends | F5-AC3 (mechanism) |
 | Reducer | Render link suffixes, the "Why" link count, the extension section | F3-AC5, F4-AC1…AC3 |
@@ -368,7 +368,7 @@ lib/link_members.py (new):
   NodeEligibility(cache, profile, vault_cfg)
     .check(path: str) -> tuple[bool, str]        # reason ∈ ok|not-md|inbox|periodic|moc|out-of-scope|excluded-tag|uncached, first failing rule in that order; never printed or logged
     .is_periodic(path) / .is_moc(path) -> bool
-  LinkLookup(client, budget: int = 60)   # context manager: installs client.attempt_gate and min_interval=0.3 on enter; close()/__exit__ restores the previous values
+  LinkLookup(client, budget: int = 120)   # context manager: installs client.attempt_gate and min_interval=0.3 on enter; close()/__exit__ restores the previous values
     .neighbors(path) -> list[str] | LookupFailed | BudgetExhausted   # memoised by path (failures too; budget refusals not)
     .remaining() -> int ; .cached(path) -> bool ; .attempts ; .lookups ; .failed
   augment_clusters(clusters, stem_to_path, lookup, eligibility, cache, threshold=2) -> AugmentResult
@@ -393,8 +393,8 @@ LinkMember {                       # one per added note per cluster
 
 DiscoveryReport (additive fields):
   topic_clusters[i].link_members: list[LinkMember]          # [] when none
-  topic_clusters[i].link_lookup_status: done|skipped_budget|failed|not_rendered
-  link_stats: {lookups, attempts, failed, clusters_skipped_budget, members_total, skipped_uncached}
+  topic_clusters[i].link_lookup_status: done|sampled|skipped_budget|failed|not_rendered
+  link_stats: {lookups, attempts, failed, clusters_skipped_budget, clusters_sampled, members_total, skipped_uncached}
   around: {kind: note|moc, path, stem} | None
   extension: {moc_stem, moc_path, members: list[LinkMember]} | None   # around:<MOC> only
   # in extension mode link_stats.members_total = number of missing members
@@ -442,14 +442,17 @@ external:
 **Why this example**: the ≥ 2-member rule, memoisation and the no-bridge rule interact; a wrong order double-counts or lets a hub qualify.
 
 ```python
-def augment_one(cluster, stem_to_path, lookup, elig, cache, threshold=2):
+def augment_one(cluster, stem_to_path, lookup, elig, cache, share, threshold=2):
     if any(s not in stem_to_path for s in cluster["items"]):
         return [], "failed"                      # caller bug; no call, this cluster only
     member_paths = [stem_to_path[s] for s in cluster["items"]]
-    if lookup.remaining() < sum(1 for p in member_paths if not lookup.cached(p)):
-        return [], "skipped_budget"              # all-or-nothing per cluster (ADR-4)
+    uncached = [p for p in member_paths if not lookup.cached(p)]
+    if uncached and share == 0:
+        return [], "skipped_budget"              # no share left for this cluster (ADR-4)
+    looked_up = [p for p in member_paths if lookup.cached(p) or p in uncached[:share]]
+    status = "done" if len(uncached) <= share else "sampled"   # first `share` uncached, item order
     hits: dict[str, set[str]] = {}
-    for stem, path in zip(cluster["items"], member_paths):
+    for stem, path in ((s, p) for s, p in zip(cluster["items"], member_paths) if p in looked_up):
         result = lookup.neighbors(path)          # memoised across clusters
         if isinstance(result, BudgetExhausted):
             return [], "skipped_budget"
@@ -462,7 +465,7 @@ def augment_one(cluster, stem_to_path, lookup, elig, cache, threshold=2):
             if ok:
                 hits.setdefault(node, set()).add(stem)
     members = [mk_link_member(p, sorted(by), cache) for p, by in hits.items() if len(by) >= threshold]
-    return sorted(members, key=lambda m: m.stem), "done"
+    return sorted(members, key=lambda m: m.stem), status
 ```
 
 Traced with cluster `C = [A, B, D]` (topic "energy"):
@@ -508,10 +511,10 @@ def test_link_lines_do_not_change_the_squelch_signature():
 
 1. Architect prose runs `moc-discovery.py` exactly as today (Pass 1 / Pass 2 unchanged; `--emit-phase1` makes no graph call).
 2. P1 → P6, D3, sort by confidence: unchanged.
-3. **New:** take `clusters[:max_results]` (the slice the reducer renders); `augment_clusters` with `LinkLookup(budget=60)`; attach `link_members` + `link_lookup_status`; fill `link_stats`.
+3. **New:** take `clusters[:max_results]` (the slice the reducer renders); `augment_clusters` with `LinkLookup(budget=120)`; attach `link_members` + `link_lookup_status`; fill `link_stats`.
 4. P6.5 validates existing `up::` for topic members as today; link members already carry cache up state.
 5. Reducer renders link members after topic members, unticked, with the suffix; "Why" adds "N more members came through links." (singular "1 more member …"), only when N > 0.
-6. Architect prints `Discovery: OK — N candidates → M clusters; links: K members, L lookups (S skipped: budget)`.
+6. Architect prints `Discovery: OK — N candidates → M clusters; links: K members, L lookups (P sampled: budget) (S skipped: budget)`; each suffix only when its count > 0.
 
 ```mermaid
 sequenceDiagram
@@ -525,7 +528,7 @@ sequenceDiagram
     Arch->>Disc: --tag psychology (Pass 2)
     Disc->>Disc: P1..P6, D3, sort
     Disc->>LM: augment(top 5, cache)
-    loop unique members, paced 0.3 s, ≤ 60 attempts
+    loop unique members, paced 0.3 s, ≤ 120 attempts
       LM->>Kado: kado-graph neighbors(path)
       Kado-->>LM: nodes
     end
@@ -545,7 +548,9 @@ sequenceDiagram
 | Error | Where | Handling | User sees |
 |---|---|---|---|
 | 429 with Retry-After | KadoClient | existing backoff; every attempt counted; gate stops retries when budget is spent | nothing unless the budget runs out |
-| Budget exhausted mid-run | LinkLookup / augment | current cluster `skipped_budget` with no link members (all-or-nothing); later clusters needing uncached lookups `skipped_budget`; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
+| Cluster larger than its budget share | augment | share = remaining // clusters still to do; memoised members are free; the first `share` uncached members (item order) are looked up, status `sampled`; ≥ 2 hits counted among those | `Discovery:` line "(P sampled: budget)" |
+| Budget exhausted mid-run | LinkLookup / augment | a cluster with share 0, or whose retries spend the budget mid-cluster, is `skipped_budget` with no link members; fully memoised ones still run | `Discovery:` line "(S skipped: budget)" |
+| Pass 2 exits 1 (partial: D3/duplicate or squelched clusters dropped) | moc-architect | stdout holds the full DiscoveryReport; parse it and continue; only exit 2 (fatal) stops the run | none |
 | Lookup error (Kado error, 503 after retries) | augment | that cluster `failed`, no link members; others continue | "lookups failed: F" note in `Aborts/notes` |
 | Seed lookup fails (Kado error, key cannot read the seed, budget refusal) | around builder | no proposal; reason "seed lookup failed" | `Discovery:` abort reason naming the seed |
 | Seed not in cache / not found | around builder | no proposal | "around: '<X>' not found — rebuild the cache or give a path" |
@@ -566,12 +571,11 @@ sequenceDiagram
 
 ```
 ALGORITHM: augment rendered clusters
-INPUT: clusters sorted by confidence, max_results R, cache, profile, budget 60
+INPUT: clusters sorted by confidence, max_results R, cache, profile, budget 120
 1. slice = clusters[:R]
-2. FOR c IN slice (confidence order):
-     need = uncached-lookup count of c's member paths
-     IF need > lookup.remaining(): c.status = skipped_budget; CONTINUE   (later, smaller clusters may still fit)
-     c.link_members, c.status = augment_one(c)
+2. FOR i, c IN enumerate(slice) (confidence order):
+     share = lookup.remaining() // (len(slice) - i)     (unused share flows to later clusters)
+     c.link_members, c.status = augment_one(c, share)   (done | sampled | skipped_budget | failed)
 3. FOR c NOT IN slice: c.status = not_rendered (no calls)
 4. stats = lookup counters + per-status counts
 ```
@@ -580,7 +584,7 @@ INPUT: clusters sorted by confidence, max_results R, cache, profile, budget 60
 
 ### Single Application Deployment
 - Ships through `update-tomo.sh --instance tomo-instance` (never `tomo-privat` during validation). Version-gated: every changed managed file bumps `# version:`.
-- No new dependency, no config key. Budget (60), pacing (0.3 s) and threshold (2) are module constants in `lib/link_members.py`, documented in its WHY doc.
+- No new dependency, no config key. Budget (120), pacing (0.3 s) and threshold (2) are module constants in `lib/link_members.py`, documented in its WHY doc.
 - Runs in the container; Kado reached via `host.docker.internal`, same per-IP limiter (CON-2).
 
 ### Multi-Component Coordination (if applicable)
@@ -668,7 +672,7 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
 ### System-Wide Patterns
 - **Security:** only paths Kado returns (scope-filtered) are ever named; ineligible-node reasons are counted, not logged by name.
 - **Error handling:** degrade per cluster; only an `around:` seed failure ends a run without a doc.
-- **Performance:** ≤ 60 kado-graph attempts per run (incl. retries and the `around:` seed lookup), ≥ 0.3 s apart (≤ 18 s worst case); memoised lookups. Other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget and its pacing.
+- **Performance:** ≤ 120 kado-graph attempts per run (incl. retries and the `around:` seed lookup), ≥ 0.3 s apart (≤ 36 s worst case); memoised lookups. Other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget and its pacing.
 - **Logging/Auditing:** counters in the report and on the `Discovery:` line; no note content.
 
 ### Multi-Component Patterns (if applicable)
@@ -689,7 +693,7 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
   - Rationale: the cache already holds every in-scope note with tags and up state; zero extra reads; up state for link members comes from the cache.
   - Trade-offs: notes created since the last cache build are skipped until the next build.
   - User confirmed: 2026-10-28
-- [x] ADR-4 Budget: 60 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; a cluster is looked up all-or-nothing.
+- [x] ADR-4 Budget: 120 kado-graph HTTP attempts per run (incl. retries and the `around:` seed lookup); other Kado calls (e.g. Phase 6.5 `read_note`) are outside this budget; sends paced ≥ 0.3 s; `KadoClient.attempt_count` + `attempt_gate`; each rendered cluster gets a fair share (remaining // clusters still to do), larger clusters are `sampled` (first `share` uncached members in item order). v1.2: was 60 and all-or-nothing; the T5.3 live run left 3 of 5 rendered clusters (62/45/17 members) without lookups.
   - Rationale: Kado's 20 / 5 s per IP shared with interactive MCP traffic; retries are invisible to `call_count` today; the owner requires backoff support.
   - Trade-offs: very large clusters may be skipped while a smaller later one still fits.
   - User confirmed: 2026-10-28
@@ -708,7 +712,7 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
 
 ## Quality Requirements
 
-- **Performance:** ≤ 60 kado-graph attempts per run (assert in tests via `LinkLookup.attempts` / `link_stats.attempts` — `KadoClient.attempt_count` also counts non-graph calls); ≥ 0.3 s between kado-graph sends; added wall time ≤ 20 s on the reference vault (64 MOCs / 295 notes).
+- **Performance:** ≤ 120 kado-graph attempts per run (assert in tests via `LinkLookup.attempts` / `link_stats.attempts` — `KadoClient.attempt_count` also counts non-graph calls); ≥ 0.3 s between kado-graph sends; added wall time ≤ 40 s on the reference vault (64 MOCs / 295 notes).
 - **Usability:** every link member shows its reason; docs without link members are byte-identical to today's.
 - **Security:** no out-of-scope or ineligible note named anywhere; metadata-only counters.
 - **Reliability:** no Kado failure aborts a non-`around:` run; 0 rate-limit aborts across validation runs; every ticked member reaches `instructions.json` (instructions-diff hard gate stays green).
@@ -743,8 +747,8 @@ With one missing member the Why reads "1 note links with [[Health MOC]] but has 
 - [ ] F4-AC4: WHEN a doc is parsed back, THE SYSTEM SHALL read each member line as its first wikilink, and SHALL exclude link lines from the squelch signature.
 
 **F5 — budget and degradation**
-- [ ] F5-AC1: WHEN the next cluster's uncached lookups exceed the remaining budget, THE SYSTEM SHALL skip it (`skipped_budget`), still write proposals, and count it on the `Discovery:` line.
-- [ ] F5-AC2: THE SYSTEM SHALL NOT exceed 60 kado-graph attempts per run (retries and the `around:` seed lookup included) and SHALL pace those sends ≥ 0.3 s apart; other Kado calls are outside this budget (ADR-4).
+- [ ] F5-AC1: WHEN a rendered cluster's uncached lookups exceed its fair share of the remaining budget, THE SYSTEM SHALL look up only the first `share` uncached members (`sampled`), skip it when the share is 0 (`skipped_budget`), still write proposals, and count both on the `Discovery:` line.
+- [ ] F5-AC2: THE SYSTEM SHALL NOT exceed 120 kado-graph attempts per run (retries and the `around:` seed lookup included) and SHALL pace those sends ≥ 0.3 s apart; other Kado calls are outside this budget (ADR-4).
 - [ ] F5-AC3: WHEN Kado answers 429 with `Retry-After`, THE SYSTEM SHALL wait as stated, retry, count each attempt, and stop retrying when the gate reports the budget spent.
 - [ ] F5-AC4: WHEN a lookup fails, THE SYSTEM SHALL mark that cluster `failed` with no link members, count it, and leave the rest of the proposal unchanged.
 - [ ] F5-AC5: IF the `around:` seed lookup fails, THEN THE SYSTEM SHALL write no proposal and report the failure, not "fewer than 3 notes".

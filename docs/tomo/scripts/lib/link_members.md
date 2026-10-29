@@ -180,8 +180,9 @@ WHY the hub rule (no bridge): a neighbour is counted only when `NodeEligibility`
 accepts it. A daily note linking A and B never becomes a member and never raises
 anything's count, so two notes written on the same day do not look related.
 
-WHY up state comes from the cache: each link member carries the cached `up_state`
-and `up_target` so the renderer can show an existing `up::` without a read.
+WHY up state comes from the cache: each link member carries the cached `up_state`,
+`up_target` and `up_broken_reason` (spec 042 T5.3d: the doc names an unresolved
+target as not found) so the renderer can show an existing `up::` without a read.
 
 WHY the caller slices: `augment_clusters` receives only the rendered slice
 (`clusters[:max_results]`). Marking the rest `not_rendered` is the caller's job,

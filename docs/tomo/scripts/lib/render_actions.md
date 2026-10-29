@@ -1955,6 +1955,8 @@ behind each remedy are recorded in `docs/tomo/scripts/lib/refusal_sentences.md`.
 
 ## An Existing `up::` Target Is Checked Against Obsidian's Link Graph (#82, v0.31.0)
 
+*Superseded by spec 042 T5.3d (v0.33.0): the check and Rule 4.3 are gone — see "No User-Written `up::` Is Dropped" below. Kept as the record of why a check existed.*
+
 `emit_up_preservation_actions` has to know whether a child's existing
 `up:: [[X]]` points to a real note. Before v0.31.0 it asked
 `resolve_stem_to_path(X)`, a `kado-search byName` substring search that falls
@@ -2012,7 +2014,7 @@ only, exact comparison to the MOC name) apply to extension members too.
 WHY one `outgoing(moc)` call decides which members get a MOC line (Rule 3,
 F3-AC4): only `outgoing` keeps direction. `neighbors` also holds backlinks, so
 a member that links to the MOC would read as "already listed" and never get its
-line. The comparison is the one `up_target_is_broken` uses (stem or path,
+line. The comparison is `_link_key` (stem or path,
 case-insensitive), so a member counts as linked exactly when Obsidian
 resolves a link from the MOC to it. `limit` is never passed, because Kado
 applies it before the scope filter.
@@ -2042,3 +2044,48 @@ lookup.
 WHY the extension's members are de-duplicated (case-insensitive by stem, order
 kept): `_parse_supporting_items` does not de-duplicate, and a member listed
 twice would otherwise get two `add_relationship` and two `link_to_moc` actions.
+
+## No User-Written `up::` Is Dropped — Rule 4.3 Retired (spec 042 T5.3d, v0.33.0)
+
+Owner decision (2026-10-29): an existing `up::` is always kept, whatever its
+target. Rule 4.3 ("Override unticked + broken existing `up::` → `up::
+<newMOC>` only, the broken target dropped") is retired, and with it
+`up_target_is_broken` and its two `kado-graph` calls (`outgoing`, `dangling`).
+
+`emit_up_preservation_actions` now treats every existing target the same way:
+
+- Override unticked → Rule 4.2: `up:: <newMOC>` + `related:: <old target>`.
+- Override ticked → Rule 4.5: the old `up::` stays untouched, `related::
+  <newMOC>`.
+- The self-link guard stays: an existing target equal to the new MOC stem is a
+  no-op.
+
+WHY: a live T5.3 run labelled 41 notes "existing `up::` broken — ignored"
+(19 whose target is a note but not a MOC, 22 whose target does not exist),
+while render kept every target `kado-graph` could resolve as `related::`. The
+doc and the instructions disagreed, and the label promised a deletion the user
+had not asked for. The owner's rule removes the disagreement at its source:
+
+- A target that is a note but not a MOC is a parent the user chose. It is a
+  real link; demoting it to `related::` keeps it.
+- A target that does not exist may be a MOC the user meant to create. Keeping
+  it as `related::` keeps the intent visible and lets Obsidian show it as an
+  unresolved link; dropping it is not reversible from the instruction set.
+
+WHY no check is left at all: once every outcome is "keep", a check could only
+change which marker a dead link lands on, and both rules already decide that
+from the Override alone. The check cost one or two Kado calls per child and
+was the only reason the render needed `kado-graph` here.
+
+Scope: `emit_up_preservation_actions` has two callers, both in this module —
+`_build_up_preservation_actions` (accepted new MOCs from a `/moc-propose`
+doc; gated on `override_preserve_existing_up`, which inbox-flow `create_moc`
+items never carry) and `_build_moc_extension_actions` (accepted `around:<MOC>`
+extensions). Both get the new behaviour. `build_garden_audit_actions` does not
+call it: garden-audit repoints or removes broken `up::` lines through its own
+`garden_action` items, which the owner confirms one by one.
+
+instructions-diff (the paired consumer) needs no change: it checks per
+extension member that SOME `add_relationship` names `[[MOC]]`, and counts no
+`add_relationship` actions per child, so one action (old 4.3) or two (4.2)
+both reconcile.

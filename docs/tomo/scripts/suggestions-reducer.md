@@ -1844,8 +1844,9 @@ overlap found, so the reviewer needs the reason on the line and a default of
   `LINK_MEMBER_MARKER` from `lib/link_members.py` and never spells it, and it
   is never localised.
 - The up annotation comes from the same `_child_annotation` as for topic
-  members, fed with the link member's `up_state` / `up_target`. A broken `up::`
-  therefore reads exactly as it does for a topic member.
+  members, fed with the link member's `up_state` / `up_target` /
+  `up_broken_reason`. A broken `up::` therefore reads exactly as it does for a
+  topic member.
 
 Counts: the Children heading and the Override line ("applies to all N
 children") count topic plus link members, because the Override applies to
@@ -1999,3 +2000,39 @@ The text is owner-approved and rendered verbatim (`_MOC_PROPOSAL_HOWTO`).
 - The block names the link-line marker through `LINK_MEMBER_MARKER.strip()`,
   not as literal text: `test_link_members.py` forbids a second copy of the
   marker in the reducer source (ADR-7), and the rendered text is identical.
+
+## The `up::` Annotation Says What Render Will Do (spec 042 T5.3d)
+
+WHY: the annotation used to read `(existing up:: broken — ignored)` for every
+broken `up::`, while render kept each target `kado-graph` could resolve as
+`related::` — 41 notes in one live run promised a drop that did not happen.
+The owner decided that no user-written `up::` is dropped (Rule 4.3 retired,
+`docs/tomo/scripts/lib/render_actions.md`), so the label now states the
+outcome, which is the same for every kind of existing target:
+
+| row | annotation |
+| --- | --- |
+| `absent` | `(no up:: yet)` |
+| `valid` | `(existing up:: [[X]] → becomes `related::`)` |
+| `broken`, reason `not-a-moc` | `(existing up:: [[X]] → becomes `related::`)` |
+| `broken`, reason `unresolved` | `(existing up:: [[X]] — note not found → becomes `related::`)` |
+| `broken`, no reason | as `not-a-moc` |
+
+- `not-a-moc` reads as `valid`: the target is a real note the user chose as
+  parent, and render treats it exactly like a MOC parent. Calling it out would
+  add words without changing a decision.
+- `unresolved` says "note not found": the user may have meant to create that
+  MOC, and the doc is the only place they see that the link points nowhere.
+- **No reason** (a report from before T5.3d, or a link member from a cache
+  that predates spec 033) falls back to the `not-a-moc` wording. It is true
+  in every case — render keeps the target as `related::` whatever the reason —
+  while "note not found" would be a claim the data cannot back.
+- `becomes `related::`` describes the default (Override unticked). With the
+  Override ticked the old `up::` stays and the new MOC becomes `related::`;
+  the Override line states that, as it did before.
+- The parsers read the stem from `[[stem]]` at the start of a child line and
+  ignore the annotation, so the new wording needs no reader change.
+
+Topic rows carry the reason as `reason`, link and extension members as
+`up_broken_reason` (the cache's own key); `_link_member_lines` maps the
+latter onto the row shape `_child_annotation` reads.

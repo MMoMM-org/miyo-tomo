@@ -443,3 +443,32 @@ and must not run through Phase 6/D3 or the squelch registry. `link_stats`
 reports the one lookup, with `members_total` set to the missing members (not
 every eligible neighbour), so the `Discovery:` line counts what is proposed.
 `extension` is `None` in `empty_report`, like `around`.
+
+## Phase 6.5 Rows and Link Members Say Why an `up::` Is Broken (spec 042 T5.3d)
+
+WHY: render keeps every existing `up::` (Rule 4.3 retired, see
+`docs/tomo/scripts/lib/render_actions.md`), so the doc must say what happens
+to it — and for a target that does not exist, that it does not exist, because
+the user may have meant to create that MOC (owner decision 2026-10-29).
+"Broken" alone cannot tell the two cases apart, so the report now carries the
+reason next to the state.
+
+- **Topic members (Phase 6.5).** Each `existing_up` row gains `reason`:
+  `null` for `absent` and `valid`; for `broken`, `not-a-moc` when the target
+  stem is a non-MOC note among the cache `entries`, else `unresolved`. This
+  mirrors `moc-tree-builder.py` `_resolve_up_state`, which writes the same
+  values into the cache as `up_broken_reason`. It is mirrored, not imported:
+  `moc-tree-builder.py` is a hyphenated script whose import pulls in the
+  whole cache build; the rule is three comparisons. `valid` keeps its own
+  test (`_moc_stems_from_cache`, stems and titles), so this change only splits
+  `broken` and moves no row between states.
+- **Link members, around and extension members.** `LinkMember` carries the
+  cache entry's `up_broken_reason`; `_augment_rendered_clusters`,
+  `_build_around_note` and `_run_around_extension` copy it into each member
+  dict as `up_broken_reason`. No read is added: the reason is in the cache
+  entry the member already came from.
+- **Old reports and old caches.** A row or member without a reason still
+  renders; the reducer falls back to the `not-a-moc` wording (see
+  `docs/tomo/scripts/suggestions-reducer.md`). A cache that predates spec 033
+  has no `up_broken_reason`, so its link members carry `None` and get the same
+  fallback.

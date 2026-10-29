@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.67.1
+# version: 0.68.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -113,6 +113,7 @@ from lib.render_resolve import (  # noqa: E402,F401
     _serialize_new_sections,
     _strip_internal_link_fields,
     filter_missing_daily_notes,
+    filter_missing_extension_targets,
     filter_missing_source_notes,
     filter_unappliable_relationships,
     filter_unresolvable_moc_links,
@@ -454,6 +455,16 @@ def main() -> int:
                 file=sys.stderr,
             )
 
+    # An extension whose MOC is not exactly one note is withheld before the
+    # build, so no member gets an up:: to it (spec 042 T4.4).
+    confirmed, withheld_extensions = filter_missing_extension_targets(confirmed, client)
+    for record in withheld_extensions:
+        print(
+            f"  [skip] {record['id']} extension of [[{record['target_moc']}]] "
+            f"withheld — {record['reason']} (see instructions.md)",
+            file=sys.stderr,
+        )
+
     # Back-fill parent_mocs on supporting items of create_moc items — BEFORE
     # the rendering loop reads parent_moc to compute {{up}}. Ensures atomic
     # notes that justify a new MOC actually get `up:: [[<new MOC>]]` written.
@@ -492,6 +503,10 @@ def main() -> int:
 
     for item in confirmed:
         item_id = item.get("id", "?")
+        if item.get("action") == "extend_moc":
+            print(f"  [{item_id}] Extension of [[{item.get('target_moc')}]] "
+                  "(actions built from confirmed)", file=sys.stderr)
+            continue
         # Render any item that has a template — that means it needs a file.
         # Items without a template (e.g. update_daily, link_to_moc) are
         # instruction-only and don't need rendering.
@@ -665,6 +680,7 @@ def main() -> int:
     # the isolated builder so the suggestions/moc-proposal hot path stays
     # untouched (spec 030 SDD: "no new apply path… mirror /moc-propose").
     skipped_assets: list[dict] = []
+    extension_reports: list[dict] = []
     if args.upstream_type == "garden-audit":
         actions = build_garden_audit_actions(
             confirmed, parent_marker=conventions.parent_marker,
@@ -678,6 +694,7 @@ def main() -> int:
             parent_marker=conventions.parent_marker,
             peer_marker=conventions.peer_marker,
             attachment_plan=attachment_plan,
+            extension_reports=extension_reports,
         )
 
     # The staging notes the action list claims before any guard runs. Paired
@@ -1168,6 +1185,12 @@ def main() -> int:
             }
             for d in dropped_missing_source
         ]
+    # Extension records and withheld extensions (spec 042 T4.4): what
+    # instructions-diff needs to check each member. Names and flags only.
+    for key, records in (("extensions", extension_reports),
+                         ("withheld_extensions", withheld_extensions)):
+        if records:
+            instructions_doc.setdefault("tomo", {})[key] = records
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -1203,6 +1226,8 @@ def main() -> int:
             # learned — folder to be created, target not checked, embed
             # written with path.
             "attachment_reports": attachment_reports,
+            "extension_reports": extension_reports,
+            "withheld_extensions": withheld_extensions,
         },
         cfg,
     )

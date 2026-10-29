@@ -299,3 +299,41 @@ withheld kinds: the plan owns the kind set and grew it in spec 039
 (`typed_folder_refused`, `vault_occupied`, ...). A list here would be a second
 copy that goes stale. The arithmetic is unchanged — one subtraction per
 `tomo.skipped_assets` entry, whatever the kind.
+
+## An Extension Is Checked Per Member, Not as a Move (spec 042 T4.4)
+
+Before 0.23.0, every confirmed item that was not `create_moc` was expected to
+be a `move_note`. An `extend_moc` item would have been counted as a missing
+move and a missing paired delete. It has no `source_path`, so it was audited
+by an empty key. Extensions now get their own branch. They are left out of
+`by_item`, the move count and the delete count.
+
+WHY the already-linked set comes from `instructions.json`: whether the MOC
+already links a member is decided at render time from `outgoing(moc)` (ADR-6),
+and this script has no Kado access. The renderer records each extension in
+`tomo.extensions`: `members`, `already_linked`, `outgoing_checked`,
+`no_relationship`. This script trusts those records only for what the
+renderer saw in Kado. The member list comes from `parsed-suggestions.json`.
+
+WHY the member list is de-duplicated (order-preserving, case-insensitive) before counting or checking: the renderer expands a member listed twice in `supporting_items` once, so the raw list would make the diff expect link lines that are never emitted and hard-fail a correct render.
+
+WHY `already_linked` and `no_relationship` names are matched case-insensitively (casefold, v0.23.2): the member list is de-duplicated case-insensitively, so the record's spelling of a member and the parsed spelling can differ only in case. An exact-case check would treat such a member as not already linked (or as owing a relationship) and hard-fail a correct render.
+
+For each member of each extension it checks:
+
+- **One `add_relationship` set:** at least one `add_relationship` on the
+  member whose `line` names `[[MOC]]`. A member listed in `no_relationship`
+  must have none. Either mismatch is a hard fail.
+- **Link lines:** exactly one `link_to_moc` from the member to the MOC when it
+  is not in `already_linked`, and none when it is. A missing line or an extra
+  line is a hard fail (F3-AC3, F3-AC4).
+
+WHY `add_relationship` is checked per member but kept out of the count table:
+the table has never counted `add_relationship`. A new MOC's children get
+theirs without any expectation here. Adding the kind to the table would make
+every existing moc-proposal run fail.
+
+A record missing from `tomo.extensions` is a hard fail: the extension was
+confirmed and not rendered. An extension listed in `tomo.withheld_extensions`
+is expected to produce nothing. Its member links are still reported as an
+observation, so the withholding is visible.

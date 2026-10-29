@@ -415,8 +415,9 @@ WHY the per-item `**Attachments:**` line renders ONLY the resolved source path(s
 never a destination: AC-F3.1 reads as if the destination belonged next to each
 attachment, but the destination (`concepts.asset`) is a single value for the WHOLE
 RUN, not a per-attachment fact — and at the point this line renders, the reducer has
-no config access at all (no `--config`/`--vault-config` flag, unlike
-`instruction-render.py`). Repeating one folder on every item's line would also be
+no config access at all in inbox and fan-resolve modes (no
+`--config`/`--vault-config` flag there, unlike `instruction-render.py`; only
+`--moc-proposal-mode` takes `--config`, see the `--moc-proposal-mode` section below). Repeating one folder on every item's line would also be
 noise the user has to read past N times. The destination half of AC-F3.1 is a
 separate, RUN-LEVEL preamble (below); the per-item line's job is narrower: let the
 user sanity-check WHICH file resolution picked, via the full vault-relative path in
@@ -517,8 +518,10 @@ render anything — the scan, not a config flag, is the gate.
 
 WHY the folder value is threaded through `shared-ctx.json` (a channel the reducer
 already opened for the field→section map, since removed with #162) rather than the
-reducer reading `vault-config.yaml` directly: the reducer has never had a
-`--config`/`--vault-config` CLI argument — only `instruction-render.py` does. Adding
+reducer reading `vault-config.yaml` directly: in inbox and fan-resolve modes the reducer has no
+`--config`/`--vault-config` CLI argument — only `instruction-render.py` does
+(`--moc-proposal-mode` has `--config`, see the `--moc-proposal-mode` Reads
+`max_results` From Config section). Adding
 a second, independent config reader to the reducer would duplicate
 `instruction-render.py`'s `load_config`/`CONFIG_DEFAULTS` machinery for one string.
 `shared-ctx-builder.py` already reads `vault-config.yaml` once per run and already
@@ -1822,3 +1825,214 @@ dropped. The summary line reports `classification_candidates_dropped=` ahead of
 Not dropped: the item's `classification` field (Step 5) and a proposed MOC's
 parent category. Both still name the Dewey bucket, which is where a classification
 MOC belongs: as the parent of a thematic MOC, not as the home of a note.
+
+## Link members render after topic members, unticked, marker first-class (spec 042 T2.2, ADR-7)
+
+WHY: a link member is a note the link graph proposed, not one the topic
+overlap found, so the reviewer needs the reason on the line and a default of
+"not included". The line is `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`:
+
+- The member wikilink stays FIRST. `suggestion-parser` and `moc-proposal-parser`
+  read a member as the first wikilink on the line, so everything after it is
+  free text to them and a ticked link line yields the same stem as before the
+  suffix existed.
+- Link members are ALWAYS unticked. Ticking is the user's act of accepting a
+  note nobody has judged by topic.
+- The marker text is a parse contract: the parsers use it to keep link lines
+  out of the squelch signature (a rejected proposal must not resurface because
+  link members changed the top-5 stems). The reducer imports
+  `LINK_MEMBER_MARKER` from `lib/link_members.py` and never spells it, and it
+  is never localised.
+- The up annotation comes from the same `_child_annotation` as for topic
+  members, fed with the link member's `up_state` / `up_target` /
+  `up_broken_reason`. A broken `up::` therefore reads exactly as it does for a
+  topic member.
+
+Counts: the Children heading and the Override line ("applies to all N
+children") count topic plus link members, because the Override applies to
+every ticked child. The `**Cluster:**` header keeps the topic count: it states
+the topic overlap that justifies the cluster. "Why this proposal" appends
+"N more members came through links." only when N > 0 (singular for 1). The
+classification sentence still counts topic members only.
+
+A report without `link_members` (older reports, or none found) renders
+byte-identically to the pre-042 renderer; a missing key means no link members.
+
+## An `around:` proposal states the seed in "Why", not a topic overlap (spec 042 T3.2, F2-AC1)
+
+WHY: `moc-discovery --around <note>` builds one cluster whose only topic
+member is the seed; every other member is a link member. The topic sentence
+would read "1 notes with topic overlap <seed's topics> have no dedicated MOC",
+which is false (the seed's topics did not select the cluster). The renderer
+keys on `report["mode"] == "around"` and writes "N notes link with [[seed]] and
+have no dedicated MOC." (singular: "1 note links with ... has no ...") instead.
+The "N more members came through links." sentence is dropped for the same
+report: all members came through links, so it would repeat the first.
+The classification sentence ("K of them have up:: ...") is dropped too: it
+counts topic members only, which is the seed alone, so "them" would be wrong.
+
+Unchanged on purpose: `**Trigger:**` and the frontmatter carry
+`around:<argument as typed>` (the existing `mode:trigger_arg` rule needs no
+code); `**Cluster:**` keeps its shape because `suggestion-parser` reads it
+(see "No Confidence line" below for the other field). Cluster therefore shows the topic count (1, the
+seed) with the seed's topics, and Children counts seed plus neighbours. The
+seed is `- [x]`, neighbours `- [ ] ... — linked with [[seed]]`, by the T2.2 rules.
+
+[ref: PRD/F2-AC1]
+
+## `--moc-proposal-mode` Reads `max_results` From Config (spec 042, owner decision O3)
+
+WHY: The proposal-doc renders `clusters[:max_results]` and moc-discovery looks
+up link members for exactly that same slice (spec 042 ADR-2). Both therefore
+have to read the same `tomo.moc_proposal.max_results` (default 5), otherwise a
+configured value of 3 would render 3 sections' worth of link lookups under 5
+sections (or the reverse) and the unrendered ones would carry
+`link_lookup_status: not_rendered`. The reducer used to hardcode 5 (F-43), which
+only held while nobody configured the key. `--config` (default
+`config/vault-config.yaml`, cwd-relative like moc-discovery's) points at the
+vault-config, and the value comes from the same loader moc-discovery and
+shared-ctx-builder use (`load_moc_proposal_config`), so a missing file, a
+missing block or a missing key all fall back to the same default.
+
+## An `around:` Proposal Has No `**Confidence:**` Line (spec 042, owner decision B)
+
+WHY: the confidence of a topic cluster is a signal strength of the overlap
+analysis. An `around:` section is not produced by that analysis: its seed is
+named by the user and its members come from the link graph, so the report has
+no confidence to state, and printing the number (100% in the captured
+fixture) would present a user choice as a measured score. The reducer therefore
+omits the line when `mode == "around"`; every other mode renders it as before
+(the byte-identity baseline fixture guards that).
+
+Omitting is safe because nothing reads the line from a rendered doc:
+`suggestion-parser` (`parse_moc_proposal_doc`, `enumerate_*`),
+`moc-proposal-parser.py` and the state promoter parse Cluster, Title, Location,
+Template, Parent and Children, never Confidence. The `(confidence N%)` text
+that the parser does match belongs to parent options and inbox Type fields.
+
+## An `around:` Cluster Line Counts All Members and Names the Seed (spec 042, owner decision W2)
+
+WHY: the topic Cluster line reads `N Notes — kw1, kw2`, where N counts topic
+candidates. For an `around:` proposal that count is 1 (the seed) while
+`#### Children` lists 3, which misled the reader. The reducer therefore renders
+`**Cluster:** <N> Notes — linked around [[<seed stem>]]` with N = total members
+(seed + link members, equal to the Children count), and no keyword list, since
+the seed is not a topic. Topic mode is unchanged (byte-identity baseline).
+
+`suggestion-parser` never reads this line for around sections in
+`enumerate_all_moc_sections` (skipped by `_is_around_block`). `enumerate_moc_sections_split`
+still parses it for a ticked around section, yielding `topic_keywords` of
+`["linked around [[seed]]"]`; no squelch registry entry can match that signature.
+
+## An `around:<MOC>` Report Renders an Extension Section (spec 042 T4.2, ADR-5, F3-AC5)
+
+WHY: when `--around` names an existing MOC, discovery does not propose a new
+MOC; it lists the MOC's linked neighbours that have no `up::` to it
+(`report["extension"]`, `topic_clusters == []`). The reducer renders that as
+one section of the same proposal doc, so the lifecycle (state promoter,
+`/inbox` pickup, `doc_type: moc-proposal`) needs no new doc type:
+
+```
+### MOC01 — Extend [[X]]
+- [ ] Accept
+**Extends:** [[X]]
+**Trigger:** around:<argument as typed>
+#### Missing members (n)
+- [ ] [[stem]] (<up annotation>) — linked with [[X]]
+#### up::-Handling Override
+- [ ] **Keep existing up::, add [[X]] as `related::`** (applies to all ticked members)
+#### Why this proposal
+n notes link with [[X]] but have no up:: to it.
+```
+
+- The heading keeps `### MOCxx`: `moc-proposal-parser` swallows any other
+  heading into the previous section. `**Extends:**` is what the parser branches
+  on to emit `extend_moc` instead of a create.
+- No Title, Location, Template or `#### Parent`: the MOC exists, so there is
+  nothing to create or place (F3-AC5).
+- `**Trigger:**` stays on its own line: `suggestion-parser`'s
+  `RE_AROUND_TRIGGER` is anchored at line start, and the squelch skip for
+  around sections relies on it (ADR-5).
+- `- [ ] Accept` is the same line as for a create section, so the state
+  promoter's existing Accept regex promotes an accepted extension unchanged.
+- Member lines are built by the same link-member line helper as a cluster's
+  link members (`_child_annotation` + `LINK_MEMBER_MARKER`), so a broken or
+  existing `up::` reads exactly as it does elsewhere and the parsers see one
+  line format. Members are unticked: the link graph proposed them, the user
+  decides.
+- The Override names the MOC and says "all ticked members", because there is
+  no "new MOC" and only ticked members are written.
+- "Why" states the gap the extension closes (singular for one member: "1 note
+  links with [[X]] but has no up:: to it."); there is no confidence to report.
+
+Frontmatter carries `proposal_kind: moc-extension` (create docs keep
+`proposal_kind: moc`; the byte-identity baseline guards that) so a reader of
+the file can tell the two apart without opening the body; `tomo.doc_type`
+stays `moc-proposal`. The filename keeps `_moc-proposal-` and takes the slug of
+`extend <MOC stem>` (e.g. `..._moc-proposal-extend-gardening-moc.md`), because
+there is no cluster to take the slug from and the owner reads filenames as the
+signal of what a doc is.
+
+[ref: PRD/F3-AC5]
+
+## The proposal-doc header carries a how-to block (spec 042 T5.3c)
+
+WHY: a `/moc-propose` doc is the only surface the owner sees; nothing says what
+to do with it. Pass-1 docs carry a `>` guidance block for the same reason, and
+the MOC proposal now does too, between `# MOC Proposal` and the first `###`.
+The text is owner-approved and rendered verbatim (`_MOC_PROPOSAL_HOWTO`).
+
+- It is rendered for create, around and extension docs and NOT for the
+  `check-moc-uplinks` audit doc, which is read, not accepted section by section.
+- It parses to nothing in every reader, by construction and by test: every
+  line starts with `>`, so no checkbox regex (`_RE_ACCEPT`, `RE_CHECKED`)
+  matches, `**Accept**` sits mid-line, and the section splitter only collects
+  lines from the first `### MOCxx` on, so the header is never inside a block.
+  The text contains the link-line marker ("— linked with") as prose; the
+  readers apply `LINK_MEMBER_MARKER` only to lines inside a `#### Children`
+  section, so the header never reaches that check.
+- The doc is written fresh by `render_moc_proposal_doc` on every run (it
+  returns filename and body; nothing appends to an existing doc), so the block
+  cannot appear twice.
+- The wording is prose for the owner, not a parse contract. Changing it needs
+  no reader change, but the surrounding `# MOC Proposal` + blank line + block
+  + blank line layout is pinned by `tests/test_moc_proposal_howto_block.py`.
+- The block names the link-line marker through `LINK_MEMBER_MARKER.strip()`,
+  not as literal text: `test_link_members.py` forbids a second copy of the
+  marker in the reducer source (ADR-7), and the rendered text is identical.
+
+## The `up::` Annotation Says What Render Will Do (spec 042 T5.3d)
+
+WHY: the annotation used to read `(existing up:: broken — ignored)` for every
+broken `up::`, while render kept each target `kado-graph` could resolve as
+`related::` — 41 notes in one live run promised a drop that did not happen.
+The owner decided that no user-written `up::` is dropped (Rule 4.3 retired,
+`docs/tomo/scripts/lib/render_actions.md`), so the label now states the
+outcome, which is the same for every kind of existing target:
+
+| row | annotation |
+| --- | --- |
+| `absent` | `(no up:: yet)` |
+| `valid` | `(existing up:: [[X]] → becomes `related::`)` |
+| `broken`, reason `not-a-moc` | `(existing up:: [[X]] → becomes `related::`)` |
+| `broken`, reason `unresolved` | `(existing up:: [[X]] — note not found → becomes `related::`)` |
+| `broken`, no reason | as `not-a-moc` |
+
+- `not-a-moc` reads as `valid`: the target is a real note the user chose as
+  parent, and render treats it exactly like a MOC parent. Calling it out would
+  add words without changing a decision.
+- `unresolved` says "note not found": the user may have meant to create that
+  MOC, and the doc is the only place they see that the link points nowhere.
+- **No reason** (a report from before T5.3d, or a link member from a cache
+  that predates spec 033) falls back to the `not-a-moc` wording. It is true
+  in every case — render keeps the target as `related::` whatever the reason —
+  while "note not found" would be a claim the data cannot back.
+- `becomes `related::`` describes the default (Override unticked). With the
+  Override ticked the old `up::` stays and the new MOC becomes `related::`;
+  the Override line states that, as it did before.
+- The parsers read the stem from `[[stem]]` at the start of a child line and
+  ignore the annotation, so the new wording needs no reader change.
+
+Topic rows carry the reason as `reason`, link and extension members as
+`up_broken_reason` (the cache's own key); `_link_member_lines` maps the
+latter onto the row shape `_child_annotation` reads.

@@ -206,3 +206,273 @@ Interactive note-orphan handling (pick a parent, create a new MOC for an orphan
 note) is deferred to Garden-Audit (#30) where it belongs — a separate workflow,
 not a sidebar in a cluster proposal.
 
+
+## Link Members: Augmenting the Rendered Slice (spec 042 ADR-2, T2.1)
+
+WHY: Topic clustering only finds notes that share a normalised topic. Notes the
+user linked to several members of a proposed MOC belong there too, but carry
+different topics. `_run_pipeline` therefore asks `kado-graph neighbors` for each
+member of a cluster and adds every eligible non-member that appears in at least
+two members' neighbour lists (`lib/link_members.augment_clusters`; rules and
+budget in `docs/tomo/scripts/lib/link_members.md`).
+
+**Insertion point — after D3 and the confidence sort, before Phase 6.5.** The
+lookups cost Kado calls under a per-run attempt budget (120, ADR-4 v1.2, shared fairly across the rendered clusters). Running
+them before Phase 6 / D3 would spend budget on clusters that are then dropped
+as duplicates, squelched or absorbed. The confidence sort moved up from after
+Phase 6.5 to directly after D3 so the slice is known before the lookups; Phase
+6.5 decorates clusters in place and keeps their order, so the emitted order is
+unchanged.
+
+**Only the rendered slice — `clusters[:max_results]`.** The reducer renders at
+most `max_results` cluster sections; a lookup for a cluster nobody sees is
+wasted budget. Clusters beyond the slice get `link_lookup_status:
+not_rendered`, `link_members: []` and cause no call. The slice is cut in
+confidence order so the budget goes to the proposals the user reads first.
+
+**Squelch, D3 and confidence stay topic-only.** Augmentation runs after all
+three and only adds the `link_members` / `link_lookup_status` fields; it never
+touches `items`, `candidate_stems` or `confidence`. A squelch signature
+(`compute_topic_signature`, topics + top-5 stems) must stay stable across runs
+so a rejected proposal stays muted — if link members fed the signature, a new
+link in the vault would un-mute a proposal the user already rejected.
+Confidence is "topic members / candidates"; counting link members would rank a
+cluster by how linked it is, not by how well its topic covers the scope. D3
+compares topic memberships; link members are allowed to appear in several
+clusters (F1-AC4) and must not trigger an inter-cluster drop.
+
+**Members are re-checked by `NodeEligibility` before lookups.** Pass 2
+(`--phase1-input`) trusts the candidate list the agent hands back without
+re-filtering, so a periodic note, MOC or inbox note can arrive as a topic
+member. Such a member is not looked up and cannot act as a bridge. A member
+that is merely missing from the cache (`uncached`) is still looked up:
+folder/tag/class candidates come from live Kado and may be newer than the
+cache build; that is no reason to lose their links.
+
+**The lookup map is built by path, rendered by stem.** Phase 6.5 builds
+`stem → path` with last-wins on a stem collision. Reused for lookups, two
+candidates sharing a stem would lose one path: it would never be looked up and
+could reappear as a link member of its own cluster under the member's stem.
+The augmentation expands each cluster stem to every candidate path with that
+stem, looks up each path, and maps `linked_with` back to stems for rendering.
+
+**Colliding stems count by path (owner decision O4, 2026-10-28).** The
+2-member threshold counts distinct member PATHS. Two notes that share a stem
+(`Atlas/202 Notes/alpha.md`, `Atlas/202 Notes/2021 Thoughts/alpha.md`) are two
+different notes, so a note linked from both qualifies, and the rendered reason
+shows the shared name once (`linked with [[alpha]]`). Collapsing by stem would
+make the reason line honest about the name but drop a real second link; the
+owner chose to keep path counting and pin it with a test.
+
+**Test fakes carry the graph surface.** The Kado client is not duck-typed
+around the graph: any stand-in handed to the pipeline must expose `graph`,
+`attempt_count`, `attempt_gate` and `min_interval`, the way `_NullKadoClient`
+does (a `graph()` that raises `KadoError` degrades every rendered cluster to
+`failed`). A branch that silently tolerated a missing surface would hide a
+wiring mistake instead of failing it.
+
+**`--emit-phase1` makes no graph call.** Pass 1 exits before the pipeline; the
+two-pass flow counts as one run, and Pass 2 does the lookups once.
+
+**`_NullKadoClient.graph` raises.** Without Kado the run still emits
+proposals: every rendered cluster gets `failed` with no link members, and the
+exit code is the one the run would have without link members.
+
+**Report fields are additive.** `topic_clusters[i].link_members`,
+`topic_clusters[i].link_lookup_status` and the top-level `link_stats` are new
+keys; nothing existing changes. `link_stats` is part of `empty_report` (all
+zeros) so abort and dry-run reports keep one shape for the reducer's
+`Discovery:` line.
+
+
+## `--around`: One Proposal From a Seed's Links (spec 042 F2, T3.1)
+
+WHY: A note that grew links to several others is a MOC in waiting, but it
+shares no topic with its neighbours, so no topic mode finds it. `--around
+NAME_OR_PATH` builds one proposal from the seed's links alone: the seed is the
+ticked member, every eligible neighbour (`NodeEligibility`) is an unticked link
+member with `linked_with: [seed]`.
+
+**Resolution reads the cache only.** The argument is matched against the
+MOC-structure cache entries; there is no Kado name search (owner decision,
+2026-10-28). A name search would turn a typo into a silent pick of some other
+note; an uncached seed is reported as not found with the remedy ("rebuild the
+cache or give a path"). Accepted forms: `stem`, `[[stem]]` (an `|alias` is
+dropped), `stem.md`, and a vault path (anything containing `/`, `.md`
+optional). A path is matched against entry paths, a name against entry stems.
+Both comparisons ignore case: Obsidian resolves links case-insensitively, and
+the resolved seed always carries the cache's own spelling, so Kado is never
+sent the user's casing. Several matches are never guessed between — the run
+stops and lists every matching path, whether the duplicates are two notes or a
+note and a MOC, so the user can repeat the run with a path.
+
+**Refusals, in order:** ambiguous → not found → periodic → MOC. A path
+argument is checked for periodic before the cache lookup, because periodic
+folders are usually outside the cache: without that, a daily note given by
+path would read "not found" instead of the real reason. A periodic note links
+everything of its day; a MOC around it is a day log, not a topic, so it is
+refused ("periodic notes cannot be a MOC seed"). A MOC seed is a different
+proposal type (extend the existing MOC, F3) and is routed to its own builder.
+
+**The seed follows member eligibility (owner decision A, 2026-10-28).** A note seed that is not eligible as a link member (`NodeEligibility.check`: not Markdown, still in the inbox, outside the atomic-note folders, tagged `exclude/note`) is refused with `abort_reason: around-ineligible` and a message naming the reason in user terms, before any Kado call. Without this, a note the user excluded would end up as the ticked member of a new MOC, while the same note would have been withheld as a link member. The check runs after the periodic and MOC routing, so those keep their own messages.
+
+**A MOC seed goes to the extension builder** (`_run_around_extension`, see
+`around:<MOC>` below); the routing in front of it is the same resolver.
+
+**Exactly one lookup, from the same budget.** The seed's `neighbors` call runs
+inside `with LinkLookup(client)`, so it is paced and counted against the 120
+attempt budget like any other lookup, and `link_stats` reports it. The lookup
+reuses `augment_clusters` with a one-member cluster and threshold 1: the
+eligibility rules, the uncached count and the failure statuses are the same
+code as for topic clusters.
+
+**A failed seed lookup is its own abort.** If the lookup fails (Kado error or
+budget refusal), the run stops with "seed lookup failed" — never "fewer than 3
+notes". The second message would tell the user the hub has no links when we
+simply could not ask, and they would stop looking (F5-AC5). This is the only
+place a Kado failure ends a run without a document: without the lookup there
+is nothing to propose.
+
+**Three notes minimum.** Fewer than 2 eligible neighbours → no proposal, reason
+"fewer than 3 notes" (owner decision 2026-10-27: same floor as `min_notes`).
+
+**Title, parents, confidence.** The title is the seed stem plus the profile MOC
+suffix (`profile_conventions.moc_suffix`, applied once) — the seed names the
+hub, a Title-Cased topic would rename the user's note. Parent options come
+from Phase 5 run on the seed's cached topics; the seed stem is not a keyword,
+or a note called "Energy" would score against a Dewey "energy" category by
+its name alone. Confidence follows the topic formula (topic members /
+candidates), which is 1.0 for the single seed; nothing ranks it against other
+proposals.
+
+The report keeps `confidence: 1.0`; the reducer does not render it for `around:`
+sections (owner decision B, see suggestions-reducer.md).
+
+**Single pass, no squelch, no Phase 2/3/6/D3.** There is no topic extraction
+to hand to the agent, so `--emit-phase1` / `--phase1-input` have nothing to
+carry; combining either (or `--check-moc-uplinks`) with `--around` is a fatal
+usage error (exit 2) rather than silently running the other flow — the agent
+would otherwise wait for a Pass 1 file that never names the seed. The squelch
+registry is neither read nor decremented: an `around:` run is an explicit
+request for one note, so a past rejection of a topic proposal must not hide
+it, and an `around:` run must not age other rejections (owner decision,
+2026-10-28). Phase 6 and D3 compare proposals with existing MOCs and with each
+other by topic; with one proposal and no topic they have nothing to compare.
+Phase 6.5 does run on the seed so its `(up)` annotation is the same as in any
+other proposal.
+
+**Report shape.** `around: {kind, path, stem}` is a top-level field, `None` in
+`empty_report`, so every report has one shape. Every `around:` abort report
+still carries `around` (when resolved) and `link_stats`, so the `Discovery:`
+line can show the one attempt.
+
+**The stderr `links:` line is the report's `link_stats`, logged once at the end.**
+WHY: the agent reads stderr to write the `Discovery:` line. `around:<MOC>` rewrites
+`members_total` to the number of MISSING members after the lookup, so a stat line
+logged straight from the lookup said 17 members while the report said 7 (T5.3 live
+run). `_around_lookup` therefore logs only status and neighbour count; `_run_around`
+logs `links: ` plus every `link_stats` value from the finished report, on success,
+`no-missing-members` and seed-lookup aborts alike. Stderr and report cannot diverge.
+
+## `around:<MOC>`: The MOC's Missing Members (spec 042 F3, T4.1)
+
+WHY: Notes drift into a topic without ever getting `up::` to its MOC: the
+user links them from the MOC body, or they link the MOC, and the parent is
+never set. `--around <MOC>` lists those notes so the user can tick them in.
+
+**Rule 1 — a missing member** is a neighbour of the MOC (`neighbors`, either
+link direction) that passes member eligibility (`NodeEligibility`) and whose
+cached parent does not name this MOC — neither the cached `up_target` nor any
+element of the cached `up_value`. The lookup reuses the `around:<note>` path
+— `augment_clusters` with the MOC as the one-member cluster and threshold 1 —
+so pacing, the 120-attempt budget, the uncached count and "seed lookup failed"
+on a Kado error or budget refusal are the same code (ADR-4). A neighbour that
+is itself a MOC (the MOC's own parent, a sibling hub) fails eligibility and is
+never a member (PRD edge case "parent MOC").
+
+**Why the cached `up_target`, not a read.** The MOC-structure cache already
+holds each note's parent, resolved by `up_parse` from inline `up::` *and*
+frontmatter `up:`. A frontmatter parent therefore counts as present (PRD edge
+case), and the run costs one Kado call however many neighbours the MOC has; a
+`read_note` per neighbour would cost one per note, outside the graph budget.
+
+**Why `up_value` too.** `up_parse` keeps ONE parent in `up_target` — the
+first inline `up::`, else the first element of a frontmatter `up:` list. A
+note with `up: ["[[Other]]", "[[MOC]]"]` is cached `up_target: Other`; read
+alone, it would be proposed as missing although it already points at the
+MOC. The cache entry also stores the frontmatter value as parsed
+(`up_value`, list or scalar; `None` for an inline parent), so every element
+of it is checked. The member lookup goes by the neighbour's path into the
+cache entries, because `LinkMember` carries only `up_target` and the reducer
+consumes that shape unchanged.
+
+**The comparison.** Each candidate is reduced to a bare stem — `[[ ]]`, an
+`|alias`, a `#heading`, a folder and `.md` stripped — and compared
+case-insensitively, because Obsidian resolves `up::` the same way. A
+`up_target` that an older cache persisted as the str repr of the whole
+frontmatter list (`"['Other', 'MOC']"`, no `up_value`) is unwrapped
+(`unwrap_list_repr`) and every element is checked, not just the first.
+
+**Residual limit — inline parents.** The cache keeps no second inline
+parent and does not record a frontmatter `up:` once an inline `up::` won
+(`up_value` is then `None`). A note with two inline `up::` lines whose
+second names the MOC, or with an inline `up::` to another note plus a
+frontmatter `up:` to the MOC, is therefore still proposed as missing. The
+user sees it unticked (Rule 5) and leaves it so. The apply side is NOT a
+backstop for this: `emit_up_preservation_actions` reads only the FIRST
+inline `up::` (frontmatter stripped) and compares it exactly. For a ticked
+note whose first inline parent is another note it applies Rule 4.2 — adds
+`up:: [[MOC]]` and moves the other parent to `related::` — although the
+note already named the MOC. A stale cache (a note parented since the last
+explore) behaves the same way: the guard only no-ops when the note's FIRST
+inline `up::` is exactly the MOC.
+
+**One missing member suffices** (Rule 4) — there is no 3-note floor: the MOC
+already exists, one stray note is worth proposing. **None missing** → no
+proposal, `abort_reason: no-missing-members`, message naming the MOC
+(F3-AC2), so the user knows the MOC was checked rather than that the lookup
+failed.
+
+**Report shape.** `report.extension = {moc_stem, moc_path, members}`, each
+member a `LinkMember` with `linked_with: [<moc stem>]` and the cached
+`up_state` / `up_target` (Rule 2: the reducer shows the existing parent and
+the Override applies at render time). Members are all unticked (Rule 5) —
+the ticks live in the doc, so the report carries no tick flag. `topic_clusters`
+stays empty: an extension is not a new MOC, has no title, parent or template,
+and must not run through Phase 6/D3 or the squelch registry. `link_stats`
+reports the one lookup, with `members_total` set to the missing members (not
+every eligible neighbour), so the `Discovery:` line counts what is proposed.
+`extension` is `None` in `empty_report`, like `around`.
+
+## Phase 6.5 Rows and Link Members Say Why an `up::` Is Broken (spec 042 T5.3d)
+
+WHY: render keeps every existing `up::` (Rule 4.3 retired, see
+`docs/tomo/scripts/lib/render_actions.md`), so the doc must say what happens
+to it — and for a target that does not exist, that it does not exist, because
+the user may have meant to create that MOC (owner decision 2026-10-29).
+"Broken" alone cannot tell the two cases apart, so the report now carries the
+reason next to the state.
+
+- **Topic members (Phase 6.5).** Each `broken` row gains `reason`:
+  `not-a-moc` when the target stem is a non-MOC note among the cache
+  `entries`, else `unresolved`. `absent` and `valid` rows keep their
+  three keys: no reason applies to them, and the row shape every existing
+  consumer and test pins stays unchanged. This
+  mirrors `moc-tree-builder.py` `_resolve_up_state`, which writes the same
+  values into the cache as `up_broken_reason`. It is mirrored, not imported:
+  `moc-tree-builder.py` is a hyphenated script whose import pulls in the
+  whole cache build; the rule is three comparisons. `valid` keeps its own
+  test (`_moc_stems_from_cache`, stems and titles), so this change only splits
+  `broken` and moves no row between states.
+- **Link members, around and extension members.** `LinkMember` carries the
+  cache entry's `up_broken_reason`; `_augment_rendered_clusters`,
+  `_build_around_note` and `_run_around_extension` copy it into a member
+  dict as `up_broken_reason` when the member's `up_state` is `broken`, the
+  same rule as for topic rows: the reason is present exactly when the state
+  is broken. No read is added: the reason is in the cache entry the member
+  already came from.
+- **Old reports and old caches.** A row or member without a reason still
+  renders; the reducer falls back to the `not-a-moc` wording (see
+  `docs/tomo/scripts/suggestions-reducer.md`). A cache that predates spec 033
+  has no `up_broken_reason`, so its link members carry `None` and get the same
+  fallback.

@@ -165,6 +165,16 @@ class _FakeKadoForTag:
     def read_note(self, path: str) -> dict:
         return {"content": "# stub note\nNo up:: here.\n"}
 
+    # LinkLookup reads and installs these; graph() fails every lookup.
+    attempt_count = 0
+    attempt_gate = None
+    min_interval = 0.0
+
+    def graph(self, *_a, **_k):
+        from lib.kado_client import KadoError
+
+        raise KadoError("graph unavailable in this fake")
+
     def list_dir(self, path: str, depth: int = 10) -> list[dict]:  # pragma: no cover
         return []
 

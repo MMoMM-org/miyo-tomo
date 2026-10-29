@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.62.0
+# version: 1.69.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -54,6 +54,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     normalise_topic,  # re-export for tests/test-004-phase3.sh
     strip_moc_marker,
 )
+from lib.link_members import LINK_MEMBER_MARKER  # noqa: E402 — spec 042 T2.2 link member suffix
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.cost_history import (  # noqa: E402 — spec 034 T6.1
     DEFAULT_HISTORY_PATH,
@@ -1447,24 +1448,78 @@ def render_attachment_conflicts_block(
 def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
     """Return the parenthetical annotation for a child stem.
 
-    Three branches (per SDD UI Guide §1015-1019 + ADR-1):
-      - state="absent"  → `(no up:: yet)`
-      - state="valid"   → `(existing up:: [[<target>]] → becomes related::)`
-      - state="broken"  → `(existing up:: broken — ignored)`
+    Every existing up:: is kept at render, so the label states that outcome:
+      - state="absent"                       → `(no up:: yet)`
+      - state="valid", or "broken" with reason "not-a-moc" or no reason
+                                             → `(existing up:: [[X]] → becomes related::)`
+      - state="broken", reason="unresolved"  → `(existing up:: [[X]] — note not found → becomes related::)`
 
-    Falls back to absent if the stem has no row in existing_up_rows.
+    Falls back to absent if the stem has no row or the row has no target.
     """
     for row in existing_up_rows:
         if row.get("stem") == stem:
             state = row.get("state", "absent")
             target = row.get("target")
-            if state == "valid" and target:
-                return f"(existing up:: [[{target}]] → becomes `related::`)"
-            elif state == "broken":
-                return "(existing up:: broken — ignored)"
-            else:
+            if state not in ("valid", "broken") or not target:
                 return "(no up:: yet)"
+            if state == "broken" and row.get("reason") == "unresolved":
+                return f"(existing up:: [[{target}]] — note not found → becomes `related::`)"
+            return f"(existing up:: [[{target}]] → becomes `related::`)"
     return "(no up:: yet)"
+
+
+def _link_member_lines(link_members: list[dict]) -> list[str]:
+    """One `- [ ] [[stem]] (<up annotation>)` + LINK_MEMBER_MARKER + linked-with wikilinks line per member (ADR-7)."""
+    link_up_rows = [
+        {
+            "stem": m.get("stem"),
+            "state": m.get("up_state", "absent"),
+            "target": m.get("up_target"),
+            "reason": m.get("up_broken_reason"),
+        }
+        for m in link_members
+    ]
+    lines: list[str] = []
+    for member in link_members:
+        stem = member.get("stem", "")
+        annotation = _child_annotation(stem, link_up_rows)
+        reason = ", ".join(f"[[{w}]]" for w in member.get("linked_with") or [])
+        lines.append(f"- [ ] [[{stem}]] {annotation}{LINK_MEMBER_MARKER}{reason}")
+    return lines
+
+
+def _render_extension_section(moc_id: str, extension: dict, trigger_arg: str) -> str:
+    """Render the `### MOCxx — Extend [[X]]` section of an around:<MOC> report (ADR-5)."""
+    moc_stem = extension.get("moc_stem", "")
+    members: list[dict] = extension.get("members") or []
+    n = len(members)
+    why = (
+        f"1 note links with [[{moc_stem}]] but has no up:: to it."
+        if n == 1
+        else f"{n} notes link with [[{moc_stem}]] but have no up:: to it."
+    )
+    lines: list[str] = [
+        f"### {moc_id} — Extend [[{moc_stem}]]",
+        "",
+        "- [ ] Accept",
+        "",
+        f"**Extends:** [[{moc_stem}]]",
+        f"**Trigger:** {trigger_arg}",
+        "",
+        f"#### Missing members ({n})",
+        "",
+        *_link_member_lines(members),
+        "",
+        "#### up::-Handling Override",
+        "",
+        f"- [ ] **Keep existing up::, add [[{moc_stem}]] as `related::`**"
+        " (applies to all ticked members)",
+        "",
+        "#### Why this proposal",
+        "",
+        why,
+    ]
+    return "\n".join(lines)
 
 
 def _render_cluster_section(
@@ -1472,6 +1527,7 @@ def _render_cluster_section(
     cluster: dict,
     parent_opts: list[dict],
     trigger_arg: str,
+    around_seed: str | None = None,
 ) -> str:
     """Render one `### MOCxx — <Title>` section for the proposal-doc body.
 
@@ -1480,6 +1536,7 @@ def _render_cluster_section(
         cluster:      Enriched topic_cluster dict from DiscoveryReport.
         parent_opts:  parent_options_per_cluster[cluster_id] list.
         trigger_arg:  The original discovery trigger (for **Trigger:** field).
+        around_seed:  Seed stem of an `around:` report; None for every other mode.
     """
     title = (cluster.get("title") or "").strip()
     confidence = cluster.get("confidence", 0.0)
@@ -1491,7 +1548,9 @@ def _render_cluster_section(
     candidate_stems = cluster.get("candidate_stems") or []
     existing_up_rows: list[dict] = cluster.get("existing_up") or []
 
-    n_children = len(candidate_stems)
+    link_members: list[dict] = cluster.get("link_members") or []
+    n_topic = len(candidate_stems)
+    n_children = n_topic + len(link_members)
     topics_csv = ", ".join(str(t) for t in topic_keywords) if topic_keywords else title.lower()
 
     lines: list[str] = [
@@ -1504,8 +1563,12 @@ def _render_cluster_section(
         f"**Template:** [[{template}]]",
         "",
         f"**Trigger:** {trigger_arg}",
-        f"**Confidence:** {int(round(confidence * 100))}%",
-        f"**Cluster:** {n_children} Notes — {topics_csv}",
+        *([] if around_seed is not None else [f"**Confidence:** {int(round(confidence * 100))}%"]),
+        (
+            f"**Cluster:** {n_children} Notes — linked around [[{around_seed}]]"
+            if around_seed is not None
+            else f"**Cluster:** {n_topic} Notes — {topics_csv}"
+        ),
         "",
         "#### Parent",
         "",
@@ -1527,6 +1590,7 @@ def _render_cluster_section(
     for stem in candidate_stems:
         annotation = _child_annotation(stem, existing_up_rows)
         lines.append(f"- [x] [[{stem}]] {annotation}")
+    lines.extend(_link_member_lines(link_members))
     lines.append("")
 
     lines.append("#### up::-Handling Override")
@@ -1551,16 +1615,43 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_children} notes with topic overlap {topics_csv} have no dedicated MOC."
-    last = "This MOC would fill the gap."
-    if parent_label and k_classified > 0:
-        middle = f"{k_classified} of them have up:: to classification {parent_label}."
-        why = f"{first}\n{middle} {last}"
+    if around_seed is not None:
+        n_links = len(link_members)
+        if n_links == 1:
+            first = f"1 note links with [[{around_seed}]] and has no dedicated MOC."
+        else:
+            first = f"{n_links} notes link with [[{around_seed}]] and have no dedicated MOC."
+        why = f"{first}\nThis MOC would fill the gap."
     else:
-        why = f"{first}\n{last}"
+        first = f"{n_topic} notes with topic overlap {topics_csv} have no dedicated MOC."
+        if link_members:
+            noun = "member" if len(link_members) == 1 else "members"
+            first += f" {len(link_members)} more {noun} came through links."
+        last = "This MOC would fill the gap."
+        if parent_label and k_classified > 0:
+            middle = f"{k_classified} of them have up:: to classification {parent_label}."
+            why = f"{first}\n{middle} {last}"
+        else:
+            why = f"{first}\n{last}"
     lines.append(why)
 
     return "\n".join(lines)
+
+
+_MOC_PROPOSAL_HOWTO = "\n".join(
+    [
+        "> **How to use this proposal**",
+        "> 1. Review each section below. Untick members that do not",
+        f">    belong; tick link members (`{LINK_MEMBER_MARKER.strip()} …`) that do.",
+        "> 2. Check the parent, and tick the up::-Handling Override if",
+        ">    existing `up::` links should stay.",
+        "> 3. Tick **Accept** on every section you want. Sections",
+        ">    without Accept are ignored.",
+        "> 4. Run `/inbox`. Tomo turns the accepted sections into an",
+        ">    instruction set; apply it with Hashi to create or extend",
+        ">    the MOC, add the `up::` links and list the members.",
+    ]
+)
 
 
 def render_moc_proposal_doc(
@@ -1594,6 +1685,10 @@ def render_moc_proposal_doc(
     trigger_arg: str = report.get("trigger_arg") or ""
     mode: str = report.get("mode") or "tag"
 
+    around_seed: str | None = (
+        (report.get("around") or {}).get("stem") if mode == "around" else None
+    )
+
     clusters: list[dict] = list(report.get("topic_clusters") or [])
     parent_options: dict[str, list[dict]] = report.get("parent_options_per_cluster") or {}
 
@@ -1613,6 +1708,9 @@ def render_moc_proposal_doc(
     now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
     date_str = time.strftime("%Y-%m-%d", time.localtime())
     hhmm_str = time.strftime("%H%M", time.localtime())
+    extension: dict | None = report.get("extension") if mode == "around" else None
+    if extension:
+        top_slug = slugify(f"extend {extension.get('moc_stem', '')}") or "moc"
     filename = f"{date_str}_{hhmm_str}_moc-proposal-{top_slug}.md"
 
     # Frontmatter
@@ -1633,7 +1731,7 @@ def render_moc_proposal_doc(
     frontmatter_lines = [
         "---",
         "type: tomo-proposal",
-        "proposal_kind: moc",
+        "proposal_kind: moc-extension" if extension else "proposal_kind: moc",
         f"created: {now_str}",
         f"trigger: {trigger_field}",
         "status: pending",
@@ -1650,6 +1748,12 @@ def render_moc_proposal_doc(
         "# MOC Uplink Check" if check_mode else "# MOC Proposal",
         "",
     ]
+    if not check_mode:
+        body_lines.extend([_MOC_PROPOSAL_HOWTO, ""])
+
+    if extension:
+        body_lines.append(_render_extension_section("MOC01", extension, trigger_field))
+        body_lines.append("")
 
     rendered = clusters[:max_results]
     overflow = len(clusters) - len(rendered)
@@ -1658,7 +1762,9 @@ def render_moc_proposal_doc(
         moc_id = f"MOC{i:02d}"
         cluster_id = cluster.get("cluster_id") or moc_id
         opts = parent_options.get(cluster_id) or parent_options.get(moc_id) or []
-        section = _render_cluster_section(moc_id, cluster, opts, trigger_field)
+        section = _render_cluster_section(
+            moc_id, cluster, opts, trigger_field, around_seed=around_seed
+        )
         body_lines.append(section)
         body_lines.append("")
 
@@ -2097,6 +2203,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         # operationally unavoidable.
         help="Directory to write the proposal-doc (required when --moc-proposal-mode is set).",
     )
+    p.add_argument(
+        "--config",
+        default="config/vault-config.yaml",
+        help="vault-config.yaml supplying tomo.moc_proposal.max_results "
+             "(--moc-proposal-mode only; default: config/vault-config.yaml).",
+    )
     # ── Inbox mode (existing) ─────────────────────────────────────────────────
     # Instance-correct cwd-relative defaults (instance runtime cwd = instance root).
     # Host/test runs override. --output is dual-use (moc-proposal-mode wants a dir)
@@ -2139,6 +2251,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _load_moc_proposal_config(config_path: Path):
+    """MocProposalConfig from vault-config via shared-ctx-builder's loader."""
+    _name = "shared_ctx_builder"
+    if _name not in sys.modules:
+        _spec = _ilu.spec_from_file_location(
+            _name, str(Path(__file__).resolve().parent / "shared-ctx-builder.py")
+        )
+        _mod = _ilu.module_from_spec(_spec)
+        sys.modules[_name] = _mod
+        _spec.loader.exec_module(_mod)
+    return sys.modules[_name].load_moc_proposal_config(config_path)
+
+
 def _main_moc_proposal(args: argparse.Namespace) -> int:
     """Handle --moc-proposal-mode: read DiscoveryReport, render proposal-doc, write to disk."""
     if not args.input:
@@ -2160,12 +2285,7 @@ def _main_moc_proposal(args: argparse.Namespace) -> int:
 
     output_dir = Path(args.output_dir) if args.output_dir else Path(".")
 
-    # Duck-typed config: only max_results is consulted by render_moc_proposal_doc.
-    # max_results comes from MocProposalConfig (not a CLI flag — spec AC-3.1).
-    class _InlineCfg:
-        max_results: int = 5
-
-    cfg = _InlineCfg()
+    cfg = _load_moc_proposal_config(Path(args.config))
 
     filename, body = render_moc_proposal_doc(report, cfg)
     output_dir.mkdir(parents=True, exist_ok=True)

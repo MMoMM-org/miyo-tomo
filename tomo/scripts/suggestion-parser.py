@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.2
+# version: 0.44.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -35,6 +35,7 @@ from lib.supporting_items import (  # noqa: E402
 )
 from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.vault_paths import path_key  # noqa: E402
+from lib.link_members import LINK_MEMBER_MARKER  # noqa: E402 — spec 042 ADR-7
 from lib.render_md import compute_payload_digest  # noqa: E402
 from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.attachment_conflict_states import RENAME_IMPOSSIBLE_MARKER  # noqa: E402 — spec 037 fix/037
@@ -1435,6 +1436,30 @@ RE_CLUSTER_LINE = re.compile(
 RE_CHILD_WIKILINK = re.compile(r"`?\[\[([^\]]+)\]\]`?")
 
 
+# Must match the reducer's `{mode}:{trigger_arg}` Trigger rendering (`trigger_field` in suggestions-reducer.py).
+RE_AROUND_TRIGGER = re.compile(r"^\*\*Trigger:\*\*\s*around:", re.IGNORECASE)
+
+
+def _is_around_block(block_lines: list[str]) -> bool:
+    """True when the section's `**Trigger:**` line names an `around:` proposal."""
+    return any(RE_AROUND_TRIGGER.match(bl.strip()) for bl in block_lines)
+
+
+# Must match the reducer's extension section (`**Extends:** [[X]]`); moc-proposal-parser.py reads it into extend_moc.
+RE_EXTENDS = re.compile(r"^\*\*Extends:\*\*", re.IGNORECASE)
+
+
+def _is_extension_block(block_lines: list[str]) -> bool:
+    """True when the section header (lines before the first `#### `) has an `**Extends:**` line."""
+    for bl in block_lines:
+        stripped = bl.strip()
+        if stripped.startswith("#### "):
+            return False
+        if RE_EXTENDS.match(stripped):
+            return True
+    return False
+
+
 def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:
     """Split document lines into ``### MOCxx`` blocks.
 
@@ -1479,7 +1504,7 @@ def enumerate_all_moc_sections(
     rejected clusters (enumerate_all − accepted).
 
     Extraction strategy:
-    - ``candidate_stems``  — wikilinks from ``#### Children`` items
+    - ``candidate_stems``  — wikilinks from ``#### Children`` items, excluding LINK_MEMBER_MARKER lines (signature input)
     - ``topic_keywords``   — comma-separated list from ``**Cluster:** N Notes — kw1, kw2``
     """
     lines = content.splitlines()
@@ -1489,6 +1514,8 @@ def enumerate_all_moc_sections(
 
     # ── Extract stems + keywords from each block ─────────────────────────────
     for moc_id, title, block_lines in moc_blocks:
+        if _is_around_block(block_lines) or _is_extension_block(block_lines):
+            continue
         topic_keywords: list[str] = []
         candidate_stems: list[str] = []
         in_children_section = False
@@ -1512,7 +1539,7 @@ def enumerate_all_moc_sections(
                 continue
             if in_children_section:
                 wl = RE_CHILD_WIKILINK.search(bl)
-                if wl:
+                if wl and LINK_MEMBER_MARKER not in bl:
                     candidate_stems.append(wl.group(1).strip())
 
         results.append((moc_id, title, candidate_stems, topic_keywords))
@@ -1529,7 +1556,7 @@ def enumerate_moc_sections_split(
         moc_id          — e.g. "MOC01"
         title           — heading title string
         children        — list of wikilink stem strings from #### Children
-        candidate_stems — same list (alias for topic_signature computation)
+        candidate_stems — children minus link member lines (LINK_MEMBER_MARKER); signature input
         topic_keywords  — list from **Cluster:** N Notes — kw1, kw2 line
         topic_signature — 16-char hex from topic_signature.compute_topic_signature
 
@@ -1557,6 +1584,8 @@ def enumerate_moc_sections_split(
     unticked: list[dict] = []
 
     for moc_id, title, block_lines in moc_blocks:
+        if _is_extension_block(block_lines):
+            continue
         # ── Accept check ─────────────────────────────────────────────────────
         is_ticked = any(
             RE_CHECKED.match(bl.strip()) and
@@ -1575,6 +1604,7 @@ def enumerate_moc_sections_split(
 
         # ── Extract children from #### Children section ───────────────────────
         children: list[str] = []
+        topic_stems: list[str] = []  # children minus link members: signature input
         in_children = False
         for bl in block_lines:
             stripped = bl.strip()
@@ -1587,20 +1617,22 @@ def enumerate_moc_sections_split(
                 wl = RE_CHILD_WIKILINK.search(bl)
                 if wl:
                     children.append(wl.group(1).strip())
+                    if LINK_MEMBER_MARKER not in bl:
+                        topic_stems.append(wl.group(1).strip())
 
         # ── Build cluster dict ────────────────────────────────────────────────
         cluster: dict = {
             "moc_id": moc_id,
             "title": title,
             "children": children,
-            "candidate_stems": children,  # children ARE the candidate stems here
+            "candidate_stems": topic_stems,  # topic members only (ADR-7)
             "topic_keywords": topic_keywords,
         }
         cluster["topic_signature"] = compute_topic_signature(cluster)
 
         if is_ticked:
             ticked.append(cluster)
-        else:
+        elif not _is_around_block(block_lines):
             unticked.append(cluster)
 
     return ticked, unticked
@@ -1639,6 +1671,8 @@ def parse_moc_proposal_doc(
 
     # ── Parse each block ────────────────────────────────────────────────────
     for moc_id, heading_title, block_lines in moc_blocks:
+        if _is_extension_block(block_lines):
+            continue
         # ── Accept gate ──────────────────────────────────────────────────────
         accepted = False
         for bl in block_lines:

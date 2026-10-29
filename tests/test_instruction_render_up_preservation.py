@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_instruction_render_up_preservation.py — Rule 4.x existing-up:: preservation.
 
 F-43 T4.2: Verifies that emit_up_preservation_actions produces correct
@@ -9,7 +9,7 @@ AC-4.6) as defined in SDD Example 1.
 Eight Rule 4.x tests, one per TDD-guardian-approved plan entry:
   1. test_rule_41_no_up_default
   2. test_rule_42_valid_up_default
-  3. test_rule_43_broken_up_default
+  3. test_rule_43_retired_unresolved_up_kept_as_related
   4. test_rule_44_no_up_override
   5. test_rule_45_valid_up_override
   6. test_rule_46_per_child_individual_target
@@ -182,11 +182,11 @@ def test_rule_42_valid_up_default() -> None:
 # ── Rule 4.3 ───────────────────────────────────────────────────────────────────
 
 
-def test_rule_43_broken_up_default() -> None:
-    """Override unchecked, broken existing up:: → 1 action: up:: <newMOC> (no related).
+def test_rule_43_retired_unresolved_up_kept_as_related() -> None:
+    """Override unchecked, existing up:: to a missing note → Rule 4.2, 2 actions.
 
-    PRD AC-4.3: WHEN Override is unchecked AND child has a broken existing
-    up::, THE SYSTEM SHALL emit only one add_relationship action (up:: <newMOC>).
+    Spec 042 T5.3d retired Rule 4.3 (owner decision 2026-10-29): no
+    user-written up:: is dropped; the old target becomes related::.
     """
     body = "# tmux Setup\n\nup:: [[Old MOC No Longer Exists]]\n"
     kado = _FakeKadoClient(
@@ -196,9 +196,10 @@ def test_rule_43_broken_up_default() -> None:
     actions = ir.emit_up_preservation_actions(
         "tmux-setup", "Shell & Terminal (MOC)", override_flag=False, kado_client=kado, counter=_counter()
     )
-    assert len(actions) == 1, f"Expected 1 action (broken→no related), got {actions!r}"
-    assert actions[0]["marker"] == "up::"
-    assert "Shell & Terminal (MOC)" in actions[0]["line"]
+    assert _action_markers(actions) == [
+        ("up::", "up:: [[Shell & Terminal (MOC)]]"),
+        ("related::", "related:: [[Old MOC No Longer Exists]]"),
+    ]
 
 
 # ── Rule 4.4 ───────────────────────────────────────────────────────────────────
@@ -596,12 +597,11 @@ def _up_child(target: str, **kw) -> "_FakeKadoClient":
     return _FakeKadoClient(notes={"child": ("Atlas/202 Notes/child.md", body)}, **kw)
 
 
-def test_broken_up_target_with_a_similarly_named_note_is_dropped() -> None:
-    """`up:: [[Map]]` with no note Map is broken even though `Mapping Method.md` exists.
+def test_dangling_up_target_with_a_similarly_named_note_is_kept() -> None:
+    """`up:: [[Map]]` with no note Map, but `Mapping Method.md` exists.
 
-    The old byName substring search resolved "Map" to "Mapping Method.md" and
-    Rule 4.2 carried the dead link into related::. Obsidian lists it as
-    dangling, so Rule 4.3 applies: one up:: action, no related::.
+    Spec 042 T5.3d: the target is kept verbatim as related:: — never swapped
+    for the similarly named note, never dropped.
     """
     kado = _up_child("Map", existing_paths={"Mapping Method"})
     kado.resolve_stem_to_path = lambda stem: (
@@ -610,7 +610,10 @@ def test_broken_up_target_with_a_similarly_named_note_is_dropped() -> None:
     actions = ir.emit_up_preservation_actions(
         "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
     )
-    assert _action_markers(actions) == [("up::", "up:: [[New MOC]]")]
+    assert _action_markers(actions) == [
+        ("up::", "up:: [[New MOC]]"),
+        ("related::", "related:: [[Map]]"),
+    ]
 
 
 def test_up_target_outside_the_key_scope_is_kept() -> None:
@@ -629,8 +632,8 @@ def test_up_target_outside_the_key_scope_is_kept() -> None:
     ]
 
 
-def test_up_target_matches_a_resolved_path_case_insensitively() -> None:
-    """Obsidian resolves links case-insensitively and accepts path-qualified links."""
+def test_path_qualified_up_target_is_kept_verbatim() -> None:
+    """A path-qualified, lower-case target is kept as written (spec 042 T5.3d)."""
     kado = _up_child(
         "atlas/maps/tools moc",
         existing_paths={"atlas/maps/tools moc"},
@@ -639,13 +642,14 @@ def test_up_target_matches_a_resolved_path_case_insensitively() -> None:
     actions = ir.emit_up_preservation_actions(
         "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
     )
-    assert [m for m, _ in _action_markers(actions)] == ["up::", "related::"]
-    # Matched on outgoing itself — not waved through as out-of-scope.
-    assert kado.graph_calls == [("outgoing", "Atlas/202 Notes/child.md")]
+    assert _action_markers(actions) == [
+        ("up::", "up:: [[New MOC]]"),
+        ("related::", "related:: [[atlas/maps/tools moc]]"),
+    ]
 
 
-def test_a_resolved_target_costs_one_graph_call() -> None:
-    """dangling is asked only when outgoing has no match."""
+def test_up_preservation_makes_no_graph_call() -> None:
+    """Spec 042 T5.3d: no target check is left, so no kado-graph call."""
     kado = _up_child(
         "Parent MOC",
         existing_paths={"Parent MOC"},
@@ -654,4 +658,4 @@ def test_a_resolved_target_costs_one_graph_call() -> None:
     ir.emit_up_preservation_actions(
         "child", "New MOC", override_flag=False, kado_client=kado, counter=_counter()
     )
-    assert kado.graph_calls == [("outgoing", "Atlas/202 Notes/child.md")]
+    assert kado.graph_calls == []

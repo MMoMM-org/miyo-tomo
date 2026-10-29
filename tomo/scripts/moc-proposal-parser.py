@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.1
 """moc-proposal-parser.py — Parse an approved MOC proposal into instruction-render input.
 
 Reads a MOC proposal markdown doc (produced by suggestions-reducer --moc-proposal-mode)
@@ -7,7 +7,12 @@ and outputs JSON matching the format instruction-render.py expects:
   { confirmed_items, daily_updates, skipped, total_sections, total_approved, total_skipped }
 
 Each accepted MOC section becomes a confirmed_item with action=create_moc.
-Each rejected MOC section becomes a skipped entry.
+A section with an `**Extends:** [[X]]` line is an extension of the existing MOC X:
+accepted with ticked `#### Missing members` it becomes action=extend_moc
+(no template, no destination); accepted with none ticked it becomes a skipped
+entry with disposition=no_ticked_members. A section whose `**Extends:**` line
+carries no wikilink becomes a skipped entry with disposition=malformed_extension.
+Each rejected section becomes a skipped entry with disposition=rejected.
 
 CLI: python3 scripts/moc-proposal-parser.py --file <path> [> output.json]
 """
@@ -78,6 +83,8 @@ def _parse_moc_block(
     parent = ""
     children: list[str] = []
     override_preserve = False
+    extends = ""
+    has_extends_line = False
 
     section = ""  # tracks #### sub-sections
 
@@ -89,7 +96,7 @@ def _parse_moc_block(
             section_name = stripped[5:].strip().lower()
             if section_name.startswith("parent"):
                 section = "parent"
-            elif section_name.startswith("children"):
+            elif section_name.startswith("children") or section_name.startswith("missing members"):
                 section = "children"
             elif "handling" in section_name and "override" in section_name:
                 section = "override"
@@ -125,6 +132,9 @@ def _parse_moc_block(
                 parsed_title_ref = _extract_wikilink(val)
                 if parsed_title_ref:
                     template = parsed_title_ref
+            elif key == "extends":
+                has_extends_line = True
+                extends = _extract_wikilink(val)
 
         # Parent section
         if section == "parent" and RE_CHECKED.match(stripped):
@@ -147,6 +157,17 @@ def _parse_moc_block(
             cb_text = RE_CHECKED.match(stripped).group(1).lower()
             if "behalten" in cb_text or "keep" in cb_text or "preserve" in cb_text or "related" in cb_text:
                 override_preserve = True
+
+    if has_extends_line and not extends:
+        return {
+            "_disposition": "skipped",
+            "id": moc_id,
+            "title": parsed_title or title,
+            "disposition": "malformed_extension",
+            "reason": "**Extends:** line names no [[MOC]] wikilink",
+        }
+    if extends:
+        return _extension_result(moc_id, extends, accepted, children, override_preserve)
 
     use_title = parsed_title or title
 
@@ -176,6 +197,37 @@ def _parse_moc_block(
         "classification": None,
         "supporting_items": children,
         "override_preserve_existing_up": override_preserve,
+    }
+
+
+def _extension_result(
+    moc_id: str, target_moc: str, accepted: bool,
+    members: list[str], override_preserve: bool,
+) -> dict:
+    """Build the extend_moc item, or the skipped entry, for an extension section."""
+    if not accepted:
+        return {
+            "_disposition": "skipped",
+            "id": moc_id,
+            "target_moc": target_moc,
+            "disposition": "rejected",
+        }
+    if not members:
+        return {
+            "_disposition": "skipped",
+            "id": moc_id,
+            "target_moc": target_moc,
+            "disposition": "no_ticked_members",
+            "reason": "accepted extension has no ticked members",
+        }
+    return {
+        "_disposition": "confirmed",
+        "id": moc_id,
+        "action": "extend_moc",
+        "target_moc": target_moc,
+        "supporting_items": members,
+        "override_preserve_existing_up": override_preserve,
+        "source_path": None,
     }
 
 
@@ -223,6 +275,19 @@ def main() -> int:
     text = path.read_text(encoding="utf-8")
     output = parse_moc_proposal(text)
 
+    for sk in output["skipped"]:
+        if sk.get("disposition") == "no_ticked_members":
+            print(
+                f"moc-proposal-parser: {sk['id']} skipped — extension of "
+                f"[[{sk['target_moc']}]] accepted with no ticked members",
+                file=sys.stderr,
+            )
+        elif sk.get("disposition") == "malformed_extension":
+            print(
+                f"moc-proposal-parser: {sk['id']} skipped — malformed extension: "
+                f"{sk['reason']}",
+                file=sys.stderr,
+            )
     print(
         f"moc-proposal-parser: {output['total_approved']} accepted, "
         f"{output['total_skipped']} skipped out of {output['total_sections']} sections",

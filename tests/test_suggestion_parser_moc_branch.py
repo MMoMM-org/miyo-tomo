@@ -567,3 +567,29 @@ status: pending
         "Expected _is_moc_proposal_doc=True for filename-pattern match, "
         "even without tomo: block in frontmatter"
     )
+
+
+def test_link_line_is_child_not_candidate_stem() -> None:
+    """Spec 042 ADR-7: a link line stays a child (first wikilink) but is no candidate stem."""
+    report = _empty_report()
+    report["candidates"] = [_candidate(f"t-{i}") for i in range(3)]
+    report["topic_clusters"] = [
+        _cluster("MOC01", title="Link Lines (MOC)", confidence=0.75,
+                 candidate_stems=[f"t-{i}" for i in range(3)])
+    ]
+    _filename, body = render_moc_proposal_doc(report, _Cfg())
+    last_topic = "- [x] [[t-2]] (no up:: yet)\n"
+    assert last_topic in body
+    link_line = "- [ ] [[linked-x]] (no up:: yet) — linked with [[t-0]], [[t-1]]\n"
+    body = body.replace(last_topic, last_topic + link_line, 1)
+    body = body.replace("- [ ] Accept", "- [x] Accept", 1)
+
+    ticked, _unticked = enumerate_moc_sections_split(body)
+    cluster = ticked[0]
+    assert "linked-x" in cluster["children"]
+    assert cluster["children"].count("t-0") == 1
+    assert cluster["candidate_stems"] == ["t-0", "t-1", "t-2"]
+    assert "linked-x" not in cluster["candidate_stems"]
+
+    all_sections = _parser_mod.enumerate_all_moc_sections(body)
+    assert all_sections[0][2] == ["t-0", "t-1", "t-2"]

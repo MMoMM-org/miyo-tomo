@@ -192,3 +192,180 @@ def test_no_parent_means_empty():
 def test_daily_updates_always_empty():
     result = parse_moc_proposal(MINIMAL_PROPOSAL)
     assert result["daily_updates"] == []
+
+
+LINK_MEMBER_PROPOSAL = MINIMAL_PROPOSAL.replace(
+    "- [ ] `[[Note C]]` (kein up:: bisher)\n",
+    "- [ ] `[[Note C]]` (kein up:: bisher)\n"
+    "- [x] [[Linked Ticked]] (no up:: yet) — linked with [[Note A]], [[Note B]]\n"
+    "- [ ] [[Linked Unticked]] (no up:: yet) — linked with [[Note A]], [[Note B]]\n",
+)
+
+
+def test_ticked_link_line_is_supporting_item():
+    assert "Linked Ticked" in LINK_MEMBER_PROPOSAL
+    stems = parse_moc_proposal(LINK_MEMBER_PROPOSAL)["confirmed_items"][0]["supporting_items"]
+    assert "Linked Ticked" in stems
+    assert "Note A" in stems and "Note B" in stems
+    # the bridges after the marker are not read as members
+    assert stems.count("Note A") == 1
+
+
+def test_unticked_link_line_is_not_supporting_item():
+    stems = parse_moc_proposal(LINK_MEMBER_PROPOSAL)["confirmed_items"][0]["supporting_items"]
+    assert "Linked Unticked" not in stems
+
+
+# ── Extension sections (spec 042 T4.3, SDD ADR-5) ────────────────────────────
+
+EXTEND_SECTION = """\
+### MOC01 — Extend [[Health MOC]]
+- [{accept}] Accept
+**Extends:** [[Health MOC]]
+**Trigger:** around:Health MOC
+#### Missing members (2)
+- [{cold}] [[Cold Showers]] (no up:: yet) — linked with [[Health MOC]]
+- [{sleep}] [[Sleep Debt]] (existing up:: [[Psychology MOC]] → becomes `related::`) — linked with [[Health MOC]]
+#### up::-Handling Override
+- [{override}] **Keep existing up::, add [[Health MOC]] as `related::`** (applies to all ticked members)
+#### Why this proposal
+2 notes link with [[Health MOC]] but have no up:: to it.
+"""
+
+EXTEND_FRONTMATTER = """\
+---
+type: tomo-proposal
+proposal_kind: moc-extension
+tomo:
+  doc_type: moc-proposal
+  state: pending-accept
+---
+
+# MOC Proposal
+
+"""
+
+
+def _extension_doc(accept=" ", cold=" ", sleep=" ", override=" ") -> str:
+    return EXTEND_FRONTMATTER + EXTEND_SECTION.format(
+        accept=accept, cold=cold, sleep=sleep, override=override,
+    )
+
+
+def test_accepted_extension_is_extend_moc_with_only_its_fields():
+    result = parse_moc_proposal(_extension_doc(accept="x", sleep="x", override="x"))
+
+    assert result["confirmed_items"] == [{
+        "id": "MOC01",
+        "action": "extend_moc",
+        "target_moc": "Health MOC",
+        "supporting_items": ["Sleep Debt"],
+        "override_preserve_existing_up": True,
+        "source_path": None,
+    }]
+    assert result["total_approved"] == 1
+    assert result["skipped"] == []
+
+
+def test_accepted_extension_without_override_keeps_it_false():
+    item = parse_moc_proposal(
+        _extension_doc(accept="x", cold="x", sleep="x"),
+    )["confirmed_items"][0]
+
+    assert item["supporting_items"] == ["Cold Showers", "Sleep Debt"]
+    assert item["override_preserve_existing_up"] is False
+    assert "template" not in item and "destination" not in item
+
+
+def test_accepted_extension_with_zero_ticked_members_is_skipped_and_reported():
+    result = parse_moc_proposal(_extension_doc(accept="x"))
+
+    assert result["confirmed_items"] == []
+    assert result["total_approved"] == 0
+    assert result["total_skipped"] == 1
+    skipped = result["skipped"][0]
+    assert skipped["id"] == "MOC01"
+    assert skipped["target_moc"] == "Health MOC"
+    assert skipped["disposition"] == "no_ticked_members"
+    assert skipped["reason"]
+
+
+def test_zero_ticked_extension_is_reported_on_stderr(tmp_path, monkeypatch, capsys):
+    doc = tmp_path / "2026-10-28_1810_moc-proposal-health-moc.md"
+    doc.write_text(_extension_doc(accept="x"), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["moc-proposal-parser.py", "--file", str(doc)])
+
+    assert _mod.main() == 0
+
+    err = capsys.readouterr().err
+    assert "MOC01" in err and "Health MOC" in err and "no ticked members" in err
+
+
+def test_rejected_extension_is_skipped_as_rejected():
+    result = parse_moc_proposal(_extension_doc(cold="x", sleep="x"))
+
+    assert result["confirmed_items"] == []
+    assert result["skipped"][0]["disposition"] == "rejected"
+    assert result["skipped"][0]["target_moc"] == "Health MOC"
+
+
+def test_extension_followed_by_new_moc_parses_as_two_blocks():
+    new_moc = MINIMAL_PROPOSAL.split("# MOC Proposal\n", 1)[1].replace("MOC01", "MOC02")
+    doc = _extension_doc(accept="x", cold="x") + "\n" + new_moc
+
+    result = parse_moc_proposal(doc)
+
+    assert result["total_sections"] == 2
+    by_id = {c["id"]: c for c in result["confirmed_items"]}
+    assert by_id["MOC01"]["action"] == "extend_moc"
+    assert by_id["MOC01"]["supporting_items"] == ["Cold Showers"]
+    assert by_id["MOC02"]["action"] == "create_moc"
+    assert by_id["MOC02"]["supporting_items"] == ["Note A", "Note B"]
+
+
+# ── Malformed / hand-edited extension headers (spec 042 Phase 4 H1) ──────────
+
+
+def _malformed_extension_doc(accept="x") -> str:
+    return _extension_doc(accept=accept, cold="x").replace(
+        "**Extends:** [[Health MOC]]", "**Extends:** none",
+    )
+
+
+def test_extends_line_without_wikilink_is_skipped_as_malformed_not_created():
+    result = parse_moc_proposal(_malformed_extension_doc())
+
+    assert result["confirmed_items"] == []
+    assert result["total_skipped"] == 1
+    skipped = result["skipped"][0]
+    assert skipped["id"] == "MOC01"
+    assert skipped["disposition"] == "malformed_extension"
+    assert skipped["reason"]
+
+
+def test_rejected_malformed_extension_is_still_malformed():
+    result = parse_moc_proposal(_malformed_extension_doc(accept=" "))
+
+    assert result["confirmed_items"] == []
+    assert result["skipped"][0]["disposition"] == "malformed_extension"
+
+
+def test_malformed_extension_is_reported_on_stderr(tmp_path, monkeypatch, capsys):
+    doc = tmp_path / "2026-10-28_1810_moc-proposal-health-moc.md"
+    doc.write_text(_malformed_extension_doc(), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["moc-proposal-parser.py", "--file", str(doc)])
+
+    assert _mod.main() == 0
+
+    err = capsys.readouterr().err
+    assert "MOC01" in err and "malformed extension" in err
+
+
+def test_extends_text_inside_why_body_does_not_make_a_create_section_an_extension():
+    doc = MINIMAL_PROPOSAL + "\n#### Why this proposal\n\n**Extends:** [[Bar]]\n"
+
+    result = parse_moc_proposal(doc)
+
+    assert result["skipped"] == []
+    assert result["confirmed_items"][0]["action"] == "create_moc"
+    assert result["confirmed_items"][0]["title"] == "My Test MOC"

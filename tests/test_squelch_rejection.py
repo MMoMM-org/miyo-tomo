@@ -263,3 +263,39 @@ def test_first_seen_at_iso_timestamp(tmp_path: Path) -> None:
     assert dt.tzinfo is not None, "first_seen_at must be timezone-aware"
 
 
+
+
+def test_link_lines_do_not_change_the_squelch_signature(tmp_path: Path) -> None:
+    """Spec 042 F4-AC4: link members are children but never signature input."""
+    cluster = _cluster(
+        "MOC01",
+        title="Shell & Terminal (MOC)",
+        confidence=0.78,
+        candidate_stems=["oh-my-zsh", "zsh-aliases", "iterm-config"],
+        topic_keywords=["shell", "terminal", "zsh"],
+    )
+    doc_without = _render_proposal([cluster])
+    # Link lines in the ADR-7 contract, after the topic members. "aaa-*" sorts
+    # ahead of every topic stem, so a leak would change the top-5 hash input.
+    last_topic = "- [x] [[iterm-config]] (no up:: yet)\n"
+    assert last_topic in doc_without
+    doc_with = doc_without.replace(
+        last_topic,
+        last_topic
+        + "- [ ] [[aaa-linked]] (no up:: yet) — linked with [[oh-my-zsh]], [[zsh-aliases]]\n"
+        + "- [ ] [[aab-linked]] (no up:: yet) — linked with [[oh-my-zsh]], [[iterm-config]]\n",
+    )
+    assert doc_with != doc_without
+
+    def stored_signature(doc: str, name: str) -> set[str]:
+        path = tmp_path / name
+        squelch_persist.persist_rejected_clusters(
+            doc, filename="tomo-moc-proposal-shell.md", registry_path=path,
+            config={"squelch_runs": 3},
+        )
+        return {e.topic_signature for e in squelch.load_registry(path).values()}
+
+    sig_without = stored_signature(doc_without, "without.json")
+    sig_with = stored_signature(doc_with, "with.json")
+    assert len(sig_without) == 1
+    assert sig_with == sig_without

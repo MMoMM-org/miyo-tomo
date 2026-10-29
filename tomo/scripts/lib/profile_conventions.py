@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """profile_conventions.py — single resolver for profile-agnostic vault conventions.
 
 Threads a profile's relationship markers and MOC-title suffix into the pipeline
@@ -73,18 +73,22 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def moc_suffix(profile: dict[str, Any]) -> str:
+    """MOC-title suffix of a loaded profile dict; absent or null → the ADR-3 default."""
+    map_note = (profile.get("concept_defaults") or {}).get("map_note") or {}
+    raw = map_note.get("name_suffix")
+    return _DEFAULT_MOC_SUFFIX if raw is None else raw
+
+
 def _from_dict(profile: dict[str, Any]) -> Conventions:
     """Extract conventions from a loaded profile dict, with ADR-3 defaults."""
     rel = profile.get("relationship_defaults") or {}
     parent = rel.get("parent") or {}
     peer = rel.get("peer") or {}
-    map_note = (profile.get("concept_defaults") or {}).get("map_note") or {}
-    _raw_suffix = map_note.get("name_suffix")
-    moc_suffix = _DEFAULT_MOC_SUFFIX if _raw_suffix is None else _raw_suffix
     return Conventions(
         parent_marker=parent.get("marker") or _DEFAULT_PARENT_MARKER,
         peer_marker=peer.get("marker") or _DEFAULT_PEER_MARKER,
-        moc_suffix=moc_suffix,
+        moc_suffix=moc_suffix(profile),
     )
 
 

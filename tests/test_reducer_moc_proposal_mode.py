@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.7.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
 Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
@@ -21,6 +21,7 @@ tests/test_suggestions_reducer_orphan_render.py (gate-named), not here.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -328,8 +329,10 @@ def test_per_child_existing_up_annotation() -> None:
     # Absent: "no up:: yet"
     assert "no up:: yet" in body, f"Absent annotation not found in:\n{body}"
 
-    # Broken: full annotation string
-    assert "(existing up:: broken — ignored)" in body, f"Broken annotation not found in:\n{body}"
+    # Broken without a reason (pre-T5.3d report): kept as related::, not ignored
+    assert "(existing up:: [[NonExistentMOC]] → becomes `related::`)" in body, (
+        f"Broken annotation not found in:\n{body}"
+    )
 
 
 def test_template_why_narrative() -> None:
@@ -460,3 +463,391 @@ def test_cli_malformed_json_input(tmp_path: Path) -> None:
         f"Expected exit 1 for malformed JSON, got {result.returncode};\n"
         f"stderr: {result.stderr.decode()}"
     )
+
+
+# ── Link members (spec 042 T2.2, PRD F4) ─────────────────────────────────────
+
+FIXTURE_DIR = TESTS_DIR / "fixtures" / "042-t2-2-no-link-baseline"
+LINK_SUFFIX = " — linked with "  # spelled out on purpose: the test pins the contract text
+
+
+def _link_member(
+    stem: str,
+    linked_with: list[str],
+    *,
+    up_state: str = "absent",
+    up_target: str | None = None,
+) -> dict:
+    return {
+        "stem": stem,
+        "path": f"Atlas/202 Notes/{stem}.md",
+        "linked_with": linked_with,
+        "up_state": up_state,
+        "up_target": up_target,
+    }
+
+
+def _link_report(link_members: list[dict] | None) -> dict:
+    report = _empty_report()
+    cluster = _cluster(
+        "MOC01",
+        title="Energy (MOC)",
+        confidence=0.8,
+        candidate_stems=["Energy Level", "Sleep Debt", "Recovery Days"],
+        topic_keywords=["energy"],
+        existing_up=[
+            {"stem": "Energy Level", "state": "absent", "target": None},
+            {"stem": "Sleep Debt", "state": "valid", "target": "Health MOC"},
+            {"stem": "Recovery Days", "state": "absent", "target": None},
+        ],
+    )
+    if link_members is not None:
+        cluster["link_members"] = link_members
+    report["topic_clusters"] = [cluster]
+    return report
+
+
+def _body_after_frontmatter(doc: str) -> str:
+    return doc[doc.index("\n---\n", 4) + len("\n---\n"):]
+
+
+def _link_lines(body: str) -> list[str]:
+    return [ln for ln in body.splitlines() if LINK_SUFFIX in ln]
+
+
+TWO_LINK_MEMBERS = [
+    _link_member("Afternoon Slump", ["Energy Level", "Sleep Debt"]),
+    _link_member(
+        "Caffeine Timing",
+        ["Recovery Days", "Sleep Debt"],
+        up_state="valid",
+        up_target="Habits MOC",
+    ),
+]
+
+
+def test_link_members_render_after_topic_members() -> None:
+    """F4-AC1: unticked link lines follow the topic members, member wikilink first."""
+    _, body = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+
+    lines = body.splitlines()
+    kids = lines[lines.index("#### Children (5)") + 2:]
+    kids = kids[: kids.index("")]
+    assert kids[:3] == [
+        "- [x] [[Energy Level]] (no up:: yet)",
+        "- [x] [[Sleep Debt]] (existing up:: [[Health MOC]] → becomes `related::`)",
+        "- [x] [[Recovery Days]] (no up:: yet)",
+    ]
+    assert kids[3] == (
+        "- [ ] [[Afternoon Slump]] (no up:: yet)"
+        " — linked with [[Energy Level]], [[Sleep Debt]]"
+    )
+    assert kids[4].startswith("- [ ] [[Caffeine Timing]] ")
+    assert len(kids) == 5
+
+
+def test_existing_up_annotation_precedes_link_suffix() -> None:
+    """F4-AC2: valid and broken existing up:: read as for a topic member, then the suffix."""
+    members = [
+        _link_member("Caffeine Timing", ["Sleep Debt"], up_state="valid", up_target="Habits MOC"),
+        _link_member("Old Note", ["Sleep Debt"], up_state="broken", up_target="Gone"),
+    ]
+    _, body = render_moc_proposal_doc(_link_report(members), _Cfg())
+
+    assert (
+        "- [ ] [[Caffeine Timing]] (existing up:: [[Habits MOC]] → becomes `related::`)"
+        " — linked with [[Sleep Debt]]"
+    ) in body
+    assert (
+        "- [ ] [[Old Note]] (existing up:: [[Gone]] → becomes `related::`) — linked with [[Sleep Debt]]"
+    ) in body
+
+
+def test_why_counts_link_members_only_when_present() -> None:
+    """F4-AC3: the sentence appears for N > 0 (singular for 1), never for 0 or a missing key."""
+    _, two = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+    _, one = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS[:1]), _Cfg())
+    _, empty = render_moc_proposal_doc(_link_report([]), _Cfg())
+    _, missing = render_moc_proposal_doc(_link_report(None), _Cfg())
+
+    why = two.split("#### Why this proposal")[1]
+    assert why.splitlines()[2] == (
+        "3 notes with topic overlap energy have no dedicated MOC."
+        " 2 more members came through links."
+    )
+    assert "1 more member came through links." in one
+    assert "1 more members" not in one
+    assert "came through links" not in empty
+    assert "came through links" not in missing
+
+
+def test_children_count_includes_link_members() -> None:
+    """Children heading and Override count both groups; the Cluster header keeps the topic count."""
+    _, body = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+
+    assert "#### Children (5)" in body
+    assert "(applies to all 5 children)" in body
+    assert "**Cluster:** 3 Notes — energy" in body
+    assert len(_link_lines(body)) == 2
+
+
+def test_report_without_link_members_is_byte_identical() -> None:
+    """A report without link members renders as the pre-042 renderer did (captured fixture)."""
+    report = json.loads((FIXTURE_DIR / "report.json").read_text(encoding="utf-8"))
+    expected = json.loads((FIXTURE_DIR / "rendered.json").read_text(encoding="utf-8"))
+
+    _, body = render_moc_proposal_doc(report, _Cfg())
+
+    assert _body_after_frontmatter(body) == expected["body_after_frontmatter"]
+
+
+def test_link_lines_round_trip_through_the_suggestion_parser() -> None:
+    """Renderer and parser agree on ADR-7: link lines add children, not candidate stems."""
+    spec = importlib.util.spec_from_file_location(
+        "suggestion_parser_rt", SCRIPTS_DIR / "suggestion-parser.py"
+    )
+    parser = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(parser)
+
+    _, plain = render_moc_proposal_doc(_link_report(None), _Cfg())
+    _, linked = render_moc_proposal_doc(_link_report(TWO_LINK_MEMBERS), _Cfg())
+    plain_sections = parser.enumerate_all_moc_sections(plain)
+    linked_sections = parser.enumerate_all_moc_sections(linked)
+
+    assert len(plain_sections) == len(linked_sections) == 1
+    # tuple = (moc_id, title, candidate_stems, topic_keywords)
+    assert linked_sections[0][2] == plain_sections[0][2]
+    assert linked_sections[0][2] == ["Energy Level", "Sleep Debt", "Recovery Days"]
+
+
+# ── max_results comes from vault-config (spec 042, owner decision O3) ────────
+
+
+def _render_via_cli(tmp_path: Path, config_text: str | None) -> str:
+    report = _empty_report()
+    report["candidates"] = [_candidate(f"note-{i}") for i in range(7)]
+    report["topic_clusters"] = [
+        _cluster(
+            f"MOC{i+1:02d}",
+            title=f"Topic {i+1} (MOC)",
+            confidence=round(0.90 - i * 0.05, 2),
+            candidate_stems=[f"note-{i}"],
+            slug=f"topic-{i+1}-moc",
+        )
+        for i in range(7)
+    ]
+    inp = tmp_path / "report.json"
+    inp.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "out"
+    argv = [sys.executable, _SCRIPT, "--moc-proposal-mode", "--input", str(inp),
+            "--output-dir", str(out)]
+    if config_text is not None:
+        cfg = tmp_path / "vault-config.yaml"
+        cfg.write_text(config_text, encoding="utf-8")
+        argv += ["--config", str(cfg)]
+    result = subprocess.run(argv, capture_output=True, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr.decode()
+    return Path(result.stdout.decode().strip()).read_text(encoding="utf-8")
+
+
+def test_cli_max_results_from_vault_config(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, "tomo:\n  moc_proposal:\n    max_results: 3\n")
+    assert body.count("### MOC") == 3
+    assert "4 additional cluster(s) found" in body
+
+
+def test_cli_max_results_defaults_to_five_when_key_missing(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, "tomo:\n  moc_proposal:\n    min_notes: 2\n")
+    assert body.count("### MOC") == 5
+
+
+def test_cli_max_results_defaults_to_five_without_config_file(tmp_path: Path) -> None:
+    body = _render_via_cli(tmp_path, None)
+    assert body.count("### MOC") == 5
+
+
+# ── around: proposal (spec 042 T3.2, PRD F2-AC1) ─────────────────────────────
+
+AROUND_FIXTURE = TESTS_DIR / "fixtures" / "042-t3-2-around-report" / "report.json"
+
+
+def _around_body(report: dict | None = None) -> str:
+    """Render the real `moc-discovery --around knowledge` report (captured, not invented)."""
+    report = report or json.loads(AROUND_FIXTURE.read_text(encoding="utf-8"))
+    _, body = render_moc_proposal_doc(report, _Cfg())
+    return body
+
+
+def test_around_report_renders_seed_ticked_and_neighbours_linked() -> None:
+    """F2-AC1: one MOC01 section, seed ticked, neighbours unticked with the seed as reason."""
+    body = _around_body()
+
+    assert body.count("### MOC") == 1
+    assert "### MOC01 — knowledge (MOC)" in body
+    lines = body.splitlines()
+    assert "#### Children (3)" in lines
+    kids = lines[lines.index("#### Children (3)") + 2:]
+    assert kids[:3] == [
+        "- [x] [[knowledge]] (existing up:: [[Gardening (MOC)]] → becomes `related::`)",
+        "- [ ] [[argon]] (no up:: yet) — linked with [[knowledge]]",
+        "- [ ] [[neon]] (existing up:: [[Gardening (MOC)]] → becomes `related::`)"
+        " — linked with [[knowledge]]",
+    ]
+
+
+def test_around_trigger_label() -> None:
+    """The Trigger field and the frontmatter carry `around:<argument as typed>`."""
+    body = _around_body()
+
+    assert "**Trigger:** around:knowledge" in body
+    assert "\ntrigger: around:knowledge\n" in body
+
+
+def test_around_why_names_the_seed() -> None:
+    """Why names the seed and does not use the topic-overlap or link-count sentences."""
+    why = _around_body().split("#### Why this proposal")[1].strip()
+
+    assert why == (
+        "2 notes link with [[knowledge]] and have no dedicated MOC.\n"
+        "This MOC would fill the gap."
+    )
+    assert "topic overlap" not in why
+    assert "came through links" not in why
+
+
+def test_around_why_is_singular_for_one_neighbour() -> None:
+    report = json.loads(AROUND_FIXTURE.read_text(encoding="utf-8"))
+    report["topic_clusters"][0]["link_members"] = report["topic_clusters"][0]["link_members"][:1]
+
+    why = _around_body(report).split("#### Why this proposal")[1]
+
+    assert "1 note links with [[knowledge]] and has no dedicated MOC." in why
+
+
+# ── around: carries no Confidence line (spec 042, owner decision B) ──────────
+
+
+def test_around_section_has_no_confidence_line() -> None:
+    """The seed is a user choice, not a measured score: no **Confidence:** line."""
+    body = _around_body()
+
+    assert "**Confidence:**" not in body
+    assert "**Trigger:** around:knowledge\n**Cluster:** 3 Notes" in body
+
+
+def test_around_cluster_line_counts_all_members_and_names_the_seed() -> None:
+    """Owner decision W2: total members (seed + links), not the topic count of 1."""
+    body = _around_body()
+
+    assert "**Cluster:** 3 Notes — linked around [[knowledge]]\n" in body
+    assert "#### Children (3)" in body
+
+
+# ── around:<MOC> extension section (spec 042 T4.2, PRD F3-AC5) ───────────────
+
+EXTENSION_FIXTURE = TESTS_DIR / "fixtures" / "042-t4-2-extension-report" / "report.json"
+_EXT_MOC = "Gardening (MOC)"
+
+
+def _extension_report() -> dict:
+    """The real `moc-discovery --around 'Gardening (MOC)'` report (captured via T4.1's harness)."""
+    return json.loads(EXTENSION_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _extension_doc(report: dict | None = None) -> tuple[str, str]:
+    return render_moc_proposal_doc(report or _extension_report(), _Cfg())
+
+
+def _extension_section(body: str) -> list[str]:
+    section = body.split("### MOC01", 1)[1]
+    return [ln for ln in ("### MOC01" + section).splitlines() if ln.strip()]
+
+
+def test_extension_section_shape() -> None:
+    """F3-AC5: the extension renders as a MOCxx Extend section in the SDD's exact line order."""
+    _, body = _extension_doc()
+
+    assert body.count("### MOC") == 1
+    assert _extension_section(body) == [
+        f"### MOC01 — Extend [[{_EXT_MOC}]]",
+        "- [ ] Accept",
+        f"**Extends:** [[{_EXT_MOC}]]",
+        f"**Trigger:** around:{_EXT_MOC}",
+        "#### Missing members (2)",
+        f"- [ ] [[argon]] (no up:: yet) — linked with [[{_EXT_MOC}]]",
+        f"- [ ] [[elsewhere]] (existing up:: [[solar]] → becomes `related::`)"
+        f" — linked with [[{_EXT_MOC}]]",
+        "#### up::-Handling Override",
+        f"- [ ] **Keep existing up::, add [[{_EXT_MOC}]] as `related::`**"
+        " (applies to all ticked members)",
+        "#### Why this proposal",
+        f"2 notes link with [[{_EXT_MOC}]] but have no up:: to it.",
+    ]
+
+
+def test_extension_has_no_create_fields() -> None:
+    """F3-AC5: the MOC exists — no Title/Location/Template, no Parent, no Children, no Confidence."""
+    _, body = _extension_doc()
+
+    assert f"### MOC01 — Extend [[{_EXT_MOC}]]" in body
+    for absent in ("**Title:**", "**Location:**", "**Template:**", "#### Parent",
+                   "#### Children", "**Confidence:**", "**Cluster:**"):
+        assert absent not in body, absent
+
+
+def test_extension_trigger_is_on_its_own_line() -> None:
+    """ADR-5: suggestion-parser's RE_AROUND_TRIGGER is anchored at line start."""
+    _, body = _extension_doc()
+
+    assert f"\n**Trigger:** around:{_EXT_MOC}\n" in body
+
+
+def test_extension_why_is_singular_for_one_member() -> None:
+    report = _extension_report()
+    report["extension"]["members"] = report["extension"]["members"][:1]
+
+    _, body = _extension_doc(report)
+
+    assert "#### Missing members (1)" in body
+    assert f"1 note links with [[{_EXT_MOC}]] but has no up:: to it." in body
+
+
+def test_extension_broken_up_reads_as_for_topic_members() -> None:
+    """ADR-7: one annotation format — a broken up:: reads as `_child_annotation` writes it."""
+    report = _extension_report()
+    report["extension"]["members"][0].update(up_state="broken", up_target="Gone")
+
+    _, body = _extension_doc(report)
+
+    assert (
+        f"- [ ] [[argon]] (existing up:: [[Gone]] → becomes `related::`)"
+        f" — linked with [[{_EXT_MOC}]]"
+    ) in body
+
+
+def test_extension_frontmatter_and_filename() -> None:
+    """proposal_kind marks the extension; doc_type stays moc-proposal; filename keeps _moc-proposal."""
+    import re
+
+    filename, body = _extension_doc()
+    frontmatter = body.split("\n---\n", 1)[0]
+
+    assert "\nproposal_kind: moc-extension\n" in frontmatter
+    assert "proposal_kind: moc\n" not in frontmatter
+    assert "doc_type: moc-proposal" in frontmatter
+    assert f"\ntrigger: around:{_EXT_MOC}\n" in frontmatter
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{4}_moc-proposal-extend-gardening-moc\.md", filename)
+
+
+def test_extension_accept_line_is_promoted_by_the_state_promoter() -> None:
+    """The existing `check_tick` regex promotes a ticked extension; unticked stays pending."""
+    spec = importlib.util.spec_from_file_location(
+        "state_promoter_t42", SCRIPTS_DIR / "state-promoter.py"
+    )
+    promoter = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(promoter)  # type: ignore[union-attr]
+    _, body = _extension_doc()
+
+    assert promoter.check_tick(body, "moc-proposal") is False
+    assert promoter.check_tick(body.replace("- [ ] Accept", "- [x] Accept", 1), "moc-proposal") is True

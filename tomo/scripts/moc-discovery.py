@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.25.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -14,14 +14,20 @@ through the six discovery phases described in the SDD §Pseudocode (lines
     Phase 4   — Title generation (per-profile suffix rules + mode override)
     Phase 5   — Parent resolution (classification keyword overlap, top-3)
     Phase 6   — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
+    Links     — Link members for the rendered clusters (lib.link_members)
     Phase 6.5 — Existing-up:: validation per candidate (absent/valid/broken)
+
+`--around NAME_OR_PATH` is a separate single-pass mode: resolve the seed in the
+cache, look up its neighbours once, emit one new-MOC cluster (seed + link
+members) — no Phase 1-3, no Phase 6 / D3, no squelch.
 
 The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
 routing (`route_input`), profile resolution, and the `--dry-run` JSON path so
 downstream tasks have a stable scaffold to fill in.
 
 Usage:
-    python3 moc-discovery.py [--tag X | --folder X | --class X | --title X] [free-text]
+    python3 moc-discovery.py [--tag X | --folder X | --class X | --title X | --around X]
+                             [free-text]
                              [--config PATH] [--profile NAME] [--cache PATH]
                              [--dry-run] [--candidate-cap N]
 
@@ -55,10 +61,18 @@ sys.path.insert(0, os.path.dirname(__file__))
 # detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
+from lib.link_members import (  # noqa: E402
+    DONE as _LINKS_DONE,
+    UNCACHED,
+    LinkLookup,
+    NodeEligibility,
+    augment_clusters,
+)
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
-from lib.profile_conventions import ensure_suffix, resolve_conventions  # noqa: E402
+from lib.profile_conventions import ensure_suffix, moc_suffix, resolve_conventions  # noqa: E402
+from lib.render_md import bare_stem, unwrap_list_repr  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content, up_marker_re  # noqa: E402
 from lib.squelch import (  # noqa: E402
@@ -111,6 +125,7 @@ ABORT_MESSAGES: dict[str, str] = {
     "cache-miss-cap-exceeded": (
         "Too many notes without cache entry — please run /explore-vault first."
     ),
+    "around-periodic": "around: periodic notes cannot be a MOC seed",
     "cache-rebuild-failed": (
         "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
         "found). Please run /explore-vault and check the vault configuration."
@@ -164,6 +179,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--title",
         metavar="TEXT",
         help="Title-seeded discovery; user input becomes the proposed MOC title.",
+    )
+    scope.add_argument(
+        "--around",
+        metavar="NAME_OR_PATH",
+        help=(
+            "One new-MOC proposal from a cached seed note's links (stem, [[stem]], "
+            "stem.md or vault path). Single pass: not combinable with "
+            "--emit-phase1 / --phase1-input / --check-moc-uplinks."
+        ),
     )
 
     # Free-text positional — used when none of the scope flags match.
@@ -260,6 +284,7 @@ def route_input(args: argparse.Namespace) -> tuple[str, str]:
       --folder X  → ("folder", X)
       --class X   → ("class", X)
       --title X   → ("title", X)
+      --around X  → ("around", X)           # spec 042 F2; `around:X` free text is NOT parsed here
       free-text X → ("free-text", X)        # AC-1.7: `foo:bar` stays free-text
       no args     → ("scan", "")            # AC-1.6: whole-vault density scan
 
@@ -272,6 +297,7 @@ def route_input(args: argparse.Namespace) -> tuple[str, str]:
         ("folder", "folder", "--folder"),
         ("klass", "class", "--class"),
         ("title", "title", "--title"),
+        ("around", "around", "--around"),
         ("free_text", "free-text", "free-text positional"),
     ):
         value = getattr(args, attr, None)
@@ -326,6 +352,17 @@ def resolve_profile(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+_EMPTY_LINK_STATS: dict[str, int] = {
+    "lookups": 0,
+    "attempts": 0,
+    "failed": 0,
+    "clusters_skipped_budget": 0,
+    "clusters_sampled": 0,
+    "members_total": 0,
+    "skipped_uncached": 0,
+}
+
+
 def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
     """Build a minimal DiscoveryReport with all phase-derived fields zeroed.
 
@@ -353,6 +390,9 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "abort_message": None,
         "extracted_via_llm_count": 0,
         "cache_miss_batches_used": 0,
+        "link_stats": dict(_EMPTY_LINK_STATS),
+        "around": None,
+        "extension": None,
     }
 
 
@@ -1428,6 +1468,18 @@ def _moc_stems_from_cache(cache: dict) -> set[str]:
     return stems
 
 
+def _note_stems_from_cache(cache: dict) -> set[str]:
+    """Stems of every cached non-MOC note (`entries` with kind == "note")."""
+    stems: set[str] = set()
+    for entry in cache.get("entries") or []:
+        if not isinstance(entry, dict) or entry.get("kind") != "note":
+            continue
+        stem = entry.get("stem") or _stem_from_path((entry.get("path") or "").strip())
+        if stem:
+            stems.add(stem)
+    return stems
+
+
 def phase65_validate_existing_up(
     clusters: list[dict],
     candidates: list[Candidate],
@@ -1443,7 +1495,8 @@ def phase65_validate_existing_up(
 
       - No `up::` line                 → state="absent",  target=None
       - `up:: [[X]]` and X in cache    → state="valid",   target="X"
-      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X"
+      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X",
+        reason="not-a-moc" (X is a cached non-MOC note) or "unresolved"
 
     Multiple `up::` lines on the same child surface as a stderr WARN —
     Phase 6.5 keeps the first match and downstream Rule 4.2 / 4.5 logic
@@ -1470,7 +1523,7 @@ def phase65_validate_existing_up(
 
     Returns:
         The input clusters, each augmented in-place with an
-        ``existing_up: list[{stem, state, target}]`` field. Order follows
+        ``existing_up: list[{stem, state, target[, reason]}]`` field. Order follows
         ``cluster.items`` for deterministic downstream rendering.
 
     Side effects:
@@ -1480,6 +1533,7 @@ def phase65_validate_existing_up(
     """
     stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
     moc_stems = _moc_stems_from_cache(cache)
+    note_stems = _note_stems_from_cache(cache)
     inline_marker_re = up_marker_re(parent_marker)
 
     multi_up_count = 0
@@ -1544,13 +1598,15 @@ def phase65_validate_existing_up(
             # splitting the frontmatter block locally with no extra Kado call.
             target = parse_up_from_content(content, parent_marker).target
             if target is None:
-                state: str = "absent"
+                rows.append({"stem": stem, "state": "absent", "target": None})
             elif target in moc_stems:
-                state = "valid"
+                rows.append({"stem": stem, "state": "valid", "target": target})
             else:
-                state = "broken"
-
-            rows.append({"stem": stem, "state": state, "target": target})
+                # Mirrors moc-tree-builder._resolve_up_state's up_broken_reason.
+                reason = "not-a-moc" if target in note_stems else "unresolved"
+                rows.append(
+                    {"stem": stem, "state": "broken", "target": target, "reason": reason}
+                )
 
         cluster["existing_up"] = rows
 
@@ -1610,6 +1666,14 @@ def _build_kado_client():
         def read_note(self, *_a, **_k):  # pragma: no cover
             self._fail()
 
+        # LinkLookup reads and installs these; graph() fails every lookup.
+        attempt_count = 0
+        attempt_gate = None
+        min_interval = 0.0
+
+        def graph(self, *_a, **_k):
+            self._fail()
+
     try:
         return _KC()
     except _KE as exc:
@@ -1654,11 +1718,20 @@ def _enrich_cluster(
         "slug": slugify(title),
         "existing_up": [],
     })
-    serialised_parents = [
+    return enriched, _serialise_parents(parent_opts)
+
+
+def _serialise_parents(parent_opts: list[ParentOption]) -> list[dict]:
+    return [
         {"moc_stem": p.moc_stem, "confidence": p.confidence, "label": p.label}
         for p in parent_opts
     ]
-    return enriched, serialised_parents
+
+
+def _moc_location(profile_dict: dict) -> str:
+    """Folder for a new MOC: the profile's first `map_note.paths` entry."""
+    map_note_cfg = (profile_dict.get("concept_defaults") or {}).get("map_note") or {}
+    return (map_note_cfg.get("paths") or ["Atlas/200 Maps/"])[0]
 
 
 def _cap_orphans(
@@ -1696,6 +1769,93 @@ def _run_moc_uplink_check(
     return report
 
 
+NOT_RENDERED = "not_rendered"
+
+
+def _item_stem(item) -> str:
+    """Cluster item → stem; items are stems, enriched dicts carry `stem`."""
+    if isinstance(item, dict):
+        return str(item.get("stem") or "")
+    return str(item)
+
+
+def _member_up_fields(member) -> dict:
+    """The up:: fields of a member dict; the cached reason only when broken."""
+    fields = {"up_state": member.up_state, "up_target": member.up_target}
+    if member.up_state == "broken":
+        fields["up_broken_reason"] = member.up_broken_reason
+    return fields
+
+
+def _augment_rendered_clusters(
+    clusters: list[dict],
+    candidates: list[Candidate],
+    kado_client,
+    cache: dict,
+    profile_dict: dict,
+    vault_cfg: dict,
+    max_results: int,
+) -> dict[str, int]:
+    """Attach `link_members` + `link_lookup_status` to every cluster; return `link_stats`.
+
+    Only ``clusters[:max_results]`` (already confidence-sorted) are looked up;
+    the rest get ``not_rendered`` and cause no call. Lookups are keyed by
+    member PATH: a stem expands to every eligible candidate path carrying it,
+    and ``linked_with`` is mapped back to stems. Candidate paths that fail
+    ``NodeEligibility`` (except ``uncached``) are not looked up. Mutates the
+    clusters in place; never touches items, candidate_stems or confidence.
+    """
+    eligibility = NodeEligibility(cache, profile_dict, vault_cfg)
+    paths_by_stem: dict[str, list[str]] = {}
+    for cand in candidates:
+        if not cand.stem or not cand.path:
+            continue
+        paths = paths_by_stem.setdefault(cand.stem, [])
+        ok, reason = eligibility.check(cand.path)
+        if (ok or reason == UNCACHED) and cand.path not in paths:
+            paths.append(cand.path)
+    path_to_stem = {p: s for s, paths in paths_by_stem.items() for p in paths}
+    path_map = {p: p for p in path_to_stem}
+
+    rendered = clusters[: max(0, max_results)]
+    lookup_clusters: list[dict] = []
+    for cluster in rendered:
+        keys: list[str] = []
+        for stem in (_item_stem(i) for i in cluster.get("items") or []):
+            # An unknown stem stays as a key with no path → augment marks the
+            # cluster failed without a call.
+            for key in paths_by_stem.get(stem, [stem]):
+                if key not in keys:
+                    keys.append(key)
+        lookup_clusters.append({"cluster_id": cluster["cluster_id"], "items": keys})
+
+    with LinkLookup(kado_client) as lookup:
+        result = augment_clusters(lookup_clusters, path_map, lookup, eligibility, cache)
+
+    for cluster in clusters:
+        cluster["link_lookup_status"] = NOT_RENDERED
+        cluster["link_members"] = []
+    for cluster in rendered:
+        links = result.clusters[cluster["cluster_id"]]
+        cluster["link_lookup_status"] = links.status
+        cluster["link_members"] = [
+            {
+                "stem": m.stem,
+                "path": m.path,
+                "linked_with": sorted({path_to_stem[p] for p in m.linked_with}),
+                **_member_up_fields(m),
+            }
+            for m in links.link_members
+        ]
+
+    stats = dict(result.stats)
+    _log(
+        f"links: rendered={len(rendered)} not_rendered={len(clusters) - len(rendered)} "
+        + " ".join(f"{k}={v}" for k, v in stats.items())
+    )
+    return stats
+
+
 def _run_pipeline(
     args,
     cache: dict,
@@ -1706,7 +1866,7 @@ def _run_pipeline(
     trigger_arg: str,
     pre_loaded_candidates: list[Candidate] | None = None,
 ) -> tuple[dict | None, int]:
-    """Execute Phase 1 → Phase 6.5 and return (report_dict, exit_code).
+    """Execute Phase 1 → Phase 6.5 (+ link members) and return (report_dict, exit_code).
 
     Called by main() after the pre-flight checks (cache-empty, squelch
     decrement) have passed. Returns (None, exit_code) when an abort-report
@@ -1727,6 +1887,7 @@ def _run_pipeline(
 
     profile_path = DEFAULT_PROFILES_DIR / f"{profile_name}.yaml"
     profile_dict = _load_yaml(profile_path)
+    vault_cfg = _load_yaml(config_path)
     kado_client = _build_kado_client()
 
     if pre_loaded_candidates is not None:
@@ -1769,8 +1930,7 @@ def _run_pipeline(
 
     # Phase 4+5 — Enrich clusters (title, parents, metadata)
     denom = max(1, len(candidates_with_topics))
-    _map_note_cfg = (profile_dict.get("concept_defaults") or {}).get("map_note") or {}
-    moc_location = (_map_note_cfg.get("paths") or ["Atlas/200 Maps/"])[0]
+    moc_location = _moc_location(profile_dict)
 
     enriched_clusters: list[dict] = []
     parent_options_per_cluster: dict[str, list[dict]] = {}
@@ -1794,14 +1954,20 @@ def _run_pipeline(
     duplicates_skipped.extend(d3_drops)
     _log(f"d3: kept={len(kept_clusters)} inter-cluster-drops={len(d3_drops)}")
 
+    kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
+
+    # Link members — rendered slice only, after D3 + sort (spec 042 ADR-2)
+    link_stats = _augment_rendered_clusters(
+        kept_clusters, candidates_with_topics, kado_client, cache,
+        profile_dict, vault_cfg, moc_config.max_results,
+    )
+
     # Phase 6.5 — Existing up:: validation
     kept_clusters = phase65_validate_existing_up(
         kept_clusters, candidates_with_topics, kado_client, cache,
         parent_marker=_conventions.parent_marker,
     )
     _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
-
-    kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
 
     # ADR-13 D1: the note-orphan pass is REMOVED from the cluster pipeline.
     # Orphan suggestions are produced ONLY by _run_moc_uplink_check
@@ -1834,11 +2000,274 @@ def _run_pipeline(
         "orphan_suggestions": [],
         "orphan_total": 0,
         "orphan_overflow": 0,
+        "link_stats": link_stats,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
     partial = (len(duplicates_skipped) > 0 or len(squelched) > 0) and len(kept_clusters) > 0
     return report, (1 if partial else 0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# --around — one new-MOC proposal from a seed note's links (spec 042 F2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+AROUND_CLUSTER_ID = "MOC01"
+AROUND_MIN_NEIGHBOURS = 2  # seed + 2 neighbours = the 3-note floor
+# Why a note seed fails member eligibility, in user terms (owner decision A).
+AROUND_INELIGIBLE_REASONS = {
+    "not-md": "it is not a Markdown note",
+    "inbox": "it is still in the inbox",
+    "out-of-scope": "it is outside the atomic-note folders",
+    "excluded-tag": "it is tagged exclude/note",
+}
+
+
+@dataclass
+class AroundSeed:
+    """The resolved `--around` target."""
+
+    kind: str  # "note" | "moc"
+    path: str
+    stem: str
+    topics: list[str]
+
+
+def _around_key(arg: str) -> tuple[str, bool]:
+    """`--around` argument → (match key, is_path).
+
+    `[[stem]]` / `[[stem|alias]]` unwrap to the stem; anything with a `/` is a
+    vault path (`.md` added when missing); otherwise a trailing `.md` is dropped.
+    """
+    key = arg.strip()
+    if key.startswith("[[") and key.endswith("]]"):
+        key = key[2:-2].split("|", 1)[0].strip()
+    if "/" in key:
+        return (key if key.endswith(".md") else f"{key}.md"), True
+    return key.removesuffix(".md"), False
+
+
+def resolve_around_seed(
+    arg: str, cache: dict, eligibility: NodeEligibility
+) -> tuple[AroundSeed | None, str | None, str | None]:
+    """Resolve `arg` against the cache → (seed, abort_reason, abort_message).
+
+    Case-insensitive match on entry paths (path argument) or stems (name).
+    Refusal order: periodic path argument → ambiguous → not found → periodic →
+    (note seeds only) member eligibility.
+    """
+    key, is_path = _around_key(arg)
+    if is_path and eligibility.is_periodic(key):
+        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
+
+    folded = key.casefold()
+    matches: dict[str, dict] = {}
+    for entry in list(cache.get("entries") or []) + list(cache.get("map_notes") or []):
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(path, str):
+            continue
+        name = path if is_path else _stem_from_path(path)
+        if name.casefold() == folded:
+            matches.setdefault(path, entry)
+
+    if len(matches) > 1:
+        listed = ", ".join(sorted(matches))
+        return None, "around-ambiguous", (
+            f"around: '{arg}' matches several notes — give a path: {listed}"
+        )
+    if not matches:
+        return None, "around-not-found", (
+            f"around: '{arg}' not found — rebuild the cache or give a path"
+        )
+
+    path, entry = next(iter(matches.items()))
+    if eligibility.is_periodic(path):
+        return None, "around-periodic", ABORT_MESSAGES["around-periodic"]
+    kind = "moc" if eligibility.is_moc(path) else "note"
+    if kind == "note":
+        eligible, why = eligibility.check(path)
+        if not eligible:
+            reason_text = AROUND_INELIGIBLE_REASONS.get(why, f"it is not eligible ({why})")
+            return None, "around-ineligible", (
+                f"around: '{_stem_from_path(path)}' cannot seed a MOC — {reason_text}"
+            )
+    topics = [str(t) for t in entry.get("topics") or [] if t]
+    return AroundSeed(kind, path, _stem_from_path(path), topics), None, None
+
+
+def _around_abort(report: dict, reason: str, message: str) -> dict:
+    report["abort_reason"] = reason
+    report["abort_message"] = message
+    _log(f"around: abort → {reason!r}")
+    return report
+
+
+def _around_lookup(
+    report: dict, seed: AroundSeed, cache: dict, eligibility: NodeEligibility,
+    kado_client,
+):
+    """One budgeted `neighbors(seed)` → ClusterLinks, or None after a seed-lookup abort."""
+    with LinkLookup(kado_client) as lookup:
+        result = augment_clusters(
+            [{"cluster_id": AROUND_CLUSTER_ID, "items": [seed.path]}],
+            {seed.path: seed.path}, lookup, eligibility, cache, threshold=1,
+        )
+    report["link_stats"] = dict(result.stats)
+    links = result.clusters[AROUND_CLUSTER_ID]
+    _log(f"around: status={links.status} neighbours={len(links.link_members)}")
+    if links.status != _LINKS_DONE:
+        _around_abort(
+            report, "seed-lookup-failed",
+            f"around: seed lookup failed for '{seed.stem}' — check that Kado is "
+            f"reachable and its key can read the note",
+        )
+        return None
+    return links
+
+
+def _ref_stem(ref) -> str:
+    """Bare stem of one parent ref: `[[ ]]`, alias, heading, folder and `.md` stripped."""
+    s = str(ref).strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2]
+    return bare_stem(s.split("|", 1)[0].split("#", 1)[0])
+
+
+def _up_targets_stem(entry: dict, stem: str) -> bool:
+    """True when a cache entry's `up_target` or any `up_value` element names `stem`."""
+    targets: list = []
+    for raw in (entry.get("up_target"), entry.get("up_value")):
+        value = unwrap_list_repr(raw)
+        targets.extend(value if isinstance(value, (list, tuple)) else [value])
+    folded = stem.casefold()
+    return any(t is not None and _ref_stem(t).casefold() == folded for t in targets)
+
+
+def _run_around_extension(
+    report: dict, seed: AroundSeed, cache: dict, eligibility: NodeEligibility
+) -> dict:
+    """around:<MOC> — neighbours without cached up:: to the MOC → report.extension."""
+    links = _around_lookup(report, seed, cache, eligibility, _build_kado_client())
+    if links is None:
+        return report
+    entries = {e.get("path"): e for e in cache.get("entries") or [] if isinstance(e, dict)}
+    missing = [
+        m for m in links.link_members if not _up_targets_stem(entries[m.path], seed.stem)
+    ]
+    report["link_stats"]["members_total"] = len(missing)
+    if not missing:
+        return _around_abort(
+            report, "no-missing-members",
+            f"around: '{seed.stem}' has no missing members — every eligible "
+            f"linked note already has up:: to it",
+        )
+    report["extension"] = {
+        "moc_stem": seed.stem,
+        "moc_path": seed.path,
+        "members": [
+            {
+                "stem": m.stem,
+                "path": m.path,
+                "linked_with": [seed.stem],
+                **_member_up_fields(m),
+            }
+            for m in missing
+        ],
+    }
+    return report
+
+
+def _build_around_note(
+    report: dict, seed: AroundSeed, cache: dict, profile_dict: dict,
+    eligibility: NodeEligibility,
+) -> dict:
+    """around:<note> — one `neighbors` lookup → one new-MOC cluster or an abort."""
+    kado_client = _build_kado_client()
+    links = _around_lookup(report, seed, cache, eligibility, kado_client)
+    if links is None:
+        return report
+    if len(links.link_members) < AROUND_MIN_NEIGHBOURS:
+        return _around_abort(
+            report, "fewer-than-3-notes",
+            f"around: fewer than 3 notes — '{seed.stem}' has "
+            f"{len(links.link_members)} eligible linked note(s), "
+            f"{AROUND_MIN_NEIGHBOURS} are needed",
+        )
+
+    conventions = resolve_conventions(
+        profile_dict=profile_dict, profiles_dir=DEFAULT_PROFILES_DIR
+    )
+    title = ensure_suffix(seed.stem, moc_suffix(profile_dict))
+    parents = phase5_resolve_parents({"topic_keywords": seed.topics}, profile_dict, cache)
+    cluster = {
+        "topic": seed.stem,
+        "items": [seed.stem],
+        "parent": None,
+        "tags": [],
+        "cluster_id": AROUND_CLUSTER_ID,
+        "title": title,
+        "confidence": 1.0,  # topic formula: 1 member / 1 candidate
+        "candidate_stems": [seed.stem],
+        "topic_keywords": list(seed.topics),
+        "location": _moc_location(profile_dict),
+        "template": "t_moc_tomo",
+        "slug": slugify(title),
+        "existing_up": [],
+        "link_lookup_status": links.status,
+        "link_members": [
+            {
+                "stem": m.stem,
+                "path": m.path,
+                "linked_with": [seed.stem],
+                **_member_up_fields(m),
+            }
+            for m in links.link_members
+        ],
+    }
+    candidate = Candidate(stem=seed.stem, path=seed.path, topics=list(seed.topics))
+    clusters = phase65_validate_existing_up(
+        [cluster], [candidate], kado_client, cache,
+        parent_marker=conventions.parent_marker,
+    )
+
+    report.update({
+        "candidates_total": 1,
+        "candidates_after_prefilter": 1,
+        "candidates": [
+            {
+                "stem": candidate.stem,
+                "path": candidate.path,
+                "topics": candidate.topics,
+                "existing_up": candidate.existing_up,
+                "classification": candidate.classification,
+                "level": candidate.level,
+            }
+        ],
+        "topic_clusters": clusters,
+        "parent_options_per_cluster": {AROUND_CLUSTER_ID: _serialise_parents(parents)},
+    })
+    return report
+
+
+def _run_around(
+    cache: dict, config_path: Path, profile_name: str, trigger_arg: str
+) -> dict:
+    """`--around` single pass → DiscoveryReport (proposal or abort). No squelch."""
+    profile_dict = _load_yaml(DEFAULT_PROFILES_DIR / f"{profile_name}.yaml")
+    eligibility = NodeEligibility(cache, profile_dict, _load_yaml(config_path))
+    report = empty_report("around", trigger_arg, profile_name)
+
+    seed, reason, message = resolve_around_seed(trigger_arg, cache, eligibility)
+    if seed is None:
+        return _around_abort(report, reason, message)
+    report["around"] = {"kind": seed.kind, "path": seed.path, "stem": seed.stem}
+    _log(f"around: resolved kind={seed.kind}")
+    if seed.kind == "moc":
+        report = _run_around_extension(report, seed, cache, eligibility)
+    else:
+        report = _build_around_note(report, seed, cache, profile_dict, eligibility)
+    _log("links: " + " ".join(f"{k}={v}" for k, v in report["link_stats"].items()))
+    return report
 
 
 def _emit_abort_report(
@@ -1980,6 +2409,17 @@ def main(argv: list[str] | None = None) -> int:
 
     config_path = Path(args.config)
 
+    # spec 042: --around is single pass — no Pass 1/2 file, no uplink audit.
+    if args.around is not None and (
+        args.emit_phase1 or args.phase1_input or args.check_moc_uplinks
+    ):
+        print(
+            f"{LOG_PREFIX} FATAL: --around cannot be combined with --emit-phase1, "
+            f"--phase1-input or --check-moc-uplinks",
+            file=sys.stderr,
+        )
+        return 2
+
     # ── --phase1-input branch: skip Phase 1, derive mode/trigger from JSON ────
     # T6.5: agent has already extracted topics for cache misses LLM-side.
     if args.phase1_input:
@@ -2051,6 +2491,13 @@ def main(argv: list[str] | None = None) -> int:
     if cache_abort is not None:
         _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+    # ── --around branch: single pass, no squelch (spec 042 F2) ──────────────
+    if mode == "around":
+        report = _run_around(cache, config_path, profile_name, trigger_arg)
+        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
 
     # ── --check-moc-uplinks branch: MOC-parentage audit only, no clustering ──
     # ADR-12: a focused pass over kind==moc orphans. No squelch decrement (no

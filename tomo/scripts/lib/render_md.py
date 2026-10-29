@@ -1,4 +1,4 @@
-# version: 0.35.1
+# version: 0.36.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -890,6 +890,34 @@ def _render_skipped_asset_notice(entry: dict) -> str:
     return f"- ⚠️ **Attachment not filed:** `{source}` — {reason}. {remedy}."
 
 
+_WITHHELD_EXTENSION_REMEDIES = {
+    "absent": (
+        "Check whether the MOC was renamed or deleted; to extend it, run "
+        "`/moc-propose around:` with its current name"
+    ),
+    "unverifiable": "Re-run `/inbox` once Kado answers",
+    "ambiguous": (
+        "Give one of these notes a different name, then run `/moc-propose "
+        "around:` again"
+    ),
+}
+
+
+def _render_withheld_extension(w: dict) -> str:
+    """One bullet for an extension withheld by filter_missing_extension_targets."""
+    reason = w.get("reason") or "?"
+    paths = w.get("paths") or []
+    if paths:
+        reason += " (" + ", ".join(f"`{p}`" for p in paths) + ")"
+    remedy = _WITHHELD_EXTENSION_REMEDIES.get(
+        w.get("kind"), f"(no remedy defined for kind {w.get('kind')!r} — check render_md.py)"
+    )
+    return (
+        f"- [[{w.get('target_moc') or '?'}]] — {reason}; nothing was written for "
+        f"its {w.get('member_count', 0)} member(s). {remedy}."
+    )
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -1091,10 +1119,33 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # removed (spec 039 T5.4, owner ruling 2026-10-12: one report per item).
     # A withdrawal alone therefore no longer opens "## Skipped".
     withdrawals_by_id = _group_delete_withdrawals(delete_withdrawals)
+    unchecked_extensions = [
+        r for r in metadata.get("extension_reports") or []
+        if not r.get("outgoing_checked")
+    ]
+    if unchecked_extensions:
+        body_parts.append("## MOC extensions")
+        body_parts.append("")
+        for r in unchecked_extensions:
+            body_parts.append(
+                f"**Already-linked check unavailable** — [[{r.get('target_moc')}]]: "
+                "Kado could not list the MOC's links, so a line was added for "
+                "every ticked member. Remove any duplicate line from the MOC "
+                "after applying.")
+            body_parts.append("")
+    withheld_extensions = metadata.get("withheld_extensions") or []
     if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
-            or unresolvable_links or unresolved_conflicts):
+            or unresolvable_links or unresolved_conflicts or withheld_extensions):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
+        if withheld_extensions:
+            body_parts.append(
+                "**MOC extension not applied** — no `up::` and no MOC line was "
+                "written for these extensions:")
+            body_parts.append("")
+            for w in withheld_extensions:
+                body_parts.append(_render_withheld_extension(w))
+            body_parts.append("")
         if unresolved_conflicts:
             # Named individually, never counted (PRD/C2 — "names each one
             # rather than counting them"): a count above bullets that already

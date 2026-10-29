@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_moc_discovery_phase65.py — Phase 6.5 existing-`up::` validation.
 
 Per-candidate decoration with `state` ∈ {"absent", "valid", "broken"} and
@@ -158,9 +158,10 @@ def test_valid_up_resolves_state_valid():
 def test_broken_up_state_broken():
     """``up:: [[Phantom MOC]]`` AND target NOT in cache → state="broken".
 
-    Per PRD AC-4.3: a broken existing-`up::` must be classified as
-    ``broken`` so the renderer can ignore it (Rule 4.3) without losing
-    user data or crashing on a missing target.
+    A broken existing-`up::` is classified as ``broken`` with the reason
+    ``unresolved`` (no cached note by that name), so the doc can say the note
+    was not found. Spec 042 T5.3d: render keeps it as `related::` (Rule 4.3
+    retired), the row only labels it.
     """
     candidates = [_candidate("tmux-setup", "Atlas/202 Notes/tmux-setup.md")]
     clusters = [_cluster("shell", ["tmux-setup"])]
@@ -182,6 +183,7 @@ def test_broken_up_state_broken():
             "stem": "tmux-setup",
             "state": "broken",
             "target": "Old MOC No Longer Exists",
+            "reason": "unresolved",
         }
     ], f"Expected broken row; got {rows!r}"
 
@@ -373,7 +375,8 @@ def test_frontmatter_up_broken_when_target_not_in_cache():
     )
     rows = decorated[0]["existing_up"]
     assert rows == [
-        {"stem": "orphan-fm", "state": "broken", "target": "Ghost MOC"}
+        {"stem": "orphan-fm", "state": "broken", "target": "Ghost MOC",
+         "reason": "unresolved"}
     ], f"Frontmatter up: to unknown MOC must be broken; got {rows!r}"
 
 

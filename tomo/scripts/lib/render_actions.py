@@ -1,4 +1,4 @@
-# version: 0.31.0
+# version: 0.33.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -25,6 +25,7 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
     _ensure_md_extension,
     _moc_stem,
     _stem,
+    exact_stem_paths,
     resolve_sibling_path,
     resolve_source_path,
 )
@@ -240,23 +241,6 @@ def _link_key(text: str) -> str:
     return key.casefold()
 
 
-def up_target_is_broken(kado_client, child_path: str, target: str) -> bool:
-    """True only when Obsidian lists ``target`` among the child's dangling links.
-
-    A target matching an ``outgoing`` node resolves. A target in neither list
-    resolved to a note outside the key's scope; it counts as not broken.
-    """
-    key = _link_key(target)
-    for node in kado_client.graph("outgoing", child_path):
-        resolved = _link_key(node.get("path", ""))
-        if key == resolved or key == resolved.rsplit("/", 1)[-1]:
-            return False
-    return any(
-        _link_key(node.get("path", "")) == key
-        for node in kado_client.graph("dangling", child_path)
-    )
-
-
 def _make_add_rel(
     counter: list[int],
     target_note_path: str,
@@ -301,8 +285,8 @@ def emit_up_preservation_actions(
                    up:: <newMOC> + related:: <X>
       4.5        — checked Override + valid existing up:: <X> →
                    related:: <newMOC> (existing up:: kept, not touched)
-      4.3        — unchecked Override + broken existing up:: →
-                   up:: <newMOC> only (broken target silently dropped)
+      4.3        — retired: an existing up:: whose target is not a MOC or
+                   does not exist follows 4.2 / 4.5 like a valid one
 
     Edge cases:
       - Self-link: if existing_up_target == new_moc_stem → no actions emitted.
@@ -358,18 +342,13 @@ def emit_up_preservation_actions(
     elif existing_up_target == new_moc_stem:
         # Self-link guard: existing parent link already points to the new MOC → no-op
         pass
+    elif override_flag:
+        # Rule 4.5 — keep existing parent link, new MOC becomes peer
+        actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
     else:
-        if not up_target_is_broken(kado_client, child_path, existing_up_target):
-            if override_flag:
-                # Rule 4.5 — keep existing parent link, new MOC becomes peer
-                actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
-            else:
-                # Rule 4.2 — new MOC becomes parent, existing target moves to peer
-                actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
-                actions.append(_make_add_rel(counter, child_path, peer_marker, existing_up_target))
-        else:
-            # Rule 4.3 — broken existing parent link (target not found); just set new parent
-            actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
+        # Rule 4.2 — new MOC becomes parent, existing target moves to peer
+        actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
+        actions.append(_make_add_rel(counter, child_path, peer_marker, existing_up_target))
 
     return actions
 
@@ -1394,6 +1373,60 @@ def manifest_without_withheld_staging(
     return kept, withheld
 
 
+def _link_to_moc_action(
+    counter: list[int], target_moc: str, source_title: str,
+    anchor: dict | None = None,
+) -> dict:
+    """One link_to_moc action: a `- [[source_title]]` bullet into `target_moc`."""
+    # Internal-field lifetime: new_section / fit_confidence (and any future
+    # alt_headings) live on the action from here until
+    # _strip_internal_link_fields removes them — never on the wire.
+    # Decompose the Pass-1 anchor: the instructions.schema.json `anchor`
+    # object allows ONLY {type, value} (additionalProperties:false).
+    # `placement` and `new_section` are TOP-LEVEL fields on link_to_moc,
+    # not nested inside the anchor. Honor their values from the Pass-1
+    # anchor but lift them out before writing. When no anchor is provided,
+    # fall back to a null-callout so resolve_section_names can populate it.
+    stamped_anchor = {
+        "type": (anchor or {}).get("type", "callout"),
+        "value": (anchor or {}).get("value"),
+    }
+    return {
+        "id": _next_id(counter),
+        "action": "link_to_moc",
+        "target_moc": target_moc,
+        "target_moc_path": None,
+        # Default placement is "after" per the 2026-04-30 contract with
+        # Hashi: content-bullet links land BELOW the matched callout, not
+        # inside its body. The user's rule of thumb is "normally it is
+        # always after". inside is reserved for the rare case where a
+        # specific entry must be collected inside a callout's body — none
+        # of today's emission paths produce that.
+        "anchor": stamped_anchor,
+        "placement": (anchor or {}).get("placement", "after"),
+        # new_section lifted to top-level per instructions schema (T5.2/ADR-3).
+        "new_section": (anchor or {}).get("new_section"),
+        # fit_confidence lifted to top-level (parallel to new_section) so
+        # _emit_resolution_telemetry can observe the per-placement score
+        # (#64). Both are Tomo-internal and stripped before the wire — the
+        # anchor itself stays {type, value} (anchor no-leak contract).
+        "fit_confidence": (anchor or {}).get("fit_confidence"),
+        # Wikilink target resolves to the (possibly sanitised) filename
+        # so a forbidden-char note round-trips to the renamed file (#69).
+        # The two identity fields split the two jobs (spec 034 T6.4b):
+        # source_note_title is DISPLAY text and stays raw, because the
+        # coverage audit and every report join on the title the user reads;
+        # source_note_stem is the vault's own key, which the withholding
+        # passes join on. Writing the stem into the title field made the
+        # audit hard-fail every correct run whose title held a `:`.
+        # source_note_stem is Tomo-internal — _strip_internal_link_fields
+        # removes it before the wire.
+        "line_to_add": f"- {_wikilink(source_title)}",
+        "source_note_title": source_title,
+        "source_note_stem": sanitize_stem(source_title),
+    }
+
+
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
     """Emit link_to_moc actions from two sources:
 
@@ -1432,53 +1465,7 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
         if not target_moc or not source_title or key in seen:
             return
         seen.add(key)
-        # Internal-field lifetime: new_section / fit_confidence (and any future
-        # alt_headings) live on the action from here until
-        # _strip_internal_link_fields removes them — never on the wire.
-        # Decompose the Pass-1 anchor: the instructions.schema.json `anchor`
-        # object allows ONLY {type, value} (additionalProperties:false).
-        # `placement` and `new_section` are TOP-LEVEL fields on link_to_moc,
-        # not nested inside the anchor. Honor their values from the Pass-1
-        # anchor but lift them out before writing. When no anchor is provided,
-        # fall back to a null-callout so resolve_section_names can populate it.
-        stamped_anchor = {
-            "type": (anchor or {}).get("type", "callout"),
-            "value": (anchor or {}).get("value"),
-        }
-        out.append({
-            "id": _next_id(counter),
-            "action": "link_to_moc",
-            "target_moc": target_moc,
-            "target_moc_path": None,
-            # Default placement is "after" per the 2026-04-30 contract with
-            # Hashi: content-bullet links land BELOW the matched callout, not
-            # inside its body. The user's rule of thumb is "normally it is
-            # always after". inside is reserved for the rare case where a
-            # specific entry must be collected inside a callout's body — none
-            # of today's emission paths produce that.
-            "anchor": stamped_anchor,
-            "placement": (anchor or {}).get("placement", "after"),
-            # new_section lifted to top-level per instructions schema (T5.2/ADR-3).
-            "new_section": (anchor or {}).get("new_section"),
-            # fit_confidence lifted to top-level (parallel to new_section) so
-            # _emit_resolution_telemetry can observe the per-placement score
-            # (#64). Both are Tomo-internal and stripped before the wire — the
-            # anchor itself stays {type, value} (anchor no-leak contract).
-            "fit_confidence": (anchor or {}).get("fit_confidence"),
-            # Wikilink target resolves to the (possibly sanitised) filename
-            # so a forbidden-char note round-trips to the renamed file (#69).
-            # The two identity fields split the two jobs (spec 034 T6.4b):
-            # source_note_title is DISPLAY text and stays raw, because the
-            # coverage audit and every report join on the title the user reads;
-            # source_note_stem is the vault's own key, which the withholding
-            # passes join on. Writing the stem into the title field made the
-            # audit hard-fail every correct run whose title held a `:`.
-            # source_note_stem is Tomo-internal — _strip_internal_link_fields
-            # removes it before the wire.
-            "line_to_add": f"- {_wikilink(source_title)}",
-            "source_note_title": source_title,
-            "source_note_stem": sanitize_stem(source_title),
-        })
+        out.append(_link_to_moc_action(counter, target_moc, source_title, anchor))
 
     # Pass 1 — parent_mocs up-links from every confirmed item.
     for item in confirmed:
@@ -2501,6 +2488,87 @@ def withdraw_unjustified_deletes(
     return kept, withdrawn
 
 
+def _moc_linked_members(kado_client, moc_path: str | None, members: list[str]) -> list[str] | None:
+    """Members the MOC links, from one `outgoing(moc)` call; None when it could not be asked."""
+    if not moc_path:
+        return None
+    try:
+        nodes = kado_client.graph("outgoing", moc_path)
+    except KadoError:
+        return None
+    keys: set[str] = set()
+    for node in nodes:
+        resolved = _link_key(node.get("path", ""))
+        keys.update({resolved, resolved.rsplit("/", 1)[-1]})
+    return [m for m in members if _link_key(m) in keys]
+
+
+def _build_moc_extension_actions(
+    confirmed: list[dict],
+    kado_client,
+    counter: list[int],
+    reports: list[dict],
+    parent_marker: str = "up::",
+    peer_marker: str = "related::",
+) -> list[dict]:
+    """Expand each extend_moc item into add_relationship + link_to_moc actions.
+
+    Per ticked member: emit_up_preservation_actions(member, moc, override).
+    Per member the MOC does not already link: one `- [[member]]` link_to_moc.
+    Appends one record per extension to `reports`.
+    """
+    if kado_client is None:
+        return []
+    out: list[dict] = []
+    for item in confirmed:
+        if item.get("action") != "extend_moc":
+            continue
+        moc = _moc_stem(item.get("target_moc") or "")
+        members = []
+        seen: set[str] = set()
+        for m in _parse_supporting_items(item.get("supporting_items")):
+            if m.casefold() not in seen:
+                seen.add(m.casefold())
+                members.append(m)
+        if not moc or not members:
+            continue
+        override = bool(item.get("override_preserve_existing_up", False))
+        no_relationship: list[dict] = []
+        for member in members:
+            emitted = emit_up_preservation_actions(
+                member, moc, override, kado_client, counter,
+                parent_marker=parent_marker, peer_marker=peer_marker,
+            )
+            if not emitted:
+                no_relationship.append({"member": member, "cause": "up-already-points-to-moc"})
+            elif emitted[0].get("error"):
+                no_relationship.append({"member": member, "cause": emitted[0]["error"]})
+            out.extend(emitted)
+        moc_path = item.get("target_moc_path")
+        if not moc_path:
+            try:
+                paths = exact_stem_paths(kado_client.search_by_name(moc), moc)
+            except KadoError:
+                paths = []
+            moc_path = paths[0] if len(paths) == 1 else None
+        linked = _moc_linked_members(kado_client, moc_path, members)
+        for member in members:
+            if linked is None or member not in linked:
+                link = _link_to_moc_action(counter, moc, member)
+                link["target_moc_path"] = moc_path
+                out.append(link)
+        reports.append({
+            "id": item.get("id"),
+            "target_moc": moc,
+            "target_moc_path": moc_path,
+            "members": members,
+            "already_linked": linked or [],
+            "outgoing_checked": linked is not None,
+            "no_relationship": no_relationship,
+        })
+    return out
+
+
 def build_actions(
     manifest: list[dict],
     confirmed: list[dict],
@@ -2514,6 +2582,7 @@ def build_actions(
     parent_marker: str = "up::",
     peer_marker: str = "related::",
     attachment_plan: AttachmentPlan | None = None,
+    extension_reports: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Assemble the full ordered action list.
 
@@ -2529,6 +2598,7 @@ def build_actions(
     Emitted order:
       1. create_moc         — new MOCs must exist before anything links into them
       2. up_preservation    — per-child up:: / related:: on ConfirmedMOCProposal children
+         moc extension      — per extend_moc: add_relationship, then link_to_moc
       3. move_note          — atomic notes
       4. move_asset         — attachments named on the manifest, deduplicated globally
       5. link_to_moc        — parent_mocs up-links + supporting_items down-links
@@ -2541,6 +2611,8 @@ def build_actions(
     builder projects it and this function stores the projection's
     `move_ids_by_origin` back on the plan. A manifest that carries attachments
     requires one (ValueError otherwise); one without attachments needs none.
+
+    `extension_reports`, when given, receives one record per extend_moc item.
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -2552,6 +2624,11 @@ def build_actions(
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
     out.extend(_build_up_preservation_actions(
         manifest, kado_client, counter,
+        parent_marker=parent_marker, peer_marker=peer_marker,
+    ))
+    out.extend(_build_moc_extension_actions(
+        confirmed, kado_client, counter,
+        extension_reports if extension_reports is not None else [],
         parent_marker=parent_marker, peer_marker=peer_marker,
     ))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)

@@ -1,4 +1,4 @@
-# version: 0.13.0
+# version: 0.14.1
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -59,6 +59,10 @@ class KadoToolError(KadoError):
     """Raised when the MCP tool returns isError: true."""
 
 
+class KadoBudgetExhausted(KadoError):
+    """Raised when ``attempt_gate`` refuses a send; nothing was sent."""
+
+
 class KadoConcurrencyError(KadoToolError):
     """Raised when a kado-write operation=frontmatter fails optimistic-concurrency check (expectedModified mismatch)."""
 
@@ -86,7 +90,13 @@ class KadoClient:
     follow the cursor until the result set is exhausted.
     """
 
-    def __init__(self, base_url: str = None, token: str = None):
+    def __init__(
+        self,
+        base_url: str = None,
+        token: str = None,
+        attempt_gate=None,
+        min_interval: float = 0.0,
+    ):
         """Initialise the client.
 
         Parameters
@@ -99,6 +109,10 @@ class KadoClient:
             Bearer token for the Kado API key.
             Defaults to the ``KADO_TOKEN`` environment variable, or falls back to
             ``.mcp.json`` discovery.
+        attempt_gate:
+            Optional ``Callable[[], bool]`` asked before every HTTP send.
+        min_interval:
+            Minimum seconds between sends; 0 disables pacing.
         """
         resolved_url, resolved_token = _resolve_config(base_url, token)
         if not resolved_url:
@@ -125,6 +139,13 @@ class KadoClient:
         # own, so a caller keying a persistent record to it breaks the moment
         # anything else increments or resets it.
         self.call_count = 0
+        # HTTP sends, retries included; call_count keeps counting logical calls.
+        self.attempt_count = 0
+        # Consulted before every send; False raises KadoBudgetExhausted.
+        self.attempt_gate = attempt_gate
+        # Minimum seconds between sends (monotonic clock).
+        self.min_interval = min_interval
+        self._last_send: float | None = None
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -651,6 +672,14 @@ class KadoClient:
 
         return all_items
 
+    def _pace(self) -> None:
+        """Sleep so that sends are at least ``min_interval`` apart, then stamp the send."""
+        if self.min_interval > 0 and self._last_send is not None:
+            wait = self._last_send + self.min_interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+        self._last_send = time.monotonic()
+
     def _call_tool(self, tool_name: str, arguments: dict) -> dict:
         """Send a JSON-RPC 2.0 tools/call request and return the parsed result.
 
@@ -661,6 +690,7 @@ class KadoClient:
         KadoNotFoundError    — 404 HTTP response or tool not-found error
         KadoToolError        — MCP tool returned isError: true
         KadoError            — any other protocol/server error
+        KadoBudgetExhausted  — attempt_gate refused a send; nothing was sent
         """
         self._req_id += 1
         # Before the request, not after: a call that raises still consumed a
@@ -687,6 +717,12 @@ class KadoClient:
 
         raw = None
         for attempt in range(_MAX_RETRIES + 1):
+            if self.attempt_gate is not None and not self.attempt_gate():
+                raise KadoBudgetExhausted(
+                    f"Kado attempt budget exhausted before {tool_name}"
+                )
+            self.attempt_count += 1
+            self._pace()
             try:
                 with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
                     raw = resp.read().decode("utf-8")

@@ -60,3 +60,11 @@ gets today's behaviour without crashing (backward compatibility).
 MOC-marker regexes (`lib.topic_clusters`, `shared-ctx-builder`) need it; homing
 it in the resolver keeps the two from drifting (F-55 S1) and keeps the derivation
 next to the suffix it is derived from.
+
+## WHY `moc_suffix(profile)` is public
+
+Callers that already hold a loaded profile dict but have no `profiles_dir`
+(`lib/link_members.NodeEligibility`) need only the suffix. `resolve_conventions`
+requires `profiles_dir` even with `profile_dict`, so the suffix read lives in one
+public helper that `_from_dict` also uses — one place owns the `None` → ADR-3
+default rule.

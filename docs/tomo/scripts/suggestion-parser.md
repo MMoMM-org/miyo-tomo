@@ -1498,3 +1498,78 @@ the upstream half of `_build_create_moc_actions`' `by_dest`, and the two must
 agree on what one destination is (Rule 2: paths compare ignoring case and
 Unicode normalisation form). The `casefold()` rationale above still holds;
 `path_key` is NFC then `casefold()`.
+
+## Link Member Lines Are Children but Never Candidate Stems (spec 042 T2.3, SDD ADR-7)
+
+WHY `enumerate_all_moc_sections` and `enumerate_moc_sections_split` skip a
+Children line carrying `LINK_MEMBER_MARKER` (` — linked with `) when they build
+`candidate_stems`, while `children` still lists it: the squelch signature hashes
+the top five sorted `candidate_stems`. A link member that sorts into the top five
+would change the signature of a proposal the user already rejected, and the
+rejected proposal would resurface. Link members are found through the link graph,
+which drifts between runs; topic members are the stable identity of a cluster.
+
+A link line is `- [ ] [[stem]] (<up annotation>) — linked with [[A]], [[B]]`. The
+member wikilink stays first, so the first wikilink on the line is the member and
+the bridge wikilinks after the marker are never read as members. The marker is
+one constant in `lib/link_members.py`; this script imports it and holds no copy.
+The text is a parse contract and must not be localised.
+
+`parse_moc_proposal_doc` and `moc-proposal-parser.py` need no marker logic: a
+ticked link line is a ticked Children line, so it reaches `children` /
+`supporting_items` like a topic member, and an unticked one does not.
+
+Recognition is by the marker substring on a Children line, not by position. A
+member whose own stem contains ` — linked with ` would be treated as a link line
+and left out of the signature only; it is still a child. Accepted: such a title
+is vanishingly rare and the cost is one stem missing from the hash input.
+
+## `around:` Sections Never Reach the Squelch Registry (spec 042, owner decision)
+
+WHY: the owner decided that `around:` proposals are not squelched. Discovery
+already neither reads nor writes the registry for `--around`, but rejection is a
+second door: `lib/squelch_persist.persist_rejected_clusters` hashes every
+section `enumerate_all_moc_sections` returns that is not accepted, and
+`enumerate_moc_sections_split` hands its unticked list to `squelch-unticked.py`.
+Without a filter, unticking the seed of an `around:` proposal would store a
+signature for a hand-picked seed and silently hide a later topic proposal that
+happens to share its stems.
+
+Both functions therefore skip a section whose body has a line starting
+`**Trigger:** around:`. That line is rendered by the reducer into every section
+(not only the frontmatter), so the marker travels with the section and needs no
+new field. The prefix is anchored at the value start: a topic trigger such as
+`tag:around` does not match. `enumerate_moc_sections_split` skips an around
+section only in the unticked list; a ticked one is still returned, because
+ticked sections feed instruction building, not the registry.
+`parse_moc_proposal_doc` is untouched: an accepted around section is a normal
+proposal.
+
+## Extension Sections Are Skipped Entirely, Keyed on `**Extends:**` (spec 042 T4.3, SDD ADR-5, v0.44.0)
+
+WHY: an `around:<MOC>` extension section (`### MOCxx — Extend [[X]]`) proposes
+missing members of an existing MOC. It has no topic cluster, so it must never
+produce a squelch signature, and it is not a new-MOC proposal, so it must never
+appear as one. `moc-proposal-parser.py` is the only reader that turns it into
+an item (`extend_moc`).
+
+WHY a second key next to the `around:` Trigger skip: the Trigger skip rests on
+one rendered line. If that line is missing or edited by the user, the section
+would fall through to the squelch registry and a rejected extension would hide
+a later topic proposal sharing its stems. The `**Extends:**` line is what makes
+the section an extension, so the skip keys on it too. The regex is anchored at
+the line start, like `RE_AROUND_TRIGGER`.
+
+WHY only the section header counts (lines before the first `#### `, v0.44.1):
+`moc-proposal-parser` reads `**Extends:**` only there. Matching the line
+anywhere let an `**Extends:**` text in a create section's Why body hide that
+create section from squelch and from parsing, while moc-proposal-parser still
+created it — the two parsers disagreed about the same section.
+
+WHY "entirely": unlike an `around:<note>` section, an extension is dropped from
+all three readers — `enumerate_all_moc_sections`, BOTH lists of
+`enumerate_moc_sections_split` (an accepted one is not instruction-builder
+input here either), and `parse_moc_proposal_doc`. The last matters for the
+CLI's moc-proposal branch: a `ConfirmedMOCProposal` built from an extension
+would carry the MOC's name as a title to create. `squelch_persist` needs no
+change: it hashes `enumerate_all − accepted`, and an extension is in neither.

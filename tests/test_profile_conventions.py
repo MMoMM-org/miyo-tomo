@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_profile_conventions.py — Behavioural tests for lib.profile_conventions.
 
 Covers the Conventions value object + resolve_conventions() resolver (028 T1.1):
@@ -28,6 +28,7 @@ from lib import profile_conventions  # noqa: E402
 from lib.profile_conventions import (  # noqa: E402
     Conventions,
     ensure_suffix,
+    moc_suffix,
     resolve_conventions,
     strip_suffix,
 )
@@ -150,6 +151,28 @@ def test_empty_string_suffix_is_preserved(tmp_path: Path) -> None:
     profile = {"concept_defaults": {"map_note": {"name_suffix": ""}}}
     conv = resolve_conventions(profiles_dir=tmp_path, profile_dict=profile)
     assert conv.moc_suffix == ""
+
+
+def test_moc_suffix_helper_reads_profile_dict() -> None:
+    profile = {"concept_defaults": {"map_note": {"name_suffix": " (MOC)"}}}
+    assert moc_suffix(profile) == " (MOC)"
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        {},
+        {"concept_defaults": {"map_note": {"name_suffix": None}}},
+    ],
+)
+def test_moc_suffix_helper_defaults_to_empty(profile) -> None:
+    assert moc_suffix(profile) == ""
+
+
+def test_moc_suffix_helper_agrees_with_resolve_conventions(tmp_path: Path) -> None:
+    profile = {"concept_defaults": {"map_note": {"name_suffix": " Index"}}}
+    conv = resolve_conventions(profiles_dir=tmp_path, profile_dict=profile)
+    assert moc_suffix(profile) == conv.moc_suffix
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -258,7 +258,7 @@ correct instruction set. Pinned by a garden-shaped case in
 
 Spec 037 gave Pass 1 three attachment-collision remedies (`rename`,
 `keep_in_inbox`, `ignore`) plus a degraded-rename fallback, all consulted by
-`_build_move_asset_actions` (`render_actions.py:691-845`). ADR-3 claimed this
+`_build_move_asset_actions` (`lib/render_inbox_actions.py:65-125`). ADR-3 claimed this
 file needed no change to account for any of them. `tests/test_037_t3_2_audit_
 needs_no_new_arithmetic.py` demonstrates that claim instead of asserting it —
 `git diff main...HEAD -- '*instructions-diff*'` for spec 037 is empty, and the

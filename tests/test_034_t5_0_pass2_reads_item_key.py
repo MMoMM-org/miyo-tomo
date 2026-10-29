@@ -643,6 +643,15 @@ PASS2_FILES = {
     "render_resolve.py": LIB_DIR / "render_resolve.py",
     "render_io.py": LIB_DIR / "render_io.py",
     "render_actions.py": LIB_DIR / "render_actions.py",
+    "render_emit.py": LIB_DIR / "render_emit.py",
+    "render_up_preservation.py": LIB_DIR / "render_up_preservation.py",
+    "render_moc_actions.py": LIB_DIR / "render_moc_actions.py",
+    "render_garden_actions.py": LIB_DIR / "render_garden_actions.py",
+    "render_inbox_actions.py": LIB_DIR / "render_inbox_actions.py",
+    "render_source_actions.py": LIB_DIR / "render_source_actions.py",
+    "render_withhold.py": LIB_DIR / "render_withhold.py",
+    "render_attachment_withhold.py": LIB_DIR / "render_attachment_withhold.py",
+    "render_contested_links.py": LIB_DIR / "render_contested_links.py",
 }
 
 # `f"{inbox}{...}"` and `f"{inbox_path.rstrip('/')}/{...}"` — the two literal

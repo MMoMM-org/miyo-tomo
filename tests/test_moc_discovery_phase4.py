@@ -178,3 +178,27 @@ def test_scan_multi_cluster_one_title_per_cluster():
     assert len(titles) == len(set(titles)), (
         f"Distinct cluster topics must yield distinct titles; got {titles!r}"
     )
+
+
+def test_scan_never_titles_a_moc_with_brackets_or_bare_punctuation():
+    """#216: '(quote)' titles as 'Quote (MOC)'; a '§'-only topic proposes nothing."""
+    Candidate = moc_discovery.Candidate
+    profile = _load_profile("miyo")
+
+    def cand(stem: str, topic: str):
+        c = Candidate(stem=stem, path=f"{stem}.md")
+        c.topics = [topic]
+        return c
+
+    cands = [cand(f"Q{i} (Quote)", "(quote)") for i in range(3)]
+    cands += [cand(f"§ Note {i}", "§") for i in range(3)]
+
+    class Cfg:
+        min_notes = 3
+
+    clusters = moc_discovery.phase3_cluster(cands, Cfg(), moc_suffix=" (MOC)")
+    titles = [
+        moc_discovery.phase4_title(c, profile, mode="scan", trigger_arg="")
+        for c in clusters
+    ]
+    assert titles == ["Quote (MOC)"]

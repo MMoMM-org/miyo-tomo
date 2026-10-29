@@ -499,10 +499,14 @@ class TestAugment:
         assert result.stats["clusters_skipped_budget"] == 0
         assert result.stats["clusters_sampled"] == 1
 
-    def test_sample_follows_item_order(self):  # ADR-4
-        result, client, _ = _run([_cluster("c1", "C", "B", "A")], {}, budget=2)
-        assert result.clusters["c1"].status == "sampled"
-        assert [c[1] for c in client.graph_calls] == [f"{N}C.md", f"{N}B.md"]
+    def test_sample_is_casefolded_path_order_whatever_the_item_order(self):  # #216
+        # Item order follows Kado's listing order; the sample must not. A plain
+        # sort would put B and C before a; casefolded, a comes first.
+        lower = _note("a")
+        for order in (("C", "B", "a"), ("a", "C", "B"), ("B", "a", "C")):
+            result, client, _ = _run([_cluster("c1", *order)], {}, budget=2, notes=[lower])
+            assert result.clusters["c1"].status == "sampled"
+            assert [c[1] for c in client.graph_calls] == [f"{N}a.md", f"{N}B.md"]
 
     def test_hits_count_looked_up_members_only(self):  # ADR-4
         adjacency = {"A": ["C", "Y"], "B": ["C", "Y"]}

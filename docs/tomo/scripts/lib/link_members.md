@@ -140,11 +140,21 @@ cluster whole when its uncached lookups exceeded the remaining budget (60). The
 T5.3 live run then left 3 of 5 rendered clusters (62/45/17 members) without any
 lookup, because the first cluster ate the budget. ADR-4 v1.2 raises the budget
 to 120 and gives each cluster `share = remaining // clusters still to do`.
-Memoised members are free. The first `share` uncached members in item order are
-looked up; the status is `done` when every uncached member fit and `sampled`
+Memoised members are free. The first `share` uncached members in casefolded
+path order are looked up; the status is `done` when every uncached member fit and `sampled`
 when some did not. A cluster with uncached members and a share of 0 is
 `skipped_budget`. Unused share flows on to the later clusters because `share` is
 recomputed from what is left. No rendered cluster is skipped while budget remains.
+
+WHY the sample is taken in casefolded path order, not item order: a cluster's
+items follow the Phase-1 candidate order, which follows Kado's listing order.
+Sampling the first `share` members in item order made the same vault and the
+same budget look up different members from one run to the next whenever Kado
+listed differently, so the proposed link members changed with no change in the
+vault (#216). Members are therefore visited sorted by path, casefolded (the raw
+path breaks ties), for the sample and for the lookups. The sort applies to the
+lookup order only: cluster `items`, `linked_with` and the rendered order of link
+members are unchanged.
 
 WHY `sampled` link members are still proposed: a sampled cluster yields link
 members found through the looked-up members only. The result is a lower bound

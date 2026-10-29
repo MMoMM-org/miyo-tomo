@@ -298,6 +298,27 @@ def test_small_budget_samples_the_first_cluster_and_reports_it(tmp_path, monkeyp
     assert [p for _, p, _ in fake.graph_calls] == [A, D, E]
 
 
+def test_sampled_members_do_not_depend_on_candidate_order(tmp_path, monkeypatch):
+    """#216: budget 3 samples one energy member; two Phase-1 candidate orders
+    (Kado listing order) look up the same members."""
+    import functools
+
+    from lib.link_members import LinkLookup
+
+    monkeypatch.setattr(_moc_disc, "LinkLookup", functools.partial(LinkLookup, budget=3))
+    forward = _candidates(*((p, ["energy"]) for p in (A, B, C)),
+                          *((p, ["solar"]) for p in (D, E)))
+    calls = []
+    for name, cands in (("fwd", forward), ("rev", forward[::-1])):
+        (tmp_path / name).mkdir()
+        fake = _GraphFake()
+        monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda f=fake: f)
+        _, report = _run_phase1_input(tmp_path / name, cands)
+        assert _by_topic(report)["energy"]["link_lookup_status"] == "sampled"
+        calls.append(sorted(p for _, p, _ in fake.graph_calls))
+    assert calls[0] == calls[1] == sorted([A, D, E])
+
+
 def test_failed_lookup_marks_only_that_cluster(tmp_path, monkeypatch):
     """F5-AC4: a Kado error on delta fails solar; energy keeps its link members."""
 

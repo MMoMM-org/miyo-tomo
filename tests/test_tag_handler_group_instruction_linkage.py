@@ -55,6 +55,7 @@ _render_mod = _load("instruction_render", "instruction-render.py")
 _diff_mod = _load("instructions_diff", "instructions-diff.py")
 
 import lib.render_actions as _render_actions_mod  # noqa: E402
+import lib.render_source_actions as _render_source_actions_mod  # noqa: E402
 
 group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
@@ -665,7 +666,7 @@ def test_both_sites_move_together_when_the_predicate_says_no(monkeypatch):
     emits, it is not consulting the shared predicate (ADR-5)."""
     g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
     monkeypatch.setattr(
-        _render_actions_mod, "_tag_handler_group_has_resolvable_target", lambda group: False
+        _render_source_actions_mod, "_tag_handler_group_has_resolvable_target", lambda group: False
     )
     actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG,

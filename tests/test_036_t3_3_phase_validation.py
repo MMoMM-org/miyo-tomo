@@ -64,6 +64,7 @@ _reducer_mod = _load("suggestions_reducer", "suggestions-reducer.py")
 _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 
 import lib.render_actions as _render_actions_mod  # noqa: E402
+import lib.render_source_actions as _render_source_actions_mod  # noqa: E402
 
 group_id = _group_mod.group_id
 annotate_tag_handler_group_guards = _reducer_mod.annotate_tag_handler_group_guards
@@ -184,7 +185,7 @@ def test_b_t3_1_gate_is_independent_of_the_render_parse_gate():
     render/parse gate is bypassed.
 
     Then the predicate is monkeypatched to always return True (module object
-    `lib.render_actions`, the bare name both builders resolve at call time —
+    `lib.render_source_actions`, the bare name both builders resolve at call time —
     NOT a re-export through instruction-render.py, which would silently
     no-op).
 
@@ -241,8 +242,8 @@ def test_b_t3_1_gate_is_independent_of_the_render_parse_gate():
         return_value_holder["called"] = True
         return True
 
-    orig = _render_actions_mod._tag_handler_group_has_resolvable_target
-    _render_actions_mod._tag_handler_group_has_resolvable_target = _fake_has_resolvable_target
+    orig = _render_source_actions_mod._tag_handler_group_has_resolvable_target
+    _render_source_actions_mod._tag_handler_group_has_resolvable_target = _fake_has_resolvable_target
     try:
         patched_actions, _skipped_assets = build_actions(
             [], [], [], [], _CFG, kado_client=None,
@@ -250,7 +251,7 @@ def test_b_t3_1_gate_is_independent_of_the_render_parse_gate():
             approved_tag_handler_group_ids=[gid],
         )
     finally:
-        _render_actions_mod._tag_handler_group_has_resolvable_target = orig
+        _render_source_actions_mod._tag_handler_group_has_resolvable_target = orig
 
     assert return_value_holder.get("called"), (
         "the patched predicate was never invoked — the patch binding is not "

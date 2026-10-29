@@ -132,7 +132,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 2: Link members in topic proposals](phase-2.md)
 - [x] [Phase 3: around:<note>](phase-3.md)
 - [x] [Phase 4: around:<MOC> extension, doc to instructions](phase-4.md)
-- [ ] [Phase 5: Runtime prose, end-to-end and live validation](phase-5.md)
+- [x] [Phase 5: Runtime prose, end-to-end and live validation](phase-5.md)
 
 ---
 

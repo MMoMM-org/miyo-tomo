@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Runtime prose, end-to-end and live validation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -85,6 +85,6 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: focused + full suite green; ruff clean
   5. Success: the label in the doc matches what the instructions do, and no user-written `up::` is dropped
 
-- [ ] **T5.4 Close-out** `[activity: docs]`
+- [x] **T5.4 Close-out** `[activity: docs]`
 
   - `close-out.md`: every one of the 29 PRD criteria traced to a test node id that was actually executed (one pytest invocation, count recorded) or to a T5.3 live record; any criterion no test could fail gets a RED-proven assertion before the spec is finalised. Update `docs/ai/memory/memory.md` Critical Documentation; README phase → Implemented via xdd-meta Finalize.

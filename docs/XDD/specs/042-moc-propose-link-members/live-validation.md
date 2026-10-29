@@ -126,6 +126,16 @@ against live Kado after the fix:
 - [ ] [[Mental Squeeze Point]] (existing up:: [[FlowCreation MOC]] — note not found → becomes `related::`) — linked with [[Mapping Method]]
 ```
 
+## Run 4 — `/moc-propose Around:Mapping Method` (F2-AC4, capitalised prefix)
+
+Requested by the owner at close-out. The agent did not treat `Around:` as `around:`:
+
+```
+Mode: free-text | Trigger: Around:Mapping Method
+Discovery: zero-candidates; links: 0 members, 0 lookups
+Proposal-doc: no doc written (abort)
+```
+
 ## Observations outside spec 042 (backlog candidates)
 
 - Topic clustering yields titles such as "(Quote) (MOC)" and "§ (MOC)".

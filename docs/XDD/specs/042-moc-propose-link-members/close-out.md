@@ -109,8 +109,15 @@ written to stderr, the report or the doc. That half is G2.
 **F2-AC4 and F7 are prose contracts.** The tests pin the sentences
 `moc-architect` and `moc-propose` route and report by. They prove the
 instruction is there, not that the model follows it. The live runs show the
-`Discovery:` line filled correctly in all four runs (§5); no live run used a
-capitalised `Around:`.
+`Discovery:` line filled correctly in all four runs (§5). F2-AC4 was then run
+live once (2026-10-29, owner request): `/moc-propose Around:Mapping Method`
+routed to free text and wrote no around doc:
+
+```
+Mode: free-text | Trigger: Around:Mapping Method
+Discovery: zero-candidates; links: 0 members, 0 lookups
+Proposal-doc: no doc written (abort)
+```
 
 ## 3. Criteria whose wording predates the shipped behaviour
 

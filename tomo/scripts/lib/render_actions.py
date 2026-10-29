@@ -1,13 +1,17 @@
-# version: 0.33.0
-"""render_actions.py — instruction-set action builders.
+# version: 0.34.0
+"""render_actions.py — instruction-set action builders (public facade).
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
 rendered manifest + confirmed items + daily/skip inputs into the ordered list of
 machine-readable actions (create_moc, move_note, link_to_moc, add_relationship,
-update_*, delete_source, skip). build_actions() is the entry point; the _build_*
-helpers each own one action kind. Pure assembly plus a few Kado reads (passed the
-client as an argument) for up:: preservation — no rendering, no post-build
-resolution (that lives in render_resolve).
+update_*, delete_source, skip). build_actions() is the entry point and stays
+here with the emit-time path and dependency audits; each action kind's builder
+lives in a sibling module (#216) and every name is re-exported from here, so
+`from lib.render_actions import X` keeps working for every caller. The
+skip builder stays here: it resolves an item by item_key in one line.
+Pure assembly plus a few Kado reads (passed the client as an argument) for
+up:: preservation — no rendering, no post-build resolution (that lives in
+render_resolve).
 """
 from __future__ import annotations
 
@@ -18,10 +22,10 @@ import re
 import sys
 from pathlib import Path
 
-from lib.kado_client import KadoError
-from lib.obsidian_filename import sanitize_stem
-from lib.profile_conventions import marker_word
-from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T4.3)
+from lib.kado_client import KadoError  # noqa: F401 — re-exported (#216)
+from lib.obsidian_filename import sanitize_stem  # noqa: F401 — re-exported (#216)
+from lib.profile_conventions import marker_word  # noqa: F401 — re-exported (#216)
+from lib.render_helpers import (  # noqa: F401 — re-exported (spec 039 T4.3, #216)
     _ensure_md_extension,
     _moc_stem,
     _stem,
@@ -29,16 +33,23 @@ from lib.render_helpers import (  # _ensure_md_extension re-exported (spec 039 T
     resolve_sibling_path,
     resolve_source_path,
 )
-from lib.render_md import bare_stem
-from lib.refusal_sentences import withheld_attachment_remedy
-from lib.attachment_plan import AttachmentPlan, build_attachment_plan
-from lib.vault_folder_lookup import VaultFolderLookup
+from lib.render_md import bare_stem  # noqa: F401 — re-exported (#216)
+from lib.refusal_sentences import withheld_attachment_remedy  # noqa: F401 — re-exported (#216)
+from lib.attachment_plan import AttachmentPlan, build_attachment_plan  # noqa: F401 — re-exported (#216)
+from lib.vault_folder_lookup import VaultFolderLookup  # noqa: F401 — re-exported (#216)
 from lib.vault_paths import _asset_dest_join, _dest_join, path_key, same_spelling  # noqa: F401 — _asset_dest_join/_dest_join re-exported (spec 039 T1.4)
-from lib.source_link import colliding_names, qualified_target
-from lib.up_parse import up_marker_re as _up_marker_re
-from lib.supporting_items import (
+from lib.source_link import colliding_names, qualified_target  # noqa: F401 — re-exported (#216)
+from lib.up_parse import up_marker_re as _up_marker_re  # noqa: F401 — re-exported (#216)
+from lib.supporting_items import (  # noqa: F401 — re-exported (#216)
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
+)
+from lib.render_emit import (  # noqa: F401 — re-exported (#216)
+    _disambiguate_filename,
+    _inbox_join,
+    _next_id,
+    _origin_key,
+    _wikilink,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,16 +67,6 @@ _thg_mod = _ilu.module_from_spec(_thg_spec)
 sys.modules["tag_handler_group"] = _thg_mod
 _thg_spec.loader.exec_module(_thg_mod)
 group_id = _thg_mod.group_id
-
-
-def _next_id(counter: list[int]) -> str:
-    counter[0] += 1
-    return f"I{counter[0]:02d}"
-
-
-def _inbox_join(inbox: str, basename: str) -> str:
-    """Join inbox path + basename, normalising the trailing slash."""
-    return f"{(inbox or '').rstrip('/')}/{basename}"
 
 
 # Path-shape contract (Hashi-driven, 2026-04-26 handoff): every path field
@@ -466,73 +467,10 @@ def assert_no_dangling_dependencies(actions: list[dict]) -> list[str]:
     return violations
 
 
-def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
-    """Return a filename that is not in *used_filenames*.
-
-    When *base_filename* is not yet used, returns it unchanged (common case —
-    CON-2 regression guarantee).  On collision, appends a stable ``_NN`` suffix
-    (``_01``, ``_02``, …) in the order callers present collisions.  Raises
-    ``ValueError`` if all suffixes up to ``_99`` are already taken.
-
-    Args:
-        base_filename: The derived filename, e.g. ``2026-06-11_0900_my-topic.md``.
-        used_filenames: Set of filenames already claimed in this render run.
-            The caller is responsible for adding the returned name to this set.
-
-    Returns:
-        A distinct filename (may equal *base_filename* when there is no collision).
-
-    Raises:
-        ValueError: When the collision cannot be resolved within 99 attempts.
-    """
-    assert base_filename.endswith(".md"), (
-        f"_disambiguate_filename requires a .md filename, got: {base_filename!r}"
-    )
-
-    if base_filename not in used_filenames:
-        return base_filename
-
-    # Strip .md, append _NN, restore .md
-    stem = base_filename[:-3]
-
-    for i in range(1, 100):
-        candidate = f"{stem}_{i:02d}.md"
-        if candidate not in used_filenames:
-            return candidate
-
-    raise ValueError(
-        f"filename collision guard exhausted for slug '{stem}' — "
-        "all suffixes _01 through _99 are taken; cannot render without overwrite"
-    )
-
-
 # Default asset folder — single source of truth for both the fallback used
 # when a caller's cfg dict lacks "concepts.asset" (build_actions, below) and
 # instruction-render.py's CONFIG_DEFAULTS entry for the same key.
 DEFAULT_ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
-
-
-def _wikilink(title: str, destination: str | None = None) -> str:
-    """Render an Obsidian wikilink whose target resolves to the safe filename.
-
-    When the title contains Obsidian-forbidden chars the file is stored under
-    a sanitised stem (see _dest_join), so the link must target that stem or it
-    dangles. An alias preserves the original title as display text:
-    ``[[safe-stem|Original: Title]]``. Titles already safe render as ``[[Title]]``.
-
-    ``destination`` is passed only when this run claims one filename for more
-    than one note (spec 034 T5.5), and makes the link name the note by path —
-    ``[[Atlas/203 Sources/Dresden|Dresden]]``, the form the vault itself writes
-    for a duplicate basename. The alias slot carries the display title either
-    way, so the two cases compose: a sanitised title under a contested filename
-    renders ``[[folder/safe-stem|Original: Title]]``.
-    """
-    stem = sanitize_stem(title)
-    if destination:
-        return f"[[{qualified_target(destination, title)}]]"
-    if stem != title:
-        return f"[[{stem}|{title}]]"
-    return f"[[{title}]]"
 
 
 def _build_create_moc_actions(
@@ -1626,27 +1564,6 @@ def _build_daily_update_actions(
     return out, ids_by_origin
 
 
-def _origin_key(resolved_path: str | None) -> str:
-    """The per-note identity the delete bookkeeping joins on (spec 034 T5.0b).
-
-    `_build_delete_source_actions` joins three inputs that describe the same
-    inbox note in three different spellings — a confirmed item, a move_note
-    origin and a daily entry. That join used to be the bare filename stem,
-    which two notes in different inbox subfolders share once discovery is
-    recursive: each collection collapsed two distinct notes into one bucket.
-
-    The key is the resolved vault-relative path (ADR-1) with a trailing `.md`
-    removed, because the three inputs disagree about that one extension: a
-    confirmed item's `source_path` carries it, a daily entry's `source_stem`
-    does not, and a move_note origin has already been through
-    `_ensure_md_extension`. Every other extension is significant and is kept —
-    an `.m4a` origin is a different file from an `.md` note of the same name.
-    """
-    if not resolved_path:
-        return ""
-    return resolved_path[:-3] if resolved_path.endswith(".md") else resolved_path
-
-
 def _tag_handler_group_has_resolvable_target(group: dict) -> bool:
     """Target-resolvability gate for a tag-handler group (spec 036 T3.1/ADR-5).
 
@@ -2678,5 +2595,3 @@ def build_actions(
     for a in out:
         a["applied"] = False
     return out, skipped_assets
-
-

@@ -53,7 +53,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: ≥ 3 default-scan proposals carry a link member, or the shortfall is recorded with its cause; attempts ≤ 120 per run; 0 rate-limit aborts; no periodic note, MOC, attachment or out-of-scope note proposed (checked against the doc); owner reviews one doc and ticks — the tick ratio is recorded `[ref: PRD/Success Metrics]`
   5. Success: KPIs recorded in `docs/XDD/specs/042-moc-propose-link-members/live-validation.md` with verbatim output lines
 
-- [ ] **T5.3a Pass 2 exit 1 is a partial result, not a failure** `[activity: runtime-prose]` `[parallel: true]`
+- [x] **T5.3a Pass 2 exit 1 is a partial result, not a failure** `[activity: runtime-prose]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/moc-discovery.py` exit codes (docstring: 0 clean, 1 partial, 2 fatal); `tomo/dot_claude/agents/moc-architect.md` Steps 3 and 3c; live run 2026-10-29 stopped on exit 1 after D3 dropped 104 duplicate clusters `[ref: SDD/Error Handling]`
   2. Test: prose tests — Steps 3 and 3c treat exit 2 as fatal (surface stderr, stop) and parse stdout on exit 0 or 1; the Discovery fill rules print `(<P> sampled: budget)` from `link_stats.clusters_sampled` when > 0

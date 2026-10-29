@@ -152,6 +152,29 @@ results={'ok': 5, 'budget': 5, 'failed': 20} wall=477.4s storm_sent=1915 storm_e
 - 20 lookups failed after 4 tries and were counted as `failed`; the run ended normally.
 - The budget caps attempts, not wall time: under a sustained storm this took ≈ 8 min.
 
+## Follow-up check — `related::` on apply (#216)
+
+First live run of the T5.3d rule (no existing `up::` is dropped). The owner accepted
+`Mapping Method (MOC)` from the `around:Mapping Method` doc, kept the seed and ticked
+`Architect` (`up::` to a non-MOC note) and `Mental Squeeze Point` (`up::` to a note that
+does not exist), Override unticked, then ran `/inbox`. The doc used was rendered before
+the label fix, so it still read "existing up:: broken — ignored"; render behaviour does
+not depend on the label. `2026-10-29_1917_instructions.json`:
+
+```
+create_moc Atlas/200 Maps/Mapping Method (MOC).md ['Mapping Method', 'Architect', 'Mental Squeeze Point']
+Mapping Method.md | up:: [[Mapping Method (MOC)]]
+Mapping Method.md | related:: [[Spark Method]], [[ARC Framework]], [[The 7 C's of Notemaking]], [[Frameworks (MOC)]], [[Mapping Method vs Mapmaking]], [[Notemaking]]
+Architect.md | up:: [[Mapping Method (MOC)]]
+Architect.md | related:: [[Gardener]], [[4 PKM Personalities]], [[Hybrid Thinker|Garden Architect]], [[Architects & Gardeners]]
+Mental Squeeze Point.md | up:: [[Mapping Method (MOC)]]
+Mental Squeeze Point.md | related:: [[Emergence Level 3]], [[Higher Order Notes]], [[FlowCreation MOC]]
+```
+
+Each old target is appended to the note's existing `related::` line, including the
+missing `FlowCreation MOC`; nothing is dropped. The new MOC lists all three members, and one
+`link_to_moc` adds it under its parent `2000 - Knowledge Management`.
+
 ## Observations outside spec 042 (backlog candidates)
 
 - Topic clustering yields titles such as "(Quote) (MOC)" and "§ (MOC)".

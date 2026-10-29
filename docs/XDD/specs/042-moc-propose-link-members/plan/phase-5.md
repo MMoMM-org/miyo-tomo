@@ -45,7 +45,7 @@ Delivers the user-facing entry, the proof across the whole chain, and the close-
   4. Validate: integration test green; full suite green; ruff clean
   5. Success: every ticked member reaches the instructions `[ref: PRD/Success Metrics; Business Impact]`
 
-- [ ] **T5.3 Live validation on tomo-instance** `[activity: validate]`
+- [x] **T5.3 Live validation on tomo-instance** `[activity: validate]`
 
   1. Prime: memory notes on syncing (`update-tomo` is version-gated, needs `--yolo`), container visibility, per-IP limiter
   2. Test: sync with `./scripts/update-tomo.sh --instance tomo-instance --yolo` (never `tomo-privat`); in the container run a default scan, `/moc-propose around:<a real hub note>`, `/moc-propose around:<a real MOC>`; record per run the `Discovery:` line verbatim (byte-copied), proposals with link members, attempts, 429 count, wall time

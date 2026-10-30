@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -11,6 +11,9 @@ Methods:
   2. (dropped)         — H2 headings excluded; no cluster signal measured
   3. Linked note titles — from [[wikilinks]]
   4. Tag-based topics  — from YAML frontmatter tags
+
+Both entry points drop stop words (English and German function words) and
+topics without a letter (dates, numbers, punctuation).
 
 Output: JSON to stdout
 Exit: 0 on success, 1 on error
@@ -37,16 +40,19 @@ TITLE_SUFFIXES = [
 
 TITLE_DELIMITERS = [" — ", " - ", " | ", ": "]
 
-BOILERPLATE_HEADINGS = {
-    "overview", "related", "references", "notes", "links", "tags",
-    "sources", "quotes", "action items", "recent updates", "tracker",
-    "morning", "goal", "tasks", "log", "summary", "key takeaways",
-    "key concepts",
-}
-
-STOP_WORDS = {"the", "a", "an", "and", "of", "in", "to", "for", "is",
-              "are", "was", "were", "be", "been", "by", "at", "on",
-              "with", "from", "or", "as", "it", "its", "this", "that"}
+STOP_WORDS = set("""
+the a an and of in to for is are was were be been being by at on with from or as
+it its this that these those i you he she we they me my your our their his her
+them us what who whom which when where why how if then else not no nor do does
+did done have has had will would can could should may might must shall so than
+too very just also about into over after before up down out off again once here
+there both each few more most other some such only own same all any every
+don't doesn't didn't can't won't isn't aren't wasn't i'm it's you're we're
+they're i've you've let's that's what's there's
+und oder nicht der die das ein eine einer eines einem einen ist sind war waren
+mit von zu im den dem des auf für wie was wer wo es ich du er sie wir ihr sich
+auch noch nur schon aber wenn dann als bei aus nach um zum zur vom am kein keine
+""".split())
 
 STRUCTURAL_TAG_PREFIXES = ("type/", "status/")
 
@@ -65,6 +71,11 @@ def normalize(text: str) -> str:
 
 def is_stop_word(word: str) -> bool:
     return word.lower() in STOP_WORDS
+
+
+def is_noise(topic: str) -> bool:
+    """A stop word, or a topic without a letter (date, number, punctuation)."""
+    return is_stop_word(topic) or not re.search(r"[^\W\d_]", topic)
 
 
 def clean_title(title: str) -> str:
@@ -175,27 +186,6 @@ def extract_from_title(content: str, explicit_title: str | None) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Method 2: H2 headings
-# ---------------------------------------------------------------------------
-
-def extract_from_headings(content: str) -> list[str]:
-    """Extract topics from ## H2 headings, skipping boilerplate."""
-    topics: list[str] = []
-    for match in re.finditer(r"^##\s+(.+)$", content, re.MULTILINE):
-        heading = match.group(1).strip()
-        # Strip markdown formatting
-        heading = re.sub(r"\*+|__?|`+|\[\[|\]\]", "", heading).strip()
-        if not heading:
-            continue
-        normed = normalize(heading)
-        if normed in BOILERPLATE_HEADINGS:
-            continue
-        if normed and normed not in topics:
-            topics.append(normed)
-    return topics
-
-
-# ---------------------------------------------------------------------------
 # Method 3: Linked note titles (wikilinks)
 # ---------------------------------------------------------------------------
 
@@ -254,8 +244,9 @@ def extract_from_tags(frontmatter: str) -> list[str]:
 
 def deduplicate_and_rank(source_methods: dict[str, list[str]]) -> list[str]:
     """
-    Combine all topics across methods, rank by frequency (number of methods
-    that produced each topic), deduplicate, return top MAX_TOPICS.
+    Combine all topics across methods, drop noise (``is_noise``), rank by
+    frequency (number of methods that produced each topic), deduplicate,
+    return top MAX_TOPICS.
     """
     counter: Counter = Counter()
     all_seen: set[str] = set()
@@ -263,6 +254,8 @@ def deduplicate_and_rank(source_methods: dict[str, list[str]]) -> list[str]:
     for topics in source_methods.values():
         seen_this_method: set[str] = set()
         for topic in topics:
+            if is_noise(topic):
+                continue
             if topic not in seen_this_method:
                 counter[topic] += 1
                 seen_this_method.add(topic)
@@ -288,7 +281,7 @@ def extract_topics(content: str, title: str | None = None) -> dict:
 
     source_methods = {
         "title":    extract_from_title(body if frontmatter else content, title),
-        "headings": extract_from_headings(body if frontmatter else content),
+        "headings": [],  # method 2 dropped: H2s are template sections, no cluster signal
         "links":    extract_from_links(body if frontmatter else content),
         "tags":     extract_from_tags(frontmatter),
     }

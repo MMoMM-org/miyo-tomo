@@ -33,6 +33,7 @@
 | 2026-10-30 | Replace `inbox-analyst` with a stub AGENT (haiku, replies `done`) in Pass 1 cases | Owner decision. Keeps the dispatch regressions (`subagent_type`, `path = item_key`, `force_atomic`, count) gradeable. Extends the "stubbed scripts only" decision: still no Kado mocks. |
 | 2026-10-30 | Measure before fixing the case count: the spike measures real Pass 1 case cost; then choose 2–4 cases and possibly raise the $5 cap | Owner decision; the estimate exceeds the original budget. |
 | 2026-10-30 | Spike before the PRD (~$0.20–0.30, run by the owner outside the sandbox): stub-agent resolution, skill loading under impersonation, `trace` grader on `tool_use_result`, cost per Pass 1 case | Owner decision. |
+| 2026-10-30 | Spike result ($0.296, `spike/write-up.md`): impersonation, stub-agent resolution (`tomo:inbox-analyst`, background dispatch) and skill loading all work. One Pass 1 run costs $0.21, about $0.75 per case at `runs: 3`. Script stubs must write plausible artifacts, or the conductor aborts before the end of the pipeline. Pattern A is red on 2.1.314, so the report-only grader uses pattern B plus the canary | Measured, not estimated. Owner picks the case count next. |
 
 ## Context
 

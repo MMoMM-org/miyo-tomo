@@ -306,7 +306,7 @@ two-pass flow counts as one run, and Pass 2 does the lookups once.
 
 **`_NullKadoClient.graph` raises.** Without Kado the run still emits
 proposals: every rendered cluster gets `failed` with no link members, and the
-exit code is the one the run would have without link members.
+exit code is 0, as for any run that emits a report.
 
 **Report fields are additive.** `topic_clusters[i].link_members`,
 `topic_clusters[i].link_lookup_status` and the top-level `link_stats` are new
@@ -527,3 +527,19 @@ reason next to the state.
   `docs/tomo/scripts/suggestions-reducer.md`). A cache that predates spec 033
   has no `up_broken_reason`, so its link members carry `None` and get the same
   fallback.
+
+## Exit 0 for Every Report, `--output PATH`
+
+WHY: exit 1 used to mean "partial": a full report, but some clusters were
+skipped as duplicates or squelched. Every consumer treated it like 0. Claude
+Code shows it as an error, and the moc-architect agent reacted by running
+Pass 2 again, which repeated the Kado lookups and the squelch decrement (live,
+2026-10-29 and 2026-10-30). The script now exits 0 whenever it emits a report,
+abort reports included, and 2 only on fatal errors with no report.
+
+`--output PATH` sends the report to a file instead of stdout. The report is
+buffered and written through `PATH.tmp` plus `os.replace` only after the run
+returns 0, so a reader never sees half a report. On exit 2, an old file at PATH
+is removed, so a stale report from an earlier run cannot pass as this run's
+result. `--output` with `--emit-phase1` is a usage error (exit 2):
+`--emit-phase1` already writes its own file and prints no report.

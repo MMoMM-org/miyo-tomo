@@ -37,6 +37,15 @@ tools: Bash
 Step 1: run the probe.
 """
 
+REAL_ANALYST_TEXT = "---\nname: inbox-analyst\nmodel: sonnet\n---\nThe REAL analyst: reads the vault.\n"
+
+STUB_PATCH = """--- a/agents/inbox-analyst.md
++++ b/agents/inbox-analyst.md
+@@ -1,1 +1,1 @@
+-**Active agent: inbox-analyst (eval stub)**
++**Active agent: inbox-analyst (MUTATED stub)**
+"""
+
 FLIP_PATCH = """--- a/agents/probe-agent.md
 +++ b/agents/probe-agent.md
 @@ -7,4 +7,4 @@
@@ -163,6 +172,8 @@ class Env:
         lib.mkdir(parents=True)
         shutil.copy(KIT_DIR / "stubs.sh", lib / "stubs.sh")
         shutil.copy(KIT_DIR / "no-leak.md", lib / "no-leak.md")
+        shutil.copy(KIT_DIR / "inbox-analyst.stub.md", lib / "inbox-analyst.stub.md")
+        _write(dc / "agents" / "inbox-analyst.md", REAL_ANALYST_TEXT)
         case = r / "evals" / "probe-case"
         _write(case / "case.yaml", 'schema_version: "1.1"\nname: probe-case\nruns: 3\n'
                "context:\n  scaffold_script: scaffold.sh\n")
@@ -265,13 +276,64 @@ def test_snapshot_shape_and_agents_byte_identical(env):
     snap = env.snap
     assert json.loads((snap / ".claude-plugin" / "plugin.json").read_text()) == {"name": "tomo"}
     src = env.repo / "tomo" / "dot_claude"
-    for d in ("agents", "skills", "commands"):
+    for d in ("skills", "commands"):
         assert _dir_state(snap / d) == _dir_state(src / d), d
+    assert _dir_state(snap / "agents") == {
+        **_dir_state(src / "agents"),
+        "inbox-analyst.md": (KIT_DIR / "inbox-analyst.stub.md").read_bytes(),
+    }
     assert _dir_state(snap / "evals") == {
         k: v for k, v in _dir_state(env.repo / "evals").items() if not k.startswith("results/")
     }
     assert not (snap / "evals" / "results").exists()
     assert sorted(p.name for p in snap.iterdir()) == [".claude-plugin", "agents", "commands", "evals", "skills"]
+
+
+# ── the analyst stand-in (spec 043, ADR-1) ────────────────────
+
+
+def _stub_bytes(env) -> bytes:
+    return (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").read_bytes()
+
+
+def test_assembled_copy_carries_the_analyst_stand_in(env):
+    real = env.repo / "tomo" / "dot_claude" / "agents" / "inbox-analyst.md"
+    before = hashlib.sha256(real.read_bytes()).hexdigest()
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (env.snap / "agents" / "inbox-analyst.md").read_bytes() == _stub_bytes(env)
+    assert hashlib.sha256(real.read_bytes()).hexdigest() == before
+
+
+def test_stand_in_comes_from_the_working_tree_under_rev(env):
+    old_sha = _git(env.repo, "rev-parse", "HEAD").strip()
+    stub = env.repo / "evals" / "_lib" / "inbox-analyst.stub.md"
+    stub.write_text(stub.read_text() + "\nWorking-tree edit.\n")
+    proc = env.run("--rev", old_sha)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    got = (env.snap / "agents" / "inbox-analyst.md").read_bytes()
+    assert got == stub.read_bytes()
+    assert b"REAL analyst" not in got
+
+
+def test_mutation_targeting_the_stand_in_applies_after_the_swap(env):
+    _write(env.repo / "evals" / "_mutations" / "stub.patch", STUB_PATCH)
+    proc = env.run("--mutation", "stub")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    text = (env.snap / "agents" / "inbox-analyst.md").read_text()
+    assert "(MUTATED stub)" in text
+    assert "REAL analyst" not in text
+    assert (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").read_bytes() == (
+        KIT_DIR / "inbox-analyst.stub.md").read_bytes()
+
+
+def test_missing_stand_in_is_refused_without_a_claude_call(env):
+    (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").unlink()
+    proc = env.run()
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "inbox-analyst.stub.md" in proc.stderr
+    assert env.calls() == []
+    assert list(env.tmpdir.iterdir()) == []
 
 
 # ── temp dir lifecycle and CLI exit handling ──────────────────
@@ -563,7 +625,7 @@ def test_help_documents_contract(env):
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
-                   "Typical cost: about $1 per full suite (5 cases x 3 runs", "hard cap $5"):
+                   "Typical cost: about $1 per full suite (7 cases x 3 runs", "hard cap $5"):
         assert needle in h, needle
     assert env.calls() == []
 

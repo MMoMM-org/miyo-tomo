@@ -13,7 +13,7 @@ rm -rf "$OUT"
 mkdir -p "$P/.claude-plugin" "$P/evals"
 printf '{"name": "tomo"}\n' > "$P/.claude-plugin/plugin.json"
 for d in agents skills commands; do cp -R "$REPO/tomo/dot_claude/$d" "$P/$d"; done
-cp "$SPIKE/inbox-analyst.stub.md" "$P/agents/inbox-analyst.md"
+cp "$REPO/evals/_lib/inbox-analyst.stub.md" "$P/agents/inbox-analyst.md"
 
 cp -R "$SPIKE/pass1-suggest-probe" "$P/evals/pass1-suggest-probe"
 cp -R "$REPO/evals/_lib" "$P/evals/_lib"

@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.1.4
+# version: 0.2.0
 set -e
 set -o pipefail
 
@@ -44,7 +44,7 @@ Options:
                         inspect).
   -h, --help            Show this help and exit.
 
-Typical cost: about $1 per full suite (5 cases x 3 runs; estimated, not yet
+Typical cost: about $1 per full suite (7 cases x 3 runs; estimated, not yet
 measured); hard cap $5 (--max-cost-usd / EVAL_MAX_COST_USD).
 
 Fixed flags passed to the CLI:
@@ -153,6 +153,7 @@ for d in agents skills commands; do
 done
 
 [ -f "$EVALS/_lib/no-leak.md" ] || refuse "missing evals/_lib/no-leak.md (canonical leak guard)"
+[ -f "$EVALS/_lib/inbox-analyst.stub.md" ] || refuse "missing evals/_lib/inbox-analyst.stub.md (analyst stand-in)"
 CASES=""
 for dir in "$EVALS"/*/; do
     [ -d "$dir" ] || continue
@@ -283,6 +284,10 @@ for entry in "$EVALS"/* "$EVALS"/.[!.]*; do
     [ "$(basename "$entry")" = results ] && continue
     cp -R "$entry" "$PLUGIN/evals/"
 done
+
+# The analyst stand-in always comes from the working tree, also under --rev, and
+# goes in before --mutation so a patch can target it.
+cp "$EVALS/_lib/inbox-analyst.stub.md" "$PLUGIN/agents/inbox-analyst.md"
 
 if [ -n "$PATCH_FILE" ]; then
     (cd "$PLUGIN" && patch -p1 --forward --silent -i "$PATCH_FILE" </dev/null >/dev/null 2>&1) \

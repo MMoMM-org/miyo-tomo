@@ -22,6 +22,6 @@ The cost cap is $1, with 2 cases × 1 run. Results land in `tomo-tmp/spike043/re
 ## Parts
 
 - `run-spike.sh` assembles the plugin from the working tree into `tomo-tmp/spike043/plugin`, swaps in the analyst stub, copies the two cases and runs the eval.
-- `inbox-analyst.stub.md` is the stand-in analyst: haiku, Bash only. It logs the item path through `scripts/analyst-stub.py` and replies `done <path>`.
+- `evals/_lib/inbox-analyst.stub.md` (moved out of the spike by T1.1) is the stand-in analyst: haiku, Bash only. It logs the item path through `scripts/analyst-stub.py` and replies `done <path>`.
 - `pass1-suggest-probe/` stages an `action: suggest` instance with 3 fresh sources, one of them in a subfolder (`Places/Dresden.md`). It sets `BATCH_SIZE=2`, so there are 2 batches. Every Pass 1 script is stubbed, with output copied from the real scripts: a tracker `WARN:` line from shared-ctx-builder, and `duplicate_proposals_converted=1` from the reducer.
 - `report-only-probe/graders/` holds the three trace graders. They were validated offline against the kept #205 traces: red on `e-zGLuXk` (the status-sentence run), green on `e-FKMwKu`, `e-BffdUn` and `e-qc5JkS`. The canary matched exactly once in each.

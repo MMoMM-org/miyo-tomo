@@ -41,10 +41,10 @@ REAL_ANALYST_TEXT = "---\nname: inbox-analyst\nmodel: sonnet\n---\nThe REAL anal
 
 STUB_PATCH = """--- a/agents/inbox-analyst.md
 +++ b/agents/inbox-analyst.md
-@@ -1,1 +1,1 @@
--**Active agent: inbox-analyst (eval stub)**
+@@ -7,3 +7,3 @@
+ \n-**Active agent: inbox-analyst (eval stub)**
 +**Active agent: inbox-analyst (MUTATED stub)**
-"""
+ \n"""
 
 FLIP_PATCH = """--- a/agents/probe-agent.md
 +++ b/agents/probe-agent.md
@@ -270,7 +270,7 @@ def test_unreadable_settings_model_is_refused(env):
     assert env.eval_calls() == []
 
 
-def test_snapshot_shape_and_agents_byte_identical(env):
+def test_snapshot_shape_and_agents_byte_identical_except_analyst_stand_in(env):
     proc = env.run()
     assert proc.returncode == 0, proc.stderr
     snap = env.snap
@@ -625,7 +625,8 @@ def test_help_documents_contract(env):
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
-                   "Typical cost: about $1 per full suite (7 cases x 3 runs", "hard cap $5"):
+                   "Typical cost: about $1 per full suite (7 cases x 3 runs", "hard cap $5",
+                   "evals/ and the\n                        inbox-analyst stand-in always come from the working\n                        tree."):
         assert needle in h, needle
     assert env.calls() == []
 

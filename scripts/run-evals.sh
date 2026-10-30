@@ -30,8 +30,9 @@ Options:
                         verdict is marked PARTIAL SUITE and does not satisfy
                         the merge rule.
   --rev <git-rev>       Take agents/skills/commands from <git-rev> instead of
-                        the working tree (RED proof). evals/ always comes
-                        from the working tree.
+                        the working tree (RED proof). evals/ and the
+                        inbox-analyst stand-in always come from the working
+                        tree.
   --mutation <name>     Apply evals/_mutations/<name>.patch to the assembled
                         copy, never to the repo (RED proof). A patch that does
                         not apply is refused.

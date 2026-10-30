@@ -100,3 +100,18 @@ of this doc); T5.1 completes the rewire. The cap was also raised 200→500 in
 Scoped modes (folder/tag/class/title/free-text) are unaffected — they operate
 on user-specified targets and should return all in-scope notes regardless of
 up_state. The orphan filter is scan-ONLY.
+
+## The Builder's Feed Never Reaches the Caller's Stdout (0.2.0)
+
+WHY: `moc-tree-builder.run()` prints its JSON feed (about 70 KB live) to stdout.
+The loader runs it in-process, so any `moc-discovery.py` run that rebuilt a
+stale cache emitted the feed, then the DiscoveryReport. That is two JSON
+documents, which no consumer can parse, whether through stdout or
+`--output PATH`. Seen live on 2026-10-30, after the instance cache was deleted,
+in Pass 1's tool output. Pass 1 prints no report, so nothing broke that time.
+A single-pass mode (`--check-moc-uplinks`, `--around`) or a Pass 2 run on an
+expired cache would have produced a broken report. The loader needs only the
+YAML file the builder writes, so it runs the rebuilder under
+`contextlib.redirect_stdout` into a discarded buffer. Stderr (progress, 429
+retries) is untouched. The redirect wraps every rebuilder, including injected
+ones, so tests reach the same path.

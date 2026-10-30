@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-30 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-10-30 |
 
@@ -14,7 +14,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.0, 31 criteria (F1–F7) |
-| solution.md | in_progress | draft v1.0; ADR-3, ADR-5, ADR-6 pending |
+| solution.md | completed | v1.0, ADR-1–6 confirmed |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -36,6 +36,7 @@
 | 2026-10-30 | Spike result ($0.296, `spike/write-up.md`): impersonation, stub-agent resolution (`tomo:inbox-analyst`, background dispatch) and skill loading all work. One Pass 1 run costs $0.21, about $0.75 per case at `runs: 3`. Script stubs must write plausible artifacts, or the conductor aborts before the end of the pipeline. Pattern A is red on 2.1.314, so the report-only grader uses pattern B plus the canary | Measured, not estimated. Owner picks the case count next. |
 | 2026-10-30 | 2 Pass 1 cases: `pass1-suggest-pipeline` and `pass1-warn-and-duplicates-relayed`; about +$1.50 per gate run, within the $5 cap. `pass1-fan-resolve-real-path` is out of scope | Owner decision after the spike. This replaces the earlier +$0.60–0.80 budget. |
 | 2026-10-30 | PRD v1.0 approved. `force-atomic-handling` is not gated in this phase because it has no case. If WARN-before-dispatch is RED, that is a finding, and the fix goes into the prose | Owner approved `requirements.md`. The phase moves to SDD. |
+| 2026-10-30 | SDD v1.0 approved, ADR-1 to ADR-6 confirmed: the runner swaps in the analyst stand-in; Pass 1 kit `_lib/pass1-stubs.sh`; 2 cases on that kit; a shared report-only grader with a hand-back canary; ordered trace regexes; the conductor staged from the assembled copy | Owner confirmation. The trace regexes were validated offline against the spike trace. That validation caught an unanchored pattern that matched the skill text, and the pattern is now anchored on the tool_use. |
 
 ## Context
 

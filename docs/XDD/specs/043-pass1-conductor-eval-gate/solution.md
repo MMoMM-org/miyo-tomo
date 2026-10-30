@@ -13,7 +13,7 @@ version: "1.0"
 - [x] All required sections are complete
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Architecture pattern is clearly stated with rationale
-- [ ] **All architecture decisions confirmed by user** (ADR-1, ADR-2 and ADR-4 are confirmed; ADR-3, ADR-5 and ADR-6 are pending)
+- [x] **All architecture decisions confirmed by user**
 - [x] Every interface has specification
 
 ### QUALITY CHECKS (Should Pass)
@@ -531,13 +531,13 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
   - Trade-offs: the 4-line stub header is duplicated.
   - User confirmed: **Yes (2026-10-30)**
 
-- [ ] **ADR-3 Two cases on one kit, differing only by `SHARED_CTX_WARN` and `DUPLICATES`.**
+- [x] **ADR-3 Two cases on one kit, differing only by `SHARED_CTX_WARN` and `DUPLICATES`.**
   - Choice: `pass1-suggest-pipeline` (0/0) and `pass1-warn-and-duplicates-relayed` (1/1), each with its own `scaffold.sh` of 4 lines.
   - Rationale:
     - This answers the PRD open question with the Pass 2 convention (one kit, variables per case).
     - The 0/0 case carries the "line absent" grader, and the 1/1 case carries the "line present" grader. Each condition is graded exactly once (MECE).
   - Trade-offs: the relay case also runs the full pipeline (about $0.75), but it grades only the relays, the report line and the leak guard.
-  - User confirmed: _Pending_
+  - User confirmed: **Yes (2026-10-30)**
 
 - [x] **ADR-4 The report-only grader reads the hand-back frame, shared and with a canary.**
   - Choice:
@@ -550,7 +550,7 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
   - Trade-offs: a harness format change breaks 5 cases at once. The canary makes that visible as a format change, not as a model regression.
   - User confirmed: **Yes (2026-10-30)**
 
-- [ ] **ADR-5 WARN-before-dispatch is an ordered trace regex.**
+- [x] **ADR-5 WARN-before-dispatch is an ordered trace regex.**
   - Choice: the line-scan regex under Complex Logic. The same technique is used for reduce-after-last-dispatch.
   - Rationale:
     - `tool_order` sees only tool calls.
@@ -558,15 +558,15 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
   - Trade-offs:
     - It depends on one-event-per-line JSONL and on the `"type":"assistant"` / `"type":"text"` field spelling.
     - The canary does not cover this dependency. Mitigation: a hand-edited green fixture from the offline validation is kept under the spec, so a format change can be re-checked without paying.
-  - User confirmed: _Pending_
+  - User confirmed: **Yes (2026-10-30)**
 
-- [ ] **ADR-6 The conductor file is staged from the assembled copy.**
+- [x] **ADR-6 The conductor file is staged from the assembled copy.**
   - Choice: `stage_pass1_instance` copies `<plugin>/agents/suggestion-conductor.md` (resolved as `$(dirname "$0")/../../agents/` from the case directory) to `.claude/agents/suggestion-conductor.md` in the workspace, because `inbox.md` tells the model to read that path.
   - Rationale: `--rev` and `--mutation` act on the assembled copy, so a mutation of the conductor reaches the impersonating session. This worked in the spike.
   - Trade-offs:
     - The workspace also registers a project-level `suggestion-conductor` agent.
     - Grader 01 catches a dispatch of either name.
-  - User confirmed: _Pending_
+  - User confirmed: **Yes (2026-10-30)**
 
 ## Quality Requirements
 

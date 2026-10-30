@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | v1.0, 31 criteria (F1–F7) |
 | solution.md | completed | v1.0, ADR-1–6 confirmed |
-| plan/ | completed | 4 phases, 17 tasks (Incremental) |
+| plan/ | completed | 4 phases, 18 tasks (Incremental) |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 

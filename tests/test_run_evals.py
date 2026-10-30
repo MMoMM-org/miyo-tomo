@@ -270,7 +270,8 @@ def test_unreadable_settings_model_is_refused(env):
     assert env.eval_calls() == []
 
 
-def test_snapshot_shape_and_agents_byte_identical_except_analyst_stand_in(env):
+# inbox-analyst.md is the exception: it is the eval stand-in.
+def test_snapshot_shape_and_agents_byte_identical(env):
     proc = env.run()
     assert proc.returncode == 0, proc.stderr
     snap = env.snap

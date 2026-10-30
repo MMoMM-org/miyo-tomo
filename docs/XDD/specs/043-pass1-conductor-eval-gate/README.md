@@ -14,7 +14,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.0, 31 criteria (F1–F7) |
-| solution.md | pending | |
+| solution.md | in_progress | draft v1.0; ADR-3, ADR-5, ADR-6 pending |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`

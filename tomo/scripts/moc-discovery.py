@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.28.0
+# version: 0.29.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -29,19 +29,22 @@ Usage:
     python3 moc-discovery.py [--tag X | --folder X | --class X | --title X | --around X]
                              [free-text]
                              [--config PATH] [--profile NAME] [--cache PATH]
-                             [--dry-run] [--candidate-cap N]
+                             [--dry-run] [--candidate-cap N] [--output PATH]
 
 Output:
-    Stdout — DiscoveryReport JSON (see SDD §Application Data Models, lines 534-553).
+    Stdout — DiscoveryReport JSON (see SDD §Application Data Models, lines 534-553),
+             or the file named by `--output PATH` (written atomically, not on exit 2).
     Stderr — progress logs, prefixed `[moc-discovery]`.
 
-Exit codes (SDD §Error Handling):
-    0 success
-    1 partial-failure
-    2 fatal (cache missing, profile unresolved)
+Exit codes:
+    0 report emitted — including runs that skipped duplicate or squelched
+      clusters and runs with `abort_reason` set
+    2 fatal (cache missing, profile unresolved, bad arguments); no report
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import sys
@@ -278,7 +281,8 @@ def _run_pipeline(
     is skipped — the candidates already carry their topics, populated by the
     moc-architect agent's topic-extract subagent between the two passes.
 
-    Exit codes: 0 = clean, 1 = partial (some dups/squelched), 2 = fatal.
+    The exit code is always 0: skipped duplicates and squelched clusters are
+    reported in the DiscoveryReport, not signalled through the exit code.
     """
     moc_config = _load_moc_config(config_path)
     if args.candidate_cap is not None:
@@ -387,8 +391,7 @@ def _run_pipeline(
     )
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
-    partial = (len(duplicates_skipped) > 0 or len(squelched) > 0) and len(kept_clusters) > 0
-    return report, (1 if partial else 0)
+    return report, 0
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -476,10 +479,35 @@ def _run_around(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Top-level orchestration. Returns exit code 0 / 1 / 2."""
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    """Top-level orchestration. Returns exit code 0 / 2.
 
+    With `--output PATH` the report goes to PATH instead of stdout, written
+    atomically once the run succeeded; on exit 2 any old PATH is removed.
+    """
+    args = build_parser().parse_args(argv)
+    if args.output is None:
+        return _dispatch(args)
+    if args.emit_phase1:
+        print(f"{LOG_PREFIX} FATAL: --output cannot be combined with --emit-phase1",
+              file=sys.stderr)
+        return 2
+
+    out = Path(args.output)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = _dispatch(args)
+    if code == 2:
+        out.unlink(missing_ok=True)
+        return code
+    tmp = out.with_name(out.name + ".tmp")
+    tmp.write_text(buffer.getvalue(), encoding="utf-8")
+    os.replace(tmp, out)
+    _log(f"report written to {out}")
+    return code
+
+
+def _dispatch(args) -> int:
+    """Route parsed args to one run mode; the report goes to stdout."""
     config_path = Path(args.config)
 
     # spec 042: --around is single pass — no Pass 1/2 file, no uplink audit.

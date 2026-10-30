@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_042_prose.py — spec 042 T5.1: around: routing and the Discovery line.
 
 The runtime prose must route the exact lowercase `around:` prefix (F2-AC4) to
@@ -75,7 +75,8 @@ def test_around_has_its_own_single_pass_branch():
     branch = _section(agent, "#### Step 3 (around mode)", "#### Step 3 (all other modes)")
     calls = re.findall(r"python3 scripts/moc-discovery\.py[^\n`]*", branch)
     assert calls == [
-        'python3 scripts/moc-discovery.py --around "<trigger_arg>" --config config/vault-config.yaml)'
+        'python3 scripts/moc-discovery.py --around "<trigger_arg>" --config config/vault-config.yaml'
+        ' --output "$DISC_TMP"'
     ]
     assert "Skip Steps 3a/3b/3c and go to Step 4" in branch
     assert "surface stderr and stop" in branch
@@ -91,9 +92,17 @@ def test_step3a_abort_reports_zero_link_counts():
     assert "links: 0 members, 0 lookups" in step3a
 
 
-def test_step5_reuses_disc_json_from_the_around_branch():
-    step5 = _section(_text(AGENT), "### Step 5", "### Step 6")
-    assert "around" in step5
+def test_every_report_call_writes_disc_tmp_and_step5_writes_nothing():
+    agent = _text(AGENT)
+    report_calls = [
+        c for c in re.findall(r"python3 scripts/moc-discovery\.py[^\n`]*", agent)
+        if "--emit-phase1" not in c
+    ]
+    assert len(report_calls) == 3
+    assert all(c.endswith('--output "$DISC_TMP"') for c in report_calls)
+    assert "DISC_JSON" not in agent
+    step5 = _section(agent, "### Step 5", "### Step 6")
+    assert "Do NOT write or copy it again" in step5
 
 
 def test_reducer_call_passes_the_config():
@@ -168,15 +177,17 @@ def test_around_branch_stops_only_on_exit_2():
     branch = _section(_text(AGENT), "#### Step 3 (around mode)", "#### Step 3 (all other modes)")
     assert OLD_EXIT_RULE not in branch
     assert "non-zero" not in branch.lower()
-    assert "Exit 2" in branch and "exit 0 or 1" in branch
+    assert "Exit 2" in branch and "Exit 0" in branch
+    assert "exit 0 or 1" not in branch
 
 
-def test_step3c_stops_only_on_exit_2_and_parses_stdout_on_exit_1():
+def test_step3c_stops_only_on_exit_2_and_runs_once():
     step3c = _section(_text(AGENT), "#### Step 3c", "### Step 4")
     assert OLD_EXIT_RULE not in step3c
     assert "non-zero" not in step3c.lower()
     assert "Exit 2" in step3c and "surface stderr and stop" in step3c
-    assert "exit 0 or 1" in step3c
+    assert "exit 0 or 1" not in step3c
+    assert "NEVER re-run Pass 2" in step3c
 
 
 def test_agent_has_no_blanket_nonzero_rule_for_discovery():

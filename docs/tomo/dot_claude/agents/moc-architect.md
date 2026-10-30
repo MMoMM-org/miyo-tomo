@@ -121,6 +121,9 @@ different config would render clusters that were never looked up.
 
 ## Pass 2 Exit 1 Is a Partial Result, Not a Failure (spec 042)
 
+> Superseded by "The Report Goes Through `--output`, Exit 1 Is Gone" below.
+> Kept for the history of the first attempt.
+
 WHY: `moc-discovery.py` exits 0 (clean), 1 (partial) or 2 (fatal). Exit 1 means
 the scan finished and printed the full DiscoveryReport but dropped some clusters
 (D3 duplicates, squelched clusters). A live run on 2026-10-29 stopped on exit 1
@@ -197,3 +200,26 @@ model may act on. The history stays in the "Transport via kado-write-file.py"
 section above; the `Why:` keeps the one-line failure mode (an inlined 100 KB+
 proposal-doc exceeds the output-token budget and fails). `update-tomo.sh` skips
 unchanged versions.
+
+## The Report Goes Through `--output`, Exit 1 Is Gone (Version 0.9.0)
+
+WHY: the 0.8.1 rule ("stop only on exit 2, parse stdout on exit 0 or 1")
+stopped the agent from halting on exit 1, but Claude Code still shows every
+non-zero exit as an error. In 2 of the 4 test-instance Pass 2 runs that
+followed the first incident (2026-10-29 19:44 and 2026-10-30 11:29), the model
+ran the command without the `DISC_JSON=$(…)` capture. It saw a truncated
+35 KB JSON next to `Exit code 1` and ran Pass 2 again. The second run repeated every
+`kado-graph` lookup and decremented the squelch registry a second time, so a
+rejected proposal came back one run early. Agent wording could not fix this,
+because the trigger was the script's signal, so the script changed:
+
+- `moc-discovery.py` exits 0 whenever it emits a report. Skipped duplicates and
+  squelched clusters are listed in the report, and no consumer branched on
+  exit 1. Exit 2 is the only failure.
+- `--output PATH` writes the report to the file atomically. Step 3 (check,
+  around) and Step 3c pass `--output "$DISC_TMP"`. The old Step 5 (capture into
+  `DISC_JSON`, then `printf` to the temp file) is gone, so no report crosses
+  stdout. Step 4 reads the file with the `Read` tool.
+- `DISC_TMP` is set next to `RUN_ID`, before the discovery call that writes it.
+- Step numbers stay the same: Step 5 now only names the file and reports
+  progress, which keeps every later cross-reference ("Step 6", "Step 9") valid.

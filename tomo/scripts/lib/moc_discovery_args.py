@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """moc_discovery_args.py — CLI surface of moc-discovery.py: parser, mode routing, profile.
 
 The argument set, defaults and help text are the script's public contract with
@@ -106,6 +106,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CACHE_PATH,
         help=f"Path to the MOC-structure cache (default: {DEFAULT_CACHE_PATH}). "
              "Loaded via moc_cache_loader (rebuild-if-stale + map_notes shim).",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write the DiscoveryReport JSON to PATH (atomically) instead of "
+            "stdout. Nothing is written on exit 2. Not combinable with "
+            "--emit-phase1."
+        ),
     )
     parser.add_argument(
         "--dry-run",

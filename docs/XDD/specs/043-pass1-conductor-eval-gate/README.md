@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-10-30 |
-| **Current Phase** | Initialization |
+| **Current Phase** | PRD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-10-30 |
 
@@ -13,7 +13,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | pending | |
+| requirements.md | in_progress | draft v1.0, awaiting owner review |
 | solution.md | pending | |
 | plan/ | pending | |
 

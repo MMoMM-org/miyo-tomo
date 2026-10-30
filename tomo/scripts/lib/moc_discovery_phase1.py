@@ -1,15 +1,16 @@
-# version: 0.1.0
+# version: 0.2.0
 """moc_discovery_phase1.py — Phase 1 of moc-discovery: candidate selection.
 
 One handler per run mode (tag / folder / class / title / free-text / scan)
-produces raw candidates; the atomic-note pre-filter and the zero / cap checks
-then decide whether the pipeline continues. Also holds the cache-empty
+produces raw candidates; the atomic-note pre-filter, the folder-home filter and
+the zero / cap checks then decide whether the pipeline continues. Also holds the cache-empty
 predicate that guards Phase 1. `moc-discovery.py` re-exports every name.
 
 Rationale: docs/tomo/scripts/lib/moc_discovery_phase1.md (issue #216).
 """
 from __future__ import annotations
 
+from lib.folder_homes import atomic_roots, drop_home_members, folder_homes
 from lib.moc_discovery_common import Candidate, _log, _stem_from_path
 from lib.moc_tags import EXCLUDE_NOTE_TAG
 
@@ -202,8 +203,13 @@ def phase1_select_candidates(
     cache: dict,
     kado_client,
     config,
+    vault_cfg: dict | None = None,
 ) -> tuple[list[Candidate], str | None]:
-    """Run mode handler → pre-filter → cap/zero checks.
+    """Run mode handler → pre-filter → folder-home filter → cap/zero checks.
+
+    The folder-home filter drops candidates inside the folder of a MOC named
+    like that folder (lib.folder_homes); ``vault_cfg`` supplies the atomic-note
+    root, the profile's base path is the fallback.
 
     Returns
     -------
@@ -227,6 +233,12 @@ def phase1_select_candidates(
     _log(f"phase1: {len(raw)} raw candidate(s) before pre-filter")
     filtered = restrict_to_atomic_note_paths(raw, profile)
     _log(f"phase1: {len(filtered)} candidate(s) after atomic-note pre-filter")
+
+    homes = folder_homes((cache or {}).get("map_notes") or [], atomic_roots(vault_cfg, profile))
+    filtered, dropped = drop_home_members(filtered, homes)
+    if dropped:
+        per_home = ", ".join(f"{label}: {n}" for label, n in dropped.most_common())
+        _log(f"phase1: dropped {sum(dropped.values())} candidate(s) a folder-home MOC holds ({per_home})")
 
     if len(filtered) == 0:
         return ([], "zero-candidates")

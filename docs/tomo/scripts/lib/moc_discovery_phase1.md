@@ -1,7 +1,7 @@
 # WHY: lib/moc_discovery_phase1.py
 
 > Rationale for decisions in `tomo/scripts/lib/moc_discovery_phase1.py`.
-> The module holds Phase 1 candidate selection: the per-mode handlers, the atomic-note pre-filter, the zero / cap checks and the `validate_cache_loaded` predicate.
+> The module holds Phase 1 candidate selection: the per-mode handlers, the atomic-note pre-filter, the folder-home filter, the zero / cap checks and the `validate_cache_loaded` predicate.
 
 ## Split Out of moc-discovery.py (#216)
 
@@ -17,3 +17,12 @@ decision rationale for the behaviour itself stays in
 WHY: tests replace the Kado client by patching `_build_kado_client` on the loaded
 script module. Phase 1 receives the client as an argument, so that patch reaches
 it without this module knowing the name.
+
+## Folder-Home Filter Before the Cap
+
+WHY: notes a folder-home MOC already lists need no new MOC. They are dropped
+after the atomic-note pre-filter and before the zero / cap checks, so they never
+count toward `candidate_cap` and never reach topic extraction. `vault_cfg` is
+an optional argument because the profile alone cannot name the user's
+atomic-note root. Both callers (`_run_pipeline` and `--emit-phase1`) pass it.
+Rationale for the rule itself: `docs/tomo/scripts/lib/folder_homes.md`.

@@ -1,4 +1,4 @@
-# version: 0.6.0
+# version: 0.7.0
 """link_members.py — MOC link members found through the link graph (spec 042).
 
 `/moc-propose` asks `kado-graph` for the neighbours of cluster members; this
@@ -9,8 +9,8 @@ cluster (`augment_clusters`). Each cluster gets a fair share of the budget
 (`remaining // clusters still to do`); a cluster larger than its share is
 `sampled`: its first `share` uncached members, in casefolded path order, are
 looked up.
-Periodic notes (hubs that link everything) and MOCs are neither members nor
-bridges.
+Periodic notes (hubs that link everything), MOCs and notes a folder-home MOC
+holds (lib/folder_homes.py) are neither members nor bridges.
 
 Eligibility reads only the discovery cache, the profile and vault-config — no
 Kado call. Uncached nodes are ineligible (`uncached`) and only counted. Reasons
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from lib.folder_homes import atomic_roots, folder_homes, home_of
 from lib.kado_client import KadoBudgetExhausted, KadoError
 from lib.moc_tags import EXCLUDE_NOTE_TAG
 from lib.profile_conventions import moc_suffix
@@ -32,6 +33,7 @@ INBOX = "inbox"
 PERIODIC = "periodic"
 MOC = "moc"
 OUT_OF_SCOPE = "out-of-scope"
+FOLDER_HOME = "folder-home"
 EXCLUDED_TAG = "excluded-tag"
 UNCACHED = "uncached"
 
@@ -117,9 +119,9 @@ class NodeEligibility:
         concepts = _dict(cfg.get("concepts"))
 
         self._entries = _cache_entries(cache)
-        self._map_note_paths = {
-            m.get("path") for m in cache.get("map_notes") or [] if isinstance(m, dict)
-        }
+        map_notes = cache.get("map_notes") or []
+        self._map_note_paths = {m.get("path") for m in map_notes if isinstance(m, dict)}
+        self._homes = folder_homes(map_notes, atomic_roots(cfg, profile))
 
         # User config wins over the profile (layer precedence).
         atomic = concepts.get("atomic_note") or defaults.get("atomic_note")
@@ -162,6 +164,8 @@ class NodeEligibility:
             return False, MOC
         if self._atomic and not any(path.startswith(p) for p in self._atomic):
             return False, OUT_OF_SCOPE
+        if home_of(path, self._homes) is not None:
+            return False, FOLDER_HOME
         entry = self._entries.get(path)
         if entry is not None and _has_exclude_note_tag(entry.get("tags")):
             return False, EXCLUDED_TAG

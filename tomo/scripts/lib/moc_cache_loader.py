@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """moc_cache_loader.py — TTL-gated loader for the MOC-structure cache.
 
 Sits between moc-discovery and config/moc-structure-cache.yaml (the T1.4
@@ -39,6 +39,8 @@ SDD Application Data Models (loader shim); ADR-1,3,8.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -220,9 +222,11 @@ def load_moc_cache(
             return None, ABORT_CACHE_EMPTY
         return cache, None
 
-    # Stale / missing / corrupt → rebuild inline EXACTLY ONCE.
+    # Stale / missing / corrupt → rebuild inline EXACTLY ONCE. The builder prints
+    # its JSON feed to stdout; the caller's stdout carries its own report.
     try:
-        rebuilder(cache_path, config_path)
+        with contextlib.redirect_stdout(io.StringIO()):
+            rebuilder(cache_path, config_path)
     except Exception as exc:  # noqa: BLE001 — surface as actionable abort, not a crash
         print(
             f"[moc-cache-loader] rebuild raised: {exc}",

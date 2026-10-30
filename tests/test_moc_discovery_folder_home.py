@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_moc_discovery_folder_home.py — notes a folder-home MOC holds never join a proposal.
 
 A folder-home MOC is an existing MOC whose stem equals the name of the folder it
@@ -160,9 +160,10 @@ def test_note_a_folder_home_holds_is_no_link_member():
 # ── End-to-end: main() scan ──────────────────────────────────────────────────
 
 
-def _write_inputs(tmp_path: Path, home_path: str, home_stem: str) -> tuple[Path, Path, Path]:
+def _write_inputs(tmp_path: Path, home_path: str, home_stem: str,
+                  atomic_path: str = f"{NOTES}/") -> tuple[Path, Path, Path]:
     cfg = {"profile": "miyo",
-           "concepts": {"atomic_note": {"path": f"{NOTES}/"}},
+           "concepts": {"atomic_note": {"path": atomic_path}},
            "tomo": {"moc_proposal": {"min_notes": 2, "confidence_threshold": 0.10}}}
     config_path = tmp_path / "vault-config.yaml"
     config_path.write_text(yaml.dump(cfg), encoding="utf-8")
@@ -207,8 +208,10 @@ class _FakeKado:
         return []
 
 
-def _main(tmp_path: Path, monkeypatch, home_path: str, home_stem: str, *extra: str) -> str:
-    config_path, cache_path, squelch_path = _write_inputs(tmp_path, home_path, home_stem)
+def _main(tmp_path: Path, monkeypatch, home_path: str, home_stem: str, *extra: str,
+          atomic_path: str = f"{NOTES}/") -> str:
+    config_path, cache_path, squelch_path = _write_inputs(tmp_path, home_path, home_stem,
+                                                          atomic_path)
     monkeypatch.setattr(moc_discovery, "_build_kado_client", lambda: _FakeKado())
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
@@ -245,3 +248,21 @@ def test_emit_phase1_leaves_folder_home_notes_out(tmp_path: Path, monkeypatch):
 
     paths = sorted(c["path"] for c in json.loads(emit.read_text())["candidates"])
     assert paths == [f"{NOTES}/Habit 0.md", f"{NOTES}/Habit 1.md"]
+
+
+def test_scan_takes_the_atomic_root_from_vault_config_over_the_profile(tmp_path: Path,
+                                                                        monkeypatch):
+    """A user root naming the quotes folder makes 2821 Quotes no folder-home."""
+    report = json.loads(_main(tmp_path, monkeypatch, f"{QUOTES_DIR}/2821 Quotes.md",
+                              "2821 Quotes", atomic_path=f"{QUOTES_DIR}/"))
+
+    assert _cluster_members(report) == [
+        ["Habit 0", "Habit 1", "Saying 0 (Quote)", "Saying 1 (Quote)", "Saying 2 (Quote)"]]
+
+
+def test_emit_phase1_takes_the_atomic_root_from_vault_config(tmp_path: Path, monkeypatch):
+    emit = tmp_path / "phase1.json"
+    _main(tmp_path, monkeypatch, f"{QUOTES_DIR}/2821 Quotes.md", "2821 Quotes",
+          "--emit-phase1", str(emit), atomic_path=f"{QUOTES_DIR}/")
+
+    assert len(json.loads(emit.read_text())["candidates"]) == 5

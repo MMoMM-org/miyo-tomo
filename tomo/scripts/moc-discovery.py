@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.27.1
+# version: 0.28.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -143,7 +143,6 @@ from lib.moc_discovery_phase1 import (  # noqa: E402, F401
     restrict_to_atomic_note_paths,
     validate_cache_loaded,
 )
-from lib.moc_scan import read_scope_paths  # noqa: E402
 from lib.moc_discovery_phase1_io import (  # noqa: E402, F401
     _BODY_EXCERPT_CHARS,
     _load_phase1_input,
@@ -297,7 +296,8 @@ def _run_pipeline(
     else:
         # Phase 1 — Candidate selection
         candidates, abort1 = phase1_select_candidates(
-            mode, trigger_arg, profile_dict, cache, kado_client, moc_config
+            mode, trigger_arg, profile_dict, cache, kado_client, moc_config,
+            vault_cfg=vault_cfg,
         )
         if abort1 is not None:
             _log(f"phase1: abort → {abort1!r}")
@@ -346,9 +346,7 @@ def _run_pipeline(
 
     # Phase 6 — Duplicate detection + squelch
     kept_clusters, duplicates_skipped, squelched = phase6_dedupe(
-        enriched_clusters, cache, squelch_registry, moc_config,
-        member_paths={c.stem: c.path for c in candidates_with_topics},
-        container_roots=read_scope_paths(vault_cfg),
+        enriched_clusters, cache, squelch_registry, moc_config
     )
     _log(f"phase6: kept={len(kept_clusters)} dup={len(duplicates_skipped)} squelched={len(squelched)}")
 
@@ -592,7 +590,8 @@ def main(argv: list[str] | None = None) -> int:
         profile_dict = _load_yaml(profile_path)
         kado_client = _build_kado_client()
         candidates, abort1 = phase1_select_candidates(
-            mode, trigger_arg, profile_dict, cache, kado_client, moc_config
+            mode, trigger_arg, profile_dict, cache, kado_client, moc_config,
+            vault_cfg=_load_yaml(config_path),
         )
         if abort1 is not None:
             _log(f"phase1: abort → {abort1!r}")

@@ -1,9 +1,8 @@
-# version: 0.2.0
+# version: 0.3.0
 """moc_discovery_dedupe.py — Phase 6 and D3 of moc-discovery: duplicate and overlap filtering.
 
-Phase 6 drops proposed clusters that duplicate an existing MOC (exact title,
-weighted topic overlap, or members inside a folder-home MOC's folder) or are
-squelched; D3 drops proposed clusters whose
+Phase 6 drops proposed clusters that duplicate an existing MOC (exact title or
+weighted topic overlap) or are squelched; D3 drops proposed clusters whose
 members sit inside a larger proposed cluster. `moc-discovery.py` re-exports
 every name.
 
@@ -133,76 +132,22 @@ def _find_jaccard_match(
     return (None, 0.0)
 
 
-# Share of a cluster's located members that must sit inside a folder-home MOC's
-# folder for the cluster to count as that MOC's duplicate.
-FOLDER_HOME_THRESHOLD = 0.80
-
-
-def _folder_homes(
-    map_notes: list[dict], container_roots: list[str]
-) -> list[tuple[str, str]]:
-    """``(folder, label)`` for every MOC whose stem equals its folder's name.
-
-    A folder that is a configured container root (``container_roots``) or an
-    ancestor of one holds every atomic note, so its home note is no folder-home.
-    """
-    roots = [r.strip("/").casefold() for r in container_roots or [] if r.strip("/")]
-    homes: list[tuple[str, str]] = []
-    for entry in map_notes or []:
-        if not isinstance(entry, dict):
-            continue
-        path = str(entry.get("path") or "")
-        folder, _, _ = path.rpartition("/")
-        if not folder:
-            continue
-        stem = _stem_from_path(path)
-        if stem.casefold() != folder.rpartition("/")[2].casefold():
-            continue
-        key = folder.casefold()
-        if any(r == key or r.startswith(key + "/") for r in roots):
-            continue
-        homes.append((folder, str(entry.get("title") or stem)))
-    return homes
-
-
-def _find_folder_home_match(
-    stems: list[str], member_paths: dict[str, str], homes: list[tuple[str, str]]
-) -> str | None:
-    """Label of the folder-home MOC whose folder holds ≥ 80 % of the located members."""
-    located = [member_paths[s] for s in stems if member_paths.get(s)]
-    if not located:
-        return None
-    for folder, label in homes:
-        prefix = folder.casefold() + "/"
-        inside = sum(1 for p in located if p.casefold().startswith(prefix))
-        if inside / len(located) >= FOLDER_HOME_THRESHOLD:
-            return label
-    return None
-
-
 def phase6_dedupe(
     clusters: list[dict],
     cache: dict,
     squelch_registry: dict,
     config,
-    member_paths: dict[str, str] | None = None,
-    container_roots: list[str] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Filter near-duplicate clusters and consult the squelch registry.
 
-    Four skip checks run in order, each short-circuiting before the next:
+    Three skip checks run in order, each short-circuiting before the next:
 
       1. **Exact-title match** — cluster's proposed title (case-insensitive)
          equals any `cache.map_notes[].title`. Reported as
          ``reason="exact-title"``.
       2. **Jaccard ≥ 0.80** — cluster's topic-set against each existing MOC's
          topic-set. Reported as ``reason="80-percent-overlap"``.
-      3. **Folder-home** — ≥ 80 % of the cluster's members (located through
-         ``member_paths``) sit inside the folder of an existing MOC whose
-         stem equals that folder's name; a ``container_roots`` folder or its
-         ancestor never counts. Reported as
-         ``reason="folder-home"``. Skipped when ``member_paths`` is None.
-      4. **Active squelch** — topic signature (sha1 of normalised topic +
+      3. **Active squelch** — topic signature (sha1 of normalised topic +
          sorted candidate stems) is present in `squelch_registry` with
          ``runs_remaining > 0``. Reported in the ``squelched`` list.
 
@@ -220,9 +165,6 @@ def phase6_dedupe(
         config: Reserved for future tuning (e.g. configurable threshold).
             Not read in this phase — accepting it keeps the signature stable
             for downstream tasks.
-        member_paths: candidate stem → vault path, for the folder-home check.
-        container_roots: configured concept folders (atomic_note, map_note)
-            that are never folder-homes, nor are their ancestors.
 
     Returns:
         ``(kept_clusters, duplicates_skipped, squelched)`` — matching the
@@ -240,7 +182,6 @@ def phase6_dedupe(
     del config  # reserved — Phase 6 reads no config fields today.
 
     map_notes: list[dict] = list(cache.get("map_notes") or [])
-    homes = _folder_homes(map_notes, container_roots or []) if member_paths else []
 
     kept: list[dict] = []
     duplicates_skipped: list[dict] = []
@@ -284,23 +225,7 @@ def phase6_dedupe(
             )
             continue
 
-        # ── 3. Folder-home MOC holds the members ───────────────────────────
-        home = _find_folder_home_match(
-            _candidate_stems(cluster), member_paths or {}, homes
-        )
-        if home is not None:
-            duplicates_skipped.append({
-                "cluster_id": cluster_id,
-                "reason": "folder-home",
-                "existing_moc": home,
-            })
-            _log(
-                f"phase6: cluster {cluster_id!r} members sit in the folder of "
-                f"{home!r} — skipping (folder-home)"
-            )
-            continue
-
-        # ── 4. Squelch lookup (read-only) ──────────────────────────────────
+        # ── 3. Squelch lookup (read-only) ──────────────────────────────────
         signature = _compute_topic_signature(cluster)
         if _squelch_is_active(squelch_registry or {}, signature):
             entry = (squelch_registry or {}).get(signature)

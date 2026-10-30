@@ -10,12 +10,16 @@
 
 WHY: A linked note may become a link member only when ALL of these hold:
 `.md` path; under the atomic-note paths; not in the inbox; not a periodic note;
-not a MOC; not tagged `MiYo/Tomo/exclude/note`; present in the discovery cache.
+not a MOC; not held by a folder-home MOC; not tagged `MiYo/Tomo/exclude/note`;
+present in the discovery cache.
 `check(path)` returns `(eligible, reason)` where `reason` is a fixed token
-(`ok`, `not-md`, `inbox`, `periodic`, `moc`, `out-of-scope`, `excluded-tag`,
-`uncached`). Checks run in that order, so the most specific cause wins: a path
+(`ok`, `not-md`, `inbox`, `periodic`, `moc`, `out-of-scope`, `folder-home`,
+`excluded-tag`, `uncached`). Checks run in that order, so the most specific cause wins: a path
 that is both periodic and uncached reports `periodic`, because "this can never
 be a member" is more useful to the caller than "we have not seen it yet".
+
+WHY `folder-home`: a note in the folder of a MOC named like that folder is
+already listed by that MOC (docs/tomo/scripts/lib/folder_homes.md).
 
 ## Offline, From the Cache
 

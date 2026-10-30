@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-10-30 |
 | **Current Phase** | PLAN |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-10-30 |
 
 ## Documents
@@ -37,6 +37,7 @@
 | 2026-10-30 | 2 Pass 1 cases: `pass1-suggest-pipeline` and `pass1-warn-and-duplicates-relayed`; about +$1.50 per gate run, within the $5 cap. `pass1-fan-resolve-real-path` is out of scope | Owner decision after the spike. This replaces the earlier +$0.60–0.80 budget. |
 | 2026-10-30 | PRD v1.0 approved. `force-atomic-handling` is not gated in this phase because it has no case. If WARN-before-dispatch is RED, that is a finding, and the fix goes into the prose | Owner approved `requirements.md`. The phase moves to SDD. |
 | 2026-10-30 | SDD v1.0 approved, ADR-1 to ADR-6 confirmed: the runner swaps in the analyst stand-in; Pass 1 kit `_lib/pass1-stubs.sh`; 2 cases on that kit; a shared report-only grader with a hand-back canary; ordered trace regexes; the conductor staged from the assembled copy | Owner confirmation. The trace regexes were validated offline against the spike trace. That validation caught an unanchored pattern that matched the skill text, and the pattern is now anchored on the tool_use. |
+| 2026-10-30 | Decomposition tier: Incremental (classifier recommendation; owner chose Incremental) | 7 features, 31 PRD criteria, 8 components. The work is ordered by paid owner-run evals (findings first, RED proofs after green cases). |
 
 ## Context
 

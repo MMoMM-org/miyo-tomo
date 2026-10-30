@@ -34,6 +34,7 @@
 | 2026-10-30 | Measure before fixing the case count: the spike measures real Pass 1 case cost; then choose 2–4 cases and possibly raise the $5 cap | Owner decision; the estimate exceeds the original budget. |
 | 2026-10-30 | Spike before the PRD (~$0.20–0.30, run by the owner outside the sandbox): stub-agent resolution, skill loading under impersonation, `trace` grader on `tool_use_result`, cost per Pass 1 case | Owner decision. |
 | 2026-10-30 | Spike result ($0.296, `spike/write-up.md`): impersonation, stub-agent resolution (`tomo:inbox-analyst`, background dispatch) and skill loading all work. One Pass 1 run costs $0.21, about $0.75 per case at `runs: 3`. Script stubs must write plausible artifacts, or the conductor aborts before the end of the pipeline. Pattern A is red on 2.1.314, so the report-only grader uses pattern B plus the canary | Measured, not estimated. Owner picks the case count next. |
+| 2026-10-30 | 2 Pass 1 cases: `pass1-suggest-pipeline` and `pass1-warn-and-duplicates-relayed`; about +$1.50 per gate run, within the $5 cap. `pass1-fan-resolve-real-path` is out of scope | Owner decision after the spike. This replaces the earlier +$0.60–0.80 budget. |
 
 ## Context
 

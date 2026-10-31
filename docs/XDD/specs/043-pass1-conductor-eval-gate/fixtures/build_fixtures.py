@@ -196,6 +196,17 @@ def pass1_variants(p1: list[str], out: Path) -> None:
     write(out, "pass1-two-writes-same-stem.jsonl", second_write("2026-10-30_0000"))
     write(out, "pass1-two-writes-different-stem.jsonl", second_write("2026-10-30_1200"))
 
+    # Appended last: the reducer call moved before the first dispatch, behind a `cd` prefix
+    # and a double space, which the grader's anchor must still see.
+    prefixed = move_reducer_to(first_agent)
+    use_at = index_of(prefixed, '"command":"python3 scripts/suggestions-reducer.py')
+    old = "python3 scripts/suggestions-reducer.py"
+    assert prefixed[use_at].count(old) == 1
+    prefixed[use_at] = prefixed[use_at].replace(
+        old, "cd . && python3  scripts/suggestions-reducer.py"
+    )
+    write(out, "pass1-reducer-prefixed-before-dispatch.jsonl", prefixed)
+
 
 # ---- Pass 1 completions (T2.2/T2.3) --------------------------------------------------
 # The spike stopped after the .md write. These fixtures continue it the way the skill
@@ -215,6 +226,8 @@ DUPLICATE_LINE = (
 
 
 def _counter():
+    # Call order is load-bearing for byte stability: ids come from ONE counter over the
+    # whole variant sequence, so append new variants at the end of their builder function.
     n = [0x100]
 
     def next_ids() -> tuple[str, str, str]:
@@ -437,6 +450,23 @@ def pass1_completions(p1: list[str], out: Path) -> None:
         "mark-captured: marked=0 errors=0 declined=0 skipped_non_md=0 squelched=0",
     )
     write(out, "pass1-mark-twice.jsonl", twice)
+
+    # Appended last (ids come from one counter): both publishes behind a `cd` prefix.
+    v = list(done)
+    for i in indices_of(v, '"command":"python3 scripts/kado-write-file.py'):
+        v[i] = v[i].replace(
+            '"command":"python3 scripts/', '"command":"cd . && python3 scripts/'
+        )
+    write(out, "pass1-complete-prefixed-writes.jsonl", v)
+
+    # An analyst prompt that merely names the conductor is not a conductor dispatch.
+    v = list(done)
+    event = json.loads(v[agents[0]])
+    event["message"]["content"][0]["input"]["prompt"] += (
+        " (The suggestion-conductor already ran setup.)"
+    )
+    v[agents[0]] = enc(event)
+    write(out, "pass1-analyst-mentions-conductor.jsonl", v)
 
 
 def pass2_variants(p2: list[str], out: Path) -> None:

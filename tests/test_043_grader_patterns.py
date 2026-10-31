@@ -93,6 +93,13 @@ FIXTURES = {
     "pass1-inline-python.jsonl": "pass1-complete + a python3 -c read of the routing plan",
     "pass1-report-quoted.jsonl": "pass1-complete with the report line quoted inside a "
     "sentence instead of starting a line",
+    "pass1-reducer-prefixed-before-dispatch.jsonl": "pass1-reducer-before-dispatch with the "
+    "reducer command written `cd . && python3  scripts/suggestions-reducer.py` (prefix, "
+    "double space)",
+    "pass1-complete-prefixed-writes.jsonl": "pass1-complete with both kado-write-file "
+    "commands prefixed `cd . && `",
+    "pass1-analyst-mentions-conductor.jsonl": "pass1-complete with the first analyst "
+    "prompt naming suggestion-conductor in prose",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -191,6 +198,12 @@ EXPECTATIONS = {
     ("pass1-reducer-between-dispatches.jsonl", "reduce-after-last-dispatch"): Expect(
         False, 1, "reducer before the LAST dispatch — red"
     ),
+    (
+        "pass1-reducer-prefixed-before-dispatch.jsonl",
+        "reduce-after-last-dispatch",
+    ): Expect(
+        False, 1, "`cd . && python3  scripts/…` prefix and double space — still red"
+    ),
     # Subfolder path and key (SDD table row 6).
     ("pass1-spike.jsonl", "subfolder-path-and-key"): Expect(
         True, 1, "spike Agent inputs: 1 match"
@@ -210,6 +223,9 @@ EXPECTATIONS = {
     ),
     ("pass1-two-writes-different-stem.jsonl", "two-script-writes-same-stem"): Expect(
         False, 0, "the backreference rejects a different stem"
+    ),
+    ("pass1-complete-prefixed-writes.jsonl", "two-script-writes-same-stem"): Expect(
+        True, 1, "both writes behind `cd . && ` — still the same stem"
     ),
     # Report-only (spike pattern B) and canaries.
     ("pass2-spike.jsonl", "spike-b-handback-frame"): Expect(
@@ -251,6 +267,9 @@ EXPECTATIONS = {
     ("pass1-spike.jsonl", "conductor-not-dispatched"): Expect(True, 0, "impersonated"),
     ("pass1-conductor-dispatched.jsonl", "conductor-not-dispatched"): Expect(
         False, 1, "conductor ran as a subagent"
+    ),
+    ("pass1-analyst-mentions-conductor.jsonl", "conductor-not-dispatched"): Expect(
+        True, 0, "an analyst prompt naming the conductor is not a dispatch of it"
     ),
     ("pass1-complete.jsonl", "analyst-dispatched-3x"): Expect(True, 3, "3 dispatches"),
     ("pass1-spike.jsonl", "analyst-dispatched-3x"): Expect(True, 3, "3 dispatches"),

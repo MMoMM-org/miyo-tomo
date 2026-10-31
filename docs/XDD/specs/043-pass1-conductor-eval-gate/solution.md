@@ -322,7 +322,7 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 
 | # | Grader | Type / target | Pattern essence | PRD | RED proof |
 |---|---|---|---|---|---|
-| 01 | conductor-not-dispatched | `tool_used` Agent, min 0, max 0 | input `suggestion-conductor` | F1-AC1 | `dispatch-conductor` |
+| 01 | conductor-not-dispatched | `tool_used` Agent, min 0, max 0 | input `"subagent_type":"(?:tomo:)?suggestion-conductor"` (the dispatch field, not any mention) | F1-AC1 | `dispatch-conductor` |
 | 02 | analyst-dispatched-3x | `tool_used` Agent, min 3, max 3 | `"subagent_type":"tomo:inbox-analyst"` | F1-AC2 | `analyst-name-not-type` |
 | 03 | no-general-purpose | `tool_used` Agent, min 0, max 0 | `^(?![\s\S]*"subagent_type":)\|"subagent_type":"general-purpose"` (also catches a dispatch without `subagent_type`) | F1-AC2 | `analyst-name-not-type` |
 | 04 | subfolder-path-and-key | `tool_used` Agent, min 1 | `path\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"[\s\S]*item_key\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"` | F1-AC3 | `path-from-stem` |
@@ -331,7 +331,7 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 | 07 | setup-before-dispatch | `tool_order` | shared-ctx-builder before any Agent dispatch | F1-AC4 | `dispatch-before-setup` |
 | 08 | reducer-before-render | `tool_order` | reducer before render | F1-AC5 | `render-before-reduce` |
 | 09 | reduce-after-last-dispatch | `regex` trace | last `tomo:inbox-analyst` tool_use occurs before the first `suggestions-reducer` call (anchored lookahead) | F1-AC5 | `reduce-before-batch-2` |
-| 10 | two-script-writes-same-stem | `regex` trace | Shipped, anchored on the Bash tool_use shape: `"name":"Bash","input":\{"command":"python3? scripts/kado-write-file\.py [^\n]*?--vault \\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*"name":"Bash","input":\{"command":"python3? scripts/kado-write-file\.py [^\n]*?--vault \\"100 Inbox/\1_suggestions\.json\\"` | F1-AC6 | `publish-md-with-write-tool` |
+| 10 | two-script-writes-same-stem | `"name":"Bash","input":\{[^\n]*?"command":"(?:[^"\\\n]|\\.)*?\bpython3?\s+scripts/kado-write-file\.py\s[^\n]*?--vault\s+\\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*"name":"Bash","input":\{[^\n]*?"command":"(?:[^"\\\n]|\\.)*?\bpython3?\s+scripts/kado-write-file\.py\s[^\n]*?--vault\s+\\"100 Inbox/\1_suggestions\.json\\"` | F1-AC6 | `publish-md-with-write-tool` |
 | 11 | no-inline-vault-write | `tool_used` Write, min 0, max 0 | Shipped: `"file_path":"[^"]*100 Inbox/` | F1-AC6 | `publish-md-with-write-tool` |
 | 12a | mark-captured-once | `tool_used` Bash, `python3?\s+scripts/mark-captured\.py`, min 1, max 1 | | F1-AC7 | `mark-before-write` |
 | 12b | mark-captured-after-json-write | `tool_order`: the `_suggestions.json` write before mark-captured | | F1-AC7 | `mark-before-write` |
@@ -456,11 +456,11 @@ On a compliant trace, an assistant text line such as `"text":"WARN: 2 active tra
 **Reduce-after-last-dispatch (pipeline grader 09).** The trace must not contain a reducer **tool_use** that is followed later by an analyst **tool_use**:
 
 ```
-pattern: '"name":"Bash","input":\{"command":"python3? scripts/suggestions-reducer\.py[\s\S]*"name":"Agent","input":\{[^\n]*?"subagent_type":"tomo:inbox-analyst"'
+pattern: '"name":"Bash","input":\{[^\n]*?"command":"(?:[^"\\\n]|\\.)*?\bpython3?\s+scripts/suggestions-reducer\.py[\s\S]*"name":"Agent","input":\{[^\n]*?"subagent_type":"tomo:inbox-analyst"'
 match: not_contains
 ```
 
-Both ends are anchored on the tool_use shape `"name":"<Tool>","input":{`. This is necessary, because the skill and conductor text also sits in the trace: the model's `Read` result and the `Skill` expansion (trace lines 8 and 12). An unanchored `suggestions-reducer\.py[\s\S]*…` matched the skill text, before any dispatch, and made the grader red on a compliant run. That was found in offline validation.
+Both ends are anchored on the tool_use shape `"name":"<Tool>","input":{`; the Bash end allows other input keys first and a prefix inside the command (`cd x && python3  scripts/…`). This is necessary, because the skill and conductor text also sits in the trace: the model's `Read` result and the `Skill` expansion (trace lines 8 and 12). An unanchored `suggestions-reducer\.py[\s\S]*…` matched the skill text, before any dispatch, and made the grader red on a compliant run. That was found in offline validation.
 
 Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 

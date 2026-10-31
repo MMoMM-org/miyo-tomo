@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 RUNNER = REPO / "scripts" / "run-evals.sh"
@@ -737,8 +738,6 @@ CONDUCTOR = REPO / "tomo" / "dot_claude" / "agents" / "suggestion-conductor.md"
 
 @pytest.mark.parametrize("case", sorted(PASS1_CASES))
 def test_pass1_case_files_are_as_specified(case):
-    import yaml
-
     d = REPO / "evals" / case
     spec = yaml.safe_load((d / "case.yaml").read_text())
     assert spec == {

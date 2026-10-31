@@ -68,7 +68,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   1. Prime: the merge rule.
   2. Test (owner): `scripts/run-evals.sh` 3 times on the merge candidate, with a clean tree and no edits between runs.
   3. Implement: record the 3 verdict lines, the median cost and the maximum duration in `red-proofs.md` and in the PR body.
-  4. Validate: all 3 runs are GREEN; the median cost is ≤ $3.10 and each run is under $5; the maximum duration is ≤ 6 min (owner decision 2026-10-31).
+  4. Validate: all 3 runs are GREEN; the median cost is ≤ $3.10 and each run is under $5; the maximum duration is ≤ 7 min (owner decision 2026-10-31, raised from 6 min after the first merge evidence measured 373–416 s).
   5. Success: `[ref: PRD/F6-AC3, F6-AC4; PRD KPIs]`
 
 - [ ] **T4.4 Close-out trace** `[activity: validate]`

@@ -46,6 +46,9 @@
 | 2026-10-31 | Full-suite duration KPI raised from 4 to 6 minutes | Owner decision. Three full suites measured 298–344 s; the Pass 1 runs take 36–46 s each. PRD, SDD and T4.3 updated; the close-out names the old value. |
 | 2026-10-31 | RED proofs keep 3 runs each; the five rebased 041 conductor patches are re-proven in Phase 4 | Owner decision. Phase 4 is now about $18–19 (T4.1 about $12, three full suites about $6.75) instead of $11–13. |
 | 2026-10-31 | Port the `cat` WARN relay to `force-atomic-handling` now | Owner decision. The skill carries the same step 2 STRICT that stayed in thinking 4/4 in suggest-handling; it has no eval case, so the port is covered by prose tests only. |
+| 2026-10-31 | First merge evidence on `e9127610` is RED: suite 2 fails `7-report-only` in `state-flip-failure-reported` and `upload-failure-reported` (conductor prefaces the stop report, F5 relapse); all three suites take 373–416 s | Measured: GREEN $2.33 416 s, RED 5/7 $2.27 373 s, GREEN $2.20 378 s. A suite earlier that day was RED on `audit-mismatch-stops` the same way, so about every second full suite goes RED. |
+| 2026-10-31 | `synthesis-conductor` 0.25.0 runs on sonnet instead of haiku | Owner decision after the RED merge evidence, chosen over a further prose tightening of rule 5. The WHY is in `docs/tomo/dot_claude/agents/synthesis-conductor.md`. `status-sentence-first` and the five 041 patches are re-proven on sonnet; the merge evidence is repeated. |
+| 2026-10-31 | Full-suite duration KPI raised from 6 to 7 minutes | Owner decision. The merge evidence measured 373–416 s; no single case was slower than before (max 95 s), the total varies with API latency at `-j 2`. PRD, SDD and T4.3 updated. |
 
 ## Context
 

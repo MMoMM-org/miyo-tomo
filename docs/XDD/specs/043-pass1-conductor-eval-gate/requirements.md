@@ -223,7 +223,7 @@ Pass 1 of `/inbox` (the suggestion conductor and the skill it loads) is runtime 
 - **Business Impact:**
   - a full gate run stays at or below about $3.10 median and under the $5 cap;
   - the Pass 1 cases add at most about $1.60 median per gate run;
-  - a full gate run takes at most 6 minutes (changed from 4 minutes on 2026-10-31 by owner decision: measured 298–344 s).
+  - a full gate run takes at most 7 minutes (changed from 4 to 6 minutes on 2026-10-31 by owner decision, measured 298–344 s; raised to 7 minutes the same day by owner decision, measured 373–416 s in the merge evidence).
 
 ### Tracking Requirements
 

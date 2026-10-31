@@ -587,7 +587,7 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 
 - **Performance:**
   - one Pass 1 run ≤ 120 s (spike: 58 s with stopping early);
-  - the full suite ≤ 6 min at `-j 2` (was 4 min; owner decision 2026-10-31, measured 298–344 s);
+  - the full suite ≤ 7 min at `-j 2` (was 4 min, then 6 min; owner decisions 2026-10-31, measured 298–344 s and then 373–416 s);
   - a Pass 1 run costs ≤ $0.30 (spike: $0.21);
   - the full suite costs ≤ $3.10 median and < $5 maximum.
 - **Reliability:**

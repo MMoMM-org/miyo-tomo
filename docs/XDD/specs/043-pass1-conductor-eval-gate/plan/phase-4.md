@@ -71,7 +71,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   4. Validate: all 3 runs are GREEN; the median cost is ≤ $3.10 and each run is under $5; the maximum duration is ≤ 7 min (owner decision 2026-10-31, raised from 6 min after the first merge evidence measured 373–416 s).
   5. Success: `[ref: PRD/F6-AC3, F6-AC4; PRD KPIs]`
 
-- [ ] **T4.4 Close-out trace** `[activity: validate]`
+- [x] **T4.4 Close-out trace** `[activity: validate]`
 
   1. Prime: the 041 close-out format; memory: "prove a test is RED by reverting the fix", "never truncate a coverage grep".
   2. Test: map each of the 31 PRD criteria to one of the following:

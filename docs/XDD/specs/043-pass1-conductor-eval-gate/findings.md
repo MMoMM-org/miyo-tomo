@@ -52,3 +52,43 @@ All other graders were green, including:
 | O3 | HHMM source. Both runs took `0000` from the run timestamp (`2026-10-30T00:00:00Z`), not from the wall clock. | e-lJ52Dv:84, e-jFOZJj:100 | Known issue (SDD). Grader 10 checks only that the two writes share a stem. |
 | O4 | Harness facts confirmed on `claude` 2.1.316: `--case 'pass1-*'` works as a glob, `tomo:inbox-analyst` resolves to the stand-in (`analyst-stub.py` ran 3× per case), and the final text was graded by `last_message` (relay 01 green on the last text). | the verdict line; e-lJ52Dv:47,56,72 | The memory note on `last_message` is consistent with this run. Both readings agree here, so the run does not discriminate between them. |
 | O5 | The spike's `9-no-leak` red did not reproduce. The leak guard is green in both complete runs. | the verdict line | Confirms the drift review: the spike result was an artefact of its early stop. |
+
+## Smoke 2 — 2026-10-31
+
+Command: `scripts/run-evals.sh --case 'pass1-*' --runs 1 --keep-temp`, on
+`suggest-handling` 0.13.0 (the F1–F4 fixes).
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 1/2 cases · pass1-warn-and-duplicates-relayed: 02-warn-before-first-dispatch (run 0) · runs 2 · $0.38 · 38 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T10-19-30Z
+```
+
+Kept traces:
+
+- `pass1-suggest-pipeline`: `/private/tmp/e-zxesgn/out/trace.jsonl` (92 lines).
+- `pass1-warn-and-duplicates-relayed`: `/private/tmp/e-XygOSA/out/trace.jsonl` (107 lines).
+
+Trace line numbers count from 0, as in smoke 1.
+
+Both runs completed the whole pipeline, setup through the report, with 3
+analyst dispatches each and no failed `Agent` call (O1 did not recur).
+
+### Closed
+
+| # | Evidence |
+|---|---|
+| F1 | e-zxesgn:88, the reply begins `Pass 1 complete: 3 items analysed, suggestions written to [[2026-10-31_1120_suggestions]]. Review in Obsidian, check the **Approved** box, then re-run `/inbox`.` |
+| F2 | e-XygOSA:105, the same line exactly. |
+| F3 | e-XygOSA:105, `1 proposed MOC(s) already existed in the vault and are offered as unticked links instead.` (not singularised). |
+
+### Red graders
+
+| # | Case / grader | Cause | Evidence (trace line) | Fix |
+|---|---|---|---|---|
+| F4 (persists) | relay `02-warn-before-first-dispatch` | (a) | e-XygOSA:23 is the `WARN:` line in the shared-ctx-builder tool_result. After the two `read-config-field.py` calls, the only reaction before the first dispatch (e-XygOSA:53) is a non-empty **thinking** block at e-XygOSA:47 ("The shared-ctx builder flagged two active trackers, mood and sleep, missing keywords … I'll run /tomo-setup trackers …"), followed directly by the batch-count `Bash` call at e-XygOSA:48. There is no assistant text block. The final report repeats the `WARN:` line verbatim (e-XygOSA:105; relay 01 green). Same pattern as smoke 1 (thinking at e-jFOZJj:42). The 0.13.0 wording ("send them to the user now … as a text message of your own (not a thought)") was read at the right place and answered in thinking. | `suggest-handling` 0.13.1: a `STRICT` block at the top of step 3 whose output is a fixed `text` reply (`Setup warnings:` + the `WARN:` lines), required before the batch-count command; thinking named as not counting |
+
+### Observations (not red; recorded for follow-up)
+
+| # | Observation | Evidence | Disposition |
+|---|---|---|---|
+| O3 (changed) | HHMM source. Both runs now ran `date +%Y-%m-%d_%H%M` and used the wall clock (`2026-10-31_1120`), not the run timestamp. | e-zxesgn:79, e-XygOSA:96 | Grader 10 still checks only that the two writes share a stem. |
+| O6 | The thinking block that reacted to the `WARN:` line (e-XygOSA:47) has a signature whose base64 decodes to bytes containing the marker `narration`; the empty thinking blocks of the same run (e-XygOSA:53, :65) decode to `thinking` instead. | the `signature` fields at those lines | Observation only. The non-empty block may be summarised thinking rather than the raw thought, and the signature format is not a documented contract. Nothing is built on it. |

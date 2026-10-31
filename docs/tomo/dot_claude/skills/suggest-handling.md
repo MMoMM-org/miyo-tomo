@@ -326,32 +326,67 @@ The instruction does not forbid text after the template lines: a failed
 `mark-captured.py` must still be reported (step 6), and the smoke's extra notes
 below the template were harmless.
 
-## Why the `WARN:` relay is a visible message at the start of step 3
+## Why the `WARN:` relay is a fixed text reply before the batch-count command
 
 The step 2 `STRICT` said to repeat every `WARN:` line of `shared-ctx-builder.py`
-"to the user, verbatim, before dispatching anything". In the same smoke (F4)
-the model's only reaction before its first `Agent` call was a **thinking**
-block noting the warning; the verbatim line first reached the user in the
-final report, after every dispatch. It read "before dispatching anything" as
-"somewhere in the reply", and treated noticing the warning as relaying it.
+"to the user, verbatim, before dispatching anything". In the first smoke (spec
+043 findings F4) the model's only reaction before its first `Agent` call was a
+**thinking** block noting the warning; the verbatim line first reached the user
+in the final report, after every dispatch. It read "before dispatching
+anything" as "somewhere in the reply", and treated noticing the warning as
+relaying it.
 
-Two changes, both about where and how the model acts:
+The first fix (0.13.0) moved the instruction to the top of step 3 and named the
+vehicle: "send them to the user now, before any command or Agent call of this
+step: write them as a text message of your own (not a thought)". The second
+smoke showed the same pattern: the model reached the top of step 3, wrote one
+thinking block about the warning ("The shared-ctx builder flagged two active
+trackers … I'll run /tomo-setup trackers …"), and its very next content block
+was the batch-count `Bash` call. The placement worked — the reaction came
+exactly where the instruction sat — the vehicle did not. "Not a thought" is an
+abstract duty; the model satisfied it, in its own reading, by thinking about
+the message it would send.
 
-- **The instruction sits where the dispatch happens.** Step 3 now opens with
-  the relay, before the batch-count command and any `Agent` call. A rule two
-  commands earlier, under a different step, competes with the work in between;
-  a rule at the top of the step that dispatches does not.
-- **"A message of your own, not a thought."** The user never sees thinking.
-  Naming the visible text output as the vehicle closes the reading the model
-  actually took.
+0.13.1 changes the vehicle from a duty to an output:
+
+- **A `STRICT` block.** Observed twice (both smokes), so the emergency lever is
+  justified. Its `Why:` names the failure mode in one line: a warning noted
+  only in thinking reaches the user after every analyst has run.
+- **A literal shape in a `text` fence.** A fixed header line (`Setup
+  warnings:`) followed by the `WARN:` lines. The model has a concrete text to
+  produce, in the same format the step 7 report template already uses, rather
+  than a description of a message.
+- **Anchored to the next tool call.** "Your next output is this text reply,
+  before the batch-count command below" names the exact point where the model
+  acted in both smokes (it went from thinking straight to that command). The
+  rule is phrased against the command it must precede, not against the step.
+- **Thinking named as not counting.** The one reading the model took is ruled
+  out by name.
+- **The no-warning branch is explicit.** "If it printed none, output nothing
+  here" keeps a healthy run from emitting an empty header.
+
+Placement stays at the top of step 3, not as the last item of step 2 right
+after the `shared-ctx-builder.py` call. Both smokes show the model reacting to
+the warning at the top of step 3 (after the two `read-config-field.py` calls),
+so that is where it already pays attention; a second copy at the end of step 2
+would put the rule between the build and the two config reads, where the
+next action is another setup command and the model batches setup calls
+without text between them. One location also means the mutations that remove
+the early relay have a single block to remove.
 
 The step 2 `STRICT` keeps the rule itself (same opening phrase, which
-`tests/test_040_skill_prose.py` pins for both Pass 1 paths) and now names both
-moments: at the start of step 3, and again in the step 7 report. The repeat in
-the report stays because the warning must also be in the final reply (PRD
-F2-AC1), which is what the user reads when the run ends; the early message
-exists so a user watching the run sees it before analysts are spent on a
+`tests/test_040_skill_prose.py` pins for both Pass 1 paths) and names both
+moments: as the text reply that opens step 3, and again in the step 7 report.
+The repeat in the report stays because the warning must also be in the final
+reply (PRD F2-AC1), which is what the user reads when the run ends; the early
+reply exists so a user watching the run sees it before analysts are spent on a
 broken tracker configuration (F2-AC2).
 
 The step 3 and step 7 lines name the script (`shared-ctx-builder.py`), not
 "step 2", so they stay true if the build ever moves.
+
+If a third smoke still shows the warning only in thinking, the prose has
+reached its limit and the relay should move into the script: the batch-count
+command could print the stored `WARN:` lines as part of its output (or a small
+`relay-warnings` step could), so that relaying them is copying a tool result
+rather than remembering a duty.

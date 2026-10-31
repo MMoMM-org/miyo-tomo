@@ -92,3 +92,22 @@ analyst dispatches each and no failed `Agent` call (O1 did not recur).
 |---|---|---|---|
 | O3 (changed) | HHMM source. Both runs now ran `date +%Y-%m-%d_%H%M` and used the wall clock (`2026-10-31_1120`), not the run timestamp. | e-zxesgn:79, e-XygOSA:96 | Grader 10 still checks only that the two writes share a stem. |
 | O6 | The thinking block that reacted to the `WARN:` line (e-XygOSA:47) has a signature whose base64 decodes to bytes containing the marker `narration`; the empty thinking blocks of the same run (e-XygOSA:53, :65) decode to `thinking` instead. | the `signature` fields at those lines | Observation only. The non-empty block may be summarised thinking rather than the raw thought, and the signature format is not a documented contract. Nothing is built on it. |
+
+## Smoke 3 — 2026-10-31
+
+Command: `scripts/run-evals.sh --case pass1-warn-and-duplicates-relayed --runs 1 --keep-temp` (`suggest-handling` 0.13.1)
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-warn-and-duplicates-relayed: 02-warn-before-first-dispatch (run 0) · runs 1 · $0.20 · 41 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T10-50-48Z
+```
+
+Kept trace: `/private/tmp/e-QKbc19/out/trace.jsonl`. Line numbers count from 0.
+
+F4 persists for the third time, in the same shape:
+
+- e-QKbc19:23 is the `WARN:` tool_result.
+- e-QKbc19:48 is a non-empty thinking block: "Setup check found two active trackers—mood and sleep—missing keywords … I'll need to run /tomo-setup trackers …".
+- e-QKbc19:49 is the batch-count `Bash` call. No `Setup warnings:` text block was written.
+- e-QKbc19:53 is the first dispatch.
+
+The fixed-text `STRICT` of 0.13.1 was answered in thinking, like the duty wording of 0.13.0. Every other grader in the case stayed green.

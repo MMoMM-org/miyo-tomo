@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Paid green runs and findings"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -34,7 +34,7 @@ phase: 3
 
 This phase gets the new cases green on real model runs and turns every red result into a fix or a recorded decision.
 
-- [ ] **T3.1 Smoke run and triage** `[activity: validate]`
+- [x] **T3.1 Smoke run and triage** `[activity: validate]`
 
   1. Prime: the Phase 2 hand-off command, and how to read kept traces (`evals/README.md`, Reading a failure).
   2. Test (owner): `scripts/run-evals.sh --case 'pass1-*' --runs 1 --keep-temp`. Expected cost is about $0.50.
@@ -46,7 +46,7 @@ This phase gets the new cases green on real model runs and turns every red resul
   4. Validate: every red grader has a classification backed by a trace line. Unknowns are not allowed.
   5. Success: the finding list is complete `[ref: PRD/Risks]`
 
-- [ ] **T3.2 Fix findings** `[activity: runtime-prose]`
+- [x] **T3.2 Fix findings** `[activity: runtime-prose]`
 
   1. Prime: `findings.md`; CLAUDE.md runtime-file rules; `docs/tomo/dot_claude/skills/suggest-handling.md` and `docs/tomo/dot_claude/agents/suggestion-conductor.md`.
   2. Test: the offline harness (T2.1) still passes. For (b) and (c), add a fixture that reproduces the defect before fixing it.
@@ -59,7 +59,7 @@ This phase gets the new cases green on real model runs and turns every red resul
      - A prose edit touches a gated file, so it is covered by the T3.3 full suite.
   5. Success: the smoke is green `[ref: PRD/F1, F2]`; every finding is closed or recorded with an owner decision.
 
-- [ ] **T3.3 Full-suite green** `[activity: validate]`
+- [x] **T3.3 Full-suite green** `[activity: validate]`
 
   1. Prime: the merge rule in `evals/README.md`.
   2. Test (owner): `scripts/run-evals.sh` (7 cases × 3 runs; expected about $2.50–3.10).
@@ -67,7 +67,7 @@ This phase gets the new cases green on real model runs and turns every red resul
   4. Validate: GREEN, with the cost and duration recorded in `findings.md`.
   5. Success: one full-suite GREEN on the current prose `[ref: PRD/F6-AC3 (first of three)]`
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   - Confirm that `findings.md` is complete and that every runtime-prose edit has its docs/tomo counterpart and a version bump.
   - Run pytest and shellcheck.

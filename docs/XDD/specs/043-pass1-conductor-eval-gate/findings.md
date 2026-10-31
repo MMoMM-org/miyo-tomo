@@ -199,3 +199,30 @@ agentId: …
 - rule 4 of the report STRICT says "Your reply is ONLY the report: NEVER write anything before or after it". That sentence sits inside a rule that opens with "In the Step 4 report", so the model can read it as Step-4-only.
 
 Fix: make the before/after ban its own rule that names the stop reports, and say in 3c that the stop is never announced or explained. `synthesis-conductor.md` is a gate file, so the fix needs a full-suite GREEN, which T3.3 already requires.
+
+## Full suite 3 — 2026-10-31 (T3.3 GREEN)
+
+The run used `synthesis-conductor` 0.24.2, `suggest-handling` 0.14.1 and `shared-ctx-builder` 1.16.0.
+
+```
+GREEN 7/7 cases · runs 21 · $2.25 · 344 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T12-10-46Z
+```
+
+## Summary
+
+| # | Disposition |
+|---|---|
+| F1–F3 | Closed by `suggest-handling` 0.13.0: an exact-output template for the step 7 lines. |
+| F4 | Closed by owner decision (2026-10-31). F2-AC2 is now met by the `cat tomo-tmp/setup-warnings.txt` tool relay (0.14.1, `shared-ctx-builder` `--warnings-out`). A text reply before dispatch stayed in thinking in 4/4 runs. |
+| F5 | Closed by `synthesis-conductor` 0.24.2. The reply-only ban is now its own rule that names the 3c stop report, and 3c anchors the reply to the audit's first line. Full suite 3 is green. |
+| K1 | The 4-minute KPI is missed: the full suites took 298–344 s. The cost KPI is met at $2.25–2.26 per suite. Both go into the close-out. |
+| O1–O6 | Observations only, kept above. |
+
+## Carry to Phase 4 (from the Phase 3 drift check)
+
+1. `scripts/run-evals.sh` help says "about $1 per full suite". Set it to the measured cost, $2.25–2.26.
+2. `evals/README.md` has stale prose: the cost line (5 cases, about $1), the case list, the conductor-only wording, the grader 02 description and the "no grader checks report-only" known gap.
+3. `force-atomic-handling/SKILL.md` keeps the old WARN STRICT. It has no `--warnings-out` and no `cat`, and it is ungated. Either port the relay to it or record the divergence in the backlog.
+4. K1: the full-suite duration KPI (≤ 4 min) is missed at 298–344 s. This needs an owner decision before T4.3 validates against it.
+5. F5 fix evidence: one GREEN suite after 2/9 reds before the fix. The three T4.3 suites must run with `--keep-temp`.
+6. The 041 proof patches `summarise-mismatch`, `files-used-after`, `explain-failure`, `report-run-id` and `paraphrase-relay` were rebased onto conductor 0.24.2, and their sets of removed clauses grew. Their recorded RED proofs were measured against the old patches. Re-prove them in Phase 4, and say so in the PR.

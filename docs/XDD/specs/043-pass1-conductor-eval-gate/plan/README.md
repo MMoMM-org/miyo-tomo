@@ -108,7 +108,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 - [x] [Phase 1: Stand-ins and runner swap](phase-1.md)
 - [x] [Phase 2: Cases, shared graders and offline validation](phase-2.md)
-- [ ] [Phase 3: Paid green runs and findings](phase-3.md)
+- [x] [Phase 3: Paid green runs and findings](phase-3.md)
 - [ ] [Phase 4: RED proofs, documentation and merge evidence](phase-4.md)
 
 Phases 1 and 2 cost nothing (pytest and offline regex checks). Phases 3 and 4 need paid runs, which the owner starts from a terminal. Expected spend: about $2–4 in Phase 3 and about $11–13 in Phase 4. The Phase 4 figure comes from about 16 mutations × 3 runs × $0.22 plus 3 full suites at about $3.

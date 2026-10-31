@@ -45,7 +45,7 @@ This phase delivers all gate cases and graders, each proven offline against real
   4. Validate: the harness passes on the patterns already validated in the SDD.
   5. Success: the offline validation table in the SDD is reproducible by one pytest command `[ref: SDD/ADR-5; Quality Requirements/Reliability]`
 
-- [ ] **T2.2 Case `pass1-suggest-pipeline`** `[activity: testing]` `[parallel: true]`
+- [x] **T2.2 Case `pass1-suggest-pipeline`** `[activity: testing]` `[parallel: true]`
 
   1. Prime: the pipeline grader table `[ref: SDD/Implementation Examples; PRD/F1]`
   2. Test: add expectations to T2.1.
@@ -59,7 +59,7 @@ This phase delivers all gate cases and graders, each proven offline against real
   4. Validate: the pattern tests pass, and `run-evals.sh` preflight accepts the case (a dry run with a fake `CLAUDE_BIN` under pytest).
   5. Success: every PRD F1 criterion has a grader `[ref: PRD/F1-AC1…AC10]`
 
-- [ ] **T2.3 Case `pass1-warn-and-duplicates-relayed`** `[activity: testing]` `[parallel: true]`
+- [x] **T2.3 Case `pass1-warn-and-duplicates-relayed`** `[activity: testing]` `[parallel: true]`
 
   1. Prime: the relay grader table and the WARN-before-dispatch walkthrough `[ref: SDD/Complex Logic; PRD/F2]`
   2. Test: expectations in T2.1.
@@ -69,7 +69,7 @@ This phase delivers all gate cases and graders, each proven offline against real
   4. Validate: the pattern tests and the preflight dry run pass.
   5. Success: every PRD F2 criterion has a grader `[ref: PRD/F2-AC1…AC4]`
 
-- [ ] **T2.4 Report-only grader and canary in the Pass 2 cases** `[activity: testing]` `[parallel: true]`
+- [x] **T2.4 Report-only grader and canary in the Pass 2 cases** `[activity: testing]` `[parallel: true]`
 
   1. Prime: spike pattern B and canary c (`spike/report-only-probe/graders/`), and the `audit-mismatch-stops` report shape `[ref: SDD/Implementation Examples/Report-only; ADR-4; PRD/F4]`
   2. Test:

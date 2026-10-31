@@ -119,7 +119,10 @@ SPEC_043_REPORT_ONLY = {
 }
 # Spec 043's Pass 1 cases; their shape is tested in test_run_evals.py.
 PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
-PIPELINE, WARN_RELAY = "pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"
+PIPELINE = "pass1-suggest-pipeline"
+SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
+SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
+PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
 
 # Every Pass 1 grader is a gate (none only confirms a precondition: the main session
 # runs Pass 1 itself, so there is no dispatch to confirm). The leak guard is the
@@ -631,6 +634,7 @@ def _proof_rows(title: str, recorded: bool) -> list[dict]:
             "cases": set(re.findall(r"`([a-z0-9-]+)`", cases)),
             "expected": set(GRADER_REF.findall(expected)),
             "side": set(GRADER_REF.findall(side)), "side_text": side,
+            "expected_text": expected,
         })
     return out
 
@@ -790,6 +794,7 @@ def test_pending_rows_do_not_pass_for_recorded_proofs():
     for p in _recorded_proofs():
         assert NOT_YET_MEASURED not in p["side_text"], p["arg"]
     section = _readme_section(PENDING_SECTION)
+    # the "Phase 4" pin goes away when Phase 4 removes this section
     assert "red-proofs.md" in section and "Phase 4" in section
 
 
@@ -809,9 +814,8 @@ def test_pass1_leak_guards_inherit_the_recorded_leak_guard_proof():
     (row,) = [p for p in _recorded_proofs() if p["arg"] == "report-run-id"]
     proven = {(c, g) for c, g in row["expected"] if g == "9-no-leak"}
     assert proven
-    for case, g in INHERITED_LEAK_GUARD:
-        assert (EVALS / case / "graders" / f"{g}.md").read_bytes() == NO_LEAK.read_bytes(), case
-    for case, g in proven:
+    assert proven == {(c, "9-no-leak") for c in CASE_SETTINGS}
+    for case, g in INHERITED_LEAK_GUARD | proven:
         assert (EVALS / case / "graders" / f"{g}.md").read_bytes() == NO_LEAK.read_bytes(), case
     named = set().union(*(p["expected"] | p["side"] for p in _proofs()))
     assert not INHERITED_LEAK_GUARD & named
@@ -853,7 +857,7 @@ def test_status_sentence_first_expects_every_report_only_grader_and_spares_the_c
 def test_spec_043_rows_name_their_offline_model():
     """Each pending row names the T2.1 fixture that models the trace it expects."""
     for p in _pending_proofs():
-        (cell,) = [r[2] for r in _table_rows(_readme_section(PENDING_SECTION)) if p["arg"] in r[0]]
+        cell = p["expected_text"]
         fixtures = re.findall(r"`([a-z0-9-]+\.jsonl)`", cell)
         assert fixtures, p["arg"]
         for f in fixtures:
@@ -882,11 +886,6 @@ def _patched_text(tmp_path: Path, name: str, rel: str) -> tuple[str, str]:
     result = _patch(plugin, name, dry_run=False)
     assert result.returncode == 0, result.stdout + result.stderr
     return before, (plugin / rel).read_text(encoding="utf-8")
-
-
-SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
-SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
-PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
 
 
 def test_inline_python_read_injects_one_command_grader_13_sees(tmp_path):

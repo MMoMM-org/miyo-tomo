@@ -275,6 +275,7 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "before dispatching anything."
 - adds: "### 3c. Shared context"
 - adds: "so build it after the last batch, right before Reduce:"
+- adds: "the dispatch prompt only passes its path"
 
 ### render-before-reduce
 
@@ -283,6 +284,8 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "### 5. Render"
 - adds: "### 4. Render"
 - adds: "### 5. Reduce"
+- removes: "reducer's summary line (step 4)"
+- adds: "reducer's summary line (step 5)"
 
 ### reduce-before-batch-2
 

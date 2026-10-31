@@ -37,8 +37,8 @@
  
 +### 3c. Shared context
 +
-+The reducer is the first step that reads the shared context, so build it after
-+the last batch, right before Reduce:
++The reducer is the first step that reads the shared context; the dispatch prompt
++only passes its path, so build it after the last batch, right before Reduce:
 +
 +```bash
 +rm -f tomo-tmp/shared-ctx.json

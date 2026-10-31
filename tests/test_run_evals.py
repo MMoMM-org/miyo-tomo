@@ -792,13 +792,19 @@ def test_pass1_case_passes_preflight_and_its_scaffold_stages(env, case):
 
 # ── the spec 043 mutations through the runner (T2.5) ──────────
 
-SPEC_043_PATCHES = (
-    "dispatch-conductor", "analyst-name-not-type", "path-from-stem", "setup-in-conductor",
-    "dispatch-before-setup", "render-before-reduce", "reduce-before-batch-2",
-    "publish-md-with-write-tool", "mark-before-write", "inline-python-read",
-    "reword-report-line", "always-duplicate-line", "warn-is-diagnostic",
-    "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
-)
+def _spec_043_patches() -> tuple[str, ...]:
+    """The mutations the README's spec 043 section names, which must be exactly the
+    spec 043 patch files: a new patch cannot go uncovered here."""
+    readme = (REPO / "evals" / "_mutations" / "README.md").read_text(encoding="utf-8")
+    section = readme.split("## Proofs — spec 043", 1)[1].split("\n## ", 1)[0]
+    names = tuple(re.findall(r"^\| `--mutation ([^`]+)`", section, re.M))
+    recorded = readme.split("## Proofs\n", 1)[1].split("\n## ", 1)[0]
+    files = {p.stem for p in (REPO / "evals" / "_mutations").glob("*.patch")}
+    assert files - set(names) == set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M)), "patch files outside both tables"
+    return names
+
+
+SPEC_043_PATCHES = _spec_043_patches()
 RUNTIME_DIRS = ("agents", "skills", "commands")
 
 

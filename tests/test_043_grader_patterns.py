@@ -139,6 +139,22 @@ FIXTURES = {
     "as the two read-config calls, its WARN result after theirs (trace e-Pu75Hu)",
     "pass1-analyst-general-purpose.jsonl": "pass1-complete with every analyst dispatch's "
     "subagent_type set to general-purpose: the trace of mutation analyst-name-not-type",
+    # Gap O1 (F1-AC9 "the reply BEGINS with the completion line"): grader 14 reads the
+    # trace, where every content block is its own assistant event.
+    "pass1-report-after-thinking.jsonl": "pass1-complete + a thinking_tokens system event, "
+    "a thinking event and a redacted_thinking event between the mark-captured "
+    "tool_result and the report event",
+    "pass1-report-preface-event.jsonl": "pass1-complete + a `Status: run finished.` text "
+    "event of the same message before the report event: the trace of mutation "
+    "preface-report-line",
+    "pass1-report-preface-line.jsonl": "pass1-complete with the report text block "
+    "starting `Status: run finished.` and a blank line",
+    # Real gate-run tails (builder step `excerpt`; source of record like the spikes).
+    "pass1-merge-tail.jsonl": "trace e-Hqwi9m (merge evidence 2026-10-31T16-47-57Z) from "
+    "the mark-captured tool_use to the end, paths neutralised",
+    "pass1-thinking-tail.jsonl": "trace e-SYF7p1 (2026-10-31T13-42-11Z) from the "
+    "mark-captured tool_use to the end: two thinking_tokens events and a thinking event "
+    "before the report",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -521,7 +537,32 @@ EXPECTATIONS = {
         False, 0, "unreached: the spike says it did not report Pass 1 complete"
     ),
     ("pass1-report-quoted.jsonl", "report-line-anchored"): Expect(
-        False, 0, "quoted mid-sentence, not at a line start"
+        False, 0, "quoted mid-sentence, not at a line start (mutation reword-report-line)"
+    ),
+    # Gap O1: the completion line must be the first text block after the tool_result.
+    ("pass1-complete-relayed.jsonl", "report-line-anchored"): Expect(
+        True, 1, "report line first, relay lines after it"
+    ),
+    ("pass1-cat-batched.jsonl", "report-line-anchored"): Expect(True, 1, "report line"),
+    ("pass1-merge-tail.jsonl", "report-line-anchored"): Expect(
+        True, 1, "real merge-evidence tail: the report event follows the tool_result"
+    ),
+    ("pass1-thinking-tail.jsonl", "report-line-anchored"): Expect(
+        True, 1, "real tail: thinking_tokens and thinking events in between"
+    ),
+    ("pass1-report-after-thinking.jsonl", "report-line-anchored"): Expect(
+        True, 1, "system, thinking and redacted_thinking events in between"
+    ),
+    ("pass1-report-preface-event.jsonl", "report-line-anchored"): Expect(
+        False, 0, "a preface text event precedes the report (mutation preface-report-line)"
+    ),
+    ("pass1-report-preface-line.jsonl", "report-line-anchored"): Expect(
+        False, 0, "the report text block starts with a preface line"
+    ),
+    # The relay case's grader 04 keeps the last_message form (F2-AC4: the reply still
+    # carries the line); a preface on its own line passes it.
+    ("pass1-report-preface-line.jsonl", "relay-report-line-anchored"): Expect(
+        True, 1, "04 anchors a line of last_message, not the reply start"
     ),
     ("pass1-complete.jsonl", "no-duplicate-line"): Expect(True, 0, "absent"),
     ("pass1-spike.jsonl", "no-duplicate-line"): Expect(
@@ -860,7 +901,13 @@ def test_tool_used_without_input_match_counts_every_call_of_the_tool():
 # --- fixture builder ------------------------------------------------------------------------
 
 BUILDER = FIXTURES_DIR / "build_fixtures.py"
-SPIKES = {"pass1-spike.jsonl", "pass2-spike.jsonl"}
+# Source-of-record fixtures the `variants` step does not build (`trim` and `excerpt`).
+SPIKES = {
+    "pass1-spike.jsonl",
+    "pass2-spike.jsonl",
+    "pass1-merge-tail.jsonl",
+    "pass1-thinking-tail.jsonl",
+}
 
 
 def test_builder_variants_regenerate_the_committed_fixtures(tmp_path):
@@ -1005,9 +1052,28 @@ def test_mark_after_json_write_orders_calls_and_chained_commands(commands, passe
     assert evaluate(GRADERS["mark-captured-after-json-write"], trace).passed is passed
 
 
-def test_relay_report_grader_is_the_pipeline_report_grader():
-    pipe = (REPO / PIPE / "14-report-line-anchored.md").read_bytes()
-    assert (REPO / RELAY / "04-report-line-anchored.md").read_bytes() == pipe
+COMPLETION = "Pass 1 complete: 3 items analysed, suggestions written to"
+
+
+def test_relay_and_pipeline_report_graders_demand_the_same_line():
+    """Both graders demand the same completion line. Pipeline 14 reads the trace so it
+    can require the line to open the reply (gap O1, F1-AC9); relay 04 (F2-AC4: the reply
+    still carries the line) keeps the line-anchored `last_message` form."""
+    pipe, relay = GRADERS["report-line-anchored"], GRADERS["relay-report-line-anchored"]
+    assert (pipe.target, relay.target) == ("trace", "last_message")
+    assert '"text":"' + COMPLETION + "(?:" in pipe.pattern
+    assert relay.pattern == (
+        "(?:^|\\n)" + COMPLETION + "\\s+\\[\\[\\d{4}-\\d{2}-\\d{2}_\\d{4}_suggestions\\]\\]"
+    )
+
+
+def _after_tool_result(text: str) -> str:
+    """A reply as its own event, directly after a tool_result (the trace shape)."""
+    result = {
+        "type": "user",
+        "message": {"content": [{"type": "tool_result", "content": "ok"}]},
+    }
+    return _trace(result, _text(text))
 
 
 def _skill_report_quotes() -> list[str]:
@@ -1023,7 +1089,7 @@ def test_report_graders_match_the_skill_template_lines():
     report, duplicate = _skill_report_quotes()
     report = report.replace("{N}", "3").replace("<date>", "2026-10-30_0000")
     duplicate = duplicate.replace("{n}", "1")
-    reply = _texted(f"{report}\n\n{duplicate}")
+    reply = _after_tool_result(f"{report}\n\n{duplicate}")
     for grader_id in (
         "report-line-anchored",
         "relay-report-line-anchored",

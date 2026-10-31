@@ -804,11 +804,12 @@ SPEC_041_PATCHES = (
 
 def _spec_043_patches() -> tuple[str, ...]:
     """Every patch file not named in SPEC_041_PATCHES. The README's recorded
-    `## Proofs` table must name exactly the patch files, so a new patch can go
-    neither unrecorded nor untested here."""
+    `## Proofs` table plus its `## Proofs — awaiting recording` table must name
+    exactly the patch files, so a new patch can go neither unlisted nor untested here."""
     readme = (REPO / "evals" / "_mutations" / "README.md").read_text(encoding="utf-8")
     recorded = readme.split("## Proofs\n", 1)[1].split("\n## ", 1)[0]
-    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M))
+    pending = readme.split("## Proofs — awaiting recording\n", 1)[1].split("\n## ", 1)[0]
+    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded + pending, re.M))
     files = {p.stem for p in (REPO / "evals" / "_mutations").glob("*.patch")}
     assert files == rows, ("patch files and recorded rows differ", sorted(files ^ rows))
     assert set(SPEC_041_PATCHES) <= files, sorted(set(SPEC_041_PATCHES) - files)

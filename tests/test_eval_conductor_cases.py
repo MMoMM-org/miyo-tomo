@@ -570,7 +570,13 @@ SPEC_043_MUTATIONS = (
     "publish-md-with-write-tool", "mark-before-write", "inline-python-read",
     "reword-report-line", "always-duplicate-line", "warn-is-diagnostic",
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
+    "preface-report-line",
 )
+# Named, not yet run: rows in PENDING_SECTION until the owner's paid run is recorded
+# and the row moves into `## Proofs`. Each must have a pending row and no recorded one,
+# so this set expires with the recording.
+AWAITING_RECORDING = ("preface-report-line",)
+PENDING_SECTION = "Proofs — awaiting recording"
 ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
@@ -621,10 +627,9 @@ def _table_rows(section: str) -> list[list[str]]:
     return [r for r in rows[1:] if not set("".join(r)) <= set("-: ")]
 
 
-def _recorded_proofs() -> list[dict]:
-    """Rows of `## Proofs`: each one was run, red in every run, verdicts recorded."""
+def _proof_rows(title: str) -> list[dict]:
     out = []
-    for proof, cases, expected, side in _table_rows(_readme_section("Proofs")):
+    for proof, cases, expected, side in _table_rows(_readme_section(title)):
         m = re.fullmatch(r"`--(mutation|rev) ([^`]+)`", proof)
         assert m, f"proof cell is neither `--mutation <name>` nor `--rev <rev>`: {proof}"
         out.append({
@@ -637,8 +642,18 @@ def _recorded_proofs() -> list[dict]:
     return out
 
 
+def _recorded_proofs() -> list[dict]:
+    """Rows of `## Proofs`: each one was run, red in every run, verdicts recorded."""
+    return _proof_rows("Proofs")
+
+
+def _pending_proofs() -> list[dict]:
+    """Rows of PENDING_SECTION: a named mutation that has not been run yet."""
+    return _proof_rows(PENDING_SECTION)
+
+
 def _proofs() -> list[dict]:
-    return _recorded_proofs()
+    return _recorded_proofs() + _pending_proofs()
 
 
 def _controls() -> set[tuple[str, str]]:
@@ -689,8 +704,17 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
+    pending = {p["arg"] for p in _pending_proofs() if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == files == set(ALL_MUTATIONS)
+    assert recorded | pending == files == set(ALL_MUTATIONS)
+    assert not recorded & pending, sorted(recorded & pending)
+    assert pending == set(AWAITING_RECORDING)
+
+
+def test_pending_rows_are_marked_unmeasured():
+    """A named but unrun mutation cannot pass for a recorded RED proof."""
+    for p in _pending_proofs():
+        assert p["side_text"] == NOT_YET_MEASURED, p["arg"]
 
 
 @pytest.mark.parametrize("name", ALL_MUTATIONS)
@@ -876,7 +900,7 @@ def test_status_sentence_first_removes_the_reply_only_rule_and_the_3c_anchor(tmp
 
 def test_spec_043_rows_name_their_offline_model():
     """Each spec 043 row names the T2.1 fixture that models the trace it expects."""
-    for p in (p for p in _recorded_proofs() if p["arg"] in SPEC_043_MUTATIONS):
+    for p in (p for p in _proofs() if p["arg"] in SPEC_043_MUTATIONS):
         cell = p["expected_text"]
         fixtures = re.findall(r"`([a-z0-9-]+\.jsonl)`", cell)
         assert fixtures, p["arg"]

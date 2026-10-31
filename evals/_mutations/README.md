@@ -72,6 +72,21 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation drop-duplicate-line` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/03-duplicate-line` — the reducer's summary line is for the log, so the duplicate line is not reported; offline model: `pass1-complete.jsonl` | none |
 | `--mutation status-sentence-first` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only` — the synthesis conductor begins its reply with one status sentence before the report (the canary `8-handback-canary` must stay green); offline model: `pass2-status-sentence.jsonl`, `pass2-mismatch-status-sentence.jsonl` | none (the canary `8-handback-canary` stayed green in all five cases) |
 
+## Proofs — awaiting recording
+
+Named, not yet run. A row here is not a RED proof: it counts only once the owner has run
+it (3 runs), recorded the verdicts and the results path in
+`docs/XDD/specs/043-pass1-conductor-eval-gate/red-proofs.md`, and moved the row into
+`## Proofs` with its measured side-effect reds.
+
+`preface-report-line` comes with grader 14's trace form (gap O1). The recorded
+`reword-report-line` proof of grader 14 ran against its earlier `last_message` form;
+offline, the trace form is red on that proof's model `pass1-report-quoted.jsonl` too.
+
+| Proof | Cases | Expected red (what it proves) | Side-effect reds |
+|---|---|---|---|
+| `--mutation preface-report-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/14-report-line-anchored` — the reply opens with the line `Status: run finished.` before the completion line, as its own text event or as the first line of the report block (gap O1, F1-AC9 "begins with"); offline model: `pass1-report-preface-event.jsonl`, `pass1-report-preface-line.jsonl` | not yet measured |
+
 ## Inherited proofs
 
 A grader that is a byte copy of a grader with a recorded RED proof inherits that proof
@@ -375,3 +390,9 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - adds: "Begin your reply with the line `Status: run finished.` followed by a blank line."
 - adds: "nor a relay line, except the opening line."
 - adds: "it opens with the status line of rule 4, then the audit's stdout copied as printed."
+
+### preface-report-line
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "Output this line first."
+- adds: "Output the line `Status: run finished.` first, as a message of its own, then this line."

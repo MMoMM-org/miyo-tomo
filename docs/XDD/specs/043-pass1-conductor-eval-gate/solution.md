@@ -336,7 +336,7 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 | 12a | mark-captured-once | `tool_used` Bash, `python3?\s+scripts/mark-captured\.py`, min 1, max 1 | | F1-AC7 | `mark-before-write` |
 | 12b | mark-captured-after-json-write | `regex` trace `not_contains` | `"name":"Bash","input":\{[^\n]*?"command":"(?:[^"\\\n]\|\\.)*?\bpython3?\s+scripts/mark-captured\.py[\s\S]*\bpython3?\s+scripts/kado-write-file\.py\s[^\n]*?--vault\s+\\"[^"\\]*_suggestions\.json\\"` — the violation: a mark-captured run before a `.json` write, in an earlier call or earlier in the same command. The mark is anchored on the Bash tool_use because the skill prose names `mark-captured.py` before the real write. Green when no mark runs; 12a owns presence | F1-AC7 | `mark-before-write` |
 | 13 | no-inline-python | `tool_used` Bash, min 0, max 0 | `python3? -c` | F1-AC8 | `inline-python-read` |
-| 14 | report-line-anchored | `regex` last_message | `(?:^\|\n)Pass 1 complete: 3 items analysed, suggestions written to\s+\[\[\d{4}-\d{2}-\d{2}_\d{4}_suggestions\]\]` | F1-AC9 | `reword-report-line` |
+| 14 | report-line-anchored | `regex` trace | a `tool_result` user event, then only system or thinking events, then an assistant event whose FIRST content block is the text `Pass 1 complete: 3 items analysed, suggestions written to` + `[[YYYY-MM-DD_HHMM_suggestions]]` (changed 2026-10-31, gap O1: each content block is its own trace event, and `last_message` reads only the last one, so a preface event before the report was invisible) | F1-AC9 | `reword-report-line`, `preface-report-line` (awaiting recording) |
 | 15 | no-duplicate-line | `regex` last_message `not_contains` | `proposed MOC\(s\) already existed` | F1-AC10 | `always-duplicate-line` |
 | 09-no-leak | leak guard | the shared file | | F1-AC9 | existing proofs (041) |
 
@@ -354,7 +354,7 @@ Notes on the controls:
 | 01 | warn-in-reply | `regex` last_message | the full WARN text, escaped, verbatim | F2-AC1 | `warn-is-diagnostic` |
 | 02 | warn-before-first-dispatch | `regex` trace | a `cat tomo-tmp/setup-warnings.txt` Bash call, then the tool_result with that call's id carrying the WARN text, both before the first Agent call (see Complex Logic; changed 2026-10-31; result bound by id since findings F6) | F2-AC2 | `warn-in-report-only` |
 | 03 | duplicate-line | `regex` last_message | `(?:^\|\n)1 proposed MOC\(s\) already existed in the vault and are offered as\s+unticked links instead\.` | F2-AC3 | `drop-duplicate-line` |
-| 04 | report-line-anchored | as in pipeline 14 | | F2-AC4 | `reword-report-line` |
+| 04 | report-line-anchored | `regex` last_message | `(?:^\|\n)Pass 1 complete: 3 items analysed, suggestions written to\s+\[\[\d{4}-\d{2}-\d{2}_\d{4}_suggestions\]\]` (pipeline 14's form before gap O1; F2-AC4 only asks that the reply still carries the line) | F2-AC4 | `reword-report-line` |
 | 09-no-leak | leak guard | | | F2-AC4 | existing |
 
 #### Example: Report-only grader (shared `evals/_lib/report-only.md`)

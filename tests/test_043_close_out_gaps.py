@@ -49,10 +49,14 @@ def _section(text: str, title: str) -> str:
     return m.group(1)
 
 
-def _proof_rows() -> dict[str, set[tuple[str, str]]]:
-    """`--mutation <name>` → its expected (case, grader) pairs, from the recorded table."""
+PENDING_SECTION = "Proofs — awaiting recording"
+
+
+def _proof_rows(title: str = "Proofs") -> dict[str, set[tuple[str, str]]]:
+    """`--mutation <name>` → its expected (case, grader) pairs, from the recorded table
+    (or, with PENDING_SECTION, from the table of named but unrun mutations)."""
     rows: dict[str, set[tuple[str, str]]] = {}
-    for line in _section(MUTATIONS_README.read_text(encoding="utf-8"), "Proofs").splitlines():
+    for line in _section(MUTATIONS_README.read_text(encoding="utf-8"), title).splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) < 4:
             continue
@@ -72,7 +76,9 @@ def test_every_spec_043_proof_is_recorded_red_in_3_of_3_with_its_results_path():
     """F5-AC4. Falsifies: a proof row whose verdicts were never recorded, a record that
     lost a run, or a verdict line without the mutation name or the results path."""
     proofs = _proofs_this_spec_recorded()
-    assert len(proofs) == 21, sorted(proofs)  # 16 spec 043 rows + 5 re-proven 041 rows
+    # 16 spec 043 rows + 5 re-proven 041 rows. Rows awaiting recording sit in their own
+    # section and are not counted; recording one moves it here and raises this number.
+    assert len(proofs) == 21, sorted(proofs)
     verdicts: dict[str, list[str]] = {}
     for m in VERDICT.finditer(RED_PROOFS.read_text(encoding="utf-8")):
         verdicts.setdefault(m.group("name"), []).append(m.group(0))
@@ -87,6 +93,19 @@ def test_every_spec_043_proof_is_recorded_red_in_3_of_3_with_its_results_path():
             if not any(all(f"{case}: {grader} (run {r})" in ln for r in range(3)) for ln in lines):
                 problems.append(f"{name}: {case}/{grader} is not red in runs 0, 1 and 2 of one verdict")
     assert not problems, problems
+
+
+def test_rows_awaiting_recording_are_neither_recorded_nor_verdicted():
+    """Keeps the count above honest. Falsifies: a pending row also listed as recorded, a
+    patch listed in neither table, and a pending mutation that already has a RED verdict
+    line in red-proofs.md (then its row belongs in `## Proofs`)."""
+    recorded, pending = _proof_rows(), _proof_rows(PENDING_SECTION)
+    assert pending, "no row awaits recording: drop PENDING_SECTION with its last row"
+    assert not set(recorded) & set(pending), sorted(set(recorded) & set(pending))
+    patches = {p.stem for p in (EVALS / "_mutations").glob("*.patch")}
+    assert patches == set(recorded) | set(pending), sorted(patches ^ (set(recorded) | set(pending)))
+    verdicted = {m.group("name") for m in VERDICT.finditer(RED_PROOFS.read_text(encoding="utf-8"))}
+    assert not set(pending) & verdicted, sorted(set(pending) & verdicted)
 
 
 def test_known_limits_name_the_three_spike_limits():

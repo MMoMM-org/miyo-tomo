@@ -16,6 +16,14 @@ named edit. Two steps:
       pass2-spike.jsonl in <fixtures-dir>. Re-runnable; tests/test_043_grader_patterns.py
       runs it into a temp dir and requires byte-identical output.
 
+  excerpt <raw-trace> <ws-id> <name> <out-dir>
+      Writes <name>: the tail of a kept raw gate-run trace, from its last mark-captured
+      tool_use to the end, neutralised like the spikes. It records the real event shape
+      around the Pass 1 report (gap O1). Source of record once the raw trace is gone:
+        pass1-merge-tail.jsonl     e-Hqwi9m (merge evidence 2026-10-31T16-47-57Z)
+        pass1-thinking-tail.jsonl  e-SYF7p1 (2026-10-31T13-42-11Z; thinking events
+                                   between the tool_result and the report)
+
 Not collected by pytest (not under tests/, not named test_*).
 """
 
@@ -96,6 +104,28 @@ def trim_trace(path: Path, ws_id: str, dropped: set[int] = frozenset()) -> list[
         out.append(neutral(line, ws_id))
     for line in out:
         json.loads(line)
+    return out
+
+
+def excerpt(raw: Path, ws_id: str, name: str, out: Path) -> None:
+    lines = trim_trace_all(raw, ws_id)
+    start = max(
+        i
+        for i, line in enumerate(lines)
+        if '"type":"tool_use"' in line and "scripts/mark-captured.py" in line
+    )
+    write(out, name, lines[start:])
+
+
+def trim_trace_all(path: Path, ws_id: str) -> list[str]:
+    """Every event of a raw trace, compactly encoded and neutralised (nothing dropped)."""
+    raw = path.read_text(encoding="utf-8").split("\n")
+    if raw[-1] == "":
+        raw.pop()
+    out = []
+    for i, line in enumerate(raw):
+        assert enc(json.loads(line)) == line, f"{path}:{i} is not compactly encoded"
+        out.append(neutral(line, ws_id))
     return out
 
 
@@ -223,6 +253,8 @@ DUPLICATE_LINE = (
     "1 proposed MOC(s) already existed in the vault and are offered as unticked "
     "links instead."
 )
+# The line mutation preface-report-line puts before the report.
+PREFACE = "Status: run finished."
 
 
 def _counter():
@@ -577,6 +609,71 @@ def pass1_completions(p1: list[str], out: Path) -> None:
         v[i] = enc(event)
     write(out, "pass1-analyst-general-purpose.jsonl", v)
 
+    # Appended last (gap O1, F1-AC9 "the reply begins with the completion line"): the
+    # report event in the shapes grader 14 must tell apart. No ids from the counter.
+    report_at = index_of(done, '"type":"text","text":"Pass 1 complete')
+    session = json.loads(text_tpl)["session_id"]
+
+    def before_report(events: list[str]) -> list[str]:
+        v = list(done)
+        v[report_at:report_at] = events
+        return v
+
+    # The trim step drops thinking_tokens events, so the spike has no template: this one
+    # is modelled on trace e-SYF7p1 (see the excerpt step), which carries two of them.
+    thinking_tokens = enc(
+        {
+            "type": "system",
+            "subtype": "thinking_tokens",
+            "estimated_tokens": 50,
+            "estimated_tokens_delta": 50,
+            "session_id": session,
+            "uuid": "00000000-0000-4000-8000-0000000000f3",
+        }
+    )
+
+    def thinking_event(block: dict, uuid: str) -> str:
+        event = json.loads(text_tpl)
+        event["message"]["content"] = [block]
+        event["uuid"] = uuid
+        return enc(event)
+
+    write(
+        out,
+        "pass1-report-after-thinking.jsonl",
+        before_report(
+            [
+                thinking_tokens,
+                thinking_event(
+                    {"type": "thinking", "thinking": "", "signature": "c2ln"},
+                    "00000000-0000-4000-8000-0000000000f4",
+                ),
+                thinking_event(
+                    {"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="},
+                    "00000000-0000-4000-8000-0000000000f5",
+                ),
+            ]
+        ),
+    )
+    # Mutation preface-report-line: the preface as its own text event of the same
+    # message (one content block per event), or as the first line of the report block.
+    write(
+        out,
+        "pass1-report-preface-event.jsonl",
+        before_report(
+            [
+                _text_event(
+                    text_tpl, PREFACE, "00000000-0000-4000-8000-0000000000f6"
+                )
+            ]
+        ),
+    )
+    write(
+        out,
+        "pass1-report-preface-line.jsonl",
+        _replace_report(done, f"{PREFACE}\n\n{REPORT}"),
+    )
+
 
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")
@@ -703,12 +800,16 @@ def main(argv: list[str]) -> int:
     if len(argv) == 4 and argv[0] == "trim":
         trim(Path(argv[1]), Path(argv[2]), Path(argv[3]))
         return 0
+    if len(argv) == 5 and argv[0] == "excerpt":
+        excerpt(Path(argv[1]), argv[2], argv[3], Path(argv[4]))
+        return 0
     if len(argv) == 3 and argv[0] == "variants":
         variants(Path(argv[1]), Path(argv[2]))
         return 0
     print(
         "usage: build_fixtures.py trim <pass1-raw> <pass2-raw> <out-dir>\n"
-        "       build_fixtures.py variants <fixtures-dir> <out-dir>",
+        "       build_fixtures.py variants <fixtures-dir> <out-dir>\n"
+        "       build_fixtures.py excerpt <raw-trace> <ws-id> <name> <out-dir>",
         file=sys.stderr,
     )
     return 2

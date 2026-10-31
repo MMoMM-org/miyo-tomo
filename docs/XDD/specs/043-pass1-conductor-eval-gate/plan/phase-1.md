@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Stand-ins and runner swap"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -32,7 +32,7 @@ phase: 1
 
 This phase makes Pass 1 runnable in a throwaway workspace, end to end, with no Kado and no real analyst.
 
-- [ ] **T1.1 The runner swaps in the analyst stand-in** `[activity: backend]` `[parallel: true]`
+- [x] **T1.1 The runner swaps in the analyst stand-in** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `scripts/run-evals.sh` assembly block and preflight; `tests/test_run_evals.py` fake-`CLAUDE_BIN` pattern `[ref: SDD/Internal API Changes; ADR-1]`
   2. Test:
@@ -49,7 +49,7 @@ This phase makes Pass 1 runnable in a throwaway workspace, end to end, with no K
      - The stand-in is in every assembled copy `[ref: PRD/F3; SDD/ADR-1]`.
      - The missing-stub refusal spends nothing `[ref: SDD/Error Handling]`.
 
-- [ ] **T1.2 Pass 1 stub kit** `[activity: backend]` `[parallel: true]`
+- [x] **T1.2 Pass 1 stub kit** `[activity: backend]` `[parallel: true]`
 
   1. Prime:
      - `suggest-handling/SKILL.md` steps 1–7: every script call with its exact flags.
@@ -74,7 +74,7 @@ This phase makes Pass 1 runnable in a throwaway workspace, end to end, with no K
      - Loud failure on unknown calls `[ref: PRD/F3-AC3]`
      - No writes outside the workspace `[ref: PRD/F3-AC4]`
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
 
   - Run the full pytest suite (`./venv/bin/python -m pytest -q`): Phase 1 must not break the existing 041 runner or docs tests.
   - Check shellcheck on the runner and the kit.

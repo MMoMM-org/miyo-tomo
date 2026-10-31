@@ -88,7 +88,8 @@ When implementation requires changes from the specification:
 ./venv/bin/python -m pytest -q                      # full suite before each phase gate
 
 # Quality
-shellcheck scripts/run-evals.sh evals/_lib/*.sh evals/*/scaffold.sh
+shellcheck scripts/run-evals.sh evals/_lib/*.sh
+for f in evals/*/scaffold.sh; do (cd "$(dirname "$f")" && shellcheck -x scaffold.sh); done   # -x: the case variables are read by the sourced kit
 ./venv/bin/ruff check tests/
 
 # Paid gate runs (owner, terminal only: the sandbox gives EPERM; never while files change)
@@ -105,7 +106,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-- [ ] [Phase 1: Stand-ins and runner swap](phase-1.md)
+- [x] [Phase 1: Stand-ins and runner swap](phase-1.md)
 - [ ] [Phase 2: Cases, shared graders and offline validation](phase-2.md)
 - [ ] [Phase 3: Paid green runs and findings](phase-3.md)
 - [ ] [Phase 4: RED proofs, documentation and merge evidence](phase-4.md)

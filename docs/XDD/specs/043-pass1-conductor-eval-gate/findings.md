@@ -167,3 +167,11 @@ RED 6/7 cases · audit-mismatch-stops: 7-report-only-mismatch (run 0) · runs 21
 |---|---|---|---|---|
 | F5 | `audit-mismatch-stops` `7-report-only-mismatch`, run 0 (runs 1 and 2 green) | not yet classified | `aggregate-result.json`: `"pattern not found in trace"`, 2 turns, $0.065. The trace (`/private/tmp/e-KfccMK`) was not kept and is gone. | Re-run the case with `--keep-temp` and classify the cause from the trace |
 | K1 | Quality KPI: full suite ≤ 4 min | (KPI) | 298 s. The Pass 1 runs take 36–46 s each, against 16–35 s for the Pass 2 runs. | Record in the close-out. The cost KPI is met: $2.26 against a $3.10 median target. |
+
+### F5 re-run — 2026-10-31
+
+```
+GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · runs 3 · $0.19 · 34 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T11-43-37Z
+```
+
+All three kept traces (`e-HbOimv`, `e-CScrFJ`, `e-61AOvR`) carry the same hand-back frame: the gap line, then `RESULT: FAIL — count or coverage mismatch above.`, then `agentId:`. F5 did not reproduce, so it stands at 1 red in 6 runs with the failing trace lost. It cannot be classified yet. Every later run of this case uses `--keep-temp` until F5 recurs or the merge evidence is complete.

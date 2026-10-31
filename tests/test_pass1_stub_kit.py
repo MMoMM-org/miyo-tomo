@@ -413,6 +413,35 @@ def test_reducer_fails_when_results_lag_state(tmp_path):
     assert not (ws / "tomo-tmp" / "suggestions-doc.json").exists()
 
 
+def test_reducer_fails_when_no_analyst_has_run(tmp_path):
+    ws, _ = stage(tmp_path)
+    setup_steps(ws)
+    r = run(ws, "suggestions-reducer", *REDUCER_ARGV)
+    assert r.returncode == 2
+    assert "stub suggestions-reducer:" in r.stderr
+    assert not (ws / "tomo-tmp" / "suggestions-doc.json").exists()
+
+
+def test_reducer_fails_between_analyst_batches(tmp_path):
+    ws, _ = stage(tmp_path)
+    setup_steps(ws)
+    for p in PATHS[:2]:
+        assert run(ws, "analyst-stub", p, p, RUN_ID).returncode == 0
+    r = run(ws, "suggestions-reducer", *REDUCER_ARGV)
+    assert r.returncode == 2
+    assert "stub suggestions-reducer:" in r.stderr
+    assert not (ws / "tomo-tmp" / "suggestions-doc.json").exists()
+
+
+def test_reducer_succeeds_when_every_routed_item_has_a_result(tmp_path):
+    ws, _ = stage(tmp_path)
+    setup_steps(ws)
+    run_analysts(ws)
+    r = run(ws, "suggestions-reducer", *REDUCER_ARGV)
+    assert r.returncode == 0, r.stderr
+    assert (ws / "tomo-tmp" / "suggestions-doc.json").exists()
+
+
 # --- render, write, mark ---------------------------------------------------------
 
 

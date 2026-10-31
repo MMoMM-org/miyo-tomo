@@ -48,6 +48,10 @@
 # `stub <name>: unexpected argv: …` and exits 2. The stand-in agent
 # evals/_lib/inbox-analyst.stub.md runs scripts/analyst-stub.py "<path>"
 # "<item_key>" "<run_id>".
+# The reducer stub exits 2 (stderr `stub suggestions-reducer: ...`) when
+# tomo-tmp/items/ holds fewer result files than inbox-state.jsonl has lines OR
+# fewer than routing-plan.json has fresh_sources, so a reduce before or between
+# analyst batches fails loudly.
 # bash 3.2 compatible.
 
 stage_pass1_instance() {
@@ -311,6 +315,12 @@ if len(result_files) < len(state_lines):
     print("stub suggestions-reducer: %d result file(s) in tomo-tmp/items for %d state "
           "line(s); the reduce ran before every analyst finished"
           % (len(result_files), len(state_lines)), file=sys.stderr)
+    sys.exit(2)
+routed = len(json.load(open("tomo-tmp/routing-plan.json")).get("fresh_sources") or [])
+if len(result_files) < routed:
+    print("stub suggestions-reducer: %d result file(s) in tomo-tmp/items for %d routed "
+          "fresh source(s); the reduce ran before every analyst finished"
+          % (len(result_files), routed), file=sys.stderr)
     sys.exit(2)
 results = {}
 for rf in result_files:

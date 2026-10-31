@@ -308,7 +308,7 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 **Strict stubs (PRD F3-AC3):**
 
 - Each script stub checks its argv against the flags that `suggest-handling` passes. On an unknown flag or a missing required flag, it prints `stub <name>: unexpected argv: …` to stderr and exits 2.
-- The reducer stub exits 2 if `tomo-tmp/items/` holds fewer result files than `inbox-state.jsonl` has lines. A pipeline that reduces before its analysts finish therefore fails loudly.
+- The reducer stub exits 2 if `tomo-tmp/items/` holds fewer result files than `inbox-state.jsonl` has lines or than `tomo-tmp/routing-plan.json` has `fresh_sources`. A pipeline that reduces before its analysts finish therefore fails loudly.
 
 #### Integration Points
 

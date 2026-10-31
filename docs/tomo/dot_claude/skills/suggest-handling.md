@@ -326,7 +326,7 @@ The instruction does not forbid text after the template lines: a failed
 `mark-captured.py` must still be reported (step 6), and the smoke's extra notes
 below the template were harmless.
 
-## Why the `WARN:` relay is a fixed text reply before the batch-count command
+## Why the `WARN:` relay copies a tool result before the batch-count command
 
 The step 2 `STRICT` said to repeat every `WARN:` line of `shared-ctx-builder.py`
 "to the user, verbatim, before dispatching anything". In the first smoke (spec
@@ -385,8 +385,57 @@ broken tracker configuration (F2-AC2).
 The step 3 and step 7 lines name the script (`shared-ctx-builder.py`), not
 "step 2", so they stay true if the build ever moves.
 
-If a third smoke still shows the warning only in thinking, the prose has
-reached its limit and the relay should move into the script: the batch-count
-command could print the stored `WARN:` lines as part of its output (or a small
-`relay-warnings` step could), so that relaying them is copying a tool result
-rather than remembering a duty.
+### 0.14.0: the relay is the copy of a tool result (Plan B)
+
+The third smoke (findings F4, smoke 3, `e-QKbc19`) ran 0.13.1 and showed the
+same shape a third time: the `WARN:` tool_result, one non-empty thinking block
+("Setup check found two active trackers—mood and sleep—missing keywords …"),
+then the batch-count `Bash` call, then the first dispatch. No `Setup warnings:`
+text was written. Three wordings — a duty, a duty with a named vehicle, a fixed
+text under `STRICT` — all produced the same thinking-only reaction at the same
+point. Prose has reached its limit here: each version asked the model to
+*remember* to say something it had already seen, and the model counted having
+seen it.
+
+0.14.0 makes the relay a copy instead of a memory (owner decision 2026-10-31,
+"Plan B"):
+
+- **The builder saves its own warnings.** `shared-ctx-builder.py` takes an
+  optional `--warnings-out <path>` and writes every `WARN:` line it printed on
+  stderr to that file, one per line, exactly as printed. The file is rewritten
+  on every run (also on an error exit), and is empty when there were no
+  warnings, so a stale warning from an earlier run can never be relayed. The
+  lines are captured where they are printed (stderr is wrapped for the run),
+  not re-derived, so the saved text cannot drift from what the user would see
+  in the tool output.
+- **Step 3 opens with `cat tomo-tmp/setup-warnings.txt`.** Its stdout is
+  exactly the lines to relay and nothing else. The `STRICT` tells the model to
+  output that stdout verbatim as its text reply before the batch-count command
+  (and nothing when it is empty). Copying the result of the command just run is
+  the pattern the model reliably follows elsewhere (the step 7 report, relay
+  grader 01 green in all three smokes); the reaction point is the same one the
+  model already uses, but now its trigger is a fresh tool result, not a line
+  three tool calls back.
+- **`cat`, not a new reader script.** `cat` is already allowed
+  (`Bash(cat:*)` in `settings.json`), step 1 already uses it on `tomo-tmp/`,
+  and the builder guarantees the file exists whenever the build succeeded (the
+  skill aborts when it fails). A dedicated reader would add a script, a stub
+  and tests for no behaviour `cat` lacks.
+- **The flag is optional.** `force-atomic-handling` runs the same builder
+  without it and is unchanged; `tests/test_040_skill_prose.py` compares the two
+  builder commands with `--warnings-out <path>` removed, since that flag
+  changes only a side file, not the built context.
+- **No header line.** The `Setup warnings:` header of 0.13.1 is dropped: the
+  model's reply is the command's stdout, so relay grader 02 (which searches the
+  assistant text for the `WARN:` line) and the user see the builder's lines
+  unaltered, and there is no template to reword.
+- **Step 7 keeps its repeat** for PRD F2-AC1 (the warning in the final reply),
+  unchanged.
+
+The `STRICT` stays: the deviation was observed three times out of three.
+
+If smoke 4 is still red, the next lever is to remove the separate relay turn
+altogether: let the batch-count command (`read-routing-plan.py --batch-count`)
+print the saved lines ahead of the count, so the relay rides on a command the
+model never skips — or to move the early relay out of the conductor's prose and
+into a tool that writes the visible text itself.

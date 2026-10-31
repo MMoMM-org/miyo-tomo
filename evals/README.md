@@ -41,11 +41,11 @@ Exit codes:
 
 Results land in `tomo-tmp/evals/<TS>/` (gitignored): `aggregate-result.json`, `report.html`, `verdict.txt`.
 
-Cost and duration, measured on `claude` 2.1.316 (three full suites, spec 043):
+Cost and duration, measured on `claude` 2.1.316 (the spec 043 merge evidence, `synthesis-conductor` 0.25.0 on sonnet):
 
-- Full suite (7 cases x 3 runs): $2.25–2.26, 298–344 s wall clock.
-- One Pass 1 run: $0.20–0.21 and 36–46 s. One Pass 2 run: about $0.065 and 16–35 s.
-- A RED proof (one mutation, one Pass 1 case, 3 runs): about $0.62. Spec 043's RED proofs cost $16.12 in all.
+- Full suite (7 cases x 3 runs): $2.74–2.76, 271–310 s wall clock. With the conductor on haiku it was $2.20–2.33 and 298–416 s, and the duration varies with API latency.
+- One Pass 1 run: $0.19–0.23 and 38–65 s. One Pass 2 run: $0.09–0.12 and 14–29 s.
+- A RED proof (one mutation, one Pass 1 case, 3 runs): about $0.62; one Pass 2 case, 3 runs: about $0.30. Spec 043's RED proofs cost $22.37 in all.
 
 The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it gives NOT GRADED.
 

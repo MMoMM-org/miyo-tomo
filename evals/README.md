@@ -9,8 +9,8 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 | Runtime file | Cases |
 |---|---|
 | `tomo/dot_claude/agents/synthesis-conductor.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
-| `tomo/dot_claude/commands/inbox.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
-| `tomo/dot_claude/settings.json` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
+| `tomo/dot_claude/commands/inbox.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported`, `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` |
+| `tomo/dot_claude/settings.json` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported`, `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` |
 
 - The conductor is the subject. Every case dispatches it with the prompt from `inbox.md`'s Pass 2 dispatch, reproduced verbatim (agent name namespaced as `tomo:synthesis-conductor`).
 - `inbox.md` is listed because the cases reproduce its dispatch prompt: if that prompt changes, the cases must change with it.

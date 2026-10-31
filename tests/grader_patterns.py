@@ -2,27 +2,32 @@ r"""grader_patterns.py — offline evaluator for `claude plugin eval` graders (s
 
 Exists so every grader pattern can be checked against recorded traces before a paid
 run (SDD ADR-5). Loads grader frontmatter from `evals/` (or any grader file), evaluates
-`regex` and `tool_used` graders against a JSONL trace, and checks that a regex stays
+`regex`, `tool_used` and `tool_order` graders against a JSONL trace, and checks that a regex stays
 inside the subset Python `re` and the harness's JS RegExp share.
 Shared by test_043_grader_patterns.py and the later 043 case tasks.
 
-What it reproduces:
-- `regex`: `target: trace` is the whole JSONL text; `target: last_message` is the `result`
-  of the last top-level `"type":"result"` frame ("" when there is none).
+What it reproduces (semantics read from the `claude plugin eval` source in claude 2.1.314,
+the Bun bundle's grader functions; the plugin-evals docs do not state them):
+- `regex`: `new RegExp(pattern, flags)` (no flags here); `target: trace` is the whole JSONL
+  text; `target: last_message` is the CLI's `lastAssistantText`: the text blocks of the LAST
+  assistant event that has any, joined with "\n" ("" when there is none). Result frames are
+  NOT read, and subagent events (parent_tool_use_id set) count like the main session's.
   `match: contains` passes on a match, `not_contains` on none, `count:N` on exactly N.
-- `tool_used`: counts tool_use events named `tool` whose input matches `input_match`;
-  passes when min <= count <= max.
-- `tool_order`: not implemented yet (T2.2).
+- `tool_used`: counts tool_use events named `tool` whose JSON-encoded input matches
+  `input_match` (`RegExp.test`); passes when min <= count <= max (min defaults to 1).
+- `tool_order`: the index of the FIRST tool_use matching `before` must be lower than the
+  index of the FIRST tool_use matching `after` (`findIndex` on both); either side never
+  called fails. Subagent calls are in the list in trace order. `before`/`after` is a tool
+  name or `{tool, input_match}`. Outcome.count is 1 when both sides were found, else 0.
 
-Assumptions to confirm at the first paid run (taken from the plugin-evals grader table
-and the spike 041/043 observations, not from the harness source):
-- regexes run without flags and with JS semantics; JS `$` (end of input only, never
-  before a trailing newline) is emulated by rewriting it to `\Z`; JS `.` is not emulated;
-- the default `target` is `last_message`;
-- `input_match` is a search, not a full match;
-- tool input is JSON-encoded compactly (`separators=(",", ":")`) with `ensure_ascii=False`;
-- `count:N` means exactly N non-overlapping matches (`count: N` with a space is accepted);
-- `tool_used` `min` defaults to 1 and `max` to unbounded.
+Assumptions to confirm at the first paid run (not settled by the source above):
+- regexes run with JS semantics; JS `$` (end of input only, never before a trailing
+  newline) is emulated by rewriting it to `\Z`; JS `.` is not emulated;
+- tool input is JSON-encoded compactly (`separators=(",", ":")`) with `ensure_ascii=False`
+  (the CLI stringifies the input object; key order is the model's emission order);
+- the CLI's `trace` target joins the events with "\n" and no trailing newline; the
+  fixtures end with one, which only matters to a `$` on `target: trace` (none uses one);
+- `count:N` means exactly N non-overlapping matches (`count: N` with a space is accepted).
 
 Known limits — differences between the engines `js_subset_violations` does not catch:
 - character classes starting with `]`: `[]abc]` and `[^]]` are a literal `]` in Python
@@ -84,7 +89,7 @@ class Outcome:
 
 @dataclass(frozen=True)
 class ToolUse:
-    line: int  # trace line index; kept for the tool_order evaluator (T2.2)
+    line: int  # trace line index
     name: str
     input_json: str
     parent: str | None
@@ -144,7 +149,7 @@ def grader_files() -> list[Path]:
 def grader_regexes(grader: Grader) -> list[str]:
     found = [grader.pattern, grader.input_match]
     for side in (grader.before, grader.after):
-        if side:
+        if isinstance(side, dict):
             found.append(side.get("input_match"))
     return [r for r in found if r is not None]
 
@@ -174,9 +179,17 @@ def tool_uses(trace: str) -> list[ToolUse]:
 
 
 def last_message(trace: str) -> str:
-    results = [json.loads(ln) for ln in trace.splitlines() if '"type":"result"' in ln]
-    results = [r for r in results if r.get("type") == "result"]
-    return results[-1].get("result", "") if results else ""
+    """The CLI's `lastAssistantText`: the last assistant event with text blocks."""
+    last = ""
+    for line in trace.splitlines():
+        event = json.loads(line)
+        content = (event.get("message") or {}).get("content")
+        if event.get("type") != "assistant" or not isinstance(content, list):
+            continue
+        texts = [str(b.get("text") or "") for b in content if b.get("type") == "text"]
+        if texts:
+            last = "\n".join(texts)
+    return last
 
 
 def js_anchors(pattern: str) -> str:
@@ -228,6 +241,21 @@ def _apply_match(mode: str, count: int) -> bool:
     raise ValueError(f"unknown match mode {mode!r}")
 
 
+def _side(side: str | dict) -> dict:
+    return {"tool": side, "input_match": None} if isinstance(side, str) else side
+
+
+def _matches(use: ToolUse, side: dict) -> bool:
+    if use.name != side["tool"]:
+        return False
+    pattern = side.get("input_match")
+    return not pattern or re.search(js_anchors(pattern), use.input_json) is not None
+
+
+def _first_index(uses: list[ToolUse], side: dict) -> int:
+    return next((i for i, use in enumerate(uses) if _matches(use, side)), -1)
+
+
 def evaluate(grader: Grader, trace: str) -> Outcome:
     if grader.type == "regex":
         target = grader.target or "last_message"
@@ -240,20 +268,18 @@ def evaluate(grader: Grader, trace: str) -> Outcome:
         count = _count_matches(grader.pattern, text)
         return Outcome(_apply_match(grader.match, count), count)
     if grader.type == "tool_used":
-        count = sum(
-            1
-            for use in tool_uses(trace)
-            if use.name == grader.tool
-            and (
-                grader.input_match is None
-                or re.search(js_anchors(grader.input_match), use.input_json)
-            )
-        )
+        side = {"tool": grader.tool, "input_match": grader.input_match}
+        count = sum(1 for use in tool_uses(trace) if _matches(use, side))
         low = 1 if grader.min is None else grader.min
         high = grader.max
         return Outcome(count >= low and (high is None or count <= high), count)
     if grader.type == "tool_order":
-        raise NotImplementedError("tool_order evaluation is added with T2.2")
+        uses = tool_uses(trace)
+        before = _first_index(uses, _side(grader.before))
+        after = _first_index(uses, _side(grader.after))
+        if before < 0 or after < 0:
+            return Outcome(False, 0)
+        return Outcome(before < after, 1)
     raise ValueError(f"unknown grader type {grader.type!r}")
 
 

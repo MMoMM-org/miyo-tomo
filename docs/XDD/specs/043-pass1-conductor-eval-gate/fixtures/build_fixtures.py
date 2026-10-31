@@ -197,6 +197,241 @@ def pass1_variants(p1: list[str], out: Path) -> None:
     write(out, "pass1-two-writes-different-stem.jsonl", second_write("2026-10-30_1200"))
 
 
+# ---- Pass 1 completions (T2.2/T2.3) --------------------------------------------------
+# The spike stopped after the .md write. These fixtures continue it the way the skill
+# prescribes; every event added is a deep copy of a recorded event of the same kind with
+# its id, uuid and payload replaced.
+
+STEM = "2026-10-30_0000"
+RUN_ID = "2026-10-30T00-00-00Z-c0ffee"
+REPORT = (
+    f"Pass 1 complete: 3 items analysed, suggestions written to [[{STEM}_suggestions]]. "
+    "Review in Obsidian, check the **Approved** box, then re-run `/inbox`."
+)
+DUPLICATE_LINE = (
+    "1 proposed MOC(s) already existed in the vault and are offered as unticked "
+    "links instead."
+)
+
+
+def _counter():
+    n = [0x100]
+
+    def next_ids() -> tuple[str, str, str]:
+        n[0] += 1
+        tag = f"{n[0]:04x}"
+        return (
+            f"toolu_0000000000000000000000{tag}",
+            f"00000000-0000-4000-8000-00000000{tag}",
+            f"00000000-0000-4000-8000-00000001{tag}",
+        )
+
+    return next_ids
+
+
+def _call(
+    use_tpl: str, res_tpl: str, ids, name: str, inp: dict, output: str
+) -> list[str]:
+    tid, use_uuid, res_uuid = ids()
+    use = json.loads(use_tpl)
+    block = use["message"]["content"][0]
+    block.update(id=tid, name=name, input=inp)
+    use["uuid"] = use_uuid
+    res = json.loads(res_tpl)
+    rblock = res["message"]["content"][0]
+    rblock.update(tool_use_id=tid, content=output)
+    res["uuid"] = res_uuid
+    res.pop("tool_use_result", None)
+    res.pop("tool_result_meta", None)
+    return [enc(use), enc(res)]
+
+
+def _text_event(template: str, text: str, uuid: str) -> str:
+    event = json.loads(template)
+    event["message"]["content"] = [{"type": "text", "text": text}]
+    event["uuid"] = uuid
+    return enc(event)
+
+
+def _final_result(template: str, text: str) -> str:
+    event = json.loads(template)
+    event["result"] = text
+    return enc(event)
+
+
+def _replace_report(lines: list[str], text: str) -> list[str]:
+    """Swap the report text in the last assistant text event and the final result."""
+    v = list(lines)
+    i = max(indices_of(v, '"type":"text","text":"Pass 1 complete'))
+    event = json.loads(v[i])
+    event["message"]["content"][0]["text"] = text
+    v[i] = enc(event)
+    v[-1] = _final_result(v[-1], text)
+    return v
+
+
+def _move(lines: list[str], start: int, stop: int, target: int) -> list[str]:
+    """Move lines[start:stop] so they start at index `target` of the original list."""
+    v = list(lines)
+    block = v[start:stop]
+    del v[start:stop]
+    if target > start:
+        target -= stop - start
+    v[target:target] = block
+    return v
+
+
+def pass1_completions(p1: list[str], out: Path) -> None:
+    ids = _counter()
+    bash_use = p1[index_of(p1, '"command":"python3 scripts/kado-write-file.py')]
+    bash_res = p1[index_of(p1, '"content":"kado-write-file: ')]
+    md_res = index_of(p1, '"content":"kado-write-file: ')
+    text_tpl = p1[index_of(p1, '"text":"Next I\'ll load the suggest-handling skill')]
+    interim = p1[index_of(p1, '"result":"Batch 2 (Gamma) is dispatched')]
+    final = p1[-1]
+    assert json.loads(final)["type"] == "result"
+
+    def bash(command: str, output: str) -> list[str]:
+        return _call(bash_use, bash_res, ids, "Bash", {"command": command}, output)
+
+    json_write = bash(
+        "python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json "
+        f'--vault "100 Inbox/{STEM}_suggestions.json"',
+        "kado-write-file: tomo-tmp/suggestions-wire.json (2048 bytes, op=file) "
+        f"→ 100 Inbox/{STEM}_suggestions.json",
+    )
+    mark = bash(
+        f"python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id {RUN_ID}",
+        "mark-captured: marked=3 errors=0 declined=0 skipped_non_md=0 squelched=0",
+    )
+
+    def complete(report: str) -> list[str]:
+        return (
+            p1[: md_res + 1]
+            + json_write
+            + mark
+            + [_text_event(text_tpl, report, "00000000-0000-4000-8000-0000000000f0")]
+            + [interim, _final_result(final, report)]
+        )
+
+    done = complete(REPORT)
+    write(out, "pass1-complete.jsonl", done)
+
+    warn_line = json.loads(p1[index_of(p1, "active tracker field(s) have no keywords")])
+    stderr = warn_line["message"]["content"][0]["content"]
+    (warn_text,) = [ln for ln in stderr.splitlines() if ln.startswith("WARN: ")]
+    relayed = complete(f"{REPORT}\n\n{DUPLICATE_LINE}\n\n{warn_text}")
+    first_agent = index_of(relayed, '"name":"Agent","input":{')
+    relayed.insert(
+        first_agent,
+        _text_event(text_tpl, warn_text, "00000000-0000-4000-8000-0000000000f1"),
+    )
+    write(out, "pass1-complete-relayed.jsonl", relayed)
+
+    agents = indices_of(done, '"name":"Agent","input":{')
+    agent_res = index_of(done, '"text":"Async agent launched successfully.')
+    agent_use = done[agents[0]]
+    conductor_read_res = index_of(
+        done, '"content":"1\\t---\\n2\\tname: suggestion-conductor'
+    )
+    v = list(done)
+    v[conductor_read_res + 1 : conductor_read_res + 1] = _call(
+        agent_use,
+        done[agent_res],
+        ids,
+        "Agent",
+        {
+            "subagent_type": "tomo:suggestion-conductor",
+            "description": "Run Pass 1",
+            "prompt": "Run Pass 1. The routing plan is at tomo-tmp/routing-plan.json.",
+        },
+        [{"type": "text", "text": "Async agent launched successfully."}],
+    )
+    write(out, "pass1-conductor-dispatched.jsonl", v)
+
+    v = list(done)
+    for i in agents:
+        event = json.loads(v[i])
+        block = event["message"]["content"][0]
+        assert block["input"]["subagent_type"] == "tomo:inbox-analyst"
+        block["input"] = {
+            ("name" if k == "subagent_type" else k): (
+                "inbox-analyst" if k == "subagent_type" else val
+            )
+            for k, val in block["input"].items()
+        }
+        v[i] = enc(event)
+    write(out, "pass1-analyst-name-not-type.jsonl", v)
+
+    skill = index_of(done, '"name":"Skill","input":{')
+    v = list(done)
+    v[skill:skill] = bash(
+        "python3 scripts/run-id.py --out tomo-tmp/.run_id", RUN_ID
+    ) + bash(
+        "python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml "
+        "--vault-config config/vault-config.yaml --profiles-dir profiles "
+        f"--run-id {RUN_ID} --output tomo-tmp/shared-ctx.json",
+        "[shared-ctx] reconcile: cache clean (2 MOC(s) verified)",
+    )
+    write(out, "pass1-setup-twice.jsonl", v)
+
+    ctx_use = index_of(done, '"command":"python3 scripts/shared-ctx-builder.py')
+    assert index_of(done, "active tracker field(s) have no keywords") == ctx_use + 1
+    first_res = index_of(done, '"text":"Async agent launched successfully.')
+    write(
+        out,
+        "pass1-dispatch-before-setup.jsonl",
+        _move(done, ctx_use, ctx_use + 2, first_res + 1),
+    )
+
+    red = index_of(done, '"command":"python3 scripts/suggestions-reducer.py')
+    ren = index_of(done, '"command":"python3 scripts/suggestions-render.py')
+    assert ren == red + 2
+    write(out, "pass1-render-before-reduce.jsonl", _move(done, ren, ren + 2, red))
+
+    md_use = index_of(
+        done,
+        '"command":"python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md',
+    )
+    vault_md = f"<WS>/100 Inbox/{STEM}_suggestions.md"
+    v = list(done)
+    v[md_use : md_use + 2] = _call(
+        bash_use,
+        bash_res,
+        ids,
+        "Write",
+        {"file_path": vault_md, "content": "# Suggestions\n"},
+        f"File created successfully at: {vault_md}",
+    )
+    write(out, "pass1-write-tool-publish.jsonl", v)
+
+    mark_use = index_of(done, '"command":"python3 scripts/mark-captured.py')
+    json_use = index_of(done, "--local tomo-tmp/suggestions-wire.json")
+    write(
+        out,
+        "pass1-mark-before-json-write.jsonl",
+        _move(done, mark_use, mark_use + 2, json_use),
+    )
+
+    field = index_of(
+        done, '"command":"python3 scripts/read-routing-plan.py --field inbox_path"'
+    )
+    v = list(done)
+    v[field + 2 : field + 2] = bash(
+        "python3 -c \"import json; print(json.load(open('tomo-tmp/routing-plan.json'))"
+        "['inbox_path'])\"",
+        "100 Inbox/",
+    )
+    write(out, "pass1-inline-python.jsonl", v)
+
+    quoted = (
+        "I ran the pipeline. The skill's report would read \"Pass 1 complete: 3 items "
+        f'analysed, suggestions written to [[{STEM}_suggestions]]." Please check the '
+        "note before you approve it."
+    )
+    write(out, "pass1-report-quoted.jsonl", _replace_report(done, quoted))
+
+
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")
     event = json.loads(p2[hb])
@@ -221,6 +456,7 @@ def pass2_variants(p2: list[str], out: Path) -> None:
 
 def variants(fixtures: Path, out: Path) -> None:
     pass1_variants(read_lines(fixtures / "pass1-spike.jsonl"), out)
+    pass1_completions(read_lines(fixtures / "pass1-spike.jsonl"), out)
     pass2_variants(read_lines(fixtures / "pass2-spike.jsonl"), out)
 
 

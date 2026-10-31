@@ -724,3 +724,68 @@ def test_runner_generated_not_graded_line_is_repo_relative(env):
     assert line.endswith(f" · tomo-tmp/evals/{out.name}"), line
     assert str(env.repo) not in line and str(env.tmp) not in line
     assert (out / "verdict.txt").read_text().strip() == line
+
+
+# ── the Pass 1 cases (spec 043, T2.2/T2.3) ────────────────────
+
+PASS1_CASES = {
+    "pass1-suggest-pipeline": ("0", "0"),
+    "pass1-warn-and-duplicates-relayed": ("1", "1"),
+}
+CONDUCTOR = REPO / "tomo" / "dot_claude" / "agents" / "suggestion-conductor.md"
+
+
+@pytest.mark.parametrize("case", sorted(PASS1_CASES))
+def test_pass1_case_files_are_as_specified(case):
+    import yaml
+
+    d = REPO / "evals" / case
+    spec = yaml.safe_load((d / "case.yaml").read_text())
+    assert spec == {
+        "schema_version": "1.1",
+        "name": case,
+        "runs": 3,
+        "context": {"scaffold_script": "scaffold.sh"},
+        "execution": {
+            "max_turns": 60,
+            "timeout_seconds": 900,
+            "allowed_tools": ["Agent", "Bash", "Read", "Skill"],
+            "prompt": "/tomo:inbox",
+        },
+    }
+    warn, dups = PASS1_CASES[case]
+    lines = [ln for ln in (d / "scaffold.sh").read_text().splitlines()
+             if ln and not ln.startswith("#")]
+    assert lines == [
+        "set -e",
+        f"SHARED_CTX_WARN={warn}",
+        f"DUPLICATES={dups}",
+        '. "$(dirname "$0")/../_lib/pass1-stubs.sh"',
+        "stage_pass1_instance",
+    ]
+    assert (d / "graders" / "9-no-leak.md").read_bytes() == (KIT_DIR / "no-leak.md").read_bytes()
+
+
+@pytest.mark.parametrize("case", sorted(PASS1_CASES))
+def test_pass1_case_passes_preflight_and_its_scaffold_stages(env, case):
+    """A dry run: the fake claude stands in for the paid call; the case's own scaffold
+    runs from the assembled copy, where the conductor is reachable."""
+    shutil.copytree(REPO / "evals" / case, env.repo / "evals" / case)
+    shutil.copy(KIT_DIR / "pass1-stubs.sh", env.repo / "evals" / "_lib" / "pass1-stubs.sh")
+    shutil.copy(CONDUCTOR, env.repo / "tomo" / "dot_claude" / "agents" / CONDUCTOR.name)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "pass1 case")
+    report = env.tmp / "scaffold-report.json"
+    proc = env.run("--case", case, FAKE_SCAFFOLD_CASE=case,
+                   FAKE_SCAFFOLD_WS=str(env.tmp / "ws"), FAKE_SCAFFOLD_REPORT=str(report))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert env.flag(env.eval_calls()[0], "--case") == case
+    got = json.loads(report.read_text())
+    assert got["rc"] == 0 and got["run_id"], got
+    ws = env.tmp / "ws"
+    assert (ws / ".claude" / "agents" / CONDUCTOR.name).read_bytes() == CONDUCTOR.read_bytes()
+    ctx = (ws / "scripts" / "shared-ctx-builder.py").read_text()
+    reducer = (ws / "scripts" / "suggestions-reducer.py").read_text()
+    warn, dups = PASS1_CASES[case]
+    assert f"SHARED_CTX_WARN = {warn}\n" in ctx
+    assert f"DUPLICATES = {dups}\n" in reducer

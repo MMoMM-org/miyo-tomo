@@ -6,7 +6,10 @@ Requirements/Reliability). This module reproduces the SDD's offline validation t
 with one pytest command and checks that every grader regex in `evals/` parses, compiles
 in Python and stays inside the Python/JS common subset.
 
-How later tasks (T2.2-T2.4) extend it:
+T2.2/T2.3 added the two Pass 1 cases' graders (every one loaded from its file), the
+derived pass1-complete fixtures, `tool_order`, and the CLI's `last_message` semantics.
+
+How later tasks (T2.4) extend it:
 - add a grader to GRADERS: `inline(...)` while its file does not exist yet, then switch
   the entry to `from_file("evals/<case>/graders/<file>.md")` once it does;
 - add an EXPECTATIONS row per (fixture, grader id) with the expected verdict;
@@ -37,6 +40,7 @@ from grader_patterns import (
     last_message,
     load_fixture,
     load_grader,
+    parse_frontmatter,
     tool_uses,
 )
 
@@ -65,38 +69,71 @@ FIXTURES = {
     "pass2-status-sentence.jsonl": "pass2-spike with a status sentence before the first report line "
     "of the conductor's return",
     "pass2-duplicate-handback.jsonl": "pass2-spike with the hand-back tool_result event duplicated",
+    # Pass 1 completions the spike never reached (T2.2/T2.3). Every red variant below is
+    # pass1-complete with ONE edit, the shape of the mutation that grader must catch.
+    "pass1-complete.jsonl": "pass1-spike up to the .md write, then the .json write, "
+    "mark-captured and the Pass 1 report (assistant text + final result frame)",
+    "pass1-complete-relayed.jsonl": "pass1-complete + the WARN relay before the first "
+    "dispatch, and a report that carries the duplicate line and the WARN line",
+    "pass1-conductor-dispatched.jsonl": "pass1-complete + an Agent call to "
+    "tomo:suggestion-conductor after the conductor Read",
+    "pass1-analyst-name-not-type.jsonl": "pass1-complete with every analyst dispatch's "
+    "subagent_type key renamed to name (value inbox-analyst)",
+    "pass1-setup-twice.jsonl": "pass1-complete + run-id and shared-ctx-builder calls "
+    "before the Skill call (setup done in the conductor)",
+    "pass1-dispatch-before-setup.jsonl": "pass1-complete with the shared-ctx-builder call "
+    "moved after the first Agent call",
+    "pass1-render-before-reduce.jsonl": "pass1-complete with the render call moved before "
+    "the reducer call",
+    "pass1-write-tool-publish.jsonl": "pass1-complete with the .md publish done by the "
+    "Write tool instead of kado-write-file",
+    "pass1-mark-before-json-write.jsonl": "pass1-complete with mark-captured moved between "
+    "the .md and the .json write",
+    "pass1-inline-python.jsonl": "pass1-complete + a python3 -c read of the routing plan",
+    "pass1-report-quoted.jsonl": "pass1-complete with the report line quoted inside a "
+    "sentence instead of starting a line",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
 # the grader files; `from_file` rows load the real frontmatter.
+PIPE = "evals/pass1-suggest-pipeline/graders/"
+RELAY = "evals/pass1-warn-and-duplicates-relayed/graders/"
+
 GRADERS = {
-    # SDD Complex Logic — relay grader 02.
-    "warn-before-first-dispatch": inline(
-        type="regex",
-        target="trace",
-        match="contains",
-        pattern=r'^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?[^\n]*"type":"assistant"[^\n]*"type":"text","text":"[^\n]*active tracker field\(s\) have no keywords',
+    # Case pass1-suggest-pipeline (SDD pipeline grader table, PRD F1).
+    "conductor-not-dispatched": from_file(PIPE + "01-conductor-not-dispatched.md"),
+    "analyst-dispatched-3x": from_file(PIPE + "02-analyst-dispatched-3x.md"),
+    "no-general-purpose": from_file(PIPE + "03-no-general-purpose.md"),
+    "subfolder-path-and-key": from_file(PIPE + "04-subfolder-path-and-key.md"),
+    "shared-ctx-once": from_file(PIPE + "05-shared-ctx-once.md"),
+    "run-id-once": from_file(PIPE + "06-run-id-once.md"),
+    "setup-before-dispatch": from_file(PIPE + "07-setup-before-dispatch.md"),
+    "reducer-before-render": from_file(PIPE + "08-reducer-before-render.md"),
+    # SDD Complex Logic — the violation shape; green when absent.
+    "reduce-after-last-dispatch": from_file(PIPE + "09-reduce-after-last-dispatch.md"),
+    "two-script-writes-same-stem": from_file(
+        PIPE + "10-two-script-writes-same-stem.md"
     ),
-    # SDD Complex Logic — pipeline grader 09 (the violation shape; green when absent).
-    "reduce-after-last-dispatch": inline(
-        type="regex",
-        target="trace",
-        match="not_contains",
-        pattern=r'"name":"Bash","input":\{"command":"python3? scripts/suggestions-reducer\.py[\s\S]*"name":"Agent","input":\{[^\n]*?"subagent_type":"tomo:inbox-analyst"',
+    "no-inline-vault-write": from_file(PIPE + "11-no-inline-vault-write.md"),
+    "mark-captured-once": from_file(PIPE + "12a-mark-captured-once.md"),
+    "mark-captured-after-json-write": from_file(
+        PIPE + "12b-mark-captured-after-json-write.md"
     ),
-    # SDD pipeline grader 04.
-    "subfolder-path-and-key": inline(
-        type="tool_used",
-        tool="Agent",
-        min=1,
-        input_match=r'path\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"[\s\S]*item_key\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"',
-    ),
-    # SDD pipeline grader 10.
-    "two-script-writes-same-stem": inline(
-        type="regex",
-        target="trace",
-        match="contains",
-        pattern=r'--vault \\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*--vault \\"100 Inbox/\1_suggestions\.json\\"',
+    "no-inline-python": from_file(PIPE + "13-no-inline-python.md"),
+    "report-line-anchored": from_file(PIPE + "14-report-line-anchored.md"),
+    "no-duplicate-line": from_file(PIPE + "15-no-duplicate-line.md"),
+    "no-leak": from_file("evals/_lib/no-leak.md"),
+    # Case pass1-warn-and-duplicates-relayed (SDD relay grader table, PRD F2).
+    "warn-in-reply": from_file(RELAY + "01-warn-in-reply.md"),
+    # SDD Complex Logic.
+    "warn-before-first-dispatch": from_file(RELAY + "02-warn-before-first-dispatch.md"),
+    "duplicate-line": from_file(RELAY + "03-duplicate-line.md"),
+    "relay-report-line-anchored": from_file(RELAY + "04-report-line-anchored.md"),
+    # Control: the SDD's essence for grader 03. A dispatch whose subagent_type key was
+    # renamed (mutation analyst-name-not-type) runs general-purpose without naming it,
+    # so this pattern stays green on it; the shipped 03 counts dispatches without the key.
+    "control-sdd-general-purpose": inline(
+        type="tool_used", tool="Agent", min=0, max=0, input_match="general-purpose"
     ),
     # SDD Report-only: the canary counts the frame the report-only grader reads.
     "handback-canary": inline(
@@ -205,6 +242,121 @@ EXPECTATIONS = {
     ),
     ("pass1-spike.jsonl", "control-unanchored-reducer"): Expect(
         False, 1, "skill text satisfies an unanchored reducer pattern"
+    ),
+    # --- pass1-suggest-pipeline (T2.2). tool_order rows: count 1 = both sides found.
+    ("pass1-complete.jsonl", "conductor-not-dispatched"): Expect(
+        True, 0, "impersonated"
+    ),
+    ("pass1-spike.jsonl", "conductor-not-dispatched"): Expect(True, 0, "impersonated"),
+    ("pass1-conductor-dispatched.jsonl", "conductor-not-dispatched"): Expect(
+        False, 1, "conductor ran as a subagent"
+    ),
+    ("pass1-complete.jsonl", "analyst-dispatched-3x"): Expect(True, 3, "3 dispatches"),
+    ("pass1-spike.jsonl", "analyst-dispatched-3x"): Expect(True, 3, "3 dispatches"),
+    ("pass1-analyst-name-not-type.jsonl", "analyst-dispatched-3x"): Expect(
+        False, 0, "no dispatch carries subagent_type"
+    ),
+    ("pass1-complete.jsonl", "no-general-purpose"): Expect(True, 0, "all typed"),
+    ("pass1-conductor-dispatched.jsonl", "no-general-purpose"): Expect(
+        True, 0, "a typed conductor dispatch is not general-purpose"
+    ),
+    ("pass1-analyst-name-not-type.jsonl", "no-general-purpose"): Expect(
+        False, 3, "3 dispatches without subagent_type run general-purpose"
+    ),
+    ("pass1-analyst-name-not-type.jsonl", "control-sdd-general-purpose"): Expect(
+        True, 0, "the SDD essence cannot see an untyped dispatch"
+    ),
+    ("pass1-complete.jsonl", "subfolder-path-and-key"): Expect(True, 1, "Dresden"),
+    ("pass1-complete.jsonl", "shared-ctx-once"): Expect(True, 1, "built once"),
+    ("pass1-setup-twice.jsonl", "shared-ctx-once"): Expect(False, 2, "built twice"),
+    ("pass1-complete.jsonl", "run-id-once"): Expect(True, 1, "drawn once"),
+    ("pass1-setup-twice.jsonl", "run-id-once"): Expect(False, 2, "drawn twice"),
+    ("pass1-complete.jsonl", "setup-before-dispatch"): Expect(True, 1, "ctx first"),
+    ("pass1-spike.jsonl", "setup-before-dispatch"): Expect(True, 1, "ctx first"),
+    ("pass1-analyst-name-not-type.jsonl", "setup-before-dispatch"): Expect(
+        True, 1, "any Agent call is a dispatch"
+    ),
+    ("pass1-dispatch-before-setup.jsonl", "setup-before-dispatch"): Expect(
+        False, 1, "first dispatch before the ctx build"
+    ),
+    ("pass1-complete.jsonl", "reducer-before-render"): Expect(True, 1, "reduce first"),
+    ("pass1-reducer-before-dispatch.jsonl", "reducer-before-render"): Expect(
+        True, 1, "still before render (09 catches this one)"
+    ),
+    ("pass1-render-before-reduce.jsonl", "reducer-before-render"): Expect(
+        False, 1, "render first"
+    ),
+    ("pass1-complete.jsonl", "reduce-after-last-dispatch"): Expect(True, 0, "absent"),
+    ("pass1-complete.jsonl", "two-script-writes-same-stem"): Expect(
+        True, 1, "both writes, one stem"
+    ),
+    ("pass1-write-tool-publish.jsonl", "two-script-writes-same-stem"): Expect(
+        False, 0, ".md not published by the script"
+    ),
+    ("pass1-complete.jsonl", "no-inline-vault-write"): Expect(True, 0, "no Write"),
+    ("pass1-write-tool-publish.jsonl", "no-inline-vault-write"): Expect(
+        False, 1, "Write into 100 Inbox/"
+    ),
+    ("pass1-complete.jsonl", "mark-captured-once"): Expect(True, 1, "marked once"),
+    ("pass1-spike.jsonl", "mark-captured-once"): Expect(False, 0, "never marked"),
+    ("pass1-mark-before-json-write.jsonl", "mark-captured-once"): Expect(
+        True, 1, "once, in the wrong place (12b catches it)"
+    ),
+    ("pass1-complete.jsonl", "mark-captured-after-json-write"): Expect(
+        True, 1, "json write, then mark"
+    ),
+    ("pass1-spike.jsonl", "mark-captured-after-json-write"): Expect(
+        False, 0, "no json write and no mark"
+    ),
+    ("pass1-mark-before-json-write.jsonl", "mark-captured-after-json-write"): Expect(
+        False, 1, "mark before the json write"
+    ),
+    ("pass1-complete.jsonl", "no-inline-python"): Expect(True, 0, "none"),
+    ("pass1-spike.jsonl", "no-inline-python"): Expect(True, 0, "none"),
+    ("pass1-inline-python.jsonl", "no-inline-python"): Expect(False, 1, "python3 -c"),
+    ("pass1-complete.jsonl", "report-line-anchored"): Expect(True, 1, "report line"),
+    ("pass1-spike.jsonl", "report-line-anchored"): Expect(
+        False, 0, "the spike says it did not report Pass 1 complete"
+    ),
+    ("pass1-report-quoted.jsonl", "report-line-anchored"): Expect(
+        False, 0, "quoted mid-sentence, not at a line start"
+    ),
+    ("pass1-complete.jsonl", "no-duplicate-line"): Expect(True, 0, "absent"),
+    ("pass1-spike.jsonl", "no-duplicate-line"): Expect(
+        True, 0, "names the counter, not the line"
+    ),
+    ("pass1-complete-relayed.jsonl", "no-duplicate-line"): Expect(
+        False, 1, "line present"
+    ),
+    ("pass1-complete.jsonl", "no-leak"): Expect(True, 0, "report leaks nothing"),
+    ("pass1-complete-relayed.jsonl", "no-leak"): Expect(True, 0, "relay leaks nothing"),
+    ("pass1-spike.jsonl", "no-leak"): Expect(
+        False, 3, "the spike's apology names tomo-tmp/ three times"
+    ),
+    # --- pass1-warn-and-duplicates-relayed (T2.3).
+    ("pass1-complete-relayed.jsonl", "warn-in-reply"): Expect(True, 1, "verbatim"),
+    ("pass1-complete.jsonl", "warn-in-reply"): Expect(False, 0, "not relayed"),
+    ("pass1-spike.jsonl", "warn-in-reply"): Expect(
+        False,
+        0,
+        "the spike reply quotes the text WITHOUT its `WARN: ` prefix — not verbatim "
+        "(plan T2.3 step 2 expected green; F2-AC1 says the line appears verbatim)",
+    ),
+    ("pass1-complete-relayed.jsonl", "warn-before-first-dispatch"): Expect(
+        True, 1, "relayed before the first Agent line"
+    ),
+    ("pass1-complete.jsonl", "warn-before-first-dispatch"): Expect(
+        False, 0, "never relayed"
+    ),
+    ("pass1-complete-relayed.jsonl", "duplicate-line"): Expect(True, 1, "line present"),
+    ("pass1-complete.jsonl", "duplicate-line"): Expect(False, 0, "absent"),
+    ("pass1-spike.jsonl", "duplicate-line"): Expect(False, 0, "absent"),
+    ("pass1-complete-relayed.jsonl", "relay-report-line-anchored"): Expect(
+        True, 1, "report line"
+    ),
+    ("pass1-spike.jsonl", "relay-report-line-anchored"): Expect(False, 0, "no report"),
+    ("pass1-report-quoted.jsonl", "relay-report-line-anchored"): Expect(
+        False, 0, "quoted mid-sentence"
     ),
 }
 
@@ -355,8 +507,8 @@ def test_js_subset_accepts(pattern):
     assert js_subset_violations(pattern) == []
 
 
-def test_regex_target_last_message_reads_the_last_of_four_result_frames():
-    # pass1-spike has four result frames; only the last starts with this sentence.
+def test_regex_target_last_message_reads_the_spike_final_reply():
+    # pass1-spike has four result frames and several interim texts; the final reply wins.
     grader = inline(
         type="regex",
         target="last_message",
@@ -399,25 +551,45 @@ def _regex(pattern: str, target: str = "last_message", match: str = "contains"):
     return inline(type="regex", target=target, match=match, pattern=pattern)
 
 
-def test_last_message_returns_the_last_result_frame():
-    trace = _trace(_result("first"), _tool_use("Bash", "ls"), _result("second"))
-    assert last_message(trace) == "second"
-
-
-def test_last_message_ignores_non_result_lines_that_carry_the_result_text():
-    decoy_string = _tool_use("Bash", 'echo \'"type":"result"\'')
-    decoy_object = {
+def _text(*texts: str, parent: str | None = None) -> dict:
+    return {
         "type": "assistant",
-        "message": {"content": [{"type": "result", "result": "nested decoy"}]},
+        "message": {"content": [{"type": "text", "text": t} for t in texts]},
+        "parent_tool_use_id": parent,
     }
-    assert '"type":"result"' in json.dumps(decoy_object, separators=(",", ":"))
-    trace = _trace(_result("real"), decoy_string, decoy_object)
-    assert last_message(trace) == "real"
 
 
-def test_last_message_without_a_result_frame_is_empty():
-    assert last_message(_trace(_tool_use("Bash", "ls"))) == ""
+# `last_message` is the CLI's `lastAssistantText` (claude 2.1.314): the text blocks of the
+# LAST assistant event that has any, joined with "\n". Result frames are not read.
+def test_last_message_is_the_last_assistant_text_not_the_result_frame():
+    trace = _trace(_text("first"), _result("frame text"), _text("second"))
+    assert last_message(trace) == "second"
+    trace = _trace(_text("reply"), _result("an older interim frame"))
+    assert last_message(trace) == "reply"
+
+
+def test_last_message_joins_the_text_blocks_of_one_event_with_newlines():
+    assert last_message(_trace(_text("a", "b"))) == "a\nb"
+
+
+def test_last_message_skips_assistant_events_without_text():
+    trace = _trace(_text("reply"), _tool_use("Bash", "ls"), _result("x"))
+    assert last_message(trace) == "reply"
+
+
+def test_last_message_includes_subagent_text():
+    # The CLI does not filter on parent_tool_use_id.
+    trace = _trace(_text("main"), _text("done 100 Inbox/A.md", parent="toolu_x"))
+    assert last_message(trace) == "done 100 Inbox/A.md"
+
+
+def test_last_message_without_assistant_text_is_empty():
+    assert last_message(_trace(_tool_use("Bash", "ls"), _result("frame"))) == ""
     assert evaluate(_regex(r"^$"), _trace(_tool_use("Bash", "ls"))).passed
+
+
+def _texted(text: str) -> str:
+    return _trace(_text(text))
 
 
 @pytest.mark.parametrize(
@@ -433,7 +605,7 @@ def test_last_message_without_a_result_frame_is_empty():
     ],
 )
 def test_regex_anchors_follow_js_without_flags(pattern, text, matched):
-    assert evaluate(_regex(pattern), _trace(_result(text))).passed is matched
+    assert evaluate(_regex(pattern), _texted(text)).passed is matched
     assert evaluate(_regex(pattern, target="trace"), text).passed is matched
 
 
@@ -450,7 +622,7 @@ def test_apply_match_rejects_an_unknown_mode():
 
 def test_regex_rejects_an_unknown_target():
     with pytest.raises(ValueError, match="unknown target"):
-        evaluate(_regex("x", target="first_message"), _trace(_result("x")))
+        evaluate(_regex("x", target="first_message"), _texted("x"))
 
 
 @pytest.mark.parametrize(("present", "passed"), [(False, True), (True, False)])
@@ -503,11 +675,126 @@ def test_builder_is_not_collected_by_pytest():
     assert not BUILDER.name.startswith("test")
 
 
-def test_tool_order_is_left_for_t2_2():
-    grader = inline(
-        type="tool_order",
-        before={"tool": "Bash", "input_match": "x"},
-        after={"tool": "Bash", "input_match": "y"},
+# --- tool_order (claude 2.1.314: first `before` match index < first `after` match index) ----
+
+
+def _order(before, after):
+    return inline(type="tool_order", before=before, after=after)
+
+
+B_X = {"tool": "Bash", "input_match": "x"}
+B_Y = {"tool": "Bash", "input_match": "y"}
+
+
+@pytest.mark.parametrize(
+    ("commands", "passed", "count"),
+    [
+        (["x", "y"], True, 1),
+        (["y", "x"], False, 1),
+        (["x"], False, 0),  # "after" never called
+        (["y"], False, 0),  # "before" never called
+        ([], False, 0),
+        (["x", "y", "x"], True, 1),  # first occurrences decide
+        (["y", "x", "y"], False, 1),  # a later x before a later y does not help
+        (["xy"], False, 1),  # one call matching both sides: index == index
+    ],
+)
+def test_tool_order_compares_first_matching_indices(commands, passed, count):
+    trace = _trace(*[_tool_use("Bash", c) for c in commands])
+    outcome = evaluate(_order(B_X, B_Y), trace)
+    assert (outcome.passed, outcome.count) == (passed, count)
+
+
+def test_tool_order_matches_tool_name_and_input():
+    trace = _trace(
+        _tool_use("Agent", "x"), _tool_use("Bash", "y"), _tool_use("Bash", "x")
     )
-    with pytest.raises(NotImplementedError):
-        evaluate(grader, load_fixture("pass1-spike.jsonl"))
+    assert not evaluate(_order(B_X, B_Y), trace).passed  # Agent "x" is not Bash "x"
+    assert evaluate(_order({"tool": "Agent"}, B_Y), trace).passed  # no input_match
+
+
+def test_tool_order_accepts_a_bare_tool_name():
+    trace = _trace(_tool_use("Agent", "go"), _tool_use("Bash", "y"))
+    assert evaluate(_order("Agent", "Bash"), trace).passed
+    assert not evaluate(_order("Bash", "Agent"), trace).passed
+
+
+def test_tool_order_counts_subagent_calls_in_trace_order():
+    sub = _tool_use("Bash", "x")
+    sub["parent_tool_use_id"] = "toolu_parent"
+    trace = _trace(sub, _tool_use("Bash", "y"))
+    assert evaluate(_order(B_X, B_Y), trace).passed
+
+
+# --- grader files: the CLI's strict frontmatter schema (claude 2.1.314) ------------------
+
+CLI_KEYS = {
+    "regex": {"type", "name", "target", "pattern", "flags", "match", "weight", "arm"},
+    "tool_order": {"type", "name", "before", "after", "weight", "arm"},
+    "tool_used": {"type", "name", "tool", "input_match", "min", "max", "weight", "arm"},
+}
+
+
+@pytest.mark.parametrize("path", grader_files(), ids=lambda p: str(p.relative_to(REPO)))
+def test_every_grader_file_uses_only_keys_the_cli_accepts(path):
+    data = parse_frontmatter(path.read_text(encoding="utf-8"))
+    assert set(data) <= CLI_KEYS[data["type"]], set(data) - CLI_KEYS[data["type"]]
+    for side in ("before", "after"):
+        if isinstance(data.get(side), dict):
+            assert set(data[side]) <= {"tool", "input_match"}, data[side]
+
+
+# --- the two Pass 1 cases (T2.2, T2.3) --------------------------------------------------
+
+PASS1_CASES = ("pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed")
+
+
+def test_every_pass1_case_grader_is_validated_offline():
+    in_table = {g.source for g in GRADERS.values() if g.source is not None}
+    for case in PASS1_CASES:
+        for path in sorted((REPO / "evals" / case / "graders").glob("*.md")):
+            if path.name == "9-no-leak.md":
+                continue
+            assert path in in_table, f"{path.relative_to(REPO)} not in GRADERS"
+
+
+def test_relay_report_grader_is_the_pipeline_report_grader():
+    pipe = (REPO / PIPE / "14-report-line-anchored.md").read_bytes()
+    assert (REPO / RELAY / "04-report-line-anchored.md").read_bytes() == pipe
+
+
+def _skill_report_quotes() -> list[str]:
+    """The `> "…"` blockquotes of suggest-handling's step 7, each joined to one line."""
+    skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
+    step = skill.read_text(encoding="utf-8").split("### 7. Report", 1)[1]
+    quotes, current = [], []
+    for line in step.splitlines():
+        if line.startswith("> "):
+            current.append(line[2:])
+        elif current:
+            quotes.append(" ".join(current).strip('"'))
+            current = []
+    if current:
+        quotes.append(" ".join(current).strip('"'))
+    return quotes
+
+
+def test_report_graders_match_the_skill_template_lines():
+    report, duplicate = _skill_report_quotes()
+    report = report.replace("{N}", "3").replace("<date>", "2026-10-30_0000")
+    duplicate = duplicate.replace("{n}", "1")
+    reply = _texted(f"{report}\n\n{duplicate}")
+    for grader_id in (
+        "report-line-anchored",
+        "relay-report-line-anchored",
+        "duplicate-line",
+    ):
+        assert evaluate(GRADERS[grader_id], reply).passed, grader_id
+    assert not evaluate(GRADERS["no-duplicate-line"], reply).passed
+
+
+def test_warn_grader_matches_the_kit_warn_line():
+    from test_pass1_stub_kit import WARN_LINE
+
+    assert evaluate(GRADERS["warn-in-reply"], _texted(WARN_LINE)).passed
+    assert not evaluate(GRADERS["warn-in-reply"], _texted(WARN_LINE[6:])).passed

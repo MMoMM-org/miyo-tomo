@@ -119,10 +119,14 @@ def production_dispatch() -> tuple[str, str]:
     return agent, prompt
 
 
-def test_exactly_the_three_cases_exist():
+# Spec 043's Pass 1 cases; their shape is tested in test_run_evals.py.
+PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
+
+
+def test_exactly_the_known_cases_exist():
     assert {p.name for p in EVALS.iterdir() if p.is_dir() and not p.name.startswith("_")} == set(
         CASE_SETTINGS
-    )
+    ) | PASS1_CASES
 
 
 def test_every_non_underscore_evals_subdir_is_a_case():

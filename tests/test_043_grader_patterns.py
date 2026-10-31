@@ -106,8 +106,8 @@ FIXTURES = {
     "the reducer call",
     "pass1-write-tool-publish.jsonl": "pass1-complete with the .md publish done by the "
     "Write tool instead of kado-write-file",
-    "pass1-mark-before-json-write.jsonl": "pass1-complete with mark-captured moved between "
-    "the .md and the .json write",
+    "pass1-mark-before-json-write.jsonl": "pass1-complete with mark-captured moved before "
+    "the Skill expansion (the first line naming suggestions-wire.json), so before both writes",
     "pass1-mark-twice.jsonl": "pass1-complete + a second mark-captured call after the first",
     "pass1-inline-python.jsonl": "pass1-complete + a python3 -c read of the routing plan",
     "pass1-report-quoted.jsonl": "pass1-complete with the report line quoted inside a "
@@ -119,6 +119,12 @@ FIXTURES = {
     "commands prefixed `cd . && `",
     "pass1-analyst-mentions-conductor.jsonl": "pass1-complete with the first analyst "
     "prompt naming suggestion-conductor in prose",
+    "pass1-complete-chained-writes.jsonl": "pass1-complete with the .md and the .json "
+    "write chained with `&&` in ONE Bash call",
+    "pass1-complete-chained-json-mark.jsonl": "pass1-complete with the .json write and "
+    "mark-captured chained with `&&` in ONE Bash call (the .md write separate)",
+    "pass1-mark-between-writes.jsonl": "pass1-complete with mark-captured moved between "
+    "the .md and the .json write",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -186,6 +192,13 @@ GRADERS = {
         match="contains",
         pattern=r"active tracker field\(s\) have no keywords[\s\S]*\"name\":\"Agent\"",
     ),
+    "control-unanchored-mark": inline(
+        type="regex",
+        target="trace",
+        match="not_contains",
+        pattern=r'mark-captured\.py[\s\S]*kado-write-file\.py[^\n]*?--vault\s+\\"'
+        r'[^"\\]*_suggestions\.json\\"',
+    ),
     "control-unanchored-reducer": inline(
         type="regex",
         target="trace",
@@ -199,7 +212,7 @@ GRADERS = {
 EXPECTATIONS = {
     # WARN before dispatch (SDD table rows 1-3).
     ("pass1-spike.jsonl", "warn-before-first-dispatch"): Expect(
-        False, 0, "spike: no relay before dispatch — red"
+        False, 0, "expected finding: the spike never relayed the WARN before dispatch"
     ),
     ("pass1-warn-before-dispatch.jsonl", "warn-before-first-dispatch"): Expect(
         True, 1, "relay before the first Agent line"
@@ -235,7 +248,7 @@ EXPECTATIONS = {
     ),
     # Same-stem writes (SDD table row 7, plus the two edited variants).
     ("pass1-spike.jsonl", "two-script-writes-same-stem"): Expect(
-        False, 0, "spike: 1 write only — no match"
+        False, 0, "unreached: the spike stopped after the .md write"
     ),
     ("pass1-two-writes-same-stem.jsonl", "two-script-writes-same-stem"): Expect(
         True, 1, ".md and .json share the stem"
@@ -344,6 +357,7 @@ EXPECTATIONS = {
         False, 0, "no dispatch carries subagent_type"
     ),
     ("pass1-complete.jsonl", "no-general-purpose"): Expect(True, 0, "all typed"),
+    ("pass1-spike.jsonl", "no-general-purpose"): Expect(True, 0, "all typed"),
     ("pass1-conductor-dispatched.jsonl", "no-general-purpose"): Expect(
         True, 0, "a typed conductor dispatch is not general-purpose"
     ),
@@ -355,8 +369,10 @@ EXPECTATIONS = {
     ),
     ("pass1-complete.jsonl", "subfolder-path-and-key"): Expect(True, 1, "Dresden"),
     ("pass1-complete.jsonl", "shared-ctx-once"): Expect(True, 1, "built once"),
+    ("pass1-spike.jsonl", "shared-ctx-once"): Expect(True, 1, "built once"),
     ("pass1-setup-twice.jsonl", "shared-ctx-once"): Expect(False, 2, "built twice"),
     ("pass1-complete.jsonl", "run-id-once"): Expect(True, 1, "drawn once"),
+    ("pass1-spike.jsonl", "run-id-once"): Expect(True, 1, "drawn once"),
     ("pass1-setup-twice.jsonl", "run-id-once"): Expect(False, 2, "drawn twice"),
     ("pass1-complete.jsonl", "setup-before-dispatch"): Expect(True, 1, "ctx first"),
     ("pass1-spike.jsonl", "setup-before-dispatch"): Expect(True, 1, "ctx first"),
@@ -367,6 +383,7 @@ EXPECTATIONS = {
         False, 1, "first dispatch before the ctx build"
     ),
     ("pass1-complete.jsonl", "reducer-before-render"): Expect(True, 1, "reduce first"),
+    ("pass1-spike.jsonl", "reducer-before-render"): Expect(True, 1, "reduce first"),
     ("pass1-reducer-before-dispatch.jsonl", "reducer-before-render"): Expect(
         True, 1, "still before render (09 catches this one)"
     ),
@@ -381,11 +398,14 @@ EXPECTATIONS = {
         False, 0, ".md not published by the script"
     ),
     ("pass1-complete.jsonl", "no-inline-vault-write"): Expect(True, 0, "no Write"),
+    ("pass1-spike.jsonl", "no-inline-vault-write"): Expect(True, 0, "no Write"),
     ("pass1-write-tool-publish.jsonl", "no-inline-vault-write"): Expect(
         False, 1, "Write into 100 Inbox/"
     ),
     ("pass1-complete.jsonl", "mark-captured-once"): Expect(True, 1, "marked once"),
-    ("pass1-spike.jsonl", "mark-captured-once"): Expect(False, 0, "never marked"),
+    ("pass1-spike.jsonl", "mark-captured-once"): Expect(
+        False, 0, "unreached: never marked"
+    ),
     ("pass1-mark-twice.jsonl", "mark-captured-once"): Expect(
         False, 2, "marked twice, over the max of 1"
     ),
@@ -393,20 +413,53 @@ EXPECTATIONS = {
         True, 1, "once, in the wrong place (12b catches it)"
     ),
     ("pass1-complete.jsonl", "mark-captured-after-json-write"): Expect(
-        True, 1, "json write, then mark"
+        True, 0, "json write, then mark"
     ),
     ("pass1-spike.jsonl", "mark-captured-after-json-write"): Expect(
-        False, 0, "no json write and no mark"
+        True, 0, "no mark at all — green; 12a owns presence"
     ),
     ("pass1-mark-before-json-write.jsonl", "mark-captured-after-json-write"): Expect(
-        False, 1, "mark before the json write"
+        False, 1, "mark before both writes"
+    ),
+    ("pass1-mark-between-writes.jsonl", "mark-captured-after-json-write"): Expect(
+        False, 1, "mark after the .md, before the .json write"
+    ),
+    ("pass1-mark-twice.jsonl", "mark-captured-after-json-write"): Expect(
+        True, 0, "both marks after the json write (12a catches it)"
+    ),
+    ("pass1-mark-between-writes.jsonl", "mark-captured-once"): Expect(
+        True, 1, "once, in the wrong place (12b catches it)"
+    ),
+    # Chained script calls (`&&` in one Bash call) are correct behaviour: the skill
+    # shows both writes in one fenced block.
+    ("pass1-complete-chained-writes.jsonl", "two-script-writes-same-stem"): Expect(
+        True, 1, "both writes in one Bash call, one stem"
+    ),
+    ("pass1-complete-chained-writes.jsonl", "mark-captured-once"): Expect(
+        True, 1, "marked once"
+    ),
+    ("pass1-complete-chained-writes.jsonl", "mark-captured-after-json-write"): Expect(
+        True, 0, "mark in a later call"
+    ),
+    ("pass1-complete-chained-json-mark.jsonl", "two-script-writes-same-stem"): Expect(
+        True, 1, "json write chained with the mark, one stem"
+    ),
+    ("pass1-complete-chained-json-mark.jsonl", "mark-captured-once"): Expect(
+        True, 1, "one Bash call runs mark-captured"
+    ),
+    (
+        "pass1-complete-chained-json-mark.jsonl",
+        "mark-captured-after-json-write",
+    ): Expect(True, 0, "the mark follows the json write inside one command"),
+    ("pass1-complete.jsonl", "control-unanchored-mark"): Expect(
+        False, 1, "the skill text's mark-captured.py precedes the real json write"
     ),
     ("pass1-complete.jsonl", "no-inline-python"): Expect(True, 0, "none"),
     ("pass1-spike.jsonl", "no-inline-python"): Expect(True, 0, "none"),
     ("pass1-inline-python.jsonl", "no-inline-python"): Expect(False, 1, "python3 -c"),
     ("pass1-complete.jsonl", "report-line-anchored"): Expect(True, 1, "report line"),
     ("pass1-spike.jsonl", "report-line-anchored"): Expect(
-        False, 0, "the spike says it did not report Pass 1 complete"
+        False, 0, "unreached: the spike says it did not report Pass 1 complete"
     ),
     ("pass1-report-quoted.jsonl", "report-line-anchored"): Expect(
         False, 0, "quoted mid-sentence, not at a line start"
@@ -421,7 +474,7 @@ EXPECTATIONS = {
     ("pass1-complete.jsonl", "no-leak"): Expect(True, 0, "report leaks nothing"),
     ("pass1-complete-relayed.jsonl", "no-leak"): Expect(True, 0, "relay leaks nothing"),
     ("pass1-spike.jsonl", "no-leak"): Expect(
-        False, 3, "the spike's apology names tomo-tmp/ three times"
+        False, 3, "expected finding: the spike's apology names tomo-tmp/ three times"
     ),
     # --- pass1-warn-and-duplicates-relayed (T2.3).
     ("pass1-complete-relayed.jsonl", "warn-in-reply"): Expect(True, 1, "verbatim"),
@@ -429,7 +482,8 @@ EXPECTATIONS = {
     ("pass1-spike.jsonl", "warn-in-reply"): Expect(
         False,
         0,
-        "the spike reply quotes the text WITHOUT its `WARN: ` prefix — not verbatim "
+        "expected finding: the spike reply quotes the text WITHOUT its `WARN: ` prefix "
+        "— not verbatim "
         "(plan T2.3 step 2 expected green; F2-AC1 says the line appears verbatim)",
     ),
     ("pass1-complete-relayed.jsonl", "warn-before-first-dispatch"): Expect(
@@ -440,11 +494,15 @@ EXPECTATIONS = {
     ),
     ("pass1-complete-relayed.jsonl", "duplicate-line"): Expect(True, 1, "line present"),
     ("pass1-complete.jsonl", "duplicate-line"): Expect(False, 0, "absent"),
-    ("pass1-spike.jsonl", "duplicate-line"): Expect(False, 0, "absent"),
+    ("pass1-spike.jsonl", "duplicate-line"): Expect(
+        False, 0, "unreached: no report, so no line"
+    ),
     ("pass1-complete-relayed.jsonl", "relay-report-line-anchored"): Expect(
         True, 1, "report line"
     ),
-    ("pass1-spike.jsonl", "relay-report-line-anchored"): Expect(False, 0, "no report"),
+    ("pass1-spike.jsonl", "relay-report-line-anchored"): Expect(
+        False, 0, "unreached: no report"
+    ),
     ("pass1-report-quoted.jsonl", "relay-report-line-anchored"): Expect(
         False, 0, "quoted mid-sentence"
     ),
@@ -839,13 +897,53 @@ def test_every_grader_file_uses_only_keys_the_cli_accepts(path):
 PASS1_CASES = ("pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed")
 
 
+def _grader_id(path):
+    """The GRADERS id of a case grader file (9-no-leak.md is a copy of the shared one)."""
+    if path.name == "9-no-leak.md":
+        shared = REPO / "evals" / "_lib" / "no-leak.md"
+        assert path.read_bytes() == shared.read_bytes(), path
+        path = shared
+    ids = [gid for gid, g in GRADERS.items() if g.source == path]
+    assert ids, f"{path.relative_to(REPO)} not in GRADERS"
+    return ids[0]
+
+
 def test_every_pass1_case_grader_is_validated_offline():
-    in_table = {g.source for g in GRADERS.values() if g.source is not None}
+    """Every Pass 1 grader has a spike row: green rows prove no false positive on the
+    spike (plan T2.6); a red row must say the spike never reached the step or name the
+    finding it expects."""
     for case in PASS1_CASES:
         for path in sorted((REPO / "evals" / case / "graders").glob("*.md")):
-            if path.name == "9-no-leak.md":
-                continue
-            assert path in in_table, f"{path.relative_to(REPO)} not in GRADERS"
+            grader_id = _grader_id(path)
+            row = EXPECTATIONS.get(("pass1-spike.jsonl", grader_id))
+            assert row is not None, f"no pass1-spike.jsonl row for {grader_id}"
+            if not row.passed:
+                assert re.search(r"unreached|expected finding", row.why), (
+                    f"red spike row for {grader_id} gives no reason: {row.why!r}"
+                )
+
+
+JSON_WRITE = (
+    "python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json "
+    '--vault "100 Inbox/2026-10-30_0000_suggestions.json"'
+)
+MARK = "python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id r"
+
+
+@pytest.mark.parametrize(
+    ("commands", "passed"),
+    [
+        ((f"{JSON_WRITE} && {MARK}",), True),
+        ((f"{MARK} && {JSON_WRITE}",), False),  # mark first inside one command
+        ((JSON_WRITE, MARK), True),
+        ((MARK, JSON_WRITE), False),
+        ((MARK,), True),  # no json write: 10 and 12a own presence
+        ((f"ls scripts/mark-captured.py && {JSON_WRITE}", MARK), True),  # no mark run
+    ],
+)
+def test_mark_after_json_write_orders_calls_and_chained_commands(commands, passed):
+    trace = _trace(*(_tool_use("Bash", c) for c in commands))
+    assert evaluate(GRADERS["mark-captured-after-json-write"], trace).passed is passed
 
 
 def test_relay_report_grader_is_the_pipeline_report_grader():

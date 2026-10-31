@@ -468,6 +468,43 @@ def pass1_completions(p1: list[str], out: Path) -> None:
     v[agents[0]] = enc(event)
     write(out, "pass1-analyst-mentions-conductor.jsonl", v)
 
+    # Appended last: two script calls chained with `&&` in ONE Bash call (the skill shows
+    # both writes in one fenced block). The second call's tool_use and tool_result are
+    # dropped; its command and output are appended to the first call's.
+    def chain(lines: list[str], first: int, second: int) -> list[str]:
+        use, res = json.loads(lines[first]), json.loads(lines[first + 1])
+        use2, res2 = json.loads(lines[second]), json.loads(lines[second + 1])
+        block = use["message"]["content"][0]
+        block["input"]["command"] += (
+            " && " + use2["message"]["content"][0]["input"]["command"]
+        )
+        rblock = res["message"]["content"][0]
+        rblock["content"] += "\n" + res2["message"]["content"][0]["content"]
+        res.pop("tool_use_result", None)
+        v = list(lines)
+        v[first], v[first + 1] = enc(use), enc(res)
+        del v[second : second + 2]
+        return v
+
+    # `json_use` above is the Skill expansion (its prose names the wire file first), so
+    # pass1-mark-before-json-write moved mark-captured before both writes; the publish
+    # itself is found by its command, and mark-between-writes is the described shape.
+    json_call = index_of(
+        done,
+        '"command":"python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json',
+    )
+    write(out, "pass1-complete-chained-writes.jsonl", chain(done, md_use, json_call))
+    write(
+        out,
+        "pass1-complete-chained-json-mark.jsonl",
+        chain(done, json_call, mark_use),
+    )
+    write(
+        out,
+        "pass1-mark-between-writes.jsonl",
+        _move(done, mark_use, mark_use + 2, json_call),
+    )
+
 
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")

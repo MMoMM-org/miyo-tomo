@@ -87,7 +87,7 @@ This phase delivers all gate cases and graders, each proven offline against real
      - The report-only grader is in all 5 Pass 2 cases `[ref: PRD/F4-AC1, F4-AC4]`
      - The canary guards the frame `[ref: PRD/F4-AC3]`
 
-- [ ] **T2.5 Mutations** `[activity: testing]`
+- [x] **T2.5 Mutations** `[activity: testing]`
 
   1. Prime: `evals/_mutations/README.md` (naming, the neutral-step rule for "never" graders), and the mutation column of the SDD grader tables.
   2. Test: a test in `tests/test_run_evals.py` (or an extension of an existing one) asserts that every new patch applies cleanly to a freshly assembled copy (`patch --dry-run`) and touches only the file it names.

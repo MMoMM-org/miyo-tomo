@@ -952,19 +952,12 @@ def test_relay_report_grader_is_the_pipeline_report_grader():
 
 
 def _skill_report_quotes() -> list[str]:
-    """The `> "…"` blockquotes of suggest-handling's step 7, each joined to one line."""
+    """The exact-output lines of suggest-handling's step 7: the body of each ```text fence."""
     skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
     step = skill.read_text(encoding="utf-8").split("### 7. Report", 1)[1]
-    quotes, current = [], []
-    for line in step.splitlines():
-        if line.startswith("> "):
-            current.append(line[2:])
-        elif current:
-            quotes.append(" ".join(current).strip('"'))
-            current = []
-    if current:
-        quotes.append(" ".join(current).strip('"'))
-    return quotes
+    blocks = re.findall(r"^```text\n(.*?)\n```$", step, re.S | re.M)
+    assert all("\n" not in b for b in blocks), "a template line spans several lines"
+    return blocks
 
 
 def test_report_graders_match_the_skill_template_lines():
@@ -979,6 +972,21 @@ def test_report_graders_match_the_skill_template_lines():
     ):
         assert evaluate(GRADERS[grader_id], reply).passed, grader_id
     assert not evaluate(GRADERS["no-duplicate-line"], reply).passed
+
+
+def test_skill_relays_warn_as_a_message_before_the_first_dispatch_and_in_the_report():
+    """F2-AC2 / F2-AC1 (findings F4): the relay instruction sits in step 3 before the
+    batch-count command and the Agent template, names a visible message, and step 7
+    repeats the WARN lines in the report."""
+    skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
+    text = skill.read_text(encoding="utf-8")
+    step3 = text.split("### 3. Fan-out dispatch", 1)[1].split("### 3b.", 1)[0]
+    relay = step3.find("printed `WARN:` lines, send them to the user now")
+    assert relay != -1
+    assert relay < step3.find("--batch-count") < step3.find("```\nAgent(")
+    assert "text message of\nyour own (not a thought)" in step3
+    step7 = text.split("### 7. Report", 1)[1]
+    assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
 
 
 def test_warn_grader_matches_the_kit_warn_line():

@@ -917,9 +917,9 @@ def test_publish_md_with_write_tool_targets_what_grader_11_sees(tmp_path):
 
 def test_always_duplicate_line_reports_a_zero_count_grader_15_sees(tmp_path):
     _, after = _patched_text(tmp_path, "always-duplicate-line", SKILL_IN_PLUGIN)
-    m = re.search(r'> "\{n\} (proposed MOC\(s\) already existed[^"]*)"', after, re.S)
+    m = re.search(r"^```text\n\{n\} (proposed MOC\(s\) already existed[^\n]*)\n```$", after, re.M)
     assert m, "the duplicate line template did not survive the patch"
-    line = "0 " + re.sub(r"\s*>\s*", " ", m.group(1))
+    line = "0 " + m.group(1)
     assert re.search(grader(PIPELINE, "15-no-duplicate-line")["pattern"], line)
     assert "0 included" in after
 

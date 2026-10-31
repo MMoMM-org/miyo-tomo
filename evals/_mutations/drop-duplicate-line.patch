@@ -1,13 +1,28 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -172,9 +172,5 @@
- > [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
- > then re-run `/inbox`."
+@@ -175,7 +175,7 @@
+ ### 7. Report
+ 
+ # STRICT — output the report lines below exactly as written, each on its own line,
+-# without the fence. Replace only `{N}`, `<date>` and `{n}`; keep every other word,
++# without the fence. Replace only `{N}` and `<date>`; keep every other word,
+ # the punctuation and the line order. Add no item list.
+ # Why: a quoted template gets reworded, extended with item names and singularised.
+ 
+@@ -186,15 +186,8 @@
+ Pass 1 complete: {N} items analysed, suggestions written to [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box, then re-run `/inbox`.
+ ```
  
 -Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
--(step 4). When `<n>` is greater than 0, add:
+-(step 4). When `<n>` is greater than 0, output this line next, replacing only
+-`{n}`. Copy it exactly for every `<n>`, 1 included: `MOC(s)`, `are offered` and
+-`unticked links` stay as written.
 +The reducer's summary line (step 4) is for the log; it is not reported.
  
--> "{n} proposed MOC(s) already existed in the vault and are offered as
--> unticked links instead."
+-```text
+-{n} proposed MOC(s) already existed in the vault and are offered as unticked links instead.
+-```
 -
+ Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as
+ printed, one per line. If it printed none, skip this.
+ 

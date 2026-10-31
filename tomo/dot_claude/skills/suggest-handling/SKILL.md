@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.12.0
+# version: 0.13.0
 
 ## When to Activate
 
@@ -57,8 +57,9 @@ python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vaul
 
 If this fails, abort and surface the error.
 
-# STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
-# before dispatching anything.
+# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
+# first in a message of your own at the start of step 3, before any Agent call,
+# then again in the step 7 report.
 # Why: it is the only report of unusable tracker configuration, and a run that
 # swallows it looks identical to a healthy one.
 
@@ -75,6 +76,11 @@ python3 scripts/read-config-field.py --field profile --default miyo
 Capture stdout as `PROFILE`.
 
 ### 3. Fan-out dispatch
+
+If `shared-ctx-builder.py` printed `WARN:` lines, send them to the user now,
+before any command or Agent call of this step: write them as a text message of
+your own (not a thought), one `WARN:` line per line, each copied exactly as
+printed. Then continue.
 
 # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
 # ONE Agent call per message = sequential execution = 5x slower.
@@ -168,13 +174,27 @@ If mark-captured fails, report the error but still proceed to the report.
 
 ### 7. Report
 
-> "Pass 1 complete: {N} items analysed, suggestions written to
-> [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
-> then re-run `/inbox`."
+# STRICT — output the report lines below exactly as written, each on its own line,
+# without the fence. Replace only `{N}`, `<date>` and `{n}`; keep every other word,
+# the punctuation and the line order. Add no item list.
+# Why: a quoted template gets reworded, extended with item names and singularised.
+
+Output this line first. `{N}` is the number of items analysed; `<date>` is the
+full `YYYY-MM-DD_HHMM` stem of the step 6 writes (date and time):
+
+```text
+Pass 1 complete: {N} items analysed, suggestions written to [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box, then re-run `/inbox`.
+```
 
 Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
-(step 4). When `<n>` is greater than 0, add:
+(step 4). When `<n>` is greater than 0, output this line next, replacing only
+`{n}`. Copy it exactly for every `<n>`, 1 included: `MOC(s)`, `are offered` and
+`unticked links` stay as written.
 
-> "{n} proposed MOC(s) already existed in the vault and are offered as
-> unticked links instead."
+```text
+{n} proposed MOC(s) already existed in the vault and are offered as unticked links instead.
+```
+
+Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as
+printed, one per line. If it printed none, skip this.
 

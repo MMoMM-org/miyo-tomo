@@ -272,7 +272,8 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "STRICT — run ALL commands below before dispatching ANY subagent."
-- removes: "before dispatching anything."
+- removes: "first in a message of your own at the start of step 3, before any Agent call,"
+- removes: "send them to the user now, before any command or Agent call of this step"
 - adds: "### 3c. Shared context"
 - adds: "so build it after the last batch, right before Reduce:"
 - adds: "the dispatch prompt only passes its path"
@@ -333,20 +334,24 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 ### always-duplicate-line
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "When `<n>` is greater than 0, add:"
-- adds: "and add, whatever `<n>` is (0 included):"
+- removes: "When `<n>` is greater than 0, output this line next"
+- adds: "and output this line next, whatever `<n>` is (0 included)"
 
 ### warn-is-diagnostic
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "STRICT — repeat every `WARN:` line this script prints to the user, verbatim,"
+- removes: "STRICT — repeat every `WARN:` line this script prints to the user, verbatim:"
 - removes: "it is the only report of unusable tracker configuration"
+- removes: "send them to the user now, before any command or Agent call of this step"
+- removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "`WARN:` lines this script prints on stderr are diagnostics for the maintainer; they are kept in the script's log and need no action here."
 
 ### warn-in-report-only
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "before dispatching anything."
+- removes: "first in a message of your own at the start of step 3, before any Agent call,"
+- removes: "send them to the user now, before any command or Agent call of this step"
+- removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "in the step 7 report, below the Pass 1 complete line. Until then, carry on."
 - adds: "Then add each `WARN:` line from step 2, verbatim, one per line."
 
@@ -355,6 +360,7 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "Then read `duplicate_proposals_converted=<n>` from the reducer's summary line"
 - removes: "proposed MOC(s) already existed in the vault and are offered as"
+- removes: "Replace only `{N}`, `<date>` and `{n}`;"
 - adds: "The reducer's summary line (step 4) is for the log; it is not reported."
 
 ### status-sentence-first

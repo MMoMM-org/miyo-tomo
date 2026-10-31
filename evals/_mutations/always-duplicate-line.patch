@@ -1,11 +1,13 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -173,7 +173,7 @@
- > then re-run `/inbox`."
+@@ -187,8 +187,8 @@
+ ```
  
  Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
--(step 4). When `<n>` is greater than 0, add:
-+(step 4) and add, whatever `<n>` is (0 included):
+-(step 4). When `<n>` is greater than 0, output this line next, replacing only
+-`{n}`. Copy it exactly for every `<n>`, 1 included: `MOC(s)`, `are offered` and
++(step 4) and output this line next, whatever `<n>` is (0 included), replacing
++only `{n}`. Copy it exactly for every `<n>`, 1 included: `MOC(s)`, `are offered` and
+ `unticked links` stay as written.
  
- > "{n} proposed MOC(s) already existed in the vault and are offered as
- > unticked links instead."
+ ```text

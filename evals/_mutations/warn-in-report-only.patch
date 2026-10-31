@@ -1,17 +1,34 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -58,7 +58,7 @@
+@@ -57,9 +57,8 @@
+ 
  If this fails, abort and surface the error.
  
- # STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
--# before dispatching anything.
+-# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
+-# first in a message of your own at the start of step 3, before any Agent call,
+-# then again in the step 7 report.
++# STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
 +# in the step 7 report, below the Pass 1 complete line. Until then, carry on.
  # Why: it is the only report of unusable tracker configuration, and a run that
  # swallows it looks identical to a healthy one.
  
-@@ -178,3 +178,5 @@
- > "{n} proposed MOC(s) already existed in the vault and are offered as
- > unticked links instead."
+@@ -77,11 +76,6 @@
  
+ ### 3. Fan-out dispatch
+ 
+-If `shared-ctx-builder.py` printed `WARN:` lines, send them to the user now,
+-before any command or Agent call of this step: write them as a text message of
+-your own (not a thought), one `WARN:` line per line, each copied exactly as
+-printed. Then continue.
+-
+ # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
+ # ONE Agent call per message = sequential execution = 5x slower.
+ # Claude Code runs all Agent calls in the same message concurrently.
+@@ -195,6 +189,5 @@
+ {n} proposed MOC(s) already existed in the vault and are offered as unticked links instead.
+ ```
+ 
+-Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as
+-printed, one per line. If it printed none, skip this.
 +Then add each `WARN:` line from step 2, verbatim, one per line.
-+
+ 

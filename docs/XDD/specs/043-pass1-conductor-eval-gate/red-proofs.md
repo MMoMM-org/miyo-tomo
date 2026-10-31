@@ -1,4 +1,4 @@
-# RED proofs — Pass 1 conductor eval gate, Block A (T4.1, PRD F7)
+# RED proofs — Pass 1 conductor eval gate, Blocks A to D (T4.1, PRD F7)
 
 Measured 2026-10-31, Claude Code 2.1.316, against the runtime files at these versions: `suggest-handling` 0.14.1, `force-atomic-handling` 0.15.0, `synthesis-conductor` 0.24.2 (`# version:` lines in `tomo/dot_claude`). Each proof is one invocation of
 
@@ -9,6 +9,12 @@ scripts/run-evals.sh --keep-temp --mutation <name> --case <case>
 with 3 runs and a clean tree. A proof counts only if every expected grader is red in **every** run. Patches and the clauses each removes: `evals/_mutations/README.md`. Raw log: `tomo-tmp/evals/red-proofs-043.log` (gitignored); each verdict below was copied from it and matches the `verdict.txt` in its results directory. `PARTIAL SUITE` is printed because `--case` is given.
 
 Block A: 15 invocations, 11 proven, 4 not proven, total cost $10.10.
+Re-proofs (Block D, strengthened patches, commit fcb8c7e4): 4 invocations, 4 proven, $2.99.
+Block B (`status-sentence-first`, five Pass 2 cases): 3 invocations, proven, $1.03.
+Block C (spec 041 patches rebased onto `synthesis-conductor` 0.24.2): 7 invocations, 5 patches re-proven, $2.00.
+**T4.1 total: 29 invocations, $16.12. T4.1 complete: every non-control grader red 3/3.**
+
+Blocks B to D were run with `--keep-temp` after Block A, from commit fcb8c7e4. Every verdict line below was copied from the log and compared byte for byte with the `verdict.txt` in its results directory: all 14 match. Per-grader counts come from the `FAIL (...)` lines in the log; their number equals the number of `(run N)` entries in each verdict line, and they agree entry by entry, so the verdict line is the evidence for every count.
 
 ## Summary
 
@@ -25,10 +31,10 @@ Block A: 15 invocations, 11 proven, 4 not proven, total cost $10.10.
 | `warn-is-diagnostic` | PROVEN | `01-warn-in-reply` | 3/3 |
 | `warn-in-report-only` | PROVEN | `02-warn-before-first-dispatch` | 3/3 |
 | `drop-duplicate-line` | PROVEN | `03-duplicate-line` | 3/3 |
-| `analyst-name-not-type` | NOT PROVEN | see below | GREEN |
-| `path-from-stem` | NOT PROVEN | see below | GREEN |
-| `render-before-reduce` | NOT PROVEN | see below | GREEN |
-| `setup-in-conductor` | NOT PROVEN | see below | red 3/3 + 1/3 |
+| `analyst-name-not-type` | NOT PROVEN (first attempt) | see below | GREEN; re-proven in Re-proofs |
+| `path-from-stem` | NOT PROVEN (first attempt) | see below | GREEN; re-proven in Re-proofs |
+| `render-before-reduce` | NOT PROVEN (first attempt) | see below | GREEN; re-proven in Re-proofs |
+| `setup-in-conductor` | NOT PROVEN (first attempt) | see below | red 3/3 + 1/3; re-proven in Re-proofs |
 
 ## Proven
 
@@ -142,9 +148,9 @@ RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-warn-
 RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-warn-and-duplicates-relayed: 03-duplicate-line (run 0), pass1-warn-and-duplicates-relayed: 03-duplicate-line (run 1), pass1-warn-and-duplicates-relayed: 03-duplicate-line (run 2) · runs 3 · $0.61 · 82 s · claude 2.1.316 · tree clean · mutation drop-duplicate-line · tomo-tmp/evals/2026-10-31T12-59-58Z
 ```
 
-## Not proven
+## Not proven (Block A first attempts, kept as history)
 
-Owner decision 2026-10-31: these four are re-run after the patch or the case is strengthened. They are not counted.
+Owner decision 2026-10-31: these four were re-run after the patch or the case was strengthened. The first attempts are not counted; the re-proofs below are.
 
 ### `analyst-name-not-type` — $0.61
 
@@ -188,14 +194,161 @@ Measured counts, from the verdict lines above:
 
 - `dispatch-conductor` → `07-setup-before-dispatch` 3/3 (structural: setup runs inside the dispatched subagent), `14-report-line-anchored` 1/3.
 - `publish-md-with-write-tool` → `12a-mark-captured-once`, `14-report-line-anchored`, `9-no-leak` 3/3 each. Cascade: the Write tool is unavailable in the eval session ("No such tool available: Write. Write is disabled for this session") even though `case.yaml` lists it. `10` and `11` count the attempted call.
-- `reword-report-line` → `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` 1/3. Grader defect on batched calls, being fixed (F6).
+- `reword-report-line` → `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` 1/3 (run 2). **Void:** a grader defect on batched calls, not an effect of the patch; fixed in c2602d6b (F6, grader 02 binds the WARN result to the `cat` call by tool id). Not counted as a side-effect red.
 - `warn-is-diagnostic` → `02-warn-before-first-dispatch` 3/3 (the patch removes the `cat` that grader looks for).
-- `setup-in-conductor` (not proven): `05-shared-ctx-once` 1/3 only.
+- `setup-in-conductor` (first attempt, not proven): `05-shared-ctx-once` 1/3 only. Superseded: see the re-proof.
+
+## Re-proofs (strengthened patches, commit fcb8c7e4)
+
+The four Block A patches that were not proven, re-run after fcb8c7e4 (`test(evals): strengthen four spec 043 mutation patches with neutral steps`). Each: `scripts/run-evals.sh --keep-temp --mutation <name> --case pass1-suggest-pipeline`, 3 runs, clean tree. Block D: $2.99.
+
+| Proof | Expected grader(s) | Red counts | Result |
+|---|---|---|---|
+| `analyst-name-not-type` | `02-analyst-dispatched-3x`, `03-no-general-purpose` | 3/3, 3/3 | PROVEN |
+| `path-from-stem` | `04-subfolder-path-and-key` | 3/3 | PROVEN |
+| `render-before-reduce` | `08-reducer-before-render` | 3/3 | PROVEN |
+| `setup-in-conductor` | `05-shared-ctx-once`, `06-run-id-once` | 3/3, 3/3 | PROVEN |
+
+### `analyst-name-not-type` — $1.12
+
+- Case: `pass1-suggest-pipeline`
+- Expected red: `02-analyst-dispatched-3x` 3/3, `03-no-general-purpose` 3/3
+- Side-effect reds (all in run 1 only): `10-two-script-writes-same-stem` 1/3, `12a-mark-captured-once` 1/3, `14-report-line-anchored` 1/3, `9-no-leak` 1/3. Run 1 drifted after the analysts were typed `general-purpose`; the same four graders went red together in Block A's `publish-md-with-write-tool` cascade.
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-suggest-pipeline: 02-analyst-dispatched-3x (run 0), pass1-suggest-pipeline: 03-no-general-purpose (run 0), pass1-suggest-pipeline: 02-analyst-dispatched-3x (run 1), pass1-suggest-pipeline: 03-no-general-purpose (run 1), pass1-suggest-pipeline: 10-two-script-writes-same-stem (run 1), pass1-suggest-pipeline: 12a-mark-captured-once (run 1), pass1-suggest-pipeline: 14-report-line-anchored (run 1), pass1-suggest-pipeline: 9-no-leak (run 1), pass1-suggest-pipeline: 02-analyst-dispatched-3x (run 2), pass1-suggest-pipeline: 03-no-general-purpose (run 2) · runs 3 · $1.12 · 140 s · claude 2.1.316 · tree clean · mutation analyst-name-not-type · tomo-tmp/evals/2026-10-31T13-39-49Z
+```
+
+### `path-from-stem` — $0.61
+
+- Case: `pass1-suggest-pipeline`
+- Expected red: `04-subfolder-path-and-key` 3/3
+- No side-effect reds.
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-suggest-pipeline: 04-subfolder-path-and-key (run 0), pass1-suggest-pipeline: 04-subfolder-path-and-key (run 1), pass1-suggest-pipeline: 04-subfolder-path-and-key (run 2) · runs 3 · $0.61 · 115 s · claude 2.1.316 · tree clean · mutation path-from-stem · tomo-tmp/evals/2026-10-31T13-42-11Z
+```
+
+### `render-before-reduce` — $0.64
+
+- Case: `pass1-suggest-pipeline`
+- Expected red: `08-reducer-before-render` 3/3
+- No side-effect reds.
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-suggest-pipeline: 08-reducer-before-render (run 0), pass1-suggest-pipeline: 08-reducer-before-render (run 1), pass1-suggest-pipeline: 08-reducer-before-render (run 2) · runs 3 · $0.64 · 100 s · claude 2.1.316 · tree clean · mutation render-before-reduce · tomo-tmp/evals/2026-10-31T13-44-07Z
+```
+
+### `setup-in-conductor` — $0.62
+
+- Case: `pass1-suggest-pipeline`
+- Expected red: `05-shared-ctx-once` 3/3, `06-run-id-once` 3/3
+- No side-effect reds.
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-suggest-pipeline: 05-shared-ctx-once (run 0), pass1-suggest-pipeline: 06-run-id-once (run 0), pass1-suggest-pipeline: 05-shared-ctx-once (run 1), pass1-suggest-pipeline: 06-run-id-once (run 1), pass1-suggest-pipeline: 05-shared-ctx-once (run 2), pass1-suggest-pipeline: 06-run-id-once (run 2) · runs 3 · $0.62 · 112 s · claude 2.1.316 · tree clean · mutation setup-in-conductor · tomo-tmp/evals/2026-10-31T13-45-49Z
+```
+
+## Block B — `status-sentence-first` ($1.03)
+
+Expected graders (`evals/_mutations/README.md`, spec 043 section): `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only`. The canary `8-handback-canary` must stay green: it was not red in any of the five cases. Three invocations cover the five cases. **PROVEN**: every expected grader red 3/3. No side-effect reds.
+
+| Case | Expected grader | Red |
+|---|---|---|
+| `audit-gates-delivery` | `7-report-only` | 3/3 |
+| `audit-mismatch-stops` | `7-report-only-mismatch` | 3/3 |
+| `withheld-notices-relayed` | `7-report-only` | 3/3 |
+| `upload-failure-reported` | `7-report-only` | 3/3 |
+| `state-flip-failure-reported` | `7-report-only` | 3/3 |
+
+`--case audit-*` — $0.44
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · audit-gates-delivery: 7-report-only (run 0), audit-gates-delivery: 7-report-only (run 1), audit-gates-delivery: 7-report-only (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 6 · $0.44 · 78 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T13-47-43Z
+```
+
+`--case *-failure-reported` — $0.39
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.39 · 67 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T13-49-02Z
+```
+
+`--case withheld-notices-relayed` — $0.20
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 7-report-only (run 2) · runs 3 · $0.20 · 46 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T13-50-11Z
+```
+
+## Block C — spec 041 patches on `synthesis-conductor` 0.24.2 ($2.00)
+
+Expected graders are the rows of the recorded `## Proofs` table in `evals/_mutations/README.md`. All five patches are re-proven: every expected grader red 3/3 in every case.
+
+| Proof | Expected grader(s) | Red counts | Result | Side-effect reds (measured) |
+|---|---|---|---|---|
+| `summarise-mismatch` | `audit-mismatch-stops/4-mismatch-reported-verbatim` | 3/3 | PROVEN | `audit-mismatch-stops/7-report-only-mismatch` 3/3 |
+| `files-used-after` | `withheld-notices-relayed/4-deletes-then-attachment-last` | 3/3 | PROVEN | `9-no-leak` 3/3 (recorded in the table), `7-report-only` 3/3 |
+| `paraphrase-relay` | `withheld-notices-relayed/1-delete-1-verbatim`, `2-delete-2-verbatim`, `3-attachment-verbatim` | 3/3, 3/3, 3/3 | PROVEN | `4-deletes-then-attachment-last` 3/3 (recorded in the table), `7-report-only` 3/3 |
+| `explain-failure` | `upload-failure-reported/5-no-failure-detail-in-report`, `state-flip-failure-reported/4-no-failure-detail-in-report` | 3/3, 3/3 | PROVEN | `upload-failure-reported/7-report-only` 3/3, `state-flip-failure-reported/7-report-only` 3/3 |
+| `report-run-id` | `9-no-leak` in `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | 3/3 in each of the five cases | PROVEN | `7-report-only` (`7-report-only-mismatch` in `audit-mismatch-stops`) 3/3 in each of the five cases; `audit-mismatch-stops/8-handback-canary` 1/3 (run 0); `upload-failure-reported/5-no-failure-detail-in-report` 1/3 (run 2) |
+
+The recorded table lists no side-effect reds for `summarise-mismatch`, `explain-failure` and `report-run-id`. The `7-report-only` reds are new with the spec 043 grader `7-report-only`: each of these patches puts text into the report that the grader forbids, so they are expected, not defects. The 1/3 canary and `5-no-failure-detail` reds under `report-run-id` are run-specific drift (a run id in the report pulled further text in).
+
+### `summarise-mismatch` — $0.19
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-mismatch-stops: 4-mismatch-reported-verbatim (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 4-mismatch-reported-verbatim (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 4-mismatch-reported-verbatim (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 3 · $0.19 · 41 s · claude 2.1.316 · tree clean · mutation summarise-mismatch · tomo-tmp/evals/2026-10-31T13-50-58Z
+```
+
+### `files-used-after` — $0.22
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 4-deletes-then-attachment-last (run 0), withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 9-no-leak (run 0), withheld-notices-relayed: 4-deletes-then-attachment-last (run 1), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 9-no-leak (run 1), withheld-notices-relayed: 4-deletes-then-attachment-last (run 2), withheld-notices-relayed: 7-report-only (run 2), withheld-notices-relayed: 9-no-leak (run 2) · runs 3 · $0.22 · 54 s · claude 2.1.316 · tree clean · mutation files-used-after · tomo-tmp/evals/2026-10-31T13-51-40Z
+```
+
+### `paraphrase-relay` — $0.20
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 1-delete-1-verbatim (run 0), withheld-notices-relayed: 2-delete-2-verbatim (run 0), withheld-notices-relayed: 3-attachment-verbatim (run 0), withheld-notices-relayed: 4-deletes-then-attachment-last (run 0), withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 1-delete-1-verbatim (run 1), withheld-notices-relayed: 2-delete-2-verbatim (run 1), withheld-notices-relayed: 3-attachment-verbatim (run 1), withheld-notices-relayed: 4-deletes-then-attachment-last (run 1), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 1-delete-1-verbatim (run 2), withheld-notices-relayed: 2-delete-2-verbatim (run 2), withheld-notices-relayed: 3-attachment-verbatim (run 2), withheld-notices-relayed: 4-deletes-then-attachment-last (run 2), withheld-notices-relayed: 7-report-only (run 2) · runs 3 · $0.20 · 48 s · claude 2.1.316 · tree clean · mutation paraphrase-relay · tomo-tmp/evals/2026-10-31T13-52-36Z
+```
+
+### `explain-failure` — $0.40
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 4-no-failure-detail-in-report (run 0), state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 4-no-failure-detail-in-report (run 1), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 4-no-failure-detail-in-report (run 2), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 5-no-failure-detail-in-report (run 0), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 5-no-failure-detail-in-report (run 1), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 5-no-failure-detail-in-report (run 2), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.40 · 73 s · claude 2.1.316 · tree clean · mutation explain-failure · tomo-tmp/evals/2026-10-31T13-53-25Z
+```
+
+### `report-run-id` — $0.39 + $0.39 + $0.21 = $0.99
+
+`--case audit-*` — $0.39
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · audit-gates-delivery: 7-report-only (run 0), audit-gates-delivery: 9-no-leak (run 0), audit-gates-delivery: 7-report-only (run 1), audit-gates-delivery: 9-no-leak (run 1), audit-gates-delivery: 7-report-only (run 2), audit-gates-delivery: 9-no-leak (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 8-handback-canary (run 0), audit-mismatch-stops: 9-no-leak (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 9-no-leak (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 2), audit-mismatch-stops: 9-no-leak (run 2) · runs 6 · $0.39 · 68 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T13-54-39Z
+```
+
+`--case *-failure-reported` — $0.39
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 9-no-leak (run 0), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 9-no-leak (run 1), state-flip-failure-reported: 7-report-only (run 2), state-flip-failure-reported: 9-no-leak (run 2), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 9-no-leak (run 0), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 9-no-leak (run 1), upload-failure-reported: 5-no-failure-detail-in-report (run 2), upload-failure-reported: 7-report-only (run 2), upload-failure-reported: 9-no-leak (run 2) · runs 6 · $0.39 · 73 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T13-55-48Z
+```
+
+`--case withheld-notices-relayed` — $0.21
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 9-no-leak (run 0), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 9-no-leak (run 1), withheld-notices-relayed: 7-report-only (run 2), withheld-notices-relayed: 9-no-leak (run 2) · runs 3 · $0.21 · 51 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T13-57-03Z
+```
+
+## Totals
+
+| Block | Invocations | Cost |
+|---|---|---|
+| A | 15 | $10.10 |
+| D (re-proofs) | 4 | $2.99 |
+| B | 3 | $1.03 |
+| C | 7 | $2.00 |
+| **T4.1** | **29** | **$16.12** |
+
+T4.1 complete: every non-control grader red 3/3. Every expected grader of the 15 spec 043 proofs (Block A's 11 plus the 4 re-proofs), of `status-sentence-first` (five cases), and of the 5 re-proven spec 041 patches was red in every run of every listed case. The controls are exempt (PRD F7-AC5).
 
 ## Open
 
-Not yet run:
-
-- Block B: `status-sentence-first` on all five Pass 2 cases (`audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported`).
-- Block C: the five spec 041 patches rebased onto conductor 0.24.2: `summarise-mismatch`, `files-used-after`, `paraphrase-relay`, `explain-failure`, `report-run-id`.
-- Re-proofs after strengthening: `analyst-name-not-type`, `path-from-stem`, `render-before-reduce`, `setup-in-conductor`.
+- T4.3: three full suites (`scripts/run-evals.sh`, no `--case`) on the merge candidate.

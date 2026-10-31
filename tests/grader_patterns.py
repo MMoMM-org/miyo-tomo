@@ -1,20 +1,35 @@
-"""grader_patterns.py — offline evaluator for `claude plugin eval` graders (spec 043).
+r"""grader_patterns.py — offline evaluator for `claude plugin eval` graders (spec 043).
 
 Exists so every grader pattern can be checked against recorded traces before a paid
 run (SDD ADR-5). Loads grader frontmatter from `evals/` (or any grader file), evaluates
-`regex` and `tool_used` graders against a JSONL trace the way the harness does, and
-checks that a regex stays inside the subset Python `re` and the harness's JS regex share.
+`regex` and `tool_used` graders against a JSONL trace, and checks that a regex stays
+inside the subset Python `re` and the harness's JS RegExp share.
 Shared by test_043_grader_patterns.py and the later 043 case tasks.
 
-Harness semantics reproduced here (from the plugin-evals grader table and spec 041/043
-observations, not from the harness source):
+What it reproduces:
 - `regex`: `target: trace` is the whole JSONL text; `target: last_message` is the `result`
-  of the last `"type":"result"` frame. No flags: `^`/`$` anchor the whole text.
-  `match: contains` (default) passes on a match, `not_contains` on none, `count:N` on
-  exactly N non-overlapping matches.
-- `tool_used`: counts tool_use events named `tool` whose input, JSON-encoded compactly,
-  matches `input_match` (search); passes when min <= count <= max (min defaults to 1).
+  of the last top-level `"type":"result"` frame ("" when there is none).
+  `match: contains` passes on a match, `not_contains` on none, `count:N` on exactly N.
+- `tool_used`: counts tool_use events named `tool` whose input matches `input_match`;
+  passes when min <= count <= max.
 - `tool_order`: not implemented yet (T2.2).
+
+Assumptions to confirm at the first paid run (taken from the plugin-evals grader table
+and the spike 041/043 observations, not from the harness source):
+- regexes run without flags and with JS semantics; JS `$` (end of input only, never
+  before a trailing newline) is emulated by rewriting it to `\Z`; JS `.` is not emulated;
+- the default `target` is `last_message`;
+- `input_match` is a search, not a full match;
+- tool input is JSON-encoded compactly (`separators=(",", ":")`) with `ensure_ascii=False`;
+- `count:N` means exactly N non-overlapping matches (`count: N` with a space is accepted);
+- `tool_used` `min` defaults to 1 and `max` to unbounded.
+
+Known limits — differences between the engines `js_subset_violations` does not catch:
+- character classes starting with `]`: `[]abc]` and `[^]]` are a literal `]` in Python
+  but an empty / any-char class followed by `]` in JS;
+- `\d`, `\w`, `\s`, `\b` are Unicode-aware in Python `re` (str), ASCII in JS without `u`
+  (JS `\s` is Unicode in both);
+- `.` excludes only `\n` in Python, but also `\r`, U+2028 and U+2029 in JS.
 """
 
 from __future__ import annotations
@@ -27,8 +42,8 @@ from typing import Any
 
 import yaml
 
-REPO = Path(__file__).resolve().parent.parent
-EVALS = REPO / "evals"
+from eval_kit import EVALS, REPO
+
 SPEC_DIR = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate"
 FIXTURES_DIR = SPEC_DIR / "fixtures"
 
@@ -69,7 +84,7 @@ class Outcome:
 
 @dataclass(frozen=True)
 class ToolUse:
-    line: int
+    line: int  # trace line index; kept for the tool_order evaluator (T2.2)
     name: str
     input_json: str
     parent: str | None
@@ -164,8 +179,42 @@ def last_message(trace: str) -> str:
     return results[-1].get("result", "") if results else ""
 
 
+def js_anchors(pattern: str) -> str:
+    """Rewrite each unescaped `$` outside a character class to `\\Z` (JS `$`, no flags).
+
+    Classes are delimited the Python way (a leading `]` is a literal), see Known limits."""
+    out, i, n, in_class = [], 0, len(pattern), False
+    while i < n:
+        c = pattern[i]
+        if c == "\\":
+            out.append(pattern[i : i + 2])
+            i += 2
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+        elif c == "[":
+            in_class = True
+            out.append(c)
+            i += 1
+            if pattern[i : i + 1] == "^":
+                out.append("^")
+                i += 1
+            if pattern[i : i + 1] == "]":
+                out.append("]")
+                i += 1
+            continue
+        elif c == "$":
+            out.append(r"\Z")
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _count_matches(pattern: str, text: str) -> int:
-    return sum(1 for _ in re.finditer(pattern, text))
+    return sum(1 for _ in re.finditer(js_anchors(pattern), text))
 
 
 def _apply_match(mode: str, count: int) -> bool:
@@ -197,7 +246,7 @@ def evaluate(grader: Grader, trace: str) -> Outcome:
             if use.name == grader.tool
             and (
                 grader.input_match is None
-                or re.search(grader.input_match, use.input_json)
+                or re.search(js_anchors(grader.input_match), use.input_json)
             )
         )
         low = 1 if grader.min is None else grader.min

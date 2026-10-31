@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -25,12 +27,14 @@ from grader_patterns import (
     REPO,
     SPEC_DIR,
     Expect,
+    _apply_match,
     evaluate,
     from_file,
     grader_files,
     grader_regexes,
     inline,
     js_subset_violations,
+    last_message,
     load_fixture,
     load_grader,
     tool_uses,
@@ -51,6 +55,12 @@ FIXTURES = {
     "publishes the .json under the same stem as the .md",
     "pass1-two-writes-different-stem.jsonl": "pass1-spike + a second kado-write-file call that "
     "publishes the .json under a different stem",
+    "pass1-reducer-between-dispatches.jsonl": "pass1-spike with the reducer tool_use and its "
+    "tool_result moved between the second and the third Agent tool_use",
+    "pass1-dresden-key-flattened.jsonl": "pass1-spike with the Dresden dispatch's item_key "
+    "flattened to 100 Inbox/Dresden.md (path unchanged)",
+    "pass1-dresden-path-flattened.jsonl": "pass1-spike with the Dresden dispatch's path "
+    "flattened to 100 Inbox/Dresden.md (item_key unchanged)",
     "pass2-spike.jsonl": "spike trace e-O6bppm (Pass 2, report-only probe), trimmed, paths neutralised",
     "pass2-status-sentence.jsonl": "pass2-spike with a status sentence before the first report line "
     "of the conductor's return",
@@ -140,9 +150,18 @@ EXPECTATIONS = {
     ("pass1-reducer-before-dispatch.jsonl", "reduce-after-last-dispatch"): Expect(
         False, 1, "violation present — red"
     ),
+    ("pass1-reducer-between-dispatches.jsonl", "reduce-after-last-dispatch"): Expect(
+        False, 1, "reducer before the LAST dispatch — red"
+    ),
     # Subfolder path and key (SDD table row 6).
     ("pass1-spike.jsonl", "subfolder-path-and-key"): Expect(
         True, 1, "spike Agent inputs: 1 match"
+    ),
+    ("pass1-dresden-key-flattened.jsonl", "subfolder-path-and-key"): Expect(
+        False, 0, "path right, item_key flattened — red"
+    ),
+    ("pass1-dresden-path-flattened.jsonl", "subfolder-path-and-key"): Expect(
+        False, 0, "item_key right, path flattened — red"
     ),
     # Same-stem writes (SDD table row 7, plus the two edited variants).
     ("pass1-spike.jsonl", "two-script-writes-same-stem"): Expect(
@@ -336,7 +355,8 @@ def test_js_subset_accepts(pattern):
     assert js_subset_violations(pattern) == []
 
 
-def test_regex_target_last_message_reads_the_last_result_frame():
+def test_regex_target_last_message_reads_the_last_of_four_result_frames():
+    # pass1-spike has four result frames; only the last starts with this sentence.
     grader = inline(
         type="regex",
         target="last_message",
@@ -344,6 +364,143 @@ def test_regex_target_last_message_reads_the_last_result_frame():
         pattern=r"^Pass 1 did not complete",
     )
     assert evaluate(grader, load_fixture("pass1-spike.jsonl")).passed
+
+
+# --- evaluator semantics on synthetic traces -------------------------------------------------
+
+
+def _trace(*events: dict) -> str:
+    return "".join(
+        json.dumps(e, ensure_ascii=False, separators=(",", ":")) + "\n" for e in events
+    )
+
+
+def _result(text: str) -> dict:
+    return {"type": "result", "subtype": "success", "result": text}
+
+
+def _tool_use(name: str, command: str) -> dict:
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "t",
+                    "name": name,
+                    "input": {"command": command},
+                }
+            ]
+        },
+    }
+
+
+def _regex(pattern: str, target: str = "last_message", match: str = "contains"):
+    return inline(type="regex", target=target, match=match, pattern=pattern)
+
+
+def test_last_message_returns_the_last_result_frame():
+    trace = _trace(_result("first"), _tool_use("Bash", "ls"), _result("second"))
+    assert last_message(trace) == "second"
+
+
+def test_last_message_ignores_non_result_lines_that_carry_the_result_text():
+    decoy_string = _tool_use("Bash", 'echo \'"type":"result"\'')
+    decoy_object = {
+        "type": "assistant",
+        "message": {"content": [{"type": "result", "result": "nested decoy"}]},
+    }
+    assert '"type":"result"' in json.dumps(decoy_object, separators=(",", ":"))
+    trace = _trace(_result("real"), decoy_string, decoy_object)
+    assert last_message(trace) == "real"
+
+
+def test_last_message_without_a_result_frame_is_empty():
+    assert last_message(_trace(_tool_use("Bash", "ls"))) == ""
+    assert evaluate(_regex(r"^$"), _trace(_tool_use("Bash", "ls"))).passed
+
+
+@pytest.mark.parametrize(
+    ("pattern", "text", "matched"),
+    [
+        (r"x$", "x", True),
+        (r"x$", "x\n", False),  # Python $ would also match before the trailing newline
+        (r"x(?:\n|$)", "x\n", True),
+        (r"x\s*$", "x\n", True),
+        (r"a\$", "a$", True),  # escaped $ stays a literal
+        (r"a[$]", "a$", True),  # $ inside a class stays a literal
+        (r"^x", "y\nx", False),  # no multiline flag
+    ],
+)
+def test_regex_anchors_follow_js_without_flags(pattern, text, matched):
+    assert evaluate(_regex(pattern), _trace(_result(text))).passed is matched
+    assert evaluate(_regex(pattern, target="trace"), text).passed is matched
+
+
+@pytest.mark.parametrize(("count", "passed"), [(1, False), (2, True), (3, False)])
+@pytest.mark.parametrize("mode", ["count:2", "count: 2"])
+def test_apply_match_count_is_exact(mode, count, passed):
+    assert _apply_match(mode, count) is passed
+
+
+def test_apply_match_rejects_an_unknown_mode():
+    with pytest.raises(ValueError, match="unknown match mode"):
+        _apply_match("equals", 1)
+
+
+def test_regex_rejects_an_unknown_target():
+    with pytest.raises(ValueError, match="unknown target"):
+        evaluate(_regex("x", target="first_message"), _trace(_result("x")))
+
+
+@pytest.mark.parametrize(("present", "passed"), [(False, True), (True, False)])
+def test_tool_used_min0_max0_passes_only_when_absent(present, passed):
+    events = [_tool_use("Bash", "ls")] + ([_tool_use("Agent", "go")] if present else [])
+    grader = inline(type="tool_used", tool="Agent", min=0, max=0)
+    outcome = evaluate(grader, _trace(*events))
+    assert (outcome.passed, outcome.count) == (passed, int(present))
+
+
+@pytest.mark.parametrize(
+    ("calls", "passed"), [(0, False), (1, True), (2, True), (3, False)]
+)
+def test_tool_used_min_defaults_to_one_and_max_bounds(calls, passed):
+    trace = _trace(*[_tool_use("Bash", f"echo {i}") for i in range(calls)])
+    grader = inline(type="tool_used", tool="Bash", max=2)
+    assert evaluate(grader, trace).passed is passed
+
+
+def test_tool_used_without_input_match_counts_every_call_of_the_tool():
+    trace = _trace(
+        _tool_use("Bash", "a"), _tool_use("Agent", "b"), _tool_use("Bash", "c")
+    )
+    outcome = evaluate(inline(type="tool_used", tool="Bash"), trace)
+    assert (outcome.passed, outcome.count) == (True, 2)
+
+
+# --- fixture builder ------------------------------------------------------------------------
+
+BUILDER = FIXTURES_DIR / "build_fixtures.py"
+SPIKES = {"pass1-spike.jsonl", "pass2-spike.jsonl"}
+
+
+def test_builder_variants_regenerate_the_committed_fixtures(tmp_path):
+    subprocess.run(
+        [sys.executable, str(BUILDER), "variants", str(FIXTURES_DIR), str(tmp_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    built = {p.name for p in tmp_path.glob("*.jsonl")}
+    assert built == set(FIXTURES) - SPIKES
+    for name in sorted(built):
+        assert (tmp_path / name).read_bytes() == (FIXTURES_DIR / name).read_bytes(), (
+            name
+        )
+
+
+def test_builder_is_not_collected_by_pytest():
+    assert not BUILDER.name.startswith("test")
 
 
 def test_tool_order_is_left_for_t2_2():

@@ -1,0 +1,13 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -172,9 +172,5 @@
+ > [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
+ > then re-run `/inbox`."
+ 
+-Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
+-(step 4). When `<n>` is greater than 0, add:
++The reducer's summary line (step 4) is for the log; it is not reported.
+ 
+-> "{n} proposed MOC(s) already existed in the vault and are offered as
+-> unticked links instead."
+-

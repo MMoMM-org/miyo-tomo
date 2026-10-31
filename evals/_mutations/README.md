@@ -13,7 +13,7 @@ Run a proof:
 - the #205 proofs run both failed-delivery cases in one invocation: `scripts/run-evals.sh --mutation <name> --case '*-failure-reported'`
 - rev: `scripts/run-evals.sh --rev 4350ddd^ --case 'audit-*'`
 
-Every patch also removes or neutralises each clause of the conductor that
+Every patch also removes or neutralises each clause of the runtime files that
 contradicts the behaviour it injects — a surviving STRICT that forbids the injected
 behaviour would let the model obey it and leave the grader green (a weak proof).
 The clauses each patch removes and adds are listed under **Clauses**, and
@@ -21,10 +21,13 @@ The clauses each patch removes and adds are listed under **Clauses**, and
 The neutral-write proofs (`write-into-scripts`, `copy-into-config`) remove nothing:
 their injected step is ordinary bookkeeping that no clause forbids.
 
-Refresh a patch when the conductor changes: edit a copy of
-`tomo/dot_claude/agents/synthesis-conductor.md` in `$TMPDIR` and regenerate it with
-`diff -u` (paths `a/agents/synthesis-conductor.md` / `b/agents/synthesis-conductor.md`).
-Never hand-write hunk headers.
+Refresh a patch when a file it patches changes: edit a copy of the assembled plugin
+(`tomo/dot_claude/{agents,skills,commands}` plus the analyst stand-in) in `$TMPDIR` and
+regenerate it with `diff -u`, paths relative to the plugin root
+(`a/agents/synthesis-conductor.md` / `b/agents/synthesis-conductor.md`,
+`a/skills/suggest-handling/SKILL.md`, `a/commands/inbox.md`). A patch that changes
+several files is the concatenation of one `diff -u` per file. Never hand-write hunk
+headers.
 
 ## Proofs
 
@@ -48,9 +51,59 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation flip-after-failed-upload` | `upload-failure-reported` | `upload-failure-reported/2-no-state-flip-after-failed-upload` — 3d still runs 3e after a non-zero upload exit | none (the flip stub succeeds, so the report is unchanged) |
 | `--mutation explain-failure` | `upload-failure-reported`, `state-flip-failure-reported` | `upload-failure-reported/5-no-failure-detail-in-report`, `state-flip-failure-reported/4-no-failure-detail-in-report` — a `Detail:` line copies the failing script's last stderr line into the report | none (`9-no-leak` stayed green in all six runs) |
 
+## Proofs — spec 043 (to be recorded in Phase 4)
+
+Named, not yet run. Each row names the mutation that must turn its graders red; none of
+them counts as a RED proof until Phase 4 has run it (3 runs), recorded the verdicts and
+the results path in `docs/XDD/specs/043-pass1-conductor-eval-gate/red-proofs.md`, and
+moved the row into `## Proofs` with its measured side-effect reds. "Offline model" names
+the fixture in `docs/XDD/specs/043-pass1-conductor-eval-gate/fixtures/` whose trace the
+expected red looks like; `tests/test_043_grader_patterns.py` shows the grader red on it.
+
+The Pass 1 patches target the file that carries the rule they break — `commands/inbox.md`,
+`agents/suggestion-conductor.md` or `skills/suggest-handling/SKILL.md` — and neutralise
+the clause in every one of them that repeats it. The "never" graders (pipeline 11, 13, 15)
+are proven with a neutral step: an ordinary-looking instruction that happens to do the
+forbidden thing (a Write publish, a `python3 -c` read, a count line that is always
+reported), never a request to misbehave.
+
+| Proof | Cases | Expected red (what it proves) | Side-effect reds |
+|---|---|---|---|
+| `--mutation dispatch-conductor` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/01-conductor-not-dispatched` — `/inbox` dispatches the suggestion conductor as a subagent instead of running it itself; offline model: `pass1-conductor-dispatched.jsonl` | not yet measured |
+| `--mutation analyst-name-not-type` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/02-analyst-dispatched-3x`, `pass1-suggest-pipeline/03-no-general-purpose` — the dispatch template keys the analyst by `name`, so no dispatch carries `subagent_type`; offline model: `pass1-analyst-name-not-type.jsonl` | not yet measured |
+| `--mutation path-from-stem` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/04-subfolder-path-and-key` — each item's path is rebuilt as `<INBOX_PATH>/<stem>.md`, which flattens `Places/Dresden.md`; offline model: `pass1-dresden-path-flattened.jsonl`, `pass1-dresden-key-flattened.jsonl` | not yet measured |
+| `--mutation setup-in-conductor` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/05-shared-ctx-once`, `pass1-suggest-pipeline/06-run-id-once` — the conductor runs `run-id.py` and `shared-ctx-builder.py` before the skill runs them again; offline model: `pass1-setup-twice.jsonl` | not yet measured |
+| `--mutation dispatch-before-setup` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/07-setup-before-dispatch` — the shared context is built after the last batch, right before Reduce; offline model: `pass1-dispatch-before-setup.jsonl` | not yet measured |
+| `--mutation render-before-reduce` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/08-reducer-before-render` — Render is step 4 and Reduce step 5; offline model: `pass1-render-before-reduce.jsonl` | not yet measured |
+| `--mutation reduce-before-batch-2` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/09-reduce-after-last-dispatch` — the reducer runs after every batch, so it runs before the second batch is dispatched; offline model: `pass1-reducer-between-dispatches.jsonl` | not yet measured |
+| `--mutation publish-md-with-write-tool` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/10-two-script-writes-same-stem`, `pass1-suggest-pipeline/11-no-inline-vault-write` — neutral step: the note is published with the Write tool into the inbox folder, only the wire file goes through `kado-write-file.py`; offline model: `pass1-write-tool-publish.jsonl` | not yet measured |
+| `--mutation mark-before-write` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/12a-mark-captured-once`, `pass1-suggest-pipeline/12b-mark-captured-after-json-write` — mark-captured runs after the `.md` write and once more after the `.json` write; offline model: `pass1-mark-before-json-write.jsonl` (12b), `pass1-mark-twice.jsonl` (12a) | not yet measured |
+| `--mutation inline-python-read` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/13-no-inline-python` — neutral step: step 1 reads `inbox_path` with a `python3 -c` one-liner instead of `read-routing-plan.py`; offline model: `pass1-inline-python.jsonl` | not yet measured |
+| `--mutation reword-report-line` | `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` | `pass1-suggest-pipeline/14-report-line-anchored`, `pass1-warn-and-duplicates-relayed/04-report-line-anchored` — the report template no longer starts with `Pass 1 complete:`; offline model: `pass1-report-quoted.jsonl` | not yet measured |
+| `--mutation always-duplicate-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/15-no-duplicate-line` — neutral step: the duplicate-count line is reported whatever the count, so `DUPLICATES=0` yields `0 proposed MOC(s) already existed …`; offline model: `pass1-complete-relayed.jsonl` | not yet measured |
+| `--mutation warn-is-diagnostic` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/01-warn-in-reply` — the `WARN:` line is a maintainer diagnostic that needs no action, so it is not relayed; offline model: `pass1-complete.jsonl` | not yet measured |
+| `--mutation warn-in-report-only` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` — the `WARN:` line is relayed verbatim, but only in the step 7 report, after every dispatch; offline model: `pass1-warn-after-dispatch.jsonl` | not yet measured |
+| `--mutation drop-duplicate-line` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/03-duplicate-line` — the reducer's summary line is for the log, so the duplicate line is not reported; offline model: `pass1-complete.jsonl` | not yet measured |
+| `--mutation status-sentence-first` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only` — the synthesis conductor begins its reply with one status sentence before the report (the canary `8-handback-canary` must stay green); offline model: `pass2-status-sentence.jsonl`, `pass2-mismatch-status-sentence.jsonl` | not yet measured |
+
+## Inherited proofs
+
+A grader that is a byte copy of a grader with a recorded RED proof inherits that proof
+(the copy is enforced by `tests/test_run_evals.py`). It needs no mutation of its own:
+the pattern, not the behaviour behind it, is what a mutation would re-prove.
+
+| Case | Grader | Proven by | Why no own mutation |
+|---|---|---|---|
+| `pass1-suggest-pipeline` | `9-no-leak` | `--mutation report-run-id` | byte copy of `evals/_lib/no-leak.md`; `report-run-id` turned that exact file red in all five Pass 2 cases (#205). Both read `last_message`, so the Pass 1 report is checked by the same pattern |
+| `pass1-warn-and-duplicates-relayed` | `9-no-leak` | `--mutation report-run-id` | as above |
+
 ## Controls
 
 Controls are preconditions, exempt from RED proof (PRD F7-AC5).
+
+The Pass 1 cases (spec 043) have no control: the main session runs Pass 1 itself, so
+there is no dispatch to confirm, and every other Pass 1 grader observes behaviour the
+gate decides. Their leak guards inherit a recorded proof instead (see Inherited proofs).
 
 | Case | Control grader | Why exempt |
 |---|---|---|
@@ -70,7 +123,9 @@ Controls are preconditions, exempt from RED proof (PRD F7-AC5).
 
 ## Clauses
 
-Each clause is quoted as it appears in the conductor (line breaks folded to spaces).
+Each clause is quoted as it appears in the file(s) the patch changes (line breaks
+folded to spaces). The spec 043 patches name those files on a `files:` line; the
+earlier ones all patch `agents/synthesis-conductor.md`.
 
 ### drop-audit-line
 
@@ -174,3 +229,136 @@ Each clause is quoted as it appears in the conductor (line breaks folded to spac
 - adds: "followed by its Detail line"
 - adds: "drift warnings, the Detail line, and the relay lines."
 - adds: "followed by its `Detail:` line"
+
+### dispatch-conductor
+
+- files: `commands/inbox.md`
+- removes: "| suggest | IMPERSONATE suggestion-conductor |"
+- removes: "IMPERSONATE means: read `.claude/agents/suggestion-conductor.md`"
+- removes: "NEVER call `Agent()` for it."
+- removes: "It applies to synthesis-conductor and voice-transcriber only."
+- adds: "| suggest | DISPATCH suggestion-conductor (see Step 3a) |"
+- adds: "It applies to suggestion-conductor, synthesis-conductor and voice-transcriber."
+- adds: "subagent_type: "suggestion-conductor""
+
+### analyst-name-not-type
+
+- files: `skills/suggest-handling/SKILL.md`, `commands/inbox.md`
+- removes: "STRICT — the key is `subagent_type`. `name` only labels the spawned agent."
+- removes: "STRICT — every Agent() call passes `subagent_type`."
+- removes: "a dispatch without `subagent_type` silently runs general-purpose"
+- removes: "subagent_type: "inbox-analyst""
+- adds: "The key is `name`: it selects the inbox-analyst agent."
+- adds: "name: "inbox-analyst""
+
+### path-from-stem
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "Each line is one item's `path`."
+- adds: "Each line is one source; its `<stem>` is the last segment of the line, without `.md`."
+- adds: "Every item lives directly in the inbox, so its `<path>` is `<INBOX_PATH>/<stem>.md`."
+
+### setup-in-conductor
+
+- files: `agents/suggestion-conductor.md`
+- removes: "STRICT — run NO setup commands here."
+- removes: "call `run-id.py`, `shared-ctx-builder.py` or `read-config-field.py`."
+- removes: "so a setup here is discarded and the RUN_ID captured from it is stale."
+- adds: "### Step 1b — Prepare the run"
+- adds: "python3 scripts/run-id.py --out tomo-tmp/.run_id"
+- adds: "The skill then runs its own setup as written."
+
+### dispatch-before-setup
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "STRICT — run ALL commands below before dispatching ANY subagent."
+- removes: "before dispatching anything."
+- adds: "### 3c. Shared context"
+- adds: "so build it after the last batch, right before Reduce:"
+
+### render-before-reduce
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "### 4. Reduce"
+- removes: "### 5. Render"
+- adds: "### 4. Render"
+- adds: "### 5. Reduce"
+
+### reduce-before-batch-2
+
+- files: `skills/suggest-handling/SKILL.md`, `agents/suggestion-conductor.md`
+- removes: "| suggestions-reducer fails | Keep all"
+- adds: "After each batch completes, run the Reduce command (step 4)"
+- adds: "A reducer error after a batch that is not the last one only means items are still pending: continue with the next batch."
+- adds: "| suggestions-reducer fails after the last batch | Keep all"
+
+### publish-md-with-write-tool
+
+- files: `skills/suggest-handling/SKILL.md`, `agents/suggestion-conductor.md`
+- removes: "Publish both artefacts with the same script"
+- removes: "python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md"
+- removes: "never read the rendered markdown and pass it to `mcp__kado__kado-write`."
+- removes: "NEVER local `Write`."
+- adds: "the note goes in with the Write tool"
+- adds: "Write its content unchanged to `<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md`."
+- adds: "Vault writes as the skill says."
+
+### mark-before-write
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "STRICT — mark-captured runs immediately after vault write succeeds. Do NOT skip or defer."
+- adds: "Mark the sources captured as soon as the note is in the vault:"
+- adds: "Run mark-captured once more after the wire write, so the state also records it:"
+
+### inline-python-read
+
+- files: `skills/suggest-handling/SKILL.md`, `agents/suggestion-conductor.md`
+- removes: "and NEVER run `python3 -c`."
+- removes: "inline Python is refused by the Bash validator on its `#` characters,"
+- removes: "STRICT — NEVER inline Python with `python3 -c "..."`."
+- removes: "Why: triggers approval prompts every invocation."
+- removes: "python3 scripts/read-routing-plan.py --field inbox_path"
+- adds: "read every value the later steps need with a command."
+- adds: "python3 -c "import json; print(json.load(open('tomo-tmp/routing-plan.json'))['inbox_path'].rstrip('/'))""
+
+### reword-report-line
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "Pass 1 complete: {N} items analysed, suggestions written to"
+- adds: "Done — {N} items analysed. Your suggestions are in [[<date>_suggestions]]."
+
+### always-duplicate-line
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "When `<n>` is greater than 0, add:"
+- adds: "and add, whatever `<n>` is (0 included):"
+
+### warn-is-diagnostic
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "STRICT — repeat every `WARN:` line this script prints to the user, verbatim,"
+- removes: "it is the only report of unusable tracker configuration"
+- adds: "`WARN:` lines this script prints on stderr are diagnostics for the maintainer; they are kept in the script's log and need no action here."
+
+### warn-in-report-only
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "before dispatching anything."
+- adds: "in the step 7 report, below the Pass 1 complete line. Until then, carry on."
+- adds: "Then add each `WARN:` line from step 2, verbatim, one per line."
+
+### drop-duplicate-line
+
+- files: `skills/suggest-handling/SKILL.md`
+- removes: "Then read `duplicate_proposals_converted=<n>` from the reducer's summary line"
+- removes: "proposed MOC(s) already existed in the vault and are offered as"
+- adds: "The reducer's summary line (step 4) is for the log; it is not reported."
+
+### status-sentence-first
+
+- files: `agents/synthesis-conductor.md`
+- removes: "Your reply is ONLY the report: NEVER write anything before or after it"
+- removes: "it is the audit's stdout copied as printed, and nothing else."
+- adds: "Begin your reply with one short sentence stating whether the run succeeded."
+- adds: "nor a relay line, except the opening sentence."
+- adds: "it opens with the status sentence of rule 4, then the audit's stdout copied as printed."

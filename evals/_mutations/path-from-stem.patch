@@ -1,0 +1,13 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -92,7 +92,9 @@
+ python3 scripts/read-routing-plan.py --sources --batch <N> --size <BATCH_SIZE>
+ ```
+ 
+-Each line is one item's `path`. Emit ALL Agent() calls for that batch in ONE
++Each line is one source; its `<stem>` is the last segment of the line, without
++`.md`. Every item lives directly in the inbox, so its `<path>` is
++`<INBOX_PATH>/<stem>.md`. Emit ALL Agent() calls for that batch in ONE
+ response, then wait for the batch to complete before requesting the next.
+ 
+ # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.

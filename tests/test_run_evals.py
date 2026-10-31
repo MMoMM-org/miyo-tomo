@@ -788,3 +788,46 @@ def test_pass1_case_passes_preflight_and_its_scaffold_stages(env, case):
     warn, dups = PASS1_CASES[case]
     assert f"SHARED_CTX_WARN = {warn}\n" in ctx
     assert f"DUPLICATES = {dups}\n" in reducer
+
+
+# ── the spec 043 mutations through the runner (T2.5) ──────────
+
+SPEC_043_PATCHES = (
+    "dispatch-conductor", "analyst-name-not-type", "path-from-stem", "setup-in-conductor",
+    "dispatch-before-setup", "render-before-reduce", "reduce-before-batch-2",
+    "publish-md-with-write-tool", "mark-before-write", "inline-python-read",
+    "reword-report-line", "always-duplicate-line", "warn-is-diagnostic",
+    "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
+)
+RUNTIME_DIRS = ("agents", "skills", "commands")
+
+
+def _runtime_files(root: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(root)): p.read_bytes()
+        for d in RUNTIME_DIRS for p in sorted((root / d).rglob("*")) if p.is_file()
+    }
+
+
+@pytest.mark.parametrize("name", SPEC_043_PATCHES)
+def test_spec_043_mutation_applies_in_the_runner_and_changes_only_its_files(env, name):
+    """The runner assembles the real runtime files, swaps in the stand-in, applies the
+    patch with `patch -p1 --forward`; the copy it hands claude differs from the
+    unpatched assembly in exactly the files the patch names, and the repo is untouched."""
+    patch = REPO / "evals" / "_mutations" / f"{name}.patch"
+    dc = env.repo / "tomo" / "dot_claude"
+    for d in RUNTIME_DIRS:
+        shutil.copytree(REPO / "tomo" / "dot_claude" / d, dc / d, dirs_exist_ok=True)
+    shutil.copy(patch, env.repo / "evals" / "_mutations" / patch.name)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "runtime files")
+    unpatched = _runtime_files(dc)
+    unpatched["agents/inbox-analyst.md"] = _stub_bytes(env)
+    proc = env.run("--mutation", name)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert f"mutation {name}" in _line(proc)
+    got = _runtime_files(env.snap)
+    assert set(got) == set(unpatched)
+    changed = {f for f in got if got[f] != unpatched[f]}
+    named = set(re.findall(r"^\+\+\+ b/(\S+)", patch.read_text(encoding="utf-8"), re.M))
+    assert changed == named, (changed, named)

@@ -1,0 +1,23 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -132,16 +132,16 @@
+ `--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
+ miss the rendered doc. If `handled[]` is absent or empty, skip this step.
+ 
+-### 4. Reduce
++### 4. Render
+ 
+ ```bash
+-python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
++python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
+ ```
+ 
+-### 5. Render
++### 5. Reduce
+ 
+ ```bash
+-python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
++python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
+ ```
+ 
+ ### 6. Write to vault + tag sources

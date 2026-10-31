@@ -1,0 +1,32 @@
+--- a/commands/inbox.md
++++ b/commands/inbox.md
+@@ -54,11 +54,6 @@
+ # workflow yourself. It applies to synthesis-conductor and voice-transcriber only.
+ # Why: both are pure script runners, so dispatch keeps their context isolated.
+ 
+-# STRICT — every Agent() call passes `subagent_type`. `name` only labels the
+-# spawned agent and selects nothing.
+-# Why: a dispatch without `subagent_type` silently runs general-purpose, which
+-# has none of the named agent's contract, tools or skills.
+-
+ ### 3b. Synthesize (dispatch)
+ 
+ When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -96,13 +96,11 @@
+ response, then wait for the batch to complete before requesting the next.
+ 
+ # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
+-# STRICT — the key is `subagent_type`. `name` only labels the spawned agent.
+-# Why: a dispatch without `subagent_type` silently runs general-purpose, which
+-# has none of inbox-analyst's contract, tools or skills.
++# The key is `name`: it selects the inbox-analyst agent.
+ 
+ ```
+ Agent(
+-  subagent_type: "inbox-analyst"
++  name: "inbox-analyst"
+   prompt: |
+     You are processing ONE inbox item under the fan-out pipeline.
+ 

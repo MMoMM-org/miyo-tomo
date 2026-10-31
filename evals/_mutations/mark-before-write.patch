@@ -1,0 +1,25 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -155,10 +155,21 @@
+ 
+ ```bash
+ python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md"
++```
++
++Mark the sources captured as soon as the note is in the vault:
++
++```bash
++python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <RUN_ID>
++```
++
++Then publish the wire file:
++
++```bash
+ python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.json"
+ ```
+ 
+-# STRICT — mark-captured runs immediately after vault write succeeds. Do NOT skip or defer.
++Run mark-captured once more after the wire write, so the state also records it:
+ 
+ ```bash
+ python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <RUN_ID>

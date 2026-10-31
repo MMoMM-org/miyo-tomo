@@ -1,0 +1,11 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -173,7 +173,7 @@
+ > then re-run `/inbox`."
+ 
+ Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
+-(step 4). When `<n>` is greater than 0, add:
++(step 4) and add, whatever `<n>` is (0 included):
+ 
+ > "{n} proposed MOC(s) already existed in the vault and are offered as
+ > unticked links instead."

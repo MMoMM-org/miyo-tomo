@@ -1,0 +1,17 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -58,7 +58,7 @@
+ If this fails, abort and surface the error.
+ 
+ # STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
+-# before dispatching anything.
++# in the step 7 report, below the Pass 1 complete line. Until then, carry on.
+ # Why: it is the only report of unusable tracker configuration, and a run that
+ # swallows it looks identical to a healthy one.
+ 
+@@ -178,3 +178,5 @@
+ > "{n} proposed MOC(s) already existed in the vault and are offered as
+ > unticked links instead."
+ 
++Then add each `WARN:` line from step 2, verbatim, one per line.
++

@@ -1,0 +1,35 @@
+--- a/agents/suggestion-conductor.md
++++ b/agents/suggestion-conductor.md
+@@ -45,7 +45,7 @@
+ Why: hand-assembled markdown drifts from the format spec.
+ 
+ - Scratch writes ONLY under `tomo-tmp/`. Use the `Write` tool.
+-- Vault writes ONLY via `mcp__kado__kado-write`. NEVER Bash heredoc, NEVER local `Write`.
++- Vault writes as the skill says. NEVER Bash heredoc.
+ - Spawn subagents via the `Agent` tool, NEVER via `claude` CLI.
+ 
+ ## Workflow
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -146,15 +146,15 @@
+ 
+ ### 6. Write to vault + tag sources
+ 
+-Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem.
+-It routes by extension on its own — `.md` to the note operation, `.json` to the
+-file operation.
++Both artefacts use the SAME `<YYYY-MM-DD_HHMM>` stem.
+ 
+-# STRICT — never read the rendered markdown and pass it to `mcp__kado__kado-write`.
+-# Why: content relayed through your own tokens cannot be checked against the file it came from, and the script reads it from disk.
++The inbox folder is mounted in the working directory, so the note goes in with
++the Write tool: Read `tomo-tmp/suggestions-rendered.md`, then Write its content
++unchanged to `<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md`.
+ 
++The wire file goes through the script:
++
+ ```bash
+-python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md"
+ python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.json"
+ ```
+ 

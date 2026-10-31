@@ -1,0 +1,25 @@
+--- a/agents/suggestion-conductor.md
++++ b/agents/suggestion-conductor.md
+@@ -85,7 +85,7 @@
+ |---|---|
+ | shared-ctx-builder fails | Abort, surface error |
+ | Subagent throws mid-batch | Item marked `failed` in state-file; run continues |
+-| suggestions-reducer fails | Keep all `tomo-tmp/` artefacts, tell user to inspect |
++| suggestions-reducer fails after the last batch | Keep all `tomo-tmp/` artefacts, tell user to inspect |
+ | Vault write fails | Keep `tomo-tmp/suggestions-doc.json`; user re-runs for retry |
+ | mark-captured fails | Report error; user can re-run manually |
+ | 0 done items | Skip the write, tell user "no items processed successfully" |
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -95,6 +95,11 @@
+ Each line is one item's `path`. Emit ALL Agent() calls for that batch in ONE
+ response, then wait for the batch to complete before requesting the next.
+ 
++After each batch completes, run the Reduce command (step 4) so
++`tomo-tmp/suggestions-doc.json` holds the results so far, then request the next
++batch. A reducer error after a batch that is not the last one only means items
++are still pending: continue with the next batch.
++
+ # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
+ # STRICT — the key is `subagent_type`. `name` only labels the spawned agent.
+ # Why: a dispatch without `subagent_type` silently runs general-purpose, which

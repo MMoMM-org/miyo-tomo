@@ -1,6 +1,6 @@
 --- a/agents/suggestion-conductor.md
 +++ b/agents/suggestion-conductor.md
-@@ -59,6 +59,18 @@
+@@ -59,6 +59,21 @@
  Extract `action`, `inbox_path`, and action-specific fields.
  If `drift_indicators` is non-empty, surface each warning to the user but continue.
  
@@ -13,13 +13,16 @@
 +Capture stdout as `RUN_ID`.
 +
 +```bash
-+python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
++python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt
 +```
++
++Run both commands above, one after the other, before Step 2. Load the skill only
++after both have finished.
 +
  ### Step 2 — Branch on action
  
  | action | Go to |
-@@ -68,10 +80,7 @@
+@@ -68,11 +83,6 @@
  
  The skill has the complete pipeline. Follow it now.
  
@@ -27,7 +30,7 @@
 -# call `run-id.py`, `shared-ctx-builder.py` or `read-config-field.py`.
 -# Why: the skill runs all of them itself and starts by deleting `tomo-tmp/items`,
 -# so a setup here is discarded and the RUN_ID captured from it is stale.
-+The skill then runs its own setup as written.
- 
+-
  Tag-handler compose (when `routing-plan.json` `handled[]` is non-empty) is handled
  **inside** `suggest-handling` (step 3b, before the reduce) — the `tag-handler-interpreter`
+ skill runs there so groups make the rendered doc. No separate conductor step.

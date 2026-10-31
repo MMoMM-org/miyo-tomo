@@ -137,6 +137,8 @@ FIXTURES = {
     "line and WARN line) and no `cat` call: the trace of mutation warn-in-report-only",
     "pass1-cat-batched.jsonl": "pass1-complete + the `cat` call sent in the same message "
     "as the two read-config calls, its WARN result after theirs (trace e-Pu75Hu)",
+    "pass1-analyst-general-purpose.jsonl": "pass1-complete with every analyst dispatch's "
+    "subagent_type set to general-purpose: the trace of mutation analyst-name-not-type",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -175,8 +177,9 @@ GRADERS = {
     "duplicate-line": from_file(RELAY + "03-duplicate-line.md"),
     "relay-report-line-anchored": from_file(RELAY + "04-report-line-anchored.md"),
     # Control: the SDD's essence for grader 03. A dispatch whose subagent_type key was
-    # renamed (mutation analyst-name-not-type) runs general-purpose without naming it,
-    # so this pattern stays green on it; the shipped 03 counts dispatches without the key.
+    # renamed (the first form of mutation analyst-name-not-type) runs general-purpose
+    # without naming it, so this pattern stays green on it; the shipped 03 counts
+    # dispatches without the key.
     "control-sdd-general-purpose": inline(
         type="tool_used", tool="Agent", min=0, max=0, input_match="general-purpose"
     ),
@@ -416,6 +419,12 @@ EXPECTATIONS = {
     ),
     ("pass1-analyst-name-not-type.jsonl", "control-sdd-general-purpose"): Expect(
         True, 0, "the SDD essence cannot see an untyped dispatch"
+    ),
+    ("pass1-analyst-general-purpose.jsonl", "analyst-dispatched-3x"): Expect(
+        False, 0, "every dispatch is typed general-purpose, none inbox-analyst"
+    ),
+    ("pass1-analyst-general-purpose.jsonl", "no-general-purpose"): Expect(
+        False, 3, "3 dispatches typed general-purpose"
     ),
     ("pass1-complete.jsonl", "subfolder-path-and-key"): Expect(True, 1, "Dresden"),
     ("pass1-complete.jsonl", "shared-ctx-once"): Expect(True, 1, "built once"),

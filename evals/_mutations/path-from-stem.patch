@@ -1,13 +1,23 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -99,7 +99,9 @@
+@@ -99,7 +99,10 @@
  python3 scripts/read-routing-plan.py --sources --batch <N> --size <BATCH_SIZE>
  ```
  
 -Each line is one item's `path`. Emit ALL Agent() calls for that batch in ONE
 +Each line is one source; its `<stem>` is the last segment of the line, without
-+`.md`. Every item lives directly in the inbox, so its `<path>` is
-+`<INBOX_PATH>/<stem>.md`. Emit ALL Agent() calls for that batch in ONE
++`.md`. Pass `path` as `<INBOX_PATH>/<stem>.md` even when the line has a
++subfolder: the analyst resolves subfolders from the stem itself. Pass
++`item_key` as the full line. Emit ALL Agent() calls for that batch in ONE
  response, then wait for the batch to complete before requesting the next.
  
  # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
+@@ -120,7 +123,7 @@
+       state_path      = "tomo-tmp/inbox-state.jsonl"
+       items_dir       = "tomo-tmp/items"
+       run_id          = "<RUN_ID>"
+-      item_key        = "<path>"
++      item_key        = "<line>"
+       force_atomic    = false
+ 
+     Follow your "IO Contract" section strictly.

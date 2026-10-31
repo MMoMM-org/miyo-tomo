@@ -18,8 +18,9 @@ contradicts the behaviour it injects — a surviving STRICT that forbids the inj
 behaviour would let the model obey it and leave the grader green (a weak proof).
 The clauses each patch removes and adds are listed under **Clauses**, and
 `tests/test_eval_conductor_cases.py` checks them against the patched copy.
-The neutral-write proofs (`write-into-scripts`, `copy-into-config`) remove nothing:
-their injected step is ordinary bookkeeping that no clause forbids.
+The neutral-write proofs (`write-into-scripts`, `copy-into-config`) and the neutral-step
+proof `render-before-reduce` remove nothing: their injected step is ordinary
+bookkeeping that no clause forbids.
 
 Refresh a patch when a file it patches changes: edit a copy of the assembled plugin
 (`tomo/dot_claude/{agents,skills,commands}` plus the analyst stand-in) in `$TMPDIR` and
@@ -72,11 +73,11 @@ reported), never a request to misbehave.
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--mutation dispatch-conductor` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/01-conductor-not-dispatched` — `/inbox` dispatches the suggestion conductor as a subagent instead of running it itself; offline model: `pass1-conductor-dispatched.jsonl` | not yet measured |
-| `--mutation analyst-name-not-type` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/02-analyst-dispatched-3x`, `pass1-suggest-pipeline/03-no-general-purpose` — the dispatch template keys the analyst by `name`, so no dispatch carries `subagent_type`; offline model: `pass1-analyst-name-not-type.jsonl` | not yet measured |
-| `--mutation path-from-stem` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/04-subfolder-path-and-key` — each item's path is rebuilt as `<INBOX_PATH>/<stem>.md`, which flattens `Places/Dresden.md`; offline model: `pass1-dresden-path-flattened.jsonl`, `pass1-dresden-key-flattened.jsonl` | not yet measured |
-| `--mutation setup-in-conductor` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/05-shared-ctx-once`, `pass1-suggest-pipeline/06-run-id-once` — the conductor runs `run-id.py` and `shared-ctx-builder.py` before the skill runs them again; offline model: `pass1-setup-twice.jsonl` | not yet measured |
+| `--mutation analyst-name-not-type` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/02-analyst-dispatched-3x`, `pass1-suggest-pipeline/03-no-general-purpose` — neutral step: the dispatch template types the analyst `general-purpose` (its contract is in the prompt), so no dispatch reaches inbox-analyst. The name is kept from the first form, which keyed the analyst by `name` and stayed green: the model kept `subagent_type`. It now proves that the graders see a dispatch that misses inbox-analyst; offline model: `pass1-analyst-general-purpose.jsonl` | not yet measured |
+| `--mutation path-from-stem` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/04-subfolder-path-and-key` — each item's `path` is passed as `<INBOX_PATH>/<stem>.md` even for a line with a subfolder, which flattens `Places/Dresden.md`; `item_key` stays the full line; offline model: `pass1-dresden-path-flattened.jsonl` | not yet measured |
+| `--mutation setup-in-conductor` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/05-shared-ctx-once`, `pass1-suggest-pipeline/06-run-id-once` — the conductor runs `run-id.py` and `shared-ctx-builder.py` (with `--warnings-out`), both before the skill is loaded, and the skill runs them again; offline model: `pass1-setup-twice.jsonl` | not yet measured |
 | `--mutation dispatch-before-setup` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/07-setup-before-dispatch` — the shared context is built after the last batch, right before Reduce; offline model: `pass1-dispatch-before-setup.jsonl` | not yet measured |
-| `--mutation render-before-reduce` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/08-reducer-before-render` — Render is step 4 and Reduce step 5; offline model: `pass1-render-before-reduce.jsonl` | not yet measured |
+| `--mutation render-before-reduce` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/08-reducer-before-render` — neutral step: a step 3c baseline render of the previous run's doc runs before Reduce (a failure is expected on a first run); Reduce and Render keep their order, so the first render precedes the first reduce; offline model: `pass1-render-before-reduce.jsonl` | not yet measured |
 | `--mutation reduce-before-batch-2` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/09-reduce-after-last-dispatch` — the reducer runs after every batch, so it runs before the second batch is dispatched; offline model: `pass1-reducer-between-dispatches.jsonl` | not yet measured |
 | `--mutation publish-md-with-write-tool` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/10-two-script-writes-same-stem`, `pass1-suggest-pipeline/11-no-inline-vault-write` — neutral step: the note is published with the Write tool into the inbox folder, only the wire file goes through `kado-write-file.py`; offline model: `pass1-write-tool-publish.jsonl` | not yet measured |
 | `--mutation mark-before-write` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/12a-mark-captured-once`, `pass1-suggest-pipeline/12b-mark-captured-after-json-write` — mark-captured runs after the `.md` write and once more after the `.json` write; offline model: `pass1-mark-between-writes.jsonl` (12b), `pass1-mark-twice.jsonl` (12a) | not yet measured |
@@ -250,20 +251,27 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 
 ### analyst-name-not-type
 
-- files: `skills/suggest-handling/SKILL.md`, `commands/inbox.md`
+- files: `skills/suggest-handling/SKILL.md`, `commands/inbox.md`, `agents/suggestion-conductor.md`
 - removes: "STRICT — the key is `subagent_type`. `name` only labels the spawned agent."
 - removes: "STRICT — every Agent() call passes `subagent_type`."
 - removes: "a dispatch without `subagent_type` silently runs general-purpose"
 - removes: "subagent_type: "inbox-analyst""
-- adds: "The key is `name`: it selects the inbox-analyst agent."
-- adds: "name: "inbox-analyst""
+- removes: "Dispatch inbox-analyst subagents."
+- removes: "inbox-analyst subagents do that."
+- removes: "dispatch its inbox-analyst leaves."
+- adds: "The analyst runs as `general-purpose`; its contract is in the prompt below."
+- adds: "subagent_type: "general-purpose""
+- adds: "Dispatch one analyst subagent per item."
 
 ### path-from-stem
 
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "Each line is one item's `path`."
+- removes: "item_key = "<path>""
 - adds: "Each line is one source; its `<stem>` is the last segment of the line, without `.md`."
-- adds: "Every item lives directly in the inbox, so its `<path>` is `<INBOX_PATH>/<stem>.md`."
+- adds: "Pass `path` as `<INBOX_PATH>/<stem>.md` even when the line has a subfolder: the analyst resolves subfolders from the stem itself."
+- adds: "Pass `item_key` as the full line."
+- adds: "item_key = "<line>""
 
 ### setup-in-conductor
 
@@ -273,7 +281,8 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "so a setup here is discarded and the RUN_ID captured from it is stale."
 - adds: "### Step 1b — Prepare the run"
 - adds: "python3 scripts/run-id.py --out tomo-tmp/.run_id"
-- adds: "The skill then runs its own setup as written."
+- adds: "--output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt"
+- adds: "Run both commands above, one after the other, before Step 2. Load the skill only after both have finished."
 
 ### dispatch-before-setup
 
@@ -289,12 +298,10 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 ### render-before-reduce
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "### 4. Reduce"
-- removes: "### 5. Render"
-- adds: "### 4. Render"
-- adds: "### 5. Reduce"
-- removes: "reducer's summary line (step 4)"
-- adds: "reducer's summary line (step 5)"
+- removes: none — the baseline render is an ordinary step that no clause forbids; Reduce (step 4) and Render (step 5) keep their order
+- adds: "### 3c. Baseline render"
+- adds: "Render the previous run's doc once now, before Reduce, as a baseline:"
+- adds: "A failure here is expected on a first run; continue."
 
 ### reduce-before-batch-2
 

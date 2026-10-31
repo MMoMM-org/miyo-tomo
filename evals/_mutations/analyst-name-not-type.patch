@@ -1,6 +1,33 @@
+--- a/agents/suggestion-conductor.md
++++ b/agents/suggestion-conductor.md
+@@ -25,7 +25,7 @@
+ 
+ You orchestrate Pass 1 of `/inbox`. You read the routing plan, dispatch
+ leaf agents, run pipeline scripts, and write one document to the vault.
+-You do NOT classify items yourself — inbox-analyst subagents do that.
++You do NOT classify items yourself — analyst subagents do that.
+ 
+ ## Constraints
+ 
+@@ -38,7 +38,7 @@
+ STRICT — NEVER inline Python with `python3 -c "..."`.
+ Why: triggers approval prompts every invocation.
+ 
+-STRICT — NEVER classify items yourself. Dispatch inbox-analyst subagents.
++STRICT — NEVER classify items yourself. Dispatch one analyst subagent per item.
+ Why: bypassing fan-out pipeline destroys parallel performance.
+ 
+ STRICT — NEVER build markdown yourself. The render script is the single source of truth.
 --- a/commands/inbox.md
 +++ b/commands/inbox.md
-@@ -54,11 +54,6 @@
+@@ -48,17 +48,12 @@
+ # STRICT — IMPERSONATE means: read `.claude/agents/suggestion-conductor.md`
+ # and execute its workflow as yourself. NEVER call `Agent()` for it.
+ # Why: a dispatched subagent cannot use the Agent tool, so the conductor
+-# would be unable to dispatch its inbox-analyst leaves.
++# would be unable to dispatch its analyst leaves.
+ 
+ # STRICT — DISPATCH means the opposite: call `Agent()` and do not run the
  # workflow yourself. It applies to synthesis-conductor and voice-transcriber only.
  # Why: both are pure script runners, so dispatch keeps their context isolated.
  
@@ -21,12 +48,12 @@
 -# STRICT — the key is `subagent_type`. `name` only labels the spawned agent.
 -# Why: a dispatch without `subagent_type` silently runs general-purpose, which
 -# has none of inbox-analyst's contract, tools or skills.
-+# The key is `name`: it selects the inbox-analyst agent.
++# The analyst runs as `general-purpose`; its contract is in the prompt below.
  
  ```
  Agent(
 -  subagent_type: "inbox-analyst"
-+  name: "inbox-analyst"
++  subagent_type: "general-purpose"
    prompt: |
      You are processing ONE inbox item under the fan-out pipeline.
  

@@ -588,6 +588,8 @@ GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
 # forbids, so they declare `removes: none` instead of quoted removals.
 NEUTRAL_WRITE_MUTATIONS = ("write-into-scripts", "copy-into-config")
+# A neutral step that only adds (a baseline render before Reduce): same rule.
+ADDITIVE_MUTATIONS = NEUTRAL_WRITE_MUTATIONS + ("render-before-reduce",)
 GRADER_REF = re.compile(r"`([a-z0-9-]+)/(\d+[a-z]?-[a-z0-9-]+)`")
 NO_WRITE, NO_COPY = "5-no-write-into-scripts-schemas-config", "6-no-copy-into-scripts-schemas-config"
 
@@ -744,11 +746,11 @@ def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     after = _norm(_joined(plugin, files))
     clauses = _clauses(name)
     assert clauses["adds"], name
-    if name in NEUTRAL_WRITE_MUTATIONS:
+    if name in ADDITIVE_MUTATIONS:
         assert clauses["removes_none"] and not clauses["removes"], name
         patch_text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
         removed = [line for line in patch_text.splitlines() if line.startswith("-") and not line.startswith("---")]
-        assert not removed, f"{name}: a neutral-write mutation must only add: {removed}"
+        assert not removed, f"{name}: an additive mutation must only add: {removed}"
     else:
         assert clauses["removes"] and not clauses["removes_none"], name
     for clause in clauses["removes"]:
@@ -975,6 +977,27 @@ def test_always_duplicate_line_reports_a_zero_count_grader_15_sees(tmp_path):
     line = "0 " + m.group(1)
     assert re.search(grader(PIPELINE, "15-no-duplicate-line")["pattern"], line)
     assert "0 included" in after
+
+
+def test_render_before_reduce_injects_a_render_grader_08_sees_before_the_reduce(tmp_path):
+    """The baseline render is step 5's command, run once more before Reduce: the
+    first render grader 08 sees then precedes the first reduce."""
+    _, after = _patched_text(tmp_path, "render-before-reduce", SKILL_IN_PLUGIN)
+    order = grader(PIPELINE, "08-reducer-before-render")
+    blocks = [b.strip() for b in re.findall(r"^```bash\n(.*?)^```", after, re.S | re.M)]
+    renders = [i for i, b in enumerate(blocks) if re.search(order["after"]["input_match"], bash_input(b))]
+    reduces = [i for i, b in enumerate(blocks) if re.search(order["before"]["input_match"], bash_input(b))]
+    assert len(renders) == 2 and len(reduces) == 1, (renders, reduces)
+    assert blocks[renders[0]] == blocks[renders[1]]
+    assert renders[0] < reduces[0] < renders[1]
+
+
+def test_setup_in_conductor_passes_the_strict_shared_ctx_stub(tmp_path):
+    """The stub rejects a shared-ctx-builder call without `--warnings-out`; the
+    conductor's injected call must carry it, or the run aborts before 05 can count."""
+    _, after = _patched_text(tmp_path, "setup-in-conductor", "agents/suggestion-conductor.md")
+    calls = [ln for ln in after.splitlines() if ln.startswith("python3 scripts/shared-ctx-builder.py")]
+    assert len(calls) == 1 and "--warnings-out tomo-tmp/setup-warnings.txt" in calls[0]
 
 
 def test_rev_proofs_resolve_to_a_conductor():

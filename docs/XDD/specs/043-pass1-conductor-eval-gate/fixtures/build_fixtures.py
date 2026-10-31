@@ -566,6 +566,17 @@ def pass1_completions(p1: list[str], out: Path) -> None:
     v[profile_use + 1 : profile_use + 1] = [cat_use]
     write(out, "pass1-cat-batched.jsonl", v)
 
+    # Appended last: every analyst dispatch typed general-purpose (mutation
+    # analyst-name-not-type since T4.1 Block A).
+    v = list(done)
+    for i in agents:
+        event = json.loads(v[i])
+        block = event["message"]["content"][0]
+        assert block["input"]["subagent_type"] == "tomo:inbox-analyst"
+        block["input"]["subagent_type"] = "general-purpose"
+        v[i] = enc(event)
+    write(out, "pass1-analyst-general-purpose.jsonl", v)
+
 
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")

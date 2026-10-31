@@ -1,32 +1,19 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -139,16 +139,16 @@
+@@ -139,6 +139,16 @@
  `--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
  miss the rendered doc. If `handled[]` is absent or empty, skip this step.
  
--### 4. Reduce
-+### 4. Render
- 
- ```bash
--python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
++### 3c. Baseline render
++
++Render the previous run's doc once now, before Reduce, as a baseline:
++
++```bash
 +python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
- ```
- 
--### 5. Render
-+### 5. Reduce
++```
++
++A failure here is expected on a first run; continue.
++
+ ### 4. Reduce
  
  ```bash
--python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
-+python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
- ```
- 
- ### 6. Write to vault + tag sources
-@@ -188,7 +188,7 @@
- ```
- 
- Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
--(step 4). When `<n>` is greater than 0, output this line next, replacing only
-+(step 5). When `<n>` is greater than 0, output this line next, replacing only
- `{n}`. Copy it exactly for every `<n>`, 1 included: `MOC(s)`, `are offered` and
- `unticked links` stay as written.
- 

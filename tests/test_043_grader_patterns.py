@@ -89,6 +89,7 @@ FIXTURES = {
     "Write tool instead of kado-write-file",
     "pass1-mark-before-json-write.jsonl": "pass1-complete with mark-captured moved between "
     "the .md and the .json write",
+    "pass1-mark-twice.jsonl": "pass1-complete + a second mark-captured call after the first",
     "pass1-inline-python.jsonl": "pass1-complete + a python3 -c read of the routing plan",
     "pass1-report-quoted.jsonl": "pass1-complete with the report line quoted inside a "
     "sentence instead of starting a line",
@@ -299,6 +300,9 @@ EXPECTATIONS = {
     ),
     ("pass1-complete.jsonl", "mark-captured-once"): Expect(True, 1, "marked once"),
     ("pass1-spike.jsonl", "mark-captured-once"): Expect(False, 0, "never marked"),
+    ("pass1-mark-twice.jsonl", "mark-captured-once"): Expect(
+        False, 2, "marked twice, over the max of 1"
+    ),
     ("pass1-mark-before-json-write.jsonl", "mark-captured-once"): Expect(
         True, 1, "once, in the wrong place (12b catches it)"
     ),

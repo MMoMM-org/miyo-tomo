@@ -431,6 +431,13 @@ def pass1_completions(p1: list[str], out: Path) -> None:
     )
     write(out, "pass1-report-quoted.jsonl", _replace_report(done, quoted))
 
+    twice = list(done)
+    twice[mark_use + 2 : mark_use + 2] = bash(
+        f"python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id {RUN_ID}",
+        "mark-captured: marked=0 errors=0 declined=0 skipped_non_md=0 squelched=0",
+    )
+    write(out, "pass1-mark-twice.jsonl", twice)
+
 
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")

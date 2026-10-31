@@ -331,13 +331,16 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 | 07 | setup-before-dispatch | `tool_order` | shared-ctx-builder before any Agent dispatch | F1-AC4 | `dispatch-before-setup` |
 | 08 | reducer-before-render | `tool_order` | reducer before render | F1-AC5 | `render-before-reduce` |
 | 09 | reduce-after-last-dispatch | `regex` trace | last `tomo:inbox-analyst` tool_use occurs before the first `suggestions-reducer` call (anchored lookahead) | F1-AC5 | `reduce-before-batch-2` |
-| 10 | two-script-writes-same-stem | `regex` trace | `--vault \\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*--vault \\"100 Inbox/\1_suggestions\.json\\"` | F1-AC6 | `publish-md-with-write-tool` |
-| 11 | no-inline-vault-write | `tool_used` Write, min 0, max 0 | `"file_path"` under `100 Inbox/` | F1-AC6 | `publish-md-with-write-tool` |
-| 12 | mark-captured-once-after-writes | `tool_used` count 1 + `tool_order` (`_suggestions\.json` write before mark-captured) | | F1-AC7 | `mark-before-write` |
+| 10 | two-script-writes-same-stem | `regex` trace | Shipped, anchored on the Bash tool_use shape: `"name":"Bash","input":\{"command":"python3? scripts/kado-write-file\.py [^\n]*?--vault \\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*"name":"Bash","input":\{"command":"python3? scripts/kado-write-file\.py [^\n]*?--vault \\"100 Inbox/\1_suggestions\.json\\"` | F1-AC6 | `publish-md-with-write-tool` |
+| 11 | no-inline-vault-write | `tool_used` Write, min 0, max 0 | Shipped: `"file_path":"[^"]*100 Inbox/` | F1-AC6 | `publish-md-with-write-tool` |
+| 12a | mark-captured-once | `tool_used` Bash, `python3?\s+scripts/mark-captured\.py`, min 1, max 1 | | F1-AC7 | `mark-before-write` |
+| 12b | mark-captured-after-json-write | `tool_order`: the `_suggestions.json` write before mark-captured | | F1-AC7 | `mark-before-write` |
 | 13 | no-inline-python | `tool_used` Bash, min 0, max 0 | `python3? -c` | F1-AC8 | `inline-python-read` |
 | 14 | report-line-anchored | `regex` last_message | `(?:^\|\n)Pass 1 complete: 3 items analysed, suggestions written to\s+\[\[\d{4}-\d{2}-\d{2}_\d{4}_suggestions\]\]` | F1-AC9 | `reword-report-line` |
 | 15 | no-duplicate-line | `regex` last_message `not_contains` | `proposed MOC\(s\) already existed` | F1-AC10 | `always-duplicate-line` |
 | 09-no-leak | leak guard | the shared file | | F1-AC9 | existing proofs (041) |
+
+Row 12 is shipped as two graders, 12a and 12b, because a grader file has one type.
 
 Notes on the controls:
 

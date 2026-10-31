@@ -41,6 +41,7 @@
 | 2026-10-31 | Phase 1 drift: the reducer stub also exits 2 while fewer results exist than routed `fresh_sources` | Owner decision. A reduce before any analyst finished (0/0) or between batches passed the state-line check alone. |
 | 2026-10-31 | Grant `Write` in both Pass 1 cases' `allowed_tools` | Owner decision. Without it the CLI withholds Write, so pipeline grader 11 (no inline vault write) could never go red; the real conductor has Write, so the eval matches production. |
 | 2026-10-31 | Relay grader 01 keeps the `WARN: ` prefix verbatim (F2-AC1) | Owner decision. The spike quoted the WARN text without the prefix, so 01 is red on the spike (the plan expected green); a red smoke result is a prose finding for Phase 3. |
+| 2026-10-31 | Anchor pipeline grader 10 on the Bash tool_use shape and split grader 12 into 12a/12b | The trace contains the skill prose, which quotes the `kado-write-file` command lines (see Implementation Gotchas), so an unanchored pattern matches the prose; anchoring on the tool_use shape matches only real calls. A grader file has one type, so the count (`tool_used`) and the order (`tool_order`) checks of row 12 are two files. |
 
 ## Context
 

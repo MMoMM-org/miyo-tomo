@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.15.0
+# version: 1.16.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -13,13 +13,20 @@ Inputs (CLI):
   --run-id       unique run identifier
   --output       tomo-tmp/shared-ctx.json
   --max-bytes    per-read warning threshold in bytes (default 32768)
+  --warnings-out optional; file that receives a copy of every WARN line
 
 Outputs:
   File at --output matching schemas/shared-ctx.schema.json, every eligible MOC
   with its full detail (nothing is shed for size).
   Stderr: one WARN line per analyst read (names, step1, placeholder_targets,
   detail) whose compact JSON exceeds --max-bytes, then one summary line of
-  counts and sizes.
+  counts and sizes. Every other WARN line (tracker fields without keywords,
+  moc_proposal config) also goes to stderr.
+  File at --warnings-out (only when given): every `WARN:` line printed on
+  stderr during this run, exactly as printed, one per line. Rewritten on every
+  run, also on an error exit; empty when the run printed no WARN line, so a
+  warning from an earlier run is never carried over. Printing it (e.g. with
+  `cat`) yields exactly the lines to relay to the user and nothing else.
 
 Exit: 0 on success, 1 on error.
 """
@@ -804,12 +811,58 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the listDir-vs-cache MOC reconcile step (offline / test mode)",
     )
+    p.add_argument(
+        "--warnings-out",
+        default=None,
+        help="Also write every WARN line printed on stderr to this file (rewritten each run)",
+    )
     return p
+
+
+class _WarnRecorder:
+    """Pass-through stderr that keeps a copy of every line starting with WARN:."""
+
+    def __init__(self, stream):
+        self._stream = stream
+        self._partial = ""
+        self.warnings: list[str] = []
+
+    def write(self, text: str) -> int:
+        self._stream.write(text)
+        self._partial += text
+        *complete, self._partial = self._partial.split("\n")
+        self.warnings.extend(line for line in complete if line.startswith("WARN:"))
+        return len(text)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def finish(self) -> list[str]:
+        if self._partial.startswith("WARN:"):
+            self.warnings.append(self._partial)
+        self._partial = ""
+        return self.warnings
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if not args.warnings_out:
+        return build(args)
+    original_stderr = sys.stderr
+    recorder = _WarnRecorder(original_stderr)
+    sys.stderr = recorder
+    try:
+        return build(args)
+    finally:
+        sys.stderr = original_stderr
+        warnings_path = Path(args.warnings_out)
+        ensure_parent(warnings_path)
+        warnings_path.write_text(
+            "".join(line + "\n" for line in recorder.finish()), encoding="utf-8"
+        )
 
+
+def build(args: argparse.Namespace) -> int:
     cache_path = Path(args.cache)
     vault_cfg_path = Path(args.vault_config)
     profiles_dir = Path(args.profiles_dir)

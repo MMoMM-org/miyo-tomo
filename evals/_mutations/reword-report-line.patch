@@ -1,6 +1,6 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -183,7 +183,7 @@
+@@ -191,7 +191,7 @@
  full `YYYY-MM-DD_HHMM` stem of the step 6 writes (date and time):
  
  ```text

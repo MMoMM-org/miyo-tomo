@@ -975,16 +975,19 @@ def test_report_graders_match_the_skill_template_lines():
 
 
 def test_skill_relays_warn_as_a_message_before_the_first_dispatch_and_in_the_report():
-    """F2-AC2 / F2-AC1 (findings F4): the relay instruction sits in step 3 before the
-    batch-count command and the Agent template, names a visible message, and step 7
+    """F2-AC2 / F2-AC1 (findings F4, smoke 1 and 2): step 3 opens with a STRICT that
+    makes the relay a fixed text reply (header + WARN lines) due before the batch-count
+    command and the Agent template, rules out thinking as the vehicle, and step 7
     repeats the WARN lines in the report."""
     skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
     step3 = text.split("### 3. Fan-out dispatch", 1)[1].split("### 3b.", 1)[0]
-    relay = step3.find("printed `WARN:` lines, send them to the user now")
-    assert relay != -1
-    assert relay < step3.find("--batch-count") < step3.find("```\nAgent(")
-    assert "text message of\nyour own (not a thought)" in step3
+    relay = step3.find("# STRICT — if `shared-ctx-builder.py` printed `WARN:` lines, your next output is")
+    shape = step3.find("```text\nSetup warnings:\n<each WARN: line, exactly as printed, one per line>\n```")
+    assert relay != -1 and shape != -1
+    assert relay < shape < step3.find("--batch-count") < step3.find("```\nAgent(")
+    assert "BEFORE you run the batch-count command below" in step3
+    assert "Thinking about the warning does not count" in step3
     step7 = text.split("### 7. Report", 1)[1]
     assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
 

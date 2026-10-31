@@ -11,7 +11,7 @@
  | 0 done items | Skip the write, tell user "no items processed successfully" |
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -101,6 +101,11 @@
+@@ -109,6 +109,11 @@
  Each line is one item's `path`. Emit ALL Agent() calls for that batch in ONE
  response, then wait for the batch to complete before requesting the next.
  

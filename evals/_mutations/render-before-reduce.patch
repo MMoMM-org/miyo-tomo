@@ -1,6 +1,6 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -138,16 +138,16 @@
+@@ -146,16 +146,16 @@
  `--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
  miss the rendered doc. If `handled[]` is absent or empty, skip this step.
  
@@ -21,7 +21,7 @@
  ```
  
  ### 6. Write to vault + tag sources
-@@ -187,7 +187,7 @@
+@@ -195,7 +195,7 @@
  ```
  
  Then read `duplicate_proposals_converted=<n>` from the reducer's summary line

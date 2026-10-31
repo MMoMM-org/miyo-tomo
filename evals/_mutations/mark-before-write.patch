@@ -1,6 +1,6 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -161,10 +161,21 @@
+@@ -169,10 +169,21 @@
  
  ```bash
  python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-rendered.md --vault "<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md"

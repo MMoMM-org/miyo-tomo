@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.13.0
+# version: 0.13.1
 
 ## When to Activate
 
@@ -58,7 +58,7 @@ python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vaul
 If this fails, abort and surface the error.
 
 # STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
-# first in a message of your own at the start of step 3, before any Agent call,
+# first as the text reply that opens step 3, before its batch-count command,
 # then again in the step 7 report.
 # Why: it is the only report of unusable tracker configuration, and a run that
 # swallows it looks identical to a healthy one.
@@ -77,10 +77,18 @@ Capture stdout as `PROFILE`.
 
 ### 3. Fan-out dispatch
 
-If `shared-ctx-builder.py` printed `WARN:` lines, send them to the user now,
-before any command or Agent call of this step: write them as a text message of
-your own (not a thought), one `WARN:` line per line, each copied exactly as
-printed. Then continue.
+# STRICT — if `shared-ctx-builder.py` printed `WARN:` lines, your next output is
+# this text reply, BEFORE you run the batch-count command below: the header line,
+# then each `WARN:` line exactly as printed, one per line.
+# Thinking about the warning does not count; only text the user sees counts.
+# Why: a warning noted only in thinking reaches the user after every analyst ran.
+
+```text
+Setup warnings:
+<each WARN: line, exactly as printed, one per line>
+```
+
+If it printed none, output nothing here and go on to the batch-count command.
 
 # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
 # ONE Agent call per message = sequential execution = 5x slower.

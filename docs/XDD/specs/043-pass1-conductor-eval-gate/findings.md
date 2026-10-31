@@ -151,3 +151,19 @@ Consequences:
 - Relay grader 01 (the `WARN:` line verbatim in the final reply) is unchanged. It was green in all four smokes.
 - `suggest-handling` 0.14.1 keeps `--warnings-out` and the step 3 `cat`, and drops the text-reply `STRICT`.
 - The mutation `warn-in-report-only` removes the `cat` and keeps only the step 7 repeat, so the new grader 02 goes red on it.
+
+## Full suite 1 — 2026-10-31 (T3.3)
+
+Command: `scripts/run-evals.sh` (`suggest-handling` 0.14.1)
+
+```
+RED 6/7 cases · audit-mismatch-stops: 7-report-only-mismatch (run 0) · runs 21 · $2.26 · 298 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T11-32-45Z
+```
+
+- Both Pass 1 cases are green in 3/3, so F4 is green on the redefined grader 02 in a paid run. That includes the relay case, which costs $0.20–0.21 per run, and the pipeline case.
+- The four standard Pass 2 cases are green in 3/3, so `7-report-only` and `8-handback-canary` hold.
+
+| # | Case / grader | Cause | Evidence | Next |
+|---|---|---|---|---|
+| F5 | `audit-mismatch-stops` `7-report-only-mismatch`, run 0 (runs 1 and 2 green) | not yet classified | `aggregate-result.json`: `"pattern not found in trace"`, 2 turns, $0.065. The trace (`/private/tmp/e-KfccMK`) was not kept and is gone. | Re-run the case with `--keep-temp` and classify the cause from the trace |
+| K1 | Quality KPI: full suite ≤ 4 min | (KPI) | 298 s. The Pass 1 runs take 36–46 s each, against 16–35 s for the Pass 2 runs. | Record in the close-out. The cost KPI is met: $2.26 against a $3.10 median target. |

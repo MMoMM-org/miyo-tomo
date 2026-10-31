@@ -48,21 +48,39 @@ COMBOS = list(itertools.product((0, 1), (0, 1)))
 
 # The argv suggest-handling passes, step by step (SKILL.md steps 1-6).
 SHARED_CTX_ARGV = (
-    "--cache", "config/discovery-cache.yaml", "--vault-config",
-    "config/vault-config.yaml", "--profiles-dir", "profiles", "--run-id", RUN_ID,
-    "--output", "tomo-tmp/shared-ctx.json",
+    "--cache",
+    "config/discovery-cache.yaml",
+    "--vault-config",
+    "config/vault-config.yaml",
+    "--profiles-dir",
+    "profiles",
+    "--run-id",
+    RUN_ID,
+    "--output",
+    "tomo-tmp/shared-ctx.json",
 )
 REDUCER_ARGV = (
-    "--run-id", RUN_ID, "--profile", "miyo", "--output", "tomo-tmp/suggestions-doc.json",
+    "--run-id",
+    RUN_ID,
+    "--profile",
+    "miyo",
+    "--output",
+    "tomo-tmp/suggestions-doc.json",
 )
 RENDER_ARGV = (
-    "--input", "tomo-tmp/suggestions-doc.json", "--output",
-    "tomo-tmp/suggestions-rendered.md", "--json-output", "tomo-tmp/suggestions-wire.json",
+    "--input",
+    "tomo-tmp/suggestions-doc.json",
+    "--output",
+    "tomo-tmp/suggestions-rendered.md",
+    "--json-output",
+    "tomo-tmp/suggestions-wire.json",
 )
 
 
 def _real_to_filename():
-    spec = importlib.util.spec_from_file_location("item_key", SCRIPTS / "lib" / "item_key.py")
+    spec = importlib.util.spec_from_file_location(
+        "item_key", SCRIPTS / "lib" / "item_key.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.to_filename
@@ -82,7 +100,9 @@ def plugin_copy(tmp_path: Path) -> Path:
     return plugin
 
 
-def stage(tmp_path: Path, warn="0", dups="0", check=True) -> tuple[Path, subprocess.CompletedProcess]:
+def stage(
+    tmp_path: Path, warn="0", dups="0", check=True
+) -> tuple[Path, subprocess.CompletedProcess]:
     plugin = plugin_copy(tmp_path)
     scaffold = plugin / "evals" / "case" / "scaffold.sh"
     scaffold.write_text(
@@ -94,7 +114,11 @@ def stage(tmp_path: Path, warn="0", dups="0", check=True) -> tuple[Path, subproc
     ws = tmp_path / "ws"
     ws.mkdir()
     r = subprocess.run(
-        ["/bin/bash", str(scaffold)], cwd=ws, capture_output=True, text=True, check=False,
+        ["/bin/bash", str(scaffold)],
+        cwd=ws,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if check:
         assert r.returncode == 0, r.stderr
@@ -104,7 +128,10 @@ def stage(tmp_path: Path, warn="0", dups="0", check=True) -> tuple[Path, subproc
 def run(ws: Path, name: str, *argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["python3", f"scripts/{name}.py", *argv],
-        cwd=ws, capture_output=True, text=True, check=False,
+        cwd=ws,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -130,15 +157,28 @@ def full_pipeline(ws: Path) -> dict[str, subprocess.CompletedProcess]:
         "reducer": run(ws, "suggestions-reducer", *REDUCER_ARGV),
         "render": run(ws, "suggestions-render", *RENDER_ARGV),
         "write_md": run(
-            ws, "kado-write-file", "--local", "tomo-tmp/suggestions-rendered.md",
-            "--vault", "100 Inbox/2026-10-30_0000_suggestions.md",
+            ws,
+            "kado-write-file",
+            "--local",
+            "tomo-tmp/suggestions-rendered.md",
+            "--vault",
+            "100 Inbox/2026-10-30_0000_suggestions.md",
         ),
         "write_json": run(
-            ws, "kado-write-file", "--local", "tomo-tmp/suggestions-wire.json",
-            "--vault", "100 Inbox/2026-10-30_0000_suggestions.json",
+            ws,
+            "kado-write-file",
+            "--local",
+            "tomo-tmp/suggestions-wire.json",
+            "--vault",
+            "100 Inbox/2026-10-30_0000_suggestions.json",
         ),
         "mark": run(
-            ws, "mark-captured", "--state", "tomo-tmp/inbox-state.jsonl", "--run-id", RUN_ID,
+            ws,
+            "mark-captured",
+            "--state",
+            "tomo-tmp/inbox-state.jsonl",
+            "--run-id",
+            RUN_ID,
         ),
     }
     for name, r in out.items():
@@ -170,8 +210,13 @@ def test_conductor_staged_from_assembled_copy(tmp_path):
 
 @pytest.mark.parametrize(
     "warn,dups,var",
-    [("2", "0", "SHARED_CTX_WARN"), ("yes", "0", "SHARED_CTX_WARN"),
-     ("0", "2", "DUPLICATES"), ("0", "", "DUPLICATES"), ("", "0", "SHARED_CTX_WARN")],
+    [
+        ("2", "0", "SHARED_CTX_WARN"),
+        ("yes", "0", "SHARED_CTX_WARN"),
+        ("0", "2", "DUPLICATES"),
+        ("0", "", "DUPLICATES"),
+        ("", "0", "SHARED_CTX_WARN"),
+    ],
 )
 def test_invalid_variable_returns_1(tmp_path, warn, dups, var):
     ws, r = stage(tmp_path, warn, dups, check=False)
@@ -191,7 +236,9 @@ def test_invalid_variable_is_return_not_exit(tmp_path):
     )
     ws = tmp_path / "ws"
     ws.mkdir()
-    r = subprocess.run(["/bin/bash", str(scaffold)], cwd=ws, capture_output=True, text=True)
+    r = subprocess.run(
+        ["/bin/bash", str(scaffold)], cwd=ws, capture_output=True, text=True
+    )
     assert r.stdout.strip() == "rc=1"
 
 
@@ -209,7 +256,12 @@ def test_triage_writes_routing_plan(tmp_path):
     assert plan["inbox_path"] == "100 Inbox/"
     assert [s["path"] for s in plan["fresh_sources"]] == PATHS
     assert plan["drift_indicators"] == []
-    validate(plan, json.loads((REPO / "tomo" / "schemas" / "routing-plan.schema.json").read_text()))
+    validate(
+        plan,
+        json.loads(
+            (REPO / "tomo" / "schemas" / "routing-plan.schema.json").read_text()
+        ),
+    )
 
 
 def test_read_routing_plan_modes(tmp_path):
@@ -218,12 +270,12 @@ def test_read_routing_plan_modes(tmp_path):
     assert run(ws, "read-routing-plan", "--field", "inbox_path").stdout == "100 Inbox\n"
     assert run(ws, "read-routing-plan", "--field", "action").stdout == "suggest\n"
     assert run(ws, "read-routing-plan", "--batch-count", "--size", "2").stdout == "2\n"
-    assert run(ws, "read-routing-plan", "--sources", "--batch", "1", "--size", "2").stdout == (
-        "100 Inbox/Alpha.md\n100 Inbox/Places/Dresden.md\n"
-    )
-    assert run(ws, "read-routing-plan", "--sources", "--batch", "2", "--size", "2").stdout == (
-        "100 Inbox/Gamma.md\n"
-    )
+    assert run(
+        ws, "read-routing-plan", "--sources", "--batch", "1", "--size", "2"
+    ).stdout == ("100 Inbox/Alpha.md\n100 Inbox/Places/Dresden.md\n")
+    assert run(
+        ws, "read-routing-plan", "--sources", "--batch", "2", "--size", "2"
+    ).stdout == ("100 Inbox/Gamma.md\n")
     r = run(ws, "read-routing-plan", "--sources", "--batch", "3", "--size", "2")
     assert r.returncode == 1
     assert "read-routing-plan: --batch 3 out of range (1..2)" in r.stderr
@@ -232,11 +284,43 @@ def test_read_routing_plan_modes(tmp_path):
     assert "read-routing-plan: no such field: nope" in r.stderr
 
 
+def test_read_routing_plan_rejects_bad_flags(tmp_path):
+    ws, _ = stage(tmp_path)
+    run(ws, "inbox-triage")
+    ok = run(ws, "read-routing-plan", "--batch-count", "--size", "2")
+    assert ok.returncode == 0
+    # non-numeric --size: argv guard, exit 2
+    r = run(ws, "read-routing-plan", "--batch-count", "--size", "abc")
+    assert r.returncode == 2
+    assert "stub read-routing-plan: unexpected argv:" in r.stderr
+    assert r.stdout == ""
+    # --size 0: the real script's exit-1 message, not the argv guard
+    r = run(ws, "read-routing-plan", "--batch-count", "--size", "0")
+    assert r.returncode == 1
+    assert "read-routing-plan: --size must be 1 or greater" in r.stderr
+    assert r.stdout == ""
+    # repeated flag: argv guard, exit 2
+    r = run(ws, "read-routing-plan", "--field", "x", "--field", "y")
+    assert r.returncode == 2
+    assert "stub read-routing-plan: unexpected argv:" in r.stderr
+    assert r.stdout == ""
+
+
 def test_read_config_field(tmp_path):
     ws, _ = stage(tmp_path)
-    r = run(ws, "read-config-field", "--field", "tomo.suggestions.parallel", "--default", "5")
+    r = run(
+        ws,
+        "read-config-field",
+        "--field",
+        "tomo.suggestions.parallel",
+        "--default",
+        "5",
+    )
     assert r.stdout == "2\n"
-    assert run(ws, "read-config-field", "--field", "profile", "--default", "miyo").stdout == "miyo\n"
+    assert (
+        run(ws, "read-config-field", "--field", "profile", "--default", "miyo").stdout
+        == "miyo\n"
+    )
 
 
 def test_run_id_stub(tmp_path):
@@ -271,7 +355,9 @@ def test_analyst_stub_writes_result_and_state(tmp_path):
     setup_steps(ws)
     run_analysts(ws)
     items = ws / "tomo-tmp" / "items"
-    assert sorted(p.name for p in items.iterdir()) == sorted(to_filename(p) for p in PATHS)
+    assert sorted(p.name for p in items.iterdir()) == sorted(
+        to_filename(p) for p in PATHS
+    )
     for p in PATHS:
         res = json.loads((items / to_filename(p)).read_text())
         assert res["item_key"] == p
@@ -279,7 +365,10 @@ def test_analyst_stub_writes_result_and_state(tmp_path):
         assert res["run_id"] == RUN_ID
         assert res["status"] == "done"
         assert isinstance(res["sections"], list) and res["sections"]
-    lines = [json.loads(x) for x in (ws / "tomo-tmp" / "inbox-state.jsonl").read_text().splitlines()]
+    lines = [
+        json.loads(x)
+        for x in (ws / "tomo-tmp" / "inbox-state.jsonl").read_text().splitlines()
+    ]
     assert [x["item_key"] for x in lines] == PATHS
     assert all(x["run_id"] == RUN_ID and x["status"] == "done" for x in lines)
 
@@ -305,7 +394,9 @@ def test_reducer_doc_matches_summary_line(tmp_path, warn, dups):
     assert len(doc["proposed_mocs"]) == int(dups) + 1
     assert doc["run_id"] == RUN_ID and doc["profile"] == "miyo"
     line = out["reducer"].stderr.strip().splitlines()[-1]
-    assert line.startswith("suggestions-reducer: done=3 failed=0 unreadable_results=0 sections=3 ")
+    assert line.startswith(
+        "suggestions-reducer: done=3 failed=0 unreadable_results=0 sections=3 "
+    )
     assert f" duplicate_proposals_converted={dups} " in line
     assert f" proposed_mocs={int(dups) + 1} " in line
     assert line.endswith("out=tomo-tmp/suggestions-doc.json")
@@ -336,7 +427,16 @@ def test_render_output(tmp_path, warn, dups):
     assert len(re.findall(r"^### S0\d — ", md, re.M)) == 3
     assert len(re.findall(r"^### Proposed MOC: ", md, re.M)) == int(dups) + 1
     wire = json.loads((ws / "tomo-tmp" / "suggestions-wire.json").read_text())
-    assert "schema_version" in wire
+    validate(
+        wire,
+        json.loads(
+            (REPO / "tomo" / "schemas" / "suggestions-wire.schema.json").read_text()
+        ),
+    )
+    schema = json.loads(
+        (REPO / "tomo" / "schemas" / "suggestions-wire.schema.json").read_text()
+    )
+    assert wire["schema_version"] == schema["properties"]["schema_version"]["const"]
     assert len(wire["suggestions"]) == 3
     assert len(wire["proposed_mocs"]) == int(dups) + 1
     assert out["render"].stderr.strip() == (
@@ -353,7 +453,10 @@ def test_kado_write_and_mark_captured_lines(tmp_path):
         f"kado-write-file: tomo-tmp/suggestions-rendered.md ({md_size} bytes, op=note) "
         "→ 100 Inbox/2026-10-30_0000_suggestions.md"
     )
-    assert "op=file) → 100 Inbox/2026-10-30_0000_suggestions.json" in out["write_json"].stderr
+    assert (
+        "op=file) → 100 Inbox/2026-10-30_0000_suggestions.json"
+        in out["write_json"].stderr
+    )
     assert out["mark"].stderr.strip().splitlines()[-1] == (
         "mark-captured: marked=3 errors=0 declined=0 skipped_non_md=0 squelched=0"
     )
@@ -365,7 +468,10 @@ def test_calls_log_records_every_call(tmp_path):
     log = (ws / "tomo-tmp" / "calls.log").read_text().splitlines()
     assert log[0] == "inbox-triage.py "
     assert f"analyst-stub.py {PATHS[1]} {PATHS[1]} {RUN_ID}" in log
-    assert log[-1] == f"mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id {RUN_ID}"
+    assert (
+        log[-1]
+        == f"mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id {RUN_ID}"
+    )
 
 
 # --- strictness -------------------------------------------------------------------
@@ -379,7 +485,12 @@ GOOD_ARGV = {
     "analyst-stub": (PATHS[0], PATHS[0], RUN_ID),
     "suggestions-reducer": REDUCER_ARGV,
     "suggestions-render": RENDER_ARGV,
-    "kado-write-file": ("--local", "tomo-tmp/suggestions-rendered.md", "--vault", "x.md"),
+    "kado-write-file": (
+        "--local",
+        "tomo-tmp/suggestions-rendered.md",
+        "--vault",
+        "x.md",
+    ),
     "mark-captured": ("--state", "tomo-tmp/inbox-state.jsonl", "--run-id", RUN_ID),
 }
 
@@ -415,8 +526,11 @@ def test_missing_required_flag_exits_2(tmp_path, name):
 def test_read_routing_plan_rejects_unused_modes(tmp_path):
     ws, _ = stage(tmp_path)
     run(ws, "inbox-triage")
-    for argv in (("--count",), ("--plan", "x.json", "--field", "action"),
-                 ("--field", "action", "--batch-count")):
+    for argv in (
+        ("--count",),
+        ("--plan", "x.json", "--field", "action"),
+        ("--field", "action", "--batch-count"),
+    ):
         r = run(ws, "read-routing-plan", *argv)
         assert r.returncode == 2, argv
         assert "stub read-routing-plan: unexpected argv:" in r.stderr
@@ -424,8 +538,20 @@ def test_read_routing_plan_rejects_unused_modes(tmp_path):
 
 # --- containment --------------------------------------------------------------------
 
-SKIP_DIRS = {".git", "venv", ".venv", "node_modules", "tomo-instance", "tomo-home",
-             "tomo-privat", "__pycache__", ".pytest_cache", ".ruff_cache"}
+SKIP_DIRS = {
+    ".git",
+    "venv",
+    ".venv",
+    "node_modules",
+    "tomo-instance",
+    "tomo-home",
+    "tomo-privat",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+}
+
+
 def _repo_snapshot(root: Path) -> dict[str, tuple[int, int]]:
     snap = {}
     for dirpath, dirnames, filenames in os.walk(root):
@@ -469,14 +595,19 @@ def test_nothing_written_outside_the_workspace(tmp_path):
 # be in that script's source; a change to the real format turns this red, and
 # the copy in pass1-stubs.sh (header lists file:line) must follow.
 REAL_FRAGMENTS = {
-    "inbox-triage.py": ['f"[inbox-triage] {action} in {total_ms}ms — "', 'f"new={len(state.new_sources)} "'],
-    "read-routing-plan.py": ['value = value.rstrip("/")', 'out of range (1..{total})'],
+    "inbox-triage.py": [
+        'f"[inbox-triage] {action} in {total_ms}ms — "',
+        'f"new={len(state.new_sources)} "',
+    ],
+    "read-routing-plan.py": ['value = value.rstrip("/")', "out of range (1..{total})"],
     "read-config-field.py": ['print(f"ERROR: field not found: {args.field}"'],
     "shared-ctx-builder.py": [
         'f"WARN: {len(unusable)} active tracker field(s) have no keywords; "',
         'f"Run /tomo-setup trackers to fill them, or set active: false on the "',
-        'f"[shared-ctx] reconcile: cache clean "', 'f"mocs_total={map_notes_total_before} "',
-        'f"asset_folder={ctx[\'asset_folder\']} "', 'f"run_id={run_id}",',
+        'f"[shared-ctx] reconcile: cache clean "',
+        'f"mocs_total={map_notes_total_before} "',
+        "f\"asset_folder={ctx['asset_folder']} \"",
+        'f"run_id={run_id}",',
     ],
     "suggestions-reducer.py": [
         'f"suggestions-reducer: done={len(done_items)} failed={len(failed_entries)} "',
@@ -486,11 +617,20 @@ REAL_FRAGMENTS = {
     "suggestions-render.py": [
         'f"suggestions-render: sections={section_count} daily={daily_count} "',
         'f"tag_handler={th_count} mocs={moc_count} out={args.output}",',
-        'lines = ["## Suggestions", ""]', 'lines = ["## Proposed MOCs", ""]',
-        'f"### {sid} — {title}"', 'f"### Proposed MOC: {topic}"',
+        'lines = ["## Suggestions", ""]',
+        'lines = ["## Proposed MOCs", ""]',
+        'f"### {sid} — {title}"',
+        'f"### Proposed MOC: {topic}"',
     ],
-    "kado-write-file.py": ['f"kado-write-file: {source} ({len(data)} bytes, op={op}) → {args.vault}"'],
+    "kado-write-file.py": [
+        'f"kado-write-file: {source} ({len(data)} bytes, op={op}) → {args.vault}"'
+    ],
+    "state-update.py": [
+        'f"state-update: item_key={args.item_key} stem={args.stem} status={args.status} "',
+        "f\"attempts={entry['attempts']} run_id={args.run_id}\",",
+    ],
     "mark-captured.py": [
+        'print(f"  [{stem}] marking {path}", file=sys.stderr)',
         'f"mark-captured: marked={marked} errors={errors} declined={declined} "',
         'f"skipped_non_md={skipped_non_md} squelched={squelched_total}",',
     ],
@@ -512,7 +652,7 @@ def test_inline_to_filename_is_a_copy_of_the_real_one():
         'stem = re.sub(r"\\.[^.]+$", "", stem)',
         'stem = "".join("-" if c in _FORBIDDEN_CHARS or c.isspace() else c for c in stem)',
         'stem = stem.lower().strip("-") or "item"',
-        'digest = hashlib.sha256(',
+        "digest = hashlib.sha256(",
     ):
         assert line in real, line
         assert line in kit, line

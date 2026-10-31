@@ -18,7 +18,7 @@
 #   read-routing-plan    tomo/scripts/read-routing-plan.py:111-153 (modes, stdout),
 #                        :135 (inbox_path loses its trailing /), :64 and :93-96
 #                        (errors, exit 1), :86-87 (--size)
-#   read-config-field    tomo/scripts/read-config-field.py:64-72 (stdout; ERROR exit 1)
+#   read-config-field    tomo/scripts/read-config-field.py:64-72 (stdout; ERROR to stderr, exit 1)
 #   run id               tomo/scripts/run-id.py:22-31 (--out file + stdout)
 #   shared-ctx WARN      tomo/scripts/shared-ctx-builder.py:731-738 (stderr)
 #   shared-ctx lines     tomo/scripts/shared-ctx-builder.py:855-859 (reconcile, stderr),
@@ -35,8 +35,9 @@
 #                        block tomo/scripts/lib/doc_frontmatter.py:120-125), :60-72
 #                        (header), :88-104 (summary), :148-160 (suggestions),
 #                        :163-198 (proposed MOCs)
-#   wire JSON            tomo/scripts/suggestions-render.py:545-557; schema_version
-#                        tomo/schemas/suggestions-wire.schema.json:10
+#   wire JSON            tomo/scripts/suggestions-render.py:293-333 (_wire_note), :545-557
+#                        (payload); digest tomo/scripts/lib/render_md.py:396-412; keys and
+#                        schema_version tomo/schemas/suggestions-wire.schema.json
 #   render summary       tomo/scripts/suggestions-render.py:597-606 (stderr)
 #   kado-write-file      tomo/scripts/kado-write-file.py:164-165 (op by --vault
 #                        extension), :205-209 (stderr), :139-144 (input errors, exit 2)
@@ -468,13 +469,20 @@ wire = {
     "profile": d["profile"],
     "source_items": d["source_items"],
     "suggestions": [
-        {"id": a["suggestion_id"], "item_key": s["item_key"], "title": s["stem"],
-         "decision": "accept"}
+        {"id": a["suggestion_id"], "stem": s["stem"], "item_key": s["item_key"],
+         "title": s["stem"], "summary": None, "template": "t_note_tomo",
+         "location": "Atlas/Notes", "tags": ["topic/travel"], "audio_peer": None,
+         "attachments": [], "decision": "approve", "keep_source": False,
+         "delete_source": False, "force_atomic": False, "suppressed": False,
+         "worthiness": 0.9,
+         "candidate_mocs": [{"path": "Atlas/Maps/Travel MOC.md", "selected": True,
+                             "anchor": None, "source": "tomo"}]}
         for s in d["sections"] for a in s["actions"]
     ],
     "proposed_mocs": [
         {"id": "M%02d" % i, "topic": pm["topic"], "name": pm["name"], "parent": pm["parent"],
-         "member_ids": pm["items"], "selected": False}
+         "member_ids": pm["items"], "tags": pm["tags"], "reason": pm["reason"],
+         "decision": "skip"}
         for i, pm in enumerate(d["proposed_mocs"], start=1)
     ],
     "daily_updates": [],
@@ -482,7 +490,8 @@ wire = {
     "attachment_conflicts": [],
 }
 wire["emit_digest"] = "sha256:" + hashlib.sha256(
-    json.dumps(wire, sort_keys=True).encode("utf-8")).hexdigest()
+    json.dumps(wire, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    .encode("utf-8")).hexdigest()
 with open(o["--json-output"], "w") as f:
     json.dump(wire, f, ensure_ascii=False, indent=2)
 print(
@@ -529,4 +538,5 @@ PY
   printf 'version: 1\nmap_notes:\n  - path: Atlas/Maps/Places MOC.md\n  - path: Atlas/Maps/Travel MOC.md\n' \
     > config/discovery-cache.yaml
   printf 'name: miyo\n' > profiles/miyo.yaml
+  unset -f _write_stub
 }

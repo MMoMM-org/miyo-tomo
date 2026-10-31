@@ -1045,6 +1045,29 @@ def test_skill_relays_warn_with_a_cat_before_the_first_dispatch_and_in_the_repor
     assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
 
 
+def test_force_atomic_relays_warn_with_a_cat_before_the_first_dispatch_and_in_the_report():
+    """Owner decision 2026-10-31: force-atomic-handling gets the suggest-handling 0.14.1
+    relay. The builder saves its WARN lines, step 3 (the dispatching step) runs `cat`
+    on the file as its first command, before any Agent template, and step 7 repeats
+    the WARN lines. This path has no eval case, so this text pin is its only cover."""
+    skill = REPO / "tomo" / "dot_claude" / "skills" / "force-atomic-handling" / "SKILL.md"
+    text = skill.read_text(encoding="utf-8")
+    step2 = text.split("### 2. Common setup", 1)[1].split("### 3. Fan-out dispatch", 1)[0]
+    assert "--output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt\n" in step2
+    assert "# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:" in step2
+    assert "the `cat` that opens step 3" in step2 and "step 7 report" in step2
+    step3 = text.split("### 3. Fan-out dispatch", 1)[1].split("### 4. Reduce", 1)[0]
+    read = step3.find("```bash\ncat tomo-tmp/setup-warnings.txt\n```")
+    assert read != -1
+    assert step3.find("```") == read
+    assert "before" in step3[:read]
+    assert read < step3.find("```\nAgent(")
+    for gone in ("text reply", "your next output", "Thinking about the warning", "Setup warnings:"):
+        assert gone not in text, gone
+    step7 = text.split("### 7. Report", 1)[1]
+    assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
+
+
 def test_warn_grader_matches_the_kit_warn_line():
     from test_pass1_stub_kit import WARN_LINE
 

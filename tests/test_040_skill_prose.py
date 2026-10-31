@@ -61,12 +61,11 @@ WARNINGS_OUT = " --warnings-out tomo-tmp/setup-warnings.txt"
 
 
 def test_both_builder_commands_are_identical():
-    """Both paths build the same context. `--warnings-out` only saves a copy of the
-    WARN lines for suggest-handling's step 3 relay (spec 043 F4), so it is the one
-    allowed difference."""
+    """Both paths build the same context and both save the WARN lines for their
+    step 3 `cat` relay (spec 043 F4), so the commands match byte for byte."""
     suggest = _builder(_text("suggest"))
     assert suggest.endswith(WARNINGS_OUT)
-    assert suggest[: -len(WARNINGS_OUT)] == _builder(_text("force"))
+    assert suggest == _builder(_text("force"))
 
 
 @pytest.mark.parametrize("which", ["suggest", "force"])

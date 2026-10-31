@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: RED proofs, documentation and merge evidence"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---

@@ -490,6 +490,99 @@ def pass2_variants(p2: list[str], out: Path) -> None:
     v.insert(hb + 1, p2[hb])
     write(out, "pass2-duplicate-handback.jsonl", v)
 
+    # ---- T2.4: report-only line families, the missing frame, the mismatch report ----
+    # Appended last. Each variant swaps the conductor's return for another report: the
+    # hand-back frame indents every report line by two spaces (an empty line becomes
+    # "  ", as the frame's own notes show), and tool_use_result carries the raw text.
+    head = "The report follows:\n"
+    tail = "\nagentId: "
+
+    def with_report(report: str) -> list[str]:
+        event = json.loads(p2[hb])
+        block = event["message"]["content"][0]["content"][0]
+        start = block["text"].index(head) + len(head)
+        stop = block["text"].index(tail)
+        framed = "\n".join("  " + line for line in report.split("\n"))
+        block["text"] = block["text"][:start] + framed + block["text"][stop:]
+        event["tool_use_result"]["content"][1]["text"] = report
+        v = list(p2)
+        v[hb] = enc(event)
+        return v
+
+    event = json.loads(p2[hb])
+    block = event["message"]["content"][0]["content"][0]
+    frame = block["text"][block["text"].index("[Subagent hand-back]") :]
+    frame = frame[: frame.index(head) + len(head)]
+    block["text"] = block["text"].replace(frame, "")
+    v = list(p2)
+    v[hb] = enc(event)
+    write(out, "pass2-no-handback.jsonl", v)
+
+    passed = "> Pass 2 complete — instructions rendered for 1 source doc(s).\n>"
+    audit_ok = "> Coverage audit: RESULT: OK — 1/1 actions reconciled."
+    note = '"2026-10-24_1200_suggestions"'
+    # Copied from evals/_lib/stubs.sh (DELETES, ATTACH); a test compares them to the kit.
+    relays = (
+        "- ⚠️ **Not deleted:** [[Meeting Notes Q3]] — the destination note was claimed "
+        "by another approved item\n"
+        "- ⚠️ **Not deleted:** [[Reading List]] — the related note could not be found\n"
+        "- ⚠️ **Attachment not filed:** `100 Inbox/whiteboard.png` — kept in inbox: the "
+        "owner chose not to file it over the occupied destination "
+        "`Attachments/whiteboard.png`. No action needed unless you change your mind. To "
+        "file it after all, tick Rename in the suggestions document and run "
+        "`/inbox --pass2 --force` before you apply. If you have already applied, rename "
+        "the attachment in the inbox and run `/inbox` again."
+    )
+    write(
+        out,
+        "pass2-withheld-relayed.jsonl",
+        with_report(f"{passed}\n{audit_ok}\n\n{relays}"),
+    )
+    write(
+        out,
+        "pass2-relay-introduced.jsonl",
+        with_report(
+            f"{passed}\n{audit_ok}\n\nThe following items were withheld:\n{relays}"
+        ),
+    )
+    write(
+        out,
+        "pass2-state-flip-failed.jsonl",
+        with_report(f"{passed}\n{audit_ok}\n> state flip exited 1 for {note}."),
+    )
+    write(
+        out,
+        "pass2-stamped.jsonl",
+        with_report(f"{passed}\n{audit_ok}\n> Stamped 2 acknowledged advisory(ies)."),
+    )
+
+    # The audit-mismatch-stops stop report: the audit's stdout as the stub prints it.
+    gap = (
+        "COVERAGE-GAP-91c2: suggestion s1 has no matching instruction "
+        "(expected 1, found 0)"
+    )
+    fail = "RESULT: FAIL — count or coverage mismatch above."
+    write(out, "pass2-mismatch-report.jsonl", with_report(f"> {gap}\n> {fail}"))
+    write(
+        out,
+        "pass2-mismatch-fenced.jsonl",
+        with_report(f"```\n{gap}\n{fail}\n```"),
+    )
+    write(
+        out,
+        "pass2-mismatch-labelled.jsonl",
+        with_report(
+            f"> {gap}\n>\n> Coverage audit: {fail}\n> coverage audit exited 1 for {note}."
+        ),
+    )
+    write(
+        out,
+        "pass2-mismatch-status-sentence.jsonl",
+        with_report(
+            f"The coverage audit found a gap, so I stopped.\n> {gap}\n> {fail}"
+        ),
+    )
+
 
 def variants(fixtures: Path, out: Path) -> None:
     pass1_variants(read_lines(fixtures / "pass1-spike.jsonl"), out)

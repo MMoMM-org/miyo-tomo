@@ -69,6 +69,25 @@ FIXTURES = {
     "pass2-status-sentence.jsonl": "pass2-spike with a status sentence before the first report line "
     "of the conductor's return",
     "pass2-duplicate-handback.jsonl": "pass2-spike with the hand-back tool_result event duplicated",
+    # T2.4: the conductor's return swapped for another report (frame + tool_use_result).
+    "pass2-no-handback.jsonl": "pass2-spike with the hand-back frame text removed "
+    "(`[Subagent hand-back] … The report follows:`), the report lines kept",
+    "pass2-withheld-relayed.jsonl": "pass2-spike returning the withheld-notices-relayed "
+    "report: header, audit OK, an empty line, the kit's 2 delete + 1 attachment relays",
+    "pass2-relay-introduced.jsonl": "pass2-withheld-relayed with a sentence introducing "
+    "the relay lines",
+    "pass2-state-flip-failed.jsonl": "pass2-spike returning header, audit OK and a "
+    "`state flip exited 1` line",
+    "pass2-stamped.jsonl": "pass2-spike returning header, audit OK and a `Stamped N "
+    "acknowledged advisory(ies).` line",
+    "pass2-mismatch-report.jsonl": "pass2-spike returning the audit-mismatch-stops stop "
+    "report: the stub's gap line and RESULT: FAIL line, quoted",
+    "pass2-mismatch-fenced.jsonl": "pass2-mismatch-report with the two audit lines in a "
+    "code fence instead of quoted",
+    "pass2-mismatch-labelled.jsonl": "pass2-mismatch-report with `Coverage audit: ` before "
+    "RESULT, an empty quote line and a `coverage audit exited 1` line",
+    "pass2-mismatch-status-sentence.jsonl": "pass2-mismatch-report with a status sentence "
+    "before the first line",
     # Pass 1 completions the spike never reached (T2.2/T2.3). Every red variant below is
     # pass1-complete with ONE edit, the shape of the mutation that grader must catch.
     "pass1-complete.jsonl": "pass1-spike up to the .md write, then the .json write, "
@@ -143,13 +162,13 @@ GRADERS = {
     "control-sdd-general-purpose": inline(
         type="tool_used", tool="Agent", min=0, max=0, input_match="general-purpose"
     ),
-    # SDD Report-only: the canary counts the frame the report-only grader reads.
-    "handback-canary": inline(
-        type="regex",
-        target="trace",
-        match="count:1",
-        pattern=r"\[Subagent hand-back\][^\n]*The report follows:",
+    # SDD Report-only (T2.4): the shared grader, the mismatch case's own pattern, and the
+    # canary that counts the frame both read.
+    "report-only": from_file("evals/_lib/report-only.md"),
+    "report-only-mismatch": from_file(
+        "evals/audit-mismatch-stops/graders/7-report-only-mismatch.md"
     ),
+    "handback-canary": from_file("evals/_lib/handback-canary.md"),
     # Spike grader files (report-only probe): pattern B is the SDD's report-only pattern.
     "spike-a-tool-use-result": from_file(
         SPIKE_REPORT_ONLY / "a-only-report-tool-use-result.md"
@@ -252,6 +271,54 @@ EXPECTATIONS = {
     ),
     ("pass1-spike.jsonl", "handback-canary"): Expect(
         False, 0, "background dispatch: no hand-back frame"
+    ),
+    # Report-only graders (T2.4).
+    ("pass2-spike.jsonl", "report-only"): Expect(
+        True, 1, "header, empty quote, audit OK, upload exited"
+    ),
+    ("pass2-status-sentence.jsonl", "report-only"): Expect(
+        False, 0, "a sentence before the report"
+    ),
+    ("pass2-no-handback.jsonl", "report-only"): Expect(False, 0, "no frame to read"),
+    ("pass2-duplicate-handback.jsonl", "report-only"): Expect(
+        True, 2, "contains: the canary owns duplicates"
+    ),
+    ("pass2-withheld-relayed.jsonl", "report-only"): Expect(
+        True, 1, "relay lines after an empty line"
+    ),
+    ("pass2-relay-introduced.jsonl", "report-only"): Expect(
+        False, 0, "a sentence introducing the relays"
+    ),
+    ("pass2-state-flip-failed.jsonl", "report-only"): Expect(
+        True, 1, "state flip exited line"
+    ),
+    ("pass2-stamped.jsonl", "report-only"): Expect(True, 1, "Stamped line"),
+    ("pass2-mismatch-report.jsonl", "report-only"): Expect(
+        False, 0, "the standard pattern rejects a stop report"
+    ),
+    ("pass2-no-handback.jsonl", "handback-canary"): Expect(
+        False, 0, "a missing frame fails count:1"
+    ),
+    ("pass2-mismatch-report.jsonl", "handback-canary"): Expect(
+        True, 1, "the stop report has one frame too"
+    ),
+    ("pass2-mismatch-report.jsonl", "report-only-mismatch"): Expect(
+        True, 1, "gap line + RESULT: FAIL, quoted"
+    ),
+    ("pass2-mismatch-fenced.jsonl", "report-only-mismatch"): Expect(
+        True, 1, "the same lines fenced"
+    ),
+    ("pass2-mismatch-labelled.jsonl", "report-only-mismatch"): Expect(
+        True, 1, "Coverage audit: label, step line"
+    ),
+    ("pass2-mismatch-status-sentence.jsonl", "report-only-mismatch"): Expect(
+        False, 0, "a sentence before the report"
+    ),
+    ("pass2-spike.jsonl", "report-only-mismatch"): Expect(
+        False, 0, "RESULT: OK is no stop report"
+    ),
+    ("pass2-no-handback.jsonl", "report-only-mismatch"): Expect(
+        False, 0, "no frame to read"
     ),
     # Controls: the unanchored forms misfire on the spike.
     ("pass1-spike.jsonl", "control-unanchored-warn"): Expect(
@@ -821,3 +888,101 @@ def test_warn_grader_matches_the_kit_warn_line():
 
     assert evaluate(GRADERS["warn-in-reply"], _texted(WARN_LINE)).passed
     assert not evaluate(GRADERS["warn-in-reply"], _texted(WARN_LINE[6:])).passed
+
+
+# --- report-only and canary in the Pass 2 cases (T2.4) ------------------------------------
+
+PASS2_CASES = (
+    "audit-gates-delivery",
+    "audit-mismatch-stops",
+    "withheld-notices-relayed",
+    "upload-failure-reported",
+    "state-flip-failure-reported",
+)
+
+
+def test_every_pass2_report_only_and_canary_grader_is_validated_offline():
+    in_table = {g.source for g in GRADERS.values() if g.source is not None}
+    for case in PASS2_CASES:
+        graders = sorted((REPO / "evals" / case / "graders").glob("[78]-*.md"))
+        assert [p.name[:2] for p in graders] == ["7-", "8-"], case
+        for path in graders:
+            shared = REPO / "evals" / "_lib" / path.name[2:]
+            assert path in in_table or (
+                shared in in_table and shared.read_bytes() == path.read_bytes()
+            ), f"{path.relative_to(REPO)} not in GRADERS"
+
+
+def test_relay_fixture_carries_the_kit_relay_lines(tmp_path):
+    from eval_kit import kit_lines
+
+    lines = kit_lines(tmp_path, "withheld-notices-relayed")
+    returned = [
+        json.loads(line)["tool_use_result"]["content"][1]["text"]
+        for line in load_fixture("pass2-withheld-relayed.jsonl").splitlines()
+        if "[Subagent hand-back]" in line
+    ]
+    assert len(returned) == 1
+    relays = [ln for ln in returned[0].split("\n") if ln.startswith("- ⚠️ **")]
+    assert relays == lines["deletes"] + lines["attach"]
+
+
+def test_mismatch_fixture_carries_the_kit_audit_lines(tmp_path):
+    from eval_kit import kit_lines
+
+    audit = kit_lines(tmp_path, "audit-mismatch-stops")["audit"]
+    (returned,) = [
+        json.loads(line)["tool_use_result"]["content"][1]["text"]
+        for line in load_fixture("pass2-mismatch-report.jsonl").splitlines()
+        if "[Subagent hand-back]" in line
+    ]
+    assert returned.split("\n") == ["> " + line for line in audit]
+
+
+def _framed(*report: str) -> str:
+    """A one-event trace whose tool_result carries the hand-back frame around `report`."""
+    text = (
+        "[Subagent hand-back] The report follows:\n"
+        + "\n".join("  " + line for line in report)
+        + "\nagentId: a0\n"
+    )
+    content = [{"type": "tool_result", "content": [{"type": "text", "text": text}]}]
+    event = {"type": "user", "message": {"role": "user", "content": content}}
+    return json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+HEADER = "> Pass 2 complete — instructions rendered for 1 source doc(s)."
+AUDIT_OK = "> Coverage audit: RESULT: OK — 1/1 actions reconciled."
+GAP = "> COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)"
+FAIL = "> RESULT: FAIL — count or coverage mismatch above."
+
+
+@pytest.mark.parametrize(
+    ("grader_id", "report", "passed"),
+    [
+        ("report-only", (HEADER, AUDIT_OK), True),
+        ("report-only", (HEADER, AUDIT_OK + " All good."), False),
+        (
+            "report-only",
+            (
+                HEADER,
+                "> Coverage audit: RESULT: OK — 2/2 actions "
+                "reconciled, 1 observation(s).",
+            ),
+            True,
+        ),
+        (
+            "report-only",
+            (HEADER, AUDIT_OK, '> upload exited 1 for "n". Kado was down.'),
+            False,
+        ),
+        ("report-only", (HEADER, AUDIT_OK, "Done."), False),
+        ("report-only-mismatch", (GAP, FAIL), True),
+        ("report-only-mismatch", (GAP + " I stopped.", FAIL), False),
+        ("report-only-mismatch", (GAP, FAIL, "I did not fix the scripts."), False),
+        ("report-only-mismatch", (GAP,), False),
+        ("report-only-mismatch", (HEADER, GAP, FAIL), False),
+    ],
+)
+def test_report_only_rejects_text_on_or_after_a_known_line(grader_id, report, passed):
+    assert evaluate(GRADERS[grader_id], _framed(*report)).passed is passed

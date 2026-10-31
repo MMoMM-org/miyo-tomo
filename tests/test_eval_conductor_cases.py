@@ -61,6 +61,11 @@ CONTROL_GRADERS = {
     UPLOAD_FAIL: {"0-conductor-dispatched", "3-upload-ran"},
     FLIP_FAIL: {"0-conductor-dispatched", "2-state-flip-ran"},
 }
+# Spec 043 ADR-4: the hand-back canary is a control in every case (it checks the trace
+# frame the report-only grader reads is present exactly once; its RED proof is offline,
+# tests/test_043_grader_patterns.py).
+for _controls_of_case in CONTROL_GRADERS.values():
+    _controls_of_case.add("8-handback-canary")
 
 # PRD F3–F6 grader-backed criterion → the gate grader(s) that decide it.
 # F5-AC1 ("each delete line exact") and F5-AC2 ("both, each on its own line")
@@ -104,6 +109,17 @@ ISSUE_205 = {
         (FLIP_FAIL, "4-no-failure-detail-in-report"),
     ],
 }
+
+# Spec 043 PRD F4: the reply is only the report, in every Pass 2 case.
+SPEC_043_REPORT_ONLY = {
+    "report-only": [
+        (c, "7-report-only-mismatch" if c == MISMATCH else "7-report-only")
+        for c in CASE_SETTINGS
+    ],
+}
+# Gates whose RED-proof mutation (`status-sentence-first`) lands with spec 043 T2.5.
+# Each entry must still lack a proof, so this set cannot outlive the proof row.
+PROOF_PENDING = {pair for pairs in SPEC_043_REPORT_ONLY.values() for pair in pairs}
 
 LINE_START, LINE_END = "(?:^|\\n)", "(?:\\n|$)"
 CASE_YAML_KEYS = {"schema_version", "name", "runs", "context", "execution"}
@@ -212,7 +228,10 @@ def test_audit_ran_control():
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_graders_split_into_controls_and_mapped_gates(case):
     mapped = {
-        g for pairs in [*CRITERIA.values(), *ISSUE_205.values()] for c, g in pairs if c == case
+        g
+        for pairs in [*CRITERIA.values(), *ISSUE_205.values(), *SPEC_043_REPORT_ONLY.values()]
+        for c, g in pairs
+        if c == case
     }
     assert grader_names(case) == CONTROL_GRADERS[case] | mapped
     assert not CONTROL_GRADERS[case] & mapped
@@ -662,6 +681,9 @@ def test_every_gate_grader_is_an_expected_red_of_a_proof():
     expected = set().union(*(p["expected"] for p in _proofs()))
     for case, controls in CONTROL_GRADERS.items():
         for g in sorted(grader_names(case) - controls):
+            if (case, g) in PROOF_PENDING:
+                assert (case, g) not in expected, f"{case}/{g} is proven: drop it from PROOF_PENDING"
+                continue
             assert (case, g) in expected, f"gate {case}/{g} has no RED proof"
 
 

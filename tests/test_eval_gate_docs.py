@@ -201,3 +201,31 @@ def test_scripts_claude_md_lists_the_runner_and_the_verdict_reader():
     for name in ("run-evals.sh", "lib/eval_verdict.py"):
         assert name in text, f"scripts/CLAUDE.md does not name {name}"
         assert (REPO / "scripts" / name).is_file()
+
+
+STANDARD_PASS2_CASES = (
+    "audit-gates-delivery",
+    "withheld-notices-relayed",
+    "upload-failure-reported",
+    "state-flip-failure-reported",
+)
+MISMATCH_CASE = "audit-mismatch-stops"
+REPORT_ONLY = EVALS / "_lib" / "report-only.md"
+CANARY = EVALS / "_lib" / "handback-canary.md"
+
+
+def test_report_only_and_canary_are_byte_identical_in_the_four_standard_cases():
+    """Spec 043 ADR-4: one shared report-only grader and its canary, copied byte for byte."""
+    for case in STANDARD_PASS2_CASES:
+        graders = EVALS / case / "graders"
+        assert (graders / "7-report-only.md").read_bytes() == REPORT_ONLY.read_bytes(), case
+        assert (graders / "8-handback-canary.md").read_bytes() == CANARY.read_bytes(), case
+
+
+def test_mismatch_case_carries_its_own_report_only_and_the_shared_canary():
+    graders = EVALS / MISMATCH_CASE / "graders"
+    own = graders / "7-report-only-mismatch.md"
+    assert own.is_file()
+    assert own.read_bytes() != REPORT_ONLY.read_bytes()
+    assert not (graders / "7-report-only.md").exists()
+    assert (graders / "8-handback-canary.md").read_bytes() == CANARY.read_bytes()

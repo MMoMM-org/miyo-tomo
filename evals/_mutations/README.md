@@ -62,6 +62,11 @@ Controls are preconditions, exempt from RED proof (PRD F7-AC5).
 | `upload-failure-reported` | `3-upload-ran` | precondition: the failed upload was produced at all |
 | `state-flip-failure-reported` | `0-conductor-dispatched` | precondition: the conductor ran |
 | `state-flip-failure-reported` | `2-state-flip-ran` | precondition: the failed state flip was produced at all |
+| `audit-gates-delivery` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
+| `audit-mismatch-stops` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
+| `withheld-notices-relayed` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
+| `upload-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
+| `state-flip-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
 
 ## Clauses
 

@@ -34,9 +34,10 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
 - [ ] **T4.1 RED proofs** `[activity: validate]`
 
   1. Prime: the mutation table in `evals/_mutations/README.md` (T2.5).
-  2. Test (owner), for each mutation: `scripts/run-evals.sh --mutation <name> --case <case>`, 3 runs. The expected total is about $11.
-     - 15 Pass 1 mutations at about $0.66 each.
+  2. Test (owner), for each mutation: `scripts/run-evals.sh --mutation <name> --case <case> --keep-temp`, 3 runs (owner decision 2026-10-31: 3/3 stays). The expected total is about $12 for T4.1.
+     - 15 Pass 1 mutations at about $0.62 each.
      - `status-sentence-first` on `upload-failure-reported` and on `audit-mismatch-stops`, to prove the shared grader and the mismatch variant.
+     - Re-prove the five 041 patches rebased onto conductor 0.24.2 (`summarise-mismatch`, `files-used-after`, `explain-failure`, `report-run-id`, `paraphrase-relay`) on their recorded cases; record them beside their 041 rows.
   3. Implement: record each proof in `docs/XDD/specs/043-pass1-conductor-eval-gate/red-proofs.md`: the mutation, the case, the grader(s) expected red, the 3 verdict lines copied verbatim, and the results path.
      - When a grader stays green under its mutation, choose one of two fixes: strengthen the mutation (a neutral step for "never" graders), or reclassify the grader as a control. Either fix needs the owner's approval and is recorded.
   4. Validate: every non-control grader in both Pass 1 cases and both report-only variants appears red 3/3 in the record.
@@ -67,7 +68,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   1. Prime: the merge rule.
   2. Test (owner): `scripts/run-evals.sh` 3 times on the merge candidate, with a clean tree and no edits between runs.
   3. Implement: record the 3 verdict lines, the median cost and the maximum duration in `red-proofs.md` and in the PR body.
-  4. Validate: all 3 runs are GREEN; the median cost is ≤ $3.10 and each run is under $5; the maximum duration is ≤ 4 min.
+  4. Validate: all 3 runs are GREEN; the median cost is ≤ $3.10 and each run is under $5; the maximum duration is ≤ 6 min (owner decision 2026-10-31).
   5. Success: `[ref: PRD/F6-AC3, F6-AC4; PRD KPIs]`
 
 - [ ] **T4.4 Close-out trace** `[activity: validate]`

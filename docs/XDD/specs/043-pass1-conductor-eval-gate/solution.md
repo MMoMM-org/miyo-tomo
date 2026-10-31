@@ -162,7 +162,7 @@ graph LR
   type: JSONL, one event per line
   fields used:
     - "assistant tool_use: name + JSON-encoded input (tool_used / tool_order input_match)"
-    - "assistant text blocks (WARN-before-dispatch regex)"
+    - "assistant Bash tool_use of `cat tomo-tmp/setup-warnings.txt` and the next user tool_result (WARN-before-dispatch regex)"
     - "user tool_result of Agent: hand-back frame text 'The report follows:' (report-only)"
     - "system task_started: subagent_type"
   doc: "spike/write-up.md Q2, Q5"
@@ -352,7 +352,7 @@ Notes on the controls:
 | # | Grader | Type / target | Pattern essence | PRD | RED proof |
 |---|---|---|---|---|---|
 | 01 | warn-in-reply | `regex` last_message | the full WARN text, escaped, verbatim | F2-AC1 | `warn-is-diagnostic` |
-| 02 | warn-before-first-dispatch | `regex` trace | see Complex Logic | F2-AC2 | `warn-in-report-only` |
+| 02 | warn-before-first-dispatch | `regex` trace | a `cat tomo-tmp/setup-warnings.txt` Bash call, then its tool_result with the WARN text, both before the first Agent call (see Complex Logic; changed 2026-10-31) | F2-AC2 | `warn-in-report-only` |
 | 03 | duplicate-line | `regex` last_message | `(?:^\|\n)1 proposed MOC\(s\) already existed in the vault and are offered as\s+unticked links instead\.` | F2-AC3 | `drop-duplicate-line` |
 | 04 | report-line-anchored | as in pipeline 14 | | F2-AC4 | `reword-report-line` |
 | 09-no-leak | leak guard | | | F2-AC4 | existing |
@@ -433,25 +433,35 @@ sequenceDiagram
 
 ### Complex Logic
 
-**WARN-before-first-dispatch (relay grader 02).** `tool_order` sees only tools, but this rule is about text. The grader is therefore a regex on the trace, which is in chronological order with one JSON event per line:
+**WARN-before-first-dispatch (relay grader 02).** Changed 2026-10-31 (owner decision, findings F4): the relay is the tool result of `cat tomo-tmp/setup-warnings.txt`, not an assistant text block. `tool_order` can say that the `cat` came before the first dispatch, but not what the `cat` printed. The grader is therefore a regex on the trace, which is in chronological order with one JSON event per line:
 
 ```
-pattern: '^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?[^\n]*"type":"assistant"[^\n]*"type":"text","text":"[^\n]*active tracker field\(s\) have no keywords'
+pattern: '^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?(?![^\n]*"name":"Agent")[^\n]*"name":"Bash","input":\{[^\n]*?"command":"cat\s+tomo-tmp/setup-warnings\.txt[^\n]*\n(?:(?![^\n]*"name":"Agent")(?!\{"type":"user")[^\n]*\n)*?\{"type":"user"[^\n]*"type":"tool_result"[^\n]*active tracker field\(s\) have no keywords'
 match: contains
 ```
 
-It reads as: starting from the first line, pass over lines that contain no `"name":"Agent"` tool_use, until a line that is an assistant **text** block containing the WARN text. Because the lines skipped before it may not contain an Agent call, the match succeeds only if the relay comes before the first dispatch.
+It reads as:
 
-Walkthrough on the spike trace `e-t7N3jn`:
+1. Starting from the first line, pass over lines that contain no `"name":"Agent"` tool_use.
+2. Reach a Bash **tool_use** whose command starts with `cat tomo-tmp/setup-warnings.txt`. It is anchored on the tool_use shape, because the `Skill` expansion quotes the same command as prose.
+3. Pass over lines that are neither an Agent tool_use nor a user event (system events, other tool_uses of the same message).
+4. The next user event must be a `tool_result` that carries the WARN text.
 
-- Lines 0–53 contain no `"name":"Agent"`. Line 23 holds the WARN text, but inside a `tool_result` (`"type":"user"`), so it does not satisfy the assistant-text clause.
-- Line 54 is the first Agent tool_use. The `(?!…Agent)` guard stops the scan there, and no assistant text with the WARN text has been seen.
-- Result: **no match → red.** This is the expected finding on the current prose (PRD decision 2026-10-30).
+The skipped lines may not contain an Agent call, so the match succeeds only if the `cat` and its result come before the first dispatch. Step 4 stops at the first user event after the `cat`. The builder's own tool_result also carries the WARN text, but it comes before the `cat`, so it can never be that event. An empty file gives `(Bash completed with no output)` as that event, which does not match.
 
-On a compliant trace, an assistant text line such as `"text":"WARN: 2 active tracker field(s) have no keywords…"` appears at line ~24, before line 54 → match → green.
+Walkthrough on the smoke 4 trace `e-GDBsiX` (line numbers from 0):
+
+- Lines 0–27 contain no Agent call. The builder's WARN tool_result is among them; it satisfies nothing, because no `cat` tool_use has been seen yet.
+- Line 28 is the Bash tool_use `{"command":"cat tomo-tmp/setup-warnings.txt"}` (step 2).
+- Line 29 is the next user event: the `tool_result` whose content is the `WARN:` line (step 4). **Match → green.**
+- The thinking block (line 47), the batch-count call (line 48) and the first dispatch (line 54) come later and do not matter.
+
+On the smoke 1–3 traces (`e-jFOZJj`, `e-XygOSA`, `e-QKbc19`) the prose had no `cat`. The scan reaches the first Agent line without a `cat` tool_use: **no match → red**.
 
 - The JSON encoding of `(`, `)` and `:` is unchanged, so the pattern needs no extra escaping beyond the regex.
-- The implementation validates the pattern offline against `e-t7N3jn` (expected red) and against a hand-edited copy with an inserted relay line (expected green) before any paid run.
+- The pattern is validated offline (`tests/test_043_grader_patterns.py`): green on a fixture with the `cat` and its WARN result before the first dispatch; red on the `cat` after the first dispatch, on a `cat` with an empty result, and on every fixture without a `cat` (including the older text-relay fixtures). A control row shows that the scan without the `cat` anchor matches the builder's result and would be green on a run that never ran the `cat`.
+
+Superseded form (2026-10-30 to 2026-10-31): the scan ended at an assistant `"type":"text"` block carrying the WARN text. All four paid runs reacted only in a thinking block, never in a text block, so that form was red 4/4 (findings F4).
 
 **Reduce-after-last-dispatch (pipeline grader 09).** The trace must not contain a reducer **tool_use** that is followed later by an analyst **tool_use**:
 
@@ -466,9 +476,9 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 
 | Pattern | Trace | Expected | Result |
 |---|---|---|---|
-| WARN before dispatch | spike, as recorded | no match (red) | no match ✅ |
-| WARN before dispatch | assistant text inserted before the first Agent line | match | match ✅ |
-| WARN before dispatch | the same text inserted after the first Agent line | no match | no match ✅ |
+| WARN before dispatch (superseded text form) | spike, as recorded | no match (red) | no match ✅ |
+| WARN before dispatch (superseded text form) | assistant text inserted before the first Agent line | match | match ✅ |
+| WARN before dispatch (superseded text form) | the same text inserted after the first Agent line | no match | no match ✅ |
 | reduce-after-dispatch violation | spike, as recorded | absent (green) | absent ✅ |
 | reduce-after-dispatch violation | reducer tool_use moved before the first dispatch | present (red) | present ✅ |
 | subfolder path and key | spike Agent inputs | 1 match | 1 ✅ |
@@ -554,12 +564,12 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
   - User confirmed: **Yes (2026-10-30)**
 
 - [x] **ADR-5 WARN-before-dispatch is an ordered trace regex.**
-  - Choice: the line-scan regex under Complex Logic. The same technique is used for reduce-after-last-dispatch.
+  - Choice: the line-scan regex under Complex Logic. The same technique is used for reduce-after-last-dispatch. Since 2026-10-31 the scan ends at the tool_result of the `cat` relay, not at an assistant text block (owner decision, findings F4).
   - Rationale:
     - `tool_order` sees only tool calls.
     - The regex is free, deterministic and was validated offline against the spike trace.
   - Trade-offs:
-    - It depends on one-event-per-line JSONL and on the `"type":"assistant"` / `"type":"text"` field spelling.
+    - It depends on one-event-per-line JSONL, on the tool_use shape `"name":"Bash","input":{…"command":…` and on user events starting with `{"type":"user"`.
     - The canary does not cover this dependency. Mitigation: a hand-edited green fixture from the offline validation is kept under the spec, so a format change can be re-checked without paying.
   - User confirmed: **Yes (2026-10-30)**
 
@@ -595,7 +605,7 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 
 **Relay case (PRD F2)**
 - [ ] WHEN `pass1-warn-and-duplicates-relayed` runs, THE SYSTEM SHALL pass relay graders 01–04 and `9-no-leak` in 3/3 runs.
-- [ ] IF the WARN relay first appears after the first analyst dispatch, THEN THE SYSTEM SHALL fail relay grader 02.
+- [ ] IF the `cat tomo-tmp/setup-warnings.txt` relay is missing, runs after the first analyst dispatch, or prints no WARN line, THEN THE SYSTEM SHALL fail relay grader 02.
 
 **Stand-ins (PRD F3)**
 - [ ] THE SYSTEM SHALL replace `agents/inbox-analyst.md` in every assembled copy with the stand-in, and leave the repo file unchanged.

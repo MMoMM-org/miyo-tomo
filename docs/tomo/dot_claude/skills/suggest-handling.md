@@ -434,8 +434,45 @@ seen it.
 
 The `STRICT` stays: the deviation was observed three times out of three.
 
-If smoke 4 is still red, the next lever is to remove the separate relay turn
-altogether: let the batch-count command (`read-routing-plan.py --batch-count`)
-print the saved lines ahead of the count, so the relay rides on a command the
-model never skips — or to move the early relay out of the conductor's prose and
-into a tool that writes the visible text itself.
+### 0.14.1: the `cat` result is the relay; the text-reply `STRICT` is gone
+
+Smoke 4 (findings F4, `e-GDBsiX`) ran 0.14.0. The `cat` ran where the skill
+puts it, at the top of step 3, and its tool result carried the verbatim
+`WARN:` line before the first dispatch. The model then reacted in a thinking
+block once more and wrote no text. That makes four wordings and four runs, all
+thinking-only.
+
+Owner decision 2026-10-31: PRD F2-AC2 is met by the tool relay. The `cat` call
+whose result carries the `WARN:` line, before the first `Agent` call, *is* the
+early relay. Claude Code shows Bash output to the user, so the warning is on
+screen before any analyst runs. The tool result is also deterministic: it needs
+nothing from the model after the call.
+
+What 0.14.1 changes and why:
+
+- **The text-reply `STRICT` under the `cat` is removed**, together with "your
+  next output is this command's stdout". It asked for something the model
+  never did in four runs, and the requirement it served is now met by the
+  command itself. An unmet `STRICT` left in the prose would only teach the
+  model that `STRICT` lines are optional.
+- **The `cat` stays, as the first command of step 3**, phrased as an imperative
+  that names its position: run it before the batch-count command. Relay grader
+  02 checks exactly this: the `cat` tool_use and its next tool_result, both
+  before the first dispatch (SDD Complex Logic). Its position ties it to the
+  point where the model already acted in all four smokes, the top of step 3.
+- **`--warnings-out` stays.** Without the saved file the `cat` would have
+  nothing to print. The builder's own tool result also carries the WARN text,
+  but it comes several tool calls before step 3. In the eval it cannot be told
+  apart from a run that swallows the warning, because the builder prints it in
+  every run.
+- **The step 2 `STRICT` keeps its opening phrase** ("repeat every `WARN:` line
+  this script prints", pinned for both Pass 1 paths by
+  `tests/test_040_skill_prose.py`). It now names the two places where the
+  warning reaches the user: the `cat` that opens step 3, and the step 7 report.
+  It no longer asks for a text reply before the dispatch.
+- **Step 7 keeps its repeat** for PRD F2-AC1 (relay grader 01, green in all four
+  smokes). The final reply is what the user reads when the run ends.
+
+The mutation `warn-in-report-only` removes the `cat` and leaves only the step 7
+repeat, so the warning reaches the user after every dispatch, and grader 02
+goes red.

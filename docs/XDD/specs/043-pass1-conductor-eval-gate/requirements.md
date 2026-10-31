@@ -120,7 +120,7 @@ Pass 1 of `/inbox` (the suggestion conductor and the skill it loads) is runtime 
 - **User Story:** As the maintainer, I want a case in which the scripts warn and the reducer converts a duplicate proposal, so that a change that swallows what the user must be told goes red.
 - **Acceptance Criteria:**
   - [ ] Given the shared-context build prints a `WARN:` line, When the run continues, Then that line appears verbatim in the user-facing reply.
-  - [ ] Given the same `WARN:` line, When the run dispatches, Then the line is repeated to the user before the first dispatch, not only in the final report.
+  - [ ] Given the same `WARN:` line, When the run dispatches, Then the line is shown to the user before the first dispatch, not only in the final report: a `cat tomo-tmp/setup-warnings.txt` tool call whose result carries the line runs before the first `Agent` call. (Changed 2026-10-31, owner decision: a tool result counts as shown, because Claude Code displays Bash output. Before, it was read as an assistant text message, which 4 of 4 paid runs never wrote.)
   - [ ] Given the reducer reports one converted duplicate proposal, When the run reports, Then the reply carries the line saying 1 proposed MOC already existed and is offered as an unticked link.
   - [ ] Given the run, When it reports, Then it still carries the Pass 1 completion line and the leak guard.
 

@@ -129,3 +129,25 @@ F4 persists for the fourth time:
 - e-GDBsiX:48 is the batch-count call. No text block came between them.
 
 In all four runs the reaction is a non-empty thinking block in the same place (O6), and it reads like a message to the user. It never appears as a text block. The relay command itself works: the verbatim `WARN:` line now sits in a tool result before the first dispatch (e-GDBsiX:54).
+
+## F4 disposition — 2026-10-31
+
+**Closed by owner decision (F2-AC2 redefined).** F4 is not fixed in the prose; the criterion is redefined. A tool result counts as showing the warning to the user, because Claude Code displays Bash output. F2-AC2 is now met when the `cat tomo-tmp/setup-warnings.txt` call, whose result carries the `WARN:` line, runs before the first `Agent` call (README Decisions Log 2026-10-31; requirements F2-AC2).
+
+Why:
+
+- **4/4 thinking-only.** Four wordings (0.12.x duty, 0.13.0 named vehicle, 0.13.1 fixed-text `STRICT`, 0.14.0 copy-the-`cat` `STRICT`) all produced the same thing: a non-empty thinking block at the top of step 3 and no text block.
+- **The tool result is visible and deterministic.** It needs no reaction from the model after the call: the result carries the saved lines verbatim.
+
+Evidence on smoke 4 (`/private/tmp/e-GDBsiX/out/trace.jsonl`, lines from 0):
+
+- e-GDBsiX:28 is the Bash tool_use `{"command":"cat tomo-tmp/setup-warnings.txt"}`.
+- e-GDBsiX:29 is its tool_result: `WARN: 2 active tracker field(s) have no keywords; … mood, sleep. Run /tomo-setup trackers …`, exactly as the builder printed it.
+- e-GDBsiX:54 is the first dispatch.
+
+Consequences:
+
+- Relay grader 02 checks the `cat` tool_use and its next tool_result, both before the first Agent call (SDD Complex Logic). Evaluated offline on the four kept traces: red on e-jFOZJj, e-XygOSA and e-QKbc19 (their prose had no `cat`), green on e-GDBsiX.
+- Relay grader 01 (the `WARN:` line verbatim in the final reply) is unchanged. It was green in all four smokes.
+- `suggest-handling` 0.14.1 keeps `--warnings-out` and the step 3 `cat`, and drops the text-reply `STRICT`.
+- The mutation `warn-in-report-only` removes the `cat` and keeps only the step 7 repeat, so the new grader 02 goes red on it.

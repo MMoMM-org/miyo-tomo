@@ -109,3 +109,40 @@ so a failed build cannot leave a previous run's context for the analysts, and
 the report relays `duplicate_proposals_converted` from the reducer's summary
 line. See `suggest-handling.md` for the reasoning. The two builder commands
 stay identical so the fan path classifies against the same context shape.
+
+## Why the `WARN:` relay copies a saved tool result (0.15.0, spec 043)
+
+WHY: this skill carried the same step 2 `STRICT` ("repeat every `WARN:` line
+this script prints to the user, verbatim, before dispatching anything") that
+`suggest-handling` carried before 0.14.1, and it fails the same way. In four
+paid `suggest-handling` runs the model answered that duty only in thinking, so
+the verbatim line reached the user after every analyst had run, if at all. The
+full reasoning, the four wordings that failed and the owner decision that the
+tool result is the relay are in `suggest-handling.md`, section "Why the `WARN:`
+relay copies a tool result before the batch-count command" (0.13.1, 0.14.0 and
+0.14.1). They are not repeated here.
+
+Owner decision 2026-10-31 (spec 043 README, Decisions Log: "Port the `cat` WARN
+relay to `force-atomic-handling` now"): port the 0.14.1 shape rather than wait
+for a failing run of this path.
+
+What 0.15.0 changes:
+
+- **The builder command passes `--warnings-out tomo-tmp/setup-warnings.txt`**,
+  so the two Pass 1 builder commands are byte-identical again
+  (`tests/test_040_skill_prose.py`).
+- **Step 3 opens with `cat tomo-tmp/setup-warnings.txt`**, before its first
+  `Agent` call. The step has no other command, so the `cat` is the first
+  thing it runs. Claude Code shows the result to the user, so the warning is on
+  screen before any analyst runs.
+- **The step 2 `STRICT` keeps its opening phrase** and names the two places the
+  warning reaches the user: the `cat` that opens step 3, and the step 7 report.
+- **Step 7 repeats the `WARN:` lines** after the template lines, exactly as
+  printed, in the exact-output style of `suggest-handling` step 7. This skill's
+  report had no such repeat before.
+
+WHY only prose tests cover it: this path has no eval case (spec 043 scope is
+the Pass 1 `suggest` path). `tests/test_043_grader_patterns.py` pins the shape
+of the relay in this skill's text; nothing runs it against a model. A failing
+run of `fan-resolve` would be the first evidence that the shape does not hold
+here.

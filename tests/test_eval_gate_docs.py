@@ -158,6 +158,71 @@ def test_claude_md_rule_tracks_the_coverage_table():
     assert not problems, problems
 
 
+PASS1_FILES = (
+    "tomo/dot_claude/agents/suggestion-conductor.md",
+    "tomo/dot_claude/skills/suggest-handling/SKILL.md",
+)
+PASS1_CASES = ("pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed")
+PASS2_CASES = (
+    "audit-gates-delivery",
+    "audit-mismatch-stops",
+    "withheld-notices-relayed",
+    "upload-failure-reported",
+    "state-flip-failure-reported",
+)
+ALL_CASE_FILES = ("tomo/dot_claude/commands/inbox.md", "tomo/dot_claude/settings.json")
+
+
+def _row_cases(rows: list[tuple[str, str]]) -> dict[str, set[str]]:
+    return {
+        re.sub(r"[`\s]", "", first): set(re.findall(r"`([a-z][a-z0-9-]+)`", second))
+        for first, second in rows
+    }
+
+
+def _pass1_row_problems(rows: list[tuple[str, str]]) -> list[str]:
+    """Spec 043 F7-AC1: each Pass 1 file is a row listing exactly the two Pass 1 cases."""
+    by_path = _row_cases(rows)
+    problems: list[str] = []
+    for path in PASS1_FILES:
+        if path not in by_path:
+            problems.append(f"no coverage row for {path}")
+        elif by_path[path] != set(PASS1_CASES):
+            problems.append(f"{path} lists {sorted(by_path[path])}, expected {sorted(PASS1_CASES)}")
+    return problems
+
+
+def _all_cases_row_problems(rows: list[tuple[str, str]]) -> list[str]:
+    """inbox.md and settings.json feed every case, so their rows list all seven."""
+    by_path = _row_cases(rows)
+    expected = set(PASS1_CASES) | set(PASS2_CASES)
+    return [
+        f"{path} lists {sorted(by_path.get(path, set()))}, missing {sorted(expected - by_path.get(path, set()))}"
+        for path in ALL_CASE_FILES
+        if by_path.get(path) != expected
+    ]
+
+
+def _pass1_rule_problems(bullet: str) -> list[str]:
+    return [f"CLAUDE.md eval rule does not name {p}" for p in PASS1_FILES if f"`{p}`" not in bullet]
+
+
+def test_pass1_files_are_rows_with_both_pass1_cases():
+    problems = _pass1_row_problems(_coverage_rows())
+    assert not problems, problems
+
+
+def test_inbox_and_settings_rows_list_all_seven_cases():
+    assert set(_case_dirs()) == set(PASS1_CASES) | set(PASS2_CASES), _case_dirs()
+    problems = _all_cases_row_problems(_coverage_rows())
+    assert not problems, problems
+
+
+def test_claude_md_rule_names_the_pass1_files():
+    problems = _pass1_rule_problems(_claude_eval_bullet())
+    assert not problems, problems
+
+
 def test_every_repo_path_in_the_readme_exists():
     checked, skipped = _readme_paths(README.read_text())
     assert checked, "no repo paths found in evals/README.md"

@@ -627,7 +627,7 @@ def test_help_documents_contract(env):
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
-                   "Typical cost: about $1 per full suite (7 cases x 3 runs", "hard cap $5",
+                   "Typical cost: about $2.25 per full suite (7 cases x 3 runs, measured)", "hard cap $5",
                    "evals/ and the\n                        inbox-analyst stand-in always come from the working\n                        tree."):
         assert needle in h, needle
     assert env.calls() == []
@@ -792,16 +792,27 @@ def test_pass1_case_passes_preflight_and_its_scaffold_stages(env, case):
 
 # ── the spec 043 mutations through the runner (T2.5) ──────────
 
+# The spec 041 patches: applied through the runner by spec 041's own tests; every
+# other patch file is a spec 043 patch and goes through the apply test below.
+SPEC_041_PATCHES = (
+    "drop-audit-line", "always-notice", "summarise-mismatch", "write-into-scripts",
+    "copy-into-config", "paraphrase-relay", "files-used-after",
+    "attachments-first", "report-run-id",
+    "failed-step-path", "flip-after-failed-upload", "explain-failure",
+)
+
+
 def _spec_043_patches() -> tuple[str, ...]:
-    """The mutations the README's spec 043 section names, which must be exactly the
-    spec 043 patch files: a new patch cannot go uncovered here."""
+    """Every patch file not named in SPEC_041_PATCHES. The README's recorded
+    `## Proofs` table must name exactly the patch files, so a new patch can go
+    neither unrecorded nor untested here."""
     readme = (REPO / "evals" / "_mutations" / "README.md").read_text(encoding="utf-8")
-    section = readme.split("## Proofs — spec 043", 1)[1].split("\n## ", 1)[0]
-    names = tuple(re.findall(r"^\| `--mutation ([^`]+)`", section, re.M))
     recorded = readme.split("## Proofs\n", 1)[1].split("\n## ", 1)[0]
+    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M))
     files = {p.stem for p in (REPO / "evals" / "_mutations").glob("*.patch")}
-    assert files - set(names) == set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M)), "patch files outside both tables"
-    return names
+    assert files == rows, ("patch files and recorded rows differ", sorted(files ^ rows))
+    assert set(SPEC_041_PATCHES) <= files, sorted(set(SPEC_041_PATCHES) - files)
+    return tuple(sorted(files - set(SPEC_041_PATCHES)))
 
 
 SPEC_043_PATCHES = _spec_043_patches()

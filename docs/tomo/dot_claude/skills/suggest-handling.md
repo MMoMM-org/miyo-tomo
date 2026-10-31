@@ -283,3 +283,75 @@ from the summary line; it computes nothing itself.
 The line is added only when the count is above zero: a "0 converted" line on
 every healthy run is noise the owner learns to skip, and the zero still sits
 in the reducer's summary line in the transcript for anyone measuring it.
+
+## Why step 7's report lines are an exact-output template
+
+Step 7 used to show the report as a quoted template — a `> "…"` blockquote
+wrapped over three lines, introduced by nothing. Spec 043's first Pass 1 smoke
+(2026-10-31, `claude` 2.1.316; evidence in
+`docs/XDD/specs/043-pass1-conductor-eval-gate/findings.md`, F1–F3) ran the
+pipeline twice, and both runs paraphrased it:
+
+- `Pass 1 is complete. The analysts processed 3 items (Alpha, Dresden, Gamma) with no failures, and the suggestions are written to [[…]].`
+- `Pass 1 complete: 3 items analysed (Alpha, Dresden, Gamma). Suggestions are written to [[…]].`
+
+The duplicate line was singularised the same way: `1 proposed MOC already
+existed in the vault and is offered as an unticked link instead.` for a
+template that reads `{n} proposed MOC(s) … are offered as unticked links`.
+
+A quote reads as *what to say*, not *the words to output*. The model took it
+as content to convey and wrote it in its own sentence, added the item list it
+had at hand, and made the grammar agree with `n = 1`. Nothing in the old text
+said the wording was fixed.
+
+The template is now stated as an exact-output instruction behind a `STRICT`
+block (observed deviation, 2 of 2 runs):
+
+- **Fenced, not quoted.** Each line sits alone in a ```` ```text ```` fence on
+  one line. A blockquote invites copying the `>` too, and the report line is
+  recognised at the start of a line; a fence makes the boundary of the exact
+  text unambiguous.
+- **What may change is named.** Only `{N}`, `<date>` and `{n}` are replaced.
+  Everything else — wording, punctuation, the line order, `MOC(s)` and
+  `are offered as unticked links` for every `n` including 1 — stays, and the
+  instruction says so in those words, because Sonnet follows literally what it
+  is told and generalises from what it is not.
+- **No item list.** The two runs inserted the same thing, so the instruction
+  forbids it by name.
+- **`<date>` is the full stem.** It is the `YYYY-MM-DD_HHMM` stem of the step 6
+  writes (date and time), so the link resolves to the note that was written;
+  saying only "date" would let the model drop the time.
+
+The instruction does not forbid text after the template lines: a failed
+`mark-captured.py` must still be reported (step 6), and the smoke's extra notes
+below the template were harmless.
+
+## Why the `WARN:` relay is a visible message at the start of step 3
+
+The step 2 `STRICT` said to repeat every `WARN:` line of `shared-ctx-builder.py`
+"to the user, verbatim, before dispatching anything". In the same smoke (F4)
+the model's only reaction before its first `Agent` call was a **thinking**
+block noting the warning; the verbatim line first reached the user in the
+final report, after every dispatch. It read "before dispatching anything" as
+"somewhere in the reply", and treated noticing the warning as relaying it.
+
+Two changes, both about where and how the model acts:
+
+- **The instruction sits where the dispatch happens.** Step 3 now opens with
+  the relay, before the batch-count command and any `Agent` call. A rule two
+  commands earlier, under a different step, competes with the work in between;
+  a rule at the top of the step that dispatches does not.
+- **"A message of your own, not a thought."** The user never sees thinking.
+  Naming the visible text output as the vehicle closes the reading the model
+  actually took.
+
+The step 2 `STRICT` keeps the rule itself (same opening phrase, which
+`tests/test_040_skill_prose.py` pins for both Pass 1 paths) and now names both
+moments: at the start of step 3, and again in the step 7 report. The repeat in
+the report stays because the warning must also be in the final reply (PRD
+F2-AC1), which is what the user reads when the run ends; the early message
+exists so a user watching the run sees it before analysts are spent on a
+broken tracker configuration (F2-AC2).
+
+The step 3 and step 7 lines name the script (`shared-ctx-builder.py`), not
+"step 2", so they stay true if the build ever moves.

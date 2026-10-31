@@ -31,7 +31,7 @@ phase: 4
 
 This phase proves the gate can fail, documents it, and produces the merge evidence.
 
-- [ ] **T4.1 RED proofs** `[activity: validate]`
+- [x] **T4.1 RED proofs** `[activity: validate]`
 
   1. Prime: the mutation table in `evals/_mutations/README.md` (T2.5).
   2. Test (owner), for each mutation: `scripts/run-evals.sh --mutation <name> --case <case> --keep-temp`, 3 runs (owner decision 2026-10-31: 3/3 stays). The expected total is about $12 for T4.1.
@@ -43,7 +43,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   4. Validate: every non-control grader in both Pass 1 cases and both report-only variants appears red 3/3 in the record.
   5. Success: `[ref: PRD/F5-AC1, F5-AC2, F5-AC3, F5-AC4; PRD/F4-AC2]`
 
-- [ ] **T4.2 Documentation and gate rule** `[activity: docs]` `[parallel: true]`
+- [x] **T4.2 Documentation and gate rule** `[activity: docs]` `[parallel: true]`
 
   1. Prime: `evals/README.md`, root `CLAUDE.md` (the eval gate rule), `tests/test_eval_gate_docs.py`.
   2. Test: extend `tests/test_eval_gate_docs.py`:

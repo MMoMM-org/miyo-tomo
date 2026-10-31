@@ -130,16 +130,6 @@ PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, tra
 # inherits that file's recorded RED proof (README "Inherited proofs").
 INHERITED_LEAK_GUARD = {(c, "9-no-leak") for c in PASS1_CASES}
 
-# Gates whose named mutation is not run yet (spec 043; Phase 4 records the runs and
-# moves the rows into `## Proofs`). Each entry must have a pending row and no
-# recorded one, so this set expires with the recording: Phase 4 empties it.
-AWAITING_RECORDING = {pair for pairs in SPEC_043_REPORT_ONLY.values() for pair in pairs} | {
-    (case, g)
-    for case in PASS1_CASES
-    for g in {p.stem for p in (EVALS / case / "graders").glob("*.md")}
-    if (case, g) not in INHERITED_LEAK_GUARD
-}
-
 LINE_START, LINE_END = "(?:^|\\n)", "(?:\\n|$)"
 CASE_YAML_KEYS = {"schema_version", "name", "runs", "context", "execution"}
 EXECUTION_KEYS = {"max_turns", "timeout_seconds", "allowed_tools", "prompt"}
@@ -572,8 +562,8 @@ EXPECTED_MUTATIONS = (
     "attachments-first", "report-run-id",
     "failed-step-path", "flip-after-failed-upload", "explain-failure",
 )
-# Spec 043 (T2.5): named, not yet run. Their rows live in PENDING_SECTION until Phase 4
-# records them; each declares the plugin file(s) it patches under Clauses (`- files:`).
+# Spec 043 (T2.5): recorded in `## Proofs` with the rest; each declares the plugin
+# file(s) it patches under Clauses (`- files:`).
 SPEC_043_MUTATIONS = (
     "dispatch-conductor", "analyst-name-not-type", "path-from-stem", "setup-in-conductor",
     "dispatch-before-setup", "render-before-reduce", "reduce-before-batch-2",
@@ -582,7 +572,6 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
 )
 ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
-PENDING_SECTION = "Proofs — spec 043 (to be recorded in Phase 4)"
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -613,6 +602,10 @@ def _patch(plugin: Path, name: str, dry_run: bool) -> subprocess.CompletedProces
     return subprocess.run(argv, cwd=plugin, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
+def _readme_text() -> str:
+    return MUTATIONS_README.read_text(encoding="utf-8")
+
+
 def _readme_section(title: str) -> str:
     text = MUTATIONS_README.read_text(encoding="utf-8")
     m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
@@ -628,13 +621,14 @@ def _table_rows(section: str) -> list[list[str]]:
     return [r for r in rows[1:] if not set("".join(r)) <= set("-: ")]
 
 
-def _proof_rows(title: str, recorded: bool) -> list[dict]:
+def _recorded_proofs() -> list[dict]:
+    """Rows of `## Proofs`: each one was run, red in every run, verdicts recorded."""
     out = []
-    for proof, cases, expected, side in _table_rows(_readme_section(title)):
+    for proof, cases, expected, side in _table_rows(_readme_section("Proofs")):
         m = re.fullmatch(r"`--(mutation|rev) ([^`]+)`", proof)
         assert m, f"proof cell is neither `--mutation <name>` nor `--rev <rev>`: {proof}"
         out.append({
-            "kind": m.group(1), "arg": m.group(2), "recorded": recorded,
+            "kind": m.group(1), "arg": m.group(2),
             "cases": set(re.findall(r"`([a-z0-9-]+)`", cases)),
             "expected": set(GRADER_REF.findall(expected)),
             "side": set(GRADER_REF.findall(side)), "side_text": side,
@@ -643,18 +637,8 @@ def _proof_rows(title: str, recorded: bool) -> list[dict]:
     return out
 
 
-def _recorded_proofs() -> list[dict]:
-    """Rows of `## Proofs`: each one was run, red in every run, verdicts recorded."""
-    return _proof_rows("Proofs", recorded=True)
-
-
-def _pending_proofs() -> list[dict]:
-    """Rows of the spec 043 section: a named mutation that has not been run yet."""
-    return _proof_rows(PENDING_SECTION, recorded=False)
-
-
 def _proofs() -> list[dict]:
-    return _recorded_proofs() + _pending_proofs()
+    return _recorded_proofs()
 
 
 def _controls() -> set[tuple[str, str]]:
@@ -705,11 +689,8 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
-    pending = {p["arg"] for p in _pending_proofs() if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == set(EXPECTED_MUTATIONS)
-    assert pending == set(SPEC_043_MUTATIONS)
-    assert recorded | pending == files == set(ALL_MUTATIONS)
+    assert recorded == files == set(ALL_MUTATIONS)
 
 
 @pytest.mark.parametrize("name", ALL_MUTATIONS)
@@ -768,38 +749,22 @@ def _gates(case: str) -> set[str]:
 
 
 def test_every_gate_grader_is_an_expected_red_of_a_proof():
-    """F5-AC1: every non-control grader has a named mutation. A recorded row proves
-    it; a pending row only names it, and only for a gate in AWAITING_RECORDING."""
+    """F5-AC1 / F7: every non-control grader is an expected red of a RECORDED proof."""
     recorded = set().union(*(p["expected"] for p in _recorded_proofs()))
-    pending = set().union(*(p["expected"] for p in _pending_proofs()))
     for case in sorted(GATE_CASES):
         for g in sorted(_gates(case)):
-            if (case, g) in AWAITING_RECORDING:
-                assert (case, g) not in recorded, f"{case}/{g} is recorded: drop it from AWAITING_RECORDING"
-                assert (case, g) in pending, f"gate {case}/{g} has no named mutation"
-                continue
             assert (case, g) in recorded, f"gate {case}/{g} has no recorded RED proof"
 
 
-def test_awaiting_recording_names_only_real_gates():
-    for case, g in AWAITING_RECORDING:
-        assert case in GATE_CASES and g in _gates(case), (case, g)
-    pending = set().union(*(p["expected"] for p in _pending_proofs()))
-    assert pending <= AWAITING_RECORDING, sorted(pending - AWAITING_RECORDING)
-
-
-def test_pending_rows_do_not_pass_for_recorded_proofs():
-    """A row that has not run claims no measured side effect and no recording."""
-    recorded = {p["arg"] for p in _recorded_proofs()}
-    for p in _pending_proofs():
-        assert p["arg"] not in recorded, p["arg"]
-        assert p["side_text"] == NOT_YET_MEASURED, (p["arg"], p["side_text"])
-        assert not p["side"], p["arg"]
+def test_recorded_rows_carry_measured_side_effects():
+    """Phase 4 measured every row: none still says the side effects are unmeasured,
+    and the spec 043 recording names the runtime versions and the verdict file."""
     for p in _recorded_proofs():
         assert NOT_YET_MEASURED not in p["side_text"], p["arg"]
-    section = _readme_section(PENDING_SECTION)
-    # the "Phase 4" pin goes away when Phase 4 removes this section
-    assert "red-proofs.md" in section and "Phase 4" in section
+        assert p["side_text"], p["arg"]
+    section = _readme_section("Proofs")
+    assert "Spec 043 (recorded 2026-10-31" in section and "red-proofs.md" in section
+    assert "Phase 4" not in _readme_text()
 
 
 def test_every_control_is_listed_and_never_a_proof_target():
@@ -851,7 +816,7 @@ def test_f4_ac4_graders_have_distinct_proofs():
 
 
 def test_status_sentence_first_expects_every_report_only_grader_and_spares_the_canary():
-    (row,) = [p for p in _pending_proofs() if p["arg"] == "status-sentence-first"]
+    (row,) = [p for p in _recorded_proofs() if p["arg"] == "status-sentence-first"]
     pairs = set(SPEC_043_REPORT_ONLY["report-only"])
     assert row["cases"] == set(CASE_SETTINGS)
     assert row["expected"] == pairs
@@ -910,8 +875,8 @@ def test_status_sentence_first_removes_the_reply_only_rule_and_the_3c_anchor(tmp
 
 
 def test_spec_043_rows_name_their_offline_model():
-    """Each pending row names the T2.1 fixture that models the trace it expects."""
-    for p in _pending_proofs():
+    """Each spec 043 row names the T2.1 fixture that models the trace it expects."""
+    for p in (p for p in _recorded_proofs() if p["arg"] in SPEC_043_MUTATIONS):
         cell = p["expected_text"]
         fixtures = re.findall(r"`([a-z0-9-]+\.jsonl)`", cell)
         assert fixtures, p["arg"]

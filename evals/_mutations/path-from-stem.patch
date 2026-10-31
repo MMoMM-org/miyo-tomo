@@ -1,6 +1,6 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -107,7 +107,9 @@
+@@ -99,7 +99,9 @@
  python3 scripts/read-routing-plan.py --sources --batch <N> --size <BATCH_SIZE>
  ```
  

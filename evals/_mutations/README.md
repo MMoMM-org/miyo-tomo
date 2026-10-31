@@ -82,7 +82,7 @@ reported), never a request to misbehave.
 | `--mutation reword-report-line` | `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` | `pass1-suggest-pipeline/14-report-line-anchored`, `pass1-warn-and-duplicates-relayed/04-report-line-anchored` — the report template no longer starts with `Pass 1 complete:`; offline model: `pass1-report-quoted.jsonl` | not yet measured |
 | `--mutation always-duplicate-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/15-no-duplicate-line` — neutral step: the duplicate-count line is reported whatever the count, so `DUPLICATES=0` yields `0 proposed MOC(s) already existed …`; offline model: `pass1-complete-relayed.jsonl` | not yet measured |
 | `--mutation warn-is-diagnostic` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/01-warn-in-reply` — the `WARN:` line is a maintainer diagnostic that needs no action, so it is not relayed; offline model: `pass1-complete.jsonl` | not yet measured |
-| `--mutation warn-in-report-only` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` — the `WARN:` line is relayed verbatim, but only in the step 7 report, after every dispatch; offline model: `pass1-warn-after-dispatch.jsonl` | not yet measured |
+| `--mutation warn-in-report-only` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` — the `WARN:` line is relayed verbatim, but only in the step 7 report, after every dispatch: no `cat tomo-tmp/setup-warnings.txt` runs before the first dispatch; offline model: `pass1-warn-in-report-only.jsonl` | not yet measured |
 | `--mutation drop-duplicate-line` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/03-duplicate-line` — the reducer's summary line is for the log, so the duplicate line is not reported; offline model: `pass1-complete.jsonl` | not yet measured |
 | `--mutation status-sentence-first` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only` — the synthesis conductor begins its reply with one status sentence before the report (the canary `8-handback-canary` must stay green); offline model: `pass2-status-sentence.jsonl`, `pass2-mismatch-status-sentence.jsonl` | not yet measured |
 
@@ -272,11 +272,9 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "STRICT — run ALL commands below before dispatching ANY subagent."
-- removes: "first by copying the output of the `cat` that opens step 3, before its"
-- removes: "your next output is this command's stdout, copied verbatim as a text"
-- removes: "Thinking about the warning does not count; only text the user sees counts."
+- removes: "through the `cat` that opens step 3, before its batch-count command, and"
+- removes: "Run this first, before the batch-count command:"
 - removes: "cat tomo-tmp/setup-warnings.txt"
-- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - adds: "### 3c. Shared context"
 - adds: "so build it after the last batch, right before Reduce:"
 - adds: "the dispatch prompt only passes its path"
@@ -345,21 +343,17 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "STRICT — repeat every `WARN:` line this script prints to the user, verbatim:"
 - removes: "it is the only report of unusable tracker configuration"
-- removes: "your next output is this command's stdout, copied verbatim as a text"
-- removes: "Thinking about the warning does not count; only text the user sees counts."
+- removes: "Run this first, before the batch-count command:"
 - removes: "cat tomo-tmp/setup-warnings.txt"
-- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "`WARN:` lines this script prints on stderr are diagnostics for the maintainer; they are kept in the script's log and need no action here."
 
 ### warn-in-report-only
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "first by copying the output of the `cat` that opens step 3, before its"
-- removes: "your next output is this command's stdout, copied verbatim as a text"
-- removes: "Thinking about the warning does not count; only text the user sees counts."
+- removes: "through the `cat` that opens step 3, before its batch-count command, and"
+- removes: "Run this first, before the batch-count command:"
 - removes: "cat tomo-tmp/setup-warnings.txt"
-- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "in the step 7 report, below the Pass 1 complete line. Until then, carry on."
 - adds: "Then add each `WARN:` line from step 2, verbatim, one per line."

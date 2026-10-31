@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.14.0
+# version: 0.14.1
 
 ## When to Activate
 
@@ -58,8 +58,8 @@ python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vaul
 If this fails, abort and surface the error.
 
 # STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
-# first by copying the output of the `cat` that opens step 3, before its
-# batch-count command, then again in the step 7 report.
+# through the `cat` that opens step 3, before its batch-count command, and
+# again in the step 7 report.
 # Why: it is the only report of unusable tracker configuration, and a run that
 # swallows it looks identical to a healthy one.
 
@@ -77,19 +77,11 @@ Capture stdout as `PROFILE`.
 
 ### 3. Fan-out dispatch
 
-Run this first:
+Run this first, before the batch-count command:
 
 ```bash
 cat tomo-tmp/setup-warnings.txt
 ```
-
-# STRICT — your next output is this command's stdout, copied verbatim as a text
-# reply, BEFORE you run the batch-count command below. Add nothing to it.
-# Thinking about the warning does not count; only text the user sees counts.
-# Why: a warning noted only in thinking reaches the user after every analyst ran.
-
-If the command printed nothing, output nothing here and go on to the batch-count
-command.
 
 # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
 # ONE Agent call per message = sequential execution = 5x slower.

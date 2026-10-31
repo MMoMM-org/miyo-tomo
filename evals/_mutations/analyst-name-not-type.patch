@@ -14,7 +14,7 @@
  When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -111,13 +111,11 @@
+@@ -103,13 +103,11 @@
  response, then wait for the batch to complete before requesting the next.
  
  # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.

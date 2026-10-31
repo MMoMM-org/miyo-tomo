@@ -1019,26 +1019,28 @@ def test_report_graders_match_the_skill_template_lines():
     assert not evaluate(GRADERS["no-duplicate-line"], reply).passed
 
 
-def test_skill_relays_warn_as_a_message_before_the_first_dispatch_and_in_the_report():
-    """F2-AC2 / F2-AC1 (findings F4, smokes 1-3, Plan B): the builder saves its WARN
-    lines to the file step 3 opens by printing with `cat`; a STRICT right after that
-    command makes its stdout, copied verbatim, the text reply due before the
-    batch-count command and the Agent template, and rules out thinking as the
-    vehicle. Step 7 repeats the WARN lines in the report."""
+def test_skill_relays_warn_with_a_cat_before_the_first_dispatch_and_in_the_report():
+    """F2-AC2 / F2-AC1 (findings F4, owner decision 2026-10-31): the builder saves its
+    WARN lines to the file that step 3 prints with `cat` as its first command, before
+    the batch-count command and the Agent template; that tool result is the relay
+    grader 02 checks. No text reply is demanded (4/4 runs answered such a demand in
+    thinking). Step 7 repeats the WARN lines in the report."""
     skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
     step2 = text.split("### 2. Common setup", 1)[1].split("### 3. Fan-out dispatch", 1)[0]
     assert "--output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt\n" in step2
+    assert "# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:" in step2
+    assert "the `cat` that opens step 3" in step2 and "step 7 report" in step2
     step3 = text.split("### 3. Fan-out dispatch", 1)[1].split("### 3b.", 1)[0]
     read = step3.find("```bash\ncat tomo-tmp/setup-warnings.txt\n```")
-    relay = step3.find("# STRICT — your next output is this command's stdout, copied verbatim as a text")
-    assert read != -1 and relay != -1
+    assert read != -1
     # The cat is the first command of the step: nothing to run comes before it.
     assert step3.find("```") == read
-    assert read < relay < step3.find("--batch-count") < step3.find("```\nAgent(")
-    assert "BEFORE you run the batch-count command below" in step3
-    assert "Thinking about the warning does not count" in step3
-    assert "Setup warnings:" not in text
+    assert "before the batch-count command" in step3[:read]
+    assert read < step3.find("--batch-count") < step3.find("```\nAgent(")
+    # The text-reply demand is gone everywhere.
+    for gone in ("text reply", "your next output", "Thinking about the warning", "Setup warnings:"):
+        assert gone not in text, gone
     step7 = text.split("### 7. Report", 1)[1]
     assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
 

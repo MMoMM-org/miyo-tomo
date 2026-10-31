@@ -20,9 +20,11 @@
 #                        (errors, exit 1), :86-87 (--size)
 #   read-config-field    tomo/scripts/read-config-field.py:64-72 (stdout; ERROR to stderr, exit 1)
 #   run id               tomo/scripts/run-id.py:22-31 (--out file + stdout)
-#   shared-ctx WARN      tomo/scripts/shared-ctx-builder.py:731-738 (stderr)
-#   shared-ctx lines     tomo/scripts/shared-ctx-builder.py:855-859 (reconcile, stderr),
-#                        :903-920 (summary, stderr); ctx keys :880-888
+#   shared-ctx WARN      tomo/scripts/shared-ctx-builder.py:738-745 (stderr)
+#   shared-ctx warnings  tomo/scripts/shared-ctx-builder.py:847-862 (--warnings-out file:
+#                        every WARN line, one per line; empty when none)
+#   shared-ctx lines     tomo/scripts/shared-ctx-builder.py:908-912 (reconcile, stderr),
+#                        :956-973 (summary, stderr); ctx keys :933-941
 #   item result file     tomo/scripts/lib/item_key.py:39-70 (to_filename, copied
 #                        into analyst-stub.py); keys tomo/schemas/item-result.schema.json
 #                        plus the SDD's run_id/status/sections
@@ -206,8 +208,10 @@ PY
 
   _write_stub shared-ctx-builder.py "SHARED_CTX_WARN = $SHARED_CTX_WARN" <<'PY'
 o = parse(
-    valued=("--cache", "--vault-config", "--profiles-dir", "--run-id", "--output"),
-    required=("--cache", "--vault-config", "--profiles-dir", "--run-id", "--output"),
+    valued=("--cache", "--vault-config", "--profiles-dir", "--run-id", "--output",
+            "--warnings-out"),
+    required=("--cache", "--vault-config", "--profiles-dir", "--run-id", "--output",
+              "--warnings-out"),
 )
 mocs = [
     {"path": "Atlas/Maps/Places MOC.md", "title": "Places MOC", "topics": ["places", "cities"],
@@ -228,13 +232,15 @@ data = (json.dumps(ctx, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 with open(o["--output"], "wb") as f:
     f.write(data)
 print("[shared-ctx] reconcile: cache clean (2 MOC(s) verified)", file=sys.stderr)
+WARN = (
+    "WARN: 2 active tracker field(s) have no keywords; matching falls back to "
+    "guesswork and cannot suppress false positives: mood, sleep. Run /tomo-setup "
+    "trackers to fill them, or set active: false on the ones you do not use."
+)
 if SHARED_CTX_WARN:
-    print(
-        "WARN: 2 active tracker field(s) have no keywords; matching falls back to "
-        "guesswork and cannot suppress false positives: mood, sleep. Run /tomo-setup "
-        "trackers to fill them, or set active: false on the ones you do not use.",
-        file=sys.stderr,
-    )
+    print(WARN, file=sys.stderr)
+with open(o["--warnings-out"], "w") as f:
+    f.write(WARN + "\n" if SHARED_CTX_WARN else "")
 names_bytes = len(json.dumps([m["title"] for m in mocs]))
 detail_bytes = len(json.dumps(mocs, separators=(",", ":")))
 print(

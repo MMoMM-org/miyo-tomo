@@ -58,6 +58,8 @@ SHARED_CTX_ARGV = (
     RUN_ID,
     "--output",
     "tomo-tmp/shared-ctx.json",
+    "--warnings-out",
+    "tomo-tmp/setup-warnings.txt",
 )
 REDUCER_ARGV = (
     "--run-id",
@@ -345,6 +347,10 @@ def test_shared_ctx_builder_warn_line(tmp_path, warn):
     ctx = json.loads((ws / "tomo-tmp" / "shared-ctx.json").read_text())
     assert isinstance(ctx["mocs"], list) and ctx["mocs"]
     assert ctx["run_id"] == RUN_ID
+    # --warnings-out holds exactly the WARN lines of stderr; empty when none.
+    saved = (ws / "tomo-tmp" / "setup-warnings.txt").read_text()
+    assert saved == "".join(x + "\n" for x in err if x.startswith("WARN:"))
+    assert saved == (WARN_LINE + "\n" if warn == "1" else "")
 
 
 # --- analyst stand-in -------------------------------------------------------------
@@ -637,6 +643,9 @@ REAL_FRAGMENTS = {
         'f"mocs_total={map_notes_total_before} "',
         "f\"asset_folder={ctx['asset_folder']} \"",
         'f"run_id={run_id}",',
+        '"--warnings-out",',
+        'self.warnings.extend(line for line in complete if line.startswith("WARN:"))',
+        '"".join(line + "\\n" for line in recorder.finish()), encoding="utf-8"',
     ],
     "suggestions-reducer.py": [
         'f"suggestions-reducer: done={len(done_items)} failed={len(failed_entries)} "',

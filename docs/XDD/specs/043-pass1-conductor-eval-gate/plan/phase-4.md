@@ -63,7 +63,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   4. Validate: the docs tests pass.
   5. Success: `[ref: PRD/F6-AC1, F6-AC2; PRD/F7-AC1]`
 
-- [ ] **T4.3 Merge evidence: 3× full-suite GREEN** `[activity: validate]`
+- [x] **T4.3 Merge evidence: 3× full-suite GREEN** `[activity: validate]`
 
   1. Prime: the merge rule.
   2. Test (owner): `scripts/run-evals.sh` 3 times on the merge candidate, with a clean tree and no edits between runs.

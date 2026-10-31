@@ -1,4 +1,4 @@
-# RED proofs — Pass 1 conductor eval gate, Blocks A to D (T4.1, PRD F7)
+# RED proofs — Pass 1 conductor eval gate, Blocks A to D and S, merge evidence (T4.1, T4.3, PRD F7)
 
 Measured 2026-10-31, Claude Code 2.1.316, against the runtime files at these versions: `suggest-handling` 0.14.1, `force-atomic-handling` 0.15.0, `synthesis-conductor` 0.24.2 (`# version:` lines in `tomo/dot_claude`). Each proof is one invocation of
 
@@ -349,6 +349,152 @@ RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-no
 
 T4.1 complete: every non-control grader red 3/3. Every expected grader of the 15 spec 043 proofs (Block A's 11 plus the 4 re-proofs), of `status-sentence-first` (five cases), and of the 5 re-proven spec 041 patches was red in every run of every listed case. The controls are exempt (PRD F7-AC5).
 
-## Open
+## Block S — re-proofs on the sonnet conductor (`synthesis-conductor` 0.25.0)
 
-- T4.3: three full suites (`scripts/run-evals.sh`, no `--case`) on the merge candidate.
+After the first merge evidence went RED (see T4.3 below), the owner moved the conductor from haiku to sonnet (0.25.0, commit d1cb8903). Every conductor proof measured on haiku was repeated on sonnet: `status-sentence-first` in the five Pass 2 cases and the five spec 041 patches. Each verdict below matches the `verdict.txt` in its results directory byte for byte.
+
+### First run, from commit d1cb8903 ($4.67)
+
+All five spec 041 patches: every expected grader red 3/3 in every case, as on haiku. `status-sentence-first` was red 3/3 in four cases but only 2/3 in `withheld-notices-relayed`: in run 2 sonnet ignored the vague instruction to "begin your reply with one short sentence stating whether the run succeeded" and handed back a clean report, so the grader was right to stay green. The patch was made a neutral literal line (`Status: run finished.`, commit 99a6f50c) and re-proven below.
+
+`--mutation status-sentence-first --case audit-*`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · audit-gates-delivery: 7-report-only (run 0), audit-gates-delivery: 7-report-only (run 1), audit-gates-delivery: 7-report-only (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 6 · $0.61 · 87 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T15-27-48Z
+```
+
+`--mutation status-sentence-first --case *-failure-reported`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 1-state-flip-failure-line-in-report (run 0), state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 1-upload-failure-line-in-report (run 1), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.59 · 71 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T15-29-17Z
+```
+
+`--mutation status-sentence-first --case withheld-notices-relayed`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 7-report-only (run 1) · runs 3 · $0.32 · 61 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T15-30-30Z
+```
+
+`--mutation summarise-mismatch --case audit-mismatch-stops`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-mismatch-stops: 4-mismatch-reported-verbatim (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 4-mismatch-reported-verbatim (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 4-mismatch-reported-verbatim (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 3 · $0.29 · 31 s · claude 2.1.316 · tree clean · mutation summarise-mismatch · tomo-tmp/evals/2026-10-31T15-31-32Z
+```
+
+`--mutation files-used-after --case withheld-notices-relayed`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 4-deletes-then-attachment-last (run 0), withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 9-no-leak (run 0), withheld-notices-relayed: 4-deletes-then-attachment-last (run 1), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 9-no-leak (run 1), withheld-notices-relayed: 4-deletes-then-attachment-last (run 2), withheld-notices-relayed: 7-report-only (run 2), withheld-notices-relayed: 8-handback-canary (run 2), withheld-notices-relayed: 9-no-leak (run 2) · runs 3 · $0.38 · 77 s · claude 2.1.316 · tree clean · mutation files-used-after · tomo-tmp/evals/2026-10-31T15-32-05Z
+```
+
+`--mutation paraphrase-relay --case withheld-notices-relayed`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 1-delete-1-verbatim (run 0), withheld-notices-relayed: 2-delete-2-verbatim (run 0), withheld-notices-relayed: 3-attachment-verbatim (run 0), withheld-notices-relayed: 4-deletes-then-attachment-last (run 0), withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 1-delete-1-verbatim (run 1), withheld-notices-relayed: 2-delete-2-verbatim (run 1), withheld-notices-relayed: 3-attachment-verbatim (run 1), withheld-notices-relayed: 4-deletes-then-attachment-last (run 1), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 1-delete-1-verbatim (run 2), withheld-notices-relayed: 2-delete-2-verbatim (run 2), withheld-notices-relayed: 3-attachment-verbatim (run 2), withheld-notices-relayed: 4-deletes-then-attachment-last (run 2), withheld-notices-relayed: 7-report-only (run 2) · runs 3 · $0.34 · 73 s · claude 2.1.316 · tree clean · mutation paraphrase-relay · tomo-tmp/evals/2026-10-31T15-33-23Z
+```
+
+`--mutation explain-failure --case *-failure-reported`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 4-no-failure-detail-in-report (run 0), state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 4-no-failure-detail-in-report (run 1), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 4-no-failure-detail-in-report (run 2), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 5-no-failure-detail-in-report (run 0), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 5-no-failure-detail-in-report (run 1), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 5-no-failure-detail-in-report (run 2), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.63 · 109 s · claude 2.1.316 · tree clean · mutation explain-failure · tomo-tmp/evals/2026-10-31T15-34-38Z
+```
+
+`--mutation report-run-id --case audit-*`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · audit-gates-delivery: 7-report-only (run 0), audit-gates-delivery: 9-no-leak (run 0), audit-gates-delivery: 7-report-only (run 1), audit-gates-delivery: 9-no-leak (run 1), audit-gates-delivery: 7-report-only (run 2), audit-gates-delivery: 9-no-leak (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 9-no-leak (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 9-no-leak (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 2), audit-mismatch-stops: 9-no-leak (run 2) · runs 6 · $0.59 · 86 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T15-36-28Z
+```
+
+`--mutation report-run-id --case *-failure-reported`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 9-no-leak (run 0), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 9-no-leak (run 1), state-flip-failure-reported: 7-report-only (run 2), state-flip-failure-reported: 9-no-leak (run 2), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 9-no-leak (run 0), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 9-no-leak (run 1), upload-failure-reported: 7-report-only (run 2), upload-failure-reported: 9-no-leak (run 2) · runs 6 · $0.60 · 92 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T15-37-56Z
+```
+
+`--mutation report-run-id --case withheld-notices-relayed`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 9-no-leak (run 0), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 9-no-leak (run 1), withheld-notices-relayed: 7-report-only (run 2), withheld-notices-relayed: 9-no-leak (run 2) · runs 3 · $0.32 · 49 s · claude 2.1.316 · tree clean · mutation report-run-id · tomo-tmp/evals/2026-10-31T15-39-30Z
+```
+
+### `status-sentence-first` with the literal status line, from commit 99a6f50c ($1.58)
+
+Red 3/3 in all five cases: `7-report-only` in `audit-gates-delivery`, `upload-failure-reported`, `state-flip-failure-reported` and `withheld-notices-relayed`, `7-report-only-mismatch` in `audit-mismatch-stops`.
+
+`--mutation status-sentence-first --case audit-*`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · audit-gates-delivery: 7-report-only (run 0), audit-gates-delivery: 7-report-only (run 1), audit-gates-delivery: 7-report-only (run 2), audit-mismatch-stops: 7-report-only-mismatch (run 0), audit-mismatch-stops: 7-report-only-mismatch (run 1), audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 6 · $0.67 · 53 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T16-45-20Z
+```
+
+`--mutation status-sentence-first --case *-failure-reported`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.60 · 62 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T16-46-15Z
+```
+
+`--mutation status-sentence-first --case withheld-notices-relayed`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 7-report-only (run 0), withheld-notices-relayed: 7-report-only (run 1), withheld-notices-relayed: 7-report-only (run 2) · runs 3 · $0.31 · 37 s · claude 2.1.316 · tree clean · mutation status-sentence-first · tomo-tmp/evals/2026-10-31T16-47-19Z
+```
+
+**Block S total: 13 invocations, $6.25. Every conductor proof holds on sonnet.**
+
+## T4.3 — merge evidence
+
+Three full suites (`scripts/run-evals.sh --keep-temp`, no `--case`), back to back, no edits in between. Log: `tomo-tmp/evals/merge-evidence-043.log` (gitignored).
+
+### First attempt, candidate e91276104f215adbbcce6f1ba0af2deb61bd15c6 (haiku conductor 0.24.2) — RED
+
+`full suite 1`
+
+```
+GREEN 7/7 cases · runs 21 · $2.33 · 416 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T15-01-31Z
+```
+
+`full suite 2`
+
+```
+RED 5/7 cases · state-flip-failure-reported: 7-report-only (run 1), upload-failure-reported: 7-report-only (run 2) · runs 21 · $2.27 · 373 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T15-08-29Z
+```
+
+`full suite 3`
+
+```
+GREEN 7/7 cases · runs 21 · $2.20 · 378 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T15-14-44Z
+```
+
+Suite 2 failed `7-report-only` in `state-flip-failure-reported` (run 1) and `upload-failure-reported` (run 2). In both traces the conductor prefaced the stop report with its own sentence ("Pass 2 did not finish cleanly: …", "Pass 2 synthesis did not complete. The Step 4 report is below."), the F5 deviation that rule 5 of 0.24.2 forbids. All three suites took 373–416 s, over the 6 min KPI. Owner decisions: conductor on sonnet, duration KPI 7 min (spec README Decisions Log).
+
+### Second attempt, candidate 99a6f50cf8cc574e04f402d79f3b7bd8830740f2 (sonnet conductor 0.25.0) — GREEN
+
+`full suite 1`
+
+```
+GREEN 7/7 cases · runs 21 · $2.75 · 271 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T16-47-57Z
+```
+
+`full suite 2`
+
+```
+GREEN 7/7 cases · runs 21 · $2.76 · 310 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T16-52-30Z
+```
+
+`full suite 3`
+
+```
+GREEN 7/7 cases · runs 21 · $2.74 · 286 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T16-57-42Z
+```
+
+All three GREEN 7/7. Median cost $2.75 (≤ $3.10), maximum $2.76 (< $5), maximum duration 310 s (≤ 7 min). T4.3 met.
+
+## Totals after Phase 4 evals
+
+| Item | Cost |
+|---|---|
+| T4.1 (Blocks A to D, haiku conductor) | $16.12 |
+| Block S (sonnet re-proofs) | $6.25 |
+| T4.3 first attempt (RED) | $6.80 |
+| T4.3 second attempt (GREEN) | $8.25 |
+| **Phase 4** | **$37.42** |

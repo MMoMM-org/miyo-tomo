@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -224,7 +224,6 @@
+@@ -227,7 +227,6 @@
  
  > Pass 2 complete — instructions rendered for N source doc(s).
  >
@@ -8,7 +8,7 @@
  > <any drift warnings surfaced in Step 1>
  > <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
  > <step> exited <code> for "<note>".   (only for a step that exited non-zero)
-@@ -252,14 +251,12 @@
+@@ -255,14 +254,12 @@
  
  STRICT — these rules govern EVERY report you return: the Step 4 report, the 3c
  stop report, and any other stop, whatever step the run ends in.

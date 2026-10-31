@@ -605,7 +605,9 @@ def _assemble_plugin(tmp_path: Path) -> Path:
 def _patch(plugin: Path, name: str, dry_run: bool) -> subprocess.CompletedProcess:
     argv = ["patch", "-p1", "--forward", "-i", str(MUTATIONS / f"{name}.patch")]
     if dry_run:
-        argv.insert(1, "--dry-run")
+        # --verbose: Apple's patch (2.0-12u11) reports "(offset N lines)" and
+        # "with fuzz N" only in verbose mode, so without it a shifted hunk passes.
+        argv[1:1] = ["--dry-run", "--verbose"]
     return subprocess.run(argv, cwd=plugin, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 

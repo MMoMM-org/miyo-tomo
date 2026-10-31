@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -210,7 +210,8 @@
+@@ -213,7 +213,8 @@
  If the file exists, every line in it IS an already-sanitized user-facing
  notice — one per withheld delete across every entry processed this run. The
  file never contains anything else (no run id, no header, no internals). If
@@ -10,7 +10,7 @@
  
  Check for a run-level withheld-attachment relay:
  ```bash
-@@ -230,8 +231,7 @@
+@@ -233,8 +234,7 @@
  > <step> exited <code> for "<note>".   (only for a step that exited non-zero)
  
  Then, below that report, output the lines of `tomo-tmp/withheld-deletes.md`
@@ -20,7 +20,7 @@
  `[warn]`/`[attach]` lines, or the raw `tomo.delete_withdrawals` /
  `tomo.skipped_assets` JSON for this. The relay lines appear in this shape,
  directly below the report:
-@@ -271,8 +271,7 @@
+@@ -274,8 +274,7 @@
  the relay lines (such as "… were withheld as shown below.") — the first relay
  line follows the report directly. NEVER put a blank line, heading, label or any
  text between them. NEVER write anything after them — no file list, no summary,
@@ -28,5 +28,5 @@
 -deletes or attachments.
 +no closing sentence.
  4. In the Step 4 report, NEVER add a line that is neither in the example above
- nor a relay line.
- Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, and put headings between and text after them.
+ nor a relay line. Your reply is ONLY the report: NEVER write anything before
+ or after it — no preface, no notes, no explanation of why a step failed, no

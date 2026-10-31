@@ -24,7 +24,7 @@
  
  #### 3d — Upload rendered files
  
-@@ -258,7 +258,7 @@
+@@ -261,7 +261,7 @@
  2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
  or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
  file name, no path, no script name. ONLY these are copied as printed, with
@@ -33,7 +33,7 @@
  `RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
  step ONLY as `<step> exited <code> for "<note>".`, where `<step>` is one of:
  parse, render, coverage audit, upload, state flip, and `<note>` is the note
-@@ -285,4 +285,4 @@
+@@ -290,4 +290,4 @@
  - NEVER modify frontmatter directly — state-promoter.py handles it
  - NEVER skip the coverage audit
  - NEVER proceed past a coverage mismatch (exit 1 from instructions-diff)

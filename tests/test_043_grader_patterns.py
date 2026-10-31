@@ -975,19 +975,25 @@ def test_report_graders_match_the_skill_template_lines():
 
 
 def test_skill_relays_warn_as_a_message_before_the_first_dispatch_and_in_the_report():
-    """F2-AC2 / F2-AC1 (findings F4, smoke 1 and 2): step 3 opens with a STRICT that
-    makes the relay a fixed text reply (header + WARN lines) due before the batch-count
-    command and the Agent template, rules out thinking as the vehicle, and step 7
-    repeats the WARN lines in the report."""
+    """F2-AC2 / F2-AC1 (findings F4, smokes 1-3, Plan B): the builder saves its WARN
+    lines to the file step 3 opens by printing with `cat`; a STRICT right after that
+    command makes its stdout, copied verbatim, the text reply due before the
+    batch-count command and the Agent template, and rules out thinking as the
+    vehicle. Step 7 repeats the WARN lines in the report."""
     skill = REPO / "tomo" / "dot_claude" / "skills" / "suggest-handling" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
+    step2 = text.split("### 2. Common setup", 1)[1].split("### 3. Fan-out dispatch", 1)[0]
+    assert "--output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt\n" in step2
     step3 = text.split("### 3. Fan-out dispatch", 1)[1].split("### 3b.", 1)[0]
-    relay = step3.find("# STRICT — if `shared-ctx-builder.py` printed `WARN:` lines, your next output is")
-    shape = step3.find("```text\nSetup warnings:\n<each WARN: line, exactly as printed, one per line>\n```")
-    assert relay != -1 and shape != -1
-    assert relay < shape < step3.find("--batch-count") < step3.find("```\nAgent(")
+    read = step3.find("```bash\ncat tomo-tmp/setup-warnings.txt\n```")
+    relay = step3.find("# STRICT — your next output is this command's stdout, copied verbatim as a text")
+    assert read != -1 and relay != -1
+    # The cat is the first command of the step: nothing to run comes before it.
+    assert step3.find("```") == read
+    assert read < relay < step3.find("--batch-count") < step3.find("```\nAgent(")
     assert "BEFORE you run the batch-count command below" in step3
     assert "Thinking about the warning does not count" in step3
+    assert "Setup warnings:" not in text
     step7 = text.split("### 7. Report", 1)[1]
     assert "output each `WARN:` line `shared-ctx-builder.py` printed" in step7
 

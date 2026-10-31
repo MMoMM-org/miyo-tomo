@@ -57,8 +57,16 @@ def test_the_report_relays_the_duplicate_count(which):
     assert "duplicate_proposals_converted" in report
 
 
+WARNINGS_OUT = " --warnings-out tomo-tmp/setup-warnings.txt"
+
+
 def test_both_builder_commands_are_identical():
-    assert _builder(_text("suggest")) == _builder(_text("force"))
+    """Both paths build the same context. `--warnings-out` only saves a copy of the
+    WARN lines for suggest-handling's step 3 relay (spec 043 F4), so it is the one
+    allowed difference."""
+    suggest = _builder(_text("suggest"))
+    assert suggest.endswith(WARNINGS_OUT)
+    assert suggest[: -len(WARNINGS_OUT)] == _builder(_text("force"))
 
 
 @pytest.mark.parametrize("which", ["suggest", "force"])

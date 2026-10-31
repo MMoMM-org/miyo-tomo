@@ -1,6 +1,6 @@
 --- a/skills/suggest-handling/SKILL.md
 +++ b/skills/suggest-handling/SKILL.md
-@@ -195,8 +195,8 @@
+@@ -196,8 +196,8 @@
  ```
  
  Then read `duplicate_proposals_converted=<n>` from the reducer's summary line

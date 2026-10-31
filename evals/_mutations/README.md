@@ -272,10 +272,11 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "STRICT — run ALL commands below before dispatching ANY subagent."
-- removes: "first as the text reply that opens step 3, before its batch-count command,"
-- removes: "this text reply, BEFORE you run the batch-count command below: the header line,"
+- removes: "first by copying the output of the `cat` that opens step 3, before its"
+- removes: "your next output is this command's stdout, copied verbatim as a text"
 - removes: "Thinking about the warning does not count; only text the user sees counts."
-- removes: "Setup warnings:"
+- removes: "cat tomo-tmp/setup-warnings.txt"
+- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - adds: "### 3c. Shared context"
 - adds: "so build it after the last batch, right before Reduce:"
 - adds: "the dispatch prompt only passes its path"
@@ -344,19 +345,21 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "STRICT — repeat every `WARN:` line this script prints to the user, verbatim:"
 - removes: "it is the only report of unusable tracker configuration"
-- removes: "this text reply, BEFORE you run the batch-count command below: the header line,"
+- removes: "your next output is this command's stdout, copied verbatim as a text"
 - removes: "Thinking about the warning does not count; only text the user sees counts."
-- removes: "Setup warnings:"
+- removes: "cat tomo-tmp/setup-warnings.txt"
+- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "`WARN:` lines this script prints on stderr are diagnostics for the maintainer; they are kept in the script's log and need no action here."
 
 ### warn-in-report-only
 
 - files: `skills/suggest-handling/SKILL.md`
-- removes: "first as the text reply that opens step 3, before its batch-count command,"
-- removes: "this text reply, BEFORE you run the batch-count command below: the header line,"
+- removes: "first by copying the output of the `cat` that opens step 3, before its"
+- removes: "your next output is this command's stdout, copied verbatim as a text"
 - removes: "Thinking about the warning does not count; only text the user sees counts."
-- removes: "Setup warnings:"
+- removes: "cat tomo-tmp/setup-warnings.txt"
+- removes: "If the command printed nothing, output nothing here and go on to the batch-count"
 - removes: "Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as printed"
 - adds: "in the step 7 report, below the Pass 1 complete line. Until then, carry on."
 - adds: "Then add each `WARN:` line from step 2, verbatim, one per line."

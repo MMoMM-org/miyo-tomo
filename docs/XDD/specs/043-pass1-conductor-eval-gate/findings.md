@@ -175,3 +175,27 @@ GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · runs 3 ·
 ```
 
 All three kept traces (`e-HbOimv`, `e-CScrFJ`, `e-61AOvR`) carry the same hand-back frame: the gap line, then `RESULT: FAIL — count or coverage mismatch above.`, then `agentId:`. F5 did not reproduce, so it stands at 1 red in 6 runs with the failing trace lost. It cannot be classified yet. Every later run of this case uses `--keep-temp` until F5 recurs or the merge evidence is complete.
+
+## Full suite 2 — 2026-10-31 (T3.3, `--keep-temp`)
+
+```
+RED 6/7 cases · audit-mismatch-stops: 7-report-only-mismatch (run 2) · runs 21 · $2.25 · 309 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T11-49-37Z
+```
+
+F5 recurred, so it now stands at 2 red in 9 runs. This time the trace was kept: `/private/tmp/e-iw2c9o/out/trace.jsonl`. The hand-back frame reads:
+
+```
+The report follows:
+  The coverage audit reported a mismatch, so I'm stopping here. The suggestions doc was not uploaded and its state was not flipped.
+
+  COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)
+  RESULT: FAIL — count or coverage mismatch above.
+agentId: …
+```
+
+**F5 is a prose finding (a).** The conductor writes a sentence before the 3c stop report that announces and explains the stop. That is the #205 deviation, now on the stop path. `synthesis-conductor.md` has two rules that should forbid it, and neither did:
+
+- 3c says "the audit's stdout copied as printed, and nothing else";
+- rule 4 of the report STRICT says "Your reply is ONLY the report: NEVER write anything before or after it". That sentence sits inside a rule that opens with "In the Step 4 report", so the model can read it as Step-4-only.
+
+Fix: make the before/after ban its own rule that names the stop reports, and say in 3c that the stop is never announced or explained. `synthesis-conductor.md` is a gate file, so the fix needs a full-suite GREEN, which T3.3 already requires.

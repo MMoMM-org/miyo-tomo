@@ -1,0 +1,54 @@
+# Spec 043 — Phase 3 findings
+
+Every red grader from a paid run, with its cause and the trace line that shows it.
+
+Causes:
+
+- **(a) prose finding.** The model deviated from the runtime prose. The fix goes in the prose.
+- **(b) stand-in fidelity.** The eval stand-in behaves differently from production.
+- **(c) pattern defect.** The grader is wrong.
+
+## Smoke 1 — 2026-10-31
+
+Command: `scripts/run-evals.sh --case 'pass1-*' --runs 1 --keep-temp`
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · pass1-suggest-pipeline: 14-report-line-anchored (run 0), pass1-warn-and-duplicates-relayed: 02-warn-before-first-dispatch (run 0), pass1-warn-and-duplicates-relayed: 03-duplicate-line (run 0), pass1-warn-and-duplicates-relayed: 04-report-line-anchored (run 0) · runs 2 · $0.47 · 44 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T09-36-30Z
+```
+
+Kept traces:
+
+- `pass1-suggest-pipeline`: `/private/tmp/e-lJ52Dv/out/trace.jsonl` (94 lines).
+- `pass1-warn-and-duplicates-relayed`: `/private/tmp/e-jFOZJj/out/trace.jsonl` (111 lines).
+
+Both runs completed the whole pipeline:
+
+- setup;
+- 2 batches with 3 analyst dispatches;
+- reduce, render, both writes with the same stem `2026-10-30_0000`, and mark-captured;
+- the report.
+
+All other graders were green, including:
+
+- relay 01 (`WARN:` verbatim in the reply);
+- the conductor-not-dispatched, setup, order, write and mark graders;
+- the leak guard in both cases.
+
+### Red graders
+
+| # | Case / grader | Cause | Evidence (trace line) | Fix |
+|---|---|---|---|---|
+| F1 | pipeline `14-report-line-anchored` | (a) | e-lJ52Dv:90, the final text begins `Pass 1 is complete. The analysts processed 3 items (Alpha, Dresden, Gamma) with no failures, and the suggestions are written to [[2026-10-30_0000_suggestions]].` The step 7 template is `Pass 1 complete: {N} items analysed, suggestions written to [[<date>_suggestions]].` | Make the step 7 lines a verbatim template in `suggest-handling` |
+| F2 | relay `04-report-line-anchored` | (a) | e-jFOZJj:106, `Pass 1 complete: 3 items analysed (Alpha, Dresden, Gamma). Suggestions are written to [[2026-10-30_0000_suggestions]].` The item list is inserted and the clause reworded. | Same fix as F1 |
+| F3 | relay `03-duplicate-line` | (a) | e-jFOZJj:106, `1 proposed MOC already existed in the vault and is offered as an unticked link instead.` The template is `{n} proposed MOC(s) already existed in the vault and are offered as unticked links instead.`, so the model singularised it. | Same fix as F1 (the duplicate line is part of the step 7 template) |
+| F4 | relay `02-warn-before-first-dispatch` | (a), the expected finding (Decisions Log 2026-10-30) | e-jFOZJj:23 is the `WARN:` line in the shared-ctx-builder tool_result. The only reaction before the first dispatch (e-jFOZJj:51) is a **thinking** block at e-jFOZJj:42, which the user never sees. The verbatim relay first appears in the final report, e-jFOZJj:106 ("Earlier warning from setup, repeated verbatim"). The STRICT under step 2 ("before dispatching anything") was read as "somewhere in the reply". | Require a visible assistant message carrying the `WARN:` lines before step 3's first `Agent` call |
+
+### Observations (not red; recorded for follow-up)
+
+| # | Observation | Evidence | Disposition |
+|---|---|---|---|
+| O1 | (b) The first dispatch used the bare `subagent_type: "inbox-analyst"` that the skill shows. The eval registers only the plugin agent `tomo:inbox-analyst`, so the call failed (`Agent type 'inbox-analyst' not found`) and the model retried with the namespaced name. In production the instance carries a project-level `inbox-analyst`, so the bare name resolves. | e-lJ52Dv:34–39 (2 failed calls, then 3 good ones). The relay run used `tomo:` directly (e-jFOZJj:51). | No grader is affected: 02 counts only `tomo:inbox-analyst` and was 3/3. It costs one extra turn. Not fixed in the prose, because the bare name is correct for production. |
+| O2 | The report carries extra notes after the template: the agent-name retry and a "filename date is a day behind" remark (e-lJ52Dv:90), and the stem-date remark (e-jFOZJj:106). | e-lJ52Dv:90, e-jFOZJj:106 | Not graded for Pass 1 (F1-AC9 asks that the reply *begins* with the line). The leak guard stayed green. The verbatim-template fix may reduce it. |
+| O3 | HHMM source. Both runs took `0000` from the run timestamp (`2026-10-30T00:00:00Z`), not from the wall clock. | e-lJ52Dv:84, e-jFOZJj:100 | Known issue (SDD). Grader 10 checks only that the two writes share a stem. |
+| O4 | Harness facts confirmed on `claude` 2.1.316: `--case 'pass1-*'` works as a glob, `tomo:inbox-analyst` resolves to the stand-in (`analyst-stub.py` ran 3× per case), and the final text was graded by `last_message` (relay 01 green on the last text). | the verdict line; e-lJ52Dv:47,56,72 | The memory note on `last_message` is consistent with this run. Both readings agree here, so the run does not discriminate between them. |
+| O5 | The spike's `9-no-leak` red did not reproduce. The leak guard is green in both complete runs. | the verdict line | Confirms the drift review: the spike result was an artefact of its early stop. |

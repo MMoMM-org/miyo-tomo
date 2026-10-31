@@ -756,3 +756,50 @@ block was added: the change splits an existing rule.
 frame holds nothing but the audit's stdout) and the canary `8-handback-canary`.
 The mutation `status-sentence-first` removes the ban and the 3c anchor and
 injects a status sentence, so the grader goes red on it.
+
+## The Conductor Runs on Sonnet (spec 043 T4.3, v0.25.0)
+
+WHY the frontmatter says `model: sonnet` instead of `model: haiku`.
+
+### The Observed Deviation
+
+The spec 043 merge evidence of 2026-10-31 (three full suites on candidate
+`e9127610`, claude 2.1.316, conductor 0.24.2 on haiku) was RED in suite 2:
+`state-flip-failure-reported` and `upload-failure-reported` each failed
+`7-report-only` in one run. Both hand-back frames began with the conductor's
+own sentence before the report:
+
+```
+Pass 2 did not finish cleanly: the state flip for the one approved doc was rejected, so its state is still `pending-approval`.
+```
+
+```
+Pass 2 synthesis did not complete. The Step 4 report is below.
+```
+
+A full suite earlier that day was RED on `audit-mismatch-stops`
+(`7-report-only-mismatch`) in the same way. That makes three occurrences on one
+day, after rule 5 of v0.24.2 had already split the ban into its own rule and
+named the stop shape. Across the day's suites the preface appeared in about 1
+of 20 Pass 2 runs, so about every second full suite went RED.
+
+### WHY a Model Change, Not More Prose
+
+Rule 5 already says, in a STRICT block with a `Why:` naming this shape, that
+the reply is ONLY the report and that the model NEVER announces, explains or
+summarises the stop. The deviation persisted. Each earlier prose iteration
+(#205 in v0.24.1, F5 in v0.24.2) lowered the rate but did not remove it. A
+further rewording would cost another round of paid suites with no evidence it
+would hold. The owner chose sonnet over another prose iteration. The cost per
+Pass 2 run rises, and the gate's measured cost per full suite rises with it.
+
+The older sections above that say "haiku-tier agent" describe the model the
+rule was written for. They still apply: every rule written for the literal
+haiku reading stays in the runtime file.
+
+### What Keeps This True
+
+`evals/*-failure-reported` grader `7-report-only`, `evals/audit-mismatch-stops`
+grader `7-report-only-mismatch`, and the canary `8-handback-canary`. The
+mutation `status-sentence-first` must stay red on sonnet; `red-proofs.md` of
+spec 043 records the re-proof.

@@ -421,10 +421,12 @@ seen it.
   and the builder guarantees the file exists whenever the build succeeded (the
   skill aborts when it fails). A dedicated reader would add a script, a stub
   and tests for no behaviour `cat` lacks.
-- **The flag is optional.** `force-atomic-handling` runs the same builder
-  without it and is unchanged; `tests/test_040_skill_prose.py` compares the two
-  builder commands with `--warnings-out <path>` removed, since that flag
-  changes only a side file, not the built context.
+- **The flag is optional.** It changes only a side file, not the built
+  context, so a caller without it builds the same context. When 0.14.0 shipped,
+  `force-atomic-handling` still ran the builder without it. Since
+  `force-atomic-handling` 0.15.0 (2026-10-31) both skills pass it and relay
+  through the same `cat`, and `tests/test_040_skill_prose.py` requires the two
+  builder commands to be byte-identical.
 - **No header line.** The `Setup warnings:` header of 0.13.1 is dropped: the
   model's reply is the command's stdout, so relay grader 02 (which searches the
   assistant text for the `WARN:` line) and the user see the builder's lines

@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -232,8 +232,8 @@
+@@ -233,8 +233,8 @@
  > <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
  > <step> exited <code> for "<note>".   (only for a step that exited non-zero)
  
@@ -11,7 +11,7 @@
  that exists. Never substitute the stderr withdrawal block, the stderr
  `[warn]`/`[attach]` lines, or the raw `tomo.delete_withdrawals` /
  `tomo.skipped_assets` JSON for this. The relay lines appear in this shape,
-@@ -269,7 +269,7 @@
+@@ -270,7 +270,7 @@
  without `.md` (`100 Inbox/2026-10-24_1200_suggestions.md` →
  `"2026-10-24_1200_suggestions"`). The note name is the ONLY doc identifier
  allowed in a report; it is never a path.

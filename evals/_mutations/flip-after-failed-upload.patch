@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -184,9 +184,9 @@
+@@ -185,9 +185,9 @@
  ```
  
  Exit 0 = all uploads landed: continue to 3e.

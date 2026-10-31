@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -247,7 +247,7 @@
+@@ -248,7 +248,7 @@
  
  STRICT — copy every line of `tomo-tmp/withheld-deletes.md` and of
  `tomo-tmp/withheld-attachments.md` into the report character for character, one
@@ -9,7 +9,7 @@
  keep its leading `- ` on EVERY line — the first line and every line after it.
  NEVER reword, shorten, merge, summarise, put them in a table or count them.
  NEVER drop a sentence from a line.
-@@ -259,8 +259,7 @@
+@@ -260,8 +260,7 @@
  printed, character for character — keep its `—` dash, its numbers and its final
  period. NEVER reword it.
  2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
@@ -19,7 +19,7 @@
  everything inside them kept: the audit's stdout on a mismatch (3c), the
  `RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
  step ONLY as `<step> exited <code> for "<note>".`, where `<step>` is one of:
-@@ -273,13 +272,11 @@
+@@ -274,15 +273,11 @@
  one per line. NEVER write a sentence that introduces, announces or summarises
  the relay lines (such as "… were withheld as shown below.") — the first relay
  line follows the report directly. NEVER put a blank line, heading, label or any
@@ -28,12 +28,14 @@
 +text between them. If neither relay file exists, say nothing about withheld
  deletes or attachments.
 -4. In the Step 4 report, NEVER add a line that is neither in the example above
--nor a relay line. Your reply is ONLY the report: NEVER write anything before
--or after it — no preface, no notes, no explanation of why a step failed, no
--next steps, no command, no run id, no file name.
+-nor a relay line.
+-5. Your reply is ONLY the report — the Step 4 report, the 3c stop report or
+-any other stop report: NEVER write anything before or after it. NEVER announce,
+-explain or summarise the stop — no preface, no notes, no explanation of why a
+-step failed, no next steps, no command, no run id, no file name.
 +4. In the Step 4 report, NEVER add a line that is neither in the example above,
 +a relay line, nor the file list.
 +5. After the relay lines, list the files you used this run, one path per line.
- Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
+ Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, wrote failure detail, commands and next steps around the report, and prefaced the 3c stop report with a sentence announcing the stop.
  
  ## What you never do

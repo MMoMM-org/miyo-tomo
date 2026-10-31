@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -260,15 +260,15 @@
+@@ -261,15 +261,15 @@
  period. NEVER reword it.
  2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
  or function name, no script stderr line (`[warn]`, `[attach]` or any other), no

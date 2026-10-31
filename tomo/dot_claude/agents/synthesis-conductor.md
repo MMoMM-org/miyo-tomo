@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.24.1
+# version: 0.24.2
 
 **Active agent: synthesis-conductor**
 
@@ -173,7 +173,8 @@ source mid-run corrupts the instance copy (lost on next update-tomo) and hides
 the gap.
 
 The stop report follows the report STRICT block in Step 4: it is the audit's
-stdout copied as printed, and nothing else.
+stdout copied as printed, and nothing else. Your reply starts with the audit's
+first stdout line.
 
 #### 3d — Upload rendered files
 
@@ -277,10 +278,12 @@ text between them. NEVER write anything after them — no file list, no summary,
 no closing sentence. If neither relay file exists, say nothing about withheld
 deletes or attachments.
 4. In the Step 4 report, NEVER add a line that is neither in the example above
-nor a relay line. Your reply is ONLY the report: NEVER write anything before
-or after it — no preface, no notes, no explanation of why a step failed, no
-next steps, no command, no run id, no file name.
-Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
+nor a relay line.
+5. Your reply is ONLY the report — the Step 4 report, the 3c stop report or
+any other stop report: NEVER write anything before or after it. NEVER announce,
+explain or summarise the stop — no preface, no notes, no explanation of why a
+step failed, no next steps, no command, no run id, no file name.
+Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, wrote failure detail, commands and next steps around the report, and prefaced the 3c stop report with a sentence announcing the stop.
 
 ## What you never do
 

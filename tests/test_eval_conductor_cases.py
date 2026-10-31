@@ -856,6 +856,57 @@ def test_status_sentence_first_expects_every_report_only_grader_and_spares_the_c
     assert not {(c, "8-handback-canary") for c in CASE_SETTINGS} & (row["expected"] | row["side"])
 
 
+REPORT_STRICT_START = "STRICT — these rules govern EVERY report you return"
+REPLY_ONLY_BAN = "Your reply is ONLY the report"
+STOP_ANCHOR = "Your reply starts with the audit's first stdout line."
+
+
+def _report_strict_rules(text: str) -> tuple[dict[int, str], str]:
+    """The numbered rules of the report STRICT block (whitespace folded) and its Why: line."""
+    block = text[text.index(REPORT_STRICT_START):]
+    block, why = block.split("\nWhy: ", 1)
+    parts = re.split(r"^(\d+)\. ", block, flags=re.M)
+    rules = {int(num): _norm(body).strip() for num, body in zip(parts[1::2], parts[2::2])}
+    return rules, why.split("\n", 1)[0]
+
+
+def _section_3c(text: str) -> str:
+    return _norm(text[text.index("#### 3c — Coverage audit"):text.index("#### 3d — Upload rendered files")])
+
+
+def test_reply_only_ban_is_its_own_rule_naming_every_report():
+    """Spec 043 F5: the conductor prefaced the 3c stop report with its own sentence
+    (2 of 9 runs, conductor 0.24.1). The ban on text before or after the report sat
+    inside the rule that opens "In the Step 4 report", so it read as Step-4-only.
+    Falsifies 0.24.1: there the only rule carrying the ban opens with that label."""
+    rules, why = _report_strict_rules(CONDUCTOR.read_text(encoding="utf-8"))
+    (num,) = [n for n, body in rules.items() if REPLY_ONLY_BAN in body]
+    ban = rules[num]
+    assert not ban.startswith("In the Step 4 report"), ban
+    for named in ("the Step 4 report", "the 3c stop report", "any other stop report"):
+        assert named in ban, (named, ban)
+    assert "NEVER write anything before or after it." in ban, ban
+    assert "NEVER announce, explain or summarise the stop" in ban, ban
+    step4 = [body for body in rules.values() if body.startswith("In the Step 4 report")]
+    assert step4 and all(REPLY_ONLY_BAN not in body and "before or after" not in body for body in step4)
+    assert "prefaced the 3c stop report" in why, why
+
+
+def test_3c_says_the_stop_report_starts_with_the_audits_first_line():
+    assert STOP_ANCHOR in _section_3c(CONDUCTOR.read_text(encoding="utf-8"))
+
+
+def test_status_sentence_first_removes_the_reply_only_rule_and_the_3c_anchor(tmp_path):
+    """The proof stays strong only if no clause left in the copy forbids the status
+    sentence: the reply-only rule, the 3c start anchor and the Why's preface entry go."""
+    _, after = _patched_text(tmp_path, "status-sentence-first", CONDUCTOR_IN_PLUGIN)
+    rules, why = _report_strict_rules(after)
+    assert not [body for body in rules.values() if REPLY_ONLY_BAN in body or "before or after" in body]
+    assert "announce, explain or summarise the stop" not in _norm(after)
+    assert STOP_ANCHOR not in _section_3c(after)
+    assert "prefaced" not in why
+
+
 def test_spec_043_rows_name_their_offline_model():
     """Each pending row names the T2.1 fixture that models the trace it expects."""
     for p in _pending_proofs():

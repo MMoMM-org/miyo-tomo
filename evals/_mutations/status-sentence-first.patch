@@ -1,27 +1,32 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -172,8 +172,8 @@
+@@ -172,9 +172,8 @@
  source mid-run corrupts the instance copy (lost on next update-tomo) and hides
  the gap.
  
 -The stop report follows the report STRICT block in Step 4: it is the audit's
--stdout copied as printed, and nothing else.
+-stdout copied as printed, and nothing else. Your reply starts with the audit's
+-first stdout line.
 +The stop report follows the report STRICT block in Step 4: it opens with the
 +status sentence of rule 4, then the audit's stdout copied as printed.
  
  #### 3d — Upload rendered files
  
-@@ -277,9 +277,10 @@
+@@ -278,12 +277,11 @@
  no closing sentence. If neither relay file exists, say nothing about withheld
  deletes or attachments.
  4. In the Step 4 report, NEVER add a line that is neither in the example above
--nor a relay line. Your reply is ONLY the report: NEVER write anything before
--or after it — no preface, no notes, no explanation of why a step failed, no
--next steps, no command, no run id, no file name.
+-nor a relay line.
+-5. Your reply is ONLY the report — the Step 4 report, the 3c stop report or
+-any other stop report: NEVER write anything before or after it. NEVER announce,
+-explain or summarise the stop — no preface, no notes, no explanation of why a
+-step failed, no next steps, no command, no run id, no file name.
+-Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, wrote failure detail, commands and next steps around the report, and prefaced the 3c stop report with a sentence announcing the stop.
 +nor a relay line, except the opening sentence. Begin your reply with one short
 +sentence stating whether the run succeeded. NEVER write anything after the
 +report — no notes, no explanation of why a step failed, no next steps, no
 +command, no run id, no file name.
- Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
++Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
  
  ## What you never do
+ 

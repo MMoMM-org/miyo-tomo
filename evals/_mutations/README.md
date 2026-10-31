@@ -33,6 +33,8 @@ headers.
 
 **#205 (recorded 2026-10-26, conductor 0.24.1):** the `failed-step-path`, `flip-after-failed-upload` and `explain-failure` rows, and the two failed-delivery cases added to `drop-audit-line` and `report-run-id`, were each red in 3/3; side-effect reds below are measured. Verdicts: `docs/XDD/specs/041-plugin-eval-gate-for-runtime-prose/red-proofs.md`, section #205.
 
+Spec 043 F5 (conductor 0.24.2) rebased every conductor patch; the injected text of each recorded proof is unchanged. `summarise-mismatch`, `files-used-after` and `explain-failure` also remove the wording of the new rule 5 and the 3c start line that their injected text contradicts (see Clauses).
+
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
@@ -148,6 +150,9 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "it is the audit's stdout copied as printed, and nothing else."
 - removes: "everything inside them kept: the audit's stdout on a mismatch (3c),"
 - removes: "resolve a coverage mismatch — report the diff verbatim and STOP"
+- removes: "Your reply starts with the audit's first stdout line."
+- removes: "NEVER announce, explain or summarise the stop"
+- removes: "and prefaced the 3c stop report with a sentence announcing the stop."
 - adds: "you STOP and summarise the mismatch in one sentence."
 - adds: "The stop report is that one sentence, in your own words — never a line of the audit's output."
 
@@ -183,7 +188,9 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "no file name, no path, no script name."
 - removes: "NEVER write anything after them — no file list, no summary, no closing sentence."
 - removes: "4. In the Step 4 report, NEVER add a line that is neither in the example above nor a relay line."
-- removes: "Your reply is ONLY the report: NEVER write anything before or after it"
+- removes: "Your reply is ONLY the report"
+- removes: "NEVER write anything before or after it."
+- removes: "NEVER announce, explain or summarise the stop"
 - adds: "5. After the relay lines, list the files you used this run, one path per line."
 
 ### attachments-first
@@ -224,7 +231,7 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - removes: "no script stderr line (`[warn]`, `[attach]` or any other)"
 - removes: "Report a failed step ONLY as `<step> exited <code> for "<note>".`"
 - removes: "no explanation of why a step failed,"
-- removes: "and wrote failure detail, commands and next steps around the report."
+- removes: "wrote failure detail, commands and next steps around the report"
 - adds: "> Detail: <the failing script's last stderr line, as printed>"
 - adds: "followed by its Detail line"
 - adds: "drift warnings, the Detail line, and the relay lines."
@@ -369,8 +376,12 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 ### status-sentence-first
 
 - files: `agents/synthesis-conductor.md`
-- removes: "Your reply is ONLY the report: NEVER write anything before or after it"
+- removes: "Your reply is ONLY the report"
+- removes: "NEVER write anything before or after it."
 - removes: "it is the audit's stdout copied as printed, and nothing else."
+- removes: "Your reply starts with the audit's first stdout line."
+- removes: "NEVER announce, explain or summarise the stop"
+- removes: "prefaced the 3c stop report with a sentence announcing the stop."
 - adds: "Begin your reply with one short sentence stating whether the run succeeded."
 - adds: "nor a relay line, except the opening sentence."
 - adds: "it opens with the status sentence of rule 4, then the audit's stdout copied as printed."

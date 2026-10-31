@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -162,18 +162,18 @@
+@@ -162,19 +162,18 @@
    --groups-dir tomo-tmp/tag-handler-groups
  ```
  
@@ -18,13 +18,14 @@
  the gap.
  
 -The stop report follows the report STRICT block in Step 4: it is the audit's
--stdout copied as printed, and nothing else.
+-stdout copied as printed, and nothing else. Your reply starts with the audit's
+-first stdout line.
 +The stop report is that one sentence, in your own words — never a line of the
 +audit's output.
  
  #### 3d — Upload rendered files
  
-@@ -261,7 +261,7 @@
+@@ -262,7 +261,7 @@
  2. NEVER put internals in a report: no run id, no action id (`act-…`), no guard
  or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
  file name, no path, no script name. ONLY these are copied as printed, with
@@ -33,7 +34,20 @@
  `RESULT:` line, the Step 1 drift warnings, and the relay lines. Report a failed
  step ONLY as `<step> exited <code> for "<note>".`, where `<step>` is one of:
  parse, render, coverage audit, upload, state flip, and `<note>` is the note
-@@ -290,4 +290,4 @@
+@@ -280,10 +279,9 @@
+ 4. In the Step 4 report, NEVER add a line that is neither in the example above
+ nor a relay line.
+ 5. Your reply is ONLY the report — the Step 4 report, the 3c stop report or
+-any other stop report: NEVER write anything before or after it. NEVER announce,
+-explain or summarise the stop — no preface, no notes, no explanation of why a
++any other stop report: NEVER write anything before or after it — no preface, no notes, no explanation of why a
+ step failed, no next steps, no command, no run id, no file name.
+-Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, wrote failure detail, commands and next steps around the report, and prefaced the 3c stop report with a sentence announcing the stop.
++Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
+ 
+ ## What you never do
+ 
+@@ -293,4 +291,4 @@
  - NEVER modify frontmatter directly — state-promoter.py handles it
  - NEVER skip the coverage audit
  - NEVER proceed past a coverage mismatch (exit 1 from instructions-diff)

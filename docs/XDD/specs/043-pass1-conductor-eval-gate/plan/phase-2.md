@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Cases, shared graders and offline validation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -99,7 +99,7 @@ This phase delivers all gate cases and graders, each proven offline against real
   4. Validate: the apply test passes.
   5. Success: every non-control grader has a named mutation `[ref: PRD/F5-AC1, F5-AC2, F5-AC3]`
 
-- [ ] **T2.6 Phase Validation** `[activity: validate]`
+- [x] **T2.6 Phase Validation** `[activity: validate]`
 
   - Run the full pytest suite and shellcheck.
   - Confirm that every grader in both Pass 1 cases appears in the offline expectations, and that none is a false positive on the spike trace. Exceptions: graders the spike never reached (the second write, mark-captured, duplicate) are only checked on fixtures.

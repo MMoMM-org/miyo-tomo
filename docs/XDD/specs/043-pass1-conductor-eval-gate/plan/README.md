@@ -107,7 +107,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Stand-ins and runner swap](phase-1.md)
-- [ ] [Phase 2: Cases, shared graders and offline validation](phase-2.md)
+- [x] [Phase 2: Cases, shared graders and offline validation](phase-2.md)
 - [ ] [Phase 3: Paid green runs and findings](phase-3.md)
 - [ ] [Phase 4: RED proofs, documentation and merge evidence](phase-4.md)
 

@@ -703,3 +703,56 @@ failed upload, no failure detail, no leak) and
 `evals/state-flip-failure-reported` (failed-step line for the flip, no failure
 detail, no leak). Both stub kits print failure bait on stderr, so a reply that
 explains the failure outside the report turns the gate RED.
+
+## The Stop Report Is Never Announced (spec 043 F5, v0.24.2)
+
+WHY the "reply is ONLY the report" ban is its own rule of the report STRICT,
+names the 3c stop report, and why 3c says where the stop report starts.
+
+### The Observed Deviation
+
+The spec 043 full suites of 2026-10-31 (claude 2.1.316, conductor 0.24.1) ran
+`evals/audit-mismatch-stops` nine times. In 2 of 9 runs `7-report-only-mismatch`
+was red: the hand-back frame began with the conductor's own sentence, then a
+blank line, then the audit's stdout:
+
+```
+The coverage audit reported a mismatch, so I'm stopping here. The suggestions doc was not uploaded and its state was not flipped.
+
+COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)
+RESULT: FAIL — count or coverage mismatch above.
+```
+
+The second occurrence was kept (`findings.md`, "Full suite 2"). This is the
+#205 deviation — text outside the report — on the stop path instead of the
+failed-delivery path.
+
+### WHY Two Existing Rules Did Not Stop It
+
+- 3c said the stop report is "the audit's stdout copied as printed, and nothing
+  else". "Nothing else" describes the report's content; the model wrote the
+  preface as a frame around the report, not as part of it.
+- Rule 4 said "Your reply is ONLY the report: NEVER write anything before or
+  after it", but the sentence sat inside a rule that opened with "In the Step 4
+  report". The #205 fix widened the ban to the whole reply, yet left it under a
+  Step-4 label, so a literal model could read it as applying only to the Step 4
+  blockquote and not to a stop in 3c.
+
+### WHY the Ban Became Its Own Rule
+
+The ban on writing anything before or after the report is now rule 5, separate
+from rule 4 (no extra line inside the Step 4 report). Rule 5 names every report
+it covers — the Step 4 report, the 3c stop report, any other stop — so no step
+label scopes it, and it names the observed shape ("NEVER announce, explain or
+summarise the stop") next to the #205 shapes. 3c now says the reply starts with
+the audit's first stdout line, which gives the model a positive anchor for the
+first character of the reply instead of only a negative rule. The STRICT's
+`Why:` gained the stop-path preface as one more failure mode. No new STRICT
+block was added: the change splits an existing rule.
+
+### What Keeps This True
+
+`evals/audit-mismatch-stops` grader `7-report-only-mismatch` (the hand-back
+frame holds nothing but the audit's stdout) and the canary `8-handback-canary`.
+The mutation `status-sentence-first` removes the ban and the 3c anchor and
+injects a status sentence, so the grader goes red on it.

@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -427,28 +426,25 @@ def test_read_routing_plan_rejects_unused_modes(tmp_path):
 
 SKIP_DIRS = {".git", "venv", ".venv", "node_modules", "tomo-instance", "tomo-home",
              "tomo-privat", "__pycache__", ".pytest_cache", ".ruff_cache"}
-KIT_OUTPUT_NAMES = {f"{n}.py" for n in SCRIPT_STUBS} | {
-    "calls.log", "routing-plan.json", "routing-plan.fixture.json", ".run_id",
-    "shared-ctx.json", "inbox-state.jsonl", "suggestions-doc.json",
-    "suggestions-rendered.md", "suggestions-wire.json", "suggestion-conductor.md",
-    "vault-config.yaml", "discovery-cache.yaml", "miyo.yaml",
-} | {to_filename(p) for p in PATHS}
-
-
-def _touched_since(root: Path, since: float) -> set[str]:
-    hits = set()
+def _repo_snapshot(root: Path) -> dict[str, tuple[int, int]]:
+    snap = {}
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for f in filenames:
-            if f not in KIT_OUTPUT_NAMES:
-                continue
             p = Path(dirpath) / f
             try:
-                if p.stat().st_mtime >= since:
-                    hits.add(str(p))
+                st = p.lstat()
             except FileNotFoundError:
                 continue
-    return hits
+            snap[str(p.relative_to(root))] = (st.st_mtime_ns, st.st_size)
+    return snap
+
+
+def _diff(before: dict, after: dict) -> str:
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    changed = sorted(k for k in set(before) & set(after) if before[k] != after[k])
+    return f"added={added} removed={removed} changed={changed}"
 
 
 def _tree_state(root: Path) -> dict[str, float]:
@@ -460,11 +456,12 @@ def _tree_state(root: Path) -> dict[str, float]:
 def test_nothing_written_outside_the_workspace(tmp_path):
     home_tomo = Path.home() / ".tomo"
     before_home = _tree_state(home_tomo)
-    start = time.time() - 1
+    before_repo = _repo_snapshot(REPO)
     ws, _ = stage(tmp_path, "1", "1")
     full_pipeline(ws)
     assert _tree_state(home_tomo) == before_home
-    assert _touched_since(REPO, start) == set()
+    after_repo = _repo_snapshot(REPO)
+    assert after_repo == before_repo, _diff(before_repo, after_repo)
 
 
 # --- format drift -------------------------------------------------------------------

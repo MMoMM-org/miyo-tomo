@@ -333,12 +333,35 @@ def pass1_completions(p1: list[str], out: Path) -> None:
     warn_line = json.loads(p1[index_of(p1, "active tracker field(s) have no keywords")])
     stderr = warn_line["message"]["content"][0]["content"]
     (warn_text,) = [ln for ln in stderr.splitlines() if ln.startswith("WARN: ")]
-    relayed = complete(f"{REPORT}\n\n{DUPLICATE_LINE}\n\n{warn_text}")
-    first_agent = index_of(relayed, '"name":"Agent","input":{')
-    relayed.insert(
-        first_agent,
-        _text_event(text_tpl, warn_text, "00000000-0000-4000-8000-0000000000f1"),
-    )
+    relayed_report = f"{REPORT}\n\n{DUPLICATE_LINE}\n\n{warn_text}"
+    relayed = complete(relayed_report)
+
+    def cat_relay(ids_fn, output: str) -> list[str]:
+        return _call(
+            bash_use,
+            bash_res,
+            ids_fn,
+            "Bash",
+            {"command": "cat tomo-tmp/setup-warnings.txt"},
+            output,
+        )
+
+    def before_batch_count(lines: list[str], block: list[str]) -> list[str]:
+        v = list(lines)
+        at = index_of(v, '"command":"python3 scripts/read-routing-plan.py --batch-count')
+        v[at:at] = block
+        return v
+
+    # F2-AC2 (2026-10-31): the relay is the `cat` of the saved warnings at the top of
+    # step 3. Fixed ids, not the shared counter, so no later fixture changes.
+    def fixed_ids() -> tuple[str, str, str]:
+        return (
+            "toolu_000000000000000000000000f1",
+            "00000000-0000-4000-8000-0000000000f1",
+            "00000000-0000-4000-8000-0000000000f2",
+        )
+
+    relayed = before_batch_count(relayed, cat_relay(fixed_ids, warn_text))
     write(out, "pass1-complete-relayed.jsonl", relayed)
 
     agents = indices_of(done, '"name":"Agent","input":{')
@@ -504,6 +527,24 @@ def pass1_completions(p1: list[str], out: Path) -> None:
         "pass1-mark-between-writes.jsonl",
         _move(done, mark_use, mark_use + 2, json_call),
     )
+
+    # Appended last: the F2-AC2 tool relay (owner decision 2026-10-31), relay grader 02.
+    write(
+        out,
+        "pass1-cat-before-dispatch.jsonl",
+        before_batch_count(done, cat_relay(ids, warn_text)),
+    )
+    v = list(done)
+    after_first = index_of(v, '"text":"Async agent launched successfully.') + 1
+    v[after_first:after_first] = cat_relay(ids, warn_text)
+    write(out, "pass1-cat-after-dispatch.jsonl", v)
+    write(
+        out,
+        "pass1-cat-empty.jsonl",
+        before_batch_count(done, cat_relay(ids, "(Bash completed with no output)")),
+    )
+    # Mutation warn-in-report-only: the report repeats the WARN line, no `cat` ran.
+    write(out, "pass1-warn-in-report-only.jsonl", complete(relayed_report))
 
 
 def pass2_variants(p2: list[str], out: Path) -> None:

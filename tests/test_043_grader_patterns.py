@@ -92,8 +92,9 @@ FIXTURES = {
     # pass1-complete with ONE edit, the shape of the mutation that grader must catch.
     "pass1-complete.jsonl": "pass1-spike up to the .md write, then the .json write, "
     "mark-captured and the Pass 1 report (assistant text + final result frame)",
-    "pass1-complete-relayed.jsonl": "pass1-complete + the WARN relay before the first "
-    "dispatch, and a report that carries the duplicate line and the WARN line",
+    "pass1-complete-relayed.jsonl": "pass1-complete + the `cat tomo-tmp/setup-warnings.txt` "
+    "call (result: the WARN line) before the batch-count call, and a report that carries "
+    "the duplicate line and the WARN line",
     "pass1-conductor-dispatched.jsonl": "pass1-complete + an Agent call to "
     "tomo:suggestion-conductor after the conductor Read",
     "pass1-analyst-name-not-type.jsonl": "pass1-complete with every analyst dispatch's "
@@ -125,6 +126,15 @@ FIXTURES = {
     "mark-captured chained with `&&` in ONE Bash call (the .md write separate)",
     "pass1-mark-between-writes.jsonl": "pass1-complete with mark-captured moved between "
     "the .md and the .json write",
+    # F2-AC2 as redefined 2026-10-31: the relay is the `cat` tool result before dispatch.
+    "pass1-cat-before-dispatch.jsonl": "pass1-complete + the `cat "
+    "tomo-tmp/setup-warnings.txt` call (result: the WARN line) before the batch-count call",
+    "pass1-cat-after-dispatch.jsonl": "pass1-complete + the same `cat` call and result "
+    "after the first Agent call's result",
+    "pass1-cat-empty.jsonl": "pass1-complete + the `cat` call before the batch-count call, "
+    "its result empty (`(Bash completed with no output)`)",
+    "pass1-warn-in-report-only.jsonl": "pass1-complete with the relay report (duplicate "
+    "line and WARN line) and no `cat` call: the trace of mutation warn-in-report-only",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -192,6 +202,15 @@ GRADERS = {
         match="contains",
         pattern=r"active tracker field\(s\) have no keywords[\s\S]*\"name\":\"Agent\"",
     ),
+    # The grader 02 scan without its `cat` anchor: the builder's own tool_result carries
+    # the WARN text before every dispatch, so this form is green on a run with no relay.
+    "control-warn-result-without-cat": inline(
+        type="regex",
+        target="trace",
+        match="contains",
+        pattern=r'^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?\{"type":"user"[^\n]*'
+        r'"type":"tool_result"[^\n]*active tracker field\(s\) have no keywords',
+    ),
     "control-unanchored-mark": inline(
         type="regex",
         target="trace",
@@ -210,15 +229,41 @@ GRADERS = {
 # (fixture, grader id) → expected verdict. `passed` is the grader's verdict (match AND
 # match-mode applied); `count` is the number of regex matches / matching tool calls.
 EXPECTATIONS = {
-    # WARN before dispatch (SDD table rows 1-3).
+    # WARN before dispatch (SDD Complex Logic, F2-AC2 as redefined 2026-10-31: the
+    # `cat tomo-tmp/setup-warnings.txt` call and its WARN result before the first Agent).
     ("pass1-spike.jsonl", "warn-before-first-dispatch"): Expect(
-        False, 0, "expected finding: the spike never relayed the WARN before dispatch"
+        False,
+        0,
+        "expected finding: the spike predates the cat relay — no `cat` call before the "
+        "first dispatch",
     ),
     ("pass1-warn-before-dispatch.jsonl", "warn-before-first-dispatch"): Expect(
-        True, 1, "relay before the first Agent line"
+        False, 0, "a text relay without the cat no longer counts (F2-AC2, 2026-10-31)"
     ),
     ("pass1-warn-after-dispatch.jsonl", "warn-before-first-dispatch"): Expect(
-        False, 0, "relay after the first Agent line"
+        False, 0, "no cat; a text relay after the first Agent line"
+    ),
+    ("pass1-cat-before-dispatch.jsonl", "warn-before-first-dispatch"): Expect(
+        True, 1, "cat and its WARN result before the first Agent line"
+    ),
+    ("pass1-cat-after-dispatch.jsonl", "warn-before-first-dispatch"): Expect(
+        False, 0, "cat after the first Agent line"
+    ),
+    ("pass1-cat-empty.jsonl", "warn-before-first-dispatch"): Expect(
+        False, 0, "cat before dispatch, but its result carries no WARN line"
+    ),
+    ("pass1-warn-in-report-only.jsonl", "warn-before-first-dispatch"): Expect(
+        False, 0, "WARN only in the report, no cat (mutation warn-in-report-only)"
+    ),
+    ("pass1-warn-in-report-only.jsonl", "warn-in-reply"): Expect(
+        True, 1, "the report still repeats the WARN line verbatim"
+    ),
+    # Control: without the cat anchor the builder's earlier result is a false green.
+    ("pass1-complete.jsonl", "control-warn-result-without-cat"): Expect(
+        True, 1, "the builder's WARN tool_result matches; no relay ran"
+    ),
+    ("pass1-cat-empty.jsonl", "control-warn-result-without-cat"): Expect(
+        True, 1, "the builder's WARN tool_result matches; the cat printed nothing"
     ),
     # Reduce-after-dispatch violation (SDD table rows 4-5).
     ("pass1-spike.jsonl", "reduce-after-last-dispatch"): Expect(
@@ -487,10 +532,10 @@ EXPECTATIONS = {
         "(plan T2.3 step 2 expected green; F2-AC1 says the line appears verbatim)",
     ),
     ("pass1-complete-relayed.jsonl", "warn-before-first-dispatch"): Expect(
-        True, 1, "relayed before the first Agent line"
+        True, 1, "cat and its WARN result before the first Agent line"
     ),
     ("pass1-complete.jsonl", "warn-before-first-dispatch"): Expect(
-        False, 0, "never relayed"
+        False, 0, "never relayed, no cat"
     ),
     ("pass1-complete-relayed.jsonl", "duplicate-line"): Expect(True, 1, "line present"),
     ("pass1-complete.jsonl", "duplicate-line"): Expect(False, 0, "absent"),

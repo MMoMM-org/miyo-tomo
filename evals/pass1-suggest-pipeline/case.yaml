@@ -6,5 +6,5 @@ context:
 execution:
   max_turns: 60
   timeout_seconds: 900
-  allowed_tools: [Agent, Bash, Read, Skill]
+  allowed_tools: [Agent, Bash, Read, Skill, Write]
   prompt: '/tomo:inbox'

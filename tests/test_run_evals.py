@@ -749,7 +749,7 @@ def test_pass1_case_files_are_as_specified(case):
         "execution": {
             "max_turns": 60,
             "timeout_seconds": 900,
-            "allowed_tools": ["Agent", "Bash", "Read", "Skill"],
+            "allowed_tools": ["Agent", "Bash", "Read", "Skill", "Write"],
             "prompt": "/tomo:inbox",
         },
     }

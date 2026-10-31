@@ -324,15 +324,15 @@ Workspace files the kit creates or the stubs write (each format copied from the 
 |---|---|---|---|---|---|
 | 01 | conductor-not-dispatched | `tool_used` Agent, min 0, max 0 | input `suggestion-conductor` | F1-AC1 | `dispatch-conductor` |
 | 02 | analyst-dispatched-3x | `tool_used` Agent, min 3, max 3 | `"subagent_type":"tomo:inbox-analyst"` | F1-AC2 | `analyst-name-not-type` |
-| 03 | no-general-purpose | `tool_used` Agent, min 0, max 0 | `general-purpose` | F1-AC2 | `analyst-name-not-type` |
+| 03 | no-general-purpose | `tool_used` Agent, min 0, max 0 | `^(?![\s\S]*"subagent_type":)\|"subagent_type":"general-purpose"` (also catches a dispatch without `subagent_type`) | F1-AC2 | `analyst-name-not-type` |
 | 04 | subfolder-path-and-key | `tool_used` Agent, min 1 | `path\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"[\s\S]*item_key\s*=\s*\\"100 Inbox/Places/Dresden\.md\\"` | F1-AC3 | `path-from-stem` |
 | 05 | shared-ctx-once | `tool_used` Bash, min 1, max 1 | `python3?\s+scripts/shared-ctx-builder\.py` | F1-AC4 | `setup-in-conductor` |
 | 06 | run-id-once | `tool_used` Bash, min 1, max 1 | `python3?\s+scripts/run-id\.py` | F1-AC4 | `setup-in-conductor` |
-| 07 | setup-before-dispatch | `tool_order` | shared-ctx-builder before Agent inbox-analyst | F1-AC4 | `dispatch-before-setup` |
+| 07 | setup-before-dispatch | `tool_order` | shared-ctx-builder before any Agent dispatch | F1-AC4 | `dispatch-before-setup` |
 | 08 | reducer-before-render | `tool_order` | reducer before render | F1-AC5 | `render-before-reduce` |
 | 09 | reduce-after-last-dispatch | `regex` trace | last `tomo:inbox-analyst` tool_use occurs before the first `suggestions-reducer` call (anchored lookahead) | F1-AC5 | `reduce-before-batch-2` |
 | 10 | two-script-writes-same-stem | `regex` trace | `--vault \\"100 Inbox/(\d{4}-\d{2}-\d{2}_\d{4})_suggestions\.md\\"[\s\S]*--vault \\"100 Inbox/\1_suggestions\.json\\"` | F1-AC6 | `publish-md-with-write-tool` |
-| 11 | no-inline-vault-write | `tool_used` Write, min 0, max 0 | `100 Inbox/` | F1-AC6 | `publish-md-with-write-tool` |
+| 11 | no-inline-vault-write | `tool_used` Write, min 0, max 0 | `"file_path"` under `100 Inbox/` | F1-AC6 | `publish-md-with-write-tool` |
 | 12 | mark-captured-once-after-writes | `tool_used` count 1 + `tool_order` (`_suggestions\.json` write before mark-captured) | | F1-AC7 | `mark-before-write` |
 | 13 | no-inline-python | `tool_used` Bash, min 0, max 0 | `python3? -c` | F1-AC8 | `inline-python-read` |
 | 14 | report-line-anchored | `regex` last_message | `(?:^\|\n)Pass 1 complete: 3 items analysed, suggestions written to\s+\[\[\d{4}-\d{2}-\d{2}_\d{4}_suggestions\]\]` | F1-AC9 | `reword-report-line` |
@@ -414,7 +414,7 @@ sequenceDiagram
     M->>A: Agent x1 (batch 2)
     A-->>M: task_notification "done"
     M->>S: reducer, render, kado-write-file x2, mark-captured
-    M-->>H: report (last result frame)
+    M-->>H: report (last assistant text)
 ```
 
 ### Error Handling
@@ -628,7 +628,7 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 - **`input_match` runs on JSON-encoded input.** Quotes appear as `\"`, and key order is not guaranteed (memory). Patterns over Agent prompts must use `\\"`.
 - **A script-name matcher also hits `cat scripts/x.py`.** Require `python3?\s+scripts/x\.py`.
 - **`tool_used` defaults to `min: 1`.** A "never" grader needs `min: 0` and `max: 0`.
-- **Background dispatch gives several `result` frames.** `last_message` is the last one. Never grade the conductor's interim "waiting" text.
+- **Background dispatch gives several `result` frames.** `last_message` is not the last frame. It is the text of the last assistant event that has text (claude 2.1.314 bundle). Never grade the conductor's interim "waiting" text.
 - **The spike's grader 13 was a false positive.** Every report grader anchors at `^` or `\n`.
 - **The trace contains the runtime prose itself**, from the conductor's `Read` result and the `Skill` expansion. A `target: trace` pattern that names a script or a template line must anchor on the event shape (`"name":"Bash","input":{"command":…`, `"type":"assistant"…"type":"text"`). Otherwise it matches the instructions instead of the behaviour.
 - **Kept traces are sealed with mode 000.** Use `chmod 700` on the directory and on `sealed/`, then `chmod -R u+rwX`. Never run git inside a kept directory.
@@ -660,6 +660,6 @@ Offline validation (2026-10-30, spike trace `e-t7N3jn`):
 
 | Term | Definition | Context |
 |------|------------|---------|
-| `last_message` | The final `result` frame's text | Report graders |
+| `last_message` | The text of the last assistant event that has text | Report graders |
 | `tool_used` / `tool_order` / `regex` | `claude plugin eval` grader types | All graders |
 | `subagent_type` | The Agent tool input that selects the agent; the plugin namespace is `tomo:` | Dispatch graders |

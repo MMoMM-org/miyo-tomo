@@ -38,6 +38,9 @@
 | 2026-10-30 | PRD v1.0 approved. `force-atomic-handling` is not gated in this phase because it has no case. If WARN-before-dispatch is RED, that is a finding, and the fix goes into the prose | Owner approved `requirements.md`. The phase moves to SDD. |
 | 2026-10-30 | SDD v1.0 approved, ADR-1 to ADR-6 confirmed: the runner swaps in the analyst stand-in; Pass 1 kit `_lib/pass1-stubs.sh`; 2 cases on that kit; a shared report-only grader with a hand-back canary; ordered trace regexes; the conductor staged from the assembled copy | Owner confirmation. The trace regexes were validated offline against the spike trace. That validation caught an unanchored pattern that matched the skill text, and the pattern is now anchored on the tool_use. |
 | 2026-10-30 | Decomposition tier: Incremental (classifier recommendation; owner chose Incremental) | 7 features, 31 PRD criteria, 8 components. The work is ordered by paid owner-run evals (findings first, RED proofs after green cases). |
+| 2026-10-31 | Phase 1 drift: the reducer stub also exits 2 while fewer results exist than routed `fresh_sources` | Owner decision. A reduce before any analyst finished (0/0) or between batches passed the state-line check alone. |
+| 2026-10-31 | Grant `Write` in both Pass 1 cases' `allowed_tools` | Owner decision. Without it the CLI withholds Write, so pipeline grader 11 (no inline vault write) could never go red; the real conductor has Write, so the eval matches production. |
+| 2026-10-31 | Relay grader 01 keeps the `WARN: ` prefix verbatim (F2-AC1) | Owner decision. The spike quoted the WARN text without the prefix, so 01 is red on the spike (the plan expected green); a red smoke result is a prose finding for Phase 3. |
 
 ## Context
 

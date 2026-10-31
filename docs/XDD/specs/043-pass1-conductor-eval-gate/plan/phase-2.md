@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Cases, shared graders and offline validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -31,7 +31,7 @@ phase: 2
 
 This phase delivers all gate cases and graders, each proven offline against real traces.
 
-- [ ] **T2.1 Offline grader-pattern harness and trace fixtures** `[activity: testing]`
+- [x] **T2.1 Offline grader-pattern harness and trace fixtures** `[activity: testing]`
 
   1. Prime: spike traces `e-t7N3jn` (Pass 1) and `e-O6bppm` (Pass 2), and the grader YAML frontmatter format `[ref: SDD/Complex Logic; offline validation table]`
   2. Test: `tests/test_043_grader_patterns.py` loads each `regex` grader's frontmatter from `evals/*/graders/*.md` (and `evals/_lib/*.md`) and evaluates `pattern`, `match` and `count` against the fixtures. Each fixture declares its expected pass/fail per grader.
@@ -53,7 +53,7 @@ This phase delivers all gate cases and graders, each proven offline against real
      - `tool_used` / `tool_order` graders are checked with a small evaluator over the fixture's tool_use events, using the JSON-encoded input exactly as the harness sees it.
   3. Implement:
      - `evals/pass1-suggest-pipeline/`:
-       - `case.yaml`: prompt `/tomo:inbox`, `allowed_tools: [Agent, Bash, Read, Skill]`, `max_turns: 60`, `timeout_seconds: 900`, `runs: 3`.
+       - `case.yaml`: prompt `/tomo:inbox`, `allowed_tools: [Agent, Bash, Read, Skill, Write]`, `max_turns: 60`, `timeout_seconds: 900`, `runs: 3`.
        - `scaffold.sh`: `SHARED_CTX_WARN=0 DUPLICATES=0`, then `stage_pass1_instance`.
        - graders 01–15 and a byte copy of `9-no-leak.md`.
   4. Validate: the pattern tests pass, and `run-evals.sh` preflight accepts the case (a dry run with a fake `CLAUDE_BIN` under pytest).
@@ -63,7 +63,7 @@ This phase delivers all gate cases and graders, each proven offline against real
 
   1. Prime: the relay grader table and the WARN-before-dispatch walkthrough `[ref: SDD/Complex Logic; PRD/F2]`
   2. Test: expectations in T2.1.
-     - On the spike trace, relay 02 (WARN before the first dispatch) is red and relay 01 (WARN in the reply) is green.
+     - On the spike trace both relay 01 (WARN in the reply) and relay 02 (WARN before the first dispatch) are red: the spike quoted the WARN text without its `WARN: ` prefix, and the owner decision of 2026-10-31 keeps the prefix verbatim.
      - On the "relayed before" fixture both are green; on the "relayed after" fixture 02 is red.
   3. Implement: `evals/pass1-warn-and-duplicates-relayed/` with `SHARED_CTX_WARN=1 DUPLICATES=1`, relay graders 01–04 and the leak guard.
   4. Validate: the pattern tests and the preflight dry run pass.

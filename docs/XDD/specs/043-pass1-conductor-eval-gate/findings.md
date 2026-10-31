@@ -111,3 +111,21 @@ F4 persists for the third time, in the same shape:
 - e-QKbc19:53 is the first dispatch.
 
 The fixed-text `STRICT` of 0.13.1 was answered in thinking, like the duty wording of 0.13.0. Every other grader in the case stayed green.
+
+## Smoke 4 — 2026-10-31
+
+Command: `scripts/run-evals.sh --case pass1-warn-and-duplicates-relayed --runs 1 --keep-temp` (`suggest-handling` 0.14.0, the Plan B `cat` relay)
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-warn-and-duplicates-relayed: 02-warn-before-first-dispatch (run 0) · runs 1 · $0.21 · 50 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T11-11-16Z
+```
+
+Kept trace: `/private/tmp/e-GDBsiX/out/trace.jsonl`. Line numbers count from 0.
+
+F4 persists for the fourth time:
+
+- e-GDBsiX:28 is the new `cat tomo-tmp/setup-warnings.txt` call, and e-GDBsiX:29 its result: the `WARN:` line, exactly as saved. The model ran the relay command at the right place.
+- e-GDBsiX:47 is a non-empty thinking block that paraphrases the warning ("I noticed the "mood" and "sleep" trackers have no keywords set … I'll run /tomo-setup trackers …").
+- e-GDBsiX:48 is the batch-count call. No text block came between them.
+
+In all four runs the reaction is a non-empty thinking block in the same place (O6), and it reads like a message to the user. It never appears as a text block. The relay command itself works: the verbatim `WARN:` line now sits in a tool result before the first dispatch (e-GDBsiX:54).

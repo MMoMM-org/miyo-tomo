@@ -546,6 +546,26 @@ def pass1_completions(p1: list[str], out: Path) -> None:
     # Mutation warn-in-report-only: the report repeats the WARN line, no `cat` ran.
     write(out, "pass1-warn-in-report-only.jsonl", complete(relayed_report))
 
+    # Appended last: the `cat` sent in the same message as the two read-config calls,
+    # its result arriving after theirs (the shape of trace e-Pu75Hu, lines 26-29 from 0).
+    profile_use = index_of(
+        done, '"command":"python3 scripts/read-config-field.py --field profile'
+    )
+    profile_res = profile_use + 2
+    assert '"type":"tool_result"' in done[profile_res]
+    cat_use, cat_res = _call(
+        done[profile_use],
+        done[profile_res],
+        ids,
+        "Bash",
+        {"command": "cat tomo-tmp/setup-warnings.txt"},
+        warn_text,
+    )
+    v = list(done)
+    v[profile_res + 1 : profile_res + 1] = [cat_res]
+    v[profile_use + 1 : profile_use + 1] = [cat_use]
+    write(out, "pass1-cat-batched.jsonl", v)
+
 
 def pass2_variants(p2: list[str], out: Path) -> None:
     hb = index_of(p2, "[Subagent hand-back]")

@@ -226,3 +226,13 @@ GREEN 7/7 cases · runs 21 · $2.25 · 344 s · claude 2.1.316 · tree clean · 
 4. K1: the full-suite duration KPI (≤ 4 min) is missed at 298–344 s. This needs an owner decision before T4.3 validates against it.
 5. F5 fix evidence: one GREEN suite after 2/9 reds before the fix. The three T4.3 suites must run with `--keep-temp`.
 6. The 041 proof patches `summarise-mismatch`, `files-used-after`, `explain-failure`, `report-run-id` and `paraphrase-relay` were rebased onto conductor 0.24.2, and their sets of removed clauses grew. Their recorded RED proofs were measured against the old patches. Re-prove them in Phase 4, and say so in the PR.
+
+## Phase 4 — T4.1 Block A — 2026-10-31
+
+### F6 — relay grader 02 false red on batched Bash calls (fixed)
+
+| # | Grader | Class | Evidence | Fix |
+|---|---|---|---|---|
+| F6 | relay `02-warn-before-first-dispatch` | grader defect (false red) | Found in the `reword-report-line` proof, relay run 2 (`tomo-tmp/evals/2026-10-31T12-54-30Z`, trace `e-Pu75Hu`). The model sent `read-config-field.py --field profile` and `cat tomo-tmp/setup-warnings.txt` in one message: e-Pu75Hu:26 and :27 are the two tool_uses, :28 is the profile result (`miyo`), :29 is the `cat`'s result carrying the `WARN:` line, all before the first dispatch. The grader required the `cat`'s result to be the next user event after the `cat`, so it stopped at :28 and went red on a compliant run. | Grader 02 now captures the `cat` tool_use id and requires the `tool_result` with that `tool_use_id` (and the WARN text in its `content`) before the first Agent line, with any lines but Agent tool_uses in between. New fixture `pass1-cat-batched.jsonl` (the shape of e-Pu75Hu) is green; `pass1-cat-before-dispatch` and `pass1-complete-relayed` stay green; `pass1-cat-after-dispatch`, `pass1-cat-empty`, `pass1-warn-in-report-only` and every fixture without a `cat` stay red; the control row is unchanged. |
+
+This is a defect fix, not a loosening: the grader still demands the same behaviour (the `cat` of the saved warnings and its WARN result, both before the first dispatch). It only stops depending on the order in which the results of one message's tool calls arrive. Re-evaluated read-only against every kept trace under `/private/tmp/e-*` that runs the `cat` (61): the old and the new pattern agree on all of them except e-Pu75Hu (old red, new green). Smoke 4 (`e-GDBsiX`) stays green. The `reword-report-line` side-effect red on relay 02, run 2, is therefore void.

@@ -135,6 +135,8 @@ FIXTURES = {
     "its result empty (`(Bash completed with no output)`)",
     "pass1-warn-in-report-only.jsonl": "pass1-complete with the relay report (duplicate "
     "line and WARN line) and no `cat` call: the trace of mutation warn-in-report-only",
+    "pass1-cat-batched.jsonl": "pass1-complete + the `cat` call sent in the same message "
+    "as the two read-config calls, its WARN result after theirs (trace e-Pu75Hu)",
 }
 
 # Grader id → grader. `inline` rows carry the SDD-validated patterns until T2.2-T2.4 write
@@ -251,6 +253,9 @@ EXPECTATIONS = {
     ),
     ("pass1-cat-empty.jsonl", "warn-before-first-dispatch"): Expect(
         False, 0, "cat before dispatch, but its result carries no WARN line"
+    ),
+    ("pass1-cat-batched.jsonl", "warn-before-first-dispatch"): Expect(
+        True, 1, "cat batched with other Bash calls; its WARN result is bound by id"
     ),
     ("pass1-warn-in-report-only.jsonl", "warn-before-first-dispatch"): Expect(
         False, 0, "WARN only in the report, no cat (mutation warn-in-report-only)"

@@ -162,7 +162,7 @@ graph LR
   type: JSONL, one event per line
   fields used:
     - "assistant tool_use: name + JSON-encoded input (tool_used / tool_order input_match)"
-    - "assistant Bash tool_use of `cat tomo-tmp/setup-warnings.txt` and the next user tool_result (WARN-before-dispatch regex)"
+    - "assistant Bash tool_use of `cat tomo-tmp/setup-warnings.txt` and the user tool_result bound to its tool_use id (WARN-before-dispatch regex)"
     - "user tool_result of Agent: hand-back frame text 'The report follows:' (report-only)"
     - "system task_started: subagent_type"
   doc: "spike/write-up.md Q2, Q5"
@@ -352,7 +352,7 @@ Notes on the controls:
 | # | Grader | Type / target | Pattern essence | PRD | RED proof |
 |---|---|---|---|---|---|
 | 01 | warn-in-reply | `regex` last_message | the full WARN text, escaped, verbatim | F2-AC1 | `warn-is-diagnostic` |
-| 02 | warn-before-first-dispatch | `regex` trace | a `cat tomo-tmp/setup-warnings.txt` Bash call, then its tool_result with the WARN text, both before the first Agent call (see Complex Logic; changed 2026-10-31) | F2-AC2 | `warn-in-report-only` |
+| 02 | warn-before-first-dispatch | `regex` trace | a `cat tomo-tmp/setup-warnings.txt` Bash call, then the tool_result with that call's id carrying the WARN text, both before the first Agent call (see Complex Logic; changed 2026-10-31; result bound by id since findings F6) | F2-AC2 | `warn-in-report-only` |
 | 03 | duplicate-line | `regex` last_message | `(?:^\|\n)1 proposed MOC\(s\) already existed in the vault and are offered as\s+unticked links instead\.` | F2-AC3 | `drop-duplicate-line` |
 | 04 | report-line-anchored | as in pipeline 14 | | F2-AC4 | `reword-report-line` |
 | 09-no-leak | leak guard | | | F2-AC4 | existing |
@@ -436,30 +436,32 @@ sequenceDiagram
 **WARN-before-first-dispatch (relay grader 02).** Changed 2026-10-31 (owner decision, findings F4): the relay is the tool result of `cat tomo-tmp/setup-warnings.txt`, not an assistant text block. `tool_order` can say that the `cat` came before the first dispatch, but not what the `cat` printed. The grader is therefore a regex on the trace, which is in chronological order with one JSON event per line:
 
 ```
-pattern: '^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?(?![^\n]*"name":"Agent")[^\n]*"name":"Bash","input":\{[^\n]*?"command":"cat\s+tomo-tmp/setup-warnings\.txt[^\n]*\n(?:(?![^\n]*"name":"Agent")(?!\{"type":"user")[^\n]*\n)*?\{"type":"user"[^\n]*"type":"tool_result"[^\n]*active tracker field\(s\) have no keywords'
+pattern: '^(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?(?![^\n]*"name":"Agent")[^\n]*"type":"tool_use","id":"(toolu_[A-Za-z0-9]+)","name":"Bash","input":\{[^\n]*?"command":"cat\s+tomo-tmp/setup-warnings\.txt[^\n]*\n(?:(?![^\n]*"name":"Agent")[^\n]*\n)*?[^\n]*"tool_use_id":"\1","type":"tool_result","content":"(?:[^"\\\n]|\\.)*?active tracker field\(s\) have no keywords'
 match: contains
 ```
 
 It reads as:
 
 1. Starting from the first line, pass over lines that contain no `"name":"Agent"` tool_use.
-2. Reach a Bash **tool_use** whose command starts with `cat tomo-tmp/setup-warnings.txt`. It is anchored on the tool_use shape, because the `Skill` expansion quotes the same command as prose.
-3. Pass over lines that are neither an Agent tool_use nor a user event (system events, other tool_uses of the same message).
-4. The next user event must be a `tool_result` that carries the WARN text.
+2. Reach a Bash **tool_use** whose command starts with `cat tomo-tmp/setup-warnings.txt`, and capture its id (`"type":"tool_use","id":"(toolu_…)","name":"Bash"`, the key order of every tool_use block in the traces). It is anchored on the tool_use shape, because the `Skill` expansion quotes the same command as prose.
+3. Pass over lines that contain no Agent tool_use (system events, other tool_uses of the same message, their results).
+4. Reach the `tool_result` whose `tool_use_id` is the captured id (`\1`) and whose `content` string carries the WARN text.
 
-The skipped lines may not contain an Agent call, so the match succeeds only if the `cat` and its result come before the first dispatch. Step 4 stops at the first user event after the `cat`. The builder's own tool_result also carries the WARN text, but it comes before the `cat`, so it can never be that event. An empty file gives `(Bash completed with no output)` as that event, which does not match.
+The skipped lines may not contain an Agent call, so the match succeeds only if the `cat` and its result come before the first dispatch. Step 4 is bound to the `cat` by id, so the result of another call cannot stand in for it: the builder's own tool_result carries the WARN text, but under a different id. An empty file gives `(Bash completed with no output)` as the `cat`'s content, which does not match. The backreference is in the Python/JS common subset.
+
+When the model sends the `cat` in the same message as other Bash calls, the results of the other calls can arrive first (trace `e-Pu75Hu`, lines 26–29: the `read-config-field.py --field profile` tool_use, the `cat` tool_use, the profile result, then the `cat`'s WARN result). The id binding accepts that order; the 2026-10-31 form before it, which required the `cat`'s result to be the next user event, was red on it (findings F6).
 
 Walkthrough on the smoke 4 trace `e-GDBsiX` (line numbers from 0):
 
 - Lines 0–27 contain no Agent call. The builder's WARN tool_result is among them; it satisfies nothing, because no `cat` tool_use has been seen yet.
 - Line 28 is the Bash tool_use `{"command":"cat tomo-tmp/setup-warnings.txt"}` (step 2).
-- Line 29 is the next user event: the `tool_result` whose content is the `WARN:` line (step 4). **Match → green.**
+- Line 29 is the `tool_result` with the `cat`'s id, whose content is the `WARN:` line (step 4). **Match → green.**
 - The thinking block (line 47), the batch-count call (line 48) and the first dispatch (line 54) come later and do not matter.
 
 On the smoke 1–3 traces (`e-jFOZJj`, `e-XygOSA`, `e-QKbc19`) the prose had no `cat`. The scan reaches the first Agent line without a `cat` tool_use: **no match → red**.
 
 - The JSON encoding of `(`, `)` and `:` is unchanged, so the pattern needs no extra escaping beyond the regex.
-- The pattern is validated offline (`tests/test_043_grader_patterns.py`): green on a fixture with the `cat` and its WARN result before the first dispatch; red on the `cat` after the first dispatch, on a `cat` with an empty result, and on every fixture without a `cat` (including the older text-relay fixtures). A control row shows that the scan without the `cat` anchor matches the builder's result and would be green on a run that never ran the `cat`.
+- The pattern is validated offline (`tests/test_043_grader_patterns.py`): green on a fixture with the `cat` and its WARN result before the first dispatch, and on `pass1-cat-batched` (the `cat` batched with the read-config calls, its result after theirs); red on the `cat` after the first dispatch, on a `cat` with an empty result, and on every fixture without a `cat` (including the older text-relay fixtures). A control row shows that the scan without the `cat` anchor matches the builder's result and would be green on a run that never ran the `cat`.
 
 Superseded form (2026-10-30 to 2026-10-31): the scan ended at an assistant `"type":"text"` block carrying the WARN text. All four paid runs reacted only in a thinking block, never in a text block, so that form was red 4/4 (findings F4).
 

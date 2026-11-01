@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.21.0
+# version: 0.21.1
 
 ## Arguments
 
@@ -85,6 +85,7 @@ When action is `transcribe`:
 ```
 Agent(
   subagent_type: "voice-transcriber"
+  run_in_background: false
   prompt: "Transcribe audio files in the inbox. inbox_path: <inbox_path from routing-plan.json>"
 )
 ```

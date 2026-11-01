@@ -207,7 +207,7 @@ Once exploration is complete:
 /inbox
 ```
 
-Tomo auto-detects what to do next based on each item's `tomo.state` frontmatter.
+Tomo works out what to do next from what it finds in your inbox.
 
 ## Authentication
 
@@ -299,4 +299,4 @@ bash scripts/cleanup-tomo.sh --instance <name> --dry-run   # preview; change not
 run (e.g. keep Claude auth credentials). Omitting `--instance` targets the
 repo-root dev instance.
 
-The cleanup script removes `tomo-instance/`, `tomo-home/`, and `tomo-install.json`. It refuses to delete anything outside the repo root as a safety check.
+A `--delete-disk` run removes the instance's files: `instance/`, `home/`, the launcher and `tomo-install.json`. As a safety check it refuses `/`, `$HOME`, the repo root, relative paths and shallow paths.

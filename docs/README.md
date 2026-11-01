@@ -13,6 +13,7 @@ The documentation is organised around the user journey:
 - **Running more than one instance** → each instance is self-contained under `~/MiYo/Tomo/<name>/`; see [Installation → Multiple instances](installation.md#multiple-instances) and [Setup → Create new vs. update an existing instance](setup.md#create-new-vs-update-an-existing-instance).
 - **Configuring your vault** → see [Configuration](configuration.md) for the four-layer config model and what each setting controls.
 - **Running Tomo day-to-day** → see [Usage](usage.md) for sessions and the launcher reference, and the workflow pages for each job, starting with [Process inbox items](workflows/inbox.md).
+- **Quick question** → the [FAQ](faq.md) has short answers with links.
 - **Stuck or seeing errors** → [Troubleshooting](troubleshooting.md) covers common failure modes.
 
 ## Documentation map
@@ -28,6 +29,7 @@ The documentation is organised around the user journey:
   - [How Tomo proposes new MOCs](workflows/moc-propose.md) — `/moc-propose`, cache freshness, exclude tags
   - [Audit your vault](workflows/garden-audit.md) — `/garden-audit`, exclusions
   - [Author a Hashi hook](workflows/hashi-hooks.md) — `/hashi-hook`
+- [FAQ](faq.md) — short answers to common questions
 - [Troubleshooting](troubleshooting.md) — common errors and recovery
 
 ## Quick links

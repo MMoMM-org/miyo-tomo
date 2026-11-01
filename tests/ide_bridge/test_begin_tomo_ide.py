@@ -112,12 +112,16 @@ def _make_docker_shim(shim_dir: Path, *,
                         for a; do
                             case "$a" in
                                 *tomo.has_socat*) fmt="socat" ;;
+                                *tomo.has_tzdata*) fmt="tzdata" ;;
                                 *tomo.voice_enabled*) fmt="voice" ;;
                             esac
                         done
                         case "$fmt" in
                             socat)
                                 printf '%s\\n' '{inspect_socat_label}'
+                                exit {inspect_rc} ;;
+                            tzdata)
+                                printf '%s\\n' '1'
                                 exit {inspect_rc} ;;
                             voice)
                                 printf '%s\\n' '{inspect_voice_label}'

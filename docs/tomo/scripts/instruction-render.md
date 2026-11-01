@@ -1222,3 +1222,11 @@ dropped.
 
 The filter drops a confirmed item, not an action, so it is not a withdrawal
 guard. `drop_sources` and `WITHDRAWAL_GUARDS` stay at five.
+
+## Filenames Use Local Time, `generated` Stays UTC (#202)
+
+WHY: the prefix of a rendered note and of `md_peer` is what the owner reads in the
+vault, and in UTC it sat two hours off and could carry the wrong date near midnight.
+`generated` is a machine timestamp and stays UTC. `upload-rendered.py` derives the
+instruction filenames from `generated`, so it converts to local time as well; if it
+did not, `md_peer` would name a file that was never written.

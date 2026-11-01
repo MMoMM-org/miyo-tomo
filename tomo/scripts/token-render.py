@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """token-render.py — Resolve {{token}} placeholders in Tomo templates.
 
 Reads a template (markdown with {{token}} placeholders), resolves tokens from
@@ -173,10 +173,11 @@ def format_list_token(items):
 
 def resolve_generated_tokens(now):
     """Return generated token dict from a datetime instance."""
+    local = now.astimezone()
     return {
-        "uuid": now.strftime("%Y%m%d%H%M%S"),
-        "datestamp": now.strftime("%Y-%m-%d"),
-        "updated": now.strftime("%Y-%m-%d %H:%M"),
+        "uuid": local.strftime("%Y%m%d%H%M%S"),
+        "datestamp": local.strftime("%Y-%m-%d"),
+        "updated": local.strftime("%Y-%m-%d %H:%M"),
         "date_iso": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 

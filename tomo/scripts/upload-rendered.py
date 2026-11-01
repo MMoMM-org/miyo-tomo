@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """upload-rendered.py — Upload Pass-2 rendered outputs to the vault via Kado.
 
 Why the inter-write delay (--upload-delay, default 5s):
@@ -97,7 +97,7 @@ def _write_with_retry(fn, *args, label: str = "") -> None:
 
 
 def _derive_timestamp(generated: str) -> str:
-    """Convert `2026-04-30T14:32:18Z` → `2026-04-30_1432`.
+    """Convert `2026-04-30T14:32:18Z` → `2026-04-30_1632` (local time, UTC+2 here).
 
     Tolerates both `Z` and `+00:00` UTC suffixes (renderer emits `Z`).
     """
@@ -110,7 +110,7 @@ def _derive_timestamp(generated: str) -> str:
         raise SystemExit(
             f"error: cannot parse `generated` timestamp {generated!r}: {exc}"
         ) from exc
-    return dt.strftime("%Y-%m-%d_%H%M")
+    return dt.astimezone().strftime("%Y-%m-%d_%H%M")
 
 
 def _join(inbox: str, name: str) -> str:

@@ -8,6 +8,7 @@ Tomo is for Obsidian users who want AI assistance with inbox triage, MOC linking
 
 The documentation is organised around the user journey:
 
+- **New to Tomo** → read [Concepts](concepts.md) for the two passes, the three components and the terms.
 - **First-time install** → start with [Installation](installation.md), then walk through the [Setup Guide](setup.md).
 - **Running more than one instance** → each instance is self-contained under `~/MiYo/Tomo/<name>/`; see [Installation → Multiple instances](installation.md#multiple-instances) and [Setup → Create new vs. update an existing instance](setup.md#create-new-vs-update-an-existing-instance).
 - **Configuring your vault** → see [Configuration](configuration.md) for the four-layer config model and what each setting controls.
@@ -16,6 +17,7 @@ The documentation is organised around the user journey:
 
 ## Documentation map
 
+- [Concepts](concepts.md) — Tomo, Kado and Hashi; the two passes; the documents Tomo writes; terms
 - [Installation](installation.md) — prerequisites, install command, verify, update
 - [Setup Guide](setup.md) — interactive walkthrough, launcher, post-install ops
 - [Configuration](configuration.md) — where settings live; per-file reference; layer precedence; safe defaults

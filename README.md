@@ -47,7 +47,7 @@ Tomo uses a **2-pass proposal model**. You always stay in control.
 
 ### Cleanup
 
-8. You trigger `/inbox` once more — Tomo archives processed documents and transitions source-item lifecycle tags
+8. Applied documents stay in your inbox until you remove them. `/inbox` reports `idle` for this work, and nothing is archived automatically
 
 **Tomo proposes, you decide, you apply.**
 

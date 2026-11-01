@@ -36,11 +36,11 @@ for i, field in enumerate(today_fields):
         errors.append(f"today_fields[{i}] ({label}): negative_keywords must be a list")
 
 # end_of_day_fields checks
-eod = daily_trackers.get("end_of_day_fields", {})
+eod = trackers.get("end_of_day_fields", {})
 eod_fields = eod.get("fields", [])
 
 if not eod_fields:
-    errors.append("trackers.daily_note_trackers.end_of_day_fields.fields is empty or missing")
+    errors.append("trackers.end_of_day_fields.fields is empty or missing")
 
 for i, field in enumerate(eod_fields):
     label = field.get("name", f"eod_fields[{i}]")

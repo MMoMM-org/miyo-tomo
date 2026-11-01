@@ -17,6 +17,8 @@ These are the files you change to shape Tomo's behaviour:
 - **`tomo-instance/config/vault-config.yaml`** — vault structure, concept-to-folder mappings, frontmatter schema, tag taxonomy, callout policy, relationship markers, daily-log rules, tracker definitions. The installer writes a minimal version (profile + concepts); `/explore-vault` enriches it on first run. The complete schema is documented in `tomo/config/vault-example.yaml`.
 - **`tomo-instance/config/user-rules/*.md`** — natural-language behavioural rules that don't fit YAML (tagging precedence, destination overrides, template selection). The installer creates only `README.md`; you author topic files like `tagging.md`, `destinations.md`, `templates.md` as your conventions emerge. Files are lazy-loaded by agents when relevant and referenced descriptively from the instance `CLAUDE.md`.
 - **`tomo-instance/config/kado-config.md`** — human-readable record of your Kado host, port, and protocol. The bearer token is **not** stored here.
+- **`tomo-instance/config/garden-audit-exclusions.yaml`** — what `/garden-audit` leaves out. Change it with `/garden-audit configure`. Updates never overwrite it.
+- **`tomo-instance/config/tag-handlers/`** — one file per tag handler, see [below](#configtag-handlers--tag-handler-framework).
 
 ### Installer-managed (regenerated on re-install)
 
@@ -35,6 +37,8 @@ These are written by `install-tomo.sh` / `update-tomo.sh`. Edit the source under
 These live alongside config but aren't user-edited:
 
 - **`tomo-instance/config/discovery-cache.yaml`** — output of `/explore-vault`. Acts as the L4 advisory layer; agents may consult it for hints but never use it as ground truth.
+- **`tomo-instance/config/moc-structure-cache.yaml`** — MOC scan cache for `/moc-propose` and discovery. Tomo rebuilds it when it is out of date.
+- **`tomo-instance/config/garden-audit-pushback.yaml`** — advisory findings paused by an approved audit report.
 - **`<parent>/<name>/tomo-install.json`** — install state, host-side, at the instance root (next to `begin-tomo.sh`). Holds instance/launcher paths, the source repo path, vault path, profile name, Kado connection (host/port/protocol; no token), and the voice block.
 
 ## Settings reference
@@ -45,19 +49,21 @@ This is the top-level surface — one row per top-level setting per file. For va
 
 | Field | Default | What it controls |
 |---|---|---|
-| `schema_version` | `1` | Schema migration version. Tomo refuses to start if it expects a newer schema; you'll see a migration diff first. |
-| `profile` | set by installer (`miyo`, `lyt`, or `custom`) | Which profile loads as the L2 baseline. Fields you omit fall back to the profile. |
-| `profile_version` | matches the chosen profile | Trip-wire for profile-schema migrations. |
+| `schema_version` | `1` | Version of this file's format. Leave it as it is. |
+| `profile` | set by installer (`miyo`, `lyt`, or `custom`) | Which file in `profiles/` loads as the L2 baseline. Fields you omit fall back to the profile. |
+| `profile_version` | matches the chosen profile | Records the profile version at install. |
 | `concepts` | from profile | Concept-to-folder mappings: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. Override only the entries that differ. |
 | `naming` | from profile | Display labels Tomo uses in proposals (`labels`) and Moment.js filename patterns per calendar granularity (`calendar_patterns`). |
-| `templates` | from profile | Template file mappings per concept (`base_path` + `mapping`); optional `custom_tokens`. Tomo verifies each file exists at session start. |
+| `templates` | from profile | Template file mappings per concept (`base_path` + `mapping`); optional `custom_tokens`. `/tomo-setup templates` verifies that each file exists. |
 | `frontmatter` | from profile | `strict` flag plus `required` / `optional` field lists. Each entry binds a YAML key to a template token, type, and default. |
 | `relationships` | from profile | Parent/peer markers (e.g. `up::`, `related::`) with write rules: format, position, multi/separator. |
-| `tags.prefixes` | from profile + discovery | Per-prefix tag taxonomy. Each entry has four axes: `description`, `known_values`, `wildcard`, `proposable`, `required_for`. |
+| `tags.prefixes` | from profile + discovery | Per-prefix tag taxonomy. Each entry has five axes: `description`, `known_values`, `wildcard`, `proposable`, `required_for`. |
 | `callouts` | `enabled: true`; categories from profile | Classification of Obsidian callouts into `editable`, `protected`, `ignore`. Unlisted callouts are treated as protected. |
 | `protected_patterns` | ` ```dataviewjs `, ` ```dataview `, ` ```folder-overview ` | Code-block fences Tomo never modifies. |
 | `tomo.suggestions.parallel` | `5` | Maximum concurrent Phase-B subagents during `/inbox` fan-out. Range 1–5. |
-| `trackers.daily_note_trackers` | empty unless authored | Tracker fields Tomo reads and proposes updates for in daily notes. Two buckets: `today_fields` and `end_of_day_fields.fields`. Each entry gives `name`, `type`, `syntax`, `description`, `positive_keywords`, `negative_keywords`, and optionally `active: false` to stop proposing it. |
+| `tomo.moc_structure_cache` | scan paths from `concepts`, `ttl_days: 1` | Which folders the MOC scan covers, what it skips, how long its cache stays valid, and which tag marks a MOC. |
+| `tomo.moc_proposal` | spec defaults | Tuning for `/moc-propose`: candidate and display caps, minimum notes per cluster, maximum proposals, confidence threshold. |
+| `trackers.daily_note_trackers`, `trackers.end_of_day_fields` | empty unless authored | Tracker fields Tomo reads and proposes updates for in daily notes. `daily_note_trackers` holds `section`, `today_fields` and `yesterday_fields`. `end_of_day_fields` holds its own `section` and `fields`. Each entry gives `name`, `type`, `syntax`, `description`, `positive_keywords`, `negative_keywords`, and optionally `active: false` to stop proposing it. |
 | `daily_log` | enabled, section `"Daily Log"` | Daily-log append rules: section heading, heading level, date-source priority, time-extraction policy, link format, cutoff days, auto-create flags. |
 
 JSON-Schema definitions for the structured sub-sections live in `tomo/schemas/vault-config-{tags,callouts,relationships,trackers}.schema.json`.
@@ -99,15 +105,17 @@ Lives at the instance root, `<parent>/<name>/tomo-install.json` (next to `begin-
 
 | Field | Default | What it controls |
 |---|---|---|
-| `version`, `tomoVersion` | current Tomo version | Trip-wire for installer-script changes. `tomoVersion` is what the launcher compares against the source repo to decide whether to offer an update. |
+| `version`, `tomoVersion` | current Tomo version | `tomoVersion` is what the launcher compares against the source repo to decide whether to offer an update. |
 | `instanceName`, `instanceLocation`, `instancePath`, `launcherPath`, `homePath` | from installer | Where the instance, launcher, and Docker home dir live on disk. `instanceLocation` is the parent dir; `instancePath` is `<parent>/<name>/instance`. |
 | `repoPath` | from installer | Absolute path of the Tomo source repo this instance was installed from. Makes the instance self-describing for updates — the launcher and `update-tomo.sh --instance` resolve the source from here. |
-| `vaultPath` | from installer | Absolute host path of your Obsidian vault. |
+| `vaultPath` | from installer | Absolute host path of your Obsidian vault, checked at install. Tomo reaches the vault through Kado, not through this path. |
 | `profile`, `profileVersion` | from installer | Profile selected at install; mirrors into `vault-config.yaml`. |
 | `kado.host`, `kado.port`, `kado.protocol` | from installer | Kado connection metadata; the bearer token lives only in `.mcp.json`. |
 | `voice` | `{}` | Voice block (schema_version, enabled, model, language); mirrored into `voice/config.json`. |
 | `ide_bridge` | `{}` | Tomo Context block (schema_version, enabled, auth_token, port) for the Hashi IDE Bridge; drives the IDE lock file (`tomo-home/.claude/ide/<port>.lock`) and the container `socat` proxy. |
 | `installedAt` | ISO 8601 UTC timestamp | When the instance was last (re-)installed. |
+| `defaultMode` | `default` | Optional. Launch mode when you pass no flag: `default`, `auto`, `yolo` or `bash`. |
+| `exposeAuthPort` | `false` | Optional. `true` exposes port 10000 on every launch, for `claude login` in the container. |
 
 ### instances.json — the instance registry
 
@@ -178,7 +186,7 @@ After adding or editing a handler, restart Claude Code in the container so agent
 
 You don't hand-edit these — choose one via `vault-config.yaml`'s `profile` field. The shipped profiles are `miyo` and `lyt` under `tomo-instance/profiles/`. Each profile defines `concept_defaults`, `classification`, and other framework defaults that act as the L2 layer beneath your vault-config.
 
-To create a custom profile, copy an existing file, adjust, and reference it via `profile: "custom"` in vault-config.yaml.
+To create a custom profile, copy an existing file to `tomo-instance/profiles/<name>.yaml`, adjust it, and set `profile: "<name>"` in vault-config.yaml. The name must match the file. This also applies to the installer's `custom` choice: Tomo ships no `custom.yaml`, and `/inbox` stops with `profile not found` until you add one.
 
 ## Override mechanism
 
@@ -213,8 +221,8 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 
 ### Safe to leave at the default
 
-- **`schema_version`, `profile_version`** — Tomo manages these. You only see them when migrating.
-- **`frontmatter.strict: true`** — keep on; Tomo warns when a note is missing a required field rather than silently writing malformed YAML.
+- **`schema_version`, `profile_version`** — the installer sets these.
+- **`frontmatter.strict: true`** — with this on, an empty required field counts as missing.
 - **`callouts.enabled: true`** with the profile's editable/protected/ignore split. Unlisted callouts default to protected (Tomo won't touch them).
 - **`protected_patterns`** — already covers DataviewJS, Dataview, and folder-overview blocks. Add an entry only if your vault has other code-block fences Tomo must not modify.
 - **`tomo.suggestions.parallel: 5`** — only lower this if your machine is constrained or you hit API rate limits.
@@ -224,7 +232,7 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 ### You probably need to change
 
 - **`concepts.*` folder paths** — must match your vault's actual folder structure. Profiles ship with their author's paths; run `/explore-vault` to align with what's actually in your vault.
-- **`frontmatter.required` / `frontmatter.optional`** — must match the fields your note templates produce. Mismatch causes strict-mode warnings on every note write.
+- **`frontmatter.required` / `frontmatter.optional`** — must match the fields your note templates produce.
 - **`templates.base_path` / `templates.mapping`** — must point at your real template filenames.
 - **`tags.prefixes`** — populated incrementally by `/explore-vault`. Edit to mark prefixes non-`proposable` (e.g. external tags like Raindrop, Readwise).
 - **`daily_log.section` / `heading_level`** — must match the heading used in your daily-note template (e.g. `# Daily Log` vs. `## Log`).
@@ -233,7 +241,6 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 
 - **Kado bearer token** (`.mcp.json`) — must match your Kado plugin's API key. The installer prompts for it.
 - **`kado.host` / `kado.port`** — `host.docker.internal:23026` works for the common Docker-on-host setup; change only if Kado runs elsewhere.
-- **`vaultPath`** (in `tomo-install.json`) — absolute host path of your Obsidian vault.
 
 ### Off by default — opt in deliberately
 
@@ -246,8 +253,6 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 
 | Misconfiguration | Symptom |
 |---|---|
-| Wrong vault path | Every Kado call returns a permission error; Tomo stalls at session start. |
 | Wrong Kado token | MCP connection fails with 401; Claude Code reports the kado server unhealthy. |
-| Concept path doesn't exist | Tomo refuses to file inbox items because the destination folder is missing. |
-| `frontmatter.required` mismatch | Strict mode warns on every note write; non-strict produces malformed frontmatter silently. |
+| `profile` names a file that isn't in `profiles/` | `/inbox` stops with `profile not found`. |
 | `null` instead of omitting a field | Disables fallback to the profile — you get an unset value where a default was expected. |

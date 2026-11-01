@@ -486,7 +486,7 @@ def test_kado_write_and_mark_captured_lines(tmp_path):
     md_size = (ws / "tomo-tmp" / "suggestions-rendered.md").stat().st_size
     assert out["write_md"].stderr.strip() == (
         f"kado-write-file: tomo-tmp/suggestions-rendered.md ({md_size} bytes, op=note) "
-        "→ 100 Inbox/2026-10-30_0000_suggestions.md"
+        "→ 100 Inbox/2026-10-30_0000_suggestions.md (modified=1790000000000)"
     )
     assert (
         "op=file) → 100 Inbox/2026-10-30_0000_suggestions.json"

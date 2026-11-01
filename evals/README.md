@@ -70,7 +70,7 @@ The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it give
      - `SHARED_CTX_WARN=0|1` (the shared-context builder prints a `WARN:` line and saves it for the relay)
      - `DUPLICATES=0|1` (the reducer converts one proposed MOC that already exists)
      - `. "$(dirname "$0")/../_lib/pass1-stubs.sh"` then `stage_pass1_instance`
-     - The kit's header lists which Tomo script each stub's output is copied from. When one of those scripts changes its output, re-check the stub.
+     - The kit's header lists which Tomo script each stub's output is copied from. When one of those scripts changes its output, `tests/test_stub_contract.py` fails; update the stub to follow it.
    - The analyst is a stand-in: the runner copies `evals/_lib/inbox-analyst.stub.md` over `agents/inbox-analyst.md` in the assembled plugin (also under `--rev`). It runs one stub script that writes the item's result file and state line, then replies `done`. The eval registers it only as `tomo:inbox-analyst`.
 3. Every case carries the leak guard: copy `evals/_lib/no-leak.md` to `graders/9-no-leak.md` byte for byte. The runner refuses a case without it (exit 3). When a new internal name (script, filter, file, run-id format) can reach the user-facing report, add it to the guard's `pattern` in `evals/_lib/no-leak.md` and re-copy it into every case.
 4. A grader that only confirms a precondition (for example `3-audit-ran`) is a control. Every other grader needs a mutation that turns it red: see `evals/_mutations/README.md` for the mutations and the RED proofs.
@@ -97,6 +97,7 @@ Limits of the spec 043 graders (the Pass 1 cases and the report-only graders):
 - The `WARN:` relay before the first dispatch (`pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch`) is graded as the `cat tomo-tmp/setup-warnings.txt` call whose result (bound by `tool_use_id`) carries the `WARN:` line, both before the first `Agent` call. A text reply before dispatch is not required: the model answered the warning only in thinking in 4 of 4 runs.
 - The Write tool is unavailable in the eval session even though both Pass 1 cases list it in `allowed_tools` ("Write is disabled for this session"). `pass1-suggest-pipeline/11-no-inline-vault-write` still goes red on the attempted call, but a run that tries Write then drifts.
 - Every script is a stub. A script's own behaviour (for example the shared-context builder's `--warnings-out` file) is exercised only through its stub, so no script is in the coverage table.
+- `tests/test_stub_contract.py` runs most stubs and their real scripts on the same input with Kado faked, and fails when exit code, stream, status line or written keys diverge. It needs no paid run. Not covered: `suggestion-parser.py`, the shared-context reconcile line (the test passes `--skip-reconcile`) and the values of the reducer's and triage's output, where only keys are compared.
 - `force-atomic-handling` has no case and is not gated.
 
 Known gaps:

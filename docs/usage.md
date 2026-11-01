@@ -30,6 +30,7 @@ Each job has its own page:
 - [Process inbox items](workflows/inbox.md)
 - [Refresh vault discovery](workflows/explore-vault.md)
 - [How Tomo proposes new MOCs](workflows/moc-propose.md), including how to exclude notes
+- [Audit your vault](workflows/garden-audit.md)
 - [Author a Hashi hook](workflows/hashi-hooks.md)
 
 ## Re-run a setup wizard
@@ -45,6 +46,8 @@ Conventions evolve. Refresh just one part of the setup without re-running the fu
 ```
 
 Wizards write to `tomo-instance/config/` (sections of `vault-config.yaml` they own, or files under `user-rules/`). They never touch the vault.
+
+To stop Tomo proposing a tracker, run `/tomo-setup trackers` and choose **Deactivate** on that field. Tomo keeps the definition and adds `active: false`. **Reactivate** in the same wizard turns it back on.
 
 ## Get help in-session
 
@@ -133,6 +136,9 @@ Run from the Claude Code prompt once you're in a session.
 | `/inbox` | 2-pass workflow + cleanup; auto-detects which phase to run. | `--pass1`, `--pass2`, `--cleanup` to force a specific phase. |
 | `/explore-vault` | Vault discovery; populates `vault-config.yaml` and `discovery-cache.yaml`. | `--confirm` re-runs every detection step with prompts. |
 | `/tomo-setup` | Post-install wizard (recommended after every install). | `rules`, `templates`, `trackers`, `daily-log` to run a single phase. |
+| `/moc-propose` | Live vault scan for new MOC proposals. See [How Tomo proposes new MOCs](workflows/moc-propose.md). | Scope such as `tag:`, `folder:`, `class:`, `title:` or free text. |
+| `/garden-audit` | Audit the vault for structural problems. See [Audit your vault](workflows/garden-audit.md). | `audit`, `configure`, `suggest`, `stats`. |
+| `/hashi-hook` | Draft a Tomo Hashi hook. See [Author a Hashi hook](workflows/hashi-hooks.md). | Optional description of the behaviour you want. |
 | `/tomo-help` | Context-aware help. | A topic keyword (e.g. `inbox`, `kado`, `docker`, `login`); empty for a topic menu. |
 
 Each command has a fuller spec inside its own definition — see `tomo-instance/.claude/commands/<command>.md` for the latest behaviour and edge cases.

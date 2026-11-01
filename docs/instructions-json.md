@@ -13,7 +13,7 @@ consumer specification for both companion artefacts.
 — JSON Schema Draft 2020-12, stricter than this prose (it has the final
 word on required fields and enum values).
 
-**Producer:** [`scripts/instruction-render.py`](../scripts/instruction-render.py)
+**Producer:** [`scripts/instruction-render.py`](../tomo/scripts/instruction-render.py)
 inside this repo. Invoked by the `synthesis-conductor` agent at the end
 of Pass 2, written to the vault inbox via `kado-write operation="file"`
 (because `operation="note"` only accepts `.md`).

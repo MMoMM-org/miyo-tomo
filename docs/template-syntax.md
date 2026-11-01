@@ -115,7 +115,7 @@ Templater expressions. The user runs `Templater: Replace Templates in Active Fil
 
 > **Careful with `<% ... include("[[x_frontmatter]]") ... %>`:** an include is
 > preserved fine, but it must not be the thing that supplies your template's
-> *opening* `---` fence. See [Frontmatter: a complete `---` block is required](#frontmatter-a-complete----block-is-required).
+> *opening* `---` fence. See [Frontmatter: a complete `---` block is required](#frontmatter-a-complete-----block-is-required).
 
 ## Frontmatter: a complete `---` block is required
 

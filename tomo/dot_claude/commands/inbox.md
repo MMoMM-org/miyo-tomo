@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.20.1
+# version: 0.21.0
 
 ## Arguments
 
@@ -66,6 +66,7 @@ When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
 ```
 Agent(
   subagent_type: "synthesis-conductor"
+  run_in_background: false
   prompt: "Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly."
 )
 ```

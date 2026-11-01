@@ -135,13 +135,14 @@ CASE_YAML_KEYS = {"schema_version", "name", "runs", "context", "execution"}
 EXECUTION_KEYS = {"max_turns", "timeout_seconds", "allowed_tools", "prompt"}
 
 
-def production_dispatch() -> tuple[str, str]:
+def production_dispatch() -> tuple[str, str, str | None]:
     text = INBOX_CMD.read_text(encoding="utf-8")
     block = re.search(r"### 3b\. Synthesize \(dispatch\).*?```\n(Agent\(.*?\))\n```", text, re.S)
     assert block, "inbox.md: 3b dispatch block not found"
     agent = re.search(r'subagent_type: "([^"]+)"', block.group(1)).group(1)
     prompt = re.search(r'prompt: "([^"]+)"', block.group(1)).group(1)
-    return agent, prompt
+    background = re.search(r"run_in_background: (\w+)", block.group(1))
+    return agent, prompt, background and background.group(1)
 
 
 def test_exactly_the_known_cases_exist():
@@ -175,12 +176,20 @@ def test_case_yaml_shape(case):
 
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_prompt_is_the_production_dispatch_namespaced(case):
-    agent, prompt = production_dispatch()
+    agent, prompt, background = production_dispatch()
     p = case_yaml(case)["execution"]["prompt"]
     assert f"subagent_type `tomo:{agent}`" in p
+    assert f"run_in_background `{background}`" in p
     assert f'prompt "{prompt}"' in p
     assert p.endswith("repeat its final report verbatim.")
     assert p == case_yaml(GATES)["execution"]["prompt"]
+
+
+def test_production_dispatch_blocks_on_the_conductor():
+    # A backgrounded conductor hands its report back as a task notification,
+    # so the hand-back frame the report-only graders read never appears and
+    # Step 3b would output the report before it exists.
+    assert production_dispatch()[2] == "false"
 
 
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))

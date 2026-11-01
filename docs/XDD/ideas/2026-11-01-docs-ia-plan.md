@@ -1,6 +1,6 @@
 # User Docs: Information Architecture Plan (#41)
 
-> Status: approved, steps 1 to 5 done. Created 2026-11-01.
+> Status: approved, steps 1 to 6 done. Created 2026-11-01.
 > Scope: the reader-facing pages in `docs/`. `docs/tomo/`, `docs/XDD/`, `docs/ai/` and `docs/evolution/` are maintainer material and stay where they are.
 
 ## Inventory

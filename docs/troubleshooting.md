@@ -117,8 +117,8 @@ Tomo only owns the proxy and the lock file. For anything past the connection —
 **Symptom:** `/inbox` reports idle, but you have files in the inbox.
 
 **Check:**
-1. Files are Markdown notes. An attachment on its own is not picked up.
-2. Files are in the configured inbox folder path
+1. Files are Markdown notes. A note needs no frontmatter, but an attachment on its own is not picked up.
+2. Files are in the configured inbox folder, `concepts.inbox` in `vault-config.yaml`
 3. Files carry no `tomo.state` in their frontmatter. `tomo.state: captured` means Pass 1 has already seen the file, so `/inbox` skips it. Never add it by hand. To suggest such a file again, run `/inbox --pass1 --force`.
 4. Kado can list and read the inbox folder
 
@@ -390,7 +390,7 @@ This rebuilds `miyo-tomo:latest` from `<tomo-repo>/docker/Dockerfile` before lau
 bash begin-tomo.sh --auth-port
 ```
 
-This launches the container with port 10000 exposed for the OAuth callback. Run `claude login` inside the container and complete the browser login flow. Your new credentials are saved to `home/.claude/.credentials.json` in the instance folder. No cleanup or re-install needed.
+This launches the container with port 10000 exposed for the OAuth callback. Run `claude login` inside the container and complete the browser login flow. You need the flag only for this launch. Your new credentials are saved to `home/.claude/.credentials.json` in the instance folder. No cleanup or re-install needed.
 
 ## `@` File Picker
 

@@ -12,6 +12,15 @@ Tomo suggests creating a new Map of Content (MOC) when a topic has accumulated e
 
 So: **re-run `/explore-vault` after you've added or reorganised notes or MOCs** to refresh what `/inbox` can detect — or reach for **`/moc-propose`** when you want a live scan right now. (A cache-staleness warning in `/inbox` is planned — backlog F-21.)
 
+## Work through a proposal
+
+`/moc-propose` writes a document with `_moc-proposal` in its name to your inbox. Each proposed MOC is its own section.
+
+1. Tick `Accept` on each section you want. A section you leave unticked counts as rejected.
+2. If a section extends an existing MOC, also tick the entries under **Missing members** that you want linked. With none ticked, that section is skipped.
+3. Run `/inbox`. Pass 2 turns the accepted sections into an instruction set.
+4. Apply the instruction set like any other, see [Process inbox items](inbox.md).
+
 ## Excluding notes or MOCs from proposals
 
 You can tell Tomo to leave specific notes or MOCs out of its MOC suggestions by tagging them. Both tags go in the note's **frontmatter** `tags:` list:

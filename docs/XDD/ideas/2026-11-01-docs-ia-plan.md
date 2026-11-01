@@ -1,6 +1,6 @@
 # User Docs: Information Architecture Plan (#41)
 
-> Status: proposal, nothing migrated. Created 2026-11-01.
+> Status: approved, nothing migrated yet. Created 2026-11-01.
 > Scope: the reader-facing pages in `docs/`. `docs/tomo/`, `docs/XDD/`, `docs/ai/` and `docs/evolution/` are maintainer material and stay where they are.
 
 ## Inventory
@@ -70,8 +70,8 @@ Each step is one PR.
 6. Reader test with `doc-product review`.
 7. Screenshots. These need a running instance and Obsidian.
 
-## Decisions for the owner
+## Owner decisions (2026-11-01)
 
-1. Is `workflows/` as a subfolder right, or should the pages stay flat in `docs/`?
-2. Does `troubleshooting.md` stay one page for now?
-3. German or English only? The pages are English today.
+1. `workflows/` is a subfolder.
+2. `troubleshooting.md` stays one page for now.
+3. English only.

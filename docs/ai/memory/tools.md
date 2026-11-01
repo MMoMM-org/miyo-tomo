@@ -153,3 +153,7 @@ Only `write_frontmatter` re-raises the optimistic-concurrency failure as the typ
 
 <!-- 2026-10-25 -->
 - **Edits to the conductor, `inbox.md` or `settings.json` need `scripts/run-evals.sh` GREEN before merge — and it cannot run in the Bash sandbox.** It fails EPERM there (NOT GRADED, exit 2). → Run it from a terminal or with the sandbox bypassed for that one command; coverage, exit codes and costs are in `evals/README.md`.
+
+<!-- 2026-11-01 -->
+- **An Agent call whose result is needed inline passes `run_in_background: false`.** `claude` 2.1.316 sometimes backgrounds it unasked (tool result "Async agent launched", `"is_backgrounded": true`). → The caller outputs a report that does not exist yet.
+- **Shellcheck scaffolds with `shellcheck -x -P SCRIPTDIR`.** Without `-P` the `. "$(dirname "$0")/../_lib/…"` source resolves against the cwd. → Spurious SC1091 and SC2034 that look like real failures.

@@ -343,3 +343,19 @@ one. An empty file prints nothing, which the skill reads as "no warnings".
 
 WHY optional: `force-atomic-handling` runs the same build without the early
 relay and does not need the file.
+
+## Tracker Syntax Is Reduced to What the Wire Accepts (#212, v1.17.0)
+
+WHY `task_checkbox` becomes `checkbox` here: the config schema and the writer accept
+four syntax values, `instructions.schema.json` accepts three. `render_actions.py`
+copies the value into `update_tracker.syntax` and the renderer does not validate the
+wire before writing it, so a vault with a `task_checkbox` tracker would have sent an
+invalid action to Hashi. Both words mean the same `- [x] Field` line. Normalising at
+the builder keeps existing configs working and leaves Hashi's vendored schema alone,
+so no cross-repo change is needed.
+
+WHY a `frontmatter` field is dropped with a WARN rather than passed on: no wire syntax
+can write it, and the writer already rejects it, so only a config written by hand or
+by an older wizard can carry it. Passing it on repeats the invalid action; failing the
+run for one tracker costs the whole inbox run. The WARN is what `--warnings-out`
+relays, so the owner sees why the tracker is not proposed.

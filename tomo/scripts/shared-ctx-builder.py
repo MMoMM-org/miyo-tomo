@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.16.0
+# version: 1.17.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -526,6 +526,12 @@ def _syntax_for(field_type: str) -> str:
     return "inline_field"
 
 
+# Config values the instructions wire does not accept: an alias maps to its wire
+# value; a syntax with no wire value leaves the field out of the run.
+_SYNTAX_ALIASES = {"task_checkbox": "checkbox"}
+_UNWRITABLE_SYNTAXES = {"frontmatter"}
+
+
 def _field_syntax(field: dict, field_type: str) -> str:
     """The configured `syntax` wins; the type-derived guess is the fallback.
 
@@ -537,7 +543,7 @@ def _field_syntax(field: dict, field_type: str) -> str:
     under a heading.
     """
     configured = (field.get("syntax") or "").strip()
-    return configured or _syntax_for(field_type)
+    return _SYNTAX_ALIASES.get(configured, configured) or _syntax_for(field_type)
 
 
 def _seed_keywords(name: str, extras: list[str] | None) -> list[str]:
@@ -582,6 +588,14 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
             seen_names.add(name)
             field_type = _schema_type(f.get("type") or "", f.get("scale"))
             syntax = _field_syntax(f, field_type)
+            if syntax in _UNWRITABLE_SYNTAXES:
+                print(
+                    f"WARN: tracker field '{name}' is stored in frontmatter, which Tomo "
+                    f"cannot update; it is left out of this run. Set active: false on "
+                    f"it, or change its syntax with /tomo-setup trackers.",
+                    file=sys.stderr,
+                )
+                continue
             keywords = _seed_keywords(name, f.get("keywords"))
             description = f.get("description", "")
             if not description:

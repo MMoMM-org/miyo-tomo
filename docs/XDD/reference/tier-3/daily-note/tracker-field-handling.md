@@ -7,6 +7,10 @@
 > **Original**: Tracker handling covers read/propose/update for tracker fields only.
 > **Actual**: Trackers now include semantic descriptions in vault-config.yaml for better matching. Polymorphic `updates[]` with `kind` field supports `tracker`, `log_entry`, and `log_link` update types. Tracker config managed via `/tomo-setup trackers` sub-wizard.
 > **See**: [specs/005-daily-note-workflow/solution.md](../../../specs/005-daily-note-workflow/solution.md)
+
+> **⚠️ Deviation (#212)**
+> **Original**: Four syntaxes including `frontmatter`, and the types `scale`, `count` and `choice`.
+> **Actual**: The syntaxes are `inline_field`, `callout_body` and `checkbox`; the types are `boolean`, `integer`, `text`, `duration` and `time`, with `scale` as a separate key. `tomo/schemas/vault-config-trackers.schema.json` is the source. A config may still say `task_checkbox`; it reaches the instructions as `checkbox`. Frontmatter trackers are not supported.
 > Related: [Daily Note Detection](daily-note-detection.md) · [Inbox Analysis](../inbox/inbox-analysis.md)
 
 ---
@@ -28,7 +32,7 @@ trackers:
     trigger_keywords: ["coded", "programming", "installed", "configured"]
   
   - name: "sport"
-    syntax: "task_checkbox"
+    syntax: "checkbox"
     label: "Sport"
     type: "boolean"
     trigger_keywords: ["sport", "gym", "run", "workout"]
@@ -36,14 +40,8 @@ trackers:
   - name: "energie"
     syntax: "inline_field"
     field: "Energie"
-    type: "scale"
-    range: [1, 10]
-    trigger_keywords: []
-  
-  - name: "gratitude"
-    syntax: "frontmatter"
-    field: "gratitude"
-    type: "text"
+    type: "integer"
+    scale: "1-10"
     trigger_keywords: []
 ```
 
@@ -62,7 +60,7 @@ Energie:: 7
 **Write:** Replace the value after `:: ` or append if field doesn't exist
 **Location:** Anywhere in note body (typically in a Tracker section)
 
-### 3.2 Task Checkbox (`task_checkbox`)
+### 3.2 Checkbox (`checkbox`)
 
 Standard markdown task list:
 
@@ -75,30 +73,23 @@ Standard markdown task list:
 **Write:** Toggle `[ ]` ↔ `[x]`
 **Location:** Anywhere in note body (typically in a Tracker section)
 
-### 3.3 Frontmatter (`frontmatter`)
+### 3.3 Callout Body (`callout_body`)
 
-YAML properties in the note's frontmatter:
+The value sits inside a callout in the note body. This is the default for a `text` field that sets no `syntax`.
 
-```yaml
----
-gratitude: "Had a great coffee"
-sleep_hours: 7
----
-```
+### 3.4 Frontmatter Is Not a Tracker Syntax
 
-**Read:** Parse YAML, get value by key
-**Write:** Update YAML key-value via Kado frontmatter operation
-**Location:** In the YAML frontmatter block
+No instruction syntax can write a frontmatter property. `vault-explorer` skips such fields and reports them. `shared-ctx-builder` leaves one found in a config out of the run with a warning.
 
 ## 4. Value Types
 
 | Type | Valid values | Default for new | Example |
 |------|-------------|-----------------|---------|
 | `boolean` | `true`, `false` (inline); `[x]`, `[ ]` (checkbox) | `false` / `[ ]` | `Coding:: true` |
-| `scale` | Integer within `range` (e.g., 1-10) | empty | `Energie:: 7` |
-| `count` | Integer ≥ 0 | `0` | `Coffees:: 3` |
+| `integer` | Integer, within `scale` when set (e.g., `"1-10"`) | empty | `Energie:: 7` |
 | `text` | Free string | empty | `Gratitude:: Had a great coffee` |
-| `choice` | One of configured labels | empty | `Mood:: 😊` |
+| `duration` | A time span | empty | `Sleep:: 7h` |
+| `time` | A time of day | empty | `ToBed:: 23:30` |
 
 ## 5. Trigger Keywords
 
@@ -133,8 +124,7 @@ Before proposing a tracker update, Tomo reads the current value:
 2. Read daily note via kado-read
 3. For each tracker in config:
    - inline_field: regex search body for "^<field>::\s*(.+)$"
-   - task_checkbox: regex search body for "^- \[([ x])\]\s*<label>$"
-   - frontmatter: parse YAML, lookup key
+   - checkbox: regex search body for "^- \[([ x])\]\s*<label>$"
 4. Return current values
 ```
 
@@ -153,7 +143,7 @@ Tracker updates appear in the suggestions document (Pass 1):
 - Reason: "installed" keyword in [[+/2026-04-09_1430_oh-my-zsh]]
 ```
 
-For scale/count types, Tomo may suggest a value based on content:
+For integer types, Tomo may suggest a value based on content:
 
 ```markdown
 ### S06 — Daily note tracker: Energie (2026-04-09)
@@ -182,7 +172,7 @@ For task checkboxes:
 ### I04 — Update daily note tracker
 - [ ] Applied
 - **Target:** [[Calendar/Days/2026-04-09]]
-- **Tracker:** Sport (task_checkbox)
+- **Tracker:** Sport (checkbox)
 - **Change:** Check `- [x] Sport`
 - **Location:** Find `- [ ] Sport` line
 ```
@@ -198,12 +188,12 @@ vault-explorer detects trackers from the daily note template:
 2. Scan for tracker patterns:
    - Inline fields: lines matching ^<word>::\s*$  (empty value = tracker slot)
    - Task checkboxes: lines matching ^- \[ \]\s*<word>$
-   - Frontmatter keys with empty/default values
+   - Frontmatter keys: skipped and reported, not offered as trackers
 
 3. For each detected tracker:
    - Infer type from default value:
      empty boolean → boolean
-     empty number → count or scale (ask user)
+     empty number → integer, with a scale key for a 1-5 or 1-10 range
      empty string → text
    - Suggest trigger_keywords (empty by default — user adds them)
 
@@ -215,7 +205,7 @@ vault-explorer detects trackers from the daily note template:
 
 ## 10. Edge Cases
 
-**Tracker field doesn't exist in daily note:** For inline_field and task_checkbox, the instruction says "add this line in the Tracker section (or at end of note)." For frontmatter, the instruction says "add this YAML key."
+**Tracker field doesn't exist in daily note:** For inline_field and checkbox, the instruction says "add this line in the Tracker section (or at end of note)."
 
 **Tracker value already matches proposed value:** Skip the action. Don't clutter the suggestions with no-ops.
 
@@ -223,4 +213,4 @@ vault-explorer detects trackers from the daily note template:
 
 **Scale tracker without explicit value in content:** Don't propose a value. Include in suggestions as "manual fill" with the input field blank. User sets the value or skips.
 
-**Tracker field syntax changed by user (was inline_field, now task_checkbox):** Tomo uses the config as source of truth. If the actual note uses a different syntax, the instruction may not work. `/explore-vault --confirm` re-detects and updates config.
+**Tracker field syntax changed by user (was inline_field, now checkbox):** Tomo uses the config as source of truth. If the actual note uses a different syntax, the instruction may not work. `/explore-vault --confirm` re-detects and updates config.

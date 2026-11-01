@@ -12,7 +12,7 @@ The documentation is organised around the user journey:
 - **First-time install** → start with [Installation](installation.md), then walk through the [Setup Guide](setup.md).
 - **Running more than one instance** → each instance is self-contained under `~/MiYo/Tomo/<name>/`; see [Installation → Multiple instances](installation.md#multiple-instances) and [Setup → Create new vs. update an existing instance](setup.md#create-new-vs-update-an-existing-instance).
 - **Configuring your vault** → see [Configuration](configuration.md) for the four-layer config model and what each setting controls.
-- **Running Tomo day-to-day** → see [Usage](usage.md) for `/inbox`, `/explore-vault`, and the launcher reference.
+- **Running Tomo day-to-day** → see [Usage](usage.md) for sessions and the launcher reference, and the workflow pages for each job, starting with [Process inbox items](workflows/inbox.md).
 - **Stuck or seeing errors** → [Troubleshooting](troubleshooting.md) covers common failure modes.
 
 ## Documentation map
@@ -21,7 +21,12 @@ The documentation is organised around the user journey:
 - [Installation](installation.md) — prerequisites, install command, verify, update
 - [Setup Guide](setup.md) — interactive walkthrough, launcher, post-install ops
 - [Configuration](configuration.md) — where settings live; per-file reference; layer precedence; safe defaults
-- [Usage](usage.md) — starting a session; common workflows; what Tomo does and doesn't change; launcher flag and slash command reference
+- [Usage](usage.md) — starting a session; what Tomo does and doesn't change; launcher flag and slash command reference
+- Workflows, one page per job:
+  - [Process inbox items](workflows/inbox.md) — the two passes, attachment conflicts, re-runs, forcing a phase
+  - [Refresh vault discovery](workflows/explore-vault.md) — `/explore-vault`
+  - [How Tomo proposes new MOCs](workflows/moc-propose.md) — `/moc-propose`, cache freshness, exclude tags
+  - [Author a Hashi hook](workflows/hashi-hooks.md) — `/hashi-hook`
 - [Troubleshooting](troubleshooting.md) — common errors and recovery
 
 ## Quick links
@@ -30,6 +35,6 @@ The documentation is organised around the user journey:
 - **Stand up a second instance** → re-run `bash scripts/install-tomo.sh` and pick *create new* ([Setup](setup.md#create-new-vs-update-an-existing-instance))
 - **Update an instance** → `bash scripts/update-tomo.sh --instance <name>` ([Setup → Updating an Instance](setup.md#updating-an-instance))
 - **Look up what a config field does** → [Configuration → Settings reference](configuration.md#settings-reference)
-- **Process my inbox** → [Usage → Process inbox items](usage.md#process-inbox-items)
-- **Apply an instruction set** → by hand in Obsidian or via Tomo Hashi's instruction-set executor ([Usage](usage.md#common-workflows))
+- **Process my inbox** → [Process inbox items](workflows/inbox.md)
+- **Apply an instruction set** → by hand in Obsidian or via Tomo Hashi's instruction-set executor ([Process inbox items](workflows/inbox.md))
 - **Re-authenticate Claude Code** → run `claude login` inside the container ([Setup → Authentication](setup.md#authentication))

@@ -324,7 +324,7 @@ refused when it is blank, leaves the vault (starts with `/`, `~` or `./`,
 contains `..`, uses `\` or a drive letter), has an empty part (`//`), has a
 part with a space or other whitespace at either end, ends in `/`, contains one of the characters
 above, or is the inbox or inside it (upper/lower case and Unicode form are
-ignored, so `100 inbox/x` is refused too). [usage.md](usage.md) lists every rule. When it happens, the
+ignored, so `100 inbox/x` is refused too). [Process inbox items](workflows/inbox.md) lists every rule. When it happens, the
 attachment is not filed, and neither is any note in this run that embeds it —
 both are held back on purpose, so you get another chance rather than ending up
 with a silently mangled filename or a file in the wrong place.

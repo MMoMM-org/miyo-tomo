@@ -762,7 +762,7 @@ document a user reads. The feature is a new decision point in the Pass-1 review
 — the one place the owner is asked to choose — so its absence there was the
 larger gap.
 
-- `docs/usage.md`, under "Process inbox items": what the section is, the three
+- `docs/workflows/inbox.md`: what the section is, the three
   file-comparison verdicts, the three remedies, and the consequence that the
   note is filed in every case. Effect, never mechanism.
 - `docs/troubleshooting.md`: the refusal text as the symptom someone searches

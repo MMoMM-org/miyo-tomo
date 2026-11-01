@@ -211,7 +211,7 @@ the branch `return`s before the split-and-parse block that reads the markdown ev
 WHY the owner-visible consequence is worth stating plainly: save a run in the editor, then
 edit that same run's markdown, and the markdown edits are discarded in full — including
 decisions never touched in the editor. That is not a defect of this design, it is its
-cost, and it is the reason `docs/usage.md` carries a "Two surfaces, one rule" callout
+cost, and it is the reason `docs/workflows/inbox.md` carries a "Two surfaces, one rule" callout
 rather than leaving the rule to be inferred. PRD/S1 of spec 038 exists for this.
 
 WHY the companion flow's both-or-neither rule is this same ruling one level up: the

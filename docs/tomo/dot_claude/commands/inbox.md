@@ -97,3 +97,27 @@ Single source for the shell relay: SDD K16; traceability F2-AC5. Test:
 `test_inbox_passes_the_conductor_report_through_unchanged` in
 `tests/test_039_t5_1_reporting.py`.
 
+
+## Step 3b Blocks on the Conductor (spec 043 T4.3, v0.21.0)
+
+WHY the Step 3b dispatch passes `run_in_background: false`.
+
+`claude` 2.1.316 can start an Agent call in the background even when the call
+does not ask for it: the tool result then says the agent was launched, and the
+report arrives later as a task notification. The eval traces showed this for
+the synthesis-conductor in 3 of 307 Pass 2 runs (merge-evidence suite 2 of
+2026-11-01 went RED on it). The CLI honours an explicit `false`, so stating it
+keeps the dispatch in the foreground and the conductor's report comes back as
+the Agent tool result.
+
+Two things depend on that. Step 3b outputs the report and exits; with a
+backgrounded conductor there is no report yet, so the command would end on a
+"running in the background" line. And the eval's report-only graders read the
+report in the Agent hand-back frame, which a backgrounded dispatch never
+produces (`8-handback-canary` went red, as designed).
+
+No STRICT block: the parameter has not been observed being dropped. The eval
+case prompts carry the same value, pinned by
+`test_prompt_is_the_production_dispatch_namespaced` and
+`test_production_dispatch_blocks_on_the_conductor` in
+`tests/test_eval_conductor_cases.py`.

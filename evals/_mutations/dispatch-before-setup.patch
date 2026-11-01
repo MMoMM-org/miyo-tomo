@@ -1,0 +1,73 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -34,8 +34,6 @@
+ 
+ ### 2. Common setup
+ 
+-# STRICT — run ALL commands below before dispatching ANY subagent.
+-
+ ```bash
+ rm -rf tomo-tmp/items tomo-tmp/inbox-state.jsonl
+ mkdir -p tomo-tmp/items
+@@ -48,22 +46,6 @@
+ Capture stdout as `RUN_ID`.
+ 
+ ```bash
+-rm -f tomo-tmp/shared-ctx.json
+-```
+-
+-```bash
+-python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt
+-```
+-
+-If this fails, abort and surface the error.
+-
+-# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
+-# through the `cat` that opens step 3, before its batch-count command, and
+-# again in the step 7 report.
+-# Why: it is the only report of unusable tracker configuration, and a run that
+-# swallows it looks identical to a healthy one.
+-
+-```bash
+ python3 scripts/read-config-field.py --field tomo.suggestions.parallel --default 5
+ ```
+ 
+@@ -77,12 +59,6 @@
+ 
+ ### 3. Fan-out dispatch
+ 
+-Run this first, before the batch-count command:
+-
+-```bash
+-cat tomo-tmp/setup-warnings.txt
+-```
+-
+ # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
+ # ONE Agent call per message = sequential execution = 5x slower.
+ # Claude Code runs all Agent calls in the same message concurrently.
+@@ -139,6 +115,25 @@
+ `--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
+ miss the rendered doc. If `handled[]` is absent or empty, skip this step.
+ 
++### 3c. Shared context
++
++The reducer is the first step that reads the shared context; the dispatch prompt
++only passes its path, so build it after the last batch, right before Reduce:
++
++```bash
++rm -f tomo-tmp/shared-ctx.json
++```
++
++```bash
++python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt
++```
++
++If this fails, abort and surface the error.
++
++# STRICT — repeat every `WARN:` line this script prints to the user, verbatim.
++# Why: it is the only report of unusable tracker configuration, and a run that
++# swallows it looks identical to a healthy one.
++
+ ### 4. Reduce
+ 
+ ```bash

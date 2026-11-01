@@ -283,3 +283,198 @@ from the summary line; it computes nothing itself.
 The line is added only when the count is above zero: a "0 converted" line on
 every healthy run is noise the owner learns to skip, and the zero still sits
 in the reducer's summary line in the transcript for anyone measuring it.
+
+## Why step 7's report lines are an exact-output template
+
+Step 7 used to show the report as a quoted template — a `> "…"` blockquote
+wrapped over three lines, introduced by nothing. Spec 043's first Pass 1 smoke
+(2026-10-31, `claude` 2.1.316; evidence in
+`docs/XDD/specs/043-pass1-conductor-eval-gate/findings.md`, F1–F3) ran the
+pipeline twice, and both runs paraphrased it:
+
+- `Pass 1 is complete. The analysts processed 3 items (Alpha, Dresden, Gamma) with no failures, and the suggestions are written to [[…]].`
+- `Pass 1 complete: 3 items analysed (Alpha, Dresden, Gamma). Suggestions are written to [[…]].`
+
+The duplicate line was singularised the same way: `1 proposed MOC already
+existed in the vault and is offered as an unticked link instead.` for a
+template that reads `{n} proposed MOC(s) … are offered as unticked links`.
+
+A quote reads as *what to say*, not *the words to output*. The model took it
+as content to convey and wrote it in its own sentence, added the item list it
+had at hand, and made the grammar agree with `n = 1`. Nothing in the old text
+said the wording was fixed.
+
+The template is now stated as an exact-output instruction behind a `STRICT`
+block (observed deviation, 2 of 2 runs):
+
+- **Fenced, not quoted.** Each line sits alone in a ```` ```text ```` fence on
+  one line. A blockquote invites copying the `>` too, and the report line is
+  recognised at the start of a line; a fence makes the boundary of the exact
+  text unambiguous.
+- **What may change is named.** Only `{N}`, `<date>` and `{n}` are replaced.
+  Everything else — wording, punctuation, the line order, `MOC(s)` and
+  `are offered as unticked links` for every `n` including 1 — stays, and the
+  instruction says so in those words, because Sonnet follows literally what it
+  is told and generalises from what it is not.
+- **No item list.** The two runs inserted the same thing, so the instruction
+  forbids it by name.
+- **`<date>` is the full stem.** It is the `YYYY-MM-DD_HHMM` stem of the step 6
+  writes (date and time), so the link resolves to the note that was written;
+  saying only "date" would let the model drop the time.
+
+The instruction does not forbid text after the template lines: a failed
+`mark-captured.py` must still be reported (step 6), and the smoke's extra notes
+below the template were harmless.
+
+## Why the `WARN:` relay copies a tool result before the batch-count command
+
+The step 2 `STRICT` said to repeat every `WARN:` line of `shared-ctx-builder.py`
+"to the user, verbatim, before dispatching anything". In the first smoke (spec
+043 findings F4) the model's only reaction before its first `Agent` call was a
+**thinking** block noting the warning; the verbatim line first reached the user
+in the final report, after every dispatch. It read "before dispatching
+anything" as "somewhere in the reply", and treated noticing the warning as
+relaying it.
+
+The first fix (0.13.0) moved the instruction to the top of step 3 and named the
+vehicle: "send them to the user now, before any command or Agent call of this
+step: write them as a text message of your own (not a thought)". The second
+smoke showed the same pattern: the model reached the top of step 3, wrote one
+thinking block about the warning ("The shared-ctx builder flagged two active
+trackers … I'll run /tomo-setup trackers …"), and its very next content block
+was the batch-count `Bash` call. The placement worked — the reaction came
+exactly where the instruction sat — the vehicle did not. "Not a thought" is an
+abstract duty; the model satisfied it, in its own reading, by thinking about
+the message it would send.
+
+0.13.1 changes the vehicle from a duty to an output:
+
+- **A `STRICT` block.** Observed twice (both smokes), so the emergency lever is
+  justified. Its `Why:` names the failure mode in one line: a warning noted
+  only in thinking reaches the user after every analyst has run.
+- **A literal shape in a `text` fence.** A fixed header line (`Setup
+  warnings:`) followed by the `WARN:` lines. The model has a concrete text to
+  produce, in the same format the step 7 report template already uses, rather
+  than a description of a message.
+- **Anchored to the next tool call.** "Your next output is this text reply,
+  before the batch-count command below" names the exact point where the model
+  acted in both smokes (it went from thinking straight to that command). The
+  rule is phrased against the command it must precede, not against the step.
+- **Thinking named as not counting.** The one reading the model took is ruled
+  out by name.
+- **The no-warning branch is explicit.** "If it printed none, output nothing
+  here" keeps a healthy run from emitting an empty header.
+
+Placement stays at the top of step 3, not as the last item of step 2 right
+after the `shared-ctx-builder.py` call. Both smokes show the model reacting to
+the warning at the top of step 3 (after the two `read-config-field.py` calls),
+so that is where it already pays attention; a second copy at the end of step 2
+would put the rule between the build and the two config reads, where the
+next action is another setup command and the model batches setup calls
+without text between them. One location also means the mutations that remove
+the early relay have a single block to remove.
+
+The step 2 `STRICT` keeps the rule itself (same opening phrase, which
+`tests/test_040_skill_prose.py` pins for both Pass 1 paths) and names both
+moments: as the text reply that opens step 3, and again in the step 7 report.
+The repeat in the report stays because the warning must also be in the final
+reply (PRD F2-AC1), which is what the user reads when the run ends; the early
+reply exists so a user watching the run sees it before analysts are spent on a
+broken tracker configuration (F2-AC2).
+
+The step 3 and step 7 lines name the script (`shared-ctx-builder.py`), not
+"step 2", so they stay true if the build ever moves.
+
+### 0.14.0: the relay is the copy of a tool result (Plan B)
+
+The third smoke (findings F4, smoke 3, `e-QKbc19`) ran 0.13.1 and showed the
+same shape a third time: the `WARN:` tool_result, one non-empty thinking block
+("Setup check found two active trackers—mood and sleep—missing keywords …"),
+then the batch-count `Bash` call, then the first dispatch. No `Setup warnings:`
+text was written. Three wordings — a duty, a duty with a named vehicle, a fixed
+text under `STRICT` — all produced the same thinking-only reaction at the same
+point. Prose has reached its limit here: each version asked the model to
+*remember* to say something it had already seen, and the model counted having
+seen it.
+
+0.14.0 makes the relay a copy instead of a memory (owner decision 2026-10-31,
+"Plan B"):
+
+- **The builder saves its own warnings.** `shared-ctx-builder.py` takes an
+  optional `--warnings-out <path>` and writes every `WARN:` line it printed on
+  stderr to that file, one per line, exactly as printed. The file is rewritten
+  on every run (also on an error exit), and is empty when there were no
+  warnings, so a stale warning from an earlier run can never be relayed. The
+  lines are captured where they are printed (stderr is wrapped for the run),
+  not re-derived, so the saved text cannot drift from what the user would see
+  in the tool output.
+- **Step 3 opens with `cat tomo-tmp/setup-warnings.txt`.** Its stdout is
+  exactly the lines to relay and nothing else. The `STRICT` tells the model to
+  output that stdout verbatim as its text reply before the batch-count command
+  (and nothing when it is empty). Copying the result of the command just run is
+  the pattern the model reliably follows elsewhere (the step 7 report, relay
+  grader 01 green in all three smokes); the reaction point is the same one the
+  model already uses, but now its trigger is a fresh tool result, not a line
+  three tool calls back.
+- **`cat`, not a new reader script.** `cat` is already allowed
+  (`Bash(cat:*)` in `settings.json`), step 1 already uses it on `tomo-tmp/`,
+  and the builder guarantees the file exists whenever the build succeeded (the
+  skill aborts when it fails). A dedicated reader would add a script, a stub
+  and tests for no behaviour `cat` lacks.
+- **The flag is optional.** It changes only a side file, not the built
+  context, so a caller without it builds the same context. When 0.14.0 shipped,
+  `force-atomic-handling` still ran the builder without it. Since
+  `force-atomic-handling` 0.15.0 (2026-10-31) both skills pass it and relay
+  through the same `cat`, and `tests/test_040_skill_prose.py` requires the two
+  builder commands to be byte-identical.
+- **No header line.** The `Setup warnings:` header of 0.13.1 is dropped: the
+  model's reply is the command's stdout, so relay grader 02 (which searches the
+  assistant text for the `WARN:` line) and the user see the builder's lines
+  unaltered, and there is no template to reword.
+- **Step 7 keeps its repeat** for PRD F2-AC1 (the warning in the final reply),
+  unchanged.
+
+The `STRICT` stays: the deviation was observed three times out of three.
+
+### 0.14.1: the `cat` result is the relay; the text-reply `STRICT` is gone
+
+Smoke 4 (findings F4, `e-GDBsiX`) ran 0.14.0. The `cat` ran where the skill
+puts it, at the top of step 3, and its tool result carried the verbatim
+`WARN:` line before the first dispatch. The model then reacted in a thinking
+block once more and wrote no text. That makes four wordings and four runs, all
+thinking-only.
+
+Owner decision 2026-10-31: PRD F2-AC2 is met by the tool relay. The `cat` call
+whose result carries the `WARN:` line, before the first `Agent` call, *is* the
+early relay. Claude Code shows Bash output to the user, so the warning is on
+screen before any analyst runs. The tool result is also deterministic: it needs
+nothing from the model after the call.
+
+What 0.14.1 changes and why:
+
+- **The text-reply `STRICT` under the `cat` is removed**, together with "your
+  next output is this command's stdout". It asked for something the model
+  never did in four runs, and the requirement it served is now met by the
+  command itself. An unmet `STRICT` left in the prose would only teach the
+  model that `STRICT` lines are optional.
+- **The `cat` stays, as the first command of step 3**, phrased as an imperative
+  that names its position: run it before the batch-count command. Relay grader
+  02 checks exactly this: the `cat` tool_use and its next tool_result, both
+  before the first dispatch (SDD Complex Logic). Its position ties it to the
+  point where the model already acted in all four smokes, the top of step 3.
+- **`--warnings-out` stays.** Without the saved file the `cat` would have
+  nothing to print. The builder's own tool result also carries the WARN text,
+  but it comes several tool calls before step 3. In the eval it cannot be told
+  apart from a run that swallows the warning, because the builder prints it in
+  every run.
+- **The step 2 `STRICT` keeps its opening phrase** ("repeat every `WARN:` line
+  this script prints", pinned for both Pass 1 paths by
+  `tests/test_040_skill_prose.py`). It now names the two places where the
+  warning reaches the user: the `cat` that opens step 3, and the step 7 report.
+  It no longer asks for a text reply before the dispatch.
+- **Step 7 keeps its repeat** for PRD F2-AC1 (relay grader 01, green in all four
+  smokes). The final reply is what the user reads when the run ends.
+
+The mutation `warn-in-report-only` removes the `cat` and leaves only the step 7
+repeat, so the warning reaches the user after every dispatch, and grader 02
+goes red.

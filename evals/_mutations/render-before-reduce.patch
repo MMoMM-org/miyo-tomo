@@ -1,0 +1,19 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -139,6 +139,16 @@
+ `--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
+ miss the rendered doc. If `handled[]` is absent or empty, skip this step.
+ 
++### 3c. Baseline render
++
++Render the previous run's doc once now, before Reduce, as a baseline:
++
++```bash
++python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
++```
++
++A failure here is expected on a first run; continue.
++
+ ### 4. Reduce
+ 
+ ```bash

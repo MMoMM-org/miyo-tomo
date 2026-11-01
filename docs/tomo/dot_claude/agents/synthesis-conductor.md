@@ -703,3 +703,103 @@ failed upload, no failure detail, no leak) and
 `evals/state-flip-failure-reported` (failed-step line for the flip, no failure
 detail, no leak). Both stub kits print failure bait on stderr, so a reply that
 explains the failure outside the report turns the gate RED.
+
+## The Stop Report Is Never Announced (spec 043 F5, v0.24.2)
+
+WHY the "reply is ONLY the report" ban is its own rule of the report STRICT,
+names the 3c stop report, and why 3c says where the stop report starts.
+
+### The Observed Deviation
+
+The spec 043 full suites of 2026-10-31 (claude 2.1.316, conductor 0.24.1) ran
+`evals/audit-mismatch-stops` nine times. In 2 of 9 runs `7-report-only-mismatch`
+was red: the hand-back frame began with the conductor's own sentence, then a
+blank line, then the audit's stdout:
+
+```
+The coverage audit reported a mismatch, so I'm stopping here. The suggestions doc was not uploaded and its state was not flipped.
+
+COVERAGE-GAP-91c2: suggestion s1 has no matching instruction (expected 1, found 0)
+RESULT: FAIL — count or coverage mismatch above.
+```
+
+The second occurrence was kept (`findings.md`, "Full suite 2"). This is the
+#205 deviation — text outside the report — on the stop path instead of the
+failed-delivery path.
+
+### WHY Two Existing Rules Did Not Stop It
+
+- 3c said the stop report is "the audit's stdout copied as printed, and nothing
+  else". "Nothing else" describes the report's content; the model wrote the
+  preface as a frame around the report, not as part of it.
+- Rule 4 said "Your reply is ONLY the report: NEVER write anything before or
+  after it", but the sentence sat inside a rule that opened with "In the Step 4
+  report". The #205 fix widened the ban to the whole reply, yet left it under a
+  Step-4 label, so a literal model could read it as applying only to the Step 4
+  blockquote and not to a stop in 3c.
+
+### WHY the Ban Became Its Own Rule
+
+The ban on writing anything before or after the report is now rule 5, separate
+from rule 4 (no extra line inside the Step 4 report). Rule 5 names every report
+it covers — the Step 4 report, the 3c stop report, any other stop — so no step
+label scopes it, and it names the observed shape ("NEVER announce, explain or
+summarise the stop") next to the #205 shapes. 3c now says the reply starts with
+the audit's first stdout line, which gives the model a positive anchor for the
+first character of the reply instead of only a negative rule. The STRICT's
+`Why:` gained the stop-path preface as one more failure mode. No new STRICT
+block was added: the change splits an existing rule.
+
+### What Keeps This True
+
+`evals/audit-mismatch-stops` grader `7-report-only-mismatch` (the hand-back
+frame holds nothing but the audit's stdout) and the canary `8-handback-canary`.
+The mutation `status-sentence-first` removes the ban and the 3c anchor and
+injects a status sentence, so the grader goes red on it.
+
+## The Conductor Runs on Sonnet (spec 043 T4.3, v0.25.0)
+
+WHY the frontmatter says `model: sonnet` instead of `model: haiku`.
+
+### The Observed Deviation
+
+The spec 043 merge evidence of 2026-10-31 (three full suites on candidate
+`e9127610`, claude 2.1.316, conductor 0.24.2 on haiku) was RED in suite 2:
+`state-flip-failure-reported` and `upload-failure-reported` each failed
+`7-report-only` in one run. Both hand-back frames began with the conductor's
+own sentence before the report:
+
+```
+Pass 2 did not finish cleanly: the state flip for the one approved doc was rejected, so its state is still `pending-approval`.
+```
+
+```
+Pass 2 synthesis did not complete. The Step 4 report is below.
+```
+
+A full suite earlier that day was RED on `audit-mismatch-stops`
+(`7-report-only-mismatch`) in the same way. That makes three occurrences on one
+day, after rule 5 of v0.24.2 had already split the ban into its own rule and
+named the stop shape. Across the day's suites the preface appeared in about 1
+of 20 Pass 2 runs, so about every second full suite went RED.
+
+### WHY a Model Change, Not More Prose
+
+Rule 5 already says, in a STRICT block with a `Why:` naming this shape, that
+the reply is ONLY the report and that the model NEVER announces, explains or
+summarises the stop. The deviation persisted. Each earlier prose iteration
+(#205 in v0.24.1, F5 in v0.24.2) lowered the rate but did not remove it. A
+further rewording would cost another round of paid suites with no evidence it
+would hold. The owner chose sonnet over another prose iteration. The cost per
+Pass 2 run rises, and the gate's measured cost per full suite rises with it.
+
+The older sections above that say "haiku-tier agent" describe the model the
+rule was written for. They still apply: every rule written for the literal
+haiku reading stays in the runtime file.
+
+### What Keeps This True
+
+`evals/*-failure-reported` grader `7-report-only`, `evals/audit-mismatch-stops`
+grader `7-report-only-mismatch`, and the canary `8-handback-canary`. The
+mutation `status-sentence-first` must stay red on sonnet; `red-proofs.md` of
+spec 043 records the re-proof.

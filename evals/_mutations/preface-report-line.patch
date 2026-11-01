@@ -1,0 +1,12 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -180,7 +180,8 @@
+ # the punctuation and the line order. Add no item list.
+ # Why: a quoted template gets reworded, extended with item names and singularised.
+ 
+-Output this line first. `{N}` is the number of items analysed; `<date>` is the
++Output the line `Status: run finished.` first, as a message of its own, then
++this line. `{N}` is the number of items analysed; `<date>` is the
+ full `YYYY-MM-DD_HHMM` stem of the step 6 writes (date and time):
+ 
+ ```text

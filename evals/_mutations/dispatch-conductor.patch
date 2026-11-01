@@ -1,0 +1,47 @@
+--- a/commands/inbox.md
++++ b/commands/inbox.md
+@@ -39,26 +39,34 @@
+ 
+ | action | Route |
+ |--------|-------|
+-| suggest | IMPERSONATE suggestion-conductor |
+-| fan-resolve | IMPERSONATE suggestion-conductor |
++| suggest | DISPATCH suggestion-conductor (see Step 3a) |
++| fan-resolve | DISPATCH suggestion-conductor (see Step 3a) |
+ | synthesize | DISPATCH synthesis-conductor (see Step 3b) |
+ | transcribe | Dispatch voice-transcriber directly (see Step 4) |
+ | idle | Surface status to user (see Step 5) |
+ 
+-# STRICT — IMPERSONATE means: read `.claude/agents/suggestion-conductor.md`
+-# and execute its workflow as yourself. NEVER call `Agent()` for it.
+-# Why: a dispatched subagent cannot use the Agent tool, so the conductor
+-# would be unable to dispatch its inbox-analyst leaves.
++# STRICT — DISPATCH means: call `Agent()` and do not run the workflow yourself.
++# It applies to suggestion-conductor, synthesis-conductor and voice-transcriber.
++# Why: dispatch keeps each conductor's context isolated.
+ 
+-# STRICT — DISPATCH means the opposite: call `Agent()` and do not run the
+-# workflow yourself. It applies to synthesis-conductor and voice-transcriber only.
+-# Why: both are pure script runners, so dispatch keeps their context isolated.
+-
+ # STRICT — every Agent() call passes `subagent_type`. `name` only labels the
+ # spawned agent and selects nothing.
+ # Why: a dispatch without `subagent_type` silently runs general-purpose, which
+ # has none of the named agent's contract, tools or skills.
+ 
++### 3a. Suggest (dispatch)
++
++When action is `suggest` or `fan-resolve`, dispatch the suggestion-conductor as a subagent:
++
++```
++Agent(
++  subagent_type: "suggestion-conductor"
++  prompt: "Run Pass 1. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow exactly."
++)
++```
++
++Output the suggestion-conductor's report to the user, then exit.
++
+ ### 3b. Synthesize (dispatch)
+ 
+ When action is `synthesize`, dispatch the synthesis-conductor as a subagent:

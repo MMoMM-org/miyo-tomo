@@ -1,0 +1,36 @@
+--- a/skills/suggest-handling/SKILL.md
++++ b/skills/suggest-handling/SKILL.md
+@@ -57,11 +57,8 @@
+ 
+ If this fails, abort and surface the error.
+ 
+-# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
+-# through the `cat` that opens step 3, before its batch-count command, and
+-# again in the step 7 report.
+-# Why: it is the only report of unusable tracker configuration, and a run that
+-# swallows it looks identical to a healthy one.
++`WARN:` lines this script prints on stderr are diagnostics for the maintainer;
++they are kept in the script's log and need no action here.
+ 
+ ```bash
+ python3 scripts/read-config-field.py --field tomo.suggestions.parallel --default 5
+@@ -77,12 +74,6 @@
+ 
+ ### 3. Fan-out dispatch
+ 
+-Run this first, before the batch-count command:
+-
+-```bash
+-cat tomo-tmp/setup-warnings.txt
+-```
+-
+ # STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
+ # ONE Agent call per message = sequential execution = 5x slower.
+ # Claude Code runs all Agent calls in the same message concurrently.
+@@ -196,6 +187,3 @@
+ {n} proposed MOC(s) already existed in the vault and are offered as unticked links instead.
+ ```
+ 
+-Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as
+-printed, one per line. If it printed none, skip this.
+-

@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 RUNNER = REPO / "scripts" / "run-evals.sh"
@@ -36,6 +37,15 @@ tools: Bash
 
 Step 1: run the probe.
 """
+
+REAL_ANALYST_TEXT = "---\nname: inbox-analyst\nmodel: sonnet\n---\nThe REAL analyst: reads the vault.\n"
+
+STUB_PATCH = """--- a/agents/inbox-analyst.md
++++ b/agents/inbox-analyst.md
+@@ -7,3 +7,3 @@
+ \n-**Active agent: inbox-analyst (eval stub)**
++**Active agent: inbox-analyst (MUTATED stub)**
+ \n"""
 
 FLIP_PATCH = """--- a/agents/probe-agent.md
 +++ b/agents/probe-agent.md
@@ -163,6 +173,8 @@ class Env:
         lib.mkdir(parents=True)
         shutil.copy(KIT_DIR / "stubs.sh", lib / "stubs.sh")
         shutil.copy(KIT_DIR / "no-leak.md", lib / "no-leak.md")
+        shutil.copy(KIT_DIR / "inbox-analyst.stub.md", lib / "inbox-analyst.stub.md")
+        _write(dc / "agents" / "inbox-analyst.md", REAL_ANALYST_TEXT)
         case = r / "evals" / "probe-case"
         _write(case / "case.yaml", 'schema_version: "1.1"\nname: probe-case\nruns: 3\n'
                "context:\n  scaffold_script: scaffold.sh\n")
@@ -259,19 +271,71 @@ def test_unreadable_settings_model_is_refused(env):
     assert env.eval_calls() == []
 
 
+# inbox-analyst.md is the exception: it is the eval stand-in.
 def test_snapshot_shape_and_agents_byte_identical(env):
     proc = env.run()
     assert proc.returncode == 0, proc.stderr
     snap = env.snap
     assert json.loads((snap / ".claude-plugin" / "plugin.json").read_text()) == {"name": "tomo"}
     src = env.repo / "tomo" / "dot_claude"
-    for d in ("agents", "skills", "commands"):
+    for d in ("skills", "commands"):
         assert _dir_state(snap / d) == _dir_state(src / d), d
+    assert _dir_state(snap / "agents") == {
+        **_dir_state(src / "agents"),
+        "inbox-analyst.md": (KIT_DIR / "inbox-analyst.stub.md").read_bytes(),
+    }
     assert _dir_state(snap / "evals") == {
         k: v for k, v in _dir_state(env.repo / "evals").items() if not k.startswith("results/")
     }
     assert not (snap / "evals" / "results").exists()
     assert sorted(p.name for p in snap.iterdir()) == [".claude-plugin", "agents", "commands", "evals", "skills"]
+
+
+# ── the analyst stand-in (spec 043, ADR-1) ────────────────────
+
+
+def _stub_bytes(env) -> bytes:
+    return (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").read_bytes()
+
+
+def test_assembled_copy_carries_the_analyst_stand_in(env):
+    real = env.repo / "tomo" / "dot_claude" / "agents" / "inbox-analyst.md"
+    before = hashlib.sha256(real.read_bytes()).hexdigest()
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (env.snap / "agents" / "inbox-analyst.md").read_bytes() == _stub_bytes(env)
+    assert hashlib.sha256(real.read_bytes()).hexdigest() == before
+
+
+def test_stand_in_comes_from_the_working_tree_under_rev(env):
+    old_sha = _git(env.repo, "rev-parse", "HEAD").strip()
+    stub = env.repo / "evals" / "_lib" / "inbox-analyst.stub.md"
+    stub.write_text(stub.read_text() + "\nWorking-tree edit.\n")
+    proc = env.run("--rev", old_sha)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    got = (env.snap / "agents" / "inbox-analyst.md").read_bytes()
+    assert got == stub.read_bytes()
+    assert b"REAL analyst" not in got
+
+
+def test_mutation_targeting_the_stand_in_applies_after_the_swap(env):
+    _write(env.repo / "evals" / "_mutations" / "stub.patch", STUB_PATCH)
+    proc = env.run("--mutation", "stub")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    text = (env.snap / "agents" / "inbox-analyst.md").read_text()
+    assert "(MUTATED stub)" in text
+    assert "REAL analyst" not in text
+    assert (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").read_bytes() == (
+        KIT_DIR / "inbox-analyst.stub.md").read_bytes()
+
+
+def test_missing_stand_in_is_refused_without_a_claude_call(env):
+    (env.repo / "evals" / "_lib" / "inbox-analyst.stub.md").unlink()
+    proc = env.run()
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "inbox-analyst.stub.md" in proc.stderr
+    assert env.calls() == []
+    assert list(env.tmpdir.iterdir()) == []
 
 
 # ── temp dir lifecycle and CLI exit handling ──────────────────
@@ -563,7 +627,8 @@ def test_help_documents_contract(env):
     h = proc.stdout
     for needle in ("--runs", "--max-cost-usd", "EVAL_MAX_COST_USD", "tomo-tmp/evals/", "sandbox",
                    "0  GREEN", "1  RED", "2  NOT GRADED", "3  REFUSED", "CLAUDE_BIN",
-                   "Typical cost: about $1 per full suite (5 cases x 3 runs", "hard cap $5"):
+                   "Typical cost: about $2.75 per full suite (7 cases x 3 runs, measured)", "hard cap $5",
+                   "evals/ and the\n                        inbox-analyst stand-in always come from the working\n                        tree."):
         assert needle in h, needle
     assert env.calls() == []
 
@@ -660,3 +725,126 @@ def test_runner_generated_not_graded_line_is_repo_relative(env):
     assert line.endswith(f" · tomo-tmp/evals/{out.name}"), line
     assert str(env.repo) not in line and str(env.tmp) not in line
     assert (out / "verdict.txt").read_text().strip() == line
+
+
+# ── the Pass 1 cases (spec 043, T2.2/T2.3) ────────────────────
+
+PASS1_CASES = {
+    "pass1-suggest-pipeline": ("0", "0"),
+    "pass1-warn-and-duplicates-relayed": ("1", "1"),
+}
+CONDUCTOR = REPO / "tomo" / "dot_claude" / "agents" / "suggestion-conductor.md"
+
+
+@pytest.mark.parametrize("case", sorted(PASS1_CASES))
+def test_pass1_case_files_are_as_specified(case):
+    d = REPO / "evals" / case
+    spec = yaml.safe_load((d / "case.yaml").read_text())
+    assert spec == {
+        "schema_version": "1.1",
+        "name": case,
+        "runs": 3,
+        "context": {"scaffold_script": "scaffold.sh"},
+        "execution": {
+            "max_turns": 60,
+            "timeout_seconds": 900,
+            "allowed_tools": ["Agent", "Bash", "Read", "Skill", "Write"],
+            "prompt": "/tomo:inbox",
+        },
+    }
+    warn, dups = PASS1_CASES[case]
+    lines = [ln for ln in (d / "scaffold.sh").read_text().splitlines()
+             if ln and not ln.startswith("#")]
+    assert lines == [
+        "set -e",
+        f"SHARED_CTX_WARN={warn}",
+        f"DUPLICATES={dups}",
+        '. "$(dirname "$0")/../_lib/pass1-stubs.sh"',
+        "stage_pass1_instance",
+    ]
+    assert (d / "graders" / "9-no-leak.md").read_bytes() == (KIT_DIR / "no-leak.md").read_bytes()
+
+
+@pytest.mark.parametrize("case", sorted(PASS1_CASES))
+def test_pass1_case_passes_preflight_and_its_scaffold_stages(env, case):
+    """A dry run: the fake claude stands in for the paid call; the case's own scaffold
+    runs from the assembled copy, where the conductor is reachable."""
+    shutil.copytree(REPO / "evals" / case, env.repo / "evals" / case)
+    shutil.copy(KIT_DIR / "pass1-stubs.sh", env.repo / "evals" / "_lib" / "pass1-stubs.sh")
+    shutil.copy(CONDUCTOR, env.repo / "tomo" / "dot_claude" / "agents" / CONDUCTOR.name)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "pass1 case")
+    report = env.tmp / "scaffold-report.json"
+    proc = env.run("--case", case, FAKE_SCAFFOLD_CASE=case,
+                   FAKE_SCAFFOLD_WS=str(env.tmp / "ws"), FAKE_SCAFFOLD_REPORT=str(report))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert env.flag(env.eval_calls()[0], "--case") == case
+    got = json.loads(report.read_text())
+    assert got["rc"] == 0 and got["run_id"], got
+    ws = env.tmp / "ws"
+    assert (ws / ".claude" / "agents" / CONDUCTOR.name).read_bytes() == CONDUCTOR.read_bytes()
+    ctx = (ws / "scripts" / "shared-ctx-builder.py").read_text()
+    reducer = (ws / "scripts" / "suggestions-reducer.py").read_text()
+    warn, dups = PASS1_CASES[case]
+    assert f"SHARED_CTX_WARN = {warn}\n" in ctx
+    assert f"DUPLICATES = {dups}\n" in reducer
+
+
+# ── the spec 043 mutations through the runner (T2.5) ──────────
+
+# The spec 041 patches: applied through the runner by spec 041's own tests; every
+# other patch file is a spec 043 patch and goes through the apply test below.
+SPEC_041_PATCHES = (
+    "drop-audit-line", "always-notice", "summarise-mismatch", "write-into-scripts",
+    "copy-into-config", "paraphrase-relay", "files-used-after",
+    "attachments-first", "report-run-id",
+    "failed-step-path", "flip-after-failed-upload", "explain-failure",
+)
+
+
+def _spec_043_patches() -> tuple[str, ...]:
+    """Every patch file not named in SPEC_041_PATCHES. The README's recorded
+    `## Proofs` table must name exactly the patch files, so a new patch can go
+    neither unlisted nor untested here."""
+    readme = (REPO / "evals" / "_mutations" / "README.md").read_text(encoding="utf-8")
+    recorded = readme.split("## Proofs\n", 1)[1].split("\n## ", 1)[0]
+    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M))
+    files = {p.stem for p in (REPO / "evals" / "_mutations").glob("*.patch")}
+    assert files == rows, ("patch files and recorded rows differ", sorted(files ^ rows))
+    assert set(SPEC_041_PATCHES) <= files, sorted(set(SPEC_041_PATCHES) - files)
+    return tuple(sorted(files - set(SPEC_041_PATCHES)))
+
+
+SPEC_043_PATCHES = _spec_043_patches()
+RUNTIME_DIRS = ("agents", "skills", "commands")
+
+
+def _runtime_files(root: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(root)): p.read_bytes()
+        for d in RUNTIME_DIRS for p in sorted((root / d).rglob("*")) if p.is_file()
+    }
+
+
+@pytest.mark.parametrize("name", SPEC_043_PATCHES)
+def test_spec_043_mutation_applies_in_the_runner_and_changes_only_its_files(env, name):
+    """The runner assembles the real runtime files, swaps in the stand-in, applies the
+    patch with `patch -p1 --forward`; the copy it hands claude differs from the
+    unpatched assembly in exactly the files the patch names, and the repo is untouched."""
+    patch = REPO / "evals" / "_mutations" / f"{name}.patch"
+    dc = env.repo / "tomo" / "dot_claude"
+    for d in RUNTIME_DIRS:
+        shutil.copytree(REPO / "tomo" / "dot_claude" / d, dc / d, dirs_exist_ok=True)
+    shutil.copy(patch, env.repo / "evals" / "_mutations" / patch.name)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "runtime files")
+    unpatched = _runtime_files(dc)
+    unpatched["agents/inbox-analyst.md"] = _stub_bytes(env)
+    proc = env.run("--mutation", name)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert f"mutation {name}" in _line(proc)
+    got = _runtime_files(env.snap)
+    assert set(got) == set(unpatched)
+    changed = {f for f in got if got[f] != unpatched[f]}
+    named = set(re.findall(r"^\+\+\+ b/(\S+)", patch.read_text(encoding="utf-8"), re.M))
+    assert changed == named, (changed, named)

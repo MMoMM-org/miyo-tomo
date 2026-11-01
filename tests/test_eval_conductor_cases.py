@@ -61,6 +61,11 @@ CONTROL_GRADERS = {
     UPLOAD_FAIL: {"0-conductor-dispatched", "3-upload-ran"},
     FLIP_FAIL: {"0-conductor-dispatched", "2-state-flip-ran"},
 }
+# Spec 043 ADR-4: the hand-back canary is a control in every case (it checks the trace
+# frame the report-only grader reads is present exactly once; its RED proof is offline,
+# tests/test_043_grader_patterns.py).
+for _controls_of_case in CONTROL_GRADERS.values():
+    _controls_of_case.add("8-handback-canary")
 
 # PRD F3–F6 grader-backed criterion → the gate grader(s) that decide it.
 # F5-AC1 ("each delete line exact") and F5-AC2 ("both, each on its own line")
@@ -105,24 +110,45 @@ ISSUE_205 = {
     ],
 }
 
+# Spec 043 PRD F4: the reply is only the report, in every Pass 2 case.
+SPEC_043_REPORT_ONLY = {
+    "report-only": [
+        (c, "7-report-only-mismatch" if c == MISMATCH else "7-report-only")
+        for c in CASE_SETTINGS
+    ],
+}
+# Spec 043's Pass 1 cases; their shape is tested in test_run_evals.py.
+PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
+PIPELINE = "pass1-suggest-pipeline"
+SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
+SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
+PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
+
+# Every Pass 1 grader is a gate (none only confirms a precondition: the main session
+# runs Pass 1 itself, so there is no dispatch to confirm). The leak guard is the
+# exception to "has its own mutation": it is a byte copy of evals/_lib/no-leak.md and
+# inherits that file's recorded RED proof (README "Inherited proofs").
+INHERITED_LEAK_GUARD = {(c, "9-no-leak") for c in PASS1_CASES}
+
 LINE_START, LINE_END = "(?:^|\\n)", "(?:\\n|$)"
 CASE_YAML_KEYS = {"schema_version", "name", "runs", "context", "execution"}
 EXECUTION_KEYS = {"max_turns", "timeout_seconds", "allowed_tools", "prompt"}
 
 
-def production_dispatch() -> tuple[str, str]:
+def production_dispatch() -> tuple[str, str, str | None]:
     text = INBOX_CMD.read_text(encoding="utf-8")
     block = re.search(r"### 3b\. Synthesize \(dispatch\).*?```\n(Agent\(.*?\))\n```", text, re.S)
     assert block, "inbox.md: 3b dispatch block not found"
     agent = re.search(r'subagent_type: "([^"]+)"', block.group(1)).group(1)
     prompt = re.search(r'prompt: "([^"]+)"', block.group(1)).group(1)
-    return agent, prompt
+    background = re.search(r"run_in_background: (\w+)", block.group(1))
+    return agent, prompt, background and background.group(1)
 
 
-def test_exactly_the_three_cases_exist():
+def test_exactly_the_known_cases_exist():
     assert {p.name for p in EVALS.iterdir() if p.is_dir() and not p.name.startswith("_")} == set(
         CASE_SETTINGS
-    )
+    ) | PASS1_CASES
 
 
 def test_every_non_underscore_evals_subdir_is_a_case():
@@ -150,12 +176,20 @@ def test_case_yaml_shape(case):
 
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_prompt_is_the_production_dispatch_namespaced(case):
-    agent, prompt = production_dispatch()
+    agent, prompt, background = production_dispatch()
     p = case_yaml(case)["execution"]["prompt"]
     assert f"subagent_type `tomo:{agent}`" in p
+    assert f"run_in_background `{background}`" in p
     assert f'prompt "{prompt}"' in p
     assert p.endswith("repeat its final report verbatim.")
     assert p == case_yaml(GATES)["execution"]["prompt"]
+
+
+def test_production_dispatch_blocks_on_the_conductor():
+    # A backgrounded conductor hands its report back as a task notification,
+    # so the hand-back frame the report-only graders read never appears and
+    # Step 3b would output the report before it exists.
+    assert production_dispatch()[2] == "false"
 
 
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
@@ -208,7 +242,10 @@ def test_audit_ran_control():
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_graders_split_into_controls_and_mapped_gates(case):
     mapped = {
-        g for pairs in [*CRITERIA.values(), *ISSUE_205.values()] for c, g in pairs if c == case
+        g
+        for pairs in [*CRITERIA.values(), *ISSUE_205.values(), *SPEC_043_REPORT_ONLY.values()]
+        for c, g in pairs
+        if c == case
     }
     assert grader_names(case) == CONTROL_GRADERS[case] | mapped
     assert not CONTROL_GRADERS[case] & mapped
@@ -534,26 +571,49 @@ EXPECTED_MUTATIONS = (
     "attachments-first", "report-run-id",
     "failed-step-path", "flip-after-failed-upload", "explain-failure",
 )
+# Spec 043 (T2.5): recorded in `## Proofs` with the rest; each declares the plugin
+# file(s) it patches under Clauses (`- files:`).
+SPEC_043_MUTATIONS = (
+    "dispatch-conductor", "analyst-name-not-type", "path-from-stem", "setup-in-conductor",
+    "dispatch-before-setup", "render-before-reduce", "reduce-before-batch-2",
+    "publish-md-with-write-tool", "mark-before-write", "inline-python-read",
+    "reword-report-line", "always-duplicate-line", "warn-is-diagnostic",
+    "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
+    "preface-report-line",
+)
+ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
+NOT_YET_MEASURED = "not yet measured"
+GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
 # forbids, so they declare `removes: none` instead of quoted removals.
 NEUTRAL_WRITE_MUTATIONS = ("write-into-scripts", "copy-into-config")
-GRADER_REF = re.compile(r"`([a-z-]+)/(\d-[a-z0-9-]+)`")
+# A neutral step that only adds (a baseline render before Reduce): same rule.
+ADDITIVE_MUTATIONS = NEUTRAL_WRITE_MUTATIONS + ("render-before-reduce",)
+GRADER_REF = re.compile(r"`([a-z0-9-]+)/(\d+[a-z]?-[a-z0-9-]+)`")
 NO_WRITE, NO_COPY = "5-no-write-into-scripts-schemas-config", "6-no-copy-into-scripts-schemas-config"
 
 
 def _assemble_plugin(tmp_path: Path) -> Path:
-    """The working-tree half of run-evals.sh's assembly: agents/skills/commands."""
+    """The working-tree assembly of run-evals.sh: agents/skills/commands, then the
+    analyst stand-in swapped in before any mutation, as the runner does."""
     plugin = tmp_path / "plugin"
     for d in ("agents", "skills", "commands"):
         shutil.copytree(REPO / "tomo" / "dot_claude" / d, plugin / d)
+    shutil.copy(EVALS / "_lib" / "inbox-analyst.stub.md", plugin / "agents" / "inbox-analyst.md")
     return plugin
 
 
 def _patch(plugin: Path, name: str, dry_run: bool) -> subprocess.CompletedProcess:
     argv = ["patch", "-p1", "--forward", "-i", str(MUTATIONS / f"{name}.patch")]
     if dry_run:
-        argv.insert(1, "--dry-run")
+        # --verbose: Apple's patch (2.0-12u11) reports "(offset N lines)" and
+        # "with fuzz N" only in verbose mode, so without it a shifted hunk passes.
+        argv[1:1] = ["--dry-run", "--verbose"]
     return subprocess.run(argv, cwd=plugin, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+
+
+def _readme_text() -> str:
+    return MUTATIONS_README.read_text(encoding="utf-8")
 
 
 def _readme_section(title: str) -> str:
@@ -571,19 +631,28 @@ def _table_rows(section: str) -> list[list[str]]:
     return [r for r in rows[1:] if not set("".join(r)) <= set("-: ")]
 
 
-def _proofs() -> list[dict]:
-    """One dict per row of the Proofs table: proof, cases, expected, side."""
+def _proof_rows(title: str) -> list[dict]:
     out = []
-    for proof, cases, expected, side in _table_rows(_readme_section("Proofs")):
+    for proof, cases, expected, side in _table_rows(_readme_section(title)):
         m = re.fullmatch(r"`--(mutation|rev) ([^`]+)`", proof)
         assert m, f"proof cell is neither `--mutation <name>` nor `--rev <rev>`: {proof}"
         out.append({
             "kind": m.group(1), "arg": m.group(2),
-            "cases": set(re.findall(r"`([a-z-]+)`", cases)),
+            "cases": set(re.findall(r"`([a-z0-9-]+)`", cases)),
             "expected": set(GRADER_REF.findall(expected)),
-            "side": set(GRADER_REF.findall(side)),
+            "side": set(GRADER_REF.findall(side)), "side_text": side,
+            "expected_text": expected,
         })
     return out
+
+
+def _recorded_proofs() -> list[dict]:
+    """Rows of `## Proofs`: each one was run, red in every run, verdicts recorded."""
+    return _proof_rows("Proofs")
+
+
+def _proofs() -> list[dict]:
+    return _recorded_proofs()
 
 
 def _controls() -> set[tuple[str, str]]:
@@ -593,27 +662,52 @@ def _controls() -> set[tuple[str, str]]:
     }
 
 
-def _clauses(name: str) -> dict[str, list[str]]:
+def _clause_block(name: str) -> str:
     section = _readme_section("Clauses")
     m = re.search(rf"^### {re.escape(name)}\n(.*?)(?=^### |\Z)", section, re.S | re.M)
     assert m, f"_mutations/README.md Clauses has no '### {name}'"
-    out = {"removes": [], "adds": [], "removes_none": bool(re.search(r"^- removes: none\b", m.group(1), re.M))}
-    for kind, clause in re.findall(r'^- (removes|adds): "(.*)"$', m.group(1), re.M):
+    return m.group(1)
+
+
+def _clauses(name: str) -> dict[str, list[str]]:
+    block = _clause_block(name)
+    out = {"removes": [], "adds": [], "removes_none": bool(re.search(r"^- removes: none\b", block, re.M))}
+    for kind, clause in re.findall(r'^- (removes|adds): "(.*)"$', block, re.M):
         out[kind].append(clause)
     return out
+
+
+def _declared_files(name: str) -> set[str]:
+    """The plugin files a mutation names (`- files:` under Clauses); the 041
+    mutations predate the line and all patch the synthesis conductor."""
+    m = re.search(r"^- files: (.+)$", _clause_block(name), re.M)
+    if name in EXPECTED_MUTATIONS:
+        assert not m, f"{name}: 041 mutations patch only the conductor"
+        return {CONDUCTOR_IN_PLUGIN}
+    assert m, f"{name}: no '- files:' line under Clauses"
+    return set(re.findall(r"`([^`]+)`", m.group(1)))
+
+
+def _patched_files(name: str) -> tuple[set[str], set[str]]:
+    text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
+    return (set(re.findall(r"^--- a/(\S+)", text, re.M)), set(re.findall(r"^\+\+\+ b/(\S+)", text, re.M)))
 
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _joined(plugin: Path, files: set[str]) -> str:
+    return "\n".join((plugin / f).read_text(encoding="utf-8") for f in sorted(files))
+
+
 def test_readme_mutations_match_the_patch_files():
-    named = {p["arg"] for p in _proofs() if p["kind"] == "mutation"}
+    recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert named == files == set(EXPECTED_MUTATIONS)
+    assert recorded == files == set(ALL_MUTATIONS)
 
 
-@pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
+@pytest.mark.parametrize("name", ALL_MUTATIONS)
 def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
     result = _patch(_assemble_plugin(tmp_path), name, dry_run=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -622,43 +716,69 @@ def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
 
 @pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
 def test_mutation_touches_only_the_conductor(name):
-    text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
-    assert set(re.findall(r"^\+\+\+ b/(\S+)", text, re.M)) == {CONDUCTOR_IN_PLUGIN}
-    assert set(re.findall(r"^--- a/(\S+)", text, re.M)) == {CONDUCTOR_IN_PLUGIN}
+    assert _patched_files(name) == ({CONDUCTOR_IN_PLUGIN}, {CONDUCTOR_IN_PLUGIN})
 
 
-@pytest.mark.parametrize("name", EXPECTED_MUTATIONS)
+@pytest.mark.parametrize("name", SPEC_043_MUTATIONS)
+def test_spec_043_mutation_touches_only_its_declared_files(name):
+    declared = _declared_files(name)
+    assert declared, name
+    assert _patched_files(name) == (declared, declared)
+    for f in declared:
+        assert (REPO / "tomo" / "dot_claude" / f).is_file(), f"{name}: no runtime file {f}"
+
+
+@pytest.mark.parametrize("name", ALL_MUTATIONS)
 def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     """A mutation that only adds a bad instruction while a surviving STRICT
     forbids it is a weak proof: every contradicting clause it neutralises is
-    declared in the README and checked gone here."""
+    declared in the README and checked gone here, in every file it patches."""
     plugin = _assemble_plugin(tmp_path)
-    before = _norm((plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8"))
+    files = _declared_files(name)
+    before = _norm(_joined(plugin, files))
     result = _patch(plugin, name, dry_run=False)
     assert result.returncode == 0, result.stdout + result.stderr
-    after = _norm((plugin / CONDUCTOR_IN_PLUGIN).read_text(encoding="utf-8"))
+    after = _norm(_joined(plugin, files))
     clauses = _clauses(name)
     assert clauses["adds"], name
-    if name in NEUTRAL_WRITE_MUTATIONS:
+    if name in ADDITIVE_MUTATIONS:
         assert clauses["removes_none"] and not clauses["removes"], name
         patch_text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
         removed = [line for line in patch_text.splitlines() if line.startswith("-") and not line.startswith("---")]
-        assert not removed, f"{name}: a neutral-write mutation must only add: {removed}"
+        assert not removed, f"{name}: an additive mutation must only add: {removed}"
     else:
         assert clauses["removes"] and not clauses["removes_none"], name
     for clause in clauses["removes"]:
-        assert _norm(clause) in before, f"{name}: declared removal not in the conductor: {clause}"
+        assert _norm(clause) in before, f"{name}: declared removal not in the patched files: {clause}"
         assert _norm(clause) not in after, f"{name}: still present after the patch: {clause}"
     for clause in clauses["adds"]:
         assert _norm(clause) not in before, f"{name}: declared addition already present: {clause}"
         assert _norm(clause) in after, f"{name}: missing after the patch: {clause}"
 
 
+def _gates(case: str) -> set[str]:
+    if case in PASS1_CASES:
+        return grader_names(case) - {g for c, g in INHERITED_LEAK_GUARD if c == case}
+    return grader_names(case) - CONTROL_GRADERS[case]
+
+
 def test_every_gate_grader_is_an_expected_red_of_a_proof():
-    expected = set().union(*(p["expected"] for p in _proofs()))
-    for case, controls in CONTROL_GRADERS.items():
-        for g in sorted(grader_names(case) - controls):
-            assert (case, g) in expected, f"gate {case}/{g} has no RED proof"
+    """F5-AC1 / F7: every non-control grader is an expected red of a RECORDED proof."""
+    recorded = set().union(*(p["expected"] for p in _recorded_proofs()))
+    for case in sorted(GATE_CASES):
+        for g in sorted(_gates(case)):
+            assert (case, g) in recorded, f"gate {case}/{g} has no recorded RED proof"
+
+
+def test_recorded_rows_carry_measured_side_effects():
+    """Phase 4 measured every row: none still says the side effects are unmeasured,
+    and the spec 043 recording names the runtime versions and the verdict file."""
+    for p in _recorded_proofs():
+        assert NOT_YET_MEASURED not in p["side_text"], p["arg"]
+        assert p["side_text"], p["arg"]
+    section = _readme_section("Proofs")
+    assert "Spec 043 (recorded 2026-10-31" in section and "red-proofs.md" in section
+    assert "Phase 4" not in _readme_text()
 
 
 def test_every_control_is_listed_and_never_a_proof_target():
@@ -668,10 +788,26 @@ def test_every_control_is_listed_and_never_a_proof_target():
     assert not flat & named
 
 
+def test_pass1_leak_guards_inherit_the_recorded_leak_guard_proof():
+    rows = _table_rows(_readme_section("Inherited proofs"))
+    got = {(re.sub(r"`", "", case), re.sub(r"`", "", g)) for case, g, *_ in rows}
+    assert got == INHERITED_LEAK_GUARD
+    proofs = {re.fullmatch(r"`--mutation ([^`]+)`", r[2]).group(1) for r in rows}
+    assert proofs == {"report-run-id"}
+    (row,) = [p for p in _recorded_proofs() if p["arg"] == "report-run-id"]
+    proven = {(c, g) for c, g in row["expected"] if g == "9-no-leak"}
+    assert proven
+    assert proven == {(c, "9-no-leak") for c in CASE_SETTINGS}
+    for case, g in INHERITED_LEAK_GUARD | proven:
+        assert (EVALS / case / "graders" / f"{g}.md").read_bytes() == NO_LEAK.read_bytes(), case
+    named = set().union(*(p["expected"] | p["side"] for p in _proofs()))
+    assert not INHERITED_LEAK_GUARD & named
+
+
 def test_proof_rows_name_real_graders_of_their_cases():
     for p in _proofs():
         assert p["cases"] and p["expected"], p
-        assert p["cases"] <= set(CASE_SETTINGS), p
+        assert p["cases"] <= GATE_CASES, p
         for case, g in p["expected"] | p["side"]:
             assert case in p["cases"], (p["arg"], case)
             assert g in grader_names(case), (p["arg"], case, g)
@@ -679,18 +815,168 @@ def test_proof_rows_name_real_graders_of_their_cases():
 
 
 def test_report_run_id_is_proven_in_every_case():
-    (row,) = [p for p in _proofs() if p["arg"] == "report-run-id"]
+    (row,) = [p for p in _recorded_proofs() if p["arg"] == "report-run-id"]
     assert row["cases"] == set(CASE_SETTINGS)
     assert {(c, "9-no-leak") for c in CASE_SETTINGS} <= row["expected"]
 
 
 def test_f4_ac4_graders_have_distinct_proofs():
-    rows = _proofs()
+    rows = _recorded_proofs()
     for own, other in ((NO_WRITE, NO_COPY), (NO_COPY, NO_WRITE)):
         assert any(
             (MISMATCH, own) in p["expected"] and (MISMATCH, other) not in p["expected"] | p["side"]
             for p in rows
         ), own
+
+
+def test_status_sentence_first_expects_every_report_only_grader_and_spares_the_canary():
+    (row,) = [p for p in _recorded_proofs() if p["arg"] == "status-sentence-first"]
+    pairs = set(SPEC_043_REPORT_ONLY["report-only"])
+    assert row["cases"] == set(CASE_SETTINGS)
+    assert row["expected"] == pairs
+    assert not {(c, "8-handback-canary") for c in CASE_SETTINGS} & (row["expected"] | row["side"])
+
+
+REPORT_STRICT_START = "STRICT — these rules govern EVERY report you return"
+REPLY_ONLY_BAN = "Your reply is ONLY the report"
+STOP_ANCHOR = "Your reply starts with the audit's first stdout line."
+
+
+def _report_strict_rules(text: str) -> tuple[dict[int, str], str]:
+    """The numbered rules of the report STRICT block (whitespace folded) and its Why: line."""
+    block = text[text.index(REPORT_STRICT_START):]
+    block, why = block.split("\nWhy: ", 1)
+    parts = re.split(r"^(\d+)\. ", block, flags=re.M)
+    rules = {int(num): _norm(body).strip() for num, body in zip(parts[1::2], parts[2::2])}
+    return rules, why.split("\n", 1)[0]
+
+
+def _section_3c(text: str) -> str:
+    return _norm(text[text.index("#### 3c — Coverage audit"):text.index("#### 3d — Upload rendered files")])
+
+
+def test_reply_only_ban_is_its_own_rule_naming_every_report():
+    """Spec 043 F5: the conductor prefaced the 3c stop report with its own sentence
+    (2 of 9 runs, conductor 0.24.1). The ban on text before or after the report sat
+    inside the rule that opens "In the Step 4 report", so it read as Step-4-only.
+    Falsifies 0.24.1: there the only rule carrying the ban opens with that label."""
+    rules, why = _report_strict_rules(CONDUCTOR.read_text(encoding="utf-8"))
+    (num,) = [n for n, body in rules.items() if REPLY_ONLY_BAN in body]
+    ban = rules[num]
+    assert not ban.startswith("In the Step 4 report"), ban
+    for named in ("the Step 4 report", "the 3c stop report", "any other stop report"):
+        assert named in ban, (named, ban)
+    assert "NEVER write anything before or after it." in ban, ban
+    assert "NEVER announce, explain or summarise the stop" in ban, ban
+    step4 = [body for body in rules.values() if body.startswith("In the Step 4 report")]
+    assert step4 and all(REPLY_ONLY_BAN not in body and "before or after" not in body for body in step4)
+    assert "prefaced the 3c stop report" in why, why
+
+
+def test_3c_says_the_stop_report_starts_with_the_audits_first_line():
+    assert STOP_ANCHOR in _section_3c(CONDUCTOR.read_text(encoding="utf-8"))
+
+
+def test_status_sentence_first_removes_the_reply_only_rule_and_the_3c_anchor(tmp_path):
+    """The proof stays strong only if no clause left in the copy forbids the status
+    sentence: the reply-only rule, the 3c start anchor and the Why's preface entry go."""
+    _, after = _patched_text(tmp_path, "status-sentence-first", CONDUCTOR_IN_PLUGIN)
+    rules, why = _report_strict_rules(after)
+    assert not [body for body in rules.values() if REPLY_ONLY_BAN in body or "before or after" in body]
+    assert "announce, explain or summarise the stop" not in _norm(after)
+    assert STOP_ANCHOR not in _section_3c(after)
+    assert "prefaced" not in why
+
+
+def test_spec_043_rows_name_their_offline_model():
+    """Each spec 043 row names the T2.1 fixture that models the trace it expects."""
+    for p in (p for p in _proofs() if p["arg"] in SPEC_043_MUTATIONS):
+        cell = p["expected_text"]
+        fixtures = re.findall(r"`([a-z0-9-]+\.jsonl)`", cell)
+        assert fixtures, p["arg"]
+        for f in fixtures:
+            assert (SPEC_043_FIXTURES / f).is_file(), (p["arg"], f)
+
+
+REVEALING_WORDS = re.compile(r"\b(?:evals?|graders?|mutations?|proofs?|RED|misbehave)\b")
+
+
+@pytest.mark.parametrize("name", SPEC_043_MUTATIONS)
+def test_spec_043_mutations_add_ordinary_prose(name):
+    """The model refuses an instruction that announces itself as a test; every added
+    line reads as an ordinary runtime instruction."""
+    text = (MUTATIONS / f"{name}.patch").read_text(encoding="utf-8")
+    added = [ln[1:] for ln in text.splitlines() if ln.startswith("+") and not ln.startswith("+++")]
+    assert added, name
+    for line in added:
+        assert not REVEALING_WORDS.search(line), (name, line)
+
+
+# ── "Never" graders (11, 13, 15): the neutral step is what the grader observes ──
+
+def _patched_text(tmp_path: Path, name: str, rel: str) -> tuple[str, str]:
+    plugin = _assemble_plugin(tmp_path)
+    before = (plugin / rel).read_text(encoding="utf-8")
+    result = _patch(plugin, name, dry_run=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return before, (plugin / rel).read_text(encoding="utf-8")
+
+
+def test_inline_python_read_injects_one_command_grader_13_sees(tmp_path):
+    before, after = _patched_text(tmp_path, "inline-python-read", SKILL_IN_PLUGIN)
+    commands = _injected_bash_commands(before, after)
+    assert len(commands) == 1, commands
+    assert re.search(grader(PIPELINE, "13-no-inline-python")["input_match"], bash_input(commands[0]))
+    others = {
+        g for g in _gates(PIPELINE) - {"13-no-inline-python"}
+        if grader(PIPELINE, g)["type"] == "tool_used" and grader(PIPELINE, g)["tool"] == "Bash"
+    }
+    assert others
+    for g in others:
+        assert not re.search(grader(PIPELINE, g)["input_match"], bash_input(commands[0])), g
+    # The read happens in step 1, before any dispatch, on every path.
+    assert after.index(commands[0]) < after.index("### 2. Common setup")
+
+
+def test_publish_md_with_write_tool_targets_what_grader_11_sees(tmp_path):
+    _, after = _patched_text(tmp_path, "publish-md-with-write-tool", SKILL_IN_PLUGIN)
+    m = re.search(r"Write its content\s+unchanged to\s+`([^`]+)`", after)
+    assert m, "no Write target in the patched skill"
+    target = m.group(1).replace("<INBOX_PATH>", PASS1_INBOX_PATH).replace("<YYYY-MM-DD_HHMM>", "2026-10-31_1200")
+    tool_input = json.dumps({"file_path": f"/ws/{target}", "content": "x"}, separators=(",", ":"))
+    assert re.search(grader(PIPELINE, "11-no-inline-vault-write")["input_match"], tool_input)
+    assert not re.search(grader(PIPELINE, "11-no-inline-vault-write")["input_match"], json.dumps(
+        {"file_path": "/ws/tomo-tmp/suggestions-rendered.md"}, separators=(",", ":")))
+
+
+def test_always_duplicate_line_reports_a_zero_count_grader_15_sees(tmp_path):
+    _, after = _patched_text(tmp_path, "always-duplicate-line", SKILL_IN_PLUGIN)
+    m = re.search(r"^```text\n\{n\} (proposed MOC\(s\) already existed[^\n]*)\n```$", after, re.M)
+    assert m, "the duplicate line template did not survive the patch"
+    line = "0 " + m.group(1)
+    assert re.search(grader(PIPELINE, "15-no-duplicate-line")["pattern"], line)
+    assert "0 included" in after
+
+
+def test_render_before_reduce_injects_a_render_grader_08_sees_before_the_reduce(tmp_path):
+    """The baseline render is step 5's command, run once more before Reduce: the
+    first render grader 08 sees then precedes the first reduce."""
+    _, after = _patched_text(tmp_path, "render-before-reduce", SKILL_IN_PLUGIN)
+    order = grader(PIPELINE, "08-reducer-before-render")
+    blocks = [b.strip() for b in re.findall(r"^```bash\n(.*?)^```", after, re.S | re.M)]
+    renders = [i for i, b in enumerate(blocks) if re.search(order["after"]["input_match"], bash_input(b))]
+    reduces = [i for i, b in enumerate(blocks) if re.search(order["before"]["input_match"], bash_input(b))]
+    assert len(renders) == 2 and len(reduces) == 1, (renders, reduces)
+    assert blocks[renders[0]] == blocks[renders[1]]
+    assert renders[0] < reduces[0] < renders[1]
+
+
+def test_setup_in_conductor_passes_the_strict_shared_ctx_stub(tmp_path):
+    """The stub rejects a shared-ctx-builder call without `--warnings-out`; the
+    conductor's injected call must carry it, or the run aborts before 05 can count."""
+    _, after = _patched_text(tmp_path, "setup-in-conductor", "agents/suggestion-conductor.md")
+    calls = [ln for ln in after.splitlines() if ln.startswith("python3 scripts/shared-ctx-builder.py")]
+    assert len(calls) == 1 and "--warnings-out tomo-tmp/setup-warnings.txt" in calls[0]
 
 
 def test_rev_proofs_resolve_to_a_conductor():

@@ -1,6 +1,6 @@
 --- a/agents/synthesis-conductor.md
 +++ b/agents/synthesis-conductor.md
-@@ -232,26 +232,8 @@
+@@ -233,26 +233,8 @@
  > <only if 3a printed a stamped line: Stamped N acknowledged advisory(ies).>
  > <step> exited <code> for "<note>".   (only for a step that exited non-zero)
  
@@ -29,7 +29,7 @@
  
  STRICT — these rules govern EVERY report you return: the Step 4 report, the 3c
  stop report, and any other stop, whatever step the run ends in.
-@@ -262,22 +244,16 @@
+@@ -263,22 +245,16 @@
  or function name, no script stderr line (`[warn]`, `[attach]` or any other), no
  file name, no path, no script name. ONLY these are copied as printed, with
  everything inside them kept: the audit's stdout on a mismatch (3c), the
@@ -50,8 +50,8 @@
 -deletes or attachments.
 +3. The notice summaries come last in the report.
  4. In the Step 4 report, NEVER add a line that is neither in the example above
--nor a relay line. Your reply is ONLY the report: NEVER write anything before
-+nor a notice summary. Your reply is ONLY the report: NEVER write anything before
- or after it — no preface, no notes, no explanation of why a step failed, no
- next steps, no command, no run id, no file name.
- Why: the model paraphrased the RESULT line, quoted run ids, action ids, guard names and temp paths, introduced the relay lines with its own sentence, put headings between and text after them, and wrote failure detail, commands and next steps around the report.
+-nor a relay line.
++nor a notice summary.
+ 5. Your reply is ONLY the report — the Step 4 report, the 3c stop report or
+ any other stop report: NEVER write anything before or after it. NEVER announce,
+ explain or summarise the stop — no preface, no notes, no explanation of why a

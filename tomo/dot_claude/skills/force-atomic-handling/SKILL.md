@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.14.0
+# version: 0.15.0
 
 ## When to Activate
 
@@ -47,13 +47,14 @@ rm -f tomo-tmp/shared-ctx.json
 ```
 
 ```bash
-python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
+python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json --warnings-out tomo-tmp/setup-warnings.txt
 ```
 
 If this fails, abort and surface the error.
 
-# STRICT — repeat every `WARN:` line this script prints to the user, verbatim,
-# before dispatching anything.
+# STRICT — repeat every `WARN:` line this script prints to the user, verbatim:
+# through the `cat` that opens step 3, before any Agent call, and again in the
+# step 7 report.
 # Why: it is the only report of unusable tracker configuration, and a run that
 # swallows it looks identical to a healthy one.
 
@@ -64,6 +65,12 @@ python3 scripts/read-config-field.py --field profile --default miyo
 Capture stdout as `PROFILE`.
 
 ### 3. Fan-out dispatch
+
+Run this first, before the first Agent call:
+
+```bash
+cat tomo-tmp/setup-warnings.txt
+```
 
 # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
 # STRICT — path MUST be the item's own `item_key` from the routing plan, verbatim.
@@ -139,3 +146,5 @@ Then read `duplicate_proposals_converted=<n>` from the reducer's summary line
 > "{n} proposed MOC(s) already existed in the vault and are offered as
 > unticked links instead."
 
+Then output each `WARN:` line `shared-ctx-builder.py` printed, again, exactly as
+printed, one per line. If it printed none, skip this.

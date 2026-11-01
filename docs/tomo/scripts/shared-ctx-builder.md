@@ -321,3 +321,25 @@ their own `trackers.enabled`.
 This went unnoticed because the reader's contract test used a hand-written
 fixture that included the field. The fixture is now built by the real builder
 (spec 040 T2.2); that is what exposed the gap.
+
+## `--warnings-out`: a saved copy of the WARN lines (spec 043 F4, v1.16.0)
+
+WHY: `suggest-handling` must relay every `WARN:` line to the user before its
+first dispatch. Three smokes showed the model noting the warning in thinking
+and moving on, under three different prose wordings (spec 043 findings F4).
+The relay therefore became the copy of a tool result: step 3 runs
+`cat tomo-tmp/setup-warnings.txt` and outputs its stdout. That needs the lines
+in a file the skill can print on its own, with nothing else in it.
+
+WHY capture at print time (a stderr wrapper for the run) rather than return the
+lines from each producer: `WARN:` lines come from four places
+(`warn_unusable_trackers`, `size_guards`, the `moc_proposal` config check and
+the tracker description check). A wrapper catches every one of them, including
+any added later, and the saved text is byte-for-byte what stderr showed.
+
+WHY rewrite on every run, also on an error exit, and leave an empty file when
+there were none: the relay step has no way to tell a stale file from a fresh
+one. An empty file prints nothing, which the skill reads as "no warnings".
+
+WHY optional: `force-atomic-handling` runs the same build without the early
+relay and does not need the file.

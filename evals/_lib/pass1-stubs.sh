@@ -42,7 +42,8 @@
 #                        schema_version tomo/schemas/suggestions-wire.schema.json
 #   render summary       tomo/scripts/suggestions-render.py:597-606 (stderr)
 #   kado-write-file      tomo/scripts/kado-write-file.py:164-165 (op by --vault
-#                        extension), :205-209 (stderr), :139-144 (input errors, exit 2)
+#                        extension), :205-209 (stderr, with the modified suffix a real
+#                        Kado write returns), :139-144 (input errors, exit 2)
 #   mark-captured        tomo/scripts/mark-captured.py:171 (per item), :237-241
 #                        (summary, stderr), :133 (no done items)
 # Each stub's argv is checked against what tomo/dot_claude/skills/suggest-handling/
@@ -129,8 +130,7 @@ GENERATED = "2026-10-30T00:00:00Z"
   "force_atomic_items": [],
   "pending_approval": [],
   "idle_reasons": [],
-  "drift_indicators": [],
-  "handled": []
+  "drift_indicators": []
 }
 JSON
 
@@ -364,7 +364,14 @@ for idx, e in enumerate(done, start=1):
         "id": sid,
         "stem": e["stem"],
         "item_key": e["item_key"],
-        "actions": [{"kind": "create_atomic_note", "suggestion_id": sid, "rendered_md": rendered}],
+        "actions": [{
+            "kind": "create_atomic_note",
+            "suggestion_id": sid,
+            "rendered_md": rendered,
+            "item": {"worthiness": 0.9, "template": "t_note_tomo", "location": "Atlas/Notes",
+                     "tags": ["topic/travel"]},
+            "candidate_mocs": [{"path": "Atlas/Maps/Travel MOC.md", "pre_check": True}],
+        }],
     })
 proposed_mocs = [{
     "topic": "Saxony",
@@ -528,8 +535,8 @@ if not data:
     print("error: input is empty, refusing to write", file=sys.stderr)
     sys.exit(2)
 op = "note" if o["--vault"].lower().endswith(".md") else "file"
-print("kado-write-file: %s (%d bytes, op=%s) → %s" % (o["--local"], len(data), op, o["--vault"]),
-      file=sys.stderr)
+print("kado-write-file: %s (%d bytes, op=%s) → %s (modified=1790000000000)"
+      % (o["--local"], len(data), op, o["--vault"]), file=sys.stderr)
 PY
 
   _write_stub mark-captured.py <<'PY'

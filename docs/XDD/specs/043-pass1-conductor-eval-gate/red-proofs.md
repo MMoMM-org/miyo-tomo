@@ -441,6 +441,66 @@ RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-no
 
 **Block S total: 13 invocations, $6.25. Every conductor proof holds on sonnet.**
 
+## Block E — remaining spec 041 patches and `preface-report-line` on the sonnet conductor ($3.88)
+
+Candidate 89562cfee1baa2136b3ae46d3b8fe91dfd5a044c (`synthesis-conductor` 0.25.0). Each invocation is 3 runs; every expected grader was red in all three, and no other grader went red. `--rev 4350ddd^` builds the old haiku conductor file, so a re-run says nothing about sonnet; spec 041's proof of it stays the record.
+
+### `--mutation drop-audit-line --case audit-gates-delivery` — $0.38
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-gates-delivery: 3-audit-result-in-report (run 0), audit-gates-delivery: 3-audit-result-in-report (run 1), audit-gates-delivery: 3-audit-result-in-report (run 2) · runs 3 · $0.38 · 36 s · claude 2.1.316 · tree clean · mutation drop-audit-line · tomo-tmp/evals/2026-11-01T08-48-10Z
+```
+
+### `--mutation drop-audit-line --case *-failure-reported` — $0.59
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 3-audit-result-in-report (run 0), state-flip-failure-reported: 3-audit-result-in-report (run 1), state-flip-failure-reported: 3-audit-result-in-report (run 2), upload-failure-reported: 4-audit-result-in-report (run 0), upload-failure-reported: 4-audit-result-in-report (run 1), upload-failure-reported: 4-audit-result-in-report (run 2) · runs 6 · $0.59 · 51 s · claude 2.1.316 · tree clean · mutation drop-audit-line · tomo-tmp/evals/2026-11-01T08-48-47Z
+```
+
+### `--mutation always-notice --case audit-gates-delivery` — $0.33
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-gates-delivery: 4-no-notice-when-none-withheld (run 0), audit-gates-delivery: 4-no-notice-when-none-withheld (run 1), audit-gates-delivery: 4-no-notice-when-none-withheld (run 2) · runs 3 · $0.33 · 34 s · claude 2.1.316 · tree clean · mutation always-notice · tomo-tmp/evals/2026-11-01T08-49-40Z
+```
+
+### `--mutation write-into-scripts --case audit-mismatch-stops` — $0.31
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-mismatch-stops: 5-no-write-into-scripts-schemas-config (run 0), audit-mismatch-stops: 5-no-write-into-scripts-schemas-config (run 1), audit-mismatch-stops: 5-no-write-into-scripts-schemas-config (run 2) · runs 3 · $0.31 · 28 s · claude 2.1.316 · tree clean · mutation write-into-scripts · tomo-tmp/evals/2026-11-01T08-50-16Z
+```
+
+### `--mutation copy-into-config --case audit-mismatch-stops` — $0.31
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · audit-mismatch-stops: 6-no-copy-into-scripts-schemas-config (run 0), audit-mismatch-stops: 6-no-copy-into-scripts-schemas-config (run 1), audit-mismatch-stops: 6-no-copy-into-scripts-schemas-config (run 2) · runs 3 · $0.31 · 28 s · claude 2.1.316 · tree clean · mutation copy-into-config · tomo-tmp/evals/2026-11-01T08-50-45Z
+```
+
+### `--mutation attachments-first --case withheld-notices-relayed` — $0.35
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · withheld-notices-relayed: 4-deletes-then-attachment-last (run 0), withheld-notices-relayed: 4-deletes-then-attachment-last (run 1), withheld-notices-relayed: 4-deletes-then-attachment-last (run 2) · runs 3 · $0.35 · 39 s · claude 2.1.316 · tree clean · mutation attachments-first · tomo-tmp/evals/2026-11-01T08-51-15Z
+```
+
+### `--mutation failed-step-path --case *-failure-reported` — $0.64
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/2 cases · state-flip-failure-reported: 1-state-flip-failure-line-in-report (run 0), state-flip-failure-reported: 4-no-failure-detail-in-report (run 0), state-flip-failure-reported: 7-report-only (run 0), state-flip-failure-reported: 1-state-flip-failure-line-in-report (run 1), state-flip-failure-reported: 4-no-failure-detail-in-report (run 1), state-flip-failure-reported: 7-report-only (run 1), state-flip-failure-reported: 1-state-flip-failure-line-in-report (run 2), state-flip-failure-reported: 4-no-failure-detail-in-report (run 2), state-flip-failure-reported: 7-report-only (run 2), upload-failure-reported: 1-upload-failure-line-in-report (run 0), upload-failure-reported: 5-no-failure-detail-in-report (run 0), upload-failure-reported: 7-report-only (run 0), upload-failure-reported: 1-upload-failure-line-in-report (run 1), upload-failure-reported: 5-no-failure-detail-in-report (run 1), upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 1-upload-failure-line-in-report (run 2), upload-failure-reported: 5-no-failure-detail-in-report (run 2), upload-failure-reported: 7-report-only (run 2) · runs 6 · $0.64 · 55 s · claude 2.1.316 · tree clean · mutation failed-step-path · tomo-tmp/evals/2026-11-01T08-51-56Z
+```
+
+### `--mutation flip-after-failed-upload --case upload-failure-reported` — $0.34
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · upload-failure-reported: 2-no-state-flip-after-failed-upload (run 0), upload-failure-reported: 2-no-state-flip-after-failed-upload (run 1), upload-failure-reported: 2-no-state-flip-after-failed-upload (run 2) · runs 3 · $0.34 · 42 s · claude 2.1.316 · tree clean · mutation flip-after-failed-upload · tomo-tmp/evals/2026-11-01T08-52-53Z
+```
+
+### `--mutation preface-report-line --case pass1-suggest-pipeline` — $0.63
+
+```
+RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · pass1-suggest-pipeline: 14-report-line-anchored (run 0), pass1-suggest-pipeline: 14-report-line-anchored (run 1), pass1-suggest-pipeline: 14-report-line-anchored (run 2) · runs 3 · $0.63 · 83 s · claude 2.1.316 · tree clean · mutation preface-report-line · tomo-tmp/evals/2026-11-01T08-53-37Z
+```
+
+**Block E total: 9 invocations, $3.88. Every proof holds on sonnet; grader 14's trace form has its own paid RED proof.**
+
 ## T4.3 — merge evidence
 
 Three full suites (`scripts/run-evals.sh --keep-temp`, no `--case`), back to back, no edits in between. Log: `tomo-tmp/evals/merge-evidence-043.log` (gitignored).
@@ -487,7 +547,51 @@ GREEN 7/7 cases · runs 21 · $2.76 · 310 s · claude 2.1.316 · tree clean · 
 GREEN 7/7 cases · runs 21 · $2.74 · 286 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-10-31T16-57-42Z
 ```
 
-All three GREEN 7/7. Median cost $2.75 (≤ $3.10), maximum $2.76 (< $5), maximum duration 310 s (≤ 7 min). T4.3 met.
+All three GREEN 7/7. Median cost $2.75 (≤ $3.10), maximum $2.76 (< $5), maximum duration 310 s (≤ 7 min). T4.3 met on this candidate; the gap-O1 commit that followed changed grader 14, so the evidence was repeated.
+
+### Third attempt, candidate 89562cfee1baa2136b3ae46d3b8fe91dfd5a044c (grader 14 trace form) — RED
+
+`full suite 1`
+
+```
+GREEN 7/7 cases · runs 21 · $2.78 · 284 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T08-55-01Z
+```
+
+`full suite 2`
+
+```
+RED 6/7 cases · upload-failure-reported: 7-report-only (run 1), upload-failure-reported: 8-handback-canary (run 1) · runs 21 · $2.74 · 266 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T08-59-46Z
+```
+
+`full suite 3`
+
+```
+GREEN 7/7 cases · runs 21 · $2.75 · 259 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T09-04-14Z
+```
+
+Suite 2 failed `7-report-only` and `8-handback-canary` in `upload-failure-reported` (run 1). In trace `e-gHJn5a` the CLI started the conductor in the background although the Agent call did not ask for it (`"is_backgrounded": true`), so the report arrived as a task notification and the hand-back frame never appeared. The conductor's report itself was correct. Seen in 3 of 307 Pass 2 traces. Owner decision: pass `run_in_background: false` in `inbox.md` Step 3b and the five Pass 2 case prompts (commit 083d09f4).
+
+### Fourth attempt, candidate 083d09f40508b580844b1e9b5bea96d289896863 (foreground dispatch) — GREEN
+
+`full suite 1`
+
+```
+GREEN 7/7 cases · runs 21 · $2.83 · 305 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T11-02-25Z
+```
+
+`full suite 2`
+
+```
+GREEN 7/7 cases · runs 21 · $2.76 · 324 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T11-07-32Z
+```
+
+`full suite 3`
+
+```
+GREEN 7/7 cases · runs 21 · $2.74 · 292 s · claude 2.1.316 · tree clean · tomo-tmp/evals/2026-11-01T11-12-58Z
+```
+
+All three GREEN 7/7. Median cost $2.76 (≤ $3.10), maximum $2.83 (< $5), maximum duration 324 s (≤ 7 min). In all 45 Pass 2 runs the dispatch passed `run_in_background: false` and the conductor's `task_started` event says `"is_backgrounded": false`. T4.3 met.
 
 ## Totals after Phase 4 evals
 
@@ -497,4 +601,7 @@ All three GREEN 7/7. Median cost $2.75 (≤ $3.10), maximum $2.76 (< $5), maximu
 | Block S (sonnet re-proofs) | $6.25 |
 | T4.3 first attempt (RED) | $6.80 |
 | T4.3 second attempt (GREEN) | $8.25 |
-| **Phase 4** | **$37.42** |
+| Block E (sonnet re-proofs, `preface-report-line`) | $3.88 |
+| T4.3 third attempt (RED) | $8.27 |
+| T4.3 fourth attempt (GREEN) | $8.33 |
+| **Phase 4** | **$57.90** |

@@ -38,6 +38,8 @@ Spec 043 F5 (conductor 0.24.2) rebased every conductor patch; the injected text 
 
 **Spec 043 (recorded 2026-10-31, runtime versions `suggest-handling` 0.14.1, `force-atomic-handling` 0.15.0, `synthesis-conductor` 0.24.2, claude 2.1.316):** the 16 spec 043 rows (`dispatch-conductor` to `status-sentence-first`) were each red in 3/3 for every expected grader; the spec 041 rows `summarise-mismatch`, `files-used-after`, `paraphrase-relay`, `explain-failure` and `report-run-id` were re-proven on conductor 0.24.2 with the same result, and again on conductor 0.25.0 (sonnet), where `status-sentence-first` needed its literal status line to stay red 3/3. Side-effect reds are measured. "Offline model" names the fixture in `docs/XDD/specs/043-pass1-conductor-eval-gate/fixtures/` whose trace the expected red looks like (`tests/test_043_grader_patterns.py`). Verdicts, per-grader counts and results paths: `docs/XDD/specs/043-pass1-conductor-eval-gate/red-proofs.md`. The Pass 1 patches target the file that carries the rule they break and neutralise the clause in every one of them that repeats it; the "never" graders (pipeline 11, 13, 15) are proven with a neutral step, never a request to misbehave.
 
+**Spec 043 gap O1 (recorded 2026-11-01, `synthesis-conductor` 0.25.0, claude 2.1.316):** `preface-report-line` was red in 3/3 on grader 14's trace form; the recorded `reword-report-line` proof of grader 14 ran against its earlier `last_message` form, and offline the trace form is red on that proof's model `pass1-report-quoted.jsonl` too. On the same day the spec 041 rows `drop-audit-line`, `always-notice`, `write-into-scripts`, `copy-into-config`, `attachments-first`, `failed-step-path` and `flip-after-failed-upload` were re-run on the sonnet conductor and each stayed red in 3/3 for every expected grader; `--rev 4350ddd^` builds the old haiku conductor and was not re-run.
+
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
@@ -71,21 +73,7 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation warn-in-report-only` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/02-warn-before-first-dispatch` — the `WARN:` line is relayed verbatim, but only in the step 7 report, after every dispatch: no `cat tomo-tmp/setup-warnings.txt` runs before the first dispatch; offline model: `pass1-warn-in-report-only.jsonl` | none |
 | `--mutation drop-duplicate-line` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/03-duplicate-line` — the reducer's summary line is for the log, so the duplicate line is not reported; offline model: `pass1-complete.jsonl` | none |
 | `--mutation status-sentence-first` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only` — the synthesis conductor begins its reply with one status sentence before the report (the canary `8-handback-canary` must stay green); offline model: `pass2-status-sentence.jsonl`, `pass2-mismatch-status-sentence.jsonl` | none (the canary `8-handback-canary` stayed green in all five cases) |
-
-## Proofs — awaiting recording
-
-Named, not yet run. A row here is not a RED proof: it counts only once the owner has run
-it (3 runs), recorded the verdicts and the results path in
-`docs/XDD/specs/043-pass1-conductor-eval-gate/red-proofs.md`, and moved the row into
-`## Proofs` with its measured side-effect reds.
-
-`preface-report-line` comes with grader 14's trace form (gap O1). The recorded
-`reword-report-line` proof of grader 14 ran against its earlier `last_message` form;
-offline, the trace form is red on that proof's model `pass1-report-quoted.jsonl` too.
-
-| Proof | Cases | Expected red (what it proves) | Side-effect reds |
-|---|---|---|---|
-| `--mutation preface-report-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/14-report-line-anchored` — the reply opens with the line `Status: run finished.` before the completion line, as its own text event or as the first line of the report block (gap O1, F1-AC9 "begins with"); offline model: `pass1-report-preface-event.jsonl`, `pass1-report-preface-line.jsonl` | not yet measured |
+| `--mutation preface-report-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/14-report-line-anchored` — the reply opens with the line `Status: run finished.` before the completion line, as its own text event or as the first line of the report block (gap O1, F1-AC9 "begins with"); offline model: `pass1-report-preface-event.jsonl`, `pass1-report-preface-line.jsonl` | none |
 
 ## Inherited proofs
 

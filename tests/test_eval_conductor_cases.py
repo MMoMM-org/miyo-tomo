@@ -581,11 +581,6 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
     "preface-report-line",
 )
-# Named, not yet run: rows in PENDING_SECTION until the owner's paid run is recorded
-# and the row moves into `## Proofs`. Each must have a pending row and no recorded one,
-# so this set expires with the recording.
-AWAITING_RECORDING = ("preface-report-line",)
-PENDING_SECTION = "Proofs — awaiting recording"
 ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
@@ -656,13 +651,8 @@ def _recorded_proofs() -> list[dict]:
     return _proof_rows("Proofs")
 
 
-def _pending_proofs() -> list[dict]:
-    """Rows of PENDING_SECTION: a named mutation that has not been run yet."""
-    return _proof_rows(PENDING_SECTION)
-
-
 def _proofs() -> list[dict]:
-    return _recorded_proofs() + _pending_proofs()
+    return _recorded_proofs()
 
 
 def _controls() -> set[tuple[str, str]]:
@@ -713,17 +703,8 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
-    pending = {p["arg"] for p in _pending_proofs() if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded | pending == files == set(ALL_MUTATIONS)
-    assert not recorded & pending, sorted(recorded & pending)
-    assert pending == set(AWAITING_RECORDING)
-
-
-def test_pending_rows_are_marked_unmeasured():
-    """A named but unrun mutation cannot pass for a recorded RED proof."""
-    for p in _pending_proofs():
-        assert p["side_text"] == NOT_YET_MEASURED, p["arg"]
+    assert recorded == files == set(ALL_MUTATIONS)
 
 
 @pytest.mark.parametrize("name", ALL_MUTATIONS)

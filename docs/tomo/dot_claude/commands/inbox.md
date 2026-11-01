@@ -121,3 +121,16 @@ case prompts carry the same value, pinned by
 `test_prompt_is_the_production_dispatch_namespaced` and
 `test_production_dispatch_blocks_on_the_conductor` in
 `tests/test_eval_conductor_cases.py`.
+
+## Step 4 Blocks on the Voice-Transcriber Too (v0.21.1)
+
+WHY the Step 4 dispatch also passes `run_in_background: false`.
+
+Step 4 reports "N transcript(s) created", and N comes from the
+voice-transcriber's result. A backgrounded transcriber has no result yet, so
+the command would report a count it does not know and exit while the
+transcription is still running. The cause and the CLI behaviour are the same
+as for Step 3b above. No eval case covers transcription, so the value is
+pinned by `test_every_inbox_dispatch_blocks_on_its_agent` in
+`tests/test_eval_conductor_cases.py`, which requires it on every `Agent()`
+block of this command.

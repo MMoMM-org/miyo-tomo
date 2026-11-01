@@ -192,6 +192,15 @@ def test_production_dispatch_blocks_on_the_conductor():
     assert production_dispatch()[2] == "false"
 
 
+def test_every_inbox_dispatch_blocks_on_its_agent():
+    # The command reads each dispatched agent's result (the conductor's report,
+    # the transcript count), so no Agent() block may leave it to the background.
+    blocks = re.findall(r"```\n(Agent\(.*?\))\n```", INBOX_CMD.read_text(encoding="utf-8"), re.S)
+    assert len(blocks) == 2, blocks
+    for block in blocks:
+        assert "run_in_background: false" in block, block
+
+
 @pytest.mark.parametrize("case", list(CASE_SETTINGS))
 def test_scaffold_shape(case):
     path = EVALS / case / "scaffold.sh"

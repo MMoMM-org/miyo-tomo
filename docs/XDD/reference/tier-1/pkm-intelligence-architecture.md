@@ -284,7 +284,7 @@ Workflows describe HOW components interact. Each workflow spec (Tier 2) referenc
 | **Execution (Post-MVP)** | **Tomo Hashi Obsidian plugin reads `instructions.json`** | **WYSIWYG, deterministic execution via Obsidian Plugin API, no AI in the apply step** |
 | **Inbox model** | **2-Pass: Suggestions → Instruction Set** | **User approves direction before details are committed; mirrors Post-MVP dual vetting** |
 | **MOC discovery** | **Path AND tag-based, full tree (all levels)** | **Sub-MOCs scattered in different folders are still findable; tree structure surfaces specificity** |
-| **Tracker syntax** | **Multi-syntax (inline field, task checkbox, frontmatter)** | **Not framework-locked to Dataview; supports MiYo, others, custom** |
+| **Tracker syntax** | **Multi-syntax (inline field, callout body, checkbox)** | **Not framework-locked to Dataview; supports MiYo, others, custom** |
 | **Templates** | **User-named, user-extensible tokens, may contain Templater syntax** | **Doesn't enforce conventions; user retains full control of templates** |
 
 ## 11. Children

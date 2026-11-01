@@ -122,11 +122,10 @@ For each daily note action:
 3. For each sub-action:
    - **Tracker update:** look up tracker config, generate exact syntax
      - `inline_field`: `Coding:: true`
-     - `task_checkbox`: `- [x] Coding`
-     - `frontmatter`: set YAML key `coding: true`
+     - `checkbox`: `- [x] Coding`
    - **Content addition:** target section + markdown snippet to append
 4. Instruction set entry shows:
-   - Target: clickable `[[2026-04-08#Section]]` or frontmatter update
+   - Target: clickable `[[2026-04-08#Section]]`
    - Exact text change
    - Create note first if missing (configurable)
 

@@ -107,10 +107,10 @@ Trackers are **structured fields the user wants Tomo to set** based on inbox con
 | Syntax | Example | When to use |
 |--------|---------|-------------|
 | `inline_field` | `Coding:: true` | Dataview inline fields (MiYo's choice) |
-| `task_checkbox` | `- [ ] Coding` → `- [x] Coding` | Plain markdown task lists |
-| `frontmatter` | `coding: true` in YAML | Frontmatter properties |
+| `callout_body` | a value inside a callout | Trackers kept in a callout |
+| `checkbox` | `- [ ] Coding` → `- [x] Coding` | Plain markdown task lists |
 
-For MVP, the first two are required. Frontmatter is supported because the underlying mechanism (Kado `frontmatter` operations) already exists. Other syntaxes (callout-based trackers, custom plugins) are out of scope.
+`tomo/schemas/vault-config-trackers.schema.json` is the source for these values. A config may still say `task_checkbox`; it reaches the instructions as `checkbox`. Frontmatter trackers are not supported, because no instruction syntax can write them: `vault-explorer` skips them and `shared-ctx-builder` leaves them out with a warning (#212).
 
 ### Tracker Types
 
@@ -119,10 +119,10 @@ Trackers are not always boolean. Supported value types:
 | Type | Example values | Update method |
 |------|---------------|---------------|
 | `boolean` | `true`, `false` (or `[x]`/`[ ]` for checkbox syntax) | Set/toggle |
-| `scale` | `1-10`, `0-5` | Set numeric value |
-| `count` | integer ≥ 0 | Set or increment |
+| `integer` | `7`; an optional `scale` key gives the range, e.g. `"1-10"` | Set numeric value |
 | `text` | free string | Set or append |
-| `choice` | one of N labels | Set |
+| `duration` | a time span | Set |
+| `time` | a time of day | Set |
 
 ### Detection (during /explore-vault)
 
@@ -140,15 +140,15 @@ trackers:
     type: "boolean"
     trigger_keywords: ["coded", "programming", "installed", "configured"]
   - name: "sport"
-    syntax: "task_checkbox"
+    syntax: "checkbox"
     label: "Sport"
     type: "boolean"
     trigger_keywords: ["sport", "gym", "run", "workout"]
   - name: "energie"
     syntax: "inline_field"
     field: "Energie"
-    type: "scale"
-    range: [1, 10]
+    type: "integer"
+    scale: "1-10"
     trigger_keywords: []   # only set if explicitly mentioned
 ```
 

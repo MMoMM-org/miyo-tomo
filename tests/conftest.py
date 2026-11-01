@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """conftest.py — Host-side pytest bootstrap for the Tomo test suite.
 
 Injects /tmp/claude/py_deps onto sys.path so jsonschema (a Tomo runtime dep
@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,11 @@ import pytest
 _DEPS = "/tmp/claude/py_deps"
 if os.path.isdir(_DEPS) and _DEPS not in sys.path:
     sys.path.insert(0, _DEPS)
+
+# Goldens freeze UTC time and scripts name files in local time (#202), so the
+# suite must not depend on the zone of the machine it runs on.
+os.environ["TZ"] = "UTC"
+time.tzset()
 
 collect_ignore = ["test-kado.py"]
 

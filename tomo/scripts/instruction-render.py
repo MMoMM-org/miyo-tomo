@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.68.0
+# version: 0.69.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -471,7 +471,7 @@ def main() -> int:
     backfill_supporting_items_parents(confirmed)
 
     now = datetime.now(timezone.utc)
-    date_prefix = now.strftime("%Y-%m-%d_%H%M")
+    date_prefix = now.astimezone().strftime("%Y-%m-%d_%H%M")
 
     manifest: list[dict] = []
     used_filenames: set[str] = set()

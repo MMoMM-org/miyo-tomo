@@ -25,7 +25,9 @@
 #                        instructions.md :1209, note <YYYY-MM-DD_HHMM>_<slug>.md :463,608
 #   upload success       tomo/scripts/upload-rendered.py:207,215,224 (per-file lines),
 #                        :241-249 (summary), all stderr, stdout empty; missing input
-#                        :150-154 exit 2; timestamp from `generated` :99-113,170
+#                        :150-154 exit 2; timestamp from `generated` :99-113,170 (the
+#                        real script converts to local time; the stub stays on UTC so
+#                        a case's filenames do not depend on the host's zone)
 #   upload failure       tomo/scripts/upload-rendered.py :204-206 (note write fails:
 #                        "kado-write note <target>: <exc>"), :216,225 (instruction
 #                        artefacts still land), :229-239 (blank line, failure count,

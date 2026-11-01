@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: RED proofs, documentation and merge evidence"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -83,7 +83,7 @@ This phase proves the gate can fail, documents it, and produces the merge eviden
   4. Validate: no criterion is left unmapped; the pytest run command and its output are copied verbatim.
   5. Success: every PRD criterion is evidenced `[ref: PRD/all]`
 
-- [ ] **T4.5 Phase Validation** `[activity: validate]`
+- [x] **T4.5 Phase Validation** `[activity: validate]`
 
   - Run the full pytest suite, ruff and shellcheck.
   - Finalize the spec through `xdd-meta`.

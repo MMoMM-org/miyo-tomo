@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.15.0
+# version: 0.16.0
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -377,8 +377,8 @@ Present findings with classification and reasoning. Use **AskUserQuestion** to c
 Detects tracker fields from TWO sources and merges them. Runs whenever
 at least one source is reachable. A "tracker field" is a structured
 data point the user logs in daily notes — examples: a boolean checkbox
-for habits (`- [x] Sport`), a Dataview inline field for metrics
-(`Sleep:: 7`), or a YAML frontmatter scalar (`mood: 3`).
+for habits (`- [x] Sport`) or a Dataview inline field for metrics
+(`Sleep:: 7`).
 
 Read the three vault-config fields you need in one batch (one Bash call):
 
@@ -420,15 +420,18 @@ as `null`. Branch per source below.
 
 **Parse rules** (both sources):
 - `Field:: value` → syntax: `inline_field`, type inferred from value
-  (`true/false` → boolean, digit+unit → integer, 1-5 / 1-10 → scale, else text)
+  (`true/false` → boolean, digit+unit → integer, 1-5 / 1-10 → integer with
+  `scale: "1-5"` / `scale: "1-10"`, else text)
 - `- [x] Field` or `- [ ] Field` inside a heading named "Tracker", "Habit",
-  "Morning", or user's group-section name → syntax: `task_checkbox`, type: boolean
-- YAML frontmatter keys with scalar values → syntax: `frontmatter`, type inferred
+  "Morning", or user's group-section name → syntax: `checkbox`, type: boolean
+- YAML frontmatter keys with scalar values: collect the names only. Do NOT offer
+  them as tracker fields. After the findings list, print one line:
+  `frontmatter trackers skipped (Tomo cannot update them): <names>`
 
 **Merge**:
 Per field name, aggregate {source, count, syntax candidates}. If syntax
 differs across sources (e.g. template has `inline_field`, notes use
-`task_checkbox`), prefer the NOTES signal (actual usage beats template
+`checkbox`), prefer the NOTES signal (actual usage beats template
 intent) and flag the divergence.
 
 **If both sources fail** → skip Step 7 with a log line:
@@ -439,9 +442,9 @@ Continue to Step 8. Do NOT write an empty `trackers:` section.
 
 ```
 Tracker fields detected:
-  - Sport         (boolean, task_checkbox)  source: template + 5 notes
+  - Sport         (boolean, checkbox)       source: template + 5 notes
   - Sleep         (integer, inline_field)   source: 4 notes only
-  - WakeUpEnergy  (scale, inline_field)     source: template only
+  - WakeUpEnergy  (integer 1-5, inline_field)  source: template only
 ```
 
 Use AskUserQuestion with multiSelect: "Which of these fields should
@@ -462,9 +465,9 @@ found under:
 
 For each tracker, emit FOUR JSON fields into the payload built in
 step 1 below: `name` (string, the field label), `type` (enum: `boolean`
-/ `integer` / `text` / `scale`), `syntax` (enum: `task_checkbox` /
-`inline_field` / `frontmatter`), and `description` (one-sentence
-placeholder, e.g. `"Detected from daily notes."`).
+/ `integer` / `text`), `syntax` (enum: `checkbox` / `inline_field`), and
+`description` (one-sentence placeholder, e.g. `"Detected from daily
+notes."`). Add `scale` only for a field with a detected scale.
 
 1. Scaffold the JSON payload from the schema (one Bash call):
 
@@ -483,7 +486,7 @@ placeholder, e.g. `"Detected from daily notes."`).
          {
            "name": "Sport",
            "type": "boolean",
-           "syntax": "task_checkbox",
+           "syntax": "checkbox",
            "description": "Detected from daily notes — refine via /tomo-setup or the trackers wizard."
          },
          {

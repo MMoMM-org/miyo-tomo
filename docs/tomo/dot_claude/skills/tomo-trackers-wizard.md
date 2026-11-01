@@ -51,3 +51,17 @@ the writer's `TRACKER_FIELD_ALLOWED` minus `keywords`, which the wizard does
 not curate. `tests/test_tracker_config_durability.py` checks that every
 curated key the writer preserves is allowed by the wizard, so the next new
 curated key cannot be silently forbidden again.
+
+## Offered values are the wire's values (#212)
+
+WHY: the wizard listed `frontmatter`, `task_checkbox` and `type: scale` by hand. It
+edits the YAML directly, so nothing rejected them at write time. `frontmatter` and
+`scale` fail the writer's validation, `task_checkbox` passes it and then fails the
+instructions schema. The wizard now offers `inline_field`, `callout_body` and
+`checkbox`, the values both accept; `scale` stays the separate per-field key the
+schema defines.
+
+WHY a current `task_checkbox` is shown as `checkbox`, and a current `frontmatter`
+gets no Keep option: Keep is the path a re-run takes without thinking, so it must not
+write a value the pipeline cannot use. `tests/test_tracker_value_sets.py` reads the
+offered values and checks them against the writer and the wire.

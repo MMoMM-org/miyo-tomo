@@ -114,14 +114,34 @@ class TestTheFallbackSurvives:
 
 class TestEveryDeclaredValueIsHonoured:
     @pytest.mark.parametrize("configured", [
-        "inline_field", "callout_body", "task_checkbox", "checkbox",
+        "inline_field", "callout_body", "checkbox",
     ])
-    def test_each_enum_value_from_the_schema_survives(self, configured):
-        """All four are legal per vault-config-trackers.schema.json."""
+    def test_each_wire_value_survives(self, configured):
+        """The three values the instructions wire accepts pass through unchanged."""
         fields = _by_name(_cfg([
             {"name": "F", "type": "boolean", "syntax": configured, "description": "d"},
         ]))
         assert fields["F"]["syntax"] == configured
+
+    def test_task_checkbox_reaches_the_wire_as_checkbox(self):
+        """#212: the config schema accepts task_checkbox, the wire does not."""
+        fields = _by_name(_cfg([
+            {"name": "F", "type": "boolean", "syntax": "task_checkbox", "description": "d"},
+        ]))
+        assert fields["F"]["syntax"] == "checkbox"
+
+    def test_frontmatter_field_is_left_out_with_a_warning(self, capsys):
+        """#212: no wire syntax can write a frontmatter tracker."""
+        fields = _by_name(_cfg([
+            {"name": "F", "type": "text", "syntax": "frontmatter", "description": "d"},
+            {"name": "G", "type": "text", "syntax": "inline_field", "description": "d"},
+        ]))
+        assert set(fields) == {"G"}
+        assert capsys.readouterr().err.splitlines() == [
+            "WARN: tracker field 'F' is stored in frontmatter, which Tomo cannot "
+            "update; it is left out of this run. Set active: false on it, or change "
+            "its syntax with /tomo-setup trackers."
+        ]
 
     def test_callout_body_can_be_asked_for_on_a_boolean(self):
         """The derivation would never produce this — only the config can."""

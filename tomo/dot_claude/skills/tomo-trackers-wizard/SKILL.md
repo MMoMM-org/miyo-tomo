@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Trackers Wizard
-# version: 0.5.0
+# version: 0.6.0
 
 ## Persona
 
@@ -34,8 +34,8 @@ is fixed; your job is to populate it.
 Field {
   name: string                    // existing field name from vault-config
   group: today_fields | yesterday_fields | start_of_day_fields | end_of_day_fields
-  type: boolean | integer | text | scale
-  syntax?: inline_field | task_checkbox | frontmatter
+  type: boolean | integer | text | duration | time
+  syntax?: inline_field | callout_body | checkbox
   description?: string
   positive_keywords?: string[]
   negative_keywords?: string[]
@@ -188,8 +188,11 @@ Change no other key. Continue at 3.2.
 - Options:
   - `<current>` (Keep) — only if already set
   - `inline_field` (Recommended) — Dataview-style `Field:: value`
-  - `task_checkbox` — `- [x] Field` checkbox
-  - `frontmatter` — YAML property in frontmatter
+  - `callout_body` — value inside a callout
+  - `checkbox` — `- [x] Field` checkbox
+
+If the current value is `task_checkbox`, show it as `checkbox` and write `checkbox`.
+If the current value is `frontmatter`, omit the Keep option.
 
 #### 3.3 Description — propose, then AskUserQuestion
 
@@ -279,7 +282,7 @@ A deactivated field carries `active: false` directly after `description`:
 
   - name: Meditation
     type: boolean
-    syntax: task_checkbox
+    syntax: checkbox
     description: "Practised meditation today"
     active: false
     positive_keywords: [meditated, meditiert]

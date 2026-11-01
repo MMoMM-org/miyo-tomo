@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.3
+# version: 1.4
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -438,8 +438,9 @@ tomo:
 #
 # Per field:
 #   name              — exact field name / label as it appears in the daily note
-#   type              — boolean | integer | text (see tier-2 tracker spec)
-#   syntax            — task_checkbox | inline_field | frontmatter
+#   type              — boolean | integer | text | duration | time (see tier-2 tracker spec)
+#   syntax            — inline_field | callout_body | checkbox
+#   scale             — optional value range, e.g. "1-5" or "hours"
 #   description       — one-sentence intent (used by classifier to avoid false positives)
 #   positive_keywords — content words that should TRIGGER a match
 #   negative_keywords — content words that SUPPRESS a match even if positives hit
@@ -449,7 +450,7 @@ trackers:
     today_fields:
       - name: Sport
         type: boolean
-        syntax: task_checkbox
+        syntax: checkbox
         description: "Physical exercise the user actually did today (running, gym, yoga, cycling, swimming, hiking). Watching or reading about exercise does NOT qualify."
         positive_keywords: [ran, running, gelaufen, Lauf, workout, gym, yoga, cycled, Rad, Fahrrad, swim, schwimmen, hike, wandern, trained, trainiert, Sport gemacht]
         negative_keywords: [watched, video about, article about, gelesen über, video über, geplant, planning to, wollte]
@@ -464,7 +465,7 @@ trackers:
 
       - name: Meditation
         type: boolean
-        syntax: task_checkbox
+        syntax: checkbox
         description: "Whether the user actually practised meditation or mindfulness today (sitting, breathing, body scan). Passive calming activities do not count."
         positive_keywords: [meditiert, meditated, Meditation, mindfulness, Atemübung, breathing exercise, body scan, 10 Minuten Stille]
         negative_keywords: [wollte meditieren, forgot, vergessen, skipped, ausgelassen, video about]

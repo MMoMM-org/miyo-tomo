@@ -48,3 +48,6 @@ First run deletes the key. Second run finds the property absent while `expected`
 Hashi's real idempotency mechanism is the planner filter that drops every action carrying `applied: true` before the handler runs (`planner.ts:179`), so the failure needs a run where the vault edit landed but the flag did not persist. Neither side is loosening the guard: treating "expected a value, found absent" as success is exactly the silent-success shape spec 032 exists to remove.
 
 Related: the `up_value`-never-normalised contract in `tomo/scripts/lib/render_actions.py::_construct_edit_frontmatter_fields` (rule 4) — Hashi's `expected` comparison is order-sensitive `deepEqual`, so a normalising change would fail guards at apply time, in a user's vault, with a green suite.
+
+<!-- 2026-11-01 -->
+- **Before deleting a Markdown section, `rg "<heading>" tests/`.** Tests split README sections by heading string. → A removed section fails collection with `IndexError`, not an assert, often in a module you did not expect.

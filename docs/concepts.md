@@ -27,7 +27,7 @@ So a change to your notes always takes two steps: Tomo proposes it, and you appl
 3. **Pass 2, instructions.** Tomo turns the approved suggestions into an instruction set and prepares any new notes in the inbox.
 4. **You apply.** You carry out the actions by hand in Obsidian, or let Tomo Hashi do it.
 
-After that, `/inbox` reports `idle` for this work. See [Process inbox items](usage.md#process-inbox-items) for the full loop.
+After that, `/inbox` reports `idle` for this work. See [Process inbox items](workflows/inbox.md) for the full loop.
 
 ## The documents Tomo writes
 
@@ -37,7 +37,7 @@ After that, `/inbox` reports `idle` for this work. See [Process inbox items](usa
 | **Instruction set** | `<inbox>/<YYYY-MM-DD_HHMM>_instructions.md` | The actions to apply, each with an `Applied` checkbox |
 | **`instructions.json`** | Next to the instruction set | The same actions for Tomo Hashi. The format is in the [contract](instructions-json.md) |
 
-These documents stay in your inbox until you remove them. If you do, remove a suggestions document together with its instruction set. See step 5 in [Process inbox items](usage.md#process-inbox-items) for why.
+These documents stay in your inbox until you remove them. If you do, remove a suggestions document together with its instruction set. See step 5 in [Process inbox items](workflows/inbox.md) for why.
 
 ## Terms
 

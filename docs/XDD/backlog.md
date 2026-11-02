@@ -2287,7 +2287,7 @@ what the code promised, and no assertion in the repo encodes the expectation.
   run has a fan sibling at all.
 
 **What was done instead**, and why it is enough for now: spec 038's T5.1 documents the
-condition in `docs/usage.md` in one owner-facing sentence, so the sequence above is
+condition in `docs/workflows/inbox.md` in one owner-facing sentence, so the sequence above is
 recognisable before it costs anyone work. The warning is already on stderr, which Pass 2's
 shell report surfaces.
 

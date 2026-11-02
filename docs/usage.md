@@ -133,7 +133,7 @@ Run from the Claude Code prompt once you're in a session.
 
 | Command | Purpose | Arguments |
 |---|---|---|
-| `/inbox` | 2-pass workflow + cleanup; auto-detects which phase to run. | `--pass1`, `--pass2`, `--cleanup` to force a specific phase. |
+| `/inbox` | 2-pass workflow; auto-detects which phase to run. | `--pass1`, `--pass2` to force a phase; `--force`, `--recover`. See [Forcing a phase](workflows/inbox.md#forcing-a-phase). |
 | `/explore-vault` | Vault discovery; populates `vault-config.yaml` and `discovery-cache.yaml`. | `--confirm` re-runs every detection step with prompts. |
 | `/tomo-setup` | Post-install wizard (recommended after every install). | `rules`, `templates`, `trackers`, `daily-log` to run a single phase. |
 | `/moc-propose` | Live vault scan for new MOC proposals. See [How Tomo proposes new MOCs](workflows/moc-propose.md). | Scope such as `tag:`, `folder:`, `class:`, `title:` or free text. |

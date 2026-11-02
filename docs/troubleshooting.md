@@ -117,9 +117,10 @@ Tomo only owns the proxy and the lock file. For anything past the connection —
 **Symptom:** `/inbox` reports idle, but you have files in the inbox.
 
 **Check:**
-1. Files carry `tomo.state: captured` in their frontmatter
+1. Files are Markdown notes. An attachment on its own is not picked up.
 2. Files are in the configured inbox folder path
-3. Kado can list and read the inbox folder
+3. Files carry no `tomo.state` in their frontmatter. `tomo.state: captured` means Pass 1 has already seen the file, so `/inbox` skips it. Never add it by hand. To suggest such a file again, run `/inbox --pass1 --force`.
+4. Kado can list and read the inbox folder
 
 ### Suggestions Document Not Generated
 
@@ -172,7 +173,7 @@ Tomo only owns the proxy and the lock file. For anything past the connection —
 **Fix options:**
 - **Update the note's date** to within the cutoff (edit content / filename so the analyst's date heuristic returns a recent date).
 - **Increase `cutoff_days`** to cover your testing window. Recommended for capture-then-batch-process workflows where you accumulate fleeting notes for weeks before running `/inbox`.
-- **Disable the cutoff** by setting `cutoff_days: 9999` (or removing the field — when not set, no cutoff applies). Trade-off: you lose the safety guard against editing very old daily notes.
+- **Effectively disable the cutoff** by setting `cutoff_days: 9999`. Removing the field does not help, because Tomo then uses the default of 30. Trade-off: you lose the safety guard against editing very old daily notes.
 
 The cutoff is set during install via `tomo-daily-log-wizard` (`/tomo-setup`) or by editing `vault-config.yaml` directly. Re-run `/tomo-setup` to walk through the wizard's defaults.
 
@@ -386,10 +387,10 @@ This rebuilds `miyo-tomo:latest` from `<tomo-repo>/docker/Dockerfile` before lau
 
 **Solution:**
 ```bash
-bash begin-tomo.sh --login
+bash begin-tomo.sh --auth-port
 ```
 
-This launches the container with port 10000 exposed for the OAuth callback. Complete the browser login flow and your new credentials are saved to `tomo-home/.claude/.credentials.json`. No cleanup or re-install needed.
+This launches the container with port 10000 exposed for the OAuth callback. Run `claude login` inside the container and complete the browser login flow. Your new credentials are saved to `home/.claude/.credentials.json` in the instance folder. No cleanup or re-install needed.
 
 ## `@` File Picker
 
@@ -471,17 +472,17 @@ python3 -c "import yaml; yaml.safe_load(open('tomo/profiles/miyo.yaml'))"
 
 **Solution:** Use the cleanup script to remove install artifacts, then re-run the installer:
 ```bash
-bash scripts/cleanup-tomo.sh --dry-run    # preview
-bash scripts/cleanup-tomo.sh              # interactive
-bash scripts/install-tomo.sh              # fresh install
+bash scripts/cleanup-tomo.sh --instance <name> --dry-run    # preview
+bash scripts/cleanup-tomo.sh --instance <name>              # interactive
+bash scripts/install-tomo.sh                                # fresh install
 ```
 
 To preserve your Claude Code auth between re-runs:
 ```bash
-bash scripts/cleanup-tomo.sh --force --keep-home
+bash scripts/cleanup-tomo.sh --instance <name> --delete-disk --force --keep-home
 ```
 
-The cleanup script refuses any path outside the repo root as a safety check.
+See [Cleanup / Re-install](setup.md#cleanup--re-install) for what each option does.
 
 ### An inbox item fails with `shared_ctx_unavailable`
 

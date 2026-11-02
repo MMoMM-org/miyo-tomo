@@ -1,6 +1,6 @@
 # Process inbox items
 
-This is the day-to-day loop. When new items have landed in your inbox folder (voice memos with `tomo.state: captured` in their frontmatter, web clips, quick captures, anything ready for triage), run:
+This is the day-to-day loop. When new items have landed in your inbox folder (voice memos, web clips, quick captures, anything ready for triage), run:
 
 ```
 /inbox
@@ -31,7 +31,7 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 > is what counts, which is why editing it directly and running `/inbox
 > --pass2 --force` works the way the rest of this page describes.
 
-`/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
+`/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, or report idle. You just keep running `/inbox`.
 
 ## When an attachment's name is already taken
 

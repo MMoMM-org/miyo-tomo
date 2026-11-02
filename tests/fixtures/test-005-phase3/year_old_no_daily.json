@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "20250301_old-idea-about-journaling",
+  "item_key": "100 Inbox/20250301_old-idea-about-journaling.md",
   "path": "100 Inbox/20250301_old-idea-about-journaling.md",
   "type": "fleeting_note",
   "type_confidence": 0.7,
@@ -25,7 +26,9 @@
       "classification": null,
       "needs_new_moc": false,
       "proposed_moc_topic": null,
-      "tags_to_add": ["topic/personal/journaling"],
+      "tags_to_add": [
+        "topic/personal/journaling"
+      ],
       "atomic_note_worthiness": 0.6,
       "alternatives": []
     }

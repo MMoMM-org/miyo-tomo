@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "expense-log-march",
+  "item_key": "100 Inbox/expense-log-march.md",
   "path": "100 Inbox/expense-log-march.md",
   "type": "fleeting_note",
   "type_confidence": 0.6,

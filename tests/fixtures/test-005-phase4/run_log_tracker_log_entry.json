@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "run-log",
+  "item_key": "100 Inbox/run-log.md",
   "path": "100 Inbox/run-log.md",
   "type": "fleeting_note",
   "type_confidence": 0.8,

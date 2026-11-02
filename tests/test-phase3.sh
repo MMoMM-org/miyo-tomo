@@ -50,9 +50,8 @@ check_contains() {
 # ── Test 1: Python scripts syntax ─────────────────────────────
 echo "── Test 1: Python scripts syntax check ──────────────────────────────────────────────"
 
-check "state-scanner.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/state-scanner.py', doraise=True)"
-check "token-render.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/token-render.py', doraise=True)"
-check "suggestion-parser.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/suggestion-parser.py', doraise=True)"
+check "token-render.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/token-render.py', doraise=True)"
+check "suggestion-parser.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/suggestion-parser.py', doraise=True)"
 
 # ── Test 2: Token renderer functional test ────────────────────
 echo ""
@@ -65,7 +64,7 @@ title: {{title}}
 tags:{{tags}}
 ---
 # [[{{title}}]]
-{{body}}' | python3 scripts/token-render.py --tokens-json '{"title":"Test Note","tags":["topic/test","type/note"],"body":"Hello world"}' > "$RENDER_TMP" 2>/dev/null
+{{body}}' | python3 tomo/scripts/token-render.py --tokens-json '{"title":"Test Note","tags":["topic/test","type/note"],"body":"Hello world"}' > "$RENDER_TMP" 2>/dev/null
 
 check "token-render.py — produces output" test -s "$RENDER_TMP"
 check "token-render.py — resolves title" grep -q "title: Test Note" "$RENDER_TMP"
@@ -119,7 +118,7 @@ MiYo-Tomo: confirmed
 SUGG
 
 PARSE_TMP="$TMPDIR/parse-test-$$.json"
-python3 scripts/suggestion-parser.py --file "$SUGGESTION_TMP" > "$PARSE_TMP" 2>/dev/null
+python3 tomo/scripts/suggestion-parser.py --file "$SUGGESTION_TMP" > "$PARSE_TMP" 2>/dev/null
 
 check "suggestion-parser.py — produces JSON" python3 -c "import json; json.load(open('$PARSE_TMP'))"
 check "suggestion-parser.py — has confirmed_items" python3 -c "import json; d=json.load(open('$PARSE_TMP')); assert 'confirmed_items' in d"
@@ -134,40 +133,18 @@ echo "── Test 4: Agent artifacts ──────────────�
 check_file "inbox-analyst.md" tomo/dot_claude/agents/inbox-analyst.md
 check_contains "inbox-analyst — has classification" tomo/dot_claude/agents/inbox-analyst.md "fleeting_note"
 check_contains "inbox-analyst — has MOC matching" tomo/dot_claude/agents/inbox-analyst.md "MOC"
-check_contains "inbox-analyst — references topic-extract" tomo/dot_claude/agents/inbox-analyst.md "topic-extract"
-
-# suggestion-builder.md retired in spec 004 (fan-out refactor).
-# Its format rules now live in inbox-orchestrator.md.
-check_file "inbox-orchestrator.md" tomo/dot_claude/agents/inbox-orchestrator.md
-check_contains "inbox-orchestrator — inherits S-section format" tomo/dot_claude/agents/inbox-orchestrator.md "S01"
-check_contains "inbox-orchestrator — carries Classification Guard rule" tomo/dot_claude/agents/inbox-orchestrator.md "Classification Guard"
-check_contains "inbox-orchestrator — anti-parrot rule present" tomo/dot_claude/agents/inbox-orchestrator.md "Anti-parrot"
-
-check_file "instruction-builder.md" tomo/dot_claude/agents/instruction-builder.md
-check_contains "instruction-builder — has action handlers" tomo/dot_claude/agents/instruction-builder.md "New Atomic Note"
-check_contains "instruction-builder — references token-render" tomo/dot_claude/agents/instruction-builder.md "token-render"
-check_contains "instruction-builder — references suggestion-parser" tomo/dot_claude/agents/instruction-builder.md "suggestion-parser"
-
-check_file "vault-executor.md" tomo/dot_claude/agents/vault-executor.md
-check_contains "vault-executor — has cleanup workflow" tomo/dot_claude/agents/vault-executor.md "archived"
-check_contains "vault-executor — references state-scanner" tomo/dot_claude/agents/vault-executor.md "state-scanner"
-check_contains "vault-executor — is idempotent" tomo/dot_claude/agents/vault-executor.md "idempotent"
+check_contains "inbox-analyst — carries Classification Guard rule" tomo/dot_claude/agents/inbox-analyst.md "Classification Guard"
 
 # ── Test 5: Command and skills ────────────────────────────────
 echo ""
 echo "── Test 5: Command and skills ──────────────────────────────────────────────────────────"
 
-check_contains "inbox.md — has auto-discovery" tomo/dot_claude/commands/inbox.md "discover"
-check_contains "inbox.md — references all 4 agents" tomo/dot_claude/commands/inbox.md "vault-executor"
-
-check_file "pkm-workflows.md" tomo/dot_claude/skills/pkm-workflows/SKILL.md
-check_contains "pkm-workflows — has state machine" tomo/dot_claude/skills/pkm-workflows/SKILL.md "captured"
-check_contains "pkm-workflows — has 7 states" tomo/dot_claude/skills/pkm-workflows/SKILL.md "archived"
-check_contains "pkm-workflows — has classification" tomo/dot_claude/skills/pkm-workflows/SKILL.md "fleeting_note"
+check_contains "inbox.md — dispatches Pass 1" tomo/dot_claude/commands/inbox.md "suggestion-conductor"
+check_contains "inbox.md — dispatches Pass 2" tomo/dot_claude/commands/inbox.md "synthesis-conductor"
 
 check_file "template-render.md" tomo/dot_claude/skills/template-render/SKILL.md
 check_contains "template-render — has token categories" tomo/dot_claude/skills/template-render/SKILL.md "Generated Tokens"
-check_contains "template-render — has YAML list formatting" tomo/dot_claude/skills/template-render/SKILL.md "YAML List"
+check_contains "template-render — has list formatting" tomo/dot_claude/skills/template-render/SKILL.md "Tags and List Formatting"
 check_contains "template-render — has Templater coexistence" tomo/dot_claude/skills/template-render/SKILL.md "Templater"
 
 # ── Test 6: Regression check ─────────────────────────────────

@@ -34,14 +34,18 @@ OUT_DOC="$FIXTURE_DIR/suggestions-doc.json"
 
 # Seed state with 3 done items
 cat > "$STATE" <<JSONL
-{"run_id":"test-phase4","stem":"reading-notes","path":"100 Inbox/reading-notes.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
-{"run_id":"test-phase4","stem":"run-log","path":"100 Inbox/run-log.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
-{"run_id":"test-phase4","stem":"workout-notes","path":"100 Inbox/workout-notes.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
+{"run_id":"test-phase4","stem":"reading-notes","item_key":"100 Inbox/reading-notes.md","path":"100 Inbox/reading-notes.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
+{"run_id":"test-phase4","stem":"run-log","item_key":"100 Inbox/run-log.md","path":"100 Inbox/run-log.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
+{"run_id":"test-phase4","stem":"workout-notes","item_key":"100 Inbox/workout-notes.md","path":"100 Inbox/workout-notes.md","status":"done","attempts":1,"started_at":null,"completed_at":null,"error":null}
 JSONL
 
-cp "$FIXTURE_SRC/reading_notes_atomic_log_link.json" "$ITEMS_DIR/reading-notes.result.json"
-cp "$FIXTURE_SRC/run_log_tracker_log_entry.json"      "$ITEMS_DIR/run-log.result.json"
-cp "$FIXTURE_SRC/workout_notes_log_entry_next_day.json" "$ITEMS_DIR/workout-notes.result.json"
+result_name() {
+    PYTHONPATH="$REPO_ROOT/tomo/scripts" "$PYTHON" -c \
+        'import sys; from lib.item_key import to_filename; print(to_filename(sys.argv[1]))' "$1"
+}
+cp "$FIXTURE_SRC/reading_notes_atomic_log_link.json" "$ITEMS_DIR/$(result_name "100 Inbox/reading-notes.md")"
+cp "$FIXTURE_SRC/run_log_tracker_log_entry.json" "$ITEMS_DIR/$(result_name "100 Inbox/run-log.md")"
+cp "$FIXTURE_SRC/workout_notes_log_entry_next_day.json" "$ITEMS_DIR/$(result_name "100 Inbox/workout-notes.md")"
 
 # ── Run reducer ───────────────────────────────────────────────────────────
 printf "\n${C_DIM}── Running reducer${C_RESET}\n"
@@ -65,28 +69,28 @@ fi
 printf "\n${C_DIM}── Test 1: 2 daily_notes_updates entries, date-sorted + structure${C_RESET}\n"
 STDERR1="$FIXTURE_DIR/t1.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_daily_notes_render.py" "$OUT_DOC" 2>"$STDERR1"; then
-    pass "2 daily notes sorted + Material für mirror + precedence note"
+    pass "2 daily notes sorted, no Material für mirror, precedence note"
 else
     fail "daily_notes_updates structure assertions failed"
     cat "$STDERR1" >&2
 fi
 
-# ── Test 2: exists=false → Create-first checkbox; empty trackers omitted ─
-printf "\n${C_DIM}── Test 2: render rules — Create-first, header omission, null time${C_RESET}\n"
+# ── Test 2: exists=false → warning heading; empty trackers omitted ──────
+printf "\n${C_DIM}── Test 2: render rules — missing-note warning, header omission, null time${C_RESET}\n"
 STDERR2="$FIXTURE_DIR/t2.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_render_rules.py" \
     "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
     2>"$STDERR2"; then
-    pass "exists=false → Create-first; empty trackers omitted; null time → end of day"
+    pass "exists=false → warning heading; empty trackers omitted; null time → position"
 else
     fail "render-rule assertions failed"
     cat "$STDERR2" >&2
 fi
 
-# ── Test 3: log_link mirror in both top-of-doc AND per-item ──────────────
-printf "\n${C_DIM}── Test 3: log_link mirror in top-of-doc AND per-item section${C_RESET}\n"
+# ── Test 3: log_link in top-of-doc, per-item mirror retired ──────────────
+printf "\n${C_DIM}── Test 3: log_link in top-of-doc, no per-item mirror${C_RESET}\n"
 STDERR3="$FIXTURE_DIR/t3.log"
-"$PYTHON" - "$OUT_DOC" <<'PY' 2>"$STDERR3" && pass "log_link appears in daily_notes_updates AND per-item rendered_md" || { fail "log_link mirror check failed"; cat "$STDERR3" >&2; }
+"$PYTHON" - "$OUT_DOC" <<'PY' 2>"$STDERR3" && pass "log_link appears in daily_notes_updates only" || { fail "log_link mirror check failed"; cat "$STDERR3" >&2; }
 import json, sys
 doc = json.load(open(sys.argv[1]))
 
@@ -95,11 +99,11 @@ dnu = doc["daily_notes_updates"]
 d0 = next(d for d in dnu if d["daily_note_stem"] == "2026-04-15")
 assert len(d0["log_links"]) >= 1, f"no log_links in top-of-doc for 2026-04-15"
 
-# Per-item: reading-notes create_atomic_note rendered_md should have Material für
+# Per-item: the Material für mirror was retired, the block above is the only offer
 reading_sec = next(s for s in doc["sections"] if s["stem"] == "reading-notes")
 atomic = next(a for a in reading_sec["actions"] if a["kind"] == "create_atomic_note")
-assert "Material für" in atomic["rendered_md"], \
-    f"Material für not in per-item section for reading-notes"
+assert "Material für" not in atomic["rendered_md"], \
+    f"Material für back in per-item section for reading-notes"
 PY
 
 # ── Test 4: empty trackers → Trackers header omitted in rendered block ────

@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.6.0
+# version: 0.7.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -65,7 +65,7 @@ Create or update a MiYo Tomo instance with vault configuration.
 
 Options:
   --vault PATH          Path to Obsidian vault directory
-  --profile NAME        PKM framework profile (miyo, lyt, custom)
+  --profile NAME        PKM framework profile (miyo, lyt)
   --kado-host HOST      Kado server host (default: host.docker.internal)
   --kado-port PORT      Kado server port (default: 37022)
   --kado-token TOKEN    Kado bearer token (must start with kado_)
@@ -318,35 +318,28 @@ else
         echo "  Available PKM frameworks:"
         echo "    1. miyo  — MiYo (LYT-derived, Dewey classification)"
         echo "    2. lyt   — LYT (Linking Your Thinking, Ideaverse Pro)"
-        echo "    3. custom — Start with empty defaults"
         while true; do
             read -rp "  Select framework [1]: " PROFILE_CHOICE
             PROFILE_CHOICE="${PROFILE_CHOICE:-1}"
             case "$PROFILE_CHOICE" in
                 1|miyo)   PROFILE="miyo";   break ;;
                 2|lyt)    PROFILE="lyt";    break ;;
-                3|custom) PROFILE="custom"; break ;;
-                *) print_err "Invalid choice. Enter 1, 2, 3, miyo, lyt, or custom." ;;
+                *) print_err "Invalid choice. Enter 1, 2, miyo, or lyt." ;;
             esac
         done
     fi
 fi
 
 PROFILE_FILE="$PROFILES_DIR/${PROFILE}.yaml"
-if [ "$PROFILE" != "custom" ] && [ ! -f "$PROFILE_FILE" ]; then
+if [ ! -f "$PROFILE_FILE" ]; then
     print_err "Profile not found: $PROFILE_FILE"
     exit 1
 fi
 
-if [ "$PROFILE" = "custom" ]; then
-    PROFILE_VERSION="1.0"
-    print_ok "Profile: custom (empty defaults)"
-else
-    PROFILE_VERSION=$(grep "^version:" "$PROFILE_FILE" | head -1 | sed 's/.*: *//' | tr -d '"'"'")
-    PROFILE_VERSION="${PROFILE_VERSION:-1.0}"
-    PROFILE_NAME=$(grep "^name:" "$PROFILE_FILE" | head -1 | sed 's/.*: *//' | tr -d '"'"'")
-    print_ok "Profile: ${PROFILE} (${PROFILE_NAME}, v${PROFILE_VERSION})"
-fi
+PROFILE_VERSION=$(grep "^version:" "$PROFILE_FILE" | head -1 | sed 's/.*: *//' | tr -d '"'"'")
+PROFILE_VERSION="${PROFILE_VERSION:-1.0}"
+PROFILE_NAME=$(grep "^name:" "$PROFILE_FILE" | head -1 | sed 's/.*: *//' | tr -d '"'"'")
+print_ok "Profile: ${PROFILE} (${PROFILE_NAME}, v${PROFILE_VERSION})"
 
 # ── Step 4: Concept Mapping ──────────────────────────────
 
@@ -362,10 +355,6 @@ fi
 
 get_profile_default() {
     local concept="$1"
-    if [ "$PROFILE" = "custom" ]; then
-        echo ""
-        return
-    fi
     case "$concept" in
         inbox|project|area|source|template|asset)
             yaml_value "$PROFILE_FILE" "$concept"
@@ -743,7 +732,7 @@ fi
 MAP_NOTE_TAG=""
 CALENDAR_DAILY_ENABLED="true"
 CALENDAR_DAILY_PATH=""
-if [ "$PROFILE" != "custom" ] && [ -f "$PROFILE_FILE" ]; then
+if [ -f "$PROFILE_FILE" ]; then
     MAP_NOTE_TAG=$(yaml_list "$PROFILE_FILE" "map_note" "tags" | head -1)
     CALENDAR_DAILY_PATH=$(sed -n '/^  calendar:/,/^  [a-z]/p' "$PROFILE_FILE" 2>/dev/null \
         | sed -n '/daily:/,/^ /p' | grep 'path:' | head -1 | sed 's/.*: *//' | tr -d '"'"'" | tr -d '{}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')

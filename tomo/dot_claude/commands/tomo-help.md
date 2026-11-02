@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.21
+# version: 0.2.22
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -35,7 +35,7 @@ The user just wants the menu. Show this (keep formatting tight):
     7. Lifecycle state machine (`tomo.state` frontmatter)
     8. 2-pass suggestion/instruction model
     9. Knowledge Stack (profile → config → cache)
-   10. Framework profiles (miyo, lyt, custom)
+   10. Framework profiles (miyo, lyt)
 
   Configuration
    11. vault-config.yaml — concept paths, frontmatter, templates
@@ -134,12 +134,12 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 - **knowledge stack / 4-layer / precedence / profile vs config / config vs cache** →
   - 4 layers (highest precedence first): User Config > Profile > Universal PKM Concepts; Cache is advisory only
   - User Config = `config/vault-config.yaml`
-  - Profile = baked into Tomo source (miyo, lyt, custom)
+  - Profile = baked into Tomo source (miyo, lyt)
   - Cache = `config/discovery-cache.yaml` (auto-generated, advisory)
   - Point at: `CLAUDE.md`, `config/vault-config.yaml`
 
 - **profile / framework / miyo / lyt / custom / para** →
-  - Two profiles ship with Tomo: `miyo` (LYT-derived, Dewey classification) and `lyt` (standard LYT/Ideaverse Pro). `custom` starts empty.
+  - Two profiles ship with Tomo: `miyo` (LYT-derived, Dewey classification) and `lyt` (standard LYT/Ideaverse Pro). Own profile: copy a shipped file to `profiles/<name>.yaml` and set `profile: "<name>"`.
   - Profile sets concept defaults, naming, frontmatter, relationship markers
   - Switch profile = re-run `install-tomo.sh` on the host
   - Point at: `config/vault-config.yaml` (`profile:` field)

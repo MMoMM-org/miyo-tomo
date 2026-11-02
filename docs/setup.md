@@ -41,7 +41,8 @@ Point Tomo at your Obsidian vault directory. The script validates the path exist
 Choose your PKM framework:
 - **miyo** — Marcus's vault conventions (LYT-derived with customizations)
 - **lyt** — Standard LYT/Ideaverse Pro conventions
-- **custom** — Start from scratch. Tomo ships no file for this choice, so add `profiles/custom.yaml` to the instance before you run `/inbox`. See [Configuration](configuration.md#profilesnameyaml--framework-profiles-read-only).
+
+For your own framework, start from one of these and copy its profile. See [Configuration](configuration.md#profilesnameyaml--framework-profiles-read-only).
 
 The profile provides default folder mappings, classification categories, and relationship markers. Everything can be overridden later.
 

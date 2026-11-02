@@ -478,3 +478,12 @@ What 0.14.1 changes and why:
 The mutation `warn-in-report-only` removes the `cat` and leaves only the step 7
 repeat, so the warning reaches the user after every dispatch, and grader 02
 goes red.
+
+## The stem comes from the clock
+
+WHY: the skill named only the `<YYYY-MM-DD_HHMM>` placeholder, so the model chose the
+time itself. A live run on 2026-11-02 derived it from earlier filenames and "a UTC+1
+local clock". That was right by luck and fails across a daylight-saving change. Pass 2
+derives its stem in `upload-rendered.py`; here a plain `date` is enough, as in
+`garden-auditor`. The launcher passes the host's `TZ`, so the output is local time.
+`Bash(date:*)` is already allowed. The evals do not grade the source of the time.

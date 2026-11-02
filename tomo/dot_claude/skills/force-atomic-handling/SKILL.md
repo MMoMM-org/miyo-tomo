@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.15.0
+# version: 0.15.1
 
 ## When to Activate
 
@@ -123,7 +123,7 @@ python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json 
 
 ### 6. Write to vault
 
-Publish BOTH siblings at the same stem so the ADR-026 editor + Pass-2 pair them.
+Publish BOTH siblings at the same `<YYYY-MM-DD_HHMM>` stem, the output of one `date +%Y-%m-%d_%H%M` call, so the ADR-026 editor + Pass-2 pair them.
 The script routes by extension on its own — `.md` to the note operation, `.json`
 to the file operation.
 

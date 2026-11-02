@@ -42,6 +42,27 @@ def test_findings_are_printed_before_every_question():
         assert phrase in rule
 
 
+def test_schema_paths_resolve_inside_the_instance():
+    assert "tomo/schemas/" not in TEXT
+    assert "--schema schemas/vault-config-trackers.schema.json" in TEXT
+
+
+def test_modified_after_is_unix_milliseconds():
+    assert "modifiedAfter: <unix-ms-14d-ago>" in TEXT
+    assert "iso-timestamp" not in TEXT
+
+
+def test_tracker_findings_list_every_field_as_text():
+    step = TEXT[TEXT.index("### Step 7") : TEXT.index("Use AskUserQuestion with multiSelect: \"Which of these fields")]
+    assert "Print this list as visible text, one line per detected field" in step
+
+
+def test_templates_summary_points_at_step_8_for_missing_files():
+    assert "`templates_mapped_count`, `templates_unmapped_count`" in TEXT
+    assert "templates_found_count" not in TEXT
+    assert "Missing template files come from Step 8" in TEXT
+
+
 def test_run_mode_table_keeps_all_three_modes():
     section = TEXT[TEXT.index("## Decision: Run Mode") : TEXT.index("## Edge Cases")]
     rows = [ln for ln in section.splitlines() if ln.startswith("| ")]

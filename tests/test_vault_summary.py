@@ -12,7 +12,7 @@ Covers:
   - notes_per_concept from scan-output.json vault_structure.concepts_mapped
   - tag_namespace_count + unique_tag_count from vault-config.yaml tags.prefixes
   - frontmatter required/optional counts from tags.prefixes[].required_for
-  - relationship markers from vault-config.yaml relationships.markers
+  - relationship markers from vault-config.yaml relationship types
   - tracker_field_count from vault-config.yaml trackers
   - graceful degradation: missing input file -> null fields, exit 0, valid JSON
 """
@@ -153,10 +153,10 @@ def _make_vault_config(tmp_path: Path) -> Path:
             }
         },
         "relationships": {
-            "markers": [
-                {"marker": "up::", "position": "body"},
-                {"marker": "related::", "position": "body"},
-            ]
+            # Real shape per tomo/schemas/vault-config-relationships.schema.json:
+            # one object per relationship type, written by vault-config-writer.
+            "parent": {"marker": "up::", "format": "up:: {{link}}", "position": "connect_callout"},
+            "peer": {"marker": "related::", "format": "related:: {{link}}", "position": "connect_callout"},
         },
         "callouts": {
             "protected": ["warning", "danger", "important"],
@@ -417,7 +417,7 @@ class TestFrontmatterStats:
 
 
 class TestRelationshipMarkers:
-    """relationship_markers extracted from vault-config.yaml relationships.markers."""
+    """relationship_markers extracted from vault-config.yaml relationship types."""
 
     def test_relationship_markers_list(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)
@@ -531,9 +531,9 @@ class TestTrackerAndCalloutStats:
 
 
 class TestTemplateStats:
-    """templates_found_count / templates_missing_count from vault-config templates.mapping."""
+    """templates_mapped_count / templates_unmapped_count from vault-config templates.mapping."""
 
-    def test_templates_found_count_nonzero_when_paths_present(self, tmp_path):
+    def test_templates_mapped_count_nonzero_when_paths_present(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)
         scan_path = _make_scan_output(tmp_path)
         cache_path = _make_discovery_cache(tmp_path)
@@ -546,10 +546,10 @@ class TestTemplateStats:
             config_path=str(config_path),
         )
 
-        # Fixture: map_note, atomic_note, daily have paths => 3 found
-        assert result["templates_found_count"] == 3
+        # Fixture: map_note, atomic_note, daily have paths => 3 mapped
+        assert result["templates_mapped_count"] == 3
 
-    def test_templates_missing_count_counts_null_entries(self, tmp_path):
+    def test_templates_unmapped_count_counts_null_entries(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)
         scan_path = _make_scan_output(tmp_path)
         cache_path = _make_discovery_cache(tmp_path)
@@ -562,8 +562,8 @@ class TestTemplateStats:
             config_path=str(config_path),
         )
 
-        # Fixture: project mapping is None => 1 missing
-        assert result["templates_missing_count"] == 1
+        # Fixture: project mapping is None => 1 unmapped
+        assert result["templates_unmapped_count"] == 1
 
 
 class TestGracefulDegradation:
@@ -641,8 +641,8 @@ class TestGracefulDegradation:
         assert result["callout_protected_count"] is None
         assert result["callout_editable_count"] is None
         assert result["tracker_field_count"] is None
-        assert result["templates_found_count"] is None
-        assert result["templates_missing_count"] is None
+        assert result["templates_mapped_count"] is None
+        assert result["templates_unmapped_count"] is None
 
     def test_all_files_missing_still_returns_valid_dict(self, tmp_path):
         result = aggregate_summary(
@@ -756,7 +756,7 @@ class TestMalformedInputs:
         assert result["frontmatter_required_count"] is None
         assert result["callout_protected_count"] is None
         assert result["tracker_field_count"] is None
-        assert result["templates_found_count"] is None
+        assert result["templates_mapped_count"] is None
         # Unaffected sources still populated
         assert result["moc_count"] is not None
 

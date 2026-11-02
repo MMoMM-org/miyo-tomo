@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.18.0
+# version: 0.19.0
 
 **Active agent: vault-explorer**
 
@@ -34,7 +34,7 @@ operations.
 - **STRICT:** Print the complete findings for a decision as visible text, tables included, in the same message and before its AskUserQuestion call. Every item the question refers to appears in that text. Findings in thinking count as not printed.
   Why: questions asked with no findings shown make the user confirm blind.
 - Write config files to `config/` — a relative path. Like every other
-  path in this file (`scripts/...`, `tomo-tmp/...`, `tomo/schemas/...`)
+  path in this file (`scripts/...`, `tomo-tmp/...`, `schemas/...`)
   it is resolved against the agent's current working directory inside
   the container. Do NOT prepend an absolute path, do NOT substitute
   any `$VAR`. NEVER write to `.claude/` or any other
@@ -185,12 +185,12 @@ come from one MiYo-flavored vault; other vaults will differ.
 
    ```bash
    mkdir -p tomo-tmp/vault-config
-   python3 scripts/template-from-schema.py --schema tomo/schemas/vault-config-tags.schema.json --output tomo-tmp/vault-config/tags.json
+   python3 scripts/template-from-schema.py --schema schemas/vault-config-tags.schema.json --output tomo-tmp/vault-config/tags.json
    ```
 
 2. Fill in the scaffold via the `Write` tool — replace skeleton values
    with the classified prefixes from the user-confirmed taxonomy. The
-   final shape matches `tomo/schemas/vault-config-tags.schema.json`:
+   final shape matches `schemas/vault-config-tags.schema.json`:
 
    ```json
    {
@@ -280,12 +280,12 @@ Present findings with markers, positions, and examples. Use **AskUserQuestion** 
 1. Scaffold the JSON payload from the schema (one Bash call):
 
    ```bash
-   python3 scripts/template-from-schema.py --schema tomo/schemas/vault-config-relationships.schema.json --output tomo-tmp/vault-config/relationships.json
+   python3 scripts/template-from-schema.py --schema schemas/vault-config-relationships.schema.json --output tomo-tmp/vault-config/relationships.json
    ```
 
 2. Fill in the scaffold via the `Write` tool — replace skeleton values
    with the detected markers. Final shape matches
-   `tomo/schemas/vault-config-relationships.schema.json`:
+   `schemas/vault-config-relationships.schema.json`:
 
    ```json
    {
@@ -343,12 +343,12 @@ Present findings with classification and reasoning. Use **AskUserQuestion** to c
 1. Scaffold the JSON payload from the schema (one Bash call):
 
    ```bash
-   python3 scripts/template-from-schema.py --schema tomo/schemas/vault-config-callouts.schema.json --output tomo-tmp/vault-config/callouts.json
+   python3 scripts/template-from-schema.py --schema schemas/vault-config-callouts.schema.json --output tomo-tmp/vault-config/callouts.json
    ```
 
 2. Fill in the scaffold via the `Write` tool — replace skeleton values
    with the classified callouts. Final shape matches
-   `tomo/schemas/vault-config-callouts.schema.json`:
+   `schemas/vault-config-callouts.schema.json`:
 
    ```json
    {
@@ -408,7 +408,7 @@ as `null`. Branch per source below.
 
 **Source B — recent daily notes**:
 - If `concepts.calendar.granularities.daily.path` is null, skip Source B.
-- Compute an ISO timestamp 14 days ago (covers ~7 daily notes with
+- Compute a Unix timestamp in milliseconds for 14 days ago (covers ~7 daily notes with
   slack for weekends/skip-days), then `kado-search` the daily folder
   with `filter.modifiedAfter` set to that timestamp:
 
@@ -418,7 +418,7 @@ as `null`. Branch per source below.
     path: <daily_folder_path>
     type: file
     filter:
-      modifiedAfter: <iso-timestamp-14d-ago>
+      modifiedAfter: <unix-ms-14d-ago>
   ```
 
   From the response, sort entries by filename DESC (dates sort
@@ -445,7 +445,7 @@ intent) and flag the divergence.
 "No daily template or daily folder resolvable — tracker detection skipped."
 Continue to Step 8. Do NOT write an empty `trackers:` section.
 
-**Present findings** with source annotations:
+**Present findings.** Print this list as visible text, one line per detected field, with its source:
 
 ```
 Tracker fields detected:
@@ -479,12 +479,12 @@ notes."`). Add `scale` only for a field with a detected scale.
 1. Scaffold the JSON payload from the schema (one Bash call):
 
    ```bash
-   python3 scripts/template-from-schema.py --schema tomo/schemas/vault-config-trackers.schema.json --output tomo-tmp/vault-config/trackers.json
+   python3 scripts/template-from-schema.py --schema schemas/vault-config-trackers.schema.json --output tomo-tmp/vault-config/trackers.json
    ```
 
 2. Fill in the scaffold via the `Write` tool — replace skeleton values
    with the confirmed trackers, bucketed per the heuristic above. Final
-   shape matches `tomo/schemas/vault-config-trackers.schema.json`:
+   shape matches `schemas/vault-config-trackers.schema.json`:
    ```json
    {
      "daily_note_trackers": {
@@ -630,7 +630,7 @@ Render the completion summary from the returned JSON. Field-to-section mapping:
 - **Relationships:** `relationship_markers` (marker + position for each entry)
 - **Callouts:** `callout_editable_count`, `callout_protected_count`
 - **Trackers:** `tracker_field_count`
-- **Templates:** `templates_found_count`, `templates_missing_count`
+- **Templates:** `templates_mapped_count`, `templates_unmapped_count`. Missing template files come from Step 8.
 - **Cache:** `cache_path`
 
 Close with: "Run /inbox to start processing notes."

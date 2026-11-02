@@ -15,6 +15,16 @@ The rule is STRICT because the unadorned imperative was observed failing. It sit
 Constraints rather than in each step because the agent asks in many places, and a
 per-step rule would miss the next one added.
 
+Step 7 repeats the rule for its field list: with only the general constraint, the
+next live run still asked which tracker groups to keep without printing the fields.
+
+## Paths and filters match the instance and Kado (v0.19.0)
+
+WHY: the agent runs inside the instance, where schemas sit in `schemas/`. `tomo/schemas/`
+exists only in the source repo, so each scaffold call failed once and the model had to
+find the path itself. `filter.modifiedAfter` is Unix milliseconds in Kado's tool schema;
+an ISO string is rejected, which the live run had to work around.
+
 ## Step 7 emits only values the writer and the wire accept (#212)
 
 WHY: Step 7 emitted `syntax: frontmatter` and `type: scale`, which

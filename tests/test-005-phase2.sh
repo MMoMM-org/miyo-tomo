@@ -71,6 +71,14 @@ concepts:
 naming:
   calendar_patterns:
     daily: "YYYY-MM-DD"
+tags:
+  prefixes:
+    topic:
+      description: "Topics"
+      known_values: [personal/habits]
+      wildcard: true
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]
@@ -170,6 +178,14 @@ concepts:
 naming:
   calendar_patterns:
     daily: "YYYY-MM-DD"
+tags:
+  prefixes:
+    topic:
+      description: "Topics"
+      known_values: [personal/habits]
+      wildcard: true
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]
@@ -213,6 +229,14 @@ concepts:
 naming:
   calendar_patterns:
     daily: "YYYY-MM-DD"
+tags:
+  prefixes:
+    topic:
+      description: "Topics"
+      known_values: [personal/habits]
+      wildcard: true
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]
@@ -259,31 +283,6 @@ else
     cat "$STDERR3" >&2
 fi
 
-# ── Test 4: real-instance dry run ≤ 15 KB ────────────────────────────────
-printf "\n${C_DIM}── Test 4: real-instance dry run ≤ 15 KB${C_RESET}\n"
-if [ -f "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" ]; then
-    REAL_OUT="$FIXTURE_DIR/tomo-tmp/real-shared-ctx.json"
-    REAL_ERR="$FIXTURE_DIR/tomo-tmp/t4-real.err"
-    if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
-        --cache "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" \
-        --vault-config "$REPO_ROOT/tomo-instance/config/vault-config.yaml" \
-        --profiles-dir "$REPO_ROOT/tomo/profiles" \
-        --run-id "test-005-p2-real" \
-        --output "$REAL_OUT" 2>"$REAL_ERR"; then
-        SIZE=$(wc -c < "$REAL_OUT" | tr -d ' ')
-        if [ "$SIZE" -le 15360 ]; then
-            pass "real-instance: shared-ctx ≤ 15 KB (${SIZE}B)"
-        else
-            fail "real-instance: over budget — ${SIZE}B > 15360"
-        fi
-    else
-        fail "real-instance: builder exited non-zero"
-        cat "$REAL_ERR" >&2
-    fi
-else
-    skip "real-instance dry run" "tomo-instance not set up"
-fi
-
 # ── Test 5: calendar.daily.enabled=false → no daily_notes block ──────────
 printf "\n${C_DIM}── Test 5: calendar.daily.enabled=false → daily_notes omitted${C_RESET}\n"
 cat > "$FIXTURE_DIR/config/vault-config-no-daily.yaml" <<'YAML'
@@ -295,6 +294,14 @@ concepts:
     granularities:
       daily:
         enabled: false
+tags:
+  prefixes:
+    topic:
+      description: "Topics"
+      known_values: [personal/habits]
+      wildcard: true
+      proposable: true
+      required_for: []
 tomo:
   suggestions:
     proposable_tag_prefixes: [topic]

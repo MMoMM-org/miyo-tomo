@@ -140,8 +140,12 @@ TEST_NAME="tomo-instance"
 TEST_INSTANCE="$TEST_LOC/$TEST_NAME/instance"
 TEST_HOME="$TMPDIR/tomo-phase1-home-$$"
 TEST_CONFIG="$TMPDIR/tomo-phase1-config-$$.json"
+# install-tomo.sh registers every instance. Without this it writes the real
+# ~/.tomo/instances.json, and a second run fails on the taken name.
+TEST_REGISTRY="$TMPDIR/tomo-phase1-registry-$$.json"
+export TOMO_REGISTRY_FILE="$TEST_REGISTRY"
 INSTALL_OUT="$TMPDIR/tomo-phase1-install-$$.txt"
-CLEANUP_DIRS="$TEST_VAULT $TEST_LOC $TEST_HOME $INSTALL_OUT $TEST_CONFIG"
+CLEANUP_DIRS="$TEST_VAULT $TEST_LOC $TEST_HOME $INSTALL_OUT $TEST_CONFIG $TEST_REGISTRY"
 
 mkdir -p "$TEST_VAULT/.obsidian"
 mkdir -p "$TEST_LOC"

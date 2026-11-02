@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "20260413_reading-notes-deep-work",
+  "item_key": "100 Inbox/20260413_reading-notes-deep-work.md",
   "path": "100 Inbox/20260413_reading-notes-deep-work.md",
   "type": "external_source",
   "type_confidence": 0.7,
@@ -28,7 +29,9 @@
       },
       "needs_new_moc": false,
       "proposed_moc_topic": null,
-      "tags_to_add": ["topic/applied/productivity"],
+      "tags_to_add": [
+        "topic/applied/productivity"
+      ],
       "atomic_note_worthiness": 0.8,
       "alternatives": []
     },

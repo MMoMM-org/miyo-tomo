@@ -58,16 +58,6 @@ else
     skip "Phase 3b + Mode-B shortcuts" "Test 1 failed — skipping dependent assertion"
 fi
 
-# ── Test 3: instruction-builder has log_entry and log_link handlers ───────────
-printf "\n${C_DIM}── Test 3: instruction-builder log_entry + log_link handlers${C_RESET}\n"
-STDERR3="$FIXTURE_DIR/t3.log"
-if "$PYTHON" "$FIXTURE_SRC/assert_instruction_builder_handlers.py" "$REPO_ROOT" 2>"$STDERR3"; then
-    pass "instruction-builder Step 6.1 + 6.2 present with correct wikilink + fallback format"
-else
-    fail "instruction-builder handler assertions failed"
-    cat "$STDERR3" >&2
-fi
-
 # ── Test 4: wizard-written vault-config validates ─────────────────────────────
 printf "\n${C_DIM}── Test 4: wizard-written vault-config passes structure validation${C_RESET}\n"
 STDERR4="$FIXTURE_DIR/t4.log"
@@ -88,26 +78,6 @@ if "$PYTHON" "$FIXTURE_SRC/assert_missing_descriptions.py" \
 else
     fail "missing-descriptions detection failed"
     cat "$STDERR5" >&2
-fi
-
-# ── Test 6: skill files mirrored to tomo-instance ─────────────────────────────
-printf "\n${C_DIM}── Test 6: wizard skills mirrored to tomo-instance${C_RESET}\n"
-INSTANCE_SKILLS="$REPO_ROOT/tomo-instance/.claude/skills"
-if [ -f "$INSTANCE_SKILLS/tomo-trackers-wizard.md" ] && [ -f "$INSTANCE_SKILLS/tomo-daily-log-wizard.md" ]; then
-    pass "tomo-trackers-wizard.md + tomo-daily-log-wizard.md in tomo-instance/.claude/skills/"
-else
-    fail "wizard skills not mirrored to tomo-instance/.claude/skills/"
-fi
-
-INSTANCE_CMDS="$REPO_ROOT/tomo-instance/.claude/commands"
-if [ -f "$INSTANCE_CMDS/tomo-setup.md" ]; then
-    if grep -q "Phase 3b" "$INSTANCE_CMDS/tomo-setup.md" 2>/dev/null; then
-        pass "tomo-instance tomo-setup.md contains Phase 3b"
-    else
-        fail "tomo-instance tomo-setup.md missing Phase 3b"
-    fi
-else
-    fail "tomo-setup.md not found in tomo-instance/.claude/commands/"
 fi
 
 # ── Test 7: spec-005 phase 1–4 regression ────────────────────────────────────

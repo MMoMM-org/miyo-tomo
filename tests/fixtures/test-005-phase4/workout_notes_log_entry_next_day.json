@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "workout-notes",
+  "item_key": "100 Inbox/workout-notes.md",
   "path": "100 Inbox/workout-notes.md",
   "type": "fleeting_note",
   "type_confidence": 0.75,

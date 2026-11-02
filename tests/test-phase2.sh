@@ -50,12 +50,12 @@ check_contains() {
 # ── Test 1: Python scripts syntax ─────────────────────────────
 echo "── Test 1: Python scripts syntax check ──────────────────────────────────────────────"
 
-check "lib/__init__.py — exists" test -f scripts/lib/__init__.py
-check "lib/kado_client.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/lib/kado_client.py', doraise=True)"
-check "vault-scan.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/vault-scan.py', doraise=True)"
-check "topic-extract.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/topic-extract.py', doraise=True)"
-check "moc-tree-builder.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/moc-tree-builder.py', doraise=True)"
-check "cache-builder.py — syntax" python3 -c "import py_compile; py_compile.compile('scripts/cache-builder.py', doraise=True)"
+check "lib/__init__.py — exists" test -f tomo/scripts/lib/__init__.py
+check "lib/kado_client.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/lib/kado_client.py', doraise=True)"
+check "vault-scan.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/vault-scan.py', doraise=True)"
+check "topic-extract.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/topic-extract.py', doraise=True)"
+check "moc-tree-builder.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/moc-tree-builder.py', doraise=True)"
+check "cache-builder.py — syntax" python3 -c "import py_compile; py_compile.compile('tomo/scripts/cache-builder.py', doraise=True)"
 
 # ── Test 2: Topic extractor functional test ───────────────────
 echo ""
@@ -72,7 +72,7 @@ tags:
 Some text about [[Obsidian]] and [[PKM]].'
 
 TOPIC_TMP="$TMPDIR/topic-test-$$.json"
-echo "$TOPIC_INPUT" | python3 scripts/topic-extract.py --title "Test Note" > "$TOPIC_TMP" 2>/dev/null
+echo "$TOPIC_INPUT" | python3 tomo/scripts/topic-extract.py --title "Test Note" > "$TOPIC_TMP" 2>/dev/null
 check "topic-extract.py — produces JSON output" python3 -c "import json; json.load(open('$TOPIC_TMP'))"
 check "topic-extract.py — has topics key" python3 -c "import json; d=json.load(open('$TOPIC_TMP')); assert 'topics' in d"
 check "topic-extract.py — extracts topics" python3 -c "import json; d=json.load(open('$TOPIC_TMP')); assert len(d['topics']) > 0"
@@ -83,11 +83,11 @@ rm -f "$TOPIC_TMP"
 echo ""
 echo "── Test 3: Kado client library structure ──────────────────────────────────────────────"
 
-check_contains "kado_client.py — has KadoClient class" scripts/lib/kado_client.py "class KadoClient"
-check_contains "kado_client.py — has read_note method" scripts/lib/kado_client.py "def read_note"
-check_contains "kado_client.py — has list_dir method" scripts/lib/kado_client.py "def list_dir"
-check_contains "kado_client.py — has search_by_tag method" scripts/lib/kado_client.py "def search_by_tag"
-check_contains "kado_client.py — has test_connection method" scripts/lib/kado_client.py "def test_connection"
+check_contains "kado_client.py — has KadoClient class" tomo/scripts/lib/kado_client.py "class KadoClient"
+check_contains "kado_client.py — has read_note method" tomo/scripts/lib/kado_client.py "def read_note"
+check_contains "kado_client.py — has list_dir method" tomo/scripts/lib/kado_client.py "def list_dir"
+check_contains "kado_client.py — has search_by_tag method" tomo/scripts/lib/kado_client.py "def search_by_tag"
+check_contains "kado_client.py — has test_connection method" tomo/scripts/lib/kado_client.py "def test_connection"
 
 # ── Test 4: Agent artifacts ───────────────────────────────────
 echo ""

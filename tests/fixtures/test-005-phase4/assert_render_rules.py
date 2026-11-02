@@ -7,11 +7,11 @@ Usage:
 Builds synthetic daily_notes_updates[] entries and calls
 render_daily_notes_updates_block() directly to check:
 
-1. exists=false → "Create daily note ... first" checkbox present.
+1. exists=false → the heading warns that the daily note is missing.
 2. empty trackers → "Possible Trackers" header omitted.
 3. non-empty log_entries → "Possible Log Entries" header present.
 4. log_links → "Possible Log Links" header present.
-5. time=null → "end of day" appears.
+5. time=null → the position appears instead of a time.
 """
 import importlib.util
 import sys
@@ -23,7 +23,7 @@ spec.loader.exec_module(mod)
 
 render = mod.render_daily_notes_updates_block
 
-# Case 1: exists=false → Create-first checkbox
+# Case 1: exists=false → warning heading
 entry_missing = {
     "daily_note_stem": "2026-04-20",
     "exists": False,
@@ -34,8 +34,8 @@ entry_missing = {
     "log_links": [],
 }
 rendered = render([entry_missing])
-assert "Create daily note [[2026-04-20]] first" in rendered, \
-    f"Create-first checkbox missing for exists=false:\n{rendered[:500]}"
+assert "### [[2026-04-20]] ⚠️ daily note doesn't exist" in rendered, \
+    f"Missing-note warning absent for exists=false:\n{rendered[:500]}"
 
 # Case 2: empty trackers → no "Possible Trackers" header
 assert "Possible Trackers" not in rendered, \
@@ -45,7 +45,7 @@ assert "Possible Trackers" not in rendered, \
 assert "Possible Log Entries" in rendered, \
     f"Possible Log Entries header missing:\n{rendered[:500]}"
 
-# Case 4: time=null → "end of day"
+# Case 4: time=null → position
 entry_null_time = {
     "daily_note_stem": "2026-04-21",
     "exists": True,
@@ -56,14 +56,14 @@ entry_null_time = {
     ],
 }
 rendered2 = render([entry_null_time])
-assert "end of day" in rendered2, \
-    f"'end of day' missing for null time:\n{rendered2[:500]}"
+assert "- Position: after_last_line" in rendered2, \
+    f"position missing for null time:\n{rendered2[:500]}"
 
 # Case 5: log_links → Possible Log Links header present
 assert "Possible Log Links" in rendered2, \
     f"Possible Log Links header missing:\n{rendered2[:500]}"
 
-# Case 6: exists=true → NO Create-first checkbox
+# Case 6: exists=true → no warning
 entry_exists = {
     "daily_note_stem": "2026-04-22",
     "exists": True,
@@ -72,7 +72,7 @@ entry_exists = {
     "log_links": [],
 }
 rendered3 = render([entry_exists])
-assert "Create daily note" not in rendered3, \
-    f"Create-first checkbox should NOT appear when exists=true:\n{rendered3[:500]}"
+assert "doesn't exist" not in rendered3, \
+    f"Warning should NOT appear when exists=true:\n{rendered3[:500]}"
 
 print("OK: all render-rule assertions passed")

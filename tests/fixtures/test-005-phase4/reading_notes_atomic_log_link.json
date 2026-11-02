@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "reading-notes",
+  "item_key": "100 Inbox/reading-notes.md",
   "path": "100 Inbox/reading-notes.md",
   "type": "external_source",
   "type_confidence": 0.7,

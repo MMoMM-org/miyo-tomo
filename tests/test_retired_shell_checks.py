@@ -121,7 +121,7 @@ def test_example_tracker_field_is_complete(field):
 def test_example_daily_log_never_creates_daily_notes():
     daily_log = _example()["daily_log"]
     assert {"enabled", "section", "heading_level", "time_extraction", "link_format",
-            "auto_create_if_missing"} <= set(daily_log)
+            "cutoff_days", "auto_create_if_missing"} <= set(daily_log)
     assert isinstance(daily_log["time_extraction"]["sources"], list)
     assert daily_log["auto_create_if_missing"] == {"past": False, "today": False, "future": False}
 

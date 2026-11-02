@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.6
+# version: 1.7
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -22,7 +22,7 @@
 schema_version: 1
 
 # Which profile to load as baseline: miyo, lyt, or the name of a file you add
-# to profiles/ (profile: custom needs profiles/custom.yaml).
+# to profiles/ (profile: my-pkm needs profiles/my-pkm.yaml).
 # L3 (this file) always wins over L2 (profile) — omit a field to fall back to profile.
 profile: "miyo"
 profile_version: "1.0"

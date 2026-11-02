@@ -23,7 +23,7 @@ Tomo runs inside an isolated Docker container. All vault access goes through [Mi
 - **`/hashi-hook`** — Guided authoring of a [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) `before`/`after` hook: drafts the `.cjs`, risk-classifies it, and delivers it plus a handoff doc to your inbox for you to review and place in `.tomo-hashi/hooks/`
 - **Voice memo transcription (optional, local)** — drop audio files (`.m4a`, `.mp3`, `.wav`, …) into the inbox and `/inbox` transcribes them locally via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) before Pass 1. Opt-in via the install wizard; models stay on your machine, no cloud round-trips
 - **IDE Bridge (optional, local)** — gives Claude Code inside the container live editor context from Obsidian (active file, selection, cursor) via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin. Opt-in via the install/update wizard; a `socat` proxy forwards a container-localhost port to the host — no exposed ports, host-only (`127.0.0.1`), and vault content still flows solely through Kado
-- Framework-agnostic — supports MiYo, LYT, and custom PKM frameworks via profiles
+- Framework-agnostic — ships MiYo and LYT profiles; copy one to adapt it to your own framework
 
 ## How It Works
 
@@ -58,7 +58,7 @@ Tomo uses a **2-pass proposal model**. You always stay in control.
 | Layer | What | Format |
 |-------|------|--------|
 | Universal PKM Concepts | Framework-agnostic vocabulary | Skill logic |
-| Framework Profiles | Framework-specific defaults (MiYo, LYT, custom) | YAML |
+| Framework Profiles | Framework-specific defaults (MiYo, LYT) | YAML |
 | User Config | Your vault-specific ground truth | YAML |
 | Discovery Cache | Auto-discovered vault semantics | YAML (advisory) |
 

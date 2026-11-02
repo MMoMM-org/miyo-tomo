@@ -50,7 +50,7 @@ This is the top-level surface — one row per top-level setting per file. For va
 | Field | Default | What it controls |
 |---|---|---|
 | `schema_version` | `1` | Version of this file's format. Leave it as it is. |
-| `profile` | set by installer (`miyo`, `lyt`, or `custom`) | Which file in `profiles/` loads as the L2 baseline. Fields you omit fall back to the profile. |
+| `profile` | set by installer (`miyo` or `lyt`) | Which file in `profiles/` loads as the L2 baseline. Fields you omit fall back to the profile. |
 | `profile_version` | matches the chosen profile | Records the profile version at install. |
 | `concepts` | from profile | Concept-to-folder mappings: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. Override only the entries that differ. |
 | `naming` | from profile | Display labels Tomo uses in proposals (`labels`) and Moment.js filename patterns per calendar granularity (`calendar_patterns`). |
@@ -186,7 +186,7 @@ After adding or editing a handler, restart Claude Code in the container so agent
 
 You don't hand-edit the shipped profiles — choose one via `vault-config.yaml`'s `profile` field. The shipped profiles are `miyo` and `lyt` under `tomo-instance/profiles/`. Each profile defines `concept_defaults`, `classification`, and other framework defaults that act as the L2 layer beneath your vault-config.
 
-To create a custom profile, copy an existing file to `tomo-instance/profiles/<name>.yaml`, adjust it, and set `profile: "<name>"` in vault-config.yaml. The name must match the file, without `.yaml`. `update-tomo.sh` syncs only the shipped profiles, so a file under your own name stays. This also applies to the installer's `custom` choice: Tomo ships no `custom.yaml`, and `/inbox` stops with `profile not found` until you add one.
+To create a custom profile, copy an existing file to `tomo-instance/profiles/<name>.yaml`, adjust it, and set `profile: "<name>"` in vault-config.yaml. The name must match the file, without `.yaml`. `update-tomo.sh` syncs only the shipped profiles, so a file under your own name stays. `/inbox` stops with `profile not found` if the file is missing.
 
 ## Override mechanism
 

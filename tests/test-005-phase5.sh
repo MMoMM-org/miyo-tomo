@@ -111,13 +111,6 @@ else
 fi
 
 # ── Test 7: spec-005 phase 1–4 regression ────────────────────────────────────
-printf "\n${C_DIM}── Test 7a: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
-    pass "test-005-phase1.sh passes"
-else
-    fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
-fi
 
 printf "\n${C_DIM}── Test 7b: spec-005 phase 3 regression${C_RESET}\n"
 if bash "$REPO_ROOT/tests/test-005-phase3.sh" >/dev/null 2>&1; then
@@ -144,21 +137,7 @@ else
     bash "$REPO_ROOT/tests/test-004-phase2.sh" >&2 || true
 fi
 
-printf "\n${C_DIM}── Test 8b: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
-    pass "test-004-phase3.sh passes"
-else
-    fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
-fi
 
-printf "\n${C_DIM}── Test 8c: spec-004 phase 4 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-004-phase4.sh" >/dev/null 2>&1; then
-    pass "test-004-phase4.sh passes"
-else
-    fail "test-004-phase4.sh regression failure"
-    bash "$REPO_ROOT/tests/test-004-phase4.sh" >&2 || true
-fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

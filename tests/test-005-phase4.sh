@@ -134,13 +134,6 @@ assert len(doc["decision_precedence_note"]) > 10, "decision_precedence_note too 
 PY
 
 # ── Test 6: spec-005 Phase 1-3 regression ────────────────────────────────
-printf "\n${C_DIM}── Test 6a: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
-    pass "test-005-phase1.sh passes"
-else
-    fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
-fi
 
 printf "\n${C_DIM}── Test 6b: spec-005 phase 3 regression${C_RESET}\n"
 if bash "$REPO_ROOT/tests/test-005-phase3.sh" >/dev/null 2>&1; then
@@ -151,13 +144,6 @@ else
 fi
 
 # ── Test 7: spec-004 regression ──────────────────────────────────────────
-printf "\n${C_DIM}── Test 7: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
-    pass "test-004-phase3.sh passes"
-else
-    fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
-fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

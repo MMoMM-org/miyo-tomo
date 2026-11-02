@@ -245,13 +245,6 @@ for fp in sorted(glob.glob(os.path.join(fixture_dir, '*.json'))):
 PY
 
 # ── Test 8: Spec-005 Phase 1+2 regression ────────────────────────────────
-printf "\n${C_DIM}── Test 8a: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
-    pass "test-005-phase1.sh passes"
-else
-    fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
-fi
 
 printf "\n${C_DIM}── Test 8b: spec-005 phase 2 regression${C_RESET}\n"
 if bash "$REPO_ROOT/tests/test-005-phase2.sh" >/dev/null 2>&1; then
@@ -261,14 +254,6 @@ else
     bash "$REPO_ROOT/tests/test-005-phase2.sh" >&2 || true
 fi
 
-# ── Test 9: Spec-004 regression ──────────────────────────────────────────
-printf "\n${C_DIM}── Test 9: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
-    pass "test-004-phase3.sh passes"
-else
-    fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
-fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

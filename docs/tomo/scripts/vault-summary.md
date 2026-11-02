@@ -35,3 +35,16 @@ actually measured — containers — and would have read as correct forever.
 
 `tests/test_vault_summary.py::TestTrackerAndCalloutStats` — both tests proven
 RED by restoring the `len()` implementation.
+
+## Why markers come from the relationship types
+
+`vault-config-writer.py relationships` writes one object per type (`parent`, `peer`), and
+the schema has no `markers` list. The summary read `relationships.markers`, and its test
+fixture used that invented shape, so every real config reported no markers. The fixture now
+mirrors the writer.
+
+## Why the template counts say mapped, not found
+
+The counts come from `templates.mapping` alone, so a file named there can still be missing.
+They were called found and missing, and a live run reported 0 missing with two files absent.
+Only Kado can show that a file exists, which is what vault-explorer Step 8 does.

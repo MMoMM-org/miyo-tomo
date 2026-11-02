@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -129,10 +129,11 @@ def _extract_tag_stats(
 
 
 def _extract_relationship_markers(config: dict | None) -> list[dict]:
-    """Return markers list from vault-config.yaml relationships.markers."""
+    """Return one entry per relationship type in vault-config.yaml relationships."""
     if config is None:
         return []
-    return (config.get("relationships") or {}).get("markers") or []
+    relationships = config.get("relationships") or {}
+    return [entry for entry in relationships.values() if isinstance(entry, dict) and entry.get("marker")]
 
 
 def _extract_callout_counts(config: dict | None) -> tuple[int | None, int | None]:
@@ -167,22 +168,26 @@ def _extract_tracker_field_count(config: dict | None) -> int | None:
 
 
 def _extract_template_counts(config: dict | None) -> tuple[int | None, int | None]:
-    """Return (found_count, missing_count) from vault-config.yaml templates.mapping."""
+    """Return (mapped_count, unmapped_count) from vault-config.yaml templates.mapping.
+
+    The config names files, it cannot show that they exist. Step 8 of
+    vault-explorer checks that through Kado.
+    """
     if config is None:
         return None, None
     mapping = (config.get("templates") or {}).get("mapping") or {}
-    found = 0
-    missing = 0
+    mapped = 0
+    unmapped = 0
     for entry in mapping.values():
         if entry is None:
-            missing += 1
+            unmapped += 1
         elif isinstance(entry, dict) and entry.get("path"):
-            found += 1
+            mapped += 1
         elif isinstance(entry, str) and entry:
-            found += 1
+            mapped += 1
         else:
-            missing += 1
-    return found, missing
+            unmapped += 1
+    return mapped, unmapped
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -213,7 +218,7 @@ def aggregate_summary(
     relationship_markers = _extract_relationship_markers(config)
     callout_protected_count, callout_editable_count = _extract_callout_counts(config)
     tracker_field_count = _extract_tracker_field_count(config)
-    templates_found_count, templates_missing_count = _extract_template_counts(config)
+    templates_mapped_count, templates_unmapped_count = _extract_template_counts(config)
 
     return {
         "total_notes": total_notes,
@@ -231,8 +236,8 @@ def aggregate_summary(
         "callout_protected_count": callout_protected_count,
         "callout_editable_count": callout_editable_count,
         "tracker_field_count": tracker_field_count,
-        "templates_found_count": templates_found_count,
-        "templates_missing_count": templates_missing_count,
+        "templates_mapped_count": templates_mapped_count,
+        "templates_unmapped_count": templates_unmapped_count,
         "cache_path": cache_path,
     }
 
@@ -370,10 +375,7 @@ def render_markdown(summary: dict, config: dict | None, updated: str | None = No
         for m in markers:
             lines.append(f"| `{m.get('marker', '')}` | {m.get('position', '')} |")
     else:
-        lines.append(
-            "_No markers configured in `vault-config.yaml` "
-            "(relationship markers are currently hardcoded — see issue #34)._"
-        )
+        lines.append("_No markers configured in `vault-config.yaml`._")
 
     # Trackers.
     tracker_count = summary.get("tracker_field_count")

@@ -54,8 +54,8 @@ def _summary(**over) -> dict:
         "callout_protected_count": 1,
         "callout_editable_count": 3,
         "tracker_field_count": 3,
-        "templates_found_count": 4,
-        "templates_missing_count": 2,
+        "templates_mapped_count": 4,
+        "templates_unmapped_count": 2,
         "cache_path": "config/discovery-cache.yaml",
     }
     base.update(over)

@@ -1,10 +1,10 @@
 #!/bin/bash
 # instance-registry.sh — Sourceable bash library for ~/.tomo/instances.json management.
 # Provides: registry_path, registry_list, registry_list_check, registry_upsert,
-#           registry_resolve, registry_remove.
+#           registry_resolve, registry_config_path, registry_remove.
 # Uses jq for all JSON reads/writes (atomic tmp→mv). bash 3.2 safe (no assoc arrays).
 # Tests override TOMO_REGISTRY_FILE to isolate from the real ~/.tomo/.
-# version: 0.1.0
+# version: 0.2.0
 
 _REGISTRY_DEFAULT_DIR="$HOME/.tomo"
 _REGISTRY_DEFAULT_FILE="$_REGISTRY_DEFAULT_DIR/instances.json"
@@ -209,6 +209,17 @@ registry_resolve() {
     fi
     echo "$path"
     return 0
+}
+
+# ---------------------------------------------------------------------------
+# registry_config_path <name> — print <instance-root>/tomo-install.json.
+#   The registry stores <root>/instance; the config lives one level up.
+#   Unknown name → non-zero exit + empty output.
+# ---------------------------------------------------------------------------
+registry_config_path() {
+    local path
+    path="$(registry_resolve "$1" 2>/dev/null)" || return 1
+    echo "$(dirname "$path")/tomo-install.json"
 }
 
 # ---------------------------------------------------------------------------

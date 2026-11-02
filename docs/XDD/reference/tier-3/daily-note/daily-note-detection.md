@@ -59,7 +59,7 @@ When the daily note exists, Tomo can propose:
 
 | Action | What changes | How detected |
 |--------|-------------|-------------|
-| **Tracker update** | Set a tracker field value | Inbox item content matched tracker trigger_keywords |
+| **Tracker update** | Set a tracker field value | Inbox item content matched the tracker's positive_keywords, or its description if there are none |
 | **Content addition** | Append text to a section | Inbox item is daily-note-worthy (coding session log, brief mention) |
 | **Link addition** | Add wikilink to a section | New note created from same-date inbox item |
 

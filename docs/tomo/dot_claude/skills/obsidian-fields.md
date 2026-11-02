@@ -10,6 +10,6 @@ A `strict` key left in an existing `vault-config.yaml` stays harmless: nothing r
 
 ## Why the skill no longer says Tomo never breaks the required schema
 
-WHY: That was a guarantee no code backs. `token-render.py` reads `frontmatter.optional` for default values and stops on tokens a template requires, but it does not read `frontmatter.required`. Whether Tomo should enforce that list is a separate product decision.
+WHY: That was a guarantee no code backs. `token-render.py` reads `frontmatter.optional` for default values and stops on tokens a template requires, but it does not read `frontmatter.required`. Owner decision (2026-11-02): Tomo does not enforce that list.
 
 The rule that an empty value counts as missing stays, unconditionally. It was the behaviour under the default `strict: true`, and it is guidance for the model, not a script check.

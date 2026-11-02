@@ -1,7 +1,11 @@
 # Tier 3: Frontmatter Schema
 
 > Parent: [User Config](../../tier-2/components/user-config.md)
-> Status: Implemented
+> Status: Implemented (with deviations)
+
+> **⚠️ Deviation**
+> **Original**: A `strict` flag decided whether Tomo refused a note with missing required fields.
+> **Actual**: The flag is removed; no script ever read it. `frontmatter.required` is not enforced by a script either.
 
 ---
 
@@ -70,7 +74,6 @@ Each field entry has:
 
 ```yaml
 frontmatter:
-  strict: true
   required:
     - key: "UUID"
       token: "uuid"
@@ -171,7 +174,7 @@ Schema is additive at read time. The schema constrains what Tomo WRITES, not wha
 
 ## 10. Edge Cases
 
-**Empty vs missing required field:** An empty value (`title: ""`) counts as missing if `strict: true`.
+**Empty vs missing required field:** An empty value (`title: ""`) counts as missing.
 
 **Field that must be a list with at least one entry:** Not enforceable in the schema directly. Use required + type `list` and let the token generation ensure the list is non-empty.
 

@@ -55,7 +55,7 @@ This is the top-level surface — one row per top-level setting per file. For va
 | `concepts` | from profile | Concept-to-folder mappings: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. Override only the entries that differ. |
 | `naming` | from profile | Display labels Tomo uses in proposals (`labels`) and Moment.js filename patterns per calendar granularity (`calendar_patterns`). |
 | `templates` | from profile | Template file mappings per concept (`base_path` + `mapping`); optional `custom_tokens`. `/tomo-setup templates` verifies that each file exists. |
-| `frontmatter` | from profile | `strict` flag plus `required` / `optional` field lists. Each entry binds a YAML key to a template token, type, and default. |
+| `frontmatter` | from profile | `required` / `optional` field lists. Each entry binds a YAML key to a template token, type, and default. |
 | `relationships` | from profile | Parent/peer markers (e.g. `up::`, `related::`) with write rules: format, position, multi/separator. |
 | `tags.prefixes` | from profile + discovery | Per-prefix tag taxonomy. Each entry has five axes: `description`, `known_values`, `wildcard`, `proposable`, `required_for`. |
 | `callouts` | `enabled: true`; categories from profile | Classification of Obsidian callouts into `editable`, `protected`, `ignore`. Unlisted callouts are treated as protected. |
@@ -222,7 +222,6 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 ### Safe to leave at the default
 
 - **`schema_version`, `profile_version`** — the installer sets these.
-- **`frontmatter.strict: true`** — with this on, an empty required field counts as missing.
 - **`callouts.enabled: true`** with the profile's editable/protected/ignore split. Unlisted callouts default to protected (Tomo won't touch them).
 - **`protected_patterns`** — already covers DataviewJS, Dataview, and folder-overview blocks. Add an entry only if your vault has other code-block fences Tomo must not modify.
 - **`tomo.suggestions.parallel: 5`** — only lower this if your machine is constrained or you hit API rate limits.

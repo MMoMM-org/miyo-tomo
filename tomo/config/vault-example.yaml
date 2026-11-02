@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.5
+# version: 1.6
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -140,10 +140,7 @@ templates:
 # ──────────────────────────────────────────────────────────────────────────────
 # Frontmatter Schema
 # ──────────────────────────────────────────────────────────────────────────────
-# Defines which frontmatter fields Tomo reads, writes, and validates.
-#
-# strict: true  → Tomo refuses to write notes missing required fields
-# strict: false → Tomo warns but proceeds
+# Defines which frontmatter fields Tomo reads and writes.
 #
 # Each field entry:
 #   key     — YAML key name as it appears in the note (e.g. "UUID", "tags")
@@ -153,8 +150,6 @@ templates:
 #   default — Default value for optional fields when token cannot resolve
 
 frontmatter:
-  strict: true
-
   required:
     - key: "UUID"
       token: "uuid"

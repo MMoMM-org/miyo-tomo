@@ -22,7 +22,7 @@ Define how Tomo integrates with daily (and other periodic) notes. Tomo does NOT 
 ## 3. Core Principle
 
 **Tomo augments, never replaces.** The daily note is the user's space. Tomo's role:
-- Propose tracker field updates (e.g., `coding-session:: true`)
+- Propose tracker field updates (e.g., `Coding:: true`)
 - Propose content additions (links to new notes, brief mentions of processed items)
 - All via instruction set — user approves each change
 
@@ -134,25 +134,34 @@ Trackers are not always boolean. Supported value types:
 ```yaml
 # In vault-config.yaml (auto-detected, user can edit)
 trackers:
-  - name: "coding-session"
-    syntax: "inline_field"
-    field: "Coding"
-    type: "boolean"
-    trigger_keywords: ["coded", "programming", "installed", "configured"]
-  - name: "sport"
-    syntax: "checkbox"
-    label: "Sport"
-    type: "boolean"
-    trigger_keywords: ["sport", "gym", "run", "workout"]
-  - name: "energie"
-    syntax: "inline_field"
-    field: "Energie"
-    type: "integer"
-    scale: "1-10"
-    trigger_keywords: []   # only set if explicitly mentioned
+  daily_note_trackers:
+    today_fields:
+      - name: Coding
+        type: boolean
+        syntax: inline_field
+        description: "Whether the user wrote, reviewed, or debugged code today."
+        positive_keywords: [coded, programmiert, debugged, deployed]
+        negative_keywords: [read about, video about, planned]
+
+      - name: Sport
+        type: boolean
+        syntax: checkbox
+        description: "Physical exercise the user actually did today."
+        positive_keywords: [workout, gym, yoga]
+        negative_keywords: [watched, video about]
+
+      - name: Energie
+        type: integer
+        syntax: inline_field
+        scale: "1-10"
+        description: "How energised the user felt."
+        positive_keywords: []
+        negative_keywords: []
+  end_of_day_fields:
+    fields: []
 ```
 
-Triggers are heuristics — the instruction set shows what Tomo wants to set and why. User confirms in Pass 1, applies manually in Step 6.
+Keywords are heuristics, see [Tracker Field Handling](../../tier-3/daily-note/tracker-field-handling.md) — the instruction set shows what Tomo wants to set and why. User confirms in Pass 1, applies manually in Step 6.
 
 ## 6. Multi-Day Coverage
 

@@ -11,6 +11,10 @@
 > **⚠️ Deviation (#212)**
 > **Original**: Four syntaxes including `frontmatter`, and the types `scale`, `count` and `choice`.
 > **Actual**: The syntaxes are `inline_field`, `callout_body` and `checkbox`; the types are `boolean`, `integer`, `text`, `duration` and `time`, with `scale` as a separate key. `tomo/schemas/vault-config-trackers.schema.json` is the source. A config may still say `task_checkbox`; it reaches the instructions as `checkbox`. Frontmatter trackers are not supported.
+
+> **⚠️ Deviation**
+> **Original**: A flat `trackers:` list with `trigger_keywords`, first match wins, and no auto-trigger on an empty list.
+> **Actual**: Fields live under `trackers.daily_note_trackers.today_fields` and `trackers.end_of_day_fields.fields`. Matching uses `positive_keywords` and `negative_keywords`, and an empty positive list falls back to `description`.
 > Related: [Daily Note Detection](daily-note-detection.md) · [Inbox Analysis](../inbox/inbox-analysis.md)
 
 ---
@@ -25,24 +29,31 @@ Trackers are declared in vault-config.yaml (detected during `/explore-vault` or 
 
 ```yaml
 trackers:
-  - name: "coding-session"
-    syntax: "inline_field"
-    field: "Coding"
-    type: "boolean"
-    trigger_keywords: ["coded", "programming", "installed", "configured"]
-  
-  - name: "sport"
-    syntax: "checkbox"
-    label: "Sport"
-    type: "boolean"
-    trigger_keywords: ["sport", "gym", "run", "workout"]
-  
-  - name: "energie"
-    syntax: "inline_field"
-    field: "Energie"
-    type: "integer"
-    scale: "1-10"
-    trigger_keywords: []
+  daily_note_trackers:
+    today_fields:
+      - name: Coding
+        type: boolean
+        syntax: inline_field
+        description: "Whether the user wrote, reviewed, or debugged code today."
+        positive_keywords: [coded, programmiert, debugged, deployed]
+        negative_keywords: [read about, video about, planned]
+
+      - name: Sport
+        type: boolean
+        syntax: checkbox
+        description: "Physical exercise the user actually did today."
+        positive_keywords: [workout, gym, yoga]
+        negative_keywords: [watched, video about]
+
+      - name: Energie
+        type: integer
+        syntax: inline_field
+        scale: "1-10"
+        description: "How energised the user felt."
+        positive_keywords: []
+        negative_keywords: []
+  end_of_day_fields:
+    fields: []
 ```
 
 ## 3. Supported Syntaxes
@@ -91,28 +102,33 @@ No instruction syntax can write a frontmatter property. `vault-explorer` skips s
 | `duration` | A time span | empty | `Sleep:: 7h` |
 | `time` | A time of day | empty | `ToBed:: 23:30` |
 
-## 5. Trigger Keywords
+## 5. Keywords
 
-During inbox analysis, Tomo matches content against trigger keywords:
+During inbox analysis, Tomo matches content against each active field's keywords:
 
 ```
-Inbox item: "Installed oh-my-zsh on the new Mac, took about an hour"
-Trigger keywords for "coding-session": ["installed", "configured"]
-Match: "installed" → propose Coding:: true
+Inbox item: "Debugged the sync script on the new Mac, took about an hour"
+positive_keywords for Coding: [coded, debugged]
+Match: "debugged" → propose Coding:: true
+
+Inbox item: "Watched a video about yoga"
+positive_keywords for Sport: [yoga]    negative_keywords: [watched, video about]
+Match: "yoga", suppressed by "watched" → no proposal
 ```
 
-**Matching rules:**
-- Case-insensitive
-- Word boundary match (not substring — "install" doesn't match "reinstallation")
-- First keyword match wins (no need to find all matches)
-- Empty trigger_keywords = never auto-triggered (user must mention explicitly or set manually)
+**Matching rules** (`inbox-analyst`, Evaluation 1):
+- Case-insensitive, whole-word match against title and body
+- A negative keyword in the same sentence or within 50 words of the positive hit suppresses the match
+- More matching keywords raise confidence rather than stopping at the first
+- Empty `positive_keywords` = fallback to the words of `description`, with lower confidence (0.3-0.5)
+- `active: false` = the field is skipped
 
 **Confidence:** Trigger matches are heuristic — the suggestions document shows the match reason:
 
 ```markdown
 **Daily note update (2026-04-09):**
 - Set tracker: `Coding:: true`
-- Reason: keyword "installed" matched in source content
+- Reason: keyword "debugged" matched in source content
 ```
 
 ## 6. Reading Current Values
@@ -140,7 +156,7 @@ Tracker updates appear in the suggestions document (Pass 1):
 - Tracker: Coding (inline_field)
 - Current value: (not set)
 - Proposed value: true
-- Reason: "installed" keyword in [[+/2026-04-09_1430_oh-my-zsh]]
+- Reason: "debugged" keyword in [[+/2026-04-09_1430_sync-script]]
 ```
 
 For integer types, Tomo may suggest a value based on content:
@@ -195,7 +211,7 @@ vault-explorer detects trackers from the daily note template:
      empty boolean → boolean
      empty number → integer, with a scale key for a 1-5 or 1-10 range
      empty string → text
-   - Suggest trigger_keywords (empty by default — user adds them)
+   - Suggest positive_keywords and negative_keywords (empty by default — user adds them)
 
 4. Present findings to user for confirmation
 5. Write to vault-config trackers section

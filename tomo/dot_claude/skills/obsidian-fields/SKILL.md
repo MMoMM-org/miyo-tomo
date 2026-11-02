@@ -4,13 +4,13 @@ description: Frontmatter field handling, relationship marker parsing, callout cl
 user-invocable: false
 ---
 # Obsidian Fields
-# version: 0.1.1
+# version: 0.1.2
 
 Knowledge patterns for handling Obsidian frontmatter, relationships, callouts, and tags.
 
 ## Frontmatter Handling
 
-Frontmatter is described in `vault-config.yaml` under `frontmatter:` with `required` and `optional` field lists and a `strict` flag.
+Frontmatter is described in `vault-config.yaml` under `frontmatter:` with `required` and `optional` field lists.
 
 **Field definition properties:**
 - `key` — the YAML key name in the note (e.g., `UUID`, `title`, `tags`)
@@ -21,8 +21,7 @@ Frontmatter is described in `vault-config.yaml` under `frontmatter:` with `requi
 
 **Required fields:**
 - If a required token cannot resolve → rendering fails, error in instruction set
-- Tomo never writes a note that would break the required schema
-- Empty value (`title: ""`) counts as missing when `strict: true`
+- Empty value (`title: ""`) counts as missing
 
 **Optional fields:**
 - Token resolves → use it

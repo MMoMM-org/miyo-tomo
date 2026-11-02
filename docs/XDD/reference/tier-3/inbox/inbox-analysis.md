@@ -96,7 +96,7 @@ For each unprocessed inbox item:
    → Return top 3 candidates
 
 9. Detect tracker actions
-   → Match content against tracker trigger_keywords
+   → Match content against tracker positive_keywords and negative_keywords
    → Return proposed tracker updates with syntax
 
 10. Detect atomic note worth

@@ -184,9 +184,9 @@ After adding or editing a handler, restart Claude Code in the container so agent
 
 ### profiles/<name>.yaml — framework profiles (read-only)
 
-You don't hand-edit these — choose one via `vault-config.yaml`'s `profile` field. The shipped profiles are `miyo` and `lyt` under `tomo-instance/profiles/`. Each profile defines `concept_defaults`, `classification`, and other framework defaults that act as the L2 layer beneath your vault-config.
+You don't hand-edit the shipped profiles — choose one via `vault-config.yaml`'s `profile` field. The shipped profiles are `miyo` and `lyt` under `tomo-instance/profiles/`. Each profile defines `concept_defaults`, `classification`, and other framework defaults that act as the L2 layer beneath your vault-config.
 
-To create a custom profile, copy an existing file to `tomo-instance/profiles/<name>.yaml`, adjust it, and set `profile: "<name>"` in vault-config.yaml. The name must match the file. This also applies to the installer's `custom` choice: Tomo ships no `custom.yaml`, and `/inbox` stops with `profile not found` until you add one.
+To create a custom profile, copy an existing file to `tomo-instance/profiles/<name>.yaml`, adjust it, and set `profile: "<name>"` in vault-config.yaml. The name must match the file, without `.yaml`. `update-tomo.sh` syncs only the shipped profiles, so a file under your own name stays. This also applies to the installer's `custom` choice: Tomo ships no `custom.yaml`, and `/inbox` stops with `profile not found` until you add one.
 
 ## Override mechanism
 

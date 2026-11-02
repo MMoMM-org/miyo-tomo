@@ -18,6 +18,10 @@ Tomo writes only to your inbox folder and to its own instance directory. It neve
 
 So a change to your notes always takes two steps: Tomo proposes it, and you apply it.
 
+## Where your notes go
+
+Tomo itself runs on your machine, but the Claude model does not. When you run a command such as `/inbox`, the text of the notes being processed is sent to the Anthropic API, along with MOC names and some MOC structure. Tomo sends nothing on its own, and it has no telemetry. [PRIVACY.md](../PRIVACY.md) lists exactly what reaches the model. Keep sensitive folders behind Kado's deny rules.
+
 ## The two passes
 
 `/inbox` works in two passes. You run the same command each time, and Tomo works out what comes next.

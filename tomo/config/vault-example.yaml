@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.4
+# version: 1.5
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -18,11 +18,11 @@
 # Schema Identity
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Validated at session start. If Tomo requires a newer schema version it will
-# present a migration diff before proceeding.
+# Version of this file's format. Leave it as it is.
 schema_version: 1
 
-# Which profile to load as baseline. Available: miyo, lyt, para, custom.
+# Which profile to load as baseline: miyo, lyt, or the name of a file you add
+# to profiles/ (profile: custom needs profiles/custom.yaml).
 # L3 (this file) always wins over L2 (profile) — omit a field to fall back to profile.
 profile: "miyo"
 profile_version: "1.0"
@@ -115,7 +115,7 @@ naming:
 # Templates
 # ──────────────────────────────────────────────────────────────────────────────
 # Maps concept types to Obsidian template files (relative to base_path).
-# Tomo verifies these files exist via Kado at session start.
+# /tomo-setup templates verifies these files exist via Kado.
 
 templates:
   base_path: "X/900 Support/Templates/"
@@ -234,7 +234,7 @@ relationships:
 # Describes the user's hierarchical tag structure. Tomo uses this to propose
 # tags that match existing vault conventions.
 #
-# Each prefix entry has FOUR semantic axes (all required):
+# Each prefix entry has FIVE semantic axes (all required):
 #   description   — what this prefix is for
 #   known_values  — observed values under this prefix (full paths beyond the prefix)
 #   wildcard      — true: Tomo may invent new values under this prefix
@@ -432,9 +432,10 @@ tomo:
 # Trackers
 # ──────────────────────────────────────────────────────────────────────────────
 # Declares tracker fields Tomo reads and proposes updates for in daily notes.
-# Two sub-sections mirror typical daily-note structure:
-#   today_fields   — checked during the day (boolean or scale trackers)
-#   end_of_day_fields.fields — filled at day's end (reflective / summary fields)
+# Sub-sections mirror typical daily-note structure:
+#   daily_note_trackers.today_fields     — checked during the day
+#   daily_note_trackers.yesterday_fields — filled in for the day before
+#   end_of_day_fields.fields             — filled at day's end
 #
 # Per field:
 #   name              — exact field name / label as it appears in the daily note
@@ -444,6 +445,7 @@ tomo:
 #   description       — one-sentence intent (used by classifier to avoid false positives)
 #   positive_keywords — content words that should TRIGGER a match
 #   negative_keywords — content words that SUPPRESS a match even if positives hit
+#   active            — optional; false stops Tomo proposing this field
 
 trackers:
   daily_note_trackers:
@@ -477,30 +479,30 @@ trackers:
         positive_keywords: [coded, programmiert, Skript, script, refactored, debugged, deployed, commit, pull request, PR, gebaut, built, implemented]
         negative_keywords: [read about, gelesen, video about, planned, geplant, thought about]
 
-    end_of_day_fields:
-      fields:
-        - name: Highlights
-          type: text
-          syntax: inline_field
-          description: "One or two sentences capturing the most memorable or meaningful moment of the day — personal wins, discoveries, or experiences worth remembering."
-          positive_keywords: [highlight, Highlight, bestes Erlebnis, best moment, proud of, stolz auf, memorable, unvergesslich, accomplished, geschafft, discovered, entdeckt]
-          negative_keywords: [nichts besonderes, nothing special, boring, langweilig]
+  end_of_day_fields:
+    fields:
+      - name: Highlights
+        type: text
+        syntax: inline_field
+        description: "One or two sentences capturing the most memorable or meaningful moment of the day — personal wins, discoveries, or experiences worth remembering."
+        positive_keywords: [highlight, Highlight, bestes Erlebnis, best moment, proud of, stolz auf, memorable, unvergesslich, accomplished, geschafft, discovered, entdeckt]
+        negative_keywords: [nichts besonderes, nothing special, boring, langweilig]
 
-        - name: Sleep
-          type: integer
-          syntax: inline_field
-          scale: "hours"
-          description: "Hours of sleep the night before this daily note, used to correlate energy levels and productivity patterns."
-          positive_keywords: [Stunden geschlafen, hours of sleep, schlief, slept, Schlaf, sleep, 7h, 8h, 6h]
-          negative_keywords: [woke up, aufgewacht, couldn't sleep, nicht geschlafen]
+      - name: Sleep
+        type: integer
+        syntax: inline_field
+        scale: "hours"
+        description: "Hours of sleep the night before this daily note, used to correlate energy levels and productivity patterns."
+        positive_keywords: [Stunden geschlafen, hours of sleep, schlief, slept, Schlaf, sleep, 7h, 8h, 6h]
+        negative_keywords: [woke up, aufgewacht, couldn't sleep, nicht geschlafen]
 
-        - name: Mood
-          type: integer
-          syntax: inline_field
-          scale: "1-10"
-          description: "Overall mood rating at end of day (1=very low, 10=excellent); captures emotional state for trend analysis."
-          positive_keywords: [Stimmung, mood, gute Laune, glücklich, happy, content, zufrieden, great day, toller Tag]
-          negative_keywords: [morgens, morning, woke up, aufgewacht]
+      - name: Mood
+        type: integer
+        syntax: inline_field
+        scale: "1-10"
+        description: "Overall mood rating at end of day (1=very low, 10=excellent); captures emotional state for trend analysis."
+        positive_keywords: [Stimmung, mood, gute Laune, glücklich, happy, content, zufrieden, great day, toller Tag]
+        negative_keywords: [morgens, morning, woke up, aufgewacht]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Daily Log

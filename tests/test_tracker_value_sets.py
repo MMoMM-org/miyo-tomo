@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -132,9 +133,20 @@ class TestExample:
     def test_comment_syntaxes(self):
         assert _pipe_values(self.section, r"^#   syntax\s+— (.+)$") == ALLOWED_SYNTAXES
 
+    def test_end_of_day_fields_reach_the_pipeline(self):
+        spec = importlib.util.spec_from_file_location(
+            "shared_ctx_builder_212", REPO / "tomo" / "scripts" / "shared-ctx-builder.py"
+        )
+        builder = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = builder  # dataclasses look their module up here
+        spec.loader.exec_module(builder)
+        groups = builder._collect_tracker_groups(yaml.safe_load(self.text)["trackers"])
+        names = {f["name"] for _, fields in groups for f in fields}
+        assert {"Sport", "Highlights"} <= names
+
     @pytest.mark.parametrize("key", ["today_fields"])
     def test_configured_values(self, key):
         trackers = yaml.safe_load(self.text)["trackers"]
-        fields = trackers["daily_note_trackers"][key] + trackers["daily_note_trackers"]["end_of_day_fields"]["fields"]
+        fields = trackers["daily_note_trackers"][key] + trackers["end_of_day_fields"]["fields"]
         assert {f["syntax"] for f in fields} <= ALLOWED_SYNTAXES
         assert {f["type"] for f in fields} <= ALLOWED_TYPES

@@ -35,6 +35,13 @@ def test_sections_in_order():
     assert [h for h in HEADINGS if h in wanted] == wanted
 
 
+def test_findings_are_printed_before_every_question():
+    section = TEXT[TEXT.index("## Constraints") : TEXT.index("## Mission")]
+    rule = next(ln for ln in section.splitlines() if ln.startswith("- **STRICT:** Print the complete findings"))
+    for phrase in ("visible text", "before its AskUserQuestion call", "Findings in thinking count as not printed"):
+        assert phrase in rule
+
+
 def test_run_mode_table_keeps_all_three_modes():
     section = TEXT[TEXT.index("## Decision: Run Mode") : TEXT.index("## Edge Cases")]
     rows = [ln for ln in section.splitlines() if ln.startswith("| ")]

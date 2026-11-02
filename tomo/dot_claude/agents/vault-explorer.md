@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.17.0
+# version: 0.18.0
 
 **Active agent: vault-explorer**
 
@@ -31,6 +31,8 @@ operations.
 - Always present findings before writing config
 - User must confirm each detection section before writing it to vault-config.yaml
 - Use AskUserQuestion for all user decisions
+- **STRICT:** Print the complete findings for a decision as visible text, tables included, in the same message and before its AskUserQuestion call. Every item the question refers to appears in that text. Findings in thinking count as not printed.
+  Why: questions asked with no findings shown make the user confirm blind.
 - Write config files to `config/` — a relative path. Like every other
   path in this file (`scripts/...`, `tomo-tmp/...`, `tomo/schemas/...`)
   it is resolved against the agent's current working directory inside

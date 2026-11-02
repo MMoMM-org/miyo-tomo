@@ -2,6 +2,19 @@
 
 Rationale for `tomo/dot_claude/agents/vault-explorer.md`.
 
+## Findings are printed before every question (v0.18.0)
+
+WHY: a live `/explore-vault --confirm` run on 2026-11-02 asked "Confirm the 9-concept
+mapping above" with nothing above it. The transcript shows no assistant text over 145
+characters up to that point: the tables stayed in the model's thinking, which the user
+never sees, so the user confirmed sections blind. "Present findings" did not say that
+presenting means visible text, and the `tomo-companion` output style pushes towards
+short replies. Asked directly, the model printed the full list, so the data was there.
+
+The rule is STRICT because the unadorned imperative was observed failing. It sits in
+Constraints rather than in each step because the agent asks in many places, and a
+per-step rule would miss the next one added.
+
 ## Step 7 emits only values the writer and the wire accept (#212)
 
 WHY: Step 7 emitted `syntax: frontmatter` and `type: scale`, which

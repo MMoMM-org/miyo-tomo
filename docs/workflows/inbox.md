@@ -168,6 +168,16 @@ If you use [Tomo Tsukai](https://github.com/MMoMM-org/miyo-tomo-tsukai) or anoth
 
 To register or edit a handler, use **`/tomo-tag-handler-wizard`**. See [Configuration → Tag-handler framework](../configuration.md#configtag-handlers--tag-handler-framework) for the full reference.
 
+## Force Atomic Note
+
+Tomo doesn't turn every item into a note. Small items often become a daily-log entry or a suggestion with no note attached. If you want a standalone note anyway, tick **Force Atomic Note** on that item. The box appears on items Tomo chose not to promote and under each log entry.
+
+1. Tick **Force Atomic Note** and `Approved` in the suggestions document, then run `/inbox`.
+2. Tomo analyses those items in full and writes a second document, `<inbox>/<YYYY-MM-DD_HHMM>_suggestions-fan.md`.
+3. Review that document, tick its `Approved` box, and run `/inbox` again.
+
+Pass 2 then builds one instruction set from both documents.
+
 ## What a re-run redoes (and what it leaves alone)
 
 Each `/inbox` does **one step**, and prefers finishing in-flight work over new intake. The common situations:

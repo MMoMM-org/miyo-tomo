@@ -57,7 +57,7 @@ This is the top-level surface — one row per top-level setting per file. For va
 | `callouts` | `enabled: true`; categories from profile | Classification of Obsidian callouts into `editable`, `protected`, `ignore`. Unlisted callouts are treated as protected. |
 | `protected_patterns` | ` ```dataviewjs `, ` ```dataview `, ` ```folder-overview ` | Code-block fences Tomo never modifies. |
 | `tomo.suggestions.parallel` | `5` | Maximum concurrent Phase-B subagents during `/inbox` fan-out. Range 1–5. |
-| `trackers.daily_note_trackers` | empty unless authored | Tracker fields Tomo reads and proposes updates for in daily notes. Two buckets: `today_fields` and `end_of_day_fields.fields`. Each entry gives `name`, `type`, `syntax`, `description`, `positive_keywords`, `negative_keywords`. |
+| `trackers.daily_note_trackers` | empty unless authored | Tracker fields Tomo reads and proposes updates for in daily notes. Two buckets: `today_fields` and `end_of_day_fields.fields`. Each entry gives `name`, `type`, `syntax`, `description`, `positive_keywords`, `negative_keywords`, and optionally `active: false` to stop proposing it. |
 | `daily_log` | enabled, section `"Daily Log"` | Daily-log append rules: section heading, heading level, date-source priority, time-extraction policy, link format, cutoff days, auto-create flags. |
 
 JSON-Schema definitions for the structured sub-sections live in `tomo/schemas/vault-config-{tags,callouts,relationships,trackers}.schema.json`.

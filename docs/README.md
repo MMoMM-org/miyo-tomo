@@ -19,13 +19,14 @@ The documentation is organised around the user journey:
 
 - [Concepts](concepts.md) — Tomo, Kado and Hashi; the two passes; the documents Tomo writes; terms
 - [Installation](installation.md) — prerequisites, install command, verify, update
-- [Setup Guide](setup.md) — interactive walkthrough, launcher, post-install ops
+- [Setup Guide](setup.md) — interactive walkthrough, launcher, updates, backup and restore, cleanup
 - [Configuration](configuration.md) — where settings live; per-file reference; layer precedence; safe defaults
 - [Usage](usage.md) — starting a session; what Tomo does and doesn't change; launcher flag and slash command reference
 - Workflows, one page per job:
   - [Process inbox items](workflows/inbox.md) — the two passes, attachment conflicts, re-runs, forcing a phase
   - [Refresh vault discovery](workflows/explore-vault.md) — `/explore-vault`
   - [How Tomo proposes new MOCs](workflows/moc-propose.md) — `/moc-propose`, cache freshness, exclude tags
+  - [Audit your vault](workflows/garden-audit.md) — `/garden-audit`, exclusions
   - [Author a Hashi hook](workflows/hashi-hooks.md) — `/hashi-hook`
 - [Troubleshooting](troubleshooting.md) — common errors and recovery
 

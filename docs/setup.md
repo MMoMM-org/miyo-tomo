@@ -257,6 +257,26 @@ The installer still writes a `.gitignore` at the instance so that if you choose 
 - `tomo-tmp/` — pipeline scratch
 - OS cruft (`.DS_Store`, `Thumbs.db`)
 
+## Backup and Restore
+
+> **Current limit:** `backup-tomo.sh` and `restore-tomo.sh` read `tomo-install.json` from the repo root. An instance created in its own folder, such as `~/MiYo/Tomo/<name>/`, keeps that file in its own folder, so both scripts stop with `No tomo-install.json found` or act on the repo-root dev instance instead. Until this is fixed, copy the instance folder by hand. Only the repo-root dev instance can use the scripts.
+
+```bash
+bash scripts/backup-tomo.sh                     # archive to tomo-backups/ next to the instance
+bash scripts/backup-tomo.sh --dry-run           # list what would be archived
+bash scripts/backup-tomo.sh --output <path>     # choose a directory or file
+bash scripts/backup-tomo.sh --keep 5            # keep the 5 newest archives, default 10, 0 keeps all
+bash scripts/restore-tomo.sh <archive.tar.gz>   # asks before it overwrites
+```
+
+The archive holds `tomo-install.json`, the instance's `config/`, `.mcp.json`, `.claude/settings.local.json`, `voice/config.json` and the Docker home with your Claude Code login. Managed files, `tomo-tmp/` and voice models are left out, because an update or a new download brings them back.
+
+Your vault is not in the archive. Back it up separately.
+
+The archive contains your Kado and Claude Code credentials. It is written readable by you only, so treat every copy the same way. It sits next to the instance and survives a cleanup, not a disk failure, so keep a copy on another device.
+
+To restore, run the installer first so the instance exists, then `restore-tomo.sh`. `--dry-run` shows what would be restored, and `--force` skips the prompt.
+
 ## Cleanup / Re-install
 
 For a clean re-run (useful during testing or after config mistakes):

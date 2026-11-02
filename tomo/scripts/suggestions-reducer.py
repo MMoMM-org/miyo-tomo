@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.69.1
+# version: 1.69.2
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -43,16 +43,14 @@ from pathlib import Path
 import yaml
 
 # F-43 T1.5: clustering algorithm extracted into `lib/topic_clusters.py` so
-# `moc-discovery.py` (Phase 2) can reuse it without copy-paste. Re-export
-# `normalise_topic` here so external callers that import it from this module
-# (e.g. `tests/test-004-phase3.sh`) keep working.
+# `moc-discovery.py` (Phase 2) can reuse it without copy-paste.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # noqa: E402
 from lib.doc_frontmatter import build_tomo_block, body_after_frontmatter  # noqa: E402 — F-47 T2.4 / spec 024 T4.2
 from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
     clean_display_topic,
-    normalise_topic,  # re-export for tests/test-004-phase3.sh
+    normalise_topic,
     strip_moc_marker,
 )
 from lib.link_members import LINK_MEMBER_MARKER  # noqa: E402 — spec 042 T2.2 link member suffix
@@ -108,8 +106,7 @@ def now_iso() -> str:
 
 # `normalise_topic` and `_compute_moc_tags` previously lived inline here.
 # Both moved to `lib/topic_clusters.py` for F-43 T1.5 (shared with
-# `moc-discovery.py`); `normalise_topic` is re-imported above for module-level
-# access (still consumed by `tests/test-004-phase3.sh`).
+# `moc-discovery.py`).
 
 
 # ── Rendering ────────────────────────────────────────────────────────────────

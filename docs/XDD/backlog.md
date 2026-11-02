@@ -653,7 +653,7 @@ deleted under spec 018 (agent-architecture-cleanup), retired in favour of
 
 - `tests/test-phase3.sh:141-144` — `check_file` asserts the file **exists**, then greps it for
   S-section format, the Classification Guard and the anti-parrot rule. Guaranteed to fail.
-- `tests/test-004-phase3.sh:193,219` — feeds the missing path to a Python check and greps it
+- ~~`tests/test-004-phase3.sh:193,219`~~ — script retired; its live checks moved to `tests/test_retired_shell_checks.py`. Fed the missing path to a Python check and grepped it
   for `mcp__kado__kado-write`. Guaranteed to fail.
 - `tomo/dot_claude/agents/voice-transcriber.md:261` — a boundary line reading "You do NOT
   invoke `inbox-orchestrator`, `inbox-analyst`, or any other agent". Harmless but it is an

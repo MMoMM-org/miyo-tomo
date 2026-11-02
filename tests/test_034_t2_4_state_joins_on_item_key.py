@@ -153,7 +153,7 @@ def test_replay_does_not_let_one_items_status_hide_the_other(tmp_path):
 
 # ---------------------------------------------------------------------------
 # Existing single-item behaviour is unchanged (mirrors the pre-034 shell
-# acceptance test in tests/test-004-phase3.sh, updated for --item-key).
+# acceptance test, updated for --item-key).
 # ---------------------------------------------------------------------------
 
 

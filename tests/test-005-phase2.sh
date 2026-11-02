@@ -324,13 +324,6 @@ else
 fi
 
 # ── Test 7: Phase-1 regression ─────────────────────────────────────────────
-printf "\n${C_DIM}── Test 7: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
-    pass "test-005-phase1.sh passes"
-else
-    fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
-fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

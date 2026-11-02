@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.14.1
+# version: 0.14.2
 
 ## When to Activate
 
@@ -153,7 +153,7 @@ python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --ou
 
 ### 6. Write to vault + tag sources
 
-Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem.
+Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem, the output of one `date +%Y-%m-%d_%H%M` call.
 It routes by extension on its own — `.md` to the note operation, `.json` to the
 file operation.
 

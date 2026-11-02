@@ -15,7 +15,7 @@
  
  ### 6. Write to vault + tag sources
  
--Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem.
+-Publish both artefacts with the same script and the SAME `<YYYY-MM-DD_HHMM>` stem, the output of one `date +%Y-%m-%d_%H%M` call.
 -It routes by extension on its own — `.md` to the note operation, `.json` to the
 -file operation.
 +Both artefacts use the SAME `<YYYY-MM-DD_HHMM>` stem.

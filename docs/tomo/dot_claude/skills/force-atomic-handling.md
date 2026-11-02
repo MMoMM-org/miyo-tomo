@@ -146,3 +146,12 @@ the Pass 1 `suggest` path). `tests/test_043_grader_patterns.py` pins the shape
 of the relay in this skill's text; nothing runs it against a model. A failing
 run of `fan-resolve` would be the first evidence that the shape does not hold
 here.
+
+## The stem comes from the clock
+
+WHY: the skill named only the `<YYYY-MM-DD_HHMM>` placeholder, so the model chose the
+time itself. A live run on 2026-11-02 derived it from earlier filenames and "a UTC+1
+local clock". That was right by luck and fails across a daylight-saving change. Pass 2
+derives its stem in `upload-rendered.py`; here a plain `date` is enough, as in
+`garden-auditor`. The launcher passes the host's `TZ`, so the output is local time.
+`Bash(date:*)` is already allowed. The evals do not grade the source of the time.

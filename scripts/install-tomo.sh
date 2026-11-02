@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.7.0
+# version: 0.7.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1522,7 +1522,7 @@ fi
 
 print_step "Writing instance .gitignore + scratch dir"
 
-cat > "$INSTANCE_PATH/.gitignore" <<IGNOREEOF
+cat > "$INSTANCE_PATH/.gitignore" <<'IGNOREEOF'
 # MiYo Tomo instance — secrets and runtime state
 # NOTE: instance is NOT auto-git-init'd by install. If you `git init` here
 # manually, these patterns exclude the most sensitive / ephemeral files.

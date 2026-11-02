@@ -1,6 +1,6 @@
 #!/bin/bash
 # backup-tomo.sh — Archive preservable Tomo instance state.
-# version: 0.1.0
+# version: 0.2.0
 #
 # Packages user-configured files into a timestamped tar.gz:
 #   - tomo-install.json                     (paths, profile, Kado creds)
@@ -13,6 +13,8 @@
 # cache/, backups/ itself).
 #
 # Usage: bash scripts/backup-tomo.sh [OPTIONS]
+#   --instance NAME Back up this registered instance.
+#                   Default: the dev instance from <repo>/tomo-install.json.
 #   --output PATH   Destination — directory or full file path.
 #                   Default: <parent-of-INSTANCE_PATH>/tomo-backups/<instance>-<ts>.tar.gz
 #                   (sibling to tomo-instance/, survives `rm -rf tomo-instance`)
@@ -31,6 +33,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
 
+# shellcheck source=lib/instance-registry.sh
+. "$SCRIPT_DIR/lib/instance-registry.sh"
+
 # ── Colors ────────────────────────────────────────────────
 
 if [ -t 1 ]; then
@@ -47,6 +52,7 @@ print_err()  { printf "  ${C_RED}✗${C_RESET} %s\n" "$1" >&2; }
 
 # ── CLI flags ─────────────────────────────────────────────
 
+FLAG_INSTANCE=""
 OUTPUT=""
 KEEP=10
 DRY_RUN=false
@@ -54,6 +60,12 @@ SHOW_HELP=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --instance)
+            if [ $# -lt 2 ]; then
+                print_err "--instance requires a name."
+                exit 1
+            fi
+            FLAG_INSTANCE="$2"; shift 2 ;;
         --output)  OUTPUT="$2"; shift 2 ;;
         --keep)    KEEP="$2";   shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
@@ -67,19 +79,32 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$SHOW_HELP" = "true" ]; then
-    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 fi
 
 # ── Preconditions ────────────────────────────────────────
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_err "No tomo-install.json found. Run install-tomo.sh first."
+if ! command -v jq >/dev/null 2>&1; then
+    print_err "jq is required but not installed."
     exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    print_err "jq is required but not installed."
+# ── Resolve the target instance ──────────────────────────
+
+if [ -n "$FLAG_INSTANCE" ]; then
+    if ! CONFIG_FILE="$(registry_config_path "$FLAG_INSTANCE")"; then
+        print_err "Unknown instance: '$FLAG_INSTANCE'. Check $(registry_path) for registered names."
+        exit 1
+    fi
+    if [ ! -f "$CONFIG_FILE" ]; then
+        print_err "Instance '$FLAG_INSTANCE' found in registry but config missing: $CONFIG_FILE"
+        exit 1
+    fi
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    print_err "No tomo-install.json found. Run install-tomo.sh first."
     exit 1
 fi
 

@@ -14,8 +14,10 @@ Contents:
 - `install-tomo.sh` — creates / updates a Tomo instance.
 - `update-tomo.sh` — syncs runtime changes from the source tree into an
   existing instance.
-- `backup-tomo.sh` — tars the instance to `tomo-backups/`.
-- `restore-tomo.sh` — restores an instance from a backup archive.
+- `backup-tomo.sh` — tars the instance to `tomo-backups/`. `--instance <name>`
+  targets a registered instance; default is the repo-root dev instance.
+- `restore-tomo.sh` — restores an instance from a backup archive, with the
+  same `--instance` selector. Refuses an archive of another instance.
 - `cleanup-tomo.sh` — retires one instance via two SEPARATE operations:
   `registry-only` (drop it from `~/.tomo/instances.json`, print the
   on-disk paths for the user to delete themselves — never touches files)

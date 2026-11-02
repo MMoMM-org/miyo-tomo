@@ -78,7 +78,7 @@ Use `cleanup-tomo.sh`, then run the installer again. See [Starting Over After a 
 
 ### Can I back up an instance?
 
-Only with a limit today: the backup scripts don't reach an instance in its own folder, such as `~/MiYo/Tomo/<name>/`. See [Backup and Restore](setup.md#backup-and-restore).
+Yes, with `bash scripts/backup-tomo.sh --instance <name>`. The archive holds your config and credentials, not your vault. See [Backup and Restore](setup.md#backup-and-restore).
 
 ### The Hashi icon is green, but Claude doesn't see my note. Why?
 

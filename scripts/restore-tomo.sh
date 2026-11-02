@@ -1,12 +1,15 @@
 #!/bin/bash
 # restore-tomo.sh — Restore a Tomo instance from a backup archive.
-# version: 0.1.0
+# version: 0.2.0
 #
 # Expects install-tomo.sh to have been run first (the fresh instance + host
 # repo scaffolding must exist). This script overwrites user-edited config
 # files + home/auth state from the archive.
 #
 # Usage: bash scripts/restore-tomo.sh <archive.tar.gz> [OPTIONS]
+#   --instance NAME  Restore into this registered instance. The archive must
+#                    come from the same instance.
+#                    Default: the dev instance from <repo>/tomo-install.json.
 #   --force        Skip confirmation prompts before overwriting
 #   --dry-run      List what would be restored without writing
 #   --help, -h
@@ -16,6 +19,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
+
+# shellcheck source=lib/instance-registry.sh
+. "$SCRIPT_DIR/lib/instance-registry.sh"
 
 # ── Colors ────────────────────────────────────────────────
 
@@ -34,12 +40,19 @@ print_err()  { printf "  ${C_RED}✗${C_RESET} %s\n" "$1" >&2; }
 # ── CLI flags ─────────────────────────────────────────────
 
 ARCHIVE=""
+FLAG_INSTANCE=""
 FORCE=false
 DRY_RUN=false
 SHOW_HELP=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --instance)
+            if [ $# -lt 2 ]; then
+                print_err "--instance requires a name."
+                exit 1
+            fi
+            FLAG_INSTANCE="$2"; shift 2 ;;
         --force)   FORCE=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --help|-h) SHOW_HELP=true; shift ;;
@@ -75,13 +88,26 @@ if [ ! -f "$ARCHIVE" ]; then
     exit 1
 fi
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_err "No tomo-install.json found. Run install-tomo.sh first."
+if ! command -v jq >/dev/null 2>&1; then
+    print_err "jq is required but not installed."
     exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    print_err "jq is required but not installed."
+# ── Resolve the target instance ──────────────────────────
+
+if [ -n "$FLAG_INSTANCE" ]; then
+    if ! CONFIG_FILE="$(registry_config_path "$FLAG_INSTANCE")"; then
+        print_err "Unknown instance: '$FLAG_INSTANCE'. Check $(registry_path) for registered names."
+        exit 1
+    fi
+    if [ ! -f "$CONFIG_FILE" ]; then
+        print_err "Instance '$FLAG_INSTANCE' found in registry but config missing: $CONFIG_FILE"
+        exit 1
+    fi
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    print_err "No tomo-install.json found. Run install-tomo.sh first."
     exit 1
 fi
 
@@ -100,7 +126,7 @@ print_step "Inspecting archive"
 echo "  Archive: $ARCHIVE"
 
 # Sanity check: archive must contain tomo-install.json at root.
-if ! tar -tzf "$ARCHIVE" 2>/dev/null | grep -q '^\./tomo-install\.json$\|^tomo-install\.json$'; then
+if ! tar -tzf "$ARCHIVE" 2>/dev/null | grep -Eq '^(\./)?tomo-install\.json$'; then
     print_err "Archive does not contain tomo-install.json at the root — not a Tomo backup?"
     exit 1
 fi
@@ -110,6 +136,14 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 tar -xzf "$ARCHIVE" -C "$TMP_DIR"
 print_ok "Extracted to $TMP_DIR"
+
+if [ -n "$FLAG_INSTANCE" ]; then
+    ARCHIVE_INSTANCE="$(jq -r '.instanceName // "tomo-instance"' "$TMP_DIR/tomo-install.json")"
+    if [ "$ARCHIVE_INSTANCE" != "$FLAG_INSTANCE" ]; then
+        print_err "Archive belongs to instance '$ARCHIVE_INSTANCE', not '$FLAG_INSTANCE'."
+        exit 1
+    fi
+fi
 
 echo "  Archive contents:"
 find "$TMP_DIR" -maxdepth 3 -mindepth 1 -print 2>/dev/null \
@@ -153,7 +187,7 @@ restore_file() {
     fi
 }
 
-# tomo-install.json at repo root
+# tomo-install.json of the target instance
 restore_file "tomo-install.json" "$CONFIG_FILE"
 
 # Instance config

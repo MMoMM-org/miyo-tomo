@@ -674,7 +674,9 @@ def _strip_note_include(text: str) -> str:
 def _run_templates_include(tmp_path: Path, config_text: str | None, payload, *extra):
     import subprocess
     cfg = tmp_path / "vault-config.yaml"
-    if config_text is not None:
+    if isinstance(config_text, bytes):
+        cfg.write_bytes(config_text)
+    elif config_text is not None:
         cfg.write_text(config_text, encoding="utf-8")
     inp = tmp_path / "include.json"
     inp.write_text(json.dumps(payload), encoding="utf-8")
@@ -789,6 +791,86 @@ def test_templates_include_refuses_result_that_does_not_read_back(tmp_path):
     proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
     assert proc.returncode == 1, proc.stderr
     assert cfg.read_text(encoding="utf-8") == config
+
+
+CRLF_CONFIG = b"templates:\r\n  base_path: T\r\n  mapping:\r\n    a: b\r\nother: 1\r\n"
+
+
+def test_templates_include_crlf_inserts_inside_block_and_keeps_crlf(tmp_path):
+    proc, cfg = _run_templates_include(tmp_path, CRLF_CONFIG, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_bytes()
+    assert after.count(b"templates:") == 1
+    assert b"\n" not in after.replace(b"\r\n", b""), "line endings mixed"
+    assert _strip_note_include(after.decode("utf-8")).encode("utf-8") == CRLF_CONFIG
+    parsed = yaml.safe_load(after)
+    assert parsed == {
+        "templates": {"base_path": "T", "mapping": {"a": "b"}, "note_include": ["x.md"]},
+        "other": 1,
+    }
+
+
+def test_templates_include_crlf_appends_block_with_crlf(tmp_path):
+    config = b"concepts:\r\n  inbox: I\r\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_bytes()
+    assert after.startswith(config)
+    assert b"\n" not in after.replace(b"\r\n", b""), "line endings mixed"
+    assert yaml.safe_load(after)["templates"] == {"note_include": ["x.md"]}
+
+
+def test_templates_include_replaces_quoted_key(tmp_path):
+    for i, quoted in enumerate(['"note_include"', "'note_include'"]):
+        case_dir = tmp_path / f"q{i}"
+        case_dir.mkdir()
+        config = f"templates:\n  base_path: T\n  {quoted}: [old.md]\n  mapping:\n    a: b\n"
+        proc, cfg = _run_templates_include(case_dir, config, {"note_include": ["x.md"]})
+        assert proc.returncode == 0, proc.stderr
+        after = cfg.read_text(encoding="utf-8")
+        assert "old.md" not in after and after.count("note_include") == 1, after
+        assert yaml.safe_load(after)["templates"] == {
+            "base_path": "T", "note_include": ["x.md"], "mapping": {"a": "b"},
+        }
+
+
+def test_templates_include_refuses_config_with_duplicate_key(tmp_path):
+    configs = [
+        "templates:\n  base_path: T\nother: 1\ntemplates:\n  mapping: {}\n",
+        "templates:\n  base_path: T\n  base_path: U\n",
+        "templates:\n  base_path: T\nother:\n  a: 1\n  a: 2\n",
+    ]
+    for i, config in enumerate(configs):
+        case_dir = tmp_path / f"d{i}"
+        case_dir.mkdir()
+        proc, cfg = _run_templates_include(case_dir, config, {"note_include": ["x.md"]})
+        assert proc.returncode == 1, f"{config!r}: rc={proc.returncode} {proc.stderr}"
+        assert cfg.read_text(encoding="utf-8") == config
+
+
+def test_templates_include_keeps_deeper_comment_after_list(tmp_path):
+    config = (
+        "templates:\n  note_include:\n    - old.md\n    # user note after the list\n"
+        "  mapping:\n    a: b\n"
+    )
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert "    # user note after the list\n  mapping:" in after
+    assert "old.md" not in after
+    assert yaml.safe_load(after)["templates"] == {"note_include": ["x.md"], "mapping": {"a": "b"}}
+
+
+def test_templates_include_write_keeps_file_mode(tmp_path):
+    import os
+    import stat
+    cfg = tmp_path / "vault-config.yaml"
+    cfg.write_text(CONFIG_WITHOUT_KEY, encoding="utf-8")
+    os.chmod(cfg, 0o640)
+    proc, cfg = _run_templates_include(tmp_path, CONFIG_WITHOUT_KEY, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    assert stat.S_IMODE(cfg.stat().st_mode) == 0o640
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
 
 
 def test_templates_include_missing_config_exits_2(tmp_path):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -38,7 +38,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -151,23 +153,26 @@ def render_tags_section(data: dict) -> str:
 
 def _is_top_level_key_line(line: str, key: str) -> bool:
     """`tags:` or `tags: # comment` or `tags: {}` at column 0."""
-    stripped = line.rstrip("\n")
+    stripped = line.rstrip("\r\n")
     if not stripped.startswith(f"{key}:"):
         return False
     after = stripped[len(key) + 1:]
     return after == "" or after.startswith(" ") or after.startswith("\t") or after.startswith("#")
 
 
-def replace_top_level_section(yaml_text: str, section_key: str, new_block: str) -> str:
+def replace_top_level_section(
+    yaml_text: str, section_key: str, new_block: str, newline: str = "\n",
+) -> str:
     """Replace the `<section_key>:` block at column 0. Preserve everything else.
 
     A "block" starts at the `<section_key>:` line and continues through
     contiguous indented or blank lines until the next column-0 key is found.
 
     If the section doesn't exist, the new block is appended (separated by a
-    blank line from any preceding content).
+    blank line from any preceding content). `newline` is the line ending
+    used for the separator lines the append adds.
     """
-    new_block = new_block if new_block.endswith("\n") else new_block + "\n"
+    new_block = new_block if new_block.endswith("\n") else new_block + newline
     lines = yaml_text.splitlines(keepends=True)
     out: list[str] = []
     i = 0
@@ -200,9 +205,9 @@ def replace_top_level_section(yaml_text: str, section_key: str, new_block: str) 
     if not replaced:
         # Ensure a trailing newline on the previous content and a blank separator
         if out and not out[-1].endswith("\n"):
-            out[-1] += "\n"
+            out[-1] += newline
         if out and out[-1].strip() != "":
-            out.append("\n")
+            out.append(newline)
         out.append(new_block)
 
     return "".join(out)
@@ -666,10 +671,18 @@ def validate_templates_include_input(data) -> None:
             _fail(f"templates-include: note_include entries must be non-empty strings, got {g!r}")
 
 
-def render_templates_include_lines(globs: list[str], indent: str = "  ") -> str:
+def render_templates_include_lines(
+    globs: list[str], indent: str = "  ", newline: str = "\n",
+) -> str:
     lines = [f"{indent}{TEMPLATES_INCLUDE_KEY}:"]
     lines.extend(f"{indent}  - {_qstr(g)}" for g in globs)
-    return "\n".join(lines) + "\n"
+    return newline.join(lines) + newline
+
+
+def _newline_of(text: str) -> str:
+    """The ending of the file's first line: CRLF files get CRLF insertions."""
+    first = text.find("\n")
+    return "\r\n" if first > 0 and text[first - 1] == "\r" else "\n"
 
 
 def _leading_ws(line: str) -> str:
@@ -696,43 +709,87 @@ def _child_indent(body: list[str]) -> str:
     return "  "
 
 
+def _is_key_line(line: str, indent: str, key: str) -> bool:
+    """`<indent>key:`, plain or quoted — YAML reads all three as the same key."""
+    spellings = (f"{key}:", f'"{key}":', f"'{key}':")
+    return _leading_ws(line) == indent and line.lstrip().startswith(spellings)
+
+
+def _is_list_continuation(line: str, indent: str) -> bool:
+    ws = _leading_ws(line)
+    return bool(line.strip()) and (
+        len(ws) > len(indent) or (ws == indent and line.lstrip().startswith("- "))
+    )
+
+
 def _key_extent(body: list[str], indent: str, key: str) -> tuple[int, int] | None:
-    """Span of `<indent><key>:` plus its continuation lines, within body."""
+    """Span of the key line through its last non-comment continuation line.
+
+    Comment lines after the last list item stay outside the span (they are the
+    user's); comments between items are inside it and are replaced with the list.
+    """
     for i, ln in enumerate(body):
-        if _leading_ws(ln) == indent and ln.lstrip().startswith(f"{key}:"):
-            j = i + 1
-            while j < len(body) and body[j].strip() and (
-                len(_leading_ws(body[j])) > len(indent)
-                or (_leading_ws(body[j]) == indent and body[j].lstrip().startswith("- "))
-            ):
-                j += 1
-            return i, j
+        if not _is_key_line(ln, indent, key):
+            continue
+        end = j = i + 1
+        while j < len(body) and _is_list_continuation(body[j], indent):
+            j += 1
+            if not body[j - 1].lstrip().startswith("#"):
+                end = j
+        return i, end
     return None
 
 
 def set_templates_note_include(yaml_text: str, globs: list[str]) -> str:
     """Insert or replace the templates.note_include lines only; keep every other byte."""
     section_key, key = "templates", TEMPLATES_INCLUDE_KEY
+    nl = _newline_of(yaml_text)
     lines = yaml_text.splitlines(keepends=True)
     extent = _section_extent(lines, section_key)
     if extent is None:
-        block = f"{section_key}:\n" + render_templates_include_lines(globs)
-        return replace_top_level_section(yaml_text, section_key, block)
+        block = f"{section_key}:{nl}" + render_templates_include_lines(globs, newline=nl)
+        return replace_top_level_section(yaml_text, section_key, block, newline=nl)
     start, last = extent
     body = lines[start + 1:last]
     indent = _child_indent(body)
-    rendered = render_templates_include_lines(globs, indent)
+    rendered = render_templates_include_lines(globs, indent, newline=nl)
     span = _key_extent(body, indent, key)
     lo, hi = (start + 1 + span[0], start + 1 + span[1]) if span else (last, last)
     if lo > 0 and not lines[lo - 1].endswith("\n"):
-        lines[lo - 1] += "\n"
+        lines[lo - 1] += nl
     return "".join(lines[:lo]) + rendered + "".join(lines[hi:])
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """SafeLoader that raises on a repeated mapping key at any depth.
+
+    Plain safe_load keeps the last duplicate, which would let a shadowing
+    second `templates:` or `note_include` pass the read-back.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
+            key = self.construct_object(key_node, deep=True)
+            try:
+                duplicate = key in seen
+            except TypeError:  # unhashable key: super() reports it
+                continue
+            if duplicate:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate key {key!r}", key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 def _reads_back(updated: str, globs: list[str]) -> bool:
     try:
-        parsed = yaml.safe_load(updated)
-    except yaml.YAMLError:
+        parsed = yaml.load(updated, Loader=_UniqueKeySafeLoader)  # SafeLoader subclass
+    except yaml.YAMLError as exc:
+        print(f"error: resulting YAML is not usable: {exc}", file=sys.stderr)
         return False
     templates = parsed.get("templates") if isinstance(parsed, dict) else None
     return isinstance(templates, dict) and templates.get(TEMPLATES_INCLUDE_KEY) == globs
@@ -750,6 +807,20 @@ def _load_json_input(path: Path):
         return None, 1
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a same-directory temp file + os.replace, keeping the mode bits."""
+    mode = path.stat().st_mode & 0o7777
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def cmd_templates_include(args: argparse.Namespace) -> int:
     data, rc = _load_json_input(Path(args.input))
     if rc is not None:
@@ -761,7 +832,8 @@ def cmd_templates_include(args: argparse.Namespace) -> int:
         return 0
     config_path = Path(args.config)
     try:
-        current = config_path.read_text(encoding="utf-8")
+        with open(config_path, encoding="utf-8", newline="") as fh:
+            current = fh.read()
     except FileNotFoundError:
         print(f"error: config not found: {config_path}", file=sys.stderr)
         return 2
@@ -770,7 +842,11 @@ def cmd_templates_include(args: argparse.Namespace) -> int:
         print("error: resulting YAML would not read back templates.note_include, "
               "refusing to write", file=sys.stderr)
         return 1
-    config_path.write_text(updated, encoding="utf-8")
+    try:
+        _atomic_write(config_path, updated)
+    except OSError as exc:
+        print(f"error: could not write {config_path}: {exc}", file=sys.stderr)
+        return 2
     print(f"vault-config-writer: templates.note_include written ({len(globs)} glob(s)) "
           f"→ {config_path}", file=sys.stderr)
     return 0

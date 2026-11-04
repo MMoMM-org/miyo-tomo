@@ -86,7 +86,15 @@ So `templates-include` changes only the `note_include` lines:
 - **Key present** — the key line and its list continuation lines (deeper
   indented, or `- ` items at the key's own indent) are replaced. A flow list
   on the key line (`note_include: ["t_*.md"]`) is one line and is replaced the
-  same way.
+  same way. A quoted key (`"note_include":` or `'note_include':`) is the same
+  key to YAML, so it is replaced too; inserting a second, unquoted key next to
+  it would leave two keys of which YAML silently keeps one.
+- **Comments around the list** — a comment line after the last list item is
+  the user's and is kept, even when it is indented deeper than the key. A
+  comment *between* two list items is part of the list being replaced and goes
+  with it: the old list is gone, so a comment about one of its entries has
+  nothing left to describe, and keeping it would need a guess about which new
+  entry it belongs to.
 - **Key absent** — the key is inserted after the last non-blank line of the
   `templates:` block, at the indent the block's own children use, so trailing
   blank lines and the next section's banner stay where they were.
@@ -110,6 +118,32 @@ produce YAML that parses but means something else — a `templates:` written as
 an inline `{}`, a duplicate key further down that overrides ours. The writer
 parses the result and requires `templates.note_include` to equal the input
 list. Anything else exits 1 and the file is not touched.
+
+**Why a duplicate key anywhere refuses the write.** `yaml.safe_load` does not
+reject duplicate keys — it keeps the last one. A read-back with plain
+`safe_load` therefore passes on exactly the result it exists to catch: a
+second `templates:` block appended below the user's (their `base_path` and
+`mapping` shadowed), or a second `note_include` next to one the matcher missed.
+The read-back uses a loader that raises on a repeated key at any depth, so any
+duplicate in the result — ours, or one that was already in the file — exits 1
+and nothing is written. A config that already holds a duplicate key is
+ambiguous to every reader of it; writing into it would only hide that.
+
+**Why line endings are preserved (CRLF).** A config saved on Windows, or by an
+editor set to CRLF, ends every line with `\r\n`. The file is read and written
+without newline translation, so its endings survive; the key-line matchers
+accept a trailing `\r`, so the `templates:` header is still found in a CRLF
+file (otherwise a second block would be appended); and the inserted lines use
+the file's own ending — the one its first line uses — so one file never mixes
+the two. Reading with Python's default text mode would instead turn every
+`\r\n` in the file into `\n`, changing every line of a file that promises to
+change one key.
+
+**Why an atomic write.** The new text goes to a temporary file in the
+config's own directory, takes the config's permission bits, and replaces the
+config with `os.replace`. An interrupted write then leaves the old config or
+the new one, never half of one. The older section subcommands still write in
+place; they were not changed with this one.
 
 **Why `--stdout` prints only the key lines.** It matches the sibling
 subcommands, which print the block they would write, and it never reads or

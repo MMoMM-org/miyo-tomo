@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+# version: 0.1.0
+"""test_template_syntax.py — Behavioural tests for lib.template_syntax.
+
+Spec 044 T1.2: one module gives the template outline its points and the
+filled-note check its verdict (PRD F3; SDD F3-AC1, F3-AC7; ADR-4). The
+fixtures are real template shapes: frontmatter with Templater values, a
+callout, fenced code that carries {{x}}, an escaped \\{{x}}, <% %> and <%* %>
+spans, a template whose first line is a tp.file.include, and headings with and
+without a body.
+"""
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+
+import pytest
+
+SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib import template_syntax as ts  # noqa: E402
+
+MEETING_TEMPLATE = """---
+UUID: <% tp.date.now("YYYYMMDDHHmmss") %>
+DateStamp: {{datestamp}}
+title: "{{title}}"
+tags:
+  - type/note/meeting
+aliases:
+Summary: {{summary}}
+---
+
+> [!connect] Your way around
+> up:: {{up}}
+
+# [[{{title}}]]
+
+## Attendees
+
+## Agenda
+{{agenda}}
+
+<%*
+let d = tp.date.now("YYYY")
+%>
+## Example
+```markdown
+{{not_a_token}}
+## Not a heading
+```
+Write \\{{literal}} here, source {{source_link}}, made {{uuid}}.
+### Notes
+"""
+
+INCLUDE_FIRST_TEMPLATE = """<% await tp.file.include("[[x_frontmatter]]") %>
+title: "{{title}}"
+---
+
+# {{title}}
+"""
+
+CLEAN_NOTE = """---
+title: "Weekly sync"
+tags:
+  - type/note/meeting
+---
+
+# [[Weekly sync]]
+
+## Agenda
+Budget review.
+
+```text
+{{kept_inside_fence}}
+```
+Escaped \\{{literal}} stays.
+"""
+
+
+def _lines(text: str) -> list[str]:
+    return text.splitlines()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Leading block
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_leading_block_found_returns_the_lines_between_the_fences():
+    block = ts.leading_block(MEETING_TEMPLATE)
+    assert block.status == "ok"
+    assert block.start_line == 1
+    assert block.end_line == 9
+    assert block.lines[0] == 'UUID: <% tp.date.now("YYYYMMDDHHmmss") %>'
+    assert block.lines[-1] == "Summary: {{summary}}"
+
+
+def test_leading_block_unclosed_when_the_opening_fence_never_closes():
+    block = ts.leading_block("---\ntitle: x\n\n# Heading\n")
+    assert block.status == "unclosed"
+    assert block.lines == []
+
+
+def test_leading_block_missing_when_a_templater_include_is_line_one():
+    block = ts.leading_block(INCLUDE_FIRST_TEMPLATE)
+    assert block.status == "missing"
+
+
+def test_leading_block_missing_on_empty_text():
+    assert ts.leading_block("").status == "missing"
+
+
+def test_frontmatter_ok_is_true_only_for_a_closed_leading_block():
+    assert ts.frontmatter_ok(MEETING_TEMPLATE) is True
+    assert ts.frontmatter_ok("---\ntitle: x\n") is False
+    assert ts.frontmatter_ok(INCLUDE_FIRST_TEMPLATE) is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Frontmatter keys
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_frontmatter_keys_list_top_level_keys_with_value_and_line():
+    keys = ts.frontmatter_keys(MEETING_TEMPLATE)
+    assert keys == [
+        {"key": "UUID", "has_value": True, "line": 2},
+        {"key": "DateStamp", "has_value": True, "line": 3},
+        {"key": "title", "has_value": True, "line": 4},
+        {"key": "tags", "has_value": True, "line": 5},
+        {"key": "aliases", "has_value": False, "line": 7},
+        {"key": "Summary", "has_value": True, "line": 8},
+    ]
+
+
+def test_frontmatter_keys_empty_when_the_block_is_missing():
+    assert ts.frontmatter_keys(INCLUDE_FIRST_TEMPLATE) == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tokens
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_tokens_listed_with_line_outside_fences_templater_and_escapes():
+    names = [(t["name"], t["line"]) for t in ts.tokens(MEETING_TEMPLATE)]
+    assert names == [
+        ("datestamp", 3),
+        ("title", 4),
+        ("summary", 8),
+        ("up", 12),
+        ("title", 14),
+        ("agenda", 19),
+        ("source_link", 29),
+        ("uuid", 29),
+    ]
+
+
+def test_tokens_never_include_a_fenced_or_escaped_token():
+    names = {t["name"] for t in ts.tokens(MEETING_TEMPLATE)}
+    assert "not_a_token" not in names
+    assert "literal" not in names
+
+
+def test_tokens_inside_a_templater_span_are_not_points():
+    text = '<% tp.user.fmt("{{inner}}") %>\n{{outer}}\n'
+    assert [t["name"] for t in ts.tokens(text)] == ["outer"]
+
+
+def test_tokens_inside_a_tilde_fence_are_skipped():
+    text = "~~~\n{{hidden}}\n~~~\n{{shown}}\n"
+    assert [t["name"] for t in ts.tokens(text)] == ["shown"]
+
+
+@pytest.mark.parametrize("name", ["uuid", "datestamp", "updated", "date_iso",
+                                  "locale", "vault", "vault_version", "profile"])
+def test_generated_and_config_tokens_are_prefilled(name):
+    [token] = ts.tokens("{{" + name + "}}")
+    assert token["prefilled"] is True
+
+
+@pytest.mark.parametrize("name", ["title", "tags", "body", "up", "summary",
+                                  "aliases", "classification", "my_custom"])
+def test_every_other_token_known_or_not_is_a_point(name):
+    [token] = ts.tokens("{{" + name + "}}", has_source=True)
+    assert token["prefilled"] is False
+
+
+@pytest.mark.parametrize("name", ["source_path", "source_link"])
+def test_source_tokens_prefilled_only_when_the_source_is_an_inbox_note(name):
+    [with_source] = ts.tokens("{{" + name + "}}", has_source=True)
+    [without_source] = ts.tokens("{{" + name + "}}", has_source=False)
+    assert with_source["prefilled"] is True
+    assert without_source["prefilled"] is False
+
+
+def test_prefilled_tokens_set_matches_the_sdd_table():
+    assert ts.prefilled_tokens(has_source=False) == {
+        "uuid", "datestamp", "updated", "date_iso",
+        "locale", "vault", "vault_version", "profile",
+    }
+    assert ts.prefilled_tokens(has_source=True) == (
+        ts.prefilled_tokens(has_source=False) | {"source_path", "source_link"}
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Headings
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_headings_listed_with_level_text_line_and_body():
+    assert ts.headings(MEETING_TEMPLATE) == [
+        {"level": 1, "text": "[[{{title}}]]", "line": 14, "has_body": False},
+        {"level": 2, "text": "Attendees", "line": 16, "has_body": False},
+        {"level": 2, "text": "Agenda", "line": 18, "has_body": True},
+        {"level": 2, "text": "Example", "line": 24, "has_body": True},
+        {"level": 3, "text": "Notes", "line": 30, "has_body": False},
+    ]
+
+
+def test_headings_skip_frontmatter_fenced_code_and_hashtags():
+    text = "---\ntitle: x\n---\n#tag line\n```\n# not\n```\n## Real ##\nbody\n"
+    assert ts.headings(text) == [
+        {"level": 2, "text": "Real", "line": 8, "has_body": True},
+    ]
+
+
+def test_headings_inside_a_multiline_templater_span_are_skipped():
+    text = "<%*\n# js comment\n%>\n## Kept\n"
+    assert [h["text"] for h in ts.headings(text)] == ["Kept"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Templater spans
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_templater_spans_listed_with_start_line_and_text():
+    spans = ts.templater_spans(MEETING_TEMPLATE)
+    assert spans == [
+        {"line": 2, "text": '<% tp.date.now("YYYYMMDDHHmmss") %>'},
+        {"line": 21, "text": '<%*\nlet d = tp.date.now("YYYY")\n%>'},
+    ]
+
+
+def test_templater_include_on_line_one_is_a_span_not_a_point():
+    spans = ts.templater_spans(INCLUDE_FIRST_TEMPLATE)
+    assert spans == [
+        {"line": 1, "text": '<% await tp.file.include("[[x_frontmatter]]") %>'},
+    ]
+    assert [t["name"] for t in ts.tokens(INCLUDE_FIRST_TEMPLATE)] == ["title", "title"]
+    assert [h["text"] for h in ts.headings(INCLUDE_FIRST_TEMPLATE)] == ["{{title}}"]
+    assert ts.frontmatter_keys(INCLUDE_FIRST_TEMPLATE) == []
+
+
+def test_templater_whitespace_control_variant_is_a_span():
+    assert ts.templater_spans("a <%- tp.file.title -%> b") == [
+        {"line": 1, "text": "<%- tp.file.title -%>"},
+    ]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Filled-note checks
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _statuses(text: str) -> dict[str, str]:
+    return {f["check"]: f["status"] for f in ts.filled_note_check(text).findings}
+
+
+def test_filled_note_check_passes_on_a_clean_note():
+    result = ts.filled_note_check(CLEAN_NOTE)
+    assert result.ok is True
+    assert set(_statuses(CLEAN_NOTE).values()) == {"PASS"}
+
+
+def test_filled_note_check_fails_on_a_remaining_templater_opener():
+    text = CLEAN_NOTE + "\nUnclosed <% tp.date.now()\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["no_templater"] == "FAIL"
+
+
+def test_filled_note_check_fails_on_a_remaining_token():
+    text = CLEAN_NOTE + "\n{{summary}}\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["no_tokens"] == "FAIL"
+
+
+def test_filled_note_check_fails_on_a_user_authored_tomo_key():
+    text = CLEAN_NOTE.replace("title:", "tomo:\n  state: x\ntitle:", 1)
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["no_user_tomo_key"] == "FAIL"
+
+
+def test_filled_note_check_fails_on_a_missing_fence():
+    text = "# Weekly sync\n\nBody.\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["leading_fence"] == "FAIL"
+
+
+def test_filled_note_check_fails_on_an_unclosed_fence():
+    text = "---\ntitle: x\n\n# Weekly sync\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["frontmatter_closed"] == "FAIL"
+
+
+def test_filled_note_findings_carry_check_status_detail_and_fix():
+    [finding, *_] = ts.filled_note_check("no fence\n").findings
+    assert set(finding) == {"check", "status", "detail", "fix"}
+    assert finding["fix"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Parity
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _load_token_render():
+    spec = importlib.util.spec_from_file_location(
+        "token_render_parity", SCRIPTS_DIR / "token-render.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_token_regex_equals_token_render_token_re():
+    token_render = _load_token_render()
+    assert ts.TOKEN_RE.pattern == token_render._TOKEN_RE.pattern
+    assert ts.TOKEN_RE.flags == token_render._TOKEN_RE.flags

@@ -30,7 +30,7 @@ New kinds of note need no work from us. A normal template is enough, and no Tomo
 
 Command: `/note [what it is]`. The source is text in the call or an inbox note.
 
-1. **Choose the template.** Tomo lists `templates.base_path` and picks from the source and the filenames. It asks when several fit or none does. `templates.note_exclude`, a list of filename globs, excludes system templates. Its default is `["i_*"]`, and the template mapped as `daily` is always excluded.
+1. **Choose the template.** Tomo lists `templates.base_path` and keeps the files that match `templates.note_include`, a list of filename globs. The template mapped as `daily` is always left out. Tomo picks from the source and the filenames, and asks when several fit or none does.
 2. **Derive the checklist.** Headings, frontmatter fields and tokens become points to fill. Templater blocks (`<% %>`) count as hints and are never executed. The model marks each point as filled from the source or open; the script only lists the points.
 3. **Ask.** Tomo asks only open points with `AskUserQuestion`, at most four per round. Skipping is allowed, and skipped sections stay empty and are named in the draft. A point the process file marks as required cannot be skipped: Tomo asks again, and the user can only answer or abort.
 4. **Draft.** The full note appears in the console. The user changes it through dialogue until they approve.
@@ -39,6 +39,15 @@ Command: `/note [what it is]`. The source is text in the call or an inbox note.
 The note goes to the inbox with `tomo.state: pending-move`. The instruction set holds a `move_note` and, when the source was an inbox note, a paired `delete_source`.
 
 The destination comes from the process file, otherwise from `concepts.atomic_note.path`. The draft names it, and the user can change it there.
+
+### Which Templates Count
+
+Naming schemes differ between vaults. One vault uses `t_` for templates, `i_` for inserts and `a_` for actions; another uses something else. So there is no built-in default, and the key is set up where it is needed:
+
+- When `templates.note_include` is missing, the first `/note` sets it up before step 1. `/tomo-setup` does not ask for it, so a user who never runs `/note` never sees it.
+- Tomo lists the template folder, and the model proposes globs from the naming it finds, for example `t_*`. Tomo shows which files match and which do not. The user confirms or corrects in the dialogue, and only a confirmed list is written.
+- When no template fits a later request, Tomo offers to adjust the globs in the same dialogue.
+- The model passes the glob list to `vault-config-writer.py` and never writes YAML itself.
 
 ## Boundary to `inbox-author`
 
@@ -49,7 +58,15 @@ The destination comes from the process file, otherwise from `concepts.atomic_not
 
 ## Optional Process File
 
-Location: `config/note-processes/<template-stem>.md` in the instance, for example `t_meeting.md`. Tomo can read and create these directly, without Hashi.
+Location: `config/note-processes/<template-stem>.md` in the instance, for example `t_meeting.md`. Tomo reads and writes these directly, without Hashi.
+
+The user never writes a process file by hand. Tomo creates and changes it in a dialogue:
+
+- After a delivered note whose template has no process file, Tomo offers once to keep what the session showed: a destination the user changed, points the user insisted on, an order the user asked for. It is one question, and a no writes nothing. Tomo does not offer when the session showed nothing of that kind.
+- `/note --process <template>` creates or changes one on purpose. Tomo asks for the destination, the required points, offered from the template outline, and free guidance.
+- The model never writes the file. `scripts/note-process.py write` takes the destination, the required points and the guidance, checks that each required point exists in the template outline, and writes the file. The format lives in the script's `--help`, so no separate guide is needed. The user documentation only says that Tomo asks.
+
+The file it writes looks like this:
 
 ```markdown
 ---
@@ -74,6 +91,8 @@ Ask for the decisions first. For reflections, always ask what I would do differe
 | Skill `note-from-template` | The flow above, imperatives only |
 | `scripts/template-outline.py` | Reads a template and returns headings, fields, tokens and Templater positions as JSON |
 | `scripts/note-instructions.py` | Stamps the note, builds and validates the instruction set |
+| `scripts/note-process.py` | Writes and reads process files, checks required points against the template outline |
+| `vault-config-writer.py` | New subcommand that writes `templates.note_include` from a glob list |
 | `template-doctor.py --filled-note` | New mode: frontmatter fences and closure, no `<%` left in the note, no hand-written `tomo:` block |
 | Skill `inbox-author` | Change: the unknown-type branch of step 2 points the user to `/note` instead of filling a vault template itself. Version bump and WHY entry |
 
@@ -88,7 +107,7 @@ Ask for the decisions first. For reflections, always ask what I would do differe
 
 The source is set to `tomo.state: captured` through the merge path of `mark-captured.py`, after both uploads succeed. Without this, the next `/inbox` proposes a duplicate. `captured` is only a guard until Hashi applies the paired `delete_source`, which ends the source. If the set is never applied, the source stays `captured`.
 
-`templates.note_exclude` is a `vault-config.yaml` key, so it needs writer support and a schema entry, not hand-written YAML. A missing key means the default.
+`templates.note_include` is a `vault-config.yaml` key, so it needs a writer subcommand and a schema entry, not hand-written YAML. The writer's existing subcommands replace top-level blocks; this key sits inside `templates:`, and the subcommand must leave the rest of that block unchanged. A missing key starts the setup dialogue.
 
 The JSON contract of `template-outline.py`, including which token syntaxes count as points to fill, is an SDD deliverable.
 
@@ -110,6 +129,8 @@ The JSON contract of `template-outline.py`, including which token syntaxes count
 - Triage: after delivery, neither the source nor the note counts as new.
 - Backup and restore keep `config/note-processes/`, and `update-tomo.sh` does not touch it.
 - `--filled-note` accepts a filled note and rejects `<%` remains.
+- The writer subcommand sets `templates.note_include` and leaves `templates.mapping` and the other `templates:` keys byte-identical.
+- `note-process.py` writes a valid file and rejects a required point the template does not have.
 - A name collision reaches the user through the exit 3 / `EXISTS:` contract of `kado-write-file.py`.
 - One paid eval case for the model behaviour. This change edits no eval-gated file. If `settings.json` needs a change, the eval gate applies; its allow rule for `python3 scripts/*.py` should make that unnecessary.
 

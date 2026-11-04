@@ -19,12 +19,24 @@ changed.
 `inbox_file`, and the instruction set may already point at `destination_file()`.
 Renaming after that would leave a landed file under the old name and a resumed
 delivery writing a second file under the new one. `apply_stage_update` refuses the
-whole update (title, destination and keep-source) when a frozen field would change,
+whole update (title, destination and keep_source) when any frozen field would change,
 so a refused call leaves meta.json exactly as it was. Restating the current value
 is not a change: the skill may pass every field on each `stage` call.
 
-`keep_source` is not frozen by the SDD rule, but it is refused together with a
-frozen change because the update is all-or-nothing.
+## WHY keep_source Freezes Once instructions_json Is Done
+
+The instruction set carries a `delete_source` action exactly when `keep_source`
+is false. Once `instructions_json` is in `steps_done`, that set has landed in the
+inbox; flipping `keep_source` afterwards would make a resumed delivery rebuild a
+different set (`delete_source` added or removed) than the one already written,
+and the user would approve one set while another one is on disk.
+
+It does not freeze earlier, at `note`: until the set is written, keeping or
+deleting the source is still the user's free choice in the dialogue (PRD
+F4-AC3), and nothing on disk depends on it yet. The same all-or-nothing rule
+applies: a refused `keep_source` change leaves title and destination untouched,
+and a refused title or destination change leaves `keep_source` untouched.
+Restating the current `keep_source` is not a change.
 
 ## WHY a Stage Without failed_step Is Stale, Not Kept
 

@@ -5,7 +5,8 @@
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
 - meta.json round trip and the derived names (destination_file, instructions_stem)
 - steps_done updates (order, idempotence, unknown step rejected) and failed_step
-- title and destination frozen once steps_done is non-empty (SDD stage Rule)
+- title and destination frozen once steps_done is non-empty, keep_source once
+  instructions_json is done (SDD stage Rule)
 - stage listing splits failed deliveries (kept_drafts) from stale stages
 - stem validation guards every path built from a stem
 """
@@ -211,6 +212,52 @@ def test_keep_source_changes_before_any_step():
     note_meta.apply_stage_update(meta, keep_source=True)
 
     assert meta.keep_source is True
+
+
+def test_keep_source_change_is_refused_once_the_instruction_set_landed():
+    meta = _meta()
+    note_meta.mark_step_done(meta, "note")
+    note_meta.mark_step_done(meta, "instructions_json")
+    before = NoteDraftMeta(**vars(meta) | {"steps_done": list(meta.steps_done)})
+
+    frozen = note_meta.apply_stage_update(meta, keep_source=True)
+
+    assert frozen is True
+    assert meta == before
+
+
+def test_keep_source_change_is_accepted_after_only_the_note_landed():
+    meta = _meta()
+    note_meta.mark_step_done(meta, "note")
+
+    frozen = note_meta.apply_stage_update(meta, keep_source=True)
+
+    assert frozen is False
+    assert meta.keep_source is True
+
+
+def test_restating_keep_source_after_the_instruction_set_is_not_a_change():
+    meta = _meta()
+    note_meta.mark_step_done(meta, "note")
+    note_meta.mark_step_done(meta, "instructions_json")
+
+    frozen = note_meta.apply_stage_update(
+        meta, title="Weekly: sync", destination="Atlas/Notes/", keep_source=False
+    )
+
+    assert frozen is False
+    assert meta.keep_source is False
+
+
+def test_refused_title_change_leaves_keep_source_unchanged():
+    meta = _meta()
+    note_meta.mark_step_done(meta, "note")
+
+    frozen = note_meta.apply_stage_update(meta, title="Renamed", keep_source=True)
+
+    assert frozen is True
+    assert meta.title == "Weekly: sync"
+    assert meta.keep_source is False
 
 
 # ── Stage listing ────────────────────────────────────────────────────────────

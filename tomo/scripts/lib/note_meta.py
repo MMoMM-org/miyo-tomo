@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.0
+# version: 0.1.1
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -152,20 +152,26 @@ def is_frozen(meta: NoteDraftMeta) -> bool:
     return bool(meta.steps_done)
 
 
+def is_keep_source_frozen(meta: NoteDraftMeta) -> bool:
+    """True once the instruction set has landed (instructions_json done)."""
+    return "instructions_json" in meta.steps_done
+
+
 def apply_stage_update(meta: NoteDraftMeta, *, title: str | None = None,
                        destination: str | None = None,
                        keep_source: bool | None = None) -> bool:
     """Apply a stage update; return True (and change nothing) when refused as frozen."""
     new_title = meta.title if title is None else title
     new_dest = meta.destination if destination is None else folder(destination)
-    changes_frozen = new_title != meta.title or new_dest != meta.destination
-    if changes_frozen and is_frozen(meta):
+    new_keep = meta.keep_source if keep_source is None else keep_source
+    names_change = new_title != meta.title or new_dest != meta.destination
+    if names_change and is_frozen(meta):
+        return True
+    if new_keep != meta.keep_source and is_keep_source_frozen(meta):
         return True
     inbox = posixpath.dirname(meta.inbox_file)
-    meta.title, meta.destination = new_title, new_dest
+    meta.title, meta.destination, meta.keep_source = new_title, new_dest, new_keep
     meta.inbox_file = inbox_file_for(inbox, meta.stem, new_title)
-    if keep_source is not None:
-        meta.keep_source = keep_source
     return False
 
 

@@ -1,0 +1,928 @@
+---
+title: "/note: notes from a template, with follow-up questions"
+status: draft
+version: "1.0"
+---
+
+# Solution Design Document
+
+## Validation Checklist
+
+### CRITICAL GATES (Must Pass)
+
+- [x] All required sections are complete
+- [x] No [NEEDS CLARIFICATION] markers remain
+- [x] Architecture pattern is clearly stated with rationale
+- [x] **All architecture decisions confirmed by user**
+- [x] Every interface has specification
+
+### QUALITY CHECKS (Should Pass)
+
+- [x] All context sources are listed with relevance ratings
+- [x] Project commands are discovered from actual project files
+- [x] Constraints → Strategy → Design → Implementation path is logical
+- [x] Every component in diagram has directory mapping
+- [x] Error handling covers all error types
+- [x] Quality requirements are specific and measurable
+- [x] Component names consistent across diagrams
+- [x] A developer could implement from this design
+- [x] Implementation examples use actual schema column names (not pseudocode), verified against migration files
+- [x] Complex queries include traced walkthroughs with example data showing how the logic evaluates
+
+---
+
+## Constraints
+
+- CON-1 **Runtime split.** Runtime prose in `tomo/dot_claude/` holds imperatives only; every WHY goes first to `docs/tomo/<mirrored-path>.md`. Every managed file carries `# version: X.Y.Z` and bumps it on each edit, or `update-tomo.sh` ships nothing. Scripts are Python 3 under `tomo/scripts/`, run as `python3 scripts/<name>.py` inside the instance; shared code lives in `tomo/scripts/lib/` because hyphenated scripts cannot be imported.
+- CON-2 **Execution boundary.** Tomo writes to the vault only inside the inbox and only through Kado. It writes its own instance files under `config/` and `tomo-tmp/`. The note reaches its destination only when the user applies the instruction set in Hashi.
+- CON-3 **Privacy (constitution L2).** Script stdout, stderr and logs carry paths, states and counts only, never note text, answers or source text. Drafts in `tomo-tmp/note/` are removed on delivery, drop and abort.
+- CON-4 **Interaction.** Every user decision goes through `AskUserQuestion`: at most four options (Other is added automatically) and four questions per call. Findings and drafts are printed as text before the question that refers to them.
+- CON-5 **No eval-gated file changes.** `synthesis-conductor.md`, `suggestion-conductor.md`, `suggest-handling/SKILL.md`, `commands/inbox.md` and `settings.json` stay untouched. `settings.json` already allows `Bash(python3 scripts/*.py*)`, `Edit(config/*)`, `Edit(tomo-tmp/*)` and `mkdir -p tomo-tmp/*`.
+- CON-6 **Wire.** The instruction set is the existing Hashi wire, with no new field and no schema bump. `schema_version` comes from `lib.wire_version.wire_schema_version("instructions.schema.json")`. `tomo/schemas/hashi-instructions.schema.json` is a mirror of Hashi's and is never edited.
+- CON-7 **Kado.** An empty listing can hide a denial. `KadoClient` retries 429 and 503; a run needs about 12 to 14 calls, well below 20 per 5 s.
+
+## Implementation Context
+
+### Required Context Sources
+
+#### Documentation Context
+
+```yaml
+- doc: docs/XDD/ideas/2026-11-02-note-from-template.md
+  relevance: HIGH
+  why: "Owner-approved brainstorm, the handoff contract"
+- doc: docs/XDD/specs/044-note-from-template/requirements.md
+  relevance: HIGH
+  why: "Features F1-F9 and their criteria"
+- doc: docs/XDD/specs/044-note-from-template/research.md
+  relevance: HIGH
+  why: "Evidence for every reuse claim in this design"
+- doc: docs/instructions-json.md
+  relevance: HIGH
+  why: "User-facing description of the instruction set lifecycle"
+- doc: docs/template-syntax.md
+  relevance: MEDIUM
+  why: "User-facing token and Templater rules the outline must respect"
+- doc: evals/README.md
+  relevance: MEDIUM
+  why: "Case layout, no-leak grader, coverage table, RED-proof rule"
+- doc: docs/tomo/dot_claude/skills/inbox-author.md
+  relevance: MEDIUM
+  why: "WHY entries for the write path and stem rule /note shares"
+```
+
+#### Code Context
+
+```yaml
+- file: tomo/scripts/kado-write-file.py
+  relevance: HIGH
+  why: "Exit-code contract (3 + EXISTS:) that note-instructions.py deliver keeps"
+- file: tomo/scripts/lib/kado_client.py
+  relevance: HIGH
+  why: "list_dir, read_note, path_exists, write_note, read_frontmatter, write_frontmatter(mode=merge)"
+- file: tomo/scripts/lib/doc_frontmatter.py
+  relevance: HIGH
+  why: "build_tomo_block (:87), merge_tomo_block_into_markdown (:172)"
+- file: tomo/scripts/lib/render_md.py
+  relevance: HIGH
+  why: "render_instructions_md (:921) for the Markdown peer"
+- file: tomo/scripts/lib/render_withhold.py
+  relevance: HIGH
+  why: "validate_destinations (:280), make_folder_listing (:37), withdraw_unjustified_deletes (:431)"
+- file: tomo/scripts/lib/render_source_actions.py
+  relevance: HIGH
+  why: "Site 3 (:53-99): the move_note + depends_on delete_source precedent"
+- file: tomo/scripts/mark-captured.py
+  relevance: HIGH
+  why: "The read/merge-write pattern (:172-190) the source mark mirrors"
+- file: tomo/scripts/template-doctor.py
+  relevance: HIGH
+  why: "Mode dispatch (:370), _leading_block_lines, _extract_tokens, findings JSON"
+- file: tomo/scripts/token-render.py
+  relevance: HIGH
+  why: "Token regex (:267), fence and Templater segmenting (:270-315)"
+- file: tomo/scripts/vault-config-writer.py
+  relevance: HIGH
+  why: "Subcommand pattern (_run_section_command :212), validators, tests"
+- file: tomo/scripts/read-config-field.py
+  relevance: MEDIUM
+  why: "--fields --format json returns absent keys as omitted"
+- file: tomo/scripts/lib/obsidian_filename.py
+  relevance: MEDIUM
+  why: "sanitize_stem (:36)"
+- file: tomo/scripts/inbox-triage.py
+  relevance: MEDIUM
+  why: "Skips captured and pending-move (:436-455); orphan warning (:1494-1534)"
+- file: tomo/dot_claude/skills/inbox-author/SKILL.md
+  relevance: MEDIUM
+  why: "Unknown-type branch (:44-48) to redirect"
+- file: tomo/dot_claude/commands/hashi-hook.md
+  relevance: MEDIUM
+  why: "Thin command that routes to a skill"
+- file: tomo/schemas/hashi-instructions.schema.json
+  relevance: HIGH
+  why: "move_note and delete_source shapes; additionalProperties false"
+```
+
+#### External APIs
+
+```yaml
+- service: Kado MCP gateway
+  doc: research.md#kado
+  relevance: HIGH
+  why: "All vault reads and inbox writes"
+- service: Tomo Hashi
+  doc: research.md#hashi-and-the-wire
+  relevance: HIGH
+  why: "Applies the instruction set; finds *_instructions.json in the inbox root"
+```
+
+### Implementation Boundaries
+
+- **Must Preserve**: `/inbox` behaviour and every eval-gated file; the Hashi wire; the existing `vault-config-writer.py` subcommands; `inbox-author` for overviews, lists, comparisons, `.base`, `.canvas`, its built-in default and the mapped `default` template; the `kado-write-file.py` contract.
+- **Can Modify**: `template-doctor.py` (new mode), `vault-config-writer.py` (new subcommand), `inbox-author/SKILL.md` step 2 unknown-type branch, user docs.
+- **Must Not Touch**: `tomo/schemas/hashi-instructions.schema.json`, `tomo/dot_claude/settings.json`, the Pass 1 and Pass 2 scripts' behaviour, the owner's live instance `tomo-privat`.
+
+### External Interfaces
+
+#### System Context Diagram
+
+```mermaid
+graph TB
+    User[Owner in the Tomo session] -->|/note, answers, approval| Tomo
+    Tomo[Tomo container: /note skill + scripts]
+    Tomo -->|list, read templates, read source, write inbox| Kado[Kado MCP gateway]
+    Kado --> Vault[(Obsidian vault)]
+    Tomo -->|config/vault-config.yaml, config/note-processes/| Instance[(Instance config)]
+    Tomo -->|tomo-tmp/note/STEM/| Tmp[(Draft state)]
+    Hashi[Tomo Hashi plugin] -->|reads *_instructions.json, moves note, trashes source| Vault
+    User -->|applies the set| Hashi
+```
+
+#### Interface Specifications
+
+```yaml
+inbound:
+  - name: "/note command"
+    type: Claude Code slash command
+    format: "$ARGUMENTS free text; a leading --process selects the process dialogue"
+    authentication: none (local session)
+    data_flow: "Request text or an inbox note path"
+
+outbound:
+  - name: "Kado"
+    type: MCP over HTTP via tomo/scripts/lib/kado_client.py
+    format: JSON
+    authentication: bearer key from the instance
+    data_flow: "List and read templates, read the source, write three inbox files, merge one frontmatter block"
+    criticality: HIGH
+
+data:
+  - name: "vault-config.yaml"
+    type: YAML file in the instance
+    connection: read-config-field.py, vault-config-writer.py
+    data_flow: "templates.base_path, templates.mapping.daily, templates.note_include, concepts.inbox, concepts.atomic_note.path"
+  - name: "config/note-processes/<template-stem>.md"
+    type: Markdown with YAML frontmatter in the instance
+    connection: note-process.py
+    data_flow: "Per-template destination, required points, guidance, offer flag"
+  - name: "tomo-tmp/note/<stem>/"
+    type: files in the instance
+    connection: note-instructions.py (owner), the skill writes draft.md
+    data_flow: "Draft, staged template, staged source, meta.json"
+```
+
+### Cross-Component Boundaries
+
+- **API Contracts**: the Hashi instruction wire (unchanged); the `kado-write-file.py` exit-code contract (reused, unchanged).
+- **Team Ownership**: Tomo owns everything built here. Hashi owns the wire schema and the executor. Kado owns the gateway.
+- **Shared Resources**: the inbox folder (shared with `/inbox`, Pass 2 and Hashi); `vault-config.yaml` (shared with every Tomo command).
+- **Breaking Change Policy**: none expected. An informational handoff to Hashi is optional (PRD Could Have).
+
+### Project Commands
+
+```bash
+Install: ./venv/bin/pip install -r requirements.txt   # existing venv; tests run under ./venv/bin/python
+Test:    ./venv/bin/python -m pytest tests/ -q --deselect tests/ide_bridge/test_configure_ide_bridge.py::test_install_smoke_ide_bridge_block_exists
+Lint:    ./venv/bin/ruff check tomo/scripts tests
+Eval:    scripts/run-evals.sh --keep-temp            # paid; owner's explicit instruction only; run outside the sandbox
+Sync:    ./scripts/update-tomo.sh --instance tomo-instance --yolo   # owner runs it, from main
+```
+
+## Solution Strategy
+
+- **Architecture Pattern:** A thin command, one dialogue skill and four deterministic scripts over two shared library modules. The model holds the conversation and writes the note text; scripts own everything that must be exact: argument parsing, template listing and pattern matching, outlines, draft state, config writes, process files, the instruction set, the write order and the resume comparison.
+- **Integration Approach:** Reuse the Pass 2 building blocks in process (`build_tomo_block`, `merge_tomo_block_into_markdown`, `validate_destinations`, `withdraw_unjustified_deletes`, `render_instructions_md`, `KadoClient`) and the Pass 2 wire shape (move plus dependent delete). Add one writer subcommand and one `template-doctor.py` mode. Redirect one branch of `inbox-author`.
+- **Justification:** The brainstorm chose approach A (model fills, script delivers) because any normal template works without Tomo tokens. Putting the session start and the delivery in scripts follows the repo rule that agents use scripts, never freehand structured output, and makes the order, the resume and the pattern preview testable without a model.
+- **Key Decisions:** ADR-1 to ADR-8 below, all confirmed by the owner on 2026-11-04.
+
+## Building Block View
+
+### Components
+
+```mermaid
+graph LR
+    Cmd[commands/note.md] --> Skill[skills/note-from-template]
+    Skill --> Session[note-session.py]
+    Skill --> Outline[template-outline.py]
+    Skill --> Instr[note-instructions.py]
+    Skill --> Proc[note-process.py]
+    Skill --> Writer[vault-config-writer.py templates-include]
+    Skill --> Doctor[template-doctor.py filled-note]
+    Session --> Syntax[lib/template_syntax.py]
+    Outline --> Syntax
+    Doctor --> Syntax
+    Instr --> Syntax
+    Instr --> Actions[lib/note_actions.py]
+    Proc --> Syntax
+    Session --> Kado[lib/kado_client.py]
+    Outline --> Kado
+    Instr --> Kado
+    Actions --> Withhold[lib/render_withhold.py]
+    Instr --> RenderMd[lib/render_md.py]
+    Instr --> DocFm[lib/doc_frontmatter.py]
+    Author[skills/inbox-author] -.unknown type.-> Cmd
+```
+
+| Component | Owns | PRD |
+|---|---|---|
+| `commands/note.md` | Entry point; routes to the skill with `$ARGUMENTS` | F1-F8 entry |
+| Skill `note-from-template` | The dialogue: pattern proposal, template choice among candidates, filled/open judgement, question rounds, draft text and revisions, process offer signals, report wording | F1-F4, F7 dialogue parts |
+| `note-session.py` | Session start: argument mode, kept drafts, `note_include` presence, template candidates, pattern preview | F1 preview, F2 candidate list, F6 kept-draft listing |
+| `template-outline.py` | Reading one template and returning its points | F3 point list |
+| `note-instructions.py` | Draft lifecycle (`new`, `stage`, `deliver`, `drop`) and the delivery order, collisions, resume, source mark, report data | F4 staging, F5, F6 |
+| `note-process.py` | Process files: `read`, `write`, `decline` | F7 storage |
+| `vault-config-writer.py templates-include` | Writing `templates.note_include` only | F1 save |
+| `template-doctor.py filled-note` | Structure check of a filled note | F3 Templater rule, F5 delivery gate |
+| `lib/template_syntax.py` | Frontmatter block, tokens, Templater spans, headings, filled-note checks | shared parsing |
+| `lib/note_actions.py` | Building and guarding the instruction set | F5 wire |
+| `inbox-author` change | Redirect of the unknown-type branch | F8 |
+| Docs | `docs/usage.md` section, troubleshooting line, `docs/tomo/` mirrors | F9 |
+
+### Directory Map
+
+**Component**: runtime (synced to the instance)
+```
+tomo/
+├── dot_claude/
+│   ├── commands/
+│   │   └── note.md                                # NEW: thin command, routes to the skill
+│   └── skills/
+│       ├── note-from-template/
+│       │   └── SKILL.md                           # NEW: dialogue flow, imperatives only
+│       └── inbox-author/
+│           └── SKILL.md                           # MODIFY: unknown-type branch points to /note; 0.3.0 → 0.4.0
+├── scripts/
+│   ├── note-session.py                            # NEW: start, match
+│   ├── template-outline.py                        # NEW: outline of one template
+│   ├── note-instructions.py                       # NEW: new, stage, deliver, drop
+│   ├── note-process.py                            # NEW: read, write, decline
+│   ├── template-doctor.py                         # MODIFY: filled-note mode; 0.3.0 → 0.4.0
+│   ├── vault-config-writer.py                     # MODIFY: templates-include subcommand; 0.4.0 → 0.5.0
+│   └── lib/
+│       ├── template_syntax.py                     # NEW: shared template and note parsing
+│       └── note_actions.py                        # NEW: instruction set build and guards
+└── schemas/
+    ├── vault-config-templates.schema.json         # NEW: documents templates.note_include
+    └── note-process.schema.json                   # NEW: documents the process file frontmatter
+```
+
+**Component**: documentation and tests (host only)
+```
+docs/
+├── usage.md                                       # MODIFY: /note section, discard steps (F9)
+├── troubleshooting.md                             # MODIFY: template folder needs read access
+└── tomo/
+    ├── dot_claude/commands/note.md                # NEW: WHY
+    ├── dot_claude/skills/note-from-template.md    # NEW: WHY
+    ├── dot_claude/skills/inbox-author.md          # MODIFY: WHY of the redirect
+    └── scripts/
+        ├── note-session.md                        # NEW
+        ├── template-outline.md                    # NEW
+        ├── note-instructions.md                   # NEW
+        ├── note-process.md                        # NEW
+        ├── template-doctor.md                     # NEW: WHY of the filled-note mode (no mirror exists yet)
+        └── vault-config-writer.md                 # MODIFY: WHY of templates-include
+tests/
+├── test_template_syntax.py                        # NEW
+├── test_note_session.py                           # NEW
+├── test_template_outline.py                       # NEW
+├── test_note_instructions.py                      # NEW
+├── test_note_actions.py                           # NEW
+├── test_note_process.py                           # NEW
+├── test-vault-config-writer.py                    # MODIFY: templates-include cases
+├── test_template_doctor.py                        # MODIFY: filled-note mode
+├── test_backup_restore_instance.py                # MODIFY: config/note-processes/ survives
+└── test_inbox_author_pipeline.py                  # MODIFY: redirect of the unknown-type branch
+evals/
+├── _lib/note-stubs.sh                             # NEW: stub kit for the /note scripts
+├── note-draft-before-approval/                    # NEW: one paid case (ADR-8)
+└── README.md                                      # MODIFY: coverage table row, marked not gated
+```
+
+### Interface Specifications
+
+#### Interface Documentation References
+
+```yaml
+interfaces:
+  - name: "Hashi instruction wire"
+    doc: tomo/schemas/hashi-instructions.schema.json
+    relevance: CRITICAL
+    sections: [move_note, delete_source, top-level required]
+    why: "The set /note emits must validate unchanged"
+  - name: "kado-write-file exit contract"
+    doc: tomo/scripts/kado-write-file.py docstring :1-52
+    relevance: HIGH
+    sections: [exit codes, EXISTS line]
+    why: "deliver keeps exit 3 + EXISTS:<vault-path>"
+  - name: "doc frontmatter"
+    doc: tomo/schemas/doc-frontmatter.schema.json
+    relevance: HIGH
+    sections: [rendered-note, source]
+    why: "rendered-note/pending-move and source/captured blocks"
+```
+
+#### Data Storage Changes
+
+```yaml
+File: config/vault-config.yaml (instance)
+  ADD KEY: templates.note_include (list of filename globs, at least one, each a non-empty string)
+  UNCHANGED: templates.base_path, templates.mapping, templates.custom_tokens and every byte outside the note_include lines
+
+Directory: config/note-processes/ (instance, NEW, optional)
+  File: <template-stem>.md
+    frontmatter:
+      destination: vault folder path ending in "/" (optional)
+      required: list of point names (optional)
+      offer: "never" (optional; when present alone the file is a decline marker)
+    body: free guidance text (optional)
+
+Directory: tomo-tmp/note/<stem>/ (instance, transient)
+  template.md   staged template with identity and date tokens pre-filled
+  source.md     staged source body when the source is an inbox note
+  draft.md      the note as the model last wrote it
+  meta.json     see Application Data Models
+```
+
+#### Internal API Changes
+
+All scripts print one JSON object on stdout and nothing else. They exit 0 whenever the output is usable, including "nothing found" (repo rule: an agent-called script exits 0 for usable output). Text in stderr is diagnostics without user content.
+
+```yaml
+Script: note-session.py start
+  Args: --args "<$ARGUMENTS verbatim>"
+  Output:
+    mode: "note" | "process"
+    request: string            # the free text, empty when none
+    process_template: string   # stem after --process, empty when none
+    include_configured: bool
+    note_include: [string]     # empty when not configured
+    kept_drafts: [{stem, title, template, created, failed_step}]
+    candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured
+    folder_listed: int         # .md files the listing returned, before matching
+    listing_error: string      # Kado error text, empty when none
+  Exit: 0 usable; 2 bad invocation
+
+Script: note-session.py match
+  Args: --globs "<g1>,<g2>"
+  Output:
+    matched: [stem], unmatched: [stem], excluded_daily: string, folder_listed: int, listing_error: string
+  Exit: 0; 2 bad invocation or empty glob list
+
+Script: template-outline.py
+  Args: --template <vault path> --stage <stem>   (or --local <file> for tests)
+  Effect: writes tomo-tmp/note/<stem>/template.md with identity and date tokens pre-filled
+  Output:
+    template: string
+    frontmatter: [{key, has_value, line}]
+    headings: [{level, text, line, has_body}]
+    tokens: [{name, line, prefilled}]
+    templater: [{line, text}]
+    frontmatter_ok: bool       # false when the leading fence is missing or unclosed
+  Exit: 0 usable (also when frontmatter_ok is false); 1 template unreadable; 2 bad invocation
+
+Script: note-instructions.py new
+  Args: --template <vault path> [--source <inbox note path>]
+  Effect: draws the stem and run id, creates tomo-tmp/note/<stem>/, stages source.md, writes meta.json
+  Output: {stem, run_id, default_destination, inbox}
+  Exit: 0; 1 Kado error reading the source; 2 bad invocation
+
+Script: note-instructions.py stage
+  Args: --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
+  Effect: updates meta.json; runs the filled-note checks on draft.md
+  Output: {stem, title, inbox_file, destination_file, keep_source, check: {ok, findings[]}}
+  Exit: 0 (findings reported in output); 2 bad invocation or unknown stem
+
+Script: note-instructions.py deliver
+  Args: --stem <stem>
+  Effect: the ordered delivery in Complex Logic
+  Output:
+    status: "delivered" | "exists" | "failed" | "withdrawn"
+    step: "note" | "instructions_json" | "instructions_md" | "source_mark" | ""
+    note_path, instructions_json, instructions_md: string
+    source_marked: bool
+    exists_path: string        # set when status is exists
+  Stdout first line on a collision: EXISTS:<vault-path>
+  Exit: 0 delivered; 1 Kado or guard failure; 2 bad invocation; 3 name taken
+
+Script: note-instructions.py drop
+  Args: --stem <stem>
+  Effect: removes tomo-tmp/note/<stem>/
+  Output: {stem, removed: bool}
+  Exit: 0
+
+Script: note-process.py read | write | decline
+  read:    --template <stem> → {exists, declined, destination, required, guidance, error}
+  write:   --template <stem> --outline <outline.json> [--destination] [--required a,b] [--guidance-file f] → {written, rejected_required[]}
+  decline: --template <stem> → {written}
+  Exit: 0 usable (a broken file reads as {exists: true, error: "..."}); 1 write rejected; 2 bad invocation
+
+Subcommand: vault-config-writer.py templates-include
+  Args: --input <json file: {"note_include": [..]}> [--config config/vault-config.yaml] [--stdout]
+  Exit: 0 written; 1 invalid input or result YAML; 2 I/O or arg error
+
+Mode: template-doctor.py filled-note
+  Args: filled-note --note <file>
+  Output: {mode: "filled-note", note, ok, findings[{check, status, detail, fix}]}
+  Checks: leading fence present and closed; no user-authored tomo: key; no "<%" left; no "{{token}}" left outside fences
+  Exit: 0 no FAIL; 1 FAIL or file missing; 2 bad invocation
+```
+
+#### Application Data Models
+
+```pseudocode
+ENTITY: NoteDraftMeta (NEW) — tomo-tmp/note/<stem>/meta.json, owned by note-instructions.py
+  FIELDS:
+    stem: string              # "YYYY-MM-DD_HHMMSS", drawn from the clock by the script
+    run_id: string            # from lib/run_id.generate()
+    created: ISO string
+    template: string          # vault path
+    template_stem: string
+    source_path: string|null  # inbox note path, null for text-in-call
+    title: string
+    inbox_file: string        # "<inbox>/<stem>_<sanitize_stem(title)>.md"
+    destination: string       # folder; default concepts.atomic_note.path or the process file's
+    default_destination: string
+    keep_source: bool         # default false
+    steps_done: [string]      # subset of note, instructions_json, instructions_md, source_mark
+    failed_step: string       # empty when none
+  BEHAVIORS:
+    destination_file(): destination + sanitize_stem(title) + ".md"
+    instructions_stem(): stem + "_instructions"
+
+ENTITY: TemplateOutline (NEW) — output of template-outline.py, not stored
+  FIELDS: see Internal API Changes
+  RULE: a point is a heading, a frontmatter key or a token with prefilled false
+
+ENTITY: ProcessFile (NEW) — config/note-processes/<template-stem>.md
+  FIELDS: destination?, required?, offer?, body (guidance)
+  RULE: offer "never" with no other field is a decline marker; read() reports declined true and no process
+
+ENTITY: NoteInstructionSet (NEW producer, existing wire)
+  FIELDS:
+    schema_version: wire_schema_version("instructions.schema.json")
+    type: "tomo-instructions"
+    generated: ISO string
+    profile: from vault-config
+    md_peer: instructions_stem()
+    actions:
+      - {id: "I01", action: "move_note", source: inbox_file, destination: destination_file(),
+         title, rendered_file: basename(inbox_file), source_inbox_item: source_path}
+      - {id: "I02", action: "delete_source", source_path, reason: "Replaced by a /note note",
+         depends_on: ["I01"]}            # only when source_path and not keep_source
+```
+
+#### Integration Points
+
+```yaml
+- from: note-from-template skill
+  to: scripts
+  protocol: Bash "python3 scripts/<name>.py ..." with JSON on stdout
+  data_flow: "Arguments in; JSON out; draft.md written by the skill with the Write tool"
+
+- from: note-instructions.py / note-session.py / template-outline.py
+  to: Kado
+  protocol: lib/kado_client.KadoClient in process
+  endpoints: list_dir, read_note, path_exists, write_note, read_frontmatter, write_frontmatter(mode=merge)
+  data_flow: "Template listing and bodies, source body, three inbox writes, one frontmatter merge"
+
+Hashi:
+  - doc: research.md#hashi-and-the-wire
+  - integration: "Finds <stem>_instructions.json flat in the inbox, applies move_note, then delete_source after I01 applied"
+  - critical_data: [move_note.source, move_note.destination, delete_source.source_path, depends_on]
+```
+
+### Implementation Examples
+
+#### Example: Delivery order with resume
+
+**Why this example**: the order, the collision handling and the resume comparison are the parts a reviewer must be able to check against the PRD without a model.
+
+```python
+# Guidance only. note-instructions.py deliver, in process.
+STEPS = ["note", "instructions_json", "instructions_md", "source_mark"]
+
+def deliver(meta, client):
+    note_text = stamp_rendered_note(read(draft), meta.run_id)   # build_tomo_block("rendered-note","pending-move",run_id)
+    actions = build_note_actions(meta)                          # lib/note_actions
+    kept, clashes = validate_destinations(actions, make_folder_listing(client))
+    kept, withdrawn = withdraw_unjustified_deletes(kept)
+    if clashes:  return exists(meta, clashes[0].destination)    # destination taken → rename or abort
+    if dropped(actions, kept): return withdrawn_status(meta)    # never deliver a set the guards cut
+    payloads = {"note": note_text,
+                "instructions_json": dump(wire(meta, kept)),
+                "instructions_md": render_instructions_md(kept, {"generated": ..., "run_id": meta.run_id}, {})}
+    for step in STEPS[:3]:
+        if step in meta.steps_done: continue
+        path = target(meta, step)
+        if client.path_exists(path):
+            if same_content(client, path, payloads[step]):      # resume: identical counts as done
+                mark_done(meta, step); continue
+            return exists(meta, path)                           # exit 3, "EXISTS:<path>" first line
+        try: client.write_note(path, payloads[step]) if path.endswith(".md") else client.write_file(path, payloads[step])
+        except KadoError: return failed(meta, step)             # later steps never run
+        mark_done(meta, step)
+    if meta.source_path and "source_mark" not in meta.steps_done:
+        fm = client.read_frontmatter(meta.source_path)
+        client.write_frontmatter(meta.source_path, {"tomo": build_tomo_block("source", "captured", meta.run_id)},
+                                 mode="merge", expected_modified=fm.modified)
+        mark_done(meta, "source_mark")
+    remove_stage_dir(meta)                                      # success leaves no draft
+    return delivered(meta)
+```
+
+Traced walkthrough, source `100 Inbox/Meeting raw.md`, title "Design review", stem `2026-11-04_173005`:
+
+| Run | State before | Step results | Output |
+|---|---|---|---|
+| 1 | nothing in the inbox | note written, JSON write raises Kado 503 after retries | `failed`, step `instructions_json`; `steps_done=[note]`; source untouched |
+| 2 (resume) | note present, identical | note: exists + identical → done; JSON, MD written; source merged | `delivered`, `source_marked: true`; stage dir removed |
+| 2' (resume, user edited the note in Obsidian meanwhile) | note present, different | note: exists + different | exit 3, `EXISTS:100 Inbox/2026-11-04_173005_Design review.md` → skill offers rename or abort |
+| 1' | `Atlas/Meetings/Design review.md` exists | `validate_destinations` clash before any write | exit 3, `EXISTS:Atlas/Meetings/Design review.md`; nothing written |
+
+#### Example: Pattern preview on a first run
+
+**Why this example**: the owner's own scheme must come out right, and the daily exclusion must hold even when a glob matches it.
+
+Template folder `Templates/` lists `t_meeting.md`, `t_problem.md`, `t_day_privat.md`, `i_alias.md`, `a_archive.md`; `templates.mapping.daily = t_day_privat`.
+
+| Proposed globs | matched | unmatched | excluded_daily |
+|---|---|---|---|
+| `t_*` | t_meeting, t_problem | i_alias, a_archive | t_day_privat |
+| `t_meeting`, `t_problem` | t_meeting, t_problem | i_alias, a_archive | t_day_privat |
+| `*` | t_meeting, t_problem, i_alias, a_archive | — | t_day_privat |
+
+Globs match the basename without `.md`, case-sensitively (`fnmatch.fnmatchcase`).
+
+#### Test Examples as Interface Documentation
+
+```python
+def test_deliver_resume_identical_note_counts_as_done(fake_kado, staged_meta):
+    fake_kado.files[staged_meta.inbox_file] = stamped(staged_meta)   # note landed in run 1
+    out = run_deliver(staged_meta.stem)
+    assert out["status"] == "delivered"
+    assert fake_kado.writes == [instr_json(staged_meta), instr_md(staged_meta)]   # no rewrite of the note
+    assert fake_kado.frontmatter_merges == [(staged_meta.source_path, "captured")]
+
+def test_deliver_never_overwrites_different_note(fake_kado, staged_meta):
+    fake_kado.files[staged_meta.inbox_file] = "other text"
+    proc = run_deliver_proc(staged_meta.stem)
+    assert proc.returncode == 3 and proc.stdout.splitlines()[0] == f"EXISTS:{staged_meta.inbox_file}"
+    assert fake_kado.files[staged_meta.inbox_file] == "other text"
+    assert fake_kado.frontmatter_merges == []
+```
+
+## Runtime View
+
+### Primary Flow
+
+#### Primary Flow: `/note` from an inbox note
+
+1. User runs `/note meeting notes from 100 Inbox/Meeting raw.md`.
+2. Skill runs `note-session.py start`. A kept draft is offered first. With no `note_include`, the first-run setup runs.
+3. Skill picks among `candidates` (asks when several fit) and runs `note-instructions.py new --template ... --source ...`, then `template-outline.py --template ... --stage <stem>`.
+4. Skill reads `template.md`, `source.md` and the process file (`note-process.py read`), prints which points the material covers, and asks open points in at most two rounds, then required points again.
+5. Skill writes `draft.md`, runs `note-instructions.py stage`, and prints the header line and the full draft.
+6. User revises in dialogue; each revision rewrites `draft.md`, reruns `stage` and reprints.
+7. On approval the skill runs `note-instructions.py deliver` and prints the report from its output.
+8. When the session showed an offer signal and the template has no process file, the skill asks save, not now or never.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Skill as note-from-template
+    participant S as note-session.py
+    participant O as template-outline.py
+    participant N as note-instructions.py
+    participant P as note-process.py
+    participant K as Kado
+    User->>Skill: /note ...
+    Skill->>S: start --args
+    S->>K: list templates.base_path
+    S-->>Skill: candidates, kept_drafts, include_configured
+    Skill->>N: new --template --source
+    N->>K: read source
+    Skill->>O: --template --stage
+    O->>K: read template
+    O-->>Skill: outline
+    Skill->>P: read --template
+    Skill->>User: covered points, questions (≤2 rounds)
+    User-->>Skill: answers
+    Skill->>N: stage --stem
+    Skill->>User: header + full draft
+    User-->>Skill: approve
+    Skill->>N: deliver --stem
+    N->>K: guards, 3 writes, frontmatter merge
+    N-->>Skill: delivered, paths
+    Skill->>User: report; process offer if signalled
+```
+
+### Error Handling
+
+- **Template folder empty or unreadable** (`folder_listed == 0`): the skill says the folder is empty or not readable by the Kado key and stops; it never says that no template exists. A `listing_error` is shown verbatim.
+- **No candidate fits**: the skill offers adjust patterns, `inbox-author`, abort.
+- **Template unreadable** (`template-outline.py` exit 1): the skill names the template, offers another candidate or abort.
+- **Template without frontmatter** (`frontmatter_ok: false`): the skill drafts with a frontmatter block anyway; `stage` reports the filled-note result.
+- **Broken process file** (`error` set): one line saying it is ignored and why; continue with the template alone.
+- **Required point missing from the template**: one line naming it; continue without it.
+- **Filled-note check fails at `stage`**: the skill fixes the draft and reruns `stage`; delivery never runs on a failing check.
+- **Name taken** (exit 3): the skill offers rename (new title, rerun `stage`, `deliver`) or abort; never overwrite.
+- **Guard withdrew an action** (`withdrawn`): the skill reports it and offers rename or abort; nothing is written.
+- **Kado error during delivery** (exit 1): the skill reports the failed step; the draft stays; the next `/note` offers resume.
+- **Source changed between read and mark** (concurrency error on the merge): reported as a failed `source_mark`; resume retries it.
+- **Abort at any question**: the skill runs `note-instructions.py drop` when a stem exists and confirms in one line; a confirmed `note_include` stays saved.
+
+### Complex Logic
+
+```
+ALGORITHM: note-session.py start
+INPUT: $ARGUMENTS
+1. PARSE: first token "--process" → mode process, next token = template stem; else mode note, request = whole text
+2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step}
+3. CONFIG: read-config-field --fields templates.note_include,templates.base_path,templates.mapping.daily,concepts.inbox --format json
+4. IF note_include absent → include_configured false, candidates []
+5. ELSE LIST: kado list_dir(base_path), .md only → folder_listed; filter by fnmatchcase(basename-stem, any glob); drop mapping.daily
+6. RESPOND JSON
+
+ALGORITHM: question budget (skill)
+1. open = outline points not filled by material or prefilled
+2. round 1: up to 4 of open, process guidance decides order; required points first
+3. round 2: up to 4 of the remaining open plus gaps opened by answers
+4. required still unanswered → ask each again with no skip option; answer or abort
+5. remaining optional open → named in the "Skipped, left empty:" line above the draft
+```
+
+## Deployment View
+
+No change to deployment. `update-tomo.sh` picks up the new command, skill, scripts, libraries and schemas by glob once each carries `# version:` (`scripts/update-tomo.sh:386-411,449-459`). `config/note-processes/` is user-owned: backup, restore and update never remove it, and no seed is added. The owner syncs `tomo-instance` from `main` and restarts the Claude session in the container after the sync.
+
+## Cross-Cutting Concepts
+
+### Pattern Documentation
+
+```yaml
+- pattern: "Thin command routes to a skill (commands/hashi-hook.md)"
+  relevance: HIGH
+  why: "/note needs AskUserQuestion, so it runs in the main session, never as a dispatched subagent"
+- pattern: "Agents use scripts, never freehand structured output"
+  relevance: CRITICAL
+  why: "Config, process files, the instruction set and the tomo block are written only by scripts"
+- pattern: "Print findings before every question (vault-explorer 0.18.0 STRICT)"
+  relevance: HIGH
+  why: "Pattern preview, candidates, covered points and the draft are text before the question"
+- pattern: "Pass 2 move + dependent delete (render_source_actions.py site 3)"
+  relevance: HIGH
+  why: "Same wire shape, same Hashi ordering"
+- pattern: "Clock-drawn stems (suggest-handling 0.14.2)"
+  relevance: MEDIUM
+  why: "The stem comes from the script's clock, never from the model"
+```
+
+### User Interface & UX
+
+**Information Architecture:**
+- One command, two modes: `/note <request>` and `/note --process <template>`.
+- A kept draft is always handled first, before the new request.
+
+**Interaction Design:**
+- Draft header, one block of plain lines above the fenced note:
+  ```
+  Template: t_meeting · File: 2026-11-04_173005_Design review.md · Destination: Atlas/Meetings/
+  Skipped, left empty: Next steps
+  Source 100 Inbox/Meeting raw.md is deleted when you apply the instruction set in Hashi.
+  ```
+- Approval question options: Deliver / Change something / Abort.
+- Process offer options: Save / Not now / Never for this template.
+- Name-taken options: Rename / Abort.
+- Delivery report: note path, instruction set paths, source marked or not, and "Next: review and apply the instruction set in Hashi."
+
+**State diagram of one session:**
+```mermaid
+stateDiagram-v2
+    [*] --> Start
+    Start --> Resume: kept draft
+    Start --> Setup: no note_include
+    Start --> Choose: configured
+    Setup --> Choose: confirmed
+    Choose --> Ask
+    Ask --> Draft
+    Draft --> Draft: change
+    Draft --> Deliver: approve
+    Deliver --> Report: delivered
+    Deliver --> Rename: name taken
+    Rename --> Deliver
+    Deliver --> Kept: failed
+    Report --> Offer: signal and no process
+    Offer --> [*]
+    Report --> [*]
+    Ask --> Dropped: abort
+    Draft --> Dropped: abort
+    Resume --> Deliver: resume
+    Resume --> Start: drop
+    Kept --> [*]
+    Dropped --> [*]
+```
+
+### System-Wide Patterns
+
+- Security: no new Kado permission; read access to `templates.base_path` is documented as a prerequisite. No write outside the inbox.
+- Error Handling: scripts exit 0 with usable JSON, 3 for a taken name, 1 for a failure the skill must report; the skill never retries a failed step on its own within the session.
+- Performance: about 12 to 14 Kado calls per run; `KadoClient` retry covers bursts.
+- i18n: questions follow the language of the call; the note keeps the template's headings.
+- Logging: metadata only (CON-3); `deliver` prints paths and step names.
+
+## Architecture Decisions
+
+- [x] ADR-1 Approach A: the model fills the template, scripts check and deliver.
+  - Rationale: any normal template works; a Pass 2 route would need a Tomo token per section.
+  - Trade-offs: note text quality is the model's; scripts check structure, not content.
+  - User confirmed: 2026-11-02 (brainstorm), recorded 2026-11-04
+- [x] ADR-2 One delivery script: `note-instructions.py deliver` writes the note, the JSON and the MD and marks the source in one process, with the `kado-write-file.py` exit contract and the same `KadoClient`.
+  - Rationale: order, collision handling and the resume comparison become deterministic and testable; three separate calls would leave them to the model.
+  - Trade-offs: a second implementation of the no-overwrite probe beside `kado-write-file.py`; both rest on `KadoClient.path_exists`.
+  - User confirmed: 2026-11-04
+- [x] ADR-3 Mark the source by a direct frontmatter merge, mirroring `mark-captured.py:172-190`, not by calling `mark-captured.py`.
+  - Rationale: `mark-captured.py` needs a state file and a run-id filter; one path needs neither.
+  - Trade-offs: the pattern exists twice; a test pins both to `build_tomo_block("source","captured",run_id)` with `mode="merge"`.
+  - User confirmed: 2026-11-04
+- [x] ADR-4 Shared module `lib/template_syntax.py` for frontmatter blocks, tokens, Templater spans, headings and the filled-note checks, used by `template-outline.py`, `template-doctor.py filled-note`, `note-session.py`, `note-process.py` and `note-instructions.py`.
+  - Rationale: hyphenated scripts cannot be imported; one parser means outline points and the filled-note check agree.
+  - Trade-offs: `template-doctor.py` and `token-render.py` keep their own copies until a later refactor; a parity test covers the token regex.
+  - User confirmed: 2026-11-04
+- [x] ADR-5 New writer subcommand `templates-include` that inserts or replaces only the `note_include` lines inside `templates:`, with a hand-written validator and a `yaml.safe_load` check before writing.
+  - Rationale: the existing helper replaces whole top-level blocks and would drop the `mapping` comments.
+  - Trade-offs: a second text-editing helper in the writer; byte-identity tests guard everything outside the key.
+  - User confirmed: 2026-11-04
+- [x] ADR-6 Session start in a script: `note-session.py` parses `$ARGUMENTS`, lists kept drafts, checks `note_include`, lists candidates with the daily exclusion and previews proposed globs.
+  - Rationale: the `/inbox` pattern (script argparse) is deterministic; prose branching on a flag depends on the model.
+  - Trade-offs: one more script and its tests.
+  - User confirmed: 2026-11-04
+- [x] ADR-7 Draft state per draft in `tomo-tmp/note/<stem>/` (`template.md`, `source.md`, `draft.md`, `meta.json`), owned by `note-instructions.py`.
+  - Rationale: resume needs the stem, the title, the destination, the source and the steps done; a per-stem directory keeps parallel drafts apart and `reset-tomo-tmp.sh` never touches it.
+  - Trade-offs: `/inbox` resets do not clean it; `drop` and a successful `deliver` must.
+  - User confirmed: 2026-11-04
+- [x] ADR-8 One paid eval case with a new stub kit; `/note` is not added to the CLAUDE.md eval gate.
+  - Rationale: one recorded run proves the model prints the draft before asking and delivers only after approval; gating every later edit would cost a paid run each time.
+  - Trade-offs: later edits to the skill have no automatic model check.
+  - User confirmed: 2026-11-04
+
+## Quality Requirements
+
+- Performance: at most 16 Kado calls in a run without a collision or resume; the scripted parts of a run take under 10 s on `tomo-instance` excluding model time.
+- Usability: at most two optional question rounds of four; the draft and every list are printed before the question that refers to them.
+- Security: no new Kado permission; zero writes outside the inbox; zero user text in script output, checked by a test that runs every script on a fixture with a marker string and asserts the marker never appears in stdout or stderr.
+- Reliability: 100 % of delivered instruction sets validate against `hashi-instructions.schema.json` with `jsonschema` in tests; zero overwrites in the collision and resume tests; the abort and success paths leave no stage directory.
+
+## Acceptance Criteria
+
+**F1 Template selection setup**
+- [ ] WHEN `start` reports `include_configured: false`, THE SYSTEM SHALL print proposed globs with `match` output (matched, unmatched, excluded daily) before asking (F1-AC1)
+- [ ] WHEN the user corrects globs, THE SYSTEM SHALL rerun `match` and reprint before asking again, and write nothing until confirmed (F1-AC2)
+- [ ] WHEN the user confirms, THE SYSTEM SHALL write via `templates-include` only, leaving every other byte of `vault-config.yaml` unchanged, and continue the request (F1-AC3)
+- [ ] IF the user aborts the setup, THEN THE SYSTEM SHALL write no setting and nothing to the vault (F1-AC4)
+- [ ] WHILE `templates.note_include` is absent, THE SYSTEM SHALL keep `/tomo-setup` and `read-config-field.py` working unchanged (F1-AC5)
+- [ ] THE SYSTEM SHALL exclude `templates.mapping.daily` from `candidates` and `matched` whatever the globs (F1-AC6)
+
+**F2 Choosing the template**
+- [ ] WHEN `candidates` holds one fitting template, THE SYSTEM SHALL name it and continue (F2-AC1)
+- [ ] WHEN several fit, THE SYSTEM SHALL print them and ask (F2-AC2)
+- [ ] IF `folder_listed > 0` and none fits, THEN THE SYSTEM SHALL offer adjust patterns, `inbox-author`, abort (F2-AC3)
+- [ ] IF `folder_listed == 0`, THEN THE SYSTEM SHALL say the folder is empty or not readable by the Kado key (F2-AC4)
+
+**F3 Checklist and questions**
+- [ ] THE SYSTEM SHALL list every heading, frontmatter key and non-prefilled token as a point in `template-outline.py` output (F3-AC1)
+- [ ] WHEN open points exist, THE SYSTEM SHALL ask at most four per round and at most two rounds before the draft (F3-AC2)
+- [ ] WHEN no point is open, THE SYSTEM SHALL show the draft without a question (F3-AC3)
+- [ ] WHEN an optional point is skipped, THE SYSTEM SHALL keep its heading empty and name it in the skipped line (F3-AC4)
+- [ ] IF a required point is unanswered after the rounds, THEN THE SYSTEM SHALL ask it again with no skip option (F3-AC5)
+- [ ] THE SYSTEM SHALL accept any non-empty answer for a required point (F3-AC6)
+- [ ] THE SYSTEM SHALL never execute Templater code, and `filled-note` SHALL fail on any remaining `<%` (F3-AC7)
+- [ ] THE SYSTEM SHALL ask in the language of the call and keep the template's headings (F3-AC8)
+
+**F4 Draft and revision**
+- [ ] WHEN the draft is shown, THE SYSTEM SHALL print the header (template, file, destination, skipped, source deletion) and the full note (F4-AC1)
+- [ ] WHEN the user asks for a change, THE SYSTEM SHALL rewrite `draft.md`, rerun `stage` and reprint the full draft (F4-AC2)
+- [ ] WHEN the user changes title, destination or keep-source, THE SYSTEM SHALL record it via `stage` and deliver accordingly (F4-AC3)
+- [ ] WHEN the user approves, THE SYSTEM SHALL run `deliver`; WHEN the user aborts, THE SYSTEM SHALL run `drop` (F4-AC4)
+
+**F5 Delivery**
+- [ ] WHEN `deliver` runs, THE SYSTEM SHALL write the note stamped `rendered-note`/`pending-move`, then `<stem>_instructions.json`, then `<stem>_instructions.md`, flat in the inbox (F5-AC1)
+- [ ] IF a source is set and not kept, THEN THE SYSTEM SHALL add `delete_source` with `depends_on: ["I01"]` (F5-AC2)
+- [ ] THE SYSTEM SHALL emit a set that validates against `hashi-instructions.schema.json` and a peer stamped `doc_type: instructions` (F5-AC3)
+- [ ] IF a step fails, THEN THE SYSTEM SHALL run no later step (F5-AC4)
+- [ ] WHEN all three writes succeeded, THE SYSTEM SHALL merge `source`/`captured` into the source, and triage SHALL count neither file as new (F5-AC5)
+- [ ] IF a target in the inbox or at the destination exists with other content, THEN THE SYSTEM SHALL exit 3 with `EXISTS:<path>`, write nothing more, and the skill SHALL offer rename or abort (F5-AC6)
+- [ ] WHEN delivered, THE SYSTEM SHALL report note path, set paths, source mark and the Hashi next step (F5-AC7)
+- [ ] THE SYSTEM SHALL print no user text from any script (F5-AC8)
+
+**F6 Interruption and abort**
+- [ ] WHEN a step fails, THE SYSTEM SHALL keep the stage directory with `failed_step`, leave the source unmarked and report the step (F6-AC1)
+- [ ] WHEN `start` finds kept drafts, THE SYSTEM SHALL offer resume or drop for each by title, template and time before the request (F6-AC2)
+- [ ] WHEN resuming, THE SYSTEM SHALL treat an identical target as done and a different one as name taken (F6-AC3)
+- [ ] WHEN dropping, THE SYSTEM SHALL remove the stage directory and write nothing (F6-AC4)
+- [ ] IF the user aborts, THEN THE SYSTEM SHALL remove the stage directory and leave the vault and source untouched; a confirmed `note_include` stays (F6-AC5)
+- [ ] WHEN `deliver` succeeds, THE SYSTEM SHALL remove the stage directory (F6-AC6)
+
+**F7 Process files**
+- [ ] WHEN a process file names a destination, THE SYSTEM SHALL use it as `default_destination`; otherwise `concepts.atomic_note.path` (F7-AC1)
+- [ ] WHEN a process file lists required points, THE SYSTEM SHALL apply F3 required rules to them (F7-AC2)
+- [ ] WHEN a process file has guidance, THE SYSTEM SHALL order and weight questions by it (F7-AC3)
+- [ ] IF `read` reports an error, THEN THE SYSTEM SHALL say so in one line and continue with the template alone (F7-AC4)
+- [ ] IF a required point is not in the outline, THEN THE SYSTEM SHALL say so and continue without it (F7-AC5)
+- [ ] WHEN a delivery ends with a signal (destination differs from default, a re-asked skipped point was answered, or a question order was requested) and `read` reports no process and not declined, THE SYSTEM SHALL ask save, not now or never once (F7-AC6)
+- [ ] IF there is no signal or a process file or decline marker exists, THEN THE SYSTEM SHALL not ask (F7-AC7)
+- [ ] WHEN "save", THE SYSTEM SHALL write via `note-process.py write`, which rejects required points absent from the outline; WHEN "not now", nothing (F7-AC8)
+- [ ] WHEN "never", THE SYSTEM SHALL write a decline marker via `decline`, and later `read` SHALL report declined (F7-AC9)
+- [ ] WHEN `/note --process <template>` runs, THE SYSTEM SHALL show current values, ask destination, required points from the outline and guidance, and write, replacing a decline marker (F7-AC10)
+- [ ] IF the template stem is unknown, THEN THE SYSTEM SHALL say so and write nothing (F7-AC11)
+- [ ] THE SYSTEM SHALL keep `config/note-processes/` through backup, restore and `update-tomo.sh` (F7-AC12)
+
+**F8 One path per request**
+- [ ] WHEN `inbox-author` receives an unmapped type, THE SYSTEM SHALL point to `/note` and not search the template folder (F8-AC1)
+- [ ] WHEN `inbox-author` receives an overview, list, comparison, `.base` or `.canvas`, THE SYSTEM SHALL behave as in 0.3.0 (F8-AC2)
+
+**F9 Documented discard**
+- [ ] THE SYSTEM SHALL document the two deletions and `/inbox --recover` in `docs/usage.md` (F9-AC1)
+- [ ] WHEN `/inbox --recover` runs on a `/note`-marked source, THE SYSTEM SHALL treat it as fresh (F9-AC2)
+
+## Risks and Technical Debt
+
+### Known Technical Issues
+
+- Whether the owner's Kado key reads `templates.base_path` is unverified (`docs/troubleshooting.md:44` is the only statement). Plan task 1 checks it with `inbox-author`'s unknown-type branch on `tomo-instance` before the redirect lands.
+- `write_frontmatter(mode="merge")` deep-merging the `tomo` key and keeping the user's other keys is taken from docstrings (`mark-captured.py:7-9`), not from Kado code. The source-mark test asserts the call shape; the live run confirms the effect.
+- `AskUserQuestion` cannot be answered inside a plugin eval run, so the paid case covers material that fills every point (zero questions) and grades that the draft is printed before the approval question and that `deliver` never runs before approval.
+
+### Technical Debt
+
+- Token and frontmatter parsing exists in `template-doctor.py`, `token-render.py` and now `lib/template_syntax.py`. ADR-4 accepts this; a later refactor can move the older scripts onto the library.
+- The no-overwrite probe exists in `kado-write-file.py` and `note-instructions.py` (ADR-2).
+
+### Implementation Gotchas
+
+- `validate-json.py` only parses JSON; it does not check a schema. Wire validity is proven by a `jsonschema` test against `hashi-instructions.schema.json`.
+- `move_note` has `additionalProperties: false`: never copy `audio_peer` or other Pass 2 fields into it.
+- `delete_source.depends_on` is required; an absent key is rejected and `[]` would mean "no partner".
+- `validate_destinations` and `withdraw_unjustified_deletes` drop actions silently; `deliver` must compare input and output and refuse to write a cut set.
+- `render_instructions_md` stamps `doc_type: instructions` only when `metadata["run_id"]` is set; without it triage raises the orphan warning (`inbox-triage.py:1512-1521`). `metadata["generated"]` is required.
+- `merge_tomo_block_into_markdown` raises on a missing leading fence; `stage` must report `frontmatter_ok` false so the skill writes a fence.
+- Hashi finds sets only flat in the inbox root and by the `_instructions.json` suffix.
+- `read-config-field.py --field` exits 1 on a missing key without `--default`; use `--fields ... --format json`.
+- A file named `inbox-state.jsonl` is guarded by a hook; nothing here writes one.
+- The stem has seconds (`YYYY-MM-DD_HHMMSS`) and comes from the script's clock. Pass 2 uses `YYYY-MM-DD_HHMM`; both end in `_instructions.json`.
+- Kado reads return the note text; the identical-content comparison normalises only a trailing newline.
+- Every new script and the changed ones need `# version:` headers, and every runtime file a `docs/tomo/` mirror written before the runtime text.
+- Restart the Claude session in the container after syncing, or the new skill and command are not loaded.
+
+## Glossary
+
+### Domain Terms
+
+| Term | Definition | Context |
+|------|------------|---------|
+| Note kind | A kind of note defined by a vault template, such as Meeting Notes | What `/note` produces |
+| Point | A heading, frontmatter field or fill-in token of a template | The unit Tomo checks and asks for |
+| Required point | A point a process file says may not stay empty | F3, F7 |
+| Process file | Optional per-template settings in `config/note-processes/` | F7 |
+| Decline marker | A process file holding only `offer: never` | F7-AC9 |
+| Kept draft | A draft whose delivery failed, kept for resume | F6 |
+| Source | The inbox note the material came from, if any | F5 |
+
+### Technical Terms
+
+| Term | Definition | Context |
+|------|------------|---------|
+| Stem | `YYYY-MM-DD_HHMMSS`, drawn by the script | Names the stage dir, the inbox note prefix and the instruction set |
+| Stage directory | `tomo-tmp/note/<stem>/` | ADR-7 |
+| Prefilled token | A Tomo token whose value comes from the clock or an id generator | Excluded from points |
+| `pending-move` | `tomo.state` of a rendered note waiting for Hashi's move | F5 |
+| `captured` | `tomo.state` of a source that has been turned into a note | F5, triage |
+
+### API/Interface Terms
+
+| Term | Definition | Context |
+|------|------------|---------|
+| `move_note` | Hashi action: rename inbox file to destination, strip the `tomo:` block | The note's filing |
+| `delete_source` | Hashi action: trash `source_path` after `depends_on` applied | The source's end |
+| `EXISTS:<path>` | First stdout line of a taken-name exit 3 | Shared with `kado-write-file.py` |

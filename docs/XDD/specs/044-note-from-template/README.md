@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-04 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Model tier** | {{MODEL_TIER}} |
 | **Last Updated** | 2026-11-04 |
@@ -14,8 +14,8 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | v1.0 draft: 9 features, 52 criteria; awaiting owner review |
-| solution.md | pending | |
+| requirements.md | completed | v1.0: 9 features, 52 criteria; approved by the owner 2026-11-04 |
+| solution.md | in_progress | v1.0 draft: 12 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); awaiting owner review |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -35,6 +35,8 @@
 | 2026-11-04 | A taken name offers rename or abort, never overwrite | Owner choice; stems carry seconds, so a collision is almost always different content |
 | 2026-11-04 | An inbox-note source is deleted by default through a paired `delete_source`; the draft header says so and the user can keep the source in the dialogue | Owner choice; same default as Pass 2 |
 | 2026-11-04 | Any non-empty answer satisfies a required point; questions follow the language of the call, the note keeps the template's headings | Decided by Claude, reported to the owner |
+| 2026-11-04 | PRD approved, phase moves to SDD | Owner approval |
+| 2026-11-04 | ADR-1 to ADR-8 confirmed: approach A; one delivery script; direct source merge; lib/template_syntax.py; writer subcommand templates-include; session start in note-session.py; stage dir per stem; one paid eval case, not gated | Owner confirmation; validate-json.py found to be parse-only, so wire validity is a jsonschema test |
 
 ## Context
 

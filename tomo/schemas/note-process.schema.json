@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/note-process.schema.json",
+  "title": "Note Process File Frontmatter",
+  "description": "Frontmatter of config/note-processes/<template-stem>.md — instance-local, user-owned settings for /note on one template. The file body is free guidance text. A file whose frontmatter holds only offer: never and whose body is empty is a decline marker. Documentation only: lib/note_process.py validates these fields itself.",
+  "type": "object",
+  "properties": {
+    "destination": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "/$",
+      "description": "Vault folder the note moves to by default, ending in '/'. Overrides concepts.atomic_note.path for this template."
+    },
+    "required": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "description": "Point names (headings, frontmatter keys or open tokens of the template outline) that may not stay empty."
+    },
+    "offer": {
+      "const": "never",
+      "description": "When present alone, the user declined saving a process for this template; /note does not offer again."
+    }
+  }
+}

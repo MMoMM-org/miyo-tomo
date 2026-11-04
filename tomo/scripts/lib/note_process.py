@@ -1,0 +1,167 @@
+# note_process.py — process files of /note: read, write, decline, required points.
+# version: 0.1.0
+"""Own ``config/note-processes/<template-stem>.md``.
+
+A process file carries optional YAML frontmatter (``destination`` ending in
+"/", ``required`` list of point names, ``offer: never``) and a body of free
+guidance. ``offer: never`` with no other field and no body is a decline marker.
+
+``note-process.py`` (read, write, decline) and ``note-instructions.py new``
+import this module. ``read_process`` never raises on a broken file: it returns
+``exists: true`` with ``error`` naming the problem class, never the file text.
+``write_process`` writes nothing when a required point is absent from the
+template outline. Functions take the process directory explicitly; a template
+stem that could leave it raises ValueError.
+
+Frontmatter is serialised with yaml.safe_dump and the whole file is replaced
+atomically. Schema (documentation): tomo/schemas/note-process.schema.json.
+
+Design notes: docs/tomo/scripts/lib/note_process.md
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+
+PROCESS_DIR = Path("config") / "note-processes"
+DECLINE_VALUE = "never"
+_FENCE = "---"
+
+
+class ProcessFileError(Exception):
+    """A process file is present but cannot be used; message has no file text."""
+
+
+def outline_points(outline: dict) -> list[str]:
+    """Return the outline's points: frontmatter keys, headings, open tokens."""
+    names = [f.get("key", "") for f in outline.get("frontmatter", [])]
+    names += [h.get("text", "") for h in outline.get("headings", [])]
+    names += [t.get("name", "") for t in outline.get("tokens", []) if not t.get("prefilled")]
+    seen: list[str] = []
+    for name in (n.strip() for n in names if isinstance(n, str)):
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
+def process_path(process_dir: Path, template_stem: str) -> Path:
+    """Return the process file path; ValueError when the stem could leave the dir."""
+    stem = template_stem if isinstance(template_stem, str) else ""
+    if not stem.strip() or "/" in stem or "\\" in stem or stem.startswith("."):
+        raise ValueError(f"malformed template stem: {template_stem!r}")
+    return Path(process_dir) / f"{stem}.md"
+
+
+def _empty(exists: bool, error: str = "", declined: bool = False) -> dict:
+    return {
+        "exists": exists, "declined": declined, "destination": "", "required": [],
+        "guidance": "", "missing_required": [], "error": error,
+    }
+
+
+def _split(text: str) -> tuple[dict, str]:
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != _FENCE:
+        return {}, text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == _FENCE:
+            return _load_frontmatter("".join(lines[1:i])), "".join(lines[i + 1:])
+    raise ProcessFileError("frontmatter fence is not closed")
+
+
+def _load_frontmatter(block: str) -> dict:
+    try:
+        data = yaml.safe_load(block)
+    except yaml.YAMLError as exc:
+        raise ProcessFileError(f"frontmatter is not valid YAML ({type(exc).__name__})") from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ProcessFileError("frontmatter is not a key/value mapping")
+    return data
+
+
+def _validate(fm: dict) -> None:
+    dest = fm.get("destination")
+    if dest is not None and (not isinstance(dest, str) or not dest.strip()):
+        raise ProcessFileError("destination must be a non-empty folder path")
+    req = fm.get("required")
+    if req is not None and (not isinstance(req, list)
+                            or not all(isinstance(r, str) and r.strip() for r in req)):
+        raise ProcessFileError("required must be a list of point names")
+    if "offer" in fm and fm["offer"] != DECLINE_VALUE:
+        raise ProcessFileError("offer must be 'never' when present")
+
+
+def _folder(path: str) -> str:
+    return path.strip().rstrip("/") + "/"
+
+
+def _parsed(fm: dict, body: str, outline: dict | None) -> dict:
+    guidance = body.strip()
+    if fm.get("offer") == DECLINE_VALUE and not guidance and not (set(fm) - {"offer"}):
+        return _empty(True, declined=True)
+    result = _empty(True)
+    result["destination"] = _folder(fm["destination"]) if fm.get("destination") else ""
+    result["required"] = [r.strip() for r in fm.get("required") or []]
+    result["guidance"] = guidance
+    if outline is not None:
+        points = outline_points(outline)
+        result["missing_required"] = [r for r in result["required"] if r not in points]
+    return result
+
+
+def read_process(process_dir: Path, template_stem: str, outline: dict | None = None) -> dict:
+    """Read a process file; never raises for a missing or broken file."""
+    path = process_path(process_dir, template_stem)
+    if not path.is_file():
+        return _empty(False)
+    try:
+        fm, body = _split(path.read_text(encoding="utf-8"))
+        _validate(fm)
+    except ProcessFileError as exc:
+        return _empty(True, error=str(exc))
+    except (OSError, UnicodeDecodeError) as exc:
+        return _empty(True, error=f"process file unreadable ({type(exc).__name__})")
+    return _parsed(fm, body, outline)
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _render(fm: dict, guidance: str) -> str:
+    head = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False) if fm else ""
+    body = guidance.strip()
+    return f"{_FENCE}\n{head}{_FENCE}\n" + (f"{body}\n" if body else "")
+
+
+def write_process(process_dir: Path, template_stem: str, outline: dict, *,
+                  destination: str | None = None, required: list[str] | None = None,
+                  guidance: str = "") -> dict:
+    """Write a process file, replacing any marker; rejects unknown required points."""
+    path = process_path(process_dir, template_stem)
+    names = [r.strip() for r in required or [] if r.strip()]
+    points = outline_points(outline)
+    rejected = [r for r in names if r not in points]
+    if rejected:
+        return {"written": False, "rejected_required": rejected}
+    fm: dict = {}
+    if destination and destination.strip():
+        fm["destination"] = _folder(destination)
+    if names:
+        fm["required"] = names
+    _write_atomic(path, _render(fm, guidance))
+    return {"written": True, "rejected_required": []}
+
+
+def write_decline(process_dir: Path, template_stem: str) -> dict:
+    """Write the decline marker (``offer: never`` alone)."""
+    path = process_path(process_dir, template_stem)
+    _write_atomic(path, _render({"offer": DECLINE_VALUE}, ""))
+    return {"written": True}

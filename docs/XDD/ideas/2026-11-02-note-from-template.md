@@ -62,7 +62,8 @@ Location: `config/note-processes/<template-stem>.md` in the instance, for exampl
 
 The user never writes a process file by hand. Tomo creates and changes it in a dialogue:
 
-- After a delivered note whose template has no process file, Tomo offers once to keep what the session showed: a destination the user changed, points the user insisted on, an order the user asked for. It is one question, and a no writes nothing. Tomo does not offer when the session showed nothing of that kind.
+- After a delivered note whose template has no process file, Tomo offers once to keep what the session showed: a destination the user changed, points the user insisted on, an order the user asked for. It is one question with three answers: save, not now, never for this template. Tomo does not offer when the session showed nothing of that kind.
+- "Not now" writes nothing, so a later session may offer again. "Never" runs `note-process.py decline <template>`, which writes a process file holding only `offer: never`. Tomo treats that file as no process and never offers again for that template. `/note --process <template>` still works and replaces it.
 - `/note --process <template>` creates or changes one on purpose. Tomo asks for the destination, the required points, offered from the template outline, and free guidance.
 - The model never writes the file. `scripts/note-process.py write` takes the destination, the required points and the guidance, checks that each required point exists in the template outline, and writes the file. The format lives in the script's `--help`, so no separate guide is needed. The user documentation only says that Tomo asks.
 
@@ -131,6 +132,7 @@ The JSON contract of `template-outline.py`, including which token syntaxes count
 - `--filled-note` accepts a filled note and rejects `<%` remains.
 - The writer subcommand sets `templates.note_include` and leaves `templates.mapping` and the other `templates:` keys byte-identical.
 - `note-process.py` writes a valid file and rejects a required point the template does not have.
+- After `decline`, the template counts as having no process, and the offer is not made again. `/note --process` replaces the declined file.
 - A name collision reaches the user through the exit 3 / `EXISTS:` contract of `kado-write-file.py`.
 - One paid eval case for the model behaviour. This change edits no eval-gated file. If `settings.json` needs a change, the eval gate applies; its allow rule for `python3 scripts/*.py` should make that unnecessary.
 

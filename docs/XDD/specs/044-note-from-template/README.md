@@ -15,7 +15,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.0: 9 features, 52 criteria; approved by the owner 2026-11-04 |
-| solution.md | in_progress | v1.0 draft: 12 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); awaiting owner review |
+| solution.md | in_progress | v1.0 draft: 15 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); review findings (5 blocking, 14 advisory) worked in; awaiting owner review |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`

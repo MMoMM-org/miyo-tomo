@@ -40,6 +40,13 @@ The note goes to the inbox with `tomo.state: pending-move`. The instruction set 
 
 The destination comes from the process file, otherwise from `concepts.atomic_note.path`. The draft names it, and the user can change it there.
 
+## Boundary to `inbox-author`
+
+- `inbox-author` composes artifacts from vault content: overviews, lists, comparisons, `.base` and `.canvas` files. They land in the inbox and are filed later through `/inbox`.
+- `/note` turns the user's own material into a note of a template kind, with questions, a draft and an instruction set.
+- Today the unknown-type branch of `inbox-author` searches the template folder by name and fills a match without questions. Once `/note` ships, that branch points to `/note` instead, so one request no longer has two paths. The built-in default and the mapped `default` template stay in `inbox-author`.
+- Both skills share the write path `kado-write-file.py --no-overwrite` and the `sanitize_stem` rule.
+
 ## Optional Process File
 
 Location: `config/note-processes/<template-stem>.md` in the instance, for example `t_meeting.md`. Tomo can read and create these directly, without Hashi.
@@ -68,6 +75,7 @@ Ask for the decisions first. For reflections, always ask what I would do differe
 | `scripts/template-outline.py` | Reads a template and returns headings, fields, tokens and Templater positions as JSON |
 | `scripts/note-instructions.py` | Stamps the note, builds and validates the instruction set |
 | `template-doctor.py --filled-note` | New mode: frontmatter fences and closure, no `<%` left in the note, no hand-written `tomo:` block |
+| Skill `inbox-author` | Change: the unknown-type branch of step 2 points the user to `/note` instead of filling a vault template itself. Version bump and WHY entry |
 
 `note-instructions.py` must:
 
@@ -75,7 +83,7 @@ Ask for the decisions first. For reflections, always ask what I would do differe
 - stamp the note with `build_tomo_block("rendered-note", "pending-move", run_id)`, so the model never writes that block
 - call `validate_destinations` and the delete guard itself, because both sit outside `build_actions`
 - use a stem with seconds, because `HHMM` collides within a minute with another `/note` or a Pass 2
-- write with `--no-overwrite`, because `upload-rendered.py` has no such protection
+- write the note and both instruction files through `kado-write-file.py --no-overwrite`, the path `inbox-author` already uses. Exit 3 with `EXISTS:<vault-path>` is the name-taken signal. `upload-rendered.py` is not used, because it has no such protection
 - render the Markdown peer with `render_instructions_md` in state `pending-apply`
 
 The source is set to `tomo.state: captured` through the merge path of `mark-captured.py`, after both uploads succeed. Without this, the next `/inbox` proposes a duplicate. `captured` is only a guard until Hashi applies the paired `delete_source`, which ends the source. If the set is never applied, the source stays `captured`.
@@ -102,6 +110,7 @@ The JSON contract of `template-outline.py`, including which token syntaxes count
 - Triage: after delivery, neither the source nor the note counts as new.
 - Backup and restore keep `config/note-processes/`, and `update-tomo.sh` does not touch it.
 - `--filled-note` accepts a filled note and rejects `<%` remains.
+- A name collision reaches the user through the exit 3 / `EXISTS:` contract of `kado-write-file.py`.
 - One paid eval case for the model behaviour. This change edits no eval-gated file. If `settings.json` needs a change, the eval gate applies; its allow rule for `python3 scripts/*.py` should make that unnecessary.
 
 ## Project Rules
@@ -110,7 +119,7 @@ New runtime files need a mirrored `docs/tomo/<path>.md` and a `# version:` heade
 
 ## To Verify in the Spec
 
-- Whether the Kado key allows reads in the template folder. `vault-explorer` deliberately reads only mapped templates. This is a hard prerequisite and comes first in the plan.
+- Whether the Kado key allows reads in the template folder. `vault-explorer` deliberately reads only mapped templates. This is a hard prerequisite and comes first in the plan. Check it first with the existing unknown-type branch of `inbox-author` on `tomo-instance`, which already lists and reads that folder, before any new code is written.
 - How Hashi handles a `move_note` with the paired `delete_source` for this flow.
 - That `update-tomo.sh` delivers the new command and skill.
 

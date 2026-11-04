@@ -105,7 +105,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
   - [ ] Given exactly one selected template fits the request and material, When `/note` runs, Then Tomo names it and continues without asking
   - [ ] Given several templates fit, When `/note` runs, Then Tomo prints the candidates and asks the user to choose
   - [ ] Given the folder lists templates but none fits, When `/note` runs, Then Tomo says that no selected template fits and offers to adjust the patterns, to use `inbox-author`, or to abort
-  - [ ] Given the template folder returns no files at all, When `/note` runs, Then Tomo says the folder is empty or not readable by the Kado key, and never says that no template exists
+  - [ ] Given the template folder returns no files at all, When `/note` runs, Then Tomo says the folder is empty or not readable by the Kado key, tells the user to either grant the key read access to the template folder or not use `/note`, and never says that no template exists; the same remedy is given when a listed template cannot be read
 
 #### Feature 3: Checklist and questions
 

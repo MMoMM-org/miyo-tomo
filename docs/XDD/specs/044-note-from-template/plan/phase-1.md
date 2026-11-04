@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Prerequisite and shared libraries"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -31,7 +31,7 @@ phase: 1
 
 This phase proves the prerequisite and builds the libraries every script uses.
 
-- [ ] **T1.1 Kado reads the template folder** `[activity: validate]` `[model: routine]`
+- [x] **T1.1 Kado reads the template folder** (2026-11-04: owner confirmed the key reads the folder; no live run; the denial remedy was added to F2-AC4) `[activity: validate]` `[model: routine]`
 
   1. Prime: `inbox-author/SKILL.md:44-48`; `docs/troubleshooting.md:44`; memory "empty Kado search hides a denial" `[ref: SDD/Known Technical Issues]`
   2. Test: on `tomo-instance`, the owner asks `inbox-author` for an unmapped kind that has a template in `templates.base_path` (for example a meeting note). Record from the transcript whether `kado-search byName` returned the template and whether `kado-read` returned its body.

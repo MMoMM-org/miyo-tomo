@@ -41,6 +41,9 @@
 | 2026-11-04 | Decomposition tier: Incremental | Classifier recommended Incremental (8 Must-Have features, 52 criteria, 11 new components). Accepted. |
 | 2026-11-04 | Model tier: hard | Classifier recommended hard (adr_count=8; high_risks=3; novel_pattern=false). Accepted. |
 | 2026-11-04 | Plan approved, spec Ready for /implement 044 | Owner approval; the plan-alignment validation run was skipped by the owner |
+| 2026-11-04 | Implementation started: Standard mode, commits stay on docs/169-note-from-template | Owner choice |
+| 2026-11-04 | T1.1 passed on the owner's word: the owner's Kado key lists and reads `templates.base_path`; no live run | Owner decision |
+| 2026-11-04 | F2-AC4 extended: on an empty listing or an unreadable template, Tomo tells the user to grant the key read access to the template folder or not use `/note` | Owner requirement; another user's key may lack the right, and the old wording named the cause without a remedy |
 
 ## Context
 

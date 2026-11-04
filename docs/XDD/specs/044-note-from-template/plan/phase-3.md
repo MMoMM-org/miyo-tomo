@@ -42,7 +42,7 @@ This phase gives the model its instructions and the user the documentation.
 - [ ] **T3.2 Command and skill** `[activity: prompt-authoring]`
 
   1. Prime: SDD Runtime View and UX; `commands/hashi-hook.md`; `skills/inbox-author/SKILL.md` frontmatter; vault-explorer's print-before-ask rule `[ref: SDD/Runtime View; ADR-6]`
-  2. Test: new `tests/test_note_skill_prose.py` asserts the imperatives exist: print before every question; at most four questions per round and at most two rounds; required points re-asked with no skip option; the skipped line; the header fields; approval options; `drop` on every abort path; resume or drop before a new request; stale stages dropped with one line; folder empty or not readable wording; process offer asked once with three answers and only on the three signals; rename or abort on a taken name; frozen title during resume; script calls with their exact flags. Asserts no rationale prose and a `# version:` header.
+  2. Test: new `tests/test_note_skill_prose.py` asserts the imperatives exist: print before every question; at most four questions per round and at most two rounds; required points re-asked with no skip option; the skipped line; the header fields; approval options; `drop` on every abort path; resume or drop before a new request; stale stages dropped with one line; folder empty or not readable wording with the remedy (grant read access to the template folder or do not use `/note`) on both the empty-listing and the unreadable-template path; process offer asked once with three answers and only on the three signals; rename or abort on a taken name; frozen title during resume; script calls with their exact flags. Asserts no rationale prose and a `# version:` header.
   3. Implement: `tomo/dot_claude/commands/note.md` 0.1.0 (thin, routes to the skill with `$ARGUMENTS`); `tomo/dot_claude/skills/note-from-template/SKILL.md` 0.1.0 via `tcs-helper:skill-author`.
   4. Validate: prose test passes; skill-author verification passes.
   5. Success: every dialogue criterion has an imperative `[ref: PRD/F1 … F4, F6, F7; SDD/F1-AC1, F1-AC2, F2-AC1 … F2-AC4, F3-AC2 … F3-AC8, F4-AC1 … F4-AC4, F6-AC2, F6-AC5, F7-AC3, F7-AC6, F7-AC7, F7-AC10]`
@@ -59,7 +59,7 @@ This phase gives the model its instructions and the user the documentation.
 
   1. Prime: `docs/usage.md`, `docs/troubleshooting.md:44`, `docs/instructions-json.md` `[ref: PRD/F9]`
   2. Test: link check passes; the usage section names the two deletions and `/inbox --recover`.
-  3. Implement: `/note` section in `docs/usage.md` (modes, first-run setup, process files through Tomo, discard); troubleshooting line that read access to the template folder is enough; a sentence in `docs/instructions-json.md` that `/note` produces sets of the same shape.
+  3. Implement: `/note` section in `docs/usage.md` (modes, first-run setup, process files through Tomo, discard); troubleshooting line that `/note` needs read access to the template folder, and that without it the user grants the right in Kado or does not use `/note`; a sentence in `docs/instructions-json.md` that `/note` produces sets of the same shape.
   4. Validate: no executor internals in user docs.
   5. Success: a wrong result costs two deletions and one command `[ref: PRD/F9; SDD/F9-AC1]`
 

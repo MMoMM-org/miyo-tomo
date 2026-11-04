@@ -671,9 +671,9 @@ sequenceDiagram
 
 ### Error Handling
 
-- **Template folder empty or unreadable** (`folder_listed == 0`): the skill says the folder is empty or not readable by the Kado key and stops; it never says that no template exists. A `listing_error` is shown verbatim.
+- **Template folder empty or unreadable** (`folder_listed == 0`): the skill says the folder is empty or not readable by the Kado key, tells the user to either grant the key read access to `templates.base_path` or not use `/note`, and stops; it never says that no template exists. A `listing_error` is shown verbatim.
 - **No candidate fits**: the skill offers adjust patterns, `inbox-author`, abort.
-- **Template unreadable** (`template-outline.py` exit 1): the skill names the template, offers another candidate or abort.
+- **Template unreadable** (`template-outline.py` exit 1): the skill names the template and shows the error verbatim, says the key may lack read access and gives the same remedy (grant read access to `templates.base_path` or do not use `/note`), then offers another candidate or abort.
 - **Template without frontmatter** (`frontmatter_ok: false`): the skill drafts with a frontmatter block anyway; `stage` reports the filled-note result.
 - **Broken process file** (`error` set): one line saying it is ignored and why; continue with the template alone.
 - **Required point missing from the template**: one line naming it; continue without it.
@@ -849,7 +849,7 @@ stateDiagram-v2
 - [ ] WHEN `candidates` holds one fitting template, THE SYSTEM SHALL name it and continue (F2-AC1)
 - [ ] WHEN several fit, THE SYSTEM SHALL print them and ask (F2-AC2)
 - [ ] IF `folder_listed > 0` and none fits, THEN THE SYSTEM SHALL offer adjust patterns, `inbox-author`, abort (F2-AC3)
-- [ ] IF `folder_listed == 0`, THEN THE SYSTEM SHALL say the folder is empty or not readable by the Kado key (F2-AC4)
+- [ ] IF `folder_listed == 0` or `template-outline.py` exits 1, THEN THE SYSTEM SHALL say the folder or template may not be readable by the Kado key and tell the user to grant read access to `templates.base_path` or not use `/note` (F2-AC4)
 
 **F3 Checklist and questions**
 - [ ] THE SYSTEM SHALL list every heading, frontmatter key and non-prefilled token as a point in `template-outline.py` output (F3-AC1)
@@ -911,7 +911,7 @@ stateDiagram-v2
 
 ### Known Technical Issues
 
-- Whether the owner's Kado key reads `templates.base_path` is unverified (`docs/troubleshooting.md:44` is the only statement). Plan task 1 checks it with `inbox-author`'s unknown-type branch on `tomo-instance` before the redirect lands.
+- The owner confirmed on 2026-11-04 that their Kado key reads `templates.base_path`. Another user's key may not, so F2-AC4 tells that user to grant read access or not use `/note`.
 - `write_frontmatter(mode="merge")` deep-merging the `tomo` key and keeping the user's other keys is taken from docstrings (`mark-captured.py:7-9`), not from Kado code. The source-mark test asserts the call shape; the live run confirms the effect.
 - `AskUserQuestion` cannot be answered inside a plugin eval run, so the paid case covers material that fills every point (zero questions) and grades that the draft is printed before the approval question and that `deliver` never runs before approval.
 - The dialogue criteria (F1-AC1/AC2, F2-AC1/AC2, F3-AC2/AC4/AC5/AC6/AC8, F4-AC2/AC3, F7-AC3/AC6/AC7) are model behaviour. Each is covered twice: `test_note_skill_prose.py` asserts the imperative exists in the skill ("at most four", "at most two rounds", "no skip option", "ask once", print before ask), and a live walk on `tomo-instance` with a written checklist, one plan task, records the outcome per criterion.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -7,10 +7,14 @@ renders the YAML. Pattern: same as XDD 008's instruction-render.py. No more
 LLM-composed vault-config sections.
 
 Subcommands (one per top-level vault-config section):
-  tags           → tomo/schemas/vault-config-tags.schema.json
-  relationships  → tomo/schemas/vault-config-relationships.schema.json
-  callouts       → tomo/schemas/vault-config-callouts.schema.json
-  trackers       → tomo/schemas/vault-config-trackers.schema.json
+  tags              → tomo/schemas/vault-config-tags.schema.json
+  relationships     → tomo/schemas/vault-config-relationships.schema.json
+  callouts          → tomo/schemas/vault-config-callouts.schema.json
+  trackers          → tomo/schemas/vault-config-trackers.schema.json
+  templates-include → tomo/schemas/vault-config-templates.schema.json
+                      (input {"note_include": [...]}; inserts or replaces only
+                      the templates.note_include lines, never the whole
+                      templates: block; appends a templates: block if absent)
 
 The writer does textual section replacement, not a full YAML round-trip, so
 comments, formatting, and unrelated sections stay byte-for-byte identical.
@@ -641,6 +645,138 @@ def cmd_trackers(args: argparse.Namespace) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# `templates-include` subcommand — edits ONE key inside `templates:`
+# (templates.note_include), never the rest of the hand-curated block.
+# ──────────────────────────────────────────────────────────────────────────────
+
+TEMPLATES_INCLUDE_KEY = "note_include"
+
+
+def validate_templates_include_input(data) -> None:
+    if not isinstance(data, dict):
+        _fail("templates-include input must be a JSON object")
+    extra = set(data) - {TEMPLATES_INCLUDE_KEY}
+    if extra:
+        _fail(f"templates-include: unexpected top-level keys {sorted(extra)}")
+    globs = data.get(TEMPLATES_INCLUDE_KEY)
+    if not isinstance(globs, list) or not globs:
+        _fail("templates-include: note_include must be a non-empty list")
+    for g in globs:
+        if not isinstance(g, str) or not g.strip():
+            _fail(f"templates-include: note_include entries must be non-empty strings, got {g!r}")
+
+
+def render_templates_include_lines(globs: list[str], indent: str = "  ") -> str:
+    lines = [f"{indent}{TEMPLATES_INCLUDE_KEY}:"]
+    lines.extend(f"{indent}  - {_qstr(g)}" for g in globs)
+    return "\n".join(lines) + "\n"
+
+
+def _leading_ws(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" \t"))]
+
+
+def _section_extent(lines: list[str], section_key: str) -> tuple[int, int] | None:
+    """(header index, index after the last non-blank body line) or None."""
+    start = next((i for i, ln in enumerate(lines) if _is_top_level_key_line(ln, section_key)), None)
+    if start is None:
+        return None
+    end = last = start + 1
+    while end < len(lines) and (lines[end].strip() == "" or lines[end].startswith((" ", "\t"))):
+        end += 1
+        if lines[end - 1].strip():
+            last = end
+    return start, last
+
+
+def _child_indent(body: list[str]) -> str:
+    for ln in body:
+        if ln.strip() and not ln.lstrip().startswith("#"):
+            return _leading_ws(ln)
+    return "  "
+
+
+def _key_extent(body: list[str], indent: str, key: str) -> tuple[int, int] | None:
+    """Span of `<indent><key>:` plus its continuation lines, within body."""
+    for i, ln in enumerate(body):
+        if _leading_ws(ln) == indent and ln.lstrip().startswith(f"{key}:"):
+            j = i + 1
+            while j < len(body) and body[j].strip() and (
+                len(_leading_ws(body[j])) > len(indent)
+                or (_leading_ws(body[j]) == indent and body[j].lstrip().startswith("- "))
+            ):
+                j += 1
+            return i, j
+    return None
+
+
+def set_templates_note_include(yaml_text: str, globs: list[str]) -> str:
+    """Insert or replace the templates.note_include lines only; keep every other byte."""
+    section_key, key = "templates", TEMPLATES_INCLUDE_KEY
+    lines = yaml_text.splitlines(keepends=True)
+    extent = _section_extent(lines, section_key)
+    if extent is None:
+        block = f"{section_key}:\n" + render_templates_include_lines(globs)
+        return replace_top_level_section(yaml_text, section_key, block)
+    start, last = extent
+    body = lines[start + 1:last]
+    indent = _child_indent(body)
+    rendered = render_templates_include_lines(globs, indent)
+    span = _key_extent(body, indent, key)
+    lo, hi = (start + 1 + span[0], start + 1 + span[1]) if span else (last, last)
+    if lo > 0 and not lines[lo - 1].endswith("\n"):
+        lines[lo - 1] += "\n"
+    return "".join(lines[:lo]) + rendered + "".join(lines[hi:])
+
+
+def _reads_back(updated: str, globs: list[str]) -> bool:
+    try:
+        parsed = yaml.safe_load(updated)
+    except yaml.YAMLError:
+        return False
+    templates = parsed.get("templates") if isinstance(parsed, dict) else None
+    return isinstance(templates, dict) and templates.get(TEMPLATES_INCLUDE_KEY) == globs
+
+
+def _load_json_input(path: Path):
+    """Return (data, None) or (None, exit code) — mirrors _run_section_command."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except FileNotFoundError:
+        print(f"error: input file not found: {path}", file=sys.stderr)
+        return None, 2
+    except json.JSONDecodeError as exc:
+        print(f"error: invalid JSON in {path}: {exc}", file=sys.stderr)
+        return None, 1
+
+
+def cmd_templates_include(args: argparse.Namespace) -> int:
+    data, rc = _load_json_input(Path(args.input))
+    if rc is not None:
+        return rc
+    validate_templates_include_input(data)
+    globs = data[TEMPLATES_INCLUDE_KEY]
+    if args.stdout:
+        sys.stdout.write(render_templates_include_lines(globs, indent=""))
+        return 0
+    config_path = Path(args.config)
+    try:
+        current = config_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"error: config not found: {config_path}", file=sys.stderr)
+        return 2
+    updated = set_templates_note_include(current, globs)
+    if not _reads_back(updated, globs):
+        print("error: resulting YAML would not read back templates.note_include, "
+              "refusing to write", file=sys.stderr)
+        return 1
+    config_path.write_text(updated, encoding="utf-8")
+    print(f"vault-config-writer: templates.note_include written ({len(globs)} glob(s)) "
+          f"→ {config_path}", file=sys.stderr)
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -679,6 +815,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_trk = sub.add_parser("trackers", help="Render/replace the top-level `trackers:` block.")
     _common_args(p_trk, "vault-config-trackers")
     p_trk.set_defaults(func=cmd_trackers)
+
+    p_tpl = sub.add_parser(
+        "templates-include",
+        help="Insert/replace only `templates.note_include`; the rest of `templates:` is untouched.",
+    )
+    _common_args(p_tpl, "vault-config-templates")
+    p_tpl.set_defaults(func=cmd_templates_include)
 
     return p
 

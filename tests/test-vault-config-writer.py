@@ -594,6 +594,218 @@ def test_all_sections_stack_in_one_config():
     print("[PASS] all 4 sections coexist in a single vault-config.yaml")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# templates-include subcommand (spec 044, ADR-5) — pytest-only (tmp_path), so
+# these cases are not listed in main().
+# ──────────────────────────────────────────────────────────────────────────────
+
+TEMPLATES_TAIL = """\
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Frontmatter Schema
+# ──────────────────────────────────────────────────────────────────────────────
+frontmatter:
+  required: [title]
+"""
+
+TEMPLATES_HEAD = """\
+schema_version: 1
+profile: "miyo"
+
+# Maps concept types to Obsidian template files (relative to base_path).
+"""
+
+TEMPLATES_BLOCK_WITHOUT_KEY = """\
+templates:
+  base_path: "X/900 Support/Templates/"
+  mapping:
+    atomic_note: "Atomic Note.md"
+    map_note: "MOC.md"  # inline comment survives
+    daily: "Daily Note.md"
+    # Optional: template for free-form artifacts Tomo authors into the inbox
+    # default: "Zettelkasten.md"
+  custom_tokens:
+    - token: "my_token"
+      value: "static value"
+  # Optional: custom token overrides applied before standard token resolution
+  # custom_tokens:
+  #   - token: "my_token"
+"""
+
+CONFIG_WITHOUT_KEY = TEMPLATES_HEAD + TEMPLATES_BLOCK_WITHOUT_KEY + TEMPLATES_TAIL
+
+CONFIG_WITH_KEY = (
+    TEMPLATES_HEAD
+    + "templates:\n"
+    + '  base_path: "X/900 Support/Templates/"\n'
+    + "  note_include:\n"
+    + '    - "old_*.md"\n'
+    + "    # deeper comment belongs to the list\n"
+    + '    - "legacy.md"\n'
+    + "  mapping:\n"
+    + '    daily: "Daily Note.md"  # keep me\n'
+    + TEMPLATES_TAIL
+)
+
+CONFIG_WITHOUT_TEMPLATES = TEMPLATES_HEAD + "concepts:\n  inbox: \"100 Inbox/\"\n"
+
+NEW_GLOBS = ["t_*.md", "Meeting *.md"]
+
+
+def _strip_note_include(text: str) -> str:
+    """Drop the note_include key line and its list continuation lines."""
+    out: list[str] = []
+    in_key = False
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+        if stripped.startswith("note_include:"):
+            in_key, key_indent = True, indent
+            continue
+        if in_key and line.strip() and (
+            indent > key_indent or (indent == key_indent and stripped.startswith("- "))
+        ):
+            continue
+        in_key = False
+        out.append(line)
+    return "".join(out)
+
+
+def _run_templates_include(tmp_path: Path, config_text: str | None, payload, *extra):
+    import subprocess
+    cfg = tmp_path / "vault-config.yaml"
+    if config_text is not None:
+        cfg.write_text(config_text, encoding="utf-8")
+    inp = tmp_path / "include.json"
+    inp.write_text(json.dumps(payload), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "vault-config-writer.py"), "templates-include",
+         "--input", str(inp), "--config", str(cfg), *extra],
+        capture_output=True, text=True,
+    )
+    return proc, cfg
+
+
+def test_templates_include_inserts_into_block_without_key(tmp_path):
+    proc, cfg = _run_templates_include(tmp_path, CONFIG_WITHOUT_KEY, {"note_include": NEW_GLOBS})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(after)
+    assert parsed["templates"]["note_include"] == NEW_GLOBS
+    assert parsed["templates"]["custom_tokens"][0]["token"] == "my_token"
+    assert _strip_note_include(after) == CONFIG_WITHOUT_KEY
+    # Inserted inside the block, before the blank line and the next banner.
+    assert after.index("note_include:") < after.index("# Frontmatter Schema")
+
+
+def test_templates_include_replaces_existing_key_with_continuation_lines(tmp_path):
+    proc, cfg = _run_templates_include(tmp_path, CONFIG_WITH_KEY, {"note_include": NEW_GLOBS})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert yaml.safe_load(after)["templates"]["note_include"] == NEW_GLOBS
+    assert "old_*.md" not in after and "legacy.md" not in after
+    assert after.count("note_include:") == 1
+    assert "deeper comment" not in after
+    assert _strip_note_include(after) == _strip_note_include(CONFIG_WITH_KEY)
+    assert yaml.safe_load(after)["templates"]["mapping"] == {"daily": "Daily Note.md"}
+
+
+def test_templates_include_replaces_same_indent_sequence(tmp_path):
+    config = (
+        TEMPLATES_HEAD + "templates:\n  note_include:\n  - \"a.md\"\n  - \"b.md\"\n"
+        + "  # stays: a block comment at the key's indent\n  mapping:\n    daily: \"D.md\"\n"
+    )
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["c.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert yaml.safe_load(after)["templates"] == {
+        "note_include": ["c.md"], "mapping": {"daily": "D.md"},
+    }
+    assert "# stays" in after
+    assert _strip_note_include(after) == _strip_note_include(config)
+
+
+def test_templates_include_replaces_flow_list(tmp_path):
+    config = TEMPLATES_HEAD + 'templates:\n  note_include: ["a.md"]\n  base_path: "T/"\n'
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["b*.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert yaml.safe_load(after)["templates"] == {"note_include": ["b*.md"], "base_path": "T/"}
+    assert _strip_note_include(after) == _strip_note_include(config)
+
+
+def test_templates_include_appends_block_when_missing(tmp_path):
+    proc, cfg = _run_templates_include(tmp_path, CONFIG_WITHOUT_TEMPLATES, {"note_include": NEW_GLOBS})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert after.startswith(CONFIG_WITHOUT_TEMPLATES)
+    parsed = yaml.safe_load(after)
+    assert parsed["templates"] == {"note_include": NEW_GLOBS}
+    assert parsed["concepts"] == {"inbox": "100 Inbox/"}
+
+
+def test_templates_include_matches_block_indent(tmp_path):
+    config = "templates:\n    base_path: \"T/\"\nother: 1\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert "\n    note_include:\n" in after
+    assert yaml.safe_load(after) == {
+        "templates": {"base_path": "T/", "note_include": ["x.md"]}, "other": 1,
+    }
+
+
+def test_templates_include_handles_missing_trailing_newline(tmp_path):
+    config = 'templates:\n  base_path: "T/"'
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["templates"] == {
+        "base_path": "T/", "note_include": ["x.md"],
+    }
+
+
+def test_templates_include_rejects_invalid_input_and_writes_nothing(tmp_path):
+    bad_payloads = [
+        {"note_include": []},
+        {"note_include": [""]},
+        {"note_include": ["   "]},
+        {"note_include": "t_*.md"},
+        {"note_include": ["ok.md", 3]},
+        {"note_include": ["ok.md"], "extra": True},
+        {},
+        ["t_*.md"],
+    ]
+    for i, payload in enumerate(bad_payloads):
+        case_dir = tmp_path / f"case{i}"
+        case_dir.mkdir()
+        proc, cfg = _run_templates_include(case_dir, CONFIG_WITHOUT_KEY, payload)
+        assert proc.returncode == 1, f"{payload!r}: rc={proc.returncode} {proc.stderr}"
+        assert cfg.read_text(encoding="utf-8") == CONFIG_WITHOUT_KEY, f"{payload!r} wrote"
+        assert proc.stdout == ""
+
+
+def test_templates_include_refuses_result_that_does_not_read_back(tmp_path):
+    config = "templates: {}\nother: 1\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 1, proc.stderr
+    assert cfg.read_text(encoding="utf-8") == config
+
+
+def test_templates_include_missing_config_exits_2(tmp_path):
+    proc, cfg = _run_templates_include(tmp_path, None, {"note_include": ["x.md"]})
+    assert proc.returncode == 2
+    assert not cfg.exists()
+
+
+def test_templates_include_stdout_writes_nothing(tmp_path):
+    proc, cfg = _run_templates_include(
+        tmp_path, CONFIG_WITHOUT_KEY, {"note_include": NEW_GLOBS}, "--stdout",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert cfg.read_text(encoding="utf-8") == CONFIG_WITHOUT_KEY
+    assert yaml.safe_load(proc.stdout) == {"note_include": NEW_GLOBS}
+
+
 def main() -> int:
     # tags
     test_validation_accepts_valid()

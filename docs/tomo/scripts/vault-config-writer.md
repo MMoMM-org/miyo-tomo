@@ -68,3 +68,49 @@ including an end-to-end case that drives `cmd_trackers` over a real YAML file.
 The unit tests cover the merge function; the end-to-end test is what catches a
 regression at the *call site*, which is where the bug would come back — the
 function can be perfectly correct and simply not be called.
+
+## Why `templates-include` edits one key inside the block (ADR-5)
+
+`/note` (spec 044) needs to save one user choice: which template filenames
+under `templates.base_path` are note templates (`templates.note_include`, a
+list of globs). Every other subcommand renders a whole top-level block and
+hands it to `replace_top_level_section`. That is the wrong tool here: the
+`templates:` block is hand-curated — `base_path`, the `mapping` with its
+explanatory comments, the commented `default:` hint, the `custom_tokens`
+example — and no caller of `templates-include` knows any of it. Rendering the
+block from the input would drop all of it, the same class of loss the tracker
+preservation above had to repair after the fact.
+
+So `templates-include` changes only the `note_include` lines:
+
+- **Key present** — the key line and its list continuation lines (deeper
+  indented, or `- ` items at the key's own indent) are replaced. A flow list
+  on the key line (`note_include: ["t_*.md"]`) is one line and is replaced the
+  same way.
+- **Key absent** — the key is inserted after the last non-blank line of the
+  `templates:` block, at the indent the block's own children use, so trailing
+  blank lines and the next section's banner stay where they were.
+- **No `templates:` block** — a minimal `templates:` block holding only the
+  key is appended, through the same append path the section writers use.
+
+Every byte outside those lines stays identical. The byte-identity tests in
+`tests/test-vault-config-writer.py` are the guard: they compare the file
+before and after with the `note_include` lines removed.
+
+**Why a hand-written validator.** As for the other subcommands, `jsonschema`
+is not guaranteed in the container. The rule is small — exactly one key,
+`note_include`, a non-empty list of non-empty strings — and
+`tomo/schemas/vault-config-templates.schema.json` documents the same contract.
+An empty list is rejected rather than read as "clear": "no note templates" is
+expressed by the key being absent, which is the state `/note`'s first-run
+setup detects, and an empty list would be a third state nobody reads.
+
+**Why `yaml.safe_load` and a read-back before writing.** Textual insertion can
+produce YAML that parses but means something else — a `templates:` written as
+an inline `{}`, a duplicate key further down that overrides ours. The writer
+parses the result and requires `templates.note_include` to equal the input
+list. Anything else exits 1 and the file is not touched.
+
+**Why `--stdout` prints only the key lines.** It matches the sibling
+subcommands, which print the block they would write, and it never reads or
+writes the config.

@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-04 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
-| **Model tier** | {{MODEL_TIER}} |
+| **Current Phase** | PLAN |
+| **Decomposition tier** | Incremental |
+| **Model tier** | hard |
 | **Last Updated** | 2026-11-04 |
 
 ## Documents
@@ -15,8 +15,8 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.0: 9 features, 52 criteria; approved by the owner 2026-11-04 |
-| solution.md | in_progress | v1.0 draft: 15 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); review findings (5 blocking, 14 advisory) worked in; awaiting owner review |
-| plan/ | pending | |
+| solution.md | completed | v1.0: 15 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); review findings worked in; approved by the owner 2026-11-04 |
+| plan/ | in_progress | 4 phases, 22 tasks (T1.1 Kado read check is the gate); awaiting owner review |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -37,6 +37,9 @@
 | 2026-11-04 | Any non-empty answer satisfies a required point; questions follow the language of the call, the note keeps the template's headings | Decided by Claude, reported to the owner |
 | 2026-11-04 | PRD approved, phase moves to SDD | Owner approval |
 | 2026-11-04 | ADR-1 to ADR-8 confirmed: approach A; one delivery script; direct source merge; lib/template_syntax.py; writer subcommand templates-include; session start in note-session.py; stage dir per stem; one paid eval case, not gated | Owner confirmation; validate-json.py found to be parse-only, so wire validity is a jsonschema test |
+| 2026-11-04 | SDD approved, phase moves to PLAN | Owner approval; the second review pass was not run |
+| 2026-11-04 | Decomposition tier: Incremental | Classifier recommended Incremental (8 Must-Have features, 52 criteria, 11 new components). Accepted. |
+| 2026-11-04 | Model tier: hard | Classifier recommended hard (adr_count=8; high_risks=3; novel_pattern=false). Accepted. |
 
 ## Context
 

@@ -429,7 +429,7 @@ Script: note-instructions.py stage
   Args: --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
   Effect: updates meta.json; runs the filled-note checks on draft.md
   Output: {stem, title, inbox_file, destination_file, keep_source, frozen, check: {ok, findings[]}}
-  Rule: once steps_done is non-empty, title and destination are frozen; a change is refused with frozen: true
+  Rule: once steps_done is non-empty, title and destination are frozen; once steps_done holds instructions_json, keep_source is frozen too; a change is refused with frozen: true
   Exit: 0 (findings reported in output); 2 bad invocation or unknown stem
 
 Script: note-instructions.py deliver

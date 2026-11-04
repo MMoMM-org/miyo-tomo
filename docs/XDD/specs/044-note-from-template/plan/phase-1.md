@@ -39,7 +39,7 @@ This phase proves the prerequisite and builds the libraries every script uses.
   4. Validate: the transcript lines are quoted with their session id; no note body is quoted.
   5. Success: the key lists and reads the template folder, or the owner has decided how to proceed `[ref: PRD/Assumptions; SDD/Known Technical Issues]`
 
-- [ ] **T1.2 Shared template syntax** `[activity: backend]` `[parallel: true]`
+- [x] **T1.2 Shared template syntax** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `template-doctor.py:154-182,190-280`; `token-render.py:178-179,267-315`; `KNOWN_TOKENS` in `template-doctor.py:60-72`; SDD token tables `[ref: SDD/Application Data Models; ADR-4]`
   2. Test: new `tests/test_template_syntax.py` with real template shapes (frontmatter, callouts, fenced code with `{{x}}`, `\{{x}}`, Templater `<% %>`, `<%* %>`, a `tp.file.include` first line, headings with and without body):
@@ -53,7 +53,7 @@ This phase proves the prerequisite and builds the libraries every script uses.
   4. Validate: tests pass; ruff clean.
   5. Success: outline points and filled-note checks come from one module `[ref: PRD/F3; SDD/F3-AC1, F3-AC7]`
 
-- [ ] **T1.3 Draft state and process file libraries** `[activity: backend]` `[parallel: true]`
+- [x] **T1.3 Draft state and process file libraries** `[activity: backend]` `[parallel: true]`
 
   1. Prime: SDD `NoteDraftMeta`, `ProcessFile`, `stale_stages`, `missing_required` `[ref: SDD/Application Data Models; ADR-7]`
   2. Test: new `tests/test_note_meta.py` and `tests/test_note_process_lib.py`:
@@ -66,7 +66,7 @@ This phase proves the prerequisite and builds the libraries every script uses.
   4. Validate: tests pass; ruff clean.
   5. Success: one owner each for `meta.json` and process files `[ref: PRD/F6, F7; SDD/F6-AC1, F7-AC4, F7-AC5, F7-AC9]`
 
-- [ ] **T1.4 Writer subcommand templates-include** `[activity: backend]` `[parallel: true]`
+- [x] **T1.4 Writer subcommand templates-include** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `vault-config-writer.py:46,157-274,647-683`; `tests/test-vault-config-writer.py`; `read-config-field.py:30-78`; `vault-example.yaml:120-134` `[ref: SDD/Internal API Changes; ADR-5]`
   2. Test: extend `tests/test-vault-config-writer.py`:

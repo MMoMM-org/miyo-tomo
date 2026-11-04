@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.1.1
 """template_syntax.py — the one reading of a note template and a filled note.
 
 /note lists a template's points and later checks the filled note before it is
@@ -26,7 +26,7 @@ GENERATED_TOKENS = frozenset({"uuid", "datestamp", "updated", "date_iso"})
 CONFIG_TOKENS = frozenset({"locale", "vault", "vault_version", "profile"})
 SOURCE_TOKENS = frozenset({"source_path", "source_link"})
 
-_FENCE_MARKERS = ("```", "~~~")
+_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 _KEY_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9_ .-]*?)\s*:(.*)$")
 _TOMO_KEY_RE = re.compile(r"^tomo\s*:")
@@ -58,19 +58,35 @@ def _split(text: str) -> list[str]:
     return [ln.rstrip("\r") for ln in text.split("\n")]
 
 
+def _fence_opener(line: str) -> str:
+    """Return the opening run (``` or ~~~, 3+) of a fence line, else ""."""
+    match = _FENCE_RE.match(line)
+    if not match:
+        return ""
+    run, info = match.groups()
+    return "" if run[0] == "`" and "`" in info else run
+
+
+def _closes(line: str, opener: str) -> bool:
+    """A closer repeats the opener's char at least as often, with nothing after."""
+    match = _FENCE_RE.match(line)
+    if not match or match.group(2).strip():
+        return False
+    run = match.group(1)
+    return run[0] == opener[0] and len(run) >= len(opener)
+
+
 def _fence_line_indexes(lines: list[str]) -> set[int]:
     """Return 0-based indexes of fence marker lines and the lines between them."""
     inside: set[int] = set()
-    marker = ""
+    opener = ""
     for i, line in enumerate(lines):
-        stripped = line.lstrip()
-        opens = stripped[:3] if stripped[:3] in _FENCE_MARKERS else ""
-        if marker or opens:
+        if opener:
             inside.add(i)
-        if marker and stripped.startswith(marker):
-            marker = ""
-        elif not marker and opens:
-            marker = opens
+            opener = "" if _closes(line, opener) else opener
+        elif opens := _fence_opener(line):
+            inside.add(i)
+            opener = opens
     return inside
 
 

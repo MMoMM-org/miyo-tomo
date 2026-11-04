@@ -21,8 +21,27 @@ any token left over. If two parsers decide differently what a token is, the outl
 can skip a token that the check later fails on, or the check can pass a note with a
 token the outline listed as open. Both read `tokens()` here, so they always agree.
 Fenced code, an escaped `\{{x}}` and the inside of a Templater span count as text
-in both, in line with how `token-render.py` renders (it protects fences and `<% %>`
-and turns `\{{` into a literal).
+in both. `token-render.py` protects only backtick fences when it renders; this
+module also recognises `~~~` fences, as `template-doctor.py` does.
+
+## Why the fence rules follow CommonMark
+
+WHY: "outside fenced code" decides which tokens and headings are points, so a
+fence that closes too early turns code into points and one that never closes hides
+the rest of the template. The module follows CommonMark, as Obsidian renders: a
+fence opens with three or more backticks or tildes; it closes only on a line with
+the same character, a run at least as long as the opener's and nothing but
+whitespace after it (so ```` ```python ```` inside a fence is content); a backtick
+opener whose info string holds a backtick (```` ```inline``` ````) is inline code,
+not a fence. Leading whitespace before a fence marker is allowed at any depth, so a
+fence nested in a list item still counts.
+
+## Why some heading forms are not recognised
+
+WHY: only ATX headings that start in column one count as points. Indented ATX
+headings (one to three leading spaces) and setext headings (text underlined with
+`===` or `---`) are intentionally not recognised; templates do not use them, and a
+`---` underline would collide with the frontmatter fence.
 
 ## Why Templater spans are listed but never points
 
@@ -32,7 +51,9 @@ intent, never offered as a question, and never executed. The filled-note check
 fails on any `<%` left in the note (F3-AC7), anywhere, fenced or not, because an
 unclosed opener or a span in a code block would still reach the vault unrun. The
 span listing uses the same "anywhere" rule, so a template that would fail the check
-shows the cause in its outline.
+shows the cause in its outline. A span is matched over the raw text, so one that
+opens inside a fence and closes after it still hides the tokens it covers; this is
+pinned by a test rather than redesigned.
 
 ## Why prefilled tokens depend on the source
 

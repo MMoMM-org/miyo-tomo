@@ -224,6 +224,37 @@ def test_headings_skip_frontmatter_fenced_code_and_hashtags():
     ]
 
 
+def _heading_texts(text: str) -> list[str]:
+    return [h["text"] for h in ts.headings(text)]
+
+
+def test_a_shorter_backtick_run_does_not_close_a_longer_fence():
+    text = "````md\n```\n# in\n```\n# still in\n````\n# out\n"
+    assert _heading_texts(text) == ["out"]
+    assert [t["name"] for t in ts.tokens("````\n```\n{{a}}\n```\n{{b}}\n````\n{{c}}\n")] == ["c"]
+
+
+def test_a_fence_line_with_an_info_string_does_not_close_a_fence():
+    text = "```\n# in\n```python\n# in2\n```\n# out\n"
+    assert _heading_texts(text) == ["out"]
+
+
+def test_a_backtick_opener_whose_info_string_has_a_backtick_is_not_a_fence():
+    text = "```inline``` {{a}}\n# out\n{{b}}\n"
+    assert _heading_texts(text) == ["out"]
+    assert [t["name"] for t in ts.tokens(text)] == ["a", "b"]
+
+
+def test_a_tilde_fence_stays_open_across_backtick_lines():
+    text = "~~~\n```\n# in\n```\n# in2\n~~~\n# out\n"
+    assert _heading_texts(text) == ["out"]
+
+
+def test_a_templater_span_is_matched_across_a_fence_boundary():
+    text = "```\n<%\n```\n{{a}}\n%>\n{{b}}\n"
+    assert [t["name"] for t in ts.tokens(text)] == ["b"]
+
+
 def test_headings_inside_a_multiline_templater_span_are_skipped():
     text = "<%*\n# js comment\n%>\n## Kept\n"
     assert [h["text"] for h in ts.headings(text)] == ["Kept"]

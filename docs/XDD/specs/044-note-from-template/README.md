@@ -62,6 +62,11 @@
 | 2026-11-05 | note-instructions.py stays one file at ~550 lines after `deliver` (constitution L2 split rule not applied now) | About 500 lines without the docstring, every subcommand shares the meta, config and path helpers, and the plan has no task for a split; revisit if the script grows further |
 | 2026-11-05 | A source deleted or moved before deliver marks it counts as nothing to mark: the step is done, `source_marked` is false and the stage is removed | T2.6 review; otherwise every resume failed and the draft stayed a kept draft forever although note and set were delivered |
 | 2026-11-05 | Model escalation: T2.6 opus → opus@max | Trigger: second review FAIL |
+| 2026-11-05 | Phase 2 gate: full suite 7527 passed, 5 skipped; ruff clean; 11 mutation proofs (order, no-overwrite, frozen title and keep_source, no-echo per script family) red and restored green; every script matches its SDD interface | T2.8 |
+| 2026-11-05 | Phase 2 drift check: 4 FAIL, all SDD text lagging the reviewed code; owner chose to align the spec and the Phase 3/4 plan text and to consolidate the duplicated config reader, atomic write and fence split into libs now | Owner choice |
+| 2026-11-05 | An empty `destination:` or `offer:` key in a process file reads as unset; `offer: never` beside an empty key is still a normal process, not a decline | Gate finding; matches `required:`; only a hand edit produces it |
+| 2026-11-05 | Kado error text stays verbatim in `listing_error` and the outline error | SDD F2-AC4 shows `listing_error` verbatim; Kado error messages carry paths and status, not note text |
+| 2026-11-05 | note-instructions.py line count is 585 after the T2.6 fixes; the no-split decision above still holds | Alignment review; the reasons are unchanged |
 
 ## Context
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.6
+# version: 0.2.7
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -47,6 +47,7 @@ Runs in tmp_path with a fake KadoClient; never a live vault.
 """
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import re
@@ -1134,6 +1135,29 @@ def test_deliver_missing_kado_config_fails_at_kado_config_and_keeps_the_draft(
     assert [d["stem"] for d in start["kept_drafts"]] == [stem]
     assert start["kept_drafts"][0]["failed_step"] == "kado_config"
     assert stem not in start["stale_stages"]
+
+
+@pytest.mark.parametrize("error", [TimeoutError("timed out"),
+                                   http.client.IncompleteRead(b"", 10)],
+                         ids=["TimeoutError", "IncompleteRead"])
+def test_deliver_kado_transport_error_fails_at_note_and_keeps_the_draft(
+        inst, capsys, vault, monkeypatch, error):
+    """The real KadoClient over a transport that breaks mid-response: exit 1 step note, not exit 2."""
+    from lib import kado_client
+    stem = _ready(inst, capsys, vault)
+    monkeypatch.setattr(kado_client, "_resolve_config", lambda url, token: ("http://kado.test", "t"))
+    monkeypatch.setattr(ni, "KadoClient", kado_client.KadoClient)
+
+    def broken_transport(*_a, **_k):
+        raise error
+
+    monkeypatch.setattr(kado_client.urllib.request, "urlopen", broken_transport)
+    rc, exists, out, raw, err = _deliver(capsys, stem)
+    assert rc == 1 and exists is None, err
+    assert out["status"] == "failed" and out["step"] == "note"
+    assert "KadoConnectionError" in err and MARKER not in raw + err
+    meta = _meta(inst, stem)
+    assert meta.steps_done == [] and meta.failed_step == "note"
 
 
 def test_deliver_resume_after_kado_config_delivers_from_scratch(

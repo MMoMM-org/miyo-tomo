@@ -1,4 +1,4 @@
-# version: 0.14.1
+# version: 0.15.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -19,6 +19,7 @@ Usage:
   python3 -m lib.kado_client --test
 """
 
+import http.client
 import json
 import os
 import random
@@ -685,7 +686,8 @@ class KadoClient:
 
         Raises
         ------
-        KadoConnectionError  — server unreachable
+        KadoConnectionError  — server unreachable, or the exchange broke (timeout,
+                               reset, truncated body: OSError / HTTPException)
         KadoAuthError        — 401/403 HTTP response
         KadoNotFoundError    — 404 HTTP response or tool not-found error
         KadoToolError        — MCP tool returned isError: true
@@ -758,6 +760,10 @@ class KadoClient:
                     ) from exc
                 raise KadoConnectionError(
                     f"Network error reaching {self._endpoint}: {reason}"
+                ) from exc
+            except (OSError, http.client.HTTPException) as exc:
+                raise KadoConnectionError(
+                    f"Transport error talking to {self._endpoint}: {type(exc).__name__}"
                 ) from exc
 
         # Handle SSE-framed responses (StreamableHTTP may return

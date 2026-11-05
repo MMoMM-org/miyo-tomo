@@ -10,7 +10,7 @@ Two scripts touch draft state: `note-instructions.py` (`new`, `stage`, `deliver`
 `drop`) writes it, and `note-session.py start` lists it to offer resume. Hyphenated
 scripts cannot import each other, so the field set, the frozen rule and the
 kept/stale split live here once. A second reader that re-derived "a kept draft is
-one with `failed_step` set" would drift from the writer the first time either
+one with `failed_step` set or `steps_done` non-empty" would drift from the writer the first time either
 changed.
 
 ## WHY Title and Destination Freeze Once a Step Is Done
@@ -38,15 +38,51 @@ applies: a refused `keep_source` change leaves title and destination untouched,
 and a refused title or destination change leaves `keep_source` untouched.
 Restating the current `keep_source` is not a change.
 
-## WHY a Stage Without failed_step Is Stale, Not Kept
+## WHY a Started Delivery Is Kept and Only an Untouched Stage Is Stale
 
-`failed_step` is set only by a delivery that failed (F6-AC1); that draft has
-nothing left to ask and can resume. A stage directory without it is a dialogue
-that was interrupted before approval: it holds user material but no approved
-note, so `start` reports it as stale and the skill drops it. A directory whose
-meta.json is missing or unreadable is stale for the same reason: `new` writes
-meta.json right after creating the directory, so its absence means the run died
-in between.
+A kept draft is a delivery that started and did not finish: `failed_step` is set
+(a step failed, F6-AC1) or `steps_done` is non-empty (SDD "Interrupted
+delivery"). The second case has `failed_step` empty because the process was
+killed between steps, before any step could record a failure. Part of that
+delivery is already in the vault (at least the note in the inbox), so dropping
+it silently would orphan a landed file; it is offered for resume or drop like a
+failed one.
+
+A stale stage has neither `failed_step` nor `steps_done`: a dialogue that was
+interrupted before approval. It holds user material but nothing landed, so
+`start` reports it as stale and the skill drops it. A directory whose meta.json
+is missing or unreadable is stale for the same reason: `new` writes meta.json
+right after creating the directory, so its absence means the run died in
+between.
+
+## WHY read_meta Checks Every Field's Type
+
+meta.json sits on disk where a crash, a hand edit or a future writer bug can
+leave a valid JSON object with wrong types. The freeze checks test membership
+(`"instructions_json" in meta.steps_done`); on a string `steps_done` that is a
+substring match, so a corrupt file could freeze or unfreeze `keep_source` by
+accident. `read_meta` therefore accepts only: every string field a `str`
+(`source_path` a `str` or null), `keep_source` a `bool`, `steps_done` a list of
+known steps without duplicates, `failed_step` empty or a known step, and `stem`
+equal to the directory name (a copied meta.json must not deliver under another
+draft's names). Anything else raises MetaError, and the listing counts the
+directory as stale, the same as unreadable JSON.
+
+## WHY Error Messages Never Carry the Offending Value
+
+Script output reaches the model. A stem, template stem or step name supplied by
+a caller, or text read from meta.json, may carry vault folder names or note
+titles the user considers private, and an attacker-shaped argument should not be
+echoed back into the model's context. ValueError and MetaError therefore use
+fixed text naming the problem class (malformed stem, unknown step, field of the
+wrong type), never the value.
+
+## WHY new_meta Takes stem as a Keyword-Only Parameter
+
+`stem` is needed before the dataclass is built (it names the inbox file). Taking
+it from `**fields` turned a forgotten stem into a bare `KeyError: 'stem'`; an
+explicit keyword-only parameter fails with a TypeError that names the missing
+argument.
 
 ## WHY the Stem Is Validated Before Any Path Is Built
 

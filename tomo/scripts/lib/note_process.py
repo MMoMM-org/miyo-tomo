@@ -1,17 +1,20 @@
 # note_process.py — process files of /note: read, write, decline, required points.
-# version: 0.1.0
+# version: 0.1.1
 """Own ``config/note-processes/<template-stem>.md``.
 
-A process file carries optional YAML frontmatter (``destination`` ending in
-"/", ``required`` list of point names, ``offer: never``) and a body of free
-guidance. ``offer: never`` with no other field and no body is a decline marker.
+A process file carries optional YAML frontmatter (``destination`` folder path,
+normalised to one trailing "/" on read and write, ``required`` list of point
+names, ``offer: never``) and a body of free guidance. ``offer: never`` with no
+other field and no body is a decline marker; with any other field or a body the
+file reads as a normal process with ``declined`` false.
 
 ``note-process.py`` (read, write, decline) and ``note-instructions.py new``
 import this module. ``read_process`` never raises on a broken file: it returns
 ``exists: true`` with ``error`` naming the problem class, never the file text.
 ``write_process`` writes nothing when a required point is absent from the
 template outline. Functions take the process directory explicitly; a template
-stem that could leave it raises ValueError.
+stem that could leave it raises ValueError. No message carries the stem or
+file text.
 
 Frontmatter is serialised with yaml.safe_dump and the whole file is replaced
 atomically. Schema (documentation): tomo/schemas/note-process.schema.json.
@@ -50,7 +53,7 @@ def process_path(process_dir: Path, template_stem: str) -> Path:
     """Return the process file path; ValueError when the stem could leave the dir."""
     stem = template_stem if isinstance(template_stem, str) else ""
     if not stem.strip() or "/" in stem or "\\" in stem or stem.startswith("."):
-        raise ValueError(f"malformed template stem: {template_stem!r}")
+        raise ValueError("malformed template stem")
     return Path(process_dir) / f"{stem}.md"
 
 

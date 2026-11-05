@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_process_lib.py — Behavioural tests for lib.note_process (spec 044 T1.3).
 
 Covers the process file owner for config/note-processes/<template-stem>.md:
@@ -234,3 +234,53 @@ def test_a_malformed_template_stem_is_rejected(tmp_path, bad):
         note_process.read_process(tmp_path, bad)
     with pytest.raises(ValueError):
         note_process.write_decline(tmp_path, bad)
+
+
+# ── Drift findings: decline rule, destination without slash, privacy ─────────
+
+MARKER = "SECRETMARKER"
+
+
+def test_offer_never_with_a_body_is_a_process_not_a_decline(tmp_path):
+    _write(tmp_path, "---\noffer: never\n---\nKeep it short.\n")
+
+    result = note_process.read_process(tmp_path, TEMPLATE)
+
+    assert result["declined"] is False
+    assert result["guidance"] == "Keep it short."
+    assert result["error"] == ""
+
+
+def test_schema_accepts_a_destination_without_trailing_slash():
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    jsonschema.validate({"destination": "Efforts/Meetings"}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"destination": ""}, schema)
+
+
+def test_malformed_template_stem_error_does_not_echo_the_stem(tmp_path):
+    with pytest.raises(ValueError) as read_exc:
+        note_process.read_process(tmp_path, f"../{MARKER}")
+    with pytest.raises(ValueError) as write_exc:
+        note_process.write_decline(tmp_path, f"{MARKER}/x")
+
+    assert MARKER not in str(read_exc.value)
+    assert MARKER not in str(write_exc.value)
+
+
+@pytest.mark.parametrize("text", [
+    f"---\ndestination: [{MARKER}\n---\n",
+    f"---\n- {MARKER}\n---\n",
+    f"---\nrequired: {MARKER}\n---\n",
+    f"---\noffer: {MARKER}\n---\n",
+    f"---\ndestination: {MARKER}/\n",
+])
+def test_no_read_error_carries_a_value_from_the_file(tmp_path, text):
+    _write(tmp_path, text)
+
+    result = note_process.read_process(tmp_path, TEMPLATE)
+
+    assert result["error"]
+    assert MARKER not in result["error"]

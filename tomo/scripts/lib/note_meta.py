@@ -1,15 +1,16 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.1
+# version: 0.1.2
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
-``note-session.py start`` lists it to offer resume of failed deliveries and to
+``note-session.py start`` lists it to offer resume of started deliveries and to
 name stale stages. Both import this module so the field set, the frozen rule and
 the kept/stale split exist once.
 
 Paths are built from a base directory (the instance root, i.e. the scripts'
 working directory) and a stem of the form ``YYYY-MM-DD_HHMMSS``; any other stem
-raises ValueError before a path is built.
+raises ValueError before a path is built. Error messages name the problem
+class only, never a caller-supplied value or text read from meta.json.
 
 Stdlib only.
 
@@ -33,6 +34,8 @@ META_FILE = "meta.json"
 STEPS = ("note", "instructions_json", "instructions_md", "source_mark")
 
 _STEM_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{6}")
+_STR_FIELDS = ("stem", "run_id", "created", "generated", "template", "template_stem",
+               "title", "inbox_file", "destination", "default_destination", "failed_step")
 
 
 class MetaError(Exception):
@@ -86,12 +89,13 @@ def inbox_file_for(inbox: str, stem: str, title: str) -> str:
     return f"{inbox.rstrip('/')}/{stem}_{sanitize_stem(title)}.md"
 
 
-def new_meta(*, inbox: str, title: str, destination: str,
+def new_meta(*, stem: str, inbox: str, title: str, destination: str,
              default_destination: str, **fields) -> NoteDraftMeta:
-    """Build a fresh draft state; ``fields`` carries the identity fields."""
+    """Build a fresh draft state; ``fields`` carries the other identity fields."""
     return NoteDraftMeta(
+        stem=stem,
         title=title,
-        inbox_file=inbox_file_for(inbox, fields["stem"], title),
+        inbox_file=inbox_file_for(inbox, stem, title),
         destination=folder(destination),
         default_destination=folder(default_destination),
         **fields,
@@ -106,17 +110,40 @@ def stage_root(base: Path) -> Path:
 def stage_dir(base: Path, stem: str) -> Path:
     """Return the stage directory of ``stem``; ValueError on a malformed stem."""
     if not isinstance(stem, str) or not _STEM_RE.fullmatch(stem):
-        raise ValueError(f"malformed stem (want YYYY-MM-DD_HHMMSS): {stem!r}")
+        raise ValueError("malformed stem (want YYYY-MM-DD_HHMMSS)")
     return stage_root(base) / stem
 
 
+def _shape_problem(raw: dict, stem: str) -> str:
+    """Return the problem class of a meta.json object, empty when it is usable."""
+    if any(not isinstance(raw.get(k), str) for k in _STR_FIELDS):
+        return "a text field is not a string"
+    if raw.get("source_path") is not None and not isinstance(raw["source_path"], str):
+        return "source_path is neither a string nor null"
+    if not isinstance(raw.get("keep_source"), bool):
+        return "keep_source is not a boolean"
+    steps = raw.get("steps_done")
+    if (not isinstance(steps, list) or not all(isinstance(s, str) and s in STEPS for s in steps)
+            or len(set(steps)) != len(steps)):
+        return "steps_done is not a list of distinct known steps"
+    if raw["failed_step"] and raw["failed_step"] not in STEPS:
+        return "failed_step is not a known step"
+    if raw["stem"] != stem:
+        return "stem does not match the stage directory"
+    return ""
+
+
 def read_meta(stage: Path) -> NoteDraftMeta:
-    """Load meta.json from a stage directory; MetaError when unusable."""
+    """Load meta.json from a stage directory; MetaError when unusable or mistyped."""
     try:
         raw = json.loads((Path(stage) / META_FILE).read_text(encoding="utf-8"))
-        return NoteDraftMeta(**raw)
+        meta = NoteDraftMeta(**raw)
     except (OSError, ValueError, TypeError) as exc:
-        raise MetaError(f"{META_FILE} unusable in {Path(stage).name}: {type(exc).__name__}") from exc
+        raise MetaError(f"{META_FILE} unusable ({type(exc).__name__})") from exc
+    problem = _shape_problem(raw, Path(stage).name)
+    if problem:
+        raise MetaError(f"{META_FILE} unusable: {problem}")
+    return meta
 
 
 def write_meta(stage: Path, meta: NoteDraftMeta) -> None:
@@ -129,7 +156,7 @@ def write_meta(stage: Path, meta: NoteDraftMeta) -> None:
 
 def _check_step(step: str) -> None:
     if step not in STEPS:
-        raise ValueError(f"unknown delivery step: {step!r}")
+        raise ValueError("unknown delivery step")
 
 
 def mark_step_done(meta: NoteDraftMeta, step: str) -> None:
@@ -183,7 +210,7 @@ def _kept_entry(meta: NoteDraftMeta) -> dict:
 
 
 def list_stages(base: Path) -> StageListing:
-    """Split stage directories into failed deliveries and stale stages, by stem."""
+    """Split stage directories into started deliveries (kept) and stale stages, by stem."""
     root = stage_root(base)
     stems = sorted(p.name for p in root.iterdir()
                    if p.is_dir() and _STEM_RE.fullmatch(p.name)) if root.is_dir() else []
@@ -194,7 +221,7 @@ def list_stages(base: Path) -> StageListing:
         except MetaError:
             stale.append(stem)
             continue
-        if meta.failed_step:
+        if meta.failed_step or meta.steps_done:
             kept.append(_kept_entry(meta))
         else:
             stale.append(stem)

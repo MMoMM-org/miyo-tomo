@@ -21,14 +21,29 @@ other field empty. Wrong types (a string where `required` wants a list, an
 class, never the file text: process files may hold vault folder names or
 guidance the user considers private, and script output reaches the model.
 
+The same holds for exceptions: the ValueError for a malformed template stem uses
+fixed text and never echoes the stem, which is a caller-supplied value that may
+name a private template.
+
 ## WHY "offer: never" Alone Is the Decline Marker
 
-The "never" answer to "save this process?" (F7-AC9) must persist, or the skill
-would ask again after every delivery. Storing it as a process file with only
-`offer: never` keeps one file per template and one place to look. When any other
-field (destination, required, guidance) sits beside it, the user wrote a process
-by hand and the file is read as that process: discarding their settings because
-of a leftover marker would be worse than offering once more.
+The decline marker is a process file holding only `offer: never`: no other
+field and no body (SDD glossary, F7-AC9). The "never" answer to "save this
+process?" must persist, or the skill would ask again after every delivery.
+Storing it as a process file keeps one file per template and one place to look.
+
+An `offer: never` file with any other field (destination, required) or a body
+reads as a normal process with `declined: false`: the user wrote a process by
+hand, and discarding their settings because of a leftover marker would be worse
+than offering once more.
+
+## WHY destination Is Accepted Without a Trailing Slash
+
+A user editing a process file by hand may write `destination: Efforts/Meetings`.
+Rejecting that as broken would drop their whole process over a cosmetic slash,
+so any non-empty folder path is accepted and normalised to exactly one trailing
+"/" on read and on write. The schema says the same (no trailing-slash pattern),
+so the documentation does not call a file broken that the reader accepts.
 
 ## WHY write Rejects Required Points Absent From the Outline
 

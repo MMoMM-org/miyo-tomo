@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
@@ -7,13 +7,17 @@ Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
 - steps_done updates (order, idempotence, unknown step rejected) and failed_step
 - title and destination frozen once steps_done is non-empty, keep_source once
   instructions_json is done (SDD stage Rule)
-- stage listing splits failed deliveries (kept_drafts) from stale stages
+- stage listing splits started deliveries (kept_drafts: failed_step set or
+  steps_done non-empty) from stale stages
+- read_meta rejects fields of the wrong type or shape (stale in the listing)
+- error messages never echo the offending value
 - stem validation guards every path built from a stem
 """
 from __future__ import annotations
 
 import json
 import sys
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -336,3 +340,123 @@ def test_remove_stage_deletes_the_directory(tmp_path):
 
 def test_remove_stage_on_a_missing_stem_reports_false(tmp_path):
     assert note_meta.remove_stage(tmp_path, STEM) is False
+
+
+# ── Interrupted delivery (SDD Error Handling) ────────────────────────────────
+
+
+def test_delivery_killed_between_steps_is_a_kept_draft_not_stale(tmp_path):
+    interrupted = _meta(stem="2026-11-04_090000")
+    note_meta.mark_step_done(interrupted, "note")
+    _stage_with(tmp_path, interrupted)
+
+    listing = note_meta.list_stages(tmp_path)
+
+    assert listing.kept_drafts == [{
+        "stem": "2026-11-04_090000",
+        "title": "Weekly: sync",
+        "template": "Templates/Meeting Notes.md",
+        "created": "2026-11-04T10:15:00Z",
+        "failed_step": "",
+    }]
+    assert listing.stale_stages == []
+
+
+# ── read_meta type checks ────────────────────────────────────────────────────
+
+
+def _raw_stage(root: Path, **overrides) -> Path:
+    stage = note_meta.stage_dir(root, STEM)
+    stage.mkdir(parents=True)
+    raw = asdict(_meta()) | overrides
+    (stage / "meta.json").write_text(json.dumps(raw), encoding="utf-8")
+    return stage
+
+
+@pytest.mark.parametrize("overrides", [
+    {"steps_done": "instructions_json"},
+    {"steps_done": ["note", "upload"]},
+    {"steps_done": ["note", "note"]},
+    {"steps_done": [1]},
+    {"keep_source": "false"},
+    {"keep_source": 0},
+    {"failed_step": None},
+    {"failed_step": "upload"},
+    {"title": 42},
+    {"destination": None},
+    {"run_id": ["x"]},
+    {"source_path": 7},
+    {"stem": "2026-11-04_111111"},
+])
+def test_read_meta_rejects_a_field_of_the_wrong_shape(tmp_path, overrides):
+    stage = _raw_stage(tmp_path, **overrides)
+
+    with pytest.raises(note_meta.MetaError):
+        note_meta.read_meta(stage)
+    assert note_meta.list_stages(tmp_path).stale_stages == [STEM]
+
+
+def test_string_steps_done_is_rejected_not_substring_matched(tmp_path):
+    stage = _raw_stage(tmp_path, steps_done="instructions_json")
+
+    with pytest.raises(note_meta.MetaError):
+        note_meta.read_meta(stage)
+    assert note_meta.list_stages(tmp_path).kept_drafts == []
+
+
+# ── Error messages carry no offending value ──────────────────────────────────
+
+MARKER = "SECRETMARKER"
+
+
+def test_malformed_stem_error_does_not_echo_the_stem(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        note_meta.stage_dir(tmp_path, f"../{MARKER}")
+
+    assert MARKER not in str(exc.value)
+
+
+def test_unknown_step_error_does_not_echo_the_step():
+    meta = _meta()
+
+    with pytest.raises(ValueError) as done:
+        note_meta.mark_step_done(meta, MARKER)
+    with pytest.raises(ValueError) as failed:
+        note_meta.mark_step_failed(meta, MARKER)
+
+    assert MARKER not in str(done.value)
+    assert MARKER not in str(failed.value)
+
+
+def test_meta_error_carries_neither_stem_nor_file_text(tmp_path):
+    stage = _raw_stage(tmp_path, title=[MARKER], template=MARKER)
+
+    with pytest.raises(note_meta.MetaError) as exc:
+        note_meta.read_meta(stage)
+
+    assert MARKER not in str(exc.value)
+    assert STEM not in str(exc.value)
+
+
+def test_meta_error_on_broken_json_does_not_name_the_stem(tmp_path):
+    stage = note_meta.stage_dir(tmp_path, STEM)
+    stage.mkdir(parents=True)
+    (stage / "meta.json").write_text("{" + MARKER, encoding="utf-8")
+
+    with pytest.raises(note_meta.MetaError) as exc:
+        note_meta.read_meta(stage)
+
+    assert MARKER not in str(exc.value)
+    assert STEM not in str(exc.value)
+
+
+# ── new_meta signature ───────────────────────────────────────────────────────
+
+
+def test_new_meta_without_stem_raises_a_type_error_naming_stem():
+    fields = asdict(_meta())
+    for key in ("stem", "inbox_file", "keep_source", "steps_done", "failed_step"):
+        fields.pop(key)
+
+    with pytest.raises(TypeError, match="stem"):
+        note_meta.new_meta(inbox="100 Inbox", **fields)

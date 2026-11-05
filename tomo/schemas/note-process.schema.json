@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://miyo.tomo/schemas/note-process.schema.json",
   "title": "Note Process File Frontmatter",
-  "description": "Frontmatter of config/note-processes/<template-stem>.md — instance-local, user-owned settings for /note on one template. The file body is free guidance text. A file whose frontmatter holds only offer: never and whose body is empty is a decline marker. Documentation only: lib/note_process.py validates these fields itself.",
+  "description": "Frontmatter of config/note-processes/<template-stem>.md — instance-local, user-owned settings for /note on one template. The file body is free guidance text. A file holding only offer: never (no other field and no body) is a decline marker; an offer: never file with other fields or a body reads as a normal process with declined false. Documentation only: lib/note_process.py validates these fields itself.",
   "type": "object",
   "properties": {
     "destination": {
       "type": "string",
       "minLength": 1,
-      "pattern": "/$",
-      "description": "Vault folder the note moves to by default, ending in '/'. Overrides concepts.atomic_note.path for this template."
+      "pattern": "\\S",
+      "description": "Vault folder the note moves to by default: any non-empty folder path, with or without a trailing '/'; it is normalised to exactly one trailing '/' on read and on write. Overrides concepts.atomic_note.path for this template."
     },
     "required": {
       "type": "array",
@@ -18,7 +18,7 @@
     },
     "offer": {
       "const": "never",
-      "description": "When present alone, the user declined saving a process for this template; /note does not offer again."
+      "description": "When present alone (no other field and no body), the user declined saving a process for this template; /note does not offer again."
     }
   }
 }

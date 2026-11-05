@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Prerequisite and shared libraries"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -79,6 +79,6 @@ This phase proves the prerequisite and builds the libraries every script uses.
   4. Validate: writer tests and existing writer tests pass; ruff clean.
   5. Success: the selection is saved without touching any other setting `[ref: PRD/F1; SDD/F1-AC3, F1-AC5]`
 
-- [ ] **T1.5 Phase Validation** `[activity: validate]`
+- [x] **T1.5 Phase Validation** `[activity: validate]`
 
   - Run the full pytest command. Verify T1.2 to T1.4 against the SDD data models and ADR-4, ADR-5, ADR-7. Ruff clean.

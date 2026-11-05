@@ -48,6 +48,7 @@
 | 2026-11-05 | Phase 1 drift check: Needs Attention (0 FAIL, 3 MEDIUM, 19 LOW); owner chose to fix the MEDIUMs and the correctness and privacy LOWs before Phase 2 | Owner choice |
 | 2026-11-05 | A started delivery killed between steps is a kept draft, never a stale stage (SDD start output, Error Handling, glossary) | Drift M1; a stale stage is dropped silently, but part of that delivery is already in the vault |
 | 2026-11-05 | ADR-5 amended: refuse only a duplicate key the edit introduces, name a pre-existing one; keep CRLF; atomic write. The shared CRLF-tolerant header check also applies to the older writer subcommands (no behaviour change, they read with universal newlines) | Drift M2 and the T1.4 review; a pre-existing duplicate elsewhere must not block saving note_include |
+| 2026-11-05 | Phase 1 complete: drift fixes reviewed (43ae8e42, 104bedc8 + eaa5f646, 0883e6e5 + 9eb75ab1); full suite 6915 passed, 4 skipped; ruff clean | T1.5 gate |
 | 2026-11-05 | Accepted as documented, not changed: fences at any indent, indented ATX headings and quoted frontmatter keys not recognised, `--stdout` previews only the key lines, atomic write only in templates-include | LOW drift findings; realistic templates are unaffected |
 
 ## Context

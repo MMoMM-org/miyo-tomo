@@ -1,0 +1,11 @@
+--- a/skills/note-from-template/SKILL.md
++++ b/skills/note-from-template/SKILL.md
+@@ -123,7 +123,7 @@
+ 
+ Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+ 
+-Then ask: Deliver / Change something / Abort.
++Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask: Deliver / Change something / Abort.
+ - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+ - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
+ - Deliver → step 7.

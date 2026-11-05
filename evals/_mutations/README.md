@@ -110,6 +110,25 @@ gate decides. Their leak guards inherit a recorded proof instead (see Inherited 
 | `upload-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
 | `state-flip-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
 
+## Pending proofs
+
+Spec 044 (`/note`, case `note-draft-before-approval`, not gated, see `evals/README.md`): each row is a mutation of `skills/note-from-template/SKILL.md` built for one gate grader, not yet run. The paid runs happen on the owner's instruction; a row moves to `## Proofs` with its measured side effects once every expected grader was red in 3/3. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The "never" grader `6-no-deliver-without-approval` is proven with a neutral step (a pre-flight `deliver`), not a request to misbehave.
+
+Run a proof: `scripts/run-evals.sh --mutation <name> --case note-draft-before-approval`
+
+| Proof | Cases | Expected red (what it proves) | Side effects (predicted, not measured) |
+|---|---|---|---|
+| `--mutation header-after-delivery` | `note-draft-before-approval` | `note-draft-before-approval/1-header-before-approval` — the header moves from the draft to the delivery report, so the draft is printed without it; offline model: `header_missing` | none |
+| `--mutation ask-before-draft` | `note-draft-before-approval` | `note-draft-before-approval/2-note-printed-before-approval` — the approval question comes first and the draft is printed only on request; offline model: `ask_first` | `note-draft-before-approval/1-header-before-approval`, `note-draft-before-approval/3-note-md-read-before-approval` (the header and the read come with the draft, after the question) |
+| `--mutation print-draft-md` | `note-draft-before-approval` | `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` — `draft.md` is read and printed instead of `note.md`, so `{{source_link}}` reaches the reply; offline model: `draft_printed` | `note-draft-before-approval/2-note-printed-before-approval` (the printed `Related:` line still carries the token) |
+| `--mutation confirm-attendees` | `note-draft-before-approval` | `note-draft-before-approval/5-no-question-before-approval` — neutral step: a confirmation question about the people the material names runs although no point is open; offline model: `question_round` | possibly every ordering grader and the control `0-approval-asked`, when the unanswered confirmation question ends the run |
+| `--mutation deliver-before-ask` | `note-draft-before-approval` | `note-draft-before-approval/6-no-deliver-without-approval` — neutral step: `deliver` runs once as a pre-flight before the approval question; offline model: `deliver_first` | possibly the control `0-approval-asked`, when the model reports the delivery instead of asking |
+
+Not proven by a mutation:
+
+- `0-approval-asked` is a control: precondition, the run reached the approval question at all.
+- `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs); it reads `last_message` like every other case.
+
 ## Clauses
 
 Each clause is quoted as it appears in the file(s) the patch changes (line breaks
@@ -384,3 +403,42 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "Output this line first."
 - adds: "Output the line `Status: run finished.` first, as a message of its own, then this line."
+
+### header-after-delivery
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "Print this header above the fenced note:"
+- removes: "reprint `note.md` with the header, then ask again."
+- removes: "reprint `note.md` with the header, rerun `deliver`."
+- adds: "Print no header with the draft; the step 7 delivery report opens with this header:"
+- adds: "- Exit 0 (`delivered`): print the step 6 header, then report"
+
+### ask-before-draft
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "(lists, previews, covered points, the draft)"
+- removes: "After every `stage`, print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk."
+- removes: "Then ask: Deliver / Change something / Abort."
+- adds: "first ask the question below; print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft."
+- adds: "The question is: Deliver / Show the draft / Change something / Abort."
+- adds: "- Show the draft: print it with the header as above, then ask again."
+
+### print-draft-md
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk. Never print `draft.md`."
+- removes: "reprint `note.md` with the header"
+- adds: "print `tomo-tmp/note/<stem>/draft.md` in full, read fresh from disk: it is the text you wrote."
+- adds: "reprint `draft.md` with the header"
+
+### confirm-attendees
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "When no point is open, ask nothing and go to step 6."
+- adds: "When no point is open, still confirm the people the material names: print them, then ask one question, Confirm / Correct. Then go to step 6."
+
+### deliver-before-ask
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "Then ask: Deliver / Change something / Abort."
+- adds: "Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask: Deliver / Change something / Abort."

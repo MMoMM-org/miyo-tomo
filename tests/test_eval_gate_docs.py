@@ -81,8 +81,16 @@ def _claude_eval_bullet(claude_md: Path = REPO / "CLAUDE.md") -> str:
     return bullets[0]
 
 
+NOT_GATED = "not gated"
+
+
+def _gated_rows(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Rows whose cases gate a merge; a row marked "not gated" is coverage only (spec 044 ADR-8)."""
+    return [(a, b) for a, b in rows if NOT_GATED not in b]
+
+
 def _rule_sync_problems(rows: list[tuple[str, str]], bullet: str) -> list[str]:
-    table = _table_paths(rows)
+    table = _table_paths(_gated_rows(rows))
     named = set(re.findall(r"`(tomo/[^`\s]+)`", bullet))
     problems = [f"table path missing from the CLAUDE.md rule: {p}" for p in sorted(table - named)]
     problems += [f"CLAUDE.md rule names a path not in the table: {p}" for p in sorted(named - table)]
@@ -171,6 +179,12 @@ PASS2_CASES = (
     "state-flip-failure-reported",
 )
 ALL_CASE_FILES = ("tomo/dot_claude/commands/inbox.md", "tomo/dot_claude/settings.json")
+# Spec 044 ADR-8: one recorded /note case, covered in the table but outside the merge gate.
+NOT_GATED_CASES = ("note-draft-before-approval",)
+NOTE_FILES = (
+    "tomo/dot_claude/skills/note-from-template/SKILL.md",
+    "tomo/dot_claude/commands/note.md",
+)
 
 
 def _row_cases(rows: list[tuple[str, str]]) -> dict[str, set[str]]:
@@ -213,7 +227,7 @@ def test_pass1_files_are_rows_with_both_pass1_cases():
 
 
 def test_inbox_and_settings_rows_list_all_seven_cases():
-    assert set(_case_dirs()) == set(PASS1_CASES) | set(PASS2_CASES), _case_dirs()
+    assert set(_case_dirs()) - set(NOT_GATED_CASES) == set(PASS1_CASES) | set(PASS2_CASES), _case_dirs()
     problems = _all_cases_row_problems(_coverage_rows())
     assert not problems, problems
 
@@ -294,3 +308,49 @@ def test_mismatch_case_carries_its_own_report_only_and_the_shared_canary():
     assert own.read_bytes() != REPORT_ONLY.read_bytes()
     assert not (graders / "7-report-only.md").exists()
     assert (graders / "8-handback-canary.md").read_bytes() == CANARY.read_bytes()
+
+
+def _not_gated_row_problems(rows: list[tuple[str, str]], bullet: str) -> list[str]:
+    """Spec 044 T4.1: each /note file is a row listing only the /note case, marked
+    "not gated"; neither the files nor the case reach the CLAUDE.md gate or a gated row."""
+    by_path = {re.sub(r"[`\s]", "", a): b for a, b in rows}
+    problems: list[str] = []
+    for path in NOTE_FILES:
+        cell = by_path.get(path)
+        if cell is None:
+            problems.append(f"no coverage row for {path}")
+            continue
+        if set(re.findall(r"`([a-z][a-z0-9-]+)`", cell)) != set(NOT_GATED_CASES):
+            problems.append(f"{path} lists {cell}, expected only {NOT_GATED_CASES}")
+        if NOT_GATED not in cell:
+            problems.append(f"{path} is not marked {NOT_GATED!r}")
+        if f"`{path}`" in bullet:
+            problems.append(f"CLAUDE.md eval gate names {path}")
+    for first, second in _gated_rows(rows):
+        for case in NOT_GATED_CASES:
+            if f"`{case}`" in second:
+                problems.append(f"gated row {first} lists {case}")
+    problems += [f"CLAUDE.md eval gate names {c}" for c in NOT_GATED_CASES if c in bullet]
+    return problems
+
+
+def test_note_files_are_covered_but_not_gated():
+    problems = _not_gated_row_problems(_coverage_rows(), _claude_eval_bullet())
+    assert not problems, problems
+
+
+def test_not_gated_check_catches_a_gated_note_row():
+    gated = [(f"`{NOTE_FILES[0]}`", "`note-draft-before-approval`"),
+             (f"`{NOTE_FILES[1]}`", "`note-draft-before-approval` (not gated)")]
+    assert _not_gated_row_problems(gated, "") == [
+        f"{NOTE_FILES[0]} is not marked 'not gated'",
+        f"gated row `{NOTE_FILES[0]}` lists note-draft-before-approval",
+    ]
+    assert _not_gated_row_problems(gated[1:], f"`{NOTE_FILES[1]}`") == [
+        f"no coverage row for {NOTE_FILES[0]}", f"CLAUDE.md eval gate names {NOTE_FILES[1]}",
+    ]
+
+
+def test_every_not_gated_case_exists():
+    for case in NOT_GATED_CASES:
+        assert case in _case_dirs(), case

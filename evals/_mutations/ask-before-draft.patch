@@ -1,0 +1,32 @@
+--- a/skills/note-from-template/SKILL.md
++++ b/skills/note-from-template/SKILL.md
+@@ -12,7 +12,7 @@
+ 
+ ## Rules
+ 
+-- Before every AskUserQuestion call, print as visible text everything the question refers to (lists, previews, covered points, the draft), in the same message. Text in thinking counts as not printed.
++- Before every AskUserQuestion call, print as visible text everything the question refers to (lists, previews, covered points), in the same message. Text in thinking counts as not printed.
+ - Ask with at most four options per question.
+ - Ask in the language the user writes in; keep the template's headings.
+ - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
+@@ -113,7 +113,7 @@
+ 
+ When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
+ 
+-After every `stage`, print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk. Never print `draft.md`. Print this header above the fenced note:
++After every `stage`, first ask the question below; print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft. Never print `draft.md`. Print this header above the fenced note:
+ 
+ ```
+ Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
+@@ -123,9 +123,10 @@
+ 
+ Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+ 
+-Then ask: Deliver / Change something / Abort.
++The question is: Deliver / Show the draft / Change something / Abort.
+ - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+ - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
++- Show the draft: print it with the header as above, then ask again.
+ - Deliver → step 7.
+ - Abort → drop.
+ 

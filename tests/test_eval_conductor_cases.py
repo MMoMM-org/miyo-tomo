@@ -120,6 +120,8 @@ SPEC_043_REPORT_ONLY = {
 # Spec 043's Pass 1 cases; their shape is tested in test_run_evals.py.
 PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
 PIPELINE = "pass1-suggest-pipeline"
+# Spec 044's /note case: not gated; its shape and graders are tested in test_note_eval_case.py.
+NOTE_CASES = {"note-draft-before-approval"}
 SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
 SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
 PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
@@ -148,7 +150,7 @@ def production_dispatch() -> tuple[str, str, str | None]:
 def test_exactly_the_known_cases_exist():
     assert {p.name for p in EVALS.iterdir() if p.is_dir() and not p.name.startswith("_")} == set(
         CASE_SETTINGS
-    ) | PASS1_CASES
+    ) | PASS1_CASES | NOTE_CASES
 
 
 def test_every_non_underscore_evals_subdir_is_a_case():
@@ -590,7 +592,13 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
     "preface-report-line",
 )
-ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
+# Spec 044 (T4.1): built for the /note case, listed under `## Pending proofs` until run.
+NOTE_MUTATIONS = (
+    "header-after-delivery", "ask-before-draft", "print-draft-md", "confirm-attendees",
+    "deliver-before-ask",
+)
+RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
+ALL_MUTATIONS = RECORDED_MUTATIONS + NOTE_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -712,8 +720,11 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
+    pending = {p["arg"] for p in _proof_rows("Pending proofs") if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == files == set(ALL_MUTATIONS)
+    assert recorded == set(RECORDED_MUTATIONS)
+    assert pending == set(NOTE_MUTATIONS)
+    assert recorded | pending == files == set(ALL_MUTATIONS)
 
 
 @pytest.mark.parametrize("name", ALL_MUTATIONS)

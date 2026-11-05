@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
-one has an imperative in the runtime text, and that every script call uses the
-flags the scripts' argparse accepts. A live walk records the behaviour itself.
+one has an imperative in the runtime text, and that every `python3 scripts/…`
+call in the skill parses with the called script's own argparse parser, with
+prefix abbreviations refused (the script is imported, never run). A live walk records the behaviour itself.
 
 RED before T3.2: neither tomo/dot_claude/commands/note.md nor
 tomo/dot_claude/skills/note-from-template/SKILL.md exists.
 """
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import re
+import shlex
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOT_CLAUDE = REPO_ROOT / "tomo" / "dot_claude"
 COMMAND = DOT_CLAUDE / "commands" / "note.md"
 SKILL = DOT_CLAUDE / "skills" / "note-from-template" / "SKILL.md"
+SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 REMEDY = (
     "Grant the Kado key read access to the template folder (`templates.base_path`), "
@@ -47,9 +53,10 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
-def test_carries_a_version_0_1_0_header(path):
-    assert re.search(r"^# version: 0\.1\.0$", _text(path), re.MULTILINE)
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.1")],
+                         ids=["command", "skill"])
+def test_carries_its_version_header(path, version):
+    assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
 
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
@@ -81,6 +88,8 @@ def test_command_routes_arguments_to_the_skill_in_the_main_session():
 def test_start_uses_the_equals_form_of_args():
     assert "python3 scripts/note-session.py start --args='" in _flat(SKILL)
     assert "python3 scripts/note-session.py start --args " not in _flat(SKILL)
+    assert "Keep the request text in the conversation." in _flat(SKILL)
+    assert "does not echo" not in _flat(SKILL)
 
 
 def test_kept_drafts_are_handled_before_the_new_request():
@@ -255,20 +264,43 @@ def test_approval_options_and_changes_go_through_stage():
 
 def test_frozen_title_during_resume():
     text = _flat(SKILL)
-    assert "During a resume, title and destination are frozen" in text
+    assert "During a resume with a non-empty `steps_done`, title and destination are frozen" in text
+    assert "During a resume, title and destination are frozen" not in text
     assert "When `stage` reports `frozen: true`" in text
 
 
 # ── Abort (F6) ──────────────────────────────────────────────────────────────
 
 
+ABORT_LINES = {
+    "3. Choose the template": (
+        "Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. "
+        "inbox-author → hand the request to the `inbox-author` skill and stop. Abort → stop.",
+    ),
+    "4. Stage the draft": (
+        "`new` exits 1: say the source could not be read, then ask: Another source / Abort. Abort → stop.",
+        "Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this "
+        "template. Abort → drop.",
+        "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
+    ),
+    "5. Ask for open points": ("Abort at any question → drop.",),
+    "6. Draft": ("Then ask: Deliver / Change something / Abort.", "- Abort → drop."),
+    "7. Deliver": (
+        "rerun `deliver`. Abort → drop.",
+        "Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, "
+        "`instructions_md`) so the user can delete them in Obsidian, then run `drop`.",
+    ),
+}
+
+
 def test_drop_on_every_abort_path():
     text = _flat(SKILL)
     assert ("On Abort at any question, run `python3 scripts/note-instructions.py drop --stem <stem>` "
             "when a stem exists and confirm in one line") in text
-    for heading in ("3. Choose the template", "4. Stage the draft", "5. Ask for open points", "6. Draft",
-                    "7. Deliver"):
-        assert "Abort" in _section(heading), heading
+    for heading, lines in ABORT_LINES.items():
+        section = _section(heading)
+        for line in lines:
+            assert line in section, (heading, line)
 
 
 # ── Delivery (F5, F6) ───────────────────────────────────────────────────────
@@ -280,14 +312,26 @@ def test_deliver_runs_with_the_stem():
 
 def test_name_taken_offers_rename_or_abort_and_never_overwrites():
     text = _section("7. Deliver")
-    assert "On exit 3, offer Rename / Abort" in text
-    assert "Never overwrite" in text
+    assert "On exit 3, read `steps_done` in `tomo-tmp/note/<stem>/meta.json`. Never overwrite." in text
+    assert "`steps_done` empty: offer Rename / Abort, naming `exists_path`." in text
 
 
-def test_name_taken_during_a_resume_offers_keep_or_drop_and_names_landed_files():
+def test_name_taken_branches_on_steps_done_not_on_resume():
     text = _section("7. Deliver")
-    assert "On exit 3 during a resume, offer Keep / Drop" in text
-    assert "name the files of `steps_done`" in text
+    empty = text.index("`steps_done` empty: offer Rename / Abort")
+    landed = text.index("`steps_done` non-empty: offer Keep / Drop, naming `exists_path`.")
+    assert empty < landed
+    rename_branch = text[empty:landed]
+    assert 'run `stage --stem <stem> --title "<new title>"`' in rename_branch
+    assert "Keep" not in rename_branch
+    assert "Keep: leave the draft for a later `/note`." in text[landed:]
+    assert "On exit 3 during a resume" not in text
+
+
+def test_name_taken_with_landed_steps_names_landed_files():
+    text = _section("7. Deliver")
+    landed = text.index("`steps_done` non-empty: offer Keep / Drop")
+    assert "name the files of `steps_done`" in text[landed:]
 
 
 def test_a_vanished_source_is_reported_in_one_line():
@@ -335,3 +379,61 @@ def test_process_mode_shows_values_asks_and_writes_and_rejects_unknown():
     assert "--out tomo-tmp/note/process-outline.json" in text
     assert "python3 scripts/note-process.py write" in text
     assert "rm -f tomo-tmp/note/process-outline.json" in text
+
+
+# ── Script calls parse with the scripts' own parsers ────────────────────────
+
+
+def _load_script(filename: str):
+    mod_name = "note_skill_prose_" + filename[:-3].replace("-", "_")
+    if mod_name in sys.modules:
+        return sys.modules[mod_name]
+    if str(SCRIPTS_DIR) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS_DIR))
+    spec = importlib.util.spec_from_file_location(mod_name, SCRIPTS_DIR / filename)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+PARSERS = {
+    "note-session.py": lambda m, argv: m.build_parser().parse_args(argv),
+    "note-instructions.py": lambda m, argv: m._parser().parse_args(argv),
+    "note-process.py": lambda m, argv: m.build_parser().parse_args(argv),
+    "template-outline.py": lambda m, argv: m._parse_args(argv),
+    "vault-config-writer.py": lambda m, argv: m.build_parser().parse_args(argv),
+}
+
+CALL_RE = re.compile(r"python3 scripts/([\w-]+\.py)([^`\n]*)")
+
+
+def _placeholder(match: re.Match) -> str:
+    name = match.group(0)
+    if name == "<stem>":
+        return "2026-01-01_120000"
+    if "path" in name:
+        return "Templates/Meeting.md"
+    return "X"
+
+
+def _skill_calls() -> list[tuple[str, str]]:
+    return [(m.group(1), m.group(2).strip()) for m in CALL_RE.finditer(_text(SKILL))]
+
+
+def test_skill_calls_every_script_with_a_known_parser():
+    calls = _skill_calls()
+    assert len(calls) >= 15
+    assert {script for script, _ in calls} == set(PARSERS)
+
+
+@pytest.mark.parametrize("script,rest", _skill_calls(), ids=lambda v: str(v)[:60])
+def test_each_skill_call_parses_with_the_scripts_argparse(script, rest, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(argparse.ArgumentParser, "_get_option_tuples", lambda self, option: [])
+    argv = shlex.split(re.sub(r"<[^>]+>", _placeholder, rest))
+    try:
+        PARSERS[script](_load_script(script), argv)
+    except SystemExit as exc:
+        pytest.fail(f"{script} {rest!r} rejected by argparse (exit {exc.code})")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_template_syntax.py — Behavioural tests for lib.template_syntax.
 
 Spec 044 T1.2: one module gives the template outline its points and the
@@ -475,11 +475,30 @@ def test_resolve_prefilled_leaves_fenced_escaped_and_templater_tokens():
     assert "<% tp.date.now() %>" in out
 
 
-def test_resolve_prefilled_source_tokens_only_with_source():
-    without = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES)
+def test_resolve_prefilled_never_resolves_source_link_even_with_source():
     with_source = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES, has_source=True)
-    assert "source: {{source_link}}" in without
-    assert "source: [[Meeting raw]]" in with_source
+    assert "source: {{source_link}}" in with_source
+    assert {"name": "source_link", "line": 5, "prefilled": True} in ts.tokens(
+        with_source, has_source=True)
+
+
+def test_resolve_prefilled_source_path_only_with_source():
+    text = "from {{source_path}}\n"
+    values = {"source_path": "100 Inbox/a.md"}
+    assert ts.resolve_prefilled(text, values) == text
+    assert ts.resolve_prefilled(text, values, has_source=True) == "from 100 Inbox/a.md\n"
+
+
+def test_resolve_prefilled_two_tokens_on_one_line_with_different_lengths():
+    text = "x {{uuid}} y {{locale}} z {{title}}\n"
+    out = ts.resolve_prefilled(text, {"uuid": "1", "locale": "a-much-longer-value"})
+    assert out == "x 1 y a-much-longer-value z {{title}}\n"
+
+
+def test_resolve_tokens_replaces_only_named_tokens_outside_protected_text():
+    text = "s: {{source_link}}\n```\n{{source_link}}\n```\n\\{{source_link}} {{title}}\n"
+    out = ts.resolve_tokens(text, {"source_link": "[[a]]"})
+    assert out == "s: [[a]]\n```\n{{source_link}}\n```\n\\{{source_link}} {{title}}\n"
 
 
 def test_resolve_prefilled_missing_value_becomes_empty_and_no_token_is_left():
@@ -495,11 +514,22 @@ def test_resolve_prefilled_value_newline_keeps_line_numbers():
     assert ts.tokens(out) == [{"name": "title", "line": 3, "prefilled": False}]
 
 
-def test_source_values_build_path_and_wikilink():
-    assert ts.source_values("100 Inbox/sub/Meeting raw.md") == {
-        "source_path": "100 Inbox/sub/Meeting raw.md",
-        "source_link": "[[Meeting raw]]",
-    }
+def test_source_link_value_is_a_wikilink_when_the_source_is_kept():
+    assert ts.source_link_value("100 Inbox/sub/Meeting raw.md", True) == "[[Meeting raw]]"
+
+
+def test_source_link_value_is_empty_when_the_source_will_be_deleted():
+    assert ts.source_link_value("100 Inbox/sub/Meeting raw.md", False) == ""
+
+
+def test_source_link_value_is_empty_without_a_source():
+    assert ts.source_link_value(None, True) == ""
+    assert ts.source_link_value("", True) == ""
+
+
+def test_deferred_tokens_are_prefilled_source_tokens():
+    assert ts.DEFERRED_TOKENS == frozenset({"source_link"})
+    assert ts.DEFERRED_TOKENS <= ts.prefilled_tokens(has_source=True)
 
 
 def test_generated_values_equal_token_render():
@@ -530,3 +560,31 @@ def test_config_values_equal_token_render_for_config_tokens():
 def test_config_values_tolerate_missing_or_odd_sections():
     assert ts.config_values({}) == {}
     assert ts.config_values({"frontmatter": {"optional": "nope"}}) == {}
+
+
+@pytest.mark.parametrize("optional", [
+    [{"key": "locale", "token": "locale", "default": ""}],
+    [{"key": "VaultVersion", "token": "vault_version", "default": 0}],
+    [{"key": "Vault", "token": "vault", "default": False}],
+    [{"key": "Profile", "token": "profile", "default": "from-optional"}],
+], ids=["empty-string-default", "zero-default", "false-default", "optional-profile-wins"])
+def test_config_values_equal_token_render_on_edge_defaults(optional):
+    config = {"profile": "miyo", "frontmatter": {"optional": optional}}
+    expected = {k: v for k, v in _load_token_render().resolve_config_tokens(config).items()
+                if k in ts.CONFIG_TOKENS}
+    assert ts.config_values(config) == expected
+    entry = optional[0]
+    assert expected[entry["token"]] == str(entry["default"])
+
+
+@pytest.mark.parametrize("frontmatter", ["x", ["a", "b"], 3])
+def test_config_values_tolerate_a_frontmatter_that_is_not_a_mapping(frontmatter):
+    assert ts.config_values({"frontmatter": frontmatter}) == {}
+    assert ts.config_values({"frontmatter": frontmatter, "profile": "miyo"}) == {
+        "profile": "miyo"}
+
+
+def test_config_values_skip_optional_items_that_are_not_usable_entries():
+    optional = ["x", None, ["y"], {"token": ["locale"], "default": "de"},
+                {"token": "locale", "default": "de"}]
+    assert ts.config_values({"frontmatter": {"optional": optional}}) == {"locale": "de"}

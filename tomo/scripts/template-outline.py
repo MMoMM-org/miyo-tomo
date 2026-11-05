@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """template-outline.py — List the points of one note template for /note.
 
 Reads one template (through Kado, or a local file with --local) and prints its
@@ -17,12 +17,15 @@ parser is lib/template_syntax.py, the one the filled-note check uses.
 
 --stage <stem>  reads tomo-tmp/note/<stem>/meta.json (source_path set means the
                 source tokens are prefilled), then writes
-                tomo-tmp/note/<stem>/template.md with every prefilled token
-                replaced (generated values from the clock, config values from
-                config/vault-config.yaml, source values from meta.json; a token
-                without a value becomes empty text) and
+                tomo-tmp/note/<stem>/template.md with every prefilled token but
+                {{source_link}} replaced (generated values from the clock, config
+                values from config/vault-config.yaml, source_path from meta.json;
+                a token without a value becomes empty text) and
                 tomo-tmp/note/<stem>/outline.json (the stdout object).
+                {{source_link}} stays; note-instructions.py stage resolves it.
 --out <file>    writes the stdout object to that file as well.
+
+All files of one run are written together or not at all.
 
 Paths are relative to the working directory (the instance root).
 
@@ -45,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,19 +143,36 @@ def _load_config() -> dict:
 
 
 def prefilled_values(source_path: str | None) -> dict:
-    """Values for every prefilled token: clock, config and (with a source) the source."""
+    """Values for the prefilled tokens: clock, config and (with a source) source_path."""
     values = {**ts.generated_values(_now()), **ts.config_values(_load_config())}
     if source_path:
-        values.update(ts.source_values(source_path))
+        values["source_path"] = source_path
     return values
 
 
-def _write(path: Path, content: str) -> None:
+def _write_all(files: dict[Path, str]) -> None:
+    """Write every file or none: .tmp siblings first, os.replace once all are written."""
+    temps: dict[Path, Path] = {}
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        for path, content in files.items():
+            temps[path] = path.with_name(path.name + ".tmp")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temps[path].write_text(content, encoding="utf-8")
+        for path, temp in temps.items():
+            os.replace(temp, path)
     except OSError as exc:
         raise OutlineError(f"cannot write {path} ({type(exc).__name__})", 2) from exc
+    finally:
+        _remove_temps(temps.values())
+
+
+def _remove_temps(temps) -> None:
+    """Remove leftover .tmp siblings; one that cannot be removed is left."""
+    for temp in temps:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _run(args: argparse.Namespace) -> dict:
@@ -159,14 +180,16 @@ def _run(args: argparse.Namespace) -> dict:
     source_path = _stage_source(args.stage) if args.stage else None
     text = _read_template(args)
     outline = build_outline(args.template or args.local, text, bool(source_path))
-    dumped = json.dumps(outline, ensure_ascii=False, indent=2)
+    dumped = json.dumps(outline, ensure_ascii=False, indent=2) + "\n"
+    files: dict[Path, str] = {}
     if args.stage:
         stage = stage_dir(Path.cwd(), args.stage)
-        resolved = ts.resolve_prefilled(text, prefilled_values(source_path), bool(source_path))
-        _write(stage / "template.md", resolved)
-        _write(stage / "outline.json", dumped + "\n")
+        values = prefilled_values(source_path)
+        files[stage / "template.md"] = ts.resolve_prefilled(text, values, bool(source_path))
+        files[stage / "outline.json"] = dumped
     if args.out:
-        _write(Path(args.out), dumped + "\n")
+        files[Path(args.out)] = dumped
+    _write_all(files)
     return outline
 
 

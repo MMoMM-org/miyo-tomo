@@ -126,6 +126,26 @@ it as the original item as a wikilink; a bare basename link is how Obsidian link
 a note by name. A newline in any value is replaced by a space, so the line numbers
 in the outline stay valid for `template.md`.
 
+WHY `source_link` is prefilled but not resolved by `resolve_prefilled()`: its value
+depends on `keep_source`, which the user decides after the outline is staged (owner
+decision, SDD "Prefilled tokens"). A link to a source that will be deleted would
+dangle, so `note-instructions.py stage` resolves it in `draft.md`:
+`source_link_value(source_path, keep_source)` gives `[[<source stem>]]` when the
+source is kept and empty text when it will be deleted. It stays `{{source_link}}` in
+`template.md`, and `tokens()` still reports it `prefilled: true` with a source, so it
+is never offered as a point. `DEFERRED_TOKENS` names it; `resolve_tokens()` is the
+replacement both steps share, so stage replaces exactly the matches `tokens()`
+reports (fenced, escaped and Templater-covered ones stay).
+
+WHY `config_values()` checks every level's type: `vault-config.yaml` is user-edited.
+A `frontmatter:` that is a string or a list, or an `optional` item whose `token` is
+not a string, would otherwise raise and end the outline with a traceback instead of
+the JSON the skill reads. A malformed level contributes no values; the top-level
+`profile` is still read. `token-render.py` would crash on the same input, so parity
+is pinned only for well-formed configs, including the edge rules: a `default` of
+`""`, `0` or `false` is a value (`is not None`, not truthiness), and an optional
+entry with `token: profile` wins over the top-level `profile` (`setdefault`).
+
 ## Why the token regex is duplicated and pinned by parity
 
 WHY: `template-doctor.py` and `token-render.py` keep their own parsers (ADR-4

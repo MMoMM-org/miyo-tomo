@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_template_outline.py — template-outline.py lists one template's points.
 
 Spec 044 T2.1 (PRD F3; SDD F3-AC1, Internal API Changes): every heading,
@@ -157,7 +157,7 @@ def test_stage_with_source_writes_resolved_template_and_outline(instance, capsys
     assert "UUID: " + NOW.astimezone().strftime("%Y%m%d%H%M%S") + "\n" in staged
     assert "DateStamp: " + NOW.astimezone().strftime("%Y-%m-%d") + "\n" in staged
     assert "locale: de\n" in staged
-    assert "source: [[Meeting raw]]\n" in staged
+    assert "source: {{source_link}}\n" in staged
     assert "{{body}} from 100 Inbox/Meeting raw.md\n" in staged
     assert '"{{title}}"' in staged and "```\n{{uuid}}\n```" in staged
     assert json.loads((stage / "outline.json").read_text(encoding="utf-8")) == outline
@@ -260,3 +260,48 @@ def test_bad_invocation_exits_2(instance, capsys, argv):
         outline_script.main(argv)
     assert exc.value.code == 2
     assert capsys.readouterr().out == ""
+
+
+def _failing_nth_write(fail_on: int):
+    """Path.write_text that raises OSError on the n-th call (a full disk mid-stage)."""
+    real, calls = Path.write_text, []
+
+    def write_text(path, *args, **kwargs):
+        calls.append(path)
+        if len(calls) == fail_on:
+            raise OSError("disk full")
+        return real(path, *args, **kwargs)
+    return write_text
+
+
+def _stage_files(stage: Path) -> list[str]:
+    return sorted(p.name for p in stage.iterdir() if p.name != "meta.json")
+
+
+def test_stage_failed_second_write_leaves_no_staged_file(instance, monkeypatch, capsys):
+    stage = _stage(instance, "100 Inbox/Meeting raw.md")
+    monkeypatch.setattr(Path, "write_text", _failing_nth_write(2))
+    code, out, _ = _run(capsys, "--template", TEMPLATE_PATH, "--stage", STEM)
+    assert code == 2 and "OSError" in out["error"]
+    assert _stage_files(stage) == []
+
+
+def test_stage_failed_out_write_leaves_no_staged_file(instance, capsys):
+    stage = _stage(instance, None)
+    (instance / "blocker").write_text("a file, not a folder", encoding="utf-8")
+    code, out, _ = _run(capsys, "--template", TEMPLATE_PATH, "--stage", STEM,
+                        "--out", str(instance / "blocker" / "outline.json"))
+    assert code == 2 and out["error"]
+    assert _stage_files(stage) == []
+
+
+def test_stage_with_out_writes_all_three_files_and_no_temp(instance, capsys):
+    stage = _stage(instance, None)
+    target = instance / "tomo-tmp" / "note" / "process-outline.json"
+    code, outline, _ = _run(capsys, "--template", TEMPLATE_PATH, "--stage", STEM,
+                            "--out", str(target))
+    assert code == 0
+    assert _stage_files(stage) == ["outline.json", "template.md"]
+    assert json.loads(target.read_text(encoding="utf-8")) == outline
+    assert sorted(p.name for p in target.parent.iterdir()
+                  if p.name.endswith(".tmp")) == []

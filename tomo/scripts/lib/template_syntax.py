@@ -1,4 +1,4 @@
-# version: 0.1.3
+# version: 0.1.4
 """template_syntax.py — the one reading of a note template and a filled note.
 
 /note lists a template's points and later checks the filled note before it is
@@ -12,9 +12,11 @@ Lines are 1-based. A token is ``{{name}}`` matching TOKEN_RE outside fenced code
 outside a Templater span and without a leading backslash. A Templater span is
 ``<% ... %>`` in any variant (``<%*``, ``<%-``) and is listed, never a point.
 
-resolve_prefilled() replaces the prefilled tokens tokens() reports, in place;
+resolve_tokens() replaces the named tokens tokens() reports, in place;
+resolve_prefilled() uses it for every prefilled token except DEFERRED_TOKENS.
 generated_values() and config_values() copy token-render.py's value rules
-(pinned by parity tests) and source_values() builds the two source tokens.
+(pinned by parity tests). source_link_value() is the {{source_link}} value
+note-instructions.py stage writes into draft.md.
 """
 from __future__ import annotations
 
@@ -30,6 +32,8 @@ TEMPLATER_RE = re.compile(r"<%.*?%>", re.DOTALL)
 GENERATED_TOKENS = frozenset({"uuid", "datestamp", "updated", "date_iso"})
 CONFIG_TOKENS = frozenset({"locale", "vault", "vault_version", "profile"})
 SOURCE_TOKENS = frozenset({"source_path", "source_link"})
+# Prefilled, but resolved by note-instructions.py stage (needs keep_source).
+DEFERRED_TOKENS = frozenset({"source_link"})
 
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
@@ -190,17 +194,22 @@ def tokens(text: str, has_source: bool = False) -> list[dict]:
     ]
 
 
-def resolve_prefilled(text: str, values: dict, has_source: bool = False) -> str:
-    """Replace each prefilled token tokens() reports; a missing value becomes ""."""
-    prefilled = prefilled_tokens(has_source)
+def resolve_tokens(text: str, values: dict) -> str:
+    """Replace each token tokens() reports whose name is a key of values."""
     parts, cursor = [], 0
     for match, _line in _token_matches(text):
-        if match.group(1) not in prefilled:
+        if match.group(1) not in values:
             continue
-        value = str(values.get(match.group(1), "")).replace("\r", " ").replace("\n", " ")
+        value = str(values[match.group(1)]).replace("\r", " ").replace("\n", " ")
         parts += [text[cursor:match.start()], value]
         cursor = match.end()
     return "".join(parts) + text[cursor:]
+
+
+def resolve_prefilled(text: str, values: dict, has_source: bool = False) -> str:
+    """Replace each prefilled token except DEFERRED_TOKENS; a missing value becomes ""."""
+    names = prefilled_tokens(has_source) - DEFERRED_TOKENS
+    return resolve_tokens(text, {name: values.get(name, "") for name in names})
 
 
 def generated_values(now) -> dict:
@@ -217,20 +226,31 @@ def generated_values(now) -> dict:
 def config_values(config: dict) -> dict:
     """Config token values; token-render.py resolve_config_tokens, CONFIG_TOKENS only."""
     found = {}
-    optional = (config.get("frontmatter") or {}).get("optional", [])
-    for entry in optional if isinstance(optional, list) else []:
-        if isinstance(entry, dict) and entry.get("token") and entry.get("default") is not None:
-            found[entry["token"]] = str(entry["default"])
+    for entry in _optional_entries(config):
+        token = entry.get("token")
+        if isinstance(token, str) and token and entry.get("default") is not None:
+            found[token] = str(entry["default"])
     if config.get("profile"):
         found.setdefault("profile", config["profile"])
     return {k: v for k, v in found.items() if k in CONFIG_TOKENS}
 
 
-def source_values(source_path: str) -> dict:
-    """source_path and source_link (``[[<basename without .md>]]``) of an inbox note."""
+def _optional_entries(config: dict) -> list[dict]:
+    """The dict items of frontmatter.optional; [] when any level has the wrong type."""
+    frontmatter = config.get("frontmatter")
+    optional = frontmatter.get("optional") if isinstance(frontmatter, dict) else None
+    if not isinstance(optional, list):
+        return []
+    return [entry for entry in optional if isinstance(entry, dict)]
+
+
+def source_link_value(source_path: str | None, keep_source: bool) -> str:
+    """``[[<source stem>]]`` when the source is kept; "" when it is deleted or absent."""
+    if not source_path or not keep_source:
+        return ""
     name = posixpath.basename(source_path)
     stem = name[:-3] if name.endswith(".md") else name
-    return {"source_path": source_path, "source_link": f"[[{stem}]]"}
+    return f"[[{stem}]]"
 
 
 def templater_spans(text: str) -> list[dict]:

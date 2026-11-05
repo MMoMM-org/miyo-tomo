@@ -27,6 +27,24 @@ directory, which is the instance root inside the container. A missing config fil
 means no config values (each config token becomes empty text, as in token-render);
 an unreadable one is reported on stderr by its error class only.
 
+WHY `--stage` resolves `source_path` but leaves `{{source_link}}` in `template.md`:
+the link's value depends on `keep_source`, which is not decided yet when the
+outline is staged; a link to a source that will be deleted would dangle.
+`note-instructions.py stage` resolves it in `draft.md` (owner decision, SDD
+"Prefilled tokens"). With a source it is still reported `prefilled: true`, so it is
+not a point.
+
+WHY headings in `outline.json` carry the unresolved text: the outline is built from
+the template as read, and resolved values are not re-scanned.
+
+## The staged files are written all or nothing
+
+WHY: `template.md`, `outline.json` and the `--out` file are first written to
+`.tmp` siblings and moved into place with `os.replace` only after every write
+succeeded; on any failure the temps are removed. Writing them one by one let a
+failed second write leave a stage with `template.md` but no `outline.json`, which a
+later step would read as staged.
+
 ## Where has_source comes from
 
 WHY `--stage` reads `source_path` from the stage's `meta.json`: `note-instructions.py
@@ -63,3 +81,8 @@ and the staging can be exercised without a Kado client.
 
 WHY: initial implementation (spec 044 T2.1). `update-tomo.sh` skips unchanged
 versions.
+
+## Version 0.1.1
+
+WHY: the staged files are written atomically and `source_link` is left to the stage
+step (review fixes on T2.1).

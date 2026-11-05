@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-session.py — Deterministic session start of /note.
-# version: 0.1.3
+# version: 0.1.4
 """Start a /note session: mode, draft state and template candidates; preview globs.
 
 /note fills a vault template into a new note. This script makes its start the
@@ -28,8 +28,12 @@ Rules:
     Globs match the filename without ``.md``, case-sensitively. The daily
     template (``templates.mapping.daily``, ``.md`` optional) is never a
     candidate or a match.
-    ``listing_error`` is Kado's error text, or ``<class>: <message>`` for a
-    transport error; a failed listing still exits 0. JSON is ASCII-escaped.
+    ``listing_error`` is the Kado client's error text: Kado's own error, a
+    missing URL or token, or for a broken transport the Kado endpoint (host
+    and port) and the error class. A failed listing still exits 0. JSON is
+    ASCII-escaped.
+    Each ``kept_drafts`` entry carries ``frozen``: true when the draft's title
+    and destination can no longer change.
 
 Exit codes:
     0 — output usable (also on a listing failure or a missing config)
@@ -106,8 +110,6 @@ def list_templates(base_path: object) -> tuple[list[dict], str]:
         items = KadoClient().list_dir(base_path, depth=1)
     except KadoError as exc:
         return [], str(exc)
-    except (OSError, TimeoutError) as exc:
-        return [], f"{type(exc).__name__}: {exc}"
     files = [i["path"] for i in items
              if i.get("type") == "file" and str(i.get("path", "")).endswith(".md")]
     return [{"path": p, "stem": PurePosixPath(p).name[:-3]} for p in files], ""

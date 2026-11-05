@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_note_session.py — Behavioural tests for note-session.py (spec 044 T2.3).
 
 Covers the deterministic /note session start:
@@ -14,6 +14,7 @@ Covers the deterministic /note session start:
 """
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
@@ -299,18 +300,29 @@ def test_start_listing_error_reported_exit_0(mod, instance, monkeypatch, capsys)
     assert out["listing_error"] == "kado-search: Path not found: Templates/"
 
 
-@pytest.mark.parametrize("error, expected", [
-    (OSError("Connection reset by peer"), "OSError: Connection reset by peer"),
-    (TimeoutError("timed out"), "TimeoutError: timed out"),
-])
-def test_start_transport_error_is_listing_error(
-        mod, instance, monkeypatch, capsys, error, expected):
+@pytest.mark.parametrize("error", [
+    ConnectionResetError("Connection reset by peer"), TimeoutError("timed out"),
+    http.client.IncompleteRead(b"", 10),
+], ids=["ConnectionResetError", "TimeoutError", "IncompleteRead"])
+def test_start_transport_error_is_listing_error(mod, instance, monkeypatch, capsys, error):
+    """The real KadoClient over a broken transport: KadoConnectionError naming the endpoint."""
+    from lib import kado_client
     _config(instance, include=["t_*"])
-    code, out, raw, err, _ = _run(mod, monkeypatch, capsys, ["start", "--args", MARKER],
-                                  FakeKado(error=error))
-    assert code == 0
-    assert out["folder_listed"] == 0 and out["listing_error"] == expected
-    assert "SECRET-MARKER" not in raw + err
+    monkeypatch.setattr(kado_client, "_resolve_config",
+                        lambda url, token: ("http://kado.test:23026", "t"))
+
+    def broken_transport(*_a, **_k):
+        raise error
+
+    monkeypatch.setattr(kado_client.urllib.request, "urlopen", broken_transport)
+    monkeypatch.setattr(mod, "KadoClient", kado_client.KadoClient)
+    assert mod.main(["start", "--args", MARKER]) == 0
+    raw, err = capsys.readouterr()
+    out = json.loads(raw)
+    assert out["folder_listed"] == 0
+    assert out["listing_error"] == (
+        f"Transport error talking to http://kado.test:23026/mcp: {type(error).__name__}")
+    assert "SECRET-MARKER" not in raw + err and "Templates" not in out["listing_error"]
 
 
 def test_start_without_base_path_reports_error_without_call(mod, instance, monkeypatch, capsys):

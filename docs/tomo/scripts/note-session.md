@@ -119,10 +119,16 @@ the skill says the folder is empty or not readable by the Kado key and gives the
 remedy (F2-AC4). An empty listing is not proof of an empty folder (CON-7), so
 the script never claims "no templates". `listing_error` is the Kado error text
 (paths and status, no note content), shown verbatim by the skill. A missing
-`templates.base_path` is reported the same way, without a Kado call. A
-transport failure that escapes the client as `OSError` or `TimeoutError`
-(socket reset, read timeout) is reported the same way, as the class name and
-its message: neither carries the request text, which never reaches the client.
+`templates.base_path` is reported the same way, without a Kado call. A broken
+transport (socket reset, read timeout, truncated response) does not escape the
+client as `OSError` or `TimeoutError`: `lib/kado_client` wraps it in
+`KadoConnectionError`, a `KadoError`, so it takes the same branch and
+`listing_error` is that message. It names the Kado endpoint (host and port) and
+the error class, never the request or any note text, which never reach the
+error. The former `except (OSError, TimeoutError)` branch was dropped once a
+test drove the real client over a broken transport and showed nothing else
+raises there: the constructor swallows a failed `.mcp.json` read, and every
+network call sits inside the client's own wrapping.
 
 ## WHY the JSON Is Written ASCII-Escaped
 
@@ -145,6 +151,6 @@ the honest result.
 WHY: the kept/stale split (failed_step set or steps_done non-empty) is owned by
 `lib/note_meta.list_stages`; re-deriving it here would drift from the writer
 (`note-instructions.py`). Each entry is passed through unchanged, `steps_done`
-included, so the skill learns what already landed from `start` and never reads
-`meta.json` itself. Stage directories are read relative to the working
+and `frozen` included, so the skill learns what already landed and whether the
+name can still change from `start` and never reads `meta.json` itself. Stage directories are read relative to the working
 directory, which is the instance root in the container.

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_note_privacy.py — No user text in the output of the /note scripts (spec 044 T2.7).
 
 CON-3 / F5-AC8: script stdout and stderr carry paths, states and counts only.
 One walk runs every new script the way the /note skill does — session start,
-process mode, outline, process files, new, stage, the filled-note check, a
-failed, a taken and a clean deliver, drop — on a fake vault whose request,
-source, template body and answers each carry their own marker string.
+process mode, outline, process files (also broken ones and one whose outline
+lost a required point), new, stage, the filled-note check, a failed delivery,
+session start with that kept draft, a taken and a clean deliver, drop — on a
+fake vault whose request, source, template body and answers each carry their
+own marker string. A second list runs one bad invocation per script family with
+a marker in its arguments; neither stream may echo it.
 
 USER_TEXT_FIELDS names every output field that carries user text by design,
 which marker kinds it may carry and why. The walk then asserts:
@@ -56,6 +59,8 @@ REQ, SRC, TPL, ANS = (MARKERS[k] for k in ("request", "source", "template", "ans
 USER_TEXT_FIELDS = {
     ("note-session", "start", "process_template"):
         ({"request"}, "in --process mode the request text is the template stem"),
+    ("note-session", "start", "kept_drafts[].title"):
+        ({"answer"}, "the skill offers each kept draft by its title (SDD start output)"),
     ("template-outline", "-", "headings[].text"):
         ({"template"}, "the skill asks one question per heading"),
     ("template-outline", "-", "tokens[].name"):
@@ -68,6 +73,8 @@ USER_TEXT_FIELDS = {
         ({"answer"}, "the skill shows the saved guidance before asking"),
     ("note-process", "read", "destination"):
         ({"answer"}, "the saved destination folder is a vault path"),
+    ("note-process", "read", "missing_required[]"):
+        ({"template"}, "names the saved heading the template's outline no longer has"),
     ("note-process", "write", "rejected_required"):
         ({"answer"}, "names the point the user typed that the outline lacks"),
     ("note-instructions", "new", "default_destination"):
@@ -159,17 +166,28 @@ class Walk:
     """Runs the scripts in-process and keeps every call's output."""
 
     def __init__(self, capsys, mods):
-        self.capsys, self.mods, self.calls = capsys, mods, []
+        self.capsys, self.mods, self.calls, self.bad_calls = capsys, mods, [], []
 
-    def run(self, script: str, sub: str, argv: list[str]) -> tuple[int, dict]:
+    def _call(self, script: str, argv: list[str]) -> dict:
         try:
-            rc = self.mods[script].main(argv if sub == "-" else [sub, *argv])
+            rc = self.mods[script].main(argv)
         except SystemExit as exc:
             rc = exc.code
         out, err = self.capsys.readouterr()
-        self.calls.append({"script": script, "sub": sub, "argv": argv, "rc": rc,
-                           "stdout": out, "stderr": err})
-        return rc, _split_stdout(out)[1]
+        return {"script": script, "argv": argv, "rc": rc, "stdout": out, "stderr": err}
+
+    def run(self, script: str, sub: str, argv: list[str]) -> tuple[int, dict]:
+        call = self._call(script, argv if sub == "-" else [sub, *argv])
+        call["sub"] = sub
+        self.calls.append(call)
+        return call["rc"], _split_stdout(call["stdout"])[1]
+
+    def run_bad(self, script: str, sub: str, argv: list[str]) -> int:
+        """Run a bad invocation; its stdout is not JSON, so it is kept apart."""
+        call = self._call(script, argv)
+        call["sub"] = sub
+        self.bad_calls.append(call)
+        return call["rc"]
 
 
 def _named(call: dict) -> dict:
@@ -209,8 +227,10 @@ def walk(tmp_path, monkeypatch, capsys):
     w = Walk(capsys, mods)
     _session(w)
     _process_mode(w, tmp_path)
+    _broken_process_files(w, tmp_path)
     staged_source = _draft_and_deliver(w, tmp_path, vault)
     _drop(w)
+    _bad_invocations(w)
     return w, vault, staged_source
 
 
@@ -234,6 +254,32 @@ def _process_mode(w: Walk, root: Path) -> None:
     assert rc == 0
     assert w.run("note-process", "read", ["--template", "t_meeting", "--outline", outline])[0] == 0
     assert w.run("note-process", "decline", ["--template", "t_problem"])[0] == 0
+    _required_point_gone(w)
+
+
+def _required_point_gone(w: Walk) -> None:
+    """The saved required point is no longer a heading: missing_required names it."""
+    outline = "tomo-tmp/note/other-outline.json"
+    assert w.run("template-outline", "-", ["--template", OTHER_TEMPLATE, "--out", outline])[0] == 0
+    rc, out = w.run("note-process", "read", ["--template", "t_meeting", "--outline", outline])
+    assert rc == 0 and out["missing_required"] == [f"Agenda {TPL}"]
+
+
+# stem -> process file text; each one is broken and holds markers.
+BROKEN_PROCESS_FILES = {
+    "t_broken_fence": f"---\ndestination: Atlas/{ANS}\nrequired: [Agenda {TPL}]\n{ANS}\n",
+    "t_broken_yaml": f"---\nrequired: [Agenda {TPL}\n{ANS}: : x\n---\nAsk {ANS}\n",
+    "t_broken_destination": f"---\ndestination: ../{ANS}\n---\nAsk {ANS}\n",
+    "t_broken_required": f"---\nrequired: Agenda {TPL}\n---\nAsk {ANS}\n",
+}
+
+
+def _broken_process_files(w: Walk, root: Path) -> None:
+    folder = root / "config" / "note-processes"
+    for stem, text in BROKEN_PROCESS_FILES.items():
+        (folder / f"{stem}.md").write_text(text, encoding="utf-8")
+        rc, out = w.run("note-process", "read", ["--template", stem])
+        assert rc == 0 and out["exists"] is True and out["error"], stem
 
 
 def _draft_and_deliver(w: Walk, root: Path, vault) -> str:
@@ -264,6 +310,9 @@ def _deliver_three_ways(w: Walk, vault, stem: str, inbox_file: str) -> None:
     deliver = ["--stem", stem]
     vault.fail[("write_note", inbox_file)] = KadoError(f"503 {ANS}")
     assert w.run("note-instructions", "deliver", deliver)[0] == 1
+    # The failed delivery is a started one: the next session start offers it as kept.
+    rc, out = w.run("note-session", "start", ["--args="])
+    assert rc == 0 and [d["stem"] for d in out["kept_drafts"]] == [stem]
     vault.fail.clear()
     vault.files[inbox_file] = f"another note {ANS}\n"
     assert w.run("note-instructions", "deliver", deliver)[0] == 3
@@ -276,6 +325,23 @@ def _drop(w: Walk) -> None:
     rc, new = w.run("note-instructions", "new", ["--template", TEMPLATE])
     assert rc == 0
     assert w.run("note-instructions", "drop", ["--stem", new["stem"]])[0] == 0
+
+
+UNKNOWN_STEM = "2000-01-01_000000"
+
+
+def _bad_invocations(w: Walk) -> None:
+    """One bad invocation per script family, each with a marker in its arguments."""
+    bad = [
+        ("note-instructions", "stage", ["stage", "--stem", UNKNOWN_STEM, "--title", TITLE]),
+        ("note-instructions", "stage", ["stage", "--stem", f"{UNKNOWN_STEM}{ANS}"]),
+        ("note-instructions", "drop", ["drop", "--stem", f"{UNKNOWN_STEM}{ANS}"]),
+        # An empty glob list has no room for a marker; the config path carries it.
+        ("note-session", "match", ["--config", f"config/{REQ}.yaml", "match", "--globs", " , "]),
+        ("note-process", "read", ["read", "--template", f"../{TPL}"]),
+    ]
+    for script, sub, argv in bad:
+        assert w.run_bad(script, sub, argv) == 2, (script, sub, argv)
 
 
 # ── assertions ───────────────────────────────────────────────────────────
@@ -293,6 +359,16 @@ def test_every_script_ran_in_the_walk(walk):
 def test_no_marker_on_stderr_of_any_script(walk):
     w, _, _ = walk
     leaks = [(_label(c), sorted(_kinds(c["stderr"]))) for c in w.calls if _kinds(c["stderr"])]
+    assert leaks == []
+
+
+def test_bad_invocations_echo_no_marker(walk):
+    w, _, _ = walk
+    assert {(c["script"], c["sub"]) for c in w.bad_calls} == {
+        ("note-instructions", "stage"), ("note-instructions", "drop"),
+        ("note-session", "match"), ("note-process", "read")}
+    leaks = [(_label(c), c["argv"], sorted(_kinds(c["stdout"] + c["stderr"])))
+             for c in w.bad_calls if _kinds(c["stdout"] + c["stderr"])]
     assert leaks == []
 
 

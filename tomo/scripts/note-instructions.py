@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -150,6 +150,7 @@ def _require_inside(source: str | None, inbox: str) -> None:
 
 
 def _default_destination(template_stem: str, atomic_path: str) -> str:
+    """Return the process destination (read_process has validated it), else atomic_path."""
     try:
         process = read_process(PROCESS_DIR, template_stem)
     except ValueError as exc:
@@ -157,13 +158,7 @@ def _default_destination(template_stem: str, atomic_path: str) -> str:
     if process["error"]:
         print(f"note-instructions: process file ignored: {process['error']}", file=sys.stderr)
         return atomic_path
-    if not process["destination"]:
-        return atomic_path
-    dest = vault_folder(process["destination"])
-    if dest is None:
-        print("note-instructions: process destination ignored: not a relative vault folder",
-              file=sys.stderr)
-    return dest or atomic_path
+    return process["destination"] or atomic_path
 
 
 def _read_source(path: str) -> str:

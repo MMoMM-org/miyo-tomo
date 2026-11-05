@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
 
 Covers the draft lifecycle subcommands new, stage and drop:
@@ -18,8 +18,9 @@ Covers the draft lifecycle subcommands new, stage and drop:
   letter), no backslash, no segment that is blank or starts with a dot, no
   template syntax, no unsafe character (Cc, Cf, Zl, Zp except the joiners
   U+200C and U+200D, which title and folder accept); the Unicode form is
-  kept; an unsafe process destination falls back, an unsafe atomic path or
-  inbox exits 2 with a fixed message; a write failure in new leaves no stage
+  kept; an unsafe process destination falls back with one stderr line, the
+  process file error read_process reports; an unsafe atomic path or inbox
+  exits 2 with a fixed message; a write failure in new leaves no stage
 - vault_note validates --template and --source the same way plus .md, before
   Kado is asked; --source must lie inside the inbox
 - stage trims the title, strips trailing dots, rejects unsafe characters, a
@@ -573,6 +574,24 @@ def test_new_unsafe_process_destination_falls_back_to_atomic_path(inst, capsys, 
     lines = [ln for ln in err.splitlines() if ln]
     assert len(lines) == 1 and "destination" in lines[0]
     assert "etc" not in err and "Atlas" not in err
+
+
+PROCESS_DEST_ERR = ("note-instructions: process file ignored: destination is not a relative"
+                    " vault folder\n")
+
+
+# read_process refuses the destination and reports it as error; new prints that one line.
+@pytest.mark.parametrize("dest", ["'../../x'", "'/'", "'a//b\\c'"])
+def test_new_refused_process_destination_reports_the_process_file_error_once(inst, capsys, dest):
+    proc = inst / "config" / "note-processes"
+    proc.mkdir()
+    (proc / "t_meeting.md").write_text(f"---\ndestination: {dest}\n---\n", encoding="utf-8")
+    rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
+    assert rc == 0
+    res = _json(out)
+    assert res["default_destination"] == "Atlas/202 Notes/"
+    assert _meta(inst, res["stem"]).destination == "Atlas/202 Notes/"
+    assert err == PROCESS_DEST_ERR
 
 
 @pytest.mark.parametrize("atomic", ['    path: "/abs/Notes"', '    path: "Atlas/../x"',

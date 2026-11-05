@@ -117,10 +117,20 @@ applies the same function before it saves a process file, and
 `lib/note_process.py` applies it again on read, so a destination the user saves
 is one `new` accepts, byte for byte.
 
+For the process file, `new` relies on that check on read and does not repeat
+it. `read_process` returns the destination in `vault_folder` form, or an empty
+string, and reports a destination `vault_folder` refuses as its `error`.
+`vault_folder` returns its own output unchanged, so a second check in `new`
+could never fail. Up to 0.1.5 `new` checked again, with a stderr line of its
+own. That check was needed while `lib/note_process.py` accepted any non-empty
+destination on read; since its 0.1.2 refuses what `vault_folder` refuses, the
+line could no longer be reached, and 0.1.6 removed it.
+
 A failure is handled by origin. `--destination` exits 2, nothing written. A
 process-file destination that fails falls back to the atomic-note path with one
-stderr line naming the problem class, the same as a broken process file (F7-AC4):
-a bad process file must not stop `/note`. An invalid `concepts.atomic_note` or
+stderr line naming the problem class. It is the `error` from `read_process`,
+the same line a broken process file gets (F7-AC4): a bad process file must not
+stop `/note`. An invalid `concepts.atomic_note` or
 `concepts.inbox` exits 2 with a fixed message that names the key, because there
 is no further fallback and the config is the user's to fix. Until 0.1.4 the
 inbox was only refused when blank, so `../x`, `/abs` and `" In/../.."` reached

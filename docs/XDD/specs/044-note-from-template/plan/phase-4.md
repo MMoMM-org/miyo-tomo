@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Eval, live walk and close-out"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 4
 ---

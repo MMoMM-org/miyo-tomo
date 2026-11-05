@@ -69,6 +69,9 @@
 | 2026-11-05 | PRD F5-AC8 reworded to match the amended CON-3: no note, source or answer text in logs or errors; output carries only paths, states and the named fields | Spec alignment after the Phase 2 drift check; "only paths and states" contradicted the reviewed output contract |
 | 2026-11-05 | Shared `lib/note_io.py` (config reader with typed errors, atomic write) used by the /note scripts and libs; the process-file fence split stays separate as a recorded ADR-4 exception; a YAML ValueError in the config now exits 2 in note-instructions instead of a traceback, and a failed atomic write removes its temp file | Owner-approved consolidation; the fence parsers differ on CR-only and Unicode line breaks |
 | 2026-11-05 | note-instructions.py line count is 585 after the T2.6 fixes; the no-split decision above still holds | Alignment review; the reasons are unchanged |
+| 2026-11-05 | Model escalation: T3.1 sonnet → opus | Trigger: second review FAIL |
+| 2026-11-05 | Model escalation: T3.1 opus → opus@max | Trigger: second review FAIL |
+| 2026-11-05 | `deliver` reports a guard-withdrawn action as `status: withdrawn` and the skill branches exit 1 on `status`; Kado unreachable at `deliver` gets its own non-empty `step` so the skill does not send the user to fix the draft | T3.2 quality review: withdrawn and Kado-down both shared the "exit 1, empty step = filled-note check failed" shape |
 | 2026-11-05 | Phase 2 complete: T2.1–T2.8 reviewed; drift findings aligned in the spec; shared lib/note_io reviewed; full suite 7553 passed, 4 skipped; ruff clean | Phase 2 gate |
 
 ## Context

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -9,6 +9,12 @@ destination clash and guard-cut sets refused; filled-note check gate;
 byte-identical rebuilds; stamps; stage dir removed only on success; one shared
 no-overwrite contract test with kado-write-file.py; the MD carries no Templater hint; a
 recorded step whose target is gone is not written again.
+
+The source mark: a source gone before it is delivered unmarked; any other Kado
+error, or a read without a modified time, fails the step; the merge is guarded
+by the modified time just read. A resume after the mark was recorded reads the
+source and reports source_marked true only for this draft's tomo: block (state
+captured, this run id); a Kado error other than not-found fails the step.
 
 Covers the draft lifecycle subcommands new, stage and drop:
 - new draws a YYYY-MM-DD_HHMMSS stem, a run id and generated; reads the inbox,
@@ -47,6 +53,7 @@ import unicodedata
 from pathlib import Path
 
 import pytest
+import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
@@ -1156,11 +1163,18 @@ def test_deliver_source_changed_before_mark_fails_and_resume_retries(inst, capsy
     assert _write_events(vault) == [("write_frontmatter", SOURCE)]
 
 
+GONE_BEFORE_READ = "before_read"
+GONE_AT_WRITE = "at_write"
+
+
 def _source_gone_at(vault, where):
-    if where == "before_read":
+    """Delete the source before the mark reads it, or let Kado lose it at the write."""
+    if where == GONE_BEFORE_READ:
         del vault.files[SOURCE]
-    else:
+    elif where == GONE_AT_WRITE:
         vault.fail[("write_frontmatter", SOURCE)] = KadoNotFoundError("Path not found")
+    else:
+        raise AssertionError(f"unknown case {where}")
 
 
 def _assert_delivered_unmarked(inst, capsys, stem):
@@ -1171,7 +1185,7 @@ def _assert_delivered_unmarked(inst, capsys, stem):
     assert not note_meta.stage_dir(inst, stem).exists()
 
 
-@pytest.mark.parametrize("where", ["before_read", "at_write"])
+@pytest.mark.parametrize("where", [GONE_BEFORE_READ, GONE_AT_WRITE])
 def test_deliver_source_gone_before_the_mark_is_delivered_unmarked(inst, capsys, vault, where):
     """Falsifies treating KadoNotFoundError on the mark as a failed step."""
     stem = _ready(inst, capsys, vault)
@@ -1212,6 +1226,16 @@ def test_deliver_mark_without_a_modified_time_fails_unwritten(inst, capsys, vaul
     assert note_meta.stage_dir(inst, stem).is_dir()
 
 
+def test_deliver_mark_is_guarded_by_the_modified_time_it_read(inst, capsys, vault):
+    """Falsifies guarding the merge with any value but the modified time just read."""
+    stem = _ready(inst, capsys, vault)
+    vault.modified[SOURCE] = 1762337100123
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["source_marked"] is True
+    assert [m["expected_modified"] for m in vault.merges] == [1762337100123]
+
+
 def _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem):
     def die(*_a, **_k):
         raise nfv.Killed()
@@ -1224,20 +1248,90 @@ def _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem):
     assert "source_mark" in _meta(inst, stem).steps_done
 
 
-@pytest.mark.parametrize("gone", [False, True])
+OTHER_RUN_ID = "2026-11-04T09-00-00Z-0a1b2c"
+
+
+def _as_marked(vault):
+    """Leave the source as the killed run's merge left it: this draft's source/captured."""
+
+
+def _source_deleted(vault):
+    del vault.files[SOURCE]
+
+
+def _mark_changed(**changes):
+    """Change fields of the killed run's own mark; the rest stays as the merge wrote it."""
+    def rewrite(vault):
+        frontmatter, body = nfv.split_frontmatter(vault.text(SOURCE))
+        frontmatter["tomo"].update(changes)
+        vault.files[SOURCE] = f"---\n{yaml.safe_dump(frontmatter, sort_keys=False)}---\n{body}"
+    return rewrite
+
+
+def _frontmatter_replaced(yaml_text):
+    """Replace the source's frontmatter with `yaml_text`; the body stays."""
+    def rewrite(vault):
+        _, body = nfv.split_frontmatter(vault.text(SOURCE))
+        vault.files[SOURCE] = f"---\n{yaml_text}---\n{body}"
+    return rewrite
+
+
+# What the source holds when the resume reads it, and the source_marked it must report.
+RECORDED_MARK_CASES = [
+    pytest.param(_as_marked, True, id="this-run-captured"),
+    pytest.param(_source_deleted, False, id="source-deleted"),
+    pytest.param(_mark_changed(run_id=OTHER_RUN_ID), False, id="other-run-captured"),
+    # applied: a real lifecycle state (doc-frontmatter.schema.json), not captured
+    pytest.param(_mark_changed(state="applied"), False, id="this-run-applied"),
+    pytest.param(_frontmatter_replaced("aliases: [Meeting raw]\n"), False, id="no-tomo-key"),
+    pytest.param(_frontmatter_replaced("tomo: captured\n"), False, id="tomo-not-a-mapping"),
+    pytest.param(_frontmatter_replaced("captured\n"), False, id="frontmatter-not-a-mapping"),
+]
+
+
+@pytest.mark.parametrize("rewrite, marked", RECORDED_MARK_CASES)
 def test_deliver_resume_with_mark_recorded_reports_the_real_mark(
-        inst, capsys, vault, monkeypatch, gone):
-    """A run killed after recording source_mark: the resume reports what the source carries."""
+        inst, capsys, vault, monkeypatch, rewrite, marked):
+    """A run killed after recording source_mark: the resume reports what the source carries.
+
+    Only a tomo: mapping with state captured and this draft's run id counts.
+    Falsifies dropping the run id check (other-run-captured), the state check
+    (this-run-applied), the mapping check on the block (no-tomo-key,
+    tomo-not-a-mapping) or on the frontmatter (frontmatter-not-a-mapping).
+    """
     stem = _ready(inst, capsys, vault)
     _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem)
-    if gone:
-        del vault.files[SOURCE]
+    rewrite(vault)
+    held = vault.files.get(SOURCE)
     vault.events.clear()
     rc, _, out, _, err = _deliver(capsys, stem)
     assert rc == 0, err
-    assert out["status"] == "delivered" and out["source_marked"] is (not gone)
+    assert out["status"] == "delivered" and out["source_marked"] is marked
     assert ("write_frontmatter", SOURCE) not in vault.events
+    assert vault.files.get(SOURCE) == held
     assert not note_meta.stage_dir(inst, stem).exists()
+
+
+def test_deliver_resume_with_mark_recorded_fails_on_another_kado_error(
+        inst, capsys, vault, monkeypatch):
+    """Falsifies reading every KadoError, not only not-found, as a source without the mark.
+
+    Every file is delivered, yet the step fails until the read succeeds; that resume finishes.
+    """
+    stem = _ready(inst, capsys, vault)
+    _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem)
+    vault.fail[("read_frontmatter", SOURCE)] = KadoError("503 after retries")
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == "source_mark"
+    assert out["source_marked"] is False
+    meta = _meta(inst, stem)
+    assert meta.failed_step == "source_mark" and "source_mark" in meta.steps_done
+    vault.fail.clear()
+    vault.events.clear()
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered" and out["source_marked"] is True
+    assert ("write_frontmatter", SOURCE) not in vault.events
 
 
 def test_deliver_success_removes_the_stage_dir(inst, capsys, vault):

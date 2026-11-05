@@ -312,18 +312,48 @@ The mark is a merge guarded by the `modified` time `read_frontmatter` returns
 overwritten. When the read returns no `modified`, the merge would run without
 the guard. `deliver` fails the `source_mark` step instead; a resume reads again.
 
+## WHY a Resume After a Recorded Mark Reads the Source
+
+A run can be killed after `meta.json` recorded `source_mark` and before the
+stage directory was removed. Every file is delivered then, and the mark was
+written or the source found gone, so the resume does not write the mark again:
+it reads the source's frontmatter and reports `source_marked: true` only when
+`tomo:` is a mapping with `state: captured` and this draft's `run_id`. The state is how
+triage recognises a captured source (`tomo.state=captured`;
+`doc-frontmatter.schema.json` allows `captured` only for `doc_type: source`),
+and the run id tells this draft's mark from a `captured` mark another run
+wrote. Another run's mark, another state, no `tomo:` key, or a `tomo:` value or
+frontmatter that is not a mapping all report `false`; so does a source that is
+gone, as on a first run.
+
+A Kado error other than not-found during that read fails the `source_mark`
+step with exit 1, although the work is complete. `failed_step` is set and
+`source_mark` stays in `steps_done`, so every resume reads again: a persistent
+error keeps the draft a kept draft until a read succeeds or the user drops it
+at the next `/note` (`drop` removes the stage directory, never the delivered
+files). This is accepted because the error leaves the answer unknown and
+`deliver` does not guess: `false` could report a mark that is there as missing,
+`true` a mark nobody read. Nothing in the vault is at risk while the draft
+waits, and the same error fails the step on the first run's write too.
+
 ## WHY Some Probes Are Check-Then-Act or Fail Open
 
 Each inbox step asks `path_exists` and then writes. That pair is
 check-then-act: a file that appears between the two calls is overwritten,
 because Kado's `write_note` and `write_file` create or overwrite and offer no
 create-only mode. The window is two calls on files with a fresh stem, so it is
-accepted rather than worked around. The destination probe uses
-`make_folder_listing`, which fails open: a listing error counts as an empty
-folder, the documented behaviour of the destination guard ("an error is not
-a collision"), so a failed listing does not block the delivery. Writing `meta.json` is local I/O: an `OSError` there ends the run with
-exit 2 and no JSON on stdout, like every other local I/O failure of the
-script, and the stage keeps the last `meta.json` that was written.
+accepted rather than worked around.
+
+The destination probe uses `make_folder_listing`, which fails open: a listing
+error counts as an empty folder, the documented behaviour of the destination
+guard ("an error is not a collision"), so a failed listing does not block the
+delivery.
+
+## WHY a Failed meta.json Write Exits 2
+
+Writing `meta.json` is local I/O: an `OSError` there ends the run with exit 2
+and no JSON on stdout, like every other local I/O failure of the script, and
+the stage keeps the last `meta.json` that was written.
 
 ## WHY the Stage Directory Is Removed Only on Success
 

@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.1.2
+# version: 0.1.3
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the instance root. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -138,7 +138,7 @@ python3 scripts/note-instructions.py deliver --stem <stem>
   - `steps_done` empty: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `steps_done` non-empty: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian, then run `drop`.
 - On exit 1 with `status` `withdrawn`, say nothing was written and why the action was withdrawn, then offer Rename / Abort as for exit 3 with `steps_done` empty.
-- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
+- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
 - Exit 2: show the error and stop; the draft stays.
 
 ## 8. Process offer

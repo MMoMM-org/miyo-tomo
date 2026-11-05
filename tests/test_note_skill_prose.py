@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -54,7 +54,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.2")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.3")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -364,6 +364,12 @@ def test_the_delivery_report_names_paths_and_the_hashi_step():
 def test_a_failed_step_is_reported_and_the_draft_kept():
     assert ("On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`"
             in _section("7. Deliver"))
+
+
+def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_draft():
+    assert ("When `step` is empty, the filled-note check or the frontmatter stamp failed instead: "
+            "fix `draft.md`, rerun `stage`, reprint and return to the step 6 question "
+            "(Deliver / Change something / Abort).") in _section("7. Deliver")
 
 
 def test_a_withdrawn_action_is_an_exit_1_branch_offering_rename_or_abort():

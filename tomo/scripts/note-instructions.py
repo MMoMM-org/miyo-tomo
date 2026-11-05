@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.2.4
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -33,8 +33,12 @@ Subcommands:
         with identical text counts as done; meta.json records every step.
         A source gone before the mark counts as delivered, source_marked false.
         Removes the stage directory on success.
+        Kado unreachable: failed at step kado_connect, recorded as failed_step,
+        nothing written. A failing check or stamp: failed with step "",
+        nothing recorded.
         Output: {status: delivered|exists|failed|withdrawn,
-                 step: note|instructions_json|instructions_md|source_mark|"",
+                 step: kado_connect|note|instructions_json|instructions_md|
+                       source_mark|"",
                  note_path, instructions_json, instructions_md, source_marked,
                  exists_path}
         On a taken name the first stdout line is EXISTS:<vault path>.
@@ -72,7 +76,7 @@ from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E4
 from lib.note_actions import build_note_actions, build_note_instruction_set  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.note_meta import (  # noqa: E402
-    STEPS, MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
+    KADO_CONNECT, STEPS, MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
     new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
 from lib.note_paths import (  # noqa: E402
@@ -495,7 +499,9 @@ def _deliver(stage: Path, meta) -> bool:
         client = KadoClient()
     except KadoError as exc:
         print(f"note-instructions: cannot reach Kado ({type(exc).__name__})", file=sys.stderr)
-        raise DeliveryStop("failed", "", 1) from exc
+        mark_step_failed(meta, KADO_CONNECT)
+        write_meta(stage, meta)
+        raise DeliveryStop("failed", KADO_CONNECT, 1) from exc
     payloads = _payloads(meta, note_text, _guarded_actions(meta, client))
     for step in INBOX_STEPS:
         _deliver_step(client, stage, meta, step, payloads[step])

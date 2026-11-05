@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.2.4
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
 later step; keep-source frozen once instructions_json landed; a killed run is a
 kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
-destination clash and guard-cut sets refused; filled-note check gate;
+destination clash and guard-cut sets refused; filled-note check gate; a
+failed stamp is step ""; an unreachable Kado is step kado_connect, a kept draft
+that resume delivers from scratch;
 byte-identical rebuilds; stamps; stage dir removed only on success; one shared
 no-overwrite contract test with kado-write-file.py; the MD carries no Templater hint; a
 recorded step whose target is gone is not written again.
@@ -1077,6 +1079,54 @@ def test_deliver_refuses_a_failing_filled_note_check(inst, capsys, vault, draft)
     assert rc == 1 and out["status"] == "failed" and out["step"] == ""
     assert vault.events == []
     assert MARKER not in raw + err
+    assert _meta(inst, stem).failed_step == ""
+
+
+class UnreachableKado:
+    def __init__(self):
+        raise KadoError("connection refused")
+
+
+def test_deliver_unreachable_kado_fails_at_kado_connect_and_keeps_the_draft(
+        inst, capsys, vault, monkeypatch):
+    stem = _ready(inst, capsys, vault)
+    monkeypatch.setattr(ni, "KadoClient", UnreachableKado)
+    rc, exists, out, raw, err = _deliver(capsys, stem)
+    assert rc == 1 and exists is None
+    assert out["status"] == "failed" and out["step"] == note_meta.KADO_CONNECT == "kado_connect"
+    assert _write_events(vault) == [] and "refused" not in raw
+    meta = _meta(inst, stem)
+    assert meta.steps_done == [] and meta.failed_step == "kado_connect"
+    start = _session_start(capsys)
+    assert [d["stem"] for d in start["kept_drafts"]] == [stem]
+    assert start["kept_drafts"][0]["failed_step"] == "kado_connect"
+    assert stem not in start["stale_stages"]
+
+
+def test_deliver_resume_after_kado_connect_delivers_from_scratch(
+        inst, capsys, vault, monkeypatch):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, md = _paths(inst, stem)
+    monkeypatch.setattr(ni, "KadoClient", UnreachableKado)
+    assert _deliver(capsys, stem)[0] == 1
+    monkeypatch.setattr(ni, "KadoClient", vault)
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered" and out["step"] == "" and out["source_marked"] is True
+    assert _write_events(vault) == [("write_note", note), ("write_file", js),
+                                    ("write_note", md), ("write_frontmatter", SOURCE)]
+    assert not note_meta.stage_dir(inst, stem).exists()
+
+
+def test_deliver_stamp_failure_reports_an_empty_step(inst, capsys, vault, monkeypatch):
+    def refuse(*_a, **_k):
+        raise ni.FrontmatterMergeError("frontmatter is not a mapping")
+
+    stem = _ready(inst, capsys, vault)
+    monkeypatch.setattr(ni, "merge_tomo_block_into_markdown", refuse)
+    rc, _, out, raw, err = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == ""
+    assert vault.events == [] and MARKER not in raw + err
     assert _meta(inst, stem).failed_step == ""
 
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
 - meta.json round trip and the derived names (destination_file, instructions_stem)
-- steps_done updates (order, idempotence, unknown step rejected) and failed_step
+- steps_done updates (order, idempotence, unknown step rejected) and failed_step,
+  which also takes kado_connect (a failed step that is never done)
 - title and destination frozen once steps_done is non-empty, keep_source once
   instructions_json is done (SDD stage Rule)
 - stage listing splits started deliveries (kept_drafts: failed_step set or
@@ -146,6 +147,17 @@ def test_unknown_step_is_rejected():
     with pytest.raises(ValueError):
         note_meta.mark_step_failed(meta, "upload")
 
+
+def test_kado_connect_is_a_failed_step_but_never_a_done_step(tmp_path):
+    meta = _meta()
+    note_meta.mark_step_failed(meta, note_meta.KADO_CONNECT)
+    stage = _stage_with(tmp_path, meta)
+
+    assert note_meta.read_meta(stage).failed_step == "kado_connect"
+    assert note_meta.list_stages(tmp_path).kept_drafts[0]["failed_step"] == "kado_connect"
+    with pytest.raises(ValueError):
+        note_meta.mark_step_done(meta, note_meta.KADO_CONNECT)
+    assert note_meta.KADO_CONNECT not in note_meta.STEPS
 
 def test_steps_done_survive_a_round_trip(tmp_path):
     meta = _meta()
@@ -382,6 +394,7 @@ def _raw_stage(root: Path, **overrides) -> Path:
     {"keep_source": 0},
     {"failed_step": None},
     {"failed_step": "upload"},
+    {"steps_done": ["kado_connect"]},
     {"title": 42},
     {"destination": None},
     {"run_id": ["x"]},

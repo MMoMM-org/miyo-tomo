@@ -52,8 +52,17 @@ start (`stale_stages`) get one line and a `drop` each for the same reason.
 WHY: A kept draft with `steps_done` non-empty already has files in the vault (the note, the JSON, the MD). A
 silent drop would leave them there with no record. The next `/note` therefore offers resume or drop; this also covers
 a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. During a resume, title
-and destination are frozen because the landed files carry them. A name collision then offers keep or drop only,
-and on drop names the landed files so the user can delete them in Obsidian.
+and destination are frozen because the landed files carry them. A name collision during a resume is branched on `steps_done`
+(see the next section).
+
+## Why Exit 3 Branches on steps_done, Not on "Is This a Resume"
+
+WHY: A kept draft can be resumed with nothing landed: the first step failed, so `failed_step` is set and
+`steps_done` is empty. `is_frozen` (`lib/note_meta.py`) freezes title and destination only once a step is done, so
+such a draft can still be renamed with `stage --title`; offering only Keep/Drop would force a needless discard.
+Keep/Drop is right only when files are already in the vault: the name cannot change, and Drop must name the landed
+files so the user can delete them in Obsidian. The skill reads `steps_done` from `meta.json` because `start`'s
+`kept_drafts` entries do not carry it.
 
 ## Why Delivery Is One Script (ADR-2)
 
@@ -62,6 +71,17 @@ one process, with the `kado-write-file.py` exit contract (exit 3 and an `EXISTS:
 never an overwrite). Order, collision handling and the resume comparison (identical content counts as done)
 become testable instead of left to the model. Marking the source is a direct frontmatter merge, not a call to
 `mark-captured.py` (ADR-3). The skill never runs the delivery steps itself.
+
+When the guard withdrew the action (`status` `withdrawn`), the skill reports that nothing is written and why, then offers
+rename or abort: a withdrawn action has no content to deliver, so keeping the draft would only repeat the refusal.
+
+## Why a Source That Moves or Changes Does Not Fail the Delivery
+
+WHY: The source mark is the last step and the least important one: the note and the instruction set already landed.
+If the source was deleted or moved before the mark, there is nothing left to mark, so the step counts as done,
+`deliver` reports `delivered` with `source_marked: false`, and the report says in one line the source was not marked. Failing there would strand a complete delivery behind a resume that can never succeed. If the source changed
+between the read and the mark, a merge would overwrite the newer content, so it is reported as a failed `source_mark`
+(exit 1) and resume retries it against the current file. The draft stays until the mark succeeds.
 
 ## Why Exit 2 Means "Ask for Another Value" (User-Fixable Input)
 
@@ -77,6 +97,13 @@ WHY: A Kado key without read access to `templates.base_path` returns an empty li
 empty folder. When `folder_listed` is 0 the skill says the folder is empty or not readable by the key, offers the
 remedy (grant read access or do not use `/note`) and stops. It never says that no template exists. The same wording
 applies when `template-outline.py` exits 1. A `listing_error` is shown verbatim.
+
+## Why No Candidate Fitting Is Not an Error (F2-AC3)
+
+WHY: With `folder_listed` above 0 the folder was readable and the model judged that no selected template fits. That is
+a normal outcome, so the skill says "No selected template fits." and offers three exits: adjust patterns (back to the
+`note_include` setup), `inbox-author` (a free-form artifact needs no template) or abort. `folder_listed` equal to 0 is
+the unreadable case above and never reaches this offer.
 
 ## Why One Shared Parser (ADR-4)
 
@@ -136,3 +163,9 @@ cannot propose globs for template names it has not seen. The skill writes only t
 `--guidance-file`); the two helper files are removed right after the script call. The skill pins no `model`:
 the note text is the model's work (ADR-1), so it runs on the session's model. The description carries
 `MUST BE USED` per the authoring rules, and the `NOT for` clause keeps free-form artifacts with `inbox-author`.
+
+Templater code (`<%` ... `%>`) is a hint to the model only: it is never executed, none is left in the draft, and a
+`<%` surviving in the draft fails the filled-note check (F3-AC7). Questions follow the language of the call while the
+note keeps the template's headings, so the output still matches the template (F3-AC8). The first-run `note_include`
+setup previews the glob matches (`match`) before asking, so the user confirms against real template names.
+The request text stays in the conversation because `start` does not echo it back, and the later steps (template choice, source, draft) work from it.

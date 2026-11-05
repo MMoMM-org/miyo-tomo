@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.8
+# version: 0.2.9
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -35,8 +35,8 @@ Subcommands:
         A source gone before the mark counts as delivered, source_marked false.
         Removes the stage directory on success.
         No Kado URL or token: failed at step kado_config, recorded as
-        failed_step, nothing written. Kado down: failed at step note. A failing check or stamp: failed with step "",
-        nothing recorded.
+        failed_step, nothing written. Kado down: failed at step note.
+        A failing check or stamp: failed with step "", nothing recorded.
         Output: {status: delivered|exists|failed|withdrawn,
                  step: kado_config|note|instructions_json|instructions_md|
                        source_mark|"",

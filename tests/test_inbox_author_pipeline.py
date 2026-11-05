@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_inbox_author_pipeline.py — Pipeline integration tests for inbox-author.
 
 Spec 026, T4.2 (Companion Mode P1 — inbox-author format dispatch + collision).
@@ -422,19 +422,21 @@ def _if_found_path(text: str) -> str:
     return _section(branch, "If found", "If not found")
 
 
+EXPECTED_FOUND_PATH = (
+    "If found: tell the user\n"
+    '`"a <type> template exists — run /note to create a filled note from it"` and STOP. Do NOT write.\n'
+)
+
+
 def test_unknown_type_found_path_points_to_note() -> None:
-    """The unknown-type 'If found' path names /note and no longer saves the found template."""
+    """The unknown-type 'If found' path redirects to /note, STOPs and writes nothing — byte for byte."""
     found = _if_found_path(SKILL_MD.read_text(encoding="utf-8"))
-    assert "/note" in found, f"'If found' path must point to /note; got {found!r}"
-    assert "default-template.md" not in found, (
-        f"'If found' path must not save the found template; got {found!r}"
-    )
+    assert found == EXPECTED_FOUND_PATH
 
 
 def test_unknown_type_not_found_path_byte_unchanged() -> None:
     """The unknown-type 'If not found' path keeps its 0.3.0 text byte for byte."""
     branch = _unknown_type_branch(SKILL_MD.read_text(encoding="utf-8"))
-    assert BASELINE_NOT_FOUND in branch
     assert branch.endswith(BASELINE_NOT_FOUND + "\n")
 
 

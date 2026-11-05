@@ -54,7 +54,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.0")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.1")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -311,17 +311,19 @@ def test_approval_options_and_changes_go_through_stage():
 
 def test_frozen_title_during_resume():
     text = _flat(SKILL)
-    assert "During a resume with a non-empty `steps_done`, title and destination are frozen" in text
+    assert ("During the resume of a kept draft whose `frozen` is true, title and destination are frozen."
+            in text)
+    assert "During a resume with a non-empty `steps_done`" not in text
     assert "During a resume, title and destination are frozen" not in text
     assert "When `stage` reports `frozen: true`" in text
 
 
 def test_frozen_message_names_both_refused_changes():
     text = _section("6. Draft")
-    assert "once `instructions_json` is in `steps_done`, keeping the source is frozen too" in text
+    assert "once `instructions_json` is in `steps_done`" not in text
     assert ("When `stage` reports `frozen: true`, say in one line that the requested change can no longer "
-            "be made: title and destination once a delivery step landed, keeping the source once the "
-            "instruction set exists. Keep the staged values.") in text
+            "be made: title and destination once a delivery step may have landed, keeping the source once "
+            "the instruction set may have landed. Keep the staged values.") in text
     assert "say in one line that the title and destination can no longer change" not in text
 
 
@@ -345,7 +347,8 @@ ABORT_LINES = {
     "7. Deliver": (
         "rerun `deliver`. Abort → drop.",
         "Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, "
-        "`instructions_md`) so the user can delete them in Obsidian, then run `drop`.",
+        "`instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the "
+        "note may already be in the inbox as `note_path`. Then run `drop`.",
     ),
 }
 
@@ -369,15 +372,15 @@ def test_deliver_runs_with_the_stem():
 
 def test_name_taken_offers_rename_or_abort_and_never_overwrites():
     text = _section("7. Deliver")
-    assert "On exit 3, read `steps_done` from the `deliver` output. Never overwrite." in text
+    assert "On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite." in text
     assert "meta.json" not in text
-    assert "`steps_done` empty: offer Rename / Abort, naming `exists_path`." in text
+    assert "`frozen` false: offer Rename / Abort, naming `exists_path`." in text
 
 
-def test_name_taken_branches_on_steps_done_not_on_resume():
+def test_name_taken_branches_on_the_scripts_frozen_verdict_not_on_steps_done():
     text = _section("7. Deliver")
-    empty = text.index("`steps_done` empty: offer Rename / Abort")
-    landed = text.index("`steps_done` non-empty: offer Keep / Drop, naming `exists_path`.")
+    empty = text.index("`frozen` false: offer Rename / Abort")
+    landed = text.index("`frozen` true: offer Keep / Drop, naming `exists_path`.")
     assert empty < landed
     rename_branch = text[empty:landed]
     assert 'run `stage --stem <stem> --title "<new title>"`' in rename_branch
@@ -388,8 +391,16 @@ def test_name_taken_branches_on_steps_done_not_on_resume():
 
 def test_name_taken_with_landed_steps_names_landed_files():
     text = _section("7. Deliver")
-    landed = text.index("`steps_done` non-empty: offer Keep / Drop")
+    landed = text.index("`frozen` true: offer Keep / Drop")
     assert "name the files of `steps_done`" in text[landed:]
+    assert "when `steps_done` is empty, say the note may already be in the inbox" in text[landed:]
+
+
+def test_name_taken_never_keys_the_freeze_on_steps_done():
+    text = _section("7. Deliver")
+    for stale in ("`steps_done` empty:", "`steps_done` non-empty:", "with `steps_done` empty",
+                  "`steps_done` empty: offer", "`steps_done` non-empty: offer"):
+        assert stale not in text, stale
 
 
 def test_a_vanished_source_is_reported_in_one_line():
@@ -413,10 +424,11 @@ def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_dr
             "(Deliver / Change something / Abort).") in _section("7. Deliver")
 
 
-def test_a_withdrawn_action_is_an_exit_1_branch_offering_rename_or_abort():
+def test_a_withdrawn_action_is_an_exit_1_branch_on_frozen_like_exit_3():
     text = _section("7. Deliver")
-    assert ("On exit 1 with `status` `withdrawn`, say nothing was written and why the action was withdrawn, "
-            "then offer Rename / Abort as for exit 3 with `steps_done` empty.") in text
+    assert ("On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was "
+            "withdrawn, then branch on `frozen` as for exit 3.") in text
+    assert "as for exit 3 with `steps_done` empty" not in text
     assert "- `status` `withdrawn`:" not in text
 
 

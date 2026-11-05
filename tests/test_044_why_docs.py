@@ -75,7 +75,8 @@ def test_command_is_thin_shim_and_main_session():
         ("Resume-or-Drop", ["steps_done", "never a silent drop", "frozen"]),
         ("Model Fills", ["ADR-1", "scripts check"]),
         ("Delivery Is One Script", ["ADR-2", "deliver", "exit 3", "withdrawn", "nothing is written"]),
-        ("Exit 3 Branches", ["steps_done", "is_frozen", "deliver", "output"]),
+        ("Exit 3 Branches", ["`frozen`", "is_frozen", "deliver", "output", "in flight",
+                              "owns the rule", "drifted", "steps_done", "names"]),
         ("Source That Moves", ["source_marked", "not marked", "source_mark", "resume", "retries"]),
         ("No Candidate Fitting", ["folder_listed", "adjust patterns", "inbox-author", "abort", "F2-AC3"]),
         ("Runtime Details", ["Templater", "F3-AC7", "F3-AC8", "headings", "previews"]),
@@ -99,18 +100,18 @@ def _sentences(text: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.:;])\s+", flat) if s]
 
 
-def test_frozen_title_is_always_qualified_by_steps_done():
-    """SKILL.md step 6 and is_frozen freeze title/destination only once steps_done
-    is non-empty; an unqualified 'during a resume ... frozen' contradicts that."""
+def test_frozen_title_is_always_qualified_by_the_freeze_rule():
+    """is_frozen freezes title/destination only once a delivery step is done or in
+    flight; an unqualified 'during a resume ... frozen' contradicts that."""
     unqualified = [
         s
         for s in _sentences(_text(SKILL))
         if re.search(r"\bfr(?:oz|eez)", s, re.I)
         and "title" in s.lower()
-        and "steps_done" not in s
-        and "once a step is done" not in s
+        and "is_frozen" not in s
+        and "`frozen`" not in s
     ]
-    assert not unqualified, f"frozen title without the steps_done condition: {unqualified}"
+    assert not unqualified, f"frozen title without the freeze rule: {unqualified}"
 
 
 @pytest.mark.parametrize(
@@ -131,6 +132,12 @@ def test_frozen_title_is_always_qualified_by_steps_done():
         "an answered re-asked point",
         # Several fits: three candidates plus Abort, never four options plus Abort.
         "asks with up to four options",
+        # is_frozen also freezes a stage whose first upload is in flight (failed_step in STEPS).
+        "once `steps_done` is non-empty, because",
+        "freezes title and destination only once a step is done",
+        # A withdrawn stop can come on a frozen resume; it branches on frozen like exit 3.
+        "exactly as exit 3 does with `steps_done` empty",
+        "the skill branches on `steps_done` (see",
     ],
 )
 def test_skill_mirror_has_no_stale_statement(stale):
@@ -169,7 +176,8 @@ NOTE_META = SCRIPTS / "lib" / "note_meta.md"
     [
         # A1: one frozen message for the title/destination and the keep-source refusal.
         ("Frozen Message", ["apply_stage_update", "is_frozen", "is_keep_source_frozen",
-                            "instructions_json", "delete", "misreport"]),
+                            "instructions_json", "delete", "misreport", "failed_step",
+                            "in flight", "kado_config"]),
         # A2: exit 1 is branched on status; withdrawn is not a draft problem.
         ("Exit 1 Branches on status", ["status", "withdrawn", "empty step",
                                        "no draft edit", "rename", "steps_done"]),

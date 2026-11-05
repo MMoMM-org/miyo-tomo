@@ -37,7 +37,7 @@ delete that never happens. Deleting is the default because the new note replaces
 "Replaced by a /note note"); `--keep-source true` exists for the case where the user wants the original kept, e.g.
 raw material they still need. Keeping also changes the note: `stage` resolves `{{source_link}}` to `[[<source stem>]]`
 instead of empty text, so the note links to the kept original. `--keep-source false` undoes it. The option is refused
-once `instructions_json` is in `steps_done` (`is_keep_source_frozen`), see the frozen message below.
+once the instruction set is done or in flight (`is_keep_source_frozen`), see the frozen message below.
 
 ## Why the Draft Keeps {{source_link}} as Written
 
@@ -86,21 +86,29 @@ start (`stale_stages`) get one line and a `drop` each for the same reason.
 
 WHY: A kept draft with `steps_done` non-empty already has files in the vault (the note, the JSON, the MD). A
 silent drop would leave them there with no record. The next `/note` therefore offers resume or drop; this also covers
-a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. A resumed draft with a
-non-empty `steps_done` keeps its title and destination frozen (see
-[Why One Frozen Message Names Both Refusals](#why-one-frozen-message-names-both-refusals)), and a name collision during
-a resume is branched on `steps_done` (see the next section).
+a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. A resumed draft whose `frozen` is
+true keeps its title and destination frozen (see
+[Why One Frozen Message Names Both Refusals](#why-one-frozen-message-names-both-refusals)), and a name collision is
+branched on the `frozen` verdict `deliver` reports (see the next section).
 
-## Why Exit 3 Branches on steps_done, Not on "Is This a Resume"
+## Why Exit 3 Branches on the Script's frozen Verdict, Not on steps_done
 
-WHY: A kept draft can be resumed with nothing landed: the first step failed, so `failed_step` is set and
-`steps_done` is empty. `is_frozen` (`lib/note_meta.py`, see the next section) freezes title and destination only once
-a step is done, so such a draft can still be renamed with `stage --title`; offering only Keep/Drop would force a
-needless discard.
-Keep/Drop is right only when files are already in the vault: the name cannot change, and Drop must name the landed
-files so the user can delete them in Obsidian. The skill takes `steps_done` from the `deliver` output on stdout, which
-reports the steps `meta.json` records as landed when the run ended. Reading `meta.json` itself would add a file read
-the model can get wrong (a stale or misread file) for a value the script already prints.
+WHY: A taken name can be cured by a rename only while title and destination may still change. That is exactly
+`is_frozen` (`lib/note_meta.py`): true once `steps_done` is non-empty or `failed_step` names a delivery step (in
+`STEPS`), because `deliver` writes a step as `failed_step` before uploading it and an upload in flight may have landed
+under the old name even though `steps_done` is still empty. `kado_config` is not a delivery step and freezes nothing.
+A kept draft whose first step failed before any upload (only `kado_config`) can still be renamed with `stage --title`;
+offering only Keep/Drop there would force a needless discard. Keep/Drop is right when `frozen` is true: the name cannot
+change, and Drop names the landed files of `steps_done` so the user can delete them in Obsidian, or, with `steps_done`
+empty (the first upload was in flight), says the note may already be in the inbox.
+
+The script owns the rule; the skill reads the boolean `frozen` that `deliver` prints on stdout, which is `is_frozen` on
+`meta.json` when the run ended. Recomputing the rule in prose drifted once already: the skill keyed Rename on
+`steps_done` empty, which offered a rename that `stage` then refused for an in-flight stage. Reading `meta.json` itself
+would add a file read the model can get wrong (a stale or misread file) for a value the script already prints.
+`steps_done` stays in the output because it names the files a Drop leaves behind. A withdrawn stop (exit 1) branches
+the same way: the guards run before the uploads on every `deliver`, a resume included, so a withdrawn resume can come
+on a stage that is already frozen.
 
 ## Why a Kept Draft Drop Names Landed Files by Kind
 
@@ -118,10 +126,13 @@ note may already be in the inbox.
 ## Why One Frozen Message Names Both Refusals
 
 WHY: `stage` reports `frozen: true` for two different refusals, both decided by `apply_stage_update`
-(`lib/note_meta.py`). `is_frozen` refuses a title or destination change once `steps_done` is non-empty, because the
-landed files carry those names. `is_keep_source_frozen` refuses a `--keep-source` change once `instructions_json` is in
-`steps_done`: the landed instruction set already encodes the source delete (or its absence), so flipping keep-source
-afterwards would make the note and the instruction set disagree. The output does not say which rule fired, so the skill
+(`lib/note_meta.py`). `is_frozen` refuses a title or destination change once `steps_done` is non-empty or `failed_step`
+names a delivery step (an upload in flight may have landed; `kado_config` does not count), because the landed files
+carry those names. `is_keep_source_frozen` refuses a `--keep-source` change once `instructions_json` is in `steps_done`
+or is `failed_step`: the landed instruction set already encodes the source delete (or its absence), so flipping
+keep-source afterwards would make the note and the instruction set disagree. Hence the message says "may have
+landed", not "landed": the refusal can come with `steps_done` empty. The skill never predicts either rule; it states
+the frozen title for a kept draft whose `frozen` is true and otherwise reacts to `stage`'s refusal. The output does not say which rule fired, so the skill
 gives one message naming both conditions. A message naming only title and destination would misreport the keep-source
 refusal and leave the user asking why a change they did not make was refused. The staged values stay as they were,
 because a refused update changes nothing in `meta.json`.
@@ -131,9 +142,10 @@ because a refused update changes nothing in `meta.json`.
 WHY: `deliver` exits 1 for three different stops, and only the `status` field tells them apart. A guard that withdrew
 an action reports exit 1, `status` `withdrawn` and an empty step: the same exit code and step as a failed filled-note
 check. Without the `status` branch the model would read the empty step as "fix the draft" and loop on a refusal no
-draft edit can cure. Withdrawn writes nothing, so the skill says nothing was written and why the action was withdrawn,
-then offers Rename / Abort exactly as exit 3 does with `steps_done` empty: nothing landed and the name is still free to
-change. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
+draft edit can cure. Withdrawn writes nothing in this run, so the skill says so and why the action was withdrawn,
+then branches on `frozen` as exit 3 does (rename while it is false, Keep/Drop naming the files of
+`steps_done` once it is true): the guards run before the uploads on every `deliver`, a resume included, so
+earlier runs may already have landed files and frozen the name. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
 repeat the refusal.
 
 With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the
@@ -175,8 +187,8 @@ loop. The exit code cannot tell them apart; the error text can: every refused-in
 `note-instructions: --destination ...`, `note-instructions: --source ...`), and none of the others does. The skill
 branches on that prefix: an option error asks again; any other exit 2 is shown verbatim and the skill stops, keeping
 the stem (dropping it would discard the user's material; `new` creates no stage before it fails). Exit 3 (name
-taken) is different: never overwrite; the skill branches on `steps_done` (see
-[Why Exit 3 Branches on steps_done](#why-exit-3-branches-on-steps_done-not-on-is-this-a-resume)). Exit 1 of
+taken) is different: never overwrite; the skill branches on `deliver`'s `frozen` (see
+[Why Exit 3 Branches on the Script's frozen Verdict](#why-exit-3-branches-on-the-scripts-frozen-verdict-not-on-steps_done)). Exit 1 of
 `deliver` is branched on `status` first and then on `step` (see
 [Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step)).
 

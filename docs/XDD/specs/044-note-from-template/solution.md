@@ -422,7 +422,7 @@ Script: note-session.py start
     process_template_path: string  # vault path of that stem in templates.base_path, whatever note_include says; empty when not found
     include_configured: bool
     note_include: [string]     # empty when not configured
-    kept_drafts: [{stem, title, template, created, failed_step, steps_done}]   # steps_done: landed steps in order; started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
+    kept_drafts: [{stem, title, template, created, failed_step, steps_done, frozen}]   # steps_done: landed steps in order; frozen: title and destination can no longer change (is_frozen); started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
     stale_stages: [stem]       # stage dirs with neither failed_step nor steps_done (or unreadable meta.json): an interrupted dialogue; the skill says so in one line and drops them
     candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured, and for a --process run with an empty stem (no listing call)
     folder_listed: int         # .md files the listing returned, before matching
@@ -474,7 +474,7 @@ Script: note-instructions.py stage
   Rule: a missing draft.md is reported as check {ok: false, findings: [{check: draft_present, status: FAIL}]} and note.md is removed
   Output: {stem, title, inbox_file, destination_file, keep_source, frozen, check: {ok, findings[]}}
           # inbox_file and destination_file are empty until a title is staged
-  Rule: once steps_done is non-empty, title and destination are frozen; once steps_done holds instructions_json, keep_source is frozen too; a change is refused with frozen: true
+  Rule: once steps_done is non-empty or failed_step names a delivery step (its upload may have landed; kado_config does not count), title and destination are frozen; once instructions_json is in steps_done or is failed_step, keep_source is frozen too; a change is refused with frozen: true
   Exit: 0 (findings reported in output); 2 bad invocation: unknown or malformed stem, an unusable meta.json, a refused --title or --destination
 
 Script: note-instructions.py deliver
@@ -488,7 +488,8 @@ Script: note-instructions.py deliver
     # A Kado outage passes the constructor and fails at step note.
     note_path, instructions_json, instructions_md: string
     source_marked: bool
-    steps_done: [string]       # meta.json's steps_done when the run ended; non-empty on exit 3 or failed means files landed
+    steps_done: [string]       # meta.json's steps_done when the run ended; names the files a Drop leaves behind
+    frozen: bool               # is_frozen on meta.json when the run ended; true means title and destination can no longer change (also true with steps_done empty when the first upload was in flight)
     exists_path: string        # set when status is exists
     # delivered with source_marked false: no source, or the source vanished before the mark
   Stdout first line on a collision: EXISTS:<vault-path>
@@ -673,7 +674,7 @@ Traced walkthrough, source `100 Inbox/Meeting raw.md`, title "Design review", st
 |---|---|---|---|
 | 1 | nothing in the inbox | note written, JSON write raises Kado 503 after retries | `failed`, step `instructions_json`; `steps_done=[note]`; source untouched |
 | 2 (resume) | note present, identical | note: exists + identical → done; JSON, MD written; source merged | `delivered`, `source_marked: true`; stage dir removed |
-| 2' (resume, user edited the note in Obsidian meanwhile) | note present, different | note: exists + different | exit 3, `EXISTS:100 Inbox/2026-11-04_173005_Design review.md` → skill offers rename or abort |
+| 2' (resume, user edited the note in Obsidian meanwhile) | note present, different | note: exists + different | exit 3, `EXISTS:100 Inbox/2026-11-04_173005_Design review.md`, `frozen: true` → skill offers keep or drop |
 | 1' | `Atlas/Meetings/Design review.md` exists | `validate_destinations` clash before any write | exit 3, `EXISTS:Atlas/Meetings/Design review.md`; nothing written |
 | 2'' (resume, user deleted the landed note meanwhile) | note absent, `note` in `steps_done` | note: absent and recorded → not rewritten; JSON, MD written; source merged | `delivered`, `source_marked: true` |
 | 1'' | source deleted or moved in Obsidian after the dialogue | note, JSON, MD written; `read_frontmatter` raises `KadoNotFoundError` | `delivered`, `source_marked: false`; stage dir removed; the report says the source was not marked |
@@ -764,11 +765,11 @@ sequenceDiagram
 - **Template without frontmatter** (`frontmatter_ok: false`): the skill drafts with a frontmatter block anyway; `stage` reports the filled-note result.
 - **Broken process file** (`error` set): one line saying it is ignored and why; continue with the template alone.
 - **Required point missing from the template**: one line naming it; continue without it.
-- **Input refused** (exit 2 of `new` or `stage`: a `--source` outside `concepts.inbox`, a title that is blank, starts with a dot, holds an invisible character or `{{`/`<%`, a destination that is not a relative vault folder): the skill names what was refused and asks for another value; nothing is staged.
+- **Input refused** (exit 2 of `new` or `stage` whose error starts with `note-instructions: --title`, `note-instructions: --destination` or `note-instructions: --source`: a `--source` outside `concepts.inbox`, a title that is blank, starts with a dot, holds an invisible character or `{{`/`<%`, a destination that is not a relative vault folder): the skill names what was refused and asks for another value; nothing is staged. Any other exit 2 of `new` or `stage` (config, local I/O, stem or `meta.json`) is shown verbatim and the skill stops; the stem is not dropped.
 - **Filled-note check fails at `stage`**: the skill fixes the draft and reruns `stage`; delivery never runs on a failing check.
-- **Name taken** (exit 3) before any write: the skill offers rename (new title, rerun `stage`, `deliver`) or abort; never overwrite.
-- **Name taken during a resume** (exit 3 with `steps_done` non-empty): title and destination are frozen, so the skill offers keep (leave the draft for later) or drop; on drop it names the files that already landed so the user can delete them in Obsidian.
-- **Guard withdrew an action** (`withdrawn`): the skill reports it and offers rename or abort; nothing is written.
+- **Name taken** (exit 3 with `frozen` false): the skill offers rename (new title, rerun `stage`, `deliver`) or abort; never overwrite.
+- **Name taken during a resume** (exit 3 with frozen true): title and destination are frozen, so the skill offers keep (leave the draft for later) or drop; on drop it names the files of steps_done, or says the note may already be in the inbox when steps_done is empty.
+- **Guard withdrew an action** (`withdrawn`): the skill reports it and branches on `frozen` like a taken name (rename or abort while false, keep or drop once true); nothing is written in this run. The guards run before the uploads on every `deliver`, a resume included, so a withdrawn stop can come on a frozen stage.
 - **Kado error during delivery** (exit 1): the skill reports the failed step; the draft stays; the next `/note` offers resume.
 - **Kado config missing at delivery** (exit 1, step `kado_config`: no Kado URL or token; an outage fails at `note` instead): nothing is written; `failed_step` is recorded so the draft is a kept draft, not a stale stage; resume reruns the whole delivery. The draft is not at fault, so the skill does not send the user to fix it.
 - **Source changed between read and mark** (concurrency error on the merge): reported as a failed `source_mark`; resume retries it.
@@ -783,7 +784,7 @@ sequenceDiagram
 ALGORITHM: note-session.py start
 INPUT: $ARGUMENTS
 1. PARSE: first token "--process" → mode process, template stem = the rest of the text (one pair of surrounding quotes and then one trailing ".md" removed; empty when none, since stems may contain spaces); else mode note, request = whole text
-2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step, steps_done}
+2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step, steps_done, frozen}
 3. CONFIG: templates.note_include, templates.base_path, templates.mapping.daily read from config/vault-config.yaml with yaml.safe_load (the way the other Python scripts read it; a missing key reads as absent)
 4. IF note_include absent → include_configured false, candidates [] (the --process mode still lists the folder for process_template_path)
 5. ELSE LIST: kado list_dir(base_path, depth=1), direct children only, .md only → folder_listed; filter by fnmatchcase(stem, any glob); drop mapping.daily
@@ -846,7 +847,7 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
   ```
 - Approval question options: Deliver / Change something / Abort.
 - Process offer options: Save / Not now / Never for this template.
-- Name-taken options: Rename / Abort.
+- Name-taken options: Rename / Abort while `frozen` is false; Keep / Drop once it is true.
 - Delivery report: note path, instruction set paths, source marked or not, and "Next: review and apply the instruction set in Hashi."
 
 **State diagram of one session:**
@@ -862,7 +863,8 @@ stateDiagram-v2
     Draft --> Draft: change
     Draft --> Deliver: approve
     Deliver --> Report: delivered
-    Deliver --> Rename: name taken
+    Deliver --> Rename: name taken, not frozen
+    Deliver --> Kept: name taken, frozen, keep
     Rename --> Deliver
     Deliver --> Kept: failed
     Report --> Offer: signal and no process

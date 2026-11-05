@@ -119,15 +119,49 @@ an inline `{}`, a duplicate key further down that overrides ours. The writer
 parses the result and requires `templates.note_include` to equal the input
 list. Anything else exits 1 and the file is not touched.
 
-**Why a duplicate key anywhere refuses the write.** `yaml.safe_load` does not
-reject duplicate keys — it keeps the last one. A read-back with plain
+**Why a duplicate the edit introduces refuses the write.** `yaml.safe_load`
+does not reject duplicate keys — it keeps the last one. A read-back with plain
 `safe_load` therefore passes on exactly the result it exists to catch: a
 second `templates:` block appended below the user's (their `base_path` and
 `mapping` shadowed), or a second `note_include` next to one the matcher missed.
-The read-back uses a loader that raises on a repeated key at any depth, so any
-duplicate in the result — ours, or one that was already in the file — exits 1
-and nothing is written. A config that already holds a duplicate key is
-ambiguous to every reader of it; writing into it would only hide that.
+So the writer lists every repeated mapping key, with its path, in the file
+before the edit and in the result. A path repeated more often in the result
+than in the original is one the edit made: exit 1, nothing written.
+
+**Why a duplicate already in the file is not blamed on the edit — outside
+`templates:`.** An earlier version refused any duplicate in the result, so a
+repeated key in some unrelated section (`trackers:`, `tags:`) blocked saving
+`note_include` and the error blamed "resulting YAML" — the edit, which had not
+caused it. The edit never touches that section and every reader of it is as
+confused before the save as after it, so refusing helps nobody. Such a
+duplicate is left alone and the write proceeds; the result still has to parse
+and read back `templates.note_include` equal to the input under plain
+`safe_load`.
+
+**Why a duplicate inside `templates:` is still refused, even when it was
+already there.** Two `templates:` blocks, or two `note_include` keys in one
+block, mean the edit can land in the copy YAML throws away: the writer edits
+the first block or the first key, `safe_load` keeps the last. The save would
+report success and `/note` would read the other copy. The writer therefore
+refuses any duplicate whose path starts at `templates` (the top-level
+`templates` key itself included), and the error names it as already in the
+file, so the user fixes the file instead of retrying the save.
+
+**Why the errors carry no config text.** Stderr from this subcommand ends up
+in the model's context and in session transcripts; the config can hold vault
+paths, folder names and tokens. A YAML parse error is reported as its
+exception class and line number only — the raw PyYAML message quotes the
+offending line. A duplicate is reported as introduced or pre-existing with its
+line number, never its key. An invalid glob is reported by its index in
+`note_include`, never by its value.
+
+**Why a glob with leading or trailing whitespace is rejected.** `" t_*.md "`
+is a non-empty string, so it used to pass, and then it never matched a
+filename — the save looked fine and `/note` found no templates. The input is
+written by the model, so the writer exits 1 and names the index; it does not
+strip silently, which would save something other than what the model meant
+and keep the model from learning its input was wrong. The schema's `pattern`
+says the same: no whitespace at either end.
 
 **Why line endings are preserved (CRLF).** A config saved on Windows, or by an
 editor set to CRLF, ends every line with `\r\n`. The file is read and written
@@ -137,7 +171,9 @@ file (otherwise a second block would be appended); and the inserted lines use
 the file's own ending — the one its first line uses — so one file never mixes
 the two. Reading with Python's default text mode would instead turn every
 `\r\n` in the file into `\n`, changing every line of a file that promises to
-change one key.
+change one key. The CRLF-tolerant header check (`_is_top_level_key_line`) is
+shared with the older section subcommands; they read in default text mode, so
+their input never holds a `\r` and their behaviour is unchanged.
 
 **Why an atomic write.** The new text goes to a temporary file in the
 config's own directory, takes the config's permission bits, and replaces the
@@ -145,6 +181,9 @@ config with `os.replace`. An interrupted write then leaves the old config or
 the new one, never half of one. The older section subcommands still write in
 place; they were not changed with this one.
 
-**Why `--stdout` prints only the key lines.** It matches the sibling
+**Why `--stdout` prints only the key lines.** It previews the `note_include`
+lines the edit would write, not the whole `templates:` block: the rest of the
+block is the user's and the edit does not change it. It matches the sibling
 subcommands, which print the block they would write, and it never reads or
-writes the config.
+writes the config — so it cannot report the duplicate or read-back refusals a
+real save would hit.

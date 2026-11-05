@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.1
+# version: 0.5.2
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -666,9 +666,12 @@ def validate_templates_include_input(data) -> None:
     globs = data.get(TEMPLATES_INCLUDE_KEY)
     if not isinstance(globs, list) or not globs:
         _fail("templates-include: note_include must be a non-empty list")
-    for g in globs:
+    for i, g in enumerate(globs):
         if not isinstance(g, str) or not g.strip():
-            _fail(f"templates-include: note_include entries must be non-empty strings, got {g!r}")
+            _fail(f"templates-include: note_include[{i}] must be a non-empty string")
+        if g != g.strip():
+            _fail(f"templates-include: note_include[{i}] has leading or trailing whitespace; "
+                  "remove it, a padded glob never matches a filename")
 
 
 def render_templates_include_lines(
@@ -760,36 +763,82 @@ def set_templates_note_include(yaml_text: str, globs: list[str]) -> str:
     return "".join(lines[:lo]) + rendered + "".join(lines[hi:])
 
 
-class _UniqueKeySafeLoader(yaml.SafeLoader):
-    """SafeLoader that raises on a repeated mapping key at any depth.
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+_KEY_CONSTRUCTOR = yaml.SafeLoader("")  # builds scalar keys the way safe_load does
 
-    Plain safe_load keeps the last duplicate, which would let a shadowing
-    second `templates:` or `note_include` pass the read-back.
+
+def _key_identity(key_node):
+    """The key as safe_load would build it, or None when it cannot be compared."""
+    if not isinstance(key_node, yaml.ScalarNode) or key_node.tag == _MERGE_TAG:
+        return None
+    try:
+        key = _KEY_CONSTRUCTOR.construct_object(key_node, deep=True)
+        hash(key)
+    except (yaml.YAMLError, TypeError):
+        return None
+    return key
+
+
+def _collect_key_lines(node, path: tuple, lines: dict, seen: set) -> None:
+    """Record {key path: [1-based line of each occurrence]} for every mapping key."""
+    if node is None or id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, yaml.SequenceNode):
+        for i, child in enumerate(node.value):
+            _collect_key_lines(child, path + (i,), lines, seen)
+    elif isinstance(node, yaml.MappingNode):
+        for key_node, value_node in node.value:
+            key = _key_identity(key_node)
+            if key is not None:
+                lines.setdefault(path + (key,), []).append(key_node.start_mark.line + 1)
+            _collect_key_lines(value_node, path + (key,), lines, seen)
+
+
+def _duplicate_keys(text: str) -> dict[tuple, tuple[int, int]]:
+    """{key path: (occurrences, line of the second one)} for repeated keys.
+
+    Plain safe_load keeps the last duplicate, so a shadowing second
+    `templates:` or `note_include` would otherwise pass the read-back.
     """
+    lines: dict[tuple, list[int]] = {}
+    _collect_key_lines(yaml.compose(text, Loader=yaml.SafeLoader), (), lines, set())
+    return {p: (len(ls), ls[1]) for p, ls in lines.items() if len(ls) > 1}
 
-    def construct_mapping(self, node, deep=False):
-        seen = set()
-        for key_node, _ in node.value:
-            if key_node.tag == "tag:yaml.org,2002:merge":
-                continue
-            key = self.construct_object(key_node, deep=True)
-            try:
-                duplicate = key in seen
-            except TypeError:  # unhashable key: super() reports it
-                continue
-            if duplicate:
-                raise yaml.constructor.ConstructorError(
-                    None, None, f"duplicate key {key!r}", key_node.start_mark,
-                )
-            seen.add(key)
-        return super().construct_mapping(node, deep=deep)
+
+def _describe_yaml_error(exc: yaml.YAMLError) -> str:
+    """Class name and line only: the PyYAML message quotes config text."""
+    mark = getattr(exc, "problem_mark", None) or getattr(exc, "context_mark", None)
+    return type(exc).__name__ + (f" at line {mark.line + 1}" if mark else "")
+
+
+def _duplicate_refusal(original: str, updated: str) -> str | None:
+    """Why the result must not be written, or None. Never names a key or value."""
+    try:
+        after = _duplicate_keys(updated)
+    except yaml.YAMLError as exc:
+        return f"resulting YAML is not usable ({_describe_yaml_error(exc)})"
+    try:
+        before = _duplicate_keys(original)
+    except yaml.YAMLError:
+        before = {}
+    introduced = [ln for p, (n, ln) in after.items() if n > before.get(p, (1, 0))[0]]
+    if introduced:
+        return (f"duplicate mapping key introduced by the edit "
+                f"(line {min(introduced)} of the result)")
+    shadowed = [ln for p, (_, ln) in before.items() if p[0] == "templates"]
+    if shadowed:
+        return (f"pre-existing duplicate key in the templates: block, already in the config "
+                f"(line {min(shadowed)}); the edit could land in the copy YAML ignores, "
+                "fix the file first")
+    return None
 
 
 def _reads_back(updated: str, globs: list[str]) -> bool:
     try:
-        parsed = yaml.load(updated, Loader=_UniqueKeySafeLoader)  # SafeLoader subclass
+        parsed = yaml.safe_load(updated)
     except yaml.YAMLError as exc:
-        print(f"error: resulting YAML is not usable: {exc}", file=sys.stderr)
+        print(f"error: resulting YAML is not usable ({_describe_yaml_error(exc)})", file=sys.stderr)
         return False
     templates = parsed.get("templates") if isinstance(parsed, dict) else None
     return isinstance(templates, dict) and templates.get(TEMPLATES_INCLUDE_KEY) == globs
@@ -838,6 +887,10 @@ def cmd_templates_include(args: argparse.Namespace) -> int:
         print(f"error: config not found: {config_path}", file=sys.stderr)
         return 2
     updated = set_templates_note_include(current, globs)
+    refusal = _duplicate_refusal(current, updated)
+    if refusal:
+        print(f"error: {refusal}, refusing to write", file=sys.stderr)
+        return 1
     if not _reads_back(updated, globs):
         print("error: resulting YAML would not read back templates.note_include, "
               "refusing to write", file=sys.stderr)

@@ -834,11 +834,14 @@ def test_templates_include_replaces_quoted_key(tmp_path):
         }
 
 
-def test_templates_include_refuses_config_with_duplicate_key(tmp_path):
+SECRET = "zqx_secret_marker"
+
+
+def test_templates_include_refuses_preexisting_duplicate_inside_templates(tmp_path):
     configs = [
-        "templates:\n  base_path: T\nother: 1\ntemplates:\n  mapping: {}\n",
-        "templates:\n  base_path: T\n  base_path: U\n",
-        "templates:\n  base_path: T\nother:\n  a: 1\n  a: 2\n",
+        f"templates:\n  base_path: {SECRET}\nother: 1\ntemplates:\n  mapping: {{}}\n",
+        f"templates:\n  base_path: T\n  base_path: {SECRET}\n",
+        f"templates:\n  note_include: [a.md]\n  note_include: [{SECRET}.md]\n",
     ]
     for i, config in enumerate(configs):
         case_dir = tmp_path / f"d{i}"
@@ -846,6 +849,79 @@ def test_templates_include_refuses_config_with_duplicate_key(tmp_path):
         proc, cfg = _run_templates_include(case_dir, config, {"note_include": ["x.md"]})
         assert proc.returncode == 1, f"{config!r}: rc={proc.returncode} {proc.stderr}"
         assert cfg.read_text(encoding="utf-8") == config
+        assert "pre-existing" in proc.stderr and "introduced" not in proc.stderr, proc.stderr
+        assert SECRET not in proc.stderr and "base_path" not in proc.stderr, proc.stderr
+
+
+def test_templates_include_ignores_preexisting_duplicate_in_other_section(tmp_path):
+    config = (
+        "templates:\n  base_path: T\n"
+        f"other:\n  {SECRET}: 1\n  {SECRET}: 2\n"
+    )
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    after = cfg.read_text(encoding="utf-8")
+    assert _strip_note_include(after) == config
+    assert yaml.safe_load(after)["templates"] == {"base_path": "T", "note_include": ["x.md"]}
+    assert SECRET not in proc.stderr
+
+
+def test_templates_include_refuses_duplicate_the_edit_introduces(tmp_path):
+    # A matcher-missed key spelling: the indented-flow key `note_include :`
+    # is not recognised, so the edit appends a second note_include.
+    config = f"templates:\n  base_path: {SECRET}\n  note_include : [old.md]\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 1, proc.stderr
+    assert cfg.read_text(encoding="utf-8") == config
+    assert "introduced by the edit" in proc.stderr and "pre-existing" not in proc.stderr
+    assert SECRET not in proc.stderr and "note_include :" not in proc.stderr
+
+
+def test_templates_include_parse_error_carries_no_config_text(tmp_path):
+    config = f"templates:\n  base_path: T\nbroken: [{SECRET}\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 1, proc.stderr
+    assert cfg.read_text(encoding="utf-8") == config
+    assert SECRET not in proc.stderr, proc.stderr
+    assert "line" in proc.stderr, proc.stderr
+
+
+def test_templates_include_invalid_glob_error_names_index_not_value(tmp_path):
+    proc, cfg = _run_templates_include(
+        tmp_path, CONFIG_WITHOUT_KEY, {"note_include": ["ok.md", f"  {SECRET}  ", 3]},
+    )
+    assert proc.returncode == 1
+    assert SECRET not in proc.stderr, proc.stderr
+    assert "note_include[1]" in proc.stderr, proc.stderr
+
+
+def test_templates_include_rejects_glob_with_surrounding_whitespace(tmp_path):
+    for i, glob in enumerate([" a*.md", "a*.md ", " a* ", "a*.md\n", "\ta.md"]):
+        case_dir = tmp_path / f"w{i}"
+        case_dir.mkdir()
+        proc, cfg = _run_templates_include(case_dir, CONFIG_WITHOUT_KEY, {"note_include": [glob]})
+        assert proc.returncode == 1, f"{glob!r}: {proc.stderr}"
+        assert cfg.read_text(encoding="utf-8") == CONFIG_WITHOUT_KEY
+        assert "whitespace" in proc.stderr, proc.stderr
+    proc, _ = _run_templates_include(tmp_path, CONFIG_WITHOUT_KEY, {"note_include": ["Meeting *.md"]})
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_templates_schema_pattern_rejects_surrounding_whitespace():
+    import re
+    schema = json.loads(
+        (SCRIPTS_DIR.parent / "schemas" / "vault-config-templates.schema.json").read_text("utf-8")
+    )
+    pattern = re.compile(schema["properties"]["note_include"]["items"]["pattern"])
+
+    def matches(s: str) -> bool:  # ECMA `$` never matches before a final "\n"
+        m = pattern.search(s)
+        return bool(m) and m.end() == len(s)
+
+    for bad in [" a*", "a* ", " ", "\ta", "a\n"]:
+        assert not matches(bad), repr(bad)
+    for good in ["a", "t_*.md", "Meeting *.md"]:
+        assert matches(good), repr(good)
 
 
 def test_templates_include_keeps_deeper_comment_after_list(tmp_path):

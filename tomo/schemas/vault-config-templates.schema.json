@@ -14,7 +14,8 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "pattern": "\\S"
+        "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+        "description": "A glob with no whitespace at either end; a padded glob never matches a filename."
       }
     }
   }

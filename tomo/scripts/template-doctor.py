@@ -1,8 +1,8 @@
-# version: 0.3.0
+# version: 0.4.0
 """template-doctor.py — Audit, dry-render, and scaffold Tomo note templates.
 
 Checks whether an Obsidian note template renders correctly through Tomo's static
-Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Three modes:
+Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Four modes:
 
   audit       Static structural checks only. No rendering, no config needed.
   dry-render  Resolve ``{{tokens}}`` via token-render.py, stamp the ``tomo:``
@@ -12,6 +12,12 @@ Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Three modes:
   scaffold    Emit a minimal, guaranteed-literal-fence template for a note type
               (atomic|moc|daily|project|source) to stdout — a correct starting
               point. Richer seed templates live in the vault's config/templates.
+  filled-note Check a filled note (``--note``, no ``--template``) with
+              lib.template_syntax.filled_note_check: leading fence present and
+              closed, no user ``tomo:`` key, no ``<%`` left, no ``{{token}}``
+              left outside fenced code, every code fence closed. Output:
+              {"mode": "filled-note", "note": "<path>", "ok": bool,
+               "findings": [...]} — no rendered_preview, no note content.
 
 The load-bearing rule both modes enforce: the template must OPEN with a literal
 ``---`` fence. Tomo does not execute Templater at render time, so a template
@@ -55,6 +61,7 @@ from lib.doc_frontmatter import (  # noqa: E402
     FrontmatterMergeError,
     merge_tomo_block_into_markdown,
 )
+from lib.template_syntax import filled_note_check  # noqa: E402
 
 TOKEN_RENDER = SCRIPT_DIR / "token-render.py"
 
@@ -365,13 +372,41 @@ def _preview(stamped, max_lines=40):
 
 # ──────────────────────────────────────────────────────────────────────
 
-def main(argv=None):
+# filled-note — the /note delivery check, via lib/template_syntax
+# ──────────────────────────────────────────────────────────────────────
+
+def filled_note(note_arg):
+    """Print the filled-note report for one file; return the exit code."""
+    note_path = Path(note_arg)
+    if not note_path.is_file():
+        findings = [_finding("file", "FAIL", f"Note not found: {note_path}", None)]
+        ok = False
+    else:
+        result = filled_note_check(note_path.read_text(encoding="utf-8"))
+        findings, ok = result.findings, result.ok
+    print(json.dumps({
+        "mode": "filled-note", "note": str(note_path), "ok": ok,
+        "findings": findings,
+    }, ensure_ascii=False, indent=2))
+    return 0 if ok else 1
+
+
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["audit", "dry-render", "scaffold"])
+    parser.add_argument(
+        "mode", choices=["audit", "dry-render", "scaffold", "filled-note"])
     parser.add_argument("--template", help="template file path (audit/dry-render)")
+    parser.add_argument("--note", help="filled note file path (filled-note)")
     parser.add_argument("--config", help="vault-config.yaml (dry-render only)")
     parser.add_argument(
         "--type", choices=sorted(_SCAFFOLDS), help="note type (scaffold)")
+    return parser
+
+
+def main(argv=None):
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.mode == "scaffold":
@@ -379,6 +414,11 @@ def main(argv=None):
             parser.error("scaffold requires --type")
         sys.stdout.write(_SCAFFOLDS[args.type])
         return 0
+
+    if args.mode == "filled-note":
+        if not args.note:
+            parser.error("filled-note requires --note")
+        return filled_note(args.note)
 
     if not args.template:
         parser.error(f"{args.mode} requires --template")

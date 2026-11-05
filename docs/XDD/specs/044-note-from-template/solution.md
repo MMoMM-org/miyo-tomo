@@ -443,13 +443,13 @@ Script: note-instructions.py deliver
     source_marked: bool
     exists_path: string        # set when status is exists
   Stdout first line on a collision: EXISTS:<vault-path>
-  Exit: 0 delivered; 1 Kado or guard failure; 2 bad invocation; 3 name taken
+  Exit: 0 delivered; 1 Kado or guard failure, or a failing filled-note check (status failed, step ""); 2 bad invocation, or meta.json could not be written (no JSON then); 3 name taken
 
 Script: note-instructions.py drop
   Args: --stem <stem>
   Effect: removes tomo-tmp/note/<stem>/
   Output: {stem, removed: bool}
-  Exit: 0
+  Exit: 0; 2 malformed stem
 
 Script: note-process.py read | write | decline
   read:    --template <stem> [--outline <file>] → {exists, declined, destination, required, guidance, missing_required[], error}
@@ -464,7 +464,7 @@ Subcommand: vault-config-writer.py templates-include
 Mode: template-doctor.py filled-note
   Args: filled-note --note <file>
   Output: {mode: "filled-note", note, ok, findings[{check, status, detail, fix}]}
-  Checks: leading fence present and closed; no user-authored tomo: key; no "<%" left; no "{{token}}" left outside fences
+  Checks (from lib/template_syntax.filled_note_check): leading fence present (leading_fence) and closed (frontmatter_closed); no user-authored tomo: key; no "<%" left; every code fence closed (code_fence_closed); no "{{token}}" left outside fences
   Parser: --template is required today for every non-scaffold mode (template-doctor.py:368-380); filled-note takes --note instead
   Exit: 0 no FAIL; 1 FAIL or file missing; 2 bad invocation
 ```

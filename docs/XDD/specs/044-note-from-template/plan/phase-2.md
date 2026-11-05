@@ -41,7 +41,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass; ruff clean.
   5. Success: every heading, frontmatter key and non-prefilled token is a point `[ref: PRD/F3; SDD/F3-AC1]`
 
-- [ ] **T2.2 template-doctor.py filled-note** `[activity: backend]` `[parallel: true]`
+- [x] **T2.2 template-doctor.py filled-note** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `template-doctor.py:368-406`; `tests/test_template_doctor.py` `[ref: SDD/Internal API Changes]`
   2. Test: extend `tests/test_template_doctor.py`: `filled-note --note <file>` passes a clean note, fails on `<%`, `{{token}}`, user `tomo:` key, missing fence; existing modes unchanged; `--note` is accepted without `--template`.
@@ -49,7 +49,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: all template-doctor tests pass.
   5. Success: Templater remains are caught `[ref: PRD/F3; SDD/F3-AC7]`
 
-- [ ] **T2.3 note-session.py** `[activity: backend]` `[parallel: true]`
+- [x] **T2.3 note-session.py** `[activity: backend]` `[parallel: true]`
 
   1. Prime: SDD `start` and `match` interfaces, Complex Logic, the pattern preview table; `read-config-field.py --fields`; `kado_client.list_dir` `[ref: SDD/Complex Logic; ADR-6]`
   2. Test: new `tests/test_note_session.py` (fake Kado, tmp instance):

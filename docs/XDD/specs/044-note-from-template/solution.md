@@ -393,7 +393,7 @@ Script: note-session.py start
     note_include: [string]     # empty when not configured
     kept_drafts: [{stem, title, template, created, failed_step}]   # started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
     stale_stages: [stem]       # stage dirs with neither failed_step nor steps_done (or unreadable meta.json): an interrupted dialogue; the skill says so in one line and drops them
-    candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured
+    candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured, and for a --process run with an empty stem (no listing call)
     folder_listed: int         # .md files the listing returned, before matching
     listing_error: string      # Kado error text, empty when none
   Exit: 0 usable; 2 bad invocation

@@ -854,15 +854,16 @@ def test_spec_043_mutation_applies_in_the_runner_and_changes_only_its_files(env,
 # ── not-gated cases (spec 044 ADR-8) ──────────────────────────
 
 
-def _add_not_gated_case(env, name: str = "ng-case") -> None:
-    """A second case marked not gated by an evals/<name>/NOT_GATED file, committed."""
+def _add_not_gated_case(env, name: str = "ng-case", *, marked: bool = True) -> None:
+    """A further case, marked not gated by an evals/<name>/NOT_GATED file unless marked=False, committed."""
     case = env.repo / "evals" / name
     _write(case / "case.yaml", f'schema_version: "1.1"\nname: {name}\nruns: 3\n')
     _write(case / "graders" / "1-probe.md", "---\ntype: regex\ntarget: last_message\npattern: ok\n---\n")
     shutil.copy(KIT_DIR / "no-leak.md", case / "graders" / "9-no-leak.md")
-    _write(case / "NOT_GATED", "spec 044 ADR-8\n")
+    if marked:
+        _write(case / "NOT_GATED", "spec 044 ADR-8\n")
     _git(env.repo, "add", ".")
-    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "not-gated case")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", f"case {name}")
 
 
 def test_default_run_skips_a_not_gated_case_and_names_it(env):
@@ -890,6 +891,35 @@ def test_gated_case_is_never_skipped(env):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "probe-case" not in "".join(ln for ln in proc.stderr.splitlines() if "skipped" in ln)
     assert _dir_state(env.snap / "evals" / "probe-case") == _dir_state(env.repo / "evals" / "probe-case")
+
+
+def test_gated_case_named_as_a_prefix_of_a_not_gated_case_is_never_skipped(env):
+    # Falsifies a prefix match on the case name: gated `ng` is a prefix of marked `ng-case`.
+    _add_not_gated_case(env, "ng", marked=False)
+    _add_not_gated_case(env)
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    skips = [ln for ln in proc.stderr.splitlines() if ln.startswith("skipped (not gated): ")]
+    assert skips == ["skipped (not gated): ng-case"], proc.stderr
+    assert _dir_state(env.snap / "evals" / "ng") == _dir_state(env.repo / "evals" / "ng")
+    assert not (env.snap / "evals" / "ng-case").exists()
+    line = _line(proc)
+    assert line.startswith("GREEN 2/2 cases"), line
+    assert "PARTIAL" not in line
+
+
+def test_default_mutation_run_skips_a_not_gated_case(env):
+    _add_not_gated_case(env)
+    proc = env.run("--mutation", "flip")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped (not gated): ng-case" in proc.stderr.splitlines()
+    assert not (env.snap / "evals" / "ng-case").exists()
+    assert (env.snap / "evals" / "probe-case" / "case.yaml").is_file()
+    assert "Step 1: MUTATED." in (env.snap / "agents" / "probe-agent.md").read_text()
+    (call,) = env.eval_calls()
+    assert "--case" not in call
+    line = _line(proc)
+    assert "mutation flip" in line and "PARTIAL" not in line, line
 
 
 def test_no_skip_line_without_a_not_gated_case(env):

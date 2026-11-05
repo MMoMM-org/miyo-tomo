@@ -83,7 +83,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass; ruff clean.
   5. Success: the set is wire-valid by construction `[ref: PRD/F4, F5; SDD/F4-AC3, F5-AC2, F5-AC3, F6-AC4]`
 
-- [ ] **T2.6 note-instructions.py deliver** `[activity: backend]`
+- [x] **T2.6 note-instructions.py deliver** `[activity: backend]`
 
   1. Prime: SDD delivery example, traced walkthrough, Error Handling; `render_withhold.py:37,280,431`; `render_md.py:921`; `doc_frontmatter.py:87,172`; `mark-captured.py:172-190`; `inbox-triage.py:436-455,1494-1534,1603-1655` `[ref: SDD/Implementation Examples; ADR-2, ADR-3]`
   2. Test: extend `tests/test_note_instructions.py` with every walkthrough row:

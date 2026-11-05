@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.2.8
+# version: 0.2.9
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
-later step; keep-source frozen once instructions_json landed; a killed run is a
-kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
+later step; keep-source frozen once instructions_json landed or is in flight,
+title and destination once the first upload is in flight; every output carries
+frozen; a killed run is a kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
 destination clash and guard-cut sets refused; filled-note check gate; a
 failed stamp is step ""; a missing Kado config is step kado_config, a kept draft
 that resume delivers from scratch;
@@ -844,7 +845,7 @@ WRITES = ("write_note", "write_file", "write_frontmatter")
 STEP_CALL = {"note": "write_note", "instructions_json": "write_file",
              "instructions_md": "write_note", "source_mark": "write_frontmatter"}
 DELIVER_KEYS = {"status", "step", "note_path", "instructions_json", "instructions_md",
-                "source_marked", "steps_done", "exists_path"}
+                "source_marked", "steps_done", "frozen", "exists_path"}
 HASHI_SCHEMA = SCRIPTS_DIR.parent / "schemas" / "hashi-instructions.schema.json"
 
 
@@ -897,7 +898,7 @@ def test_deliver_writes_note_json_md_then_marks_source_in_order(inst, capsys, va
     assert out == {"status": "delivered", "step": "", "note_path": note,
                    "instructions_json": js, "instructions_md": md,
                    "source_marked": True, "steps_done": list(note_meta.STEPS),
-                   "exists_path": ""}
+                   "frozen": True, "exists_path": ""}
     assert _write_events(vault) == [("write_note", note), ("write_file", js),
                                     ("write_note", md), ("write_frontmatter", SOURCE)]
 
@@ -912,6 +913,7 @@ def test_deliver_failure_at_a_step_stops_every_later_step(inst, capsys, vault, i
     assert rc == 1 and exists is None
     assert out["status"] == "failed" and out["step"] == step
     assert out["steps_done"] == list(note_meta.STEPS[:index])
+    assert out["frozen"] is True
     assert out["source_marked"] is False and vault.merges == []
     assert _write_events(vault)[-1] == (STEP_CALL[step], target)
     assert len(_write_events(vault)) == index + 1
@@ -929,13 +931,14 @@ def test_deliver_failure_at_instructions_md_freezes_keep_source(inst, capsys, va
     assert res["frozen"] is True and _meta(inst, stem).keep_source is False
 
 
-def test_deliver_failure_at_instructions_json_leaves_keep_source_open(inst, capsys, vault):
+def test_deliver_failure_at_instructions_json_freezes_keep_source(inst, capsys, vault):
+    """The upload failed: Kado may have written the set before the error reached us."""
     stem = _ready(inst, capsys, vault)
     _, _, js, _ = _paths(inst, stem)
     vault.fail[("write_file", js)] = KadoError("503")
     assert _deliver(capsys, stem)[0] == 1
     res = _json(_stage(capsys, stem, "--keep-source", "true")[1])
-    assert res["frozen"] is False and _meta(inst, stem).keep_source is True
+    assert res["frozen"] is True and _meta(inst, stem).keep_source is False
 
 
 def _session_start(capsys):
@@ -1016,7 +1019,12 @@ def test_deliver_first_step_landed_but_unrecorded_is_a_kept_draft_that_resumes(
     assert meta.steps_done == [] and meta.failed_step == "note"
     start = _session_start(capsys)
     assert [d["stem"] for d in start["kept_drafts"]] == [stem]
+    assert start["kept_drafts"][0]["frozen"] is True
     assert stem not in start["stale_stages"]
+    before = (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes()
+    res = _json(_stage(capsys, stem, "--title", "Other")[1])
+    assert res["frozen"] is True and res["inbox_file"] == note
+    assert (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes() == before
     vault.events.clear()
     rc, _, out, _, err = _deliver(capsys, stem)
     assert rc == 0, err
@@ -1081,7 +1089,7 @@ def test_deliver_destination_clash_exits_3_before_any_write(inst, capsys, vault)
     rc, exists, out, _, _ = _deliver(capsys, stem)
     assert rc == 3 and exists == f"EXISTS:{taken}"
     assert out["status"] == "exists" and out["exists_path"] == taken and out["step"] == ""
-    assert out["steps_done"] == []
+    assert out["steps_done"] == [] and out["frozen"] is False
     assert _write_events(vault) == []
     meta = _meta(inst, stem)
     assert meta.steps_done == [] and meta.failed_step == ""
@@ -1132,6 +1140,7 @@ def test_deliver_missing_kado_config_fails_at_kado_config_and_keeps_the_draft(
     rc, exists, out, raw, err = _deliver(capsys, stem)
     assert rc == 1 and exists is None
     assert out["status"] == "failed" and out["step"] == note_meta.KADO_CONFIG == "kado_config"
+    assert out["frozen"] is False
     assert "not configured" in err and "reach" not in err
     assert _write_events(vault) == [] and "KADO_TOKEN" not in raw
     meta = _meta(inst, stem)
@@ -1139,7 +1148,10 @@ def test_deliver_missing_kado_config_fails_at_kado_config_and_keeps_the_draft(
     start = _session_start(capsys)
     assert [d["stem"] for d in start["kept_drafts"]] == [stem]
     assert start["kept_drafts"][0]["failed_step"] == "kado_config"
+    assert start["kept_drafts"][0]["frozen"] is False
     assert stem not in start["stale_stages"]
+    res = _json(_stage(capsys, stem, "--title", "Other")[1])
+    assert res["frozen"] is False and res["title"] == "Other"
 
 
 @pytest.mark.parametrize("error", [TimeoutError("timed out"),

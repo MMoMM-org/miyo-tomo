@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.8
+# version: 0.1.9
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -185,13 +185,13 @@ def mark_step_failed(meta: NoteDraftMeta, step: str) -> None:
 
 
 def is_frozen(meta: NoteDraftMeta) -> bool:
-    """True once any delivery step is done."""
-    return bool(meta.steps_done)
+    """True once any delivery step is done or a step's upload may have landed."""
+    return bool(meta.steps_done) or meta.failed_step in STEPS
 
 
 def is_keep_source_frozen(meta: NoteDraftMeta) -> bool:
-    """True once the instruction set has landed (instructions_json done)."""
-    return "instructions_json" in meta.steps_done
+    """True once the instruction set is done or its upload may have landed."""
+    return "instructions_json" in meta.steps_done or meta.failed_step == "instructions_json"
 
 
 def apply_stage_update(meta: NoteDraftMeta, *, title: str | None = None,
@@ -216,7 +216,7 @@ def _kept_entry(meta: NoteDraftMeta) -> dict:
     return {
         "stem": meta.stem, "title": meta.title, "template": meta.template,
         "created": meta.created, "failed_step": meta.failed_step,
-        "steps_done": list(meta.steps_done),
+        "steps_done": list(meta.steps_done), "frozen": is_frozen(meta),
     }
 
 

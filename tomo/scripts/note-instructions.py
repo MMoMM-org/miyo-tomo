@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.7
+# version: 0.2.8
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -41,8 +41,10 @@ Subcommands:
                  step: kado_config|note|instructions_json|instructions_md|
                        source_mark|"",
                  note_path, instructions_json, instructions_md, source_marked,
-                 steps_done, exists_path}
+                 steps_done, frozen, exists_path}
         steps_done: the steps meta.json records as landed when the run ended.
+        frozen: true when stage would refuse a title or destination change
+        (lib/note_meta.is_frozen on meta.json as the run ended).
         On a taken name the first stdout line is EXISTS:<vault path>.
         Exit: 0 delivered; 1 Kado, check or guard failure; 2 bad invocation,
               unknown stem or meta.json write failure (no JSON on stdout);
@@ -78,8 +80,8 @@ from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E4
 from lib.note_actions import build_note_actions, build_note_instruction_set  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.note_meta import (  # noqa: E402
-    KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
-    new_meta, read_meta, remove_stage, stage_dir, write_meta,
+    KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, is_frozen, mark_step_done,
+    mark_step_failed, new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
 from lib.note_paths import (  # noqa: E402
     has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
@@ -363,6 +365,7 @@ def _deliver_output(meta, status: str, step: str = "", exists_path: str = "",
             "instructions_md": targets["instructions_md"],
             "source_marked": source_marked,
             "steps_done": list(meta.steps_done),
+            "frozen": is_frozen(meta),
             "exists_path": exists_path}
 
 

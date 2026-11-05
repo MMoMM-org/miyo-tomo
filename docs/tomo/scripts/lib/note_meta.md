@@ -13,25 +13,43 @@ kept/stale split live here once. A second reader that re-derived "a kept draft i
 one with `failed_step` set or `steps_done` non-empty" would drift from the writer the first time either
 changed.
 
-## WHY Title and Destination Freeze Once a Step Is Done
+## WHY Title and Destination Freeze Once a Step Is Done or In Flight
 
 `steps_done` non-empty means at least the note already landed in the inbox under
 `inbox_file`, and the instruction set may already point at `destination_file()`.
 Renaming after that would leave a landed file under the old name and a resumed
-delivery writing a second file under the new one. `apply_stage_update` refuses the
+delivery writing a second file under the new one.
+
+`failed_step` naming a delivery step (one of `STEPS`) freezes them too, even with
+`steps_done` empty. `note-instructions.py deliver` sets `failed_step` to a step
+before uploading it, so the field means "failed or possibly landed": a run
+killed after the first upload, or whose record write failed, leaves `steps_done`
+`[]` and `failed_step` `note` with the note already in the vault. Keying the
+freeze on `steps_done` alone let `stage --title` rebuild `inbox_file` there, and
+the resume wrote a second note while the first one stayed orphaned under the old
+name. A failure at the `note` probe (Kado down before any upload) looks the same
+on disk and is frozen as well: meta.json cannot tell the two apart, and a
+needless freeze costs a Drop and a new draft, while a wrong rename costs a
+duplicate note in the vault. `kado_config` does not freeze: it stops before the
+guards and before any write, so nothing can have landed.
+
+`apply_stage_update` refuses the
 whole update (title, destination and keep_source) when any frozen field would change,
 so a refused call leaves meta.json exactly as it was. Restating the current value
 is not a change: the skill may pass every field on each `stage` call.
 
-## WHY keep_source Freezes Once instructions_json Is Done
+## WHY keep_source Freezes Once instructions_json Is Done or In Flight
 
 The instruction set carries a `delete_source` action exactly when `keep_source`
 is false. Once `instructions_json` is in `steps_done`, that set has landed in the
 inbox; flipping `keep_source` afterwards would make a resumed delivery rebuild a
 different set (`delete_source` added or removed) than the one already written,
-and the user would approve one set while another one is on disk.
+and the user would approve one set while another one is on disk. `failed_step`
+`instructions_json` freezes it for the same reason the title freezes on an
+in-flight step: the upload may have reached the vault before the error or the
+kill did, so the set is treated as possibly landed.
 
-It does not freeze earlier, at `note`: until the set is written, keeping or
+It does not freeze earlier, at `note` (done or in flight): until the set is written, keeping or
 deleting the source is still the user's free choice in the dialogue (PRD
 F4-AC3), and nothing on disk depends on it yet. The same all-or-nothing rule
 applies: a refused `keep_source` change leaves title and destination untouched,
@@ -57,17 +75,21 @@ is missing or unreadable is stale for the same reason: `new` writes meta.json
 right after creating the directory, so its absence means the run died in
 between.
 
-## WHY a Kept Draft Entry Carries steps_done
+## WHY a Kept Draft Entry Carries steps_done and frozen
 
 Each `kept_drafts` entry names the draft (`stem`, `title`, `template`,
-`created`), why it stopped (`failed_step`) and what already landed
-(`steps_done`, the fixed step tokens in delivery order). The skill needs the
-last one twice: to decide whether the name can still change (an empty list
-means nothing landed, so rename is open) and, on Drop, to name the files the
-user must delete in Obsidian. Without it in the listing the skill would open
+`created`), why it stopped (`failed_step`), what already landed (`steps_done`,
+the fixed step tokens in delivery order) and whether the name can still change
+(`frozen`, the boolean `is_frozen` returns). `steps_done` serves the Drop: it
+names the files the user must delete in Obsidian. `frozen` serves the rename
+decision, and it is the script's verdict rather than something the skill derives
+from `steps_done`: an empty `steps_done` with an in-flight `failed_step` is
+frozen, so "empty list means rename is open" would be wrong exactly in the case
+that orphans a note. Without both in the listing the skill would open
 `meta.json` itself, a second reader of a file this library owns, and one more
 place the frozen rule could be re-derived wrongly. The tokens are fixed
-vocabulary, never user text, so the entry stays inside the privacy contract.
+vocabulary and `frozen` a boolean, never user text, so the entry stays inside
+the privacy contract.
 
 ## WHY FAILED_STEPS Is Separate From STEPS
 

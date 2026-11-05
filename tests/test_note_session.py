@@ -212,7 +212,7 @@ def test_kept_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
     assert out["kept_drafts"][0] == {
         "stem": "2026-11-04_100000", "title": "Design review",
         "template": "Templates/t_meeting.md", "created": "2026-11-04T10:15:00Z",
-        "failed_step": "instructions_json", "steps_done": ["note"],
+        "failed_step": "instructions_json", "steps_done": ["note"], "frozen": True,
     }
     assert out["kept_drafts"][1]["failed_step"] == ""
     assert out["kept_drafts"][1]["steps_done"] == ["note"]

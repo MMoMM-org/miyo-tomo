@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
 - meta.json round trip and the derived names (destination_file, instructions_stem)
 - steps_done updates (order, idempotence, unknown step rejected) and failed_step,
   which also takes kado_config (a failed step that is never done)
-- title and destination frozen once steps_done is non-empty, keep_source once
-  instructions_json is done (SDD stage Rule)
+- title and destination frozen once steps_done is non-empty or failed_step
+  names a delivery step (its upload may have landed; kado_config does not
+  freeze), keep_source once instructions_json is done or in flight; each
+  kept_drafts entry carries that verdict as frozen
 - stage listing splits started deliveries (kept_drafts: failed_step set or
   steps_done non-empty) from stale stages
 - read_meta rejects fields of the wrong type or shape (stale in the listing)
@@ -265,6 +267,45 @@ def test_restating_keep_source_after_the_instruction_set_is_not_a_change():
     assert meta.keep_source is False
 
 
+def test_an_upload_in_flight_freezes_title_and_destination():
+    """Killed after the first upload, before its record: the note may be in the vault."""
+    meta = _meta()
+    note_meta.mark_step_failed(meta, "note")
+    inbox_file = meta.inbox_file
+
+    assert note_meta.is_frozen(meta) is True
+    assert note_meta.apply_stage_update(meta, title="Renamed") is True
+    assert note_meta.apply_stage_update(meta, destination="Efforts/") is True
+    assert (meta.title, meta.inbox_file, meta.destination) == (
+        "Weekly: sync", inbox_file, "Atlas/Notes/")
+
+
+def test_a_kado_config_stop_leaves_the_names_open():
+    meta = _meta()
+    note_meta.mark_step_failed(meta, note_meta.KADO_CONFIG)
+
+    assert note_meta.is_frozen(meta) is False
+    assert note_meta.apply_stage_update(meta, title="Renamed") is False
+    assert meta.inbox_file == f"100 Inbox/{STEM}_Renamed.md"
+
+
+def test_an_instruction_set_in_flight_freezes_keep_source():
+    meta = _meta()
+    note_meta.mark_step_done(meta, "note")
+    note_meta.mark_step_failed(meta, "instructions_json")
+
+    assert note_meta.is_keep_source_frozen(meta) is True
+    assert note_meta.apply_stage_update(meta, keep_source=True) is True
+    assert meta.keep_source is False
+
+
+def test_a_note_in_flight_leaves_keep_source_open():
+    meta = _meta()
+    note_meta.mark_step_failed(meta, "note")
+
+    assert note_meta.is_keep_source_frozen(meta) is False
+
+
 def test_refused_title_change_leaves_keep_source_unchanged():
     meta = _meta()
     note_meta.mark_step_done(meta, "note")
@@ -295,8 +336,24 @@ def test_listing_splits_failed_deliveries_from_stale_stages(tmp_path):
         "created": "2026-11-04T10:15:00Z",
         "failed_step": "instructions_json",
         "steps_done": ["note"],
+        "frozen": True,
     }]
     assert listing.stale_stages == ["2026-11-04_100000"]
+
+
+@pytest.mark.parametrize("failed_step, steps_done, frozen", [
+    ("note", [], True),                       # killed after the upload, before its record
+    ("", ["note"], True),                     # killed between steps
+    (note_meta.KADO_CONFIG, [], False),       # stopped before any write
+])
+def test_kept_entry_carries_the_frozen_verdict(tmp_path, failed_step, steps_done, frozen):
+    meta = _meta(stem="2026-11-04_090000")
+    meta.failed_step, meta.steps_done = failed_step, list(steps_done)
+    _stage_with(tmp_path, meta)
+
+    entry = note_meta.list_stages(tmp_path).kept_drafts[0]
+
+    assert entry["frozen"] is frozen
 
 
 def test_stage_without_readable_meta_is_stale(tmp_path):
@@ -372,6 +429,7 @@ def test_delivery_killed_between_steps_is_a_kept_draft_not_stale(tmp_path):
         "created": "2026-11-04T10:15:00Z",
         "failed_step": "",
         "steps_done": ["note"],
+        "frozen": True,
     }]
     assert listing.stale_stages == []
 

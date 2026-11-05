@@ -80,9 +80,10 @@ names it is given, so a leftover `{{uuid}}` still reaches the check.
 
 ## WHY stage Refuses Rather Than Silently Ignores a Frozen Change
 
-Once a delivery step is done, the title and destination are part of files that
-already landed; once `instructions_json` is done, `keep_source` decides whether
-the landed set holds a `delete_source`. A refused change returns `frozen: true`
+Once a delivery step is done or its upload is in flight (`failed_step` names
+it), the title and destination are part of files that may already have landed;
+once `instructions_json` is done or in flight, `keep_source` decides whether the
+landed set holds a `delete_source`. A refused change returns `frozen: true`
 and leaves `meta.json` unchanged, so the skill can tell the user why the rename
 did not happen. The rule itself lives in `lib/note_meta.py`.
 
@@ -221,15 +222,20 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
-## WHY deliver Reports steps_done
+## WHY deliver Reports steps_done and frozen
 
-Every `deliver` output carries `steps_done` from `meta.json` as it stands when
-the run ends. On exit 3 and on a failed step the skill must know whether files
-already landed: an empty list leaves the name open to Rename, a non-empty one
-freezes it and names the files a Drop leaves behind. Reporting it on stdout
-gives the skill that answer from the call it just made instead of a second
-read of `meta.json`, which only `lib/note_meta.py` should interpret. The
-tokens are the fixed step names, never user text.
+Every `deliver` output carries `steps_done` and `frozen` from `meta.json` as it
+stands when the run ends. On exit 3 and on a failed step the skill must know
+two things: whether the name can still change (`frozen`, from
+`lib/note_meta.is_frozen`) and which files a Drop leaves behind (`steps_done`).
+They are separate fields because they disagree: a failed upload of the first
+step leaves `steps_done` `[]` but `failed_step` `note`, and that note may be in
+the vault, so the draft is frozen with nothing recorded as landed. A skill that
+read "empty `steps_done` means Rename is open" would rename it and the resume
+would write a second note. Reporting the verdict on stdout gives the skill the
+answer from the call it just made instead of a second read of `meta.json` or a
+re-derived rule. The tokens are the fixed step names and `frozen` a boolean,
+never user text.
 
 ## WHY a Step Is Recorded as In Flight Before Its Upload
 
@@ -247,7 +253,11 @@ costs no rewrite. Only uploads are marked: a probe or comparison that fails is
 already recorded by the failure path, and the source mark is never the first
 step, so `steps_done` is non-empty by then. The price is one extra local write
 per upload, and `failed_step` meaning "failed or possibly landed", which is
-what the skill's resume offer needs anyway.
+what the skill's resume offer needs anyway. The freeze rule follows that
+meaning: a delivery step named in `failed_step` freezes title and destination
+(and `instructions_json` there freezes `keep_source`) exactly as a done step
+does, so a rename cannot point the resume at a second inbox file while the first
+one is already in the vault.
 
 ## WHY Missing Kado Config Is Its Own Step, kado_config
 

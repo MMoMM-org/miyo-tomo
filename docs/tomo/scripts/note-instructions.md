@@ -110,30 +110,9 @@ folder of `inbox_file`, which `deliver` writes through Kado and which is the
 `move_note` source. So an absolute, traversing or hidden folder must never reach
 `meta.json`, whatever its origin. There are four origins: `--destination` on
 `stage`, the process file's `destination`, and `concepts.atomic_note` and
-`concepts.inbox` in `vault-config.yaml`. All four go through `vault_folder()`,
-the only place the rule lives. It strips the value once and rejects it when:
-
-- it starts with `/` or `~`, or with a drive letter (`C:`). These are the
-  absolute forms of rule 1 of the Path Shape Contract (`docs/instructions-json.md`),
-  which every path field of an instruction set follows, and Hashi refuses a
-  drive letter as escaping the vault.
-- it contains `\`, the Windows separator, which would hide a `..\` from the
-  segment check.
-- a segment is blank or starts with `.` after stripping. That covers `.` and
-  `..` (traversal) and every hidden name: Kado's folder listing treats a path
-  with a dot-led segment as missing, Obsidian does not show it, and Hashi
-  refuses `.obsidian`, `.git` and `.trash` at the vault root. A note filed under
-  one would vanish from the vault view.
-- it contains `{{` or `<%`, the template syntax `_check_path_shape` refuses
-  (rule 3): a destination such as `Meetings/{{date}}/` would create a folder
-  literally named `{{date}}`.
-- it contains an unsafe character (see below).
-
-One trailing `/` is allowed and the accepted value is returned with exactly
-one. Checking the stripped value is the point: an earlier check on the raw value
-let `" /etc"` become `/etc`, and an unstripped segment let `a/ ../b` through.
-Python counts a newline, U+2028 and U+2029 as whitespace, so stripping removes
-them at either end; inside the value they are rejected.
+`concepts.inbox` in `vault-config.yaml`. All four go through `vault_folder()`
+from `lib/note_paths.py`, the only place the rule lives; the rules and their
+reasons are in `docs/tomo/scripts/lib/note_paths.md`.
 
 A failure is handled by origin. `--destination` exits 2, nothing written. A
 process-file destination that fails falls back to the atomic-note path with one
@@ -165,33 +144,17 @@ set is applied. Tomo writes to the vault only inside the inbox (CON-2), and a
 path). A source outside `concepts.inbox` would make `deliver` write outside the
 inbox and the set delete a filed note. A clean path such as
 `Atlas/202 Notes/Filed.md` passes every shape rule, so this check is separate
-and runs once the config is read. It compares `path_key` values (NFC, then
-casefold), because the vault may be case-insensitive and macOS hands back
+and runs once the config is read. It uses `note_paths.is_inside()`, which
+compares `path_key` values (NFC, then casefold), because the vault may be case-insensitive and macOS hands back
 decomposed names. The inbox's trailing `/` puts the comparison on a segment
 boundary, so `100 Inbox Archive/x.md` is not inside `100 Inbox/`. Subfolders of
 the inbox are inside, as in recursive inbox discovery (spec 034).
 
-## WHY Unsafe Means Cc, Cf, Zl and Zp
+## WHY Unsafe Characters and Unicode Forms Follow lib/note_paths
 
-`_has_unsafe_char()` is the one predicate for folders, note paths and titles.
-Control characters (Cc: newline, tab, NUL) corrupt the wire and break
-wikilinks. Format characters (Cf: zero-width space and joiners, bidi overrides,
-the byte-order mark, the soft hyphen) are invisible: two paths that look the
-same can name different files, and a bidi override can make a path display as
-something it is not. Line and paragraph separators (Zl, Zp) break a line as a
-newline does. The cost is accepted: the zero-width joiner inside an emoji
-sequence (such as the technologist emoji) and the zero-width non-joiner of
-Persian or Indic spelling are refused too. Combining marks (Mn) are not unsafe,
-so a decomposed `ö` passes.
-
-## WHY Unicode Is Not Normalised
-
-The validators never normalise Unicode: a name in NFC and the same name in NFD
-both pass, each in the form it arrived in. They decide whether a path is safe;
-they do not rewrite vault paths. A rewritten form may not match the name the
-vault holds, and on a file system that keeps the two forms apart it names a
-different file. Comparisons that must treat both forms as one name use
-`lib/vault_paths.path_key`, as the inbox check does.
+Folders, note paths and titles share `has_unsafe_char()` from
+`lib/note_paths.py`. Which characters are unsafe, and why Unicode is never
+normalised, is explained in `docs/tomo/scripts/lib/note_paths.md`.
 
 ## WHY new Removes the Stage When a Write Fails
 

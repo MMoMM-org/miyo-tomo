@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -13,8 +13,8 @@ Subcommands:
         config/vault-config.yaml and the destination of
         config/note-processes/<template-stem>.md; stages source.md (read via
         Kado) and writes meta.json (profile included). Every vault path must
-        be relative (vault_note, vault_folder); --source must lie inside
-        concepts.inbox.
+        be relative (lib/note_paths: vault_note, vault_folder); --source must
+        lie inside concepts.inbox.
         Output: {stem, run_id, default_destination, inbox}
         Exit: 0; 1 Kado error reading the source; 2 bad invocation, config or I/O
   stage --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
@@ -43,7 +43,6 @@ import os
 import posixpath
 import shutil
 import sys
-import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -58,11 +57,13 @@ from lib.note_meta import (  # noqa: E402
     MetaError, apply_stage_update, draw_stem, new_meta, read_meta,
     remove_stage, stage_dir, write_meta,
 )
+from lib.note_paths import (  # noqa: E402
+    has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
+)
 from lib.note_process import PROCESS_DIR, read_process  # noqa: E402
 from lib.template_syntax import (  # noqa: E402
     filled_note_check, resolve_tokens, source_link_value,
 )
-from lib.vault_paths import path_key  # noqa: E402
 
 CONFIG_PATH = Path("config") / "vault-config.yaml"
 SOURCE_FILE = "source.md"
@@ -70,8 +71,6 @@ DRAFT_FILE = "draft.md"
 NOTE_FILE = "note.md"
 SOURCE_LINK = "source_link"
 _STEM_ATTEMPTS = 60
-_UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
-_TEMPLATE_SYNTAX = ("{{", "<%")
 
 
 class UsageError(Exception):
@@ -91,54 +90,6 @@ def _emit(obj: dict) -> None:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _has_unsafe_char(value: str) -> bool:
-    """True for a control, format (zero-width, bidi, BOM), line or paragraph separator character."""
-    return any(unicodedata.category(c) in _UNSAFE_CATEGORIES for c in value)
-
-
-def _has_template_syntax(value: str) -> bool:
-    return any(s in value for s in _TEMPLATE_SYNTAX)
-
-
-def _is_absolute(value: str) -> bool:
-    """True for a leading '/' or '~' or a drive letter such as 'C:'."""
-    drive = value[:1].isascii() and value[:1].isalpha() and value[1:2] == ":"
-    return value.startswith(("/", "~")) or drive
-
-
-def _vault_relative(value: object) -> str | None:
-    """Return value stripped, or None when it is absolute, has '\\', unsafe chars or template syntax."""
-    if not isinstance(value, str):
-        return None
-    v = value.strip()
-    if not v or _is_absolute(v) or "\\" in v or _has_unsafe_char(v) or _has_template_syntax(v):
-        return None
-    return v
-
-
-def _segments_visible(path: str) -> bool:
-    """True when no segment is blank or starts with '.' ('.', '..' and hidden names)."""
-    segments = [s.strip() for s in path.split("/")]
-    return all(s and not s.startswith(".") for s in segments)
-
-
-def vault_folder(value: object) -> str | None:
-    """Return value as a relative vault folder with one trailing '/', or None when it is not one."""
-    v = _vault_relative(value)
-    body = v[:-1] if v and v.endswith("/") else v
-    if not body or not _segments_visible(body):
-        return None
-    return body + "/"
-
-
-def vault_note(value: object) -> str | None:
-    """Return value as a relative vault path of a .md note, or None when it is not one."""
-    v = _vault_relative(value)
-    if not v or not v.endswith(".md") or not _segments_visible(v):
-        return None
-    return v
 
 
 def _write_atomic(target: Path, text: str) -> None:
@@ -193,8 +144,8 @@ def _note_arg(value: str | None, what: str) -> str:
 
 
 def _require_inside(source: str | None, inbox: str) -> None:
-    """UsageError when the source is not under the inbox; compared by path_key, on segments."""
-    if source is not None and not path_key(source).startswith(path_key(inbox)):
+    """UsageError when the source is not under the inbox (note_paths.is_inside)."""
+    if source is not None and not is_inside(source, inbox):
         raise UsageError("--source must be a note inside concepts.inbox")
 
 
@@ -283,14 +234,14 @@ def _existing_stage(stem: str) -> Path:
 def _title_arg(value: str | None) -> str | None:
     if value is None:
         return None
-    if _has_unsafe_char(value):
+    if has_unsafe_char(value):
         raise UsageError("--title must not contain control or invisible characters")
     title = value.strip().rstrip(". ")
     if not title:
         raise UsageError("--title must not be blank")
     if title.startswith("."):
         raise UsageError("--title must not start with a dot")
-    if _has_template_syntax(title):
+    if has_template_syntax(title):
         raise UsageError("--title must not contain template syntax")
     return title
 

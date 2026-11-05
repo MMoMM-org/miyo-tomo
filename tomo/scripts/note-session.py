@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-session.py — Deterministic session start of /note.
-# version: 0.1.2
+# version: 0.1.3
 """Start a /note session: mode, draft state and template candidates; preview globs.
 
 /note fills a vault template into a new note. This script makes its start the
@@ -59,7 +59,10 @@ NO_BASE_PATH = "templates.base_path is not set in vault-config.yaml"
 # ---------------------------------------------------------------- config
 
 def load_config(path: str) -> dict:
-    """Return vault-config.yaml as a dict; empty (one stderr line when unreadable) otherwise."""
+    """Return vault-config.yaml as a dict, else empty.
+
+    Empty; one stderr line when unreadable, none when not a mapping.
+    """
     try:
         return load_vault_config(path)
     except ConfigNotMapping:

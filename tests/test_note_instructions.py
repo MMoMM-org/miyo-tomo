@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -277,6 +277,20 @@ def test_new_missing_config_exits_2(inst, capsys):
     (inst / "config" / "vault-config.yaml").unlink()
     rc, _, _ = _run(["new", "--template", TEMPLATE], capsys)
     assert rc == 2
+
+
+@pytest.mark.parametrize("config, message", [
+    ("concepts: [unclosed\n", "vault-config.yaml unreadable (ParserError)"),
+    ("a: 2026-13-45\n", "vault-config.yaml unreadable (ValueError)"),
+    ("- a\n- b\n", "vault-config.yaml is not a mapping"),
+    ("", "vault-config.yaml is not a mapping"),
+])
+def test_new_unusable_config_exits_2_naming_the_failure(inst, capsys, config, message):
+    (inst / "config" / "vault-config.yaml").write_text(config, encoding="utf-8")
+    rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
+    assert rc == 2 and out == ""
+    assert err == f"note-instructions: {message}\n"
+    assert not note_meta.stage_root(inst).exists()
 
 
 def test_new_config_without_inbox_exits_2(inst, capsys):

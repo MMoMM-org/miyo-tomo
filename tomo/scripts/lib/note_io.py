@@ -1,5 +1,5 @@
 # note_io.py — the config reader and atomic text write shared by the /note scripts.
-# version: 0.1.0
+# version: 0.1.1
 """Read ``config/vault-config.yaml`` and replace local files atomically for /note.
 
 ``note-session.py``, ``template-outline.py`` and ``note-instructions.py`` all
@@ -31,7 +31,10 @@ TEMP_SUFFIX = ".tmp"
 
 
 class ConfigError(Exception):
-    """vault-config.yaml cannot be used; ``cause`` names the problem class only."""
+    """vault-config.yaml cannot be used; ``cause`` names the problem class only.
+
+    For ConfigNotMapping, ``cause`` is the parsed value's type name, not an exception class.
+    """
 
     def __init__(self, message: str, cause: str):
         super().__init__(message)

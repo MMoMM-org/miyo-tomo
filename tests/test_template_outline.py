@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_template_outline.py — template-outline.py lists one template's points.
 
 Spec 044 T2.1 (PRD F3; SDD F3-AC1, Internal API Changes): every heading,
@@ -177,6 +177,27 @@ def test_stage_without_config_blanks_config_tokens(instance, capsys):
     code, _, _ = _run(capsys, "--template", TEMPLATE_PATH, "--stage", STEM)
     assert code == 0
     assert "locale: \n" in (stage / "template.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("config, expected_err", [
+    (None, ""),
+    ("", ""),
+    ("- a\n- b\n", ""),
+    ("frontmatter: [unclosed\n", "warning: vault-config.yaml unusable (ParserError)\n"),
+])
+def test_unusable_config_policy_blanks_tokens_and_warns_only_when_unreadable(
+        instance, capsys, config, expected_err):
+    """Missing / empty / list are silent; invalid YAML warns with the class only."""
+    path = instance / "config" / "vault-config.yaml"
+    if config is None:
+        path.unlink()
+    else:
+        path.write_text(config, encoding="utf-8")
+    stage = _stage(instance, None)
+    code, _, err = _run(capsys, "--template", TEMPLATE_PATH, "--stage", STEM)
+    assert code == 0
+    assert "locale: \n" in (stage / "template.md").read_text(encoding="utf-8")
+    assert err == expected_err
 
 
 def test_out_writes_outline_to_given_file(instance, capsys):

@@ -35,7 +35,8 @@ non-mapping differently from an unreadable file.
 
 The message and `cause` carry the error class only, never file text, because
 the callers print them to stderr (privacy: vault config may name sensitive
-folders).
+folders). For `ConfigNotMapping`, `cause` is the parsed value's type name
+(`list`, `NoneType`), not an exception class.
 
 WHY `ValueError` is caught: `UnicodeDecodeError` is one, and PyYAML raises a
 plain `ValueError` for an impossible timestamp. Since 0.1.0 this means

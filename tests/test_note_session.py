@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_session.py — Behavioural tests for note-session.py (spec 044 T2.3).
 
 Covers the deterministic /note session start:
@@ -253,6 +253,20 @@ def test_binary_config_reads_as_empty_with_class_only(mod, instance, monkeypatch
     code, out, _, err, fake = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
     assert code == 0 and out["include_configured"] is False and fake.calls == []
     assert err == "note-session: config unusable (UnicodeDecodeError)\n"
+
+
+@pytest.mark.parametrize("config, expected_err", [
+    ("", ""),
+    ("- t_*\n- i_*\n", ""),
+    ("templates: [unclosed\n", "note-session: config unusable (ParserError)\n"),
+])
+def test_unusable_config_policy_is_empty_and_warns_only_when_unreadable(
+        mod, instance, monkeypatch, capsys, config, expected_err):
+    """Empty / list read as not configured silently; invalid YAML adds one class-only line."""
+    (instance / "config" / "vault-config.yaml").write_text(config, encoding="utf-8")
+    code, out, _, err, fake = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
+    assert code == 0 and out["include_configured"] is False and fake.calls == []
+    assert err == expected_err
 
 
 def test_candidates_match_include_and_drop_daily(mod, instance, monkeypatch, capsys):

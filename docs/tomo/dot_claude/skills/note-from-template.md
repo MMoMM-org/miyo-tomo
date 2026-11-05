@@ -175,9 +175,9 @@ after a step landed: `_record` writes it after each delivery step and `_fail` af
 already hold the note or the `<stem>_instructions` files, and a failed `_record` write leaves that step out of
 `steps_done`. On the next `/note`, a stage whose `meta.json` already holds a `steps_done` entry or a `failed_step` is a
 kept draft, and resume counts the landed file as done, not as a name clash, because `deliver` rebuilds identical text.
-When the unrecorded step is the first one (`note`) and no earlier attempt failed, `steps_done` and `failed_step` are
-both still empty, so `start` lists the stage in `stale_stages` and the skill discards it; the stamped note stays in the
-inbox unreported, and `/inbox` triage skips it as `pending-move`.
+That holds for the first step (`note`) too: `deliver` writes the step as `failed_step` to `meta.json` before uploading
+it, so a stage whose upload landed but was never recorded is a kept draft, never one of the `stale_stages` the skill
+discards. A failure of that in-flight write itself exits 2 before its upload is sent, so that step adds no file.
 
 The rule "never run `deliver` before `stage` has recorded a title" exists because the title names the files: `new`
 records an empty title, and `inbox_file` (`<stem>_<sanitize_stem(title)>.md`) and `destination_file`

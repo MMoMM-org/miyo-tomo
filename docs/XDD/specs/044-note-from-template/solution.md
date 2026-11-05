@@ -984,7 +984,7 @@ stateDiagram-v2
 - [ ] WHEN a process file has guidance, THE SYSTEM SHALL order and weight questions by it (F7-AC3)
 - [ ] IF `read` reports an error, THEN THE SYSTEM SHALL say so in one line and continue with the template alone (F7-AC4)
 - [ ] IF a required point is not in the outline, THEN THE SYSTEM SHALL say so and continue without it (F7-AC5)
-- [ ] WHEN a delivery ends with a signal (destination differs from default, a re-asked skipped point was answered, or a question order was requested) and `read` reports no process and not declined, THE SYSTEM SHALL ask save, not now or never once (F7-AC6)
+- [ ] WHEN a delivery ends with a signal (destination differs from default, a point skipped in the question rounds was filled through Change something before delivery, or a question order was requested) and `read` reports no process and not declined, THE SYSTEM SHALL ask save, not now or never once (F7-AC6)
 - [ ] IF there is no signal or a process file or decline marker exists, THEN THE SYSTEM SHALL not ask (F7-AC7)
 - [ ] WHEN "save", THE SYSTEM SHALL write via `note-process.py write`, which rejects required points absent from the outline; WHEN "not now", nothing (F7-AC8)
 - [ ] WHEN "never", THE SYSTEM SHALL write a decline marker via `decline`, and later `read` SHALL report declined (F7-AC9)

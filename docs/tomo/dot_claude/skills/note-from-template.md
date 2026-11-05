@@ -98,8 +98,22 @@ WHY: A kept draft can be resumed with nothing landed: the first step failed, so 
 a step is done, so such a draft can still be renamed with `stage --title`; offering only Keep/Drop would force a
 needless discard.
 Keep/Drop is right only when files are already in the vault: the name cannot change, and Drop must name the landed
-files so the user can delete them in Obsidian. The skill reads `steps_done` from `meta.json` because `start`'s
-`kept_drafts` entries do not carry it.
+files so the user can delete them in Obsidian. The skill takes `steps_done` from the `deliver` output on stdout, which
+reports the steps `meta.json` records as landed when the run ended. Reading `meta.json` itself would add a file read
+the model can get wrong (a stale or misread file) for a value the script already prints.
+
+## Why a Kept Draft Drop Names Landed Files by Kind
+
+WHY: A kept draft dropped at session start may have files in the inbox. `start`'s `kept_drafts` entries carry
+`steps_done` but no path: only `stem`, `title`, `template`, `created`, `failed_step`. The skill therefore names each
+landed file by kind (the note, the instruction set JSON, the instruction set MD) and says it is in the inbox with a
+name starting `<stem>_`, which is true of all three (`<stem>_<title>.md`, `<stem>_instructions.json`,
+`<stem>_instructions.md`). It must not build a vault path itself: the inbox file name goes through `sanitize_stem` and
+the inbox folder comes from the config, so a model-built path can be wrong and send the user looking for a file that
+is not there. `deliver` writes a step as `failed_step` before uploading it (the step is in flight), so an entry with
+`failed_step` set and `steps_done` empty may already have the note in the inbox: the upload can land and the run end
+before the step is recorded as done. Saying "nothing landed" there would be a false promise, so the skill says the
+note may already be in the inbox.
 
 ## Why One Frozen Message Names Both Refusals
 
@@ -149,11 +163,18 @@ Failing there would strand a complete delivery behind a resume that can never su
 between the read and the mark, a merge would overwrite the newer content, so it is reported as a failed `source_mark`
 (exit 1) and resume retries it against the current file. The draft stays until the mark succeeds.
 
-## Why Exit 2 Means "Ask for Another Value" (User-Fixable Input)
+## Why Exit 2 Means "Ask for Another Value" Only When the Error Names an Option
 
-WHY: Exit 2 of `new` and `stage` is refused input: a `--source` outside `concepts.inbox`, a blank or dotted title,
-an invisible character or `{{`/`<%` in it, a destination that is not a relative vault folder. These are the
-user's to fix. The skill names what was refused and asks for another value; nothing is staged. Exit 3 (name
+WHY: Exit 2 of `new` and `stage` covers two kinds of stop. Refused input: a `--source` outside `concepts.inbox`, a
+blank or dotted title, an invisible character or `{{`/`<%` in it, a destination that is not a relative vault folder.
+These are the user's to fix. The skill names what was refused and asks for another value; nothing is staged. But
+the same exit code also covers an unusable `vault-config.yaml` (`read_note_config`), local I/O failures, an unknown stem or a
+malformed one and an unusable `meta.json`. No other value the user could type cures those, so asking for one would
+loop. The exit code cannot tell them apart; the error text can: every refused-input `UsageError` in
+`note-instructions.py` starts with the option it refuses (`note-instructions: --title ...`,
+`note-instructions: --destination ...`, `note-instructions: --source ...`), and none of the others does. The skill
+branches on that prefix: an option error asks again; any other exit 2 is shown verbatim and the skill stops, keeping
+the stem (dropping it would discard the user's material; `new` creates no stage before it fails). Exit 3 (name
 taken) is different: never overwrite; the skill branches on `steps_done` (see
 [Why Exit 3 Branches on steps_done](#why-exit-3-branches-on-steps_done-not-on-is-this-a-resume)). Exit 1 of
 `deliver` is branched on `status` first and then on `step` (see
@@ -217,13 +238,22 @@ a normal outcome, so the skill says "No selected template fits." and offers thre
 `note_include` setup), `inbox-author` (a free-form artifact needs no template) or abort. `folder_listed` equal to 0 is
 the unreadable case above and never reaches this offer.
 
+The `inbox-author` hand-off passes the line "Compose a free-form note with requested type `default`; do not look for
+another template." Without it the hand-off can loop: `inbox-author` resolves an unknown requested type by a `kado-search`
+byName in the template folder, and when a template outside `note_include` matches by name it tells the user to run
+`/note` and stops, which sends the user straight back here. `default` is a known key in `inbox-author`'s schema list,
+so it resolves through `templates.mapping.default` (or its built-in default) and never runs the byName search. The fix
+lives here because `inbox-author`'s sections are byte-locked by tests and the loop is this skill's hand-off to solve.
+The hand-off is a Skill tool call, so `Skill` is in `allowed-tools`.
+
 ## Why Template Choice Asks Only When Several Fit
 
 WHY: When one candidate fits the request and its material, a question would only confirm the obvious, so the skill
 names it in one line and continues without asking; the user still sees the template in the draft header and can abort
 at the Deliver question. When several fit, the user decides: the skill prints them as a numbered list first (the
-print-before-ask rule) and asks with up to four options, the same four-option cap as every `AskUserQuestion` in the
-skill. With more than four fits, the list is printed in full and the user may type another number.
+print-before-ask rule) and asks with at most three candidates plus Abort, which keeps the question within the
+four-option cap of every `AskUserQuestion` in the skill; "up to four candidates with Abort" could have made five. With
+more than three fits, the list is printed in full and the user may type another number from it.
 
 ## Why One Shared Parser (ADR-4)
 
@@ -262,9 +292,40 @@ Any non-empty answer, "none" included, answers a required point: required means 
 WHY: `/note --process <template>` stores per-template guidance (destination, required points, guidance text) in
 `config/note-processes/<template-stem>.md` through `note-process.py read` and `write`. After a delivery the
 skill offers Save / Not now / Never once, only when the template has no process file and no decline marker and the
-session showed a signal worth saving (a changed destination, an answered re-asked point, a requested question order);
-"Never" writes a decline marker that `write` later replaces. An unknown
-template writes nothing (F7-AC11). The temporary outline file is removed afterwards.
+session showed a signal worth saving (a changed destination, a point from the `Skipped, left empty:` line filled
+through Change something before Deliver, a requested question order); "Never" writes a decline marker that `write`
+later replaces. An unknown template writes nothing (F7-AC11). The temporary outline file is removed afterwards.
+
+The second signal was "a re-asked skipped point was answered". Points are re-asked only when they are required, and
+required points come only from a process file, which the offer excludes, so that signal could never fire (owner
+decision, spec 044 Decisions Log). The new signal is dialogue the model saw itself: the user skipped a point in the
+question rounds, the draft header named it in the skipped line, and a Change something request then filled it. That
+shows the point matters to the user, which a saved required point would capture.
+
+## Why the Default Destination Omits --destination
+
+WHY: `note-process.py write` replaces the whole process file and stores a destination only when `--destination` is
+given. With no stored destination, `note-instructions.py new` falls back to the atomic-note folder
+(`concepts.atomic_note`). So "Default" in process mode means omit `--destination`; passing the atomic-note folder
+would pin today's config value into the file and stop following a later config change. "Keep current" must pass the
+current value again, because the write replaces the file; it is offered only when `read` reported `exists` true with a
+non-empty `destination`, since there is nothing to keep otherwise (a missing file, a decline marker, or a file that
+stores no destination, which already means Default).
+
+## Why Both Process Paths Branch on template-outline.py Exits
+
+WHY: The Save path of the process offer and `/note --process` both outline the template before `note-process.py` runs.
+An unreadable template is exit 1 there too, so both give the F2-AC4 remedy (grant the Kado key read access to
+`templates.base_path`, or do not use `/note`) in the same words as step 4. Exit 2 is a bad invocation or local write
+failure that no other value cures, so the skill shows the error. Either way `note-process.py` would have no outline to
+check required points against, so the skill runs `rm -f` on the helper files and stops: it must write nothing.
+
+## Why a Resume Gets No Process Offer
+
+WHY: The offer's conditions come from `note-process.py read` in step 4 (`exists`, `declined`) and from the dialogue of
+this session (`default_destination`, skipped points, a requested order). A kept draft resumed at session start goes
+straight to delivery: `read` never ran this session and the dialogue that produced the draft happened in an earlier
+one. The model would have to guess every condition, so the skill skips the offer after a resume.
 
 ## Why the Process Offer Re-Outlines the Template
 
@@ -316,6 +377,7 @@ only three local files itself (`draft.md`, `tomo-tmp/note/note-include.json` as 
 `--guidance-file`); the two helper files are removed right after the script call. The skill pins no `model`:
 the note text is the model's work (ADR-1), so it runs on the session's model. The description carries
 `MUST BE USED` per the authoring rules, and the `NOT for` clause keeps free-form artifacts with `inbox-author`.
+`allowed-tools` lists `Skill` for the `inbox-author` hand-off in step 3.
 
 Templater code (`<%` ... `%>`) is a hint to the model only: it is never executed, none is left in the draft, and a
 `<%` surviving in the draft fails the filled-note check (F3-AC7). Questions follow the language of the call while the

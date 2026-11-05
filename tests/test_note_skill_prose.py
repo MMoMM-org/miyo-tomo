@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -54,7 +54,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.3")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.0")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -72,6 +72,7 @@ def test_skill_frontmatter_names_the_skill_and_allows_asking():
     head = _text(SKILL).split("\n---\n", 1)[0]
     assert "name: note-from-template" in head
     assert re.search(r"allowed-tools:.*AskUserQuestion", head)
+    assert re.search(r"allowed-tools:.*\bSkill\b", head), "the inbox-author hand-off needs the Skill tool"
     assert "description:" in head
 
 
@@ -104,6 +105,23 @@ def test_interrupted_delivery_is_offered_resume_or_drop_never_silently_dropped()
     text = _section("1. Start")
     assert "An entry with an empty `failed_step` is an interrupted delivery" in text
     assert "Never drop a kept draft without asking" in text
+
+
+def test_kept_draft_drop_names_landed_files_by_kind_and_never_promises_nothing_landed():
+    text = _section("1. Start")
+    assert ("Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, "
+            "`instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), "
+            "say they are in the inbox with names starting `<stem>_` and that the user can delete them in "
+            "Obsidian.") in text
+    assert ("When `steps_done` is empty and `failed_step` is set, say the note may already be in the inbox "
+            "with a name starting `<stem>_`.") in text
+    assert "Never build a vault path yourself." in text
+    assert "Drop: run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line." not in text
+
+
+def test_a_resumed_draft_gets_no_process_offer():
+    assert "Resume: run step 7 for that stem as a resume; skip step 8 for it." in _section("1. Start")
+    assert "Never ask after a resumed delivery." in _section("8. Process offer")
 
 
 def test_stale_stages_are_dropped_with_one_line():
@@ -144,6 +162,20 @@ def test_one_candidate_is_named_several_are_printed_and_asked():
     assert "When several fit, print them as a numbered list" in text
 
 
+def test_several_fits_ask_at_most_three_candidates_plus_abort():
+    text = _section("3. Choose the template")
+    assert ("ask which one with at most three candidates plus Abort as options; the user may type any "
+            "other number from the list.") in text
+    assert "up to four options" not in text
+
+
+def test_inbox_author_hand_off_names_the_default_type_so_it_cannot_bounce_back():
+    text = _section("3. Choose the template")
+    assert ("inbox-author → invoke the `inbox-author` skill with the Skill tool, passing the request and "
+            "the line \"Compose a free-form note with requested type `default`; do not look for another "
+            "template.\", and stop.") in text
+
+
 def test_no_fitting_candidate_offers_the_three_ways_out():
     text = _section("3. Choose the template")
     assert "No selected template fits." in text
@@ -179,11 +211,19 @@ def test_new_and_outline_stage_use_their_exact_flags():
 
 def test_exit_2_of_new_or_stage_is_a_user_fixable_input():
     text = _flat(SKILL)
-    assert "Exit 2 of `new` or `stage` is refused input" in text
+    assert ("Exit 2 of `new` or `stage` whose error starts with `note-instructions: --title`, "
+            "`note-instructions: --destination` or `note-instructions: --source` is refused input") in text
     for refused in ("a `--source` outside the inbox", "a title that is blank", "starts with a dot",
                     "an invisible character", "`{{` or `<%`", "a destination that is not a relative vault folder"):
         assert refused in text, refused
     assert "name what was refused and ask for another value" in text
+
+
+def test_any_other_exit_2_of_new_or_stage_stops_and_keeps_the_draft():
+    text = _flat(SKILL)
+    assert ("Any other exit 2 of `new` or `stage` (config, local I/O, stem or `meta.json`): show the error "
+            "verbatim and stop; do not drop the stem.") in text
+    assert "Exit 2 of `new` or `stage` is refused input" not in text
 
 
 def test_broken_process_file_and_missing_required_point_are_one_line_each():
@@ -290,8 +330,8 @@ def test_frozen_message_names_both_refused_changes():
 
 ABORT_LINES = {
     "3. Choose the template": (
-        "Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. "
-        "inbox-author → hand the request to the `inbox-author` skill and stop. Abort → stop.",
+        "Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. ",
+        "and stop. Abort → stop.",
     ),
     "4. Stage the draft": (
         "`new` exits 1: say the source could not be read, then ask: Another source / Abort. "
@@ -329,7 +369,8 @@ def test_deliver_runs_with_the_stem():
 
 def test_name_taken_offers_rename_or_abort_and_never_overwrites():
     text = _section("7. Deliver")
-    assert "On exit 3, read `steps_done` in `tomo-tmp/note/<stem>/meta.json`. Never overwrite." in text
+    assert "On exit 3, read `steps_done` from the `deliver` output. Never overwrite." in text
+    assert "meta.json" not in text
     assert "`steps_done` empty: offer Rename / Abort, naming `exists_path`." in text
 
 
@@ -389,10 +430,12 @@ def test_process_offer_is_asked_once_with_three_answers_on_three_signals_only():
             "one signal") in text
     assert "Save / Not now / Never for this template" in text
     for signal in ("the destination differs from `default_destination`",
-                   "a re-asked skipped point was answered",
+                   ("a point named in the `Skipped, left empty:` line was filled through Change something "
+                    "before Deliver"),
                    "the user asked for a question order"):
         assert signal in text, signal
     assert "Otherwise, or when `read` reported `exists` or `declined` true, do not ask" in text
+    assert "re-asked" not in text
 
 
 def test_process_offer_reruns_the_outline_and_writes_with_one_required_flag_per_point():
@@ -403,6 +446,29 @@ def test_process_offer_reruns_the_outline_and_writes_with_one_required_flag_per_
     assert "--required \"<point>\"" in text and "one `--required` per point" in text
     assert "--guidance-file tomo-tmp/note/process-guidance.md" in text
     assert "python3 scripts/note-process.py decline --template <template stem>" in text
+
+
+OUTLINE_EXIT_1 = ("When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the "
+                  "template may not be readable by the Kado key. Then: \"" + REMEDY + "\"")
+
+
+@pytest.mark.parametrize("heading", ["8. Process offer", "9. Process mode"])
+def test_process_paths_branch_on_template_outline_failures(heading):
+    text = _section(heading)
+    assert OUTLINE_EXIT_1 in text
+    assert ("When `template-outline.py` exits 2, show its `error`. On either exit, run "
+            "`rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing "
+            "and stop.") in text
+
+
+def test_process_mode_defines_keep_current_and_default_destination():
+    text = _section("9. Process mode")
+    assert ("Ask for the destination folder: Keep current (offer it only when `exists` is true and "
+            "`destination` is not empty) / Default / Another folder.") in text
+    assert "Keep current → `--destination \"<destination>\"` with the current value." in text
+    assert "Default → omit `--destination`; notes then go to the atomic-note folder." in text
+    assert "Another folder → ask for it and pass it as `--destination \"<folder>\"`." in text
+    assert "(keep current / default / another folder)" not in text
 
 
 def test_process_mode_shows_values_asks_and_writes_and_rejects_unknown():

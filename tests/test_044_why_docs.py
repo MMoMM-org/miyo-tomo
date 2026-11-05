@@ -75,7 +75,7 @@ def test_command_is_thin_shim_and_main_session():
         ("Resume-or-Drop", ["steps_done", "never a silent drop", "frozen"]),
         ("Model Fills", ["ADR-1", "scripts check"]),
         ("Delivery Is One Script", ["ADR-2", "deliver", "exit 3", "withdrawn", "nothing is written"]),
-        ("Exit 3 Branches", ["steps_done", "is_frozen", "meta.json", "kept_drafts"]),
+        ("Exit 3 Branches", ["steps_done", "is_frozen", "deliver", "output"]),
         ("Source That Moves", ["source_marked", "not marked", "source_mark", "resume", "retries"]),
         ("No Candidate Fitting", ["folder_listed", "adjust patterns", "inbox-author", "abort", "F2-AC3"]),
         ("Runtime Details", ["Templater", "F3-AC7", "F3-AC8", "headings", "previews"]),
@@ -124,6 +124,13 @@ def test_frozen_title_is_always_qualified_by_steps_done():
         "Exit 1 is a Kado or system error",
         # deliver re-runs the filled-note check and can report it failing (exit 1, empty step).
         "`deliver` never runs on a failing check",
+        # kept_drafts and every deliver output carry steps_done now.
+        "`kept_drafts` entries do not carry it",
+        "reads `steps_done` from `meta.json`",
+        # Signal 2 is a skipped point filled through Change something, not an answered re-asked point.
+        "an answered re-asked point",
+        # Several fits: three candidates plus Abort, never four options plus Abort.
+        "asks with up to four options",
     ],
 )
 def test_skill_mirror_has_no_stale_statement(stale):
@@ -238,6 +245,28 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
                                        "rejected_required"]),
         # Sweep: the header names both file names; the report points to Hashi.
         ("Header Names Both", ["inbox_file", "destination_file", "Hashi", "inbox"]),
+        # Fix 1: exit 3 reads steps_done from deliver's own output.
+        ("Exit 3 Branches", ["stdout", "the run ended"]),
+        # Fix 2: a kept-draft drop names what landed by kind and never promises nothing landed.
+        ("Kept Draft Drop", ["kept_drafts", "steps_done", "by kind", "no path", "in flight",
+                             "may already be in the inbox", "<stem>_"]),
+        # Fix 3: exit 2 of new/stage splits on the option the error names.
+        ("Exit 2 Means", ["note-instructions: --title", "--destination", "--source",
+                          "vault-config.yaml", "local I/O", "unknown stem", "meta.json",
+                          "verbatim", "stop"]),
+        # Fix 4: Default omits --destination; keep current needs a stored destination.
+        ("Default Destination", ["omit", "--destination", "atomic_note", "keep current",
+                                 "exists", "replaces"]),
+        # Fix 5: both process paths branch on template-outline.py exits.
+        ("Process Paths Branch", ["exit 1", "F2-AC4", "exit 2", "rm -f", "write nothing"]),
+        # Fix 6: a resume never ran read this session.
+        ("Resume Gets No Process Offer", ["read", "resume", "default_destination", "skip"]),
+        # Fix 7: the hand-off names the default type so inbox-author cannot bounce back.
+        ("No Candidate Fitting", ["byName", "`default`", "loop", "known key", "Skill"]),
+        # Fix 9: signal 2 is a skipped point filled through Change something.
+        ("Separate Mode", ["Skipped, left empty:", "Change something", "could never fire"]),
+        # Fix 10: three candidates plus Abort keeps the four-option cap.
+        ("Template Choice", ["three candidates plus abort", "four"]),
         # Sweep: after setup start reruns; kept drafts come first.
         ("Setup Reruns start", ["candidates", "note_include", "kept draft"]),
     ],

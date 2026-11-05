@@ -2,11 +2,11 @@
 name: note-from-template
 description: MUST BE USED when the user runs /note, or asks to create a note from one of their vault templates (meeting note, person note, book note, any template kind) filled from given material or an inbox note, or to set a template's /note process (/note --process <template>). NOT for free-form artifacts (overviews, lists, .base, .canvas) — those are inbox-author.
 user-invocable: true
-allowed-tools: Read, Write, Bash, AskUserQuestion
+allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.1.3
+# version: 0.2.0
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the instance root. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -17,7 +17,8 @@ Fill one vault template into a new note with the user, then deliver the note and
 - Ask in the language the user writes in; keep the template's headings.
 - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
 - On Abort at any question, run `python3 scripts/note-instructions.py drop --stem <stem>` when a stem exists and confirm in one line that the draft was discarded. Write nothing else. A saved `note_include` stays saved.
-- Exit 2 of `new` or `stage` is refused input (a `--source` outside the inbox, a title that is blank, starts with a dot, holds an invisible character or holds `{{` or `<%`, a destination that is not a relative vault folder): name what was refused and ask for another value; rerun the same call with it.
+- Exit 2 of `new` or `stage` whose error starts with `note-instructions: --title`, `note-instructions: --destination` or `note-instructions: --source` is refused input (a `--source` outside the inbox, a title that is blank, starts with a dot, holds an invisible character or holds `{{` or `<%`, a destination that is not a relative vault folder): name what was refused and ask for another value; rerun the same call with it.
+- Any other exit 2 of `new` or `stage` (config, local I/O, stem or `meta.json`): show the error verbatim and stop; do not drop the stem.
 - Never run `deliver` before `stage` has recorded a title.
 - Show script error text verbatim.
 
@@ -35,8 +36,8 @@ For each stem in `stale_stages`: say in one line that an interrupted draft was d
 
 Handle every entry of `kept_drafts` before the new request. Print each by title, template and created time, then ask per entry: Resume / Drop.
 - An entry with an empty `failed_step` is an interrupted delivery: offer Resume / Drop like any other kept draft. Never drop a kept draft without asking.
-- Resume: run step 7 for that stem as a resume. Continue with the new request after it ends.
-- Drop: run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
+- Resume: run step 7 for that stem as a resume; skip step 8 for it. Continue with the new request after it ends.
+- Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and `failed_step` is set, say the note may already be in the inbox with a name starting `<stem>_`. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
 
 Then:
 - `mode` is `process` → step 9.
@@ -65,8 +66,8 @@ When `folder_listed` is 0, say: "The template folder is empty or not readable by
 
 Judge which entries of `candidates` fit the request and its material.
 - When one candidate fits, name it in one line and continue without asking.
-- When several fit, print them as a numbered list, then ask which one (up to four options; the user may type another number), with Abort.
-- When none fits, say "No selected template fits." and ask: Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. inbox-author → hand the request to the `inbox-author` skill and stop. Abort → stop.
+- When several fit, print them as a numbered list, then ask which one with at most three candidates plus Abort as options; the user may type any other number from the list.
+- When none fits, say "No selected template fits." and ask: Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. inbox-author → invoke the `inbox-author` skill with the Skill tool, passing the request and the line "Compose a free-form note with requested type `default`; do not look for another template.", and stop. Abort → stop.
 
 ## 4. Stage the draft
 
@@ -134,7 +135,7 @@ python3 scripts/note-instructions.py deliver --stem <stem>
 ```
 
 - Exit 0 (`delivered`): report `note_path`, `instructions_json`, `instructions_md`, whether the source was marked, and "Next: review and apply the instruction set in Hashi." When `source_marked` is false and the draft has a source, say in one line that the source was not marked (it was moved or deleted). Then step 8.
-- On exit 3, read `steps_done` in `tomo-tmp/note/<stem>/meta.json`. Never overwrite.
+- On exit 3, read `steps_done` from the `deliver` output. Never overwrite.
   - `steps_done` empty: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `steps_done` non-empty: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian, then run `drop`.
 - On exit 1 with `status` `withdrawn`, say nothing was written and why the action was withdrawn, then offer Rename / Abort as for exit 3 with `steps_done` empty.
@@ -143,18 +144,25 @@ python3 scripts/note-instructions.py deliver --stem <stem>
 
 ## 8. Process offer
 
+Never ask after a resumed delivery.
+
 Ask once, after the delivery report, only when `read` reported `exists` false and `declined` false and the session showed at least one signal:
 - the destination differs from `default_destination`;
-- a re-asked skipped point was answered;
+- a point named in the `Skipped, left empty:` line was filled through Change something before Deliver;
 - the user asked for a question order.
 
 Otherwise, or when `read` reported `exists` or `declined` true, do not ask.
 
 Print what would be saved, then ask: Save / Not now / Never for this template.
-- Save: write the requested order as text to `tomo-tmp/note/process-guidance.md` when one was asked for, then run (one `--required` per point; omit flags without a value):
+- Save: write the requested order as text to `tomo-tmp/note/process-guidance.md` when one was asked for, then run:
 
 ```bash
 python3 scripts/template-outline.py --template "<template path>" --out tomo-tmp/note/process-outline.json
+```
+
+  When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." When `template-outline.py` exits 2, show its `error`. On either exit, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run (one `--required` per point; omit flags without a value):
+
+```bash
 python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json --destination "<folder>" --required "<point>" --guidance-file tomo-tmp/note/process-guidance.md
 rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md
 ```
@@ -169,14 +177,19 @@ When `process_template_path` is empty, say that the template is unknown and stop
 
 ```bash
 python3 scripts/template-outline.py --template "<process_template_path>" --out tomo-tmp/note/process-outline.json
+```
+
+When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." When `template-outline.py` exits 2, show its `error`. On either exit, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run:
+
+```bash
 python3 scripts/note-process.py read --template <template stem> --outline tomo-tmp/note/process-outline.json
 ```
 
 1. Print the current values (`destination`, `required`, `guidance`) when `exists` is true, or say there is no process yet. When `error` is set, print it.
-2. Ask for the destination folder (keep current / default / another folder).
+2. Ask for the destination folder: Keep current (offer it only when `exists` is true and `destination` is not empty) / Default / Another folder. Keep current → `--destination "<destination>"` with the current value. Default → omit `--destination`; notes then go to the atomic-note folder. Another folder → ask for it and pass it as `--destination "<folder>"`.
 3. Print the outline's headings, then ask which are required, four headings per question with multi-select, until every heading was offered.
 4. Ask for the guidance text; write it to `tomo-tmp/note/process-guidance.md`.
-5. Run `python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json` with `--destination "<folder>"`, one `--required "<point>"` per point and `--guidance-file tomo-tmp/note/process-guidance.md`. Exit 2 on a refused destination: ask for another folder and rerun.
+5. Run `python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json` with the step 2 `--destination` (none for Default), one `--required "<point>"` per point and `--guidance-file tomo-tmp/note/process-guidance.md`. Exit 2 on a refused destination: ask for another folder and rerun.
 6. Confirm in one line, then run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`.
 
 On Abort at any question, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md` and write nothing.

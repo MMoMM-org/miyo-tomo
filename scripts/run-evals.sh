@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.2.2
+# version: 0.3.0
 set -e
 set -o pipefail
 
@@ -28,7 +28,9 @@ Runs the eval suite under evals/ against Tomo's runtime prose with
 Options:
   --case <glob>         Run only the cases whose name matches <glob>. The
                         verdict is marked PARTIAL SUITE and does not satisfy
-                        the merge rule.
+                        the merge rule. A case marked not gated (an
+                        evals/<name>/NOT_GATED file) runs only this way; the
+                        default run skips it and names it on stderr.
   --rev <git-rev>       Take agents/skills/commands from <git-rev> instead of
                         the working tree (RED proof). evals/ and the
                         inbox-analyst stand-in always come from the working
@@ -179,6 +181,17 @@ if [ -n "$CASE_GLOB" ]; then
     $matched || refuse "--case '$CASE_GLOB' matches no case; cases: $CASES"
 fi
 
+# A case holding a NOT_GATED file runs only when --case names it; the default
+# run leaves it out of the assembled copy and stays the full gated suite.
+NOT_GATED=""
+if [ -z "$CASE_GLOB" ]; then
+    gated=""
+    for name in $CASES; do
+        if [ -f "$EVALS/$name/NOT_GATED" ]; then NOT_GATED="$NOT_GATED $name"; else gated="$gated $name"; fi
+    done
+    [ -n "$gated" ] || refuse "every case is marked NOT_GATED; name one with --case"
+fi
+
 PATCH_FILE=""
 if [ -n "$MUTATION" ]; then
     case "$MUTATION" in *[!A-Za-z0-9._-]*|.*) refuse "invalid mutation name: $MUTATION" ;; esac
@@ -283,7 +296,11 @@ mkdir "$PLUGIN/evals"
 for entry in "$EVALS"/* "$EVALS"/.[!.]*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     [ "$(basename "$entry")" = results ] && continue
+    case " $NOT_GATED " in *" $(basename "$entry") "*) continue ;; esac
     cp -R "$entry" "$PLUGIN/evals/"
+done
+for name in $NOT_GATED; do
+    echo "skipped (not gated): $name" >&2
 done
 
 # The analyst stand-in always comes from the working tree, also under --rev, and

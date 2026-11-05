@@ -20,7 +20,7 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 - Pass 1 cases (`pass1-*`): the prompt is `/tomo:inbox`. As in production, the main session impersonates the suggestion conductor (it is not dispatched) and loads the `suggest-handling` skill, so the session's final reply is the conductor's own report.
 - `inbox.md` is listed because the Pass 2 cases reproduce its dispatch prompt and the Pass 1 cases enter through it: if it changes, the cases must be re-run or changed with it.
 - `settings.json` is listed because the runner pins the eval's main model to its `model` field.
-- `/note` case (`note-draft-before-approval`, spec 044 ADR-8): the prompt is `/tomo:note` with material that fills every point of the one candidate template, so no question round runs. `AskUserQuestion` cannot be answered in an eval, so the case grades what happens before the approval question: the header and `note.md` are printed, `note.md` was read, no other question came first, and `deliver` never runs. Its rows are marked "not gated": one recorded run is the evidence, and a later change to the skill or the command needs no eval run. The full suite still runs the case, so its cost and its verdict are part of every full-suite run.
+- `/note` case (`note-draft-before-approval`, spec 044 ADR-8): the prompt is `/tomo:note` with material that fills every point of the one candidate template, so no question round runs. `AskUserQuestion` cannot be answered in an eval, so the case grades what happens before the approval question: the header and `note.md` are printed, `note.md` was read, no other question came first, and `deliver` never runs. Its rows are marked "not gated": one recorded run is the evidence, and a later change to the skill or the command needs no eval run. The case holds an `evals/note-draft-before-approval/NOT_GATED` file, so the full suite skips it (stderr prints `skipped (not gated): note-draft-before-approval`) and its verdict and cost cover only the gated cases; it runs only with `--case note-draft-before-approval`.
 - Not in the table, so not gated: `force-atomic-handling` (no case covers it), `inbox-analyst` (replaced by a stand-in, see Adding a case), and every script (all stubbed, see Known limits).
 
 ## Running
@@ -28,8 +28,11 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 ```bash
 scripts/run-evals.sh                      # full suite, 3 runs per case: the only run that satisfies the merge rule
 scripts/run-evals.sh --case <glob>        # one case: PARTIAL SUITE, never satisfies the merge rule
+scripts/run-evals.sh --case note-draft-before-approval   # a not-gated case: runs only when named
 scripts/run-evals.sh --help               # all options
 ```
+
+A case is not gated when its directory holds a `NOT_GATED` file. The default run (no `--case`, also with `--mutation` or `--rev`) leaves it out of the assembled copy and prints one `skipped (not gated): <case>` line per skipped case on stderr; the verdict is still the full-suite verdict, because the merge rule covers only gated cases. Name the case with `--case` to run it (PARTIAL SUITE, as any `--case` run). Mark a case only when its coverage rows say "not gated" (`tests/test_eval_gate_docs.py` checks both agree).
 
 The eval harness cannot start inside Claude Code's Bash sandbox (runs fail with EPERM and end NOT GRADED). Run it from a terminal, or from a coding session with the sandbox bypassed for that one command (`!scripts/run-evals.sh` in the prompt).
 

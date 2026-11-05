@@ -354,3 +354,10 @@ def test_not_gated_check_catches_a_gated_note_row():
 def test_every_not_gated_case_exists():
     for case in NOT_GATED_CASES:
         assert case in _case_dirs(), case
+
+
+def test_not_gated_marker_files_match_the_not_gated_cases():
+    """run-evals.sh skips a case holding a NOT_GATED file in the default run (spec 044 ADR-8);
+    the marked case dirs are exactly the cases the coverage table marks "not gated"."""
+    marked = {d for d in _case_dirs() if (EVALS / d / "NOT_GATED").is_file()}
+    assert marked == set(NOT_GATED_CASES), marked

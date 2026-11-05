@@ -53,6 +53,8 @@
 | 2026-11-05 | {{source_link}} is resolved into a new `note.md` beside `draft.md`, never inside `draft.md`; the skill prints `note.md`; `deliver` resolves `draft.md` the same way before its check and upload | T2.5 follow-up; a substitution inside draft.md could not be redone after a later keep_source change |
 | 2026-11-05 | NoteDraftMeta gains `profile`, fixed at `new` | T2.5 finding; `deliver` must rebuild identical files on resume, so the profile cannot be re-read from a config that may have changed |
 | 2026-11-05 | note-session.py start: the --process stem is the rest of the text, config read with yaml.safe_load, listing one level deep | T2.3 deviations accepted by spec review; SDD algorithm updated to match |
+| 2026-11-05 | Model escalation: T2.5 opus → opus@max | Trigger: second review FAIL |
+| 2026-11-05 | note-process.py `--required` is repeatable, one point per flag (SDD signature updated) | T2.4 spec review; a heading such as "Decisions, actions" could never be made required |
 | 2026-11-05 | Accepted as documented, not changed: fences at any indent, indented ATX headings and quoted frontmatter keys not recognised, `--stdout` previews only the key lines, atomic write only in templates-include | LOW drift findings; realistic templates are unaffected |
 
 ## Context

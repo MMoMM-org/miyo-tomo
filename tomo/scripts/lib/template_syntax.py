@@ -1,4 +1,4 @@
-# version: 0.1.1
+# version: 0.1.2
 """template_syntax.py — the one reading of a note template and a filled note.
 
 /note lists a template's points and later checks the filled note before it is
@@ -30,6 +30,7 @@ _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 _KEY_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9_ .-]*?)\s*:(.*)$")
 _TOMO_KEY_RE = re.compile(r"^tomo\s*:")
+_COLUMN0_ITEM_RE = re.compile(r"^-(?:[ \t]|$)")
 
 
 @dataclass(frozen=True)
@@ -76,18 +77,23 @@ def _closes(line: str, opener: str) -> bool:
     return run[0] == opener[0] and len(run) >= len(opener)
 
 
-def _fence_line_indexes(lines: list[str]) -> set[int]:
-    """Return 0-based indexes of fence marker lines and the lines between them."""
+def _scan_fences(lines: list[str]) -> tuple[set[int], int | None]:
+    """Return fenced 0-based line indexes and the 1-based line of a fence left open."""
     inside: set[int] = set()
-    opener = ""
+    opener, opened_at = "", None
     for i, line in enumerate(lines):
         if opener:
             inside.add(i)
             opener = "" if _closes(line, opener) else opener
         elif opens := _fence_opener(line):
             inside.add(i)
-            opener = opens
-    return inside
+            opener, opened_at = opens, i + 1
+    return inside, (opened_at if opener else None)
+
+
+def _fence_line_indexes(lines: list[str]) -> set[int]:
+    """Return 0-based indexes of fence marker lines and the lines between them."""
+    return _scan_fences(lines)[0]
 
 
 def _line_starts(text: str) -> list[int]:
@@ -136,11 +142,11 @@ def frontmatter_keys(text: str) -> list[dict]:
 
 
 def _has_nested_value(block_lines: list[str], index: int) -> bool:
-    """True when indented content follows the key before the next top-level line."""
+    """True when indented content or a column-0 ``- `` list item follows the key."""
     for line in block_lines[index + 1:]:
         if not line.strip():
             continue
-        return line[:1] in (" ", "\t")
+        return line[:1] in (" ", "\t") or _COLUMN0_ITEM_RE.match(line) is not None
     return False
 
 
@@ -256,6 +262,16 @@ def _templater_finding(text: str) -> dict:
     return _finding("no_templater", "PASS", "No Templater syntax is left.")
 
 
+def _code_fence_finding(text: str) -> dict:
+    opened_at = _scan_fences(_split(text))[1]
+    if opened_at is not None:
+        return _finding(
+            "code_fence_closed", "FAIL",
+            f"The code fence opened on line {opened_at} is never closed.",
+            "Close it with a line repeating its ``` or ~~~ run, or remove the stray opener.")
+    return _finding("code_fence_closed", "PASS", "Every code fence is closed.")
+
+
 def _token_finding(text: str) -> dict:
     left = sorted({t["name"] for t in tokens(text)})
     if left:
@@ -267,9 +283,9 @@ def _token_finding(text: str) -> dict:
 
 
 def filled_note_check(text: str) -> FilledNoteResult:
-    """Check a filled note: closed leading fence, no tomo: key, no <%, no {{token}}."""
+    """Check a filled note: closed fences, no tomo: key, no <%, no {{token}}."""
     block = leading_block(text)
     findings = _fence_findings(block) + _tomo_key_findings(block)
-    findings += [_templater_finding(text), _token_finding(text)]
+    findings += [_templater_finding(text), _code_fence_finding(text), _token_finding(text)]
     ok = all(f["status"] != "FAIL" for f in findings)
     return FilledNoteResult(ok=ok, findings=findings)

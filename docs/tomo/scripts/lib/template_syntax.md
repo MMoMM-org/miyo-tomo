@@ -33,15 +33,45 @@ fence opens with three or more backticks or tildes; it closes only on a line wit
 the same character, a run at least as long as the opener's and nothing but
 whitespace after it (so ```` ```python ```` inside a fence is content); a backtick
 opener whose info string holds a backtick (```` ```inline``` ````) is inline code,
-not a fence. Leading whitespace before a fence marker is allowed at any depth, so a
-fence nested in a list item still counts.
+not a fence.
+
+WHY a fence is recognised at any indent: CommonMark allows only zero to three
+leading spaces before a fence marker; four or more make an indented code block.
+The module accepts any indent on purpose, so a fence nested in a list item (which
+sits deeper than three spaces) still counts. The cost is that a stray indented
+```` ``` ```` inside prose is read as a fence. Templates do not carry those, and
+reading one as a fence hides points rather than inventing them.
+
+## Why an unclosed code fence fails the filled-note check
+
+WHY: a code fence that opens and never closes runs to the end of the text, so
+everything after it counts as fenced code. Without a separate check, a draft with a
+stray ```` ``` ```` before a `{{title}}` passed `no_tokens` and was delivered with the
+token unfilled, the exact broken draft the check exists to stop (F3-AC7). The
+`code_fence_closed` check FAILs whenever a fence is still open at the end of the
+text, with or without a token after it, because Obsidian would also render the rest
+of the note as code. The detail names only the opening line number.
 
 ## Why some heading forms are not recognised
 
 WHY: only ATX headings that start in column one count as points. Indented ATX
-headings (one to three leading spaces) and setext headings (text underlined with
-`===` or `---`) are intentionally not recognised; templates do not use them, and a
-`---` underline would collide with the frontmatter fence.
+headings (one to three leading spaces, which CommonMark still renders as headings)
+and setext headings (text underlined with `===` or `---`) are intentionally not
+recognised; templates do not use them, and a `---` underline would collide with the
+frontmatter fence.
+
+## Why some frontmatter key forms are not recognised
+
+WHY: a frontmatter key is a bare name at column one followed by `:`. Quoted keys
+(`"my key": x`, `'k': x`) are not recognised as points; templates do not use them,
+and reading them would need a YAML parser for a case no template has shown.
+
+WHY a key has a value when a list follows at column one: YAML allows a block list
+directly under its key without indentation (`tags:` then `- a`). Treating only
+indented lines as nested content reported such a key as empty, so the outline would
+offer an already-filled key as an open point. A `- ` line at column one directly
+after the key, before the next key or the closing fence, counts as its value. A key
+followed directly by another key is still empty.
 
 ## Why Templater spans are listed but never points
 
@@ -76,6 +106,15 @@ that the renderer leaves alone, or the reverse. `tests/test_template_syntax.py`
 asserts the two patterns are equal, so a change to one fails the suite until the
 other follows. `template-doctor.py`'s looser regex (it allows spaces and capitals
 inside the braces) is not the rendering contract and is not copied.
+
+## Why findings echo token names and nothing else
+
+WHY: a filled note is user text and may be sensitive (MiYo Constitution, privacy).
+Findings name line numbers and fixed sentences only. The one deliberate exception
+is `no_tokens`, whose detail lists the leftover `{{token}}` names: the model needs
+them to fix the draft, and a token name is template syntax copied from the
+template, not text the user wrote. No finding echoes the value of a `tomo:` key,
+the content of a Templater span, or any other note text; a test pins this.
 
 ## Why the leading-fence rule matches `doc_frontmatter`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_template_syntax.py — Behavioural tests for lib.template_syntax.
 
 Spec 044 T1.2: one module gives the template outline its points and the
@@ -131,6 +131,34 @@ def test_frontmatter_keys_list_top_level_keys_with_value_and_line():
         {"key": "aliases", "has_value": False, "line": 7},
         {"key": "Summary", "has_value": True, "line": 8},
     ]
+
+
+def test_frontmatter_key_with_an_indented_list_has_a_value():
+    keys = ts.frontmatter_keys("---\ntags:\n  - a\ntitle: x\n---\n")
+    assert keys[0] == {"key": "tags", "has_value": True, "line": 2}
+
+
+def test_frontmatter_key_with_a_column_zero_list_has_a_value():
+    keys = ts.frontmatter_keys("---\ntags:\n- a\n- b\ntitle: x\n---\n")
+    assert keys == [
+        {"key": "tags", "has_value": True, "line": 2},
+        {"key": "title", "has_value": True, "line": 5},
+    ]
+
+
+def test_frontmatter_key_with_a_column_zero_list_before_the_closing_fence():
+    keys = ts.frontmatter_keys("---\ntitle: x\ntags:\n- a\n---\n")
+    assert keys[-1] == {"key": "tags", "has_value": True, "line": 3}
+
+
+def test_frontmatter_empty_key_followed_by_another_key_has_no_value():
+    keys = ts.frontmatter_keys("---\naliases:\ntitle: x\n---\n")
+    assert keys[0] == {"key": "aliases", "has_value": False, "line": 2}
+
+
+def test_frontmatter_empty_key_before_the_closing_fence_has_no_value():
+    keys = ts.frontmatter_keys("---\ntitle: x\naliases:\n---\n- not frontmatter\n")
+    assert keys[-1] == {"key": "aliases", "has_value": False, "line": 3}
 
 
 def test_frontmatter_keys_empty_when_the_block_is_missing():
@@ -335,6 +363,54 @@ def test_filled_note_check_fails_on_an_unclosed_fence():
     result = ts.filled_note_check(text)
     assert result.ok is False
     assert _statuses(text)["frontmatter_closed"] == "FAIL"
+
+
+def _finding(text: str, check: str) -> dict:
+    [found] = [f for f in ts.filled_note_check(text).findings if f["check"] == check]
+    return found
+
+
+def test_filled_note_check_fails_on_an_unclosed_code_fence_hiding_a_token():
+    text = CLEAN_NOTE + "\n```\nOwner: {{title}}\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    finding = _finding(text, "code_fence_closed")
+    assert finding["status"] == "FAIL"
+    assert "line 17" in finding["detail"]
+    assert finding["fix"]
+
+
+def test_filled_note_check_fails_on_an_unclosed_code_fence_without_tokens():
+    text = CLEAN_NOTE + "\n~~~\nplain text\n"
+    result = ts.filled_note_check(text)
+    assert result.ok is False
+    assert _statuses(text)["code_fence_closed"] == "FAIL"
+    assert _statuses(text)["no_tokens"] == "PASS"
+
+
+def test_filled_note_check_passes_closed_code_fences():
+    text = CLEAN_NOTE + "\n~~~\nx\n~~~\n````\n```\n````\n"
+    assert ts.filled_note_check(text).ok is True
+    assert _statuses(text)["code_fence_closed"] == "PASS"
+
+
+def test_unclosed_code_fence_detail_names_only_the_line_number():
+    text = CLEAN_NOTE + "\n```secret-lang\nprivate words\n"
+    detail = _finding(text, "code_fence_closed")["detail"]
+    assert "secret" not in detail
+    assert "private" not in detail
+
+
+def test_findings_never_echo_note_text_other_than_token_names():
+    text = (
+        "---\ntomo:\n  state: confidential-value\ntitle: x\n---\n"
+        "<% tp.user.leak('confidential-span') %>\n{{left_over}}\n"
+        "```\nconfidential-fenced\n"
+    )
+    findings = ts.filled_note_check(text).findings
+    blob = " ".join(f"{f['detail']} {f['fix']}" for f in findings)
+    assert "confidential" not in blob
+    assert "{{left_over}}" in blob
 
 
 def test_filled_note_findings_carry_check_status_detail_and_fix():

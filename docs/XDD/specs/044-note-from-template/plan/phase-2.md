@@ -102,7 +102,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass; ruff clean.
   5. Success: delivery is ordered, never overwrites and resumes cleanly `[ref: PRD/F5, F6, F9; SDD/F5-AC1 … F5-AC7, F6-AC1, F6-AC3, F6-AC6, F9-AC2]`
 
-- [ ] **T2.7 Privacy and survival tests** `[activity: backend]` `[parallel: true]`
+- [x] **T2.7 Privacy and survival tests** `[activity: backend]` `[parallel: true]`
 
   1. Prime: CON-3; `scripts/backup-tomo.sh:175`; `scripts/restore-tomo.sh:193-197`; `scripts/update-tomo.sh:360-367,466-516`; `tests/test_backup_restore_instance.py` `[ref: SDD/Quality Requirements]`
   2. Test: a marker string in the request, the source, the template body and the answers never appears in stdout or stderr of any new script; backup then restore keeps `config/note-processes/*.md` byte-identical; `update-tomo.sh` against a tmp instance (isolated `HOME`) leaves `config/note-processes/` unchanged.

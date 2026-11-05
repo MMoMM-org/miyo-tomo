@@ -27,13 +27,27 @@ def _text(path: Path) -> str:
 
 
 def _section(text: str, heading_part: str) -> str:
-    """Heading and body of the '## ' section whose heading contains heading_part."""
+    """Heading and body of the one '## ' section whose heading contains heading_part.
+
+    A key matching several headings would silently test the first one, so it fails.
+    """
     parts = re.split(r"^## ", text, flags=re.M)
+    matches = []
     for part in parts[1:]:
         head, _, body = part.partition("\n")
         if heading_part.lower() in head.lower():
-            return head + "\n" + body
-    raise AssertionError(f"no '## ' heading containing {heading_part!r}")
+            matches.append(head + "\n" + body)
+    assert matches, f"no '## ' heading containing {heading_part!r}"
+    assert len(matches) == 1, (
+        f"{len(matches)} '## ' headings contain {heading_part!r}; use a longer key"
+    )
+    return matches[0]
+
+
+def _assert_needles(section: str, needles: list[str], label: str) -> None:
+    body = re.sub(r"\s+", " ", section).lower()
+    for needle in needles:
+        assert needle.lower() in body, f"{label} lacks {needle!r}"
 
 
 def test_mirrors_start_with_why_title():
@@ -57,8 +71,8 @@ def test_command_is_thin_shim_and_main_session():
         ("Main Session", ["AskUserQuestion", "subagent", "Agent tool"]),
         ("Printed Before", ["print", "before", "AskUserQuestion", "note.md", "draft.md"]),
         ("Abort", ["note-instructions.py drop", "note_include", "stays saved"]),
-        ("Exit 2", ["exit 2", "another value", "nothing is staged"]),
-        ("Resume", ["steps_done", "never a silent drop", "frozen"]),
+        ("Exit 2 Means", ["exit 2", "another value", "nothing is staged"]),
+        ("Resume-or-Drop", ["steps_done", "never a silent drop", "frozen"]),
         ("Model Fills", ["ADR-1", "scripts check"]),
         ("Delivery Is One Script", ["ADR-2", "deliver", "exit 3", "withdrawn", "nothing is written"]),
         ("Exit 3 Branches", ["steps_done", "is_frozen", "meta.json", "kept_drafts"]),
@@ -73,13 +87,11 @@ def test_command_is_thin_shim_and_main_session():
         ("Template Unreadable", ["folder_listed", "never says that no template exists"]),
         ("STRICT", ["observed", "Why:"]),
         ("Eval", ["ADR-8", "not in the CLAUDE.md eval gate"]),
-        ("Process", ["--process", "decline", "note-process.py"]),
+        ("Separate Mode", ["--process", "decline", "note-process.py"]),
     ],
 )
 def test_skill_mirror_names_decision(heading, needles):
-    body = _section(_text(SKILL), heading)
-    for needle in needles:
-        assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
+    _assert_needles(_section(_text(SKILL), heading), needles, f"{heading!r} section")
 
 
 def _sentences(text: str) -> list[str]:
@@ -161,9 +173,7 @@ NOTE_META = SCRIPTS / "lib" / "note_meta.md"
     ],
 )
 def test_skill_mirror_names_exit_1_and_frozen_decisions(heading, needles):
-    body = re.sub(r"\s+", " ", _section(_text(SKILL), heading))
-    for needle in needles:
-        assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
+    _assert_needles(_section(_text(SKILL), heading), needles, f"{heading!r} section")
 
 
 @pytest.mark.parametrize(
@@ -178,9 +188,7 @@ def test_skill_mirror_names_exit_1_and_frozen_decisions(heading, needles):
     ],
 )
 def test_script_mirror_names_kado_connect_decision(path, heading, needles):
-    body = re.sub(r"\s+", " ", _section(_text(path), heading))
-    for needle in needles:
-        assert needle.lower() in body.lower(), f"{path.name} {heading!r} lacks {needle!r}"
+    _assert_needles(_section(_text(path), heading), needles, f"{path.name} {heading!r}")
 
 
 @pytest.mark.parametrize(
@@ -235,9 +243,7 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
     ],
 )
 def test_skill_mirror_names_remaining_decisions(heading, needles):
-    body = re.sub(r"\s+", " ", _section(_text(SKILL), heading))
-    for needle in needles:
-        assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
+    _assert_needles(_section(_text(SKILL), heading), needles, f"{heading!r} section")
 
 
 def test_deliver_exit_2_scopes_what_reached_the_vault():

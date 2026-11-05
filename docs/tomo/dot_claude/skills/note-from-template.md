@@ -86,15 +86,17 @@ start (`stale_stages`) get one line and a `drop` each for the same reason.
 
 WHY: A kept draft with `steps_done` non-empty already has files in the vault (the note, the JSON, the MD). A
 silent drop would leave them there with no record. The next `/note` therefore offers resume or drop; this also covers
-a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. During a resume with a
-non-empty `steps_done`, title and destination are frozen because the landed files carry them. A name collision during a resume is branched on `steps_done`
-(see the next section).
+a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. A resumed draft with a
+non-empty `steps_done` keeps its title and destination frozen (see
+[Why One Frozen Message Names Both Refusals](#why-one-frozen-message-names-both-refusals)), and a name collision during
+a resume is branched on `steps_done` (see the next section).
 
 ## Why Exit 3 Branches on steps_done, Not on "Is This a Resume"
 
 WHY: A kept draft can be resumed with nothing landed: the first step failed, so `failed_step` is set and
-`steps_done` is empty. `is_frozen` (`lib/note_meta.py`) freezes title and destination only once a step is done, so
-such a draft can still be renamed with `stage --title`; offering only Keep/Drop would force a needless discard.
+`steps_done` is empty. `is_frozen` (`lib/note_meta.py`, see the next section) freezes title and destination only once
+a step is done, so such a draft can still be renamed with `stage --title`; offering only Keep/Drop would force a
+needless discard.
 Keep/Drop is right only when files are already in the vault: the name cannot change, and Drop must name the landed
 files so the user can delete them in Obsidian. The skill reads `steps_done` from `meta.json` because `start`'s
 `kept_drafts` entries do not carry it.
@@ -115,8 +117,10 @@ because a refused update changes nothing in `meta.json`.
 WHY: `deliver` exits 1 for three different stops, and only the `status` field tells them apart. A guard that withdrew
 an action reports exit 1, `status` `withdrawn` and an empty step: the same exit code and step as a failed filled-note
 check. Without the `status` branch the model would read the empty step as "fix the draft" and loop on a refusal no
-draft edit can cure. Withdrawn writes nothing, so it offers Rename / Abort exactly as exit 3 does with `steps_done`
-empty: nothing landed and the name is still free to change.
+draft edit can cure. Withdrawn writes nothing, so the skill says nothing was written and why the action was withdrawn,
+then offers Rename / Abort exactly as exit 3 does with `steps_done` empty: nothing landed and the name is still free to
+change. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
+repeat the refusal.
 
 With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the
 next `/note` offers resume. That includes `kado_connect`, the step `deliver` reports when Kado is unreachable before
@@ -132,17 +136,16 @@ WHY: `note-instructions.py deliver` writes the note, the instruction set JSON an
 one process, with the `kado-write-file.py` exit contract (exit 3 and an `EXISTS:` line on a name collision,
 never an overwrite). Order, collision handling and the resume comparison (identical content counts as done)
 become testable instead of left to the model. Marking the source is a direct frontmatter merge, not a call to
-`mark-captured.py` (ADR-3). The skill never runs the delivery steps itself.
-
-When the guard withdrew the action (exit 1, `status` `withdrawn`), the skill reports that nothing is written and why,
-then offers rename or abort: a withdrawn action has no content to deliver, so keeping the draft would only repeat the
-refusal.
+`mark-captured.py` (ADR-3). The skill never runs the delivery steps itself. A withdrawn action (exit 1, `status`
+`withdrawn`) means nothing is written; the skill's handling is explained in
+[Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step).
 
 ## Why a Source That Moves or Changes Does Not Fail the Delivery
 
 WHY: The source mark is the last step and the least important one: the note and the instruction set already landed.
 If the source was deleted or moved before the mark, there is nothing left to mark, so the step counts as done,
-`deliver` reports `delivered` with `source_marked: false`, and the report says in one line the source was not marked. Failing there would strand a complete delivery behind a resume that can never succeed. If the source changed
+`deliver` reports `delivered` with `source_marked: false`, and the report says in one line the source was not marked.
+Failing there would strand a complete delivery behind a resume that can never succeed. If the source changed
 between the read and the mark, a merge would overwrite the newer content, so it is reported as a failed `source_mark`
 (exit 1) and resume retries it against the current file. The draft stays until the mark succeeds.
 
@@ -233,8 +236,9 @@ the filled-note check can agree. `lib/note_process.py` keeps its own leading-fen
 
 WHY: Which templates `/note` may offer is a vault-config setting. `vault-config-writer.py templates-include`
 edits only the `note_include` lines inside `templates:`; the existing helper replaces whole top-level blocks and
-would drop the `mapping` comments. The skill never composes YAML by hand. The glob preview in `note-session.py`
-lets the user confirm before anything is written.
+would drop the `mapping` comments. The skill never composes YAML by hand, and nothing is written before the user
+confirms the glob preview (see
+[Why the Runtime Details Look the Way They Do](#why-the-runtime-details-look-the-way-they-do)).
 
 ## Why Setup Reruns start and Kept Drafts Come First
 
@@ -258,7 +262,8 @@ Any non-empty answer, "none" included, answers a required point: required means 
 WHY: `/note --process <template>` stores per-template guidance (destination, required points, guidance text) in
 `config/note-processes/<template-stem>.md` through `note-process.py read` and `write`. After a delivery the
 skill offers Save / Not now / Never once, only when the template has no process file and no decline marker and the
-session showed a signal worth saving (a changed destination, an answered re-asked point, a requested question order); "Never" writes a decline marker that `write` later replaces. An unknown
+session showed a signal worth saving (a changed destination, an answered re-asked point, a requested question order);
+"Never" writes a decline marker that `write` later replaces. An unknown
 template writes nothing (F7-AC11). The temporary outline file is removed afterwards.
 
 ## Why the Process Offer Re-Outlines the Template
@@ -275,9 +280,9 @@ WHY: A broken process file (`error` set) is ignored with one line and the templa
 missing from the template is named in one line and skipped. A template without frontmatter is drafted with a
 frontmatter block anyway; `stage` reports the filled-note result. The note matters more than an optional
 refinement being intact. A filled-note check that fails at `stage` is different: the skill fixes the draft and
-reruns `stage` before showing the draft, so the skill never calls `deliver` on a known failing check. `deliver`
-checks again and also stamps the frontmatter; either failing there (exit 1, `status` `failed`, empty `step`) sends
-the skill back to fixing the draft and rerunning `stage`.
+reruns `stage` before showing the draft, so the skill never calls `deliver` on a known failing check. The check or the
+frontmatter stamp failing inside `deliver` is covered in
+[Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step).
 
 ## Why Script Errors Are Shown Verbatim
 
@@ -303,15 +308,15 @@ trade-off: later edits to the skill have no automatic model check, so review the
 
 WHY: `start` is called as `--args='<request>'` (single quotes, each `'` written as `'\''`): the `=` form keeps a
 request beginning with `--process` from being read as an option, and single quotes keep the shell from expanding
-`$` or backticks in the user's text. The first-run setup previews `match --globs "*"` first because the model
-cannot propose globs for template names it has not seen. The skill writes only three local files itself
-(`draft.md`, `tomo-tmp/note/note-include.json` as the writer's `--input`, `tomo-tmp/note/process-guidance.md` as
+`$` or backticks in the user's text. The request text stays in the conversation because `start` does not echo it
+back, and the later steps (template choice, source, draft) work from it. The first-run `note_include` setup previews
+`match --globs "*"` first because the model cannot propose globs for template names it has not seen, then previews
+the proposed globs' matches before asking, so the user confirms against real template names. The skill writes
+only three local files itself (`draft.md`, `tomo-tmp/note/note-include.json` as the writer's `--input`, `tomo-tmp/note/process-guidance.md` as
 `--guidance-file`); the two helper files are removed right after the script call. The skill pins no `model`:
 the note text is the model's work (ADR-1), so it runs on the session's model. The description carries
 `MUST BE USED` per the authoring rules, and the `NOT for` clause keeps free-form artifacts with `inbox-author`.
 
 Templater code (`<%` ... `%>`) is a hint to the model only: it is never executed, none is left in the draft, and a
 `<%` surviving in the draft fails the filled-note check (F3-AC7). Questions follow the language of the call while the
-note keeps the template's headings, so the output still matches the template (F3-AC8). The first-run `note_include`
-setup previews the glob matches (`match`) before asking, so the user confirms against real template names.
-The request text stays in the conversation because `start` does not echo it back, and the later steps (template choice, source, draft) work from it.
+note keeps the template's headings, so the output still matches the template (F3-AC8).

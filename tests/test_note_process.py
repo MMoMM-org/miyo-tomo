@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_process.py — Behavioural tests for note-process.py (spec 044 T2.4).
 
 Covers the CLI over lib.note_process for config/note-processes/<stem>.md:
 - read: without --outline (missing_required empty), with --outline
   (missing_required set), missing file, broken file (error, exit 0, no file text)
 - write: from an outline file; rejects an absent required point with exit 1 and
-  writes nothing; --required trimming; guidance from a file; replaces a decline
+  writes nothing; repeatable --required (trimmed, empty dropped, a comma
+  inside a point name kept); guidance from a file; replaces a decline
 - decline: writes the marker that read then reports as declined
 - bad invocation (exit 2, no file text): malformed outline, missing guidance
   file, malformed stem, missing --outline
@@ -126,7 +127,8 @@ def test_write_from_outline_file_writes_process(mod, instance, capsys):
     guidance.write_text("Ask decisions last.\n", encoding="utf-8")
     code, out, *_ = _run(mod, capsys, [
         "write", "--template", TEMPLATE, "--outline", outline, "--destination", "Atlas/Meetings",
-        "--required", " Agenda , Decisions,,", "--guidance-file", str(guidance)])
+        "--required", " Agenda ", "--required", "", "--required", "Decisions",
+        "--guidance-file", str(guidance)])
     assert code == 0
     assert out == {"written": True, "rejected_required": []}
     back = note_process.read_process(note_process.PROCESS_DIR, TEMPLATE)
@@ -138,7 +140,8 @@ def test_write_from_outline_file_writes_process(mod, instance, capsys):
 def test_write_rejects_absent_required_point_and_writes_nothing(mod, instance, capsys):
     outline = _outline(instance)
     code, out, *_ = _run(mod, capsys, [
-        "write", "--template", TEMPLATE, "--outline", outline, "--required", "Agenda,Risks"])
+        "write", "--template", TEMPLATE, "--outline", outline,
+        "--required", "Agenda", "--required", "Risks"])
     assert code == 1
     assert out == {"written": False, "rejected_required": ["Risks"]}
     assert not _process_file(instance).exists()
@@ -154,14 +157,17 @@ def test_write_rejected_keeps_existing_file_untouched(mod, instance, capsys):
     assert _process_file(instance).read_bytes() == before
 
 
-def test_point_name_with_comma_is_split_and_rejected(mod, instance, capsys):
+def test_point_name_with_comma_is_one_point_and_round_trips(mod, instance, capsys):
     outline = _outline(instance, {**OUTLINE, "headings": [
         {"level": 2, "text": "Risks, issues", "line": 5, "has_body": False}]})
     code, out, *_ = _run(mod, capsys, [
         "write", "--template", TEMPLATE, "--outline", outline, "--required", "Risks, issues"])
-    assert code == 1
-    assert out["rejected_required"] == ["Risks", "issues"]
-    assert not _process_file(instance).exists()
+    assert code == 0
+    assert out == {"written": True, "rejected_required": []}
+    code, back, *_ = _run(mod, capsys, ["read", "--template", TEMPLATE, "--outline", outline])
+    assert code == 0
+    assert back["required"] == ["Risks, issues"]
+    assert back["missing_required"] == []
 
 
 # ---------------------------------------------------------------- decline

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-process.py — read, write and decline the process files of /note.
-# version: 0.1.0
+# version: 0.1.1
 """The only writer of ``config/note-processes/<template-stem>.md``.
 
 The /note skill reads a template's process file before asking, saves one when
@@ -12,7 +12,7 @@ guidance file, and prints the result.
 Usage (cwd = instance root):
     python3 scripts/note-process.py read    --template <stem> [--outline <file>]
     python3 scripts/note-process.py write   --template <stem> --outline <file>
-                [--destination <folder>] [--required a,b] [--guidance-file <file>]
+                [--destination <folder>] [--required <point>]... [--guidance-file <file>]
     python3 scripts/note-process.py decline --template <stem>
 
 Output: one JSON object on stdout (ASCII-escaped).
@@ -24,7 +24,8 @@ Output: one JSON object on stdout (ASCII-escaped).
 Rules:
     --outline is a template-outline.py output file: a JSON object whose
     frontmatter, headings and tokens are lists of objects.
-    --required is split on commas; entries are trimmed, empty ones dropped.
+    --required takes one point name per flag and is repeatable; a comma is
+    part of the name. Values are trimmed, empty ones dropped.
     --guidance-file is read as UTF-8; its text becomes the file body.
     A broken process file reads as exists true with error set (exit 0).
     stderr names the problem class only, never a stem or file text.
@@ -83,8 +84,8 @@ def load_guidance(path: str | None) -> str:
         raise UsageError(f"guidance file unreadable ({type(exc).__name__})") from exc
 
 
-def split_required(text: str | None) -> list[str]:
-    return [r.strip() for r in (text or "").split(",") if r.strip()]
+def clean_required(points: list[str] | None) -> list[str]:
+    return [p.strip() for p in (points or []) if p.strip()]
 
 
 def run_read(args: argparse.Namespace) -> tuple[dict, int]:
@@ -96,7 +97,7 @@ def run_write(args: argparse.Namespace) -> tuple[dict, int]:
     outline = load_outline(args.outline)
     guidance = load_guidance(args.guidance_file)
     result = write_process(PROCESS_DIR, args.template, outline, destination=args.destination,
-                           required=split_required(args.required), guidance=guidance)
+                           required=clean_required(args.required), guidance=guidance)
     return result, 0 if result["written"] else 1
 
 
@@ -117,7 +118,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--template", required=True, help="Template stem")
     w.add_argument("--outline", required=True, help="template-outline.py output file")
     w.add_argument("--destination", help="Vault folder for new notes")
-    w.add_argument("--required", help="Comma-separated required point names")
+    w.add_argument("--required", action="append",
+                   help="One required point name; repeat the flag for more")
     w.add_argument("--guidance-file", help="File holding the guidance text")
     d = sub.add_parser("decline", help="Write the decline marker")
     d.add_argument("--template", required=True, help="Template stem")

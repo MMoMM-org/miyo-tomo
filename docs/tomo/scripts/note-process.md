@@ -40,15 +40,16 @@ a bad invocation. The error object `template-outline.py` prints on failure
 (`{template, error}`) lacks those lists and is rejected the same way, so a failed
 outline run is never mistaken for an empty template.
 
-## WHY `--required` Is Split on Commas
+## WHY `--required` Takes One Point per Flag
 
-WHY: the SDD interface (`--required a,b`). Entries are trimmed and empty ones
-dropped, so `a, b,` means `a` and `b` and an empty value means no required
-points. A point name that itself contains a comma cannot be named: it is split
-into two names, which the outline does not have, so `write` rejects them with
-exit 1 and writes nothing. The failure is loud, never a silently wrong process
-file. Template headings with commas are rare; a second argument form is YAGNI
-until one turns up.
+WHY: the SDD interface (`[--required <point>]...`). Required points are
+template heading texts, and a heading may contain a comma (`Risks, issues`).
+A comma-separated list would split such a heading into two names the outline
+does not have, so it could never be made required. One point per flag keeps
+any heading text nameable; the flag is repeated for more points. Values are
+trimmed and empty ones dropped, so an empty `--required ""` adds nothing.
+`lib/note_process.py` stores the list through `yaml.safe_dump`, so a comma
+name reads back unchanged.
 
 ## WHY Guidance Comes From a File
 

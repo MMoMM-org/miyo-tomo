@@ -71,6 +71,11 @@
 | 2026-11-05 | note-instructions.py line count is 585 after the T2.6 fixes; the no-split decision above still holds | Alignment review; the reasons are unchanged |
 | 2026-11-05 | Model escalation: T3.1 sonnet → opus | Trigger: second review FAIL |
 | 2026-11-05 | Model escalation: T3.1 opus → opus@max | Trigger: second review FAIL |
+| 2026-11-05 | Phase 3 drift: fix all findings before Phase 4 — `kado_connect` relabel (it fires on missing Kado config, not an outage), runtime-prose WARNs, the landed-but-unrecorded first step and unwrapped Kado transport errors, Drop naming, docs WARNs, phase-4.md refresh | Owner choice; the orphaned-note gap would surface in the live walk |
+| 2026-11-05 | note-instructions.py is 592 lines after the Phase 3 hardening; the no-split decision still holds, and the next growth moves delivery (~lines 330-530) into `lib/note_delivery.py` | Phase 3 quality review |
+| 2026-11-05 | Process-offer signal 2 becomes "a point skipped in the question rounds was filled through Change something before delivery" | Owner choice; the old signal needed a process file, which the offer excludes, so it could never fire |
+| 2026-11-05 | A stage is frozen once a step is done or a delivery step's upload was in flight; `start` and `deliver` report `frozen` and `steps_done`, and the skill branches on them instead of recomputing the rule or reading meta.json | Hardening review: a stage killed after its first upload could be renamed on resume and leave a duplicate note |
+| 2026-11-05 | Phase 3 gate: all tasks reviewed PASS (spec + quality); drift findings fixed and re-reviewed PASS; full suite 7759 passed, 5 skipped; ruff clean; no eval-gated file changed; phase-4.md refreshed to the new interfaces | T3.5 + hardening batch |
 | 2026-11-05 | `deliver` reports a guard-withdrawn action as `status: withdrawn` and the skill branches exit 1 on `status`; Kado unreachable at `deliver` gets its own non-empty `step` so the skill does not send the user to fix the draft | T3.2 quality review: withdrawn and Kado-down both shared the "exit 1, empty step = filled-note check failed" shape |
 | 2026-11-05 | Phase 2 complete: T2.1–T2.8 reviewed; drift findings aligned in the spec; shared lib/note_io reviewed; full suite 7553 passed, 4 skipped; ruff clean | Phase 2 gate |
 

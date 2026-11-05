@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Runtime prose and documentation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---

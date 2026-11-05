@@ -242,6 +242,17 @@ that the marked source is orphaned. The source mark is not compared, so it is
 `build_tomo_block("source", "captured", run_id)` as `mark-captured.py` writes
 it (ADR-3).
 
+## WHY the MD Peer Has No Templater Hint
+
+`render_instructions_md` adds "After moving: run `Templater: Replace Templates
+in Active File`" to every `move_note` block, because a Pass 2 rendered note can
+still carry Templater syntax. A `/note` note has none left: the filled-note
+check refuses any leftover template token before `deliver` writes anything. The
+hint would tell the user to run a command that does nothing, and the delivery
+report must say exactly what applying the set will do (PRD F3-AC7). So
+`deliver` passes `templater_hint: False` in the render config. The default stays
+on, which keeps Pass 2 output unchanged.
+
 ## WHY a Resume Compares Instead of Skipping or Overwriting
 
 Before each write `deliver` asks whether the target exists. Absent: write it.

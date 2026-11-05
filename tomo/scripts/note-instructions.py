@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -401,7 +401,8 @@ def _payloads(meta, note_text: str, actions: list[dict]) -> dict:
     doc = build_note_instruction_set(meta)
     doc["actions"] = actions
     md = render_instructions_md(actions, {"generated": meta.generated,
-                                          "profile": meta.profile}, {})
+                                          "profile": meta.profile},
+                                {"templater_hint": False})
     return {"note": note_text,
             "instructions_json": json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
             "instructions_md": merge_tomo_block_into_markdown(

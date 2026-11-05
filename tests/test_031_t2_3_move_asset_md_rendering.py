@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """test_031_t2_3_move_asset_md_rendering.py — spec 031 T2.3 readable
 instruction rendering for move_asset.
 
@@ -99,3 +99,23 @@ def test_unrecognized_skip_kind_never_inherits_a_remedy():
     assert "naming conflict" not in md.lower()
     assert "no remedy defined" in md.lower()
     assert "something_new" in md
+
+
+_METADATA = {"generated": "2026-09-05T12:00:00Z"}
+
+
+def _move_note_action() -> dict:
+    return _move_asset_action(action="move_note", title="Karte",
+                              source="100 Inbox/Karte.md",
+                              destination="Atlas/202 Notes/Karte.md")
+
+
+def test_move_note_keeps_the_templater_hint_by_default():
+    """Pass 2 regression guard: the default render still tells the applier to run Templater."""
+    md = render_instructions_md([_move_note_action()], _METADATA, {})
+    assert "- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P" in md
+
+
+def test_move_note_drops_the_templater_hint_when_switched_off():
+    md = render_instructions_md([_move_note_action()], _METADATA, {"templater_hint": False})
+    assert "Templater" not in md

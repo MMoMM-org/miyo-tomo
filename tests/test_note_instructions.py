@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -7,7 +7,8 @@ later step; keep-source frozen once instructions_json landed; a killed run is a
 kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
 destination clash and guard-cut sets refused; filled-note check gate;
 byte-identical rebuilds; stamps; stage dir removed only on success; one shared
-no-overwrite contract test with kado-write-file.py.
+no-overwrite contract test with kado-write-file.py; the MD carries no Templater hint; a
+recorded step whose target is gone is not written again.
 
 Covers the draft lifecycle subcommands new, stage and drop:
 - new draws a YYYY-MM-DD_HHMMSS stem, a run id and generated; reads the inbox,
@@ -1219,3 +1220,27 @@ def test_both_no_overwrite_probes_share_exit_3_and_the_exists_line(
     assert out.splitlines()[0] == f"EXISTS:{path}"
     assert vault.files[path] == "taken"
     assert [e for e in vault.events if e[0] in WRITES] == []
+
+
+def test_deliver_instructions_md_carries_no_templater_hint(inst, capsys, vault):
+    """A /note note has no template syntax left, so the MD must not ask for Templater."""
+    stem = _ready(inst, capsys, vault)
+    _, _, _, md = _paths(inst, stem)
+    assert _deliver(capsys, stem)[0] == 0
+    assert "Templater" not in vault.text(md)
+
+
+def test_deliver_recorded_step_with_absent_target_is_not_rewritten(inst, capsys, vault):
+    """Hashi may already have moved the note away; a second copy would be a duplicate."""
+    stem = _ready(inst, capsys, vault)
+    _, note, js, md = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    assert _deliver(capsys, stem)[0] == 1
+    del vault.files[note]
+    vault.fail.clear()
+    vault.events.clear()
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered"
+    assert ("write_note", note) not in _write_events(vault)
+    assert note not in vault.files

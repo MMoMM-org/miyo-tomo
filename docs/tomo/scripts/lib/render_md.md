@@ -1049,3 +1049,12 @@ the owner must do.
   and a remedy chosen by `kind` (`_WITHHELD_EXTENSION_REMEDIES`). An unknown kind
   prints a loud "no remedy defined" text instead of inheriting another kind's
   advice, the same rule the attachment remedies follow.
+
+## `templater_hint` Switches Off the "After moving" Line (v0.36.1, spec 044)
+
+`move_note` blocks end with "After moving: run `Templater: Replace Templates in
+Active File`", because a Pass 2 rendered note can still carry Templater syntax.
+A `/note` note cannot (the filled-note check refuses leftover tokens), so
+`note-instructions.py deliver` passes `templater_hint: False` in `cfg`. The key
+defaults to on, so Pass 2, which never sets it, renders the line as before. See
+`docs/tomo/scripts/note-instructions.md` for the `/note` side.

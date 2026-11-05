@@ -163,8 +163,18 @@ to exit 2, and on the `deliver` path those are: a malformed or unknown stem (`_e
 cannot be read (`_stage_meta`) or written, and "no title staged". (The `vault-config.yaml` errors of
 `read_note_config` are exit 2 too, but only `new` reads the config.) Each is a bad invocation or a broken local stage;
 no other value the user could give cures it, so there is nothing to ask for. The skill shows the error and stops;
-the draft stays, because nothing reached the vault and the user's material should survive for a later `/note` or a
-look at `tomo-tmp/note/<stem>/`.
+the draft stays, because dropping it would discard the user's material in `tomo-tmp/note/<stem>/` and, once
+`meta.json` records a step or a failure, the chance to resume.
+
+Whether anything reached the vault depends on the cause. A malformed or unknown stem, an unreadable `meta.json` and
+"no title staged" stop `deliver` before it asks Kado, so nothing reached the vault. A failed `meta.json` write can come
+after a step landed: `_record` writes it after each delivery step and `_fail` after a failed one, so the inbox may
+already hold the note or the `<stem>_instructions` files, and a failed `_record` write leaves that step out of
+`steps_done`. On the next `/note`, a stage whose `meta.json` already holds a `steps_done` entry or a `failed_step` is a
+kept draft, and resume counts the landed file as done, not as a name clash, because `deliver` rebuilds identical text.
+When the unrecorded step is the first one (`note`) and no earlier attempt failed, `steps_done` and `failed_step` are
+both still empty, so `start` lists the stage in `stale_stages` and the skill discards it; the stamped note stays in the
+inbox unreported, and `/inbox` triage skips it as `pending-move`.
 
 The rule "never run `deliver` before `stage` has recorded a title" exists because the title names the files: `new`
 records an empty title, and `inbox_file` (`<stem>_<sanitize_stem(title)>.md`) and `destination_file`

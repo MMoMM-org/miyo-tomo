@@ -238,3 +238,24 @@ def test_skill_mirror_names_remaining_decisions(heading, needles):
     body = re.sub(r"\s+", " ", _section(_text(SKILL), heading))
     for needle in needles:
         assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
+
+
+def test_deliver_exit_2_scopes_what_reached_the_vault():
+    """_record and _fail (note-instructions.py) write meta.json after Kado was asked, so a
+    failed write exits 2 with the note or the instruction set possibly in the inbox and
+    the landed step missing from steps_done. Only the causes raised before Kado is asked
+    (bad or unknown stem, unreadable meta.json, no title staged) leave the vault
+    untouched: a "nothing ... vault" sentence must name them, and the section must name
+    the write case and what the next /note does with it (identical text, stale_stages)."""
+    section = _section(_text(SKILL), "deliver Exit 2")
+    unscoped = [
+        s
+        for s in _sentences(section)
+        if re.search(r"\bnothing\b.*\bvault\b", s, re.I)
+        and not all(cause in s.lower() for cause in ("unknown stem", "no title staged"))
+    ]
+    assert not unscoped, f"'nothing reached the vault' without its causes: {unscoped}"
+    body = re.sub(r"\s+", " ", section).lower()
+    for needle in ("`_record`", "`_fail`", "landed", "steps_done", "_instructions",
+                   "stale_stages", "identical"):
+        assert needle in body, f"'deliver Exit 2' section lacks {needle!r}"

@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.3
+# version: 0.1.4
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -58,6 +58,7 @@ class NoteDraftMeta:
     keep_source: bool = False
     steps_done: list[str] = field(default_factory=list)
     failed_step: str = ""
+    profile: str | None = None
 
     def destination_file(self) -> str:
         """Vault path the approved note moves to."""
@@ -125,9 +126,11 @@ def _shape_problem(raw: dict, stem: str) -> str | None:
     # Defaulted fields are checked only when present: absent means the dataclass default.
     if any(not isinstance(raw.get(k, ""), str) for k in _STR_FIELDS):
         return "a text field is not a string"
-    # source_path, keep_source and steps_done have their own shapes, so not in _STR_FIELDS.
+    # source_path, profile, keep_source and steps_done have their own shapes, so not in _STR_FIELDS.
     if raw.get("source_path") is not None and not isinstance(raw["source_path"], str):
         return "source_path is neither a string nor null"
+    if raw.get("profile") is not None and not isinstance(raw["profile"], str):
+        return "profile is neither a string nor null"
     if not isinstance(raw.get("keep_source", False), bool):
         return "keep_source is not a boolean"
     if _steps_problem(raw.get("steps_done", [])):

@@ -68,14 +68,24 @@ equal to the directory name (a copied meta.json must not deliver under another
 draft's names). Anything else raises MetaError, and the listing counts the
 directory as stale, the same as unreadable JSON.
 
-`source_path`, `keep_source` and `steps_done` are checked outside the plain
-string-field list because each has its own shape (string or null, boolean,
-list of steps).
+`source_path`, `profile`, `keep_source` and `steps_done` are checked outside the plain
+string-field list because each has its own shape (string or null, string or
+null, boolean, list of steps).
+
+## WHY the Profile Is Part of the Draft State
+
+The instruction set carries the vault-config `profile`. `new` reads it once and
+stores it in `profile`; every `deliver` builds the set from meta.json alone. If
+`deliver` re-read the config, a profile edited between a failed delivery and its
+resume would rebuild a different `<stem>_instructions.json`, and the resume
+would see a name collision instead of an identical file (F6-AC3). The field is
+defaulted to null so a meta.json written before it existed still reads; such a
+draft delivers with `profile: null`, which the Hashi schema allows.
 
 ## WHY a Missing Defaulted Field Reads as Its Default
 
-`keep_source`, `steps_done` and `failed_step` have dataclass defaults (`false`,
-`[]`, `""`). `read_meta` validates each of them only when its key is present; an
+`keep_source`, `steps_done`, `failed_step` and `profile` have dataclass defaults
+(`false`, `[]`, `""`, null). `read_meta` validates each of them only when its key is present; an
 absent key takes the default. An older or partial meta.json must not be dropped
 as stale: a file without `failed_step` whose `steps_done` is `["note"]` is a
 started delivery with a note already in the inbox, and rejecting it for the

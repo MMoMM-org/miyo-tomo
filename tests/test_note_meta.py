@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
@@ -71,7 +71,7 @@ def test_meta_json_round_trip_keeps_every_field(tmp_path):
     assert set(raw) == {
         "stem", "run_id", "created", "generated", "template", "template_stem",
         "source_path", "title", "inbox_file", "destination",
-        "default_destination", "keep_source", "steps_done", "failed_step",
+        "default_destination", "profile", "keep_source", "steps_done", "failed_step",
     }
 
 
@@ -417,11 +417,32 @@ def _raw_stage_without(root: Path, *keys: str, **overrides) -> Path:
 
 
 def test_meta_without_the_defaulted_fields_reads_with_defaults(tmp_path):
-    stage = _raw_stage_without(tmp_path, "keep_source", "steps_done", "failed_step")
+    stage = _raw_stage_without(tmp_path, "keep_source", "steps_done", "failed_step", "profile")
 
     meta = note_meta.read_meta(stage)
 
     assert (meta.keep_source, meta.steps_done, meta.failed_step) == (False, [], "")
+    assert meta.profile is None
+
+
+def test_profile_round_trips(tmp_path):
+    stage = _stage_with(tmp_path, _meta(profile="miyo"))
+
+    assert note_meta.read_meta(stage).profile == "miyo"
+
+
+@pytest.mark.parametrize("bad", [3, True, ["miyo"], {"name": "miyo"}])
+def test_present_profile_of_wrong_type_is_rejected(tmp_path, bad):
+    stage = _raw_stage_without(tmp_path, profile=bad)
+
+    with pytest.raises(note_meta.MetaError, match="profile"):
+        note_meta.read_meta(stage)
+
+
+def test_null_profile_is_accepted(tmp_path):
+    stage = _raw_stage_without(tmp_path, profile=None)
+
+    assert note_meta.read_meta(stage).profile is None
 
 
 def test_meta_without_failed_step_but_with_a_done_step_is_a_kept_draft(tmp_path):

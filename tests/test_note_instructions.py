@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
 
 Covers the draft lifecycle subcommands new, stage and drop:
@@ -8,6 +8,10 @@ Covers the draft lifecycle subcommands new, stage and drop:
   process destination; stages source.md; a Kado error leaves nothing on disk
 - stage records title, destination, keep-source; refuses frozen changes with
   frozen: true and meta.json unchanged; reports the filled-note check
+- new stores the config profile in meta.json
+- stage writes note.md = draft.md with {{source_link}} resolved from
+  keep_source (draft.md untouched, so a later flip re-resolves); the check
+  runs on note.md
 - drop removes the stage directory
 - no user text (source body, draft body) in stdout or stderr
 
@@ -179,6 +183,18 @@ def test_new_broken_process_file_falls_back_to_atomic_path(inst, capsys):
 def test_config_reader_returns_profile(inst):
     cfg = ni.read_note_config(Path("config/vault-config.yaml"))
     assert cfg == {"inbox": "100 Inbox/", "atomic_path": "Atlas/202 Notes/", "profile": "miyo"}
+
+
+def test_new_stores_the_profile_in_meta(inst, capsys):
+    stem = _new(capsys)["stem"]
+    assert _meta(inst, stem).profile == "miyo"
+
+
+def test_new_without_profile_stores_null(inst, capsys):
+    (inst / "config" / "vault-config.yaml").write_text(
+        'concepts:\n  inbox: "In/"\n  atomic_note: "N/"\n', encoding="utf-8")
+    stem = _new(capsys)["stem"]
+    assert _meta(inst, stem).profile is None
 
 
 def test_config_reader_profile_absent_is_none(inst):
@@ -390,3 +406,96 @@ def test_drop_absent_stem_reports_not_removed(inst, capsys):
 def test_drop_malformed_stem_exits_2(inst, capsys):
     rc, _, _ = _run(["drop", "--stem", "../x"], capsys)
     assert rc == 2
+
+
+# ── stage: source_link ───────────────────────────────────────────────────
+
+SOURCE_STEM = SOURCE.rsplit("/", 1)[-1][:-3]
+LINK_DRAFT = ("---\ntitle: x\nsource: \"{{source_link}}\"\n---\n# Notes\n"
+              "From {{source_link}} " + MARKER + "\n")
+
+
+def _note(inst, stem) -> str:
+    return (note_meta.stage_dir(inst, stem) / "note.md").read_text(encoding="utf-8")
+
+
+def _draft(inst, stem) -> str:
+    return (note_meta.stage_dir(inst, stem) / "draft.md").read_text(encoding="utf-8")
+
+
+def test_stage_resolves_source_link_to_wikilink_when_kept(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT)
+    res = _json(_stage(capsys, stem, "--title", "T", "--keep-source", "true")[1])
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", f"[[{SOURCE_STEM}]]")
+    assert res["check"]["ok"] is True
+
+
+def test_stage_resolves_source_link_to_empty_when_deleted(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT)
+    res = _json(_stage(capsys, stem, "--title", "T", "--keep-source", "false")[1])
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", "")
+    assert res["check"]["ok"] is True
+
+
+def test_stage_resolves_source_link_to_empty_without_source(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT, source_path=None, keep_source=True)
+    res = _json(_stage(capsys, stem, "--title", "T")[1])
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", "")
+    assert res["check"]["ok"] is True
+
+
+def test_stage_leaves_fenced_and_escaped_source_link_alone(inst, capsys):
+    draft = ("---\ntitle: x\n---\n```\n{{source_link}}\n```\n"
+             "Escaped \\{{source_link}} and real {{source_link}}\n")
+    stem = _staged(inst, capsys, draft=draft)
+    _stage(capsys, stem, "--title", "T", "--keep-source", "true")
+    assert _note(inst, stem) == draft.replace(
+        "real {{source_link}}", f"real [[{SOURCE_STEM}]]")
+
+
+def test_stage_never_rewrites_draft_md(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT)
+    _stage(capsys, stem, "--title", "T", "--keep-source", "true")
+    assert _draft(inst, stem) == LINK_DRAFT
+
+
+def test_stage_re_resolves_after_keep_source_flips(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT)
+    _stage(capsys, stem, "--title", "T", "--keep-source", "false")
+    _stage(capsys, stem, "--keep-source", "true")
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", f"[[{SOURCE_STEM}]]")
+    _stage(capsys, stem, "--keep-source", "false")
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", "")
+
+
+def test_stage_frozen_keep_source_resolves_from_the_recorded_value(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT, keep_source=True,
+                   steps_done=["note", "instructions_json"])
+    res = _json(_stage(capsys, stem, "--keep-source", "false")[1])
+    assert res["frozen"] is True
+    assert _note(inst, stem) == LINK_DRAFT.replace("{{source_link}}", f"[[{SOURCE_STEM}]]")
+
+
+def test_stage_still_fails_other_leftover_tokens(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT + "{{uuid}}\n")
+    check = _json(_stage(capsys, stem, "--title", "T", "--keep-source", "true")[1])["check"]
+    assert check["ok"] is False
+    detail = next(f["detail"] for f in check["findings"] if f["check"] == "no_tokens")
+    assert "uuid" in detail and "source_link" not in detail
+
+
+def test_stage_missing_draft_removes_a_stale_note(inst, capsys):
+    stem = _staged(inst, capsys, draft=LINK_DRAFT)
+    _stage(capsys, stem, "--title", "T")
+    (note_meta.stage_dir(inst, stem) / "draft.md").unlink()
+    _stage(capsys, stem)
+    assert not (note_meta.stage_dir(inst, stem) / "note.md").exists()
+
+
+def test_resolve_source_link_is_pure(inst):
+    meta = note_meta.new_meta(
+        stem="2026-11-05_101500", inbox="In/", title="T", destination="A/",
+        default_destination="A/", run_id="r", created="c", generated="g",
+        template="T/t.md", template_stem="t", source_path="In/Sub/My note.md")
+    meta.keep_source = True
+    assert ni.resolve_source_link("a {{source_link}} b", meta) == "a [[My note]] b"

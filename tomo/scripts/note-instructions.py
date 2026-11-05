@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -12,12 +12,14 @@ Subcommands:
         concepts.inbox, concepts.atomic_note and profile from
         config/vault-config.yaml and the destination of
         config/note-processes/<template-stem>.md; stages source.md (read via
-        Kado) and writes meta.json.
+        Kado) and writes meta.json (profile included).
         Output: {stem, run_id, default_destination, inbox}
         Exit: 0; 1 Kado error reading the source; 2 bad invocation, config or I/O
   stage --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
-        Updates meta.json unless a frozen field would change, then runs the
-        filled-note check on draft.md.
+        Updates meta.json unless a frozen field would change; writes note.md,
+        which is draft.md with every {{source_link}} resolved from keep_source
+        ([[<source stem>]] when kept, empty otherwise; draft.md is never
+        changed); runs the filled-note check on note.md.
         Output: {stem, title, inbox_file, destination_file, keep_source, frozen,
                  check: {ok, findings[]}}
         Exit: 0 (findings are output); 2 bad invocation or unknown stem
@@ -35,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import posixpath
 import sys
 from datetime import datetime, timedelta, timezone
@@ -52,11 +55,13 @@ from lib.note_meta import (  # noqa: E402
     remove_stage, stage_dir, write_meta,
 )
 from lib.note_process import PROCESS_DIR, read_process  # noqa: E402
-from lib.template_syntax import filled_note_check  # noqa: E402
+from lib.template_syntax import _token_matches, filled_note_check  # noqa: E402
 
 CONFIG_PATH = Path("config") / "vault-config.yaml"
 SOURCE_FILE = "source.md"
 DRAFT_FILE = "draft.md"
+NOTE_FILE = "note.md"
+SOURCE_LINK = "source_link"
 _STEM_ATTEMPTS = 60
 
 
@@ -166,7 +171,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     meta = new_meta(stem=stem, inbox=cfg["inbox"], title="", destination=default_dest,
                     default_destination=default_dest, run_id=run_id_lib.generate(),
                     created=now, generated=now, template=template,
-                    template_stem=template_stem, source_path=source)
+                    template_stem=template_stem, source_path=source,
+                    profile=cfg["profile"])
     write_meta(stage, meta)
     _emit({"stem": stem, "run_id": meta.run_id,
            "default_destination": meta.default_destination, "inbox": cfg["inbox"]})
@@ -201,14 +207,45 @@ def _destination_arg(value: str | None) -> str | None:
     return value.strip()
 
 
-def _check(stage: Path) -> dict:
-    draft = stage / DRAFT_FILE
+def source_link_value(meta) -> str:
+    """``[[<source stem>]]`` when the source exists and is kept; empty text otherwise."""
+    if not meta.source_path or not meta.keep_source:
+        return ""
+    name = posixpath.basename(meta.source_path)
+    return "[[" + (name[:-3] if name.endswith(".md") else name) + "]]"
+
+
+def resolve_source_link(text: str, meta) -> str:
+    """Replace each real {{source_link}} token (as tokens() sees them); nothing else."""
+    value, parts, cursor = source_link_value(meta), [], 0
+    for match, _line in _token_matches(text):
+        if match.group(1) == SOURCE_LINK:
+            parts += [text[cursor:match.start()], value]
+            cursor = match.end()
+    return "".join(parts) + text[cursor:]
+
+
+def _write_atomic(target: Path, text: str) -> None:
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, target)
+
+
+def _missing_draft() -> dict:
+    return {"ok": False, "findings": [{
+        "check": "draft_present", "status": "FAIL",
+        "detail": "draft.md is missing in the stage directory.",
+        "fix": "Write draft.md, then run stage again."}]}
+
+
+def _resolve_and_check(stage: Path, meta) -> dict:
+    draft, note = stage / DRAFT_FILE, stage / NOTE_FILE
     if not draft.is_file():
-        return {"ok": False, "findings": [{
-            "check": "draft_present", "status": "FAIL",
-            "detail": "draft.md is missing in the stage directory.",
-            "fix": "Write draft.md, then run stage again."}]}
-    result = filled_note_check(draft.read_text(encoding="utf-8"))
+        note.unlink(missing_ok=True)
+        return _missing_draft()
+    resolved = resolve_source_link(draft.read_text(encoding="utf-8"), meta)
+    _write_atomic(note, resolved)
+    result = filled_note_check(resolved)
     return {"ok": result.ok, "findings": result.findings}
 
 
@@ -231,7 +268,7 @@ def cmd_stage(args: argparse.Namespace) -> int:
     frozen = apply_stage_update(meta, title=title, destination=destination, keep_source=keep)
     if not frozen:
         write_meta(stage, meta)
-    _emit(_stage_output(meta, frozen, _check(stage)))
+    _emit(_stage_output(meta, frozen, _resolve_and_check(stage, meta)))
     return 0
 
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_actions.py — Behavioural tests for lib.note_actions (spec 044 T2.5).
 
 Covers the instruction set a /note draft delivers (SDD NoteInstructionSet):
 - move_note carries exactly the seven SDD keys, all allowed by the Hashi schema
 - delete_source with depends_on ["I01"] only when a source exists and is not kept
 - the whole set validates with jsonschema against hashi-instructions.schema.json
-- the set is built from the draft state alone (two builds are identical)
+- the set is built from the draft state alone, profile included (two builds
+  are identical)
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ def _meta(**overrides):
         template="Templates/t_meeting.md", template_stem="t_meeting",
         source_path="100 Inbox/Meeting raw.md", inbox="100 Inbox/",
         title="Design review", destination="Atlas/Meetings",
-        default_destination="Atlas/202 Notes/",
+        default_destination="Atlas/202 Notes/", profile="miyo",
     )
     keep = overrides.pop("keep_source", False)
     fields.update(overrides)
@@ -89,7 +90,7 @@ def test_no_delete_source_and_null_inbox_item_for_text_in_call():
 
 
 def test_set_top_level_fields():
-    doc = note_actions.build_note_instruction_set(_meta(), profile="miyo")
+    doc = note_actions.build_note_instruction_set(_meta())
     assert doc["type"] == "tomo-instructions"
     assert doc["schema_version"] == _schema()["properties"]["schema_version"]["const"]
     assert doc["generated"] == "2026-11-04T17:30:05Z"
@@ -101,18 +102,18 @@ def test_set_top_level_fields():
     {}, {"keep_source": True}, {"source_path": None},
 ])
 def test_set_validates_against_hashi_schema(overrides):
-    doc = note_actions.build_note_instruction_set(_meta(**overrides), profile="miyo")
+    doc = note_actions.build_note_instruction_set(_meta(**overrides))
     jsonschema.validate(instance=doc, schema=_schema())
 
 
 def test_set_with_null_profile_validates():
-    doc = note_actions.build_note_instruction_set(_meta(), profile=None)
+    doc = note_actions.build_note_instruction_set(_meta(profile=None))
     jsonschema.validate(instance=doc, schema=_schema())
 
 
 def test_delete_without_depends_on_would_be_rejected():
     """Guards the guard: the schema really rejects a delete_source missing depends_on."""
-    doc = note_actions.build_note_instruction_set(_meta(), profile="miyo")
+    doc = note_actions.build_note_instruction_set(_meta())
     del doc["actions"][1]["depends_on"]
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=doc, schema=_schema())
@@ -120,6 +121,26 @@ def test_delete_without_depends_on_would_be_rejected():
 
 def test_two_builds_are_identical():
     meta = _meta()
-    first = note_actions.build_note_instruction_set(meta, profile="miyo")
-    second = note_actions.build_note_instruction_set(meta, profile="miyo")
+    first = note_actions.build_note_instruction_set(meta)
+    second = note_actions.build_note_instruction_set(meta)
+    assert json.dumps(first) == json.dumps(second)
+
+
+def test_profile_comes_from_the_draft_state():
+    assert note_actions.build_note_instruction_set(_meta(profile="lyt"))["profile"] == "lyt"
+    assert note_actions.build_note_instruction_set(_meta(profile=None))["profile"] is None
+
+
+def test_builder_takes_no_separate_profile():
+    with pytest.raises(TypeError):
+        note_actions.build_note_instruction_set(_meta(), profile="other")
+
+
+def test_two_builds_from_a_reread_meta_are_identical(tmp_path):
+    meta = _meta(profile="miyo")
+    stage = tmp_path / STEM
+    stage.mkdir()
+    note_meta.write_meta(stage, meta)
+    first = note_actions.build_note_instruction_set(meta)
+    second = note_actions.build_note_instruction_set(note_meta.read_meta(stage))
     assert json.dumps(first) == json.dumps(second)

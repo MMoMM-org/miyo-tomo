@@ -45,6 +45,38 @@ The title is recorded by the first `stage`. Until then `stage` reports
 `inbox_file` and `destination_file` as empty strings rather than a name built
 from an empty title.
 
+## WHY new Stores the Profile in meta.json
+
+`new` reads `profile` from `vault-config.yaml` together with the inbox and the
+atomic-note path and stores it in `meta.profile`. `deliver` never re-reads the
+config, so a resume rebuilds the instruction set with the profile of the first
+run (the same reason `generated` is fixed at `new`).
+
+## WHY stage Resolves source_link Into note.md, Not Into draft.md
+
+`{{source_link}}` depends on `keep_source`: `[[<source stem>]]` when the source
+is kept, empty text when it will be deleted (a link to a deleted note would
+dangle) or when there is no source. `keep_source` can change on any later
+`stage` until `instructions_json` is done. Replacing the token inside `draft.md`
+would destroy it: after a resolution to empty text there is nothing left to
+re-resolve when the user then keeps the source, and a resolved `[[stem]]` cannot
+be told apart from a link the model wrote. So `draft.md` stays exactly as the
+model wrote it, token included, and every `stage` writes `note.md` beside it:
+`draft.md` with every real `{{source_link}}` replaced (the positions come from
+`lib/template_syntax`, so a fenced or escaped token is left alone, the same
+tokens the filled-note check sees) and nothing else changed. The filled-note
+check runs on `note.md`, the skill prints `note.md`, and `deliver` resolves
+`draft.md` again with the same function before it checks and uploads, so a
+`draft.md` rewritten after the last `stage` never ships with a stale link.
+`note.md` is written atomically (temp file, then replace); a missing `draft.md`
+removes any old `note.md` so a stale preview is never printed.
+
+The link value is `[[<basename of source_path without .md>]]`, computed here
+with the same rule `lib/template_syntax` applies to the other source tokens. The
+token positions come from `template_syntax._token_matches`, the function
+`tokens()` uses; resolving every prefilled token at once would also blank any
+other prefilled token, which would hide a leftover `{{uuid}}` from the check.
+
 ## WHY stage Refuses Rather Than Silently Ignores a Frozen Change
 
 Once a delivery step is done, the title and destination are part of files that
@@ -55,7 +87,7 @@ did not happen. The rule itself lives in `lib/note_meta.py`.
 
 ## WHY stage Runs the Filled-Note Check
 
-The skill prints the draft after every `stage`. The check (closed fence, no
+The skill prints `note.md` after every `stage`. The check (closed fence, no
 user-authored `tomo:` key, no `<%`, no `{{token}}` left) is reported with it so
 problems surface during revision, not at `deliver`. Findings are output, not an
 exit code: `stage` exits 0 so the agent reads the result instead of retrying.

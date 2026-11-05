@@ -1,5 +1,5 @@
 # note_actions.py — the instruction set one /note draft delivers.
-# version: 0.1.0
+# version: 0.1.1
 """Build the Hashi instruction set of a /note draft from its draft state.
 
 The set holds one ``move_note`` (I01) that files the inbox note at its
@@ -57,13 +57,13 @@ def build_note_actions(meta: NoteDraftMeta) -> list[dict]:
     return [build_move_note(meta)] + ([delete] if delete else [])
 
 
-def build_note_instruction_set(meta: NoteDraftMeta, *, profile: str | None) -> dict:
-    """Return the whole instruction set document for ``meta``."""
+def build_note_instruction_set(meta: NoteDraftMeta) -> dict:
+    """Return the whole instruction set document for ``meta``; the profile is ``meta.profile``."""
     return {
         "schema_version": wire_schema_version(WIRE_SCHEMA),
         "type": WIRE_TYPE,
         "generated": meta.generated,
-        "profile": profile,
+        "profile": meta.profile,
         "md_peer": meta.instructions_stem(),
         "actions": build_note_actions(meta),
     }

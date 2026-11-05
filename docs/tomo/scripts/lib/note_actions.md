@@ -17,8 +17,7 @@ resume path and the tests share one implementation.
 ## WHY the Set Is Built Only From the Draft State
 
 Every input is in `NoteDraftMeta` (stem, `generated`, title, destination,
-`inbox_file`, `source_path`, `keep_source`) plus the profile name and the wire
-version. Nothing reads the clock or Kado. A resume therefore rebuilds a
+`inbox_file`, `source_path`, `keep_source`, `profile`) plus the wire version. Nothing reads the clock or Kado. A resume therefore rebuilds a
 byte-identical JSON file, which is what lets "identical target counts as done"
 (F6-AC3) work: a builder that stamped `now()` would turn every resume into a
 name collision.
@@ -53,10 +52,11 @@ The delete is emitted only when there is a source and `keep_source` is false
 instruction-set producer makes (spec 035 ADR-5). A literal here would let a
 schema bump and this producer drift apart without a failing test.
 
-## WHY the Profile Is a Parameter
+## WHY the Profile Comes From the Draft State
 
-`NoteDraftMeta` (Phase 1, `lib/note_meta.py`) has no profile field, and the
-builder does not read `vault-config.yaml` itself (that would make it read the
-filesystem). The caller passes the profile name it read from the config.
-Persisting the profile in the draft state, so a resume rebuilds the set with
-the profile of the first run, is an open point for `deliver` (T2.6).
+`build_note_instruction_set` takes the profile from `meta.profile`, which
+`note-instructions.py new` stored from `vault-config.yaml`. The builder takes no
+separate profile argument: with one, a caller could pass a freshly read config
+value on resume and rebuild a set that differs from the one already in the
+inbox. Reading it from the draft state keeps every input of the set in one
+place and keeps the builder free of filesystem reads.

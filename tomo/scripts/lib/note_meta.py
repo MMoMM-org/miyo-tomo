@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.7
+# version: 0.1.8
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -216,6 +216,7 @@ def _kept_entry(meta: NoteDraftMeta) -> dict:
     return {
         "stem": meta.stem, "title": meta.title, "template": meta.template,
         "created": meta.created, "failed_step": meta.failed_step,
+        "steps_done": list(meta.steps_done),
     }
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.7
+# version: 0.2.8
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -844,7 +844,7 @@ WRITES = ("write_note", "write_file", "write_frontmatter")
 STEP_CALL = {"note": "write_note", "instructions_json": "write_file",
              "instructions_md": "write_note", "source_mark": "write_frontmatter"}
 DELIVER_KEYS = {"status", "step", "note_path", "instructions_json", "instructions_md",
-                "source_marked", "exists_path"}
+                "source_marked", "steps_done", "exists_path"}
 HASHI_SCHEMA = SCRIPTS_DIR.parent / "schemas" / "hashi-instructions.schema.json"
 
 
@@ -896,7 +896,8 @@ def test_deliver_writes_note_json_md_then_marks_source_in_order(inst, capsys, va
     assert exists is None and set(out) == DELIVER_KEYS
     assert out == {"status": "delivered", "step": "", "note_path": note,
                    "instructions_json": js, "instructions_md": md,
-                   "source_marked": True, "exists_path": ""}
+                   "source_marked": True, "steps_done": list(note_meta.STEPS),
+                   "exists_path": ""}
     assert _write_events(vault) == [("write_note", note), ("write_file", js),
                                     ("write_note", md), ("write_frontmatter", SOURCE)]
 
@@ -910,6 +911,7 @@ def test_deliver_failure_at_a_step_stops_every_later_step(inst, capsys, vault, i
     rc, exists, out, raw, err = _deliver(capsys, stem)
     assert rc == 1 and exists is None
     assert out["status"] == "failed" and out["step"] == step
+    assert out["steps_done"] == list(note_meta.STEPS[:index])
     assert out["source_marked"] is False and vault.merges == []
     assert _write_events(vault)[-1] == (STEP_CALL[step], target)
     assert len(_write_events(vault)) == index + 1
@@ -1052,6 +1054,7 @@ def test_deliver_resume_different_note_exits_3_and_changes_nothing(
     rc, exists, out, raw, _ = _deliver(capsys, stem)
     assert rc == 3 and raw.splitlines()[0] == f"EXISTS:{note}" and exists == f"EXISTS:{note}"
     assert out["status"] == "exists" and out["exists_path"] == note and out["step"] == "note"
+    assert out["steps_done"] == (["note"] if recorded else [])
     assert vault.files[note] == "other text"
     assert _write_events(vault) == [] and vault.merges == []
     assert _meta(inst, stem) == before
@@ -1067,6 +1070,7 @@ def test_deliver_resume_taken_instruction_set_name_exits_3(inst, capsys, vault):
     vault.events.clear()
     rc, exists, out, _, _ = _deliver(capsys, stem)
     assert rc == 3 and exists == f"EXISTS:{js}" and out["step"] == "instructions_json"
+    assert out["steps_done"] == ["note"]
     assert vault.files[js] == b"{}" and _write_events(vault) == []
 
 
@@ -1077,6 +1081,7 @@ def test_deliver_destination_clash_exits_3_before_any_write(inst, capsys, vault)
     rc, exists, out, _, _ = _deliver(capsys, stem)
     assert rc == 3 and exists == f"EXISTS:{taken}"
     assert out["status"] == "exists" and out["exists_path"] == taken and out["step"] == ""
+    assert out["steps_done"] == []
     assert _write_events(vault) == []
     meta = _meta(inst, stem)
     assert meta.steps_done == [] and meta.failed_step == ""

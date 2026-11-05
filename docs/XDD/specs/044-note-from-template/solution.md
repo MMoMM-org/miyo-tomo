@@ -422,7 +422,7 @@ Script: note-session.py start
     process_template_path: string  # vault path of that stem in templates.base_path, whatever note_include says; empty when not found
     include_configured: bool
     note_include: [string]     # empty when not configured
-    kept_drafts: [{stem, title, template, created, failed_step}]   # started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
+    kept_drafts: [{stem, title, template, created, failed_step, steps_done}]   # steps_done: landed steps in order; started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
     stale_stages: [stem]       # stage dirs with neither failed_step nor steps_done (or unreadable meta.json): an interrupted dialogue; the skill says so in one line and drops them
     candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured, and for a --process run with an empty stem (no listing call)
     folder_listed: int         # .md files the listing returned, before matching
@@ -488,6 +488,7 @@ Script: note-instructions.py deliver
     # A Kado outage passes the constructor and fails at step note.
     note_path, instructions_json, instructions_md: string
     source_marked: bool
+    steps_done: [string]       # meta.json's steps_done when the run ended; non-empty on exit 3 or failed means files landed
     exists_path: string        # set when status is exists
     # delivered with source_marked false: no source, or the source vanished before the mark
   Stdout first line on a collision: EXISTS:<vault-path>
@@ -782,7 +783,7 @@ sequenceDiagram
 ALGORITHM: note-session.py start
 INPUT: $ARGUMENTS
 1. PARSE: first token "--process" → mode process, template stem = the rest of the text (one pair of surrounding quotes and then one trailing ".md" removed; empty when none, since stems may contain spaces); else mode note, request = whole text
-2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step}
+2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step, steps_done}
 3. CONFIG: templates.note_include, templates.base_path, templates.mapping.daily read from config/vault-config.yaml with yaml.safe_load (the way the other Python scripts read it; a missing key reads as absent)
 4. IF note_include absent → include_configured false, candidates [] (the --process mode still lists the folder for process_template_path)
 5. ELSE LIST: kado list_dir(base_path, depth=1), direct children only, .md only → folder_listed; filter by fnmatchcase(stem, any glob); drop mapping.daily

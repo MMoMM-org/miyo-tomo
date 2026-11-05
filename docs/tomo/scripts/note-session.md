@@ -144,5 +144,7 @@ the honest result.
 
 WHY: the kept/stale split (failed_step set or steps_done non-empty) is owned by
 `lib/note_meta.list_stages`; re-deriving it here would drift from the writer
-(`note-instructions.py`). Stage directories are read relative to the working
+(`note-instructions.py`). Each entry is passed through unchanged, `steps_done`
+included, so the skill learns what already landed from `start` and never reads
+`meta.json` itself. Stage directories are read relative to the working
 directory, which is the instance root in the container.

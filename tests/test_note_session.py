@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_note_session.py — Behavioural tests for note-session.py (spec 044 T2.3).
 
 Covers the deterministic /note session start:
@@ -212,9 +212,10 @@ def test_kept_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
     assert out["kept_drafts"][0] == {
         "stem": "2026-11-04_100000", "title": "Design review",
         "template": "Templates/t_meeting.md", "created": "2026-11-04T10:15:00Z",
-        "failed_step": "instructions_json",
+        "failed_step": "instructions_json", "steps_done": ["note"],
     }
     assert out["kept_drafts"][1]["failed_step"] == ""
+    assert out["kept_drafts"][1]["steps_done"] == ["note"]
     assert out["stale_stages"] == ["2026-11-04_120000", "2026-11-04_130000"]
 
 

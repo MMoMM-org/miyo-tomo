@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.6
+# version: 0.2.7
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -41,7 +41,8 @@ Subcommands:
                  step: kado_config|note|instructions_json|instructions_md|
                        source_mark|"",
                  note_path, instructions_json, instructions_md, source_marked,
-                 exists_path}
+                 steps_done, exists_path}
+        steps_done: the steps meta.json records as landed when the run ended.
         On a taken name the first stdout line is EXISTS:<vault path>.
         Exit: 0 delivered; 1 Kado, check or guard failure; 2 bad invocation,
               unknown stem or meta.json write failure (no JSON on stdout);
@@ -361,6 +362,7 @@ def _deliver_output(meta, status: str, step: str = "", exists_path: str = "",
             "instructions_json": targets["instructions_json"],
             "instructions_md": targets["instructions_md"],
             "source_marked": source_marked,
+            "steps_done": list(meta.steps_done),
             "exists_path": exists_path}
 
 

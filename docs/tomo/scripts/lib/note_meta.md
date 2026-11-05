@@ -57,6 +57,18 @@ is missing or unreadable is stale for the same reason: `new` writes meta.json
 right after creating the directory, so its absence means the run died in
 between.
 
+## WHY a Kept Draft Entry Carries steps_done
+
+Each `kept_drafts` entry names the draft (`stem`, `title`, `template`,
+`created`), why it stopped (`failed_step`) and what already landed
+(`steps_done`, the fixed step tokens in delivery order). The skill needs the
+last one twice: to decide whether the name can still change (an empty list
+means nothing landed, so rename is open) and, on Drop, to name the files the
+user must delete in Obsidian. Without it in the listing the skill would open
+`meta.json` itself, a second reader of a file this library owns, and one more
+place the frozen rule could be re-derived wrongly. The tokens are fixed
+vocabulary, never user text, so the entry stays inside the privacy contract.
+
 ## WHY FAILED_STEPS Is Separate From STEPS
 
 `kado_config` is where a delivery stops when no Kado URL or token can be

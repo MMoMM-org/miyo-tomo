@@ -221,6 +221,16 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
+## WHY deliver Reports steps_done
+
+Every `deliver` output carries `steps_done` from `meta.json` as it stands when
+the run ends. On exit 3 and on a failed step the skill must know whether files
+already landed: an empty list leaves the name open to Rename, a non-empty one
+freezes it and names the files a Drop leaves behind. Reporting it on stdout
+gives the skill that answer from the call it just made instead of a second
+read of `meta.json`, which only `lib/note_meta.py` should interpret. The
+tokens are the fixed step names, never user text.
+
 ## WHY a Step Is Recorded as In Flight Before Its Upload
 
 The upload and the `meta.json` write that records it are two operations, and

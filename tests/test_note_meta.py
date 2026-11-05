@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
@@ -294,6 +294,7 @@ def test_listing_splits_failed_deliveries_from_stale_stages(tmp_path):
         "template": "Templates/Meeting Notes.md",
         "created": "2026-11-04T10:15:00Z",
         "failed_step": "instructions_json",
+        "steps_done": ["note"],
     }]
     assert listing.stale_stages == ["2026-11-04_100000"]
 
@@ -370,6 +371,7 @@ def test_delivery_killed_between_steps_is_a_kept_draft_not_stale(tmp_path):
         "template": "Templates/Meeting Notes.md",
         "created": "2026-11-04T10:15:00Z",
         "failed_step": "",
+        "steps_done": ["note"],
     }]
     assert listing.stale_stages == []
 

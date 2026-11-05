@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -55,7 +55,9 @@ from lib.note_meta import (  # noqa: E402
     remove_stage, stage_dir, write_meta,
 )
 from lib.note_process import PROCESS_DIR, read_process  # noqa: E402
-from lib.template_syntax import _token_matches, filled_note_check  # noqa: E402
+from lib.template_syntax import (  # noqa: E402
+    filled_note_check, resolve_tokens, source_link_value,
+)
 
 CONFIG_PATH = Path("config") / "vault-config.yaml"
 SOURCE_FILE = "source.md"
@@ -207,22 +209,10 @@ def _destination_arg(value: str | None) -> str | None:
     return value.strip()
 
 
-def source_link_value(meta) -> str:
-    """``[[<source stem>]]`` when the source exists and is kept; empty text otherwise."""
-    if not meta.source_path or not meta.keep_source:
-        return ""
-    name = posixpath.basename(meta.source_path)
-    return "[[" + (name[:-3] if name.endswith(".md") else name) + "]]"
-
-
 def resolve_source_link(text: str, meta) -> str:
-    """Replace each real {{source_link}} token (as tokens() sees them); nothing else."""
-    value, parts, cursor = source_link_value(meta), [], 0
-    for match, _line in _token_matches(text):
-        if match.group(1) == SOURCE_LINK:
-            parts += [text[cursor:match.start()], value]
-            cursor = match.end()
-    return "".join(parts) + text[cursor:]
+    """Replace each real {{source_link}} token from meta's source and keep_source; nothing else."""
+    value = source_link_value(meta.source_path, meta.keep_source)
+    return resolve_tokens(text, {SOURCE_LINK: value})
 
 
 def _write_atomic(target: Path, text: str) -> None:

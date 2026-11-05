@@ -71,11 +71,11 @@ check runs on `note.md`, the skill prints `note.md`, and `deliver` resolves
 `note.md` is written atomically (temp file, then replace); a missing `draft.md`
 removes any old `note.md` so a stale preview is never printed.
 
-The link value is `[[<basename of source_path without .md>]]`, computed here
-with the same rule `lib/template_syntax` applies to the other source tokens. The
-token positions come from `template_syntax._token_matches`, the function
-`tokens()` uses; resolving every prefilled token at once would also blank any
-other prefilled token, which would hide a leftover `{{uuid}}` from the check.
+The value and the replacement come from `lib/template_syntax`:
+`source_link_value(source_path, keep_source)` and `resolve_tokens(text,
+{"source_link": value})`, the same rule and the same token positions that
+`tokens()` and the filled-note check use. `resolve_tokens` replaces only the
+names it is given, so a leftover `{{uuid}}` still reaches the check.
 
 ## WHY stage Refuses Rather Than Silently Ignores a Frozen Change
 

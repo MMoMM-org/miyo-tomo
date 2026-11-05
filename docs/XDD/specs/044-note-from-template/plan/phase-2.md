@@ -63,7 +63,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass; ruff clean.
   5. Success: the session start is deterministic `[ref: PRD/F1, F2, F6; SDD/F1-AC6, F2-AC4, F6-AC2]`
 
-- [ ] **T2.4 note-process.py** `[activity: backend]`
+- [x] **T2.4 note-process.py** `[activity: backend]`
 
   1. Prime: SDD `note-process.py` interface; T1.3 library; T2.1 outline format `[ref: SDD/Internal API Changes]`
   2. Test: new `tests/test_note_process.py`: `read` with and without `--outline` (`missing_required`); `write` from an outline file, rejects absent required points with exit 1 and writes nothing; `decline` writes the marker; `write` after `decline` replaces it; a broken file reads with `error`.

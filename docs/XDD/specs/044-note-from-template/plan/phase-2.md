@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Scripts"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -110,6 +110,6 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass and never touch `~/.tomo`.
   5. Success: no note text, source text or answer in any output, only allowlisted fields on stdout; process files survive `[ref: PRD/F5, F7; SDD/F5-AC8, F7-AC12]`
 
-- [ ] **T2.8 Phase Validation** `[activity: validate]`
+- [x] **T2.8 Phase Validation** `[activity: validate]`
 
   - Run the full pytest command and ruff. Mutation-prove in an isolated copy that the order, no-overwrite, frozen-title and no-echo tests go red when their mechanism is removed. Verify against the SDD interfaces.

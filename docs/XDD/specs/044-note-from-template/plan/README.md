@@ -107,7 +107,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Prerequisite and shared libraries](phase-1.md)
-- [ ] [Phase 2: Scripts](phase-2.md)
+- [x] [Phase 2: Scripts](phase-2.md)
 - [ ] [Phase 3: Runtime prose and documentation](phase-3.md)
 - [ ] [Phase 4: Eval, live walk and close-out](phase-4.md)
 

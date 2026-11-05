@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.2
+# version: 0.2.3
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the instance root. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -20,6 +20,7 @@ Fill one vault template into a new note with the user, then deliver the note and
 - Exit 2 of `new` or `stage` whose error starts with `note-instructions: --title`, `note-instructions: --destination` or `note-instructions: --source` is refused input (a `--source` outside the inbox, a title that is blank, starts with a dot, holds an invisible character or holds `{{` or `<%`, a destination that is not a relative vault folder): name what was refused and ask for another value; rerun the same call with it.
 - Any other exit 2 of `new` or `stage` (config, local I/O, stem or `meta.json`): show the error verbatim and stop; do not drop the stem.
 - Never run `deliver` before `stage` has recorded a title.
+- When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." When `template-outline.py` exits 2, show its `error`. This is the outline failure report; steps 4, 8 and 9 say what follows it.
 - Show script error text verbatim.
 
 ## 1. Start
@@ -82,7 +83,7 @@ python3 scripts/note-process.py read --template <template stem> --outline tomo-t
 `<stem>` is the `stem` from `new`; keep it and `default_destination`. `<template stem>` is the template's filename without `.md`.
 
 - `new` exits 1: say the source could not be read, then ask: Another source / Abort. Another source → rerun `new` with it. Abort → stop.
-- When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this template. Abort → drop.
+- `template-outline.py` exits 1: give the outline failure report. Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this template. Abort → drop.
 - `template-outline.py` exits 2: show its `error`, drop the stem and stop.
 - When `read` reports `error`, say in one line that the process file is ignored and why; continue with the template alone.
 - For each name in `missing_required`, say in one line that the template no longer has this required point; continue without it.
@@ -138,7 +139,7 @@ python3 scripts/note-instructions.py deliver --stem <stem>
 - On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite.
   - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `frozen` true: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the note may already be in the inbox as `note_path`. Then run `drop`.
-- On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then branch on `frozen` with the exit 3 options, naming no `exists_path` (it is empty on a withdrawn stop). On the withdrawn `frozen` true Drop, name the files of `steps_done`, or, when `steps_done` is empty, say the note may already be in the inbox as `note_path`.
+- On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then offer Drop / Abort only (no Rename, no Keep). On either answer: when `steps_done` is non-empty, first name its files by kind (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty and `frozen` is true, say the note may already be in the inbox as `note_path`. Then run `drop`.
 - On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
 - Exit 2: show the error and stop; the draft stays.
 
@@ -160,7 +161,7 @@ Print what would be saved, then ask: Save / Not now / Never for this template.
 python3 scripts/template-outline.py --template "<template path>" --out tomo-tmp/note/process-outline.json
 ```
 
-  When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." When `template-outline.py` exits 2, show its `error`. On either exit, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run (one `--required` per point; omit flags without a value):
+  When `template-outline.py` exits 1 or 2, give the outline failure report, then run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run (one `--required` per point; omit flags without a value):
 
 ```bash
 python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json --destination "<folder>" --required "<point>" --guidance-file tomo-tmp/note/process-guidance.md
@@ -179,7 +180,7 @@ When `process_template_path` is empty, say that the template is unknown and stop
 python3 scripts/template-outline.py --template "<process_template_path>" --out tomo-tmp/note/process-outline.json
 ```
 
-When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." When `template-outline.py` exits 2, show its `error`. On either exit, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run:
+When `template-outline.py` exits 1 or 2, give the outline failure report, then run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing and stop. On exit 0, run:
 
 ```bash
 python3 scripts/note-process.py read --template <template stem> --outline tomo-tmp/note/process-outline.json

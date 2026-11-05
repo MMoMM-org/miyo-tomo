@@ -106,9 +106,9 @@ The script owns the rule; the skill reads the boolean `frozen` that `deliver` pr
 `meta.json` when the run ended. Recomputing the rule in prose drifted once already: the skill keyed Rename on
 `steps_done` empty, which offered a rename that `stage` then refused for an in-flight stage. Reading `meta.json` itself
 would add a file read the model can get wrong (a stale or misread file) for a value the script already prints.
-`steps_done` stays in the output because it names the files a Drop leaves behind. A withdrawn stop (exit 1) branches
-the same way: the guards run before the uploads on every `deliver`, a resume included, so a withdrawn resume can come
-on a stage that is already frozen.
+`steps_done` stays in the output because it names the files a Drop leaves behind. A withdrawn stop (exit 1) does not
+branch this way: no rename or keep cures it (see
+[Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step)).
 
 ## Why a Kept Draft Drop Names Landed Files by Kind
 
@@ -147,13 +147,16 @@ WHY: `deliver` exits 1 for three different stops, and only the `status` field te
 an action reports exit 1, `status` `withdrawn` and an empty step: the same exit code and step as a failed filled-note
 check. Without the `status` branch the model would read the empty step as "fix the draft" and loop on a refusal no
 draft edit can cure. Withdrawn writes nothing in this run, so the skill says so and why the action was withdrawn,
-then branches on `frozen` as exit 3 does (rename while it is false, Keep/Drop naming the files of
-`steps_done` once it is true): the guards run before the uploads on every `deliver`, a resume included, so
-earlier runs may already have landed files and frozen the name. The options name no `exists_path`: a withdrawn stop
-prints it empty, because no name collision was found, so naming it would show the user a blank path. The frozen-true
-Drop names the files of `steps_done`, or, with `steps_done` empty, says the note may already be in the inbox as
-`note_path`. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
-repeat the refusal.
+then offers Drop / Abort only. A withdrawal can only come from `withdraw_unjustified_deletes` or
+`validate_destinations` (`lib/render_withhold.py`), and a destination clash exits 3 earlier in `_guarded_actions`
+(`note-instructions.py`). For `/note` a withdrawal therefore means a `delete_source` whose `depends_on` is missing
+from the built actions: a build defect in the script, not anything the user chose. No rename cures it (the title is
+not part of the dependency) and no Keep cures it (every later `deliver` rebuilds the same actions and is withdrawn
+again), so neither is offered and no `exists_path` is named (a withdrawn stop prints it empty). The guards run before
+the uploads on every `deliver`, a resume included, so earlier runs may already have landed files: before the drop the
+skill names the files of `steps_done` by kind, or, with `steps_done` empty and `frozen` true, says the note may
+already be in the inbox as `note_path`. It offers no resume because the defect repeats on every run, so keeping the
+draft would only repeat the refusal.
 
 With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the
 next `/note` offers resume. That includes `kado_config`, the step `deliver` reports when no Kado URL or token is
@@ -335,7 +338,9 @@ stores no destination, which already means Default).
 
 WHY: The Save path of the process offer and `/note --process` both outline the template before `note-process.py` runs.
 An unreadable template is exit 1 there too, so both give the F2-AC4 remedy (grant the Kado key read access to
-`templates.base_path`, or do not use `/note`) in the same words as step 4. Exit 2 is a bad invocation or local write
+`templates.base_path`, or do not use `/note`) in the same words as step 4. The report for both exits is one Rules line
+that steps 4, 8 and 9 reference, because three copies drifted into two wordings; each step keeps only what follows
+the report (step 4 drops the stem, steps 8 and 9 remove the helper files). Exit 2 is a bad invocation or local write
 failure that no other value cures, so the skill shows the error. Either way `note-process.py` would have no outline to
 check required points against, so the skill runs `rm -f` on the helper files and stops: it must write nothing.
 

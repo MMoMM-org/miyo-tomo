@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -32,6 +32,8 @@ REMEDY = (
     "Grant the Kado key read access to the template folder (`templates.base_path`), "
     "or do not use `/note`."
 )
+OUTLINE_EXIT_1 = ("When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the "
+                  "template may not be readable by the Kado key. Then: \"" + REMEDY + "\"")
 
 
 def _text(path: Path) -> str:
@@ -54,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.2")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.3")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -195,11 +197,16 @@ def test_empty_listing_says_empty_or_not_readable_with_the_remedy():
 
 
 def test_unreadable_template_gives_the_same_remedy():
+    rules = _section("Rules")
+    assert OUTLINE_EXIT_1 in rules
+    assert "may not be readable by the Kado key" in rules
+    assert REMEDY in rules
+    assert ("When `template-outline.py` exits 2, show its `error`. This is the outline failure report; "
+            "steps 4, 8 and 9 say what follows it.") in rules
     text = _section("4. Stage the draft")
-    assert "When `template-outline.py` exits 1" in text
-    assert "may not be readable by the Kado key" in text
-    assert REMEDY in text
+    assert "`template-outline.py` exits 1: give the outline failure report. Ask: Another template / Abort." in text
     assert "Another template / Abort" in text
+    assert "show its `error` verbatim" not in text
 
 
 # ── Staging and the script flags ────────────────────────────────────────────
@@ -341,7 +348,7 @@ ABORT_LINES = {
     "4. Stage the draft": (
         "`new` exits 1: say the source could not be read, then ask: Another source / Abort. "
         "Another source → rerun `new` with it. Abort → stop.",
-        "Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this "
+        "report. Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this "
         "template. Abort → drop.",
         "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
     ),
@@ -427,13 +434,15 @@ def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_dr
             "(Deliver / Change something / Abort).") in _section("7. Deliver")
 
 
-def test_a_withdrawn_action_is_an_exit_1_branch_on_frozen_like_exit_3():
+def test_a_withdrawn_action_offers_only_drop_or_abort_and_names_landed_files():
     text = _section("7. Deliver")
     assert ("On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was "
-            "withdrawn, then branch on `frozen` with the exit 3 options, naming no `exists_path` (it is empty "
-            "on a withdrawn stop).") in text
-    assert ("On the withdrawn `frozen` true Drop, name the files of `steps_done`, or, when `steps_done` is "
-            "empty, say the note may already be in the inbox as `note_path`.") in text
+            "withdrawn, then offer Drop / Abort only (no Rename, no Keep). On either answer: when `steps_done` "
+            "is non-empty, first name its files by kind (`note` → `note_path`, `instructions_json`, "
+            "`instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty and "
+            "`frozen` is true, say the note may already be in the inbox as `note_path`. Then run `drop`.") in text
+    assert "branch on `frozen` with the exit 3 options" not in text
+    assert "On the withdrawn `frozen` true Drop" not in text
     assert "then branch on `frozen` as for exit 3." not in text
     assert "as for exit 3 with `steps_done` empty" not in text
     assert "- `status` `withdrawn`:" not in text
@@ -467,17 +476,15 @@ def test_process_offer_reruns_the_outline_and_writes_with_one_required_flag_per_
     assert "python3 scripts/note-process.py decline --template <template stem>" in text
 
 
-OUTLINE_EXIT_1 = ("When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the "
-                  "template may not be readable by the Kado key. Then: \"" + REMEDY + "\"")
-
 
 @pytest.mark.parametrize("heading", ["8. Process offer", "9. Process mode"])
 def test_process_paths_branch_on_template_outline_failures(heading):
+    assert OUTLINE_EXIT_1 in _section("Rules")
     text = _section(heading)
-    assert OUTLINE_EXIT_1 in text
-    assert ("When `template-outline.py` exits 2, show its `error`. On either exit, run "
+    assert ("When `template-outline.py` exits 1 or 2, give the outline failure report, then run "
             "`rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`, write nothing "
             "and stop.") in text
+    assert OUTLINE_EXIT_1 not in text
 
 
 def test_process_mode_defines_keep_current_and_default_destination():

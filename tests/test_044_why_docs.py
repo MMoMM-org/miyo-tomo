@@ -137,6 +137,9 @@ def test_frozen_title_is_always_qualified_by_the_freeze_rule():
         "freezes title and destination only once a step is done",
         # A withdrawn stop can come on a frozen resume; it branches on frozen like exit 3.
         "exactly as exit 3 does with `steps_done` empty",
+        # A withdrawal is a build defect no rename or keep cures; it no longer branches like exit 3.
+        "then branches on `frozen` as exit 3 does",
+        "A withdrawn stop (exit 1) branches the same way",
         # A kado_config failure sets failed_step without any upload; frozen, not failed_step, gates the hedge.
         "`failed_step` set and `steps_done` empty may already have the note in the inbox",
         "the skill branches on `steps_done` (see",
@@ -183,6 +186,11 @@ NOTE_META = SCRIPTS / "lib" / "note_meta.md"
         # A2: exit 1 is branched on status; withdrawn is not a draft problem.
         ("Exit 1 Branches on status", ["status", "withdrawn", "empty step",
                                        "no draft edit", "rename", "steps_done", "exists_path"]),
+        # A withdrawal is a build defect (a delete_source missing its depends_on): Drop / Abort only.
+        ("Exit 1 Branches on status", ["withdraw_unjustified_deletes", "validate_destinations",
+                                       "_guarded_actions", "delete_source", "depends_on", "build defect",
+                                       "Drop / Abort only", "No rename cures it", "no Keep cures it",
+                                       "offers no resume", "frozen"]),
         # A3: the empty-step branch names the stamp, because stage reports check.ok true then.
         ("Exit 1 Branches on status", ["frontmatter stamp", "check.ok", "true"]),
         # A4: a missing Kado config is a named failed step.
@@ -269,7 +277,8 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
         ("Default Destination", ["omit", "--destination", "atomic_note", "keep current",
                                  "exists", "replaces"]),
         # Fix 5: both process paths branch on template-outline.py exits.
-        ("Process Paths Branch", ["exit 1", "F2-AC4", "exit 2", "rm -f", "write nothing"]),
+        ("Process Paths Branch", ["exit 1", "F2-AC4", "exit 2", "rm -f", "write nothing",
+                                  "one Rules line", "steps 4, 8 and 9", "drops the stem"]),
         # Fix 6: a resume never ran read this session.
         ("Resume Gets No Process Offer", ["read", "resume", "default_destination", "skip"]),
         # Fix 7: the hand-off names the default type so inbox-author cannot bounce back.

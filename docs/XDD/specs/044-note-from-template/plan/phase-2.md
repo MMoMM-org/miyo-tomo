@@ -33,7 +33,7 @@ phase: 2
 
 This phase delivers every deterministic part of `/note`.
 
-- [ ] **T2.1 template-outline.py** `[activity: backend]` `[parallel: true]`
+- [x] **T2.1 template-outline.py** `[activity: backend]` `[parallel: true]`
 
   1. Prime: SDD outline interface and token tables; `kado_client.read_note` `[ref: SDD/Internal API Changes]`
   2. Test: new `tests/test_template_outline.py` (fake Kado and `--local`): points per the token tables; `--stage` writes `template.md` with prefilled tokens resolved and `outline.json`; `--out` writes the outline to the given file; `frontmatter_ok: false` exits 0; unreadable template exits 1.

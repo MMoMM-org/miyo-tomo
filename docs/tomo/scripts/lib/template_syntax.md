@@ -129,7 +129,7 @@ in the outline stay valid for `template.md`.
 WHY `source_link` is prefilled but not resolved by `resolve_prefilled()`: its value
 depends on `keep_source`, which the user decides after the outline is staged (owner
 decision, SDD "Prefilled tokens"). A link to a source that will be deleted would
-dangle, so `note-instructions.py stage` resolves it in `draft.md`:
+dangle, so `note-instructions.py stage` resolves it into `note.md` (`draft.md` keeps the token, so a later `keep_source` change re-resolves) and `deliver` resolves `draft.md` the same way:
 `source_link_value(source_path, keep_source)` gives `[[<source stem>]]` when the
 source is kept and empty text when it will be deleted. It stays `{{source_link}}` in
 `template.md`, and `tokens()` still reports it `prefilled: true` with a source, so it

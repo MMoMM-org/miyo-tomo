@@ -30,7 +30,7 @@ an unreadable one is reported on stderr by its error class only.
 WHY `--stage` resolves `source_path` but leaves `{{source_link}}` in `template.md`:
 the link's value depends on `keep_source`, which is not decided yet when the
 outline is staged; a link to a source that will be deleted would dangle.
-`note-instructions.py stage` resolves it in `draft.md` (owner decision, SDD
+`note-instructions.py stage` resolves it into `note.md`, leaving `draft.md` as written (owner decision, SDD
 "Prefilled tokens"). With a source it is still reported `prefilled: true`, so it is
 not a point.
 

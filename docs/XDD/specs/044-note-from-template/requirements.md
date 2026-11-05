@@ -162,7 +162,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
   - [ ] Given a process file with free guidance, When Tomo asks, Then the order and emphasis of the questions follow it
   - [ ] Given a process file that cannot be read, When `/note` runs, Then Tomo says so in one line and continues with the template alone
   - [ ] Given a required point the template no longer has, When `/note` runs, Then Tomo says so and continues without it
-  - [ ] Given a delivered note whose template has no process file, and the session showed a changed destination, an answered re-ask of a skipped point, or a requested question order, When the delivery report is printed, Then Tomo asks once whether to save that: save, not now, or never for this template
+  - [ ] Given a delivered note whose template has no process file, and the session showed a changed destination, a point skipped in the question rounds that was filled through Change something before delivery, or a requested question order, When the delivery report is printed, Then Tomo asks once whether to save that: save, not now, or never for this template
   - [ ] Given the session showed none of these, or the template already has a process file, When delivery ends, Then Tomo does not ask
   - [ ] Given "save", When it completes, Then the process file exists and every required point in it exists in the template; Given "not now", Then nothing is written
   - [ ] Given "never", When the user later runs `/note` with that template, Then Tomo treats it as having no process and does not ask again

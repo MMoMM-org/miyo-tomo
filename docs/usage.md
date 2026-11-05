@@ -40,7 +40,7 @@ Each job has its own page:
 
 ### Modes
 
-- `/note <request>` — for example `/note meeting with the design team`, or `/note meeting notes from 100 Inbox/Meeting raw.md`. Tomo picks the matching template (and asks you when several fit), shows which template points your material already covers, and asks about the open ones in at most two rounds. It then prints the full draft with the template, the final name, the destination folder, the points left empty and, for an inbox-note source, that the source is deleted when you apply the instruction set. You can change anything, then approve to deliver or abort. If a delivery was interrupted earlier, `/note` offers to resume or drop that draft first.
+- `/note <request>` — for example `/note meeting with the design team`, or `/note meeting notes from 100 Inbox/Meeting raw.md`. Tomo picks the matching template (and asks you when several fit), shows which template points your material already covers, and asks about the open ones in at most two rounds. It then prints the full draft with the template, the final name and place, the points left empty and, for an inbox-note source, that the source is deleted when you apply the instruction set. You can change anything, including keeping the source instead of having it deleted on apply, then approve to deliver or abort. If a delivery was interrupted earlier, `/note` offers to resume or drop that draft first.
 - `/note --process <template>` — creates or changes the process file for one template (see below).
 
 If a note with the chosen name already exists, Tomo overwrites nothing and offers to rename or abort.
@@ -51,11 +51,12 @@ The first time you use `/note`, Tomo lists your template folder, proposes which 
 
 ### Process files
 
-A process file remembers what you want for one template: the destination folder, the points that are required and the order of the questions. Tomo creates it in a dialogue — you never edit one by hand. After a delivery where you changed the destination, answered a skipped point or asked for a question order, Tomo asks once: save, not now, or never for this template. "Never" is remembered; `/note --process <template>` replaces it.
+A process file remembers what you want for one template: the destination folder, the points that are required and the order of the questions. Tomo creates it in a dialogue — you never edit one by hand. After a delivery where you changed the destination, filled a skipped point through Change something before delivery or asked for a question order, Tomo asks once: save, not now, or never for this template. "Never" is remembered; `/note --process <template>` replaces it.
 
 ### Titles and destinations
 
 - A title may not start with a dot and may not contain invisible characters. The zero-width joiner and zero-width non-joiner are allowed.
+- A blank title, or one containing `{{` or `<%`, is refused and Tomo asks for another.
 - A process destination must be a relative vault folder, for example `Atlas/Meetings`, not an absolute path.
 
 ### Discard a delivered note

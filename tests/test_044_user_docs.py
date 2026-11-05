@@ -98,3 +98,9 @@ def test_relative_links_resolve() -> None:
     for path in (USAGE, TROUBLE, INSTR):
         for target in re.findall(r"\]\((?!https?:|#|mailto:)([^)#\s]+)", path.read_text(encoding="utf-8")):
             assert (path.parent / target).exists(), f"{path.name}: broken link {target}"
+
+
+def test_usage_states_refused_titles_and_keep_source() -> None:
+    s = _note_usage()
+    assert "A blank title, or one containing `{{` or `<%`, is refused" in s
+    assert "keeping the source instead of having it deleted on apply" in s

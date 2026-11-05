@@ -642,10 +642,12 @@ def deliver(meta, client):
                 if not same_text(client, path, payloads[step]): # only a trailing newline is normalised
                     return exists(meta, path, step)             # exit 3, "EXISTS:<path>" first line
             elif step not in meta.steps_done:
+                mark_in_flight(meta, step)                      # failed_step = step, meta.json written: a landed but
+                                                                # unrecorded upload is a kept draft, never a stale stage
                 upload(client, path, payloads[step])            # write_note for .md, write_file(bytes) for .json
             # absent but recorded in steps_done: not rewritten (the user removed it after it landed)
         except KadoError: return failed(meta, step)             # failed_step recorded; later steps never run
-        mark_done(meta, step)                                   # meta.json written after every step
+        mark_done(meta, step)                                   # meta.json written after every step; clears failed_step
     marked = False
     if meta.source_path:
         try:
@@ -772,7 +774,7 @@ sequenceDiagram
 - **Source deleted or moved before the mark** (`KadoNotFoundError` on the frontmatter read or merge): the step counts as done, `deliver` reports `delivered` with `source_marked: false`, the stage is removed; the report says the source was not marked.
 - **Abort at any question**: the skill runs `note-instructions.py drop` when a stem exists and confirms in one line; a confirmed `note_include` stays saved.
 - **Interrupted dialogue** (`stale_stages` at start): one line, then `drop` for each; they hold user material and nothing to deliver.
-- **Interrupted delivery** (a kept draft with `steps_done` non-empty and `failed_step` empty, the process was killed between steps): treated like a failed delivery; the next `/note` offers resume or drop, never a silent drop, since part of it is already in the vault.
+- **Interrupted delivery** (a kept draft with `steps_done` non-empty and `failed_step` empty, the process was killed between steps; or `failed_step` naming the step whose upload was in flight, killed or unrecorded after the upload): treated like a failed delivery; the next `/note` offers resume or drop, never a silent drop, since part of it is already in the vault.
 
 ### Complex Logic
 

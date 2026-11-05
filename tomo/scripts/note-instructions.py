@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.5
+# version: 0.2.6
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -30,7 +30,8 @@ Subcommands:
         check; checks the destination and the guards; then writes, in order,
         the stamped note, <stem>_instructions.json and <stem>_instructions.md
         flat in the inbox and merges the source mark. A step already landed
-        with identical text counts as done; meta.json records every step.
+        with identical text counts as done; meta.json records every step, and
+        names a step as failed_step before uploading it.
         A source gone before the mark counts as delivered, source_marked false.
         Removes the stage directory on success.
         No Kado URL or token: failed at step kado_config, recorded as
@@ -429,6 +430,11 @@ def _upload(client, path: str, payload: str) -> None:
         client.write_file(path, payload.encode("utf-8"))
 
 
+def _mark_in_flight(stage: Path, meta, step: str) -> None:
+    mark_step_failed(meta, step)
+    write_meta(stage, meta)
+
+
 def _record(stage: Path, meta, step: str) -> None:
     mark_step_done(meta, step)
     write_meta(stage, meta)
@@ -449,6 +455,7 @@ def _deliver_step(client, stage: Path, meta, step: str, payload: str) -> None:
             if not _same_text(client, path, payload):
                 raise DeliveryStop("exists", step, 3, path)
         elif step not in meta.steps_done:
+            _mark_in_flight(stage, meta, step)
             _upload(client, path, payload)
     except KadoError as exc:
         raise _fail(stage, meta, step, exc) from exc

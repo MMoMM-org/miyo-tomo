@@ -221,6 +221,24 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
+## WHY a Step Is Recorded as In Flight Before Its Upload
+
+The upload and the `meta.json` write that records it are two operations, and
+nothing makes them atomic. If the record fails (a local I/O error, exit 2) or
+the process is killed between them on the first step, the vault holds the note
+while `meta.json` still says `steps_done` `[]` and `failed_step` empty: exactly
+the shape of an untouched stage. `note-session.py start` would list it as stale
+and the skill would drop it, orphaning a landed note. So `deliver` writes
+`meta.json` with `failed_step` set to the step just before uploading it.
+Whatever happens after that, the stage is a kept draft; a successful upload is
+then recorded as done, which clears `failed_step` as before. A resume finds the
+landed target with identical text and counts it as done, so the in-flight mark
+costs no rewrite. Only uploads are marked: a probe or comparison that fails is
+already recorded by the failure path, and the source mark is never the first
+step, so `steps_done` is non-empty by then. The price is one extra local write
+per upload, and `failed_step` meaning "failed or possibly landed", which is
+what the skill's resume offer needs anyway.
+
 ## WHY Missing Kado Config Is Its Own Step, kado_config
 
 `KadoClient()` raises only when it cannot resolve a URL or a token (arguments,

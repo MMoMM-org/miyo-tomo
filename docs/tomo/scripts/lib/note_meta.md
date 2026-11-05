@@ -46,7 +46,9 @@ delivery"). The second case has `failed_step` empty because the process was
 killed between steps, before any step could record a failure. Part of that
 delivery is already in the vault (at least the note in the inbox), so dropping
 it silently would orphan a landed file; it is offered for resume or drop like a
-failed one.
+failed one. A kill between an upload and its record cannot fall through to
+stale: `note-instructions.py deliver` sets `failed_step` to the step before
+uploading it, so the in-flight step already keeps the draft.
 
 A stale stage has neither `failed_step` nor `steps_done`: a dialogue that was
 interrupted before approval. It holds user material but nothing landed, so

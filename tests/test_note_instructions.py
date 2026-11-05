@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.5
+# version: 0.2.6
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -951,7 +951,7 @@ def test_deliver_killed_between_steps_is_a_kept_draft_not_a_stale_stage(inst, ca
         ni.main(["deliver", "--stem", stem])
     capsys.readouterr()
     meta = _meta(inst, stem)
-    assert meta.steps_done == ["note"] and meta.failed_step == ""
+    assert meta.steps_done == ["note"] and meta.failed_step == "instructions_json"
     start = _session_start(capsys)
     assert [d["stem"] for d in start["kept_drafts"]] == [stem]
     assert stem not in start["stale_stages"]
@@ -990,6 +990,36 @@ def test_deliver_resume_identical_unrecorded_note_counts_as_done(inst, capsys, v
     rc, _, out, _, _ = _deliver(capsys, stem)
     assert rc == 0 and out["status"] == "delivered"
     assert ("write_note", note) not in _write_events(vault)
+
+
+def test_deliver_first_step_landed_but_unrecorded_is_a_kept_draft_that_resumes(
+        inst, capsys, vault, monkeypatch):
+    """The note lands, then the meta.json write recording it fails: never a stale stage."""
+    stem = _ready(inst, capsys, vault)
+    _, note, js, md = _paths(inst, stem)
+    real_write_meta = ni.write_meta
+
+    def record_fails(stage, meta):
+        if meta.steps_done == ["note"]:
+            raise OSError("disk full")
+        real_write_meta(stage, meta)
+
+    monkeypatch.setattr(ni, "write_meta", record_fails)
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 2 and out is None
+    assert _write_events(vault) == [("write_note", note)]
+    monkeypatch.setattr(ni, "write_meta", real_write_meta)
+    meta = _meta(inst, stem)
+    assert meta.steps_done == [] and meta.failed_step == "note"
+    start = _session_start(capsys)
+    assert [d["stem"] for d in start["kept_drafts"]] == [stem]
+    assert stem not in start["stale_stages"]
+    vault.events.clear()
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered"
+    assert _write_events(vault) == [("write_file", js), ("write_note", md),
+                                    ("write_frontmatter", SOURCE)]
 
 
 def test_deliver_trailing_newline_alone_is_identical(inst, capsys, vault):

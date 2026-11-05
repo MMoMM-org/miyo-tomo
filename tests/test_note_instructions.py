@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.2.4
+# version: 0.2.5
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
 later step; keep-source frozen once instructions_json landed; a killed run is a
 kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
 destination clash and guard-cut sets refused; filled-note check gate; a
-failed stamp is step ""; an unreachable Kado is step kado_connect, a kept draft
+failed stamp is step ""; a missing Kado config is step kado_config, a kept draft
 that resume delivers from scratch;
 byte-identical rebuilds; stamps; stage dir removed only on success; one shared
 no-overwrite contract test with kado-write-file.py; the MD carries no Templater hint; a
@@ -1082,32 +1082,35 @@ def test_deliver_refuses_a_failing_filled_note_check(inst, capsys, vault, draft)
     assert _meta(inst, stem).failed_step == ""
 
 
-class UnreachableKado:
-    def __init__(self):
-        raise KadoError("connection refused")
+def _unconfigured_kado(monkeypatch):
+    """The real KadoClient with no URL or token resolvable: its constructor's only raise."""
+    from lib import kado_client
+    monkeypatch.setattr(kado_client, "_resolve_config", lambda url, token: (None, None))
+    monkeypatch.setattr(ni, "KadoClient", kado_client.KadoClient)
 
 
-def test_deliver_unreachable_kado_fails_at_kado_connect_and_keeps_the_draft(
+def test_deliver_missing_kado_config_fails_at_kado_config_and_keeps_the_draft(
         inst, capsys, vault, monkeypatch):
     stem = _ready(inst, capsys, vault)
-    monkeypatch.setattr(ni, "KadoClient", UnreachableKado)
+    _unconfigured_kado(monkeypatch)
     rc, exists, out, raw, err = _deliver(capsys, stem)
     assert rc == 1 and exists is None
-    assert out["status"] == "failed" and out["step"] == note_meta.KADO_CONNECT == "kado_connect"
-    assert _write_events(vault) == [] and "refused" not in raw
+    assert out["status"] == "failed" and out["step"] == note_meta.KADO_CONFIG == "kado_config"
+    assert "not configured" in err and "reach" not in err
+    assert _write_events(vault) == [] and "KADO_TOKEN" not in raw
     meta = _meta(inst, stem)
-    assert meta.steps_done == [] and meta.failed_step == "kado_connect"
+    assert meta.steps_done == [] and meta.failed_step == "kado_config"
     start = _session_start(capsys)
     assert [d["stem"] for d in start["kept_drafts"]] == [stem]
-    assert start["kept_drafts"][0]["failed_step"] == "kado_connect"
+    assert start["kept_drafts"][0]["failed_step"] == "kado_config"
     assert stem not in start["stale_stages"]
 
 
-def test_deliver_resume_after_kado_connect_delivers_from_scratch(
+def test_deliver_resume_after_kado_config_delivers_from_scratch(
         inst, capsys, vault, monkeypatch):
     stem = _ready(inst, capsys, vault)
     _, note, js, md = _paths(inst, stem)
-    monkeypatch.setattr(ni, "KadoClient", UnreachableKado)
+    _unconfigured_kado(monkeypatch)
     assert _deliver(capsys, stem)[0] == 1
     monkeypatch.setattr(ni, "KadoClient", vault)
     rc, _, out, _, err = _deliver(capsys, stem)

@@ -41,7 +41,7 @@ Restating the current `keep_source` is not a change.
 ## WHY a Started Delivery Is Kept and Only an Untouched Stage Is Stale
 
 A kept draft is a delivery that started and did not finish: `failed_step` is set
-(a step failed, F6-AC1, or Kado was unreachable: `kado_connect`) or `steps_done` is non-empty (SDD "Interrupted
+(a step failed, F6-AC1, or the Kado configuration was missing: `kado_config`) or `steps_done` is non-empty (SDD "Interrupted
 delivery"). The second case has `failed_step` empty because the process was
 killed between steps, before any step could record a failure. Part of that
 delivery is already in the vault (at least the note in the inbox), so dropping
@@ -57,15 +57,16 @@ between.
 
 ## WHY FAILED_STEPS Is Separate From STEPS
 
-`kado_connect` is where a delivery stops when Kado is unreachable: a stop
-point, not a vault target. It may be recorded as `failed_step` (so the draft is
+`kado_config` is where a delivery stops when no Kado URL or token can be
+resolved (the client constructor opens no connection, so an outage fails at
+`note` instead): a stop point, not a vault target. It may be recorded as `failed_step` (so the draft is
 kept rather than listed as stale) but is never in `steps_done`, because nothing
-was written. `FAILED_STEPS` (`KADO_CONNECT` plus `STEPS`) is what
+was written. `FAILED_STEPS` (`KADO_CONFIG` plus `STEPS`) is what
 `mark_step_failed` and `read_meta` accept for `failed_step`; `STEPS` stays the
 list of vault targets that `mark_step_done` and the `steps_done` check accept.
-Adding `kado_connect` to `STEPS` instead would shift the `INBOX_STEPS` and
+Adding `kado_config` to `STEPS` instead would shift the `INBOX_STEPS` and
 `SOURCE_MARK` slices in `note-instructions.py` (`STEPS[:3]`, `STEPS[3]`), let a
-corrupt `steps_done` holding `kado_connect` pass validation and freeze title and
+corrupt `steps_done` holding `kado_config` pass validation and freeze title and
 destination with nothing landed. The separate tuple keeps the slicing, the
 freeze rules and the `steps_done` validation unchanged.
 

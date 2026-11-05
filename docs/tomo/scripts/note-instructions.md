@@ -221,25 +221,34 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
-## WHY an Unreachable Kado Is Its Own Step, kado_connect
+## WHY Missing Kado Config Is Its Own Step, kado_config
 
-When `KadoClient()` cannot be built, `deliver` stops before the guards and
-before any write. It reports `step` `kado_connect` and records it as
-`failed_step` in `meta.json`. Recording is what keeps the draft: a first
-delivery that stopped there has neither `steps_done` nor `failed_step`
-otherwise, so `note-session.py start` would list it as a stale stage and the
-next `/note` would drop it, losing an approved draft to a network error. With
+`KadoClient()` raises only when it cannot resolve a URL or a token (arguments,
+`KADO_URL`/`KADO_TOKEN`, `.mcp.json`); it opens no connection. So this stop
+means the instance has no Kado configuration, not that Kado is down. The step
+is named `kado_config` for that reason: an earlier name, `kado_connect`, sent
+the reader looking for a network outage that this branch never sees. A real
+outage passes the constructor, reads as an empty listing in the destination
+guard (an error is not a collision), and fails at the first step, `note`,
+which records it like any other failed step.
+
+When the constructor raises, `deliver` stops before the guards and before any
+write. It reports `step` `kado_config` and records it as `failed_step` in
+`meta.json`. Recording is what keeps the draft: a first delivery that stopped
+there has neither `steps_done` nor `failed_step` otherwise, so
+`note-session.py start` would list it as a stale stage and the next `/note`
+would drop it, losing an approved draft to a configuration gap. With
 `failed_step` set it is a kept draft and is offered for resume. Nothing is in
 `steps_done`, so the resume reruns the whole delivery from the guards on. A
 named step also lets the skill take its generic "report the failed step; the
-draft stays" path instead of needing a branch for an unreachable Kado.
+draft stays" path instead of needing a branch for a missing configuration.
 
 The filled-note check and the frontmatter stamp stop with an empty step and
 the script records nothing for them: the fix is in `draft.md` and `stage`
 reruns first, so there is no delivery state to keep.
 
 Known leftover: a resume that connects and then stops on exit 3 (name taken)
-or `withdrawn` leaves the old `kado_connect` in `failed_step`, because only a
+or `withdrawn` leaves the old `kado_config` in `failed_step`, because only a
 step marked done clears its own failed entry. This is harmless: the stage is
 still a kept draft, which is what the skill offers on those exits anyway, and
 the next failed step or a successful delivery replaces or removes it.

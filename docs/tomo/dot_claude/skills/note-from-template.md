@@ -123,8 +123,8 @@ change. It offers no resume because a withdrawn action has no content to deliver
 repeat the refusal.
 
 With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the
-next `/note` offers resume. That includes `kado_connect`, the step `deliver` reports when Kado is unreachable before
-any write, so it needs no branch of its own. An empty step means the draft itself was refused before Kado was asked:
+next `/note` offers resume. That includes `kado_config`, the step `deliver` reports when no Kado URL or token is
+configured, before any write, so it needs no branch of its own. An empty step means the draft itself was refused before Kado was asked:
 either the filled-note check failed or the frontmatter stamp failed (malformed draft frontmatter). The skill names
 both because `stage` reports `check.ok` true for a draft whose frontmatter cannot take the stamp; naming only the check
 would leave the model looking at a check that passed and no reason to look at the frontmatter. Either way the fix is in

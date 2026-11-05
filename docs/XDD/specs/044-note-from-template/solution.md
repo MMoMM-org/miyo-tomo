@@ -483,14 +483,15 @@ Script: note-instructions.py deliver
           then the ordered delivery in the example below, uploading the resolved text
   Output:
     status: "delivered" | "exists" | "failed" | "withdrawn"
-    step: "kado_connect" | "note" | "instructions_json" | "instructions_md" | "source_mark" | ""
-    # kado_connect: Kado unreachable before the first step; recorded as failed_step, nothing written
+    step: "kado_config" | "note" | "instructions_json" | "instructions_md" | "source_mark" | ""
+    # kado_config: no Kado URL or token resolvable (KadoClient() raised); recorded as failed_step, nothing written.
+    # A Kado outage passes the constructor and fails at step note.
     note_path, instructions_json, instructions_md: string
     source_marked: bool
     exists_path: string        # set when status is exists
     # delivered with source_marked false: no source, or the source vanished before the mark
   Stdout first line on a collision: EXISTS:<vault-path>
-  Exit: 0 delivered; 1 Kado or guard failure (Kado unreachable: status failed, step "kado_connect"),
+  Exit: 0 delivered; 1 Kado or guard failure (Kado config missing: status failed, step "kado_config"),
         or a failing filled-note check, a missing draft.md or a failed frontmatter stamp (status failed, step "", nothing recorded);
         2 bad invocation (unknown or malformed stem, an unusable meta.json, no title staged), or meta.json could not be written (no JSON then); 3 name taken
 
@@ -542,7 +543,7 @@ ENTITY: NoteDraftMeta (NEW) — tomo-tmp/note/<stem>/meta.json, owned by note-in
     profile: string|null      # from vault-config at new; every deliver reuses it so a resume rebuilds identical files
     keep_source: bool         # default false
     steps_done: [string]      # subset of note, instructions_json, instructions_md, source_mark
-    failed_step: string       # empty when none; one of steps_done's steps or kado_connect (Kado unreachable, never a done step)
+    failed_step: string       # empty when none; one of steps_done's steps or kado_config (no Kado config, never a done step)
   BEHAVIORS:
     destination_file(): destination + sanitize_stem(title) + ".md"
     instructions_stem(): stem + "_instructions"
@@ -623,7 +624,7 @@ def deliver(meta, client):
     note_text = merge_tomo_block_into_markdown(resolved, stable_block("rendered-note", "pending-move", meta))
                                                                 # FrontmatterMergeError → failed(meta, step=""), exit 1
     try: client = KadoClient()
-    except KadoError: return failed(meta, "kado_connect")      # failed_step recorded; the resume reruns from scratch
+    except KadoError: return failed(meta, "kado_config")       # missing URL/token only; failed_step recorded; the resume reruns from scratch
     actions = build_note_actions(meta)                          # lib/note_actions
     kept, clashes = validate_destinations(actions, make_folder_listing(client))
     kept, _ = withdraw_unjustified_deletes(kept)
@@ -766,7 +767,7 @@ sequenceDiagram
 - **Name taken during a resume** (exit 3 with `steps_done` non-empty): title and destination are frozen, so the skill offers keep (leave the draft for later) or drop; on drop it names the files that already landed so the user can delete them in Obsidian.
 - **Guard withdrew an action** (`withdrawn`): the skill reports it and offers rename or abort; nothing is written.
 - **Kado error during delivery** (exit 1): the skill reports the failed step; the draft stays; the next `/note` offers resume.
-- **Kado unreachable at delivery** (exit 1, step `kado_connect`): nothing is written; `failed_step` is recorded so the draft is a kept draft, not a stale stage; resume reruns the whole delivery. The draft is not at fault, so the skill does not send the user to fix it.
+- **Kado config missing at delivery** (exit 1, step `kado_config`: no Kado URL or token; an outage fails at `note` instead): nothing is written; `failed_step` is recorded so the draft is a kept draft, not a stale stage; resume reruns the whole delivery. The draft is not at fault, so the skill does not send the user to fix it.
 - **Source changed between read and mark** (concurrency error on the merge): reported as a failed `source_mark`; resume retries it.
 - **Source deleted or moved before the mark** (`KadoNotFoundError` on the frontmatter read or merge): the step counts as done, `deliver` reports `delivered` with `source_marked: false`, the stage is removed; the report says the source was not marked.
 - **Abort at any question**: the skill runs `note-instructions.py drop` when a stem exists and confirms in one line; a confirmed `note_include` stays saved.

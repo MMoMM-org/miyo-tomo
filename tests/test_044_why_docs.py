@@ -168,8 +168,8 @@ NOTE_META = SCRIPTS / "lib" / "note_meta.md"
                                        "no draft edit", "rename", "steps_done"]),
         # A3: the empty-step branch names the stamp, because stage reports check.ok true then.
         ("Exit 1 Branches on status", ["frontmatter stamp", "check.ok", "true"]),
-        # A4: an unreachable Kado is a named failed step.
-        ("Exit 1 Branches on status", ["kado_connect", "the draft stays"]),
+        # A4: a missing Kado config is a named failed step.
+        ("Exit 1 Branches on status", ["kado_config", "the draft stays"]),
     ],
 )
 def test_skill_mirror_names_exit_1_and_frozen_decisions(heading, needles):
@@ -179,15 +179,15 @@ def test_skill_mirror_names_exit_1_and_frozen_decisions(heading, needles):
 @pytest.mark.parametrize(
     "path, heading, needles",
     [
-        (NOTE_INSTRUCTIONS, "kado_connect",
-         ["failed_step", "stale stage", "steps_done", "kept draft", "whole delivery",
+        (NOTE_INSTRUCTIONS, "kado_config",
+         ["URL or a token", "opens no connection", "fails at the first step", "failed_step", "stale stage", "steps_done", "kept draft", "whole delivery",
           "records nothing", "reruns first", "leftover", "harmless"]),
         (NOTE_META, "FAILED_STEPS",
          ["STEPS", "stop point", "never in `steps_done`", "INBOX_STEPS", "SOURCE_MARK",
           "freeze"]),
     ],
 )
-def test_script_mirror_names_kado_connect_decision(path, heading, needles):
+def test_script_mirror_names_kado_config_decision(path, heading, needles):
     _assert_needles(_section(_text(path), heading), needles, f"{path.name} {heading!r}")
 
 

@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.6
+# version: 0.1.7
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -32,9 +32,9 @@ from lib.obsidian_filename import sanitize_stem
 STAGE_ROOT = Path("tomo-tmp") / "note"
 META_FILE = "meta.json"
 STEPS = ("note", "instructions_json", "instructions_md", "source_mark")
-# A delivery can fail before its first step: Kado was unreachable. Never a done step.
-KADO_CONNECT = "kado_connect"
-FAILED_STEPS = (KADO_CONNECT, *STEPS)
+# A delivery can fail before its first step: no Kado URL or token. Never a done step.
+KADO_CONFIG = "kado_config"
+FAILED_STEPS = (KADO_CONFIG, *STEPS)
 
 _STEM_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{6}")
 _STR_FIELDS = ("stem", "run_id", "created", "generated", "template", "template_stem",
@@ -178,7 +178,7 @@ def mark_step_done(meta: NoteDraftMeta, step: str) -> None:
 
 
 def mark_step_failed(meta: NoteDraftMeta, step: str) -> None:
-    """Record ``step`` (a delivery step or KADO_CONNECT) as the step the delivery failed on."""
+    """Record ``step`` (a delivery step or KADO_CONFIG) as the step the delivery failed on."""
     if step not in FAILED_STEPS:
         raise ValueError("unknown delivery step")
     meta.failed_step = step

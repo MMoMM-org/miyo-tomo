@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.5
-"""test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
+# version: 0.2.0
+"""test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
+
+deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
+later step; keep-source frozen once instructions_json landed; a killed run is a
+kept draft; resume compares (identical = done, other text = exit 3 EXISTS:);
+destination clash and guard-cut sets refused; filled-note check gate;
+byte-identical rebuilds; stamps; stage dir removed only on success; one shared
+no-overwrite contract test with kado-write-file.py.
 
 Covers the draft lifecycle subcommands new, stage and drop:
 - new draws a YYYY-MM-DD_HHMMSS stem, a run id and generated; reads the inbox,
@@ -798,3 +805,417 @@ def test_stage_still_rejects_other_invisible_characters(inst, capsys, bad, flag)
     stem = _staged(inst, capsys)
     rc, out, _ = _stage(capsys, stem, flag, f"At{bad}las")
     assert rc == 2 and out == ""
+
+
+# ── deliver ──────────────────────────────────────────────────────────────
+
+import note_fake_vault as nfv  # noqa: E402
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402
+from lib.kado_client import KadoConcurrencyError  # noqa: E402
+
+TITLE = "Design review"
+DEST = "Atlas/Meetings"
+WRITES = ("write_note", "write_file", "write_frontmatter")
+STEP_CALL = {"note": "write_note", "instructions_json": "write_file",
+             "instructions_md": "write_note", "source_mark": "write_frontmatter"}
+DELIVER_KEYS = {"status", "step", "note_path", "instructions_json", "instructions_md",
+                "source_marked", "exists_path"}
+HASHI_SCHEMA = SCRIPTS_DIR.parent / "schemas" / "hashi-instructions.schema.json"
+
+
+@pytest.fixture
+def vault(inst, monkeypatch):
+    """A fake vault holding the source; note-instructions.py talks only to it."""
+    fake = nfv.NoteFakeVault({SOURCE: f"raw meeting text {MARKER}\n"})
+    monkeypatch.setattr(ni, "KadoClient", fake)
+    return fake
+
+
+def _ready(inst, capsys, vault, draft=GOOD_DRAFT, *extra, source=True):
+    """A staged draft with title and destination; the vault's call log is cleared."""
+    stem = _new(capsys, *(["--source", SOURCE] if source else []))["stem"]
+    (note_meta.stage_dir(inst, stem) / "draft.md").write_text(draft, encoding="utf-8")
+    rc, _, err = _stage(capsys, stem, "--title", TITLE, "--destination", DEST, *extra)
+    assert rc == 0, err
+    vault.events.clear()
+    return stem
+
+
+def _deliver(capsys, stem):
+    """Return (rc, exists line or None, output dict, raw stdout, stderr)."""
+    rc, out, err = _run(["deliver", "--stem", stem], capsys)
+    lines = out.splitlines()
+    exists = lines.pop(0) if lines and lines[0].startswith("EXISTS:") else None
+    return rc, exists, (json.loads(lines[0]) if lines else None), out, err
+
+
+def _paths(inst, stem):
+    meta = _meta(inst, stem)
+    pair = f"100 Inbox/{stem}_instructions"
+    return meta, meta.inbox_file, pair + ".json", pair + ".md"
+
+
+def _write_events(vault):
+    return [e for e in vault.events if e[0] in WRITES]
+
+
+def _tomo(vault, path):
+    return nfv.split_frontmatter(vault.text(path))[0]["tomo"]
+
+
+def test_deliver_writes_note_json_md_then_marks_source_in_order(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, md = _paths(inst, stem)
+    rc, exists, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert exists is None and set(out) == DELIVER_KEYS
+    assert out == {"status": "delivered", "step": "", "note_path": note,
+                   "instructions_json": js, "instructions_md": md,
+                   "source_marked": True, "exists_path": ""}
+    assert _write_events(vault) == [("write_note", note), ("write_file", js),
+                                    ("write_note", md), ("write_frontmatter", SOURCE)]
+
+
+@pytest.mark.parametrize("index, step", list(enumerate(note_meta.STEPS)))
+def test_deliver_failure_at_a_step_stops_every_later_step(inst, capsys, vault, index, step):
+    stem = _ready(inst, capsys, vault)
+    meta, note, js, md = _paths(inst, stem)
+    target = [note, js, md, SOURCE][index]
+    vault.fail[(STEP_CALL[step], target)] = KadoError("503 after retries")
+    rc, exists, out, raw, err = _deliver(capsys, stem)
+    assert rc == 1 and exists is None
+    assert out["status"] == "failed" and out["step"] == step
+    assert out["source_marked"] is False and vault.merges == []
+    assert _write_events(vault)[-1] == (STEP_CALL[step], target)
+    assert len(_write_events(vault)) == index + 1
+    after = _meta(inst, stem)
+    assert after.steps_done == list(note_meta.STEPS[:index]) and after.failed_step == step
+    assert MARKER not in raw + err and "503" not in raw
+
+
+def test_deliver_failure_at_instructions_md_freezes_keep_source(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, _, _, md = _paths(inst, stem)
+    vault.fail[("write_note", md)] = KadoError("503")
+    assert _deliver(capsys, stem)[0] == 1
+    res = _json(_stage(capsys, stem, "--keep-source", "true")[1])
+    assert res["frozen"] is True and _meta(inst, stem).keep_source is False
+
+
+def test_deliver_failure_at_instructions_json_leaves_keep_source_open(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, _, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    assert _deliver(capsys, stem)[0] == 1
+    res = _json(_stage(capsys, stem, "--keep-source", "true")[1])
+    assert res["frozen"] is False and _meta(inst, stem).keep_source is True
+
+
+def _session_start(capsys):
+    spec = importlib.util.spec_from_file_location("note_session", SCRIPTS_DIR / "note-session.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main(["start", "--args=x"]) == 0
+    return json.loads(capsys.readouterr()[0])
+
+
+def test_deliver_killed_between_steps_is_a_kept_draft_not_a_stale_stage(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, _, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = nfv.Killed()
+    with pytest.raises(nfv.Killed):
+        ni.main(["deliver", "--stem", stem])
+    capsys.readouterr()
+    meta = _meta(inst, stem)
+    assert meta.steps_done == ["note"] and meta.failed_step == ""
+    start = _session_start(capsys)
+    assert [d["stem"] for d in start["kept_drafts"]] == [stem]
+    assert stem not in start["stale_stages"]
+
+
+def test_deliver_resume_identical_note_counts_as_done(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, md = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    assert _deliver(capsys, stem)[0] == 1
+    landed = vault.text(note)
+    vault.fail.clear()
+    vault.events.clear()
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered" and out["source_marked"] is True
+    assert _write_events(vault) == [("write_file", js), ("write_note", md),
+                                    ("write_frontmatter", SOURCE)]
+    assert vault.text(note) == landed
+
+
+def test_deliver_resume_identical_unrecorded_note_counts_as_done(inst, capsys, vault):
+    """A run that wrote the note and died before meta.json recorded it."""
+    stem = _ready(inst, capsys, vault)
+    _, note, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = nfv.Killed()
+    with pytest.raises(nfv.Killed):
+        ni.main(["deliver", "--stem", stem])
+    capsys.readouterr()
+    stage = note_meta.stage_dir(inst, stem)
+    meta = note_meta.read_meta(stage)
+    meta.steps_done = []
+    note_meta.write_meta(stage, meta)
+    vault.fail.clear()
+    vault.events.clear()
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 0 and out["status"] == "delivered"
+    assert ("write_note", note) not in _write_events(vault)
+
+
+def test_deliver_trailing_newline_alone_is_identical(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    _deliver(capsys, stem)
+    vault.files[note] = vault.text(note).rstrip("\n")
+    vault.fail.clear()
+    assert _deliver(capsys, stem)[0] == 0
+
+
+@pytest.mark.parametrize("recorded", [True, False])
+def test_deliver_resume_different_note_exits_3_and_changes_nothing(
+        inst, capsys, vault, recorded):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    _deliver(capsys, stem)
+    vault.files[note] = "other text"
+    if not recorded:
+        stage = note_meta.stage_dir(inst, stem)
+        meta = note_meta.read_meta(stage)
+        meta.steps_done = []
+        note_meta.write_meta(stage, meta)
+    before = _meta(inst, stem)
+    vault.fail.clear()
+    vault.events.clear()
+    rc, exists, out, raw, _ = _deliver(capsys, stem)
+    assert rc == 3 and raw.splitlines()[0] == f"EXISTS:{note}" and exists == f"EXISTS:{note}"
+    assert out["status"] == "exists" and out["exists_path"] == note and out["step"] == "note"
+    assert vault.files[note] == "other text"
+    assert _write_events(vault) == [] and vault.merges == []
+    assert _meta(inst, stem) == before
+
+
+def test_deliver_resume_taken_instruction_set_name_exits_3(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, js, _ = _paths(inst, stem)
+    vault.fail[("write_file", js)] = KadoError("503")
+    _deliver(capsys, stem)
+    vault.files[js] = b"{}"
+    vault.fail.clear()
+    vault.events.clear()
+    rc, exists, out, _, _ = _deliver(capsys, stem)
+    assert rc == 3 and exists == f"EXISTS:{js}" and out["step"] == "instructions_json"
+    assert vault.files[js] == b"{}" and _write_events(vault) == []
+
+
+def test_deliver_destination_clash_exits_3_before_any_write(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    taken = f"{DEST}/{TITLE}.md"
+    vault.files[taken] = "filed earlier"
+    rc, exists, out, _, _ = _deliver(capsys, stem)
+    assert rc == 3 and exists == f"EXISTS:{taken}"
+    assert out["status"] == "exists" and out["exists_path"] == taken and out["step"] == ""
+    assert _write_events(vault) == []
+    meta = _meta(inst, stem)
+    assert meta.steps_done == [] and meta.failed_step == ""
+
+
+def test_deliver_refuses_a_set_the_guards_cut(inst, capsys, vault, monkeypatch):
+    real = ni.build_note_actions
+
+    def unjustified(meta):
+        actions = real(meta)
+        actions[-1].pop("depends_on")
+        return actions
+
+    monkeypatch.setattr(ni, "build_note_actions", unjustified)
+    stem = _ready(inst, capsys, vault)
+    rc, exists, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and exists is None and out["status"] == "withdrawn"
+    assert _write_events(vault) == []
+    assert note_meta.stage_dir(inst, stem).is_dir()
+
+
+@pytest.mark.parametrize("draft", [BAD_DRAFT, "---\ntitle: x\n# no close\n", None])
+def test_deliver_refuses_a_failing_filled_note_check(inst, capsys, vault, draft):
+    stem = _ready(inst, capsys, vault)
+    path = note_meta.stage_dir(inst, stem) / "draft.md"
+    if draft is None:
+        path.unlink()
+    else:
+        path.write_text(draft, encoding="utf-8")
+    rc, _, out, raw, err = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == ""
+    assert vault.events == []
+    assert MARKER not in raw + err
+    assert _meta(inst, stem).failed_step == ""
+
+
+def test_deliver_without_title_exits_2(inst, capsys, vault):
+    stem = _new(capsys, "--source", SOURCE)["stem"]
+    (note_meta.stage_dir(inst, stem) / "draft.md").write_text(GOOD_DRAFT, encoding="utf-8")
+    vault.events.clear()
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 2 and vault.events == []
+
+
+@pytest.mark.parametrize("stem", ["2026-01-01_000000", "../etc"])
+def test_deliver_unknown_or_malformed_stem_exits_2(inst, capsys, vault, stem):
+    assert _deliver(capsys, stem)[0] == 2
+
+
+def _clock(monkeypatch, value):
+    import lib.doc_frontmatter as dfm
+    monkeypatch.setattr(dfm, "_utc_now", lambda: value)
+
+
+def test_two_deliver_runs_produce_byte_identical_files(inst, capsys, vault, monkeypatch):
+    stem = _ready(inst, capsys, vault)
+    stage = note_meta.stage_dir(inst, stem)
+    saved = {p.name: p.read_bytes() for p in stage.iterdir()}
+    _, note, js, md = _paths(inst, stem)
+    _clock(monkeypatch, "2030-01-01T00:00:00Z")
+    assert _deliver(capsys, stem)[0] == 0
+    first = {p: vault.files[p] for p in (note, js, md)}
+    stage.mkdir(parents=True)
+    for name, data in saved.items():
+        (stage / name).write_bytes(data)
+    second_vault = nfv.NoteFakeVault({SOURCE: "raw\n"})
+    monkeypatch.setattr(ni, "KadoClient", second_vault)
+    _clock(monkeypatch, "2031-06-06T06:06:06Z")
+    assert _deliver(capsys, stem)[0] == 0
+    assert {p: second_vault.files[p] for p in (note, js, md)} == first
+
+
+def test_deliver_stamps_note_peer_and_source(inst, capsys, vault):
+    import jsonschema
+    stem = _ready(inst, capsys, vault)
+    meta, note, js, md = _paths(inst, stem)
+    assert _deliver(capsys, stem)[0] == 0
+    note_block, md_block = _tomo(vault, note), _tomo(vault, md)
+    assert (note_block["doc_type"], note_block["state"]) == ("rendered-note", "pending-move")
+    assert (md_block["doc_type"], md_block["state"]) == ("instructions", "pending-apply")
+    assert note_block["run_id"] == md_block["run_id"] == meta.run_id
+    assert note_block["updated_at"] == md_block["updated_at"] == meta.generated
+    [merge] = vault.merges
+    expected = build_tomo_block("source", "captured", meta.run_id)
+    block = merge["frontmatter"]["tomo"]
+    assert set(merge["frontmatter"]) == {"tomo"} and merge["mode"] == "merge"
+    assert {k: v for k, v in block.items() if k != "updated_at"} == \
+        {k: v for k, v in expected.items() if k != "updated_at"}
+    assert merge["expected_modified"] == 1
+    doc = json.loads(vault.files[js].decode("utf-8"))
+    jsonschema.validate(instance=doc, schema=json.loads(HASHI_SCHEMA.read_text(encoding="utf-8")))
+    assert doc["md_peer"] == f"{stem}_instructions" and doc["generated"] == meta.generated
+    assert [a["action"] for a in doc["actions"]] == ["move_note", "delete_source"]
+    assert doc["actions"][1]["depends_on"] == ["I01"]
+
+
+def test_deliver_uploads_the_draft_with_source_link_resolved(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault, LINK_DRAFT)
+    _, note, _, _ = _paths(inst, stem)
+    assert _deliver(capsys, stem)[0] == 0
+    _, body = nfv.split_frontmatter(vault.text(note))
+    assert "{{source_link}}" not in vault.text(note)
+    assert body == LINK_DRAFT.split("---\n", 2)[2].replace("{{source_link}}", "")
+
+
+def test_deliver_kept_source_has_no_delete_and_is_still_marked(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault, GOOD_DRAFT, "--keep-source", "true")
+    _, _, js, _ = _paths(inst, stem)
+    assert _deliver(capsys, stem)[0] == 0
+    doc = json.loads(vault.files[js].decode("utf-8"))
+    assert [a["action"] for a in doc["actions"]] == ["move_note"]
+    assert len(vault.merges) == 1
+
+
+def test_deliver_without_source_marks_nothing(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault, source=False)
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 0 and out["source_marked"] is False and vault.merges == []
+    assert [e[0] for e in _write_events(vault)] == ["write_note", "write_file", "write_note"]
+
+
+def test_deliver_source_changed_before_mark_fails_and_resume_retries(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    vault.fail[("write_frontmatter", SOURCE)] = KadoConcurrencyError("expectedModified mismatch")
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and out["step"] == "source_mark"
+    vault.fail.clear()
+    vault.events.clear()
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 0 and out["source_marked"] is True
+    assert _write_events(vault) == [("write_frontmatter", SOURCE)]
+
+
+def test_deliver_success_removes_the_stage_dir(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    assert _deliver(capsys, stem)[0] == 0
+    assert not note_meta.stage_dir(inst, stem).exists()
+
+
+def test_deliver_failure_keeps_the_stage_dir(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, _, _ = _paths(inst, stem)
+    vault.fail[("write_note", note)] = KadoError("503")
+    _deliver(capsys, stem)
+    assert (note_meta.stage_dir(inst, stem) / "meta.json").is_file()
+
+
+def test_deliver_prints_no_user_text(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, _, out, raw, err = _deliver(capsys, stem)
+    assert MARKER not in raw + err and "raw meeting text" not in raw + err
+
+
+def test_deliver_stays_within_the_kado_call_budget(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    assert _deliver(capsys, stem)[0] == 0
+    assert len(vault.events) <= 16
+
+
+# ── the no-overwrite probe exists twice (ADR-2): one contract ────────────
+
+
+def _kado_write_file_no_overwrite(tmp_path, monkeypatch, capsys, vault, path):
+    spec = importlib.util.spec_from_file_location(
+        "kado_write_file", SCRIPTS_DIR / "kado-write-file.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    local = tmp_path / "payload.md"
+    local.write_text("payload", encoding="utf-8")
+    monkeypatch.setattr(mod, "KadoClient", vault)
+    monkeypatch.setattr(sys, "argv", ["kado-write-file.py", "--no-overwrite",
+                                      "--local", str(local), "--vault", path])
+    rc = mod.main()
+    return rc, capsys.readouterr()[0]
+
+
+def _deliver_no_overwrite(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    _, note, _, _ = _paths(inst, stem)
+    vault.files[note] = "taken"
+    rc, out, _ = _run(["deliver", "--stem", stem], capsys)
+    return rc, out, note
+
+
+@pytest.mark.parametrize("script", ["deliver", "kado-write-file"])
+def test_both_no_overwrite_probes_share_exit_3_and_the_exists_line(
+        inst, capsys, vault, monkeypatch, script):
+    if script == "deliver":
+        rc, out, path = _deliver_no_overwrite(inst, capsys, vault)
+    else:
+        path = "100 Inbox/taken.md"
+        vault.files[path] = "taken"
+        rc, out = _kado_write_file_no_overwrite(inst, monkeypatch, capsys, vault, path)
+    assert rc == 3
+    assert out.splitlines()[0] == f"EXISTS:{path}"
+    assert vault.files[path] == "taken"
+    assert [e for e in vault.events if e[0] in WRITES] == []

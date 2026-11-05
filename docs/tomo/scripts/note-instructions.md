@@ -200,3 +200,86 @@ The source body and the draft are user content (CON-3). Only the fields the SDD
 names as output (`title`, `inbox_file`, `destination_file`) carry user-chosen
 text, because the skill prints them in the draft header. Error messages name the
 problem class, never the value, and the source body goes only to `source.md`.
+
+## WHY deliver Is One Process With a Fixed Order
+
+`deliver` writes the note, then `<stem>_instructions.json`, then
+`<stem>_instructions.md`, then merges the source mark (ADR-2). Three separate
+script calls would leave the order, the collision handling and the resume
+comparison to the model. The order is the order of consequence: the note is
+inert on its own (triage skips it by its `rendered-note`/`pending-move` stamp),
+the JSON is what Hashi acts on, the MD is its human-readable peer and the one
+file triage counts as downstream of the marked source, and the mark is last
+because a marked source with no set beside it would read as an orphan. When a
+step fails, no later step runs: the source stays unmarked, the stage directory
+stays with `failed_step` set, and the next `/note` offers resume. `meta.json` is
+written after every step, so a process killed between steps leaves
+`steps_done` accurate with `failed_step` empty, and `note-session.py start`
+lists it as a kept draft (part of it is already in the vault), never as a stale
+stage to drop.
+
+## WHY deliver Checks the Draft Again
+
+`deliver` resolves `{{source_link}}` in `draft.md` with the same function as
+`stage` and runs the filled-note check on the result. The skill may have
+rewritten `draft.md` after the last `stage`, and the check is the script's
+gate, not a step the model is trusted to have run. A failing check, a missing
+`draft.md` or a draft with no title refuses delivery before Kado is asked.
+
+## WHY Every Generated File Is Byte-Stable
+
+A resume rebuilds every payload and compares it with what is already in the
+vault, so two runs over the same `meta.json` must produce the same bytes. The
+set takes `generated` and `profile` from `meta.json` (fixed at `new`). The
+`tomo:` blocks of the note and of the MD peer carry `updated_at`, which
+`build_tomo_block` sets from the clock; `deliver` sets it to `meta.generated`
+instead. For the same reason the MD peer is rendered without a run id and its
+`tomo:` block (`instructions`/`pending-apply`, with the draft's run id) is then
+inserted by `merge_tomo_block_into_markdown`, rather than letting
+`render_instructions_md` stamp it with the current time. The block is what
+makes triage count the peer as an instruction set; without it triage would warn
+that the marked source is orphaned. The source mark is not compared, so it is
+`build_tomo_block("source", "captured", run_id)` as `mark-captured.py` writes
+it (ADR-3).
+
+## WHY a Resume Compares Instead of Skipping or Overwriting
+
+Before each write `deliver` asks whether the target exists. Absent: write it.
+Present with the same text as the payload: a previous run wrote it, the step
+counts as done. Present with other text: the user edited it in Obsidian, or
+another file has the name; `deliver` exits 3 with `EXISTS:<path>` on the first
+line and writes nothing more, because overwriting would destroy the user's
+edit. Kado's reads return the stored text, so the comparison normalises only a
+trailing newline. The comparison runs for steps already in `steps_done` too, so
+a note the user edited in Obsidian between two runs is reported as taken, not
+silently shipped. A step in `steps_done` whose target is now absent is never
+written again: the file may already have been applied by Hashi (the note moved
+to its destination), and a second copy would be a duplicate. The probe is `KadoClient.path_exists`, the same one
+`kado-write-file.py --no-overwrite` uses, with the same exit code and stdout
+line, so the skill reads one contract.
+
+## WHY the Destination Is Checked Before Any Write
+
+The note's final place is outside the inbox, where Tomo does not write; Hashi
+moves it there later. A note already at `destination_file` would make the move
+fail or overwrite it, so `deliver` runs `validate_destinations` over the set
+with a listing of the destination folder before it writes anything, and a
+clash exits 3 with `EXISTS:<destination>`. Nothing is in the vault yet, so the
+skill can offer a rename.
+
+## WHY a Set the Guards Cut Is Refused
+
+`validate_destinations` and `withdraw_unjustified_deletes` drop actions
+without raising. In Pass 2 that is right: the dropped item is reported in the
+MD and the rest ships. A `/note` set has one move and at most one delete; a
+cut set is either empty or a delete without its move, which would remove the
+source while refusing to file the note. So `deliver` compares the guards'
+output with its input and refuses any difference with status `withdrawn`
+(exit 1), writing nothing.
+
+## WHY the Stage Directory Is Removed Only on Success
+
+The stage directory is the record of what landed (`steps_done`) and of what is
+still to do. Removing it after a failure would lose the resume and leave files
+in the inbox that no draft accounts for. On success nothing is left to resume,
+and a leftover directory would be offered again at the next `/note` (ADR-7).

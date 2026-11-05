@@ -59,6 +59,7 @@
 | 2026-11-05 | /note path rules: titles and folders reject invisible format characters, line and paragraph separators, but allow the zero-width joiner and non-joiner (U+200D, U+200C) | Owner choice; joined emoji and Persian/Indic spelling must keep working |
 | 2026-11-05 | One shared validator for /note folder and note paths, in a new `lib/note_paths.py`, used by note-instructions.py and note-process.py | T2.4 review: two folder normalisers had different rules, so a process destination could be saved that note-instructions later ignored |
 | 2026-11-05 | Model escalation: T2.4 opus → opus@max | Trigger: second review FAIL |
+| 2026-11-05 | note-instructions.py stays one file at ~550 lines after `deliver` (constitution L2 split rule not applied now) | About 500 lines without the docstring, every subcommand shares the meta, config and path helpers, and the plan has no task for a split; revisit if the script grows further |
 
 ## Context
 

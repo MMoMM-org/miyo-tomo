@@ -453,7 +453,7 @@ Script: note-instructions.py drop
 
 Script: note-process.py read | write | decline
   read:    --template <stem> [--outline <file>] → {exists, declined, destination, required, guidance, missing_required[], error}
-  write:   --template <stem> --outline <outline.json> [--destination] [--required a,b] [--guidance-file f] → {written, rejected_required[]}
+  write:   --template <stem> --outline <outline.json> [--destination] [--required <point>]... (repeatable, one point per flag; names may contain commas) [--guidance-file f] → {written, rejected_required[]}
   decline: --template <stem> → {written}
   Exit: 0 usable (a broken file reads as {exists: true, error: "..."}); 1 write rejected; 2 bad invocation
 

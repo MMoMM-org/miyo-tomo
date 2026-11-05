@@ -138,3 +138,59 @@ def test_relative_links_resolve(path):
         if rel and not (path.parent / rel).exists():
             broken.append(target)
     assert not broken, f"{path.name}: unresolved links {broken}"
+
+
+SCRIPTS = REPO / "docs" / "tomo" / "scripts"
+NOTE_INSTRUCTIONS = SCRIPTS / "note-instructions.md"
+NOTE_META = SCRIPTS / "lib" / "note_meta.md"
+
+
+@pytest.mark.parametrize(
+    "heading, needles",
+    [
+        # A1: one frozen message for the title/destination and the keep-source refusal.
+        ("Frozen Message", ["apply_stage_update", "is_frozen", "is_keep_source_frozen",
+                            "instructions_json", "delete", "misreport"]),
+        # A2: exit 1 is branched on status; withdrawn is not a draft problem.
+        ("Exit 1 Branches on status", ["status", "withdrawn", "empty step",
+                                       "no draft edit", "rename", "steps_done"]),
+        # A3: the empty-step branch names the stamp, because stage reports check.ok true then.
+        ("Exit 1 Branches on status", ["frontmatter stamp", "check.ok", "true"]),
+        # A4: an unreachable Kado is a named failed step.
+        ("Exit 1 Branches on status", ["kado_connect", "the draft stays"]),
+    ],
+)
+def test_skill_mirror_names_exit_1_and_frozen_decisions(heading, needles):
+    body = re.sub(r"\s+", " ", _section(_text(SKILL), heading))
+    for needle in needles:
+        assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
+
+
+@pytest.mark.parametrize(
+    "path, heading, needles",
+    [
+        (NOTE_INSTRUCTIONS, "kado_connect",
+         ["failed_step", "stale stage", "steps_done", "kept draft", "whole delivery",
+          "records nothing", "reruns first", "leftover", "harmless"]),
+        (NOTE_META, "FAILED_STEPS",
+         ["STEPS", "stop point", "never in `steps_done`", "INBOX_STEPS", "SOURCE_MARK",
+          "freeze"]),
+    ],
+)
+def test_script_mirror_names_kado_connect_decision(path, heading, needles):
+    body = re.sub(r"\s+", " ", _section(_text(path), heading))
+    for needle in needles:
+        assert needle.lower() in body.lower(), f"{path.name} {heading!r} lacks {needle!r}"
+
+
+@pytest.mark.parametrize(
+    "stale",
+    [
+        # Exit 1 with an empty step is also the stamp or a withdrawn guard, not the check alone.
+        "Exit 1 with an empty `step` is the filled-note check failing",
+        "a failure there (exit 1, empty `step`) sends the skill back",
+    ],
+)
+def test_skill_mirror_has_no_stale_exit_1_statement(stale):
+    flat = re.sub(r"\s+", " ", _text(SKILL))
+    assert stale.lower() not in flat.lower()

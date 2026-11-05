@@ -64,6 +64,33 @@ Keep/Drop is right only when files are already in the vault: the name cannot cha
 files so the user can delete them in Obsidian. The skill reads `steps_done` from `meta.json` because `start`'s
 `kept_drafts` entries do not carry it.
 
+## Why One Frozen Message Names Both Refusals
+
+WHY: `stage` reports `frozen: true` for two different refusals, both decided by `apply_stage_update`
+(`lib/note_meta.py`). `is_frozen` refuses a title or destination change once `steps_done` is non-empty, because the
+landed files carry those names. `is_keep_source_frozen` refuses a `--keep-source` change once `instructions_json` is in
+`steps_done`: the landed instruction set already encodes the source delete (or its absence), so flipping keep-source
+afterwards would make the note and the instruction set disagree. The output does not say which rule fired, so the skill
+gives one message naming both conditions. A message naming only title and destination would misreport the keep-source
+refusal and leave the user asking why a change they did not make was refused. The staged values stay as they were,
+because a refused update changes nothing in `meta.json`.
+
+## Why Exit 1 Branches on status, Then on step
+
+WHY: `deliver` exits 1 for three different stops, and only the `status` field tells them apart. A guard that withdrew
+an action reports exit 1, `status` `withdrawn` and an empty step: the same exit code and step as a failed filled-note
+check. Without the `status` branch the model would read the empty step as "fix the draft" and loop on a refusal no
+draft edit can cure. Withdrawn writes nothing, so it offers Rename / Abort exactly as exit 3 does with `steps_done`
+empty: nothing landed and the name is still free to change.
+
+With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the
+next `/note` offers resume. That includes `kado_connect`, the step `deliver` reports when Kado is unreachable before
+any write, so it needs no branch of its own. An empty step means the draft itself was refused before Kado was asked:
+either the filled-note check failed or the frontmatter stamp failed (malformed draft frontmatter). The skill names
+both because `stage` reports `check.ok` true for a draft whose frontmatter cannot take the stamp; naming only the check
+would leave the model looking at a check that passed and no reason to look at the frontmatter. Either way the fix is in
+`draft.md`, then `stage` reruns and the step 6 question is asked again.
+
 ## Why Delivery Is One Script (ADR-2)
 
 WHY: `note-instructions.py deliver` writes the note, the instruction set JSON and MD, and marks the source in
@@ -72,8 +99,9 @@ never an overwrite). Order, collision handling and the resume comparison (identi
 become testable instead of left to the model. Marking the source is a direct frontmatter merge, not a call to
 `mark-captured.py` (ADR-3). The skill never runs the delivery steps itself.
 
-When the guard withdrew the action (`status` `withdrawn`), the skill reports that nothing is written and why, then offers
-rename or abort: a withdrawn action has no content to deliver, so keeping the draft would only repeat the refusal.
+When the guard withdrew the action (exit 1, `status` `withdrawn`), the skill reports that nothing is written and why,
+then offers rename or abort: a withdrawn action has no content to deliver, so keeping the draft would only repeat the
+refusal.
 
 ## Why a Source That Moves or Changes Does Not Fail the Delivery
 
@@ -90,8 +118,8 @@ an invisible character or `{{`/`<%` in it, a destination that is not a relative 
 user's to fix. The skill names what was refused and asks for another value; nothing is staged. Exit 3 (name
 taken) is different: never overwrite; the skill branches on `steps_done` (see
 [Why Exit 3 Branches on steps_done](#why-exit-3-branches-on-steps_done-not-on-is-this-a-resume)). Exit 1 of
-`deliver` with a `step` set is a Kado or system error: report the failed step, keep the draft, and the next
-`/note` offers resume. Exit 1 with an empty `step` is the filled-note check failing: fix `draft.md` and rerun `stage`.
+`deliver` is branched on `status` first and then on `step` (see
+[Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step)).
 
 ## Why Template Unreadable Is Not "No Template Exists"
 
@@ -143,7 +171,8 @@ missing from the template is named in one line and skipped. A template without f
 frontmatter block anyway; `stage` reports the filled-note result. The note matters more than an optional
 refinement being intact. A filled-note check that fails at `stage` is different: the skill fixes the draft and
 reruns `stage` before showing the draft, so the skill never calls `deliver` on a known failing check. `deliver`
-checks again; a failure there (exit 1, empty `step`) sends the skill back to fixing the draft and rerunning `stage`.
+checks again and also stamps the frontmatter; either failing there (exit 1, `status` `failed`, empty `step`) sends
+the skill back to fixing the draft and rerunning `stage`.
 
 ## Why STRICT Is Rare
 

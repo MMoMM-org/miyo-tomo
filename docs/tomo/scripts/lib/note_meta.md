@@ -41,7 +41,7 @@ Restating the current `keep_source` is not a change.
 ## WHY a Started Delivery Is Kept and Only an Untouched Stage Is Stale
 
 A kept draft is a delivery that started and did not finish: `failed_step` is set
-(a step failed, F6-AC1) or `steps_done` is non-empty (SDD "Interrupted
+(a step failed, F6-AC1, or Kado was unreachable: `kado_connect`) or `steps_done` is non-empty (SDD "Interrupted
 delivery"). The second case has `failed_step` empty because the process was
 killed between steps, before any step could record a failure. Part of that
 delivery is already in the vault (at least the note in the inbox), so dropping
@@ -55,6 +55,20 @@ is missing or unreadable is stale for the same reason: `new` writes meta.json
 right after creating the directory, so its absence means the run died in
 between.
 
+## WHY FAILED_STEPS Is Separate From STEPS
+
+`kado_connect` is where a delivery stops when Kado is unreachable: a stop
+point, not a vault target. It may be recorded as `failed_step` (so the draft is
+kept rather than listed as stale) but is never in `steps_done`, because nothing
+was written. `FAILED_STEPS` (`KADO_CONNECT` plus `STEPS`) is what
+`mark_step_failed` and `read_meta` accept for `failed_step`; `STEPS` stays the
+list of vault targets that `mark_step_done` and the `steps_done` check accept.
+Adding `kado_connect` to `STEPS` instead would shift the `INBOX_STEPS` and
+`SOURCE_MARK` slices in `note-instructions.py` (`STEPS[:3]`, `STEPS[3]`), let a
+corrupt `steps_done` holding `kado_connect` pass validation and freeze title and
+destination with nothing landed. The separate tuple keeps the slicing, the
+freeze rules and the `steps_done` validation unchanged.
+
 ## WHY read_meta Checks Every Field's Type
 
 meta.json sits on disk where a crash, a hand edit or a future writer bug can
@@ -63,7 +77,8 @@ leave a valid JSON object with wrong types. The freeze checks test membership
 substring match, so a corrupt file could freeze or unfreeze `keep_source` by
 accident. `read_meta` therefore accepts only: every string field a `str`
 (`source_path` a `str` or null), `keep_source` a `bool`, `steps_done` a list of
-known steps without duplicates, `failed_step` empty or a known step, and `stem`
+known steps (`STEPS`) without duplicates, `failed_step` empty or one of
+`FAILED_STEPS`, and `stem`
 equal to the directory name (a copied meta.json must not deliver under another
 draft's names). Anything else raises MetaError, and the listing counts the
 directory as stale, the same as unreadable JSON.

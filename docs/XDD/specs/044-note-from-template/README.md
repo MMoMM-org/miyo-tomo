@@ -60,6 +60,8 @@
 | 2026-11-05 | One shared validator for /note folder and note paths, in a new `lib/note_paths.py`, used by note-instructions.py and note-process.py | T2.4 review: two folder normalisers had different rules, so a process destination could be saved that note-instructions later ignored |
 | 2026-11-05 | Model escalation: T2.4 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-05 | note-instructions.py stays one file at ~550 lines after `deliver` (constitution L2 split rule not applied now) | About 500 lines without the docstring, every subcommand shares the meta, config and path helpers, and the plan has no task for a split; revisit if the script grows further |
+| 2026-11-05 | A source deleted or moved before deliver marks it counts as nothing to mark: the step is done, `source_marked` is false and the stage is removed | T2.6 review; otherwise every resume failed and the draft stayed a kept draft forever although note and set were delivered |
+| 2026-11-05 | Model escalation: T2.6 opus → opus@max | Trigger: second review FAIL |
 
 ## Context
 

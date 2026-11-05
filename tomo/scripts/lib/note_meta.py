@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.2
+# version: 0.1.3
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -114,23 +114,29 @@ def stage_dir(base: Path, stem: str) -> Path:
     return stage_root(base) / stem
 
 
-def _shape_problem(raw: dict, stem: str) -> str:
-    """Return the problem class of a meta.json object, empty when it is usable."""
-    if any(not isinstance(raw.get(k), str) for k in _STR_FIELDS):
+def _steps_problem(steps: object) -> bool:
+    return (not isinstance(steps, list)
+            or not all(isinstance(s, str) and s in STEPS for s in steps)
+            or len(set(steps)) != len(steps))
+
+
+def _shape_problem(raw: dict, stem: str) -> str | None:
+    """Return the problem class of a meta.json object, None when it is usable."""
+    # Defaulted fields are checked only when present: absent means the dataclass default.
+    if any(not isinstance(raw.get(k, ""), str) for k in _STR_FIELDS):
         return "a text field is not a string"
+    # source_path, keep_source and steps_done have their own shapes, so not in _STR_FIELDS.
     if raw.get("source_path") is not None and not isinstance(raw["source_path"], str):
         return "source_path is neither a string nor null"
-    if not isinstance(raw.get("keep_source"), bool):
+    if not isinstance(raw.get("keep_source", False), bool):
         return "keep_source is not a boolean"
-    steps = raw.get("steps_done")
-    if (not isinstance(steps, list) or not all(isinstance(s, str) and s in STEPS for s in steps)
-            or len(set(steps)) != len(steps)):
+    if _steps_problem(raw.get("steps_done", [])):
         return "steps_done is not a list of distinct known steps"
-    if raw["failed_step"] and raw["failed_step"] not in STEPS:
+    if raw.get("failed_step") and raw["failed_step"] not in STEPS:
         return "failed_step is not a known step"
     if raw["stem"] != stem:
         return "stem does not match the stage directory"
-    return ""
+    return None
 
 
 def read_meta(stage: Path) -> NoteDraftMeta:

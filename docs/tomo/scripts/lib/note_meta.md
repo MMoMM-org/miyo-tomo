@@ -68,6 +68,20 @@ equal to the directory name (a copied meta.json must not deliver under another
 draft's names). Anything else raises MetaError, and the listing counts the
 directory as stale, the same as unreadable JSON.
 
+`source_path`, `keep_source` and `steps_done` are checked outside the plain
+string-field list because each has its own shape (string or null, boolean,
+list of steps).
+
+## WHY a Missing Defaulted Field Reads as Its Default
+
+`keep_source`, `steps_done` and `failed_step` have dataclass defaults (`false`,
+`[]`, `""`). `read_meta` validates each of them only when its key is present; an
+absent key takes the default. An older or partial meta.json must not be dropped
+as stale: a file without `failed_step` whose `steps_done` is `["note"]` is a
+started delivery with a note already in the inbox, and rejecting it for the
+missing key would silently drop that draft, the data loss the kept/stale split
+exists to prevent. A key that is present with the wrong type is still rejected.
+
 ## WHY Error Messages Never Carry the Offending Value
 
 Script output reaches the model. A stem, template stem or step name supplied by

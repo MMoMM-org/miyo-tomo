@@ -396,12 +396,42 @@ def test_read_meta_rejects_a_field_of_the_wrong_shape(tmp_path, overrides):
     assert note_meta.list_stages(tmp_path).stale_stages == [STEM]
 
 
-def test_string_steps_done_is_rejected_not_substring_matched(tmp_path):
-    stage = _raw_stage(tmp_path, steps_done="instructions_json")
+@pytest.mark.parametrize("steps_done", ["instructions_json", "", {"note": 1}])
+def test_steps_done_that_is_not_a_list_is_rejected(tmp_path, steps_done):
+    # "" and {"note": 1} pass the per-element check; only the list check rejects them.
+    stage = _raw_stage(tmp_path, steps_done=steps_done)
 
     with pytest.raises(note_meta.MetaError):
         note_meta.read_meta(stage)
     assert note_meta.list_stages(tmp_path).kept_drafts == []
+
+
+def _raw_stage_without(root: Path, *keys: str, **overrides) -> Path:
+    stage = note_meta.stage_dir(root, STEM)
+    stage.mkdir(parents=True)
+    raw = asdict(_meta()) | overrides
+    for key in keys:
+        raw.pop(key)
+    (stage / "meta.json").write_text(json.dumps(raw), encoding="utf-8")
+    return stage
+
+
+def test_meta_without_the_defaulted_fields_reads_with_defaults(tmp_path):
+    stage = _raw_stage_without(tmp_path, "keep_source", "steps_done", "failed_step")
+
+    meta = note_meta.read_meta(stage)
+
+    assert (meta.keep_source, meta.steps_done, meta.failed_step) == (False, [], "")
+
+
+def test_meta_without_failed_step_but_with_a_done_step_is_a_kept_draft(tmp_path):
+    _raw_stage_without(tmp_path, "failed_step", steps_done=["note"])
+
+    listing = note_meta.list_stages(tmp_path)
+
+    assert [d["stem"] for d in listing.kept_drafts] == [STEM]
+    assert listing.kept_drafts[0]["failed_step"] == ""
+    assert listing.stale_stages == []
 
 
 # ── Error messages carry no offending value ──────────────────────────────────
@@ -454,9 +484,7 @@ def test_meta_error_on_broken_json_does_not_name_the_stem(tmp_path):
 
 
 def test_new_meta_without_stem_raises_a_type_error_naming_stem():
-    fields = asdict(_meta())
-    for key in ("stem", "inbox_file", "keep_source", "steps_done", "failed_step"):
-        fields.pop(key)
+    fields = dict(inbox="100 Inbox", title="T", destination="A/", default_destination="A/")
 
     with pytest.raises(TypeError, match="stem"):
-        note_meta.new_meta(inbox="100 Inbox", **fields)
+        note_meta.new_meta(**fields)

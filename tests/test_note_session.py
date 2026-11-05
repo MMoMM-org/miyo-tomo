@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_note_session.py — Behavioural tests for note-session.py (spec 044 T2.3).
 
 Covers the deterministic /note session start:
@@ -10,10 +10,12 @@ Covers the deterministic /note session start:
 - match: the SDD pattern preview table, daily stripped of .md and always excluded
 - listing failure -> folder_listed 0, listing_error set, exit 0
 - match: empty glob list -> exit 2
+- argument parser boundaries, unreadable config, transport errors, ASCII-safe stdout
 """
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
@@ -154,6 +156,46 @@ def test_missing_args_is_bad_invocation(mod, instance, monkeypatch, capsys):
     assert exc.value.code == 2
 
 
+@pytest.mark.parametrize("text, mode, stem", [
+    ("--processor x", "note", ""),
+    ("--process 'Meeting Notes'", "process", "Meeting Notes"),
+    ('--process "  padded  "', "process", "padded"),
+    ("  --process   --foo ", "process", "--foo"),
+    ("--process \u00c4nder", "process", "\u00c4nder"),
+    ("x --process y", "note", ""),
+    ("--process t_meeting.md", "process", "t_meeting"),
+])
+def test_args_text_parser_boundaries(mod, instance, monkeypatch, capsys, text, mode, stem):
+    _config(instance, include=["t_*"])
+    code, out, *_ = _run(mod, monkeypatch, capsys, ["start", f"--args={text}"])
+    assert code == 0
+    assert (out["mode"], out["process_template"]) == (mode, stem)
+
+
+def test_process_stem_with_md_suffix_finds_the_template(mod, instance, monkeypatch, capsys):
+    _config(instance, include=None)
+    code, out, *_ = _run(mod, monkeypatch, capsys, ["start", "--args=--process t_meeting.md"])
+    assert out["process_template_path"] == "Templates/t_meeting.md"
+
+
+@pytest.mark.parametrize("text", ["--process", "--process ''", "--process .md"])
+def test_empty_process_stem_skips_listing(mod, instance, monkeypatch, capsys, text):
+    _config(instance, include=["t_*"])
+    code, out, _, _, fake = _run(mod, monkeypatch, capsys, ["start", f"--args={text}"])
+    assert code == 0 and out["mode"] == "process"
+    assert out["process_template_path"] == "" and fake.calls == []
+
+
+def test_non_ascii_stdout_never_fails(mod, instance, monkeypatch):
+    _config(instance, include=None)
+    monkeypatch.setattr(mod, "KadoClient", lambda *a, **k: FakeKado())
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="ascii"))
+    assert mod.main(["start", "--args=--process \u00c4nder \udcff"]) == 0
+    sys.stdout.flush()
+    assert json.loads(raw.getvalue().decode("ascii"))["process_template"] == "\u00c4nder \udcff"
+
+
 # ---------------------------------------------------------------- start: stages
 
 def test_kept_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
@@ -206,6 +248,13 @@ def test_missing_config_reads_as_not_configured(mod, instance, monkeypatch, caps
     assert code == 0 and out["include_configured"] is False and fake.calls == []
 
 
+def test_binary_config_reads_as_empty_with_class_only(mod, instance, monkeypatch, capsys):
+    (instance / "config" / "vault-config.yaml").write_bytes(b"\xff\xfe\x00templates: \x9c")
+    code, out, _, err, fake = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
+    assert code == 0 and out["include_configured"] is False and fake.calls == []
+    assert err == "note-session: config unusable (UnicodeDecodeError)\n"
+
+
 def test_candidates_match_include_and_drop_daily(mod, instance, monkeypatch, capsys):
     _config(instance, include=["t_*"])
     code, out, _, _, fake = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
@@ -233,6 +282,20 @@ def test_start_listing_error_reported_exit_0(mod, instance, monkeypatch, capsys)
     assert code == 0
     assert out["folder_listed"] == 0 and out["candidates"] == []
     assert out["listing_error"] == "kado-search: Path not found: Templates/"
+
+
+@pytest.mark.parametrize("error, expected", [
+    (OSError("Connection reset by peer"), "OSError: Connection reset by peer"),
+    (TimeoutError("timed out"), "TimeoutError: timed out"),
+])
+def test_start_transport_error_is_listing_error(
+        mod, instance, monkeypatch, capsys, error, expected):
+    _config(instance, include=["t_*"])
+    code, out, raw, err, _ = _run(mod, monkeypatch, capsys, ["start", "--args", MARKER],
+                                  FakeKado(error=error))
+    assert code == 0
+    assert out["folder_listed"] == 0 and out["listing_error"] == expected
+    assert "SECRET-MARKER" not in raw + err
 
 
 def test_start_without_base_path_reports_error_without_call(mod, instance, monkeypatch, capsys):

@@ -30,7 +30,18 @@ whitespace token would turn `/note --process Meeting Notes` into a lookup for
 `Meeting`, which is reported as unknown. The rest of the text, stripped and
 with one pair of surrounding quotes removed, is the stem. `--process` with
 nothing after it is still process mode with an empty stem; the skill reports
-the template as unknown (F7-AC11) rather than the script failing.
+the template as unknown (F7-AC11) rather than the script failing. Only the exact
+token `--process` selects the mode: `--processor x` is free text (note mode),
+so a request that merely starts with those letters is never read as a template
+name. One trailing `.md` is removed from the stem, because a user who names the
+file (`/note --process t_meeting.md`) means the template whose listing stem is
+`t_meeting`; without that, the lookup would always miss.
+
+## WHY an Empty `--process` Stem Makes No Kado Call
+
+WHY: CON-7 budget. An empty stem can never be found, so the listing would only
+spend a call for a `process_template_path` that is empty anyway. The skill
+already reports the template as unknown from the empty stem.
 
 ## WHY the Skill Passes `--args=<text>`
 
@@ -46,8 +57,9 @@ WHY: every Python script that needs `vault-config.yaml` (`mark-captured.py`,
 inline Python. Spawning it from a script adds a process and a JSON round trip
 for the same `safe_load`. The script keeps its semantics: a missing key is
 absent, never an error (the `--field` exit 1 the SDD gotcha warns about does
-not arise). A missing or unparseable file reads as empty config, with one
-stderr line naming the problem class only.
+not arise). A missing, unparseable or non-UTF-8 file (`UnicodeDecodeError`,
+a `ValueError`) reads as empty config, with one stderr line naming the problem
+class only — a crash there would make the model re-run the script.
 
 ## WHY No Listing When `note_include` Is Absent (Note Mode)
 
@@ -104,7 +116,20 @@ the skill says the folder is empty or not readable by the Kado key and gives the
 remedy (F2-AC4). An empty listing is not proof of an empty folder (CON-7), so
 the script never claims "no templates". `listing_error` is the Kado error text
 (paths and status, no note content), shown verbatim by the skill. A missing
-`templates.base_path` is reported the same way, without a Kado call.
+`templates.base_path` is reported the same way, without a Kado call. A
+transport failure that escapes the client as `OSError` or `TimeoutError`
+(socket reset, read timeout) is reported the same way, as the class name and
+its message: neither carries the request text, which never reaches the client.
+
+## WHY the JSON Is Written ASCII-Escaped
+
+WHY: `json.dumps(..., ensure_ascii=False)` raises `UnicodeEncodeError` when
+stdout is not UTF-8 (a `C`/`POSIX` locale in a container, a pipe opened as
+ASCII), and also on a lone surrogate, which Python makes of argv bytes that are
+not valid UTF-8. `ensure_ascii=True` cannot fail on either: every non-ASCII
+character becomes a `\uXXXX` escape that any JSON reader decodes back.
+Reconfiguring `sys.stdout` to UTF-8 was rejected: it still fails on a
+surrogate, and it changes a process-wide stream for one write.
 
 ## WHY `match` Exits 2 on an Empty Glob List
 

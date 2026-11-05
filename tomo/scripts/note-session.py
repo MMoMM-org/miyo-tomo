@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-session.py — Deterministic session start of /note.
-# version: 0.1.0
+# version: 0.1.1
 """Start a /note session: mode, draft state and template candidates; preview globs.
 
 /note fills a vault template into a new note. This script makes its start the
@@ -20,14 +20,16 @@ Output: one JSON object on stdout.
     match: matched, unmatched, excluded_daily, folder_listed, listing_error
 
 Rules:
-    A leading ``--process`` selects process mode; the rest of the text, with one
-    pair of surrounding quotes removed, is the template stem. Any other text is
-    note mode and appears in neither stdout nor stderr.
+    A leading ``--process`` token selects process mode; the rest of the text,
+    with one pair of surrounding quotes and one trailing ``.md`` removed, is the
+    template stem. An empty stem makes no Kado call. Any other text is note mode
+    and appears in neither stdout nor stderr.
     The template folder is listed with depth 1; only ``.md`` files count.
     Globs match the filename without ``.md``, case-sensitively. The daily
     template (``templates.mapping.daily``, ``.md`` optional) is never a
     candidate or a match.
-    ``listing_error`` is Kado's error text; a failed listing still exits 0.
+    ``listing_error`` is Kado's error text, or ``<class>: <message>`` for a
+    transport error; a failed listing still exits 0. JSON is ASCII-escaped.
 
 Exit codes:
     0 — output usable (also on a listing failure or a missing config)
@@ -61,7 +63,7 @@ def load_config(path: str) -> dict:
     """Return vault-config.yaml as a dict; empty (one stderr line) when unusable."""
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
+    except (OSError, ValueError, yaml.YAMLError) as exc:
         print(f"note-session: config unusable ({type(exc).__name__})", file=sys.stderr)
         return {}
     return data if isinstance(data, dict) else {}
@@ -101,6 +103,8 @@ def list_templates(base_path: object) -> tuple[list[dict], str]:
         items = KadoClient().list_dir(base_path, depth=1)
     except KadoError as exc:
         return [], str(exc)
+    except (OSError, TimeoutError) as exc:
+        return [], f"{type(exc).__name__}: {exc}"
     files = [i["path"] for i in items
              if i.get("type") == "file" and str(i.get("path", "")).endswith(".md")]
     return [{"path": p, "stem": PurePosixPath(p).name[:-3]} for p in files], ""
@@ -120,7 +124,7 @@ def parse_args_text(text: str) -> tuple[str, str]:
     stem = parts[1].strip() if len(parts) > 1 else ""
     if len(stem) >= 2 and stem[0] == stem[-1] and stem[0] in "\"'":
         stem = stem[1:-1].strip()
-    return "process", stem
+    return "process", stem.removesuffix(".md")
 
 
 def process_path(templates_found: list[dict], stem: str) -> str:
@@ -139,7 +143,7 @@ def start(args: argparse.Namespace) -> dict:
     globs = note_include(templates)
     stages = list_stages(Path.cwd())
     found, error = [], ""
-    if globs or mode == "process":
+    if (mode == "process" and stem) or (mode == "note" and globs):
         found, error = list_templates(templates.get("base_path"))
     candidates = note_candidates(found, globs, daily_stem(templates))
     return {
@@ -200,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             print("note-session: match needs at least one glob", file=sys.stderr)
             return 2
         result = match(args, globs)
-    sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps(result, ensure_ascii=True) + "\n")
     return 0
 
 

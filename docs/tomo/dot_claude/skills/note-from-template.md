@@ -26,6 +26,41 @@ question, and again before each re-ask after a change. What is printed is `note.
 `{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what will land in the vault. The
 same rule covers the question rounds: any text the user needs to decide on is printed first.
 
+## Why the Source Delete Is Named Before the User Approves
+
+WHY: When the draft came from an inbox note that is not kept, the instruction set carries a `delete_source` action
+(I02, `lib/note_actions.py`). Applying the set in Hashi deletes the source, so the user must know that before they
+approve: the header line "Source ... is deleted when you apply the instruction set in Hashi." is printed above every
+draft, ahead of the Deliver question. The line is omitted exactly when `build_delete_source` returns no action: with no
+source there is nothing to delete, and with `keep_source` true nothing is deleted. Printing it then would announce a
+delete that never happens. Deleting is the default because the new note replaces the inbox note (the action's reason is
+"Replaced by a /note note"); `--keep-source true` exists for the case where the user wants the original kept, e.g.
+raw material they still need. Keeping also changes the note: `stage` resolves `{{source_link}}` to `[[<source stem>]]`
+instead of empty text, so the note links to the kept original. `--keep-source false` undoes it. The option is refused
+once `instructions_json` is in `steps_done` (`is_keep_source_frozen`), see the frozen message below.
+
+## Why the Draft Keeps {{source_link}} as Written
+
+WHY: The `{{source_link}}` value depends on `keep_source`, which the user can still change at the step 6 question.
+`stage` resolves the token into `note.md` and never changes `draft.md`, so a keep-source change needs only a rerun of
+`stage`, not a rewrite of the draft by the model. Every other `{{…}}` token must be filled: a token left in the note
+fails the filled-note check.
+
+## Why the Draft Adds No tomo: Key
+
+WHY: `deliver` stamps the note itself: `_checked_note` (`note-instructions.py`) merges a `tomo:` block
+(`rendered-note` / `pending-move`, with the draft's run id) into the frontmatter, and triage uses that stamp to skip the
+note in the inbox. A draft-supplied `tomo:` key would clash with the stamp: `merge_tomo_block_into_markdown` refuses a
+frontmatter that already has a top-level `tomo:` key (`FrontmatterMergeError`) rather than write a duplicate key, and
+the filled-note check reports it as `no_user_tomo_key` FAIL. Either way the delivery stops until the draft is fixed.
+
+## Why the Header Names Both File Names
+
+WHY: The note lands in the inbox first, as `inbox_file` (`<stem>_<title>.md`), and moves to `destination_file` only when
+the user applies the instruction set in Hashi. The MVP boundary lets Tomo write only to the inbox. The header names both
+so the user knows where to find the note now and where it ends up; the delivery report ends with "Next: review and
+apply the instruction set in Hashi." because nothing reaches its destination until that happens.
+
 ## Why Session Start Is a Script (ADR-6)
 
 WHY: `note-session.py start` parses `$ARGUMENTS`, lists kept drafts, checks `note_include`, lists candidate
@@ -121,6 +156,40 @@ taken) is different: never overwrite; the skill branches on `steps_done` (see
 `deliver` is branched on `status` first and then on `step` (see
 [Why Exit 1 Branches on status](#why-exit-1-branches-on-status-then-on-step)).
 
+## Why deliver Exit 2 Stops and Keeps the Draft
+
+WHY: Exit 2 of `deliver` is not refused user input. `note-instructions.py` maps every `UsageError` and local `OSError`
+to exit 2, and on the `deliver` path those are: a malformed or unknown stem (`_existing_stage`), a `meta.json` that
+cannot be read (`_stage_meta`) or written, and "no title staged". (The `vault-config.yaml` errors of
+`read_note_config` are exit 2 too, but only `new` reads the config.) Each is a bad invocation or a broken local stage;
+no other value the user could give cures it, so there is nothing to ask for. The skill shows the error and stops;
+the draft stays, because nothing reached the vault and the user's material should survive for a later `/note` or a
+look at `tomo-tmp/note/<stem>/`.
+
+The rule "never run `deliver` before `stage` has recorded a title" exists because the title names the files: `new`
+records an empty title, and `inbox_file` (`<stem>_<sanitize_stem(title)>.md`) and `destination_file`
+(`<destination><sanitize_stem(title)>.md`) are derived from it. Without a title there is no file name to write, no
+`note.md` the user has seen, and no filled-note check result, so `deliver` refuses with "no title staged" rather than
+guessing a name.
+
+## Why new Exit 1 and template-outline.py Exit 2 Stop
+
+WHY: `new` exits 1 on a `SourceError`: Kado could not read the source note. `new` reads the source before the stage
+directory is created, so nothing is staged yet: no stem exists and there is nothing to drop. The source may have moved
+or be outside the key's read access, so the skill says it could not be read and offers Another source / Abort. Abort
+simply stops.
+
+`template-outline.py` exits 2 for a bad invocation, an unusable stage `meta.json` or a local write failure. These come
+from the script call or the local stage, not from anything the user typed, so no retry with another value cures them:
+the skill shows the `error`, must drop the stem (it already exists from `new`) and stops. Exit 1 of the same script
+is different: the template is unreadable, which another template can avoid.
+
+## Why Another Template Drops the Stem
+
+WHY: `new` fixes the template in `meta.json` (`template`, `template_stem`) and `template-outline.py --stage` writes that
+template's `template.md` and `outline.json` into the stage. A stage cannot switch templates, so trying another template
+means dropping this stem and running `new` again from step 3, which draws a new stem.
+
 ## Why Template Unreadable Is Not "No Template Exists"
 
 WHY: A Kado key without read access to `templates.base_path` returns an empty listing, indistinguishable from an
@@ -134,6 +203,14 @@ WHY: With `folder_listed` above 0 the folder was readable and the model judged t
 a normal outcome, so the skill says "No selected template fits." and offers three exits: adjust patterns (back to the
 `note_include` setup), `inbox-author` (a free-form artifact needs no template) or abort. `folder_listed` equal to 0 is
 the unreadable case above and never reaches this offer.
+
+## Why Template Choice Asks Only When Several Fit
+
+WHY: When one candidate fits the request and its material, a question would only confirm the obvious, so the skill
+names it in one line and continues without asking; the user still sees the template in the draft header and can abort
+at the Deliver question. When several fit, the user decides: the skill prints them as a numbered list first (the
+print-before-ask rule) and asks with up to four options, the same four-option cap as every `AskUserQuestion` in the
+skill. With more than four fits, the list is printed in full and the user may type another number.
 
 ## Why One Shared Parser (ADR-4)
 
@@ -149,12 +226,22 @@ edits only the `note_include` lines inside `templates:`; the existing helper rep
 would drop the `mapping` comments. The skill never composes YAML by hand. The glob preview in `note-session.py`
 lets the user confirm before anything is written.
 
+## Why Setup Reruns start and Kept Drafts Come First
+
+WHY: `start` computes `candidates` from the saved `note_include`; before the first-run setup there was none, so the
+skill reruns `start` after the writer call to get the candidates for step 3, skipping the kept drafts it already
+handled. Kept drafts are handled before any new request because each kept draft is a delivery the user started and
+may already have files in the vault; starting a new draft first would bury it.
+
 ## Why the Question Budget Is Two Rounds of Four
 
 WHY: `AskUserQuestion` caps at four options, and long interviews lose the user. Round 1 asks up to four open
 points (required first, process guidance deciding order); round 2 up to four more plus gaps opened by
 answers. A required point still unanswered is asked again without a skip option: answer or abort. Optional points
 left open are named in the "Skipped, left empty:" line above the draft, so skipping is visible.
+Any non-empty answer, "none" included, answers a required point: required means the user must address the point, and
+"none" is a deliberate answer, not a skip, so re-asking would loop. Tokens with `prefilled` true are not points:
+`template-outline.py` already filled them from the clock, the config or the source path.
 
 ## Why --process Is a Separate Mode
 
@@ -163,6 +250,14 @@ WHY: `/note --process <template>` stores per-template guidance (destination, req
 skill offers Save / Not now / Never once, only when the template has no process file and no decline marker and the
 session showed a signal worth saving (a changed destination, an answered re-asked point, a requested question order); "Never" writes a decline marker that `write` later replaces. An unknown
 template writes nothing (F7-AC11). The temporary outline file is removed afterwards.
+
+## Why the Process Offer Re-Outlines the Template
+
+WHY: The offer comes after a successful delivery, and `deliver` removes the stage directory on success, so the stage's
+`outline.json` is gone. `note-process.py write` checks the required points against an outline, so the skill writes a
+fresh one with `template-outline.py --out tomo-tmp/note/process-outline.json`. `write` exits 1 and writes nothing when
+a required point is not in the outline; the skill names `rejected_required` and reruns without them, so the valid rest
+of the process is still saved.
 
 ## Why Template and Config Problems Continue Instead of Stopping
 
@@ -173,6 +268,14 @@ refinement being intact. A filled-note check that fails at `stage` is different:
 reruns `stage` before showing the draft, so the skill never calls `deliver` on a known failing check. `deliver`
 checks again and also stamps the frontmatter; either failing there (exit 1, `status` `failed`, empty `step`) sends
 the skill back to fixing the draft and rerunning `stage`.
+
+## Why Script Errors Are Shown Verbatim
+
+WHY: The `/note` scripts write their errors to name only the problem class (never a title, a path or note text, per
+the script docstrings), and the wording is written for the user: "no title staged: run stage --title first", "--source
+must be a note inside concepts.inbox". The text is already safe and specific. A paraphrase would hide the cause, e.g.
+turn "unknown stem: no stage directory" into a vague "something went wrong", and the user could no longer tell which
+check failed.
 
 ## Why STRICT Is Rare
 

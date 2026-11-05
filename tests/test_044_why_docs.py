@@ -194,3 +194,47 @@ def test_script_mirror_names_kado_connect_decision(path, heading, needles):
 def test_skill_mirror_has_no_stale_exit_1_statement(stale):
     flat = re.sub(r"\s+", " ", _text(SKILL))
     assert stale.lower() not in flat.lower()
+
+
+@pytest.mark.parametrize(
+    "heading, needles",
+    [
+        # 1. The source delete is disclosed before approval; the line and the option follow keep_source.
+        ("Source Delete Is Named", ["before", "approves", "delete_source", "keep_source",
+                                    "no source", "nothing is deleted", "--keep-source",
+                                    "[[", "is_keep_source_frozen"]),
+        # 2. deliver exit 2 is a bad invocation, config or stage: no other value cures it.
+        ("deliver Exit 2", ["no title staged", "unknown stem", "meta.json", "vault-config.yaml",
+                            "no other value", "the draft stays", "inbox_file",
+                            "destination_file", "sanitize_stem"]),
+        # 3. new exit 1 stages nothing; template-outline.py exit 2 is refused input no retry cures.
+        ("new Exit 1", ["sourceerror", "before the stage", "nothing to drop",
+                        "another source", "exit 2", "no retry", "drop the stem",
+                        "unusable stage"]),
+        # 4. deliver stamps tomo:, so a draft-supplied key clashes with the stamp.
+        ("tomo: Key", ["_checked_note", "stamp", "rendered-note", "pending-move",
+                       "no_user_tomo_key", "clash", "frontmatterMergeError"]),
+        # 5. One fit continues without asking; several get a numbered list under the four-option cap.
+        ("Template Choice", ["one candidate fits", "without asking", "numbered list",
+                             "four-option cap", "another number"]),
+        # 6. Script errors are verbatim: they name the problem class only and are written for the user.
+        ("Verbatim", ["problem class", "written for the user", "paraphras", "hide the cause"]),
+        # Sweep: draft keeps {{source_link}}; stage resolves it from keep_source.
+        ("source_link", ["{{source_link}}", "keep_source", "rewrite"]),
+        # Sweep: "none" answers a required point.
+        ("Question Budget", ["\"none\"", "deliberate"]),
+        # Sweep: another template needs a new stem.
+        ("Another Template", ["meta.json", "template", "new stem"]),
+        # Sweep: the save path re-outlines because a delivery removed the stage.
+        ("Process Offer Re-Outlines", ["removes the stage", "process-outline.json",
+                                       "rejected_required"]),
+        # Sweep: the header names both file names; the report points to Hashi.
+        ("Header Names Both", ["inbox_file", "destination_file", "Hashi", "inbox"]),
+        # Sweep: after setup start reruns; kept drafts come first.
+        ("Setup Reruns start", ["candidates", "note_include", "kept draft"]),
+    ],
+)
+def test_skill_mirror_names_remaining_decisions(heading, needles):
+    body = re.sub(r"\s+", " ", _section(_text(SKILL), heading))
+    for needle in needles:
+        assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"

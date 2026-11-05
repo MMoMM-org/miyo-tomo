@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_template_syntax.py — Behavioural tests for lib.template_syntax.
 
 Spec 044 T1.2: one module gives the template outline its points and the
@@ -436,3 +436,97 @@ def test_token_regex_equals_token_render_token_re():
     token_render = _load_token_render()
     assert ts.TOKEN_RE.pattern == token_render._TOKEN_RE.pattern
     assert ts.TOKEN_RE.flags == token_render._TOKEN_RE.flags
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Prefilled resolver (spec 044 T2.1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+RESOLVE_TEMPLATE = """---
+UUID: {{uuid}}
+locale: {{locale}}
+title: {{title}}
+source: {{source_link}}
+---
+# {{title}}
+
+```
+{{uuid}}
+```
+\\{{uuid}} <% tp.date.now() %> {{datestamp}}
+"""
+
+VALUES = {"uuid": "20261105120000", "locale": "de", "datestamp": "2026-11-05",
+          "source_link": "[[Meeting raw]]"}
+
+
+def test_resolve_prefilled_replaces_prefilled_and_keeps_points():
+    out = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES)
+    assert "UUID: 20261105120000\n" in out
+    assert "locale: de\n" in out
+    assert out.count("{{title}}") == 2
+    assert out.endswith("2026-11-05\n")
+
+
+def test_resolve_prefilled_leaves_fenced_escaped_and_templater_tokens():
+    out = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES)
+    assert "```\n{{uuid}}\n```" in out
+    assert "\\{{uuid}}" in out
+    assert "<% tp.date.now() %>" in out
+
+
+def test_resolve_prefilled_source_tokens_only_with_source():
+    without = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES)
+    with_source = ts.resolve_prefilled(RESOLVE_TEMPLATE, VALUES, has_source=True)
+    assert "source: {{source_link}}" in without
+    assert "source: [[Meeting raw]]" in with_source
+
+
+def test_resolve_prefilled_missing_value_becomes_empty_and_no_token_is_left():
+    out = ts.resolve_prefilled("---\nvault: {{vault}}\n---\n", {})
+    assert out == "---\nvault: \n---\n"
+    assert ts.tokens(out) == []
+
+
+def test_resolve_prefilled_value_newline_keeps_line_numbers():
+    text = "---\nprofile: {{profile}}\ntitle: {{title}}\n---\n"
+    out = ts.resolve_prefilled(text, {"profile": "a\nb"})
+    assert out.splitlines()[1] == "profile: a b"
+    assert ts.tokens(out) == [{"name": "title", "line": 3, "prefilled": False}]
+
+
+def test_source_values_build_path_and_wikilink():
+    assert ts.source_values("100 Inbox/sub/Meeting raw.md") == {
+        "source_path": "100 Inbox/sub/Meeting raw.md",
+        "source_link": "[[Meeting raw]]",
+    }
+
+
+def test_generated_values_equal_token_render():
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 5, 17, 30, 5, tzinfo=timezone.utc)
+    token_render = _load_token_render()
+    assert ts.generated_values(now) == token_render.resolve_generated_tokens(now)
+
+
+def test_config_values_equal_token_render_for_config_tokens():
+    config = {
+        "profile": "miyo",
+        "frontmatter": {"optional": [
+            {"key": "locale", "token": "locale", "default": "de"},
+            {"key": "Vault", "token": "vault", "default": "Privat"},
+            {"key": "VaultVersion", "token": "vault_version", "default": 2},
+            {"key": "Other", "token": "other", "default": "x"},
+            {"key": "NoDefault", "token": "nodefault"},
+        ]},
+    }
+    expected = {k: v for k, v in _load_token_render().resolve_config_tokens(config).items()
+                if k in ts.CONFIG_TOKENS}
+    assert ts.config_values(config) == expected
+    assert expected == {"locale": "de", "vault": "Privat", "vault_version": "2",
+                        "profile": "miyo"}
+
+
+def test_config_values_tolerate_missing_or_odd_sections():
+    assert ts.config_values({}) == {}
+    assert ts.config_values({"frontmatter": {"optional": "nope"}}) == {}

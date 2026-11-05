@@ -1,4 +1,4 @@
-# version: 0.1.2
+# version: 0.1.3
 """template_syntax.py — the one reading of a note template and a filled note.
 
 /note lists a template's points and later checks the filled note before it is
@@ -11,10 +11,15 @@ no IO. See docs/tomo/scripts/lib/template_syntax.md for the WHY.
 Lines are 1-based. A token is ``{{name}}`` matching TOKEN_RE outside fenced code,
 outside a Templater span and without a leading backslash. A Templater span is
 ``<% ... %>`` in any variant (``<%*``, ``<%-``) and is listed, never a point.
+
+resolve_prefilled() replaces the prefilled tokens tokens() reports, in place;
+generated_values() and config_values() copy token-render.py's value rules
+(pinned by parity tests) and source_values() builds the two source tokens.
 """
 from __future__ import annotations
 
 import bisect
+import posixpath
 import re
 from dataclasses import dataclass, field
 
@@ -160,12 +165,11 @@ def prefilled_tokens(has_source: bool = False) -> frozenset:
     return prefilled | SOURCE_TOKENS if has_source else prefilled
 
 
-def tokens(text: str, has_source: bool = False) -> list[dict]:
-    """List tokens as {name, line, prefilled} in document order."""
+def _token_matches(text: str) -> list[tuple[re.Match, int]]:
+    """Return (match, line) for each token outside fences, escapes and Templater."""
     fenced = _fence_line_indexes(_split(text))
     starts = _line_starts(text)
     spans = [m.span() for m in TEMPLATER_RE.finditer(text)]
-    prefilled = prefilled_tokens(has_source)
     found = []
     for match in TOKEN_RE.finditer(text):
         line = _line_of(match.start(), starts)
@@ -173,9 +177,60 @@ def tokens(text: str, has_source: bool = False) -> list[dict]:
             continue
         if any(start <= match.start() < end for start, end in spans):
             continue
-        name = match.group(1)
-        found.append({"name": name, "line": line, "prefilled": name in prefilled})
+        found.append((match, line))
     return found
+
+
+def tokens(text: str, has_source: bool = False) -> list[dict]:
+    """List tokens as {name, line, prefilled} in document order."""
+    prefilled = prefilled_tokens(has_source)
+    return [
+        {"name": m.group(1), "line": line, "prefilled": m.group(1) in prefilled}
+        for m, line in _token_matches(text)
+    ]
+
+
+def resolve_prefilled(text: str, values: dict, has_source: bool = False) -> str:
+    """Replace each prefilled token tokens() reports; a missing value becomes ""."""
+    prefilled = prefilled_tokens(has_source)
+    parts, cursor = [], 0
+    for match, _line in _token_matches(text):
+        if match.group(1) not in prefilled:
+            continue
+        value = str(values.get(match.group(1), "")).replace("\r", " ").replace("\n", " ")
+        parts += [text[cursor:match.start()], value]
+        cursor = match.end()
+    return "".join(parts) + text[cursor:]
+
+
+def generated_values(now) -> dict:
+    """Generated token values; copy of token-render.py resolve_generated_tokens."""
+    local = now.astimezone()
+    return {
+        "uuid": local.strftime("%Y%m%d%H%M%S"),
+        "datestamp": local.strftime("%Y-%m-%d"),
+        "updated": local.strftime("%Y-%m-%d %H:%M"),
+        "date_iso": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def config_values(config: dict) -> dict:
+    """Config token values; token-render.py resolve_config_tokens, CONFIG_TOKENS only."""
+    found = {}
+    optional = (config.get("frontmatter") or {}).get("optional", [])
+    for entry in optional if isinstance(optional, list) else []:
+        if isinstance(entry, dict) and entry.get("token") and entry.get("default") is not None:
+            found[entry["token"]] = str(entry["default"])
+    if config.get("profile"):
+        found.setdefault("profile", config["profile"])
+    return {k: v for k, v in found.items() if k in CONFIG_TOKENS}
+
+
+def source_values(source_path: str) -> dict:
+    """source_path and source_link (``[[<basename without .md>]]``) of an inbox note."""
+    name = posixpath.basename(source_path)
+    stem = name[:-3] if name.endswith(".md") else name
+    return {"source_path": source_path, "source_link": f"[[{stem}]]"}
 
 
 def templater_spans(text: str) -> list[dict]:

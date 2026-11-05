@@ -96,6 +96,36 @@ source, so those tokens fall back to points the model fills, like every other to
 default is `False` because a template outline without a draft (`/note --process`)
 has no source.
 
+## Why the prefilled values are resolved here, not by token-render.py
+
+WHY: `template-outline.py --stage` writes `template.md` with the prefilled tokens
+already replaced, so the model never sees or invents a uuid or a locale. Two ways
+were open: call `token-render.py` as a subprocess, or resolve in this module.
+`token-render.py` replaces every token and turns each one it has no value for into
+an empty string, so a subprocess call would erase the points the model is meant to
+fill. Its protection rules also differ from `tokens()` here (backtick fences only,
+no `~~~`), so it could replace a token this module reports as fenced, or the
+reverse. `resolve_prefilled()` replaces exactly the matches `tokens()` reports as
+prefilled, in the same positions, so the outline and `template.md` always agree.
+
+WHY the value rules are copies pinned by parity: `generated_values()` and
+`config_values()` repeat `token-render.py`'s `resolve_generated_tokens()` and
+`resolve_config_tokens()` (limited to `locale`, `vault`, `vault_version`,
+`profile`), so a `/note` note gets the same values a Pass-2 rendered note gets.
+The hyphenated script cannot be imported, so `tests/test_template_syntax.py` loads
+it by file path and asserts both functions return the same values for the same
+input. A change to token-render's rules fails the suite until this module follows.
+
+WHY a prefilled token with no value becomes empty text: `token-render.py` renders
+an unconfigured `{{locale}}` as an empty string, and a token left over would fail
+the filled-note check while the outline says it is not a point. Empty text matches
+the renderer and leaves no gap between outline and check.
+
+WHY `source_link` is `[[<source basename>]]`: `docs/template-syntax.md` defines
+it as the original item as a wikilink; a bare basename link is how Obsidian links
+a note by name. A newline in any value is replaced by a space, so the line numbers
+in the outline stay valid for `template.md`.
+
 ## Why the token regex is duplicated and pinned by parity
 
 WHY: `template-doctor.py` and `token-render.py` keep their own parsers (ADR-4

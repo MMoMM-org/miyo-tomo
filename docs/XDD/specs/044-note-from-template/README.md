@@ -56,6 +56,8 @@
 | 2026-11-05 | Model escalation: T2.5 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-05 | note-process.py `--required` is repeatable, one point per flag (SDD signature updated) | T2.4 spec review; a heading such as "Decisions, actions" could never be made required |
 | 2026-11-05 | Accepted as documented, not changed: fences at any indent, indented ATX headings and quoted frontmatter keys not recognised, `--stdout` previews only the key lines, atomic write only in templates-include | LOW drift findings; realistic templates are unaffected |
+| 2026-11-05 | /note path rules: titles and folders reject invisible format characters, line and paragraph separators, but allow the zero-width joiner and non-joiner (U+200D, U+200C) | Owner choice; joined emoji and Persian/Indic spelling must keep working |
+| 2026-11-05 | One shared validator for /note folder and note paths, in a new `lib/note_paths.py`, used by note-instructions.py and note-process.py | T2.4 review: two folder normalisers had different rules, so a process destination could be saved that note-instructions later ignored |
 
 ## Context
 

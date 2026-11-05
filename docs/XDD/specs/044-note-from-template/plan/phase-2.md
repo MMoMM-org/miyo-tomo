@@ -71,7 +71,7 @@ This phase delivers every deterministic part of `/note`.
   4. Validate: tests pass.
   5. Success: process files are only ever written by the script `[ref: PRD/F7; SDD/F7-AC8 … F7-AC11]`
 
-- [ ] **T2.5 note-instructions.py new, stage, drop and the action builder** `[activity: backend]`
+- [x] **T2.5 note-instructions.py new, stage, drop and the action builder** `[activity: backend]`
 
   1. Prime: SDD `new`, `stage`, `drop`, `NoteInstructionSet`; `render_source_actions.py:53-99`; `hashi-instructions.schema.json` `move_note` and `delete_source` `[ref: SDD/Application Data Models; ADR-2, ADR-7]`
   2. Test: new `tests/test_note_actions.py` and `tests/test_note_instructions.py`:

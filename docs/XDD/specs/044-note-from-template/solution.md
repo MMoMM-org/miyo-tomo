@@ -374,7 +374,8 @@ Directory: config/note-processes/ (instance, NEW, optional)
 Directory: tomo-tmp/note/<stem>/ (instance, transient)
   template.md   staged template with identity and date tokens pre-filled
   source.md     staged source body when the source is an inbox note
-  draft.md      the note as the model last wrote it
+  draft.md      the note as the model last wrote it (keeps {{source_link}} as written)
+  note.md       draft.md with {{source_link}} resolved from keep_source; rewritten by every stage, printed by the skill
   meta.json     see Application Data Models
 ```
 
@@ -427,14 +428,14 @@ Script: note-instructions.py new
 
 Script: note-instructions.py stage
   Args: --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
-  Effect: updates meta.json; resolves {{source_link}} in draft.md from keep_source; runs the filled-note checks on draft.md
+  Effect: updates meta.json; writes note.md (draft.md with every {{source_link}} resolved from keep_source; draft.md unchanged); runs the filled-note checks on note.md
   Output: {stem, title, inbox_file, destination_file, keep_source, frozen, check: {ok, findings[]}}
   Rule: once steps_done is non-empty, title and destination are frozen; once steps_done holds instructions_json, keep_source is frozen too; a change is refused with frozen: true
   Exit: 0 (findings reported in output); 2 bad invocation or unknown stem
 
 Script: note-instructions.py deliver
   Args: --stem <stem>
-  Effect: reruns the filled-note check and refuses on FAIL; then the ordered delivery in the example below
+  Effect: resolves {{source_link}} in draft.md from meta (as stage does), reruns the filled-note check on the result and refuses on FAIL; then the ordered delivery in the example below, uploading the resolved text
   Output:
     status: "delivered" | "exists" | "failed" | "withdrawn"
     step: "note" | "instructions_json" | "instructions_md" | "source_mark" | ""
@@ -504,8 +505,9 @@ TABLE: Prefilled tokens (resolved by the script, not points)
   generated:       uuid, datestamp, updated, date_iso         (token-render.py values)
   config-sourced:  locale, vault, vault_version, profile      (vault-config values)
   source metadata: source_path, source_link                   (only when the source is an inbox note)
-    source_link is left as {{source_link}} in template.md; note-instructions.py stage resolves it in draft.md from keep_source:
-    [[<source stem>]] when the source is kept, empty text when it will be deleted (a link to a deleted note would dangle)
+    source_link is left as {{source_link}} in template.md and draft.md; note-instructions.py stage resolves it into note.md from keep_source:
+    [[<source stem>]] when the source is kept, empty text when it will be deleted or there is no source (a link to a deleted note would dangle);
+    deliver resolves draft.md the same way
   every other token, known or not (title, tags, body, up, summary, custom), is a point the model fills
 
 ENTITY: ProcessFile (NEW) — config/note-processes/<template-stem>.md
@@ -637,7 +639,7 @@ def test_deliver_never_overwrites_different_note(fake_kado, staged_meta):
 2. Skill runs `note-session.py start`. A kept draft is offered first. With no `note_include`, the first-run setup runs.
 3. Skill picks among `candidates` (asks when several fit) and runs `note-instructions.py new --template ... --source ...`, then `template-outline.py --template ... --stage <stem>`.
 4. Skill reads `template.md`, `source.md` and the process file (`note-process.py read`), prints which points the material covers, and asks open points in at most two rounds, then required points again.
-5. Skill writes `draft.md`, runs `note-instructions.py stage`, and prints the header line and the full draft.
+5. Skill writes `draft.md`, runs `note-instructions.py stage`, and prints the header line and the full draft from `note.md`.
 6. User revises in dialogue; each revision rewrites `draft.md`, reruns `stage` and reprints.
 7. On approval the skill runs `note-instructions.py deliver` and prints the report from its output.
 8. When the session showed an offer signal and the template has no process file, the skill asks save, not now or never.

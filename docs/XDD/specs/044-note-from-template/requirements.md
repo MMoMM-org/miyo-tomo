@@ -140,7 +140,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
   - [ ] Given both uploads succeeded and the source is an inbox note, When the source is marked, Then the next `/inbox` counts neither the source nor the note as new
   - [ ] Given the target name is taken in the inbox or at the destination, When Tomo delivers, Then nothing is overwritten and Tomo offers to rename or abort
   - [ ] Given delivery succeeded, When Tomo reports, Then it names the note's path, the instruction set's path, whether the source was marked, and that the next step is to review and apply the set in Hashi
-  - [ ] Given any delivery, When scripts run, Then no note text, answer or source text appears in script output or logs, only paths and states
+  - [ ] Given any delivery, When scripts run, Then no note text, source text or answer appears in script logs or error output, and script output carries only paths, states and the few fields the user needs to see (the note's title, a saved process's settings, the template's point names)
 
 #### Feature 6: Interruption and abort
 

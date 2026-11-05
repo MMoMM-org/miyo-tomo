@@ -66,6 +66,7 @@
 | 2026-11-05 | Phase 2 drift check: 4 FAIL, all SDD text lagging the reviewed code; owner chose to align the spec and the Phase 3/4 plan text and to consolidate the duplicated config reader, atomic write and fence split into libs now | Owner choice |
 | 2026-11-05 | An empty `destination:` or `offer:` key in a process file reads as unset; `offer: never` beside an empty key is still a normal process, not a decline | Gate finding; matches `required:`; only a hand edit produces it |
 | 2026-11-05 | Kado error text stays verbatim in `listing_error` and the outline error | SDD F2-AC4 shows `listing_error` verbatim; Kado error messages carry paths and status, not note text |
+| 2026-11-05 | PRD F5-AC8 reworded to match the amended CON-3: no note, source or answer text in logs or errors; output carries only paths, states and the named fields | Spec alignment after the Phase 2 drift check; "only paths and states" contradicted the reviewed output contract |
 | 2026-11-05 | note-instructions.py line count is 585 after the T2.6 fixes; the no-split decision above still holds | Alignment review; the reasons are unchanged |
 
 ## Context

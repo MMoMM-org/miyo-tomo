@@ -49,6 +49,9 @@
 | 2026-11-05 | A started delivery killed between steps is a kept draft, never a stale stage (SDD start output, Error Handling, glossary) | Drift M1; a stale stage is dropped silently, but part of that delivery is already in the vault |
 | 2026-11-05 | ADR-5 amended: refuse only a duplicate key the edit introduces, name a pre-existing one; keep CRLF; atomic write. The shared CRLF-tolerant header check also applies to the older writer subcommands (no behaviour change, they read with universal newlines) | Drift M2 and the T1.4 review; a pre-existing duplicate elsewhere must not block saving note_include |
 | 2026-11-05 | Phase 1 complete: drift fixes reviewed (43ae8e42, 104bedc8 + eaa5f646, 0883e6e5 + 9eb75ab1); full suite 6915 passed, 4 skipped; ruff clean | T1.5 gate |
+| 2026-11-05 | {{source_link}} resolves at `stage` from keep_source: [[source]] when kept, empty text when the source will be deleted | Owner choice; a link to a source that apply deletes would dangle. Resolved at stage, not at outline, because keep_source can change in the dialogue |
+| 2026-11-05 | NoteDraftMeta gains `profile`, fixed at `new` | T2.5 finding; `deliver` must rebuild identical files on resume, so the profile cannot be re-read from a config that may have changed |
+| 2026-11-05 | note-session.py start: the --process stem is the rest of the text, config read with yaml.safe_load, listing one level deep | T2.3 deviations accepted by spec review; SDD algorithm updated to match |
 | 2026-11-05 | Accepted as documented, not changed: fences at any indent, indented ATX headings and quoted frontmatter keys not recognised, `--stdout` previews only the key lines, atomic write only in templates-include | LOW drift findings; realistic templates are unaffected |
 
 ## Context

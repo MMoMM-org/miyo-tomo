@@ -427,7 +427,7 @@ Script: note-instructions.py new
 
 Script: note-instructions.py stage
   Args: --stem <stem> [--title <t>] [--destination <folder>] [--keep-source true|false]
-  Effect: updates meta.json; runs the filled-note checks on draft.md
+  Effect: updates meta.json; resolves {{source_link}} in draft.md from keep_source; runs the filled-note checks on draft.md
   Output: {stem, title, inbox_file, destination_file, keep_source, frozen, check: {ok, findings[]}}
   Rule: once steps_done is non-empty, title and destination are frozen; once steps_done holds instructions_json, keep_source is frozen too; a change is refused with frozen: true
   Exit: 0 (findings reported in output); 2 bad invocation or unknown stem
@@ -484,6 +484,7 @@ ENTITY: NoteDraftMeta (NEW) — tomo-tmp/note/<stem>/meta.json, owned by note-in
     inbox_file: string        # "<inbox>/<stem>_<sanitize_stem(title)>.md"
     destination: string       # folder; default concepts.atomic_note.path or the process file's
     default_destination: string
+    profile: string|null      # from vault-config at new; every deliver reuses it so a resume rebuilds identical files
     keep_source: bool         # default false
     steps_done: [string]      # subset of note, instructions_json, instructions_md, source_mark
     failed_step: string       # empty when none
@@ -503,6 +504,8 @@ TABLE: Prefilled tokens (resolved by the script, not points)
   generated:       uuid, datestamp, updated, date_iso         (token-render.py values)
   config-sourced:  locale, vault, vault_version, profile      (vault-config values)
   source metadata: source_path, source_link                   (only when the source is an inbox note)
+    source_link is left as {{source_link}} in template.md; note-instructions.py stage resolves it in draft.md from keep_source:
+    [[<source stem>]] when the source is kept, empty text when it will be deleted (a link to a deleted note would dangle)
   every other token, known or not (title, tags, body, up, summary, custom), is a point the model fills
 
 ENTITY: ProcessFile (NEW) — config/note-processes/<template-stem>.md
@@ -692,11 +695,11 @@ sequenceDiagram
 ```
 ALGORITHM: note-session.py start
 INPUT: $ARGUMENTS
-1. PARSE: first token "--process" → mode process, next token = template stem; else mode note, request = whole text
+1. PARSE: first token "--process" → mode process, template stem = the rest of the text (one pair of surrounding quotes removed; empty when none, since stems may contain spaces); else mode note, request = whole text
 2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step}
-3. CONFIG: read-config-field --fields templates.note_include,templates.base_path,templates.mapping.daily,concepts.inbox --format json
-4. IF note_include absent → include_configured false, candidates []
-5. ELSE LIST: kado list_dir(base_path), .md only → folder_listed; filter by fnmatchcase(basename-stem, any glob); drop mapping.daily
+3. CONFIG: templates.note_include, templates.base_path, templates.mapping.daily read from config/vault-config.yaml with yaml.safe_load (the way the other Python scripts read it; a missing key reads as absent)
+4. IF note_include absent → include_configured false, candidates [] (the --process mode still lists the folder for process_template_path)
+5. ELSE LIST: kado list_dir(base_path, depth=1), direct children only, .md only → folder_listed; filter by fnmatchcase(stem, any glob); drop mapping.daily
 6. RESPOND JSON
 
 ALGORITHM: /note --process <template> (skill)

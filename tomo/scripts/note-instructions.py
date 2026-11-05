@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -39,7 +39,9 @@ import argparse
 import json
 import os
 import posixpath
+import shutil
 import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -86,6 +88,29 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _has_control(value: str) -> bool:
+    return any(unicodedata.category(c) == "Cc" for c in value)
+
+
+def vault_folder(value: object) -> str | None:
+    """Return value as a relative vault folder with one trailing '/', or None when it is not one."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    body = v[:-1] if v.endswith("/") else v
+    if not body or v.startswith("/") or "\\" in v or _has_control(v):
+        return None
+    if any(p.strip() in ("", ".", "..") for p in body.split("/")):
+        return None
+    return body + "/"
+
+
+def _write_atomic(target: Path, text: str) -> None:
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, target)
+
+
 def _atomic_path(node: object) -> str | None:
     if isinstance(node, str):
         return node
@@ -110,13 +135,13 @@ def read_note_config(path: Path = CONFIG_PATH) -> dict:
     """Return {inbox, atomic_path, profile} from vault-config.yaml; UsageError when unusable."""
     cfg = _load_config(path)
     concepts = cfg.get("concepts") if isinstance(cfg.get("concepts"), dict) else {}
-    inbox, atomic = concepts.get("inbox"), _atomic_path(concepts.get("atomic_note"))
+    inbox, atomic = concepts.get("inbox"), vault_folder(_atomic_path(concepts.get("atomic_note")))
     if not isinstance(inbox, str) or not inbox.strip("/ "):
         raise UsageError("vault-config.yaml has no concepts.inbox")
-    if not isinstance(atomic, str) or not atomic.strip("/ "):
-        raise UsageError("vault-config.yaml has no concepts.atomic_note path")
+    if atomic is None:
+        raise UsageError("vault-config.yaml concepts.atomic_note is not a relative vault folder")
     profile = cfg.get("profile")
-    return {"inbox": folder(inbox), "atomic_path": folder(atomic),
+    return {"inbox": folder(inbox), "atomic_path": atomic,
             "profile": profile if isinstance(profile, str) else None}
 
 
@@ -136,7 +161,14 @@ def _default_destination(template_stem: str, atomic_path: str) -> str:
         raise UsageError("template name cannot name a process file") from exc
     if process["error"]:
         print(f"note-instructions: process file ignored: {process['error']}", file=sys.stderr)
-    return process["destination"] or atomic_path
+        return atomic_path
+    if not process["destination"]:
+        return atomic_path
+    dest = vault_folder(process["destination"])
+    if dest is None:
+        print("note-instructions: process destination ignored: not a relative vault folder",
+              file=sys.stderr)
+    return dest or atomic_path
 
 
 def _read_source(path: str) -> str:
@@ -159,6 +191,17 @@ def _create_stage(base: Path) -> tuple[str, Path]:
     raise UsageError("no free stem within a minute of now")
 
 
+def _fill_stage(stage: Path, body: str | None, meta) -> None:
+    """Write source.md and meta.json atomically; on failure remove the stage and re-raise."""
+    try:
+        if body is not None:
+            _write_atomic(stage / SOURCE_FILE, body)
+        write_meta(stage, meta)
+    except OSError:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     template = _md_path(args.template, "--template")
     source = _md_path(args.source, "--source") if args.source is not None else None
@@ -167,15 +210,13 @@ def cmd_new(args: argparse.Namespace) -> int:
     default_dest = _default_destination(template_stem, cfg["atomic_path"])
     body = _read_source(source) if source else None
     stem, stage = _create_stage(Path.cwd())
-    if body is not None:
-        (stage / SOURCE_FILE).write_text(body, encoding="utf-8")
     now = _utc_now()
     meta = new_meta(stem=stem, inbox=cfg["inbox"], title="", destination=default_dest,
                     default_destination=default_dest, run_id=run_id_lib.generate(),
                     created=now, generated=now, template=template,
                     template_stem=template_stem, source_path=source,
                     profile=cfg["profile"])
-    write_meta(stage, meta)
+    _fill_stage(stage, body, meta)
     _emit({"stem": stem, "run_id": meta.run_id,
            "default_destination": meta.default_destination, "inbox": cfg["inbox"]})
     return 0
@@ -195,30 +236,29 @@ def _existing_stage(stem: str) -> Path:
 
 
 def _title_arg(value: str | None) -> str | None:
-    if value is not None and not value.strip():
+    if value is None:
+        return None
+    if _has_control(value):
+        raise UsageError("--title must not contain control characters")
+    title = value.strip().rstrip(". ")
+    if not title:
         raise UsageError("--title must not be blank")
-    return value
+    return title
 
 
 def _destination_arg(value: str | None) -> str | None:
     if value is None:
         return None
-    parts = value.strip().strip("/").split("/")
-    if not value.strip() or value.startswith("/") or any(p in ("", ".", "..") for p in parts):
+    dest = vault_folder(value)
+    if dest is None:
         raise UsageError("--destination must be a relative vault folder")
-    return value.strip()
+    return dest
 
 
 def resolve_source_link(text: str, meta) -> str:
     """Replace each real {{source_link}} token from meta's source and keep_source; nothing else."""
     value = source_link_value(meta.source_path, meta.keep_source)
     return resolve_tokens(text, {SOURCE_LINK: value})
-
-
-def _write_atomic(target: Path, text: str) -> None:
-    tmp = target.with_name(target.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, target)
 
 
 def _missing_draft() -> dict:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
 
 Covers the draft lifecycle subcommands new, stage and drop:
@@ -13,6 +13,10 @@ Covers the draft lifecycle subcommands new, stage and drop:
   keep_source (draft.md untouched, so a later flip re-resolves); the check
   runs on note.md
 - drop removes the stage directory
+- vault_folder validates every destination (--destination, process file,
+  concepts.atomic_note); an unsafe process destination falls back, an unsafe
+  atomic path exits 2; a write failure in new leaves no stage behind
+- stage trims the title, strips trailing dots, rejects control characters
 - no user text (source body, draft body) in stdout or stderr
 
 Runs in tmp_path with a fake KadoClient; never a live vault.
@@ -499,3 +503,106 @@ def test_resolve_source_link_is_pure(inst):
         template="T/t.md", template_stem="t", source_path="In/Sub/My note.md")
     meta.keep_source = True
     assert ni.resolve_source_link("a {{source_link}} b", meta) == "a [[My note]] b"
+
+
+# ── destination validator ────────────────────────────────────────────────
+
+VALID_FOLDERS = [("Atlas/Meetings", "Atlas/Meetings/"), ("Atlas/Meetings/", "Atlas/Meetings/"),
+                 ("  Notes  ", "Notes/"), ("+", "+/"), ("A b/C d", "A b/C d/")]
+INVALID_FOLDERS = ["", "   ", "/", "/abs/", " /abs", "Atlas/../x/", "a/ ../b", "a\\b",
+                   "a/\n/b", "a\tb", "./a", "a/./b", "a//b", "a//", "..", None, 7]
+
+
+@pytest.mark.parametrize("value, expected", VALID_FOLDERS)
+def test_vault_folder_accepts_relative_folders(value, expected):
+    assert ni.vault_folder(value) == expected
+
+
+@pytest.mark.parametrize("value", INVALID_FOLDERS)
+def test_vault_folder_rejects_absolute_traversing_or_odd_paths(value):
+    assert ni.vault_folder(value) is None
+
+
+@pytest.mark.parametrize("dest", [" /abs", "a/ ../b", "a\\b", "a/\n/b", "./a"])
+def test_stage_rejects_unsafe_destination_and_keeps_meta(inst, capsys, dest):
+    stem = _staged(inst, capsys)
+    before = (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes()
+    rc, out, err = _stage(capsys, stem, "--destination", dest)
+    assert rc == 2 and out == ""
+    assert dest.strip() not in err
+    assert (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("dest", ["/etc", "Atlas/../../x", "' /etc'", "./Atlas"])
+def test_new_unsafe_process_destination_falls_back_to_atomic_path(inst, capsys, dest):
+    proc = inst / "config" / "note-processes"
+    proc.mkdir()
+    (proc / "t_meeting.md").write_text(f"---\ndestination: {dest}\n---\n", encoding="utf-8")
+    rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
+    assert rc == 0
+    res = _json(out)
+    assert res["default_destination"] == "Atlas/202 Notes/"
+    assert _meta(inst, res["stem"]).destination == "Atlas/202 Notes/"
+    lines = [ln for ln in err.splitlines() if ln]
+    assert len(lines) == 1 and "destination" in lines[0]
+    assert "etc" not in err and "Atlas" not in err
+
+
+@pytest.mark.parametrize("atomic", ['    path: "/abs/Notes"', '    path: "Atlas/../x"',
+                                    '    path: "a\\\\b"', "    paths: []"])
+def test_new_invalid_atomic_path_exits_2_with_nothing_on_disk(inst, capsys, atomic):
+    _config(inst, atomic)
+    rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
+    assert rc == 2 and out == ""
+    assert "atomic_note" in err and "abs" not in err
+    assert not note_meta.stage_root(inst).exists()
+
+
+def test_atomic_path_with_empty_paths_list_is_none():
+    assert ni._atomic_path({"paths": []}) is None
+
+
+# ── new: no half-made stage ──────────────────────────────────────────────
+
+
+def _raise_oserror(*_a, **_k):
+    raise OSError("disk full")
+
+
+@pytest.mark.parametrize("target", ["write_meta", "_write_atomic"])
+def test_new_write_failure_removes_the_stage(inst, capsys, monkeypatch, target):
+    monkeypatch.setattr(ni, target, _raise_oserror)
+    rc, out, err = _run(["new", "--template", TEMPLATE, "--source", SOURCE], capsys)
+    assert rc == 2 and out == ""
+    root = note_meta.stage_root(inst)
+    assert not root.exists() or not any(root.iterdir())
+
+
+def test_new_writes_source_atomically(inst, capsys):
+    stem = _new(capsys, "--source", SOURCE)["stem"]
+    names = sorted(p.name for p in note_meta.stage_dir(inst, stem).iterdir())
+    assert names == ["meta.json", "source.md"]
+
+
+# ── stage: title ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("  Design review  ", "Design review"), ("foo.", "foo"), ("foo . .", "foo"),
+    ("v1.2 notes", "v1.2 notes"), ("Größe – ok", "Größe – ok"),
+])
+def test_stage_trims_title_and_trailing_dots(inst, capsys, raw, expected):
+    stem = _staged(inst, capsys)
+    res = _json(_stage(capsys, stem, "--title", raw)[1])
+    assert res["title"] == expected
+    assert res["inbox_file"] == f"100 Inbox/{stem}_{expected}.md"
+    assert _meta(inst, stem).title == expected
+
+
+@pytest.mark.parametrize("raw", ["a\nb", "line\n", "tab\there", "bell\x07", "...", " . ", "\x7f"])
+def test_stage_rejects_control_chars_and_empty_titles(inst, capsys, raw):
+    stem = _staged(inst, capsys)
+    before = (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes()
+    rc, out, _ = _stage(capsys, stem, "--title", raw)
+    assert rc == 2 and out == ""
+    assert (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes() == before

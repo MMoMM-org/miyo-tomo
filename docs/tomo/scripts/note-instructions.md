@@ -34,9 +34,10 @@ must not leave work for the next session.
 A process file for the template (`config/note-processes/<stem>.md`) names where
 notes of that kind belong (F7-AC1); `concepts.atomic_note` is the general
 fallback. When `atomic_note` is a mapping with a `paths` list, the first entry is
-taken, the same reading the rest of Tomo applies to that key. A broken process
-file does not stop `new`: `read_process` reports the error and the atomic-note
-path is used, which is what the skill says in one line (F7-AC4).
+taken, the same reading the rest of Tomo applies to that key; an empty `paths`
+list counts as no path. A broken process file does not stop `new`:
+`read_process` reports the error and the atomic-note path is used, which is
+what the skill says in one line (F7-AC4).
 
 ## WHY the Title Starts Empty
 
@@ -98,6 +99,46 @@ An empty title would name the note `.md`; a destination with `..` or a leading
 `/` would point outside the vault folders Hashi expects; a malformed stem would
 build a path outside `tomo-tmp/note/`. All three exit 2 with a message that
 names the problem class only.
+
+## WHY Every Destination Goes Through One Validator
+
+The destination becomes the `move_note` target of the Hashi instruction set,
+so an absolute or traversing folder must never reach `meta.json`, whatever its
+origin. There are three origins: `--destination` on `stage`, the process file's
+`destination`, and `concepts.atomic_note` in `vault-config.yaml`. All three go
+through `vault_folder()`, the only place the rule lives. It strips the value
+once and rejects a value that starts with `/`, contains `\`, contains a control
+character (Unicode category Cc, newline and tab included), or has a segment
+that is empty, `.` or `..` after stripping (one trailing `/` is allowed). The
+accepted value is returned with exactly one trailing `/`. Checking the stripped
+value is the point: an earlier check on the raw value let `" /etc"` become
+`/etc`, and an unstripped segment let `a/ ../b` through.
+
+A failure is handled by origin. `--destination` exits 2, nothing written. A
+process-file destination that fails falls back to the atomic-note path with one
+stderr line naming the problem class, the same as a broken process file (F7-AC4):
+a bad process file must not stop `/note`. An invalid `concepts.atomic_note` exits
+2 with a fixed message, because there is no further fallback and the config is
+the user's to fix.
+
+## WHY new Removes the Stage When a Write Fails
+
+`source.md` and `meta.json` are written after the stage directory exists. A
+failure between the two would leave a directory without `meta.json`, which the
+next session reports as a stale stage. So both files are written atomically
+(temp file, then replace) and any `OSError` while writing them removes the stage
+directory before `new` exits 2.
+
+## WHY the Title Is Trimmed and Loses Its Trailing Dots
+
+The title becomes a file name in the inbox and in the destination. Surrounding
+whitespace is trimmed. A control character (newline included) is rejected, not
+replaced: it is a sign the caller passed the wrong text, and a newline in a file
+name breaks wikilinks. Trailing dots and spaces are stripped, because Windows does not
+allow a file name ending in either, so a vault opened on Windows breaks on them,
+and `foo.` would otherwise become `<stem>_foo..md`. A title empty after trimming (`...` included) is rejected.
+Other characters Obsidian forbids are left to `sanitize_stem`, which replaces
+them in the file name while the title keeps them.
 
 ## WHY No User Text Reaches stdout or stderr
 

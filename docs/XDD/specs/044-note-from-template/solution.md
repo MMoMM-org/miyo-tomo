@@ -180,7 +180,7 @@ outbound:
 data:
   - name: "vault-config.yaml"
     type: YAML file in the instance
-    connection: yaml.safe_load in note-session.py, template-outline.py and note-instructions.py (one reader in lib/note_io, planned); vault-config-writer.py writes
+    connection: yaml.safe_load in note-session.py, template-outline.py and note-instructions.py (one reader in lib/note_io); vault-config-writer.py writes
     data_flow: "templates.base_path, templates.mapping.daily, templates.note_include, concepts.inbox, concepts.atomic_note.path"
   - name: "config/note-processes/<template-stem>.md"
     type: Markdown with YAML frontmatter in the instance
@@ -211,7 +211,7 @@ Sync:    ./scripts/update-tomo.sh --instance tomo-instance --yolo   # owner runs
 
 ## Solution Strategy
 
-- **Architecture Pattern:** A thin command, one dialogue skill and four deterministic scripts over shared library modules (`lib/template_syntax`, `lib/note_meta`, `lib/note_process`, `lib/note_actions`, `lib/note_paths`, and the planned `lib/note_io`). The model holds the conversation and writes the note text; scripts own everything that must be exact: argument parsing, template listing and pattern matching, outlines, draft state, config writes, process files, the instruction set, the write order and the resume comparison.
+- **Architecture Pattern:** A thin command, one dialogue skill and four deterministic scripts over shared library modules (`lib/template_syntax`, `lib/note_meta`, `lib/note_process`, `lib/note_actions`, `lib/note_paths`, and `lib/note_io`). The model holds the conversation and writes the note text; scripts own everything that must be exact: argument parsing, template listing and pattern matching, outlines, draft state, config writes, process files, the instruction set, the write order and the resume comparison.
 - **Integration Approach:** Reuse the Pass 2 building blocks in process (`build_tomo_block`, `merge_tomo_block_into_markdown`, `validate_destinations`, `withdraw_unjustified_deletes`, `render_instructions_md`, `KadoClient`) and the Pass 2 wire shape (move plus dependent delete). Add one writer subcommand and one `template-doctor.py` mode. Redirect one branch of `inbox-author`.
 - **Justification:** The brainstorm chose approach A (model fills, script delivers) because any normal template works without Tomo tokens. Putting the session start and the delivery in scripts follows the repo rule that agents use scripts, never freehand structured output, and makes the order, the resume and the pattern preview testable without a model.
 - **Key Decisions:** ADR-1 to ADR-8 below, all confirmed by the owner on 2026-11-04.
@@ -242,7 +242,7 @@ graph LR
     Instr --> Paths[lib/note_paths.py]
     ProcLib --> Paths
     Paths --> VaultPaths[lib/vault_paths.py]
-    Instr --> NoteIO[lib/note_io.py planned]
+    Instr --> NoteIO[lib/note_io.py]
     Session --> NoteIO
     Outline --> NoteIO
     Meta --> NoteIO
@@ -270,9 +270,9 @@ graph LR
 | `lib/template_syntax.py` | Frontmatter block, tokens, Templater spans, headings, filled-note checks | shared parsing |
 | `lib/note_actions.py` | Building and guarding the instruction set | F5 wire |
 | `lib/note_meta.py` | Reading and writing `meta.json`; listing stage directories | F6 state, shared by `note-session.py` and `note-instructions.py` |
-| `lib/note_process.py` | Parsing and writing process files, decline markers, `missing_required`; reuses `lib/template_syntax`'s leading-block parser (planned) | F7 storage, shared by `note-process.py` and `note-instructions.py new` |
+| `lib/note_process.py` | Parsing and writing process files, decline markers, `missing_required`; keeps its own leading-fence split (str.splitlines, so CR-only and Unicode line breaks are read), a recorded exception to ADR-4 | F7 storage, shared by `note-process.py` and `note-instructions.py new` |
 | `lib/note_paths.py` | Vault folder, note path and title character rules (`vault_folder`, `vault_note`, `is_inside`, `has_unsafe_char`, `has_template_syntax`) on `lib/vault_paths.path_key` | F4, F5, F7 input rules, shared by `note-instructions.py` and `lib/note_process.py` |
-| `lib/note_io.py` (planned) | Shared `load_vault_config` with `ConfigError`, and `atomic_write_text` | One config reader for `note-session.py`, `template-outline.py` and `note-instructions.py`; one atomic write for those and `lib/note_meta.py`, `lib/note_process.py` |
+| `lib/note_io.py` | Shared `load_vault_config` with `ConfigError`, and `atomic_write_text` | One config reader for `note-session.py`, `template-outline.py` and `note-instructions.py`; one atomic write for those and `lib/note_meta.py`, `lib/note_process.py` |
 | `lib/render_md.py` change | `templater_hint` render-config key (default on) that `deliver` switches off | F5 MD peer; Pass 2 output unchanged |
 | `inbox-author` change | Redirect of the unknown-type branch when it finds a template | F8 |
 | Triage interplay tests | Proving the next `/inbox` and `/inbox --recover` treat `/note` files correctly; no triage code changes | F5-AC5, F9-AC2 |
@@ -301,9 +301,9 @@ tomo/
 │   └── lib/
 │       ├── template_syntax.py                     # NEW: shared template and note parsing
 │       ├── note_meta.py                           # NEW: meta.json and stage directories
-│       ├── note_process.py                        # NEW: process file parsing and writing (leading block via template_syntax, planned)
+│       ├── note_process.py                        # NEW: process file parsing and writing (own leading-fence split, see ADR-4 note)
 │       ├── note_paths.py                          # NEW: vault folder, note path and title rules (on lib/vault_paths)
-│       ├── note_io.py                             # NEW (planned): shared load_vault_config + ConfigError, atomic_write_text
+│       ├── note_io.py                             # NEW: shared load_vault_config + ConfigError, atomic_write_text
 │       ├── note_actions.py                        # NEW: instruction set build and guards
 │       └── render_md.py                           # MODIFY: templater_hint render-config key, default on
 └── schemas/
@@ -333,7 +333,7 @@ docs/
             ├── note_process.md                    # NEW
             ├── note_actions.md                    # NEW
             ├── note_paths.md                      # NEW
-            ├── note_io.md                         # NEW (planned)
+            ├── note_io.md                         # NEW
             └── render_md.md                       # MODIFY: WHY of templater_hint
 tests/
 ├── test_template_syntax.py                        # NEW
@@ -345,7 +345,7 @@ tests/
 ├── test_note_process_lib.py                       # NEW: lib/note_process.py
 ├── test_note_meta.py                              # NEW: lib/note_meta.py
 ├── test_note_paths.py                             # NEW: lib/note_paths.py
-├── test_note_io.py                                # NEW (planned): lib/note_io.py
+├── test_note_io.py                                # NEW: lib/note_io.py
 ├── test_note_privacy.py                           # NEW: CON-3 allowlist, marker strings never in stderr nor outside the allowlist on stdout
 ├── note_fake_vault.py                             # NEW: helper, fake Kado vault shared by the /note tests
 ├── test_note_triage_interplay.py                  # NEW: next /inbox and --recover on /note files
@@ -891,6 +891,7 @@ stateDiagram-v2
 - [x] ADR-4 Shared module `lib/template_syntax.py` for frontmatter blocks, tokens, Templater spans, headings and the filled-note checks, used by `template-outline.py`, `template-doctor.py filled-note`, `note-session.py`, `note-process.py` and `note-instructions.py`.
   - Rationale: hyphenated scripts cannot be imported; one parser means outline points and the filled-note check agree.
   - Trade-offs: `template-doctor.py` and `token-render.py` keep their own copies until a later refactor; a parity test covers the token regex.
+  - Exception (2026-11-05): `lib/note_process.py` keeps its own leading-fence split for process files. It splits with `str.splitlines` (CR-only and Unicode line breaks), while `leading_block` splits on `\n` only; moving it would silently drop the destination of a CR-only process file, and changing `leading_block` would change outlines. Process files are written by the script with LF.
   - User confirmed: 2026-11-04
 - [x] ADR-5 New writer subcommand `templates-include` that inserts or replaces only the `note_include` lines inside `templates:`, with a hand-written validator and a `yaml.safe_load` check before writing.
   - Rationale: the existing helper replaces whole top-level blocks and would drop the `mapping` comments.

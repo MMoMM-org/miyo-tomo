@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
 
 Covers the draft lifecycle subcommands new, stage and drop:
@@ -13,11 +13,17 @@ Covers the draft lifecycle subcommands new, stage and drop:
   keep_source (draft.md untouched, so a later flip re-resolves); the check
   runs on note.md
 - drop removes the stage directory
-- vault_folder validates every destination (--destination, process file,
-  concepts.atomic_note); an unsafe process destination falls back, an unsafe
-  atomic path exits 2; a write failure in new leaves no stage behind
-- stage trims the title, strips trailing dots, rejects control characters
-- no user text (source body, draft body) in stdout or stderr
+- vault_folder validates every folder (--destination, process file,
+  concepts.atomic_note, concepts.inbox): no absolute form (/, ~, drive
+  letter), no backslash, no segment that is blank or starts with a dot, no
+  template syntax, no unsafe character (Cc, Cf, Zl, Zp); the Unicode form is
+  kept; an unsafe process destination falls back, an unsafe atomic path or
+  inbox exits 2 with a fixed message; a write failure in new leaves no stage
+- vault_note validates --template and --source the same way plus .md, before
+  Kado is asked; --source must lie inside the inbox
+- stage trims the title, strips trailing dots, rejects unsafe characters, a
+  leading dot and template syntax
+- no user text (source body, draft body, title) in stdout or stderr
 
 Runs in tmp_path with a fake KadoClient; never a live vault.
 """
@@ -27,6 +33,7 @@ import importlib.util
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -508,9 +515,18 @@ def test_resolve_source_link_is_pure(inst):
 # ── destination validator ────────────────────────────────────────────────
 
 VALID_FOLDERS = [("Atlas/Meetings", "Atlas/Meetings/"), ("Atlas/Meetings/", "Atlas/Meetings/"),
-                 ("  Notes  ", "Notes/"), ("+", "+/"), ("A b/C d", "A b/C d/")]
+                 ("  Notes  ", "Notes/"), ("+", "+/"), ("A b/C d", "A b/C d/"),
+                 ("v1.2/a~b", "v1.2/a~b/")]
 INVALID_FOLDERS = ["", "   ", "/", "/abs/", " /abs", "Atlas/../x/", "a/ ../b", "a\\b",
-                   "a/\n/b", "a\tb", "./a", "a/./b", "a//b", "a//", "..", None, 7]
+                   "a/\n/b", "a\tb", "./a", "a/./b", "a//b", "a//", "..", None, 7,
+                   # absolute: home tilde, drive letter
+                   "~", "~/Notes", "~Archive", "C:", "C:/Users", "d:Notes",
+                   # a segment led by a dot: hidden from Kado and Obsidian
+                   ".obsidian", "Atlas/.trash", "a/ .x/b", "...",
+                   # template syntax
+                   "{{folder}}", "Meetings/<% tp.date.now() %>",
+                   # invisible: Cf (zero-width space, BOM, bidi override), Zl, Zp
+                   "a\u200bb", "\ufeffNotes", "a\u202eb", "a\u2028b", "a\u2029b"]
 
 
 @pytest.mark.parametrize("value, expected", VALID_FOLDERS)
@@ -523,7 +539,16 @@ def test_vault_folder_rejects_absolute_traversing_or_odd_paths(value):
     assert ni.vault_folder(value) is None
 
 
-@pytest.mark.parametrize("dest", [" /abs", "a/ ../b", "a\\b", "a/\n/b", "./a"])
+def test_vault_folder_keeps_the_unicode_form():
+    nfc, nfd = (unicodedata.normalize(form, "Atlas/Größe") for form in ("NFC", "NFD"))
+    assert nfc != nfd
+    assert ni.vault_folder(nfc) == nfc + "/"
+    assert ni.vault_folder(nfd) == nfd + "/"
+
+
+@pytest.mark.parametrize("dest", [" /abs", "a/ ../b", "a\\b", "a/\n/b", "./a", "~/Atlas",
+                                  "C:/Atlas", ".obsidian", "Atlas/.hidden", "{{dest}}",
+                                  "\u200bAtlas", "At\u2028las"])
 def test_stage_rejects_unsafe_destination_and_keeps_meta(inst, capsys, dest):
     stem = _staged(inst, capsys)
     before = (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes()
@@ -533,7 +558,8 @@ def test_stage_rejects_unsafe_destination_and_keeps_meta(inst, capsys, dest):
     assert (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes() == before
 
 
-@pytest.mark.parametrize("dest", ["/etc", "Atlas/../../x", "' /etc'", "./Atlas"])
+@pytest.mark.parametrize("dest", ["/etc", "Atlas/../../x", "' /etc'", "./Atlas", "'~/etc'",
+                                  "'C:/etc'", "'.etc'", "'Atlas/{{etc}}'", '"At\\u200blas"'])
 def test_new_unsafe_process_destination_falls_back_to_atomic_path(inst, capsys, dest):
     proc = inst / "config" / "note-processes"
     proc.mkdir()
@@ -549,7 +575,9 @@ def test_new_unsafe_process_destination_falls_back_to_atomic_path(inst, capsys, 
 
 
 @pytest.mark.parametrize("atomic", ['    path: "/abs/Notes"', '    path: "Atlas/../x"',
-                                    '    path: "a\\\\b"', "    paths: []"])
+                                    '    path: "a\\\\b"', "    paths: []", '    path: "~/abs"',
+                                    '    path: "C:/abs"', '    path: ".abs"',
+                                    '    path: "N\\u200babs"'])
 def test_new_invalid_atomic_path_exits_2_with_nothing_on_disk(inst, capsys, atomic):
     _config(inst, atomic)
     rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
@@ -560,6 +588,115 @@ def test_new_invalid_atomic_path_exits_2_with_nothing_on_disk(inst, capsys, atom
 
 def test_atomic_path_with_empty_paths_list_is_none():
     assert ni._atomic_path({"paths": []}) is None
+
+
+# ── inbox validator ──────────────────────────────────────────────────────
+
+INBOX_ERR = ("note-instructions: vault-config.yaml concepts.inbox is not a relative"
+             " vault folder\n")
+# YAML scalars written as concepts.inbox; None leaves the key out.
+INVALID_INBOXES = ['"/abs"', '"../x"', '" In/../.."', '"Inbox\\\\x"', '"In\\nbox"',
+                   '"In\\u200bbox"', '"In\\u2028box"', '"~/Inbox"', '"C:/Inbox"',
+                   '".inbox"', '"In/{{x}}"', '""', "[]", None]
+
+
+def _config_inbox(root: Path, inbox: str | None) -> None:
+    line = "" if inbox is None else f"  inbox: {inbox}\n"
+    (root / "config" / "vault-config.yaml").write_text(
+        f'profile: "miyo"\nconcepts:\n{line}  atomic_note: "Atlas/202 Notes/"\n',
+        encoding="utf-8")
+
+
+@pytest.mark.parametrize("inbox", INVALID_INBOXES)
+def test_new_invalid_inbox_exits_2_with_nothing_on_disk(inst, capsys, inbox):
+    _config_inbox(inst, inbox)
+    rc, out, err = _run(["new", "--template", TEMPLATE], capsys)
+    assert rc == 2 and out == ""
+    assert err == INBOX_ERR
+    assert not note_meta.stage_root(inst).exists()
+
+
+@pytest.mark.parametrize("inbox, expected", [('"100 Inbox"', "100 Inbox/"),
+                                             ('"  100 Inbox/  "', "100 Inbox/")])
+def test_config_reader_normalises_the_inbox(inst, inbox, expected):
+    _config_inbox(inst, inbox)
+    assert ni.read_note_config(Path("config/vault-config.yaml"))["inbox"] == expected
+
+
+# ── note paths: --template and --source ─────────────────────────────────
+
+VALID_NOTES = [("100 Inbox/Meeting raw.md", "100 Inbox/Meeting raw.md"), ("x.md", "x.md"),
+               ("  In/v1.2 notes.md\n", "In/v1.2 notes.md"), ("In/Größe.md", "In/Größe.md")]
+UNSAFE_NOTES = ["/abs/x.md", " /abs/x.md", "~/x.md", "C:/x.md", "../x.md", "In/../x.md",
+                "./x.md", "In\\x.md", "In//x.md", "In/\nx.md", "In/x\u200b.md",
+                "In/x\u2029y.md", ".obsidian/x.md", "In/.hidden.md", "In/.md",
+                "In/{{x}}.md", "In/x.txt", "In/x.md/", "", None]
+
+
+@pytest.mark.parametrize("value, expected", VALID_NOTES)
+def test_vault_note_accepts_relative_md_paths(value, expected):
+    assert ni.vault_note(value) == expected
+
+
+@pytest.mark.parametrize("value", UNSAFE_NOTES)
+def test_vault_note_rejects_unsafe_paths(value):
+    assert ni.vault_note(value) is None
+
+
+# Relative probes sit under the inbox, so the inbox check cannot mask the shape rule.
+UNSAFE_NOTE_ARGS = ["/abs/x.md", " /abs/x.md", "~/x.md", "C:/x.md", "100 Inbox/../x.md",
+                    "100 Inbox/./x.md", "100 Inbox\\x.md", "100 Inbox//x.md",
+                    "100 Inbox/\nx.md", "100 Inbox/x\u200b.md", "100 Inbox/x\u2029y.md",
+                    "100 Inbox/.hidden/x.md", "100 Inbox/.x.md", "100 Inbox/.md",
+                    "100 Inbox/{{x}}.md", "100 Inbox/x.txt", "100 Inbox/x.md/"]
+
+
+@pytest.mark.parametrize("flag", ["--template", "--source"])
+@pytest.mark.parametrize("path", UNSAFE_NOTE_ARGS)
+def test_new_rejects_unsafe_note_path_before_kado(inst, capsys, flag, path):
+    argv = ["new", "--template", TEMPLATE, "--source", SOURCE]
+    argv[argv.index(flag) + 1] = path
+    rc, out, err = _run(argv, capsys)
+    assert rc == 2 and out == ""
+    assert f"{flag} must be a relative vault path" in err and path.strip() not in err
+    assert FakeKado.reads == []
+    assert not note_meta.stage_root(inst).exists()
+
+
+def test_new_stores_stripped_note_paths(inst, capsys):
+    rc, out, err = _run(["new", "--template", f" {TEMPLATE} ", "--source", f"{SOURCE}\n"],
+                        capsys)
+    assert rc == 0, err
+    meta = _meta(inst, _json(out)["stem"])
+    assert (meta.template, meta.template_stem, meta.source_path) == (
+        TEMPLATE, "t_meeting", SOURCE)
+    assert FakeKado.reads == [SOURCE]
+
+
+@pytest.mark.parametrize("source", ["Atlas/202 Notes/Filed.md", "100 Inbox Archive/x.md",
+                                    "100 Inbox.md", "x.md"])
+def test_new_source_outside_the_inbox_exits_2_before_kado(inst, capsys, source):
+    FakeKado.files[source] = "filed note\n"
+    rc, out, err = _run(["new", "--template", TEMPLATE, "--source", source], capsys)
+    assert rc == 2 and out == ""
+    assert "--source" in err and "concepts.inbox" in err and source not in err
+    assert FakeKado.reads == []
+    assert not note_meta.stage_root(inst).exists()
+
+
+@pytest.mark.parametrize("source", ["100 Inbox/Sub/Meeting raw.md", "100 inbox/Meeting raw.md"])
+def test_new_accepts_a_source_anywhere_inside_the_inbox(inst, capsys, source):
+    FakeKado.files[source] = "raw\n"
+    out = _new(capsys, "--source", source)
+    assert _meta(inst, out["stem"]).source_path == source
+
+
+def test_new_source_inside_inbox_compares_unicode_forms(inst, capsys):
+    _config_inbox(inst, '"Eingänge/"')
+    source = unicodedata.normalize("NFD", "Eingänge/Notiz.md")
+    FakeKado.files[source] = "raw\n"
+    out = _new(capsys, "--source", source)
+    assert _meta(inst, out["stem"]).source_path == source
 
 
 # ── new: no half-made stage ──────────────────────────────────────────────
@@ -599,10 +736,21 @@ def test_stage_trims_title_and_trailing_dots(inst, capsys, raw, expected):
     assert _meta(inst, stem).title == expected
 
 
-@pytest.mark.parametrize("raw", ["a\nb", "line\n", "tab\there", "bell\x07", "...", " . ", "\x7f"])
-def test_stage_rejects_control_chars_and_empty_titles(inst, capsys, raw):
+@pytest.mark.parametrize("raw", ["a\nb", "line\n", "tab\there", "bell\x07", "...", " . ", "\x7f",
+                                 "Design​review", "Design review", "﻿Title",
+                                 "Design ", ".hidden", " .env", "{{title}}",
+                                 "<% tp.file.title %>"])
+def test_stage_rejects_unsafe_or_empty_titles(inst, capsys, raw):
     stem = _staged(inst, capsys)
     before = (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes()
     rc, out, _ = _stage(capsys, stem, "--title", raw)
     assert rc == 2 and out == ""
     assert (note_meta.stage_dir(inst, stem) / "meta.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("raw", [f"{MARKER}​", f".{MARKER}", "{{" + MARKER + "}}"])
+def test_stage_title_rejection_never_echoes_the_title(inst, capsys, raw):
+    stem = _staged(inst, capsys)
+    rc, out, err = _stage(capsys, stem, "--title", raw)
+    assert rc == 2 and "--title" in err
+    assert MARKER not in out and MARKER not in err

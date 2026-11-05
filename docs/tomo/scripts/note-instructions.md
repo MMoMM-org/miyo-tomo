@@ -95,31 +95,103 @@ exit code: `stage` exits 0 so the agent reads the result instead of retrying.
 
 ## WHY Input Is Validated at the Boundary
 
-An empty title would name the note `.md`; a destination with `..` or a leading
-`/` would point outside the vault folders Hashi expects; a malformed stem would
-build a path outside `tomo-tmp/note/`. All three exit 2 with a message that
-names the problem class only.
+Every path the script builds ends up in the Hashi instruction set or in a Kado
+write in the vault. An empty title would name the note `.md`; a folder or note
+path that is absolute, traverses or is hidden would point outside the vault
+folders Hashi and Kado expect; a source outside the inbox would make Tomo write
+and delete outside it; a malformed stem would build a path outside
+`tomo-tmp/note/`. Each exits 2 with a message that names the problem class
+only, never the value.
 
-## WHY Every Destination Goes Through One Validator
+## WHY Every Folder Goes Through One Validator
 
-The destination becomes the `move_note` target of the Hashi instruction set,
-so an absolute or traversing folder must never reach `meta.json`, whatever its
-origin. There are three origins: `--destination` on `stage`, the process file's
-`destination`, and `concepts.atomic_note` in `vault-config.yaml`. All three go
-through `vault_folder()`, the only place the rule lives. It strips the value
-once and rejects a value that starts with `/`, contains `\`, contains a control
-character (Unicode category Cc, newline and tab included), or has a segment
-that is empty, `.` or `..` after stripping (one trailing `/` is allowed). The
-accepted value is returned with exactly one trailing `/`. Checking the stripped
-value is the point: an earlier check on the raw value let `" /etc"` become
-`/etc`, and an unstripped segment let `a/ ../b` through.
+The destination is the folder of the `move_note` target. The inbox is the
+folder of `inbox_file`, which `deliver` writes through Kado and which is the
+`move_note` source. So an absolute, traversing or hidden folder must never reach
+`meta.json`, whatever its origin. There are four origins: `--destination` on
+`stage`, the process file's `destination`, and `concepts.atomic_note` and
+`concepts.inbox` in `vault-config.yaml`. All four go through `vault_folder()`,
+the only place the rule lives. It strips the value once and rejects it when:
+
+- it starts with `/` or `~`, or with a drive letter (`C:`). These are the
+  absolute forms of rule 1 of the Path Shape Contract (`docs/instructions-json.md`),
+  which every path field of an instruction set follows, and Hashi refuses a
+  drive letter as escaping the vault.
+- it contains `\`, the Windows separator, which would hide a `..\` from the
+  segment check.
+- a segment is blank or starts with `.` after stripping. That covers `.` and
+  `..` (traversal) and every hidden name: Kado's folder listing treats a path
+  with a dot-led segment as missing, Obsidian does not show it, and Hashi
+  refuses `.obsidian`, `.git` and `.trash` at the vault root. A note filed under
+  one would vanish from the vault view.
+- it contains `{{` or `<%`, the template syntax `_check_path_shape` refuses
+  (rule 3): a destination such as `Meetings/{{date}}/` would create a folder
+  literally named `{{date}}`.
+- it contains an unsafe character (see below).
+
+One trailing `/` is allowed and the accepted value is returned with exactly
+one. Checking the stripped value is the point: an earlier check on the raw value
+let `" /etc"` become `/etc`, and an unstripped segment let `a/ ../b` through.
+Python counts a newline, U+2028 and U+2029 as whitespace, so stripping removes
+them at either end; inside the value they are rejected.
 
 A failure is handled by origin. `--destination` exits 2, nothing written. A
 process-file destination that fails falls back to the atomic-note path with one
 stderr line naming the problem class, the same as a broken process file (F7-AC4):
-a bad process file must not stop `/note`. An invalid `concepts.atomic_note` exits
-2 with a fixed message, because there is no further fallback and the config is
-the user's to fix.
+a bad process file must not stop `/note`. An invalid `concepts.atomic_note` or
+`concepts.inbox` exits 2 with a fixed message that names the key, because there
+is no further fallback and the config is the user's to fix. Until 0.1.4 the
+inbox was only refused when blank, so `../x`, `/abs` and `" In/../.."` reached
+`inbox_file` unchanged.
+
+## WHY --template and --source Pass the Same Rules
+
+`--source` is the path with the most consequences. It becomes
+`move_note.source_inbox_item` and `delete_source.source_path` in the instruction
+set, `deliver` writes the source mark to it through Kado, and its stem becomes
+the `[[link]]` in `note.md`. `--template` is stored in `meta.json`, shown when a
+kept draft is offered for resume, and its stem names the process file. Until
+0.1.4 both were only required to end in `.md`. `vault_note()` applies the folder
+rules to the whole path, file name included, so `In/.hidden.md` and `In/.md`
+are refused, and requires `.md`. Like a folder, the path is stripped once and
+stored stripped. Both flags are checked before Kado is asked, so an unsafe
+source is never read.
+
+## WHY --source Must Lie Inside the Inbox
+
+The source mark is a Kado write, and `delete_source` removes the file when the
+set is applied. Tomo writes to the vault only inside the inbox (CON-2), and a
+`/note` source is an inbox note (F5-AC2; the SDD names `--source` an inbox note
+path). A source outside `concepts.inbox` would make `deliver` write outside the
+inbox and the set delete a filed note. A clean path such as
+`Atlas/202 Notes/Filed.md` passes every shape rule, so this check is separate
+and runs once the config is read. It compares `path_key` values (NFC, then
+casefold), because the vault may be case-insensitive and macOS hands back
+decomposed names. The inbox's trailing `/` puts the comparison on a segment
+boundary, so `100 Inbox Archive/x.md` is not inside `100 Inbox/`. Subfolders of
+the inbox are inside, as in recursive inbox discovery (spec 034).
+
+## WHY Unsafe Means Cc, Cf, Zl and Zp
+
+`_has_unsafe_char()` is the one predicate for folders, note paths and titles.
+Control characters (Cc: newline, tab, NUL) corrupt the wire and break
+wikilinks. Format characters (Cf: zero-width space and joiners, bidi overrides,
+the byte-order mark, the soft hyphen) are invisible: two paths that look the
+same can name different files, and a bidi override can make a path display as
+something it is not. Line and paragraph separators (Zl, Zp) break a line as a
+newline does. The cost is accepted: the zero-width joiner inside an emoji
+sequence (such as the technologist emoji) and the zero-width non-joiner of
+Persian or Indic spelling are refused too. Combining marks (Mn) are not unsafe,
+so a decomposed `ö` passes.
+
+## WHY Unicode Is Not Normalised
+
+The validators never normalise Unicode: a name in NFC and the same name in NFD
+both pass, each in the form it arrived in. They decide whether a path is safe;
+they do not rewrite vault paths. A rewritten form may not match the name the
+vault holds, and on a file system that keeps the two forms apart it names a
+different file. Comparisons that must treat both forms as one name use
+`lib/vault_paths.path_key`, as the inbox check does.
 
 ## WHY new Removes the Stage When a Write Fails
 
@@ -132,13 +204,19 @@ directory before `new` exits 2.
 ## WHY the Title Is Trimmed and Loses Its Trailing Dots
 
 The title becomes a file name in the inbox and in the destination. Surrounding
-whitespace is trimmed. A control character (newline included) is rejected, not
-replaced: it is a sign the caller passed the wrong text, and a newline in a file
-name breaks wikilinks. Trailing dots and spaces are stripped, because Windows does not
-allow a file name ending in either, so a vault opened on Windows breaks on them,
-and `foo.` would otherwise become `<stem>_foo..md`. A title empty after trimming (`...` included) is rejected.
-Other characters Obsidian forbids are left to `sanitize_stem`, which replaces
-them in the file name while the title keeps them.
+whitespace is trimmed. An unsafe character (Cc, Cf, Zl, Zp; newline included) is
+rejected, not replaced, anywhere in the title, ends included: it is a sign the
+caller passed the wrong text, and a newline in a file name breaks wikilinks.
+Trailing dots and spaces are stripped, because Windows does not allow a file
+name ending in either, so a vault opened on Windows breaks on them, and `foo.`
+would otherwise become `<stem>_foo..md`. A title empty after trimming (`...`
+included) is rejected. A title that starts with a dot is rejected, not
+stripped: `destination_file` would be a hidden file (see the folder rules), and
+stripping would change the title's meaning (`.NET` is not `NET`). Template
+syntax (`{{`, `<%`) is rejected: a title such as `{{title}}` is an unfilled
+token, and `{{` would reach both file names. Other characters Obsidian forbids
+are left to `sanitize_stem`, which replaces them in the file name while the
+title keeps them.
 
 ## WHY No User Text Reaches stdout or stderr
 

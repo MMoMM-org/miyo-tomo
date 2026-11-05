@@ -9,8 +9,8 @@
 WHY: Any ordinary vault template must work. A Pass 2 route would need a Tomo token for every section of every
 template. So the model reads the outline and writes `draft.md`; scripts only check structure
 (`template-outline.py`, the filled-note check in `note-instructions.py stage`) and deliver. Note quality is the
-model's; the scripts never judge content. This is also why the skill writes `draft.md` and nothing else:
-every other state change goes through `note-instructions.py`.
+model's; the scripts never judge content. This is also why the skill writes only `draft.md` and two helper
+input files (see "Why the Runtime Details Look the Way They Do"): every other state change goes through the scripts.
 
 ## Why /note Runs in the Main Session, Not as a Subagent
 
@@ -51,8 +51,8 @@ start (`stale_stages`) get one line and a `drop` each for the same reason.
 
 WHY: A kept draft with `steps_done` non-empty already has files in the vault (the note, the JSON, the MD). A
 silent drop would leave them there with no record. The next `/note` therefore offers resume or drop; this also covers
-a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. During a resume, title
-and destination are frozen because the landed files carry them. A name collision during a resume is branched on `steps_done`
+a killed process (`steps_done` set, `failed_step` empty), treated like a failed delivery. During a resume with a
+non-empty `steps_done`, title and destination are frozen because the landed files carry them. A name collision during a resume is branched on `steps_done`
 (see the next section).
 
 ## Why Exit 3 Branches on steps_done, Not on "Is This a Resume"
@@ -88,8 +88,10 @@ between the read and the mark, a merge would overwrite the newer content, so it 
 WHY: Exit 2 of `new` and `stage` is refused input: a `--source` outside `concepts.inbox`, a blank or dotted title,
 an invisible character or `{{`/`<%` in it, a destination that is not a relative vault folder. These are the
 user's to fix. The skill names what was refused and asks for another value; nothing is staged. Exit 3 (name
-taken) is different: rename or abort, never overwrite. Exit 1 is a Kado or system error: report the failed step,
-keep the draft, and the next `/note` offers resume.
+taken) is different: never overwrite; the skill branches on `steps_done` (see
+[Why Exit 3 Branches on steps_done](#why-exit-3-branches-on-steps_done-not-on-is-this-a-resume)). Exit 1 of
+`deliver` with a `step` set is a Kado or system error: report the failed step, keep the draft, and the next
+`/note` offers resume. Exit 1 with an empty `step` is the filled-note check failing: fix `draft.md` and rerun `stage`.
 
 ## Why Template Unreadable Is Not "No Template Exists"
 
@@ -129,8 +131,9 @@ left open are named in the "Skipped, left empty:" line above the draft, so skipp
 ## Why --process Is a Separate Mode
 
 WHY: `/note --process <template>` stores per-template guidance (destination, required points, guidance text) in
-`config/note-processes/<template-stem>.md` through `note-process.py read` and `write`. After a first note the
-skill offers Save / Not now / Never; "Never" writes a decline marker that `write` later replaces. An unknown
+`config/note-processes/<template-stem>.md` through `note-process.py read` and `write`. After a delivery the
+skill offers Save / Not now / Never once, only when the template has no process file and no decline marker and the
+session showed a signal worth saving (a changed destination, an answered re-asked point, a requested question order); "Never" writes a decline marker that `write` later replaces. An unknown
 template writes nothing (F7-AC11). The temporary outline file is removed afterwards.
 
 ## Why Template and Config Problems Continue Instead of Stopping
@@ -139,7 +142,8 @@ WHY: A broken process file (`error` set) is ignored with one line and the templa
 missing from the template is named in one line and skipped. A template without frontmatter is drafted with a
 frontmatter block anyway; `stage` reports the filled-note result. The note matters more than an optional
 refinement being intact. A filled-note check that fails at `stage` is different: the skill fixes the draft and
-reruns `stage`; `deliver` never runs on a failing check.
+reruns `stage` before showing the draft, so the skill never calls `deliver` on a known failing check. `deliver`
+checks again; a failure there (exit 1, empty `step`) sends the skill back to fixing the draft and rerunning `stage`.
 
 ## Why STRICT Is Rare
 

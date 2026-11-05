@@ -82,6 +82,43 @@ def test_skill_mirror_names_decision(heading, needles):
         assert needle.lower() in body.lower(), f"{heading!r} section lacks {needle!r}"
 
 
+def _sentences(text: str) -> list[str]:
+    flat = re.sub(r"\s+", " ", text)
+    return [s for s in re.split(r"(?<=[.:;])\s+", flat) if s]
+
+
+def test_frozen_title_is_always_qualified_by_steps_done():
+    """SKILL.md step 6 and is_frozen freeze title/destination only once steps_done
+    is non-empty; an unqualified 'during a resume ... frozen' contradicts that."""
+    unqualified = [
+        s
+        for s in _sentences(_text(SKILL))
+        if re.search(r"\bfr(?:oz|eez)", s, re.I)
+        and "title" in s.lower()
+        and "steps_done" not in s
+        and "once a step is done" not in s
+    ]
+    assert not unqualified, f"frozen title without the steps_done condition: {unqualified}"
+
+
+@pytest.mark.parametrize(
+    "stale",
+    [
+        # Exit 3 branches on steps_done (Rename/Abort vs Keep/Drop), not rename-or-abort alone.
+        "rename or abort, never overwrite",
+        # The skill writes three local files, not draft.md alone (SKILL.md intro).
+        "writes `draft.md` and nothing else",
+        # Exit 1 of deliver with an empty step is the filled-note check, not a Kado error.
+        "Exit 1 is a Kado or system error",
+        # deliver re-runs the filled-note check and can report it failing (exit 1, empty step).
+        "`deliver` never runs on a failing check",
+    ],
+)
+def test_skill_mirror_has_no_stale_statement(stale):
+    flat = re.sub(r"\s+", " ", _text(SKILL))
+    assert stale.lower() not in flat.lower()
+
+
 def test_inbox_author_has_note_redirect_entry():
     body = _section(_text(AUTHOR), "/note")
     assert "/note" in body

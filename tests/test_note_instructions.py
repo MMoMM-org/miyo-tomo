@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.9
+# version: 0.2.10
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5, T2.6).
 
 deliver (T2.6): order note → JSON → MD → source mark, a failure stops every
@@ -424,6 +424,43 @@ def test_stage_bad_values_exit_2(inst, capsys, extra):
     stem = _staged(inst, capsys)
     rc, _, _ = _stage(capsys, stem, *extra)
     assert rc == 2
+
+
+# The /note skill treats an exit 2 as refused, user-fixable input only when stderr
+# starts with one of these prefixes (SKILL.md Rules); these tests pin that contract.
+USER_FIXABLE_PREFIXES = ("note-instructions: --title", "note-instructions: --destination",
+                         "note-instructions: --source")
+
+
+@pytest.mark.parametrize(("extra", "prefix"), [
+    (["--title", "   "], "note-instructions: --title"),
+    (["--title", ".hidden"], "note-instructions: --title"),
+    (["--title", "Design​review"], "note-instructions: --title"),
+    (["--title", "Design {{date}}"], "note-instructions: --title"),
+    (["--title", "Design <% tp.date %>"], "note-instructions: --title"),
+    (["--destination", "/abs/"], "note-instructions: --destination"),
+], ids=["blank", "dot-leading", "invisible", "double-brace", "templater", "absolute-destination"])
+def test_stage_refused_input_starts_with_the_skill_prefix(inst, capsys, extra, prefix):
+    stem = _staged(inst, capsys)
+    rc, out, err = _stage(capsys, stem, *extra)
+    assert rc == 2 and out == ""
+    assert err.startswith(prefix), err
+
+
+def test_new_source_outside_the_inbox_starts_with_the_skill_prefix(inst, capsys):
+    rc, out, err = _run(["new", "--template", TEMPLATE, "--source", "Atlas/202 Notes/Filed.md"], capsys)
+    assert rc == 2 and out == ""
+    assert err.startswith("note-instructions: --source"), err
+
+
+def test_non_fixable_exit_2_starts_with_no_skill_prefix(inst, capsys):
+    rc, _, err = _stage(capsys, "2026-01-01_000000", "--title", "T")
+    assert rc == 2 and err.startswith("note-instructions: unknown stem"), err
+    assert not err.startswith(USER_FIXABLE_PREFIXES), err
+    stem = _staged(inst, capsys)
+    rc, _, err = _run(["deliver", "--stem", stem], capsys)
+    assert rc == 2 and err.startswith("note-instructions: no title staged"), err
+    assert not err.startswith(USER_FIXABLE_PREFIXES), err
 
 
 @pytest.mark.parametrize("stem", ["2026-01-01_000000", "../etc", "2026-01-01_0000"])
@@ -1172,6 +1209,8 @@ def test_deliver_kado_transport_error_fails_at_note_and_keeps_the_draft(
     rc, exists, out, raw, err = _deliver(capsys, stem)
     assert rc == 1 and exists is None, err
     assert out["status"] == "failed" and out["step"] == "note"
+    # Accepted trade-off: an outage at the first upload freezes the name, since the write may have landed.
+    assert out["frozen"] is True
     assert "KadoConnectionError" in err and MARKER not in raw + err
     meta = _meta(inst, stem)
     assert meta.steps_done == [] and meta.failed_step == "note"

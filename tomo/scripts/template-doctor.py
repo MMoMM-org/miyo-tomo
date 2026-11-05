@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.4.1
 """template-doctor.py — Audit, dry-render, and scaffold Tomo note templates.
 
 Checks whether an Obsidian note template renders correctly through Tomo's static
@@ -15,19 +15,18 @@ Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Four modes:
   filled-note Check a filled note (``--note``, no ``--template``) with
               lib.template_syntax.filled_note_check: leading fence present and
               closed, no user ``tomo:`` key, no ``<%`` left, no ``{{token}}``
-              left outside fenced code, every code fence closed. Output:
-              {"mode": "filled-note", "note": "<path>", "ok": bool,
-               "findings": [...]} — no rendered_preview, no note content.
+              left outside fenced code, every code fence closed.
 
-The load-bearing rule both modes enforce: the template must OPEN with a literal
-``---`` fence. Tomo does not execute Templater at render time, so a template
+The load-bearing rule audit and dry-render enforce: the template must OPEN with
+a literal ``---`` fence. Tomo does not execute Templater at render time, so a template
 whose opening fence is delegated to a Templater include (``<% tp.file.include(
 "[[x_frontmatter]]") %>`` as line 1) has, from Tomo's point of view, no leading
 frontmatter — merge_tomo_block prepends a fresh block and the template's
 title/tags/aliases strand as note body. dry-render reproduces that failure
 deterministically instead of relying on visual inspection.
 
-Output — a JSON report on stdout:
+Output — scaffold writes the template text to stdout. audit and dry-render write
+one JSON report on stdout:
 
   {
     "mode": "audit" | "dry-render",
@@ -40,9 +39,26 @@ Output — a JSON report on stdout:
     "rendered_preview": str | null    # dry-render only: the stamped frontmatter
   }
 
+filled-note writes one JSON report on stdout, with no rendered_preview and no
+note content:
+
+  {
+    "mode": "filled-note",
+    "note": "<path>",
+    "ok": bool,                       # true when no FAIL findings
+    "findings": [
+      {"check": str, "status": "PASS"|"WARN"|"FAIL",
+       "detail": str, "fix": str | null}
+    ]
+  }
+
+A note that is missing, not a file, unreadable or not valid UTF-8 yields a single
+``file`` FAIL finding.
+
 Exit codes:
   0  no FAIL findings (WARN allowed)
-  1  at least one FAIL finding, or an operational error (file missing, etc.)
+  1  at least one FAIL finding, or an operational error (file missing,
+     unreadable, not UTF-8, etc.)
   2  bad invocation
 """
 from __future__ import annotations
@@ -371,18 +387,31 @@ def _preview(stamped, max_lines=40):
 
 
 # ──────────────────────────────────────────────────────────────────────
-
 # filled-note — the /note delivery check, via lib/template_syntax
 # ──────────────────────────────────────────────────────────────────────
+
+def _read_note(note_path):
+    """Return (text, None) or (None, detail) — the detail names only the path."""
+    if not note_path.exists():
+        return None, f"Note not found: {note_path}"
+    if not note_path.is_file():
+        return None, f"Note is not a file: {note_path}"
+    try:
+        return note_path.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, f"Note is not valid UTF-8: {note_path}"
+    except OSError:
+        return None, f"Note not readable: {note_path}"
+
 
 def filled_note(note_arg):
     """Print the filled-note report for one file; return the exit code."""
     note_path = Path(note_arg)
-    if not note_path.is_file():
-        findings = [_finding("file", "FAIL", f"Note not found: {note_path}", None)]
-        ok = False
+    text, error = _read_note(note_path)
+    if error is not None:
+        findings, ok = [_finding("file", "FAIL", error, None)], False
     else:
-        result = filled_note_check(note_path.read_text(encoding="utf-8"))
+        result = filled_note_check(text)
         findings, ok = result.findings, result.ok
     print(json.dumps({
         "mode": "filled-note", "note": str(note_path), "ok": ok,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """Tests for template-doctor.py — audit + dry-render of Tomo note templates.
 
 The load-bearing behaviour: a template must open with a literal ``---`` fence, or
@@ -11,9 +11,12 @@ live testing (miyo-tomo#138).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCTOR = REPO_ROOT / "tomo" / "scripts" / "template-doctor.py"
@@ -313,3 +316,34 @@ def test_audit_still_requires_template(tmp_path):
         capture_output=True, text=True,
     )
     assert proc.returncode == 2
+
+
+def _assert_file_fail(proc, detail):
+    assert proc.returncode == 1
+    assert proc.stderr == ""
+    report = json.loads(proc.stdout)
+    assert report["ok"] is False
+    assert report["findings"] == [
+        {"check": "file", "status": "FAIL", "detail": detail, "fix": None}]
+
+
+def test_filled_note_non_utf8_reports_file_fail(tmp_path):
+    note = tmp_path / "bin.md"
+    note.write_bytes(b"\xff\xfe")
+    _assert_file_fail(_filled("--note", note), f"Note is not valid UTF-8: {note}")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads chmod 000 files")
+def test_filled_note_unreadable_reports_file_fail(tmp_path):
+    note = _write(tmp_path, "locked.md", CLEAN_NOTE)
+    note.chmod(0)
+    try:
+        _assert_file_fail(_filled("--note", note), f"Note not readable: {note}")
+    finally:
+        note.chmod(0o644)
+
+
+def test_filled_note_directory_reports_not_a_file(tmp_path):
+    folder = tmp_path / "folder.md"
+    folder.mkdir()
+    _assert_file_fail(_filled("--note", folder), f"Note is not a file: {folder}")

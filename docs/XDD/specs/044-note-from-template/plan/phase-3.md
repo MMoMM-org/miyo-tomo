@@ -13,6 +13,7 @@ phase: 3
 
 **Specification References**:
 - `[ref: SDD/Runtime View]`: primary flow, error handling, the `--process` and question-budget algorithms.
+- `[ref: SDD/Acceptance Criteria; F4-AC2]`: every reprint shows `note.md`, never `draft.md`.
 - `[ref: SDD/Cross-Cutting Concepts/User Interface & UX]`: header, options, report.
 - `[ref: SDD/Building Block View/Directory Map]`: runtime and docs files.
 - `[ref: SDD/Implementation Boundaries]`: the narrowed `inbox-author` change.
@@ -42,10 +43,10 @@ This phase gives the model its instructions and the user the documentation.
 - [ ] **T3.2 Command and skill** `[activity: prompt-authoring]`
 
   1. Prime: SDD Runtime View and UX; `commands/hashi-hook.md`; `skills/inbox-author/SKILL.md` frontmatter; vault-explorer's print-before-ask rule `[ref: SDD/Runtime View; ADR-6]`
-  2. Test: new `tests/test_note_skill_prose.py` asserts the imperatives exist: print before every question; at most four questions per round and at most two rounds; required points re-asked with no skip option; the skipped line; the header fields; approval options; `drop` on every abort path; resume or drop before a new request; stale stages dropped with one line; folder empty or not readable wording with the remedy (grant read access to the template folder or do not use `/note`) on both the empty-listing and the unreadable-template path; process offer asked once with three answers and only on the three signals; rename or abort on a taken name; frozen title during resume; script calls with their exact flags. Asserts no rationale prose and a `# version:` header.
+  2. Test: new `tests/test_note_skill_prose.py` asserts the imperatives exist: print before every question; at most four questions per round and at most two rounds; required points re-asked with no skip option; the skipped line; the header fields; approval options; `drop` on every abort path; resume or drop before a new request; stale stages dropped with one line; folder empty or not readable wording with the remedy (grant read access to the template folder or do not use `/note`) on both the empty-listing and the unreadable-template path; process offer asked once with three answers and only on the three signals; rename or abort on a taken name; frozen title during resume; the skill treats exit 2 of `new` or `stage` as a user-fixable input (`--source` outside the inbox, a title starting with a dot, blank, with invisible characters or `{{`/`<%`, a destination that is not a relative vault folder) and asks for another value; a vanished source (`source_marked` false on `delivered`) is reported in one line; an interrupted delivery (`steps_done` non-empty, `failed_step` empty) is offered resume or drop, never dropped silently; the post-delivery process offer reruns `template-outline.py --out tomo-tmp/note/process-outline.json` because `deliver` removed the stage; script calls with their exact flags: `note-session.py start --args=<$ARGUMENTS>` (= form), `template-outline.py --template <path> --stage <stem>` or `--out tomo-tmp/note/process-outline.json`, `note-process.py write` with one `--required <point>` per point and `--guidance-file`, `note-instructions.py stage` (with `--title` before `deliver`)/`deliver`/`drop --stem`; the skill prints `note.md` after every `stage`, never `draft.md`. Asserts no rationale prose and a `# version:` header.
   3. Implement: `tomo/dot_claude/commands/note.md` 0.1.0 (thin, routes to the skill with `$ARGUMENTS`); `tomo/dot_claude/skills/note-from-template/SKILL.md` 0.1.0 via `tcs-helper:skill-author`.
   4. Validate: prose test passes; skill-author verification passes.
-  5. Success: every dialogue criterion has an imperative `[ref: PRD/F1 … F4, F6, F7; SDD/F1-AC1, F1-AC2, F2-AC1 … F2-AC4, F3-AC2 … F3-AC8, F4-AC1 … F4-AC4, F6-AC2, F6-AC5, F7-AC3, F7-AC6, F7-AC7, F7-AC10]`
+  5. Success: every dialogue criterion has an imperative `[ref: PRD/F1 … F4, F6, F7; SDD/F1-AC1, F1-AC2, F2-AC1 … F2-AC4, F3-AC2 … F3-AC8, F4-AC1 … F4-AC4 (F4-AC2: reprint `note.md`), F6-AC2, F6-AC5, F7-AC3, F7-AC6, F7-AC7, F7-AC10]`
 
 - [ ] **T3.3 inbox-author redirect** `[activity: prompt-authoring]` `[parallel: true]`
 
@@ -59,7 +60,7 @@ This phase gives the model its instructions and the user the documentation.
 
   1. Prime: `docs/usage.md`, `docs/troubleshooting.md:44`, `docs/instructions-json.md` `[ref: PRD/F9]`
   2. Test: link check passes; the usage section names the two deletions and `/inbox --recover`.
-  3. Implement: `/note` section in `docs/usage.md` (modes, first-run setup, process files through Tomo, discard); troubleshooting line that `/note` needs read access to the template folder, and that without it the user grants the right in Kado or does not use `/note`; a sentence in `docs/instructions-json.md` that `/note` produces sets of the same shape.
+  3. Implement: `/note` section in `docs/usage.md` (modes, first-run setup, process files through Tomo, discard); troubleshooting line that `/note` needs read access to the template folder, and that without it the user grants the right in Kado or does not use `/note`; a sentence in `docs/instructions-json.md` that `/note` produces sets of the same shape; document that titles may not start with a dot or contain invisible characters (the zero-width joiner and non-joiner are allowed), and that a process destination must be a relative vault folder.
   4. Validate: no executor internals in user docs.
   5. Success: a wrong result costs two deletions and one command `[ref: PRD/F9; SDD/F9-AC1]`
 

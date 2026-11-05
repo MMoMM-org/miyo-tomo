@@ -20,7 +20,7 @@ phase: 2
 
 **Key Decisions**:
 - Scripts print one JSON object and exit 0 for usable output; 3 is a taken name with `EXISTS:<path>` as the first stdout line.
-- No script echoes user text (CON-3).
+- No script prints note text, source text or answers (amended CON-3): stdout carries only the user-derived fields CON-3 names, stderr none; `tests/test_note_privacy.py` holds the allowlist.
 - `deliver` reruns the filled-note check, reuses `meta.generated`, refuses a set the guards cut, and marks the source by a direct merge (ADR-3).
 - Tests use a fake Kado; nothing reaches a live vault.
 
@@ -105,10 +105,10 @@ This phase delivers every deterministic part of `/note`.
 - [x] **T2.7 Privacy and survival tests** `[activity: backend]` `[parallel: true]`
 
   1. Prime: CON-3; `scripts/backup-tomo.sh:175`; `scripts/restore-tomo.sh:193-197`; `scripts/update-tomo.sh:360-367,466-516`; `tests/test_backup_restore_instance.py` `[ref: SDD/Quality Requirements]`
-  2. Test: a marker string in the request, the source, the template body and the answers never appears in stdout or stderr of any new script; backup then restore keeps `config/note-processes/*.md` byte-identical; `update-tomo.sh` against a tmp instance (isolated `HOME`) leaves `config/note-processes/` unchanged.
+  2. Test: `tests/test_note_privacy.py`: marker strings in the request, the source, the template body and the answers never appear in stderr of any new script, and appear on stdout only in the user-derived fields CON-3 names (the title and the paths built from it, a process file's destination, required points and guidance, template point names, leftover token names), held as an allowlist in the test; `tests/test_note_processes_survive.py`: backup then restore keeps `config/note-processes/*.md` byte-identical, and `update-tomo.sh` against a tmp instance (isolated `HOME`) leaves `config/note-processes/` unchanged.
   3. Implement: tests only; fix any script that leaks.
   4. Validate: tests pass and never touch `~/.tomo`.
-  5. Success: no user text in output; process files survive `[ref: PRD/F5, F7; SDD/F5-AC8, F7-AC12]`
+  5. Success: no note text, source text or answer in any output, only allowlisted fields on stdout; process files survive `[ref: PRD/F5, F7; SDD/F5-AC8, F7-AC12]`
 
 - [ ] **T2.8 Phase Validation** `[activity: validate]`
 

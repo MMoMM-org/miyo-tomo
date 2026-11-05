@@ -68,6 +68,18 @@ falls back to the atomic-note path on it with one stderr line (F7-AC4), and a
 half-used file would hide the mistake. The read contract (never raises, exit 0
 in the CLI) is unchanged.
 
+## WHY an Empty destination or offer Key Reads as Unset
+
+A hand-written `destination:` or `offer:` with no value loads from YAML as
+null. Until 0.1.3 such a key read as broken (a null is not a relative vault
+folder, and not `never`), so under F7 the whole file was ignored and its
+required points and guidance were lost over an empty line. An empty key now
+means "not set", the same as `required:` with no value already did: the
+destination falls back to the default atomic-note folder (F7-AC1) and an empty
+`offer` is neither a decline marker nor an error. A present value that is not
+null is still validated, so `destination: ../x` or `offer: sometimes` stays
+broken.
+
 ## WHY the Errors Are Dedicated ValueError Subclasses
 
 `TemplateStemError`, `DestinationError` and `OutlineError` let the CLI map each

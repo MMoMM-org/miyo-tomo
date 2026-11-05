@@ -319,6 +319,38 @@ def test_read_reports_a_stored_bad_destination_as_an_error(tmp_path, dest):
     assert result["required"] == [] and result["guidance"] == ""
 
 
+@pytest.mark.parametrize("empty_key", ["destination:", "offer:", "destination: ~\noffer: null"])
+def test_an_empty_destination_or_offer_key_reads_as_unset(tmp_path, empty_key):
+    _write(tmp_path, f"---\n{empty_key}\nrequired:\n  - Agenda\n---\nGuide.\n")
+
+    result = note_process.read_process(tmp_path, TEMPLATE, OUTLINE)
+
+    assert result == {
+        "exists": True, "declined": False, "destination": "", "required": ["Agenda"],
+        "guidance": "Guide.", "missing_required": [], "error": "",
+    }
+
+
+def test_an_empty_offer_key_alone_is_neither_a_decline_nor_broken(tmp_path):
+    _write(tmp_path, "---\noffer:\n---\n")
+
+    result = note_process.read_process(tmp_path, TEMPLATE)
+
+    assert result["exists"] is True
+    assert result["declined"] is False
+    assert result["error"] == ""
+
+
+@pytest.mark.parametrize("dest", ["../x", "''", "42"])
+def test_a_present_invalid_destination_beside_an_empty_offer_is_still_broken(tmp_path, dest):
+    _write(tmp_path, f"---\ndestination: {dest}\noffer:\nrequired:\n  - Agenda\n---\nGuide.\n")
+
+    result = note_process.read_process(tmp_path, TEMPLATE, OUTLINE)
+
+    assert result["error"] == "destination is not a relative vault folder"
+    assert result["required"] == [] and result["guidance"] == ""
+
+
 @pytest.mark.parametrize("dest", ["Efforts/Meetings", "  Efforts/Meetings/ ", "Ätlas",
                                   "Atlas/\U0001F469\u200d\U0001F4BB"])
 def test_written_destination_reads_back_as_vault_folder_gives_it(tmp_path, dest):

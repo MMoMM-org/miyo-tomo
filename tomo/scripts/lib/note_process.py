@@ -1,11 +1,12 @@
 # note_process.py — process files of /note: read, write, decline, required points.
-# version: 0.1.2
+# version: 0.1.3
 """Own ``config/note-processes/<template-stem>.md``.
 
 A process file carries optional YAML frontmatter (``destination``: a relative
 vault folder by lib/note_paths.vault_folder, which also normalises it to one
 trailing "/" on read and write; ``required`` list of point
-names, ``offer: never``) and a body of free guidance. ``offer: never`` with no
+names, ``offer: never``) and a body of free guidance. A key with no value
+(YAML null) reads as absent. ``offer: never`` with no
 other field and no body is a decline marker; with any other field or a body the
 file reads as a normal process with ``declined`` false.
 
@@ -122,13 +123,15 @@ def _load_frontmatter(block: str) -> dict:
 
 
 def _validate(fm: dict) -> None:
-    if "destination" in fm and vault_folder(fm["destination"]) is None:
+    dest = fm.get("destination")
+    if dest is not None and vault_folder(dest) is None:
         raise ProcessFileError("destination is not a relative vault folder")
     req = fm.get("required")
     if req is not None and (not isinstance(req, list)
                             or not all(isinstance(r, str) and r.strip() for r in req)):
         raise ProcessFileError("required must be a list of point names")
-    if "offer" in fm and fm["offer"] != DECLINE_VALUE:
+    offer = fm.get("offer")
+    if offer is not None and offer != DECLINE_VALUE:
         raise ProcessFileError("offer must be 'never' when present")
 
 
@@ -137,7 +140,8 @@ def _parsed(fm: dict, body: str, outline: dict | None) -> dict:
     if fm.get("offer") == DECLINE_VALUE and not guidance and not (set(fm) - {"offer"}):
         return _empty(True, declined=True)
     result = _empty(True)
-    result["destination"] = vault_folder(fm["destination"]) if "destination" in fm else ""
+    dest = fm.get("destination")
+    result["destination"] = vault_folder(dest) if dest is not None else ""
     result["required"] = [r.strip() for r in fm.get("required") or []]
     result["guidance"] = guidance
     if outline is not None:

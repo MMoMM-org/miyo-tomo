@@ -9,7 +9,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S",
-      "description": "Vault folder the note moves to by default: a relative vault folder, with or without a trailing '/' (no leading '/' or '~', no drive letter, no backslash, no blank or dot-led segment, no '{{' or '<%', no control or invisible character except U+200C and U+200D; rules in lib/note_paths.py). It is normalised to exactly one trailing '/' on read and on write; a refused value makes the file read as broken. Overrides concepts.atomic_note.path for this template."
+      "description": "Vault folder the note moves to by default: a relative vault folder, with or without a trailing '/' (no leading '/' or '~', no drive letter, no backslash, no blank or dot-led segment, no '{{' or '<%', no control or invisible character except U+200C and U+200D; rules in lib/note_paths.py). It is normalised to exactly one trailing '/' on read and on write; a refused value makes the file read as broken. A key with no value (null) reads as absent. Overrides concepts.atomic_note.path for this template."
     },
     "required": {
       "type": "array",
@@ -18,7 +18,7 @@
     },
     "offer": {
       "const": "never",
-      "description": "When present alone (no other field and no body), the user declined saving a process for this template; /note does not offer again."
+      "description": "When present alone (no other field and no body), the user declined saving a process for this template; /note does not offer again. A key with no value (null) reads as absent."
     }
   }
 }

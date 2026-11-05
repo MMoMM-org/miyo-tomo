@@ -9,7 +9,7 @@ skills:
   - kado-write-patterns
 ---
 # Inbox Author
-# version: 0.3.0
+# version: 0.4.0
 
 Compose a free-form artifact the user asked for and write it to the inbox folder. Use this only
 for artifacts that do NOT fit a defined note type — defined types are produced by `/inbox`, never
@@ -43,8 +43,9 @@ On empty stem or read failure: fall back to the built-in minimal default and tel
 
 **Unknown type:**
 
-`kado-search byName` in the templates folder for a matching format. If found, save to
-`tomo-tmp/default-template.md`. If not found: use built-in minimal default and tell the user
+`kado-search byName` in the templates folder for a matching format. If found: tell the user
+`"a <type> template exists — run /note to create a filled note from it"` and STOP. Do NOT write.
+If not found: use built-in minimal default and tell the user
 `"no type-specific template found — used the default/inbox template"`.
 
 **Built-in minimal default** — write with the `Write` tool to `tomo-tmp/default-template.md`, verbatim:

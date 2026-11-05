@@ -1,5 +1,5 @@
 # note_process.py — process files of /note: read, write, decline, required points.
-# version: 0.1.3
+# version: 0.1.4
 """Own ``config/note-processes/<template-stem>.md``.
 
 A process file carries optional YAML frontmatter (``destination``: a relative
@@ -28,11 +28,11 @@ Design notes: docs/tomo/scripts/lib/note_process.md
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
 
+from lib.note_io import atomic_write_text
 from lib.note_paths import vault_folder
 
 PROCESS_DIR = Path("config") / "note-processes"
@@ -167,9 +167,7 @@ def read_process(process_dir: Path, template_stem: str, outline: dict | None = N
 
 def _write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(path, text)
 
 
 def _render(fm: dict, guidance: str) -> str:

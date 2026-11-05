@@ -175,7 +175,10 @@ normalised, is explained in `docs/tomo/scripts/lib/note_paths.md`.
 failure between the two would leave a directory without `meta.json`, which the
 next session reports as a stale stage. So both files are written atomically
 (temp file, then replace) and any `OSError` while writing them removes the stage
-directory before `new` exits 2.
+directory before `new` exits 2. Every atomic write here goes through
+`lib/note_io.atomic_write_text`, and `vault-config.yaml` is read with
+`lib/note_io.load_vault_config`; this script turns any `ConfigError` into
+exit 2 (see `docs/tomo/scripts/lib/note_io.md`).
 
 ## WHY the Title Is Trimmed and Loses Its Trailing Dots
 

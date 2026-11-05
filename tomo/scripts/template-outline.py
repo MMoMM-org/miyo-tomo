@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """template-outline.py — List the points of one note template for /note.
 
 Reads one template (through Kado, or a local file with --local) and prints its
@@ -58,6 +58,9 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib import template_syntax as ts  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.note_io import (  # noqa: E402
+    ConfigError, ConfigNotMapping, load_vault_config, remove_temps, temp_sibling,
+)
 from lib.note_meta import MetaError, read_meta, stage_dir  # noqa: E402
 
 CONFIG_PATH = Path("config") / "vault-config.yaml"
@@ -130,16 +133,16 @@ def build_outline(name: str, text: str, has_source: bool) -> dict:
 
 
 def _load_config() -> dict:
-    """Return vault-config.yaml as a dict; {} when absent or unreadable."""
+    """Return vault-config.yaml as a dict; {} when absent, not a mapping or unreadable."""
     if not CONFIG_PATH.is_file():
         return {}
     try:
-        import yaml
-        data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:  # noqa: BLE001 — any config problem means no config values
-        print(f"warning: vault-config.yaml unusable ({type(exc).__name__})", file=sys.stderr)
+        return load_vault_config(CONFIG_PATH)
+    except ConfigNotMapping:
         return {}
-    return data if isinstance(data, dict) else {}
+    except ConfigError as exc:
+        print(f"warning: vault-config.yaml unusable ({exc.cause})", file=sys.stderr)
+        return {}
 
 
 def prefilled_values(source_path: str | None) -> dict:
@@ -155,7 +158,7 @@ def _write_all(files: dict[Path, str]) -> None:
     temps: dict[Path, Path] = {}
     try:
         for path, content in files.items():
-            temps[path] = path.with_name(path.name + ".tmp")
+            temps[path] = temp_sibling(path)
             path.parent.mkdir(parents=True, exist_ok=True)
             temps[path].write_text(content, encoding="utf-8")
         for path, temp in temps.items():
@@ -163,16 +166,7 @@ def _write_all(files: dict[Path, str]) -> None:
     except OSError as exc:
         raise OutlineError(f"cannot write {path} ({type(exc).__name__})", 2) from exc
     finally:
-        _remove_temps(temps.values())
-
-
-def _remove_temps(temps) -> None:
-    """Remove leftover .tmp siblings; one that cannot be removed is left."""
-    for temp in temps:
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        remove_temps(temps.values())
 
 
 def _run(args: argparse.Namespace) -> dict:

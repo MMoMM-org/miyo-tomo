@@ -59,7 +59,10 @@ for the same `safe_load`. The script keeps its semantics: a missing key is
 absent, never an error (the `--field` exit 1 the SDD gotcha warns about does
 not arise). A missing, unparseable or non-UTF-8 file (`UnicodeDecodeError`,
 a `ValueError`) reads as empty config, with one stderr line naming the problem
-class only — a crash there would make the model re-run the script.
+class only — a crash there would make the model re-run the script. A file that
+parses but is not a mapping reads as empty config without a line. The read is
+`lib/note_io.load_vault_config`; this policy stays in the script (see
+`docs/tomo/scripts/lib/note_io.md`).
 
 ## WHY No Listing When `note_include` Is Absent (Note Mode)
 

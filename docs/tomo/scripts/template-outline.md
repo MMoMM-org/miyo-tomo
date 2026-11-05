@@ -25,7 +25,10 @@ WHY the script draws the clock and loads `config/vault-config.yaml` itself: the
 library stays pure (no IO), and the config path is relative to the working
 directory, which is the instance root inside the container. A missing config file
 means no config values (each config token becomes empty text, as in token-render);
-an unreadable one is reported on stderr by its error class only.
+an unreadable one is reported on stderr by its error class only. The read itself
+is `lib/note_io.load_vault_config`, shared with the other /note scripts; the
+policy (empty config, never a crash) stays in this script, see
+`docs/tomo/scripts/lib/note_io.md`.
 
 WHY `--stage` resolves `source_path` but leaves `{{source_link}}` in `template.md`:
 the link's value depends on `keep_source`, which is not decided yet when the
@@ -43,7 +46,9 @@ WHY: `template.md`, `outline.json` and the `--out` file are first written to
 `.tmp` siblings and moved into place with `os.replace` only after every write
 succeeded; on any failure the temps are removed. Writing them one by one let a
 failed second write leave a stage with `template.md` but no `outline.json`, which a
-later step would read as staged.
+later step would read as staged. The temp naming and cleanup come from
+`lib/note_io` (`temp_sibling`, `remove_temps`); the two-phase loop stays here
+because `atomic_write_text` replaces one file at a time.
 
 ## Where has_source comes from
 

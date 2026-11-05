@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-session.py — Deterministic session start of /note.
-# version: 0.1.1
+# version: 0.1.2
 """Start a /note session: mode, draft state and template candidates; preview globs.
 
 /note fills a vault template into a new note. This script makes its start the
@@ -45,12 +45,11 @@ import sys
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
-import yaml
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.note_io import ConfigError, ConfigNotMapping, load_vault_config  # noqa: E402
 from lib.note_meta import list_stages  # noqa: E402
 
 PROCESS_FLAG = "--process"
@@ -60,13 +59,14 @@ NO_BASE_PATH = "templates.base_path is not set in vault-config.yaml"
 # ---------------------------------------------------------------- config
 
 def load_config(path: str) -> dict:
-    """Return vault-config.yaml as a dict; empty (one stderr line) when unusable."""
+    """Return vault-config.yaml as a dict; empty (one stderr line when unreadable) otherwise."""
     try:
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError, yaml.YAMLError) as exc:
-        print(f"note-session: config unusable ({type(exc).__name__})", file=sys.stderr)
+        return load_vault_config(path)
+    except ConfigNotMapping:
         return {}
-    return data if isinstance(data, dict) else {}
+    except ConfigError as exc:
+        print(f"note-session: config unusable ({exc.cause})", file=sys.stderr)
+        return {}
 
 
 def templates_section(cfg: dict) -> dict:

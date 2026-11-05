@@ -741,7 +741,7 @@ def _raise_oserror(*_a, **_k):
     raise OSError("disk full")
 
 
-@pytest.mark.parametrize("target", ["write_meta", "_write_atomic"])
+@pytest.mark.parametrize("target", ["write_meta", "atomic_write_text"])
 def test_new_write_failure_removes_the_stage(inst, capsys, monkeypatch, target):
     monkeypatch.setattr(ni, target, _raise_oserror)
     rc, out, err = _run(["new", "--template", TEMPLATE, "--source", SOURCE], capsys)

@@ -118,7 +118,11 @@ because the skill offers required points from the outline itself.
 Frontmatter is never assembled or edited by string or regex (repo rule). The
 whole file is rebuilt from the given values, which also makes a write replace a
 decline marker without any special case. The write is atomic (temp file plus
-`os.replace`) so a crash never leaves a half-written process file.
+`os.replace`) so a crash never leaves a half-written process file; it is
+`lib/note_io.atomic_write_text`, and this module creates the process folder
+first because the helper does not. The frontmatter split stays local: see
+`docs/tomo/scripts/lib/note_io.md` for the line-ending case that keeps it apart
+from `lib/template_syntax.leading_block`.
 
 ## WHY the Schema Is Documentation
 

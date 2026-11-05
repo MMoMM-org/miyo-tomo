@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -55,7 +55,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import posixpath
 import shutil
 import sys
@@ -65,14 +64,13 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-import yaml  # noqa: E402
-
 from lib import run_id as run_id_lib  # noqa: E402
 from lib.doc_frontmatter import (  # noqa: E402
     FrontmatterMergeError, build_tomo_block, merge_tomo_block_into_markdown,
 )
 from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_actions import build_note_actions, build_note_instruction_set  # noqa: E402
+from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.note_meta import (  # noqa: E402
     STEPS, MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
     new_meta, read_meta, remove_stage, stage_dir, write_meta,
@@ -116,12 +114,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _write_atomic(target: Path, text: str) -> None:
-    tmp = target.with_name(target.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, target)
-
-
 def _atomic_path(node: object) -> str | None:
     if isinstance(node, str):
         return node
@@ -134,12 +126,9 @@ def _atomic_path(node: object) -> str | None:
 
 def _load_config(path: Path) -> dict:
     try:
-        cfg = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise UsageError(f"vault-config.yaml unreadable ({type(exc).__name__})") from exc
-    if not isinstance(cfg, dict):
-        raise UsageError("vault-config.yaml is not a mapping")
-    return cfg
+        return load_vault_config(path)
+    except ConfigError as exc:
+        raise UsageError(str(exc)) from exc
 
 
 def read_note_config(path: Path = CONFIG_PATH) -> dict:
@@ -209,7 +198,7 @@ def _fill_stage(stage: Path, body: str | None, meta) -> None:
     """Write source.md and meta.json atomically; on failure remove the stage and re-raise."""
     try:
         if body is not None:
-            _write_atomic(stage / SOURCE_FILE, body)
+            atomic_write_text(stage / SOURCE_FILE, body)
         write_meta(stage, meta)
     except OSError:
         shutil.rmtree(stage, ignore_errors=True)
@@ -301,7 +290,7 @@ def _resolve_and_check(stage: Path, meta) -> dict:
     if resolved is None:
         note.unlink(missing_ok=True)
         return _missing_draft()
-    _write_atomic(note, resolved)
+    atomic_write_text(note, resolved)
     result = filled_note_check(resolved)
     return {"ok": result.ok, "findings": result.findings}
 

@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.4
+# version: 0.1.5
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -19,7 +19,6 @@ Design notes: docs/tomo/scripts/lib/note_meta.md
 from __future__ import annotations
 
 import json
-import os
 import posixpath
 import re
 import shutil
@@ -27,6 +26,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from lib.note_io import atomic_write_text
 from lib.obsidian_filename import sanitize_stem
 
 STAGE_ROOT = Path("tomo-tmp") / "note"
@@ -157,10 +157,7 @@ def read_meta(stage: Path) -> NoteDraftMeta:
 
 def write_meta(stage: Path, meta: NoteDraftMeta) -> None:
     """Write meta.json atomically (temp file, then replace)."""
-    target = Path(stage) / META_FILE
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(asdict(meta), indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, target)
+    atomic_write_text(Path(stage) / META_FILE, json.dumps(asdict(meta), indent=2) + "\n")
 
 
 def _check_step(step: str) -> None:

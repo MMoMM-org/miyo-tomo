@@ -132,4 +132,6 @@ pipeline already relies on `sanitize_stem` as the single conversion.
 
 A resume reads meta.json to decide what is done. A crash mid-write would leave a
 truncated file that lists as stale and loses a failed delivery. Writing a sibling
-temp file and `os.replace` keeps either the old or the new state on disk.
+temp file and `os.replace` keeps either the old or the new state on disk. The
+write is `lib/note_io.atomic_write_text`, the one atomic write of the /note
+scripts (see `docs/tomo/scripts/lib/note_io.md`).

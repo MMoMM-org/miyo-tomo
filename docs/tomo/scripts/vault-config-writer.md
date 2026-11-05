@@ -126,7 +126,17 @@ second `templates:` block appended below the user's (their `base_path` and
 `mapping` shadowed), or a second `note_include` next to one the matcher missed.
 So the writer lists every repeated mapping key, with its path, in the file
 before the edit and in the result. A path repeated more often in the result
-than in the original is one the edit made: exit 1, nothing written.
+than in the original is one the edit made: exit 1, nothing written. The error
+names the line of the first copy the edit added (occurrence number "copies
+before the edit + 1"), not the second copy, which in a file that already held
+two is one of the user's.
+
+**Why a key that cannot be compared is skipped, value and all.** A complex key
+(`? [a]`), a merge key (`<<`) or an unhashable one has no identity
+`safe_load` could compare, so it is neither counted nor descended into: giving
+all of them one shared path token made `? [a]: {x: 1}` and `? [b]: {x: 2}`
+look like a repeated `x`, and the edit never writes below such a key. A null
+key (`~`) is an ordinary comparable key — two of them are a real duplicate.
 
 **Why a duplicate already in the file is not blamed on the edit — outside
 `templates:`.** An earlier version refused any duplicate in the result, so a
@@ -153,7 +163,9 @@ paths, folder names and tokens. A YAML parse error is reported as its
 exception class and line number only — the raw PyYAML message quotes the
 offending line. A duplicate is reported as introduced or pre-existing with its
 line number, never its key. An invalid glob is reported by its index in
-`note_include`, never by its value.
+`note_include`, never by its value. Unexpected top-level input keys are
+reported as a count, never by name: the input JSON is written by the model and
+its key names are input text too.
 
 **Why a glob with leading or trailing whitespace is rejected.** `" t_*.md "`
 is a non-empty string, so it used to pass, and then it never matched a

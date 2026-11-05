@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.2
+# version: 0.5.3
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -42,6 +42,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -662,7 +663,8 @@ def validate_templates_include_input(data) -> None:
         _fail("templates-include input must be a JSON object")
     extra = set(data) - {TEMPLATES_INCLUDE_KEY}
     if extra:
-        _fail(f"templates-include: unexpected top-level keys {sorted(extra)}")
+        _fail(f"templates-include: {len(extra)} unexpected top-level key(s); "
+              f"only {TEMPLATES_INCLUDE_KEY} is allowed")
     globs = data.get(TEMPLATES_INCLUDE_KEY)
     if not isinstance(globs, list) or not globs:
         _fail("templates-include: note_include must be a non-empty list")
@@ -767,15 +769,23 @@ _MERGE_TAG = "tag:yaml.org,2002:merge"
 _KEY_CONSTRUCTOR = yaml.SafeLoader("")  # builds scalar keys the way safe_load does
 
 
+_UNCOMPARABLE = object()
+
+
+class KeyRepeat(NamedTuple):
+    count: int
+    lines: tuple[int, ...]  # 1-based line of each occurrence, in file order
+
+
 def _key_identity(key_node):
-    """The key as safe_load would build it, or None when it cannot be compared."""
+    """The key as safe_load would build it, or _UNCOMPARABLE."""
     if not isinstance(key_node, yaml.ScalarNode) or key_node.tag == _MERGE_TAG:
-        return None
+        return _UNCOMPARABLE
     try:
         key = _KEY_CONSTRUCTOR.construct_object(key_node, deep=True)
         hash(key)
     except (yaml.YAMLError, TypeError):
-        return None
+        return _UNCOMPARABLE
     return key
 
 
@@ -790,20 +800,21 @@ def _collect_key_lines(node, path: tuple, lines: dict, seen: set) -> None:
     elif isinstance(node, yaml.MappingNode):
         for key_node, value_node in node.value:
             key = _key_identity(key_node)
-            if key is not None:
-                lines.setdefault(path + (key,), []).append(key_node.start_mark.line + 1)
+            if key is _UNCOMPARABLE:
+                continue
+            lines.setdefault(path + (key,), []).append(key_node.start_mark.line + 1)
             _collect_key_lines(value_node, path + (key,), lines, seen)
 
 
-def _duplicate_keys(text: str) -> dict[tuple, tuple[int, int]]:
-    """{key path: (occurrences, line of the second one)} for repeated keys.
+def _duplicate_keys(text: str) -> dict[tuple, KeyRepeat]:
+    """{key path: KeyRepeat} for repeated keys.
 
     Plain safe_load keeps the last duplicate, so a shadowing second
     `templates:` or `note_include` would otherwise pass the read-back.
     """
     lines: dict[tuple, list[int]] = {}
     _collect_key_lines(yaml.compose(text, Loader=yaml.SafeLoader), (), lines, set())
-    return {p: (len(ls), ls[1]) for p, ls in lines.items() if len(ls) > 1}
+    return {p: KeyRepeat(len(ls), tuple(ls)) for p, ls in lines.items() if len(ls) > 1}
 
 
 def _describe_yaml_error(exc: yaml.YAMLError) -> str:
@@ -822,11 +833,15 @@ def _duplicate_refusal(original: str, updated: str) -> str | None:
         before = _duplicate_keys(original)
     except yaml.YAMLError:
         before = {}
-    introduced = [ln for p, (n, ln) in after.items() if n > before.get(p, (1, 0))[0]]
+    introduced = []
+    for path, rep in after.items():
+        prior = before[path].count if path in before else 1
+        if rep.count > prior:
+            introduced.append(rep.lines[prior])  # first copy the edit added
     if introduced:
         return (f"duplicate mapping key introduced by the edit "
                 f"(line {min(introduced)} of the result)")
-    shadowed = [ln for p, (_, ln) in before.items() if p[0] == "templates"]
+    shadowed = [rep.lines[1] for p, rep in before.items() if p[0] == "templates"]
     if shadowed:
         return (f"pre-existing duplicate key in the templates: block, already in the config "
                 f"(line {min(shadowed)}); the edit could land in the copy YAML ignores, "

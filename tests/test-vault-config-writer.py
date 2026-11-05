@@ -683,7 +683,7 @@ def _run_templates_include(tmp_path: Path, config_text: str | None, payload, *ex
     proc = subprocess.run(
         [sys.executable, str(SCRIPTS_DIR / "vault-config-writer.py"), "templates-include",
          "--input", str(inp), "--config", str(cfg), *extra],
-        capture_output=True, text=True,
+        capture_output=True, text=True, timeout=60,
     )
     return proc, cfg
 
@@ -893,6 +893,59 @@ def test_templates_include_invalid_glob_error_names_index_not_value(tmp_path):
     assert proc.returncode == 1
     assert SECRET not in proc.stderr, proc.stderr
     assert "note_include[1]" in proc.stderr, proc.stderr
+
+
+def test_templates_include_unexpected_input_key_reported_as_count(tmp_path):
+    payload = {"note_include": ["x.md"], SECRET: 1, "other": 2}
+    proc, cfg = _run_templates_include(tmp_path, CONFIG_WITHOUT_KEY, payload)
+    assert proc.returncode == 1
+    assert cfg.read_text(encoding="utf-8") == CONFIG_WITHOUT_KEY
+    assert SECRET not in proc.stderr and "other" not in proc.stderr, proc.stderr
+    assert "2 unexpected top-level key" in proc.stderr, proc.stderr
+
+
+def _dup_counts(text: str) -> dict:
+    return {path: rep[0] for path, rep in vcw._duplicate_keys(text).items()}
+
+
+def test_duplicate_census_list_items_get_their_own_path():
+    # Falsifies dropping the item index from the path (`path` for `path + (i,)`).
+    assert _dup_counts("l:\n - a: 1\n - a: 2\n") == {}
+    assert _dup_counts("l:\n - a: 1\n - b: 1\n   b: 2\n") == {("l", 1, "b"): 2}
+
+
+def test_templates_include_accepts_same_keyed_list_items_inside_templates(tmp_path):
+    # Inside templates a false duplicate would be refused as pre-existing.
+    config = "templates:\n  base_path: T\n  mapping:\n    - a: 1\n    - a: 2\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["templates"]["note_include"] == ["x.md"]
+
+
+def test_duplicate_census_aliases_are_not_duplicates():
+    assert _dup_counts("a: &x {k: 1}\nb: *x\nc: *x\n") == {}
+
+
+def test_templates_include_terminates_on_recursive_alias(tmp_path):
+    # Falsifies dropping the seen-node guard: the walk would recurse forever.
+    assert _dup_counts("a: &a [*a]\n") == {}
+    config = "templates:\n  base_path: T\nloop: &a [*a]\n"
+    proc, _ = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_duplicate_census_skips_uncomparable_keys_but_counts_null():
+    assert _dup_counts("? [a]\n: {x: 1}\n? [b]\n: {x: 2}\n") == {}
+    assert _dup_counts("~: 1\n~: 2\n") == {(None,): 2}
+
+
+def test_templates_include_introduced_line_is_the_copy_the_edit_added(tmp_path):
+    # Two matcher-missed copies already there; the edit appends a third at line 5.
+    config = "templates:\n  base_path: T\n  note_include : [a]\n  note_include : [b]\n"
+    proc, cfg = _run_templates_include(tmp_path, config, {"note_include": ["x.md"]})
+    assert proc.returncode == 1, proc.stderr
+    assert cfg.read_text(encoding="utf-8") == config
+    assert "introduced by the edit (line 5 of the result)" in proc.stderr, proc.stderr
 
 
 def test_templates_include_rejects_glob_with_surrounding_whitespace(tmp_path):

@@ -1,0 +1,75 @@
+# WHY: note-instructions.py
+
+> Rationale for decisions in `tomo/scripts/note-instructions.py`.
+> The script owns the lifecycle of one `/note` draft in
+> `tomo-tmp/note/<stem>/` (spec 044, ADR-2, ADR-7): `new`, `stage`, `drop`,
+> and `deliver` (T2.6).
+
+## WHY One Script With Subcommands
+
+The draft directory has one owner. `new` creates it, `stage` updates its
+`meta.json`, `deliver` empties it on success and `drop` removes it on abort.
+Keeping all four in one script means the stem validation, the config reading
+and the exit-code contract exist once, and the skill calls one script for every
+state change of the draft rather than composing files itself.
+
+## WHY new Draws the Stem, the Run Id and generated
+
+The stem (`YYYY-MM-DD_HHMMSS`, with seconds) names the inbox files and the stage
+directory; the run id stamps the note and the source mark; `generated` goes into
+the instruction set. All three come from the script's clock, never from the
+model, so they are well-formed and two drafts in the same minute do not share a
+name. `generated` is fixed at `new` and reused by every `deliver`, so a resume
+rebuilds identical files.
+
+## WHY new Reads the Source Before Creating the Stage Directory
+
+A Kado error reading the source exits 1 with nothing on disk. Creating the
+directory first would leave a stage with no `meta.json`, which `note-session.py
+start` would then report as a stale stage for the skill to drop: a failed start
+must not leave work for the next session.
+
+## WHY the Default Destination Comes From the Process File First
+
+A process file for the template (`config/note-processes/<stem>.md`) names where
+notes of that kind belong (F7-AC1); `concepts.atomic_note` is the general
+fallback. When `atomic_note` is a mapping with a `paths` list, the first entry is
+taken, the same reading the rest of Tomo applies to that key. A broken process
+file does not stop `new`: `read_process` reports the error and the atomic-note
+path is used, which is what the skill says in one line (F7-AC4).
+
+## WHY the Title Starts Empty
+
+`new` runs before the model has drafted anything, so there is no title yet.
+The title is recorded by the first `stage`. Until then `stage` reports
+`inbox_file` and `destination_file` as empty strings rather than a name built
+from an empty title.
+
+## WHY stage Refuses Rather Than Silently Ignores a Frozen Change
+
+Once a delivery step is done, the title and destination are part of files that
+already landed; once `instructions_json` is done, `keep_source` decides whether
+the landed set holds a `delete_source`. A refused change returns `frozen: true`
+and leaves `meta.json` unchanged, so the skill can tell the user why the rename
+did not happen. The rule itself lives in `lib/note_meta.py`.
+
+## WHY stage Runs the Filled-Note Check
+
+The skill prints the draft after every `stage`. The check (closed fence, no
+user-authored `tomo:` key, no `<%`, no `{{token}}` left) is reported with it so
+problems surface during revision, not at `deliver`. Findings are output, not an
+exit code: `stage` exits 0 so the agent reads the result instead of retrying.
+
+## WHY Input Is Validated at the Boundary
+
+An empty title would name the note `.md`; a destination with `..` or a leading
+`/` would point outside the vault folders Hashi expects; a malformed stem would
+build a path outside `tomo-tmp/note/`. All three exit 2 with a message that
+names the problem class only.
+
+## WHY No User Text Reaches stdout or stderr
+
+The source body and the draft are user content (CON-3). Only the fields the SDD
+names as output (`title`, `inbox_file`, `destination_file`) carry user-chosen
+text, because the skill prints them in the draft header. Error messages name the
+problem class, never the value, and the source body goes only to `source.md`.

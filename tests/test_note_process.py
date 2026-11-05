@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_process.py — Behavioural tests for note-process.py (spec 044 T2.4).
 
 Covers the CLI over lib.note_process for config/note-processes/<stem>.md:
@@ -11,6 +11,9 @@ Covers the CLI over lib.note_process for config/note-processes/<stem>.md:
 - decline: writes the marker that read then reports as declined
 - bad invocation (exit 2, no file text): malformed outline, missing guidance
   file, malformed stem, missing --outline
+- T2.4: a destination lib/note_paths refuses exits 2 and writes nothing; a
+  saved destination is the default_destination note-instructions uses; guidance
+  never reaches stdout or stderr (exit 0 and 1); a non-UTF-8 guidance file exits 2
 """
 from __future__ import annotations
 
@@ -242,3 +245,86 @@ def test_output_is_ascii_escaped(mod, instance, capsys):
     code, out, raw_out, _ = _run(mod, capsys, ["read", "--template", TEMPLATE])
     assert code == 0 and raw_out.isascii()
     assert out["destination"] == "Ätlas/"
+
+
+# ---------------------------------------------------------------- T2.4 fixes
+
+BAD_DESTINATIONS = ["../x", "../../x", "/abs", "/", "a//b", "a//b\\c", "a\\b", "a\x07b",
+                    "", "   "]
+
+
+@pytest.mark.parametrize("dest", BAD_DESTINATIONS)
+def test_write_bad_destination_exits_2_and_writes_nothing(mod, instance, capsys, dest):
+    _seed(instance, "---\noffer: never\n---\n")
+    before = _process_file(instance).read_bytes()
+    outline = _outline(instance)
+    code, _, raw_out, err = _run(mod, capsys, [
+        "write", "--template", TEMPLATE, "--outline", outline, "--destination", dest])
+    assert code == 2 and raw_out == ""
+    assert err == "note-process: destination is not a relative vault folder\n"
+    assert _process_file(instance).read_bytes() == before
+
+
+def _guidance(instance: Path, text: str) -> str:
+    path = instance / "guidance.txt"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_write_guidance_reaches_only_the_file_and_read(mod, instance, capsys):
+    outline = _outline(instance)
+    code, _, raw_out, err = _run(mod, capsys, [
+        "write", "--template", TEMPLATE, "--outline", outline, "--required", "Agenda",
+        "--guidance-file", _guidance(instance, f"Ask {SECRET} first.\n")])
+    assert code == 0
+    assert SECRET not in raw_out and SECRET not in err
+    assert SECRET in _process_file(instance).read_text(encoding="utf-8")
+    code, back, *_ = _run(mod, capsys, ["read", "--template", TEMPLATE])
+    assert back["guidance"] == f"Ask {SECRET} first."
+
+
+def test_rejected_write_never_echoes_the_guidance(mod, instance, capsys):
+    outline = _outline(instance)
+    code, out, raw_out, err = _run(mod, capsys, [
+        "write", "--template", TEMPLATE, "--outline", outline, "--required", "Risks",
+        "--guidance-file", _guidance(instance, f"{SECRET}\n")])
+    assert code == 1 and out == {"written": False, "rejected_required": ["Risks"]}
+    assert SECRET not in raw_out and SECRET not in err
+    assert not _process_file(instance).exists()
+
+
+def test_non_utf8_guidance_file_exits_2_and_writes_nothing(mod, instance, capsys):
+    outline = _outline(instance)
+    guidance = instance / "guidance.txt"
+    guidance.write_bytes(b"\xff\xfe")
+    code, _, raw_out, err = _run(mod, capsys, [
+        "write", "--template", TEMPLATE, "--outline", outline,
+        "--guidance-file", str(guidance)])
+    assert code == 2 and raw_out == "" and err.strip()
+    assert not _process_file(instance).exists()
+
+
+def _note_instructions():
+    path = SCRIPTS_DIR / "note-instructions.py"
+    spec = importlib.util.spec_from_file_location("note_instructions_shared", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("dest", ["Atlas/Meetings", "  Atlas/Meetings/ ", "Ätlas",
+                                  "Atlas/\U0001F469\u200d\U0001F4BB log"])
+def test_saved_destination_is_the_one_note_instructions_uses(mod, instance, capsys, dest):
+    (instance / "config").mkdir(exist_ok=True)
+    (instance / "config" / "vault-config.yaml").write_text(
+        'profile: "miyo"\nconcepts:\n  inbox: "100 Inbox/"\n  atomic_note: "Atlas/202 Notes/"\n',
+        encoding="utf-8")
+    code, *_ = _run(mod, capsys, ["write", "--template", TEMPLATE, "--outline",
+                                  _outline(instance), "--destination", dest])
+    assert code == 0
+    code, back, *_ = _run(mod, capsys, ["read", "--template", TEMPLATE])
+    ni = _note_instructions()
+    assert ni.main(["new", "--template", f"Templates/{TEMPLATE}.md"]) == 0
+    out, err = capsys.readouterr()
+    assert err == ""
+    assert json.loads(out)["default_destination"] == back["destination"] == ni.vault_folder(dest)

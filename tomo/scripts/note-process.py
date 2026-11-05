@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-process.py — read, write and decline the process files of /note.
-# version: 0.1.1
+# version: 0.1.2
 """The only writer of ``config/note-processes/<template-stem>.md``.
 
 The /note skill reads a template's process file before asking, saves one when
@@ -26,14 +26,18 @@ Rules:
     frontmatter, headings and tokens are lists of objects.
     --required takes one point name per flag and is repeatable; a comma is
     part of the name. Values are trimmed, empty ones dropped.
+    --destination must be a relative vault folder (lib/note_paths rules);
+    a refused one exits 2 and nothing is written.
     --guidance-file is read as UTF-8; its text becomes the file body.
-    A broken process file reads as exists true with error set (exit 0).
+    A broken process file, a stored destination the path rules refuse
+    included, reads as exists true with error set (exit 0).
     stderr names the problem class only, never a stem or file text.
 
 Exit codes:
     0 — output usable
     1 — write rejected: a required point is not in the outline; nothing written
-    2 — bad invocation: malformed stem, outline or guidance file, write failure
+    2 — bad invocation: malformed stem, destination, outline or guidance file,
+        write failure
 
 Design notes: docs/tomo/scripts/note-process.md
 """
@@ -48,10 +52,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.note_process import (  # noqa: E402
-    PROCESS_DIR, read_process, write_decline, write_process,
+    PROCESS_DIR, DestinationError, OutlineError, TemplateStemError, check_outline,
+    read_process, write_decline, write_process,
 )
-
-OUTLINE_LISTS = ("frontmatter", "headings", "tokens")
 
 
 class UsageError(Exception):
@@ -66,13 +69,10 @@ def load_outline(path: str) -> dict:
         raise UsageError(f"outline unreadable ({type(exc).__name__})") from exc
     except ValueError as exc:
         raise UsageError("outline is not JSON") from exc
-    if not isinstance(data, dict):
-        raise UsageError("outline is not a JSON object")
-    for key in OUTLINE_LISTS:
-        value = data.get(key)
-        if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
-            raise UsageError(f"outline {key} is not a list of objects")
-    return data
+    try:
+        return check_outline(data)
+    except OutlineError as exc:
+        raise UsageError(str(exc)) from exc
 
 
 def load_guidance(path: str | None) -> str:
@@ -84,10 +84,6 @@ def load_guidance(path: str | None) -> str:
         raise UsageError(f"guidance file unreadable ({type(exc).__name__})") from exc
 
 
-def clean_required(points: list[str] | None) -> list[str]:
-    return [p.strip() for p in (points or []) if p.strip()]
-
-
 def run_read(args: argparse.Namespace) -> tuple[dict, int]:
     outline = load_outline(args.outline) if args.outline is not None else None
     return read_process(PROCESS_DIR, args.template, outline), 0
@@ -97,7 +93,7 @@ def run_write(args: argparse.Namespace) -> tuple[dict, int]:
     outline = load_outline(args.outline)
     guidance = load_guidance(args.guidance_file)
     result = write_process(PROCESS_DIR, args.template, outline, destination=args.destination,
-                           required=clean_required(args.required), guidance=guidance)
+                           required=args.required, guidance=guidance)
     return result, 0 if result["written"] else 1
 
 
@@ -133,8 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     except UsageError as exc:
         print(f"note-process: {exc}", file=sys.stderr)
         return 2
-    except ValueError:
-        print("note-process: malformed template stem", file=sys.stderr)
+    except (TemplateStemError, DestinationError) as exc:
+        print(f"note-process: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:
         print(f"note-process: process file not written ({type(exc).__name__})", file=sys.stderr)

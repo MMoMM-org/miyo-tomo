@@ -56,9 +56,11 @@ name reads back unchanged.
 WHY: guidance is free multi-line text the user wrote. On the command line it
 would need shell quoting the model gets wrong (quotes, `!` in zsh, newlines),
 and it would show up in process listings. The skill writes it to a file and
-passes `--guidance-file`; the script reads it as UTF-8. A missing or unreadable
-guidance file is a bad invocation (exit 2) rather than an empty guidance, so a
-typo in the path never erases guidance the user gave.
+passes `--guidance-file`; the script reads it as UTF-8. A missing, unreadable
+or non-UTF-8 guidance file is a bad invocation (exit 2) rather than an empty
+guidance, so a typo in the path never erases guidance the user gave. The
+guidance text goes only into the process file and into `read`'s `guidance`
+field; `write` never prints it, whether it exits 0 or 1.
 
 ## WHY a Rejected Write Exits 1 With Output
 
@@ -80,8 +82,39 @@ reads as `{exists: true, error: ...}` with the library's class-only message
 ## WHY a Malformed Template Stem Exits 2
 
 WHY: a stem with `/`, `\` or a leading `.` could address a file outside
-`config/note-processes/`. The library raises ValueError for it; the script
-reports a bad invocation without echoing the stem.
+`config/note-processes/`. The library raises `TemplateStemError` for it; the
+script reports a bad invocation without echoing the stem. Until 0.1.2 the
+script mapped every ValueError to "malformed template stem"; it now catches the
+library's dedicated exceptions only, so another error is never mislabelled.
+
+Stems are compared case-sensitively: `Meeting` and `meeting` are two stems.
+On a case-insensitive file system (the macOS and Windows defaults) both map to
+one file, so writing one replaces the other's process. The script does not fold
+case itself, because the stem comes from the template file name the vault
+holds, and folding it would make the process file name differ from it on a
+case-sensitive file system.
+
+## WHY a Bad --destination Exits 2
+
+WHY: `note-instructions.py new` validates every folder with
+`lib/note_paths.vault_folder`. A process destination that rule refuses is
+ignored there, so saving one would make the user's save silently do nothing.
+`write` therefore refuses it the same way (the library raises
+`DestinationError`, before anything is written): exit 2, empty stdout, a
+class-only stderr line. A destination the rule accepts is stored in exactly
+the form `new` uses. Leaving `--destination` out stores no destination; an
+empty or blank value is refused rather than read as "none".
+
+## WHY the Outline Shape Check Is the Library's
+
+WHY: the script only parses the JSON; `lib/note_process.check_outline` decides
+whether the object is the outline shape, next to `outline_points`, which reads
+it. The script maps its `OutlineError` to exit 2.
+
+## WHY --required Is Not Cleaned Here
+
+WHY: `write_process` trims the names and drops empty ones. The script passes
+the flag values through unchanged, so the rule exists once.
 
 ## WHY Paths Are Relative to the Working Directory
 

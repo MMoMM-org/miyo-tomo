@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_note_instructions.py — Behavioural tests for note-instructions.py (spec 044 T2.5).
 
 Covers the draft lifecycle subcommands new, stage and drop:
@@ -16,7 +16,8 @@ Covers the draft lifecycle subcommands new, stage and drop:
 - vault_folder validates every folder (--destination, process file,
   concepts.atomic_note, concepts.inbox): no absolute form (/, ~, drive
   letter), no backslash, no segment that is blank or starts with a dot, no
-  template syntax, no unsafe character (Cc, Cf, Zl, Zp); the Unicode form is
+  template syntax, no unsafe character (Cc, Cf, Zl, Zp except the joiners
+  U+200C and U+200D, which title and folder accept); the Unicode form is
   kept; an unsafe process destination falls back, an unsafe atomic path or
   inbox exits 2 with a fixed message; a write failure in new leaves no stage
 - vault_note validates --template and --source the same way plus .md, before
@@ -754,3 +755,27 @@ def test_stage_title_rejection_never_echoes_the_title(inst, capsys, raw):
     rc, out, err = _stage(capsys, stem, "--title", raw)
     assert rc == 2 and "--title" in err
     assert MARKER not in out and MARKER not in err
+
+
+# ── joiners: owner decision 2026-11-05 ──────────────────────────────────
+
+TECHNOLOGIST = "\U0001F469\u200d\U0001F4BB"          # woman technologist, joined by U+200D
+ZWNJ_WORD = "می\u200cخواهم"  # Persian, U+200C inside
+
+
+@pytest.mark.parametrize("name", [TECHNOLOGIST, ZWNJ_WORD])
+def test_stage_accepts_joiners_in_title_and_destination(inst, capsys, name):
+    stem = _staged(inst, capsys)
+    rc, out, err = _stage(capsys, stem, "--title", f"{name} notes",
+                          "--destination", f"Atlas/{name}")
+    assert rc == 0, err
+    meta = _meta(inst, stem)
+    assert (meta.title, meta.destination) == (f"{name} notes", f"Atlas/{name}/")
+
+
+@pytest.mark.parametrize("bad", ["\u200b", "\ufeff", "\u202e", "\u2028"])
+@pytest.mark.parametrize("flag", ["--title", "--destination"])
+def test_stage_still_rejects_other_invisible_characters(inst, capsys, bad, flag):
+    stem = _staged(inst, capsys)
+    rc, out, _ = _stage(capsys, stem, flag, f"At{bad}las")
+    assert rc == 2 and out == ""

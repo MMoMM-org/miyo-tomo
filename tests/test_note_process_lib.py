@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_process_lib.py — Behavioural tests for lib.note_process (spec 044 T1.3).
 
 Covers the process file owner for config/note-processes/<template-stem>.md:
@@ -11,6 +11,9 @@ Covers the process file owner for config/note-processes/<template-stem>.md:
   replaces a decline marker
 - decline: writes a marker that read reports as declined
 - the schema documents the frontmatter a written file carries
+- destination follows lib/note_paths.vault_folder on write (DestinationError)
+  and read (error set); dedicated stem error; check_outline and a tolerant
+  outline_points
 """
 from __future__ import annotations
 
@@ -284,3 +287,73 @@ def test_no_read_error_carries_a_value_from_the_file(tmp_path, text):
 
     assert result["error"]
     assert MARKER not in result["error"]
+
+
+# ── T2.4: destinations follow the shared /note path rules ────────────────────
+
+from lib import note_paths  # noqa: E402
+
+BAD_DESTINATIONS = ["../x", "../../x", "/abs", "/", "a//b", "a//b\\c", "a\\b", "a\x07b",
+                    "a\u200bb", "", "   ", ".hidden", "{{dest}}"]
+
+
+@pytest.mark.parametrize("dest", BAD_DESTINATIONS)
+def test_write_rejects_a_destination_the_path_rules_refuse(tmp_path, dest):
+    with pytest.raises(note_process.DestinationError) as exc:
+        note_process.write_process(tmp_path, TEMPLATE, OUTLINE, destination=dest)
+
+    assert not (tmp_path / f"{TEMPLATE}.md").exists()
+    assert dest.strip() == "" or dest not in str(exc.value)
+
+
+@pytest.mark.parametrize("dest", BAD_DESTINATIONS + [42])
+def test_read_reports_a_stored_bad_destination_as_an_error(tmp_path, dest):
+    head = yaml.safe_dump({"destination": dest, "required": ["Agenda"]}, allow_unicode=True)
+    _write(tmp_path, f"---\n{head}---\nGuide.\n")
+
+    result = note_process.read_process(tmp_path, TEMPLATE, OUTLINE)
+
+    assert result["exists"] is True and result["declined"] is False
+    assert result["error"] == "destination is not a relative vault folder"
+    assert result["destination"] == ""
+    assert result["required"] == [] and result["guidance"] == ""
+
+
+@pytest.mark.parametrize("dest", ["Efforts/Meetings", "  Efforts/Meetings/ ", "Ätlas",
+                                  "Atlas/\U0001F469\u200d\U0001F4BB"])
+def test_written_destination_reads_back_as_vault_folder_gives_it(tmp_path, dest):
+    note_process.write_process(tmp_path, TEMPLATE, OUTLINE, destination=dest)
+
+    read = note_process.read_process(tmp_path, TEMPLATE)
+
+    assert read["error"] == ""
+    assert read["destination"] == note_paths.vault_folder(dest)
+
+
+def test_a_malformed_stem_raises_the_dedicated_stem_error(tmp_path):
+    with pytest.raises(note_process.TemplateStemError):
+        note_process.read_process(tmp_path, "../x")
+
+
+# ── outline shape lives in the library ───────────────────────────────────────
+
+
+def test_outline_points_skips_items_that_are_not_objects():
+    outline = {"frontmatter": "bad", "headings": ["x", {"text": "Agenda"}, 7], "tokens": None}
+
+    assert note_process.outline_points(outline) == ["Agenda"]
+
+
+@pytest.mark.parametrize("data", [
+    [MARKER], {"template": MARKER}, {**OUTLINE, "headings": MARKER},
+    {**OUTLINE, "tokens": [MARKER]},
+])
+def test_check_outline_refuses_a_wrong_shape_without_echo(data):
+    with pytest.raises(note_process.OutlineError) as exc:
+        note_process.check_outline(data)
+
+    assert MARKER not in str(exc.value)
+
+
+def test_check_outline_returns_a_good_outline():
+    assert note_process.check_outline(OUTLINE) is OUTLINE

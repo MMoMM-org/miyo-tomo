@@ -112,7 +112,10 @@ folder of `inbox_file`, which `deliver` writes through Kado and which is the
 `stage`, the process file's `destination`, and `concepts.atomic_note` and
 `concepts.inbox` in `vault-config.yaml`. All four go through `vault_folder()`
 from `lib/note_paths.py`, the only place the rule lives; the rules and their
-reasons are in `docs/tomo/scripts/lib/note_paths.md`.
+reasons are in `docs/tomo/scripts/lib/note_paths.md`. `note-process.py write`
+applies the same function before it saves a process file, and
+`lib/note_process.py` applies it again on read, so a destination the user saves
+is one `new` accepts, byte for byte.
 
 A failure is handled by origin. `--destination` exits 2, nothing written. A
 process-file destination that fails falls back to the atomic-note path with one

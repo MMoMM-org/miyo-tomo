@@ -49,18 +49,25 @@ The functions return `None` rather than raising: what a refusal means depends
 on the caller (exit 2 for a flag, a fallback for a process file), so the caller
 decides.
 
-## WHY Unsafe Means Cc, Cf, Zl and Zp
+## WHY Unsafe Means Cc, Cf, Zl and Zp, Except the Two Joiners
 
 `has_unsafe_char()` is the one predicate for folders, note paths and titles.
 Control characters (Cc: newline, tab, NUL) corrupt the wire and break
-wikilinks. Format characters (Cf: zero-width space and joiners, bidi overrides,
-the byte-order mark, the soft hyphen) are invisible: two paths that look the
-same can name different files, and a bidi override can make a path display as
+wikilinks. Format characters (Cf: zero-width space, bidi overrides, the
+byte-order mark, the soft hyphen) are invisible: two paths that look the same
+can name different files, and a bidi override can make a path display as
 something it is not. Line and paragraph separators (Zl, Zp) break a line as a
-newline does. The cost is accepted: the zero-width joiner inside an emoji
-sequence (such as the technologist emoji) and the zero-width non-joiner of
-Persian or Indic spelling are refused too. Combining marks (Mn) are not unsafe,
-so a decomposed `ö` passes.
+newline does. Combining marks (Mn) are not unsafe, so a decomposed `ö` passes.
+
+The zero-width joiner (U+200D) and the zero-width non-joiner (U+200C) are
+allowed. Owner decision, spec 044 Decisions Log 2026-11-05: "titles and folders
+reject invisible format characters, line and paragraph separators, but allow
+the zero-width joiner and non-joiner (U+200D, U+200C)". The joiner builds emoji
+sequences such as the technologist emoji, and the non-joiner is part of Persian
+and Indic spelling; refusing them made such titles and folders impossible. The
+look-alike risk they carry is accepted for these two only; every other Cf
+character stays refused, a joiner next to it included. Until `note_paths`
+0.1.1 (`note-instructions.py` 0.1.4) both were refused.
 
 ## WHY Unicode Is Not Normalised
 

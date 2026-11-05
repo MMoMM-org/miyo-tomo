@@ -1,5 +1,5 @@
 # note_paths.py — the path rules of /note: vault folders, note paths, unsafe characters.
-# version: 0.1.0
+# version: 0.1.1
 """One set of path rules for every /note script.
 
 ``note-instructions.py`` validates folders, note paths and titles with these
@@ -22,12 +22,17 @@ import unicodedata
 from lib.vault_paths import path_key
 
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
+_ALLOWED_JOINERS = frozenset({"\u200c", "\u200d"})  # zero-width non-joiner, zero-width joiner
 _TEMPLATE_SYNTAX = ("{{", "<%")
 
 
 def has_unsafe_char(value: str) -> bool:
-    """True for a control, format (zero-width, bidi, BOM), line or paragraph separator character."""
-    return any(unicodedata.category(c) in _UNSAFE_CATEGORIES for c in value)
+    """True for a control, format (zero-width, bidi, BOM), line or paragraph separator character.
+
+    U+200C and U+200D are not unsafe.
+    """
+    return any(unicodedata.category(c) in _UNSAFE_CATEGORIES and c not in _ALLOWED_JOINERS
+               for c in value)
 
 
 def has_template_syntax(value: str) -> bool:

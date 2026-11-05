@@ -71,6 +71,27 @@ def test_has_unsafe_char_passes_visible_text(value):
     assert note_paths.has_unsafe_char(value) is False
 
 
+# Owner decision 2026-11-05: ZWJ and ZWNJ are allowed, every other Cf/Zl/Zp is not.
+TECHNOLOGIST = "\U0001F469\u200d\U0001F4BB"          # woman technologist, joined by U+200D
+ZWNJ_WORD = "می\u200cخواهم"  # Persian, U+200C inside
+
+
+@pytest.mark.parametrize("value", [TECHNOLOGIST, ZWNJ_WORD, f"Atlas/{TECHNOLOGIST} log"])
+def test_joiners_are_not_unsafe(value):
+    assert note_paths.has_unsafe_char(value) is False
+
+
+@pytest.mark.parametrize("value", [TECHNOLOGIST, ZWNJ_WORD])
+def test_vault_folder_accepts_joined_names(value):
+    assert note_paths.vault_folder(f"Atlas/{value}") == f"Atlas/{value}/"
+
+
+@pytest.mark.parametrize("value", ["a\u200bb", "\ufeffx", "a\u202eb", "a\u2028b"])
+def test_other_invisible_characters_stay_unsafe_beside_the_joiners(value):
+    assert note_paths.has_unsafe_char(value + "\u200d") is True
+    assert note_paths.vault_folder(f"Atlas/{value}") is None
+
+
 @pytest.mark.parametrize("path, folder, inside", [
     ("100 Inbox/x.md", "100 Inbox/", True),
     ("100 Inbox/Sub/x.md", "100 Inbox/", True),

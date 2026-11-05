@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.1
+# version: 0.2.2
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the instance root. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -37,7 +37,7 @@ For each stem in `stale_stages`: say in one line that an interrupted draft was d
 Handle every entry of `kept_drafts` before the new request. Print each by title, template and created time, then ask per entry: Resume / Drop.
 - An entry with an empty `failed_step` is an interrupted delivery: offer Resume / Drop like any other kept draft. Never drop a kept draft without asking.
 - Resume: run step 7 for that stem as a resume; skip step 8 for it. Continue with the new request after it ends.
-- Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and `failed_step` is set, say the note may already be in the inbox with a name starting `<stem>_`. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
+- Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and the entry's `frozen` is true, say the note may already be in the inbox with a name starting `<stem>_`. When `steps_done` is empty and `frozen` is false, say that nothing landed in the inbox. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
 
 Then:
 - `mode` is `process` → step 9.
@@ -138,7 +138,7 @@ python3 scripts/note-instructions.py deliver --stem <stem>
 - On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite.
   - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `frozen` true: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the note may already be in the inbox as `note_path`. Then run `drop`.
-- On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then branch on `frozen` as for exit 3.
+- On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then branch on `frozen` with the exit 3 options, naming no `exists_path` (it is empty on a withdrawn stop). On the withdrawn `frozen` true Drop, name the files of `steps_done`, or, when `steps_done` is empty, say the note may already be in the inbox as `note_path`.
 - On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
 - Exit 2: show the error and stop; the draft stays.
 

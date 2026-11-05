@@ -119,9 +119,13 @@ name starting `<stem>_`, which is true of all three (`<stem>_<title>.md`, `<stem
 `<stem>_instructions.md`). It must not build a vault path itself: the inbox file name goes through `sanitize_stem` and
 the inbox folder comes from the config, so a model-built path can be wrong and send the user looking for a file that
 is not there. `deliver` writes a step as `failed_step` before uploading it (the step is in flight), so an entry with
-`failed_step` set and `steps_done` empty may already have the note in the inbox: the upload can land and the run end
-before the step is recorded as done. Saying "nothing landed" there would be a false promise, so the skill says the
-note may already be in the inbox.
+a delivery step in flight and `steps_done` empty may already have the note in the inbox: the upload can land and the
+run end before the step is recorded as done. Saying "nothing landed" there would be a false promise. `failed_step`
+alone cannot gate that hedge: a missing Kado config records `failed_step` `kado_config` before any connection is
+opened, so nothing was uploaded. The skill therefore reads the entry's `frozen` (`is_frozen`, which counts delivery
+steps only and not `kado_config`): with `steps_done` empty, `frozen` true says the note may already be in the inbox,
+`frozen` false says nothing landed in the inbox. A hedge on an unfrozen entry would send the user looking for a
+file that cannot exist.
 
 ## Why One Frozen Message Names Both Refusals
 
@@ -145,7 +149,10 @@ check. Without the `status` branch the model would read the empty step as "fix t
 draft edit can cure. Withdrawn writes nothing in this run, so the skill says so and why the action was withdrawn,
 then branches on `frozen` as exit 3 does (rename while it is false, Keep/Drop naming the files of
 `steps_done` once it is true): the guards run before the uploads on every `deliver`, a resume included, so
-earlier runs may already have landed files and frozen the name. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
+earlier runs may already have landed files and frozen the name. The options name no `exists_path`: a withdrawn stop
+prints it empty, because no name collision was found, so naming it would show the user a blank path. The frozen-true
+Drop names the files of `steps_done`, or, with `steps_done` empty, says the note may already be in the inbox as
+`note_path`. It offers no resume because a withdrawn action has no content to deliver, so keeping the draft would only
 repeat the refusal.
 
 With `status` `failed`, the step decides. A named step is a Kado or system error: report it, the draft stays, and the

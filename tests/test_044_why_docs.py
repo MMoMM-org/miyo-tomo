@@ -137,6 +137,8 @@ def test_frozen_title_is_always_qualified_by_the_freeze_rule():
         "freezes title and destination only once a step is done",
         # A withdrawn stop can come on a frozen resume; it branches on frozen like exit 3.
         "exactly as exit 3 does with `steps_done` empty",
+        # A kado_config failure sets failed_step without any upload; frozen, not failed_step, gates the hedge.
+        "`failed_step` set and `steps_done` empty may already have the note in the inbox",
         "the skill branches on `steps_done` (see",
     ],
 )
@@ -180,7 +182,7 @@ NOTE_META = SCRIPTS / "lib" / "note_meta.md"
                             "in flight", "kado_config"]),
         # A2: exit 1 is branched on status; withdrawn is not a draft problem.
         ("Exit 1 Branches on status", ["status", "withdrawn", "empty step",
-                                       "no draft edit", "rename", "steps_done"]),
+                                       "no draft edit", "rename", "steps_done", "exists_path"]),
         # A3: the empty-step branch names the stamp, because stage reports check.ok true then.
         ("Exit 1 Branches on status", ["frontmatter stamp", "check.ok", "true"]),
         # A4: a missing Kado config is a named failed step.
@@ -257,7 +259,8 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
         ("Exit 3 Branches", ["stdout", "the run ended"]),
         # Fix 2: a kept-draft drop names what landed by kind and never promises nothing landed.
         ("Kept Draft Drop", ["kept_drafts", "steps_done", "by kind", "no path", "in flight",
-                             "may already be in the inbox", "<stem>_"]),
+                             "may already be in the inbox", "<stem>_", "`frozen`", "kado_config",
+                             "nothing landed"]),
         # Fix 3: exit 2 of new/stage splits on the option the error names.
         ("Exit 2 Means", ["note-instructions: --title", "--destination", "--source",
                           "vault-config.yaml", "local I/O", "unknown stem", "meta.json",

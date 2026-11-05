@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -54,7 +54,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.1")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.2")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -113,8 +113,11 @@ def test_kept_draft_drop_names_landed_files_by_kind_and_never_promises_nothing_l
             "`instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), "
             "say they are in the inbox with names starting `<stem>_` and that the user can delete them in "
             "Obsidian.") in text
-    assert ("When `steps_done` is empty and `failed_step` is set, say the note may already be in the inbox "
-            "with a name starting `<stem>_`.") in text
+    assert ("When `steps_done` is empty and the entry's `frozen` is true, say the note may already be in "
+            "the inbox with a name starting `<stem>_`.") in text
+    assert "When `steps_done` is empty and `frozen` is false, say that nothing landed in the inbox." in text
+    # kado_config sets failed_step without any upload: failed_step must not gate "may already be in the inbox".
+    assert "When `steps_done` is empty and `failed_step` is set" not in text
     assert "Never build a vault path yourself." in text
     assert "Drop: run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line." not in text
 
@@ -427,7 +430,11 @@ def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_dr
 def test_a_withdrawn_action_is_an_exit_1_branch_on_frozen_like_exit_3():
     text = _section("7. Deliver")
     assert ("On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was "
-            "withdrawn, then branch on `frozen` as for exit 3.") in text
+            "withdrawn, then branch on `frozen` with the exit 3 options, naming no `exists_path` (it is empty "
+            "on a withdrawn stop).") in text
+    assert ("On the withdrawn `frozen` true Drop, name the files of `steps_done`, or, when `steps_done` is "
+            "empty, say the note may already be in the inbox as `note_path`.") in text
+    assert "then branch on `frozen` as for exit 3." not in text
     assert "as for exit 3 with `steps_done` empty" not in text
     assert "- `status` `withdrawn`:" not in text
 

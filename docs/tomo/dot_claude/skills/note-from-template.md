@@ -125,3 +125,14 @@ shows the model skipping a step, and state the failure mode in one line.
 WHY: One recorded paid run proves the model prints the draft before asking and delivers only after approval.
 `/note` is not in the CLAUDE.md eval gate because gating every later edit would cost a paid run each time. The
 trade-off: later edits to the skill have no automatic model check, so review them by hand.
+
+## Why the Runtime Details Look the Way They Do
+
+WHY: `start` is called as `--args='<request>'` (single quotes, each `'` written as `'\''`): the `=` form keeps a
+request beginning with `--process` from being read as an option, and single quotes keep the shell from expanding
+`$` or backticks in the user's text. The first-run setup previews `match --globs "*"` first because the model
+cannot propose globs for template names it has not seen. The skill writes only three local files itself
+(`draft.md`, `tomo-tmp/note/note-include.json` as the writer's `--input`, `tomo-tmp/note/process-guidance.md` as
+`--guidance-file`); the two helper files are removed right after the script call. The skill pins no `model`:
+the note text is the model's work (ADR-1), so it runs on the session's model. The description carries
+`MUST BE USED` per the authoring rules, and the `NOT for` clause keeps free-form artifacts with `inbox-author`.

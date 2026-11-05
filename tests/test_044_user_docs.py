@@ -15,7 +15,11 @@ USAGE = DOCS / "usage.md"
 TROUBLE = DOCS / "troubleshooting.md"
 INSTR = DOCS / "instructions-json.md"
 
-INTERNALS = re.compile(r"\.py\b|tomo-tmp|exit code|note-session|note-instructions|note-process|template-outline|draft\.md|outline\.json")
+INTERNAL_TERMS = [
+    r"\.py\b", "tomo-tmp", "exit code", "note-session", "note-instructions",
+    "note-process", "template-outline", r"draft\.md", r"outline\.json",
+]
+INTERNALS = re.compile("|".join(INTERNAL_TERMS))
 
 
 def _section(path: Path, heading: str) -> str:
@@ -32,60 +36,62 @@ def _note_usage() -> str:
     return _section(USAGE, "Write a note from a template")
 
 
+def _trouble_section() -> str:
+    m = re.search(r"^#+ (.*/note.*)$", TROUBLE.read_text(encoding="utf-8"), re.M)
+    assert m, "troubleshooting needs a /note heading"
+    return _section(TROUBLE, m.group(1))
+
+
 def test_usage_has_note_section() -> None:
-    assert "/note" in _note_usage()
+    assert re.search(r"^## Write a note from a template\s*$", USAGE.read_text(encoding="utf-8"), re.M)
+    assert "`/note` turns your material into a note" in _note_usage()
 
 
 def test_usage_covers_both_modes_and_first_run_and_process() -> None:
     s = _note_usage()
-    assert "/note --process" in s
-    assert "first" in s.lower() and "filename pattern" in s.lower()
-    assert "process file" in s.lower()
+    assert "`/note --process <template>`" in s
+    assert "The first time you use `/note`" in s and "filename patterns" in s
+    assert "A process file remembers" in s
 
 
 def test_usage_names_both_deletions_and_recover() -> None:
-    s = _note_usage()
-    discard = _section(USAGE, "Discard a delivered note") if re.search(
-        r"^#+ Discard a delivered note", USAGE.read_text(encoding="utf-8"), re.M) else s
-    assert "/inbox --recover" in discard
-    low = discard.lower()
-    assert "delete the note" in low
-    assert "delete the instruction set" in low
+    discard = _section(USAGE, "Discard a delivered note")
+    assert "Run `/inbox --recover`" in discard
+    assert "Delete the note in Obsidian" in discard
+    assert "Delete the instruction set in Obsidian" in discard
 
 
 def test_usage_states_title_and_destination_rules() -> None:
-    s = _note_usage().lower()
-    assert "dot" in s and "invisible" in s
-    assert "joiner" in s
-    assert "relative" in s and "folder" in s
+    s = _note_usage()
+    assert "may not start with a dot" in s
+    assert "invisible characters" in s
+    assert "zero-width joiner" in s
+    assert "relative vault folder" in s and "not an absolute path" in s
 
 
 def test_usage_lists_note_command_in_table() -> None:
-    assert re.search(r"^\| `/note` \|", USAGE.read_text(encoding="utf-8"), re.M)
+    assert re.search(r"^\| `/note` \|[^\n]*\(#write-a-note-from-a-template\)", USAGE.read_text(encoding="utf-8"), re.M)
 
 
 def test_troubleshooting_remedy_for_template_folder_access() -> None:
-    s = TROUBLE.read_text(encoding="utf-8")
-    m = re.search(r"^#+ .*/note.*$", s, re.M)
-    assert m, "troubleshooting needs a /note heading"
-    body = _section(TROUBLE, m.group(0).lstrip("# ").strip())
-    low = body.lower()
+    low = _trouble_section().lower()
     assert "read access" in low and "template folder" in low
     assert "kado" in low and "do not use `/note`" in low
 
 
 def test_instructions_json_mentions_note() -> None:
     s = INSTR.read_text(encoding="utf-8")
-    assert re.search(r"`/note`[^\n]*(same shape|same format)", s, re.S)
+    assert re.search(r"`/note`[^\n]*same shape", s)
 
 
 def test_no_executor_internals_in_note_text() -> None:
-    chunks = [_note_usage(), _section(TROUBLE, re.search(r"^#+ (.*/note.*)$", TROUBLE.read_text(encoding="utf-8"), re.M).group(1))]
-    for line in INSTR.read_text(encoding="utf-8").splitlines():
+    chunks = {"usage.md /note section": _note_usage(), "troubleshooting.md /note section": _trouble_section()}
+    for i, line in enumerate(INSTR.read_text(encoding="utf-8").splitlines(), 1):
         if "`/note`" in line:
-            chunks.append(line)
-    for c in chunks:
-        assert not INTERNALS.search(c), INTERNALS.search(c).group(0)
+            chunks[f"instructions-json.md line {i}"] = line
+    for name, c in chunks.items():
+        hit = INTERNALS.search(c)
+        assert not hit, f"{name} leaks executor internal {hit.group(0)!r}"
 
 
 def test_relative_links_resolve() -> None:

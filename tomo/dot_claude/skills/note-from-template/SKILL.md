@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.1.1
+# version: 0.1.2
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the instance root. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -80,10 +80,10 @@ python3 scripts/note-process.py read --template <template stem> --outline tomo-t
 
 `<stem>` is the `stem` from `new`; keep it and `default_destination`. `<template stem>` is the template's filename without `.md`.
 
-- `new` exits 1: say the source could not be read, then ask: Another source / Abort. Abort → stop.
+- `new` exits 1: say the source could not be read, then ask: Another source / Abort. Another source → rerun `new` with it. Abort → stop.
 - When `template-outline.py` exits 1, name the template, show its `error` verbatim and say the template may not be readable by the Kado key. Then: "Grant the Kado key read access to the template folder (`templates.base_path`), or do not use `/note`." Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this template. Abort → drop.
 - `template-outline.py` exits 2: show its `error`, drop the stem and stop.
-- When `error` is set, say in one line that the process file is ignored and why; continue with the template alone.
+- When `read` reports `error`, say in one line that the process file is ignored and why; continue with the template alone.
 - For each name in `missing_required`, say in one line that the template no longer has this required point; continue without it.
 - `frontmatter_ok` false: draft the note with a frontmatter block anyway.
 
@@ -123,7 +123,7 @@ Omit the skipped line when nothing was skipped; omit the source line when there 
 
 Then ask: Deliver / Change something / Abort.
 - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
-- During a resume with a non-empty `steps_done`, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the title and destination can no longer change, and keep the staged values.
+- During a resume with a non-empty `steps_done`, title and destination are frozen; once `instructions_json` is in `steps_done`, keeping the source is frozen too. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step landed, keeping the source once the instruction set exists. Keep the staged values.
 - Deliver → step 7.
 - Abort → drop.
 
@@ -137,8 +137,8 @@ python3 scripts/note-instructions.py deliver --stem <stem>
 - On exit 3, read `steps_done` in `tomo-tmp/note/<stem>/meta.json`. Never overwrite.
   - `steps_done` empty: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `steps_done` non-empty: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian, then run `drop`.
-- `status` `withdrawn`: say nothing was written and why the action was withdrawn, then offer Rename / Abort.
-- On exit 1, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
+- On exit 1 with `status` `withdrawn`, say nothing was written and why the action was withdrawn, then offer Rename / Abort as for exit 3 with `steps_done` empty.
+- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
 - Exit 2: show the error and stop; the draft stays.
 
 ## 8. Process offer

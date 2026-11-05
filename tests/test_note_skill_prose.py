@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -17,6 +17,7 @@ import importlib.util
 import re
 import shlex
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.1")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.2")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -187,7 +188,8 @@ def test_exit_2_of_new_or_stage_is_a_user_fixable_input():
 
 def test_broken_process_file_and_missing_required_point_are_one_line_each():
     text = _section("4. Stage the draft")
-    assert "When `error` is set, say in one line that the process file is ignored" in text
+    assert "When `read` reports `error`, say in one line that the process file is ignored and why" in text
+    assert "When `error` is set" not in text
     assert "For each name in `missing_required`, say in one line" in text
 
 
@@ -197,6 +199,11 @@ def test_broken_process_file_and_missing_required_point_are_one_line_each():
 def test_print_before_every_question():
     text = _flat(SKILL)
     assert "Before every AskUserQuestion call, print as visible text everything the question refers to" in text
+
+
+def test_every_question_has_at_most_four_options():
+    assert "Ask with at most four options per question." in _flat(SKILL)
+    assert "four headings per question with multi-select" in _section("9. Process mode")
 
 
 def test_question_budget_is_four_per_round_and_two_rounds():
@@ -269,6 +276,15 @@ def test_frozen_title_during_resume():
     assert "When `stage` reports `frozen: true`" in text
 
 
+def test_frozen_message_names_both_refused_changes():
+    text = _section("6. Draft")
+    assert "once `instructions_json` is in `steps_done`, keeping the source is frozen too" in text
+    assert ("When `stage` reports `frozen: true`, say in one line that the requested change can no longer "
+            "be made: title and destination once a delivery step landed, keeping the source once the "
+            "instruction set exists. Keep the staged values.") in text
+    assert "say in one line that the title and destination can no longer change" not in text
+
+
 # ── Abort (F6) ──────────────────────────────────────────────────────────────
 
 
@@ -278,7 +294,8 @@ ABORT_LINES = {
         "inbox-author → hand the request to the `inbox-author` skill and stop. Abort → stop.",
     ),
     "4. Stage the draft": (
-        "`new` exits 1: say the source could not be read, then ask: Another source / Abort. Abort → stop.",
+        "`new` exits 1: say the source could not be read, then ask: Another source / Abort. "
+        "Another source → rerun `new` with it. Abort → stop.",
         "Ask: Another template / Abort. Another template → drop the stem, return to step 3 without this "
         "template. Abort → drop.",
         "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
@@ -345,7 +362,15 @@ def test_the_delivery_report_names_paths_and_the_hashi_step():
 
 
 def test_a_failed_step_is_reported_and_the_draft_kept():
-    assert "On exit 1, report the failed `step`; the draft stays for the next `/note`" in _section("7. Deliver")
+    assert ("On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`"
+            in _section("7. Deliver"))
+
+
+def test_a_withdrawn_action_is_an_exit_1_branch_offering_rename_or_abort():
+    text = _section("7. Deliver")
+    assert ("On exit 1 with `status` `withdrawn`, say nothing was written and why the action was withdrawn, "
+            "then offer Rename / Abort as for exit 3 with `steps_done` empty.") in text
+    assert "- `status` `withdrawn`:" not in text
 
 
 # ── Process offer and --process (F7) ────────────────────────────────────────
@@ -354,6 +379,8 @@ def test_a_failed_step_is_reported_and_the_draft_kept():
 def test_process_offer_is_asked_once_with_three_answers_on_three_signals_only():
     text = _section("8. Process offer")
     assert "Ask once" in text
+    assert ("only when `read` reported `exists` false and `declined` false and the session showed at least "
+            "one signal") in text
     assert "Save / Not now / Never for this template" in text
     for signal in ("the destination differs from `default_destination`",
                    "a re-asked skipped point was answered",
@@ -423,9 +450,10 @@ def _skill_calls() -> list[tuple[str, str]]:
 
 
 def test_skill_calls_every_script_with_a_known_parser():
-    calls = _skill_calls()
-    assert len(calls) >= 15
-    assert {script for script, _ in calls} == set(PARSERS)
+    calls = Counter(script for script, _ in _skill_calls())
+    assert calls == {"note-instructions.py": 6, "note-process.py": 5, "note-session.py": 3,
+                     "template-outline.py": 3, "vault-config-writer.py": 1}
+    assert set(calls) == set(PARSERS)
 
 
 @pytest.mark.parametrize("script,rest", _skill_calls(), ids=lambda v: str(v)[:60])

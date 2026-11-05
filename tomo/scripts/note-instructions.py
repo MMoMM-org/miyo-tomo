@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -31,14 +31,16 @@ Subcommands:
         the stamped note, <stem>_instructions.json and <stem>_instructions.md
         flat in the inbox and merges the source mark. A step already landed
         with identical text counts as done; meta.json records every step.
+        A source gone before the mark counts as delivered, source_marked false.
         Removes the stage directory on success.
         Output: {status: delivered|exists|failed|withdrawn,
                  step: note|instructions_json|instructions_md|source_mark|"",
                  note_path, instructions_json, instructions_md, source_marked,
                  exists_path}
         On a taken name the first stdout line is EXISTS:<vault path>.
-        Exit: 0 delivered; 1 Kado, check or guard failure; 2 bad invocation
-              or unknown stem; 3 name taken (nothing more written)
+        Exit: 0 delivered; 1 Kado, check or guard failure; 2 bad invocation,
+              unknown stem or meta.json write failure (no JSON on stdout);
+              3 name taken (nothing more written)
   drop  --stem <stem>
         Removes the stage directory.
         Output: {stem, removed}
@@ -69,10 +71,10 @@ from lib import run_id as run_id_lib  # noqa: E402
 from lib.doc_frontmatter import (  # noqa: E402
     FrontmatterMergeError, build_tomo_block, merge_tomo_block_into_markdown,
 )
-from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_actions import build_note_actions, build_note_instruction_set  # noqa: E402
 from lib.note_meta import (  # noqa: E402
-    MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
+    STEPS, MetaError, apply_stage_update, draw_stem, mark_step_done, mark_step_failed,
     new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
 from lib.note_paths import (  # noqa: E402
@@ -333,7 +335,12 @@ def cmd_stage(args: argparse.Namespace) -> int:
 
 # ── deliver ──────────────────────────────────────────────────────────────
 
-INBOX_STEPS = ("note", "instructions_json", "instructions_md")
+INBOX_STEPS = STEPS[:3]
+SOURCE_MARK = STEPS[3]
+
+
+class UnguardedMarkError(Exception):
+    """read_frontmatter returned no modified time; the merge would be unguarded."""
 
 
 class DeliveryStop(Exception):
@@ -353,12 +360,13 @@ def _targets(meta) -> dict:
             "instructions_md": _set_path(meta, ".md")}
 
 
-def _deliver_output(meta, status: str, step: str = "", exists_path: str = "") -> dict:
+def _deliver_output(meta, status: str, step: str = "", exists_path: str = "",
+                    source_marked: bool = False) -> dict:
     targets = _targets(meta)
     return {"status": status, "step": step, "note_path": targets["note"],
             "instructions_json": targets["instructions_json"],
             "instructions_md": targets["instructions_md"],
-            "source_marked": status == "delivered" and bool(meta.source_path),
+            "source_marked": source_marked,
             "exists_path": exists_path}
 
 
@@ -388,7 +396,7 @@ def _guarded_actions(meta, client) -> list[dict]:
     """Run the destination and delete guards; refuse a clash or any cut action."""
     actions = build_note_actions(meta)
     kept, clashes = validate_destinations(actions, make_folder_listing(client))
-    kept, _withdrawn = withdraw_unjustified_deletes(kept)
+    kept, _ = withdraw_unjustified_deletes(kept)
     if clashes:
         raise DeliveryStop("exists", "", 3, clashes[0]["destination"])
     if kept != actions:
@@ -454,21 +462,45 @@ def _deliver_step(client, stage: Path, meta, step: str, payload: str) -> None:
     _record(stage, meta, step)
 
 
-def _mark_source(client, stage: Path, meta) -> None:
-    """Merge source/captured into the source note, guarded by its modified time (ADR-3)."""
-    if not meta.source_path or "source_mark" in meta.steps_done:
-        return
+def _write_mark(client, meta) -> bool:
+    """Merge source/captured guarded by its modified time (ADR-3); False when the source is gone."""
     try:
         modified = client.read_frontmatter(meta.source_path).get("modified")
+        if modified is None:
+            raise UnguardedMarkError("no modified time")
         client.write_frontmatter(
             meta.source_path, {"tomo": build_tomo_block("source", "captured", meta.run_id)},
             mode="merge", expected_modified=modified)
-    except KadoError as exc:
-        raise _fail(stage, meta, "source_mark", exc) from exc
-    _record(stage, meta, "source_mark")
+    except KadoNotFoundError:
+        return False
+    return True
 
 
-def _deliver(stage: Path, meta) -> None:
+def _carries_mark(client, meta) -> bool:
+    """True when the source holds this draft's source/captured block; False when it is gone."""
+    try:
+        frontmatter = client.read_frontmatter(meta.source_path).get("content")
+    except KadoNotFoundError:
+        return False
+    block = frontmatter.get("tomo") if isinstance(frontmatter, dict) else None
+    return (isinstance(block, dict) and block.get("state") == "captured"
+            and block.get("run_id") == meta.run_id)
+
+
+def _mark_source(client, stage: Path, meta) -> bool:
+    """Run the source_mark step; return whether the source carries the mark."""
+    if not meta.source_path:
+        return False
+    recorded = SOURCE_MARK in meta.steps_done
+    try:
+        marked = _carries_mark(client, meta) if recorded else _write_mark(client, meta)
+    except (KadoError, UnguardedMarkError) as exc:
+        raise _fail(stage, meta, SOURCE_MARK, exc) from exc
+    _record(stage, meta, SOURCE_MARK)
+    return marked
+
+
+def _deliver(stage: Path, meta) -> bool:
     note_text = _checked_note(stage, meta)
     try:
         client = KadoClient()
@@ -478,7 +510,7 @@ def _deliver(stage: Path, meta) -> None:
     payloads = _payloads(meta, note_text, _guarded_actions(meta, client))
     for step in INBOX_STEPS:
         _deliver_step(client, stage, meta, step, payloads[step])
-    _mark_source(client, stage, meta)
+    return _mark_source(client, stage, meta)
 
 
 def cmd_deliver(args: argparse.Namespace) -> int:
@@ -487,14 +519,14 @@ def cmd_deliver(args: argparse.Namespace) -> int:
     if not meta.title:
         raise UsageError("no title staged: run stage --title first")
     try:
-        _deliver(stage, meta)
+        marked = _deliver(stage, meta)
     except DeliveryStop as stop:
         if stop.exists_path:
             print(f"EXISTS:{stop.exists_path}")
         _emit(_deliver_output(meta, stop.status, stop.step, stop.exists_path))
         return stop.code
     remove_stage(Path.cwd(), meta.stem)
-    _emit(_deliver_output(meta, "delivered"))
+    _emit(_deliver_output(meta, "delivered", source_marked=marked))
     return 0
 
 

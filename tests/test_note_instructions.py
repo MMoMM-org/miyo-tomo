@@ -1156,6 +1156,90 @@ def test_deliver_source_changed_before_mark_fails_and_resume_retries(inst, capsy
     assert _write_events(vault) == [("write_frontmatter", SOURCE)]
 
 
+def _source_gone_at(vault, where):
+    if where == "before_read":
+        del vault.files[SOURCE]
+    else:
+        vault.fail[("write_frontmatter", SOURCE)] = KadoNotFoundError("Path not found")
+
+
+def _assert_delivered_unmarked(inst, capsys, stem):
+    rc, exists, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert exists is None and out["status"] == "delivered" and out["step"] == ""
+    assert out["source_marked"] is False
+    assert not note_meta.stage_dir(inst, stem).exists()
+
+
+@pytest.mark.parametrize("where", ["before_read", "at_write"])
+def test_deliver_source_gone_before_the_mark_is_delivered_unmarked(inst, capsys, vault, where):
+    """Falsifies treating KadoNotFoundError on the mark as a failed step."""
+    stem = _ready(inst, capsys, vault)
+    _source_gone_at(vault, where)
+    _assert_delivered_unmarked(inst, capsys, stem)
+    assert vault.merges == []
+
+
+def test_deliver_resume_after_mark_failure_with_source_gone_is_delivered(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    vault.fail[("write_frontmatter", SOURCE)] = KadoError("503")
+    assert _deliver(capsys, stem)[0] == 1
+    assert _meta(inst, stem).failed_step == "source_mark"
+    vault.fail.clear()
+    del vault.files[SOURCE]
+    _assert_delivered_unmarked(inst, capsys, stem)
+
+
+@pytest.mark.parametrize("method", ["read_frontmatter", "write_frontmatter"])
+def test_deliver_other_kado_error_on_the_mark_still_fails(inst, capsys, vault, method):
+    """Falsifies swallowing every KadoError on the mark, not only not-found."""
+    from lib.kado_client import KadoToolError
+    stem = _ready(inst, capsys, vault)
+    vault.fail[(method, SOURCE)] = KadoToolError("VALIDATION_ERROR")
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == "source_mark"
+    assert out["source_marked"] is False and vault.merges == []
+    assert _meta(inst, stem).failed_step == "source_mark"
+
+
+def test_deliver_mark_without_a_modified_time_fails_unwritten(inst, capsys, vault):
+    """Falsifies an unguarded merge when read_frontmatter returns no modified."""
+    stem = _ready(inst, capsys, vault)
+    vault.modified[SOURCE] = None
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == "source_mark"
+    assert ("write_frontmatter", SOURCE) not in vault.events and vault.merges == []
+    assert note_meta.stage_dir(inst, stem).is_dir()
+
+
+def _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem):
+    def die(*_a, **_k):
+        raise nfv.Killed()
+
+    with monkeypatch.context() as m:
+        m.setattr(ni, "remove_stage", die)
+        with pytest.raises(nfv.Killed):
+            ni.main(["deliver", "--stem", stem])
+    capsys.readouterr()
+    assert "source_mark" in _meta(inst, stem).steps_done
+
+
+@pytest.mark.parametrize("gone", [False, True])
+def test_deliver_resume_with_mark_recorded_reports_the_real_mark(
+        inst, capsys, vault, monkeypatch, gone):
+    """A run killed after recording source_mark: the resume reports what the source carries."""
+    stem = _ready(inst, capsys, vault)
+    _killed_before_stage_removal(inst, capsys, vault, monkeypatch, stem)
+    if gone:
+        del vault.files[SOURCE]
+    vault.events.clear()
+    rc, _, out, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert out["status"] == "delivered" and out["source_marked"] is (not gone)
+    assert ("write_frontmatter", SOURCE) not in vault.events
+    assert not note_meta.stage_dir(inst, stem).exists()
+
+
 def test_deliver_success_removes_the_stage_dir(inst, capsys, vault):
     stem = _ready(inst, capsys, vault)
     assert _deliver(capsys, stem)[0] == 0
@@ -1244,3 +1328,46 @@ def test_deliver_recorded_step_with_absent_target_is_not_rewritten(inst, capsys,
     assert out["status"] == "delivered"
     assert ("write_note", note) not in _write_events(vault)
     assert note not in vault.files
+
+
+# ── the fake vault behaves like lib.kado_client.KadoClient ──────────────
+
+
+def test_fake_write_frontmatter_on_an_absent_note_raises_not_found():
+    fake = nfv.NoteFakeVault()
+    with pytest.raises(KadoNotFoundError):
+        fake.write_frontmatter("100 Inbox/gone.md", {"a": 1})
+    assert fake.merges == [] and fake.files == {}
+
+
+def test_fake_write_frontmatter_stale_modified_raises_concurrency():
+    fake = nfv.NoteFakeVault({"n.md": "---\na: 1\n---\nbody\n"})
+    with pytest.raises(KadoConcurrencyError):
+        fake.write_frontmatter("n.md", {"b": 2}, expected_modified=7)
+    assert fake.text("n.md") == "---\na: 1\n---\nbody\n" and fake.merges == []
+
+
+def test_fake_write_frontmatter_honours_replace_and_rejects_other_modes():
+    from lib.kado_client import KadoToolError
+    fake = nfv.NoteFakeVault({"n.md": "---\na: 1\n---\nbody\n"})
+    fake.write_frontmatter("n.md", {"b": 2}, mode="replace", expected_modified=1)
+    assert nfv.split_frontmatter(fake.text("n.md")) == ({"b": 2}, "body\n")
+    with pytest.raises(KadoToolError):
+        fake.write_frontmatter("n.md", {"c": 3}, mode="append")
+
+
+def test_fake_path_exists_routes_by_extension_like_the_client():
+    fake = nfv.NoteFakeVault({"a.md": "x\n", "b.json": b"{}"})
+    assert fake.path_exists("a.md") and fake.path_exists("b.json")
+    assert not fake.path_exists("c.md") and not fake.path_exists("d.json")
+    reads = [e for e in fake.events if e[0] != "path_exists"]
+    assert reads == [("read_frontmatter", "a.md"), ("read_file", "b.json"),
+                     ("read_frontmatter", "c.md"), ("read_file", "d.json")]
+
+
+@pytest.mark.parametrize("method", ["read_note", "read_frontmatter"])
+def test_fake_note_reads_reject_a_non_md_path(method):
+    from lib.kado_client import KadoToolError
+    fake = nfv.NoteFakeVault({"b.json": b"{}"})
+    with pytest.raises(KadoToolError):
+        getattr(fake, method)("b.json")

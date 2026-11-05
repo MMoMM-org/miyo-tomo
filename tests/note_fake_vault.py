@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """note_fake_vault.py — one in-memory vault behind note-instructions.py deliver
 and triage's frontmatter buckets (spec 044 T2.6).
 
@@ -13,6 +13,14 @@ frontmatter merge in `merges`, and raises the exception named for a
 `Killed` (a BaseException) to stand for the process dying mid-run.
 `search_by_frontmatter` reads the stored frontmatter, so triage's buckets come
 from what deliver actually wrote.
+
+It fails the way lib.kado_client.KadoClient does: an absent path raises
+KadoNotFoundError (frontmatter writes included); a note read or frontmatter
+read of a non-.md path raises KadoToolError (Kado's VALIDATION_ERROR);
+path_exists probes .md through read_frontmatter and every other path through
+read_file; write_frontmatter honours mode merge|replace and raises
+KadoConcurrencyError on a stale expected_modified. `modified[path] = None`
+makes the reads omit `modified`.
 """
 from __future__ import annotations
 
@@ -26,7 +34,11 @@ import yaml
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.kado_client import KadoNotFoundError  # noqa: E402
+from lib.kado_client import (  # noqa: E402
+    KadoConcurrencyError, KadoNotFoundError, KadoToolError,
+)
+
+FRONTMATTER_MODES = ("merge", "replace")
 
 
 class Killed(BaseException):
@@ -52,6 +64,12 @@ def _deep_merge(base: dict, extra: dict) -> dict:
         else:
             out[key] = copy.deepcopy(value)
     return out
+
+
+def _require_md(path: str) -> None:
+    """Kado's note and frontmatter reads refuse a non-.md path (VALIDATION_ERROR)."""
+    if not path.lower().endswith(".md"):
+        raise KadoToolError("kado-read returned an error: VALIDATION_ERROR")
 
 
 def _dig(data: dict, dotted: str):
@@ -88,6 +106,13 @@ class NoteFakeVault:
             raise KadoNotFoundError("NOT_FOUND")
         return self.files[path]
 
+    def _stat(self, path: str, content) -> dict:
+        modified = self.modified.get(path, 1)
+        return {"content": content} if modified is None else {"content": content, "modified": modified}
+
+    def _bump(self, path: str) -> None:
+        self.modified[path] = (self.modified.get(path) or 0) + 1
+
     def text(self, path: str) -> str:
         data = self.files[path]
         return data if isinstance(data, str) else data.decode("utf-8")
@@ -95,26 +120,36 @@ class NoteFakeVault:
     # ── reads ──
     def read_note(self, path):
         self._call("read_note", path)
+        _require_md(path)
         self._need(path)
-        return {"content": self.text(path), "modified": self.modified.get(path, 1)}
+        return self._stat(path, self.text(path))
 
     def read_file(self, path):
         self._call("read_file", path)
         data = self._need(path)
         raw = data if isinstance(data, bytes) else data.encode("utf-8")
-        return {"content": base64.b64encode(raw).decode("ascii"), "modified": self.modified.get(path, 1)}
+        return self._stat(path, base64.b64encode(raw).decode("ascii"))
 
     def read_file_bytes(self, path):
         return base64.b64decode(self.read_file(path)["content"])
 
     def read_frontmatter(self, path):
         self._call("read_frontmatter", path)
+        _require_md(path)
         self._need(path)
-        return {"content": split_frontmatter(self.text(path))[0], "modified": self.modified.get(path, 1)}
+        return self._stat(path, split_frontmatter(self.text(path))[0])
 
     def path_exists(self, path):
+        """Probe like KadoClient.path_exists: .md via read_frontmatter, else read_file."""
         self._call("path_exists", path)
-        return path in self.files
+        try:
+            if path.lower().endswith(".md"):
+                self.read_frontmatter(path)
+            else:
+                self.read_file(path)
+            return True
+        except KadoNotFoundError:
+            return False
 
     def list_dir(self, path="/", *, depth=None, limit=500):
         self._call("list_dir", path)
@@ -137,7 +172,7 @@ class NoteFakeVault:
     # ── writes ──
     def _store(self, path, data):
         self.files[path] = data
-        self.modified[path] = self.modified.get(path, 0) + 1
+        self._bump(path)
         self.writes.append(path)
 
     def write_note(self, path, content, expected_modified=None):
@@ -153,11 +188,16 @@ class NoteFakeVault:
 
     def write_frontmatter(self, path, frontmatter, mode="merge", expected_modified=None):
         self._call("write_frontmatter", path)
+        if mode not in FRONTMATTER_MODES:
+            raise KadoToolError("kado-write returned an error: VALIDATION_ERROR mode")
+        self._need(path)
+        if expected_modified is not None and expected_modified != self.modified.get(path, 1):
+            raise KadoConcurrencyError("kado-write returned an error: expectedModified mismatch")
         self.merges.append({"path": path, "frontmatter": copy.deepcopy(frontmatter),
                             "mode": mode, "expected_modified": expected_modified})
         current, body = split_frontmatter(self.text(path))
-        merged = _deep_merge(current, frontmatter)
+        merged = _deep_merge(current, frontmatter) if mode == "merge" else copy.deepcopy(frontmatter)
         dumped = yaml.safe_dump(merged, sort_keys=False, allow_unicode=True)
         self.files[path] = f"---\n{dumped}---\n{body}"
-        self.modified[path] = self.modified.get(path, 1) + 1
-        return {"path": path, "modified": self.modified.get(path, 1)}
+        self._bump(path)
+        return {"path": path, "modified": self.modified[path]}

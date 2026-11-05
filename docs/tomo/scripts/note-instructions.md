@@ -288,6 +288,43 @@ source while refusing to file the note. So `deliver` compares the guards'
 output with its input and refuses any difference with status `withdrawn`
 (exit 1), writing nothing.
 
+## WHY a Source That Vanished Before the Mark Still Counts as Delivered
+
+The source mark is the last step, and the note and the set are already in the
+inbox when it runs. If the user deleted or moved the source in the meantime,
+`read_frontmatter` or `write_frontmatter` raises `KadoNotFoundError`. Treating
+that as a failure would fail `source_mark` on every resume, because the source
+never comes back: the stage would never be removed, and `note-session.py start`
+would list a fully delivered draft as a kept draft forever. There is nothing
+left to mark, so `deliver` records `source_mark` as done, reports
+`source_marked: false`, finishes as `delivered` and removes the stage
+directory. `source_marked` reports what happened (a mark written, or found
+already written on a resume after the step was recorded), not whether the
+draft had a source. Every other Kado error still fails the step, because those
+can pass and a resume then marks the source. The set's `delete_source` for
+that source will find nothing to delete when it is applied; that is Hashi's
+concern, and `deliver` does nothing about it.
+
+## WHY the Mark Needs the Source's modified Time
+
+The mark is a merge guarded by the `modified` time `read_frontmatter` returns
+(ADR-3), so an edit the user makes between the read and the write is not
+overwritten. When the read returns no `modified`, the merge would run without
+the guard. `deliver` fails the `source_mark` step instead; a resume reads again.
+
+## WHY Some Probes Are Check-Then-Act or Fail Open
+
+Each inbox step asks `path_exists` and then writes. That pair is
+check-then-act: a file that appears between the two calls is overwritten,
+because Kado's `write_note` and `write_file` create or overwrite and offer no
+create-only mode. The window is two calls on files with a fresh stem, so it is
+accepted rather than worked around. The destination probe uses
+`make_folder_listing`, which fails open: a listing error counts as an empty
+folder, the documented behaviour of the destination guard ("an error is not
+a collision"), so a failed listing does not block the delivery. Writing `meta.json` is local I/O: an `OSError` there ends the run with
+exit 2 and no JSON on stdout, like every other local I/O failure of the
+script, and the stage keeps the last `meta.json` that was written.
+
 ## WHY the Stage Directory Is Removed Only on Success
 
 The stage directory is the record of what landed (`steps_done`) and of what is

@@ -43,6 +43,14 @@
 
 **Solution:** Check Kado's API key configuration — ensure the key's whitelist includes the folders Tomo needs (inbox, notes, maps, calendar, templates).
 
+### /note Cannot See Any Templates
+
+**Symptom:** `/note` says the template folder is empty or not readable, or that a listed template cannot be read.
+
+**Cause:** `/note` needs read access to your template folder, and your Kado API key does not have it. An empty result from Kado can mean the folder is empty or that the key is not permitted to read it.
+
+**Solution:** Either grant the key read access to the template folder in Kado, or do not use `/note`.
+
 ## Tomo Context (IDE Bridge)
 
 *Tomo Context* is the live editor-context bridge between Obsidian (via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin) and Claude Code in the container. The Tomo side is only a `socat` TCP proxy plus an IDE lock file — the bridge itself lives in Hashi.

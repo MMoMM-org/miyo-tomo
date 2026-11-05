@@ -18,6 +18,8 @@ inside this repo. Invoked by the `synthesis-conductor` agent at the end
 of Pass 2, written to the vault inbox via `kado-write operation="file"`
 (because `operation="note"` only accepts `.md`).
 
+`/note` (a note written from a vault template) produces instruction sets of the same shape, so Tomo Hashi applies them exactly like those from `/inbox`.
+
 ## Two files, one contract
 
 Every Pass-2 run produces a matched pair in the inbox:

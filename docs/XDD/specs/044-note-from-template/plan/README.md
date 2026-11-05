@@ -135,7 +135,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 | F1-AC3, F1-AC4, F1-AC5 | T1.4, T3.2, T4.2 |
 | F1-AC6 | T2.3 |
 | F2-AC1, F2-AC2, F2-AC3 | T2.3, T3.2, T4.2 |
-| F2-AC4 | T2.3, T3.2 |
+| F2-AC4 | T1.1, T2.3, T3.2, T3.4 |
 | F3-AC1 | T1.2, T2.1 |
 | F3-AC2 … F3-AC6, F3-AC8 | T3.2, T4.1, T4.2 |
 | F3-AC7 | T1.2, T2.2, T2.6 |

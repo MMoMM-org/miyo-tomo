@@ -37,7 +37,7 @@ This phase delivers every deterministic part of `/note`.
 
   1. Prime: SDD outline interface and token tables; `kado_client.read_note` `[ref: SDD/Internal API Changes]`
   2. Test: new `tests/test_template_outline.py` (fake Kado and `--local`): points per the token tables; `--stage` writes `template.md` with prefilled tokens resolved and `outline.json`; `--out` writes the outline to the given file; `frontmatter_ok: false` exits 0; unreadable template exits 1.
-  3. Implement: `tomo/scripts/template-outline.py` 0.1.0 on `lib/template_syntax.py`; `docs/tomo/scripts/template-outline.md` first.
+  3. Implement: `tomo/scripts/template-outline.py` 0.1.0 on `lib/template_syntax.py`; `docs/tomo/scripts/template-outline.md` first. Open before coding (Phase 1 drift note): `lib/template_syntax.py` has no token resolver and the hyphenated `token-render.py` cannot be imported, so decide and record in the mirror doc how prefilled values are produced (a resolver in the library that reuses `token-render.py`'s value rules under a parity test, or a subprocess call), and read `has_source` from the stage's `meta.json` (`source_path` set) when `--stage` is given.
   4. Validate: tests pass; ruff clean.
   5. Success: every heading, frontmatter key and non-prefilled token is a point `[ref: PRD/F3; SDD/F3-AC1]`
 
@@ -76,7 +76,7 @@ This phase delivers every deterministic part of `/note`.
   1. Prime: SDD `new`, `stage`, `drop`, `NoteInstructionSet`; `render_source_actions.py:53-99`; `hashi-instructions.schema.json` `move_note` and `delete_source` `[ref: SDD/Application Data Models; ADR-2, ADR-7]`
   2. Test: new `tests/test_note_actions.py` and `tests/test_note_instructions.py`:
      - `new` draws a `YYYY-MM-DD_HHMMSS` stem, a run id, `generated`; reads inbox, atomic-note path (also as the first of `paths`), profile, and the process destination; stages `source.md`;
-     - `stage` records title, destination, keep-source; refuses changes once `steps_done` is non-empty (`frozen: true`); reports the filled-note check;
+     - `stage` records title, destination, keep-source; refuses a title or destination change once `steps_done` is non-empty and a keep-source change once `steps_done` holds `instructions_json` (both `frozen: true`); accepts a keep-source change while `steps_done` is `[note]`; reports the filled-note check;
      - built set: `move_note` with exactly the schema's allowed keys, `source_inbox_item`; `delete_source` with `depends_on: ["I01"]` only when a source exists and is not kept; validates with `jsonschema` against `hashi-instructions.schema.json`;
      - `drop` removes the stage dir.
   3. Implement: `tomo/scripts/lib/note_actions.py` 0.1.0 and the first three subcommands of `tomo/scripts/note-instructions.py` 0.1.0; mirror docs first.
@@ -88,6 +88,8 @@ This phase delivers every deterministic part of `/note`.
   1. Prime: SDD delivery example, traced walkthrough, Error Handling; `render_withhold.py:37,280,431`; `render_md.py:921`; `doc_frontmatter.py:87,172`; `mark-captured.py:172-190`; `inbox-triage.py:436-455,1494-1534,1603-1655` `[ref: SDD/Implementation Examples; ADR-2, ADR-3]`
   2. Test: extend `tests/test_note_instructions.py` with every walkthrough row:
      - order note → JSON → MD → source mark; a failure at each step stops all later steps and leaves the source unmarked;
+     - `stage --keep-source` after a failure at `instructions_md` is refused (`frozen: true`); after a failure at `instructions_json` it is accepted;
+     - a run killed between steps (`steps_done` non-empty, `failed_step` empty) is listed by `note-session.py start` as a kept draft, never as a stale stage;
      - resume: identical target counts as done; different target exits 3 with `EXISTS:` first and changes nothing;
      - destination clash before any write exits 3; a guard-withdrawn action is refused with status `withdrawn`;
      - a failing filled-note check refuses delivery;

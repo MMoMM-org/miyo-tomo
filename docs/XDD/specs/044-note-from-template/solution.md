@@ -391,8 +391,8 @@ Script: note-session.py start
     process_template_path: string  # vault path of that stem in templates.base_path, whatever note_include says; empty when not found
     include_configured: bool
     note_include: [string]     # empty when not configured
-    kept_drafts: [{stem, title, template, created, failed_step}]   # failed deliveries only (failed_step set)
-    stale_stages: [stem]       # stage dirs without failed_step: an interrupted dialogue; the skill says so in one line and drops them
+    kept_drafts: [{stem, title, template, created, failed_step}]   # started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
+    stale_stages: [stem]       # stage dirs with neither failed_step nor steps_done (or unreadable meta.json): an interrupted dialogue; the skill says so in one line and drops them
     candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured
     folder_listed: int         # .md files the listing returned, before matching
     listing_error: string      # Kado error text, empty when none
@@ -685,6 +685,7 @@ sequenceDiagram
 - **Source changed between read and mark** (concurrency error on the merge): reported as a failed `source_mark`; resume retries it.
 - **Abort at any question**: the skill runs `note-instructions.py drop` when a stem exists and confirms in one line; a confirmed `note_include` stays saved.
 - **Interrupted dialogue** (`stale_stages` at start): one line, then `drop` for each; they hold user material and nothing to deliver.
+- **Interrupted delivery** (a kept draft with `steps_done` non-empty and `failed_step` empty, the process was killed between steps): treated like a failed delivery; the next `/note` offers resume or drop, never a silent drop, since part of it is already in the vault.
 
 ### Complex Logic
 
@@ -814,6 +815,7 @@ stateDiagram-v2
 - [x] ADR-5 New writer subcommand `templates-include` that inserts or replaces only the `note_include` lines inside `templates:`, with a hand-written validator and a `yaml.safe_load` check before writing.
   - Rationale: the existing helper replaces whole top-level blocks and would drop the `mapping` comments.
   - Trade-offs: a second text-editing helper in the writer; byte-identity tests guard everything outside the key.
+  - Amended 2026-11-04 (review findings, owner-approved): the read-back refuses a duplicate key that the edit introduces; a duplicate already in the user's file is not blamed on the edit but named as pre-existing in the error. The file is read and written with its own line endings (CRLF kept), and the write is atomic.
   - User confirmed: 2026-11-04
 - [x] ADR-6 Session start in a script: `note-session.py` parses `$ARGUMENTS`, lists kept drafts, checks `note_include`, lists candidates with the daily exclusion and previews proposed globs.
   - Rationale: the `/inbox` pattern (script argparse) is deterministic; prose branching on a flag depends on the model.
@@ -950,8 +952,9 @@ stateDiagram-v2
 | Point | A heading, frontmatter field or fill-in token of a template | The unit Tomo checks and asks for |
 | Required point | A point a process file says may not stay empty | F3, F7 |
 | Process file | Optional per-template settings in `config/note-processes/` | F7 |
-| Decline marker | A process file holding only `offer: never` | F7-AC9 |
-| Kept draft | A draft whose delivery failed, kept for resume | F6 |
+| Decline marker | A process file holding only `offer: never`: no other field and no body | F7-AC9 |
+| Kept draft | A draft whose delivery started and did not finish (a step failed or the run was killed between steps), kept for resume | F6 |
+| Stale stage | A stage directory with no step done and no failed step, or with an unreadable `meta.json`: an interrupted dialogue, dropped at the next start | F6 |
 | Source | The inbox note the material came from, if any | F5 |
 
 ### Technical Terms

@@ -384,8 +384,8 @@ def test_the_trace_carries_the_skill_prose_the_graders_must_not_match(trace):
     for needle in ("{{source_link}}", "Template: <template stem>", "note-instructions.py deliver",
                    "note-instructions.py stage", "note.md", "AskUserQuestion"):
         assert needle in prose, needle
-    # The probe carries 0.2.4's dialog form, the model the current plain-text question (0.2.7).
-    assert re.search(r"Deliver(?:, | / )Change something(?: or | / )Abort", prose)
+    # The probe carries 0.2.4's dialog form, the model the current numbered plain-text question (0.2.9).
+    assert re.search(r"Deliver(?:, | / | · 2 )Change something(?: or | / | · 3 )Abort", prose)
 
 
 def test_the_prose_alone_turns_every_grader_but_the_leak_guard_red():

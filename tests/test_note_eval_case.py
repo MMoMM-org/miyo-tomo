@@ -335,6 +335,48 @@ def test_an_empty_or_truncated_run_turns_every_grader_but_the_leak_guard_red(tra
     assert red_graders(trace) == ALL_BUT_LEAK
 
 
+# ---- shared regex fragments ----------------------------------------------------------
+#
+# The graders are single regexes (no includes), so the fragments below are copied into
+# each one. Defined once here; every copy must be byte-identical (evals/README.md names them).
+
+TEXT_EVENT = r'\{"type":"assistant",[^\n]*?"content":\[\{"type":"text","text":"'
+APPROVAL_IN_TEXT = r'(?:[^"\\\n]|\\.)*?[Dd]eliver(?![a-z])(?:[^"\\\n]|\\.)*?[Aa]bort'
+APPROVAL_EVENT = TEXT_EVENT + APPROVAL_IN_TEXT
+APPROVAL_CALL = r'[^\n]*"name":"AskUserQuestion","input":\{[^\n]*?Deliver'
+BEFORE_APPROVAL = r"^(?:(?!" + APPROVAL_EVENT + "|" + APPROVAL_CALL + r")[^\n]*\n)*?"
+APPROVAL_LAST_MESSAGE = r"[Dd]eliver(?![a-z])[\s\S]*?[Aa]bort"
+APPROVAL_GRADERS = {"1-header-before-approval", "2-note-printed-before-approval",
+                    "3-note-md-read-before-approval", "5-no-question-before-approval",
+                    "6-no-deliver-without-approval"}
+BEFORE_APPROVAL_GRADERS = {"1-header-before-approval", "2-note-printed-before-approval",
+                           "3-note-md-read-before-approval"}
+
+
+def _patterns() -> dict[str, str]:
+    return {p.stem: load_grader(p).pattern for p in sorted(GRADERS.glob("*.md"))}
+
+
+def test_the_approval_fragment_is_one_string_in_every_grader():
+    """Every `[Dd]eliver` in a trace grader sits in an identical copy of APPROVAL_IN_TEXT,
+    and each of them ends on the approval text event; the control reads last_message."""
+    patterns = _patterns()
+    assert {g for g, p in patterns.items() if "[Dd]eliver" in p} == APPROVAL_GRADERS | CONTROLS
+    assert patterns["0-approval-asked"] == APPROVAL_LAST_MESSAGE
+    for g in APPROVAL_GRADERS:
+        p = patterns[g]
+        assert p.rstrip(")").endswith(APPROVAL_EVENT), g  # 1 and 2 close an alternation after it
+        assert p.count("[Dd]eliver") == p.count("[Aa]bort") == p.count(APPROVAL_IN_TEXT), g
+
+
+def test_the_before_approval_guard_is_one_string_in_every_ordering_grader():
+    patterns = _patterns()
+    assert {g for g, p in patterns.items() if APPROVAL_CALL in p} == BEFORE_APPROVAL_GRADERS
+    for g in BEFORE_APPROVAL_GRADERS:
+        assert patterns[g].startswith(BEFORE_APPROVAL), g
+        assert patterns[g].count(APPROVAL_CALL) == 1, g
+
+
 @pytest.mark.parametrize("trace", [model("correct"), PROBE], ids=["model", "probe"])
 def test_the_trace_carries_the_skill_prose_the_graders_must_not_match(trace):
     prose = next(json.loads(ln)["message"]["content"][0]["text"] for ln in trace.splitlines()

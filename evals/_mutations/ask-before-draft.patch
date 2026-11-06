@@ -1,39 +1,40 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -12,12 +12,12 @@
+@@ -12,13 +12,13 @@
  
  ## Rules
  
--# STRICT — A question about a draft or a list is first written as text: the content and the numbered option line. Call AskUserQuestion only after that text, in the same message; never without it.
-+# STRICT — A question about a draft or a list is first written as text: the numbered option line; print the content only when the user asks for it. Call AskUserQuestion only after that text, in the same message; never without it.
- # Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user approved a draft they never saw.
+-# STRICT — A dialog for a draft or a list carries the content in every option's `preview`, copied from the tool result; never a dialog without it.
++# STRICT — A dialog for a draft or a list carries the question and its options; the content only when the user asks for it.
+ # Why: the content went into thinking only, so the dialog came without it.
  
- - The text-then-dialog questions are the step 2 glob question, the step 3 template choice with at most three candidates, the step 6 approval question, the step 8 process offer and the step 9 destination question. Every other question about a draft or a list, and every free-text question, is plain text only: the step 3 template choice with more than three candidates, the step 5 question rounds, the step 9 required headings, guidance and another-folder name.
--- A text-then-dialog question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines of the text, numbered on one line as `1 First · 2 Second`. In the same message, after that text, call AskUserQuestion with the same options in the same order, at most four options. Then end the turn.
--- A plain-text-only question goes in the visible reply text: first the content, then the question, numbered on one line as `1 First · 2 Second` when it has fixed options. Then end the turn; never call AskUserQuestion for it.
-+- A text-then-dialog question goes in the visible reply text: the question and its options, numbered on one line as `1 First · 2 Second`; the content only when the user asks for it. In the same message, after that text, call AskUserQuestion with the same options in the same order, at most four options. Then end the turn.
-+- A plain-text-only question goes in the visible reply text: the question, numbered on one line as `1 First · 2 Second` when it has fixed options; the content only when the user asks for it. Then end the turn; never call AskUserQuestion for it.
+ - The preview-dialog questions are the step 2 glob question, the step 6 approval question and the step 8 process offer. The description-dialog questions are the step 3 template choice with at most three candidates and the step 9 destination question. Every other question about a draft or a list, and every free-text question, is plain text only: the step 3 template choice with more than three candidates, the step 5 question rounds, the step 9 required headings, guidance and another-folder name.
+-- A preview-dialog question calls AskUserQuestion with one option per answer, in the order of its numbered option line, at most four options. Every option carries the same `preview`: the content its step names, copied from the Read or Bash result (a tool result is not visible to the user), in full, never a summary.
++- A preview-dialog question calls AskUserQuestion with one option per answer, in the order of its numbered option line, at most four options. No option carries a `preview`; the content comes only when the user asks for it.
+ - A description-dialog question calls AskUserQuestion with one option per answer and a `description` on each option, at most four options; it needs no `preview`.
+-- A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result, then the question, numbered on one line as `1 First · 2 Second` as the last line when it has fixed options. Then end the turn.
++- A plain-text question goes in the visible reply text: the question, numbered on one line as `1 First · 2 Second` when it has fixed options; the content only when the user asks for it. Then end the turn.
+ - Ask a dialog question in plain text, in that form, when AskUserQuestion is not available, and when the user says they cannot see the content (for example "show me the draft"): print the content as text and call no dialog for that question.
  - The next user message is the answer: the dialog choice, or a typed number or option word; dialog "Other" text is read the same way; when it is unclear, ask again in plain text.
  - Ask every other question with AskUserQuestion, with at most four options per question.
- - The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error; for the glob question the proposed globs with the `matched` count, for the template choice the source note or the request, for the process offer and the destination question the template stem.
-@@ -125,7 +125,7 @@
+@@ -127,7 +127,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
--After every `stage`, print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk. Never print `draft.md`. Print this header above the fenced note:
-+After every `stage`, first ask the question below; print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft. Never print `draft.md`. Print this header above the fenced note:
+-After every `stage`, show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, as the approval question below says. Never show `draft.md`. Put this header above the fenced note:
++After every `stage`, first ask the question below; show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft. Never show `draft.md`. Put this header above the fenced note:
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -135,9 +135,10 @@
+@@ -137,9 +137,10 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  
--Then ask: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
-+Then ask: the message is `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort` as text, then dialog; then end the turn. The header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
- - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again `1 Deliver · 2 Change something · 3 Abort` as text, then dialog. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+-Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview is the header and the full fenced `note.md`, copied from the Read result. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text.
++Then ask `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`; the header and the full fenced `note.md`, copied from the Read result, follow only when the user chooses Show the draft. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text.
+ - Change something: apply the change; rewrite `draft.md`, rerun `stage`, then ask `1 Deliver · 2 Change something · 3 Abort` again with the new header and `note.md` as the preview. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
-+- Show the draft: print it with the header as above, then ask again `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort` as text, then dialog.
++- Show the draft: show it with the header as above, then ask again `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`.
  - Deliver → step 7.
  - Abort → drop.
  

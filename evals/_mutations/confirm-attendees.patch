@@ -1,6 +1,6 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -108,7 +108,7 @@
+@@ -110,7 +110,7 @@
  The points are every `frontmatter` key, every heading and every token with `prefilled` false in the outline. A point is open when neither the material nor a prefilled value fills it. Required points are the process `required` list minus `missing_required`.
  
  1. Print which points the material covers, then the open points.

@@ -42,7 +42,7 @@ Spec 043 F5 (conductor 0.24.2) rebased every conductor patch; the injected text 
 
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
-**Spec 044 (recorded 2026-11-06, `note-from-template` 0.2.4, claude 2.1.317):** the `/note` case `note-draft-before-approval` (not gated) was GREEN 3/3 unmutated, and the `header-after-delivery`, `ask-before-draft`, `print-draft-md` and `deliver-before-ask` rows were each red in 3/3 for every expected grader; side-effect reds are measured. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The runs were not `--keep-temp`, so no trace was kept. Verdicts:
+**Spec 044 (recorded 2026-11-06, `note-from-template` 0.2.4, claude 2.1.317):** the `/note` case `note-draft-before-approval` (not gated) was GREEN 3/3 unmutated, and the `header-after-delivery`, `ask-before-draft`, `print-draft-md`, `deliver-before-ask` and `confirm-attendees` rows were each red in 3/3 for every expected grader; side-effect reds are measured. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The runs were not `--keep-temp`, so no trace was kept. The eval session cannot offer `AskUserQuestion` (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`: the model's ToolSearch for it found nothing, and it asked the approval question as its final text), so the graders anchor on the end of the run: the last message is the approval question, and the header and `note.md` are printed before it. The "never" graders `5-no-question-before-approval` and `6-no-deliver-without-approval` are proven with neutral steps (a plain-text confirmation question that does not wait for an answer, a pre-flight `deliver`), not with a request to misbehave. Not proven by a mutation: `0-approval-asked` is a control (precondition: the run ends on the approval question, its last message names Deliver and Abort) and pairs `9-no-leak`, which passes on an empty last message; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs). Verdicts:
 
 - case, unmutated ($0.40), `tomo-tmp/evals/2026-11-06T07-58-32Z`:
   ```
@@ -63,6 +63,10 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 - `deliver-before-ask` ($0.40), `tomo-tmp/evals/2026-11-06T08-04-26Z`:
   ```
   RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 6-no-deliver-without-approval (run 0), note-draft-before-approval: 9-no-leak (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 1), note-draft-before-approval: 9-no-leak (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 2) · runs 3 · $0.40 · 56 s · claude 2.1.317 · tree clean · mutation deliver-before-ask · tomo-tmp/evals/2026-11-06T08-04-26Z
+  ```
+- `confirm-attendees` ($0.39), `tomo-tmp/evals/2026-11-06T08-11-37Z` (its first form, `tomo-tmp/evals/2026-11-06T08-03-03Z`, came back GREEN 3/3; see its row):
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 1), note-draft-before-approval: 5-no-question-before-approval (run 2) · runs 3 · $0.39 · 58 s · claude 2.1.317 · tree clean · mutation confirm-attendees · tomo-tmp/evals/2026-11-06T08-11-37Z
   ```
 
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
@@ -101,6 +105,7 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation ask-before-draft` | `note-draft-before-approval` | `note-draft-before-approval/2-note-printed-before-approval` — the approval question comes first and the draft is printed only on request, so the run ends on the question with no note printed; offline model: `ask_first` | `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` (each measured 3/3), `note-draft-before-approval/1-header-before-approval` (measured 2/3, runs 0 and 1) |
 | `--mutation print-draft-md` | `note-draft-before-approval` | `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` — `draft.md` is read and printed instead of `note.md`, so `Related: {{source_link}}` reaches the reply; offline model: `draft_printed` | `note-draft-before-approval/2-note-printed-before-approval` (measured 3/3: the printed `Related:` line still carries the token) |
 | `--mutation deliver-before-ask` | `note-draft-before-approval` | `note-draft-before-approval/6-no-deliver-without-approval` — neutral step: `deliver` runs once as a pre-flight before the approval question; offline model: `deliver_first` | `note-draft-before-approval/1-header-before-approval`, `note-draft-before-approval/2-note-printed-before-approval`, `note-draft-before-approval/4-draft-md-never-printed`, `note-draft-before-approval/9-no-leak` (each measured 2/3, runs 0 and 1); the control `0-approval-asked` stayed green in all three runs |
+| `--mutation confirm-attendees` | `note-draft-before-approval` | `note-draft-before-approval/5-no-question-before-approval` — neutral step: although no point is open, the attendees the material names are printed and asked about in one plain-text line, `Are these the attendees?`, before `draft.md` is written and `stage` runs; the step says not to wait for an answer, so the run goes on to the approval question; offline model: `question_round`. Its first form (2026-11-06, `tomo-tmp/evals/2026-11-06T08-03-03Z`) asked Confirm / Correct and said to take Confirm when the question cannot be asked: GREEN 3/3, the model took Confirm without asking | none (measured): every other grader, the control `0-approval-asked` included, stayed green in all three runs |
 
 ## Inherited proofs
 
@@ -136,21 +141,6 @@ gate decides. Their leak guards inherit a recorded proof instead (see Inherited 
 | `withheld-notices-relayed` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
 | `upload-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
 | `state-flip-failure-reported` | `8-handback-canary` | precondition: the hand-back frame the report-only grader reads is in the trace exactly once |
-
-## Pending proofs
-
-Spec 044 (`/note`, case `note-draft-before-approval`, not gated, see `evals/README.md`): the row is a mutation of `skills/note-from-template/SKILL.md` built for one gate grader, not yet proven. The paid runs happen on the owner's instruction; a row moves to `## Proofs` with its measured side effects once every expected grader was red in 3/3. The other four spec 044 rows are recorded under `## Proofs`. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The eval session cannot offer `AskUserQuestion` (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`: the model's ToolSearch for it found nothing, and it asked the approval question as its final text), so the graders anchor on the end of the run: the last message is the approval question, and the header and `note.md` are printed before it. The "never" graders `5-no-question-before-approval` and `6-no-deliver-without-approval` are proven with neutral steps (a plain-text confirmation question that does not wait for an answer, a pre-flight `deliver`), not with a request to misbehave.
-
-Run a proof: `scripts/run-evals.sh --mutation <name> --case note-draft-before-approval`
-
-| Proof | Cases | Expected red (what it proves) | Side effects (predicted, not measured) |
-|---|---|---|---|
-| `--mutation confirm-attendees` | `note-draft-before-approval` | `note-draft-before-approval/5-no-question-before-approval` — neutral step: although no point is open, the attendees the material names are printed and asked about in one plain-text line, `Are these the attendees?`, before `draft.md` is written and `stage` runs; the step says not to wait for an answer, so the run goes on to the approval question; offline model: `question_round`. Its first form (2026-11-06, `tomo-tmp/evals/2026-11-06T08-03-03Z`) asked Confirm / Correct and said to take Confirm when the question cannot be asked: GREEN 3/3, the model took Confirm without asking | `note-draft-before-approval/1-header-before-approval`, `note-draft-before-approval/2-note-printed-before-approval`, `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed`, `note-draft-before-approval/6-no-deliver-without-approval`, and the control `0-approval-asked`, when the model still waits for an answer and ends the run on the attendees question (offline model `question_round_stops`) |
-
-Not proven by a mutation:
-
-- `0-approval-asked` is a control: precondition, the run ends on the approval question (its last message names Deliver and Abort). It also pairs `9-no-leak`, which passes on an empty last message.
-- `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs); it reads `last_message` like every other case.
 
 ## Clauses
 

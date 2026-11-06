@@ -592,13 +592,11 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
     "preface-report-line",
 )
-# Spec 044 (T4.1): built for the /note case; recorded in `## Proofs` once red 3/3
-# (2026-11-06), the rest listed under `## Pending proofs` until proven.
-NOTE_RECORDED_MUTATIONS = ("header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask")
-NOTE_PENDING_MUTATIONS = ("confirm-attendees",)
-NOTE_MUTATIONS = NOTE_RECORDED_MUTATIONS + NOTE_PENDING_MUTATIONS
-RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS + NOTE_RECORDED_MUTATIONS
-ALL_MUTATIONS = RECORDED_MUTATIONS + NOTE_PENDING_MUTATIONS
+# Spec 044 (T4.1): built for the /note case; recorded in `## Proofs`, each red 3/3
+# (2026-11-06).
+NOTE_MUTATIONS = ("header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask",
+                  "confirm-attendees")
+RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS + NOTE_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -720,14 +718,12 @@ def _joined(plugin: Path, files: set[str]) -> str:
 
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
-    pending = {p["arg"] for p in _proof_rows("Pending proofs") if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == set(RECORDED_MUTATIONS)
-    assert pending == set(NOTE_PENDING_MUTATIONS)
-    assert recorded | pending == files == set(ALL_MUTATIONS)
+    assert recorded == files == set(RECORDED_MUTATIONS)
+    assert "## Pending proofs" not in _readme_text()
 
 
-@pytest.mark.parametrize("name", ALL_MUTATIONS)
+@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
 def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
     result = _patch(_assemble_plugin(tmp_path), name, dry_run=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -748,7 +744,7 @@ def test_spec_043_mutation_touches_only_its_declared_files(name):
         assert (REPO / "tomo" / "dot_claude" / f).is_file(), f"{name}: no runtime file {f}"
 
 
-@pytest.mark.parametrize("name", ALL_MUTATIONS)
+@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
 def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     """A mutation that only adds a bad instruction while a surviving STRICT
     forbids it is a weak proof: every contradicting clause it neutralises is

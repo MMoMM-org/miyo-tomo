@@ -8,8 +8,8 @@ are built from the event lines of the recorded probe run of this case
 skill prose in the Skill tool's text event, so a pattern that matches the prose
 instead of a call goes red here. The probe itself must pass every grader; an
 empty or truncated run must fail every grader but the leak guard. One model per
-mutation of the case (evals/_mutations/README.md, `## Proofs` and `## Pending
-proofs`) must turn exactly its expected graders red.
+mutation of the case (evals/_mutations/README.md, `## Proofs`) must turn exactly
+its expected graders red.
 """
 
 from __future__ import annotations
@@ -219,7 +219,7 @@ def _shown(body: str, header: bool = True) -> str:
 
 
 def model(name: str) -> str:
-    """The trace a run under each pending mutation is expected to look like."""
+    """The trace a run under each mutation of the case is expected to look like."""
     t = _until_outline(Trace())
     if name in ("question_round", "question_round_stops"):
         t.say("The material names Dana Weber and Luis Ortega. Are these the attendees?")
@@ -255,7 +255,7 @@ def truncated() -> str:
 ALL_BUT_LEAK = CONTROLS | GATES
 MODELS = ("correct", "header_missing", "ask_first", "draft_printed", "question_round",
           "question_round_stops", "deliver_first", "silent_stop")
-# Offline: which graders each model turns red (the pending table predicts the same).
+# Offline: which graders each model turns red (the `## Proofs` rows measured the same).
 RED = {
     "correct": set(),
     "header_missing": {"1-header-before-approval"},
@@ -372,27 +372,25 @@ def _note_rows(title: str) -> list[dict]:
             rows.append({"name": m.group(1), "cases": set(re.findall(r"`([a-z0-9-]+)`", m.group(2))),
                          "expected": set(re.findall(rf"`{CASE}/([^`]+)`", m.group(3))),
                          "side": set(re.findall(rf"`{CASE}/([^`]+)`", m.group(4))),
-                         "model": re.search(r"offline model: `([a-z_]+)`", m.group(3)).group(1),
-                         "pending": title == "Pending proofs"})
+                         "model": re.search(r"offline model: `([a-z_]+)`", m.group(3)).group(1)})
     return rows
 
 
 def _all_note_rows() -> list[dict]:
-    return _note_rows("Proofs") + _note_rows("Pending proofs")
+    return _note_rows("Proofs")
 
 
 def test_every_gate_grader_is_an_expected_red_of_a_proof():
     rows = _all_note_rows()
-    assert {r["name"] for r in rows if not r["pending"]} == {
-        "header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask"}
-    assert {r["name"] for r in rows if r["pending"]} == {"confirm-attendees"}
+    assert {r["name"] for r in rows} == {
+        "header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask",
+        "confirm-attendees"}
+    assert "## Pending proofs" not in MUTATIONS_README.read_text(encoding="utf-8")
     assert set().union(*(r["expected"] for r in rows)) == GATES
     for r in rows:
         assert r["cases"] == {CASE}, r
         assert not (r["expected"] | r["side"]) & CONTROLS, r
         assert not r["expected"] & (r["side"] | INHERITED), r
-        # A prediction never names the leak guard; a measured red is recorded as measured.
-        assert not (r["pending"] and r["side"] & INHERITED), r
 
 
 @pytest.mark.parametrize("row", _all_note_rows(), ids=lambda r: r["name"])

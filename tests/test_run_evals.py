@@ -808,8 +808,7 @@ def _spec_043_patches() -> tuple[str, ...]:
     neither unlisted nor untested here."""
     readme = (REPO / "evals" / "_mutations" / "README.md").read_text(encoding="utf-8")
     recorded = readme.split("## Proofs\n", 1)[1].split("\n## ", 1)[0]
-    pending = readme.split("## Pending proofs\n", 1)[1].split("\n## ", 1)[0]
-    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded + pending, re.M))
+    rows = set(re.findall(r"^\| `--mutation ([^`]+)`", recorded, re.M))
     files = {p.stem for p in (REPO / "evals" / "_mutations").glob("*.patch")}
     assert files == rows, ("patch files and recorded rows differ", sorted(files ^ rows))
     assert set(SPEC_041_PATCHES) <= files, sorted(set(SPEC_041_PATCHES) - files)

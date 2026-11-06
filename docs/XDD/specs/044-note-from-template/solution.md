@@ -293,7 +293,7 @@ tomo/
 │       │   ├── dot_claude-plugin/plugin.json      # installed as .claude-plugin/plugin.json
 │       │   ├── hooks/hooks.json
 │       │   ├── hooks/register.tsx
-│       │   ├── hooks/register.test.tsx
+│       │   ├── tests/note-draft.test.tsx
 │       │   └── types/index.d.ts
 │       └── inbox-author/
 │           └── SKILL.md                           # MODIFY: unknown-type branch points to /note; 0.3.0 → 0.4.0
@@ -912,9 +912,9 @@ Added 2026-11-06 (owner decision "Mod inside 044", #182). The approval question 
   The source line is omitted when there is no source or `keep_source` is true, as in step 6. The skipped line is the model's (the script does not know which points were skipped) and is not in `view.md`.
 - No stdout field changes; the file is local instance state like `note.md` (CON-3: nothing new on stdout or stderr).
 
-**The mod.** `tomo/dot_claude/skills/tomo-note-view/` is a Claude Code mod (function-hooks plugin): `dot_claude-plugin/plugin.json`, `hooks/hooks.json`, `hooks/register.tsx`, `types/index.d.ts` and `hooks/register.test.tsx`.
+**The mod.** `tomo/dot_claude/skills/tomo-note-view/` is a Claude Code mod (function-hooks plugin): `dot_claude-plugin/plugin.json`, `hooks/hooks.json`, `hooks/register.tsx`, `types/index.d.ts` and `tests/note-draft.test.tsx`.
 - `session.start` registers the command `/note-draft`.
-- `tool.call` on `AskUserQuestion`: when `view.md` exists, read it into `$.state` and `$.ui.open({ id: 'note-draft', title: 'Note draft' })` before the dialog runs; when it is absent, close the pane if open. When `$.ui.open` answers `isPlaced: false`, `$.ui.log` names the reason and `/note-draft`.
+- `tool.call` on `AskUserQuestion`: when `view.md` exists and an option label of the call contains `Deliver` (the step 6 approval options), read it into `$.state` and `$.ui.open({ id: 'note-draft', title: 'Note draft' })` before the dialog runs; any other question opens nothing, so a `view.md` left by an abandoned session never opens the pane at an unrelated question (`/inbox` and the like). When `view.md` is absent, close the pane if open, at any question. When `$.ui.open` answers `isPlaced: false`, `$.ui.log` names the reason and `/note-draft`.
 - `tool.call` on `Bash`: after the call, while the pane is open, re-read `view.md`; close the pane when it is gone (deliver, drop).
 - `/note-draft`: read `view.md`, open the pane; without one answer "No staged /note draft." as the command's text.
 - `ui.render` on `{ component: 'Pane', requestId: 'note-draft' }`: one `Markdown` element with the text (control characters other than tab and newline removed).

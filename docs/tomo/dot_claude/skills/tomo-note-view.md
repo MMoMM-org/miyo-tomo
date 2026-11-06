@@ -5,7 +5,7 @@
 > Spec 044 (issue #169) ADR-9, PRD/SDD F4-AC5, SDD "Draft view pane"; answers
 > issue #182 ("Look if Claude Mods could be useful").
 > Producer of the file it draws: [note-instructions.py](../../scripts/note-instructions.md).
-> Version: 0.1.0 (`dot_claude-plugin/plugin.json` `version` and the
+> Version: 0.1.1 (`dot_claude-plugin/plugin.json` `version` and the
 > `// version:` line of `hooks/register.tsx` move together).
 
 ## Why a Mod
@@ -52,8 +52,14 @@ the mod only checks one path and never decides which draft is current.
 
 - `tool.call` on `AskUserQuestion`: the approval question is an
   `AskUserQuestion` call; opening the pane before `next(e)` puts it up while
-  the dialog waits. When `view.md` is absent the question is about something
-  else (glob setup, process offer), so an open pane is closed.
+  the dialog waits. It opens only when an option label of the call contains
+  `Deliver` (the step 6 approval options, `1 Deliver` or `Deliver`): a
+  `view.md` left by an abandoned `/note` session would otherwise open the pane
+  at any later, unrelated question (`/inbox`, the glob setup, the process
+  offer). When `view.md` is absent an open pane is closed at any question.
+  The match is on the English option word the skill names; a dialog the model
+  words in another language opens no pane by itself, and `/note-draft` still
+  does.
 - `tool.call` on `Bash`, after the call: `stage`, `deliver` and `drop` run
   through Bash; re-reading `view.md` then keeps an open pane current and closes
   it once the file is gone (delivered or dropped).

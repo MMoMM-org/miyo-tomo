@@ -1,7 +1,8 @@
-// version: 0.1.1
+// version: 0.1.2
 // Tests for the tomo-note-view mod under `claude plugin test`: the draft
 // pane opens at an AskUserQuestion call while tomo-tmp/note/view.md exists,
-// not without it, only for the approval dialog (an option labelled Deliver),
+// not without it, only for the approval dialog (an option labelled deliver,
+// or a preview holding the note's title, in any language),
 // /note-draft opens it, and the pane draws the file's text.
 import { expect, test } from 'claude-code/testing'
 
@@ -206,4 +207,54 @@ test('any dialog closes a stale pane once view.md is gone', async ($, on) => {
   delete seen.files[VIEW]
   await $.tool.call(OTHER_QUESTION)
   expect(seen.closed).toContain('note-draft')
+})
+
+const NOTE = '---\ntitle: "Design review"\n---\n# Notizen\nAlles gut\n'
+const TITLED = 'Template: t_meeting · Final name: Atlas/Meetings/Design review.md\n\n' +
+  '````markdown\n' + NOTE + '````\n'
+const HEADED_NOTE = '---\ndate: 2026-11-06\n---\n# Retro Q3\nfine\n'
+const HEADED = 'Template: t_retro · Final name: Atlas/Retro Q3.md\n\n````markdown\n' + HEADED_NOTE + '````\n'
+
+const german = (preview: string) => ({
+  tool: 'AskUserQuestion' as const,
+  questions: [
+    {
+      question: 'Notiz abliefern?',
+      header: 'Freigabe',
+      multiSelect: false,
+      options: [
+        { label: '1 Abliefern', description: 'Notiz liefern', preview },
+        { label: '2 Etwas ändern', description: 'Ändern', preview },
+        { label: '3 Abbrechen', description: 'Verwerfen', preview },
+      ],
+    },
+  ],
+})
+
+test('German labels with the note in the preview open the pane (frontmatter title)', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TITLED })
+  await start($)
+  await $.tool.call(german('Template: t_meeting\n\n' + NOTE))
+  expect(seen.opened).toContain('note-draft')
+})
+
+test('the first heading is the title when the frontmatter has none', async ($, on) => {
+  const seen = engine(on, { [VIEW]: HEADED })
+  await start($)
+  await $.tool.call(german(HEADED_NOTE))
+  expect(seen.opened).toContain('note-draft')
+})
+
+test('an unrelated dialog whose preview lacks the title opens no pane', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TITLED })
+  await start($)
+  await $.tool.call(german('note_include: t_*\nmatched: 4'))
+  expect(seen.opened).not.toContain('note-draft')
+})
+
+test('a lower-case deliver label opens the pane', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TEXT })
+  await start($)
+  await $.tool.call(numbered('deliver'))
+  expect(seen.opened).toContain('note-draft')
 })

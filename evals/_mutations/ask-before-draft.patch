@@ -15,7 +15,7 @@
 +- A plain-text-only question goes in the visible reply text: the question, numbered on one line as `1 First · 2 Second` when it has fixed options; the content only when the user asks for it. Then end the turn; never call AskUserQuestion for it.
  - The next user message is the answer: the dialog choice, or a typed number or option word; dialog "Other" text is read the same way; when it is unclear, ask again in plain text.
  - Ask every other question with AskUserQuestion, with at most four options per question.
- - The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
+ - The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error; for the glob question the proposed globs with the `matched` count, for the template choice the source note or the request, for the process offer and the destination question the template stem.
 @@ -125,7 +125,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.

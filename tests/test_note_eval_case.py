@@ -18,6 +18,7 @@ import copy
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -117,10 +118,11 @@ def test_one_candidate_and_the_material_fills_every_point(tmp_path):
 # ---- offline traces in the real event shape ------------------------------------------
 #
 # The recorded probe (`tests/fixtures/044-note-probe/trace.jsonl`, a `--runs 1` run of this
-# case with absolute paths redacted) is the source of every event shape below. That session
-# did not offer AskUserQuestion: the model searched for it with ToolSearch, found nothing,
-# and printed the header, note.md and the approval question as its final text. The graders
-# therefore anchor on that end of the run, not on an AskUserQuestion call.
+# case with absolute paths redacted by `redact.py` next to it) is the source of every event
+# shape below. That session did not offer AskUserQuestion: the model searched for it with
+# ToolSearch, found nothing, and printed the header, note.md and the approval question as
+# its final text. The graders therefore anchor on that end of the run, not on an
+# AskUserQuestion call.
 
 PROBE_PATH = REPO / "tests" / "fixtures" / "044-note-probe" / "trace.jsonl"
 PROBE = PROBE_PATH.read_text(encoding="utf-8")
@@ -291,6 +293,40 @@ def test_the_probe_fixture_is_redacted_and_shaped_as_recorded():
     names = [use.name for use in tool_uses(PROBE)]
     assert names[-1] == "ToolSearch" and "AskUserQuestion" not in names
     assert json.loads(PROBE_LINES[-1])["type"] == "result"
+
+
+REDACT = PROBE_PATH.parent / "redact.py"
+# The source the fixture was redacted from; a temp dir that may since have been removed.
+PROBE_SOURCE = Path("/private/tmp/e-tEL0Ru/out/trace.jsonl")
+
+
+def _redact(source: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(REDACT), str(source)], capture_output=True)
+
+
+def test_the_redaction_recipe_is_idempotent_on_the_fixture_and_leaks_nothing():
+    """Re-running the recipe on the checked-in fixture changes no byte, and none of the
+    recipe's leak patterns (a superset of the shape check above) is left in it."""
+    result = _redact(PROBE_PATH)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == PROBE_PATH.read_bytes()
+    leak = re.compile(r"/private/|/var/folders/|/opt/|/Users/|/Volumes/|/tmp/e-|tomo-evals\.")
+    assert not leak.search(PROBE)
+    assert {"<WS>", "<PLUGIN>", "<PYTHON>", "<EVAL>", "<EVAL-TMP>"} <= set(re.findall(r"<[A-Z-]+>", PROBE))
+
+
+def test_the_redaction_recipe_flags_an_unredacted_prefix(tmp_path):
+    source = tmp_path / "trace.jsonl"
+    source.write_text('{"cwd":"/Users/someone/vault"}', encoding="utf-8")
+    result = _redact(source)
+    assert result.returncode == 1 and b"/Users/" in result.stderr
+
+
+@pytest.mark.skipif(not PROBE_SOURCE.is_file(), reason="the probe's source trace is gone")
+def test_the_redaction_recipe_reproduces_the_fixture_from_its_source():
+    result = _redact(PROBE_SOURCE)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == PROBE_PATH.read_bytes()
 
 
 @pytest.mark.parametrize("trace", [empty(), truncated()], ids=["empty", "truncated"])

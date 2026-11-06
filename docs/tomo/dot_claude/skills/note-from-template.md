@@ -59,7 +59,7 @@ hidden). The rule names the plain-text questions by step so the model does not h
 a list":
 
 - step 2 glob setup: Confirm, Correct or Abort, below the proposed globs, `matched`, `unmatched`, `excluded_daily`;
-- step 3 several templates: the numbered list, then "Which number, or Abort?";
+- step 3 several templates: the numbered list, then "Which number, or 0 Abort?" (0.2.9, see "Why Plain-Text Options Are Numbered");
 - step 5 question rounds: covered points, then the open points as numbered questions;
 - step 6 approval: header and full fenced `note.md`, then Deliver, Change something or Abort, at the first draft,
   after every Change something, at the Continue of a staged draft and after a restage of a failed delivery; the
@@ -84,6 +84,31 @@ Trade-offs: a plain-text answer must be mapped, so a vague reply costs one re-as
 needs "at most three candidates plus Abort" (the dialog cap), any listed number is valid; step 9 asks for the required
 headings by number instead of four-per-question multi-select. Revisit if the platform shows tool inputs to the user
 or the model reliably prints before a tool call.
+
+## Why Plain-Text Options Are Numbered
+
+WHY: The plain-text questions (see "Why Questions About a Draft or a List Are Plain Text") end with their options as
+the last line, and since 0.2.9 each option carries a number: `1 Deliver · 2 Change something · 3 Abort`. Owner decision
+2026-11-06. Live, the plain-text form made the user type a whole word ("Deliver", "Change something") where the
+`AskUserQuestion` dialog had needed one click; a number is one key. The option word still works, because the answer is
+mapped by the model and the number is only a shorthand, so nothing is lost for a user who prefers words. Anything that is
+neither a number nor an option word is asked again in plain text, as before.
+
+The numbered sites are the step 2 glob question (`1 Confirm · 2 Correct · 3 Abort`, also after Correct), the step 6
+approval at the first draft and at every reprint (`1 Deliver · 2 Change something · 3 Abort`), the step 8 process offer
+(`1 Save · 2 Not now · 3 Never`) and the step 9 destination (`1 Keep current · 2 Default · 3 Another folder`).
+Keep current is offered only when a process with a destination exists; without it the options are renumbered so the
+numbers stay consecutive (`1 Default · 2 Another folder`), because a gap would make the user guess what 1 means.
+
+The template choice is the exception: its candidate list already owns the numbers 1..n, so Abort cannot be option 1 or
+n+1 without moving with the list length. Abort is `0` there ("Which number, or 0 Abort?"), and every listed number
+stays valid. Free-text questions (open points, required headings, guidance, the name of another folder) have no options
+and stay as they were.
+
+Trade-offs: the approval question follows a printed draft that may itself hold numbers (numbered lists in `note.md`);
+the options are always the last line of the message and one line long, which is what the answer is read against. A
+reply such as "2" is read as the option, never as a number inside the draft. Revisit if a live run shows a bare number
+answered against the wrong list.
 
 ## Why the Source Delete Is Named Before the User Approves
 
@@ -356,7 +381,7 @@ The hand-off is a Skill tool call, so `Skill` is in `allowed-tools`.
 WHY: When one candidate fits the request and its material, a question would only confirm the obvious, so the skill
 names it in one line and continues without asking; the user still sees the template in the draft header and can abort
 at the Deliver question. When several fit, the user decides: the skill prints them as a numbered list and asks in plain
-text "Which number, or Abort?" (see "Why Questions About a Draft or a List Are Plain Text"). Up to 0.2.6 the question
+text "Which number, or 0 Abort?" (see "Why Questions About a Draft or a List Are Plain Text"). Up to 0.2.6 the question
 was an `AskUserQuestion` with at most three candidates plus Abort, to stay within its four-option cap; a plain-text
 question has no cap, so any number from the list is a valid answer.
 

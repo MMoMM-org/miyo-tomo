@@ -91,6 +91,7 @@ def test_command_is_thin_shim_and_main_session():
                                              "Continue", "Rename", "excluded_daily", "numbered", "covered",
                                              "last lines", "asked again in plain text", "Resume / Drop",
                                              "keep `AskUserQuestion`", "four-option cap"]),
+        ("Plain-Text Options Are Numbered", ["one key", "option word", "0 Abort", "1 Default · 2 Another folder"]),
         ("Eval", ["ADR-8", "not in the CLAUDE.md eval gate"]),
         ("Separate Mode", ["--process", "decline", "note-process.py"]),
     ],

@@ -162,7 +162,7 @@ def test_continue_of_a_printed_draft_returns_to_the_approval_question():
     branch = text[text.index("- Continue with `staged` true:"):text.index("- Continue with `staged` false:")]
     assert "run `python3 scripts/note-instructions.py stage --stem <stem>`" in branch
     assert "When `check.ok` is false" in branch
-    assert ("print `note.md` with the header and ask in plain text: Deliver, Change something or Abort?"
+    assert ("print `note.md` with the header and ask in plain text: `1 Deliver · 2 Change something · 3 Abort`"
             in branch)
     assert "The source in the header is the entry's `source_path`; omit the skipped line" in branch
     assert "skip step 8 for it" in branch
@@ -193,12 +193,13 @@ def test_setup_prints_the_match_preview_before_asking():
     text = _section("2. First-run setup")
     assert "python3 scripts/note-session.py match --globs" in text
     assert ("Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask in plain text: "
-            "Confirm, Correct or Abort?") in text
+            "`1 Confirm · 2 Correct · 3 Abort`") in text
 
 
 def test_setup_reruns_match_and_reprints_on_a_correction_and_writes_only_on_confirm():
     text = _section("2. First-run setup")
-    assert "On Correct, take the user's globs, rerun `match`, reprint and ask again in plain text." in text
+    assert ("On Correct, take the user's globs, rerun `match`, reprint and ask again in plain text with "
+            "`1 Confirm · 2 Correct · 3 Abort`.") in text
     assert "Write nothing before Confirm" in text
     assert "python3 scripts/vault-config-writer.py templates-include --input tomo-tmp/note/note-include.json" in text
 
@@ -219,7 +220,7 @@ def test_one_candidate_is_named_several_are_printed_and_asked():
 
 def test_several_fits_are_asked_by_number_in_plain_text():
     text = _section("3. Choose the template")
-    assert ("When several fit, print them as a numbered list, then ask in plain text: Which number, or Abort? "
+    assert ("When several fit, print them as a numbered list, then ask in plain text: Which number, or 0 Abort? "
             "Any number from the list is valid.") in text
     assert "three candidates" not in text
     assert "up to four options" not in text
@@ -331,33 +332,36 @@ def test_rules_define_the_plain_text_form_and_name_every_plain_text_question():
             "question.") in rules
     assert ("- A plain-text question goes in the visible reply text: first the content, copied from the Read "
             "or Bash result (a tool result is not visible to the user), then the question and its options as "
-            "the last lines. Then end the turn. The next user message is the answer: map it to an option; "
-            "when it is unclear, ask again in plain text.") in rules
+            "the last lines, numbered on one line as `1 First · 2 Second`. Then end the turn. The next user "
+            "message is the answer: the number or the option word; when it is unclear, ask again in plain "
+            "text.") in rules
     assert "- Ask every other question with AskUserQuestion, with at most four options per question." in rules
 
 
 # Each plain-text site: (section, the sentence that asks it).
 PLAIN_TEXT_SITES = {
     "setup-globs": ("2. First-run setup", "Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, "
-                    "then ask in plain text: Confirm, Correct or Abort?"),
-    "setup-correct": ("2. First-run setup", "reprint and ask again in plain text."),
+                    "then ask in plain text: `1 Confirm · 2 Correct · 3 Abort`"),
+    "setup-correct": ("2. First-run setup", "reprint and ask again in plain text with "
+                      "`1 Confirm · 2 Correct · 3 Abort`."),
     "template-choice": ("3. Choose the template", "print them as a numbered list, then ask in plain text: "
-                        "Which number, or Abort?"),
+                        "Which number, or 0 Abort?"),
     "question-rounds": ("5. Ask for open points", "Ask in plain text, as numbered questions, at most four open "
                         "points per round, in at most two rounds."),
     "required-re-ask": ("5. Ask for open points", "ask it again in plain text with no skip option."),
     "approval": ("6. Draft", "Then ask in plain text: the message holds the header and the full fenced "
-                 "`note.md`, copied from the Read result, and ends with `Deliver, Change something or Abort?`; "
+                 "`note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort`; "
                  "then end the turn."),
-    "approval-after-change": ("6. Draft", "reprint `note.md` with the header, then ask again in plain text."),
-    "approval-continue": ("1. Start", "print `note.md` with the header and ask in plain text: Deliver, Change "
-                          "something or Abort?"),
+    "approval-after-change": ("6. Draft", "reprint `note.md` with the header, then ask again in plain text "
+                              "with `1 Deliver · 2 Change something · 3 Abort`."),
+    "approval-continue": ("1. Start", "print `note.md` with the header and ask in plain text: "
+                          "`1 Deliver · 2 Change something · 3 Abort`"),
     "approval-after-failed-step": ("7. Deliver", "reprint and return to the step 6 question "
-                                   "(`Deliver, Change something or Abort?`)."),
-    "process-offer": ("8. Process offer", "Print what would be saved, then ask in plain text: Save, Not now or "
-                      "Never for this template?"),
-    "process-destination": ("9. Process mode", "Ask in plain text for the destination folder: Keep current, "
-                            "Default or Another folder?"),
+                                   "(`1 Deliver · 2 Change something · 3 Abort`)."),
+    "process-offer": ("8. Process offer", "Print what would be saved, then ask in plain text: "
+                      "`1 Save · 2 Not now · 3 Never`"),
+    "process-destination": ("9. Process mode", "Ask in plain text for the destination folder, ending with "
+                            "`1 Keep current · 2 Default · 3 Another folder`."),
     "process-required": ("9. Process mode", "Print the outline's headings as a numbered list, then ask in plain "
                          "text which are required; the user names them by number or heading, or none."),
     "process-guidance": ("9. Process mode", "Ask in plain text for the guidance text;"),
@@ -477,7 +481,7 @@ def test_a_failing_check_is_fixed_before_asking():
 
 def test_approval_options_and_changes_go_through_stage():
     text = _section("6. Draft")
-    assert "`Deliver, Change something or Abort?`" in text
+    assert "`1 Deliver · 2 Change something · 3 Abort`" in text
     assert "rewrite `draft.md`, rerun `stage` and reprint `note.md`" in text
     assert "--destination" in text and "--keep-source true" in text
 
@@ -516,7 +520,7 @@ ABORT_LINES = {
         "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
     ),
     "5. Ask for open points": ("Abort at any question → drop.",),
-    "6. Draft": ("and ends with `Deliver, Change something or Abort?`; then end the turn.", "- Abort → drop."),
+    "6. Draft": ("and ends with `1 Deliver · 2 Change something · 3 Abort`; then end the turn.", "- Abort → drop."),
     "7. Deliver": (
         "rerun `deliver`. Abort → drop.",
         "Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, "
@@ -594,7 +598,7 @@ def test_a_failed_step_is_reported_and_the_draft_kept():
 def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_draft():
     assert ("When `step` is empty, the filled-note check or the frontmatter stamp failed instead: "
             "fix `draft.md`, rerun `stage`, reprint and return to the step 6 question "
-            "(`Deliver, Change something or Abort?`).") in _section("7. Deliver")
+            "(`1 Deliver · 2 Change something · 3 Abort`).") in _section("7. Deliver")
 
 
 def test_a_withdrawn_action_offers_only_drop_or_abort_and_names_landed_files():
@@ -738,3 +742,43 @@ def test_dialog_question_text_names_its_subject():
     lines = _text(SKILL).split("\n## Rules\n", 1)[1].split("\n## ", 1)[0].splitlines()
     at = lines.index("- Ask every other question with AskUserQuestion, with at most four options per question.")
     assert lines[at + 1] == DIALOG_SUBJECT_RULE
+
+
+# ── Numbered plain-text options (#169, owner decision 2026-11-06) ───────────
+
+APPROVAL_NUMBERED = "`1 Deliver · 2 Change something · 3 Abort`"
+
+
+def test_every_approval_site_pins_the_numbered_form():
+    text = _flat(SKILL)
+    assert text.count(APPROVAL_NUMBERED) == 5
+    assert "Deliver, Change something or Abort" not in text
+
+
+def test_glob_confirm_save_offer_and_destination_carry_their_numbered_forms():
+    assert "`1 Confirm · 2 Correct · 3 Abort`" in _section("2. First-run setup")
+    assert "`1 Save · 2 Not now · 3 Never`" in _section("8. Process offer")
+    process = _section("9. Process mode")
+    assert "`1 Keep current · 2 Default · 3 Another folder`" in process
+    assert ("Offer Keep current only when `exists` is true and `destination` is not empty; without it end "
+            "with `1 Default · 2 Another folder`.") in process
+
+
+def test_the_candidate_choice_aborts_with_zero_so_every_listed_number_stays_valid():
+    text = _section("3. Choose the template")
+    assert "Which number, or 0 Abort?" in text
+    assert "Any number from the list is valid." in text
+
+
+def test_the_rules_say_the_answer_is_the_number_or_the_option_word():
+    rules = _section("Rules")
+    assert "numbered on one line as `1 First · 2 Second`" in rules
+    assert "the number or the option word" in rules
+    assert "when it is unclear, ask again in plain text" in rules
+
+
+def test_no_plain_text_site_keeps_the_unnumbered_option_form():
+    text = _flat(SKILL)
+    for old in ("Confirm, Correct or Abort", "Save, Not now or Never", "Keep current, Default or Another folder",
+                "Deliver, Change something or Abort", "Which number, or Abort"):
+        assert old not in text, old

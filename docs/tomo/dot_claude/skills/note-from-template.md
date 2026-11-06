@@ -96,8 +96,11 @@ WHY: Owner decision 2026-11-06, "Text, then dialog" (0.2.10). The plain-text-onl
 convenience is back for the fixed-option questions, with the text first so that the content is visible even when the
 dialog appears: the message holds the content and the numbered option line, and after that text, in the same message,
 the model calls `AskUserQuestion` with the same options in the same order. The question text names its subject
-(draft title and created time, the template) as the 0.2.8 rule already demands, because the dialog may be all the user
-looks at.
+as the 0.2.8 rule demands, because the dialog may be all the user looks at. The 0.2.8 rule listed only the subjects of
+the dialog-only questions, so 0.2.10 extends it to the new sites: the glob question (and its reprint after Correct)
+names the proposed globs with the matched count, the template choice names the source note or the request, the
+process offer and the destination question name the template stem, and the approval question keeps the draft's title
+and created time.
 
 The difference to the 0.2.6 failure: there the content was supposed to be printed and the dialog carried the options,
 so a skipped print left the user with a dialog and nothing to decide on. Now the numbered option line is already in

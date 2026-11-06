@@ -1,20 +1,22 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -12,11 +12,11 @@
+@@ -12,12 +12,12 @@
  
  ## Rules
  
--# STRICT — A question about a draft or a list is plain text: print the content, end the message with the question and its options, and end the turn. Never call AskUserQuestion for it.
-+# STRICT — A question about a draft or a list is plain text: end the message with the question and its options, and end the turn; print the content only when the user asks for it. Never call AskUserQuestion for it.
+-# STRICT — A question about a draft or a list is first written as text: the content and the numbered option line. Call AskUserQuestion only after that text, in the same message; never without it.
++# STRICT — A question about a draft or a list is first written as text: the numbered option line; print the content only when the user asks for it. Call AskUserQuestion only after that text, in the same message; never without it.
  # Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user approved a draft they never saw.
  
- - The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 question rounds, the step 6 approval question, the step 8 process offer and every step 9 question.
--- A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines, numbered on one line as `1 First · 2 Second`. Then end the turn. The next user message is the answer: the number or the option word; when it is unclear, ask again in plain text.
-+- A plain-text question goes in the visible reply text: the question and its options, numbered on one line as `1 First · 2 Second`; the content only when the user asks for it, copied from the Read or Bash result (a tool result is not visible to the user). Then end the turn. The next user message is the answer: the number or the option word; when it is unclear, ask again in plain text.
+ - The text-then-dialog questions are the step 2 glob question, the step 3 template choice with at most three candidates, the step 6 approval question, the step 8 process offer and the step 9 destination question. Every other question about a draft or a list, and every free-text question, is plain text only: the step 3 template choice with more than three candidates, the step 5 question rounds, the step 9 required headings, guidance and another-folder name.
+-- A text-then-dialog question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines of the text, numbered on one line as `1 First · 2 Second`. In the same message, after that text, call AskUserQuestion with the same options in the same order, at most four options. Then end the turn.
+-- A plain-text-only question goes in the visible reply text: first the content, then the question, numbered on one line as `1 First · 2 Second` when it has fixed options. Then end the turn; never call AskUserQuestion for it.
++- A text-then-dialog question goes in the visible reply text: the question and its options, numbered on one line as `1 First · 2 Second`; the content only when the user asks for it. In the same message, after that text, call AskUserQuestion with the same options in the same order, at most four options. Then end the turn.
++- A plain-text-only question goes in the visible reply text: the question, numbered on one line as `1 First · 2 Second` when it has fixed options; the content only when the user asks for it. Then end the turn; never call AskUserQuestion for it.
+ - The next user message is the answer: the dialog choice, or a typed number or option word; dialog "Other" text is read the same way; when it is unclear, ask again in plain text.
  - Ask every other question with AskUserQuestion, with at most four options per question.
- - The question text of every one of those other questions names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
- - Ask in the language the user writes in; keep the template's headings.
-@@ -123,7 +123,7 @@
+ - The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
+@@ -125,7 +125,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -23,15 +25,15 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -133,9 +133,10 @@
+@@ -135,9 +135,10 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  
--Then ask in plain text: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort`; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
-+Then ask in plain text: `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`; then end the turn. The header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
- - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again in plain text with `1 Deliver · 2 Change something · 3 Abort`. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+-Then ask: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
++Then ask: the message is `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort` as text, then dialog; then end the turn. The header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+ - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again `1 Deliver · 2 Change something · 3 Abort` as text, then dialog. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
-+- Show the draft: print it with the header as above, then ask again in plain text with `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`.
++- Show the draft: print it with the header as above, then ask again `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort` as text, then dialog.
  - Deliver → step 7.
  - Abort → drop.
  

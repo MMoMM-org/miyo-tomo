@@ -1,6 +1,6 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -123,7 +123,7 @@
+@@ -125,7 +125,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -9,18 +9,18 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -133,8 +133,8 @@
+@@ -135,8 +135,8 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  
--Then ask in plain text: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort`; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
--- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again in plain text with `1 Deliver · 2 Change something · 3 Abort`. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
-+Then ask in plain text: the message holds the header and the full fenced `draft.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort`; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
-+- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `draft.md` with the header, then ask again in plain text with `1 Deliver · 2 Change something · 3 Abort`. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+-Then ask: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+-- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again `1 Deliver · 2 Change something · 3 Abort` as text, then dialog. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
++Then ask: the message holds the header and the full fenced `draft.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
++- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `draft.md` with the header, then ask again `1 Deliver · 2 Change something · 3 Abort` as text, then dialog. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
  - Deliver → step 7.
  - Abort → drop.
-@@ -147,7 +147,7 @@
+@@ -149,7 +149,7 @@
  
  - Exit 0 (`delivered`): report `note_path`, `instructions_json`, `instructions_md`, whether the source was marked, and "Next: review and apply the instruction set in Hashi." When `source_marked` is false and the draft has a source, say in one line that the source was not marked (it was moved or deleted). Then step 8.
  - On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite.
@@ -28,4 +28,4 @@
 +  - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `draft.md` with the header, rerun `deliver`. Abort → drop.
    - `frozen` true: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the note may already be in the inbox as `note_path`. Then run `drop`.
  - On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then offer Drop / Abort only (no Rename, no Keep). On either answer: when `steps_done` is non-empty, first name its files by kind (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty and `frozen` is true, say the note may already be in the inbox as `note_path`. Then run `drop`.
- - On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (`1 Deliver · 2 Change something · 3 Abort`).
+ - On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (`1 Deliver · 2 Change something · 3 Abort` as text, then dialog).

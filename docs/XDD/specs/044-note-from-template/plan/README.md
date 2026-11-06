@@ -140,6 +140,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 | F3-AC2 … F3-AC6, F3-AC8 | T3.2, T4.1, T4.2 |
 | F3-AC7 | T1.2, T2.2, T2.6 |
 | F4-AC1 … F4-AC4 | T2.5, T3.2, T4.1, T4.2 |
+| F4-AC5 | T4.5, T4.2 |
 | F5-AC1 … F5-AC4, F5-AC6, F5-AC7 | T2.5, T2.6 |
 | F5-AC5 | T2.6 (triage interplay) |
 | F5-AC8 | T2.7 |

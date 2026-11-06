@@ -128,6 +128,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
   - [ ] Given the draft, When the user asks for a change, Then Tomo prints the full revised draft again before asking for approval
   - [ ] Given the draft, When the user changes the destination, the filename or keeps the source, Then the next draft shows the change and the delivery follows it
   - [ ] Given the draft, When the user approves, Then delivery starts; When the user aborts, Then Feature 6's abort criteria apply
+  - [ ] Given a staged draft, When Tomo asks the approval question, Then the full draft with its header (template, final name, inbox name and, for a source that is not kept, that the source is deleted on apply) is shown in a side pane beside the conversation, independent of what the model writes; and When the user runs `/note-draft`, Then that pane opens with the same text (amended 2026-11-06, owner decision "Mod inside 044", #182)
 
 #### Feature 5: Delivery
 

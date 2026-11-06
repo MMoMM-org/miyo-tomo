@@ -289,6 +289,12 @@ tomo/
 │   └── skills/
 │       ├── note-from-template/
 │       │   └── SKILL.md                           # NEW: dialogue flow, imperatives only
+│       ├── tomo-note-view/                        # NEW (2026-11-06): draft view pane mod, see Draft view pane
+│       │   ├── dot_claude-plugin/plugin.json      # installed as .claude-plugin/plugin.json
+│       │   ├── hooks/hooks.json
+│       │   ├── hooks/register.tsx
+│       │   ├── hooks/register.test.tsx
+│       │   └── types/index.d.ts
 │       └── inbox-author/
 │           └── SKILL.md                           # MODIFY: unknown-type branch points to /note; 0.3.0 → 0.4.0
 ├── scripts/
@@ -886,6 +892,42 @@ stateDiagram-v2
     Dropped --> [*]
 ```
 
+### Draft view pane
+
+Added 2026-11-06 (owner decision "Mod inside 044", #182). The approval question showed the draft only as the model chose to: in thinking (0.2.10) or in the dialog preview, which the terminal box truncates for a long draft (0.2.11, session 8a8f3e67). The pane shows the staged draft from a file the script writes, so what the user sees no longer depends on the model.
+
+**view.md contract.** `note-instructions.py` owns `tomo-tmp/note/view.md`, one file for the instance (one draft is at the approval question at a time):
+- `stage` removes `view.md` first, then writes it again only when the stage has a title and `check.ok` is true. A refused stage (exit 2), a stage without a title or with a failing check leaves no `view.md`, so the pane never shows another stem's draft or an outdated one.
+- `new`, `deliver` (at its start, whatever its outcome) and `drop` remove it.
+- Content: the header lines of the SKILL step 6 header in its wording, each its own paragraph, then the `note.md` text in a fence longer than any backtick run in it:
+  ```
+  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
+
+  Source <source path> is deleted when you apply the instruction set in Hashi.
+
+  ````markdown
+  <note.md>
+  ````
+  ```
+  The source line is omitted when there is no source or `keep_source` is true, as in step 6. The skipped line is the model's (the script does not know which points were skipped) and is not in `view.md`.
+- No stdout field changes; the file is local instance state like `note.md` (CON-3: nothing new on stdout or stderr).
+
+**The mod.** `tomo/dot_claude/skills/tomo-note-view/` is a Claude Code mod (function-hooks plugin): `dot_claude-plugin/plugin.json`, `hooks/hooks.json`, `hooks/register.tsx`, `types/index.d.ts` and `hooks/register.test.tsx`.
+- `session.start` registers the command `/note-draft`.
+- `tool.call` on `AskUserQuestion`: when `view.md` exists, read it into `$.state` and `$.ui.open({ id: 'note-draft', title: 'Note draft' })` before the dialog runs; when it is absent, close the pane if open. When `$.ui.open` answers `isPlaced: false`, `$.ui.log` names the reason and `/note-draft`.
+- `tool.call` on `Bash`: after the call, while the pane is open, re-read `view.md`; close the pane when it is gone (deliver, drop).
+- `/note-draft`: read `view.md`, open the pane; without one answer "No staged /note draft." as the command's text.
+- `ui.render` on `{ component: 'Pane', requestId: 'note-draft' }`: one `Markdown` element with the text (control characters other than tab and newline removed).
+- No draw at the `AskUserQuestion` render site: it allows 12 rows on the terminal and refuses `Markdown` there.
+
+**Delivery.** Claude Code auto-loads a plugin folder from the project's `.claude/skills/<name>`. `install-tomo.sh` copies `skills/` recursively and renames `dot_claude-plugin` to `.claude-plugin`; `update-tomo.sh` syncs every skill support file bytewise and maps a leading `dot_claude-plugin/` to `.claude-plugin/`. `.claude-plugin/types/`, which the engine writes beside a loaded mod, is gitignored in the source tree, never copied and never compared. The `plugin.json` `version` and the `// version:` line of `register.tsx` move together.
+
+**Limits.**
+- Width: an open the mod makes on its own (the `AskUserQuestion` call is the model's, not the person's input) is placed only from 144 terminal columns, or 110 once the person opened the pane with `/note-draft` and has not closed it by hand; below that it waits undrawn. `/note-draft` answers the person's input and is placed at any width: docked beside the transcript in fullscreen from 110 columns, else inline above the prompt (a third of the rows by default), arrows scroll it when focused.
+- Mods do not run under `claude -p` or in `claude plugin eval`; the eval case cannot see the pane.
+- Hashi's session view and other hosts draw panes only where they support them.
+- Fallback: when the pane is absent the 0.2.11 behaviour stands unchanged: the dialog preview, and "show me the draft" prints the draft as plain text.
+
 ### System-Wide Patterns
 
 - Security: no new Kado permission; read access to `templates.base_path` is documented as a prerequisite. No write outside the inbox.
@@ -930,6 +972,10 @@ stateDiagram-v2
   - Rationale: one recorded run proves the model prints the draft before asking and delivers only after approval; gating every later edit would cost a paid run each time.
   - Trade-offs: later edits to the skill have no automatic model check.
   - User confirmed: 2026-11-04
+- [x] ADR-9 The approval draft is shown in a side pane of a Claude Code mod (`tomo-note-view`) that reads `tomo-tmp/note/view.md`, written by `stage`; the dialog preview stays as the fallback.
+  - Rationale: the preview truncates long drafts and printed text depended on the model; a file the script writes and a hook that opens a pane at `AskUserQuestion` are deterministic.
+  - Trade-offs: early-access mod API; an unasked pane is drawn only from 144 columns (110 after `/note-draft`); no pane under `-p`, in evals or where a host does not draw panes.
+  - User confirmed: 2026-11-06 ("Mod inside 044", #182)
 
 ## Quality Requirements
 
@@ -969,6 +1015,7 @@ stateDiagram-v2
 - [ ] WHEN the user asks for a change, THE SYSTEM SHALL rewrite `draft.md`, rerun `stage` and reprint the full note from `note.md` (F4-AC2)
 - [ ] WHEN the user changes title, destination or keep-source, THE SYSTEM SHALL record it via `stage` and deliver accordingly (F4-AC3)
 - [ ] WHEN the user approves, THE SYSTEM SHALL run `deliver`; WHEN the user aborts, THE SYSTEM SHALL run `drop` (F4-AC4)
+- [ ] WHEN `stage` succeeds with a title and a passing check, THE SYSTEM SHALL write `tomo-tmp/note/view.md` (header and fenced `note.md`); WHEN `AskUserQuestion` is called while `view.md` exists, the `tomo-note-view` mod SHALL open the draft pane with that text; WHEN the user runs `/note-draft`, THE SYSTEM SHALL open the same pane; `new`, any other `stage`, `deliver` and `drop` SHALL remove `view.md` (F4-AC5, see Draft view pane)
 
 **F5 Delivery**
 - [ ] WHEN `deliver` runs, THE SYSTEM SHALL write the note stamped `rendered-note`/`pending-move`, then `<stem>_instructions.json`, then `<stem>_instructions.md`, flat in the inbox (F5-AC1)

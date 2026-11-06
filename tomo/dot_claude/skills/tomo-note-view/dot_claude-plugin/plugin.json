@@ -1,6 +1,6 @@
 {
   "name": "tomo-note-view",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shows the staged /note draft (tomo-tmp/note/view.md) in a side pane at the approval question and on /note-draft.",
   "types": "./types/index.d.ts"
 }

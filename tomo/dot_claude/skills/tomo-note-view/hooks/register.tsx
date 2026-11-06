@@ -1,4 +1,4 @@
-// version: 0.1.1
+// version: 0.1.2
 // tomo-note-view: draws the staged /note draft in a side pane so the user
 // sees it whole at the approval question, whatever the model wrote.
 // WHY: docs/tomo/dot_claude/skills/tomo-note-view.md
@@ -11,13 +11,42 @@ const PANE = 'note-draft'
 const TITLE = 'Note draft'
 const VIEW_PATH = 'tomo-tmp/note/view.md'
 const NO_DRAFT = 'No staged /note draft.'
-// The /note approval dialog (note-from-template step 6) offers Deliver.
-const APPROVAL_LABEL = 'Deliver'
+// The /note approval dialog (note-from-template step 6): an option labelled
+// Deliver, or, in any language, a preview holding the note's title.
+const APPROVAL_LABEL = /deliver/i
+const MIN_TITLE = 3
 
-type Question = { options?: readonly { label?: string }[] }
+type Option = { label?: string; preview?: string }
+type Question = { options?: readonly Option[] }
 
-const isApproval = (questions: readonly Question[] | undefined): boolean =>
-  (questions ?? []).some(q => (q.options ?? []).some(o => (o.label ?? '').includes(APPROVAL_LABEL)))
+// The note inside view.md's fence: the line after ````markdown up to the
+// closing fence of the same length.
+function fencedNote(view: string): string {
+  const open = /^(`{4,})markdown$/m.exec(view)
+  if (!open) return ''
+  const body = view.slice(open.index + open[0].length + 1)
+  const close = body.lastIndexOf('\n' + open[1])
+  return close < 0 ? body : body.slice(0, close + 1)
+}
+
+// The frontmatter title (quotes removed), else the first "# " heading.
+function noteTitle(view: string): string {
+  const note = fencedNote(view)
+  const front = /^---\n([\s\S]*?)\n---\n/.exec(note)
+  const titled = front && /^title:[ \t]*(.+?)[ \t]*$/m.exec(front[1] ?? '')
+  const title = titled?.[1]?.replace(/^(["'])(.*)\1$/, '$2').trim()
+  if (title && title.length >= MIN_TITLE) return title
+  const rest = front ? note.slice(front[0].length) : note
+  const heading = /^# +(.+?)[ \t]*$/m.exec(rest)?.[1] ?? ''
+  return heading.length >= MIN_TITLE ? heading : ''
+}
+
+function isApproval(questions: readonly Question[] | undefined, view: string): boolean {
+  const title = noteTitle(view)
+  return (questions ?? []).some(q =>
+    (q.options ?? []).some(o =>
+      APPROVAL_LABEL.test(o.label ?? '') || (title !== '' && (o.preview ?? '').includes(title))))
+}
 
 const view = atom({ plugin: 'tomo-note-view', key: 'view' } as const, { text: '' } as NoteDraftView, {
   shape: 'view-1',
@@ -73,7 +102,7 @@ export const register: Register = on => {
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     const text = await readView($)
     if (text === undefined) await closePane($)
-    else if (isApproval(e.questions)) await openPane($, text)
+    else if (isApproval(e.questions, text)) await openPane($, text)
     return next(e)
   }).catch(($, e, next) => next(e))
 

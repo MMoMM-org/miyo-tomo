@@ -234,7 +234,8 @@ const german = (preview: string) => ({
 test('German labels with the note in the preview open the pane (frontmatter title)', async ($, on) => {
   const seen = engine(on, { [VIEW]: TITLED })
   await start($)
-  await $.tool.call(german('Template: t_meeting\n\n' + NOTE))
+  // Only the frontmatter part, so the heading cannot be what matched.
+  await $.tool.call(german('Template: t_meeting\n\n---\ntitle: "Design review"\n---\n'))
   expect(seen.opened).toContain('note-draft')
 })
 

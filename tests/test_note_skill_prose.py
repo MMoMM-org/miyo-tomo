@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.7
+# version: 0.1.8
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.4")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.5")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -138,9 +138,50 @@ def test_a_resumed_draft_gets_no_process_offer():
 
 def test_stale_stages_are_dropped_with_one_line():
     text = _section("1. Start")
-    assert "For each stem in `stale_stages`" in text
-    assert "say in one line that an interrupted draft was discarded" in text
-    assert "python3 scripts/note-instructions.py drop --stem <stem>" in text
+    assert ("For each stem in `stale_stages`: say in one line that a draft whose state could not be read "
+            "was discarded, then run `python3 scripts/note-instructions.py drop --stem <stem>`.") in text
+
+
+def test_a_readable_stage_is_never_called_discarded():
+    # The live walk: a printed draft awaiting approval was dropped with this sentence at the next /note.
+    assert "an interrupted draft was discarded" not in _section("1. Start")
+
+
+def test_unfinished_drafts_are_offered_continue_or_discard():
+    text = _section("1. Start")
+    assert ("Then handle every entry of `unfinished_drafts` before the new request. Print each by title "
+            "(the template's filename without `.md` when `title` is empty), template and created time, "
+            "then ask per entry: Continue / Discard. Never drop an unfinished draft without asking.") in text
+    assert text.index("Handle every entry of `kept_drafts`") < text.index("every entry of `unfinished_drafts`")
+    assert text.index("every entry of `unfinished_drafts`") < text.index("`mode` is `process` → step 9.")
+
+
+def test_continue_of_a_printed_draft_returns_to_the_approval_question():
+    text = _section("1. Start")
+    branch = text[text.index("- Continue with `staged` true:"):text.index("- Continue with `staged` false:")]
+    assert "run `python3 scripts/note-instructions.py stage --stem <stem>`" in branch
+    assert "When `check.ok` is false" in branch
+    assert "print `note.md` with the header and ask Deliver / Change something / Abort" in branch
+    assert "The source in the header is the entry's `source_path`; omit the skipped line" in branch
+    assert "skip step 8 for it" in branch
+    assert "Continue with the new request after it ends." in branch
+
+
+def test_continue_of_an_unstaged_draft_restarts_the_questions_without_new():
+    text = _section("1. Start")
+    begin = text.index("- Continue with `staged` false:")
+    branch = text[begin:text.index("- Discard:", begin)]
+    assert ("run the step 4 `template-outline.py` and `read` calls with the entry's `template` as "
+            "`<template path>`; never run `new` again.") in branch
+    assert "step 5 for that stem" in branch
+    assert "`source.md` as the material when it exists" in branch
+    assert "Continue with the new request after it ends." in branch
+
+
+def test_discard_of_an_unfinished_draft_drops_and_says_nothing_landed():
+    text = _section("1. Start")
+    assert ("- Discard: run `python3 scripts/note-instructions.py drop --stem <stem>` and say in one line "
+            "that nothing landed in the inbox.") in text
 
 
 # ── Setup (F1) ──────────────────────────────────────────────────────────────
@@ -556,7 +597,7 @@ def _skill_calls() -> list[tuple[str, str]]:
 
 def test_skill_calls_every_script_with_a_known_parser():
     calls = Counter(script for script, _ in _skill_calls())
-    assert calls == {"note-instructions.py": 6, "note-process.py": 5, "note-session.py": 3,
+    assert calls == {"note-instructions.py": 8, "note-process.py": 5, "note-session.py": 3,
                      "template-outline.py": 3, "vault-config-writer.py": 1}
     assert set(calls) == set(PARSERS)
 

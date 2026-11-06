@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_note_meta.py — Behavioural tests for lib.note_meta (spec 044 T1.3).
 
 Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
@@ -11,7 +11,9 @@ Covers the draft state owner for tomo-tmp/note/<stem>/meta.json:
   freeze), keep_source once instructions_json is done or in flight; each
   kept_drafts entry carries that verdict as frozen
 - stage listing splits started deliveries (kept_drafts: failed_step set or
-  steps_done non-empty) from stale stages
+  steps_done non-empty) from unfinished drafts (readable meta, no step; staged
+  when note.md exists and a title is recorded) and stale stages (meta.json
+  missing or unreadable)
 - read_meta rejects fields of the wrong type or shape (stale in the listing)
 - error messages never echo the offending value
 - stem validation guards every path built from a stem
@@ -320,7 +322,7 @@ def test_refused_title_change_leaves_keep_source_unchanged():
 # ── Stage listing ────────────────────────────────────────────────────────────
 
 
-def test_listing_splits_failed_deliveries_from_stale_stages(tmp_path):
+def test_listing_splits_failed_deliveries_from_unfinished_drafts(tmp_path):
     failed = _meta(stem="2026-11-04_090000")
     note_meta.mark_step_done(failed, "note")
     note_meta.mark_step_failed(failed, "instructions_json")
@@ -338,7 +340,53 @@ def test_listing_splits_failed_deliveries_from_stale_stages(tmp_path):
         "steps_done": ["note"],
         "frozen": True,
     }]
-    assert listing.stale_stages == ["2026-11-04_100000"]
+    assert [d["stem"] for d in listing.unfinished_drafts] == ["2026-11-04_100000"]
+    assert listing.stale_stages == []
+
+
+def _staged(stage: Path) -> None:
+    (stage / "note.md").write_text("---\n---\n# Weekly\n", encoding="utf-8")
+
+
+def test_a_printed_draft_is_an_unfinished_draft_marked_staged(tmp_path):
+    # The live walk: stage wrote note.md under a title, the session ended before approval.
+    _staged(_stage_with(tmp_path, _meta()))
+
+    listing = note_meta.list_stages(tmp_path)
+
+    assert listing.unfinished_drafts == [{
+        "stem": STEM,
+        "title": "Weekly: sync",
+        "template": "Templates/Meeting Notes.md",
+        "created": "2026-11-04T10:15:00Z",
+        "source_path": "100 Inbox/raw.md",
+        "staged": True,
+    }]
+    assert listing.kept_drafts == [] and listing.stale_stages == []
+
+
+def test_a_draft_interrupted_before_stage_is_unfinished_and_not_staged(tmp_path):
+    # new records an empty title and writes no note.md: the questions were never finished.
+    _stage_with(tmp_path, _meta(title="", source_path=None))
+
+    (entry,) = note_meta.list_stages(tmp_path).unfinished_drafts
+
+    assert entry["staged"] is False
+    assert (entry["title"], entry["source_path"]) == ("", None)
+
+
+@pytest.mark.parametrize("title, note_md", [
+    ("", True),                # a note.md without a recorded title is not a printed draft
+    ("Weekly: sync", False),   # a title whose note.md was removed (draft.md missing at stage)
+])
+def test_staged_needs_both_note_md_and_a_title(tmp_path, title, note_md):
+    stage = _stage_with(tmp_path, _meta(title=title))
+    if note_md:
+        _staged(stage)
+
+    (entry,) = note_meta.list_stages(tmp_path).unfinished_drafts
+
+    assert entry["staged"] is False
 
 
 @pytest.mark.parametrize("failed_step, steps_done, frozen", [
@@ -364,7 +412,7 @@ def test_stage_without_readable_meta_is_stale(tmp_path):
 
     listing = note_meta.list_stages(tmp_path)
 
-    assert listing.kept_drafts == []
+    assert listing.kept_drafts == [] and listing.unfinished_drafts == []
     assert listing.stale_stages == ["2026-11-04_080000", "2026-11-04_081000"]
 
 
@@ -376,15 +424,13 @@ def test_listing_ignores_files_and_foreign_dirs(tmp_path):
 
     listing = note_meta.list_stages(tmp_path)
 
-    assert listing.kept_drafts == []
-    assert listing.stale_stages == []
+    assert listing.kept_drafts == listing.unfinished_drafts == listing.stale_stages == []
 
 
 def test_listing_without_a_stage_root_is_empty(tmp_path):
     listing = note_meta.list_stages(tmp_path)
 
-    assert listing.kept_drafts == []
-    assert listing.stale_stages == []
+    assert listing.kept_drafts == listing.unfinished_drafts == listing.stale_stages == []
 
 
 # ── Stem drawing, validation and drop ────────────────────────────────────────
@@ -431,7 +477,7 @@ def test_delivery_killed_between_steps_is_a_kept_draft_not_stale(tmp_path):
         "steps_done": ["note"],
         "frozen": True,
     }]
-    assert listing.stale_stages == []
+    assert listing.stale_stages == [] and listing.unfinished_drafts == []
 
 
 # ── read_meta type checks ────────────────────────────────────────────────────
@@ -467,7 +513,8 @@ def test_read_meta_rejects_a_field_of_the_wrong_shape(tmp_path, overrides):
 
     with pytest.raises(note_meta.MetaError):
         note_meta.read_meta(stage)
-    assert note_meta.list_stages(tmp_path).stale_stages == [STEM]
+    listing = note_meta.list_stages(tmp_path)
+    assert listing.stale_stages == [STEM] and listing.unfinished_drafts == []
 
 
 @pytest.mark.parametrize("steps_done", ["instructions_json", "", {"note": 1}])

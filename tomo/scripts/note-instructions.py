@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.9
+# version: 0.2.10
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -83,6 +83,7 @@ from lib.note_meta import (  # noqa: E402
     KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, is_frozen, mark_step_done,
     mark_step_failed, new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
+from lib.note_meta import NOTE_FILE  # noqa: E402
 from lib.note_paths import (  # noqa: E402
     has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
 )
@@ -98,7 +99,6 @@ from lib.template_syntax import (  # noqa: E402
 CONFIG_PATH = Path("config") / "vault-config.yaml"
 SOURCE_FILE = "source.md"
 DRAFT_FILE = "draft.md"
-NOTE_FILE = "note.md"
 SOURCE_LINK = "source_link"
 _STEM_ATTEMPTS = 60
 

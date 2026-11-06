@@ -1,6 +1,6 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -113,7 +113,7 @@
+@@ -118,7 +118,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -9,7 +9,7 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -124,7 +124,7 @@
+@@ -129,7 +129,7 @@
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  
  Then ask: Deliver / Change something / Abort.
@@ -18,7 +18,7 @@
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
  - Deliver → step 7.
  - Abort → drop.
-@@ -135,9 +135,9 @@
+@@ -140,9 +140,9 @@
  python3 scripts/note-instructions.py deliver --stem <stem>
  ```
  

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_note_session.py — Behavioural tests for note-session.py (spec 044 T2.3).
 
 Covers the deterministic /note session start:
 - start: --process mode and process_template_path whatever note_include says,
   unknown stem -> empty path; free text -> note mode, never echoed (CON-3)
-- start: kept drafts (started deliveries) vs stale stages from lib.note_meta
+- start: kept drafts (started deliveries) vs unfinished drafts (no step, staged
+  when note.md and a title exist) vs stale stages (unreadable meta.json)
 - start: note_include absent -> include_configured false and no Kado listing
 - match: the SDD pattern preview table, daily stripped of .md and always excluded
 - listing failure -> folder_listed 0, listing_error set, exit 0
@@ -199,11 +200,13 @@ def test_non_ascii_stdout_never_fails(mod, instance, monkeypatch):
 
 # ---------------------------------------------------------------- start: stages
 
-def test_kept_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
+def test_kept_drafts_vs_unfinished_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
     _config(instance, include=["t_*"])
     _stage(instance, "2026-11-04_100000", failed_step="instructions_json", steps_done=["note"])
     _stage(instance, "2026-11-04_110000", steps_done=["note"])          # killed between steps
-    _stage(instance, "2026-11-04_120000")                                # interrupted dialogue
+    _stage(instance, "2026-11-04_120000")                                # printed, never approved
+    (note_meta.stage_dir(instance, "2026-11-04_120000") / "note.md").write_text("# x\n", encoding="utf-8")
+    _stage(instance, "2026-11-04_125000", title="", source_path="100 Inbox/raw.md")  # before stage
     broken = note_meta.stage_dir(instance, "2026-11-04_130000")
     broken.mkdir(parents=True)
     (broken / "meta.json").write_text("{not json", encoding="utf-8")
@@ -217,13 +220,19 @@ def test_kept_drafts_vs_stale_stages(mod, instance, monkeypatch, capsys):
     }
     assert out["kept_drafts"][1]["failed_step"] == ""
     assert out["kept_drafts"][1]["steps_done"] == ["note"]
-    assert out["stale_stages"] == ["2026-11-04_120000", "2026-11-04_130000"]
+    assert out["unfinished_drafts"] == [
+        {"stem": "2026-11-04_120000", "title": "Design review", "template": "Templates/t_meeting.md",
+         "created": "2026-11-04T10:15:00Z", "source_path": None, "staged": True},
+        {"stem": "2026-11-04_125000", "title": "", "template": "Templates/t_meeting.md",
+         "created": "2026-11-04T10:15:00Z", "source_path": "100 Inbox/raw.md", "staged": False},
+    ]
+    assert out["stale_stages"] == ["2026-11-04_130000"]
 
 
 def test_no_stage_root_gives_empty_lists(mod, instance, monkeypatch, capsys):
     _config(instance, include=["t_*"])
     code, out, *_ = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
-    assert out["kept_drafts"] == [] and out["stale_stages"] == []
+    assert out["kept_drafts"] == out["unfinished_drafts"] == out["stale_stages"] == []
 
 
 # ---------------------------------------------------------------- start: include
@@ -401,3 +410,10 @@ def test_unknown_subcommand_exits_2(mod, instance):
     with pytest.raises(SystemExit) as exc:
         mod.main(["nope"])
     assert exc.value.code == 2
+
+
+def test_docstring_names_every_start_field(mod, instance, monkeypatch, capsys):
+    _config(instance, include=["t_*"])
+    _, out, *_ = _run(mod, monkeypatch, capsys, ["start", "--args=x"])
+    usage = mod.__doc__.split("Rules:")[0]
+    assert [k for k in out if k not in usage] == []

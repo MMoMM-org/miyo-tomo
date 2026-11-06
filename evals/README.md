@@ -80,7 +80,7 @@ The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it give
      - `. "$(dirname "$0")/../_lib/pass1-stubs.sh"` then `stage_pass1_instance`
      - The kit's header lists which Tomo script each stub's output is copied from. When one of those scripts changes its output, `tests/test_stub_contract.py` fails; update the stub to follow it.
    - `/note` kit (`evals/_lib/note-stubs.sh`), prompt `/tomo:note <request>`:
-     - `NOTE_DRAFTS=none|kept|interrupted|unfrozen|stale` (a stage directory from an earlier session)
+     - `NOTE_DRAFTS=none|kept|interrupted|unfrozen|unfinished|unstaged|stale` (a stage directory from an earlier session; the kit header says what each holds)
      - `NOTE_DELIVER=delivered|source_gone|failed_kado_config|failed_<step>|withdrawn|exists_note|exists_instructions_json|exists_destination` (what `deliver` meets; the kit header lists every value)
      - `. "$(dirname "$0")/../_lib/note-stubs.sh"` then `stage_note_instance`
      - The fixture vault (templates, the inbox source note) is written into the eval workspace as `note-fixture.json` next to the stubs. `tests/test_stub_contract.py` runs each stub and its real script on the same argv, the real one against a fake Kado filled from that file (`tests/note_stub_kit.py`), and compares exit code, stdout, stderr and the stage files.

@@ -1,11 +1,17 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.1.9
+# version: 0.2.0
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
-``note-session.py start`` lists it to offer resume of started deliveries and to
-name stale stages. Both import this module so the field set, the frozen rule and
-the kept/stale split exist once.
+``note-session.py start`` lists it to offer resume of started deliveries,
+continue or discard of unfinished drafts, and to name stale stages. Both import
+this module so the field set, the frozen rule and the kept/unfinished/stale
+split exist once.
+
+Listing: a stage with readable meta.json and failed_step set or steps_done
+non-empty is a kept draft; one with neither is an unfinished draft, ``staged``
+when note.md exists and the title is non-empty; one whose meta.json is missing
+or unreadable is stale.
 
 Paths are built from a base directory (the instance root, i.e. the scripts'
 working directory) and a stem of the form ``YYYY-MM-DD_HHMMSS``; any other stem
@@ -31,6 +37,7 @@ from lib.obsidian_filename import sanitize_stem
 
 STAGE_ROOT = Path("tomo-tmp") / "note"
 META_FILE = "meta.json"
+NOTE_FILE = "note.md"
 STEPS = ("note", "instructions_json", "instructions_md", "source_mark")
 # A delivery can fail before its first step: no Kado URL or token. Never a done step.
 KADO_CONFIG = "kado_config"
@@ -75,6 +82,7 @@ class NoteDraftMeta:
 @dataclass
 class StageListing:
     kept_drafts: list[dict]
+    unfinished_drafts: list[dict]
     stale_stages: list[str]
 
 
@@ -220,12 +228,20 @@ def _kept_entry(meta: NoteDraftMeta) -> dict:
     }
 
 
+def _unfinished_entry(meta: NoteDraftMeta, stage: Path) -> dict:
+    return {
+        "stem": meta.stem, "title": meta.title, "template": meta.template,
+        "created": meta.created, "source_path": meta.source_path,
+        "staged": (stage / NOTE_FILE).is_file() and bool(meta.title),
+    }
+
+
 def list_stages(base: Path) -> StageListing:
-    """Split stage directories into started deliveries (kept) and stale stages, by stem."""
+    """Split stage directories into kept drafts, unfinished drafts and stale stages, by stem."""
     root = stage_root(base)
     stems = sorted(p.name for p in root.iterdir()
                    if p.is_dir() and _STEM_RE.fullmatch(p.name)) if root.is_dir() else []
-    kept, stale = [], []
+    kept, unfinished, stale = [], [], []
     for stem in stems:
         try:
             meta = read_meta(root / stem)
@@ -235,8 +251,8 @@ def list_stages(base: Path) -> StageListing:
         if meta.failed_step or meta.steps_done:
             kept.append(_kept_entry(meta))
         else:
-            stale.append(stem)
-    return StageListing(kept_drafts=kept, stale_stages=stale)
+            unfinished.append(_unfinished_entry(meta, root / stem))
+    return StageListing(kept_drafts=kept, unfinished_drafts=unfinished, stale_stages=stale)
 
 
 def remove_stage(base: Path, stem: str) -> bool:

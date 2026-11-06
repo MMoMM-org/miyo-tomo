@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # note-session.py — Deterministic session start of /note.
-# version: 0.1.4
+# version: 0.1.5
 """Start a /note session: mode, draft state and template candidates; preview globs.
 
 /note fills a vault template into a new note. This script makes its start the
@@ -15,8 +15,8 @@ Usage (cwd = instance root):
 
 Output: one JSON object on stdout.
     start: mode, process_template, process_template_path, include_configured,
-           note_include, kept_drafts, stale_stages, candidates, folder_listed,
-           listing_error
+           note_include, kept_drafts, unfinished_drafts, stale_stages,
+           candidates, folder_listed, listing_error
     match: matched, unmatched, excluded_daily, folder_listed, listing_error
 
 Rules:
@@ -34,6 +34,10 @@ Rules:
     ASCII-escaped.
     Each ``kept_drafts`` entry carries ``frozen``: true when the draft's title
     and destination can no longer change.
+    ``unfinished_drafts`` lists stages with no recorded delivery step, each
+    ``{stem, title, template, created, source_path, staged}``; ``staged`` is
+    true when the stage's note.md exists and a title is recorded.
+    ``stale_stages`` lists stems whose meta.json is missing or unreadable.
 
 Exit codes:
     0 — output usable (also on a listing failure or a missing config)
@@ -158,6 +162,7 @@ def start(args: argparse.Namespace) -> dict:
         "include_configured": bool(globs),
         "note_include": globs,
         "kept_drafts": stages.kept_drafts,
+        "unfinished_drafts": stages.unfinished_drafts,
         "stale_stages": stages.stale_stages,
         "candidates": candidates,
         "folder_listed": len(found),
@@ -192,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Session start and glob preview for /note.")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
     sub = p.add_subparsers(dest="command", required=True)
-    s = sub.add_parser("start", help="Mode, kept drafts, candidates")
+    s = sub.add_parser("start", help="Mode, kept and unfinished drafts, candidates")
     s.add_argument("--args", required=True, help="$ARGUMENTS verbatim (use --args=<text>)")
     m = sub.add_parser("match", help="Preview proposed note_include globs")
     m.add_argument("--globs", required=True, help="Comma-separated filename globs")

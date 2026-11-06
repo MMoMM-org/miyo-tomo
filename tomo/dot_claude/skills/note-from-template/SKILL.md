@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.4
+# version: 0.2.5
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -33,12 +33,17 @@ python3 scripts/note-session.py start --args='<request>'
 
 `<request>` is the skill's arguments (`$ARGUMENTS`) verbatim inside single quotes, each `'` written as `'\''`. Keep the request text in the conversation.
 
-For each stem in `stale_stages`: say in one line that an interrupted draft was discarded, then run `python3 scripts/note-instructions.py drop --stem <stem>`.
+For each stem in `stale_stages`: say in one line that a draft whose state could not be read was discarded, then run `python3 scripts/note-instructions.py drop --stem <stem>`.
 
 Handle every entry of `kept_drafts` before the new request. Print each by title, template and created time, then ask per entry: Resume / Drop.
 - An entry with an empty `failed_step` is an interrupted delivery: offer Resume / Drop like any other kept draft. Never drop a kept draft without asking.
 - Resume: run step 7 for that stem as a resume; skip step 8 for it. Continue with the new request after it ends.
 - Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and the entry's `frozen` is true, say the note may already be in the inbox with a name starting `<stem>_`. When `steps_done` is empty and `frozen` is false, say that nothing landed in the inbox. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
+
+Then handle every entry of `unfinished_drafts` before the new request. Print each by title (the template's filename without `.md` when `title` is empty), template and created time, then ask per entry: Continue / Discard. Never drop an unfinished draft without asking.
+- Continue with `staged` true: run `python3 scripts/note-instructions.py stage --stem <stem>`, then run step 6 for that stem from "When `check.ok` is false": print `note.md` with the header and ask Deliver / Change something / Abort. `<template stem>` is the entry's `template` filename without `.md`. The source in the header is the entry's `source_path`; omit the skipped line, and skip step 8 for it. Continue with the new request after it ends.
+- Continue with `staged` false: for that stem, run the step 4 `template-outline.py` and `read` calls with the entry's `template` as `<template path>`; never run `new` again. Handle their exits as step 4 says, read the stage files, then run step 5 for that stem with `source.md` as the material when it exists, and go on from there. Continue with the new request after it ends.
+- Discard: run `python3 scripts/note-instructions.py drop --stem <stem>` and say in one line that nothing landed in the inbox.
 
 Then:
 - `mode` is `process` → step 9.

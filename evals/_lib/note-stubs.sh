@@ -2,12 +2,16 @@
 # note-stubs.sh — stub kit for the /note eval cases under evals/ (spec 044
 # ADR-8). Sourced by each /note case's scaffold.sh, which sets two variables
 # first:
-#   NOTE_DRAFTS=none|kept|interrupted|unfrozen|stale
+#   NOTE_DRAFTS=none|kept|interrupted|unfrozen|unfinished|unstaged|stale
 #                 a stage directory from an earlier session (none: no stage):
 #                 kept         failed at instructions_json, steps_done [note]
 #                 interrupted  failed_step "", steps_done [note]
 #                 unfrozen     failed at kado_config, steps_done []
-#                 stale        no recorded step (start lists it as stale)
+#                 unfinished   no recorded step, titled, note.md printed
+#                              (start lists it as unfinished, staged true)
+#                 unstaged     no recorded step, empty title, source.md only
+#                              (start lists it as unfinished, staged false)
+#                 stale        no meta.json (start lists it as stale)
 #   NOTE_DELIVER=delivered|source_gone|failed_kado_config|failed_note|
 #                failed_instructions_json|failed_instructions_md|
 #                failed_source_mark|withdrawn|exists_note|
@@ -24,22 +28,23 @@
 # Output formats below are COPIED from Tomo's scripts, not generated; when one
 # of those changes, re-check the copy (tests/test_stub_contract.py runs each
 # stub and its real script on the same argv and fails on any difference):
-#   note-session start   tomo/scripts/note-session.py:124-132 (mode),
-#                        :145-165 (object), :212 (ASCII JSON line); kept and
-#                        stale split tomo/scripts/lib/note_meta.py:215-239
-#                        (_kept_entry, list_stages; frozen :187-189)
-#   note-session match   tomo/scripts/note-session.py:170-186, :207-210 (empty
+#   note-session start   tomo/scripts/note-session.py:128-136 (mode),
+#                        :149-170 (object), :217 (ASCII JSON line); kept,
+#                        unfinished and stale split
+#                        tomo/scripts/lib/note_meta.py:223-255 (_kept_entry,
+#                        _unfinished_entry, list_stages; frozen :195-197)
+#   note-session match   tomo/scripts/note-session.py:179-191, :212-215 (empty
 #                        glob list, exit 2)
 #   new                  tomo/scripts/note-instructions.py:216-234 (object),
 #                        :160-170 (refused --template/--source, exit 2),
 #                        :185-189 + :580-582 (unreadable source, exit 1),
 #                        :192-202 (stem, one second later when taken);
-#                        meta.json tomo/scripts/lib/note_meta.py:49-64, :96-105, :161-163
+#                        meta.json tomo/scripts/lib/note_meta.py:56-71, :104-114, :169-171
 #   stage                tomo/scripts/note-instructions.py:250-271 (refused
 #                        --title/--destination, exit 2), :240-247 (unknown or
 #                        malformed stem, exit 2), :274-311 (note.md from
 #                        draft.md, object), :321-330 (frozen keeps meta);
-#                        frozen rules tomo/scripts/lib/note_meta.py:187-212;
+#                        frozen rules tomo/scripts/lib/note_meta.py:195-220;
 #                        check tomo/scripts/lib/template_syntax.py:305-366
 #   deliver              tomo/scripts/note-instructions.py:523-537 (EXISTS:
 #                        first line, object, exit), :360-369 (object),
@@ -63,8 +68,8 @@
 stage_note_instance() {
   NOTE_DRAFTS="${NOTE_DRAFTS-none}"
   NOTE_DELIVER="${NOTE_DELIVER-delivered}"
-  case "$NOTE_DRAFTS" in none|kept|interrupted|unfrozen|stale) ;; *)
-    echo "note-stubs.sh: NOTE_DRAFTS must be none|kept|interrupted|unfrozen|stale, got '$NOTE_DRAFTS'" >&2
+  case "$NOTE_DRAFTS" in none|kept|interrupted|unfrozen|unfinished|unstaged|stale) ;; *)
+    echo "note-stubs.sh: NOTE_DRAFTS must be none|kept|interrupted|unfrozen|unfinished|unstaged|stale, got '$NOTE_DRAFTS'" >&2
     return 1 ;; esac
   case "$NOTE_DELIVER" in
     delivered|source_gone|failed_kado_config|failed_note|failed_instructions_json) ;;
@@ -176,31 +181,42 @@ with open("scripts/note-fixture.json", "w", encoding="utf-8") as f:
 PY
 
   # A stage directory from an earlier session, in the shape note-instructions.py
-  # writes (meta.json: tomo/scripts/lib/note_meta.py:49-64, :161-163).
+  # writes (meta.json: tomo/scripts/lib/note_meta.py:56-71, :169-171; new
+  # records an empty title, tomo/scripts/note-instructions.py:226; stage writes
+  # note.md, :295-303).
   if [ "$NOTE_DRAFTS" != none ]; then
     NOTE_DRAFTS="$NOTE_DRAFTS" python3 - <<'PY'
 import json, os
 kind = os.environ["NOTE_DRAFTS"]
+stem = "2026-11-04_163000"
+stage = os.path.join("tomo-tmp", "note", stem)
+os.makedirs(stage)
+if kind == "stale":
+    raise SystemExit(0)
 failed, done = {
     "kept": ("instructions_json", ["note"]),
     "interrupted": ("", ["note"]),
     "unfrozen": ("kado_config", []),
-    "stale": ("", []),
+    "unfinished": ("", []),
+    "unstaged": ("", []),
 }[kind]
-stem = "2026-11-04_163000"
+title, source = ("", "100 Inbox/Meeting with Dana.md") if kind == "unstaged" else ("Budget review", None)
 meta = {
     "stem": stem, "run_id": "2026-11-04T16-30-00Z-0ld0ff",
     "created": "2026-11-04T16:30:00Z", "generated": "2026-11-04T16:30:00Z",
     "template": "X/Templates/t_meeting_tomo.md", "template_stem": "t_meeting_tomo",
-    "source_path": None, "title": "Budget review",
-    "inbox_file": "100 Inbox/%s_Budget review.md" % stem,
+    "source_path": source, "title": title,
+    "inbox_file": "100 Inbox/%s_%s.md" % (stem, title),
     "destination": "Atlas/Notes/", "default_destination": "Atlas/Notes/",
     "keep_source": False, "steps_done": done, "failed_step": failed, "profile": "miyo",
 }
-stage = os.path.join("tomo-tmp", "note", stem)
-os.makedirs(stage)
 with open(os.path.join(stage, "meta.json"), "w") as f:
     f.write(json.dumps(meta, indent=2) + "\n")
+if kind == "unstaged":
+    vault = json.load(open("scripts/note-fixture.json", encoding="utf-8"))["vault"]
+    with open(os.path.join(stage, "source.md"), "w", encoding="utf-8") as f:
+        f.write(vault[source])
+    raise SystemExit(0)
 draft = ("---\ndate: 2026-11-04\nattendees: Dana Weber\ntags: meeting\n---\n# Meeting\n\n"
          "Related: {{source_link}}\n\n## Agenda\n\nBudget\n\n## Decisions\n\nNone\n\n"
          "## Action items\n\nNone\n")
@@ -223,14 +239,22 @@ def read_meta(stage):
 
 
 def listing():
-    kept, stale = [], []
+    kept, unfinished, stale = [], [], []
     stems = sorted(n for n in os.listdir(STAGE_ROOT)
                    if os.path.isdir(os.path.join(STAGE_ROOT, n)) and STEM_RE.fullmatch(n)) \
         if os.path.isdir(STAGE_ROOT) else []
     for stem in stems:
         meta = read_meta(os.path.join(STAGE_ROOT, stem))
-        if meta is None or not (meta["failed_step"] or meta["steps_done"]):
+        if meta is None:
             stale.append(stem)
+            continue
+        if not (meta["failed_step"] or meta["steps_done"]):
+            unfinished.append({
+                "stem": meta["stem"], "title": meta["title"], "template": meta["template"],
+                "created": meta["created"], "source_path": meta["source_path"],
+                "staged": os.path.isfile(os.path.join(STAGE_ROOT, stem, "note.md"))
+                and bool(meta["title"]),
+            })
             continue
         kept.append({
             "stem": meta["stem"], "title": meta["title"], "template": meta["template"],
@@ -238,7 +262,7 @@ def listing():
             "steps_done": list(meta["steps_done"]),
             "frozen": bool(meta["steps_done"]) or meta["failed_step"] in STEPS,
         })
-    return kept, stale
+    return kept, unfinished, stale
 
 
 def templates():
@@ -266,7 +290,7 @@ if args[0] == "start":
         if len(stem) >= 2 and stem[0] == stem[-1] and stem[0] in "\"'":
             stem = stem[1:-1].strip()
         stem = stem[:-3] if stem.endswith(".md") else stem
-    kept, stale = listing()
+    kept, unfinished, stale = listing()
     found = templates() if (mode == "process" and stem) or (mode == "note" and globs) else []
     result = {
         "mode": mode,
@@ -275,6 +299,7 @@ if args[0] == "start":
         "include_configured": bool(globs),
         "note_include": globs,
         "kept_drafts": kept,
+        "unfinished_drafts": unfinished,
         "stale_stages": stale,
         "candidates": [t for t in found if t["stem"] != daily and matches(t["stem"], globs)],
         "folder_listed": len(found),

@@ -9,7 +9,7 @@
  - Ask with at most four options per question.
  - Ask in the language the user writes in; keep the template's headings.
  - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
-@@ -113,7 +113,7 @@
+@@ -118,7 +118,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -18,7 +18,7 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -123,9 +123,10 @@
+@@ -128,9 +128,10 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  

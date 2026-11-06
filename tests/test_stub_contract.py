@@ -579,7 +579,8 @@ def titled(tmp_path, deliver="delivered", draft=NOTE_DRAFT):
     return stub_ws, real_ws
 
 
-@pytest.mark.parametrize("drafts", ["none", "kept", "interrupted", "unfrozen", "stale"])
+@pytest.mark.parametrize("drafts", ["none", "kept", "interrupted", "unfrozen", "unfinished",
+                                    "unstaged", "stale"])
 @pytest.mark.parametrize("args", [
     NOTE_REQUEST, "--args=--process t_meeting_tomo", "--args=--process 't_meeting_tomo.md'",
     "--args=--process", "--args=--process t_unknown",
@@ -600,7 +601,22 @@ def test_note_session_start_carries_steps_done_and_frozen_of_every_kept_draft(tm
     assert shapes == {"kept": ("instructions_json", ["note"], True),
                       "interrupted": ("", ["note"], True), "unfrozen": ("kado_config", [], False)}
     ws = nk.stage(tmp_path / "stale", drafts="stale")
-    assert json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)["stale_stages"] == [KEPT_STEM]
+    out = json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)
+    assert (out["stale_stages"], out["unfinished_drafts"], out["kept_drafts"]) == ([KEPT_STEM], [], [])
+
+
+def test_note_session_start_offers_every_unfinished_draft_with_its_staged_signal(tmp_path):
+    """A stage with readable meta.json and no recorded step is offered, never stale (#169 live walk)."""
+    seen = {}
+    for drafts in ("unfinished", "unstaged"):
+        ws = nk.stage(tmp_path / drafts, drafts=drafts)
+        out = json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)
+        assert out["kept_drafts"] == out["stale_stages"] == []
+        (entry,) = out["unfinished_drafts"]
+        assert list(entry) == ["stem", "title", "template", "created", "source_path", "staged"]
+        seen[drafts] = (entry["stem"], entry["title"], entry["source_path"], entry["staged"])
+    assert seen == {"unfinished": (KEPT_STEM, "Budget review", None, True),
+                    "unstaged": (KEPT_STEM, "", nk.SOURCE, False)}
 
 
 @pytest.mark.parametrize("globs", ["t_*", "*", "t_*_tomo,Read*", " , "])

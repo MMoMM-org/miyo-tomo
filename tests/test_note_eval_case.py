@@ -102,7 +102,7 @@ def test_one_candidate_and_the_material_fills_every_point(tmp_path):
     ws = nk.stage(tmp_path / "ws")
     start = json.loads(nk.run_stub(ws, "note-session.py", "start", "--args=x").stdout)
     assert [c["stem"] for c in start["candidates"]] == ["t_meeting_tomo"]
-    assert start["kept_drafts"] == start["stale_stages"] == []
+    assert start["kept_drafts"] == start["unfinished_drafts"] == start["stale_stages"] == []
     nk.run_stub(ws, "note-instructions.py", "new", "--template", nk.TEMPLATE, "--source", nk.SOURCE)
     outline = json.loads(nk.run_stub(ws, "template-outline.py", "--template", nk.TEMPLATE,
                                      "--stage", nk.STEM).stdout)

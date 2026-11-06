@@ -442,3 +442,39 @@ and a leftover directory would be offered again at the next `/note` (ADR-7).
 the `staged` signal of an unfinished draft. The name is defined once in the
 library and imported here, so the writer and the listing cannot name different
 files.
+
+## WHY stage Writes tomo-tmp/note/view.md
+
+The user must see the whole staged draft before approving it. Printing it was
+the model's job, and live it failed in two ways: the model wrote the text into
+its thinking and called `AskUserQuestion` with nothing visible (sessions
+2e8fb1d3, 23125562), and the dialog preview that 0.2.11 fills is cut off by the
+terminal for a long draft. `view.md` is the deterministic copy the
+`tomo-note-view` mod draws in a side pane (spec 044 ADR-9, F4-AC5; see
+[tomo-note-view](../dot_claude/skills/tomo-note-view.md)).
+
+- One file, `tomo-tmp/note/view.md`, not one per stem: only one draft is at the
+  approval question at a time, and the mod then needs no stem to find it. It
+  sits beside the stem directories and `list_stages` only reads directories
+  whose name is a stem, so it is never taken for a draft.
+- The header is the SKILL step 6 header in its wording, built from `meta.json`:
+  `Template: <template stem> · Final name: <destination_file> · In the inbox
+  until applied: <inbox_file name>`, then `Source <source path> is deleted when
+  you apply the instruction set in Hashi.` only when there is a source and
+  `keep_source` is false, exactly when step 6 shows that line. The skipped line
+  is left out: which points were skipped is known only in the conversation, so
+  the script cannot write it and must not guess it. Each header line is its
+  own Markdown paragraph so the pane draws them as separate lines.
+- `note.md` follows in a fence one backtick longer than the longest backtick
+  run in it (at least four), so a code block inside the note cannot end the
+  fence early.
+- `stage` removes `view.md` before it does anything else and writes it again
+  only when the stage has a title and the filled-note check passes. A refused
+  stage (exit 2), an untitled stage or a failing check therefore leaves no
+  `view.md`: the pane never shows another stem's draft, and never a draft the
+  skill is about to fix before asking.
+- `new`, `deliver` (at its start, whatever the outcome) and `drop` remove it:
+  after each of them no approval question is due for the staged text. A
+  restage after a failed delivery or a Rename writes it again.
+- It is local instance state like `note.md`; nothing on stdout or stderr
+  changes (CON-3), and the exit codes are unchanged.

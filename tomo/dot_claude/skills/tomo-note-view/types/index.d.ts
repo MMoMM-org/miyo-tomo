@@ -1,4 +1,4 @@
-// version: 0.1.0
+// version: 0.1.1
 // State contract of the tomo-note-view mod: the text of the staged draft view.
 export type NoteDraftView = { text: string }
 

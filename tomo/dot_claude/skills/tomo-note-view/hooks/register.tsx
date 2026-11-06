@@ -1,4 +1,4 @@
-// version: 0.1.0
+// version: 0.1.1
 // tomo-note-view: draws the staged /note draft in a side pane so the user
 // sees it whole at the approval question, whatever the model wrote.
 // WHY: docs/tomo/dot_claude/skills/tomo-note-view.md
@@ -11,6 +11,13 @@ const PANE = 'note-draft'
 const TITLE = 'Note draft'
 const VIEW_PATH = 'tomo-tmp/note/view.md'
 const NO_DRAFT = 'No staged /note draft.'
+// The /note approval dialog (note-from-template step 6) offers Deliver.
+const APPROVAL_LABEL = 'Deliver'
+
+type Question = { options?: readonly { label?: string }[] }
+
+const isApproval = (questions: readonly Question[] | undefined): boolean =>
+  (questions ?? []).some(q => (q.options ?? []).some(o => (o.label ?? '').includes(APPROVAL_LABEL)))
 
 const view = atom({ plugin: 'tomo-note-view', key: 'view' } as const, { text: '' } as NoteDraftView, {
   shape: 'view-1',
@@ -66,7 +73,7 @@ export const register: Register = on => {
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     const text = await readView($)
     if (text === undefined) await closePane($)
-    else await openPane($, text)
+    else if (isApproval(e.questions)) await openPane($, text)
     return next(e)
   }).catch(($, e, next) => next(e))
 

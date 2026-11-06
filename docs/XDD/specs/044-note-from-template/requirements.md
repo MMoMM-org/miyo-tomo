@@ -268,7 +268,7 @@ MiYo has no telemetry (constitution L1), so every metric is measured by a test, 
 - All vault access goes through Kado. The key needs read access to the template folder; listing and reading need no write permission.
 - An empty Kado result cannot tell absence from denial, so messages never claim that a template does not exist.
 - Constitution L2: logs and script output carry metadata only, never note content.
-- The user decides through `AskUserQuestion`, which allows at most four options per question and four questions per call, except for a question about a draft or a list, which is first written as text (the content and the numbered option line) and, for fixed options, followed by an `AskUserQuestion` call in the same message; a question with free text or a list longer than three candidates plus Abort stays plain text only, and a typed number or option word answers in either case (amended 2026-11-06, text then dialog).
+- The user decides through `AskUserQuestion`, which allows at most four options per question and four questions per call, except for a question about a draft or a list, which, for fixed options, is an `AskUserQuestion` call whose every option carries the content in its `preview` (candidate choice and destination use option descriptions); a question with free text or a list longer than three candidates plus Abort is plain text only, plain text is also the fallback when no dialog is available or the user cannot see the content, and a typed number or option word answers in every case (amended 2026-11-06, content in the dialog preview).
 - Runtime files hold imperatives only; rationale goes to `docs/tomo/`.
 - No eval-gated file changes. If one has to change, the full eval suite must be GREEN before merge.
 

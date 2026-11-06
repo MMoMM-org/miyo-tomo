@@ -26,6 +26,32 @@ question, and again before each re-ask after a change. What is printed is `note.
 `{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what will land in the vault. The
 same rule covers the question rounds: any text the user needs to decide on is printed first.
 
+## Why Printing Before a Question Is STRICT
+
+WHY: Observed deviation in two live `/note` walks on claude-sonnet-5-5 (sessions c573b7b7 and afc60d6c): with
+the plain rule "Before every AskUserQuestion call, print as visible text …" and "After every `stage`, print
+note.md in full", the model repeatedly called `AskUserQuestion` in a message whose only content before the call was
+a Read of `note.md` or a Bash `match` call, with no visible text. The approval question (Deliver / Change something
+/ Abort) came after every revision and every approval in those walks, including the approval after Continue of a
+staged draft, and only once was the draft printed. The user approved a draft and a header they never saw. The same
+happened at the first-run glob Confirm (no `matched` / `unmatched` / `excluded_daily`), at the template choice (no
+numbered list) and at a question round (no covered points). The cause: the model treats its own tool output as
+shown to the user. It is not; the Claude Code UI collapses tool results, so only the reply text of a message is
+visible.
+
+That is the case the repo rule reserves `STRICT` for (see "Why STRICT Is Rare"), so the skill carries two STRICT
+blocks:
+
+- The general rule in `## Rules`: the visible reply text of the same message that calls `AskUserQuestion` holds
+  everything the question refers to, copied from the Read or Bash result: the numbered template list, the glob
+  lists, the covered and open points, the draft. A tool result or thinking counts as not printed.
+- The draft rule in step 6, just before the approval question: that same message holds the header and the full
+  fenced `note.md` copied from the Read result, after every `stage`: the first draft, every Change something
+  reprint, the Continue of a staged draft and the reprint after a failed delivery's restage; the Rename reprint
+  before `deliver` is visible reply text too.
+
+Each `Why:` names the failure mode in one line; the sessions, model and dates live here only.
+
 ## Why the Source Delete Is Named Before the User Approves
 
 WHY: When the draft came from an inbox note that is not kept, the instruction set carries a `delete_source` action

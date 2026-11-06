@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.9")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.10")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -162,8 +162,8 @@ def test_continue_of_a_printed_draft_returns_to_the_approval_question():
     branch = text[text.index("- Continue with `staged` true:"):text.index("- Continue with `staged` false:")]
     assert "run `python3 scripts/note-instructions.py stage --stem <stem>`" in branch
     assert "When `check.ok` is false" in branch
-    assert ("print `note.md` with the header and ask in plain text: `1 Deliver · 2 Change something · 3 Abort`"
-            in branch)
+    assert ("print `note.md` with the header and ask `1 Deliver · 2 Change something · 3 Abort` as text, "
+            "then dialog.") in branch
     assert "The source in the header is the entry's `source_path`; omit the skipped line" in branch
     assert "skip step 8 for it" in branch
     assert "Continue with the new request after it ends." in branch
@@ -192,14 +192,14 @@ def test_discard_of_an_unfinished_draft_drops_and_says_nothing_landed():
 def test_setup_prints_the_match_preview_before_asking():
     text = _section("2. First-run setup")
     assert "python3 scripts/note-session.py match --globs" in text
-    assert ("Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask in plain text: "
-            "`1 Confirm · 2 Correct · 3 Abort`") in text
+    assert ("Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask "
+            "`1 Confirm · 2 Correct · 3 Abort` as text, then dialog.") in text
 
 
 def test_setup_reruns_match_and_reprints_on_a_correction_and_writes_only_on_confirm():
     text = _section("2. First-run setup")
-    assert ("On Correct, take the user's globs, rerun `match`, reprint and ask again in plain text with "
-            "`1 Confirm · 2 Correct · 3 Abort`.") in text
+    assert ("On Correct, take the user's globs, rerun `match`, reprint and ask again "
+            "`1 Confirm · 2 Correct · 3 Abort` as text, then dialog.") in text
     assert "Write nothing before Confirm" in text
     assert "python3 scripts/vault-config-writer.py templates-include --input tomo-tmp/note/note-include.json" in text
 
@@ -218,11 +218,11 @@ def test_one_candidate_is_named_several_are_printed_and_asked():
     assert "When several fit, print them as a numbered list" in text
 
 
-def test_several_fits_are_asked_by_number_in_plain_text():
+def test_several_fits_are_asked_by_number_and_get_a_dialog_only_up_to_three_candidates():
     text = _section("3. Choose the template")
-    assert ("When several fit, print them as a numbered list, then ask in plain text: Which number, or 0 Abort? "
-            "Any number from the list is valid.") in text
-    assert "three candidates" not in text
+    assert ("When several fit, print them as a numbered list. With at most three candidates ask: Which number, "
+            "or 0 Abort? as text, then dialog, with one option per candidate and Abort. With more than three "
+            "candidates ask in plain text only: Which number, or 0 Abort? Any number from the list is valid.") in text
     assert "up to four options" not in text
 
 
@@ -298,8 +298,9 @@ def test_broken_process_file_and_missing_required_point_are_one_line_each():
 # ── Questions (F3) ──────────────────────────────────────────────────────────
 
 
-NEW_STRICT = ("# STRICT — A question about a draft or a list is plain text: print the content, end the message "
-              "with the question and its options, and end the turn. Never call AskUserQuestion for it.")
+NEW_STRICT = ("# STRICT — A question about a draft or a list is first written as text: the content and the "
+              "numbered option line. Call AskUserQuestion only after that text, in the same message; never "
+              "without it.")
 NEW_WHY = ("# Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user "
            "approved a draft they never saw.")
 OLD_STRICT_OPENERS = ("# STRICT — Before every AskUserQuestion call",
@@ -325,53 +326,96 @@ def test_the_skill_has_one_strict_the_plain_text_rule_with_one_line_why():
         assert old not in _text(SKILL), old
 
 
-def test_rules_define_the_plain_text_form_and_name_every_plain_text_question():
+TEXT_DIALOG_RULE = ("- The text-then-dialog questions are the step 2 glob question, the step 3 template choice "
+                    "with at most three candidates, the step 6 approval question, the step 8 process offer and "
+                    "the step 9 destination question. Every other question about a draft or a list, and every "
+                    "free-text question, is plain text only: the step 3 template choice with more than three "
+                    "candidates, the step 5 question rounds, the step 9 required headings, guidance and "
+                    "another-folder name.")
+TEXT_DIALOG_FORM = ("- A text-then-dialog question goes in the visible reply text: first the content, copied from "
+                    "the Read or Bash result (a tool result is not visible to the user), then the question and "
+                    "its options as the last lines of the text, numbered on one line as `1 First · 2 Second`. "
+                    "In the same message, after that text, call AskUserQuestion with the same options in the "
+                    "same order, at most four options. Then end the turn.")
+PLAIN_ONLY_FORM = ("- A plain-text-only question goes in the visible reply text: first the content, then the "
+                   "question, numbered on one line as `1 First · 2 Second` when it has fixed options. Then end "
+                   "the turn; never call AskUserQuestion for it.")
+ANSWER_RULE = ("- The next user message is the answer: the dialog choice, or a typed number or option word; "
+               "dialog \"Other\" text is read the same way; when it is unclear, ask again in plain text.")
+
+
+def test_rules_define_the_text_then_dialog_form_and_the_plain_text_only_form():
+    rules = _text(SKILL).split("\n## Rules\n", 1)[1].split("\n## ", 1)[0].splitlines()
+    for line in (TEXT_DIALOG_RULE, TEXT_DIALOG_FORM, PLAIN_ONLY_FORM, ANSWER_RULE,
+                 "- Ask every other question with AskUserQuestion, with at most four options per question."):
+        assert line in rules, line
+
+
+def test_the_typed_number_or_option_word_still_answers():
     rules = _section("Rules")
-    assert ("- The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 "
-            "question rounds, the step 6 approval question, the step 8 process offer and every step 9 "
-            "question.") in rules
-    assert ("- A plain-text question goes in the visible reply text: first the content, copied from the Read "
-            "or Bash result (a tool result is not visible to the user), then the question and its options as "
-            "the last lines, numbered on one line as `1 First · 2 Second`. Then end the turn. The next user "
-            "message is the answer: the number or the option word; when it is unclear, ask again in plain "
-            "text.") in rules
-    assert "- Ask every other question with AskUserQuestion, with at most four options per question." in rules
+    assert "or a typed number or option word" in rules
+    assert "dialog \"Other\" text is read the same way" in rules
+    assert "when it is unclear, ask again in plain text" in rules
 
 
-# Each plain-text site: (section, the sentence that asks it).
-PLAIN_TEXT_SITES = {
-    "setup-globs": ("2. First-run setup", "Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, "
-                    "then ask in plain text: `1 Confirm · 2 Correct · 3 Abort`"),
-    "setup-correct": ("2. First-run setup", "reprint and ask again in plain text with "
-                      "`1 Confirm · 2 Correct · 3 Abort`."),
-    "template-choice": ("3. Choose the template", "print them as a numbered list, then ask in plain text: "
-                        "Which number, or 0 Abort?"),
+# Each text-then-dialog site: (section, the sentence that asks it, the option line before the dialog).
+TEXT_DIALOG_SITES = {
+    "setup-globs": ("2. First-run setup", "then ask `1 Confirm · 2 Correct · 3 Abort` as text, then dialog."),
+    "setup-correct": ("2. First-run setup", "reprint and ask again `1 Confirm · 2 Correct · 3 Abort` as text, "
+                      "then dialog."),
+    "template-choice": ("3. Choose the template", "ask: Which number, or 0 Abort? as text, then dialog, with one "
+                        "option per candidate and Abort."),
+    "approval": ("6. Draft", "Then ask: the message holds the header and the full fenced `note.md`, copied from "
+                 "the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; "
+                 "then end the turn."),
+    "approval-after-change": ("6. Draft", "reprint `note.md` with the header, then ask again "
+                              "`1 Deliver · 2 Change something · 3 Abort` as text, then dialog."),
+    "approval-continue": ("1. Start", "print `note.md` with the header and ask "
+                          "`1 Deliver · 2 Change something · 3 Abort` as text, then dialog."),
+    "approval-after-failed-step": ("7. Deliver", "reprint and return to the step 6 question "
+                                   "(`1 Deliver · 2 Change something · 3 Abort` as text, then dialog)."),
+    "process-offer": ("8. Process offer", "Print what would be saved, then ask `1 Save · 2 Not now · 3 Never` "
+                      "as text, then dialog."),
+    "process-destination": ("9. Process mode", "then ask `1 Keep current · 2 Default · 3 Another folder` as "
+                            "text, then dialog."),
+}
+# Each plain-text-only site: free text or a list too long for four options.
+PLAIN_ONLY_SITES = {
+    "template-choice-long": ("3. Choose the template", "With more than three candidates ask in plain text only: "
+                             "Which number, or 0 Abort?"),
     "question-rounds": ("5. Ask for open points", "Ask in plain text, as numbered questions, at most four open "
                         "points per round, in at most two rounds."),
     "required-re-ask": ("5. Ask for open points", "ask it again in plain text with no skip option."),
-    "approval": ("6. Draft", "Then ask in plain text: the message holds the header and the full fenced "
-                 "`note.md`, copied from the Read result, and ends with `1 Deliver · 2 Change something · 3 Abort`; "
-                 "then end the turn."),
-    "approval-after-change": ("6. Draft", "reprint `note.md` with the header, then ask again in plain text "
-                              "with `1 Deliver · 2 Change something · 3 Abort`."),
-    "approval-continue": ("1. Start", "print `note.md` with the header and ask in plain text: "
-                          "`1 Deliver · 2 Change something · 3 Abort`"),
-    "approval-after-failed-step": ("7. Deliver", "reprint and return to the step 6 question "
-                                   "(`1 Deliver · 2 Change something · 3 Abort`)."),
-    "process-offer": ("8. Process offer", "Print what would be saved, then ask in plain text: "
-                      "`1 Save · 2 Not now · 3 Never`"),
-    "process-destination": ("9. Process mode", "Ask in plain text for the destination folder, ending with "
-                            "`1 Keep current · 2 Default · 3 Another folder`."),
     "process-required": ("9. Process mode", "Print the outline's headings as a numbered list, then ask in plain "
                          "text which are required; the user names them by number or heading, or none."),
     "process-guidance": ("9. Process mode", "Ask in plain text for the guidance text;"),
+    "process-another-folder": ("9. Process mode", "Another folder → ask in plain text for it"),
 }
 
 
-@pytest.mark.parametrize("site", PLAIN_TEXT_SITES)
-def test_each_draft_or_list_question_is_asked_in_plain_text(site):
-    heading, sentence = PLAIN_TEXT_SITES[site]
+@pytest.mark.parametrize("site", TEXT_DIALOG_SITES)
+def test_each_fixed_option_site_names_the_dialog_after_its_option_line(site):
+    heading, sentence = TEXT_DIALOG_SITES[site]
     assert sentence in _section(heading), site
+    assert "as text, then dialog" in sentence, site
+
+
+@pytest.mark.parametrize("site", PLAIN_ONLY_SITES)
+def test_free_text_and_long_list_sites_stay_plain_text_only(site):
+    heading, sentence = PLAIN_ONLY_SITES[site]
+    text = _section(heading)
+    assert sentence in text, site
+    at = text.index(sentence)
+    own = text[text.rfind(". ", 0, at) + 1:at + len(sentence) + 80]
+    assert "dialog" not in own and "AskUserQuestion" not in own, site
+
+
+def test_the_candidate_dialog_is_limited_to_three_candidates_plus_abort():
+    text = _section("3. Choose the template")
+    assert "With at most three candidates ask" in text
+    assert "with one option per candidate and Abort" in text
+    assert text.index("With at most three candidates") < text.index("With more than three candidates")
+    assert "With more than three candidates ask in plain text only" in text
 
 
 @pytest.mark.parametrize("heading", ["2. First-run setup", "5. Ask for open points", "6. Draft",
@@ -380,11 +424,17 @@ def test_no_plain_text_section_says_to_ask_with_askuserquestion(heading):
     assert "AskUserQuestion" not in _section(heading), heading
 
 
-def test_askuserquestion_is_named_only_in_the_frontmatter_the_strict_and_the_dialog_rule():
+def test_askuserquestion_is_named_only_in_the_strict_and_the_rules():
     body = _text(SKILL).split("\n---\n", 1)[1]
     hits = [line for line in body.splitlines() if "AskUserQuestion" in line]
-    assert hits == [NEW_STRICT, NEW_WHY,
-                    "- Ask every other question with AskUserQuestion, with at most four options per question."]
+    assert hits == [NEW_STRICT, NEW_WHY, TEXT_DIALOG_FORM, PLAIN_ONLY_FORM,
+                    "- Ask every other question with AskUserQuestion, with at most four options per question.",
+                    DIALOG_SUBJECT_RULE]
+
+
+def test_the_strict_pins_text_first_and_never_a_dialog_without_it():
+    assert "only after that text" in NEW_STRICT and "never without it" in NEW_STRICT
+    assert "Call AskUserQuestion only after that text, in the same message; never without it." in _text(SKILL)
 
 
 def test_no_draft_or_list_question_keeps_its_dialog_option_form():
@@ -520,7 +570,7 @@ ABORT_LINES = {
         "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
     ),
     "5. Ask for open points": ("Abort at any question → drop.",),
-    "6. Draft": ("and ends with `1 Deliver · 2 Change something · 3 Abort`; then end the turn.", "- Abort → drop."),
+    "6. Draft": ("and ends with `1 Deliver · 2 Change something · 3 Abort` as text, then dialog; then end the turn.", "- Abort → drop."),
     "7. Deliver": (
         "rerun `deliver`. Abort → drop.",
         "Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, "
@@ -598,7 +648,7 @@ def test_a_failed_step_is_reported_and_the_draft_kept():
 def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_draft():
     assert ("When `step` is empty, the filled-note check or the frontmatter stamp failed instead: "
             "fix `draft.md`, rerun `stage`, reprint and return to the step 6 question "
-            "(`1 Deliver · 2 Change something · 3 Abort`).") in _section("7. Deliver")
+            "(`1 Deliver · 2 Change something · 3 Abort` as text, then dialog).") in _section("7. Deliver")
 
 
 def test_a_withdrawn_action_offers_only_drop_or_abort_and_names_landed_files():
@@ -656,8 +706,8 @@ def test_process_paths_branch_on_template_outline_failures(heading):
 
 def test_process_mode_defines_keep_current_and_default_destination():
     text = _section("9. Process mode")
-    assert ("Ask in plain text for the destination folder, ending with `1 Keep current · 2 Default · 3 Another "
-            "folder`. Offer Keep current only when `exists` is true and `destination` is not empty;") in text
+    assert ("then ask `1 Keep current · 2 Default · 3 Another folder` as text, then dialog. Offer Keep current "
+            "only when `exists` is true and `destination` is not empty;") in text
     assert "Keep current → `--destination \"<destination>\"` with the current value." in text
     assert "Default → omit `--destination`; notes then go to the atomic-note folder." in text
     assert "Another folder → ask in plain text for it and pass it as `--destination \"<folder>\"`." in text
@@ -732,7 +782,7 @@ def test_each_skill_call_parses_with_the_scripts_argparse(script, rest, monkeypa
         pytest.fail(f"{script} {rest!r} rejected by argparse (exit {exc.code})")
 
 
-DIALOG_SUBJECT_RULE = ("- The question text of every one of those other questions names what it is about: the draft's "
+DIALOG_SUBJECT_RULE = ("- The question text of every AskUserQuestion call names what it is about: the draft's "
                        "title (the template's filename without `.md` when untitled) and created time, the "
                        "`exists_path`, the reason the action was withdrawn, or the template or source with its "
                        "one-line error.")
@@ -760,8 +810,8 @@ def test_glob_confirm_save_offer_and_destination_carry_their_numbered_forms():
     assert "`1 Save · 2 Not now · 3 Never`" in _section("8. Process offer")
     process = _section("9. Process mode")
     assert "`1 Keep current · 2 Default · 3 Another folder`" in process
-    assert ("Offer Keep current only when `exists` is true and `destination` is not empty; without it end "
-            "with `1 Default · 2 Another folder`.") in process
+    assert ("Offer Keep current only when `exists` is true and `destination` is not empty; without it ask "
+            "`1 Default · 2 Another folder` the same way.") in process
 
 
 def test_the_candidate_choice_aborts_with_zero_so_every_listed_number_stays_valid():
@@ -773,7 +823,7 @@ def test_the_candidate_choice_aborts_with_zero_so_every_listed_number_stays_vali
 def test_the_rules_say_the_answer_is_the_number_or_the_option_word():
     rules = _section("Rules")
     assert "numbered on one line as `1 First · 2 Second`" in rules
-    assert "the number or the option word" in rules
+    assert "a typed number or option word" in rules
     assert "when it is unclear, ask again in plain text" in rules
 
 

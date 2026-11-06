@@ -5,7 +5,7 @@
  
  1. Print which points the material covers, then the open points.
 -2. When no point is open, ask nothing and go to step 6.
-+2. When no point is open, still confirm the people the material names: print them, then ask one question, Confirm / Correct. Then go to step 6.
++2. When no point is open, still confirm the people the material names: print them, then ask one question, Confirm / Correct. When the question cannot be asked, take Confirm. Then go to step 6.
  3. Ask at most four open points per round, in at most two rounds. Required points first. Order and weight the questions by the process `guidance`. Offer a skip option for optional points.
  4. Round 2 takes the remaining open points plus gaps the answers opened.
  5. For each required point still unanswered, ask it again with no skip option. The user can only answer or abort. Any non-empty answer, "none" included, answers a required point.

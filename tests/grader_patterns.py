@@ -158,11 +158,18 @@ def load_fixture(name: str) -> str:
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
 
 
+def _content(event: dict) -> Any:
+    """The event's content blocks; a system event's `message` is a plain string (e.g. a
+    permission denial), which carries no blocks."""
+    message = event.get("message")
+    return message.get("content") if isinstance(message, dict) else None
+
+
 def tool_uses(trace: str) -> list[ToolUse]:
     uses = []
     for number, line in enumerate(trace.splitlines()):
         event = json.loads(line)
-        content = (event.get("message") or {}).get("content")
+        content = _content(event)
         if event.get("type") != "assistant" or not isinstance(content, list):
             continue
         for block in content:
@@ -183,7 +190,7 @@ def last_message(trace: str) -> str:
     last = ""
     for line in trace.splitlines():
         event = json.loads(line)
-        content = (event.get("message") or {}).get("content")
+        content = _content(event)
         if event.get("type") != "assistant" or not isinstance(content, list):
             continue
         texts = [str(b.get("text") or "") for b in content if b.get("type") == "text"]

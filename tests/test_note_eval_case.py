@@ -3,11 +3,13 @@
 Offline checks before any paid run: the case's shape and scaffold, that its
 material fills every point of the one candidate template (so no question round
 is due), and every grader against traces in the real event shape. The traces
-are built from the recorded spike trace's event lines (spec 043 fixtures) and
-carry the real skill prose in the Skill tool's text event, so a pattern that
-matches the prose instead of a call goes red here. One model per pending
-mutation (evals/_mutations/README.md `## Pending proofs`) must turn exactly
-its expected graders red.
+are built from the event lines of the recorded probe run of this case
+(tests/fixtures/044-note-probe/trace.jsonl, paths redacted) and carry the real
+skill prose in the Skill tool's text event, so a pattern that matches the prose
+instead of a call goes red here. The probe itself must pass every grader; an
+empty or truncated run must fail every grader but the leak guard. One model per
+pending mutation (evals/_mutations/README.md `## Pending proofs`) must turn
+exactly its expected graders red.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import pytest
 import yaml
 
 import note_stub_kit as nk
-from grader_patterns import FIXTURES_DIR, evaluate, load_grader
+from grader_patterns import evaluate, load_grader, tool_uses
 
 REPO = Path(__file__).resolve().parent.parent
 EVALS = REPO / "evals"
@@ -53,11 +55,6 @@ HEADER = (
     f"{nk.STEM}_{TITLE}.md\nSource 100 Inbox/Meeting with Dana.md is deleted when you apply the "
     "instruction set in Hashi."
 )
-APPROVAL = {"questions": [{"question": "Deliver this note to the inbox?", "header": "Draft",
-                           "multiSelect": False,
-                           "options": [{"label": "Deliver", "description": "Write the note and its set"},
-                                       {"label": "Change something", "description": "Edit the draft"},
-                                       {"label": "Abort", "description": "Discard the draft"}]}]}
 
 
 # ---- case shape ----------------------------------------------------------------------
@@ -118,9 +115,21 @@ def test_one_candidate_and_the_material_fills_every_point(tmp_path):
 
 
 # ---- offline traces in the real event shape ------------------------------------------
+#
+# The recorded probe (`tests/fixtures/044-note-probe/trace.jsonl`, a `--runs 1` run of this
+# case with absolute paths redacted) is the source of every event shape below. That session
+# did not offer AskUserQuestion: the model searched for it with ToolSearch, found nothing,
+# and printed the header, note.md and the approval question as its final text. The graders
+# therefore anchor on that end of the run, not on an AskUserQuestion call.
 
-SPIKE = (FIXTURES_DIR / "pass1-spike.jsonl").read_text(encoding="utf-8").splitlines()
-TOOL_USE, TOOL_RESULT, TEXT, SKILL_TEXT = (json.loads(SPIKE[i]) for i in (0, 1, 6, 9))
+PROBE_PATH = REPO / "tests" / "fixtures" / "044-note-probe" / "trace.jsonl"
+PROBE = PROBE_PATH.read_text(encoding="utf-8")
+PROBE_LINES = PROBE.splitlines()
+INIT, TOOL_USE, SKILL_TEXT, TOOL_RESULT, TEXT, RESULT = (
+    json.loads(PROBE_LINES[i - 1]) for i in (1, 2, 5, 37, 43, 44))
+QUESTION = ("I couldn't load the question tool in this session, so I'm asking in plain text. "
+            "What next?\n\n- **Deliver**: write the note and its instruction set to the inbox.\n"
+            "- **Change something**: tell me what to change.\n- **Abort**: discard the draft.")
 
 
 def enc(event: dict) -> str:
@@ -128,9 +137,12 @@ def enc(event: dict) -> str:
 
 
 class Trace:
+    """A trace built from the probe's event lines: init frame, events, result frame."""
+
     def __init__(self):
-        self.lines: list[str] = []
+        self.lines: list[str] = [enc(INIT)]
         self.n = 0
+        self.last_text = ""
 
     def call(self, name: str, tool_input: dict, result: str, error: bool = False) -> "Trace":
         self.n += 1
@@ -142,20 +154,22 @@ class Trace:
         res["message"]["content"] = [{"tool_use_id": tid, "type": "tool_result", "content": result,
                                       "is_error": error}]
         res["tool_use_result"]["stdout"] = result
+        res["tool_result_meta"][0]["id"] = tid
         self.lines += [enc(use), enc(res)]
         return self
 
     def bash(self, command: str, result: str = "") -> "Trace":
         return self.call("Bash", {"command": command}, result)
 
-    def read(self, path: str, text: str) -> "Trace":
-        numbered = "".join(f"{i}\t{ln}\n" for i, ln in enumerate(text.splitlines(), 1))
-        return self.call("Read", {"file_path": f"<WS>/{path}"}, numbered)
+    def write(self, path: str, content: str) -> "Trace":
+        return self.call("Write", {"file_path": f"<WS>/{path}", "content": content},
+                         f"File created successfully at: <WS>/{path}")
 
     def say(self, text: str) -> "Trace":
         event = copy.deepcopy(TEXT)
         event["message"]["content"] = [{"type": "text", "text": text}]
         self.lines.append(enc(event))
+        self.last_text = text
         return self
 
     def skill(self) -> "Trace":
@@ -164,85 +178,97 @@ class Trace:
                   "Launching skill: tomo:note-from-template")
         event = copy.deepcopy(SKILL_TEXT)
         event["message"]["content"] = [{"type": "text", "text": "Base directory for this skill: "
-                                        "<WS>/plugin/skills/note-from-template\n\n"
+                                        "<PLUGIN>/skills/note-from-template\n\n"
                                         + SKILL.read_text(encoding="utf-8")}]
         self.lines.append(enc(event))
         return self
 
-    def ask(self, tool_input: dict = APPROVAL) -> "Trace":
-        return self.call("AskUserQuestion", tool_input, "No answer: the question cannot be shown here.",
-                         error=True)
+    def search_question_tool(self) -> "Trace":
+        return self.call("ToolSearch", {"query": "select:AskUserQuestion", "max_results": 1},
+                         "No matching deferred tools found")
 
     def text(self) -> str:
-        return "\n".join(self.lines) + "\n"
+        result = copy.deepcopy(RESULT)
+        result["result"] = self.last_text
+        return "\n".join(self.lines + [enc(result)]) + "\n"
 
 
-def _until_stage(t: Trace) -> Trace:
+def _until_outline(t: Trace) -> Trace:
     t.skill()
     t.bash("python3 scripts/note-session.py start --args='a meeting note from the inbox note "
            "\"100 Inbox/Meeting with Dana.md\"'", '{"mode": "note", "candidates": [...]}')
-    t.say("One template fits: t_meeting_tomo.")
+    t.say("One candidate fits: `t_meeting_tomo`. I'll use it.")
     t.bash(f'python3 scripts/note-instructions.py new --template "{nk.TEMPLATE}" --source "{nk.SOURCE}"',
            f'{{"stem": "{nk.STEM}", "run_id": "{nk.RUN_ID}"}}')
-    t.bash(f'python3 scripts/template-outline.py --template "{nk.TEMPLATE}" --stage {nk.STEM}', "{...}")
-    t.bash(f"python3 scripts/note-process.py read --template t_meeting_tomo --outline {STAGE}/outline.json",
-           '{"exists": false}')
-    t.read(f"{STAGE}/template.md", DRAFT)
-    t.say("The material covers every point: attendees, agenda, decisions and action items. "
-          "No point is open.")
-    t.bash(f"cat > {STAGE}/draft.md <<'EOF'\n{DRAFT}EOF")
-    return t
+    t.bash(f'python3 scripts/template-outline.py --template "{nk.TEMPLATE}" --stage {nk.STEM}; '
+           f"python3 scripts/note-process.py read --template t_meeting_tomo --outline {STAGE}/outline.json",
+           '{...}\n{"exists": false}')
+    return t.bash(f"cd {STAGE} && cat template.md && cat source.md", DRAFT)
 
 
-def _stage(t: Trace) -> Trace:
+def _draft_and_stage(t: Trace) -> Trace:
+    t.say("The inbox note covers every point: the date, attendees, agenda, decisions and action "
+          "items. I have no questions to ask, so I'll draft the note.")
+    t.write(f"{STAGE}/draft.md", DRAFT)
     return t.bash(f'python3 scripts/note-instructions.py stage --stem {nk.STEM} --title "{TITLE}"',
                   f'{{"stem": "{nk.STEM}", "frozen": false, "check": {{"ok": true}}}}')
 
 
-def _ending(t: Trace) -> Trace:
-    return t.say("Deliver, change something, or abort?")
+def _shown(body: str, header: bool = True) -> str:
+    return (f"{HEADER}\n\n" if header else "") + f"```\n{body}```"
 
 
 def model(name: str) -> str:
     """The trace a run under each pending mutation is expected to look like."""
-    t = _until_stage(Trace())
-    if name == "question_round":
+    t = _until_outline(Trace())
+    if name in ("question_round", "question_round_stops"):
         t.say("The material names Dana Weber and Luis Ortega.")
-        t.ask({"questions": [{"question": "Are these the attendees?", "header": "Attendees",
-                              "multiSelect": False, "options": [{"label": "Confirm"},
-                                                                {"label": "Correct"}]}]})
-    _stage(t)
+        t.search_question_tool()
+        if name == "question_round_stops":
+            return t.say("Are these the attendees? Confirm / Correct").text()
+        t.say("I can't ask here, so I take Confirm.")
+    _draft_and_stage(t)
     if name == "ask_first":
-        approval = copy.deepcopy(APPROVAL)
-        approval["questions"][0]["options"].insert(1, {"label": "Show the draft"})
-        return _ending(t.ask(approval)).text()
+        return t.search_question_tool().say(
+            "Deliver / Show the draft / Change something / Abort: what next?").text()
     if name == "draft_printed":
-        t.read(f"{STAGE}/draft.md", DRAFT).say(f"{HEADER}\n\n```markdown\n{DRAFT}```")
+        t.bash(f"cat <WS>/{STAGE}/draft.md", DRAFT)
+        shown = _shown(DRAFT)
     else:
-        t.read(f"{STAGE}/note.md", NOTE)
-        shown = f"```markdown\n{NOTE}```" if name == "header_missing" else f"{HEADER}\n\n```markdown\n{NOTE}```"
-        t.say(shown)
+        t.bash(f"cat <WS>/{STAGE}/note.md", NOTE)
+        shown = _shown(NOTE, header=name != "header_missing")
     if name == "deliver_first":
         t.bash(f"python3 scripts/note-instructions.py deliver --stem {nk.STEM}", '{"status": "delivered"}')
-    if name != "no_question":
-        t.ask()
-    return _ending(t).text()
+    t.search_question_tool()
+    if name == "silent_stop":
+        return t.say(shown).text()
+    return t.say(f"{shown}\n\n{QUESTION}").text()
 
 
+def empty() -> str:
+    return enc(INIT) + "\n"
+
+
+def truncated() -> str:
+    """The real probe cut after `cat note.md`: staged and read, nothing printed, nothing asked."""
+    return "\n".join(PROBE_LINES[:37]) + "\n"
+
+
+ALL_BUT_LEAK = CONTROLS | GATES
 MODELS = ("correct", "header_missing", "ask_first", "draft_printed", "question_round",
-          "deliver_first", "no_question")
+          "question_round_stops", "deliver_first", "silent_stop")
 # Offline: which graders each model turns red (the pending table predicts the same).
 RED = {
     "correct": set(),
     "header_missing": {"1-header-before-approval"},
     "ask_first": {"1-header-before-approval", "2-note-printed-before-approval",
-                  "3-note-md-read-before-approval"},
+                  "3-note-md-read-before-approval", "4-draft-md-never-printed"},
     "draft_printed": {"2-note-printed-before-approval", "3-note-md-read-before-approval",
                       "4-draft-md-never-printed"},
     "question_round": {"5-no-question-before-approval"},
+    "question_round_stops": ALL_BUT_LEAK,
     "deliver_first": {"6-no-deliver-without-approval"},
-    "no_question": {"0-approval-asked", "1-header-before-approval", "2-note-printed-before-approval",
-                    "3-note-md-read-before-approval", "5-no-question-before-approval"},
+    "silent_stop": ALL_BUT_LEAK - {"4-draft-md-never-printed"},
 }
 
 
@@ -255,27 +281,83 @@ def test_each_model_turns_exactly_its_graders_red(name):
     assert red_graders(model(name)) == RED[name]
 
 
-def test_the_trace_carries_the_skill_prose_the_graders_must_not_match():
-    trace = model("correct")
+def test_the_recorded_probe_is_all_green():
+    """The strongest offline evidence: the one real run of the unmutated skill passes every grader."""
+    assert red_graders(PROBE) == set()
+
+
+def test_the_probe_fixture_is_redacted_and_shaped_as_recorded():
+    assert not re.search(r"/private/|/var/folders/|/opt/|/Users/|/Volumes/|e-tEL0Ru", PROBE)
+    init = json.loads(PROBE_LINES[0])
+    assert "AskUserQuestion" not in init["tools"] and {"Write", "ToolSearch"} <= set(init["tools"])
+    names = [use.name for use in tool_uses(PROBE)]
+    assert names[-1] == "ToolSearch" and "AskUserQuestion" not in names
+    assert json.loads(PROBE_LINES[-1])["type"] == "result"
+
+
+@pytest.mark.parametrize("trace", [empty(), truncated()], ids=["empty", "truncated"])
+def test_an_empty_or_truncated_run_turns_every_grader_but_the_leak_guard_red(trace):
+    """No grader passes vacuously; 9-no-leak (a byte copy) is paired with the control 0."""
+    assert red_graders(trace) == ALL_BUT_LEAK
+
+
+@pytest.mark.parametrize("trace", [model("correct"), PROBE], ids=["model", "probe"])
+def test_the_trace_carries_the_skill_prose_the_graders_must_not_match(trace):
+    prose = next(json.loads(ln)["message"]["content"][0]["text"] for ln in trace.splitlines()
+                 if "Base directory for this skill" in ln)
     for needle in ("{{source_link}}", "Template: <template stem>", "note-instructions.py deliver",
-                   "Deliver / Change something / Abort", "note.md"):
-        assert needle in json.loads(trace.splitlines()[2])["message"]["content"][0]["text"], needle
+                   "note-instructions.py stage", "Deliver / Change something / Abort", "note.md",
+                   "AskUserQuestion"):
+        assert needle in prose, needle
 
 
-def test_graders_ignore_a_header_printed_only_inside_the_question():
-    t = _stage(_until_stage(Trace()))
-    t.read(f"{STAGE}/note.md", NOTE)
-    question = copy.deepcopy(APPROVAL)
-    question["questions"][0]["question"] = f"{HEADER}\n\n{NOTE}\nDeliver this note?"
-    assert {"1-header-before-approval", "2-note-printed-before-approval"} <= red_graders(
-        _ending(t.ask(question)).text())
+def test_the_prose_alone_turns_every_grader_but_the_leak_guard_red():
+    t = Trace().skill()
+    assert red_graders(t.text()) == ALL_BUT_LEAK
+
+
+def test_graders_ignore_a_header_printed_only_inside_a_question_call():
+    t = _draft_and_stage(_until_outline(Trace()))
+    t.bash(f"cat <WS>/{STAGE}/note.md", NOTE)
+    t.call("AskUserQuestion", {"questions": [{"question": f"{_shown(NOTE)}\n\nDeliver this note?",
+                                              "options": [{"label": "Deliver"}, {"label": "Abort"}]}]},
+           "No such tool available: AskUserQuestion", error=True)
+    assert red_graders(t.say(QUESTION).text()) == {"1-header-before-approval",
+                                                   "2-note-printed-before-approval",
+                                                   "4-draft-md-never-printed"}
 
 
 def test_a_deliver_after_the_question_still_counts():
-    t = Trace()
-    _stage(_until_stage(t)).read(f"{STAGE}/note.md", NOTE).say(f"{HEADER}\n\n{NOTE}").ask()
+    t = _draft_and_stage(_until_outline(Trace()))
+    t.bash(f"cat <WS>/{STAGE}/note.md", NOTE).say(f"{_shown(NOTE)}\n\n{QUESTION}")
     t.bash(f"python3 scripts/note-instructions.py deliver --stem {nk.STEM}", "{}")
-    assert red_graders(_ending(t).text()) == {"6-no-deliver-without-approval"}
+    assert red_graders(t.say(QUESTION).text()) == {"6-no-deliver-without-approval"}
+
+
+def test_a_quoted_token_in_a_sentence_is_not_a_printed_draft():
+    trace = model("correct").replace("What next?", "I kept `{{source_link}}` in the draft. What next?")
+    assert "{{source_link}}" in trace and red_graders(trace) == set()
+
+
+def test_a_plain_text_question_before_the_draft_counts_as_a_question_round():
+    t = _until_outline(Trace())
+    t.say("Are Dana Weber and Luis Ortega the attendees? I'll assume yes.")
+    _draft_and_stage(t).bash(f"cat <WS>/{STAGE}/note.md", NOTE)
+    t.search_question_tool().say(f"{_shown(NOTE)}\n\n{QUESTION}")
+    assert red_graders(t.text()) == {"5-no-question-before-approval"}
+
+
+def test_the_approval_split_from_the_note_still_passes():
+    """Note printed in one text event, the question in a later one, after the ToolSearch."""
+    t = _draft_and_stage(_until_outline(Trace()))
+    t.bash(f"cat <WS>/{STAGE}/note.md", NOTE).say(_shown(NOTE)).search_question_tool().say(QUESTION)
+    assert red_graders(t.text()) == set()
+
+
+def test_header_grader_accepts_the_inbox_file_as_a_path():
+    trace = model("correct").replace(f"applied: {nk.STEM}_", f"applied: 100 Inbox/{nk.STEM}_")
+    assert f"applied: 100 Inbox/{nk.STEM}_" in trace
+    assert red_graders(trace) == set()
 
 
 # ---- pending proofs ----------------------------------------------------------------------
@@ -318,7 +400,8 @@ def test_each_note_mutation_patches_only_the_skill(name):
     assert set(re.findall(r"^\+\+\+ b/(\S+)", text, re.M)) == {"skills/note-from-template/SKILL.md"}
 
 
-def test_header_grader_accepts_the_inbox_file_as_a_path():
-    trace = model("correct").replace(f"applied: {nk.STEM}_", f"applied: 100 Inbox/{nk.STEM}_")
-    assert f"applied: 100 Inbox/{nk.STEM}_" in trace
-    assert red_graders(trace) == set()
+def test_confirm_attendees_keeps_the_run_going_when_the_question_cannot_be_asked():
+    """Neutral step aimed at grader 5 alone: the confirmation must not end the run."""
+    text = (EVALS / "_mutations" / "confirm-attendees.patch").read_text(encoding="utf-8")
+    added = " ".join(ln[1:] for ln in text.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
+    assert "Confirm / Correct" in added and "cannot be asked" in added and "take Confirm" in added

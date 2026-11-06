@@ -1642,3 +1642,136 @@ def test_fake_note_reads_reject_a_non_md_path(method):
     fake = nfv.NoteFakeVault({"b.json": b"{}"})
     with pytest.raises(KadoToolError):
         getattr(fake, method)("b.json")
+
+
+# ── view.md (T4.5, F4-AC5) ───────────────────────────────────────────────
+
+VIEW_DEST = "Atlas/Meetings"
+DELETED_LINE = f"Source {SOURCE} is deleted when you apply the instruction set in Hashi."
+
+
+def _view(inst) -> Path:
+    return note_meta.stage_root(inst) / "view.md"
+
+
+def _header(stem, title="Design review", dest="Atlas/Meetings/"):
+    return (f"Template: t_meeting · Final name: {dest}{title}.md · "
+            f"In the inbox until applied: {stem}_{title}.md")
+
+
+def _staged_view(inst, capsys, *extra, draft=GOOD_DRAFT):
+    stem = _staged(inst, capsys, draft=draft)
+    rc, _, err = _stage(capsys, stem, "--title", "Design review",
+                        "--destination", VIEW_DEST, *extra)
+    assert rc == 0, err
+    assert _view(inst).is_file(), "precondition: stage wrote view.md"
+    return stem
+
+
+def test_stage_writes_view_with_header_and_fenced_note(inst, capsys):
+    stem = _staged_view(inst, capsys)
+    note = _note(inst, stem)
+    assert _view(inst).read_text(encoding="utf-8") == (
+        f"{_header(stem)}\n\n{DELETED_LINE}\n\n````markdown\n{note}````\n")
+
+
+def test_view_omits_the_source_line_when_the_source_is_kept(inst, capsys):
+    stem = _staged_view(inst, capsys, "--keep-source", "true")
+    view = _view(inst).read_text(encoding="utf-8")
+    assert view.startswith(_header(stem) + "\n\n````markdown\n")
+    assert "is deleted when you apply" not in view
+
+
+def test_view_omits_the_source_line_without_a_source(inst, capsys):
+    stem = _new(capsys)["stem"]
+    (note_meta.stage_dir(inst, stem) / "draft.md").write_text(GOOD_DRAFT, encoding="utf-8")
+    rc, _, err = _stage(capsys, stem, "--title", "Design review", "--destination", VIEW_DEST)
+    assert rc == 0, err
+    assert "is deleted when you apply" not in _view(inst).read_text(encoding="utf-8")
+
+
+def test_view_fence_outgrows_backticks_in_the_note(inst, capsys):
+    draft = GOOD_DRAFT + "`````\ncode\n`````\n"
+    _staged_view(inst, capsys, draft=draft)
+    view = _view(inst).read_text(encoding="utf-8")
+    assert "\n``````markdown\n" in view and view.endswith("\n``````\n")
+
+
+def test_view_follows_a_keep_source_flip(inst, capsys):
+    stem = _staged_view(inst, capsys)
+    _stage(capsys, stem, "--keep-source", "true")
+    assert DELETED_LINE not in _view(inst).read_text(encoding="utf-8")
+    _stage(capsys, stem, "--keep-source", "false")
+    assert DELETED_LINE in _view(inst).read_text(encoding="utf-8")
+
+
+def test_drop_removes_the_view(inst, capsys):
+    stem = _staged_view(inst, capsys)
+    rc, _, _ = _run(["drop", "--stem", stem], capsys)
+    assert rc == 0 and not _view(inst).exists()
+
+
+def test_new_removes_a_stale_view(inst, capsys):
+    _staged_view(inst, capsys)
+    _new(capsys)
+    assert not _view(inst).exists()
+
+
+def test_stage_of_another_stem_replaces_the_view(inst, capsys):
+    first = _staged_view(inst, capsys)
+    second = _staged(inst, capsys)
+    rc, _, err = _stage(capsys, second, "--title", "Other talk", "--destination", VIEW_DEST)
+    assert rc == 0, err
+    view = _view(inst).read_text(encoding="utf-8")
+    assert view.startswith(_header(second, title="Other talk"))
+    assert first not in view
+
+
+@pytest.mark.parametrize("extra", [["--title", ".hidden"], ["--destination", "/abs"]])
+def test_refused_stage_leaves_no_view_of_another_stem(inst, capsys, extra):
+    _staged_view(inst, capsys)
+    second = _staged(inst, capsys)
+    rc, _, _ = _stage(capsys, second, *extra)
+    assert rc == 2
+    assert not _view(inst).exists()
+
+
+def test_failing_check_leaves_no_view(inst, capsys):
+    _staged_view(inst, capsys)
+    second = _staged(inst, capsys, draft=BAD_DRAFT)
+    rc, out, _ = _stage(capsys, second, "--title", "Other talk")
+    assert rc == 0 and _json(out)["check"]["ok"] is False
+    assert not _view(inst).exists()
+
+
+def test_untitled_stage_leaves_no_view(inst, capsys):
+    _staged_view(inst, capsys)
+    second = _staged(inst, capsys)
+    rc, _, _ = _stage(capsys, second)
+    assert rc == 0 and not _view(inst).exists()
+
+
+def test_view_never_reaches_stdout_or_stderr(inst, capsys):
+    stem = _staged(inst, capsys)
+    rc, out, err = _stage(capsys, stem, "--title", "Design review")
+    assert rc == 0 and MARKER not in out and MARKER not in err
+    assert MARKER in _view(inst).read_text(encoding="utf-8")
+
+
+def test_deliver_removes_the_view(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault)
+    assert _view(inst).exists()
+    rc, _, _, _, err = _deliver(capsys, stem)
+    assert rc == 0, err
+    assert not _view(inst).exists()
+
+
+def test_failed_deliver_removes_the_view_and_a_restage_writes_it(inst, capsys, vault):
+    stem = _ready(inst, capsys, vault, BAD_DRAFT.replace("{{summary}}", "ok"))
+    (note_meta.stage_dir(inst, stem) / "draft.md").write_text(BAD_DRAFT, encoding="utf-8")
+    rc, _, out, _, _ = _deliver(capsys, stem)
+    assert rc == 1 and out["status"] == "failed" and out["step"] == ""
+    assert not _view(inst).exists()
+    (note_meta.stage_dir(inst, stem) / "draft.md").write_text(GOOD_DRAFT, encoding="utf-8")
+    rc, _, _ = _stage(capsys, stem)
+    assert rc == 0 and _view(inst).exists()

@@ -34,6 +34,8 @@ scripts/run-evals.sh --help               # all options
 
 A case is not gated when its directory holds a `NOT_GATED` file. The default run (no `--case`, also with `--mutation` or `--rev`) leaves it out of the assembled copy and prints one `skipped (not gated): <case>` line per skipped case on stderr; the verdict is still the full-suite verdict, because the merge rule covers only gated cases. Name the case with `--case` to run it (PARTIAL SUITE, as any `--case` run). Mark a case only when its coverage rows say "not gated" (`tests/test_eval_gate_docs.py` checks both agree).
 
+A not-gated case may also hold an `ALLOW_TOOLS` file: tool names separated by spaces or lines (letters, digits and `_` only). A case's `allowed_tools` in `case.yaml` cannot grant a tool; only the CLI's `--allow-tools` can, and the runner passes `--allow-tools Bash` for every case. When `--case` selects a case with `ALLOW_TOOLS`, its tools join that list (`--allow-tools Bash Write AskUserQuestion`) and stderr prints `granted (not gated): <case> <tools>`. The grant applies to the whole eval call, so the runner refuses an `ALLOW_TOOLS` file in a case without `NOT_GATED` and a `--case` glob that matches a case with the file and a gated case. The default run skips not-gated cases and keeps exactly `--allow-tools Bash`; gated cases depend on that (`pass1-suggest-pipeline/11-no-inline-vault-write` relies on Write being absent). A one-run probe: `scripts/run-evals.sh --case note-draft-before-approval --runs 1 --keep-temp`.
+
 The eval harness cannot start inside Claude Code's Bash sandbox (runs fail with EPERM and end NOT GRADED). Run it from a terminal, or from a coding session with the sandbox bypassed for that one command (`!scripts/run-evals.sh` in the prompt).
 
 Exit codes:
@@ -114,7 +116,7 @@ Limits of the spec 043 graders (the Pass 1 cases and the report-only graders):
 Limits of the `/note` case (`note-draft-before-approval`):
 
 - `AskUserQuestion` cannot be answered. The case grades only the run up to the approval question; Deliver, Change something and Abort, and every dialogue branch, are covered by `tests/test_note_skill_prose.py` and the spec 044 live walk. `0-approval-asked` is the control: when it is red, the run never reached the question (or the tool was not offered), and the ordering graders tell nothing.
-- The Write tool is unavailable in the eval session (see above), so the model writes `draft.md` with Bash; a run that cannot write it never reaches the draft.
+- The case's `ALLOW_TOOLS` file grants Write and `AskUserQuestion` when it runs with `--case`, so the model can write `draft.md` and ask the approval question. Without the grant (a run before #169) the session offered neither, and the run never reached the draft.
 - The ordering graders anchor on the first `AskUserQuestion` call whose input names Deliver; a printed header inside the question's own text does not count as printed.
 - `4-draft-md-never-printed` reads every assistant text event: a sentence that quotes `{{source_link}}` turns it red although no draft was printed.
 

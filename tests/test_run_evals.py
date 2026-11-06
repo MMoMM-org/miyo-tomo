@@ -955,3 +955,108 @@ def test_default_run_with_only_not_gated_cases_is_refused(env):
     proc = env.run()
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert env.eval_calls() == []
+
+
+# ── per-case extra tools (evals/<name>/ALLOW_TOOLS, #169) ─────
+
+
+def _grant(env, name: str, text: str) -> None:
+    _write(env.repo / "evals" / name / "ALLOW_TOOLS", text)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", f"grant {name}")
+
+
+def _allow_tools(call: list[str]) -> list[str]:
+    """The values of --allow-tools: every argument up to the next option."""
+    i = call.index("--allow-tools") + 1
+    out = []
+    while i < len(call) and not call[i].startswith("-"):
+        out.append(call[i])
+        i += 1
+    return out
+
+
+def test_case_flag_on_a_granted_not_gated_case_adds_its_tools(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run("--case", "ng-case", "--runs", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    (call,) = env.eval_calls()
+    assert call.count("--allow-tools") == 1
+    assert _allow_tools(call) == ["Bash", "Write", "AskUserQuestion"]
+    assert env.flag(call, "--runs") == "1"
+    assert "granted (not gated): ng-case Write AskUserQuestion" in proc.stderr.splitlines()
+
+
+def test_grant_marker_takes_one_tool_per_line_and_drops_duplicates(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n\nAskUserQuestion Write\nBash\n")
+    proc = env.run("--case", "ng-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash", "Write", "AskUserQuestion"]
+
+
+def test_default_run_never_carries_a_not_gated_grant(env):
+    # Falsifies applying the marker outside --case: the gated suite keeps exactly Bash.
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+    assert "granted" not in proc.stderr
+
+
+def test_gated_case_run_carries_exactly_bash_while_another_case_holds_a_grant(env):
+    # Falsifies a suite-wide union of every marker: --case on the gated case grants nothing.
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run("--case", "probe-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+
+
+def test_default_mutation_run_never_carries_a_not_gated_grant(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n")
+    proc = env.run("--mutation", "flip")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+
+
+def test_grant_on_a_gated_case_is_refused(env):
+    _grant(env, "probe-case", "Write\n")
+    for args in ((), ("--case", "probe-case")):
+        proc = env.run(*args)
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "ALLOW_TOOLS" in proc.stderr and "NOT_GATED" in proc.stderr
+    assert env.eval_calls() == []
+
+
+def test_case_glob_mixing_a_granted_case_with_a_gated_case_is_refused(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n")
+    proc = env.run("--case", "*")
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "probe-case" in proc.stderr
+    assert env.eval_calls() == []
+
+
+@pytest.mark.parametrize("bad", ["Write;rm", "Bash(git:*)", "-j", "", "\n"])
+def test_malformed_grant_marker_is_refused(env, bad):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", bad)
+    proc = env.run("--case", "ng-case")
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert env.eval_calls() == []
+
+
+def test_note_case_marker_grants_write_and_ask_user_question():
+    marker = REPO / "evals" / "note-draft-before-approval" / "ALLOW_TOOLS"
+    assert marker.read_text().split() == ["Write", "AskUserQuestion"]
+    assert (marker.parent / "NOT_GATED").is_file()
+
+
+def test_no_gated_case_holds_a_grant_marker():
+    for case in (REPO / "evals").iterdir():
+        if (case / "ALLOW_TOOLS").exists():
+            assert (case / "NOT_GATED").is_file(), case.name

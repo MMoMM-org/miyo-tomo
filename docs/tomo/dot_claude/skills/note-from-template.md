@@ -389,6 +389,10 @@ WHY: One recorded paid run proves the model prints the draft before asking and d
 `/note` is not in the CLAUDE.md eval gate because gating every later edit would cost a paid run each time. The
 trade-off: later edits to the skill have no automatic model check, so review them by hand.
 
+## Why Scripts Run from the Working Directory, Not the Skill Directory
+
+WHY: Observed deviation: the Skill tool result begins "Base directory for this skill: …/skills/note-from-template", and with "Run every script from the instance root" the model cd'd into the skill's base directory, so `python3 scripts/note-session.py` exited 2 and three calls were spent finding `scripts/`; the sentence now names the session's working directory and forbids the skill's base directory.
+
 ## Why the Runtime Details Look the Way They Do
 
 WHY: `start` is called as `--args='<request>'` (single quotes, each `'` written as `'\''`): the `=` form keeps a

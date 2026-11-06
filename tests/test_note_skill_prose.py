@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.3")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.4")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -87,6 +87,13 @@ def test_command_routes_arguments_to_the_skill_in_the_main_session():
 
 
 # ── Session start ───────────────────────────────────────────────────────────
+
+
+def test_scripts_run_from_the_working_directory_not_the_skill_dir():
+    text = _flat(SKILL)
+    assert ("Run every script from the session's working directory (the instance root), "
+            "never from the skill's base directory.") in text
+    assert "Run every script from the instance root." not in text
 
 
 def test_start_uses_the_equals_form_of_args():

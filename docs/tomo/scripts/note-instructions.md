@@ -243,8 +243,9 @@ The upload and the `meta.json` write that records it are two operations, and
 nothing makes them atomic. If the record fails (a local I/O error, exit 2) or
 the process is killed between them on the first step, the vault holds the note
 while `meta.json` still says `steps_done` `[]` and `failed_step` empty: exactly
-the shape of an untouched stage. `note-session.py start` would list it as stale
-and the skill would drop it, orphaning a landed note. So `deliver` writes
+the shape of an untouched stage. `note-session.py start` would list it as an
+unfinished draft (a stale stage before the spec 044 live walk), whose Discard says
+nothing landed in the inbox, orphaning a landed note. So `deliver` writes
 `meta.json` with `failed_step` set to the step just before uploading it.
 Whatever happens after that, the stage is a kept draft; a successful upload is
 then recorded as done, which clears `failed_step` as before. A resume finds the
@@ -274,9 +275,9 @@ When the constructor raises, `deliver` stops before the guards and before any
 write. It reports `step` `kado_config` and records it as `failed_step` in
 `meta.json`. Recording is what keeps the draft: a first delivery that stopped
 there has neither `steps_done` nor `failed_step` otherwise, so
-`note-session.py start` would list it as a stale stage and the next `/note`
-would drop it, losing an approved draft to a configuration gap. With
-`failed_step` set it is a kept draft and is offered for resume. Nothing is in
+`note-session.py start` would list it as an unfinished draft (a stale stage, dropped
+unasked, before the spec 044 live walk) and the user would have to approve the same
+draft again. With `failed_step` set it is a kept draft and is offered for resume. Nothing is in
 `steps_done`, so the resume reruns the whole delivery from the guards on. A
 named step also lets the skill take its generic "report the failed step; the
 draft stays" path instead of needing a branch for a missing configuration.
@@ -434,3 +435,10 @@ The stage directory is the record of what landed (`steps_done`) and of what is
 still to do. Removing it after a failure would lose the resume and leave files
 in the inbox that no draft accounts for. On success nothing is left to resume,
 and a leftover directory would be offered again at the next `/note` (ADR-7).
+
+## WHY NOTE_FILE Comes From lib/note_meta.py
+
+`stage` writes `note.md`, and `lib/note_meta.list_stages` reads its presence as
+the `staged` signal of an unfinished draft. The name is defined once in the
+library and imported here, so the writer and the listing cannot name different
+files.

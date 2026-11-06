@@ -79,8 +79,32 @@ and a successful `deliver` clean it up, which is why the skill must call `drop` 
 
 WHY: A draft holds user material and nothing deliverable until approved. On abort at any question the skill runs
 `note-instructions.py drop` when a stem exists and confirms in one line, so no orphan stage remains. A confirmed
-`note_include` stays saved: it is a configuration decision, not part of the draft. Interrupted dialogues found at
-start (`stale_stages`) get one line and a `drop` each for the same reason.
+`note_include` stays saved: it is a configuration decision, not part of the draft. Only an explicit Abort drops
+(F6-AC5); a session that ends without an answer leaves an unfinished draft for the next `/note` (see the next
+section). Stages whose `meta.json` is missing or unreadable (`stale_stages`) get one line and a `drop` each: they
+cannot be named in a question, and `new` writes `meta.json` right after the directory, so nothing else is in them.
+
+## Why an Unfinished Draft Is Offered Continue / Discard
+
+WHY: The spec 044 live walk (session c573b7b7) printed a draft and waited for approval; the user ran `/note` again,
+and `start` listed the stage as stale, so the skill dropped it with a one-line notice. The user expected to be asked.
+A stage with readable `meta.json` and no delivery step is the user's material and possibly a draft they have already
+read, so the owner decided that every such stage is offered, never dropped unasked. `start` lists them in
+`unfinished_drafts`; the skill handles them after `kept_drafts` (deliveries that may have files in the vault come
+first) and before the new request, the same order as Resume.
+
+Continue branches on `staged` from the script, not on files the model checks. A printed draft (`staged` true) goes
+back to the approval question: the skill reruns `stage --stem <stem>` with no other option, which rewrites `note.md`
+from `draft.md`, reruns the filled-note check and prints `destination_file`, `inbox_file` and `keep_source` for the
+header. The skipped line is omitted because the skipped points belonged to the earlier session and are not recorded;
+the source line uses the entry's `source_path`. No process offer follows: step 8 needs the `read` result of this
+session and a signal from the dialogue, and neither exists for a draft resumed at its last question. An unstaged
+draft (`staged` false) restarts the questions with the same stem: the step 4 `template-outline.py --stage` and
+`note-process.py read` calls are rerun, because `template.md` and `outline.json` may be missing (the session can end
+between `new` and the outline) and the `read` result (`required`, `guidance`, `missing_required`) lived only in the
+earlier conversation. `new` is never run again: it would draw a second stem and leave the first as another
+unfinished draft. The earlier request text is gone, so the material is `source.md` when it exists. Discard runs
+`drop` and says nothing landed in the inbox, which is true because no delivery step was ever recorded.
 
 ## Why Resume-or-Drop Is Never a Silent Drop
 

@@ -9,7 +9,7 @@
 Two scripts touch draft state: `note-instructions.py` (`new`, `stage`, `deliver`,
 `drop`) writes it, and `note-session.py start` lists it to offer resume. Hyphenated
 scripts cannot import each other, so the field set, the frozen rule and the
-kept/stale split live here once. A second reader that re-derived "a kept draft is
+kept/unfinished/stale split live here once. A second reader that re-derived "a kept draft is
 one with `failed_step` set or `steps_done` non-empty" would drift from the writer the first time either
 changed.
 
@@ -56,7 +56,7 @@ applies: a refused `keep_source` change leaves title and destination untouched,
 and a refused title or destination change leaves `keep_source` untouched.
 Restating the current `keep_source` is not a change.
 
-## WHY a Started Delivery Is Kept and Only an Untouched Stage Is Stale
+## WHY a Started Delivery Is Kept, an Unfinished Draft Is Offered and Only Unreadable State Is Stale
 
 A kept draft is a delivery that started and did not finish: `failed_step` is set
 (a step failed, F6-AC1, or the Kado configuration was missing: `kado_config`) or `steps_done` is non-empty (SDD "Interrupted
@@ -68,12 +68,28 @@ failed one. A kill between an upload and its record cannot fall through to
 stale: `note-instructions.py deliver` sets `failed_step` to the step before
 uploading it, so the in-flight step already keeps the draft.
 
-A stale stage has neither `failed_step` nor `steps_done`: a dialogue that was
-interrupted before approval. It holds user material but nothing landed, so
-`start` reports it as stale and the skill drops it. A directory whose meta.json
-is missing or unreadable is stale for the same reason: `new` writes meta.json
-right after creating the directory, so its absence means the run died in
-between.
+An unfinished draft has a readable meta.json with neither `failed_step` nor
+`steps_done`: a dialogue that ended before approval. Nothing landed, but it holds
+the user's material and possibly a draft the user has already read. It was once
+listed as stale and dropped at the next start; the spec 044 live walk (session
+c573b7b7) showed a printed draft, waiting for approval, dropped that way when the
+user ran `/note` again. So `start` lists it in `unfinished_drafts` and the skill
+asks Continue / Discard. The entry carries `stem`, `title`, `template` and
+`created` to name the draft, `source_path` for the header's source line, and
+`staged`, which picks where Continue resumes.
+
+`staged` is true when the stage holds `note.md` and meta.json records a non-empty
+title. These are the real signals of a draft the user has seen: `new` records an
+empty title and writes no `note.md`; `stage` records the title and writes `note.md`
+from `draft.md`, removing it when `draft.md` is missing. A `note.md` without a
+title, or a title without `note.md`, is not a printed draft, so Continue goes back
+to the questions. `NOTE_FILE` lives here and `note-instructions.py` imports it, so
+the writer and the listing name the same file.
+
+A stale stage is a directory whose meta.json is missing or unreadable. `new`
+writes meta.json right after creating the directory, so its absence means the run
+died in between, and an unreadable file cannot name the draft for a question.
+`start` reports it as stale and the skill drops it with one line.
 
 ## WHY a Kept Draft Entry Carries steps_done and frozen
 

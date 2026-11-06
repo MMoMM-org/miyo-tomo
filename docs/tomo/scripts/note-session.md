@@ -7,8 +7,8 @@
 
 ## WHY the Session Start Is a Script
 
-WHY: ADR-6. Parsing `$ARGUMENTS`, splitting stage directories into kept and
-stale, checking `note_include` and filtering the template listing are rules,
+WHY: ADR-6. Parsing `$ARGUMENTS`, splitting stage directories into kept,
+unfinished and stale, checking `note_include` and filtering the template listing are rules,
 not judgement. Done by the model they drift between runs (a glob matched
 case-insensitively once, the daily template offered once). One script makes
 the start the same every time and testable without a model in the loop
@@ -148,9 +148,13 @@ the honest result.
 
 ## WHY Kept Drafts Come From lib/note_meta.py
 
-WHY: the kept/stale split (failed_step set or steps_done non-empty) is owned by
-`lib/note_meta.list_stages`; re-deriving it here would drift from the writer
+WHY: the kept/unfinished/stale split (kept: failed_step set or steps_done
+non-empty; unfinished: readable meta.json and no step; stale: meta.json missing
+or unreadable) is owned by `lib/note_meta.list_stages`; re-deriving it here would drift from the writer
 (`note-instructions.py`). Each entry is passed through unchanged, `steps_done`
 and `frozen` included, so the skill learns what already landed and whether the
-name can still change from `start` and never reads `meta.json` itself. Stage directories are read relative to the working
+name can still change from `start` and never reads `meta.json` itself. The
+`unfinished_drafts` entries pass through the same way: `staged` tells the skill
+whether Continue returns to the approval question or to the questions, without
+the skill checking files in the stage directory. Stage directories are read relative to the working
 directory, which is the instance root in the container.

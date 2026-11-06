@@ -423,7 +423,8 @@ Script: note-session.py start
     include_configured: bool
     note_include: [string]     # empty when not configured
     kept_drafts: [{stem, title, template, created, failed_step, steps_done, frozen}]   # steps_done: landed steps in order; frozen: title and destination can no longer change (is_frozen); started deliveries: failed_step set or steps_done non-empty (failed_step empty when the run was killed between steps)
-    stale_stages: [stem]       # stage dirs with neither failed_step nor steps_done (or unreadable meta.json): an interrupted dialogue; the skill says so in one line and drops them
+    unfinished_drafts: [{stem, title, template, created, source_path, staged}]   # readable meta.json with neither failed_step nor steps_done: a dialogue or approval that never ended; staged: note.md exists and a title is recorded (the draft was printed); the skill offers Continue / Discard for each (F6-AC7)
+    stale_stages: [stem]       # stage dirs whose meta.json is missing or unreadable; the skill says so in one line and drops them
     candidates: [{path, stem}] # templates matching note_include, daily excluded; empty when not configured, and for a --process run with an empty stem (no listing call)
     folder_listed: int         # .md files the listing returned, before matching
     listing_error: string      # Kado error text, empty when none
@@ -645,7 +646,7 @@ def deliver(meta, client):
                     return exists(meta, path, step)             # exit 3, "EXISTS:<path>" first line
             elif step not in meta.steps_done:
                 mark_in_flight(meta, step)                      # failed_step = step, meta.json written: a landed but
-                                                                # unrecorded upload is a kept draft, never a stale stage
+                                                                # unrecorded upload is a kept draft, never unfinished
                 upload(client, path, payloads[step])            # write_note for .md, write_file(bytes) for .json
             # absent but recorded in steps_done: not rewritten (the user removed it after it landed)
         except KadoError: return failed(meta, step)             # failed_step recorded; later steps never run
@@ -771,11 +772,12 @@ sequenceDiagram
 - **Name taken during a resume** (exit 3 with frozen true): title and destination are frozen, so the skill offers keep (leave the draft for later) or drop; on drop it names the files of steps_done, or says the note may already be in the inbox when steps_done is empty.
 - **Guard withdrew an action** (`withdrawn`): the skill reports it and branches on `frozen` like a taken name (rename or abort while false, keep or drop once true); nothing is written in this run. The guards run before the uploads on every `deliver`, a resume included, so a withdrawn stop can come on a frozen stage.
 - **Kado error during delivery** (exit 1): the skill reports the failed step; the draft stays; the next `/note` offers resume.
-- **Kado config missing at delivery** (exit 1, step `kado_config`: no Kado URL or token; an outage fails at `note` instead): nothing is written; `failed_step` is recorded so the draft is a kept draft, not a stale stage; resume reruns the whole delivery. The draft is not at fault, so the skill does not send the user to fix it.
+- **Kado config missing at delivery** (exit 1, step `kado_config`: no Kado URL or token; an outage fails at `note` instead): nothing is written; `failed_step` is recorded so the draft is a kept draft, not an unfinished draft; resume reruns the whole delivery. The draft is not at fault, so the skill does not send the user to fix it.
 - **Source changed between read and mark** (concurrency error on the merge): reported as a failed `source_mark`; resume retries it.
 - **Source deleted or moved before the mark** (`KadoNotFoundError` on the frontmatter read or merge): the step counts as done, `deliver` reports `delivered` with `source_marked: false`, the stage is removed; the report says the source was not marked.
 - **Abort at any question**: the skill runs `note-instructions.py drop` when a stem exists and confirms in one line; a confirmed `note_include` stays saved.
-- **Interrupted dialogue** (`stale_stages` at start): one line, then `drop` for each; they hold user material and nothing to deliver.
+- **Interrupted dialogue** (`unfinished_drafts` at start): the skill shows each by title, template and time and asks Continue / Discard, never dropping one unasked. Continue on a `staged` draft reruns `stage --stem <stem>` and returns to the approval question; otherwise it reruns the outline and process read for the same stem (never `new`) and asks the questions again. Discard runs `drop` and says nothing landed in the inbox (F6-AC7). An explicit Abort still drops (F6-AC5).
+- **Unreadable stage** (`stale_stages` at start): `meta.json` missing or unreadable; one line, then `drop` for each.
 - **Interrupted delivery** (a kept draft with `steps_done` non-empty and `failed_step` empty, the process was killed between steps; or `failed_step` naming the step whose upload was in flight, killed or unrecorded after the upload): treated like a failed delivery; the next `/note` offers resume or drop, never a silent drop, since part of it is already in the vault.
 
 ### Complex Logic
@@ -979,6 +981,7 @@ stateDiagram-v2
 - [ ] WHEN dropping, THE SYSTEM SHALL remove the stage directory and write nothing (F6-AC4)
 - [ ] IF the user aborts, THEN THE SYSTEM SHALL remove the stage directory and leave the vault and source untouched; a confirmed `note_include` stays (F6-AC5)
 - [ ] WHEN `deliver` succeeds, THE SYSTEM SHALL remove the stage directory (F6-AC6)
+- [ ] WHEN `start` finds unfinished drafts, THE SYSTEM SHALL offer continue or discard for each by title, template and time before the request, returning to the approval question for a printed draft and to the questions otherwise (F6-AC7)
 
 **F7 Process files**
 - [ ] WHEN a process file names a destination, THE SYSTEM SHALL use it as `default_destination`; otherwise `concepts.atomic_note.path` (F7-AC1)
@@ -1047,7 +1050,8 @@ stateDiagram-v2
 | Process file | Optional per-template settings in `config/note-processes/` | F7 |
 | Decline marker | A process file holding only `offer: never`: no other field and no body | F7-AC9 |
 | Kept draft | A draft whose delivery started and did not finish (a step failed or the run was killed between steps), kept for resume | F6 |
-| Stale stage | A stage directory with no step done and no failed step, or with an unreadable `meta.json`: an interrupted dialogue, dropped at the next start | F6 |
+| Unfinished draft | A stage directory with a readable `meta.json` and no step done or failed: a dialogue or approval that never ended, offered Continue / Discard at the next start | F6 |
+| Stale stage | A stage directory whose `meta.json` is missing or unreadable, dropped at the next start with one line | F6 |
 | Source | The inbox note the material came from, if any | F5 |
 
 ### Technical Terms

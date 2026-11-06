@@ -79,7 +79,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
 1. **First run (template keeper).** No template selection is configured yet. Tomo lists the template folder, proposes which filename patterns count as note templates, shows what matches and what does not, and saves the confirmed patterns. The note request then continues in the same session.
 2. **No template fits (template keeper).** Tomo says no listed template fits, offers to adjust the patterns or to hand the request to `inbox-author`, and says that an empty folder may also mean the key cannot read it.
 3. **Saving or declining a process (template keeper).** After a delivery that showed a preference, Tomo asks once: save, not now, or never for this template. "Never" is remembered. `/note --process <template>` creates or changes one on purpose.
-4. **Interrupted delivery (capturer).** A delivery fails midway. The next `/note` offers to resume or drop the draft before anything else, and a resume finishes without duplicating what already landed.
+4. **Interrupted delivery or dialogue (capturer).** A delivery fails midway, or the session ends while a draft is still in the dialogue or waiting for approval. The next `/note` offers to resume or drop a started delivery, and to continue or discard an unfinished draft, before anything else; a resume finishes without duplicating what already landed, and a continued printed draft returns to the approval question.
 5. **Abort (capturer).** The user aborts during the dialogue. Nothing reaches the vault and the draft is removed.
 6. **Discard after delivery (applier).** The user decides against the result, deletes the note and the instruction set in Obsidian, and runs `/inbox --recover` to get the source back as fresh.
 
@@ -152,6 +152,7 @@ Some notes have a fixed shape: Meeting Notes, Problem Solving, Travel Reflection
   - [ ] Given a drop, When it completes, Then the draft is removed and nothing is written to the vault
   - [ ] Given the user aborts during setup, questions or draft, When the session ends, Then nothing is written to the vault, the draft is removed and the source is untouched; a template selection the user had already confirmed stays saved
   - [ ] Given a successful delivery, When it completes, Then no draft remains
+  - [ ] Given an unfinished draft that was never delivered, When the user next runs `/note`, Then before anything else Tomo shows it by title, template and time and offers to continue or discard it; continue returns to the approval question for a printed draft and to the questions otherwise
 
 #### Feature 7: Process files
 

@@ -81,6 +81,7 @@
 | 2026-11-05 | Phase 3 gate: all tasks reviewed PASS (spec + quality); drift findings fixed and re-reviewed PASS; full suite 7759 passed, 5 skipped; ruff clean; no eval-gated file changed; phase-4.md refreshed to the new interfaces | T3.5 + hardening batch |
 | 2026-11-05 | `deliver` reports a guard-withdrawn action as `status: withdrawn` and the skill branches exit 1 on `status`; Kado unreachable at `deliver` gets its own non-empty `step` so the skill does not send the user to fix the draft | T3.2 quality review: withdrawn and Kado-down both shared the "exit 1, empty step = filled-note check failed" shape |
 | 2026-11-05 | Phase 2 complete: T2.1–T2.8 reviewed; drift findings aligned in the spec; shared lib/note_io reviewed; full suite 7553 passed, 4 skipped; ruff clean | Phase 2 gate |
+| 2026-11-06 | Unfinished drafts offered Continue / Discard (PRD F6-AC7 added, User Journey 4 widened; SDD start output `unfinished_drafts`, `stale_stages` narrowed to unreadable `meta.json`) | Live walk (session c573b7b7) showed a printed draft dropped at the next /note; owner chose to offer every unfinished stage |
 
 ## Context
 

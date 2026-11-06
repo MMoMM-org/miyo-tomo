@@ -1,8 +1,8 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -128,7 +128,7 @@
- 
- Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+@@ -133,7 +133,7 @@
+ # STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+ # Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
  
 -Then ask: Deliver / Change something / Abort.
 +Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask: Deliver / Change something / Abort.

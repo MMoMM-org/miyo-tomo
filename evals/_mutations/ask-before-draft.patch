@@ -4,12 +4,12 @@
  
  ## Rules
  
--- Before every AskUserQuestion call, print as visible text everything the question refers to (lists, previews, covered points, the draft), in the same message. Text in thinking counts as not printed.
-+- Before every AskUserQuestion call, print as visible text everything the question refers to (lists, previews, covered points), in the same message. Text in thinking counts as not printed.
+-# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, the draft, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
++# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
+ # Why: tool results are collapsed for the user; the user answered questions about lists they never saw.
+ 
  - Ask with at most four options per question.
- - Ask in the language the user writes in; keep the template's headings.
- - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
-@@ -118,7 +118,7 @@
+@@ -120,7 +120,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -18,9 +18,13 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -128,9 +128,10 @@
+@@ -130,12 +130,13 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+ 
+-# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
++# STRICT — Every Deliver / Change something / Abort question goes out first; the header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+ # Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
  
 -Then ask: Deliver / Change something / Abort.
 +The question is: Deliver / Show the draft / Change something / Abort.

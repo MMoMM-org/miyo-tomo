@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.8
+# version: 0.1.9
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.5")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.6")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -64,8 +64,9 @@ def test_carries_its_version_header(path, version):
 
 @pytest.mark.parametrize("path", [COMMAND, SKILL], ids=["command", "skill"])
 def test_has_no_rationale_prose(path):
-    text = _text(path)
-    for pattern in (r"\bF\d+-AC\d+\b", r"\bADR-\d+\b", r"\bWhy:", r"\bWHY\b", r"\b20\d\d-\d\d-\d\d\b",
+    # The one `# Why:` line under a `# STRICT — ` line is the repo's allowed rationale; nothing else is.
+    text = re.sub(r"^(# STRICT — .*\n)# Why: .*\n", r"\1", _text(path), flags=re.MULTILINE)
+    for pattern in (r"\bF\d+-AC\d+\b", r"\bADR-\d+\b", r"\bWhy:",r"\bWHY\b", r"\b20\d\d-\d\d-\d\d\b",
                     r"#169", r"\b[Ss]pec 0\d\d\b", r"\b[Bb]ecause\b", r"\b[Rr]ationale\b"):
         assert not re.search(pattern, text), pattern
 
@@ -297,6 +298,66 @@ def test_broken_process_file_and_missing_required_point_are_one_line_each():
 def test_print_before_every_question():
     text = _flat(SKILL)
     assert "Before every AskUserQuestion call, print as visible text everything the question refers to" in text
+
+
+def _strict_blocks(section_text: str) -> list[tuple[str, list[str]]]:
+    """Each `# STRICT — …` line of a raw section with the `# Why:` lines right after it."""
+    lines = section_text.splitlines()
+    blocks = []
+    for i, line in enumerate(lines):
+        if line.startswith("# STRICT — "):
+            whys = []
+            for follow in lines[i + 1:]:
+                if not follow.startswith("# Why:"):
+                    break
+                whys.append(follow)
+            blocks.append((line, whys))
+    return blocks
+
+
+def _raw_section(heading: str) -> str:
+    text = _text(SKILL)
+    begin = text.index(f"\n## {heading}\n")
+    end = text.find("\n## ", begin + 1)
+    return text[begin:end if end != -1 else len(text)]
+
+
+def _one_strict(heading: str) -> tuple[str, list[str]]:
+    blocks = _strict_blocks(_raw_section(heading))
+    assert len(blocks) == 1, f"{heading!r}: expected one STRICT block, found {len(blocks)}"
+    return blocks[0]
+
+
+@pytest.mark.parametrize("heading", ["Rules", "6. Draft"])
+def test_print_before_ask_strict_has_one_line_why(heading):
+    # Live: the model asked right after a Read or Bash call with no visible text, so these are STRICT.
+    _, whys = _one_strict(heading)
+    assert len(whys) == 1, f"{heading!r}: the STRICT block needs exactly one `# Why:` line"
+    assert not re.search(r"\b(20\d\d-\d\d|F\d+-AC|ADR-|session|spec \d)", whys[0], re.I)
+
+
+def test_general_strict_puts_the_content_in_the_asking_message():
+    strict, _ = _one_strict("Rules")
+    assert "Before every AskUserQuestion call, print as visible text everything the question refers to" in strict
+    assert "visible reply text of the SAME message that calls AskUserQuestion" in strict
+    for needle in ("numbered template list", "`matched`, `unmatched` and `excluded_daily`",
+                   "covered and open points", "the draft", "A Read or Bash result is not visible to the user",
+                   "Text in thinking counts as not printed"):
+        assert needle in strict, needle
+
+
+def test_draft_strict_names_the_same_message_the_header_and_note_md():
+    strict, _ = _one_strict("6. Draft")
+    assert "visible reply text of the SAME message that calls AskUserQuestion" in strict
+    assert "the header and the full fenced `note.md`, copied from the Read result" in strict
+    for site in ("first draft", "Change something", "Continue of a staged draft", "Rename"):
+        assert site in strict, site
+
+
+def test_draft_strict_sits_before_the_approval_question():
+    section = _raw_section("6. Draft")
+    assert section.index("# STRICT — ") < section.index("Then ask: Deliver / Change something / Abort.")
+    assert section.index("Print this header above the fenced note:") < section.index("# STRICT — ")
 
 
 def test_every_question_has_at_most_four_options():

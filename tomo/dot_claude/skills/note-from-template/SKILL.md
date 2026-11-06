@@ -6,13 +6,15 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.5
+# version: 0.2.6
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
 ## Rules
 
-- Before every AskUserQuestion call, print as visible text everything the question refers to (lists, previews, covered points, the draft), in the same message. Text in thinking counts as not printed.
+# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, the draft, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
+# Why: tool results are collapsed for the user; the user answered questions about lists they never saw.
+
 - Ask with at most four options per question.
 - Ask in the language the user writes in; keep the template's headings.
 - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
@@ -127,6 +129,9 @@ Source <source path> is deleted when you apply the instruction set in Hashi.
 ```
 
 Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+
+# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+# Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
 
 Then ask: Deliver / Change something / Abort.
 - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).

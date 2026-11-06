@@ -1,6 +1,6 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -118,7 +118,7 @@
+@@ -120,7 +120,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -9,8 +9,13 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -129,7 +129,7 @@
+@@ -130,11 +130,11 @@
+ 
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+ 
+-# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
++# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `draft.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+ # Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
  
  Then ask: Deliver / Change something / Abort.
 -- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
@@ -18,7 +23,7 @@
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
  - Deliver → step 7.
  - Abort → drop.
-@@ -142,7 +142,7 @@
+@@ -147,7 +147,7 @@
  
  - Exit 0 (`delivered`): report `note_path`, `instructions_json`, `instructions_md`, whether the source was marked, and "Next: review and apply the instruction set in Hashi." When `source_marked` is false and the draft has a source, say in one line that the source was not marked (it was moved or deleted). Then step 8.
  - On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite.

@@ -1727,26 +1727,37 @@ def test_stage_of_another_stem_replaces_the_view(inst, capsys):
     assert first not in view
 
 
+def _first_viewed_then_second(inst, capsys, second_draft=GOOD_DRAFT):
+    """Two stems made by new first, then the first staged so view.md exists.
+
+    The second stage below then runs with no `new` in between, so only
+    stage itself can remove the first stem's view.md.
+    """
+    first = _staged(inst, capsys)
+    second = _staged(inst, capsys, draft=second_draft)
+    rc, _, err = _stage(capsys, first, "--title", "Design review", "--destination", VIEW_DEST)
+    assert rc == 0, err
+    assert _view(inst).is_file(), "precondition: the first stem's view.md exists"
+    return first, second
+
+
 @pytest.mark.parametrize("extra", [["--title", ".hidden"], ["--destination", "/abs"]])
 def test_refused_stage_leaves_no_view_of_another_stem(inst, capsys, extra):
-    _staged_view(inst, capsys)
-    second = _staged(inst, capsys)
+    _, second = _first_viewed_then_second(inst, capsys)
     rc, _, _ = _stage(capsys, second, *extra)
     assert rc == 2
     assert not _view(inst).exists()
 
 
 def test_failing_check_leaves_no_view(inst, capsys):
-    _staged_view(inst, capsys)
-    second = _staged(inst, capsys, draft=BAD_DRAFT)
+    _, second = _first_viewed_then_second(inst, capsys, second_draft=BAD_DRAFT)
     rc, out, _ = _stage(capsys, second, "--title", "Other talk")
     assert rc == 0 and _json(out)["check"]["ok"] is False
     assert not _view(inst).exists()
 
 
 def test_untitled_stage_leaves_no_view(inst, capsys):
-    _staged_view(inst, capsys)
-    second = _staged(inst, capsys)
+    _, second = _first_viewed_then_second(inst, capsys)
     rc, _, _ = _stage(capsys, second)
     assert rc == 0 and not _view(inst).exists()
 

@@ -1,7 +1,8 @@
-// version: 0.1.0
+// version: 0.1.1
 // Tests for the tomo-note-view mod under `claude plugin test`: the draft
 // pane opens at an AskUserQuestion call while tomo-tmp/note/view.md exists,
-// not without it, /note-draft opens it, and the pane draws the file's text.
+// not without it, only for the approval dialog (an option labelled Deliver),
+// /note-draft opens it, and the pane draws the file's text.
 import { expect, test } from 'claude-code/testing'
 
 const VIEW = 'tomo-tmp/note/view.md'
@@ -36,6 +37,37 @@ const QUESTION = {
       ],
     },
   ],
+}
+
+// Any other dialog: the process destination question of step 9.
+const OTHER_QUESTION = {
+  tool: 'AskUserQuestion' as const,
+  questions: [
+    {
+      question: 't_meeting: where do the notes go?',
+      header: 'Destination',
+      multiSelect: false,
+      options: [
+        { label: '1 Default', description: 'The atomic-note folder' },
+        { label: '2 Another folder', description: 'Name a folder' },
+      ],
+    },
+  ],
+}
+
+const numbered = (label: string) => ({
+  ...QUESTION,
+  questions: QUESTION.questions.map(q => ({
+    ...q,
+    options: q.options.map((o, i) => ({ ...o, label: i === 0 ? label : o.label })),
+  })),
+})
+
+async function drawn($: any, surface: 'terminal' | 'desktop' = 'terminal') {
+  const ui = await $.ui.mount({ ...PANE, surface })
+  const markdown = await ui.find({ type: 'Markdown' })
+  await ui.unmount()
+  return markdown?.text
 }
 
 // The kit's command.run takes the full input; the engine fills origin and
@@ -133,5 +165,45 @@ test('a Bash call after the draft is gone closes the pane', async ($, on) => {
   await $.tool.call(QUESTION)
   delete seen.files[VIEW]
   await $.tool.call({ tool: 'Bash', command: 'python3 scripts/note-instructions.py drop --stem x' })
+  expect(seen.closed).toContain('note-draft')
+})
+
+test('a dialog without a Deliver option opens no pane, even with view.md', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TEXT })
+  await start($)
+  await $.tool.call(OTHER_QUESTION)
+  expect(seen.opened).not.toContain('note-draft')
+})
+
+test('a numbered "1 Deliver" option opens the pane', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TEXT })
+  await start($)
+  await $.tool.call(numbered('1 Deliver'))
+  expect(seen.opened).toContain('note-draft')
+})
+
+test('control characters other than tab and newline are not drawn', async ($, on) => {
+  engine(on, { [VIEW]: 'Template: t\u001b[31m red\u0000x\tok\n' })
+  await start($)
+  await $.tool.call(QUESTION)
+  expect(await drawn($)).toBe('Template: t[31m redx\tok\n')
+})
+
+test('a Bash call while the pane is open shows the changed view.md', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TEXT })
+  await start($)
+  await $.tool.call(QUESTION)
+  seen.files[VIEW] = 'Template: t_meeting · Final name: Atlas/Meetings/Renamed.md\n'
+  await $.tool.call({ tool: 'Bash', command: 'python3 scripts/note-instructions.py stage --stem x' })
+  expect(await drawn($)).toBe('Template: t_meeting · Final name: Atlas/Meetings/Renamed.md\n')
+  expect(seen.closed).not.toContain('note-draft')
+})
+
+test('any dialog closes a stale pane once view.md is gone', async ($, on) => {
+  const seen = engine(on, { [VIEW]: TEXT })
+  await start($)
+  await $.tool.call(QUESTION)
+  delete seen.files[VIEW]
+  await $.tool.call(OTHER_QUESTION)
   expect(seen.closed).toContain('note-draft')
 })

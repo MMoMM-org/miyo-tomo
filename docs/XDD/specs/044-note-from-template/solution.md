@@ -36,7 +36,7 @@ version: "1.0"
 - CON-1 **Runtime split.** Runtime prose in `tomo/dot_claude/` holds imperatives only; every WHY goes first to `docs/tomo/<mirrored-path>.md`. Every managed file carries `# version: X.Y.Z` and bumps it on each edit, or `update-tomo.sh` ships nothing. Scripts are Python 3 under `tomo/scripts/`, run as `python3 scripts/<name>.py` inside the instance; shared code lives in `tomo/scripts/lib/` because hyphenated scripts cannot be imported.
 - CON-2 **Execution boundary.** Tomo writes to the vault only inside the inbox and only through Kado. It writes its own instance files under `config/` and `tomo-tmp/`. The note reaches its destination only when the user applies the instruction set in Hashi.
 - CON-3 **Privacy (constitution L2).** Script stderr and logs carry paths, states, counts and error classes only. Script stdout carries the same, plus only the user-derived fields its output contract below names (the title and the paths built from it, a process file's destination, required points and guidance, template point names, leftover token names); never note text, source text or any other answer. `tests/test_note_privacy.py` holds the allowlist of those fields. Drafts in `tomo-tmp/note/` are removed on delivery, drop and abort.
-- CON-4 **Interaction.** Every user decision goes through `AskUserQuestion`: at most four options (Other is added automatically) and four questions per call. Findings and drafts are printed as text before the question that refers to them.
+- CON-4 **Interaction.** A question about a draft or a list (glob setup, several templates, question rounds, approval, process offer, process mode) is plain text: the message prints the content, ends with the question and its options, and ends the turn; the next user message is the answer. Every other user decision goes through `AskUserQuestion`: at most four options (Other is added automatically) and four questions per call. Amended 2026-11-06: printing before an `AskUserQuestion` call failed live even as STRICT (see README Decisions Log).
 - CON-5 **No eval-gated file changes.** `synthesis-conductor.md`, `suggestion-conductor.md`, `suggest-handling/SKILL.md`, `commands/inbox.md` and `settings.json` stay untouched. `settings.json` already allows `Bash(python3 scripts/*.py*)`, `Edit(config/*)`, `Edit(tomo-tmp/*)` and `mkdir -p tomo-tmp/*`.
 - CON-6 **Wire.** The instruction set is the existing Hashi wire, with no new field and no schema bump. `schema_version` comes from `lib.wire_version.wire_schema_version("instructions.schema.json")`. `tomo/schemas/hashi-instructions.schema.json` is a mirror of Hashi's and is never edited.
 - CON-7 **Kado.** An empty listing can hide a denial. `KadoClient` retries 429 and 503; a run needs about 12 to 14 calls, well below 20 per 5 s.
@@ -825,7 +825,7 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
   why: "Config, process files, the instruction set and the tomo block are written only by scripts"
 - pattern: "Print findings before every question (vault-explorer 0.18.0 STRICT)"
   relevance: HIGH
-  why: "Pattern preview, candidates, covered points and the draft are text before the question"
+  why: "Pattern preview, candidates, covered points and the draft are text in the same plain-text message as the question (CON-4)"
 - pattern: "Pass 2 move + dependent delete (render_source_actions.py site 3)"
   relevance: HIGH
   why: "Same wire shape, same Hashi ordering"
@@ -847,8 +847,9 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
   Skipped, left empty: Next steps
   Source 100 Inbox/Meeting raw.md is deleted when you apply the instruction set in Hashi.
   ```
-- Approval question options: Deliver / Change something / Abort.
-- Process offer options: Save / Not now / Never for this template.
+- Approval question, plain text below the header and the fenced note: `Deliver, Change something or Abort?`
+- Template choice with several fits, plain text below the numbered list: `Which number, or Abort?` Any listed number is valid.
+- Process offer, plain text below what would be saved: `Save, Not now or Never for this template?`
 - Name-taken options: Rename / Abort while `frozen` is false; Keep / Drop once it is true.
 - Delivery report: note path, instruction set paths, source marked or not, and "Next: review and apply the instruction set in Hashi."
 
@@ -1015,7 +1016,8 @@ stateDiagram-v2
 
 - The owner confirmed on 2026-11-04 that their Kado key reads `templates.base_path`. Another user's key may not, so F2-AC4 tells that user to grant read access or not use `/note`.
 - `write_frontmatter(mode="merge")` deep-merging the `tomo` key and keeping the user's other keys is taken from docstrings (`mark-captured.py:7-9`), not from Kado code. The source-mark test asserts the call shape; the live run confirms the effect.
-- `AskUserQuestion` cannot be answered inside a plugin eval run, so the paid case covers material that fills every point (zero questions) and grades that the draft is printed before the approval question and that `deliver` never runs before approval.
+- `AskUserQuestion` cannot be offered inside a plugin eval run, so the paid case covers material that fills every point (zero questions) and grades that the draft is printed before the approval question and that `deliver` never runs before approval. Since 2026-11-06 the approval question is plain text in production too, so the eval runs the same path the user sees.
+- Live, claude-sonnet-5-5 called `AskUserQuestion` straight after a Read of `note.md` with no text block, under a plain print-first rule and again under two STRICT blocks (sessions c573b7b7, afc60d6c, 2e8fb1d3). Questions about a draft or a list are therefore plain text (CON-4); the remaining `AskUserQuestion` questions (Resume / Drop, Continue / Discard, Rename / Abort, Keep / Drop, withdrawn Drop / Abort, Another source / Another template, none-fits) carry no list or draft, only a line the question text can name.
 - The dialogue criteria (F1-AC1/AC2, F2-AC1/AC2, F3-AC2/AC4/AC5/AC6/AC8, F4-AC2/AC3, F7-AC3/AC6/AC7) are model behaviour. Each is covered twice: `test_note_skill_prose.py` asserts the imperative exists in the skill ("at most four", "at most two rounds", "no skip option", "ask once", print before ask), and a live walk on `tomo-instance` with a written checklist, one plan task, records the outcome per criterion.
 
 ### Technical Debt

@@ -25,15 +25,16 @@ note) as ordinary output before the approval question, and again before each re-
 is `note.md` (the staged result with `{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what
 will land in the vault. The same rule covers the glob preview, the template list, the question rounds and the process
 questions: any text the user needs to decide on is printed first. Since 0.2.7 the printed content and the question are
-one message, plain text until 0.2.9 (see the next section); since 0.2.10 the dialog may follow that text in the same message (see "Why the
-Text Comes Before the Dialog").
+one message, plain text until 0.2.9 (see the next section); 0.2.10 tried the dialog after that text and failed live; since 0.2.11 the dialog
+carries the content in its preview (see "Why the Content Goes Into the Dialog's Preview").
 
 ## Why Questions About a Draft or a List Are Plain Text
 
 WHY: Printing first and then calling `AskUserQuestion` failed live, twice in a row, on claude-sonnet-5-5. This section
-is the history of 0.2.6 to 0.2.9, when these questions were plain text only; since 0.2.10 the fixed-option ones add a
-dialog after the text (see "Why the Text Comes Before the Dialog"), and the free-text ones and long lists stay plain
-text as described here.
+is the history of 0.2.6 to 0.2.9, when these questions were plain text only; 0.2.10 added a dialog
+after the text and failed live (see "Why the Text Comes Before the Dialog"); since 0.2.11 the fixed-option ones put the
+content into the dialog's preview (see "Why the Content Goes Into the Dialog's Preview"), and the free-text ones, long
+lists and the unavailable-dialog fallback stay plain text as described here.
 
 First as a plain rule (0.2.4/0.2.5, sessions c573b7b7 and afc60d6c): with "Before every AskUserQuestion call, print
 as visible text …" and "After every `stage`, print note.md in full", the model repeatedly called `AskUserQuestion` in
@@ -91,6 +92,9 @@ or the model reliably prints before a tool call.
 
 ## Why the Text Comes Before the Dialog
 
+HISTORY (0.2.10, failed live, superseded by 0.2.11, see "Why the Content Goes Into the Dialog's Preview"). The section
+below records the decision and why it did not hold.
+
 WHY: Owner decision 2026-11-06, "Text, then dialog" (0.2.10). The plain-text-only form (0.2.7 to 0.2.9) works live
 (sessions 5e1f413c and 657b5c02), but it gave up the click that the `AskUserQuestion` dialog offers. The dialog
 convenience is back for the fixed-option questions, with the text first so that the content is visible even when the
@@ -123,11 +127,49 @@ typed path. Revisit and fall back to the 0.2.9 plain-text-only form if a live tr
 call without a preceding text block that holds the content. Until a live run of 0.2.10 is checked, the live-walk lines
 1.1, 2.4 and 7.6a carry the 0.2.8 and 0.2.9 evidence only.
 
+## Why the Content Goes Into the Dialog's Preview
+
+WHY: Owner decision 2026-11-06, "Draft in preview" (0.2.11), after 0.2.10 failed live. Session 23125562 (claude-sonnet-5-5,
+then opus via /model): the model wrote the draft summary and the numbered option line in its thinking block, then called
+`AskUserQuestion` straight after the Read with no text block. It believed it had shown the content; the thinking block
+is not visible to the user, so the dialog came without it. When the user typed "show me the draft" into the dialog,
+sonnet answered that the draft was shown above; opus noticed, printed the draft as text and asked in plain text without a
+dialog. "Text first, then the dialog" is a request about the order of two outputs, and the model can satisfy it in its
+head. It cannot do that for a tool input: whatever the call needs is written into the call.
+
+Claude Code 2.1.316 (the container's version) lets each `AskUserQuestion` option carry a `preview` (markdown in a
+monospace box; single-select questions only). So the content moves into the tool input: every option of a fixed-option
+question about a draft or a list carries the same `preview`, copied from the Read or Bash result. The model fills tool
+inputs reliably, and the user sees the content in the dialog itself, so no separate text block is needed. The sites and
+their previews: the step 6 approval and every reprint (first draft, after Change something, the Continue of a staged
+draft, the restage after a failed delivery) preview the header and the full fenced `note.md`; the step 2 glob question
+and its reprint after Correct preview the proposed globs, `matched`, `unmatched` and `excluded_daily`; the step 8 offer
+previews what would be saved. The step 3 candidate choice (at most three candidates plus Abort) carries each candidate's
+reason in the option `description`; longer lists stay plain text with `0 Abort`. The step 9 destination carries
+content-free option descriptions. Free-text questions stay plain text only. The Rename reprint before `deliver` has no
+question and stays visible reply text.
+
+The plain-text path stays, in the 0.2.9 form (content, then the numbered option line as the last line, end the turn):
+it is the fallback when `AskUserQuestion` is not available, and `claude plugin eval` never offers `AskUserQuestion`, so
+the eval grades exactly this path. The numbered option lines stay in the skill for that reason. A typed number or option
+word still answers, dialog "Other" text is mapped the same way, and an unclear answer is asked again in plain text.
+
+Recovery, observed with opus in 23125562: when the user says they cannot see the content ("show me the draft"), the
+skill prints the content as text and asks that question in plain text with no dialog. A dialog that failed to show the
+content must not be repeated.
+
+Costs and unknowns: the content is repeated once per option, so a three-option approval carries the draft three times
+as tool input (tokens). How a long draft behaves in the monospace preview box (scrolling, truncation) is not known.
+Whether Hashi's session view renders `preview` at all is not known; if it does not, the dialog arrives without content
+there. Revisit and fall back to the 0.2.9 plain-text-only form if a live transcript shows a dialog whose preview is
+empty or a summary, or if the Hashi session view does not render the preview. Until 0.2.11 is checked live, the live-walk
+lines 1.1, 2.4 and 7.6a record the 0.2.10 failure and carry no evidence for it.
+
 ## Why Plain-Text Options Are Numbered
 
 WHY: The plain-text questions (see "Why Questions About a Draft or a List Are Plain Text") end with their options as
-the last line, and since 0.2.9 each option carries a number (since 0.2.10 the dialog follows that line, see "Why the
-Text Comes Before the Dialog"): `1 Deliver · 2 Change something · 3 Abort`. Owner decision
+the last line, and since 0.2.9 each option carries a number (since 0.2.11 the dialog carries the content in its preview and
+this line is the fallback form, see "Why the Content Goes Into the Dialog's Preview"): `1 Deliver · 2 Change something · 3 Abort`. Owner decision
 2026-11-06. Live, the plain-text form made the user type a whole word ("Deliver", "Change something") where the
 `AskUserQuestion` dialog had needed one click; a number is one key. The option word still works, because the answer is
 mapped by the model and the number is only a shorthand, so nothing is lost for a user who prefers words. Anything that is

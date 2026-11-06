@@ -24,12 +24,16 @@ WHY: The user cannot approve text they have not seen, so the skill prints the dr
 note) as ordinary output before the approval question, and again before each re-ask after a change. What is printed
 is `note.md` (the staged result with `{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what
 will land in the vault. The same rule covers the glob preview, the template list, the question rounds and the process
-questions: any text the user needs to decide on is printed first. Since 0.2.7 every such question is plain text (see
-the next section), so the printed content and the question are one message.
+questions: any text the user needs to decide on is printed first. Since 0.2.7 the printed content and the question are
+one message, plain text until 0.2.9 (see the next section); since 0.2.10 the dialog may follow that text in the same message (see "Why the
+Text Comes Before the Dialog").
 
 ## Why Questions About a Draft or a List Are Plain Text
 
-WHY: Printing first and then calling `AskUserQuestion` failed live, twice in a row, on claude-sonnet-5-5.
+WHY: Printing first and then calling `AskUserQuestion` failed live, twice in a row, on claude-sonnet-5-5. This section
+is the history of 0.2.6 to 0.2.9, when these questions were plain text only; since 0.2.10 the fixed-option ones add a
+dialog after the text (see "Why the Text Comes Before the Dialog"), and the free-text ones and long lists stay plain
+text as described here.
 
 First as a plain rule (0.2.4/0.2.5, sessions c573b7b7 and afc60d6c): with "Before every AskUserQuestion call, print
 as visible text …" and "After every `stage`, print note.md in full", the model repeatedly called `AskUserQuestion` in
@@ -49,7 +53,7 @@ The cases where the model did print the whole draft were those where the turn en
 10:09:20 printed the full draft when the skill ended the turn with text, and the eval case
 `evals/note-draft-before-approval`, where `AskUserQuestion` is never offered, was GREEN 3/3 on exactly that path.
 
-Owner decision 2026-11-06: a question about a draft or a list is asked in plain text. The message is the content
+Owner decision 2026-11-06 (0.2.7): a question about a draft or a list is asked in plain text. The message is the content
 followed by the question and its options as the last lines; the turn ends there; the next user message is the answer,
 mapped to an option, and an unclear answer is asked again in plain text. This works because there is no second
 channel: the only way to ask is to write the message, and the message the model writes is the one the user reads. It
@@ -80,15 +84,47 @@ often calls `AskUserQuestion` without printing anything before it, so the user m
 name when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source
 with its one-line error. The dialog stays readable even when the print before it is skipped.
 
-Trade-offs: a plain-text answer must be mapped, so a vague reply costs one re-ask; the template choice no longer
-needs "at most three candidates plus Abort" (the dialog cap), any listed number is valid; step 9 asks for the required
-headings by number instead of four-per-question multi-select. Revisit if the platform shows tool inputs to the user
+Trade-offs: a plain-text answer must be mapped, so a vague reply costs one re-ask; the plain-text template choice has
+no "at most three candidates plus Abort" cap, any listed number is valid (0.2.10 keeps that for more than three
+candidates); step 9 asks for the required headings by number instead of four-per-question multi-select. Revisit if the platform shows tool inputs to the user
 or the model reliably prints before a tool call.
+
+## Why the Text Comes Before the Dialog
+
+WHY: Owner decision 2026-11-06, "Text, then dialog" (0.2.10). The plain-text-only form (0.2.7 to 0.2.9) works live
+(sessions 5e1f413c and 657b5c02), but it gave up the click that the `AskUserQuestion` dialog offers. The dialog
+convenience is back for the fixed-option questions, with the text first so that the content is visible even when the
+dialog appears: the message holds the content and the numbered option line, and after that text, in the same message,
+the model calls `AskUserQuestion` with the same options in the same order. The question text names its subject
+(draft title and created time, the template) as the 0.2.8 rule already demands, because the dialog may be all the user
+looks at.
+
+The difference to the 0.2.6 failure: there the content was supposed to be printed and the dialog carried the options,
+so a skipped print left the user with a dialog and nothing to decide on. Now the numbered option line is already in
+the text, so the typed path is complete without the dialog. A typed number or option word still answers, dialog
+"Other" text is mapped the same way, and an unclear answer is asked again in plain text. Dialog or typed answer, the
+user has seen the draft.
+
+The sites: the step 2 glob question and its reprint after Correct, the step 3 candidate choice only when the candidates
+plus Abort fit four options (at most three candidates; longer lists stay plain text only), the step 6 approval at the
+first draft and at every reprint (after Change something, at the Continue of a staged draft, after a restage of a
+failed delivery), the step 8 process offer and the step 9 destination. Free-text questions (step 5 open points, step 9
+required headings and guidance, the name of another folder) stay plain text only: they have no option list a dialog
+could carry. The dialog-only sites (Resume / Drop, Continue / Discard, Rename / Abort, Keep / Drop and the like) are
+unchanged. The STRICT in `## Rules` states the order: text first, `AskUserQuestion` only after it in the same message,
+never without it.
+
+Risk: the model may skip the text again and emit the `AskUserQuestion` call straight after a Read, as in session
+2e8fb1d3. The eval cannot see this: `claude plugin eval` never offers `AskUserQuestion`, so a GREEN eval proves only the
+typed path. Revisit and fall back to the 0.2.9 plain-text-only form if a live transcript shows an `AskUserQuestion`
+call without a preceding text block that holds the content. Until a live run of 0.2.10 is checked, the live-walk lines
+1.1, 2.4 and 7.6a carry the 0.2.8 and 0.2.9 evidence only.
 
 ## Why Plain-Text Options Are Numbered
 
 WHY: The plain-text questions (see "Why Questions About a Draft or a List Are Plain Text") end with their options as
-the last line, and since 0.2.9 each option carries a number: `1 Deliver · 2 Change something · 3 Abort`. Owner decision
+the last line, and since 0.2.9 each option carries a number (since 0.2.10 the dialog follows that line, see "Why the
+Text Comes Before the Dialog"): `1 Deliver · 2 Change something · 3 Abort`. Owner decision
 2026-11-06. Live, the plain-text form made the user type a whole word ("Deliver", "Change something") where the
 `AskUserQuestion` dialog had needed one click; a number is one key. The option word still works, because the answer is
 mapped by the model and the number is only a shorthand, so nothing is lost for a user who prefers words. Anything that is

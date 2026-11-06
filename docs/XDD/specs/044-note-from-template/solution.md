@@ -847,9 +847,10 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
   Skipped, left empty: Next steps
   Source 100 Inbox/Meeting raw.md is deleted when you apply the instruction set in Hashi.
   ```
-- Approval question, plain text below the header and the fenced note: `Deliver, Change something or Abort?`
-- Template choice with several fits, plain text below the numbered list: `Which number, or Abort?` Any listed number is valid.
-- Process offer, plain text below what would be saved: `Save, Not now or Never for this template?`
+- Approval question, plain text below the header and the fenced note: `1 Deliver · 2 Change something · 3 Abort`
+- Template choice with several fits, plain text below the numbered list: `Which number, or 0 Abort?` Any listed number is valid; 0 because the list owns the numbers from 1.
+- Process offer, plain text below what would be saved: `1 Save · 2 Not now · 3 Never`
+- Glob setup: `1 Confirm · 2 Correct · 3 Abort`. Process destination: `1 Keep current · 2 Default · 3 Another folder` (`1 Default · 2 Another folder` without a current process). The answer is the number or the option word.
 - Name-taken options: Rename / Abort while `frozen` is false; Keep / Drop once it is true.
 - Delivery report: note path, instruction set paths, source marked or not, and "Next: review and apply the instruction set in Hashi."
 

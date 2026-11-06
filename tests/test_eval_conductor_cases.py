@@ -592,13 +592,13 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
     "preface-report-line",
 )
-# Spec 044 (T4.1): built for the /note case, listed under `## Pending proofs` until run.
-NOTE_MUTATIONS = (
-    "header-after-delivery", "ask-before-draft", "print-draft-md", "confirm-attendees",
-    "deliver-before-ask",
-)
-RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
-ALL_MUTATIONS = RECORDED_MUTATIONS + NOTE_MUTATIONS
+# Spec 044 (T4.1): built for the /note case; recorded in `## Proofs` once red 3/3
+# (2026-11-06), the rest listed under `## Pending proofs` until proven.
+NOTE_RECORDED_MUTATIONS = ("header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask")
+NOTE_PENDING_MUTATIONS = ("confirm-attendees",)
+NOTE_MUTATIONS = NOTE_RECORDED_MUTATIONS + NOTE_PENDING_MUTATIONS
+RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS + NOTE_RECORDED_MUTATIONS
+ALL_MUTATIONS = RECORDED_MUTATIONS + NOTE_PENDING_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -723,7 +723,7 @@ def test_readme_mutations_match_the_patch_files():
     pending = {p["arg"] for p in _proof_rows("Pending proofs") if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
     assert recorded == set(RECORDED_MUTATIONS)
-    assert pending == set(NOTE_MUTATIONS)
+    assert pending == set(NOTE_PENDING_MUTATIONS)
     assert recorded | pending == files == set(ALL_MUTATIONS)
 
 
@@ -827,7 +827,7 @@ def test_pass1_leak_guards_inherit_the_recorded_leak_guard_proof():
 def test_proof_rows_name_real_graders_of_their_cases():
     for p in _proofs():
         assert p["cases"] and p["expected"], p
-        assert p["cases"] <= GATE_CASES, p
+        assert p["cases"] <= GATE_CASES | NOTE_CASES, p
         for case, g in p["expected"] | p["side"]:
             assert case in p["cases"], (p["arg"], case)
             assert g in grader_names(case), (p["arg"], case, g)

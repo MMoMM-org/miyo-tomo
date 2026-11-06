@@ -8,8 +8,8 @@ are built from the event lines of the recorded probe run of this case
 skill prose in the Skill tool's text event, so a pattern that matches the prose
 instead of a call goes red here. The probe itself must pass every grader; an
 empty or truncated run must fail every grader but the leak guard. One model per
-pending mutation (evals/_mutations/README.md `## Pending proofs`) must turn
-exactly its expected graders red.
+mutation of the case (evals/_mutations/README.md, `## Proofs` and `## Pending
+proofs`) must turn exactly its expected graders red.
 """
 
 from __future__ import annotations
@@ -222,11 +222,9 @@ def model(name: str) -> str:
     """The trace a run under each pending mutation is expected to look like."""
     t = _until_outline(Trace())
     if name in ("question_round", "question_round_stops"):
-        t.say("The material names Dana Weber and Luis Ortega.")
-        t.search_question_tool()
+        t.say("The material names Dana Weber and Luis Ortega. Are these the attendees?")
         if name == "question_round_stops":
-            return t.say("Are these the attendees? Confirm / Correct").text()
-        t.say("I can't ask here, so I take Confirm.")
+            return t.text()
     _draft_and_stage(t)
     if name == "ask_first":
         return t.search_question_tool().say(
@@ -360,48 +358,61 @@ def test_header_grader_accepts_the_inbox_file_as_a_path():
     assert red_graders(trace) == set()
 
 
-# ---- pending proofs ----------------------------------------------------------------------
+# ---- proofs ------------------------------------------------------------------------------
 
 
-def _pending_rows() -> list[dict]:
+def _note_rows(title: str) -> list[dict]:
+    """The rows of one README section whose case is this one."""
     text = MUTATIONS_README.read_text(encoding="utf-8")
-    section = text.split("## Pending proofs\n", 1)[1].split("\n## ", 1)[0]
+    section = text.split(f"## {title}\n", 1)[1].split("\n## ", 1)[0]
     rows = []
     for line in section.splitlines():
         m = re.match(r"^\| `--mutation ([^`]+)` \| (.*?) \| (.*?) \| (.*?) \|$", line)
-        if m:
+        if m and CASE in m.group(2):
             rows.append({"name": m.group(1), "cases": set(re.findall(r"`([a-z0-9-]+)`", m.group(2))),
                          "expected": set(re.findall(rf"`{CASE}/([^`]+)`", m.group(3))),
                          "side": set(re.findall(rf"`{CASE}/([^`]+)`", m.group(4))),
-                         "model": re.search(r"offline model: `([a-z_]+)`", m.group(3)).group(1)})
+                         "model": re.search(r"offline model: `([a-z_]+)`", m.group(3)).group(1),
+                         "pending": title == "Pending proofs"})
     return rows
 
 
-def test_every_gate_grader_is_an_expected_red_of_a_pending_proof():
-    rows = _pending_rows()
-    assert {r["name"] for r in rows} == {
-        "header-after-delivery", "ask-before-draft", "print-draft-md", "confirm-attendees",
-        "deliver-before-ask"}
+def _all_note_rows() -> list[dict]:
+    return _note_rows("Proofs") + _note_rows("Pending proofs")
+
+
+def test_every_gate_grader_is_an_expected_red_of_a_proof():
+    rows = _all_note_rows()
+    assert {r["name"] for r in rows if not r["pending"]} == {
+        "header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask"}
+    assert {r["name"] for r in rows if r["pending"]} == {"confirm-attendees"}
     assert set().union(*(r["expected"] for r in rows)) == GATES
     for r in rows:
         assert r["cases"] == {CASE}, r
-        assert not (r["expected"] | r["side"]) & (CONTROLS | INHERITED), r
-        assert not r["expected"] & r["side"], r
+        assert not (r["expected"] | r["side"]) & CONTROLS, r
+        assert not r["expected"] & (r["side"] | INHERITED), r
+        # A prediction never names the leak guard; a measured red is recorded as measured.
+        assert not (r["pending"] and r["side"] & INHERITED), r
 
 
-@pytest.mark.parametrize("row", _pending_rows(), ids=lambda r: r["name"])
-def test_each_pending_proof_names_its_offline_model(row):
+@pytest.mark.parametrize("row", _all_note_rows(), ids=lambda r: r["name"])
+def test_each_proof_names_its_offline_model(row):
     assert row["expected"] <= RED[row["model"]] <= row["expected"] | row["side"], row
 
 
-@pytest.mark.parametrize("name", [r["name"] for r in _pending_rows()])
+@pytest.mark.parametrize("name", [r["name"] for r in _all_note_rows()])
 def test_each_note_mutation_patches_only_the_skill(name):
     text = (EVALS / "_mutations" / f"{name}.patch").read_text(encoding="utf-8")
     assert set(re.findall(r"^\+\+\+ b/(\S+)", text, re.M)) == {"skills/note-from-template/SKILL.md"}
 
 
-def test_confirm_attendees_keeps_the_run_going_when_the_question_cannot_be_asked():
-    """Neutral step aimed at grader 5 alone: the confirmation must not end the run."""
+def test_confirm_attendees_asks_in_plain_text_and_keeps_the_run_going():
+    """Neutral step aimed at grader 5 alone: a visible question before `stage` that does
+    not end the run. The first form offered Confirm / Correct and a silent default when
+    the question cannot be asked; the model took the default and never asked (GREEN 3/3,
+    tomo-tmp/evals/2026-11-06T08-03-03Z)."""
     text = (EVALS / "_mutations" / "confirm-attendees.patch").read_text(encoding="utf-8")
     added = " ".join(ln[1:] for ln in text.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
-    assert "Confirm / Correct" in added and "cannot be asked" in added and "take Confirm" in added
+    assert "ask in one line: `Are these the attendees?`" in added
+    assert "do not wait for an answer" in added
+    assert "Confirm" not in added and "cannot be asked" not in added

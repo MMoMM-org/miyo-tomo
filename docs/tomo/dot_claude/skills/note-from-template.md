@@ -14,43 +14,70 @@ input files (see "Why the Runtime Details Look the Way They Do"): every other st
 
 ## Why /note Runs in the Main Session, Not as a Subagent
 
-WHY: The skill calls `AskUserQuestion` at several points. Subagents cannot ask the user and cannot use the
+WHY: The skill asks the user at several points, in plain text and with `AskUserQuestion`. Subagents cannot ask the user and cannot use the
 Agent tool (Anthropic platform constraint), so the skill is loaded by the command shim in the main session and
 no step dispatches a subagent. Revisit if the platform changes.
 
 ## Why the Draft Is Printed Before Every Question
 
-WHY: `AskUserQuestion` shows only a short prompt. The user cannot approve text they have not seen, so the
-skill prints the draft (header line, then the fenced note) as ordinary output before the approval
-question, and again before each re-ask after a change. What is printed is `note.md` (the staged result with
-`{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what will land in the vault. The
-same rule covers the question rounds: any text the user needs to decide on is printed first.
+WHY: The user cannot approve text they have not seen, so the skill prints the draft (header line, then the fenced
+note) as ordinary output before the approval question, and again before each re-ask after a change. What is printed
+is `note.md` (the staged result with `{{source_link}}` resolved), never `draft.md` (F4-AC2): the user approves what
+will land in the vault. The same rule covers the glob preview, the template list, the question rounds and the process
+questions: any text the user needs to decide on is printed first. Since 0.2.7 every such question is plain text (see
+the next section), so the printed content and the question are one message.
 
-## Why Printing Before a Question Is STRICT
+## Why Questions About a Draft or a List Are Plain Text
 
-WHY: Observed deviation in two live `/note` walks on claude-sonnet-5-5 (sessions c573b7b7 and afc60d6c): with
-the plain rule "Before every AskUserQuestion call, print as visible text …" and "After every `stage`, print
-note.md in full", the model repeatedly called `AskUserQuestion` in a message whose only content before the call was
-a Read of `note.md` or a Bash `match` call, with no visible text. The approval question (Deliver / Change something
-/ Abort) came after every revision and every approval in those walks, including the approval after Continue of a
-staged draft, and only once was the draft printed. The user approved a draft and a header they never saw. The same
-happened at the first-run glob Confirm (no `matched` / `unmatched` / `excluded_daily`), at the template choice (no
-numbered list) and at a question round (no covered points). The cause: the model treats its own tool output as
-shown to the user. It is not; the Claude Code UI collapses tool results, so only the reply text of a message is
-visible.
+WHY: Printing first and then calling `AskUserQuestion` failed live, twice in a row, on claude-sonnet-5-5.
 
-That is the case the repo rule reserves `STRICT` for (see "Why STRICT Is Rare"), so the skill carries two STRICT
-blocks:
+First as a plain rule (0.2.4/0.2.5, sessions c573b7b7 and afc60d6c): with "Before every AskUserQuestion call, print
+as visible text …" and "After every `stage`, print note.md in full", the model repeatedly called `AskUserQuestion` in
+a message whose only content before the call was a Read of `note.md` or a Bash `match` call, with no visible text. It
+happened at the approval question (Deliver / Change something / Abort) after every revision, including the Continue
+of a staged draft, at the first-run glob Confirm (no `matched` / `unmatched` / `excluded_daily`), at the template
+choice (no numbered list) and at a question round (no covered points). The user approved a draft and a header they
+never saw. The model treats its own tool output as shown to the user; it is not: the Claude Code UI collapses tool
+results, so only the reply text of a message is visible.
 
-- The general rule in `## Rules`: the visible reply text of the same message that calls `AskUserQuestion` holds
-  everything the question refers to, copied from the Read or Bash result: the numbered template list, the glob
-  lists, the covered and open points, the draft. A tool result or thinking counts as not printed.
-- The draft rule in step 6, just before the approval question: that same message holds the header and the full
-  fenced `note.md` copied from the Read result, after every `stage`: the first draft, every Change something
-  reprint, the Continue of a staged draft and the reprint after a failed delivery's restage; the Rename reprint
-  before `deliver` is visible reply text too.
+Then as two STRICT blocks (0.2.6, commit 14aad581): one in `## Rules` ("the visible reply text of the SAME message
+that calls AskUserQuestion holds everything the question refers to") and one in step 6 for the approval question.
+Session 2e8fb1d3 still called `AskUserQuestion` at 11:34:52 and 11:35:50 straight after a Read of `note.md`, with no
+text block. A tool call invites the model to put the content into the call, or nowhere, instead of into the reply.
 
-Each `Why:` names the failure mode in one line; the sessions, model and dates live here only.
+The cases where the model did print the whole draft were those where the turn ended in plain text: c573b7b7 at
+10:09:20 printed the full draft when the skill ended the turn with text, and the eval case
+`evals/note-draft-before-approval`, where `AskUserQuestion` is never offered, was GREEN 3/3 on exactly that path.
+
+Owner decision 2026-11-06: a question about a draft or a list is asked in plain text. The message is the content
+followed by the question and its options as the last lines; the turn ends there; the next user message is the answer,
+mapped to an option, and an unclear answer is asked again in plain text. This works because there is no second
+channel: the only way to ask is to write the message, and the message the model writes is the one the user reads. It
+is also the path the eval proved, so the paid evidence now matches the live behaviour. One STRICT in `## Rules`
+replaces the two old ones; its `Why:` names the failure mode (the call went out without the draft; tool results are
+hidden). The rule names the plain-text questions by step so the model does not have to decide what counts as "about
+a list":
+
+- step 2 glob setup: Confirm, Correct or Abort, below the proposed globs, `matched`, `unmatched`, `excluded_daily`;
+- step 3 several templates: the numbered list, then "Which number, or Abort?";
+- step 5 question rounds: covered points, then the open points as numbered questions;
+- step 6 approval: header and full fenced `note.md`, then Deliver, Change something or Abort, at the first draft,
+  after every Change something, at the Continue of a staged draft and after a restage of a failed delivery; the
+  Rename reprint before `deliver` is visible text too;
+- step 8 process offer: what would be saved, then Save, Not now or Never for this template;
+- step 9 process mode: the current values, the numbered outline headings (the user names the required ones), the
+  guidance text.
+
+The other questions keep `AskUserQuestion` because their decision needs no list or draft on screen: kept-draft
+Resume / Drop, unfinished Continue / Discard, exit 3 Rename / Abort and Keep / Drop, withdrawn Drop / Abort, step 4
+Another source / Another template, step 3 none-fits (Adjust patterns / inbox-author / Abort) and the refusal re-asks.
+Their content is one line (a title, a path, an error) that fits into the question text itself, and the options are a
+small fixed set the dialog renders well. The four-option cap applies to those dialog questions only.
+
+Trade-offs: a plain-text answer must be mapped, so a vague reply costs one re-ask; the template choice no longer
+needs "at most three candidates plus Abort" (the dialog cap), any listed number is valid; step 9 asks for the required
+headings by number instead of four-per-question multi-select. Revisit if the platform shows tool inputs to the user
+or the model reliably prints before a tool call.
 
 ## Why the Source Delete Is Named Before the User Approves
 
@@ -322,10 +349,10 @@ The hand-off is a Skill tool call, so `Skill` is in `allowed-tools`.
 
 WHY: When one candidate fits the request and its material, a question would only confirm the obvious, so the skill
 names it in one line and continues without asking; the user still sees the template in the draft header and can abort
-at the Deliver question. When several fit, the user decides: the skill prints them as a numbered list first (the
-print-before-ask rule) and asks with at most three candidates plus Abort, which keeps the question within the
-four-option cap of every `AskUserQuestion` in the skill; "up to four candidates with Abort" could have made five. With
-more than three fits, the list is printed in full and the user may type another number from it.
+at the Deliver question. When several fit, the user decides: the skill prints them as a numbered list and asks in plain
+text "Which number, or Abort?" (see "Why Questions About a Draft or a List Are Plain Text"). Up to 0.2.6 the question
+was an `AskUserQuestion` with at most three candidates plus Abort, to stay within its four-option cap; a plain-text
+question has no cap, so any number from the list is a valid answer.
 
 ## Why One Shared Parser (ADR-4)
 
@@ -351,7 +378,8 @@ may already have files in the vault; starting a new draft first would bury it.
 
 ## Why the Question Budget Is Two Rounds of Four
 
-WHY: `AskUserQuestion` caps at four options, and long interviews lose the user. Round 1 asks up to four open
+WHY: Long interviews lose the user, and four questions fit on one screen (the old `AskUserQuestion` cap, kept
+when the rounds became plain text in 0.2.7). Round 1 asks up to four open
 points (required first, process guidance deciding order); round 2 up to four more plus gaps opened by
 answers. A required point still unanswered is asked again without a skip option: answer or abort. Optional points
 left open are named in the "Skipped, left empty:" line above the draft, so skipping is visible.

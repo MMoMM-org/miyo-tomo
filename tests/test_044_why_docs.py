@@ -69,7 +69,7 @@ def test_command_is_thin_shim_and_main_session():
     "heading, needles",
     [
         ("Main Session", ["AskUserQuestion", "subagent", "Agent tool"]),
-        ("Printed Before", ["print", "before", "AskUserQuestion", "note.md", "draft.md"]),
+        ("Printed Before", ["print", "before", "plain text", "note.md", "draft.md"]),
         ("Abort", ["note-instructions.py drop", "note_include", "stays saved"]),
         ("Exit 2 Means", ["exit 2", "another value", "nothing is staged"]),
         ("Resume-or-Drop", ["steps_done", "never a silent drop", "frozen"]),
@@ -87,8 +87,10 @@ def test_command_is_thin_shim_and_main_session():
         ("Question Budget", ["four", "required", "Skipped, left empty"]),
         ("Template Unreadable", ["folder_listed", "never says that no template exists"]),
         ("STRICT Is Rare", ["observed", "Why:"]),
-        ("Printing Before a Question Is STRICT", ["tool results", "same message", "note.md", "Continue",
-                                                  "Rename", "excluded_daily", "numbered", "covered"]),
+        ("Draft or a List Are Plain Text", ["tool results", "2e8fb1d3", "14aad581", "GREEN 3/3", "note.md",
+                                             "Continue", "Rename", "excluded_daily", "numbered", "covered",
+                                             "last lines", "asked again in plain text", "Resume / Drop",
+                                             "keep `AskUserQuestion`", "four-option cap"]),
         ("Eval", ["ADR-8", "not in the CLAUDE.md eval gate"]),
         ("Separate Mode", ["--process", "decline", "note-process.py"]),
     ],
@@ -249,9 +251,9 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
         # 4. deliver stamps tomo:, so a draft-supplied key clashes with the stamp.
         ("tomo: Key", ["_checked_note", "stamp", "rendered-note", "pending-move",
                        "no_user_tomo_key", "clash", "frontmatterMergeError"]),
-        # 5. One fit continues without asking; several get a numbered list under the four-option cap.
+        # 5. One fit continues without asking; several get a numbered list asked in plain text, any number valid.
         ("Template Choice", ["one candidate fits", "without asking", "numbered list",
-                             "four-option cap", "another number"]),
+                             "plain text", "any number from the list"]),
         # 6. Script errors are verbatim: they name the problem class only and are written for the user.
         ("Verbatim", ["problem class", "written for the user", "paraphras", "hide the cause"]),
         # Sweep: draft keeps {{source_link}}; stage resolves it from keep_source.
@@ -287,8 +289,8 @@ def test_skill_mirror_has_no_stale_exit_1_statement(stale):
         ("No Candidate Fitting", ["byName", "`default`", "loop", "known key", "Skill"]),
         # Fix 9: signal 2 is a skipped point filled through Change something.
         ("Separate Mode", ["Skipped, left empty:", "Change something", "could never fire"]),
-        # Fix 10: three candidates plus Abort keeps the four-option cap.
-        ("Template Choice", ["three candidates plus abort", "four"]),
+        # Fix 10, superseded in 0.2.7: the three-candidates cap is named as history, gone with the dialog.
+        ("Template Choice", ["three candidates plus abort", "up to 0.2.6", "no cap"]),
         # Sweep: after setup start reruns; kept drafts come first.
         ("Setup Reruns start", ["candidates", "note_include", "kept draft"]),
     ],

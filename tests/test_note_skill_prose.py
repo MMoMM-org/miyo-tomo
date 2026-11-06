@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.8")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.9")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -623,7 +623,7 @@ def test_process_offer_is_asked_once_with_three_answers_on_three_signals_only():
     assert "Ask once" in text
     assert ("only when `read` reported `exists` false and `declined` false and the session showed at least "
             "one signal") in text
-    assert "Save, Not now or Never for this template?" in text
+    assert "`1 Save · 2 Not now · 3 Never`" in text
     for signal in ("the destination differs from `default_destination`",
                    ("a point named in the `Skipped, left empty:` line was filled through Change something "
                     "before Deliver"),
@@ -656,8 +656,8 @@ def test_process_paths_branch_on_template_outline_failures(heading):
 
 def test_process_mode_defines_keep_current_and_default_destination():
     text = _section("9. Process mode")
-    assert ("Ask in plain text for the destination folder: Keep current, Default or Another folder? Offer "
-            "Keep current only when `exists` is true and `destination` is not empty.") in text
+    assert ("Ask in plain text for the destination folder, ending with `1 Keep current · 2 Default · 3 Another "
+            "folder`. Offer Keep current only when `exists` is true and `destination` is not empty;") in text
     assert "Keep current → `--destination \"<destination>\"` with the current value." in text
     assert "Default → omit `--destination`; notes then go to the atomic-note folder." in text
     assert "Another folder → ask in plain text for it and pass it as `--destination \"<folder>\"`." in text
@@ -751,7 +751,7 @@ APPROVAL_NUMBERED = "`1 Deliver · 2 Change something · 3 Abort`"
 
 def test_every_approval_site_pins_the_numbered_form():
     text = _flat(SKILL)
-    assert text.count(APPROVAL_NUMBERED) == 5
+    assert text.count(APPROVAL_NUMBERED) == 4
     assert "Deliver, Change something or Abort" not in text
 
 

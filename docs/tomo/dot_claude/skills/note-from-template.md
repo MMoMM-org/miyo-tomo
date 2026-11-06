@@ -74,6 +74,12 @@ Another source / Another template, step 3 none-fits (Adjust patterns / inbox-aut
 Their content is one line (a title, a path, an error) that fits into the question text itself, and the options are a
 small fixed set the dialog renders well. The four-option cap applies to those dialog questions only.
 
+The dialog questions that remain carry their subject in the question text itself (0.2.8). Live, claude-sonnet-5-5
+often calls `AskUserQuestion` without printing anything before it, so the user may see only the dialog. One rule in
+`## Rules` therefore requires every `AskUserQuestion` call to name what it is about: the draft's title (the template
+name when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source
+with its one-line error. The dialog stays readable even when the print before it is skipped.
+
 Trade-offs: a plain-text answer must be mapped, so a vague reply costs one re-ask; the template choice no longer
 needs "at most three candidates plus Abort" (the dialog cap), any listed number is valid; step 9 asks for the required
 headings by number instead of four-per-question multi-select. Revisit if the platform shows tool inputs to the user

@@ -5,7 +5,7 @@
 > Spec 044 (issue #169) ADR-9, PRD/SDD F4-AC5, SDD "Draft view pane"; answers
 > issue #182 ("Look if Claude Mods could be useful").
 > Producer of the file it draws: [note-instructions.py](../../scripts/note-instructions.md).
-> Version: 0.1.1 (`dot_claude-plugin/plugin.json` `version` and the
+> Version: 0.1.2 (`dot_claude-plugin/plugin.json` `version` and the
 > `// version:` line of `hooks/register.tsx` move together).
 
 ## Why a Mod
@@ -52,14 +52,21 @@ the mod only checks one path and never decides which draft is current.
 
 - `tool.call` on `AskUserQuestion`: the approval question is an
   `AskUserQuestion` call; opening the pane before `next(e)` puts it up while
-  the dialog waits. It opens only when an option label of the call contains
-  `Deliver` (the step 6 approval options, `1 Deliver` or `Deliver`): a
-  `view.md` left by an abandoned `/note` session would otherwise open the pane
-  at any later, unrelated question (`/inbox`, the glob setup, the process
-  offer). When `view.md` is absent an open pane is closed at any question.
-  The match is on the English option word the skill names; a dialog the model
-  words in another language opens no pane by itself, and `/note-draft` still
-  does.
+  the dialog waits. It opens only for the approval dialog: a `view.md` left by
+  an abandoned `/note` session would otherwise open the pane at any later,
+  unrelated question (`/inbox`, the glob setup, the process offer). The
+  approval dialog is recognised by either of two signals:
+  - an option label contains `deliver`, case-insensitively (the step 6 options
+    `1 Deliver` or `Deliver`);
+  - an option's `preview` contains the note's title as `view.md` holds it.
+    The skill asks in the user's language (live session 8a8f3e67 asked in
+    German), so a label may be `Abliefern`; but the 0.2.11 approval puts the
+    full `note.md` into every option's preview, so the title is there in any
+    language. The title is the frontmatter `title:` value inside the fence
+    (quotes removed), else the first `# ` heading inside the fence; a
+    candidate shorter than three characters is not used. No word list per
+    language: the signal comes from the draft itself.
+  When `view.md` is absent an open pane is closed at any question.
 - `tool.call` on `Bash`, after the call: `stage`, `deliver` and `drop` run
   through Bash; re-reading `view.md` then keeps an open pane current and closes
   it once the file is gone (delivered or dropped).

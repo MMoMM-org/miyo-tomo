@@ -6,16 +6,18 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.6
+# version: 0.2.7
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
 ## Rules
 
-# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, the draft, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
-# Why: tool results are collapsed for the user; the user answered questions about lists they never saw.
+# STRICT — A question about a draft or a list is plain text: print the content, end the message with the question and its options, and end the turn. Never call AskUserQuestion for it.
+# Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user approved a draft they never saw.
 
-- Ask with at most four options per question.
+- The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 question rounds, the step 6 approval question, the step 8 process offer and every step 9 question.
+- A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines. Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
+- Ask every other question with AskUserQuestion, with at most four options per question.
 - Ask in the language the user writes in; keep the template's headings.
 - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
 - On Abort at any question, run `python3 scripts/note-instructions.py drop --stem <stem>` when a stem exists and confirm in one line that the draft was discarded. Write nothing else. A saved `note_include` stays saved.
@@ -43,7 +45,7 @@ Handle every entry of `kept_drafts` before the new request. Print each by title,
 - Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and the entry's `frozen` is true, say the note may already be in the inbox with a name starting `<stem>_`. When `steps_done` is empty and `frozen` is false, say that nothing landed in the inbox. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
 
 Then handle every entry of `unfinished_drafts` before the new request. Print each by title (the template's filename without `.md` when `title` is empty), template and created time, then ask per entry: Continue / Discard. Never drop an unfinished draft without asking.
-- Continue with `staged` true: run `python3 scripts/note-instructions.py stage --stem <stem>`, then run step 6 for that stem from "When `check.ok` is false": print `note.md` with the header and ask Deliver / Change something / Abort. `<template stem>` is the entry's `template` filename without `.md`. The source in the header is the entry's `source_path`; omit the skipped line, and skip step 8 for it. Continue with the new request after it ends.
+- Continue with `staged` true: run `python3 scripts/note-instructions.py stage --stem <stem>`, then run step 6 for that stem from "When `check.ok` is false": print `note.md` with the header and ask in plain text: Deliver, Change something or Abort? `<template stem>` is the entry's `template` filename without `.md`. The source in the header is the entry's `source_path`; omit the skipped line, and skip step 8 for it. Continue with the new request after it ends.
 - Continue with `staged` false: for that stem, run the step 4 `template-outline.py` and `read` calls with the entry's `template` as `<template path>`; never run `new` again. Handle their exits as step 4 says, read the stage files, then run step 5 for that stem with `source.md` as the material when it exists, and go on from there. Continue with the new request after it ends.
 - Discard: run `python3 scripts/note-instructions.py drop --stem <stem>` and say in one line that nothing landed in the inbox.
 
@@ -56,8 +58,8 @@ Then:
 
 1. Run `python3 scripts/note-session.py match --globs "*"` to see every template name. When `folder_listed` is 0, give the step 3 empty-folder message and stop.
 2. Propose filename globs that select the note templates (e.g. a shared prefix). Run `python3 scripts/note-session.py match --globs "<g1>,<g2>"`.
-3. Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask: Confirm / Correct / Abort.
-4. On Correct, take the user's globs, rerun `match`, reprint and ask again. Write nothing before Confirm.
+3. Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask in plain text: Confirm, Correct or Abort?
+4. On Correct, take the user's globs, rerun `match`, reprint and ask again in plain text. Write nothing before Confirm.
 5. On Abort, stop; nothing is written.
 6. On Confirm, write `tomo-tmp/note/note-include.json` as `{"note_include": ["<g1>", "<g2>"]}`, then run:
 
@@ -74,7 +76,7 @@ When `folder_listed` is 0, say: "The template folder is empty or not readable by
 
 Judge which entries of `candidates` fit the request and its material.
 - When one candidate fits, name it in one line and continue without asking.
-- When several fit, print them as a numbered list, then ask which one with at most three candidates plus Abort as options; the user may type any other number from the list.
+- When several fit, print them as a numbered list, then ask in plain text: Which number, or Abort? Any number from the list is valid.
 - When none fits, say "No selected template fits." and ask: Adjust patterns / inbox-author / Abort. Adjust patterns → step 2, starting from `note_include`. inbox-author → invoke the `inbox-author` skill with the Skill tool, passing the request and the line "Compose a free-form note with requested type `default`; do not look for another template.", and stop. Abort → stop.
 
 ## 4. Stage the draft
@@ -104,9 +106,9 @@ The points are every `frontmatter` key, every heading and every token with `pref
 
 1. Print which points the material covers, then the open points.
 2. When no point is open, ask nothing and go to step 6.
-3. Ask at most four open points per round, in at most two rounds. Required points first. Order and weight the questions by the process `guidance`. Offer a skip option for optional points.
+3. Ask in plain text, as numbered questions, at most four open points per round, in at most two rounds. Required points first. Order and weight the questions by the process `guidance`. Mark each optional point as skippable; a skip is allowed only for optional points.
 4. Round 2 takes the remaining open points plus gaps the answers opened.
-5. For each required point still unanswered, ask it again with no skip option. The user can only answer or abort. Any non-empty answer, "none" included, answers a required point.
+5. For each required point still unanswered, ask it again in plain text with no skip option. The user can only answer or abort. Any non-empty answer, "none" included, answers a required point.
 6. Optional points still open stay empty under their heading and go into the skipped line of step 6.
 7. Abort at any question → drop.
 
@@ -130,11 +132,8 @@ Source <source path> is deleted when you apply the instruction set in Hashi.
 
 Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
 
-# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
-# Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
-
-Then ask: Deliver / Change something / Abort.
-- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+Then ask in plain text: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `Deliver, Change something or Abort?`; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+- Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again in plain text. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
 - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
 - Deliver → step 7.
 - Abort → drop.
@@ -150,7 +149,7 @@ python3 scripts/note-instructions.py deliver --stem <stem>
   - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
   - `frozen` true: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the note may already be in the inbox as `note_path`. Then run `drop`.
 - On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then offer Drop / Abort only (no Rename, no Keep). On either answer: when `steps_done` is non-empty, first name its files by kind (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty and `frozen` is true, say the note may already be in the inbox as `note_path`. Then run `drop`.
-- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (Deliver / Change something / Abort).
+- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage`, reprint and return to the step 6 question (`Deliver, Change something or Abort?`).
 - Exit 2: show the error and stop; the draft stays.
 
 ## 8. Process offer
@@ -164,7 +163,7 @@ Ask once, after the delivery report, only when `read` reported `exists` false an
 
 Otherwise, or when `read` reported `exists` or `declined` true, do not ask.
 
-Print what would be saved, then ask: Save / Not now / Never for this template.
+Print what would be saved, then ask in plain text: Save, Not now or Never for this template?
 - Save: write the requested order as text to `tomo-tmp/note/process-guidance.md` when one was asked for, then run:
 
 ```bash
@@ -197,10 +196,10 @@ python3 scripts/note-process.py read --template <template stem> --outline tomo-t
 ```
 
 1. Print the current values (`destination`, `required`, `guidance`) when `exists` is true, or say there is no process yet. When `error` is set, print it.
-2. Ask for the destination folder: Keep current (offer it only when `exists` is true and `destination` is not empty) / Default / Another folder. Keep current → `--destination "<destination>"` with the current value. Default → omit `--destination`; notes then go to the atomic-note folder. Another folder → ask for it and pass it as `--destination "<folder>"`.
-3. Print the outline's headings, then ask which are required, four headings per question with multi-select, until every heading was offered.
-4. Ask for the guidance text; write it to `tomo-tmp/note/process-guidance.md`.
-5. Run `python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json` with the step 2 `--destination` (none for Default), one `--required "<point>"` per point and `--guidance-file tomo-tmp/note/process-guidance.md`. Exit 2 on a refused destination: ask for another folder and rerun.
+2. Ask in plain text for the destination folder: Keep current, Default or Another folder? Offer Keep current only when `exists` is true and `destination` is not empty. Keep current → `--destination "<destination>"` with the current value. Default → omit `--destination`; notes then go to the atomic-note folder. Another folder → ask in plain text for it and pass it as `--destination "<folder>"`.
+3. Print the outline's headings as a numbered list, then ask in plain text which are required; the user names them by number or heading, or none.
+4. Ask in plain text for the guidance text; write it to `tomo-tmp/note/process-guidance.md`.
+5. Run `python3 scripts/note-process.py write --template <template stem> --outline tomo-tmp/note/process-outline.json` with the step 2 `--destination` (none for Default), one `--required "<point>"` per point and `--guidance-file tomo-tmp/note/process-guidance.md`. Exit 2 on a refused destination: ask in plain text for another folder and rerun.
 6. Confirm in one line, then run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md`.
 
 On Abort at any question, run `rm -f tomo-tmp/note/process-outline.json tomo-tmp/note/process-guidance.md` and write nothing.

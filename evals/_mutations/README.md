@@ -42,7 +42,7 @@ Spec 043 F5 (conductor 0.24.2) rebased every conductor patch; the injected text 
 
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
-**Spec 044 (recorded 2026-11-06, `note-from-template` 0.2.4, claude 2.1.317):** the `/note` case `note-draft-before-approval` (not gated) was GREEN 3/3 unmutated, and the `header-after-delivery`, `ask-before-draft`, `print-draft-md`, `deliver-before-ask` and `confirm-attendees` rows were each red in 3/3 for every expected grader; side-effect reds are measured. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The runs were not `--keep-temp`, so no trace was kept. The eval session cannot offer `AskUserQuestion` (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`: the model's ToolSearch for it found nothing, and it asked the approval question as its final text), so the graders anchor on the end of the run: the last message is the approval question, and the header and `note.md` are printed before it. The "never" graders `5-no-question-before-approval` and `6-no-deliver-without-approval` are proven with neutral steps (a plain-text confirmation question that does not wait for an answer, a pre-flight `deliver`), not with a request to misbehave. Not proven by a mutation: `0-approval-asked` is a control (precondition: the run ends on the approval question, its last message names Deliver and Abort) and pairs `9-no-leak`, which passes on an empty last message; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs). At `note-from-template` 0.2.6 the five patches were rebased onto the two print-before-ask STRICT blocks, and `header-after-delivery`, `ask-before-draft` and `print-draft-md` now also weaken the STRICT lines they would otherwise contradict (see Clauses); the rebased patches have not been re-run. Verdicts:
+**Spec 044 (recorded 2026-11-06, `note-from-template` 0.2.4, claude 2.1.317):** the `/note` case `note-draft-before-approval` (not gated) was GREEN 3/3 unmutated, and the `header-after-delivery`, `ask-before-draft`, `print-draft-md`, `deliver-before-ask` and `confirm-attendees` rows were each red in 3/3 for every expected grader; side-effect reds are measured. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The runs were not `--keep-temp`, so no trace was kept. The eval session cannot offer `AskUserQuestion` (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`: the model's ToolSearch for it found nothing, and it asked the approval question as its final text), so the graders anchor on the end of the run: the last message is the approval question, and the header and `note.md` are printed before it. The "never" graders `5-no-question-before-approval` and `6-no-deliver-without-approval` are proven with neutral steps (a plain-text confirmation question that does not wait for an answer, a pre-flight `deliver`), not with a request to misbehave. Not proven by a mutation: `0-approval-asked` is a control (precondition: the run ends on the approval question, its last message names Deliver and Abort) and pairs `9-no-leak`, which passes on an empty last message; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs). At `note-from-template` 0.2.6 the five patches were rebased onto the two print-before-ask STRICT blocks, and `header-after-delivery`, `ask-before-draft` and `print-draft-md` also weakened the STRICT lines they would otherwise contradict. At 0.2.7 the approval question became a plain-text question under one STRICT in `## Rules` ("A question about a draft or a list is plain text: print the content, …"); the five patches were rebased onto it, `ask-before-draft` now weakens that STRICT and the plain-text rule it would contradict, and `header-after-delivery` and `print-draft-md` patch the step 6 sentence that names the header and `note.md` (see Clauses). The rebased patches have not been re-run. Verdicts:
 
 - case, unmutated ($0.40), `tomo-tmp/evals/2026-11-06T07-58-32Z`:
   ```
@@ -421,25 +421,25 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 
 - files: `skills/note-from-template/SKILL.md`
 - removes: "Print this header above the fenced note:"
-- removes: "question goes out with the header and the full fenced `note.md`"
-- removes: "reprint `note.md` with the header, then ask again."
+- removes: "the message holds the header and the full fenced `note.md`"
+- removes: "reprint `note.md` with the header, then ask again in plain text."
 - removes: "reprint `note.md` with the header, rerun `deliver`."
 - adds: "Print no header with the draft; the step 7 delivery report opens with this header:"
 - adds: "- Exit 0 (`delivered`): print the step 6 header, then report"
-- adds: "question goes out with the full fenced `note.md`, copied from the Read result"
+- adds: "the message holds the full fenced `note.md`, copied from the Read result"
 
 ### ask-before-draft
 
 - files: `skills/note-from-template/SKILL.md`
-- removes: "the covered and open points, the draft, any other list or preview)"
-- removes: "question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message"
+- removes: "A question about a draft or a list is plain text: print the content, end the message with the question and its options, and end the turn."
+- removes: "first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines."
 - removes: "After every `stage`, print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk."
-- removes: "Then ask: Deliver / Change something / Abort."
+- removes: "the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `Deliver, Change something or Abort?`"
+- adds: "end the message with the question and its options, and end the turn; print the content only when the user asks for it."
+- adds: "the question and its options; the content only when the user asks for it"
 - adds: "first ask the question below; print `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft."
-- adds: "The question is: Deliver / Show the draft / Change something / Abort."
-- adds: "- Show the draft: print it with the header as above, then ask again."
-- adds: "the covered and open points, any other list or preview)"
-- adds: "question goes out first; the header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft"
+- adds: "Then ask in plain text: `Deliver, Show the draft, Change something or Abort?`; then end the turn. The header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft."
+- adds: "- Show the draft: print it with the header as above, then ask again in plain text."
 
 ### print-draft-md
 
@@ -460,5 +460,5 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 ### deliver-before-ask
 
 - files: `skills/note-from-template/SKILL.md`
-- removes: "Then ask: Deliver / Change something / Abort."
-- adds: "Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask: Deliver / Change something / Abort."
+- removes: "Then ask in plain text: the message holds the header"
+- adds: "Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask in plain text: the message holds the header"

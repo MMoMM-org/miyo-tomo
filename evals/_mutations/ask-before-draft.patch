@@ -1,15 +1,20 @@
 --- a/skills/note-from-template/SKILL.md
 +++ b/skills/note-from-template/SKILL.md
-@@ -12,7 +12,7 @@
+@@ -12,11 +12,11 @@
  
  ## Rules
  
--# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, the draft, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
-+# STRICT — Before every AskUserQuestion call, print as visible text everything the question refers to (the numbered template list, the proposed globs with `matched`, `unmatched` and `excluded_daily`, the covered and open points, any other list or preview): it goes in the visible reply text of the SAME message that calls AskUserQuestion, copied from the tool result. A Read or Bash result is not visible to the user. Text in thinking counts as not printed.
- # Why: tool results are collapsed for the user; the user answered questions about lists they never saw.
+-# STRICT — A question about a draft or a list is plain text: print the content, end the message with the question and its options, and end the turn. Never call AskUserQuestion for it.
++# STRICT — A question about a draft or a list is plain text: end the message with the question and its options, and end the turn; print the content only when the user asks for it. Never call AskUserQuestion for it.
+ # Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user approved a draft they never saw.
  
- - Ask with at most four options per question.
-@@ -120,7 +120,7 @@
+ - The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 question rounds, the step 6 approval question, the step 8 process offer and every step 9 question.
+-- A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines. Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
++- A plain-text question goes in the visible reply text: the question and its options; the content only when the user asks for it, copied from the Read or Bash result (a tool result is not visible to the user). Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
+ - Ask every other question with AskUserQuestion, with at most four options per question.
+ - Ask in the language the user writes in; keep the template's headings.
+ - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
+@@ -122,7 +122,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -18,19 +23,15 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -130,12 +130,13 @@
+@@ -132,9 +132,10 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  
--# STRICT — Every Deliver / Change something / Abort question goes out with the header and the full fenced `note.md`, copied from the Read result, in the visible reply text of the SAME message that calls AskUserQuestion: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
-+# STRICT — Every Deliver / Change something / Abort question goes out first; the header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft: after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
- # Why: a Read of note.md shows the user nothing; the user approved a draft they never saw.
- 
--Then ask: Deliver / Change something / Abort.
-+The question is: Deliver / Show the draft / Change something / Abort.
- - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+-Then ask in plain text: the message holds the header and the full fenced `note.md`, copied from the Read result, and ends with `Deliver, Change something or Abort?`; then end the turn. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
++Then ask in plain text: `Deliver, Show the draft, Change something or Abort?`; then end the turn. The header and the full fenced `note.md` follow, copied from the Read result, only when the user chooses Show the draft. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text too.
+ - Change something: apply the change; rewrite `draft.md`, rerun `stage` and reprint `note.md` with the header, then ask again in plain text. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
  - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
-+- Show the draft: print it with the header as above, then ask again.
++- Show the draft: print it with the header as above, then ask again in plain text.
  - Deliver → step 7.
  - Abort → drop.
  

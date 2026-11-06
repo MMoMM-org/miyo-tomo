@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.9
+# version: 0.1.10
 """test_note_skill_prose.py — spec 044 T3.2: the /note command and its skill.
 
 The dialogue criteria of /note are model behaviour; this file proves that each
@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.6")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.7")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -162,7 +162,8 @@ def test_continue_of_a_printed_draft_returns_to_the_approval_question():
     branch = text[text.index("- Continue with `staged` true:"):text.index("- Continue with `staged` false:")]
     assert "run `python3 scripts/note-instructions.py stage --stem <stem>`" in branch
     assert "When `check.ok` is false" in branch
-    assert "print `note.md` with the header and ask Deliver / Change something / Abort" in branch
+    assert ("print `note.md` with the header and ask in plain text: Deliver, Change something or Abort?"
+            in branch)
     assert "The source in the header is the entry's `source_path`; omit the skipped line" in branch
     assert "skip step 8 for it" in branch
     assert "Continue with the new request after it ends." in branch
@@ -191,13 +192,13 @@ def test_discard_of_an_unfinished_draft_drops_and_says_nothing_landed():
 def test_setup_prints_the_match_preview_before_asking():
     text = _section("2. First-run setup")
     assert "python3 scripts/note-session.py match --globs" in text
-    assert "Print the proposed globs, `matched`, `unmatched` and `excluded_daily`" in text
-    assert "Confirm / Correct / Abort" in text
+    assert ("Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, then ask in plain text: "
+            "Confirm, Correct or Abort?") in text
 
 
 def test_setup_reruns_match_and_reprints_on_a_correction_and_writes_only_on_confirm():
     text = _section("2. First-run setup")
-    assert "On Correct, take the user's globs, rerun `match`, reprint and ask again" in text
+    assert "On Correct, take the user's globs, rerun `match`, reprint and ask again in plain text." in text
     assert "Write nothing before Confirm" in text
     assert "python3 scripts/vault-config-writer.py templates-include --input tomo-tmp/note/note-include.json" in text
 
@@ -216,10 +217,11 @@ def test_one_candidate_is_named_several_are_printed_and_asked():
     assert "When several fit, print them as a numbered list" in text
 
 
-def test_several_fits_ask_at_most_three_candidates_plus_abort():
+def test_several_fits_are_asked_by_number_in_plain_text():
     text = _section("3. Choose the template")
-    assert ("ask which one with at most three candidates plus Abort as options; the user may type any "
-            "other number from the list.") in text
+    assert ("When several fit, print them as a numbered list, then ask in plain text: Which number, or Abort? "
+            "Any number from the list is valid.") in text
+    assert "three candidates" not in text
     assert "up to four options" not in text
 
 
@@ -295,24 +297,12 @@ def test_broken_process_file_and_missing_required_point_are_one_line_each():
 # ── Questions (F3) ──────────────────────────────────────────────────────────
 
 
-def test_print_before_every_question():
-    text = _flat(SKILL)
-    assert "Before every AskUserQuestion call, print as visible text everything the question refers to" in text
-
-
-def _strict_blocks(section_text: str) -> list[tuple[str, list[str]]]:
-    """Each `# STRICT — …` line of a raw section with the `# Why:` lines right after it."""
-    lines = section_text.splitlines()
-    blocks = []
-    for i, line in enumerate(lines):
-        if line.startswith("# STRICT — "):
-            whys = []
-            for follow in lines[i + 1:]:
-                if not follow.startswith("# Why:"):
-                    break
-                whys.append(follow)
-            blocks.append((line, whys))
-    return blocks
+NEW_STRICT = ("# STRICT — A question about a draft or a list is plain text: print the content, end the message "
+              "with the question and its options, and end the turn. Never call AskUserQuestion for it.")
+NEW_WHY = ("# Why: an AskUserQuestion call went out without the draft; tool results are hidden, so the user "
+           "approved a draft they never saw.")
+OLD_STRICT_OPENERS = ("# STRICT — Before every AskUserQuestion call",
+                      "# STRICT — Every Deliver / Change something / Abort question")
 
 
 def _raw_section(heading: str) -> str:
@@ -322,47 +312,110 @@ def _raw_section(heading: str) -> str:
     return text[begin:end if end != -1 else len(text)]
 
 
-def _one_strict(heading: str) -> tuple[str, list[str]]:
-    blocks = _strict_blocks(_raw_section(heading))
-    assert len(blocks) == 1, f"{heading!r}: expected one STRICT block, found {len(blocks)}"
-    return blocks[0]
+def test_the_skill_has_one_strict_the_plain_text_rule_with_one_line_why():
+    # Live: AskUserQuestion went out straight after a Read of note.md, under both print-first STRICT blocks.
+    lines = _text(SKILL).splitlines()
+    stricts = [i for i, line in enumerate(lines) if line.startswith("# STRICT — ")]
+    assert [lines[i] for i in stricts] == [NEW_STRICT]
+    assert lines[stricts[0] + 1] == NEW_WHY
+    assert not lines[stricts[0] + 2].startswith("# Why:")
+    assert NEW_STRICT in _raw_section("Rules")
+    for old in OLD_STRICT_OPENERS:
+        assert old not in _text(SKILL), old
 
 
-@pytest.mark.parametrize("heading", ["Rules", "6. Draft"])
-def test_print_before_ask_strict_has_one_line_why(heading):
-    # Live: the model asked right after a Read or Bash call with no visible text, so these are STRICT.
-    _, whys = _one_strict(heading)
-    assert len(whys) == 1, f"{heading!r}: the STRICT block needs exactly one `# Why:` line"
-    assert not re.search(r"\b(20\d\d-\d\d|F\d+-AC|ADR-|session|spec \d)", whys[0], re.I)
+def test_rules_define_the_plain_text_form_and_name_every_plain_text_question():
+    rules = _section("Rules")
+    assert ("- The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 "
+            "question rounds, the step 6 approval question, the step 8 process offer and every step 9 "
+            "question.") in rules
+    assert ("- A plain-text question goes in the visible reply text: first the content, copied from the Read "
+            "or Bash result (a tool result is not visible to the user), then the question and its options as "
+            "the last lines. Then end the turn. The next user message is the answer: map it to an option; "
+            "when it is unclear, ask again in plain text.") in rules
+    assert "- Ask every other question with AskUserQuestion, with at most four options per question." in rules
 
 
-def test_general_strict_puts_the_content_in_the_asking_message():
-    strict, _ = _one_strict("Rules")
-    assert "Before every AskUserQuestion call, print as visible text everything the question refers to" in strict
-    assert "visible reply text of the SAME message that calls AskUserQuestion" in strict
-    for needle in ("numbered template list", "`matched`, `unmatched` and `excluded_daily`",
-                   "covered and open points", "the draft", "A Read or Bash result is not visible to the user",
-                   "Text in thinking counts as not printed"):
-        assert needle in strict, needle
+# Each plain-text site: (section, the sentence that asks it).
+PLAIN_TEXT_SITES = {
+    "setup-globs": ("2. First-run setup", "Print the proposed globs, `matched`, `unmatched` and `excluded_daily`, "
+                    "then ask in plain text: Confirm, Correct or Abort?"),
+    "setup-correct": ("2. First-run setup", "reprint and ask again in plain text."),
+    "template-choice": ("3. Choose the template", "print them as a numbered list, then ask in plain text: "
+                        "Which number, or Abort?"),
+    "question-rounds": ("5. Ask for open points", "Ask in plain text, as numbered questions, at most four open "
+                        "points per round, in at most two rounds."),
+    "required-re-ask": ("5. Ask for open points", "ask it again in plain text with no skip option."),
+    "approval": ("6. Draft", "Then ask in plain text: the message holds the header and the full fenced "
+                 "`note.md`, copied from the Read result, and ends with `Deliver, Change something or Abort?`; "
+                 "then end the turn."),
+    "approval-after-change": ("6. Draft", "reprint `note.md` with the header, then ask again in plain text."),
+    "approval-continue": ("1. Start", "print `note.md` with the header and ask in plain text: Deliver, Change "
+                          "something or Abort?"),
+    "approval-after-failed-step": ("7. Deliver", "reprint and return to the step 6 question "
+                                   "(`Deliver, Change something or Abort?`)."),
+    "process-offer": ("8. Process offer", "Print what would be saved, then ask in plain text: Save, Not now or "
+                      "Never for this template?"),
+    "process-destination": ("9. Process mode", "Ask in plain text for the destination folder: Keep current, "
+                            "Default or Another folder?"),
+    "process-required": ("9. Process mode", "Print the outline's headings as a numbered list, then ask in plain "
+                         "text which are required; the user names them by number or heading, or none."),
+    "process-guidance": ("9. Process mode", "Ask in plain text for the guidance text;"),
+}
 
 
-def test_draft_strict_names_the_same_message_the_header_and_note_md():
-    strict, _ = _one_strict("6. Draft")
-    assert "visible reply text of the SAME message that calls AskUserQuestion" in strict
-    assert "the header and the full fenced `note.md`, copied from the Read result" in strict
-    for site in ("first draft", "Change something", "Continue of a staged draft", "Rename"):
-        assert site in strict, site
+@pytest.mark.parametrize("site", PLAIN_TEXT_SITES)
+def test_each_draft_or_list_question_is_asked_in_plain_text(site):
+    heading, sentence = PLAIN_TEXT_SITES[site]
+    assert sentence in _section(heading), site
 
 
-def test_draft_strict_sits_before_the_approval_question():
-    section = _raw_section("6. Draft")
-    assert section.index("# STRICT — ") < section.index("Then ask: Deliver / Change something / Abort.")
-    assert section.index("Print this header above the fenced note:") < section.index("# STRICT — ")
+@pytest.mark.parametrize("heading", ["2. First-run setup", "5. Ask for open points", "6. Draft",
+                                     "8. Process offer", "9. Process mode"])
+def test_no_plain_text_section_says_to_ask_with_askuserquestion(heading):
+    assert "AskUserQuestion" not in _section(heading), heading
 
 
-def test_every_question_has_at_most_four_options():
-    assert "Ask with at most four options per question." in _flat(SKILL)
-    assert "four headings per question with multi-select" in _section("9. Process mode")
+def test_askuserquestion_is_named_only_in_the_frontmatter_the_strict_and_the_dialog_rule():
+    body = _text(SKILL).split("\n---\n", 1)[1]
+    hits = [line for line in body.splitlines() if "AskUserQuestion" in line]
+    assert hits == [NEW_STRICT, NEW_WHY,
+                    "- Ask every other question with AskUserQuestion, with at most four options per question."]
+
+
+def test_no_draft_or_list_question_keeps_its_dialog_option_form():
+    text = _flat(SKILL)
+    for dialog_form in ("Deliver / Change something / Abort", "Confirm / Correct / Abort",
+                        "Save / Not now / Never for this template", "Keep current / Default / Another folder",
+                        "multi-select"):
+        assert dialog_form not in text, dialog_form
+
+
+# Each dialog site: (section, its option list in slash form, never asked in plain text).
+DIALOG_SITES = {
+    "kept-draft": ("1. Start", "ask per entry: Resume / Drop."),
+    "unfinished-draft": ("1. Start", "ask per entry: Continue / Discard."),
+    "none-fits": ("3. Choose the template", "ask: Adjust patterns / inbox-author / Abort."),
+    "another-source": ("4. Stage the draft", "then ask: Another source / Abort."),
+    "another-template": ("4. Stage the draft", "Ask: Another template / Abort."),
+    "name-taken-rename": ("7. Deliver", "offer Rename / Abort, naming `exists_path`."),
+    "name-taken-keep": ("7. Deliver", "offer Keep / Drop, naming `exists_path`."),
+    "withdrawn": ("7. Deliver", "offer Drop / Abort only (no Rename, no Keep)."),
+}
+
+
+@pytest.mark.parametrize("site", DIALOG_SITES)
+def test_questions_without_draft_or_list_content_keep_the_dialog(site):
+    heading, options = DIALOG_SITES[site]
+    text = _section(heading)
+    at = text.index(options)
+    sentence = text[text.rfind(". ", 0, at) + 1:at + len(options)]
+    assert "plain text" not in sentence and "AskUserQuestion" not in sentence, site
+
+
+def test_every_dialog_question_has_at_most_four_options():
+    assert "Ask every other question with AskUserQuestion, with at most four options per question." in _flat(SKILL)
+    assert "Ask with at most four options per question." not in _flat(SKILL)
 
 
 def test_question_budget_is_four_per_round_and_two_rounds():
@@ -370,6 +423,7 @@ def test_question_budget_is_four_per_round_and_two_rounds():
     assert "at most four open points per round" in text
     assert "at most two rounds" in text
     assert "Required points first" in text
+    assert "Mark each optional point as skippable; a skip is allowed only for optional points." in text
 
 
 def test_covered_points_are_printed_and_no_open_point_means_no_question():
@@ -384,7 +438,7 @@ def test_guidance_orders_and_weights_the_questions():
 
 def test_required_points_are_re_asked_with_no_skip_option():
     text = _section("5. Ask for open points")
-    assert "ask it again with no skip option" in text
+    assert "ask it again in plain text with no skip option" in text
     assert "The user can only answer or abort" in text
     assert 'Any non-empty answer, "none" included, answers a required point' in text
 
@@ -423,7 +477,7 @@ def test_a_failing_check_is_fixed_before_asking():
 
 def test_approval_options_and_changes_go_through_stage():
     text = _section("6. Draft")
-    assert "Deliver / Change something / Abort" in text
+    assert "`Deliver, Change something or Abort?`" in text
     assert "rewrite `draft.md`, rerun `stage` and reprint `note.md`" in text
     assert "--destination" in text and "--keep-source true" in text
 
@@ -462,7 +516,7 @@ ABORT_LINES = {
         "`template-outline.py` exits 2: show its `error`, drop the stem and stop.",
     ),
     "5. Ask for open points": ("Abort at any question → drop.",),
-    "6. Draft": ("Then ask: Deliver / Change something / Abort.", "- Abort → drop."),
+    "6. Draft": ("and ends with `Deliver, Change something or Abort?`; then end the turn.", "- Abort → drop."),
     "7. Deliver": (
         "rerun `deliver`. Abort → drop.",
         "Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, "
@@ -540,7 +594,7 @@ def test_a_failed_step_is_reported_and_the_draft_kept():
 def test_an_empty_failed_step_names_both_draft_problems_and_sends_back_to_the_draft():
     assert ("When `step` is empty, the filled-note check or the frontmatter stamp failed instead: "
             "fix `draft.md`, rerun `stage`, reprint and return to the step 6 question "
-            "(Deliver / Change something / Abort).") in _section("7. Deliver")
+            "(`Deliver, Change something or Abort?`).") in _section("7. Deliver")
 
 
 def test_a_withdrawn_action_offers_only_drop_or_abort_and_names_landed_files():
@@ -565,7 +619,7 @@ def test_process_offer_is_asked_once_with_three_answers_on_three_signals_only():
     assert "Ask once" in text
     assert ("only when `read` reported `exists` false and `declined` false and the session showed at least "
             "one signal") in text
-    assert "Save / Not now / Never for this template" in text
+    assert "Save, Not now or Never for this template?" in text
     for signal in ("the destination differs from `default_destination`",
                    ("a point named in the `Skipped, left empty:` line was filled through Change something "
                     "before Deliver"),
@@ -598,11 +652,11 @@ def test_process_paths_branch_on_template_outline_failures(heading):
 
 def test_process_mode_defines_keep_current_and_default_destination():
     text = _section("9. Process mode")
-    assert ("Ask for the destination folder: Keep current (offer it only when `exists` is true and "
-            "`destination` is not empty) / Default / Another folder.") in text
+    assert ("Ask in plain text for the destination folder: Keep current, Default or Another folder? Offer "
+            "Keep current only when `exists` is true and `destination` is not empty.") in text
     assert "Keep current → `--destination \"<destination>\"` with the current value." in text
     assert "Default → omit `--destination`; notes then go to the atomic-note folder." in text
-    assert "Another folder → ask for it and pass it as `--destination \"<folder>\"`." in text
+    assert "Another folder → ask in plain text for it and pass it as `--destination \"<folder>\"`." in text
     assert "(keep current / default / another folder)" not in text
 
 

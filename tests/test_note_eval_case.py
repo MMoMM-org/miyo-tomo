@@ -382,9 +382,10 @@ def test_the_trace_carries_the_skill_prose_the_graders_must_not_match(trace):
     prose = next(json.loads(ln)["message"]["content"][0]["text"] for ln in trace.splitlines()
                  if "Base directory for this skill" in ln)
     for needle in ("{{source_link}}", "Template: <template stem>", "note-instructions.py deliver",
-                   "note-instructions.py stage", "Deliver / Change something / Abort", "note.md",
-                   "AskUserQuestion"):
+                   "note-instructions.py stage", "note.md", "AskUserQuestion"):
         assert needle in prose, needle
+    # The probe carries 0.2.4's dialog form, the model the current plain-text question (0.2.7).
+    assert re.search(r"Deliver(?:, | / )Change something(?: or | / )Abort", prose)
 
 
 def test_the_prose_alone_turns_every_grader_but_the_leak_guard_red():

@@ -720,7 +720,7 @@ def test_deliver_never_overwrites_different_note(fake_kado, staged_meta):
 #### Primary Flow: `/note` from an inbox note
 
 1. User runs `/note meeting notes from 100 Inbox/Meeting raw.md`.
-2. Skill runs `note-session.py start`. A kept draft is offered first. With no `note_include`, the first-run setup runs.
+2. Skill runs `note-session.py start`. A kept draft (Resume / Drop) and then an unfinished draft (Continue / Discard) are offered first. With no `note_include`, the first-run setup runs.
 3. Skill picks among `candidates` (asks when several fit) and runs `note-instructions.py new --template ... --source ...`, then `template-outline.py --template ... --stage <stem>`.
 4. Skill reads `template.md`, `source.md` and the process file (`note-process.py read`), prints which points the material covers, and asks open points in at most two rounds, then required points again.
 5. Skill writes `draft.md`, runs `note-instructions.py stage`, and prints the header line and `note.md` (never `draft.md`).
@@ -740,7 +740,7 @@ sequenceDiagram
     User->>Skill: /note ...
     Skill->>S: start --args
     S->>K: list templates.base_path
-    S-->>Skill: candidates, kept_drafts, include_configured
+    S-->>Skill: candidates, kept_drafts, unfinished_drafts, include_configured
     Skill->>N: new --template --source
     N->>K: read source
     Skill->>O: --template --stage
@@ -786,7 +786,7 @@ sequenceDiagram
 ALGORITHM: note-session.py start
 INPUT: $ARGUMENTS
 1. PARSE: first token "--process" → mode process, template stem = the rest of the text (one pair of surrounding quotes and then one trailing ".md" removed; empty when none, since stems may contain spaces); else mode note, request = whole text
-2. KEPT DRAFTS: every tomo-tmp/note/*/meta.json → {stem, title, template, created, failed_step, steps_done, frozen}
+2. DRAFTS: every tomo-tmp/note/*/meta.json; unreadable or missing meta.json → stale_stages [stem]; otherwise failed_step set or steps_done non-empty → KEPT DRAFTS {stem, title, template, created, failed_step, steps_done, frozen}; else UNFINISHED DRAFTS {stem, title, template, created, source_path, staged} (staged: note.md exists and a title is recorded)
 3. CONFIG: templates.note_include, templates.base_path, templates.mapping.daily read from config/vault-config.yaml with yaml.safe_load (the way the other Python scripts read it; a missing key reads as absent)
 4. IF note_include absent → include_configured false, candidates [] (the --process mode still lists the folder for process_template_path)
 5. ELSE LIST: kado list_dir(base_path, depth=1), direct children only, .md only → folder_listed; filter by fnmatchcase(stem, any glob); drop mapping.daily
@@ -838,7 +838,7 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
 
 **Information Architecture:**
 - One command, two modes: `/note <request>` and `/note --process <template>`.
-- A kept draft is always handled first, before the new request.
+- A kept draft is handled first, then an unfinished draft, both before the new request.
 
 **Interaction Design:**
 - Draft header, one block of plain lines above the fenced note:
@@ -857,6 +857,8 @@ No change to deployment. `update-tomo.sh` picks up the new command, skill, scrip
 stateDiagram-v2
     [*] --> Start
     Start --> Resume: kept draft
+    Start --> Continued: unfinished draft, continue
+    Start --> Dropped: unfinished draft, discard
     Start --> Setup: no note_include
     Start --> Choose: configured
     Setup --> Choose: confirmed
@@ -876,6 +878,8 @@ stateDiagram-v2
     Draft --> Dropped: abort
     Resume --> Deliver: resume
     Resume --> Start: drop
+    Continued --> Draft: staged, approval question again
+    Continued --> Ask: not staged, outline and questions again
     Kept --> [*]
     Dropped --> [*]
 ```

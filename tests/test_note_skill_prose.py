@@ -785,7 +785,9 @@ def test_each_skill_call_parses_with_the_scripts_argparse(script, rest, monkeypa
 DIALOG_SUBJECT_RULE = ("- The question text of every AskUserQuestion call names what it is about: the draft's "
                        "title (the template's filename without `.md` when untitled) and created time, the "
                        "`exists_path`, the reason the action was withdrawn, or the template or source with its "
-                       "one-line error.")
+                       "one-line error; for the glob question the proposed globs with the `matched` count, for the "
+                       "template choice the source note or the request, for the process offer and the destination "
+                       "question the template stem.")
 
 
 def test_dialog_question_text_names_its_subject():
@@ -832,3 +834,13 @@ def test_no_plain_text_site_keeps_the_unnumbered_option_form():
     for old in ("Confirm, Correct or Abort", "Save, Not now or Never", "Keep current, Default or Another folder",
                 "Deliver, Change something or Abort", "Which number, or Abort"):
         assert old not in text, old
+
+
+def test_the_subject_rule_names_a_subject_for_every_text_then_dialog_site():
+    rule = DIALOG_SUBJECT_RULE
+    skill_rule = _text(SKILL).split("\n## Rules\n", 1)[1].split("\n## ", 1)[0]
+    assert rule in skill_rule.splitlines()
+    for subject in ("the glob question the proposed globs with the `matched` count",
+                    "the template choice the source note or the request",
+                    "the process offer and the destination question the template stem"):
+        assert subject in rule, subject

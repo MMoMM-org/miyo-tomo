@@ -20,7 +20,7 @@ Fill one vault template into a new note with the user, then deliver the note and
 - A plain-text-only question goes in the visible reply text: first the content, then the question, numbered on one line as `1 First · 2 Second` when it has fixed options. Then end the turn; never call AskUserQuestion for it.
 - The next user message is the answer: the dialog choice, or a typed number or option word; dialog "Other" text is read the same way; when it is unclear, ask again in plain text.
 - Ask every other question with AskUserQuestion, with at most four options per question.
-- The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
+- The question text of every AskUserQuestion call names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error; for the glob question the proposed globs with the `matched` count, for the template choice the source note or the request, for the process offer and the destination question the template stem.
 - Ask in the language the user writes in; keep the template's headings.
 - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
 - On Abort at any question, run `python3 scripts/note-instructions.py drop --stem <stem>` when a stem exists and confirm in one line that the draft was discarded. Write nothing else. A saved `note_include` stays saved.

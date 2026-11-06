@@ -12,9 +12,9 @@
 -- A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines. Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
 +- A plain-text question goes in the visible reply text: the question and its options; the content only when the user asks for it, copied from the Read or Bash result (a tool result is not visible to the user). Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
  - Ask every other question with AskUserQuestion, with at most four options per question.
+ - The question text of every one of those other questions names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
  - Ask in the language the user writes in; keep the template's headings.
- - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
-@@ -122,7 +122,7 @@
+@@ -123,7 +123,7 @@
  
  When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
  
@@ -23,7 +23,7 @@
  
  ```
  Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
-@@ -132,9 +132,10 @@
+@@ -133,9 +133,10 @@
  
  Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
  

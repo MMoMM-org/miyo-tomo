@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Skill
 argument-hint: "what the note is about, optionally naming an inbox note; or --process <template>"
 ---
 # Note From Template
-# version: 0.2.7
+# version: 0.2.8
 
 Fill one vault template into a new note with the user, then deliver the note and its instruction set to the inbox. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `draft.md`, `tomo-tmp/note/note-include.json` and `tomo-tmp/note/process-guidance.md` yourself; every other change goes through the scripts below.
 
@@ -18,6 +18,7 @@ Fill one vault template into a new note with the user, then deliver the note and
 - The plain-text questions are the step 2 glob question, the step 3 template choice, the step 5 question rounds, the step 6 approval question, the step 8 process offer and every step 9 question.
 - A plain-text question goes in the visible reply text: first the content, copied from the Read or Bash result (a tool result is not visible to the user), then the question and its options as the last lines. Then end the turn. The next user message is the answer: map it to an option; when it is unclear, ask again in plain text.
 - Ask every other question with AskUserQuestion, with at most four options per question.
+- The question text of every one of those other questions names what it is about: the draft's title (the template's filename without `.md` when untitled) and created time, the `exists_path`, the reason the action was withdrawn, or the template or source with its one-line error.
 - Ask in the language the user writes in; keep the template's headings.
 - Read Templater code (`<%` … `%>`) as a hint only; never run it and leave none in the draft.
 - On Abort at any question, run `python3 scripts/note-instructions.py drop --stem <stem>` when a stem exists and confirm in one line that the draft was discarded. Write nothing else. A saved `note_include` stays saved.

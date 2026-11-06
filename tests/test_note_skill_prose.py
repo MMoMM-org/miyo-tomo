@@ -56,7 +56,7 @@ def _section(heading: str) -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.7")],
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.2.8")],
                          ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
@@ -726,3 +726,15 @@ def test_each_skill_call_parses_with_the_scripts_argparse(script, rest, monkeypa
         PARSERS[script](_load_script(script), argv)
     except SystemExit as exc:
         pytest.fail(f"{script} {rest!r} rejected by argparse (exit {exc.code})")
+
+
+DIALOG_SUBJECT_RULE = ("- The question text of every one of those other questions names what it is about: the draft's "
+                       "title (the template's filename without `.md` when untitled) and created time, the "
+                       "`exists_path`, the reason the action was withdrawn, or the template or source with its "
+                       "one-line error.")
+
+
+def test_dialog_question_text_names_its_subject():
+    lines = _text(SKILL).split("\n## Rules\n", 1)[1].split("\n## ", 1)[0].splitlines()
+    at = lines.index("- Ask every other question with AskUserQuestion, with at most four options per question.")
+    assert lines[at + 1] == DIALOG_SUBJECT_RULE

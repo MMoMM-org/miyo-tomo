@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.10
+# version: 0.2.11
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -12,7 +12,8 @@ Subcommands:
         concepts.inbox, concepts.atomic_note and profile from
         config/vault-config.yaml and the destination of
         config/note-processes/<template-stem>.md; stages source.md (read via
-        Kado) and writes meta.json (profile included). Every vault path must
+        Kado) and writes meta.json (profile included); removes
+        tomo-tmp/note/view.md. Every vault path must
         be relative (lib/note_paths: vault_note, vault_folder); --source must
         lie inside concepts.inbox.
         Output: {stem, run_id, default_destination, inbox}
@@ -21,7 +22,10 @@ Subcommands:
         Updates meta.json unless a frozen field would change; writes note.md,
         which is draft.md with every {{source_link}} resolved from keep_source
         ([[<source stem>]] when kept, empty otherwise; draft.md is never
-        changed); runs the filled-note check on note.md.
+        changed); runs the filled-note check on note.md. Removes
+        tomo-tmp/note/view.md first, and writes it again (the approval header
+        and note.md in a fence) only when a title is staged and the check
+        passes; a refused stage leaves none.
         Output: {stem, title, inbox_file, destination_file, keep_source, frozen,
                  check: {ok, findings[]}}
         Exit: 0 (findings are output); 2 bad invocation or unknown stem
@@ -33,7 +37,8 @@ Subcommands:
         with identical text counts as done; meta.json records every step, and
         names a step as failed_step before uploading it.
         A source gone before the mark counts as delivered, source_marked false.
-        Removes the stage directory on success.
+        Removes tomo-tmp/note/view.md at its start and the stage directory on
+        success.
         No Kado URL or token: failed at step kado_config, recorded as
         failed_step, nothing written. Kado down: failed at step note.
         A failing check or stamp: failed with step "", nothing recorded.
@@ -50,7 +55,7 @@ Subcommands:
               unknown stem or meta.json write failure (no JSON on stdout);
               3 name taken (nothing more written)
   drop  --stem <stem>
-        Removes the stage directory.
+        Removes the stage directory and tomo-tmp/note/view.md.
         Output: {stem, removed}
         Exit: 0; 2 malformed stem
 
@@ -64,6 +69,7 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
+import re
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
@@ -83,7 +89,7 @@ from lib.note_meta import (  # noqa: E402
     KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, is_frozen, mark_step_done,
     mark_step_failed, new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
-from lib.note_meta import NOTE_FILE  # noqa: E402
+from lib.note_meta import NOTE_FILE, stage_root  # noqa: E402
 from lib.note_paths import (  # noqa: E402
     has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
 )
@@ -100,6 +106,7 @@ CONFIG_PATH = Path("config") / "vault-config.yaml"
 SOURCE_FILE = "source.md"
 DRAFT_FILE = "draft.md"
 SOURCE_LINK = "source_link"
+VIEW_FILE = "view.md"
 _STEM_ATTEMPTS = 60
 
 
@@ -152,6 +159,40 @@ def read_note_config(path: Path = CONFIG_PATH) -> dict:
     profile = cfg.get("profile")
     return {"inbox": inbox, "atomic_path": atomic,
             "profile": profile if isinstance(profile, str) else None}
+
+
+# ── view.md ──────────────────────────────────────────────────────────────
+
+
+def _view_path() -> Path:
+    return stage_root(Path.cwd()) / VIEW_FILE
+
+
+def remove_view() -> None:
+    _view_path().unlink(missing_ok=True)
+
+
+def _fence_for(text: str) -> str:
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    return "`" * max(4, longest + 1)
+
+
+def render_view(meta, note_text: str) -> str:
+    """Return the approval header (SKILL step 6 wording) and note_text in a fence."""
+    lines = [f"Template: {meta.template_stem} · Final name: {meta.destination_file()} · "
+             f"In the inbox until applied: {posixpath.basename(meta.inbox_file)}"]
+    if meta.source_path and not meta.keep_source:
+        lines.append(f"Source {meta.source_path} is deleted when you apply "
+                     "the instruction set in Hashi.")
+    fence = _fence_for(note_text)
+    body = note_text if note_text.endswith("\n") else note_text + "\n"
+    return "\n\n".join(lines) + f"\n\n{fence}markdown\n{body}{fence}\n"
+
+
+def _write_view(stage: Path, meta, check: dict) -> None:
+    if meta.title and check["ok"]:
+        note_text = (stage / NOTE_FILE).read_text(encoding="utf-8")
+        atomic_write_text(_view_path(), render_view(meta, note_text))
 
 
 # ── new ──────────────────────────────────────────────────────────────────
@@ -214,6 +255,7 @@ def _fill_stage(stage: Path, body: str | None, meta) -> None:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
+    remove_view()
     template = _note_arg(args.template, "--template")
     source = _note_arg(args.source, "--source") if args.source is not None else None
     cfg = read_note_config()
@@ -319,6 +361,7 @@ def _stage_meta(stage: Path):
 
 
 def cmd_stage(args: argparse.Namespace) -> int:
+    remove_view()
     title, destination = _title_arg(args.title), _destination_arg(args.destination)
     keep = None if args.keep_source is None else args.keep_source == "true"
     stage = _existing_stage(args.stem)
@@ -326,7 +369,9 @@ def cmd_stage(args: argparse.Namespace) -> int:
     frozen = apply_stage_update(meta, title=title, destination=destination, keep_source=keep)
     if not frozen:
         write_meta(stage, meta)
-    _emit(_stage_output(meta, frozen, _resolve_and_check(stage, meta)))
+    check = _resolve_and_check(stage, meta)
+    _write_view(stage, meta, check)
+    _emit(_stage_output(meta, frozen, check))
     return 0
 
 
@@ -521,6 +566,7 @@ def _deliver(stage: Path, meta) -> bool:
 
 
 def cmd_deliver(args: argparse.Namespace) -> int:
+    remove_view()
     stage = _existing_stage(args.stem)
     meta = _stage_meta(stage)
     if not meta.title:
@@ -541,6 +587,7 @@ def cmd_deliver(args: argparse.Namespace) -> int:
 
 
 def cmd_drop(args: argparse.Namespace) -> int:
+    remove_view()
     try:
         removed = remove_stage(Path.cwd(), args.stem)
     except ValueError as exc:

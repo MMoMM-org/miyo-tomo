@@ -45,6 +45,15 @@ Each job has its own page:
 
 If a note with the chosen name already exists, Tomo overwrites nothing and offers to rename or abort.
 
+### The draft side pane
+
+While a draft waits for your approval, Tomo can show it whole in a side pane beside the conversation: the header (template, final name, inbox name and whether the source is deleted on apply) and the full note, which you can scroll with the arrow keys once the pane has focus. The pane comes from a small Claude Code mod that Tomo installs with the instance; it reads the staged draft from a file, so it shows the draft even when the dialog's preview box cuts it off.
+
+- `/note-draft` opens the pane at any time a draft is staged ("No staged /note draft." otherwise). In a fullscreen terminal of at least 110 columns it docks beside the transcript; narrower, it opens above the prompt.
+- At the approval question the pane opens by itself only on a terminal of at least 144 columns, or of at least 110 columns once you have opened it with `/note-draft` (and not closed it by hand). On a narrower terminal Tomo prints a dim line saying the pane waits; run `/note-draft` to show it.
+- The pane closes itself after the draft is delivered or dropped.
+- Without the pane (another host, or a terminal too narrow) everything works as before: the draft is in the dialog's preview, and "show me the draft" prints it as text.
+
 ### First run
 
 The first time you use `/note`, Tomo lists your template folder, proposes which filename patterns count as note templates, and shows which templates match and which it leaves out. You confirm or correct the patterns, and nothing is saved until you confirm. Your request then continues in the same session. The template mapped as your daily note is never offered as a note kind.

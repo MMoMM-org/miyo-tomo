@@ -24,7 +24,7 @@ const PANE = {
 } as const
 
 const QUESTION = {
-  tool: 'AskUserQuestion',
+  tool: 'AskUserQuestion' as const,
   questions: [
     {
       question: 'Design review: deliver?',
@@ -36,9 +36,17 @@ const QUESTION = {
       ],
     },
   ],
-} as const
+}
+
+// The kit's command.run takes the full input; the engine fills origin and
+// presentation for a typed command, which a test does not model.
+const NOTE_DRAFT = { command: 'note-draft' } as any
 
 type Engine = { files: Record<string, string>; opened: string[]; closed: string[]; commands: string[] }
+
+// The engine hands fs ops the path resolved against the working directory.
+const fileOf = (files: Record<string, string>, path: string) =>
+  Object.keys(files).find(rel => path === rel || path.endsWith('/' + rel))
 
 // Nothing sits beneath the plugin: these hooks stand for the engine.
 function engine(on: any, files: Record<string, string>): Engine {
@@ -60,11 +68,11 @@ function engine(on: any, files: Record<string, string>): Engine {
       .filter(id => !seen.closed.includes(id))
       .map(id => ({ id, title: 'Note draft', isShown: true, isFocused: false, isPlaced: true })),
   }))
-  on('fs.exists', (_: unknown, e: { path: string }) => ({ value: e.path in seen.files }))
+  on('fs.exists', (_: unknown, e: { path: string }) => ({ value: fileOf(seen.files, e.path) !== undefined }))
   on('fs.read', (_: unknown, e: { path: string }) => {
-    const text = seen.files[e.path]
-    if (text === undefined) throw new Error('ENOENT')
-    return { value: text }
+    const rel = fileOf(seen.files, e.path)
+    if (rel === undefined) throw new Error('ENOENT')
+    return { value: seen.files[rel] }
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
@@ -94,7 +102,7 @@ test('/note-draft is registered and opens the pane', async ($, on) => {
   const seen = engine(on, { [VIEW]: TEXT })
   await start($)
   expect(seen.commands).toContain('note-draft')
-  const ran = await $.command.run({ command: 'note-draft' })
+  const ran = await $.command.run(NOTE_DRAFT)
   expect(seen.opened).toContain('note-draft')
   expect(ran.text).not.toBe('engine')
 })
@@ -102,7 +110,7 @@ test('/note-draft is registered and opens the pane', async ($, on) => {
 test('/note-draft without a staged draft says so and opens nothing', async ($, on) => {
   const seen = engine(on, {})
   await start($)
-  const ran = await $.command.run({ command: 'note-draft' })
+  const ran = await $.command.run(NOTE_DRAFT)
   expect(ran.text).toBe('No staged /note draft.')
   expect(seen.opened).not.toContain('note-draft')
 })

@@ -60,3 +60,8 @@ venv/
 
 # tcs-git-helpers per-repo setup lock (runtime artifact, never committed)
 .githooks/.setup.lock
+
+# Claude Code mods in tomo/: the engine writes .claude-plugin/types/ beside a
+# loaded mod; the source stores the manifest as dot_claude-plugin/ (spec 044 ADR-9)
+tomo/dot_claude/skills/*/.claude-plugin/
+tomo/dot_claude/skills/*/dot_claude-plugin/types/

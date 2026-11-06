@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.11.0
+# version: 0.12.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -392,6 +392,8 @@ for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
 done
 # Skill support files (references/ etc.) carry no version header — bytewise.
 # install-tomo.sh copies skills/ recursively; this keeps existing instances level.
+# A mod's manifest folder is stored as dot_claude-plugin/ and lands as
+# .claude-plugin/; the types/ the engine generates beside it is never synced.
 for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
     [ -d "$d" ] || continue
     d="${d%/}"
@@ -399,8 +401,10 @@ for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         rel="${f#"$d"/}"
+        rel="${rel/#dot_claude-plugin\//.claude-plugin/}"
         add_bytewise "$f" "$INSTANCE_PATH/.claude/skills/$name/$rel" "skills/$name/$rel" "skills"
-    done < <(find "$d" -type f ! -name SKILL.md | sort)
+    done < <(find "$d" -type f ! -name SKILL.md \
+                 ! -path "*/.claude-plugin/*" ! -path "*/dot_claude-plugin/types/*" | sort)
 done
 
 # Commands

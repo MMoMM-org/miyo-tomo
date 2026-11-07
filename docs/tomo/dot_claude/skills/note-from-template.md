@@ -159,11 +159,14 @@ skill prints the content as text and asks that question in plain text with no di
 content must not be repeated.
 
 Costs and unknowns: the content is repeated once per option, so a three-option approval carries the draft three times
-as tool input (tokens). How a long draft behaves in the monospace preview box (scrolling, truncation) is not known.
+as tool input (tokens). The terminal truncates a long draft in the preview box ("preview cannot be shown in full",
+session 8a8f3e67); the `tomo-note-view` mod answers this with a side pane that shows the script-written draft (see
+`tomo-note-view.md`), and the preview stays as the fallback below 144 columns, where an unasked pane waits.
 Whether Hashi's session view renders `preview` at all is not known; if it does not, the dialog arrives without content
 there. Revisit and fall back to the 0.2.9 plain-text-only form if a live transcript shows a dialog whose preview is
-empty or a summary, or if the Hashi session view does not render the preview. Until 0.2.11 is checked live, the live-walk
-lines 1.1, 2.4 and 7.6a record the 0.2.10 failure and carry no evidence for it.
+empty or a summary, or if the Hashi session view does not render the preview. 0.2.11 passed live in session 5d5cbb6b: every
+approval dialog carried the full draft in its preview, and the side pane showed it; one hand-copied preview held a
+copy error, which the pane cannot have.
 
 ## Why Plain-Text Options Are Numbered
 

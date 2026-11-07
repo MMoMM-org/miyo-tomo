@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Eval, live walk and close-out"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 4
 ---
@@ -56,19 +56,19 @@ This phase proves the model behaviour once, walks the feature live and closes th
 - [x] **T4.5 Draft view pane** `[activity: build]` (live-walk fix; runs before the T4.2 walk resumes)
 
   1. Prime: `[ref: SDD/Draft view pane; SDD/ADR-9]`; `[ref: PRD/F4]`; the plugin-authoring reference and types of the running Claude Code build; `scripts/install-tomo.sh` skill copy and `scripts/update-tomo.sh` skill support-file sync; `docs/tomo/dot_claude/skills/tomo-note-view.md`
-  2. Test: `tests/test_note_instructions.py`: `stage` writes `tomo-tmp/note/view.md` with the step 6 header and the fenced `note.md`; the source line follows `keep_source`; `deliver`, `drop` and `new` remove it; a stage of another stem replaces it; a refused or failing stage leaves no `view.md`. The mod's own test under `claude plugin test`: the pane opens at an `AskUserQuestion` `tool.call` when `view.md` exists and not when it is absent; `/note-draft` is registered and opens it; the pane draws the file's text. `tests/test_tomo_note_view_mod.py`: the mod files exist, the versions agree, `install-tomo.sh` and `update-tomo.sh` deliver `.claude-plugin/plugin.json` and the hooks into an isolated instance and never `types/`.
+  2. Test: `tests/test_note_instructions.py`: `stage` writes `tomo-tmp/note/view.md` with the step 6 header and the fenced `note.md`; the source line follows `keep_source`; `deliver`, `drop` and `new` remove it; a stage of another stem replaces it; a refused or failing stage leaves no `view.md`. The mod's own test under `claude plugin test`: the pane opens at the approval-dialog `AskUserQuestion` `tool.call` when `view.md` exists, not at another dialog and not when it is absent; `/note-draft` is registered and opens it; the pane draws the file's text. `tests/test_tomo_note_view_mod.py`: the mod files exist, the versions agree, `install-tomo.sh` and `update-tomo.sh` deliver `.claude-plugin/plugin.json` and the hooks into an isolated instance and never `types/`.
   3. Implement: `note-instructions.py` (version bump); the mod; the installer and updater mapping of `dot_claude-plugin`; `.gitignore` for generated types; `docs/usage.md`. `note-from-template/SKILL.md` stays 0.2.11.
   4. Validate: full pytest, ruff, `claude plugin validate` and `claude plugin test` on an installed-layout copy of the mod.
   5. Success: the full draft is visible beside the approval question without depending on the model `[ref: PRD/F4-AC5; SDD/F4-AC5]`
 
-- [ ] **T4.3 Close-out** `[activity: validate]` `[model: routine]`
+- [x] **T4.3 Close-out** `[activity: validate]` `[model: routine]`
 
   1. Prime: spec 043 `close-out.md`; `docs/ai/memory/memory.md` Critical Documentation `[ref: PRD/Success Metrics]`
-  2. Test: trace all 53 criteria (52 plus F4-AC5, added 2026-11-06) to node ids that run in ONE pytest invocation, to the eval verdict or to a live-walk line; for any criterion no test could fail, write a RED-proven test. The `tests/test_note_privacy.py` allowlist is the evidence for F5-AC8 under the amended CON-3.
+  2. Test: trace all 54 criteria (52 plus F6-AC7 and F4-AC5, both added 2026-11-06) to node ids that run in ONE pytest invocation, to the eval verdict or to a live-walk line; for any criterion no test could fail, write a RED-proven test. The `tests/test_note_privacy.py` allowlist is the evidence for F5-AC8 under the amended CON-3.
   3. Implement: `docs/XDD/specs/044-note-from-template/close-out.md`; a Critical Documentation entry in `docs/ai/memory/memory.md`; spec README to Implemented through `xdd-meta finalize`.
   4. Validate: the single pytest invocation is green and its node ids are quoted verbatim.
   5. Success: every criterion is traced to evidence that could fail `[ref: PRD; SDD/Acceptance Criteria]`
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Full pytest and ruff; link check; `git status` clean; PR body carries the spec id, #169 and the eval verdict (as evidence, not as a gate).

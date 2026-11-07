@@ -973,7 +973,7 @@ Added 2026-11-06 (owner decision "Mod inside 044", #182). The approval question 
   - Trade-offs: later edits to the skill have no automatic model check.
   - User confirmed: 2026-11-04
 - [x] ADR-9 The approval draft is shown in a side pane of a Claude Code mod (`tomo-note-view`) that reads `tomo-tmp/note/view.md`, written by `stage`; the dialog preview stays as the fallback.
-  - Rationale: the preview truncates long drafts and printed text depended on the model; a file the script writes and a hook that opens a pane at `AskUserQuestion` are deterministic.
+  - Rationale: the preview truncates long drafts and printed text depended on the model; a file the script writes and a hook that opens a pane at the approval `AskUserQuestion` are deterministic.
   - Trade-offs: early-access mod API; an unasked pane is drawn only from 144 columns (110 after `/note-draft`); no pane under `-p`, in evals or where a host does not draw panes.
   - User confirmed: 2026-11-06 ("Mod inside 044", #182)
 
@@ -1015,7 +1015,7 @@ Added 2026-11-06 (owner decision "Mod inside 044", #182). The approval question 
 - [ ] WHEN the user asks for a change, THE SYSTEM SHALL rewrite `draft.md`, rerun `stage` and reprint the full note from `note.md` (F4-AC2)
 - [ ] WHEN the user changes title, destination or keep-source, THE SYSTEM SHALL record it via `stage` and deliver accordingly (F4-AC3)
 - [ ] WHEN the user approves, THE SYSTEM SHALL run `deliver`; WHEN the user aborts, THE SYSTEM SHALL run `drop` (F4-AC4)
-- [ ] WHEN `stage` succeeds with a title and a passing check, THE SYSTEM SHALL write `tomo-tmp/note/view.md` (header and fenced `note.md`); WHEN `AskUserQuestion` is called while `view.md` exists, the `tomo-note-view` mod SHALL open the draft pane with that text; WHEN the user runs `/note-draft`, THE SYSTEM SHALL open the same pane; `new`, any other `stage`, `deliver` and `drop` SHALL remove `view.md` (F4-AC5, see Draft view pane)
+- [ ] WHEN `stage` succeeds with a title and a passing check, THE SYSTEM SHALL write `tomo-tmp/note/view.md` (header and fenced `note.md`); WHEN the approval question is asked (an option label containing `deliver`, or an option preview containing the note's title) while `view.md` exists, the `tomo-note-view` mod SHALL open the draft pane with that text, and SHALL close it once `view.md` is gone; WHEN the user runs `/note-draft`, THE SYSTEM SHALL open the same pane; `new`, any other `stage`, `deliver` and `drop` SHALL remove `view.md` (F4-AC5, see Draft view pane)
 
 **F5 Delivery**
 - [ ] WHEN `deliver` runs, THE SYSTEM SHALL write the note stamped `rendered-note`/`pending-move`, then `<stem>_instructions.json`, then `<stem>_instructions.md`, flat in the inbox (F5-AC1)

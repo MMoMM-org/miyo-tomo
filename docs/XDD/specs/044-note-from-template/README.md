@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-04 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
 | **Last Updated** | 2026-11-07 |
@@ -14,8 +14,8 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.0: 9 features, 52 criteria; approved by the owner 2026-11-04 |
-| solution.md | completed | v1.0: 15 components, ADR-1 to ADR-8 confirmed, 52 EARS criteria (1:1 with the PRD); review findings worked in; approved by the owner 2026-11-04 |
+| requirements.md | completed | v1.0: 9 features, 52 criteria; approved by the owner 2026-11-04; amended to 54 (F6-AC7, F4-AC5 on 2026-11-06) |
+| solution.md | completed | v1.0: 15 components, ADR-1 to ADR-8 confirmed (ADR-9 added 2026-11-06), 52 EARS criteria (54 after the amendments, 1:1 with the PRD); review findings worked in; approved by the owner 2026-11-04 |
 | plan/ | completed | 4 phases, 22 tasks (T1.1 Kado read check is the gate); approved by the owner 2026-11-04 |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -91,6 +91,8 @@
 | 2026-11-06 | `tomo-note-view` 0.1.1: the pane opens only at a dialog with an option label containing `Deliver` (the step 6 approval); any dialog still closes a stale pane once `view.md` is gone | T4.5 code-quality review: a `view.md` left by an abandoned `/note` session would open the pane at an unrelated question such as `/inbox` |
 | 2026-11-06 | `tomo-note-view` 0.1.2: the approval dialog is recognised in any language: an option label containing `deliver` (case-insensitive), or an option preview containing the note's title from `view.md` (frontmatter `title:` inside the fence, else its first `# ` heading, at least three characters) | The skill asks in the user's language (session 8a8f3e67 asked in German); the 0.2.11 approval preview carries the full `note.md`. No per-language word list |
 | 2026-11-07 | Keep the AskUserQuestion preview next to the draft side pane | Live walk 5d5cbb6b: the pane showed the draft; below 144 columns an unasked pane waits, so the preview stays the fallback (owner) |
+| 2026-11-07 | F4-AC5 and ADR-9 wording narrowed to the approval dialog | Phase 4 drift check: the criterion still said the pane opens at every `AskUserQuestion`; mod 0.1.1/0.1.2 opens it only at the approval dialog and closes it once `view.md` is gone |
+| 2026-11-07 | Implementation complete | Branch docs/169-note-from-template (#169, #182): /note command, note-from-template SKILL.md 0.2.11, note-*.py scripts, tomo-note-view mod 0.1.2, install-tomo.sh 0.7.2, update-tomo.sh 0.12.0; close-out.md traces 54 criteria (194 node ids, 281 passed); the eval and its mutation proofs predate SKILL.md 0.2.5-0.2.11 and were not re-run |
 
 ## Context
 

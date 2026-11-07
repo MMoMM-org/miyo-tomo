@@ -23,7 +23,7 @@ model failed or fell short live:
 
 A mod is code the engine runs, not text the model may skip. It reads the file
 `note-instructions.py stage` writes (`tomo-tmp/note/view.md`) and opens a side
-pane with it when `AskUserQuestion` is called, so what the user sees no longer
+pane with it when the approval `AskUserQuestion` is called, so what the user sees no longer
 depends on the model. The 0.2.11 preview and "show me the draft" stay as the
 fallback, so the skill is unchanged.
 

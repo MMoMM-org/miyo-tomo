@@ -99,6 +99,10 @@ Sets up `<parent>/<name>/home/` as the Docker `/home/coder` mount, including Cla
 
 Tomo's branded Claude Code themes (`tomo/dot_claude/themes/tomo-*.json`) are also seeded into the home at `~/.claude/themes/`. Inside a session, select one with `/theme` (Tomo Ai 藍, Tomo Murasaki 紫, Tomo Cha 茶). They are home-level only — they never touch your host `~/.claude/`, and you can tweak any `.json` live (hot-reload) or drop in your own.
 
+The home's `~/.claude/settings.json` gets Tomo's defaults from `docker/home-settings.json`: today that enables Claude Code's built-in **"You should know"** plugin (`cc-plugin-you-should-know@builtin`), a small side agent that reads along and warns you when it spots something you or Tomo might have missed — for example that applying an instruction set deletes the inbox source note (#183). Install and `update-tomo.sh` merge these defaults into the existing file, and every key already there wins: turn the plugin off with `/plugin disable cc-plugin-you-should-know@builtin` and it stays off on the next update; your `/theme` and `/model` choices are kept too. If the file is not valid JSON, both scripts leave it untouched and say so.
+
+Why the home and not the instance `.claude/settings.json`: the instance file is eval-gated (`evals/README.md`), and a side agent reading along could change what an eval run sees. The home settings are outside the eval session.
+
 ### Statusline
 
 The Tomo statusline (`tomo/scripts/tomo-statusline.sh`) renders as colored **pills**:

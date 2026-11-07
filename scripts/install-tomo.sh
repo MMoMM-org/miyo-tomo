@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.7.2
+# version: 0.8.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1373,6 +1373,21 @@ mkdir -p "$HOME_DIR/.claude"
 cp "$REPO_ROOT/docker/entrypoint.sh" "$HOME_DIR/entrypoint.sh"
 chmod +x "$HOME_DIR/entrypoint.sh"
 print_ok "entrypoint.sh"
+
+# Container-home Claude Code settings (~/.claude/settings.json inside the
+# container). docker/home-settings.json holds Tomo's defaults; keys already in
+# the home win, so a user's /plugin, /theme or /model choice is never undone.
+HOME_SETTINGS_DEFAULTS="$REPO_ROOT/docker/home-settings.json"
+HOME_SETTINGS="$HOME_DIR/.claude/settings.json"
+if [ ! -f "$HOME_SETTINGS" ]; then
+    cp "$HOME_SETTINGS_DEFAULTS" "$HOME_SETTINGS"
+    print_ok "home settings.json (defaults)"
+elif HOME_SETTINGS_MERGED=$(jq -s '.[0] * .[1]' "$HOME_SETTINGS_DEFAULTS" "$HOME_SETTINGS" 2>/dev/null); then
+    printf '%s\n' "$HOME_SETTINGS_MERGED" > "$HOME_SETTINGS"
+    print_ok "home settings.json (defaults merged, existing keys kept)"
+else
+    print_warn "home settings.json is not valid JSON — left untouched; fix it by hand"
+fi
 
 # Auth — copy from host if available
 if [ -f "$HOME/.claude.json" ]; then

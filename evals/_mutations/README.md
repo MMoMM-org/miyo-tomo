@@ -69,6 +69,33 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
   RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 1), note-draft-before-approval: 5-no-question-before-approval (run 2) · runs 3 · $0.39 · 58 s · claude 2.1.317 · tree clean · mutation confirm-attendees · tomo-tmp/evals/2026-11-06T08-11-37Z
   ```
 
+**Spec 044 re-run (recorded 2026-11-07, `note-from-template` 0.2.11, claude 2.1.319):** the case was GREEN 3/3 unmutated and every rebased patch was RED, but two target graders were red in 2/3 only: `1-header-before-approval` under `header-after-delivery` and `5-no-question-before-approval` under `confirm-attendees` (both 3/3 on 0.2.4). `ask-before-draft` → 2 3/3, `print-draft-md` → 3 and 4 3/3, `deliver-before-ask` → 6 3/3. Spend $2.45. The runs were not `--keep-temp`, so no trace was kept.
+
+- case, unmutated ($0.41), `tomo-tmp/evals/2026-11-07T13-10-17Z`:
+  ```
+  GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · runs 3 · $0.41 · 76 s · claude 2.1.319 · tree clean · tomo-tmp/evals/2026-11-07T13-10-17Z
+  ```
+- header-after-delivery ($0.41), `tomo-tmp/evals/2026-11-07T13-11-40Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 1-header-before-approval (run 1) · runs 3 · $0.41 · 62 s · claude 2.1.319 · tree clean · mutation header-after-delivery · tomo-tmp/evals/2026-11-07T13-11-40Z
+  ```
+- ask-before-draft ($0.39), `tomo-tmp/evals/2026-11-07T13-12-47Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 1-header-before-approval (run 2), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.39 · 62 s · claude 2.1.319 · tree clean · mutation ask-before-draft · tomo-tmp/evals/2026-11-07T13-12-47Z
+  ```
+- print-draft-md ($0.42), `tomo-tmp/evals/2026-11-07T13-13-54Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.42 · 65 s · claude 2.1.319 · tree clean · mutation print-draft-md · tomo-tmp/evals/2026-11-07T13-13-54Z
+  ```
+- deliver-before-ask ($0.41), `tomo-tmp/evals/2026-11-07T13-15-05Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 0-approval-asked (run 0), note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 6-no-deliver-without-approval (run 0), note-draft-before-approval: 9-no-leak (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 1), note-draft-before-approval: 9-no-leak (run 1), note-draft-before-approval: 0-approval-asked (run 2), note-draft-before-approval: 1-header-before-approval (run 2), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2), note-draft-before-approval: 5-no-question-before-approval (run 2), note-draft-before-approval: 6-no-deliver-without-approval (run 2), note-draft-before-approval: 9-no-leak (run 2) · runs 3 · $0.41 · 76 s · claude 2.1.319 · tree clean · mutation deliver-before-ask · tomo-tmp/evals/2026-11-07T13-15-05Z
+  ```
+- confirm-attendees ($0.41), `tomo-tmp/evals/2026-11-07T13-16-26Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 2) · runs 3 · $0.41 · 80 s · claude 2.1.319 · tree clean · mutation confirm-attendees · tomo-tmp/evals/2026-11-07T13-16-26Z
+  ```
+
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--rev 4350ddd^` | `audit-gates-delivery`, `audit-mismatch-stops` | `audit-gates-delivery/1-audit-before-upload`, `audit-gates-delivery/2-audit-before-state-flip`, `audit-mismatch-stops/1-no-upload-after-mismatch`, `audit-mismatch-stops/2-no-state-flip-after-mismatch` — the pre-fix step order (upload and flip before the audit) | `audit-gates-delivery/9-no-leak`, `audit-mismatch-stops/9-no-leak` (measured 3/3 in both cases: the pre-C7 Step 4 has no leak guard); `audit-gates-delivery/3-audit-result-in-report` (measured 1/3) |

@@ -93,6 +93,7 @@
 | 2026-11-07 | Keep the AskUserQuestion preview next to the draft side pane | Live walk 5d5cbb6b: the pane showed the draft; below 144 columns an unasked pane waits, so the preview stays the fallback (owner) |
 | 2026-11-07 | F4-AC5 and ADR-9 wording narrowed to the approval dialog | Phase 4 drift check: the criterion still said the pane opens at every `AskUserQuestion`; mod 0.1.1/0.1.2 opens it only at the approval dialog and closes it once `view.md` is gone |
 | 2026-11-07 | Implementation complete | Branch docs/169-note-from-template (#169, #182): /note command, note-from-template SKILL.md 0.2.11, note-*.py scripts, tomo-note-view mod 0.1.2, install-tomo.sh 0.7.2, update-tomo.sh 0.12.0; close-out.md traces 54 criteria (194 node ids, 281 passed); the eval and its mutation proofs predate SKILL.md 0.2.5-0.2.11 and were not re-run |
+| 2026-11-07 | Eval re-run on SKILL.md 0.2.11 before the PR (owner) | GREEN 3/3 (`tomo-tmp/evals/2026-11-07T13-10-17Z`); all five mutations RED; `header-after-delivery` and `confirm-attendees` red 2/3 on their target grader; spend $2.45 |
 
 ## Context
 

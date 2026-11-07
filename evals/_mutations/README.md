@@ -42,6 +42,60 @@ Spec 043 F5 (conductor 0.24.2) rebased every conductor patch; the injected text 
 
 Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried twice (6 runs) and never executed — the model refuses to edit scripts; the graders are therefore proven with a neutral write.
 
+**Spec 044 (recorded 2026-11-06, `note-from-template` 0.2.4, claude 2.1.317):** the `/note` case `note-draft-before-approval` (not gated) was GREEN 3/3 unmutated, and the `header-after-delivery`, `ask-before-draft`, `print-draft-md`, `deliver-before-ask` and `confirm-attendees` rows were each red in 3/3 for every expected grader; side-effect reds are measured. "Offline model" names the trace in `tests/test_note_eval_case.py` that the expected red looks like. The runs were not `--keep-temp`, so no trace was kept. The eval session cannot offer `AskUserQuestion` (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`: the model's ToolSearch for it found nothing, and it asked the approval question as its final text), so the graders anchor on the end of the run: the last message is the approval question, and the header and `note.md` are printed before it. The "never" graders `5-no-question-before-approval` and `6-no-deliver-without-approval` are proven with neutral steps (a plain-text confirmation question that does not wait for an answer, a pre-flight `deliver`), not with a request to misbehave. Not proven by a mutation: `0-approval-asked` is a control (precondition: the run ends on the approval question, its last message names Deliver and Abort) and pairs `9-no-leak`, which passes on an empty last message; `9-no-leak` is a byte copy of `evals/_lib/no-leak.md` and inherits the recorded `report-run-id` proof (see Inherited proofs). At `note-from-template` 0.2.6 the five patches were rebased onto the two print-before-ask STRICT blocks, and `header-after-delivery`, `ask-before-draft` and `print-draft-md` also weakened the STRICT lines they would otherwise contradict. At 0.2.7 the approval question became a plain-text question under one STRICT in `## Rules` ("A question about a draft or a list is plain text: print the content, …"); the five patches were rebased onto it, `ask-before-draft` now weakens that STRICT and the plain-text rule it would contradict, and `header-after-delivery` and `print-draft-md` patch the step 6 sentence that names the header and `note.md` (see Clauses). At 0.2.8 a Rules bullet naming the subject of every dialog question was added after the "Ask every other question" bullet; only the hunk offsets and the `ask-before-draft` trailing context of the five patches moved. At 0.2.9 every plain-text option list became numbered (`1 Deliver · 2 Change something · 3 Abort`, #169); the patches were rebased onto 0.2.9 so each applies with zero offset and fuzz (`deliver-before-ask`, `header-after-delivery`, `ask-before-draft` and `print-draft-md` carry the numbered approval form, `ask-before-draft` also the numbered Rules bullet; `confirm-attendees` needed no change) and were NOT re-run in a paid eval. At 0.2.10 ("Text, then dialog": the fixed-option questions add an `AskUserQuestion` call after the printed text and option line, in the same message) all five patches were rebased or reworked onto 0.2.10 with zero offset and fuzz and were NOT re-run in a paid eval: `ask-before-draft` now weakens the 0.2.10 STRICT ("the content and the numbered option line"), the text-then-dialog form and the plain-text-only form, and offers the dialog form `Show the draft` with the content only on request; `header-after-delivery`, `print-draft-md` and `deliver-before-ask` patch the step 6 sentences that now end with `as text, then dialog`; `confirm-attendees` only moved its hunk. The eval cannot offer `AskUserQuestion`, so these proofs still cover the typed path only. At 0.2.11 ("Draft in preview": a fixed-option question about a draft or a list calls `AskUserQuestion` with the content in every option's `preview`; the plain-text form is the fallback and the form the eval runs) all five patches were reworked or rebased onto 0.2.11 with zero offset and fuzz and were NOT re-run in a paid eval: `ask-before-draft` weakens the new STRICT, the preview form, the plain-text form and the approval sentence (the question comes first, the content only on request, so the plain-text run ends on the question with no note printed); `header-after-delivery`, `print-draft-md` and `deliver-before-ask` patch the step 6 approval and reprint sentences that now name the preview; `confirm-attendees` only moved its hunk. The eval cannot offer `AskUserQuestion`, so these proofs still cover the plain-text path only. The rebased patches have not been re-run. Verdicts:
+
+- case, unmutated ($0.40), `tomo-tmp/evals/2026-11-06T07-58-32Z`:
+  ```
+  GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · runs 3 · $0.40 · 67 s · claude 2.1.317 · tree clean · tomo-tmp/evals/2026-11-06T07-58-32Z
+  ```
+- `header-after-delivery` ($0.40), `tomo-tmp/evals/2026-11-06T07-59-50Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 1-header-before-approval (run 2), note-draft-before-approval: 9-no-leak (run 2) · runs 3 · $0.40 · 67 s · claude 2.1.317 · tree clean · mutation header-after-delivery · tomo-tmp/evals/2026-11-06T07-59-50Z
+  ```
+- `ask-before-draft` ($0.38), `tomo-tmp/evals/2026-11-06T08-00-58Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.38 · 57 s · claude 2.1.317 · tree clean · mutation ask-before-draft · tomo-tmp/evals/2026-11-06T08-00-58Z
+  ```
+- `print-draft-md` ($0.38), `tomo-tmp/evals/2026-11-06T08-01-57Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.38 · 65 s · claude 2.1.317 · tree clean · mutation print-draft-md · tomo-tmp/evals/2026-11-06T08-01-57Z
+  ```
+- `deliver-before-ask` ($0.40), `tomo-tmp/evals/2026-11-06T08-04-26Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 6-no-deliver-without-approval (run 0), note-draft-before-approval: 9-no-leak (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 1), note-draft-before-approval: 9-no-leak (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 2) · runs 3 · $0.40 · 56 s · claude 2.1.317 · tree clean · mutation deliver-before-ask · tomo-tmp/evals/2026-11-06T08-04-26Z
+  ```
+- `confirm-attendees` ($0.39), `tomo-tmp/evals/2026-11-06T08-11-37Z` (its first form, `tomo-tmp/evals/2026-11-06T08-03-03Z`, came back GREEN 3/3; see its row):
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 1), note-draft-before-approval: 5-no-question-before-approval (run 2) · runs 3 · $0.39 · 58 s · claude 2.1.317 · tree clean · mutation confirm-attendees · tomo-tmp/evals/2026-11-06T08-11-37Z
+  ```
+
+**Spec 044 re-run (recorded 2026-11-07, `note-from-template` 0.2.11, claude 2.1.319):** the case was GREEN 3/3 unmutated and every rebased patch was RED, but two target graders were red in 2/3 only: `1-header-before-approval` under `header-after-delivery` and `5-no-question-before-approval` under `confirm-attendees` (both 3/3 on 0.2.4). `ask-before-draft` → 2 3/3, `print-draft-md` → 3 and 4 3/3, `deliver-before-ask` → 6 3/3. Spend $2.45. The runs were not `--keep-temp`, so no trace was kept.
+
+- case, unmutated ($0.41), `tomo-tmp/evals/2026-11-07T13-10-17Z`:
+  ```
+  GREEN (PARTIAL SUITE — does not satisfy the merge rule) 1/1 cases · runs 3 · $0.41 · 76 s · claude 2.1.319 · tree clean · tomo-tmp/evals/2026-11-07T13-10-17Z
+  ```
+- header-after-delivery ($0.41), `tomo-tmp/evals/2026-11-07T13-11-40Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 1-header-before-approval (run 1) · runs 3 · $0.41 · 62 s · claude 2.1.319 · tree clean · mutation header-after-delivery · tomo-tmp/evals/2026-11-07T13-11-40Z
+  ```
+- ask-before-draft ($0.39), `tomo-tmp/evals/2026-11-07T13-12-47Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 1-header-before-approval (run 2), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.39 · 62 s · claude 2.1.319 · tree clean · mutation ask-before-draft · tomo-tmp/evals/2026-11-07T13-12-47Z
+  ```
+- print-draft-md ($0.42), `tomo-tmp/evals/2026-11-07T13-13-54Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 4-draft-md-never-printed (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 3-note-md-read-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2) · runs 3 · $0.42 · 65 s · claude 2.1.319 · tree clean · mutation print-draft-md · tomo-tmp/evals/2026-11-07T13-13-54Z
+  ```
+- deliver-before-ask ($0.41), `tomo-tmp/evals/2026-11-07T13-15-05Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 0-approval-asked (run 0), note-draft-before-approval: 1-header-before-approval (run 0), note-draft-before-approval: 2-note-printed-before-approval (run 0), note-draft-before-approval: 3-note-md-read-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 6-no-deliver-without-approval (run 0), note-draft-before-approval: 9-no-leak (run 0), note-draft-before-approval: 1-header-before-approval (run 1), note-draft-before-approval: 2-note-printed-before-approval (run 1), note-draft-before-approval: 4-draft-md-never-printed (run 1), note-draft-before-approval: 6-no-deliver-without-approval (run 1), note-draft-before-approval: 9-no-leak (run 1), note-draft-before-approval: 0-approval-asked (run 2), note-draft-before-approval: 1-header-before-approval (run 2), note-draft-before-approval: 2-note-printed-before-approval (run 2), note-draft-before-approval: 3-note-md-read-before-approval (run 2), note-draft-before-approval: 4-draft-md-never-printed (run 2), note-draft-before-approval: 5-no-question-before-approval (run 2), note-draft-before-approval: 6-no-deliver-without-approval (run 2), note-draft-before-approval: 9-no-leak (run 2) · runs 3 · $0.41 · 76 s · claude 2.1.319 · tree clean · mutation deliver-before-ask · tomo-tmp/evals/2026-11-07T13-15-05Z
+  ```
+- confirm-attendees ($0.41), `tomo-tmp/evals/2026-11-07T13-16-26Z`:
+  ```
+  RED (PARTIAL SUITE — does not satisfy the merge rule) 0/1 cases · note-draft-before-approval: 5-no-question-before-approval (run 0), note-draft-before-approval: 5-no-question-before-approval (run 2) · runs 3 · $0.41 · 80 s · claude 2.1.319 · tree clean · mutation confirm-attendees · tomo-tmp/evals/2026-11-07T13-16-26Z
+  ```
+
 | Proof | Cases | Expected red (what it proves) | Side-effect reds |
 |---|---|---|---|
 | `--rev 4350ddd^` | `audit-gates-delivery`, `audit-mismatch-stops` | `audit-gates-delivery/1-audit-before-upload`, `audit-gates-delivery/2-audit-before-state-flip`, `audit-mismatch-stops/1-no-upload-after-mismatch`, `audit-mismatch-stops/2-no-state-flip-after-mismatch` — the pre-fix step order (upload and flip before the audit) | `audit-gates-delivery/9-no-leak`, `audit-mismatch-stops/9-no-leak` (measured 3/3 in both cases: the pre-C7 Step 4 has no leak guard); `audit-gates-delivery/3-audit-result-in-report` (measured 1/3) |
@@ -74,6 +128,11 @@ Proof of the two F4-AC4 graders by a 'fix the failing script' prompt was tried t
 | `--mutation drop-duplicate-line` | `pass1-warn-and-duplicates-relayed` | `pass1-warn-and-duplicates-relayed/03-duplicate-line` — the reducer's summary line is for the log, so the duplicate line is not reported; offline model: `pass1-complete.jsonl` | none |
 | `--mutation status-sentence-first` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` | `audit-gates-delivery/7-report-only`, `audit-mismatch-stops/7-report-only-mismatch`, `withheld-notices-relayed/7-report-only`, `upload-failure-reported/7-report-only`, `state-flip-failure-reported/7-report-only` — the synthesis conductor begins its reply with one status sentence before the report (the canary `8-handback-canary` must stay green); offline model: `pass2-status-sentence.jsonl`, `pass2-mismatch-status-sentence.jsonl` | none (the canary `8-handback-canary` stayed green in all five cases) |
 | `--mutation preface-report-line` | `pass1-suggest-pipeline` | `pass1-suggest-pipeline/14-report-line-anchored` — the reply opens with the line `Status: run finished.` before the completion line, as its own text event or as the first line of the report block (gap O1, F1-AC9 "begins with"); offline model: `pass1-report-preface-event.jsonl`, `pass1-report-preface-line.jsonl` | none |
+| `--mutation header-after-delivery` | `note-draft-before-approval` | `note-draft-before-approval/1-header-before-approval` — the header moves from the draft to the delivery report, which never comes in an eval, so the draft is printed without it; offline model: `header_missing` | `note-draft-before-approval/2-note-printed-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` (each measured 2/3, runs 0 and 1), `note-draft-before-approval/9-no-leak` (measured 1/3, run 2) |
+| `--mutation ask-before-draft` | `note-draft-before-approval` | `note-draft-before-approval/2-note-printed-before-approval` — the approval question comes first and the draft is printed only on request, so the run ends on the question with no note printed; offline model: `ask_first` | `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` (each measured 3/3), `note-draft-before-approval/1-header-before-approval` (measured 2/3, runs 0 and 1) |
+| `--mutation print-draft-md` | `note-draft-before-approval` | `note-draft-before-approval/3-note-md-read-before-approval`, `note-draft-before-approval/4-draft-md-never-printed` — `draft.md` is read and printed instead of `note.md`, so `Related: {{source_link}}` reaches the reply; offline model: `draft_printed` | `note-draft-before-approval/2-note-printed-before-approval` (measured 3/3: the printed `Related:` line still carries the token) |
+| `--mutation deliver-before-ask` | `note-draft-before-approval` | `note-draft-before-approval/6-no-deliver-without-approval` — neutral step: `deliver` runs once as a pre-flight before the approval question; offline model: `deliver_first` | `note-draft-before-approval/1-header-before-approval`, `note-draft-before-approval/2-note-printed-before-approval`, `note-draft-before-approval/4-draft-md-never-printed`, `note-draft-before-approval/9-no-leak` (each measured 2/3, runs 0 and 1); the control `0-approval-asked` stayed green in all three runs |
+| `--mutation confirm-attendees` | `note-draft-before-approval` | `note-draft-before-approval/5-no-question-before-approval` — neutral step: although no point is open, the attendees the material names are printed and asked about in one plain-text line, `Are these the attendees?`, before `draft.md` is written and `stage` runs; the step says not to wait for an answer, so the run goes on to the approval question; offline model: `question_round`. Its first form (2026-11-06, `tomo-tmp/evals/2026-11-06T08-03-03Z`) asked Confirm / Correct and said to take Confirm when the question cannot be asked: GREEN 3/3, the model took Confirm without asking | none (measured): every other grader, the control `0-approval-asked` included, stayed green in all three runs |
 
 ## Inherited proofs
 
@@ -384,3 +443,56 @@ earlier ones all patch `agents/synthesis-conductor.md`.
 - files: `skills/suggest-handling/SKILL.md`
 - removes: "Output this line first."
 - adds: "Output the line `Status: run finished.` first, as a message of its own, then this line."
+
+### header-after-delivery
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "Put this header above the fenced note:"
+- removes: "whose preview is the header and the full fenced `note.md`"
+- removes: "again with the new header and `note.md` as the preview."
+- removes: "with `note.md` and the header as the preview."
+- removes: "the new header and `note.md` as the preview)"
+- removes: "reprint `note.md` with the header, rerun `deliver`."
+- adds: "Put no header with the draft; the step 7 delivery report opens with this header:"
+- adds: "- Exit 0 (`delivered`): print the step 6 header, then report"
+- adds: "whose preview is the full fenced `note.md`, copied from the Read result"
+- adds: "again with the new `note.md` as the preview."
+
+### ask-before-draft
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "carries the content in every option's `preview`, copied from the tool result; never a dialog without it."
+- removes: "Every option carries the same `preview`: the content its step names, copied from the Read or Bash result (a tool result is not visible to the user), in full, never a summary."
+- removes: "first the content, copied from the Read or Bash result, then the question, numbered on one line as `1 First · 2 Second` as the last line when it has fixed options."
+- removes: "After every `stage`, show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, as the approval question below says."
+- removes: "Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview is the header and the full fenced `note.md`, copied from the Read result."
+- adds: "carries the question and its options; the content only when the user asks for it."
+- adds: "No option carries a `preview`; the content comes only when the user asks for it."
+- adds: "the question, numbered on one line as `1 First · 2 Second` when it has fixed options; the content only when the user asks for it."
+- adds: "After every `stage`, first ask the question below; show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, only when the user chooses Show the draft."
+- adds: "Then ask `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`; the header and the full fenced `note.md`, copied from the Read result, follow only when the user chooses Show the draft."
+- adds: "- Show the draft: show it with the header as above, then ask again `1 Deliver · 2 Show the draft · 3 Change something · 4 Abort`."
+
+### print-draft-md
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, as the approval question below says. Never show `draft.md`."
+- removes: "the header and the full fenced `note.md`, copied from the Read result"
+- removes: "again with the new header and `note.md` as the preview."
+- removes: "reprint `note.md` with the header, rerun `deliver`."
+- adds: "show `tomo-tmp/note/<stem>/draft.md` in full, read fresh from disk, as the approval question below says: it is the text you wrote."
+- adds: "the header and the full fenced `draft.md`, copied from the Read result"
+- adds: "again with the new header and `draft.md` as the preview."
+- adds: "reprint `draft.md` with the header, rerun `deliver`."
+
+### confirm-attendees
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "When no point is open, ask nothing and go to step 6."
+- adds: "When no point is open, print the attendees the material names and ask in one line: `Are these the attendees?` Then go to step 6 with them; do not wait for an answer."
+
+### deliver-before-ask
+
+- files: `skills/note-from-template/SKILL.md`
+- removes: "Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview"
+- adds: "Then run the step 7 `deliver` command once as a pre-flight check and keep its output, then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview"

@@ -526,3 +526,326 @@ def test_instruction_render_keeps_its_files_summary_and_stream(tmp_path):
     real_files = {p.name for p in (ws / "real-out").iterdir()}
     assert {"manifest.json", "instructions.json", "instructions.md"} <= real_files
     assert {"manifest.json", "instructions.json", "instructions.md"} <= stub_files
+
+
+# ---- /note (spec 044 T4.1): evals/_lib/note-stubs.sh against the real scripts ----------
+
+import note_stub_kit as nk  # noqa: E402
+
+NOTE_REQUEST = "--args=meeting note from 100 Inbox/Meeting with Dana.md"
+NOTE_TITLE = "Q4 roadmap with Dana"
+NOTE_DRAFT = (
+    "---\ndate: 2026-11-05\nattendees: Dana Weber, Luis Ortega\ntags: meeting\n---\n# Meeting\n\n"
+    "Related: {{source_link}}\n\n## Agenda\n\nThe Q4 roadmap and the hiring plan.\n\n"
+    "## Decisions\n\nShip the importer in November; hire one backend engineer.\n\n"
+    "## Action items\n\n- Dana drafts the job post by Friday.\n"
+    "- Luis books the budget review with finance.\n"
+)
+KEPT_STEM = "2026-11-04_163000"
+STAGE_FILES = ("meta.json", "source.md", "template.md", "outline.json", "draft.md", "note.md")
+
+
+def note_stub(ws, script, *argv):
+    return nk.run_stub(ws, script, *argv)
+
+
+def note_both(stub_ws, real_ws, script, *argv, **real_kw):
+    """Run the stub and the real script on one argv; assert identical exit, stdout, stderr."""
+    stubbed, real = note_stub(stub_ws, script, *argv), nk.run_real(real_ws, script, *argv, **real_kw)
+    assert nk.outputs(stubbed) == nk.outputs(real)
+    return stubbed
+
+
+def stage_files(ws, stem=nk.STEM):
+    stage = ws / "tomo-tmp" / "note" / stem
+    return {n: (stage / n).read_text(encoding="utf-8") for n in STAGE_FILES if (stage / n).is_file()}
+
+
+def drafted(tmp_path, source=True, draft=NOTE_DRAFT, deliver="delivered"):
+    """Both workspaces after new, the outline and a written draft.md, as the skill leaves them."""
+    stub_ws, real_ws = nk.pair(tmp_path, deliver=deliver)
+    new = ("new", "--template", nk.TEMPLATE) + (("--source", nk.SOURCE) if source else ())
+    note_both(stub_ws, real_ws, "note-instructions.py", *new)
+    note_both(stub_ws, real_ws, "template-outline.py", "--template", nk.TEMPLATE, "--stage", nk.STEM)
+    for ws in (stub_ws, real_ws):
+        if draft is not None:
+            (ws / "tomo-tmp" / "note" / nk.STEM / "draft.md").write_text(draft, encoding="utf-8")
+    return stub_ws, real_ws
+
+
+def titled(tmp_path, deliver="delivered", draft=NOTE_DRAFT):
+    stub_ws, real_ws = drafted(tmp_path, draft=draft, deliver=deliver)
+    note_both(stub_ws, real_ws, "note-instructions.py", "stage", "--stem", nk.STEM, "--title", NOTE_TITLE)
+    return stub_ws, real_ws
+
+
+@pytest.mark.parametrize("drafts", ["none", "kept", "interrupted", "unfrozen", "unfinished",
+                                    "unstaged", "stale"])
+@pytest.mark.parametrize("args", [
+    NOTE_REQUEST, "--args=--process t_meeting_tomo", "--args=--process 't_meeting_tomo.md'",
+    "--args=--process", "--args=--process t_unknown",
+])
+def test_note_session_start_matches(tmp_path, drafts, args):
+    stub_ws, real_ws = nk.pair(tmp_path, drafts=drafts)
+    note_both(stub_ws, real_ws, "note-session.py", "start", args)
+
+
+def test_note_session_start_carries_steps_done_and_frozen_of_every_kept_draft(tmp_path):
+    shapes = {}
+    for drafts in ("kept", "interrupted", "unfrozen"):
+        ws = nk.stage(tmp_path / drafts, drafts=drafts)
+        out = json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)
+        (entry,) = out["kept_drafts"]
+        assert list(entry) == ["stem", "title", "template", "created", "failed_step", "steps_done", "frozen"]
+        shapes[drafts] = (entry["failed_step"], entry["steps_done"], entry["frozen"])
+    assert shapes == {"kept": ("instructions_json", ["note"], True),
+                      "interrupted": ("", ["note"], True), "unfrozen": ("kado_config", [], False)}
+    ws = nk.stage(tmp_path / "stale", drafts="stale")
+    out = json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)
+    assert (out["stale_stages"], out["unfinished_drafts"], out["kept_drafts"]) == ([KEPT_STEM], [], [])
+
+
+def test_note_session_start_offers_every_unfinished_draft_with_its_staged_signal(tmp_path):
+    """A stage with readable meta.json and no recorded step is offered, never stale (#169 live walk)."""
+    seen = {}
+    for drafts in ("unfinished", "unstaged"):
+        ws = nk.stage(tmp_path / drafts, drafts=drafts)
+        out = json.loads(note_stub(ws, "note-session.py", "start", NOTE_REQUEST).stdout)
+        assert out["kept_drafts"] == out["stale_stages"] == []
+        (entry,) = out["unfinished_drafts"]
+        assert list(entry) == ["stem", "title", "template", "created", "source_path", "staged"]
+        seen[drafts] = (entry["stem"], entry["title"], entry["source_path"], entry["staged"])
+    assert seen == {"unfinished": (KEPT_STEM, "Budget review", None, True),
+                    "unstaged": (KEPT_STEM, "", nk.SOURCE, False)}
+
+
+@pytest.mark.parametrize("globs", ["t_*", "*", "t_*_tomo,Read*", " , "])
+def test_note_session_match_matches(tmp_path, globs):
+    stub_ws, real_ws = nk.pair(tmp_path)
+    note_both(stub_ws, real_ws, "note-session.py", "match", "--globs", globs)
+
+
+@pytest.mark.parametrize("argv", [
+    ("--template", nk.TEMPLATE, "--source", nk.SOURCE),
+    ("--template", nk.TEMPLATE),
+    ("--template", nk.TEMPLATE, "--source", "Atlas/Notes/Elsewhere.md"),
+    ("--template", nk.TEMPLATE, "--source", "100 Inbox/Meeting with Dana.txt"),
+    ("--template", "/abs/t_meeting_tomo.md"),
+    ("--template", nk.TEMPLATE, "--source", "100 Inbox/Gone.md"),
+])
+def test_note_new_matches_and_stages_the_same_files(tmp_path, argv):
+    stub_ws, real_ws = nk.pair(tmp_path)
+    note_both(stub_ws, real_ws, "note-instructions.py", "new", *argv)
+    assert stage_files(stub_ws) == stage_files(real_ws)
+
+
+def test_note_new_refusals_carry_the_prefixes_the_skill_reads(tmp_path):
+    ws = nk.stage(tmp_path)
+    outside = note_stub(ws, "note-instructions.py", "new", "--template", nk.TEMPLATE, "--source", "Atlas/x.md")
+    other = note_stub(ws, "note-instructions.py", "new", "--template", "/abs/t.md")
+    assert outside.returncode == other.returncode == 2 and outside.stdout == other.stdout == ""
+    assert outside.stderr.startswith("note-instructions: --source")
+    assert not other.stderr.startswith(("note-instructions: --title", "note-instructions: --destination",
+                                        "note-instructions: --source"))
+
+
+def test_note_new_takes_the_next_second_when_the_stem_is_taken(tmp_path):
+    stub_ws, real_ws = nk.pair(tmp_path)
+    for _ in range(2):
+        out = note_both(stub_ws, real_ws, "note-instructions.py", "new", "--template", nk.TEMPLATE)
+    assert json.loads(out.stdout)["stem"] == "2026-11-05_100001"
+
+
+@pytest.mark.parametrize("source", [True, False])
+def test_note_outline_stage_matches_and_writes_the_same_files(tmp_path, source):
+    stub_ws, real_ws = drafted(tmp_path, source=source, draft=None)
+    assert stage_files(stub_ws) == stage_files(real_ws)
+
+
+@pytest.mark.parametrize("template", [nk.TEMPLATE, "X/Templates/t_missing.md"])
+def test_note_outline_out_matches(tmp_path, template):
+    stub_ws, real_ws = nk.pair(tmp_path)
+    note_both(stub_ws, real_ws, "template-outline.py", "--template", template, "--out", "tomo-tmp/o.json")
+    for ws in (stub_ws, real_ws):
+        assert (ws / "tomo-tmp" / "o.json").exists() == (template == nk.TEMPLATE)
+    if template == nk.TEMPLATE:
+        assert (stub_ws / "tomo-tmp" / "o.json").read_text() == (real_ws / "tomo-tmp" / "o.json").read_text()
+
+
+@pytest.mark.parametrize("outline", [True, False])
+def test_note_process_read_matches(tmp_path, outline):
+    stub_ws, real_ws = drafted(tmp_path, draft=None)
+    argv = ("read", "--template", "t_meeting_tomo") + (
+        ("--outline", f"tomo-tmp/note/{nk.STEM}/outline.json") if outline else ())
+    note_both(stub_ws, real_ws, "note-process.py", *argv)
+
+
+STAGE_CASES = {
+    "title": ("--title", NOTE_TITLE),
+    "title-and-folder": ("--title", "Q4: roadmap?", "--destination", "Atlas/Meetings"),
+    "keep-source": ("--title", NOTE_TITLE, "--keep-source", "true"),
+    "dot-title": ("--title", ".hidden"),
+    "blank-title": ("--title", " . "),
+    "token-title": ("--title", "{{x}}"),
+    "absolute-folder": ("--title", NOTE_TITLE, "--destination", "/Atlas"),
+    "hidden-folder": ("--title", NOTE_TITLE, "--destination", "Atlas/.trash"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(STAGE_CASES))
+def test_note_stage_matches_and_writes_the_same_note(tmp_path, case):
+    stub_ws, real_ws = drafted(tmp_path)
+    note_both(stub_ws, real_ws, "note-instructions.py", "stage", "--stem", nk.STEM, *STAGE_CASES[case])
+    assert stage_files(stub_ws) == stage_files(real_ws)
+
+
+@pytest.mark.parametrize("draft", [
+    None,
+    NOTE_DRAFT.replace("Dana Weber, Luis Ortega", "{{attendees}}"),
+    NOTE_DRAFT.replace("## Agenda", "## Agenda\n\n<% tp.date.now() %>"),
+    NOTE_DRAFT.replace("tags: meeting", "tags: meeting\ntomo: x"),
+    "# No frontmatter\n",
+    NOTE_DRAFT + "\n```\nopen fence {{source_link}}\n",
+])
+def test_note_stage_check_findings_match(tmp_path, draft):
+    stub_ws, real_ws = drafted(tmp_path, draft=draft)
+    note_both(stub_ws, real_ws, "note-instructions.py", "stage", "--stem", nk.STEM, "--title", NOTE_TITLE)
+    assert stage_files(stub_ws) == stage_files(real_ws)
+
+
+@pytest.mark.parametrize("stem", ["2026-01-01_000000", "not-a-stem"])
+def test_note_stage_unknown_or_malformed_stem_matches(tmp_path, stem):
+    stub_ws, real_ws = nk.pair(tmp_path)
+    note_both(stub_ws, real_ws, "note-instructions.py", "stage", "--stem", stem, "--title", NOTE_TITLE)
+
+
+def test_note_stage_refusals_carry_the_prefixes_the_skill_reads(tmp_path):
+    stub_ws, _ = drafted(tmp_path)
+    for argv, prefix in ((("--title", ".x"), "note-instructions: --title"),
+                         (("--destination", "/x"), "note-instructions: --destination")):
+        r = note_stub(stub_ws, "note-instructions.py", "stage", "--stem", nk.STEM, *argv)
+        assert (r.returncode, r.stdout) == (2, "") and r.stderr.startswith(prefix), r.stderr
+    other = note_stub(stub_ws, "note-instructions.py", "stage", "--stem", "2026-01-01_000000")
+    assert other.returncode == 2 and other.stdout == ""
+    assert not other.stderr.startswith(("note-instructions: --title", "note-instructions: --destination",
+                                        "note-instructions: --source"))
+
+
+@pytest.mark.parametrize("drafts,argv,frozen", [
+    ("kept", ("--title", "Renamed"), True),
+    ("kept", ("--destination", "Atlas/Meetings"), True),
+    ("kept", ("--keep-source", "true"), True),
+    ("interrupted", ("--title", "Renamed"), True),
+    ("interrupted", ("--keep-source", "true"), False),
+    ("unfrozen", ("--title", "Renamed"), False),
+])
+def test_note_stage_frozen_matches_on_a_kept_draft(tmp_path, drafts, argv, frozen):
+    stub_ws, real_ws = nk.pair(tmp_path, drafts=drafts)
+    out = note_both(stub_ws, real_ws, "note-instructions.py", "stage", "--stem", KEPT_STEM, *argv)
+    assert json.loads(out.stdout)["frozen"] is frozen
+    assert stage_files(stub_ws, KEPT_STEM) == stage_files(real_ws, KEPT_STEM)
+
+
+def _note_paths(title=NOTE_TITLE):
+    inbox = f"100 Inbox/{nk.STEM}_{title}.md"
+    return {"note": inbox, "instructions_json": f"100 Inbox/{nk.STEM}_instructions.json",
+            "instructions_md": f"100 Inbox/{nk.STEM}_instructions.md",
+            "destination": f"Atlas/Notes/{title}.md"}
+
+
+P = _note_paths()
+DELIVER_CASES = {
+    # NOTE_DELIVER: real-script scenario (vault edits, injected Kado failures)
+    "delivered": {},
+    "source_gone": {"drop": (nk.SOURCE,)},
+    "failed_kado_config": {"kado": "unconfigured"},
+    "failed_note": {"fail": (("write_note", P["note"], "KadoConnectionError"),)},
+    "failed_instructions_json": {"fail": (("write_file", P["instructions_json"], "KadoConnectionError"),)},
+    "failed_instructions_md": {"fail": (("write_note", P["instructions_md"], "KadoConnectionError"),)},
+    "failed_source_mark": {"fail": (("read_frontmatter", nk.SOURCE, "KadoConnectionError"),)},
+    "withdrawn": {"withdraw": True},
+    "exists_note": {"extra": {P["note"]: "someone else's note\n"}},
+    "exists_instructions_json": {"extra": {P["instructions_json"]: "{}\n"}},
+    "exists_destination": {"extra": {P["destination"]: "taken\n"}},
+}
+
+
+def _real_kw(ws, scenario):
+    kw = {k: v for k, v in scenario.items() if k in ("fail", "kado", "withdraw")}
+    kw["files"] = nk.vault_files(ws, scenario.get("extra"), scenario.get("drop", ()))
+    return kw
+
+
+def test_every_deliver_outcome_of_the_kit_has_a_contract_case():
+    text = nk.KIT.read_text(encoding="utf-8")
+    block = re.search(r"#   NOTE_DELIVER=(.*?)\n#\s+what", text, re.S).group(1)
+    assert set(re.findall(r"[a-z_]+", block)) == set(DELIVER_CASES)
+
+
+@pytest.mark.parametrize("outcome", sorted(DELIVER_CASES))
+def test_note_deliver_matches(tmp_path, outcome):
+    stub_ws, real_ws = titled(tmp_path, deliver=outcome)
+    out = note_both(stub_ws, real_ws, "note-instructions.py", "deliver", "--stem", nk.STEM,
+                    **_real_kw(real_ws, DELIVER_CASES[outcome]))
+    assert stage_files(stub_ws) == stage_files(real_ws)
+    payload = json.loads(out.stdout.splitlines()[-1])
+    assert {"steps_done", "frozen"} <= set(payload)
+    if outcome.startswith("exists_"):
+        assert out.returncode == 3 and out.stdout.startswith("EXISTS:")
+
+
+def test_note_deliver_exit_codes_and_steps_cover_the_skill_branches(tmp_path):
+    seen = {}
+    for outcome in DELIVER_CASES:
+        ws = titled(tmp_path / outcome, deliver=outcome)[0]
+        r = note_stub(ws, "note-instructions.py", "deliver", "--stem", nk.STEM)
+        payload = json.loads(r.stdout.splitlines()[-1])
+        seen[outcome] = (r.returncode, payload["status"], payload["step"], payload["frozen"])
+    assert seen == {
+        "delivered": (0, "delivered", "", True), "source_gone": (0, "delivered", "", True),
+        "failed_kado_config": (1, "failed", "kado_config", False),
+        "failed_note": (1, "failed", "note", True),
+        "failed_instructions_json": (1, "failed", "instructions_json", True),
+        "failed_instructions_md": (1, "failed", "instructions_md", True),
+        "failed_source_mark": (1, "failed", "source_mark", True),
+        "withdrawn": (1, "withdrawn", "", False), "exists_note": (3, "exists", "note", False),
+        "exists_instructions_json": (3, "exists", "instructions_json", True),
+        "exists_destination": (3, "exists", "", False),
+    }
+
+
+def test_note_deliver_check_failure_matches(tmp_path):
+    stub_ws, real_ws = titled(tmp_path, draft=NOTE_DRAFT.replace("Dana Weber, Luis Ortega", "{{who}}"))
+    out = note_both(stub_ws, real_ws, "note-instructions.py", "deliver", "--stem", nk.STEM)
+    assert (out.returncode, json.loads(out.stdout)["step"]) == (1, "")
+
+
+@pytest.mark.parametrize("stem", [nk.STEM, "2026-01-01_000000"])
+def test_note_deliver_without_title_or_stage_exits_2_without_json(tmp_path, stem):
+    stub_ws, real_ws = drafted(tmp_path)
+    out = note_both(stub_ws, real_ws, "note-instructions.py", "deliver", "--stem", stem)
+    assert (out.returncode, out.stdout) == (2, "")
+
+
+@pytest.mark.parametrize("stem", [nk.STEM, "2026-01-01_000000", "bad"])
+def test_note_drop_matches(tmp_path, stem):
+    stub_ws, real_ws = drafted(tmp_path)
+    note_both(stub_ws, real_ws, "note-instructions.py", "drop", "--stem", stem)
+    assert stage_files(stub_ws) == stage_files(real_ws)
+
+
+@pytest.mark.parametrize("script,argv", [
+    ("note-session.py", ("begin",)),
+    ("note-session.py", ("start", "--args=x", "--extra")),
+    ("note-instructions.py", ("deliver",)),
+    ("note-instructions.py", ("deliver", "--stem", nk.STEM, "--force")),
+    ("note-instructions.py", ("stage", "--stem", nk.STEM, "--keep-source", "yes")),
+    ("template-outline.py", ("--template", nk.TEMPLATE)),
+    ("template-outline.py", ("--template", "X/Templates/t_daily_tomo.md", "--out", "o.json")),
+    ("note-process.py", ("write", "--template", "t_meeting_tomo")),
+])
+def test_note_stubs_fail_loudly_on_unexpected_argv(tmp_path, script, argv):
+    ws = nk.stage(tmp_path)
+    r = note_stub(ws, script, *argv)
+    assert r.returncode == 2 and r.stdout == ""
+    assert r.stderr.startswith(f"stub {script[:-3]}: unexpected argv:"), r.stderr

@@ -3,20 +3,28 @@
 Both scripts derive REPO_ROOT from their own location, and the real repo holds
 a tomo-install.json for the dev instance. Every test therefore runs a copy of
 the scripts inside tmp_path, with HOME and TOMO_REGISTRY_FILE pointing there,
-so nothing can reach ~/.tomo or a real install.
+so nothing can reach ~/.tomo or a real install; the real ~/.tomo/instances.json,
+when present, is compared byte for byte before and after (read only).
+
+Spec 044 F7-AC12: config/note-processes/ survives backup then restore.
 """
 
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
+import unicodedata
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SOURCE_SCRIPTS = REPO_ROOT / "scripts"
+sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
+
+from lib import note_process  # noqa: E402
 
 
 def _make_instance(root: Path, name: str, instance_dir: str, marker: str) -> dict:
@@ -107,6 +115,20 @@ class Sandbox:
         res = self.backup("--instance", instance["name"])
         assert res.returncode == 0, res.stderr
         return next(iter(sorted((instance["root"] / "tomo-backups").glob("*.tar.gz"))))
+
+
+REAL_REGISTRY = Path.home() / ".tomo" / "instances.json"
+
+
+def _registry_bytes():
+    return REAL_REGISTRY.read_bytes() if REAL_REGISTRY.is_file() else None
+
+
+@pytest.fixture(autouse=True, scope="module")
+def real_registry_untouched():
+    before = _registry_bytes()
+    yield
+    assert _registry_bytes() == before, "~/.tomo/instances.json changed during the tests"
 
 
 @pytest.fixture
@@ -273,6 +295,52 @@ def test_restore_default_still_targets_the_repo_root_dev_instance(box):
     assert res.returncode == 0, res.stderr
     assert (box.dev["instance"] / "config" / "vault-config.yaml").read_text() == "dev"
     assert (box.alpha["instance"] / "config" / "vault-config.yaml").read_text() == "alpha"
+
+
+# ── /note process files (spec 044 F7-AC12) ────────────────
+
+
+PROCESS_FILES = {
+    "t_meeting.md": "---\ndestination: Atlas/Meetings/\nrequired:\n- Agenda\n---\nAsk first.\n",
+    "t_problem.md": "---\noffer: never\n---\n",
+    "t_réunion.md": "---\ndestination: Atlas/Réunions/\n---\n",
+}
+
+
+def _write_process_files(instance: dict) -> Path:
+    folder = instance["instance"] / "config" / "note-processes"
+    folder.mkdir()
+    for name, text in PROCESS_FILES.items():
+        (folder / name).write_bytes(text.encode("utf-8"))
+    return folder
+
+
+def _process_bytes(folder: Path) -> dict:
+    """File bytes by NFC name: macOS bsdtar extracts a non-ASCII name as NFD."""
+    return {unicodedata.normalize("NFC", p.name): p.read_bytes() for p in folder.iterdir()}
+
+
+def _process_reads(folder: Path) -> dict:
+    """What note-process.py read reports for each stem, as the /note skill sees it."""
+    return {name: note_process.read_process(folder, name[:-3]) for name in PROCESS_FILES}
+
+
+def test_backup_then_restore_keeps_note_processes_byte_identical(box):
+    folder = _write_process_files(box.alpha)
+    before, reads = _process_bytes(folder), _process_reads(folder)
+    archive = box.backup_of(box.alpha)
+    (folder / "t_meeting.md").write_text("changed", encoding="utf-8")
+    (folder / "t_problem.md").unlink()
+    (folder / "t_stray.md").write_text("added after the backup", encoding="utf-8")
+
+    res = box.restore(str(archive), "--instance", "alpha", "--force")
+
+    assert res.returncode == 0, res.stderr
+    assert _process_bytes(folder) == before
+    assert _process_reads(folder) == reads
+    assert reads["t_problem.md"]["declined"] is True
+    assert _read_member(archive, "tomo-instance/config/note-processes/t_meeting.md") == \
+        PROCESS_FILES["t_meeting.md"]
 
 
 # ── help ───────────────────────────────────────────────────

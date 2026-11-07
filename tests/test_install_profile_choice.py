@@ -52,7 +52,7 @@ def _assert_nothing_installed(tmp_path: Path) -> None:
 def test_help_names_only_shipped_profiles(tmp_path):
     r = _run(tmp_path, "--help")
     assert r.returncode == 0, r.stderr
-    profile_line = next(l for l in r.stdout.splitlines() if "--profile NAME" in l)
+    profile_line = next(line for line in r.stdout.splitlines() if "--profile NAME" in line)
     assert "(miyo, lyt)" in profile_line
 
 

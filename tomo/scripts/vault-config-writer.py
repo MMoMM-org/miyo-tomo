@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.3
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -7,10 +7,14 @@ renders the YAML. Pattern: same as XDD 008's instruction-render.py. No more
 LLM-composed vault-config sections.
 
 Subcommands (one per top-level vault-config section):
-  tags           → tomo/schemas/vault-config-tags.schema.json
-  relationships  → tomo/schemas/vault-config-relationships.schema.json
-  callouts       → tomo/schemas/vault-config-callouts.schema.json
-  trackers       → tomo/schemas/vault-config-trackers.schema.json
+  tags              → tomo/schemas/vault-config-tags.schema.json
+  relationships     → tomo/schemas/vault-config-relationships.schema.json
+  callouts          → tomo/schemas/vault-config-callouts.schema.json
+  trackers          → tomo/schemas/vault-config-trackers.schema.json
+  templates-include → tomo/schemas/vault-config-templates.schema.json
+                      (input {"note_include": [...]}; inserts or replaces only
+                      the templates.note_include lines, never the whole
+                      templates: block; appends a templates: block if absent)
 
 The writer does textual section replacement, not a full YAML round-trip, so
 comments, formatting, and unrelated sections stay byte-for-byte identical.
@@ -34,8 +38,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -147,23 +154,26 @@ def render_tags_section(data: dict) -> str:
 
 def _is_top_level_key_line(line: str, key: str) -> bool:
     """`tags:` or `tags: # comment` or `tags: {}` at column 0."""
-    stripped = line.rstrip("\n")
+    stripped = line.rstrip("\r\n")
     if not stripped.startswith(f"{key}:"):
         return False
     after = stripped[len(key) + 1:]
     return after == "" or after.startswith(" ") or after.startswith("\t") or after.startswith("#")
 
 
-def replace_top_level_section(yaml_text: str, section_key: str, new_block: str) -> str:
+def replace_top_level_section(
+    yaml_text: str, section_key: str, new_block: str, newline: str = "\n",
+) -> str:
     """Replace the `<section_key>:` block at column 0. Preserve everything else.
 
     A "block" starts at the `<section_key>:` line and continues through
     contiguous indented or blank lines until the next column-0 key is found.
 
     If the section doesn't exist, the new block is appended (separated by a
-    blank line from any preceding content).
+    blank line from any preceding content). `newline` is the line ending
+    used for the separator lines the append adds.
     """
-    new_block = new_block if new_block.endswith("\n") else new_block + "\n"
+    new_block = new_block if new_block.endswith("\n") else new_block + newline
     lines = yaml_text.splitlines(keepends=True)
     out: list[str] = []
     i = 0
@@ -196,9 +206,9 @@ def replace_top_level_section(yaml_text: str, section_key: str, new_block: str) 
     if not replaced:
         # Ensure a trailing newline on the previous content and a blank separator
         if out and not out[-1].endswith("\n"):
-            out[-1] += "\n"
+            out[-1] += newline
         if out and out[-1].strip() != "":
-            out.append("\n")
+            out.append(newline)
         out.append(new_block)
 
     return "".join(out)
@@ -641,6 +651,276 @@ def cmd_trackers(args: argparse.Namespace) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# `templates-include` subcommand — edits ONE key inside `templates:`
+# (templates.note_include), never the rest of the hand-curated block.
+# ──────────────────────────────────────────────────────────────────────────────
+
+TEMPLATES_INCLUDE_KEY = "note_include"
+
+
+def validate_templates_include_input(data) -> None:
+    if not isinstance(data, dict):
+        _fail("templates-include input must be a JSON object")
+    extra = set(data) - {TEMPLATES_INCLUDE_KEY}
+    if extra:
+        _fail(f"templates-include: {len(extra)} unexpected top-level key(s); "
+              f"only {TEMPLATES_INCLUDE_KEY} is allowed")
+    globs = data.get(TEMPLATES_INCLUDE_KEY)
+    if not isinstance(globs, list) or not globs:
+        _fail("templates-include: note_include must be a non-empty list")
+    for i, g in enumerate(globs):
+        if not isinstance(g, str) or not g.strip():
+            _fail(f"templates-include: note_include[{i}] must be a non-empty string")
+        if g != g.strip():
+            _fail(f"templates-include: note_include[{i}] has leading or trailing whitespace; "
+                  "remove it, a padded glob never matches a filename")
+
+
+def render_templates_include_lines(
+    globs: list[str], indent: str = "  ", newline: str = "\n",
+) -> str:
+    lines = [f"{indent}{TEMPLATES_INCLUDE_KEY}:"]
+    lines.extend(f"{indent}  - {_qstr(g)}" for g in globs)
+    return newline.join(lines) + newline
+
+
+def _newline_of(text: str) -> str:
+    """The ending of the file's first line: CRLF files get CRLF insertions."""
+    first = text.find("\n")
+    return "\r\n" if first > 0 and text[first - 1] == "\r" else "\n"
+
+
+def _leading_ws(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" \t"))]
+
+
+def _section_extent(lines: list[str], section_key: str) -> tuple[int, int] | None:
+    """(header index, index after the last non-blank body line) or None."""
+    start = next((i for i, ln in enumerate(lines) if _is_top_level_key_line(ln, section_key)), None)
+    if start is None:
+        return None
+    end = last = start + 1
+    while end < len(lines) and (lines[end].strip() == "" or lines[end].startswith((" ", "\t"))):
+        end += 1
+        if lines[end - 1].strip():
+            last = end
+    return start, last
+
+
+def _child_indent(body: list[str]) -> str:
+    for ln in body:
+        if ln.strip() and not ln.lstrip().startswith("#"):
+            return _leading_ws(ln)
+    return "  "
+
+
+def _is_key_line(line: str, indent: str, key: str) -> bool:
+    """`<indent>key:`, plain or quoted — YAML reads all three as the same key."""
+    spellings = (f"{key}:", f'"{key}":', f"'{key}':")
+    return _leading_ws(line) == indent and line.lstrip().startswith(spellings)
+
+
+def _is_list_continuation(line: str, indent: str) -> bool:
+    ws = _leading_ws(line)
+    return bool(line.strip()) and (
+        len(ws) > len(indent) or (ws == indent and line.lstrip().startswith("- "))
+    )
+
+
+def _key_extent(body: list[str], indent: str, key: str) -> tuple[int, int] | None:
+    """Span of the key line through its last non-comment continuation line.
+
+    Comment lines after the last list item stay outside the span (they are the
+    user's); comments between items are inside it and are replaced with the list.
+    """
+    for i, ln in enumerate(body):
+        if not _is_key_line(ln, indent, key):
+            continue
+        end = j = i + 1
+        while j < len(body) and _is_list_continuation(body[j], indent):
+            j += 1
+            if not body[j - 1].lstrip().startswith("#"):
+                end = j
+        return i, end
+    return None
+
+
+def set_templates_note_include(yaml_text: str, globs: list[str]) -> str:
+    """Insert or replace the templates.note_include lines only; keep every other byte."""
+    section_key, key = "templates", TEMPLATES_INCLUDE_KEY
+    nl = _newline_of(yaml_text)
+    lines = yaml_text.splitlines(keepends=True)
+    extent = _section_extent(lines, section_key)
+    if extent is None:
+        block = f"{section_key}:{nl}" + render_templates_include_lines(globs, newline=nl)
+        return replace_top_level_section(yaml_text, section_key, block, newline=nl)
+    start, last = extent
+    body = lines[start + 1:last]
+    indent = _child_indent(body)
+    rendered = render_templates_include_lines(globs, indent, newline=nl)
+    span = _key_extent(body, indent, key)
+    lo, hi = (start + 1 + span[0], start + 1 + span[1]) if span else (last, last)
+    if lo > 0 and not lines[lo - 1].endswith("\n"):
+        lines[lo - 1] += nl
+    return "".join(lines[:lo]) + rendered + "".join(lines[hi:])
+
+
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+_KEY_CONSTRUCTOR = yaml.SafeLoader("")  # builds scalar keys the way safe_load does
+
+
+_UNCOMPARABLE = object()
+
+
+class KeyRepeat(NamedTuple):
+    count: int
+    lines: tuple[int, ...]  # 1-based line of each occurrence, in file order
+
+
+def _key_identity(key_node):
+    """The key as safe_load would build it, or _UNCOMPARABLE."""
+    if not isinstance(key_node, yaml.ScalarNode) or key_node.tag == _MERGE_TAG:
+        return _UNCOMPARABLE
+    try:
+        key = _KEY_CONSTRUCTOR.construct_object(key_node, deep=True)
+        hash(key)
+    except (yaml.YAMLError, TypeError):
+        return _UNCOMPARABLE
+    return key
+
+
+def _collect_key_lines(node, path: tuple, lines: dict, seen: set) -> None:
+    """Record {key path: [1-based line of each occurrence]} for every mapping key."""
+    if node is None or id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, yaml.SequenceNode):
+        for i, child in enumerate(node.value):
+            _collect_key_lines(child, path + (i,), lines, seen)
+    elif isinstance(node, yaml.MappingNode):
+        for key_node, value_node in node.value:
+            key = _key_identity(key_node)
+            if key is _UNCOMPARABLE:
+                continue
+            lines.setdefault(path + (key,), []).append(key_node.start_mark.line + 1)
+            _collect_key_lines(value_node, path + (key,), lines, seen)
+
+
+def _duplicate_keys(text: str) -> dict[tuple, KeyRepeat]:
+    """{key path: KeyRepeat} for repeated keys.
+
+    Plain safe_load keeps the last duplicate, so a shadowing second
+    `templates:` or `note_include` would otherwise pass the read-back.
+    """
+    lines: dict[tuple, list[int]] = {}
+    _collect_key_lines(yaml.compose(text, Loader=yaml.SafeLoader), (), lines, set())
+    return {p: KeyRepeat(len(ls), tuple(ls)) for p, ls in lines.items() if len(ls) > 1}
+
+
+def _describe_yaml_error(exc: yaml.YAMLError) -> str:
+    """Class name and line only: the PyYAML message quotes config text."""
+    mark = getattr(exc, "problem_mark", None) or getattr(exc, "context_mark", None)
+    return type(exc).__name__ + (f" at line {mark.line + 1}" if mark else "")
+
+
+def _duplicate_refusal(original: str, updated: str) -> str | None:
+    """Why the result must not be written, or None. Never names a key or value."""
+    try:
+        after = _duplicate_keys(updated)
+    except yaml.YAMLError as exc:
+        return f"resulting YAML is not usable ({_describe_yaml_error(exc)})"
+    try:
+        before = _duplicate_keys(original)
+    except yaml.YAMLError:
+        before = {}
+    introduced = []
+    for path, rep in after.items():
+        prior = before[path].count if path in before else 1
+        if rep.count > prior:
+            introduced.append(rep.lines[prior])  # first copy the edit added
+    if introduced:
+        return (f"duplicate mapping key introduced by the edit "
+                f"(line {min(introduced)} of the result)")
+    shadowed = [rep.lines[1] for p, rep in before.items() if p[0] == "templates"]
+    if shadowed:
+        return (f"pre-existing duplicate key in the templates: block, already in the config "
+                f"(line {min(shadowed)}); the edit could land in the copy YAML ignores, "
+                "fix the file first")
+    return None
+
+
+def _reads_back(updated: str, globs: list[str]) -> bool:
+    try:
+        parsed = yaml.safe_load(updated)
+    except yaml.YAMLError as exc:
+        print(f"error: resulting YAML is not usable ({_describe_yaml_error(exc)})", file=sys.stderr)
+        return False
+    templates = parsed.get("templates") if isinstance(parsed, dict) else None
+    return isinstance(templates, dict) and templates.get(TEMPLATES_INCLUDE_KEY) == globs
+
+
+def _load_json_input(path: Path):
+    """Return (data, None) or (None, exit code) — mirrors _run_section_command."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except FileNotFoundError:
+        print(f"error: input file not found: {path}", file=sys.stderr)
+        return None, 2
+    except json.JSONDecodeError as exc:
+        print(f"error: invalid JSON in {path}: {exc}", file=sys.stderr)
+        return None, 1
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a same-directory temp file + os.replace, keeping the mode bits."""
+    mode = path.stat().st_mode & 0o7777
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def cmd_templates_include(args: argparse.Namespace) -> int:
+    data, rc = _load_json_input(Path(args.input))
+    if rc is not None:
+        return rc
+    validate_templates_include_input(data)
+    globs = data[TEMPLATES_INCLUDE_KEY]
+    if args.stdout:
+        sys.stdout.write(render_templates_include_lines(globs, indent=""))
+        return 0
+    config_path = Path(args.config)
+    try:
+        with open(config_path, encoding="utf-8", newline="") as fh:
+            current = fh.read()
+    except FileNotFoundError:
+        print(f"error: config not found: {config_path}", file=sys.stderr)
+        return 2
+    updated = set_templates_note_include(current, globs)
+    refusal = _duplicate_refusal(current, updated)
+    if refusal:
+        print(f"error: {refusal}, refusing to write", file=sys.stderr)
+        return 1
+    if not _reads_back(updated, globs):
+        print("error: resulting YAML would not read back templates.note_include, "
+              "refusing to write", file=sys.stderr)
+        return 1
+    try:
+        _atomic_write(config_path, updated)
+    except OSError as exc:
+        print(f"error: could not write {config_path}: {exc}", file=sys.stderr)
+        return 2
+    print(f"vault-config-writer: templates.note_include written ({len(globs)} glob(s)) "
+          f"→ {config_path}", file=sys.stderr)
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -679,6 +959,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_trk = sub.add_parser("trackers", help="Render/replace the top-level `trackers:` block.")
     _common_args(p_trk, "vault-config-trackers")
     p_trk.set_defaults(func=cmd_trackers)
+
+    p_tpl = sub.add_parser(
+        "templates-include",
+        help="Insert/replace only `templates.note_include`; the rest of `templates:` is untouched.",
+    )
+    _common_args(p_tpl, "vault-config-templates")
+    p_tpl.set_defaults(func=cmd_templates_include)
 
     return p
 

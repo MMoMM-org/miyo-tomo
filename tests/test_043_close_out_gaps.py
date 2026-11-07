@@ -62,9 +62,14 @@ def _proof_rows(title: str = "Proofs") -> dict[str, set[tuple[str, str]]]:
     return rows
 
 
+# The spec 044 /note case; its proofs are recorded inline in evals/_mutations/README.md.
+NOTE_CASE = "note-draft-before-approval"
+
+
 def _proofs_this_spec_recorded() -> dict[str, set[tuple[str, str]]]:
     rows = _proof_rows()
-    wanted = (set(rows) - SPEC_041_PATCHES) | REPROVEN_041
+    note = {name for name, expected in rows.items() if {c for c, _ in expected} == {NOTE_CASE}}
+    wanted = (set(rows) - SPEC_041_PATCHES - note) | REPROVEN_041
     return {name: rows[name] for name in sorted(wanted)}
 
 
@@ -88,6 +93,22 @@ def test_every_spec_043_proof_is_recorded_red_in_3_of_3_with_its_results_path():
             if not any(all(f"{case}: {grader} (run {r})" in ln for r in range(3)) for ln in lines):
                 problems.append(f"{name}: {case}/{grader} is not red in runs 0, 1 and 2 of one verdict")
     assert not problems, problems
+
+
+def test_every_spec_044_proof_is_recorded_red_in_3_of_3_with_its_results_path():
+    """The same record for the /note rows, whose verdicts sit in the mutations README."""
+    rows = _proof_rows()
+    note = {name: exp for name, exp in rows.items() if {c for c, _ in exp} == {NOTE_CASE}}
+    assert set(note) == {"header-after-delivery", "ask-before-draft", "print-draft-md",
+                         "deliver-before-ask", "confirm-attendees"}
+    verdicts: dict[str, list[str]] = {}
+    for m in VERDICT.finditer(re.sub(r"^ +", "", MUTATIONS_README.read_text(encoding="utf-8"), flags=re.M)):
+        verdicts.setdefault(m.group("name"), []).append(m.group(0))
+    for name, expected in note.items():
+        lines = verdicts.get(name, [])
+        assert lines, f"{name}: no RED verdict line with its results path"
+        for case, grader in sorted(expected):
+            assert any(all(f"{case}: {grader} (run {r})" in ln for r in range(3)) for ln in lines), name
 
 
 

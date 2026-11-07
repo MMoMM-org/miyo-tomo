@@ -2759,3 +2759,12 @@ prose line should go; until then `tests/test_read_shared_ctx.py` lists it in
 `KNOWN_DEAD_REFERENCES` so the gap stays visible.
 
 **Resolution:** the switch already existed for users (`vault-example.yaml`, the daily-log wizard); only the builder dropped it. `shared-ctx-builder.py` 1.15.0 carries `enabled` (default `true`), the schema requires it, and `KNOWN_DEAD_REFERENCES` is empty.
+
+## OPEN — restored non-ASCII process-file names come back NFD on macOS (spec 044)
+
+`restore-tomo.sh` extracts with macOS bsdtar, which writes non-ASCII file names in NFD. A process file
+`config/note-processes/t_réunion.md` (NFC) is restored byte-identical but with an NFD name.
+`note-process.py read` still finds it because APFS ignores normalization on lookup, and
+`tests/test_backup_restore_instance.py` compares names after NFC normalization. Anything that lists the
+folder and compares names as strings (or a case/normalization-sensitive filesystem) would miss the file.
+Decide whether restore should normalize names to NFC, or document the behaviour. Found by spec 044 T2.7.

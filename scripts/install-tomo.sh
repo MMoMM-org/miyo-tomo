@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.7.1
+# version: 0.7.2
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1195,7 +1195,16 @@ print_ok "agents"
 #   - <name>/SKILL.md directories (Claude Code native skills, invoked via Skill(name))
 # Recursive copy with -R covers both.
 cp -R "$TOMO_SOURCE/dot_claude/skills/." "$INSTANCE_PATH/.claude/skills/"
-print_ok "skills (flat .md + <name>/SKILL.md)"
+# A mod's manifest folder is stored as dot_claude-plugin/ and runs as
+# .claude-plugin/; the types/ the engine generates there is never shipped.
+for plugin_dir in "$INSTANCE_PATH/.claude/skills/"*/dot_claude-plugin; do
+    [ -d "$plugin_dir" ] || continue
+    skill_dir=$(dirname "$plugin_dir")
+    rm -rf "$skill_dir/.claude-plugin"
+    mv "$plugin_dir" "$skill_dir/.claude-plugin"
+    rm -rf "$skill_dir/.claude-plugin/types"
+done
+print_ok "skills (flat .md + <name>/SKILL.md, mods)"
 
 # Commands
 cp "$TOMO_SOURCE/dot_claude/commands/"*.md "$INSTANCE_PATH/.claude/commands/"

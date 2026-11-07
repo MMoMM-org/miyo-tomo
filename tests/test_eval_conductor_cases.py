@@ -120,6 +120,8 @@ SPEC_043_REPORT_ONLY = {
 # Spec 043's Pass 1 cases; their shape is tested in test_run_evals.py.
 PASS1_CASES = {"pass1-suggest-pipeline", "pass1-warn-and-duplicates-relayed"}
 PIPELINE = "pass1-suggest-pipeline"
+# Spec 044's /note case: not gated; its shape and graders are tested in test_note_eval_case.py.
+NOTE_CASES = {"note-draft-before-approval"}
 SKILL_IN_PLUGIN = "skills/suggest-handling/SKILL.md"
 SPEC_043_FIXTURES = REPO / "docs" / "XDD" / "specs" / "043-pass1-conductor-eval-gate" / "fixtures"
 PASS1_INBOX_PATH = "100 Inbox"  # the pass1 kit's routing plan `inbox_path`, trailing slash removed
@@ -148,7 +150,7 @@ def production_dispatch() -> tuple[str, str, str | None]:
 def test_exactly_the_known_cases_exist():
     assert {p.name for p in EVALS.iterdir() if p.is_dir() and not p.name.startswith("_")} == set(
         CASE_SETTINGS
-    ) | PASS1_CASES
+    ) | PASS1_CASES | NOTE_CASES
 
 
 def test_every_non_underscore_evals_subdir_is_a_case():
@@ -590,7 +592,11 @@ SPEC_043_MUTATIONS = (
     "warn-in-report-only", "drop-duplicate-line", "status-sentence-first",
     "preface-report-line",
 )
-ALL_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS
+# Spec 044 (T4.1): built for the /note case; recorded in `## Proofs`, each red 3/3
+# (2026-11-06).
+NOTE_MUTATIONS = ("header-after-delivery", "ask-before-draft", "print-draft-md", "deliver-before-ask",
+                  "confirm-attendees")
+RECORDED_MUTATIONS = EXPECTED_MUTATIONS + SPEC_043_MUTATIONS + NOTE_MUTATIONS
 NOT_YET_MEASURED = "not yet measured"
 GATE_CASES = set(CASE_SETTINGS) | PASS1_CASES
 # Neutral-write proofs inject an innocent bookkeeping step that no clause
@@ -713,10 +719,11 @@ def _joined(plugin: Path, files: set[str]) -> str:
 def test_readme_mutations_match_the_patch_files():
     recorded = {p["arg"] for p in _recorded_proofs() if p["kind"] == "mutation"}
     files = {p.stem for p in MUTATIONS.glob("*.patch")}
-    assert recorded == files == set(ALL_MUTATIONS)
+    assert recorded == files == set(RECORDED_MUTATIONS)
+    assert "## Pending proofs" not in _readme_text()
 
 
-@pytest.mark.parametrize("name", ALL_MUTATIONS)
+@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
 def test_mutation_applies_cleanly_to_a_fresh_assembly(tmp_path, name):
     result = _patch(_assemble_plugin(tmp_path), name, dry_run=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -737,7 +744,7 @@ def test_spec_043_mutation_touches_only_its_declared_files(name):
         assert (REPO / "tomo" / "dot_claude" / f).is_file(), f"{name}: no runtime file {f}"
 
 
-@pytest.mark.parametrize("name", ALL_MUTATIONS)
+@pytest.mark.parametrize("name", RECORDED_MUTATIONS)
 def test_mutation_removes_and_adds_its_declared_clauses(tmp_path, name):
     """A mutation that only adds a bad instruction while a surviving STRICT
     forbids it is a weak proof: every contradicting clause it neutralises is
@@ -816,7 +823,7 @@ def test_pass1_leak_guards_inherit_the_recorded_leak_guard_proof():
 def test_proof_rows_name_real_graders_of_their_cases():
     for p in _proofs():
         assert p["cases"] and p["expected"], p
-        assert p["cases"] <= GATE_CASES, p
+        assert p["cases"] <= GATE_CASES | NOTE_CASES, p
         for case, g in p["expected"] | p["side"]:
             assert case in p["cases"], (p["arg"], case)
             assert g in grader_names(case), (p["arg"], case, g)

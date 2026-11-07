@@ -848,3 +848,214 @@ def test_spec_043_mutation_applies_in_the_runner_and_changes_only_its_files(env,
     changed = {f for f in got if got[f] != unpatched[f]}
     named = set(re.findall(r"^\+\+\+ b/(\S+)", patch.read_text(encoding="utf-8"), re.M))
     assert changed == named, (changed, named)
+
+
+# ── not-gated cases (spec 044 ADR-8) ──────────────────────────
+
+
+def _add_not_gated_case(env, name: str = "ng-case", *, marked: bool = True) -> None:
+    """A further case, marked not gated by an evals/<name>/NOT_GATED file unless marked=False, committed."""
+    case = env.repo / "evals" / name
+    _write(case / "case.yaml", f'schema_version: "1.1"\nname: {name}\nruns: 3\n')
+    _write(case / "graders" / "1-probe.md", "---\ntype: regex\ntarget: last_message\npattern: ok\n---\n")
+    shutil.copy(KIT_DIR / "no-leak.md", case / "graders" / "9-no-leak.md")
+    if marked:
+        _write(case / "NOT_GATED", "spec 044 ADR-8\n")
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", f"case {name}")
+
+
+def test_default_run_skips_a_not_gated_case_and_names_it(env):
+    _add_not_gated_case(env)
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped (not gated): ng-case" in proc.stderr.splitlines()
+    assert not (env.snap / "evals" / "ng-case").exists()
+    assert (env.snap / "evals" / "probe-case" / "case.yaml").is_file()
+    (call,) = env.eval_calls()
+    assert "--case" not in call
+
+
+def test_default_run_skipping_only_not_gated_cases_keeps_the_full_suite_verdict(env):
+    _add_not_gated_case(env)
+    proc = env.run()
+    line = _line(proc)
+    assert line.startswith("GREEN 2/2 cases"), line
+    assert "PARTIAL" not in line
+
+
+def test_gated_case_is_never_skipped(env):
+    _add_not_gated_case(env)
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "probe-case" not in "".join(ln for ln in proc.stderr.splitlines() if "skipped" in ln)
+    assert _dir_state(env.snap / "evals" / "probe-case") == _dir_state(env.repo / "evals" / "probe-case")
+
+
+def test_gated_case_named_as_a_prefix_of_a_not_gated_case_is_never_skipped(env):
+    # Falsifies a prefix match on the case name: gated `ng` is a prefix of marked `ng-case`.
+    _add_not_gated_case(env, "ng", marked=False)
+    _add_not_gated_case(env)
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    skips = [ln for ln in proc.stderr.splitlines() if ln.startswith("skipped (not gated): ")]
+    assert skips == ["skipped (not gated): ng-case"], proc.stderr
+    assert _dir_state(env.snap / "evals" / "ng") == _dir_state(env.repo / "evals" / "ng")
+    assert not (env.snap / "evals" / "ng-case").exists()
+    line = _line(proc)
+    assert line.startswith("GREEN 2/2 cases"), line
+    assert "PARTIAL" not in line
+
+
+def test_default_mutation_run_skips_a_not_gated_case(env):
+    _add_not_gated_case(env)
+    proc = env.run("--mutation", "flip")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped (not gated): ng-case" in proc.stderr.splitlines()
+    assert not (env.snap / "evals" / "ng-case").exists()
+    assert (env.snap / "evals" / "probe-case" / "case.yaml").is_file()
+    assert "Step 1: MUTATED." in (env.snap / "agents" / "probe-agent.md").read_text()
+    (call,) = env.eval_calls()
+    assert "--case" not in call
+    line = _line(proc)
+    assert "mutation flip" in line and "PARTIAL" not in line, line
+
+
+def test_no_skip_line_without_a_not_gated_case(env):
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped (not gated)" not in proc.stderr
+
+
+def test_case_flag_runs_a_not_gated_case(env):
+    _add_not_gated_case(env)
+    proc = env.run("--case", "ng-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped (not gated)" not in proc.stderr
+    assert (env.snap / "evals" / "ng-case" / "case.yaml").is_file()
+    assert env.flag(env.eval_calls()[0], "--case") == "ng-case"
+    assert "PARTIAL SUITE" in _line(proc)
+
+
+def test_mutation_with_case_runs_a_not_gated_case(env):
+    _add_not_gated_case(env)
+    proc = env.run("--mutation", "flip", "--case", "ng-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (env.snap / "evals" / "ng-case" / "case.yaml").is_file()
+    assert "Step 1: MUTATED." in (env.snap / "agents" / "probe-agent.md").read_text()
+    line = _line(proc)
+    assert "mutation flip" in line and "PARTIAL SUITE" in line
+
+
+def test_default_run_with_only_not_gated_cases_is_refused(env):
+    _write(env.repo / "evals" / "probe-case" / "NOT_GATED", "x\n")
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", "all not gated")
+    proc = env.run()
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert env.eval_calls() == []
+
+
+# ── per-case extra tools (evals/<name>/ALLOW_TOOLS, #169) ─────
+
+
+def _grant(env, name: str, text: str) -> None:
+    _write(env.repo / "evals" / name / "ALLOW_TOOLS", text)
+    _git(env.repo, "add", ".")
+    _git(env.repo, "commit", "--quiet", "--no-verify", "--message", f"grant {name}")
+
+
+def _allow_tools(call: list[str]) -> list[str]:
+    """The values of --allow-tools: every argument up to the next option."""
+    i = call.index("--allow-tools") + 1
+    out = []
+    while i < len(call) and not call[i].startswith("-"):
+        out.append(call[i])
+        i += 1
+    return out
+
+
+def test_case_flag_on_a_granted_not_gated_case_adds_its_tools(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run("--case", "ng-case", "--runs", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    (call,) = env.eval_calls()
+    assert call.count("--allow-tools") == 1
+    assert _allow_tools(call) == ["Bash", "Write", "AskUserQuestion"]
+    assert env.flag(call, "--runs") == "1"
+    assert "granted (not gated): ng-case Write AskUserQuestion" in proc.stderr.splitlines()
+
+
+def test_grant_marker_takes_one_tool_per_line_and_drops_duplicates(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n\nAskUserQuestion Write\nBash\n")
+    proc = env.run("--case", "ng-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash", "Write", "AskUserQuestion"]
+
+
+def test_default_run_never_carries_a_not_gated_grant(env):
+    # Falsifies applying the marker outside --case: the gated suite keeps exactly Bash.
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+    assert "granted" not in proc.stderr
+
+
+def test_gated_case_run_carries_exactly_bash_while_another_case_holds_a_grant(env):
+    # Falsifies a suite-wide union of every marker: --case on the gated case grants nothing.
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write AskUserQuestion\n")
+    proc = env.run("--case", "probe-case")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+
+
+def test_default_mutation_run_never_carries_a_not_gated_grant(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n")
+    proc = env.run("--mutation", "flip")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _allow_tools(env.eval_calls()[0]) == ["Bash"]
+
+
+def test_grant_on_a_gated_case_is_refused(env):
+    _grant(env, "probe-case", "Write\n")
+    for args in ((), ("--case", "probe-case")):
+        proc = env.run(*args)
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "ALLOW_TOOLS" in proc.stderr and "NOT_GATED" in proc.stderr
+    assert env.eval_calls() == []
+
+
+def test_case_glob_mixing_a_granted_case_with_a_gated_case_is_refused(env):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", "Write\n")
+    proc = env.run("--case", "*")
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "probe-case" in proc.stderr
+    assert env.eval_calls() == []
+
+
+@pytest.mark.parametrize("bad", ["Write;rm", "Bash(git:*)", "-j", "", "\n"])
+def test_malformed_grant_marker_is_refused(env, bad):
+    _add_not_gated_case(env)
+    _grant(env, "ng-case", bad)
+    proc = env.run("--case", "ng-case")
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert env.eval_calls() == []
+
+
+def test_note_case_marker_grants_write_and_ask_user_question():
+    marker = REPO / "evals" / "note-draft-before-approval" / "ALLOW_TOOLS"
+    assert marker.read_text().split() == ["Write", "AskUserQuestion"]
+    assert (marker.parent / "NOT_GATED").is_file()
+
+
+def test_no_gated_case_holds_a_grant_marker():
+    for case in (REPO / "evals").iterdir():
+        if (case / "ALLOW_TOOLS").exists():
+            assert (case / "NOT_GATED").is_file(), case.name

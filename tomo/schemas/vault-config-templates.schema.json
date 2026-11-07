@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-templates.schema.json",
+  "title": "vault-config.yaml — templates.note_include",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py templates-include`. The writer inserts or replaces only the `note_include` lines inside the top-level `templates:` block of vault-config.yaml (appending a `templates:` block when none exists); `base_path`, `mapping`, `custom_tokens`, comments and every other byte stay untouched. An absent key means note templates are not configured; an empty list is not accepted.",
+  "type": "object",
+  "required": ["note_include"],
+  "additionalProperties": false,
+  "properties": {
+    "note_include": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Filename globs, matched against template filenames under templates.base_path, that mark a template as a note template for /note.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+        "description": "A glob with no whitespace at either end; a padded glob never matches a filename."
+      }
+    }
+  }
+}

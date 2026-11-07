@@ -119,3 +119,13 @@ WHY: The prior skill used a `default` role informally. P1 aligns with the real
 Unknown types (not in this list) fall back to a vault `byName` search for a matching template,
 then to the built-in minimal default — so user-defined templates still work without having a
 first-class key.
+
+## Why Unknown Types Redirect to /note Instead of Saving a Found Template
+
+WHY: When step 2's unknown-type branch finds a matching template (`kado-search byName`), the "If found" path points
+the user to `/note` and stops; it never saves the template itself. A found template is a prompt for a filled note,
+not a finished artifact, so saving it would produce an empty skeleton. `/note` fills the template, shows the draft
+and delivers it with an instruction set (see [note-from-template](note-from-template.md); introduced in spec 044).
+Only that path redirects: overviews, lists and comparisons find no template and keep the built-in default, and the
+mapped `default` template is unaffected. The redirect is a pointer, not a hand-off: `inbox-author` writes
+nothing in that case.

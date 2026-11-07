@@ -1,4 +1,4 @@
-# version: 0.36.0
+# version: 0.36.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -114,7 +114,8 @@ def _render_action_md(
         if action.get("source_inbox_item"):
             link = _source_wikilink(action["source_inbox_item"], ambiguous_sources)
             lines.append(f"- **Source (reference):** {link}")
-        lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
+        if cfg.get("templater_hint", True):
+            lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
         return "\n".join(lines)
 
     if kind == "move_asset":

@@ -1,0 +1,1 @@
+Not gated (spec 044 ADR-8): scripts/run-evals.sh skips this case unless --case names it.

@@ -1,0 +1,47 @@
+--- a/skills/note-from-template/SKILL.md
++++ b/skills/note-from-template/SKILL.md
+@@ -50,7 +50,7 @@
+ - Drop: when the entry's `steps_done` is non-empty, name each landed file by kind (`note` → the note, `instructions_json` → the instruction set JSON, `instructions_md` → the instruction set MD), say they are in the inbox with names starting `<stem>_` and that the user can delete them in Obsidian. When `steps_done` is empty and the entry's `frozen` is true, say the note may already be in the inbox with a name starting `<stem>_`. When `steps_done` is empty and `frozen` is false, say that nothing landed in the inbox. Never build a vault path yourself. Then run `python3 scripts/note-instructions.py drop --stem <stem>` and confirm in one line.
+ 
+ Then handle every entry of `unfinished_drafts` before the new request. Print each by title (the template's filename without `.md` when `title` is empty), template and created time, then ask per entry: Continue / Discard. Never drop an unfinished draft without asking.
+-- Continue with `staged` true: run `python3 scripts/note-instructions.py stage --stem <stem>`, then run step 6 for that stem from "When `check.ok` is false": ask the step 6 approval question `1 Deliver · 2 Change something · 3 Abort` with `note.md` and the header as the preview. `<template stem>` is the entry's `template` filename without `.md`. The source in the header is the entry's `source_path`; omit the skipped line, and skip step 8 for it. Continue with the new request after it ends.
++- Continue with `staged` true: run `python3 scripts/note-instructions.py stage --stem <stem>`, then run step 6 for that stem from "When `check.ok` is false": ask the step 6 approval question `1 Deliver · 2 Change something · 3 Abort` with `note.md` as the preview. `<template stem>` is the entry's `template` filename without `.md`. The source in the header is the entry's `source_path`; omit the skipped line, and skip step 8 for it. Continue with the new request after it ends.
+ - Continue with `staged` false: for that stem, run the step 4 `template-outline.py` and `read` calls with the entry's `template` as `<template path>`; never run `new` again. Handle their exits as step 4 says, read the stage files, then run step 5 for that stem with `source.md` as the material when it exists, and go on from there. Continue with the new request after it ends.
+ - Discard: run `python3 scripts/note-instructions.py drop --stem <stem>` and say in one line that nothing landed in the inbox.
+ 
+@@ -127,7 +127,7 @@
+ 
+ When `check.ok` is false, fix `draft.md` and rerun `stage` before showing anything.
+ 
+-After every `stage`, show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, as the approval question below says. Never show `draft.md`. Put this header above the fenced note:
++After every `stage`, show `tomo-tmp/note/<stem>/note.md` in full, read fresh from disk, as the approval question below says. Never show `draft.md`. Put no header with the draft; the step 7 delivery report opens with this header:
+ 
+ ```
+ Template: <template stem> · Final name: <destination_file> · In the inbox until applied: <inbox_file name>
+@@ -137,8 +137,8 @@
+ 
+ Omit the skipped line when nothing was skipped; omit the source line when there is no source or `keep_source` is true.
+ 
+-Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview is the header and the full fenced `note.md`, copied from the Read result. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text.
+-- Change something: apply the change; rewrite `draft.md`, rerun `stage`, then ask `1 Deliver · 2 Change something · 3 Abort` again with the new header and `note.md` as the preview. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
++Then ask `1 Deliver · 2 Change something · 3 Abort` in a dialog whose preview is the full fenced `note.md`, copied from the Read result. This holds after the first draft, after every Change something, at the Continue of a staged draft and after a restage of a failed delivery. The Rename reprint before `deliver` is visible reply text.
++- Change something: apply the change; rewrite `draft.md`, rerun `stage`, then ask `1 Deliver · 2 Change something · 3 Abort` again with the new `note.md` as the preview. A new title goes in `--title "<title>"`, a new destination in `--destination "<folder>"`, keeping the source in `--keep-source true` (`--keep-source false` to undo).
+ - During the resume of a kept draft whose `frozen` is true, title and destination are frozen. When `stage` reports `frozen: true`, say in one line that the requested change can no longer be made: title and destination once a delivery step may have landed, keeping the source once the instruction set may have landed. Keep the staged values.
+ - Deliver → step 7.
+ - Abort → drop.
+@@ -149,12 +149,12 @@
+ python3 scripts/note-instructions.py deliver --stem <stem>
+ ```
+ 
+-- Exit 0 (`delivered`): report `note_path`, `instructions_json`, `instructions_md`, whether the source was marked, and "Next: review and apply the instruction set in Hashi." When `source_marked` is false and the draft has a source, say in one line that the source was not marked (it was moved or deleted). Then step 8.
++- Exit 0 (`delivered`): print the step 6 header, then report `note_path`, `instructions_json`, `instructions_md`, whether the source was marked, and "Next: review and apply the instruction set in Hashi." When `source_marked` is false and the draft has a source, say in one line that the source was not marked (it was moved or deleted). Then step 8.
+ - On exit 3, read `frozen` and `steps_done` from the `deliver` output. Never overwrite.
+-  - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md` with the header, rerun `deliver`. Abort → drop.
++  - `frozen` false: offer Rename / Abort, naming `exists_path`. Rename: ask for a new title, run `stage --stem <stem> --title "<new title>"`, reprint `note.md`, rerun `deliver`. Abort → drop.
+   - `frozen` true: offer Keep / Drop, naming `exists_path`. Keep: leave the draft for a later `/note`. Drop: name the files of `steps_done` (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty, say the note may already be in the inbox as `note_path`. Then run `drop`.
+ - On exit 1 with `status` `withdrawn`, say nothing was written in this run and why the action was withdrawn, then offer Drop / Abort only (no Rename, no Keep). On either answer: when `steps_done` is non-empty, first name its files by kind (`note` → `note_path`, `instructions_json`, `instructions_md`) so the user can delete them in Obsidian; when `steps_done` is empty and `frozen` is true, say the note may already be in the inbox as `note_path`. Then run `drop`.
+-- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage` and return to the step 6 question (`1 Deliver · 2 Change something · 3 Abort`, the new header and `note.md` as the preview).
++- On exit 1 with `status` `failed`, report the failed `step`; the draft stays for the next `/note`. When `step` is empty, the filled-note check or the frontmatter stamp failed instead: fix `draft.md`, rerun `stage` and return to the step 6 question (`1 Deliver · 2 Change something · 3 Abort`, the new `note.md` as the preview).
+ - Exit 2: show the error and stop; the draft stays.
+ 
+ ## 8. Process offer

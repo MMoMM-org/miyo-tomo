@@ -4,7 +4,7 @@
 
 ## Coverage
 
-One list: which runtime files the suite covers and which cases cover them. A change to a file in this table needs a full-suite GREEN before merge (root `CLAUDE.md` Rules). A change to any other file needs nothing from this suite.
+One list: which runtime files the suite covers and which cases cover them. A change to a file in this table needs a full-suite GREEN before merge (root `CLAUDE.md` Rules), except in a row marked "not gated". A change to any other file needs nothing from this suite.
 
 | Runtime file | Cases |
 |---|---|
@@ -13,11 +13,14 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 | `tomo/dot_claude/agents/synthesis-conductor.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported` |
 | `tomo/dot_claude/commands/inbox.md` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported`, `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` |
 | `tomo/dot_claude/settings.json` | `audit-gates-delivery`, `audit-mismatch-stops`, `withheld-notices-relayed`, `upload-failure-reported`, `state-flip-failure-reported`, `pass1-suggest-pipeline`, `pass1-warn-and-duplicates-relayed` |
+| `tomo/dot_claude/skills/note-from-template/SKILL.md` | `note-draft-before-approval` (not gated) |
+| `tomo/dot_claude/commands/note.md` | `note-draft-before-approval` (not gated) |
 
 - Pass 2 cases (the five without the `pass1-` prefix): the synthesis conductor is the subject. Each case dispatches it with the prompt from `inbox.md`'s Pass 2 dispatch, reproduced verbatim (agent name namespaced as `tomo:synthesis-conductor`).
 - Pass 1 cases (`pass1-*`): the prompt is `/tomo:inbox`. As in production, the main session impersonates the suggestion conductor (it is not dispatched) and loads the `suggest-handling` skill, so the session's final reply is the conductor's own report.
 - `inbox.md` is listed because the Pass 2 cases reproduce its dispatch prompt and the Pass 1 cases enter through it: if it changes, the cases must be re-run or changed with it.
 - `settings.json` is listed because the runner pins the eval's main model to its `model` field.
+- `/note` case (`note-draft-before-approval`, spec 044 ADR-8): the prompt is `/tomo:note` with material that fills every point of the one candidate template, so no question round runs. `AskUserQuestion` cannot be offered in an eval, so the case grades the end of the run: the last message is the approval question, the header and `note.md` are printed before it, `note.md` was read, no question came before the draft, and `deliver` never runs. Its rows are marked "not gated": one recorded run is the evidence, and a later change to the skill or the command needs no eval run. The case holds an `evals/note-draft-before-approval/NOT_GATED` file, so the full suite skips it (stderr prints `skipped (not gated): note-draft-before-approval`) and its verdict and cost cover only the gated cases; it runs only with `--case note-draft-before-approval`.
 - Not in the table, so not gated: `force-atomic-handling` (no case covers it), `inbox-analyst` (replaced by a stand-in, see Adding a case), and every script (all stubbed, see Known limits).
 
 ## Running
@@ -25,8 +28,13 @@ One list: which runtime files the suite covers and which cases cover them. A cha
 ```bash
 scripts/run-evals.sh                      # full suite, 3 runs per case: the only run that satisfies the merge rule
 scripts/run-evals.sh --case <glob>        # one case: PARTIAL SUITE, never satisfies the merge rule
+scripts/run-evals.sh --case note-draft-before-approval   # a not-gated case: runs only when named
 scripts/run-evals.sh --help               # all options
 ```
+
+A case is not gated when its directory holds a `NOT_GATED` file. The default run (no `--case`, also with `--mutation` or `--rev`) leaves it out of the assembled copy and prints one `skipped (not gated): <case>` line per skipped case on stderr; the verdict is still the full-suite verdict, because the merge rule covers only gated cases. Name the case with `--case` to run it (PARTIAL SUITE, as any `--case` run). Mark a case only when its coverage rows say "not gated" (`tests/test_eval_gate_docs.py` checks both agree).
+
+A not-gated case may also hold an `ALLOW_TOOLS` file: tool names separated by spaces or lines (letters, digits and `_` only). A case's `allowed_tools` in `case.yaml` cannot grant a tool; only the CLI's `--allow-tools` can, and the runner passes `--allow-tools Bash` for every case. When `--case` selects a case with `ALLOW_TOOLS`, its tools join that list (`--allow-tools Bash Write AskUserQuestion`) and stderr prints `granted (not gated): <case> <tools>`. The grant applies to the whole eval call, so the runner refuses an `ALLOW_TOOLS` file in a case without `NOT_GATED` and a `--case` glob that matches a case with the file and a gated case. The default run skips not-gated cases and keeps exactly `--allow-tools Bash`; gated cases depend on that (`pass1-suggest-pipeline/11-no-inline-vault-write` relies on Write being absent). A one-run probe: `scripts/run-evals.sh --case note-draft-before-approval --runs 1 --keep-temp`.
 
 The eval harness cannot start inside Claude Code's Bash sandbox (runs fail with EPERM and end NOT GRADED). Run it from a terminal, or from a coding session with the sandbox bypassed for that one command (`!scripts/run-evals.sh` in the prompt).
 
@@ -71,6 +79,11 @@ The default cap is $5 (`--max-cost-usd` or `EVAL_MAX_COST_USD`); hitting it give
      - `DUPLICATES=0|1` (the reducer converts one proposed MOC that already exists)
      - `. "$(dirname "$0")/../_lib/pass1-stubs.sh"` then `stage_pass1_instance`
      - The kit's header lists which Tomo script each stub's output is copied from. When one of those scripts changes its output, `tests/test_stub_contract.py` fails; update the stub to follow it.
+   - `/note` kit (`evals/_lib/note-stubs.sh`), prompt `/tomo:note <request>`:
+     - `NOTE_DRAFTS=none|kept|interrupted|unfrozen|unfinished|unstaged|stale` (a stage directory from an earlier session; the kit header says what each holds)
+     - `NOTE_DELIVER=delivered|source_gone|failed_kado_config|failed_<step>|withdrawn|exists_note|exists_instructions_json|exists_destination` (what `deliver` meets; the kit header lists every value)
+     - `. "$(dirname "$0")/../_lib/note-stubs.sh"` then `stage_note_instance`
+     - The fixture vault (templates, the inbox source note) is written into the eval workspace as `note-fixture.json` next to the stubs. `tests/test_stub_contract.py` runs each stub and its real script on the same argv, the real one against a fake Kado filled from that file (`tests/note_stub_kit.py`), and compares exit code, stdout, stderr and the stage files.
    - The analyst is a stand-in: the runner copies `evals/_lib/inbox-analyst.stub.md` over `agents/inbox-analyst.md` in the assembled plugin (also under `--rev`). It runs one stub script that writes the item's result file and state line, then replies `done`. The eval registers it only as `tomo:inbox-analyst`.
 3. Every case carries the leak guard: copy `evals/_lib/no-leak.md` to `graders/9-no-leak.md` byte for byte. The runner refuses a case without it (exit 3). When a new internal name (script, filter, file, run-id format) can reach the user-facing report, add it to the guard's `pattern` in `evals/_lib/no-leak.md` and re-copy it into every case.
 4. A grader that only confirms a precondition (for example `3-audit-ran`) is a control. Every other grader needs a mutation that turns it red: see `evals/_mutations/README.md` for the mutations and the RED proofs.
@@ -99,6 +112,17 @@ Limits of the spec 043 graders (the Pass 1 cases and the report-only graders):
 - Every script is a stub. A script's own behaviour (for example the shared-context builder's `--warnings-out` file) is exercised only through its stub, so no script is in the coverage table.
 - `tests/test_stub_contract.py` runs most stubs and their real scripts on the same input with Kado faked, and fails when exit code, stream, status line or written keys diverge. It needs no paid run. Not covered: `suggestion-parser.py`, the shared-context reconcile line (the test passes `--skip-reconcile`) and the values of the reducer's and triage's output, where only keys are compared.
 - `force-atomic-handling` has no case and is not gated.
+
+Limits of the `/note` case (`note-draft-before-approval`):
+
+- `AskUserQuestion` cannot be offered. `claude plugin eval` leaves it out of the session's tools even with the `ALLOW_TOOLS` grant (probe `tomo-tmp/evals/2026-11-06T07-16-55Z`, recorded with paths redacted in `tests/fixtures/044-note-probe/trace.jsonl` by `redact.py` next to it): the model's ToolSearch for it found nothing, and it asked the approval question as plain text in its final message. The case therefore grades the end of the run, not a question call. Deliver, Change something and Abort, and every dialogue branch, are covered by `tests/test_note_skill_prose.py` and the spec 044 live walk.
+- `0-approval-asked` is the control: the last message names Deliver and Abort, so the run ended on the approval question. When it is red, the run stopped elsewhere (silently, on another question, or after a delivery) and the ordering graders tell nothing.
+- The ordering graders read the trace and anchor on the first approval attempt: an assistant text event that names Deliver and then Abort, or an `AskUserQuestion` call whose input names Deliver. `1-header-before-approval` and `2-note-printed-before-approval` need the header or the resolved `note.md` body (`Related:` with nothing after it) in an assistant text event at or before that approval, followed by an approval in text; a header inside an `AskUserQuestion` input does not count. `3-note-md-read-before-approval` needs a Read or Bash call naming the staged `note.md` before it; a `cat` counts as a read.
+- A grader is one regex with no includes, so two fragments are copied into several graders, and `tests/test_note_eval_case.py` defines each once and fails when a copy differs. The approval fragment `APPROVAL_IN_TEXT` (`[Dd]eliver(?![a-z])` then `[Aa]bort` inside one JSON text value), behind the assistant text event prefix as `APPROVAL_EVENT`, ends graders 1, 2, 3, 5 and 6 (the control `0-approval-asked` uses its `last_message` form). The before-approval guard `BEFORE_APPROVAL` (lines that are neither an `APPROVAL_EVENT` nor an `AskUserQuestion` call naming Deliver) opens graders 1, 2 and 3. Change a fragment in the test and in every grader together.
+- `5-no-question-before-approval` counts any question attempt before `stage`: an `AskUserQuestion` call, a ToolSearch whose input names `AskUserQuestion`, or an assistant text event holding a `?`. A sentence ending in `?` before the draft turns it red although nothing was asked.
+- `4-draft-md-never-printed` reads every assistant text event for `Related:` followed by `{{source_link}}`; a sentence that only quotes the token passes.
+- No grader passes on an empty or truncated run: 4, 5 and 6 each also need a printed note or the approval question. `9-no-leak` (a byte copy) passes on an empty last message and is paired with the control.
+- The case's `ALLOW_TOOLS` file grants Write and `AskUserQuestion` when it runs with `--case`. Write is offered with it; `AskUserQuestion` is not (above).
 
 Known gaps:
 

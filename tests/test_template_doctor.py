@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.1
 """Tests for template-doctor.py — audit + dry-render of Tomo note templates.
 
 The load-bearing behaviour: a template must open with a literal ``---`` fence, or
@@ -11,9 +11,12 @@ live testing (miyo-tomo#138).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCTOR = REPO_ROOT / "tomo" / "scripts" / "template-doctor.py"
@@ -221,3 +224,126 @@ def test_scaffold_every_type_is_dry_render_clean(tmp_path):
         p = _write(tmp_path, f"{note_type}.md", body)
         rc2, report = _run("dry-render", p)
         assert report["ok"] is True, (note_type, report["findings"])
+
+
+# ── filled-note ────────────────────────────────────────────────────────
+
+CLEAN_NOTE = "\n".join([
+    "---", "title: Coffee notes", "tags:", "  - type/note", "---", "",
+    "# Coffee notes", "", "Body text.", "", "```", "{{literal_in_code}}", "```", "",
+])
+
+
+def _filled(*args):
+    proc = subprocess.run(
+        [sys.executable, str(DOCTOR), "filled-note", *map(str, args)],
+        capture_output=True, text=True,
+    )
+    return proc
+
+
+def _filled_report(note_path):
+    proc = _filled("--note", note_path)
+    return proc.returncode, json.loads(proc.stdout)
+
+
+def test_filled_note_clean_note_passes_without_template(tmp_path):
+    note = _write(tmp_path, "clean.md", CLEAN_NOTE)
+    rc, report = _filled_report(note)
+    assert rc == 0
+    assert set(report) == {"mode", "note", "ok", "findings"}
+    assert report["mode"] == "filled-note"
+    assert report["note"] == str(note)
+    assert report["ok"] is True
+    assert {f["check"] for f in report["findings"]} == {
+        "leading_fence", "frontmatter_closed", "no_user_tomo_key",
+        "no_templater", "code_fence_closed", "no_tokens",
+    }
+
+
+def test_filled_note_fails_on_templater_remains(tmp_path):
+    body = CLEAN_NOTE.replace("Body text.", "Made <% tp.date.now() %>.")
+    rc, report = _filled_report(_write(tmp_path, "t.md", body))
+    assert rc == 1
+    assert report["ok"] is False
+    assert _status(report, "no_templater") == "FAIL"
+
+
+def test_filled_note_fails_on_leftover_token(tmp_path):
+    body = CLEAN_NOTE.replace("Body text.", "Summary: {{summary}}")
+    rc, report = _filled_report(_write(tmp_path, "k.md", body))
+    assert rc == 1
+    assert _status(report, "no_tokens") == "FAIL"
+    detail = next(f["detail"] for f in report["findings"] if f["check"] == "no_tokens")
+    assert "{{summary}}" in detail
+    assert "literal_in_code" not in detail  # fenced tokens are not leftovers
+
+
+def test_filled_note_fails_on_user_tomo_key(tmp_path):
+    body = CLEAN_NOTE.replace("title: Coffee notes", "title: Coffee notes\ntomo:\n  x: 1")
+    rc, report = _filled_report(_write(tmp_path, "u.md", body))
+    assert rc == 1
+    assert _status(report, "no_user_tomo_key") == "FAIL"
+
+
+def test_filled_note_fails_on_missing_fence(tmp_path):
+    rc, report = _filled_report(_write(tmp_path, "m.md", "# Coffee notes\n\nBody.\n"))
+    assert rc == 1
+    assert _status(report, "leading_fence") == "FAIL"
+
+
+def test_filled_note_missing_file_fails(tmp_path):
+    missing = tmp_path / "nope.md"
+    rc, report = _filled_report(missing)
+    assert rc == 1
+    assert report == {
+        "mode": "filled-note", "note": str(missing), "ok": False,
+        "findings": [{"check": "file", "status": "FAIL",
+                      "detail": f"Note not found: {missing}", "fix": None}],
+    }
+
+
+def test_filled_note_requires_note(tmp_path):
+    proc = _filled("--template", _write(tmp_path, "c.md", CLEAN_NOTE))
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+
+
+def test_audit_still_requires_template(tmp_path):
+    proc = subprocess.run(
+        [sys.executable, str(DOCTOR), "audit", "--note",
+         str(_write(tmp_path, "c.md", CLEAN_NOTE))],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 2
+
+
+def _assert_file_fail(proc, detail):
+    assert proc.returncode == 1
+    assert proc.stderr == ""
+    report = json.loads(proc.stdout)
+    assert report["ok"] is False
+    assert report["findings"] == [
+        {"check": "file", "status": "FAIL", "detail": detail, "fix": None}]
+
+
+def test_filled_note_non_utf8_reports_file_fail(tmp_path):
+    note = tmp_path / "bin.md"
+    note.write_bytes(b"\xff\xfe")
+    _assert_file_fail(_filled("--note", note), f"Note is not valid UTF-8: {note}")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads chmod 000 files")
+def test_filled_note_unreadable_reports_file_fail(tmp_path):
+    note = _write(tmp_path, "locked.md", CLEAN_NOTE)
+    note.chmod(0)
+    try:
+        _assert_file_fail(_filled("--note", note), f"Note not readable: {note}")
+    finally:
+        note.chmod(0o644)
+
+
+def test_filled_note_directory_reports_not_a_file(tmp_path):
+    folder = tmp_path / "folder.md"
+    folder.mkdir()
+    _assert_file_fail(_filled("--note", folder), f"Note is not a file: {folder}")

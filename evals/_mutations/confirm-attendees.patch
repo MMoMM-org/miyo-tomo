@@ -1,0 +1,11 @@
+--- a/skills/note-from-template/SKILL.md
++++ b/skills/note-from-template/SKILL.md
+@@ -110,7 +110,7 @@
+ The points are every `frontmatter` key, every heading and every token with `prefilled` false in the outline. A point is open when neither the material nor a prefilled value fills it. Required points are the process `required` list minus `missing_required`.
+ 
+ 1. Print which points the material covers, then the open points.
+-2. When no point is open, ask nothing and go to step 6.
++2. When no point is open, print the attendees the material names and ask in one line: `Are these the attendees?` Then go to step 6 with them; do not wait for an answer.
+ 3. Ask in plain text, as numbered questions, at most four open points per round, in at most two rounds. Required points first. Order and weight the questions by the process `guidance`. Mark each optional point as skippable; a skip is allowed only for optional points.
+ 4. Round 2 takes the remaining open points plus gaps the answers opened.
+ 5. For each required point still unanswered, ask it again in plain text with no skip option. The user can only answer or abort. Any non-empty answer, "none" included, answers a required point.

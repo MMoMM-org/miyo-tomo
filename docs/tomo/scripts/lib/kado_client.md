@@ -1,7 +1,8 @@
 # WHY: lib/kado_client.py
 
 > Rationale for the request-budget additions to `tomo/scripts/lib/kado_client.py`
-> (spec 042, ADR-4). The rest of the client is documented in its docstrings.
+> (spec 042, ADR-4) and for the transport-error wrapping (spec 044). The rest
+> of the client is documented in its docstrings.
 
 ## Attempts vs calls — `attempt_count` is a second counter
 
@@ -44,3 +45,21 @@ unchanged; only the discovery path opts in.
 
 A failed send still stamps the pacing timestamp, because it is an attempt Kado's
 limiter counted.
+
+## Transport errors — every failed exchange is a `KadoConnectionError`
+
+WHY: `urlopen` and `resp.read()` raise more than `HTTPError` and `URLError`. A
+timeout or a reset while the response is read surfaces as a bare
+`TimeoutError` or `ConnectionResetError` (both `OSError`), and a truncated body
+as `http.client.IncompleteRead`, which is an `http.client.HTTPException` and no
+`OSError` at all. Escaping raw, they skip every caller's `except KadoError`:
+`note-instructions.py deliver` then mapped a mid-upload timeout to exit 2
+"local I/O" with no `failed_step`, and `kado-read-file.py` reported it as a
+failed local write. `_call_tool` therefore wraps any `OSError` or
+`HTTPException` raised during the request or response into
+`KadoConnectionError`, chained to the original, after the `HTTPError` and
+`URLError` branches so their specific handling is unchanged. These are not
+retried: a timeout has already waited `_DEFAULT_TIMEOUT`, and retry stays the
+policy for the 429/503 statuses Kado sends on purpose. Callers that catch
+`KadoError` handle the new case without new except clauses, which is the same
+reason `KadoBudgetExhausted` subclasses it.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.1
 """test_inbox_author_pipeline.py — Pipeline integration tests for inbox-author.
 
 Spec 026, T4.2 (Companion Mode P1 — inbox-author format dispatch + collision).
@@ -12,6 +12,8 @@ Test coverage (mock at orchestrator, fake Kado — not patching sub-helpers):
   (c) --no-overwrite collision: exists signal (exit 3 + EXISTS:<path>) triggers warn branch
   (d) template fallback: empty/missing mapping → read-config-field.py returns "" (fallback trigger)
   (e) inbox boundary: writes target only the concepts.inbox path
+  (f) spec 044 F8: unknown-type "If found" points to /note; the not-found path, mapped
+      template, built-in default and .canvas/.base steps stay byte-identical to 0.3.0
 """
 from __future__ import annotations
 
@@ -330,3 +332,133 @@ def test_inbox_path_resolved_from_config(tmp_path: Path) -> None:
     result = _run_read_config(config, "concepts.inbox", default="100 Inbox/")
     assert result.returncode == 0, f"stderr={result.stderr}"
     assert result.stdout.strip() == "100 Inbox/"
+
+
+# ---------------------------------------------------------------------------
+# (f) Unknown-type redirect: a found template points to /note; every other
+#     path of step 2, the built-in default and the .canvas/.base steps stay
+#     byte-identical to inbox-author 0.3.0.
+# ---------------------------------------------------------------------------
+
+SKILL_MD = REPO_ROOT / "tomo" / "dot_claude" / "skills" / "inbox-author" / "SKILL.md"
+
+# Sections copied verbatim from inbox-author 0.3.0 (git show 9030a987:<SKILL_MD>).
+BASELINE_SKIP_LINE = "*Skip for .canvas and .base — they are composed directly without a template.*\n"
+
+BASELINE_KNOWN_KEY = (
+    "**Known key:**\n"
+    "\n"
+    "```bash\n"
+    "python3 scripts/read-config-field.py --field templates.mapping.<requested_type> --default \"\"\n"
+    "```\n"
+    "\n"
+    "If stem is non-empty, resolve the template body from the vault via `kado-read`\n"
+    "(operation: note; bare stem via `kado-search` byName) and save to `tomo-tmp/default-template.md`.\n"
+    "On empty stem or read failure: fall back to the built-in minimal default and tell the user\n"
+    "`\"template <type> unset/missing — used built-in default\"`.\n"
+    "\n"
+)
+
+BASELINE_NOT_FOUND = (
+    "If not found: use built-in minimal default and tell the user\n"
+    "`\"no type-specific template found — used the default/inbox template\"`.\n"
+)
+
+BASELINE_BUILTIN_DEFAULT = (
+    "**Built-in minimal default** — write with the `Write` tool to `tomo-tmp/default-template.md`, verbatim:\n"
+    "\n"
+    "```\n"
+    "---\n"
+    "tags:{{tags}}\n"
+    "---\n"
+    "\n"
+    "{{body}}\n"
+    "```\n"
+    "\n"
+    "# STRICT — the built-in fallback is materialised here, never read from a `config/templates/` path.\n"
+    "# Why: the built-in `t_*_tomo.md` starters live in the source repo, not the container — they are not reachable at runtime.\n"
+    "\n"
+)
+
+BASELINE_CANVAS_BASE_STEPS = (
+    "**For .canvas:**\n"
+    "\n"
+    "Compose the JSON Canvas content (guided by `obsidian-canvas`). Write with the `Write` tool to\n"
+    "`tomo-tmp/staged-artifact.canvas`, then gate:\n"
+    "\n"
+    "```bash\n"
+    "python3 scripts/validate-json.py tomo-tmp/staged-artifact.canvas\n"
+    "```\n"
+    "\n"
+    "If exit code is non-zero: STOP — surface the parse error and offer to recompose. Do NOT write.\n"
+    "\n"
+    "**For .base:**\n"
+    "\n"
+    "Compose the Obsidian Bases YAML content (guided by `obsidian-bases`). Write with the `Write` tool\n"
+    "to `tomo-tmp/staged-artifact.base`, then gate:\n"
+    "\n"
+    "```bash\n"
+    "python3 scripts/validate-yaml.py tomo-tmp/staged-artifact.base\n"
+    "```\n"
+    "\n"
+    "If exit code is non-zero: STOP — surface the parse error and offer to recompose. Do NOT write.\n"
+    "\n"
+)
+
+
+def _section(text: str, start: str, end: str) -> str:
+    """Return text from the first `start` marker up to (excluding) the next `end` marker."""
+    i = text.index(start)
+    j = text.index(end, i + len(start))
+    return text[i:j]
+
+
+def _unknown_type_branch(text: str) -> str:
+    return _section(text, "**Unknown type:**", "**Built-in minimal default**")
+
+
+def _if_found_path(text: str) -> str:
+    branch = _unknown_type_branch(text)
+    return _section(branch, "If found", "If not found")
+
+
+EXPECTED_FOUND_PATH = (
+    "If found: tell the user\n"
+    '`"a <type> template exists — run /note to create a filled note from it"` and STOP. Do NOT write.\n'
+)
+
+
+def test_unknown_type_found_path_points_to_note() -> None:
+    """The unknown-type 'If found' path redirects to /note, STOPs and writes nothing — byte for byte."""
+    found = _if_found_path(SKILL_MD.read_text(encoding="utf-8"))
+    assert found == EXPECTED_FOUND_PATH
+
+
+def test_unknown_type_not_found_path_byte_unchanged() -> None:
+    """The unknown-type 'If not found' path keeps its 0.3.0 text byte for byte."""
+    branch = _unknown_type_branch(SKILL_MD.read_text(encoding="utf-8"))
+    assert branch.endswith(BASELINE_NOT_FOUND + "\n")
+
+
+def test_known_key_mapped_template_byte_unchanged() -> None:
+    """The mapped-template path (incl. the mapped `default` key) is byte-identical to 0.3.0."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert _section(text, "**Known key:**", "**Unknown type:**") == BASELINE_KNOWN_KEY
+
+
+def test_builtin_default_byte_unchanged() -> None:
+    """The built-in minimal default block and its STRICT are byte-identical to 0.3.0."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert _section(text, "**Built-in minimal default**", "### 3. Compose") == BASELINE_BUILTIN_DEFAULT
+
+
+def test_canvas_and_base_steps_byte_unchanged() -> None:
+    """The .canvas/.base template skip and compose+gate steps are byte-identical to 0.3.0."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert BASELINE_SKIP_LINE in _section(text, "### 2. Resolve", "**Known key:**")
+    assert _section(text, "**For .canvas:**", "### 4. Write") == BASELINE_CANVAS_BASE_STEPS
+
+
+def test_inbox_author_version_bumped() -> None:
+    """inbox-author carries version 0.4.0 after the /note redirect."""
+    assert "# version: 0.4.0\n" in SKILL_MD.read_text(encoding="utf-8")

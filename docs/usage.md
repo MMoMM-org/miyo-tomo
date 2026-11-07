@@ -32,6 +32,51 @@ Each job has its own page:
 - [How Tomo proposes new MOCs](workflows/moc-propose.md), including how to exclude notes
 - [Audit your vault](workflows/garden-audit.md)
 - [Author a Hashi hook](workflows/hashi-hooks.md)
+- [Write a note from a template](#write-a-note-from-a-template)
+
+## Write a note from a template
+
+`/note` turns your material into a note built from one of your vault templates. You can type the request, point it at a note in your inbox, or both. Like the rest of Tomo it only proposes: the note lands in your inbox with an instruction set, and nothing reaches its final folder until you apply the instruction set in Tomo Hashi.
+
+### Modes
+
+- `/note <request>` — for example `/note meeting with the design team`, or `/note meeting notes from 100 Inbox/Meeting raw.md`. Tomo picks the matching template (and asks you when several fit), shows which template points your material already covers, and asks about the open ones in at most two rounds. It then prints the full draft with the template, the final name and place, the points left empty and, for an inbox-note source, that the source is deleted when you apply the instruction set. You can change anything, including keeping the source instead of having it deleted on apply, then approve to deliver or abort. Questions about a list or the draft appear as a dialog with numbered options such as `1 Deliver · 2 Change something · 3 Abort`; the draft (or the list) shows in the dialog's preview box, and typing the number or the word still answers. If you cannot see the content, say "show me the draft" and Tomo prints it as text and asks in plain text. For the template list, type its number, or `0` to abort. If a delivery was interrupted earlier, `/note` offers to resume or drop that draft first. A draft you never approved or aborted (the session ended during the questions or at the approval question) is offered too: Continue takes you back to the approval question for a draft that was already shown, or to the questions otherwise; Discard removes it, and nothing of it was in the inbox. Only Abort removes a draft without asking.
+- `/note --process <template>` — creates or changes the process file for one template (see below).
+
+If a note with the chosen name already exists, Tomo overwrites nothing and offers to rename or abort.
+
+### The draft side pane
+
+While a draft waits for your approval, Tomo can show it whole in a side pane beside the conversation: the header (template, final name, inbox name and whether the source is deleted on apply) and the full note, which you can scroll with the arrow keys once the pane has focus. The pane comes from a small Claude Code mod that Tomo installs with the instance; it reads the staged draft from a file, so it shows the draft even when the dialog's preview box cuts it off.
+
+- `/note-draft` opens the pane at any time a draft is staged ("No staged /note draft." otherwise). In a fullscreen terminal of at least 110 columns it docks beside the transcript; narrower, it opens above the prompt.
+- At the approval question the pane opens by itself only on a terminal of at least 144 columns, or of at least 110 columns once you have opened it with `/note-draft` (and not closed it by hand). On a narrower terminal Tomo prints a dim line saying the pane waits; run `/note-draft` to show it.
+- The pane closes itself after the draft is delivered or dropped.
+- Without the pane (another host, or a terminal too narrow) everything works as before: the draft is in the dialog's preview, and "show me the draft" prints it as text.
+
+### First run
+
+The first time you use `/note`, Tomo lists your template folder, proposes which filename patterns count as note templates, and shows which templates match and which it leaves out. You confirm or correct the patterns, and nothing is saved until you confirm. Your request then continues in the same session. The template mapped as your daily note is never offered as a note kind.
+
+### Process files
+
+A process file remembers what you want for one template: the destination folder, the points that are required and the order of the questions. Tomo creates it in a dialogue — you never edit one by hand. After a delivery where you changed the destination, filled a skipped point through Change something before delivery or asked for a question order, Tomo asks once: save, not now, or never for this template. "Never" is remembered; `/note --process <template>` replaces it.
+
+### Titles and destinations
+
+- A title may not start with a dot and may not contain invisible characters. The zero-width joiner and zero-width non-joiner are allowed.
+- A blank title, or one containing `{{` or `<%`, is refused and Tomo asks for another.
+- A process destination must be a relative vault folder, for example `Atlas/Meetings`, not an absolute path.
+
+### Discard a delivered note
+
+If you decide against the result, it costs two deletions and one command:
+
+1. Delete the note in Obsidian.
+2. Delete the instruction set in Obsidian.
+3. Run `/inbox --recover`. A source that `/note` marked is treated as fresh again.
+
+If you abort during the dialogue, nothing reaches the vault.
 
 ## Re-run a setup wizard
 
@@ -136,6 +181,7 @@ Run from the Claude Code prompt once you're in a session.
 | `/inbox` | 2-pass workflow; auto-detects which phase to run. | `--pass1`, `--pass2` to force a phase; `--force`, `--recover`. See [Forcing a phase](workflows/inbox.md#forcing-a-phase). |
 | `/explore-vault` | Vault discovery; populates `vault-config.yaml` and `discovery-cache.yaml`. | `--confirm` re-runs every detection step with prompts. |
 | `/tomo-setup` | Post-install wizard (recommended after every install). | `rules`, `templates`, `trackers`, `daily-log` to run a single phase. |
+| `/note` | Write a note from a vault template. See [Write a note from a template](#write-a-note-from-a-template). | A request in free text, or `--process <template>` to create or change a process file. |
 | `/moc-propose` | Live vault scan for new MOC proposals. See [How Tomo proposes new MOCs](workflows/moc-propose.md). | Scope such as `tag:`, `folder:`, `class:`, `title:` or free text. |
 | `/garden-audit` | Audit the vault for structural problems. See [Audit your vault](workflows/garden-audit.md). | `audit`, `configure`, `suggest`, `stats`. |
 | `/hashi-hook` | Draft a Tomo Hashi hook. See [Author a Hashi hook](workflows/hashi-hooks.md). | Optional description of the behaviour you want. |

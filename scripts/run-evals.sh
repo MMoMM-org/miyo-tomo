@@ -6,7 +6,7 @@
 # It refuses (exit 3) before spending anything when the invocation or the suite
 # is malformed, and it never writes into the repo: results go to the gitignored
 # tomo-tmp/evals/<TS>/, and a repo change during the run voids the verdict.
-# version: 0.2.2
+# version: 0.4.0
 set -e
 set -o pipefail
 
@@ -28,7 +28,14 @@ Runs the eval suite under evals/ against Tomo's runtime prose with
 Options:
   --case <glob>         Run only the cases whose name matches <glob>. The
                         verdict is marked PARTIAL SUITE and does not satisfy
-                        the merge rule.
+                        the merge rule. A case marked not gated (an
+                        evals/<name>/NOT_GATED file) runs only this way; the
+                        default run skips it and names it on stderr. A not
+                        gated case may also hold evals/<name>/ALLOW_TOOLS
+                        (tool names, space- or line-separated): when --case
+                        selects it, those tools join --allow-tools Bash. A
+                        gated case holding the file, or a --case glob that
+                        also matches a gated case, is refused.
   --rev <git-rev>       Take agents/skills/commands from <git-rev> instead of
                         the working tree (RED proof). evals/ and the
                         inbox-analyst stand-in always come from the working
@@ -50,7 +57,7 @@ Typical cost: about $2.75 per full suite (7 cases x 3 runs, measured);
 
 Fixed flags passed to the CLI:
   --ablation none --threshold 1.0 --runs 3 -j 2 --no-publish --trust-plugin
-  --scaffold --allow-tools Bash --model <"model" in tomo/dot_claude/settings.json>
+  --scaffold --allow-tools Bash [+ ALLOW_TOOLS, --case only] --model <"model" in tomo/dot_claude/settings.json>
 
 Results: tomo-tmp/evals/<TS>/ (gitignored) holds aggregate-result.json,
 report.html and verdict.txt (the verdict line).
@@ -179,6 +186,55 @@ if [ -n "$CASE_GLOB" ]; then
     $matched || refuse "--case '$CASE_GLOB' matches no case; cases: $CASES"
 fi
 
+# A case holding a NOT_GATED file runs only when --case names it; the default
+# run leaves it out of the assembled copy and stays the full gated suite.
+NOT_GATED=""
+if [ -z "$CASE_GLOB" ]; then
+    gated=""
+    for name in $CASES; do
+        if [ -f "$EVALS/$name/NOT_GATED" ]; then NOT_GATED="$NOT_GATED $name"; else gated="$gated $name"; fi
+    done
+    [ -n "$gated" ] || refuse "every case is marked NOT_GATED; name one with --case"
+fi
+
+# An evals/<name>/ALLOW_TOOLS file names extra tools for --allow-tools (spaces or
+# lines). Only a NOT_GATED case may hold one, and it applies only when --case
+# selects that case alone among gated ones: the grant is suite-wide in the CLI.
+for name in $CASES; do
+    if [ -f "$EVALS/$name/ALLOW_TOOLS" ] && [ ! -f "$EVALS/$name/NOT_GATED" ]; then
+        refuse "case $name holds ALLOW_TOOLS but no NOT_GATED file; a gated case never gets extra tools"
+    fi
+done
+ALLOW_TOOLS="Bash"
+if [ -n "$CASE_GLOB" ]; then
+    granted=""
+    gated_matched=""
+    for name in $CASES; do
+        # shellcheck disable=SC2254  # the glob is the point
+        case "$name" in $CASE_GLOB) ;; *) continue ;; esac
+        if [ -f "$EVALS/$name/ALLOW_TOOLS" ]; then
+            granted="$granted $name"
+        elif [ ! -f "$EVALS/$name/NOT_GATED" ]; then
+            gated_matched="$gated_matched $name"
+        fi
+    done
+    if [ -n "$granted" ] && [ -n "$gated_matched" ]; then
+        refuse "--case '$CASE_GLOB' mixes cases with ALLOW_TOOLS (${granted# }) and gated cases (${gated_matched# }); the grant would reach the gated ones"
+    fi
+    for name in $granted; do
+        tools="$(tr '\n' ' ' < "$EVALS/$name/ALLOW_TOOLS")"
+        added=""
+        for tool in $tools; do
+            echo "$tool" | grep -Eq '^[A-Za-z][A-Za-z0-9_]*$' \
+                || refuse "evals/$name/ALLOW_TOOLS: invalid tool name '$tool' (letters, digits, _ only)"
+            case " $ALLOW_TOOLS " in *" $tool "*) ;; *) ALLOW_TOOLS="$ALLOW_TOOLS $tool" ;; esac
+            added="$added $tool"
+        done
+        [ -n "$added" ] || refuse "evals/$name/ALLOW_TOOLS names no tool"
+        echo "granted (not gated): $name${added}" >&2
+    done
+fi
+
 PATCH_FILE=""
 if [ -n "$MUTATION" ]; then
     case "$MUTATION" in *[!A-Za-z0-9._-]*|.*) refuse "invalid mutation name: $MUTATION" ;; esac
@@ -283,7 +339,11 @@ mkdir "$PLUGIN/evals"
 for entry in "$EVALS"/* "$EVALS"/.[!.]*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     [ "$(basename "$entry")" = results ] && continue
+    case " $NOT_GATED " in *" $(basename "$entry") "*) continue ;; esac
     cp -R "$entry" "$PLUGIN/evals/"
+done
+for name in $NOT_GATED; do
+    echo "skipped (not gated): $name" >&2
 done
 
 # The analyst stand-in always comes from the working tree, also under --rev, and
@@ -306,9 +366,11 @@ until mkdir "$OUT" 2>/dev/null; do
     [ "$n" -lt 100 ] || refuse "cannot create a results dir under tomo-tmp/evals/"
 done
 
+# $ALLOW_TOOLS is unquoted on purpose: one argument per tool (validated above).
+# shellcheck disable=SC2086
 set -- plugin eval "$PLUGIN" \
     --ablation none --threshold 1.0 --runs "${RUNS:-3}" -j 2 \
-    --no-publish --trust-plugin --scaffold --allow-tools Bash \
+    --no-publish --trust-plugin --scaffold --allow-tools $ALLOW_TOOLS \
     --model "$MODEL" --max-cost-usd "$MAX_COST" \
     --output-dir "$OUT" --json "$OUT/aggregate-result.json" --report "$OUT/report.html"
 [ -n "$CASE_GLOB" ] && set -- "$@" --case "$CASE_GLOB"

@@ -1,8 +1,8 @@
-# version: 0.3.0
+# version: 0.4.1
 """template-doctor.py — Audit, dry-render, and scaffold Tomo note templates.
 
 Checks whether an Obsidian note template renders correctly through Tomo's static
-Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Three modes:
+Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Four modes:
 
   audit       Static structural checks only. No rendering, no config needed.
   dry-render  Resolve ``{{tokens}}`` via token-render.py, stamp the ``tomo:``
@@ -12,16 +12,21 @@ Pass-2 pipeline (token resolution + ``tomo:`` block stamping). Three modes:
   scaffold    Emit a minimal, guaranteed-literal-fence template for a note type
               (atomic|moc|daily|project|source) to stdout — a correct starting
               point. Richer seed templates live in the vault's config/templates.
+  filled-note Check a filled note (``--note``, no ``--template``) with
+              lib.template_syntax.filled_note_check: leading fence present and
+              closed, no user ``tomo:`` key, no ``<%`` left, no ``{{token}}``
+              left outside fenced code, every code fence closed.
 
-The load-bearing rule both modes enforce: the template must OPEN with a literal
-``---`` fence. Tomo does not execute Templater at render time, so a template
+The load-bearing rule audit and dry-render enforce: the template must OPEN with
+a literal ``---`` fence. Tomo does not execute Templater at render time, so a template
 whose opening fence is delegated to a Templater include (``<% tp.file.include(
 "[[x_frontmatter]]") %>`` as line 1) has, from Tomo's point of view, no leading
 frontmatter — merge_tomo_block prepends a fresh block and the template's
 title/tags/aliases strand as note body. dry-render reproduces that failure
 deterministically instead of relying on visual inspection.
 
-Output — a JSON report on stdout:
+Output — scaffold writes the template text to stdout. audit and dry-render write
+one JSON report on stdout:
 
   {
     "mode": "audit" | "dry-render",
@@ -34,9 +39,26 @@ Output — a JSON report on stdout:
     "rendered_preview": str | null    # dry-render only: the stamped frontmatter
   }
 
+filled-note writes one JSON report on stdout, with no rendered_preview and no
+note content:
+
+  {
+    "mode": "filled-note",
+    "note": "<path>",
+    "ok": bool,                       # true when no FAIL findings
+    "findings": [
+      {"check": str, "status": "PASS"|"WARN"|"FAIL",
+       "detail": str, "fix": str | null}
+    ]
+  }
+
+A note that is missing, not a file, unreadable or not valid UTF-8 yields a single
+``file`` FAIL finding.
+
 Exit codes:
   0  no FAIL findings (WARN allowed)
-  1  at least one FAIL finding, or an operational error (file missing, etc.)
+  1  at least one FAIL finding, or an operational error (file missing,
+     unreadable, not UTF-8, etc.)
   2  bad invocation
 """
 from __future__ import annotations
@@ -55,6 +77,7 @@ from lib.doc_frontmatter import (  # noqa: E402
     FrontmatterMergeError,
     merge_tomo_block_into_markdown,
 )
+from lib.template_syntax import filled_note_check  # noqa: E402
 
 TOKEN_RENDER = SCRIPT_DIR / "token-render.py"
 
@@ -364,14 +387,55 @@ def _preview(stamped, max_lines=40):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# filled-note — the /note delivery check, via lib/template_syntax
+# ──────────────────────────────────────────────────────────────────────
 
-def main(argv=None):
+def _read_note(note_path):
+    """Return (text, None) or (None, detail) — the detail names only the path."""
+    if not note_path.exists():
+        return None, f"Note not found: {note_path}"
+    if not note_path.is_file():
+        return None, f"Note is not a file: {note_path}"
+    try:
+        return note_path.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, f"Note is not valid UTF-8: {note_path}"
+    except OSError:
+        return None, f"Note not readable: {note_path}"
+
+
+def filled_note(note_arg):
+    """Print the filled-note report for one file; return the exit code."""
+    note_path = Path(note_arg)
+    text, error = _read_note(note_path)
+    if error is not None:
+        findings, ok = [_finding("file", "FAIL", error, None)], False
+    else:
+        result = filled_note_check(text)
+        findings, ok = result.findings, result.ok
+    print(json.dumps({
+        "mode": "filled-note", "note": str(note_path), "ok": ok,
+        "findings": findings,
+    }, ensure_ascii=False, indent=2))
+    return 0 if ok else 1
+
+
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["audit", "dry-render", "scaffold"])
+    parser.add_argument(
+        "mode", choices=["audit", "dry-render", "scaffold", "filled-note"])
     parser.add_argument("--template", help="template file path (audit/dry-render)")
+    parser.add_argument("--note", help="filled note file path (filled-note)")
     parser.add_argument("--config", help="vault-config.yaml (dry-render only)")
     parser.add_argument(
         "--type", choices=sorted(_SCAFFOLDS), help="note type (scaffold)")
+    return parser
+
+
+def main(argv=None):
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.mode == "scaffold":
@@ -379,6 +443,11 @@ def main(argv=None):
             parser.error("scaffold requires --type")
         sys.stdout.write(_SCAFFOLDS[args.type])
         return 0
+
+    if args.mode == "filled-note":
+        if not args.note:
+            parser.error("filled-note requires --note")
+        return filled_note(args.note)
 
     if not args.template:
         parser.error(f"{args.mode} requires --template")

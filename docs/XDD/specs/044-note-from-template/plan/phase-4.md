@@ -38,7 +38,7 @@ This phase proves the model behaviour once, walks the feature live and closes th
   4. Validate: pytest passes (including the gate-docs test); the paid run (`scripts/run-evals.sh --keep-temp`, owner's instruction) is GREEN and each mutation run is RED; verdict line, cost and results path recorded.
   5. Success: the model prints before it asks and delivers only after approval `[ref: PRD/F4; SDD/F4-AC1, F4-AC4]`
 
-- [ ] **T4.2 Live walk on tomo-instance** `[activity: validate]`
+- [x] **T4.2 Live walk on tomo-instance** `[activity: validate]`
 
   1. Prime: PRD journeys; SDD criteria marked as model behaviour; memory: sync before any live walk, restart Claude after the sync, never `tomo-privat` `[ref: PRD/User Journey Maps]`
   2. Test: a written checklist in `docs/XDD/specs/044-note-from-template/live-walk.md` with one line per criterion:
@@ -53,7 +53,7 @@ This phase proves the model behaviour once, walks the feature live and closes th
   4. Validate: every line has an outcome and evidence; failures become fixes before merge or are recorded with the owner's decision.
   5. Success: the dialogue criteria hold on a real vault `[ref: PRD/Success Metrics]`
 
-- [ ] **T4.5 Draft view pane** `[activity: build]` (live-walk fix; runs before the T4.2 walk resumes)
+- [x] **T4.5 Draft view pane** `[activity: build]` (live-walk fix; runs before the T4.2 walk resumes)
 
   1. Prime: `[ref: SDD/Draft view pane; SDD/ADR-9]`; `[ref: PRD/F4]`; the plugin-authoring reference and types of the running Claude Code build; `scripts/install-tomo.sh` skill copy and `scripts/update-tomo.sh` skill support-file sync; `docs/tomo/dot_claude/skills/tomo-note-view.md`
   2. Test: `tests/test_note_instructions.py`: `stage` writes `tomo-tmp/note/view.md` with the step 6 header and the fenced `note.md`; the source line follows `keep_source`; `deliver`, `drop` and `new` remove it; a stage of another stem replaces it; a refused or failing stage leaves no `view.md`. The mod's own test under `claude plugin test`: the pane opens at an `AskUserQuestion` `tool.call` when `view.md` exists and not when it is absent; `/note-draft` is registered and opens it; the pane draws the file's text. `tests/test_tomo_note_view_mod.py`: the mod files exist, the versions agree, `install-tomo.sh` and `update-tomo.sh` deliver `.claude-plugin/plugin.json` and the hooks into an isolated instance and never `types/`.

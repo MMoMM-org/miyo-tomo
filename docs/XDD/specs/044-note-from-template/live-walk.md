@@ -4,7 +4,7 @@ Purpose: T4.2. The owner walks `/note` on `tomo-instance` against the test vault
 
 Prerequisites:
 
-1. `./scripts/update-tomo.sh --instance tomo-instance --yolo` from the branch or `main` as the owner decides. NEVER `tomo-privat`. Grep the instance for `# version: 0.2.3` in `note-from-template/SKILL.md` afterwards.
+1. `./scripts/update-tomo.sh --instance tomo-instance --yolo` from the branch or `main` as the owner decides. NEVER `tomo-privat`. Grep the instance for `# version: 0.2.11` in `note-from-template/SKILL.md` and `scripts/note-instructions.py`, and for `.claude/skills/tomo-note-view/.claude-plugin/plugin.json`, afterwards.
 2. Restart the Tomo session after the sync.
 3. Test vault (host filesystem, for inspection only): `/Volumes/Moon/Coding/MiYo/temp/Privat-Test/`, inbox `100 Inbox/`. Kado must be running; the vault needs several templates, at least one with required-looking points, and an inbox note with partial material.
 4. Lines are ordered for one session: setup first, destructive cases last (group 7). Group 7 ends with a restore step; do not skip it.
@@ -72,8 +72,8 @@ Outcome: pass / fail / n.a. Evidence: session id of the transcript.
 
 | # | Criteria | Do | Expect | Outcome | Evidence |
 |---|----------|----|--------|---------|----------|
-| 6.1 | no AC id (PRD scope) | Ask `inbox-author` for an overview. | Behaves as before (unchanged). | not walked live (owner decision 2026-11-06); prose pin only: test_inbox_author_pipeline.py::test_known_key_mapped_template_byte_unchanged, test_inbox_author_pipeline.py::test_builtin_default_byte_unchanged, test_inbox_author_pipeline.py::test_canvas_and_base_steps_byte_unchanged (byte pins of the old text; no test of an overview request) | tests |
-| 6.2 | no AC id (PRD scope) | Ask `inbox-author` for a template kind note (e.g. meeting note). | Points the user to `/note`. | not walked live (owner decision 2026-11-06); prose pin only: test_inbox_author_pipeline.py::test_unknown_type_found_path_points_to_note | tests |
+| 6.1 | F8-AC2 | Ask `inbox-author` for an overview. | Behaves as before (unchanged). | not walked live (owner decision 2026-11-06); prose pin only: test_inbox_author_pipeline.py::test_known_key_mapped_template_byte_unchanged, test_inbox_author_pipeline.py::test_builtin_default_byte_unchanged, test_inbox_author_pipeline.py::test_canvas_and_base_steps_byte_unchanged (byte pins of the old text; no test of an overview request) | tests |
+| 6.2 | F8-AC1 | Ask `inbox-author` for a template kind note (e.g. meeting note). | Points the user to `/note`. | not walked live (owner decision 2026-11-06); prose pin only: test_inbox_author_pipeline.py::test_unknown_type_found_path_points_to_note | tests |
 
 ## 7. Failed delivery and resume (destructive, last)
 

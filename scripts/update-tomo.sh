@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.12.0
+# version: 0.13.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -558,7 +558,7 @@ add_seed \
 # Templates — regenerated from schemas; check if regen would change anything.
 # We compute the expected content into a tmp file and cmp.
 TEMPLATE_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"
-trap 'rm -f "$TEMPLATE_TMP" "${SETTINGS_TMP:-}"' EXIT
+trap 'rm -f "$TEMPLATE_TMP" "${SETTINGS_TMP:-}" "${HOME_SETTINGS_TMP:-}"' EXIT
 TEMPLATE_DST="$INSTANCE_PATH/templates/item-result.template.json"
 if python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
         --schema "$TOMO_SOURCE/schemas/item-result.schema.json" \
@@ -604,6 +604,29 @@ fi
 ENTRYPOINT_SRC="$REPO_ROOT/docker/entrypoint.sh"
 if [ -n "$HOME_DIR" ] && [ -f "$ENTRYPOINT_SRC" ]; then
     add_versioned "$ENTRYPOINT_SRC" "$HOME_DIR/entrypoint.sh" "entrypoint.sh" "container-home"
+fi
+
+# Container-home Claude Code settings. docker/home-settings.json holds Tomo's
+# defaults; keys already in the home win (defaults * existing), so a user's
+# /plugin, /theme or /model choice is never undone. Merged at scan time into a
+# tmp file, copied at execute time like the instance settings.json.
+HOME_SETTINGS_DEFAULTS="$REPO_ROOT/docker/home-settings.json"
+HOME_SETTINGS_DST="$HOME_DIR/.claude/settings.json"
+if [ -n "$HOME_DIR" ] && [ -f "$HOME_SETTINGS_DEFAULTS" ]; then
+    if [ ! -f "$HOME_SETTINGS_DST" ]; then
+        add_plan "settings" "$HOME_SETTINGS_DEFAULTS" "$HOME_SETTINGS_DST" "home settings.json" "create" "defaults" "container-home"
+    else
+        HOME_SETTINGS_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"
+        if jq -s '.[0] * .[1]' "$HOME_SETTINGS_DEFAULTS" "$HOME_SETTINGS_DST" > "$HOME_SETTINGS_TMP" 2>/dev/null; then
+            if jq -e --slurpfile cur "$HOME_SETTINGS_DST" '. == $cur[0]' "$HOME_SETTINGS_TMP" >/dev/null 2>&1; then
+                add_plan "settings" "$HOME_SETTINGS_TMP" "$HOME_SETTINGS_DST" "home settings.json" "current" "" "container-home"
+            else
+                add_plan "settings" "$HOME_SETTINGS_TMP" "$HOME_SETTINGS_DST" "home settings.json" "update" "defaults merged" "container-home"
+            fi
+        else
+            add_plan "settings" "$HOME_SETTINGS_DEFAULTS" "$HOME_SETTINGS_DST" "home settings.json" "problem" "not valid JSON — manual fix" "container-home"
+        fi
+    fi
 fi
 
 # Container-home themes (bytewise). Source repo → bind-mounted home at
@@ -682,7 +705,7 @@ print_section_plan "schemas"         "Schemas"
 print_section_plan "tag-handlers"    "Tag-handler configs"
 print_section_plan "templates"       "Templates (regenerated from schemas)"
 print_section_plan "settings"        "Settings.json"
-print_section_plan "container-home"  "Container home (entrypoint)"
+print_section_plan "container-home"  "Container home (entrypoint, settings)"
 print_section_plan "themes"          "Container home (themes)"
 print_section_plan "launcher"        "Launcher (begin-tomo.sh)"
 print_section_plan "updater"         "Updater shim (update-tomo.sh)"
@@ -961,7 +984,7 @@ execute_section "schemas"         "Schemas"
 execute_section "tag-handlers"    "Tag-handler configs"
 execute_section "templates"       "Templates"
 execute_section "settings"        "Settings.json"
-execute_section "container-home"  "Container home (entrypoint)"
+execute_section "container-home"  "Container home (entrypoint, settings)"
 execute_section "themes"          "Container home (themes)"
 execute_section "launcher"        "Launcher (begin-tomo.sh)"
 execute_section "updater"         "Updater shim (update-tomo.sh)"

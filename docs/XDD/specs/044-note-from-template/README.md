@@ -8,7 +8,7 @@
 | **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
-| **Last Updated** | 2026-11-04 |
+| **Last Updated** | 2026-11-07 |
 
 ## Documents
 
@@ -90,6 +90,7 @@
 | 2026-11-06 | T4.5 implemented: note-instructions.py 0.2.11 writes and removes `view.md` (639 lines; the no-split decision still holds, delivery is the next part to move); `tomo-note-view` 0.1.0; `update-tomo.sh` 0.12.0 maps `dot_claude-plugin/` to `.claude-plugin/` and skips generated `types/`; `install-tomo.sh` 0.7.2 renames it after the skill copy | T4.5 |
 | 2026-11-06 | `tomo-note-view` 0.1.1: the pane opens only at a dialog with an option label containing `Deliver` (the step 6 approval); any dialog still closes a stale pane once `view.md` is gone | T4.5 code-quality review: a `view.md` left by an abandoned `/note` session would open the pane at an unrelated question such as `/inbox` |
 | 2026-11-06 | `tomo-note-view` 0.1.2: the approval dialog is recognised in any language: an option label containing `deliver` (case-insensitive), or an option preview containing the note's title from `view.md` (frontmatter `title:` inside the fence, else its first `# ` heading, at least three characters) | The skill asks in the user's language (session 8a8f3e67 asked in German); the 0.2.11 approval preview carries the full `note.md`. No per-language word list |
+| 2026-11-07 | Keep the AskUserQuestion preview next to the draft side pane | Live walk 5d5cbb6b: the pane showed the draft; below 144 columns an unasked pane waits, so the preview stays the fallback (owner) |
 
 ## Context
 

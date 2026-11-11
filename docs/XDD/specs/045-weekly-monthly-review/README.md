@@ -52,6 +52,8 @@
 | 2026-11-11 | Model tier: frontier | Classifier recommended frontier (novel_pattern=true: section marker line; high_risks=4; adr_count=12). Accepted with the cost sentence shown. |
 | 2026-11-11 | Spec validation (4 validators: consistency, code alignment, coverage/ambiguity, constitution): 9 FAIL, ~30 WARN; all worked in — PRD v1.3, SDD v1.1 (ADR-3/4/11 amended, ADR-13 new: item ids, withdrawal on drop), plan v1.1 (libs split, Kokoro FYI handoff T1.7, error table, write-failure tests) | Owner: "Alle einarbeiten" |
 | 2026-11-11 | Command name stays `/review`; Claude Code's built-in is `/code-review`; T5.2 checks the container first, a mod is the fallback | Owner |
+| 2026-11-11 | Phase 1 complete: T1.1–T1.7 implemented on fable, each spec- and code-reviewed (T1.1 and T1.2 one FAIL each, fixed); full suite 8294 passed, 1 known unrelated failure (test_install_smoke_ide_bridge_block_exists); drift check closed in 7bfbc2a6 | Coordinator |
+| 2026-11-11 | Process: commit 1acbfe03 carries T1.1 and T1.4 under T1.1's subject (parallel agents shared the index); one fable commit used its own Co-Authored-By line. Not rewritten (no amend/rebase); both disappear in the squash merge. Rule tightened: `git commit -F … -- <paths>` and the attribution copied verbatim | Coordinator |
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 
 ## Context

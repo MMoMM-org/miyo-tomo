@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Shared foundations"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 1
 ---
@@ -89,6 +89,6 @@ This phase builds the libraries and the small changes to shared code that every 
   4. Validate: the file follows the protocol's front matter.
   5. Success: Kokoro's records can be updated alongside the implementation `[ref: Constitution Architecture L2]`
 
-- [ ] **T1.8 Phase Validation** `[activity: validate]`
+- [x] **T1.8 Phase Validation** `[activity: validate]`
 
   - Run the full suite and ruff. Confirm `/note` and `/inbox` tests unchanged and green, no eval-gated file in `git diff main --stat`, every edited managed file has a bumped version, every new file has a header docstring and `# version: 0.1.0`.

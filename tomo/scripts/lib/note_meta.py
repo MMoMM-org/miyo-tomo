@@ -1,5 +1,5 @@
 # note_meta.py — draft state of one /note draft and the stage directory listing.
-# version: 0.2.0
+# version: 0.3.0
 """Own ``tomo-tmp/note/<stem>/meta.json`` and the listing of stage directories.
 
 ``note-instructions.py`` writes the draft state (new, stage, deliver, drop);
@@ -171,24 +171,23 @@ def write_meta(stage: Path, meta: NoteDraftMeta) -> None:
     atomic_write_text(Path(stage) / META_FILE, json.dumps(asdict(meta), indent=2) + "\n")
 
 
-def _check_step(step: str) -> None:
-    if step not in STEPS:
+def _check_step(step: str, steps: tuple[str, ...]) -> None:
+    if step not in steps:
         raise ValueError("unknown delivery step")
 
 
-def mark_step_done(meta: NoteDraftMeta, step: str) -> None:
-    """Record ``step`` as done once, in order; clears it as the failed step."""
-    _check_step(step)
+def mark_step_done(meta, step: str, *, steps: tuple[str, ...] = STEPS) -> None:
+    """Record ``step`` (one of ``steps``) as done once, in order; clears it as the failed step."""
+    _check_step(step, steps)
     if step not in meta.steps_done:
         meta.steps_done.append(step)
     if meta.failed_step == step:
         meta.failed_step = ""
 
 
-def mark_step_failed(meta: NoteDraftMeta, step: str) -> None:
-    """Record ``step`` (a delivery step or KADO_CONFIG) as the step the delivery failed on."""
-    if step not in FAILED_STEPS:
-        raise ValueError("unknown delivery step")
+def mark_step_failed(meta, step: str, *, steps: tuple[str, ...] = STEPS) -> None:
+    """Record ``step`` (one of ``steps`` or KADO_CONFIG) as the step the delivery failed on."""
+    _check_step(step, (KADO_CONFIG, *steps))
     meta.failed_step = step
 
 

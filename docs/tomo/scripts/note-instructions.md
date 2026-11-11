@@ -222,6 +222,19 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
+## WHY the Deliver Loop Lives in lib/staged_delivery.py (spec 045, ADR-11)
+
+Since spec 045 the per-step loop (`deliver_step`, `mark_in_flight`, `record`,
+`fail`) and `stable_block` are `lib/staged_delivery.py`, shared with
+`/review`. `deliver` builds one `StagedDelivery` with its own step set
+(`lib/note_meta.STEPS`), its own step → path map (`_targets`) and a closure
+over `write_meta` as the persist callable, then runs the three inbox steps
+through `deliver_step` and the source mark through `record`/`fail`. The rules
+below (in flight before the upload, compare instead of skip or overwrite,
+check-then-act) describe the loop's behaviour, unchanged by the move; the
+reasons for the extraction and for its shape are in
+`docs/tomo/scripts/lib/staged_delivery.md`.
+
 ## WHY deliver Reports steps_done and frozen
 
 Every `deliver` output carries `steps_done` and `frozen` from `meta.json` as it

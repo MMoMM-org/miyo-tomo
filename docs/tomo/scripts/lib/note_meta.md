@@ -122,6 +122,18 @@ corrupt `steps_done` holding `kado_config` pass validation and freeze title and
 destination with nothing landed. The separate tuple keeps the slicing, the
 freeze rules and the `steps_done` validation unchanged.
 
+## WHY mark_step_done and mark_step_failed Take the Caller's Step Set (spec 045, ADR-11)
+
+`lib/staged_delivery.py` runs the deliver loop for `/note` and `/review`, and
+`/review` has its own steps. The two marking functions take the step set as a
+keyword argument, `steps=`, defaulting to `/note`'s `STEPS`, so the loop can
+mark a `/review` step without this module knowing `/review`'s names and
+`/note`'s callers change nothing. `mark_step_failed` accepts `KADO_CONFIG`
+with any step set: the missing-configuration stop is the same for every
+caller. `read_meta` keeps the default: it reads `NoteDraftMeta`, which is
+`/note`'s file. The reasons for the extraction are in
+`docs/tomo/scripts/lib/staged_delivery.md`.
+
 ## WHY read_meta Checks Every Field's Type
 
 meta.json sits on disk where a crash, a hand edit or a future writer bug can

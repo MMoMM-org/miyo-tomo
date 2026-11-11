@@ -356,7 +356,7 @@ Responsibilities (one owner each):
 | `lib/review_day.py` | Reading one day: same-day links and embeds from the whole daily, configured sections, fields, tasks by ✅ date, size cap, per-day state |
 | `lib/review_period.py` | Reading a period: finding dailies (flat and year folders, duplicates), weekly notes of a month and their day blocks, link differences, vault growth, the report |
 | `review-read.py` | CLI over `review_day` + `review_period` + `review_habits`; writes `read.json`; prints the report |
-| `lib/review_habits.py` | Tracker numbers (counts, averages, missing/unreadable days, yesterday shift) |
+| `lib/review_habits.py` | Tracker numbers (counts, averages, missing/unreadable days); takes fields as the reader attributed them |
 | `lib/review_doc.py` + `review-doc.py` | Validating `proposals.json`, rendering the review document with item ids, the label table, start-over replacement, the delivered mark function |
 | `lib/review_doc_parse.py` | Parsing the edited document: Approved line, items by id, user items, warnings |
 | `lib/review_actions.py` | Locating the target (by path, else by name), choosing insert vs replace vs new note, building the section text with escaping, the actions and the stamped new note |
@@ -779,7 +779,8 @@ ALGORITHM: read_day(date D, daily files F[], setup S)
 5. Parse fields `Name:: value` and `**Name**:: value`; yesterday_fields are attributed to D-1. The reader owns
    this shift — `review_habits` receives fields already attributed and never shifts again. The daily of the day
    after the period is read for its yesterday_fields only (no content, no links), so the period's last day
-   is not always "missing".
+   is not always "missing". In `ReadResult.days[]` a shifted value sits in the `fields` of the entry dated
+   D-1 (the day it describes); no entry is ever dated after the period.
 6. Parse tasks `- [x] … ✅ YYYY-MM-DD`: a task counts as done in the period iff its ✅ date is in the period,
    whichever file holds it; open tasks from task notes are labelled "open today".
 7. A day whose kept text exceeds S.daily.max_chars_per_day is cut at a section boundary and reported "partly-read".

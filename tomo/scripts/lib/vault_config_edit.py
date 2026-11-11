@@ -1,5 +1,5 @@
 # vault_config_edit.py — text-preserving edits of one nested key in vault-config.yaml.
-# version: 0.1.0
+# version: 0.2.0
 """Insert, replace or remove one nested key in ``vault-config.yaml`` as text.
 
 ``set_path(text, path, value)`` finds the key line at each level by indent,
@@ -8,8 +8,11 @@ a missing top-level section on the way), replaces a present key's lines or
 removes them when ``value`` is None, and leaves every other byte as it was —
 comments, blank lines, quoting and the order of unrelated keys included.
 A flow mapping on a parent's key line (``weekly: { enabled: true, ... }``) is
-rewritten as a block with the leaf merged in; a scalar where a mapping is
-expected raises ``EditRefused``.
+rewritten as a block with the leaf merged in: every other member is copied as
+written onto its own line, the key line's comment stays on the key line. A
+scalar where a mapping is expected, or flow syntax the rewrite cannot scan
+(explicit keys, duplicate or typed keys, unbalanced braces), raises
+``EditRefused``.
 
 ``vault-config-writer.py review`` (spec 045, ADR-5) applies its leaf edits
 through this module; ``templates-include`` shares the line helpers.
@@ -23,7 +26,8 @@ Design notes: docs/tomo/scripts/lib/vault_config_edit.md
 from __future__ import annotations
 
 import json
-from typing import Any, List, Optional, Sequence, Tuple
+import re
+from typing import Any, List, Sequence, Tuple
 
 import yaml
 
@@ -124,8 +128,7 @@ def render_tree(key: str, value: Any, indent: str, step: int, nl: str) -> str:
         return render_leaf(key, value, indent, nl)
     out = f"{indent}{key}:{nl}"
     for k, v in value.items():
-        if v is not None:
-            out += render_tree(k, v, indent + " " * step, step, nl)
+        out += render_tree(k, v, indent + " " * step, step, nl)
     return out
 
 
@@ -178,39 +181,138 @@ def _edit(lines: List[str], lo: int, hi: int, indent: str, step: int, path: Tupl
     if not rest:
         replacement = [] if value is None else [render_leaf(key, value, indent, nl)]
         return lines[:idx] + replacement + lines[end_content:]
-    inline = inline_value(lines[idx])
-    if inline:
-        return _edit_flow_mapping(lines, idx, end_content, indent, step, inline, rest, value, nl)
+    if inline_value(lines[idx]):
+        return _edit_flow_mapping(lines, idx, end_content, indent, step, key, rest, value, nl)
     child = child_indent(lines, body_lo, end_block, indent)
     child_step = len(child) - len(indent) if len(child) > len(indent) else DEFAULT_STEP
     return _edit(lines, body_lo, end_block, child, child_step, rest, value, nl)
 
 
-def _edit_flow_mapping(lines: List[str], idx: int, end: int, indent: str, step: int, inline: str,
+def _edit_flow_mapping(lines: List[str], idx: int, end: int, indent: str, step: int, key: str,
                        rest: Tuple[str, ...], value: Any, nl: str) -> List[str]:
-    """Rewrite ``key: { ... }`` as a block mapping with the leaf merged in."""
-    key = lines[idx].strip().split(":", 1)[0].strip("\"'")
+    """Rewrite ``key: { ... }`` as a block mapping with the leaf merged in, other members verbatim."""
+    stripped = lines[idx].strip()
+    spelling = next(s for s in (f"{key}:", f'"{key}":', f"'{key}':") if stripped.startswith(s))
+    text = "\n".join([stripped[len(spelling):]] + [ln.strip() for ln in lines[idx + 1:end]])
+    block = _flow_block(text, indent + " " * step, step, rest, value, nl)
+    if block is None:
+        return lines
+    body, tail = block
+    return lines[:idx] + [f"{indent}{spelling}{tail}{nl}", *body] + lines[end:]
+
+
+_UNSCANNABLE = "the flow mapping on the key line could not be rewritten as a block"
+_NULL_SPELLINGS = ("", "~", "null", "Null", "NULL")
+
+
+def _flow_block(text: str, indent: str, step: int, rest: Tuple[str, ...], value: Any,
+                nl: str) -> Tuple[List[str], str] | None:
+    """``(block lines, text after the closing brace)`` for the flow mapping ``text`` opens, with
+    ``rest`` set to ``value``; None when nothing changes (a null for an absent key)."""
+    text = text.strip()
+    if not text.startswith("{"):
+        raise EditRefused("a scalar sits where a mapping is expected")
     try:
-        parsed = yaml.safe_load(" ".join(ln.strip() for ln in lines[idx:end]).split(":", 1)[1])
+        parsed = yaml.safe_load(text)
     except yaml.YAMLError:
         parsed = None
-    if not isinstance(parsed, dict):
-        raise EditRefused("a scalar sits where a mapping is expected")
-    node = parsed
-    for name in rest[:-1]:
-        if not isinstance(node.get(name), dict):
-            if node.get(name) is not None:
+    entries, close = _scan_flow_mapping(text)
+    if not isinstance(parsed, dict) or [k for k, _, _ in entries] != [str(k) for k in parsed]:
+        raise EditRefused(_UNSCANNABLE)
+    tail = text[close:].rstrip()
+    name, deeper = rest[0], rest[1:]
+    pos = next((i for i, (k, _, _) in enumerate(entries) if k == name), None)
+    if pos is None and value is None:
+        return None
+    body: List[str] = []
+    for i, (_, raw_key, raw_val) in enumerate(entries):
+        if i != pos:
+            body.append(f"{indent}{raw_key}: {raw_val}{nl}" if raw_val else f"{indent}{raw_key}:{nl}")
+        elif not deeper:
+            if value is not None:
+                body.append(render_leaf(raw_key, value, indent, nl))
+        else:
+            if raw_val not in _NULL_SPELLINGS and not raw_val.startswith("{"):
                 raise EditRefused("a scalar sits where a mapping is expected")
-            node[name] = {}
-        node = node[name]
-    if value is None:
-        node.pop(rest[-1], None)
+            inner = "{}" if raw_val in _NULL_SPELLINGS else raw_val
+            nested = _flow_block(inner, indent + " " * step, step, deeper, value, nl)
+            if nested is None:
+                return None
+            body.append(f"{indent}{raw_key}:{nested[1]}{nl}")
+            body.extend(nested[0])
+    if pos is None:
+        body.append(render_chain(rest, value, indent, step, nl))
+    return body, tail
+
+
+def _scan_flow_mapping(text: str) -> Tuple[List[Tuple[str, str, str]], int]:
+    """``([(key, key as written, value as written), ...], index after the closing brace)``.
+
+    Quotes, nested ``[]``/``{}`` and ``#`` comments are honoured; comments are dropped.
+    """
+    entries: List[str] = []
+    buf: List[str] = []
+    depth, quote, i = 0, "", 1
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            buf.append(ch)
+            if ch == quote == "'" and text[i + 1:i + 2] == "'":
+                buf.append("'")
+                i += 1
+            elif ch == "\\" and quote == '"':
+                buf.append(text[i + 1:i + 2])
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+            buf.append(ch)
+        elif ch == "#" and text[i - 1] in " \t\n":
+            newline = text.find("\n", i)
+            i = len(text) if newline < 0 else newline
+            continue
+        elif ch in "[{":
+            depth += 1
+            buf.append(ch)
+        elif ch in "]}" and depth > 0:
+            depth -= 1
+            buf.append(ch)
+        elif ch == "}":
+            entries.append("".join(buf))
+            return [_split_entry(e) for e in entries if e.strip()], i + 1
+        elif ch == "," and depth == 0:
+            entries.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    raise EditRefused(_UNSCANNABLE)
+
+
+def _split_entry(entry: str) -> Tuple[str, str, str]:
+    """``(key, key as written, value as written)`` of one ``key: value`` flow member."""
+    depth, quote = 0, ""
+    for i, ch in enumerate(entry):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+        elif ch == ":" and depth == 0 and (i + 1 == len(entry) or entry[i + 1] in " \t\n"):
+            raw_key, raw_val = entry[:i].strip(), re.sub(r"[ \t]*\n[ \t]*", " ", entry[i + 1:].strip())
+            break
     else:
-        node[rest[-1]] = value
-    return lines[:idx] + [render_tree(key, parsed, indent, step, nl)] + lines[end:]
+        raw_key, raw_val = entry.strip(), ""
+    key = raw_key[1:-1] if len(raw_key) > 1 and raw_key[0] in "\"'" and raw_key[-1] == raw_key[0] else raw_key
+    return key, raw_key, raw_val
 
 
-__all__: Optional[List[str]] = [
+__all__ = [
     "EditRefused", "block_extent", "child_indent", "get_path", "inline_value", "is_key_line",
     "is_list_continuation", "leading_ws", "newline_of", "render_leaf", "set_path",
 ]

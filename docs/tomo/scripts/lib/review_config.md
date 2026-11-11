@@ -98,6 +98,16 @@ accept `sub/..name` whose meaning depends on the resolver. An empty inbox
 configuration is refused too — joining onto `""` would put the file at the
 vault root.
 
+The inbox folder is normalised (`posixpath.normpath`) *before* the
+comparison, and the joined path is compared against that normalised base.
+The first version normalised only the joined path, so an inbox configured
+as `./Inbox` or `a/./b` — both legitimate spellings of a folder inside the
+vault — produced `Inbox/x.md` and `a/b/x.md`, which no longer started with
+the raw base, and every review write was refused as "outside the inbox".
+`..` and `\` are still refused in the folder itself before normalising, so a
+base that climbs out of the vault never reaches the comparison; a base that
+normalises to `.` (the vault root) is refused as not configured.
+
 ## WHY Tracker Types Are Read, Not Stored
 
 F8 sums tracker fields by their configured type. The types already live in

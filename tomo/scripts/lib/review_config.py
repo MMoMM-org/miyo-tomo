@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.1.1
+# version: 0.1.2
 """The ``/review`` setup of one period kind (spec 045, T2.1).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -328,8 +328,11 @@ def inbox_path(inbox: str, name: str) -> str:
     """``<inbox>/<name>``; ``UnsafePath`` for a name or result that leaves the inbox."""
     if not name.strip() or any(mark in name for mark in _UNSAFE) or name.strip() == ".":
         raise UnsafePath("name must be a plain filename without /, \\ or ..")
-    base = inbox.strip().strip("/")
-    if not base or any(mark in base for mark in ("\\", "..")):
+    raw = inbox.strip().strip("/")
+    if not raw or any(mark in raw for mark in ("\\", "..")):
+        raise UnsafePath("inbox folder is not configured")
+    base = posixpath.normpath(raw)
+    if base in ("", "."):
         raise UnsafePath("inbox folder is not configured")
     result = posixpath.normpath(f"{base}/{name}")
     if not result.startswith(base + "/") or result == base + "/":

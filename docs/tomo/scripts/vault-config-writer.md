@@ -254,7 +254,13 @@ in some other block is left alone for the reason given above.
 **Why the read-back checks every leaf.** After the edit the result is parsed
 and each written path must hold its value (a removed key must be absent).
 A flow mapping, an inline `{}` or a quoted key the matcher handled wrongly
-would otherwise save a file that reads back as something else.
+would otherwise save a file that reads back as something else. The check is
+the last guard before the atomic write, so it cannot be exercised through
+the subprocess with any real config — a divergence needs the editor to
+misbehave. `tests/test_vault_config_writer_review.py` therefore loads the
+writer in-process and monkeypatches its `set_path` to write a decoy value
+for one leaf; the subcommand must refuse with the leaf's path in the reason
+and leave the file's bytes untouched.
 
 **Why `keys` in the output are paths, never values.** Stdout ends in the
 model's context and the transcript; folder names and section headings are

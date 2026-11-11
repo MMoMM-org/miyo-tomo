@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_vault_config_writer_review.py — `vault-config-writer.py review` (spec 045 T2.1, ADR-5).
 
 Runs the subcommand as a subprocess on a synthetic config shaped like the
 instance's (block-style calendar with only a daily granularity whose path has a
 trailing space, a hand-curated templates block, trackers, a tomo section at the
 end; no naming or review section) and, when present, on a copy of
-tomo-instance/config/vault-config.yaml (never the instance file itself). Covers:
+tomo-instance/config/vault-config.yaml (never the instance file itself). One
+test loads the writer in-process (importlib, hyphenated name) and monkeypatches
+its set_path so the per-leaf read-back before the write can be tripped. Covers:
+- a leaf the edited text would not read back is refused, nothing written
 - a week setup written: absent nested keys inserted four levels deep, missing
   naming: and review: sections created, the diff against the original is
   insertions only (every other byte unchanged)
@@ -21,7 +24,9 @@ tomo-instance/config/vault-config.yaml (never the instance file itself). Covers:
 """
 from __future__ import annotations
 
+import argparse
 import difflib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -313,6 +318,34 @@ def test_broken_config_is_refused_without_config_text(tmp_path):
     assert out["status"] == "refused" and "line" in out["reason"], out
     assert SECRET not in proc.stdout + proc.stderr
     assert cfg.read_text(encoding="utf-8") == config
+
+
+def test_leaf_that_would_not_read_back_is_refused_before_the_write(tmp_path, monkeypatch, capsys):
+    # The read-back is the last guard before the atomic write; only a misbehaving
+    # editor can trip it, so the writer is loaded in-process and its set_path
+    # writes a decoy value for one leaf.
+    spec = importlib.util.spec_from_file_location("vault_config_writer_under_test", WRITER)
+    writer = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(writer)
+    real_set_path = writer.set_path
+    decoy_leaf = ("review", "weekly", "heading")
+
+    def decoy_set_path(text, path, value):
+        return real_set_path(text, path, "decoy" if tuple(path) == decoy_leaf else value)
+
+    monkeypatch.setattr(writer, "set_path", decoy_set_path)
+    cfg = tmp_path / "vault-config.yaml"
+    cfg.write_bytes(CONFIG.encode("utf-8"))
+    inp = tmp_path / "review.json"
+    inp.write_text(json.dumps(WEEK), encoding="utf-8")
+    rc = writer.cmd_review(argparse.Namespace(input=str(inp), config=str(cfg)))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["status"] == "refused", out
+    assert out["reason"] == "resulting YAML would not read back review.weekly.heading"
+    assert cfg.read_bytes() == CONFIG.encode("utf-8")
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".vault-config.yaml.")], "no temp file left"
 
 
 def test_missing_config_exits_2(tmp_path):

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_vault_config_edit.py — Behavioural tests for lib.vault_config_edit (spec 045 T2.1).
 
 Covers the text-preserving nested-key editor behind `vault-config-writer.py review`:
 - a scalar inserted four levels deep under existing parents, at the parents' indent
 - a missing intermediate key and a missing top-level section created on the way
 - replacing a scalar, a block list (by a flow list) and removing a key (null)
-- a flow mapping on the key line rewritten as a block with the leaf merged
+- a flow mapping on the key line rewritten as a block with the leaf merged: the
+  key-line comment kept, every other member copied as written (nulls, plain and
+  quoted scalars, floats, dates, nested flow mappings), a nested flow mapping
+  descended into, a multi-line mapping handled, syntax the scan cannot rewrite
+  refused with its own message
 - a same-named key under another parent never touched; quoted keys found
 - a scalar where a mapping is expected refused; CRLF endings kept
 - every byte outside the edited lines identical (diff = insertions only)
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import difflib
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -129,6 +134,102 @@ def test_flow_mapping_on_key_line_is_rewritten_as_block():
     assert '      daily:     { enabled: true,  path: "D/" }\n' in after
     assert '      monthly:   { enabled: true, path: "M/" }\n' in after
     assert yaml.safe_load(after)["concepts"]["calendar"]["granularities"]["weekly"] == {"enabled": True, "path": "New W/"}
+
+
+FLOW = (
+    "granularities:\n"
+    "  weekly: { enabled: true, path: W/, template: ~, legacy: null, since: 2026-01-05,"
+    " ratio: 0.5, tags: [a, 'b c'], nested: { x: 1 } }  # from the profile\n"
+    "other: 1\n"
+)
+
+FLOW_BLOCK_HEAD = "granularities:\n  weekly:  # from the profile\n    enabled: true\n"
+FLOW_BLOCK_TAIL = (
+    "    template: ~\n    legacy: null\n    since: 2026-01-05\n    ratio: 0.5\n"
+    "    tags: [a, 'b c']\n    nested: { x: 1 }\nother: 1\n"
+)
+
+
+def test_flow_mapping_rewrite_keeps_the_key_line_comment():
+    after = set_path(FLOW, ("granularities", "weekly", "path"), "New W/")
+    assert after.startswith("granularities:\n  weekly:  # from the profile\n")
+    assert after.count("# from the profile") == 1
+
+
+def test_flow_mapping_rewrite_keeps_null_members_as_written():
+    after = set_path(FLOW, ("granularities", "weekly", "path"), "New W/")
+    assert "    template: ~\n    legacy: null\n" in after
+    parsed = yaml.safe_load(after)["granularities"]["weekly"]
+    assert parsed["template"] is None and parsed["legacy"] is None and "template" in parsed
+
+
+def test_flow_mapping_rewrite_keeps_sibling_spelling_and_scalar_types():
+    after = set_path(FLOW, ("granularities", "weekly", "path"), "New W/")
+    assert after == FLOW_BLOCK_HEAD + '    path: "New W/"\n' + FLOW_BLOCK_TAIL
+    parsed = yaml.safe_load(after)["granularities"]["weekly"]
+    assert parsed["since"] == date(2026, 1, 5) and parsed["ratio"] == 0.5
+    assert parsed["tags"] == ["a", "b c"] and parsed["nested"] == {"x": 1}
+
+
+def test_flow_mapping_rewrite_only_re_renders_the_edited_leaf():
+    # The leaf gets the module's rendering; nothing else is re-rendered.
+    config = "weekly: { enabled: true, path: W/ }\n"
+    assert set_path(config, ("weekly", "path"), "W/") == 'weekly:\n  enabled: true\n  path: "W/"\n'
+    assert set_path(config, ("weekly", "enabled"), False) == "weekly:\n  enabled: false\n  path: W/\n"
+
+
+def test_flow_mapping_leaf_removed_added_and_bare_member_kept():
+    config = "weekly: { enabled: true, note, path: W/ }\n"
+    assert set_path(config, ("weekly", "path"), None) == "weekly:\n  enabled: true\n  note:\n"
+    assert set_path(config, ("weekly", "heading"), "H") == 'weekly:\n  enabled: true\n  note:\n  path: W/\n  heading: "H"\n'
+    assert set_path(config, ("weekly", "missing"), None) == config
+
+
+def test_flow_mapping_quoted_key_line_and_quoted_member_keys_keep_their_quotes():
+    config = '"weekly": { "enabled": true, \'path\': W/ }\n'
+    after = set_path(config, ("weekly", "path"), "X/")
+    assert after == '"weekly":\n  "enabled": true\n  \'path\': "X/"\n'
+    assert yaml.safe_load(after) == {"weekly": {"enabled": True, "path": "X/"}}
+
+
+def test_flow_mapping_descends_into_a_nested_flow_mapping_and_creates_missing_levels():
+    config = "calendar: { base: C/, granularities: { weekly: { enabled: true, path: W/ } } }  # c\n"
+    after = set_path(config, ("calendar", "granularities", "weekly", "path"), "X/")
+    assert after == (
+        "calendar:  # c\n  base: C/\n  granularities:\n    weekly:\n      enabled: true\n      path: \"X/\"\n"
+    )
+    after = set_path(config, ("calendar", "granularities", "monthly", "path"), "M/")
+    assert after == (
+        "calendar:  # c\n  base: C/\n  granularities:\n    weekly: { enabled: true, path: W/ }\n"
+        "    monthly:\n      path: \"M/\"\n"
+    )
+    after = set_path("calendar: { granularities: ~ }\n", ("calendar", "granularities", "weekly", "path"), "W/")
+    assert after == 'calendar:\n  granularities:\n    weekly:\n      path: "W/"\n'
+
+
+def test_multi_line_flow_mapping_is_rewritten_with_members_on_their_own_lines():
+    config = "weekly: {\n    enabled: true,  # inside\n    path: W/,\n  }\nother: 1\n"
+    after = set_path(config, ("weekly", "heading"), "H")
+    assert after == 'weekly:\n  enabled: true\n  path: W/\n  heading: "H"\nother: 1\n'
+
+
+def test_scalar_inside_a_flow_mapping_where_a_mapping_is_expected_is_refused():
+    with pytest.raises(EditRefused, match="scalar"):
+        set_path("calendar: { granularities: plain }\n", ("calendar", "granularities", "weekly"), "x")
+    with pytest.raises(EditRefused, match="scalar"):
+        set_path("calendar: [a, b]\n", ("calendar", "weekly"), "x")
+
+
+@pytest.mark.parametrize("config", [
+    "weekly: { ? enabled : true, path: W/ }\n",   # explicit key: the scan and YAML disagree
+    "weekly: { path: A/, path: B/ }\n",           # duplicate member
+    "weekly: { true: 1 }\n",                      # typed key
+    "weekly: { path: W/ \n",                      # unbalanced
+    "weekly: { path: W/ } junk\n",                # text after the closing brace
+])
+def test_flow_mapping_the_scan_cannot_rewrite_is_refused_with_its_own_message(config):
+    with pytest.raises(EditRefused, match="could not be rewritten as a block"):
+        set_path(config, ("weekly", "heading"), "H")
 
 
 def test_same_named_key_under_another_parent_is_not_touched():

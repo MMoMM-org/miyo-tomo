@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -13,7 +13,8 @@ Covers the /review setup model:
 - place_level: before = anchor level, inside = +1, after refused; the review
   heading may not exceed level 5 (its groups stay <= 6); missing anchor reported
 - inbox_path refuses "/", "\\", "..", an empty name, an empty inbox and any
-  result outside the inbox
+  result outside the inbox; an inbox spelled "./Inbox" or "a/./b" is normalised
+  before the comparison and accepted
 - tracker_types reads trackers.daily_note_trackers and end_of_day_fields
 """
 from __future__ import annotations
@@ -300,6 +301,24 @@ def test_inbox_path_refuses_empty_inbox_and_escapes():
         rc.inbox_path("/", "x.md")
     with pytest.raises(rc.UnsafePath):
         rc.inbox_path("../", "x.md")
+    with pytest.raises(rc.UnsafePath):
+        rc.inbox_path("a/../b", "x.md")
+    with pytest.raises(rc.UnsafePath):
+        rc.inbox_path("a\\b", "x.md")
+    with pytest.raises(rc.UnsafePath):
+        rc.inbox_path(".", "x.md")
+    with pytest.raises(rc.UnsafePath):
+        rc.inbox_path("./", "x.md")
+
+
+@pytest.mark.parametrize("inbox, expected", [
+    ("./Inbox", "Inbox/x.md"),
+    ("./Inbox/", "Inbox/x.md"),
+    ("a/./b", "a/b/x.md"),
+    ("a//b/", "a/b/x.md"),
+])
+def test_inbox_path_normalises_the_inbox_folder_before_comparing(inbox, expected):
+    assert rc.inbox_path(inbox, "x.md") == expected
 
 
 # --- tracker_types -------------------------------------------------------------------

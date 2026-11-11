@@ -1,5 +1,5 @@
 # review_habits.py — the habits group of a review: tracker values of a period as counts and averages.
-# version: 0.3.0
+# version: 0.3.1
 """Habits as numbers for ``/review`` (spec 045, T3.5, PRD F8).
 
 One pure function, ``habits(trackers, days, period_days, language)``: the
@@ -13,11 +13,13 @@ integer, duration (minutes) or time tracker. A time average is the circular
 mean on the 24 h clock (23:30 and 00:30 give 00:00); when the times cancel
 out (00:00 and 12:00) the average is undefined and the item says "no clear
 average" with ``value: None``. Text trackers are skipped. A day without the
-field, with an empty value or with a bare ``-`` placeholder is *missing*, a
-value the type rule cannot read ("ja" for a number, "7" for a yes/no field,
-an unrun Templater ``<% … %>``, a digit run too long to be a tracker value)
-is *unreadable*; both are named by date and never counted as zero, and no
-input value makes this module raise. Fields arrive already attributed to
+field, with an empty value or with a bare ``-`` placeholder is *missing* for
+every tracker type (``parse_value`` classifies the raw value once, before
+any type parser sees it), a value the type rule cannot read ("ja" for a
+number, "7" for a yes/no field, an unrun Templater ``<% … %>``, a digit run
+too long to be a tracker value) is *unreadable*; both are named by date and
+never counted as zero, and no input value makes this module raise. Fields
+arrive already attributed to
 the day they describe — the reader owns the ``yesterday_fields`` shift to
 D-1 — and are taken as given; a date listed twice keeps the later entry.
 Each item carries its structured numbers and the rendered line from the
@@ -109,11 +111,8 @@ def _number(text: str) -> float:
     return float(text.replace(",", "."))
 
 
-def parse_boolean(text: str) -> Optional[bool]:
-    """True/false; None for the bare ``-`` placeholder (a day without an answer)."""
+def parse_boolean(text: str) -> bool:
     key = text.lower()
-    if key in _PLACEHOLDER:
-        return None
     if key in _TRUE:
         return True
     if key in _FALSE:
@@ -171,9 +170,10 @@ _PARSERS = {
 
 
 def parse_value(type_: str, raw: Any):
-    """The typed value, None for no value; raises ``Unreadable`` for a value the type cannot read."""
+    """The typed value; None for no value or the bare ``-`` placeholder, whatever the type;
+    raises ``Unreadable`` for a value the type cannot read."""
     text = _text(raw)
-    if text is None:
+    if text is None or text in _PLACEHOLDER:
         return None
     if _RE_TEMPLATER.search(text):
         raise Unreadable(text)

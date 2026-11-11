@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_habits.py — Behavioural tests for lib.review_habits (spec 045 T3.5, PRD F8).
 
 Covers the habits group as numbers:
-- boolean trackers give a day count over the days with a value (F8-AC1); a
-  bare `-` is a placeholder, listed as missing, never false
+- boolean trackers give a day count over the days with a value (F8-AC1)
+- a bare `-` is the "nothing recorded" placeholder for every tracker type
+  (boolean, integer, duration, time): listed as missing, never unreadable,
+  never false, never counted; only-dash days give no item; a `-` inside a
+  longer value (`-5`) is not the placeholder
 - integer, duration and time trackers give an average over the days with a
   value; duration is averaged in minutes and rendered back; time is averaged
   on the 24 h clock (circular mean: 23:30 and 00:30 give 00:00), and evenly
@@ -104,8 +107,50 @@ def test_boolean_dash_is_a_placeholder_listed_as_missing_not_false():
     assert item["text"].startswith("Sport: 1 of 2 days")
 
 
-def test_boolean_only_dashes_give_no_item():
-    assert rh.habits([tracker("Sport", "boolean")], [day(PERIOD[0], Sport="-")], PERIOD, "en") == []
+# --- a bare `-` is the "nothing recorded" placeholder for every tracker type -------------
+
+DASH_CASES = [
+    ("boolean", "true", "false", 1),
+    ("integer", "4", "6", 5.0),
+    ("duration", "7h", "8h", 450.0),
+    ("time", "07:00", "08:00", 450.0),
+]
+
+
+@pytest.mark.parametrize("type_,good_a,good_b,expected", DASH_CASES, ids=[c[0] for c in DASH_CASES])
+@pytest.mark.parametrize("dash", ["-", " - ", "-\t"], ids=["bare", "spaced", "tabbed"])
+def test_dash_is_missing_not_unreadable_for_every_type(type_, good_a, good_b, expected, dash):
+    """`X:: -` means nothing recorded, whatever the type: missing, outside the denominator,
+    never unreadable (an unreadable day would send the setup after a type mismatch that is not there)."""
+    days = [day(PERIOD[0], X=dash), day(PERIOD[1], X=good_a), day(PERIOD[2], X=good_b)]
+    item = one(rh.habits([tracker("X", type_)], days, PERIOD, "en"), "X")
+    assert item["unreadable"] == [], type_
+    assert "2026-03-23" in item["missing"], type_
+    assert item["days_with_value"] == 2, type_
+    assert item["value"] == pytest.approx(expected), type_
+
+
+@pytest.mark.parametrize("type_", [c[0] for c in DASH_CASES])
+def test_only_dashes_give_no_item_for_every_type(type_):
+    days = [day(PERIOD[0], X="-"), day(PERIOD[1], X="-")]
+    assert rh.habits([tracker("X", type_)], days, PERIOD, "en") == [], type_
+
+
+@pytest.mark.parametrize("type_,raw", [
+    ("integer", "-5"), ("integer", "--"), ("integer", "-x"),
+    ("duration", "-7h"), ("time", "-07:00"), ("boolean", "-x"),
+])
+def test_a_dash_inside_a_longer_value_is_not_the_placeholder(type_, raw):
+    """Only the whole stripped value being `-` is the placeholder; `-5` is a number, `--` is not."""
+    good = {"integer": "4", "duration": "7h", "time": "07:00", "boolean": "true"}[type_]
+    days = [day(PERIOD[0], X=raw), day(PERIOD[1], X=good)]
+    item = one(rh.habits([tracker("X", type_)], days, PERIOD, "en"), "X")
+    assert "2026-03-23" not in item["missing"], (type_, raw)
+    if raw == "-5":
+        assert item["unreadable"] == []
+        assert item["value"] == pytest.approx(-0.5)  # (-5 + 4) / 2
+    else:
+        assert item["unreadable"] == ["2026-03-23"]
 
 
 def test_boolean_number_is_unreadable_not_false():

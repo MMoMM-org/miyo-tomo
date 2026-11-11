@@ -75,17 +75,46 @@ stated so a test can pin it, not because either order is more correct.
 
 ## WHY Missing and Unreadable Days Are Named, Never Zero (F8-AC2)
 
-A day without the field, or with an empty value, is *missing*: the user did
-not record it. A value that does not fit the type — "ja" for a number, "7"
-for a yes/no field, an unrun Templater tag `<% … %>` left by a template that
-was never executed — is *unreadable*: the user recorded something the type
-rule cannot read. Both are listed by date in the item, and neither is counted
-as zero or false: a zero would pull an average down and a false would lower
-a day count, and the user could not tell a recorded zero from a gap.
-`days_with_value` is therefore the denominator of every count and average.
-The two lists are kept apart because the fixes differ: a missing day is a
-gap in the journal, an unreadable one is a type mismatch the setup can
-repair (SDD: the setup may propose `Sleep` `text` → `duration`).
+A day without the field, with an empty value, or with a bare `-` placeholder
+(next section) is *missing*: the user did not record it. A value that does
+not fit the type — "ja" for a number, "7" for a yes/no field, an unrun
+Templater tag `<% … %>` left by a template that was never executed — is
+*unreadable*: the user recorded something the type rule cannot read. Both
+are listed by date in the item, and neither is counted as zero or false: a
+zero would pull an average down and a false would lower a day count, and the
+user could not tell a recorded zero from a gap. `days_with_value` is
+therefore the denominator of every count and average. The two lists are kept
+apart because the fixes differ: a missing day is a gap in the journal, an
+unreadable one is a type mismatch the setup can repair (SDD: the setup may
+propose `Sleep` `text` → `duration`).
+
+## WHY a Bare `-` Is Missing for Every Tracker Type
+
+A bare `-` (after stripping) is the placeholder a daily template leaves
+behind when nothing was filled in: `Sport:: -`, `Sleep:: -`, `ToBed:: -` all
+mean "nothing recorded", whatever the tracker's type. So it is *missing* —
+listed under `missing`, outside the denominator — for boolean, integer,
+duration and time alike (coordinator decision, T3.5). It is never false (a
+boolean count would drop by the days the user simply did not answer), never
+a number, and never *unreadable*: an unreadable day points the setup at a
+type mismatch to repair, and `Sleep:: -` is not one — a wizard that reads
+`-` days as unreadable would propose retyping a correctly typed tracker.
+
+The rule has one owner. `parse_value` classifies the raw value before any
+type parser sees it: no value (`None`, empty, whitespace) and the `-`
+placeholder both give `None`, the Templater guard comes next, and only then
+is the text handed to the type's parser. An earlier version checked `-`
+inside `parse_boolean` alone, so integer, duration and time listed a `-`
+day as unreadable: three parsers silently disagreed with the fourth about
+what a placeholder is. Putting the check in front of the parsers means a
+fifth type, or a second placeholder spelling, cannot reopen the gap. The
+type parsers therefore never see `-` and need no placeholder branch of
+their own; a type parser called directly with `-` is a programming error,
+not a case to handle.
+
+A `-` that is part of a longer value is not the placeholder: `-5` is a
+(negative) integer, `-` followed by text is whatever the type parser makes
+of it. Only the whole stripped value being `-` counts.
 
 ## WHY These Value Rules
 
@@ -94,11 +123,8 @@ repair (SDD: the setup may propose `Sleep` `text` → `duration`).
   `0`, `❌` or an unticked checkbox `[ ]` / `[]`; all case-insensitive.
   These are the spellings the trackers wizard and the owner's dailies use,
   plus the one-letter German/English shorthands and `done` a hand-written
-  journal falls into; anything else is unreadable. A bare `-` is neither: it
-  is the placeholder a template leaves behind when nothing was filled in, so
-  it is *missing* — the day is listed under `missing` and is not in the
-  count's denominator. Reading it as false would lower every count by the
-  days the user simply did not answer.
+  journal falls into; anything else is unreadable (a bare `-` never reaches
+  this rule — see the placeholder section above).
 - **integer**: an integer or a decimal (`7.5` or German `7,5`). The type says
   integer, but a `7.5` energy is still a number and refusing it would name
   half the owner's days unreadable; the average is rendered with one

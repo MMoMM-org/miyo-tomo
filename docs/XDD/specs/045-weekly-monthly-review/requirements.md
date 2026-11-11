@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.1"
+version: "1.2"
 ---
 
 # Product Requirements Document
@@ -100,6 +100,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given existing periodic notes named by ISO week (for example `2026-W13`), When Tomo proposes a name format and first day of the week, Then the proposal produces exactly those names and proposes Monday
   - [ ] Given no existing periodic notes, When Tomo proposes a name format, Then it proposes ISO weeks (`2026-W13`, starting Monday) and calendar months (`2026-03`) and says it found no notes to compare with
   - [ ] Given the user sets a first day of the week other than Monday, When Tomo shows the matches, Then week numbers and the week's year follow that first day, and the existing notes the name format no longer matches are shown before the user confirms
+  - [ ] Given existing weekly notes do not show how the user counts weeks (which day starts a week, which week is week 1), When Tomo proposes the setup, Then it asks the user in plain words how their weeks are counted and derives the rule from the answer; the Obsidian plugin configuration is never taken as the user's week
   - [ ] Given no template for the period kind, or a template Kado cannot read, When Tomo proposes the setup, Then it says so and proposes a plain note (title and review section) instead, and says an unreadable template may mean the Kado key has no access
   - [ ] Given the user corrects a proposal, When Tomo has applied it, Then it shows the new matches again before asking, and nothing is saved until the user confirms
   - [ ] Given the user confirms, When the setup is saved, Then no other setting changes except a correction the user confirmed in the same dialogue (for example a daily folder path with a stray trailing space), and the review request continues in the same session
@@ -155,6 +156,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given an approved review document, When the user continues it, Then Tomo shows in plain text the review section as it will land — the ticked items with the user's text and the items the user added — with the target note and place, and asks Deliver or Abort; a change is made by editing the document and continuing again
   - [ ] Given approval and an existing target note, When Tomo delivers, Then the instruction set adds the review section, under its own heading, at the configured place of that note and changes nothing else in it
   - [ ] Given approval and no target note, When Tomo delivers, Then the new note — from the template when there is one, with the review section in place — waits in the inbox and the instruction set moves it to the periodic folder
+  - [ ] Given the period kind's template contains Templater code, When Tomo builds the new note, Then it uses the template's Tomo variant when the setup names one; without a variant it keeps the template as it is and the readable instructions tell the user to run Templater on the note after moving it
   - [ ] Given an unticked or deleted item, or a group with nothing ticked, When the section is built, Then it is absent, and an empty group leaves no heading
   - [ ] Given the configured place does not exist in the target note, When Tomo prepares delivery, Then it says so before delivering and offers the headings the note has, or Abort
   - [ ] Given the delivered instruction set, When Hashi lists the inbox, Then it finds and validates it like a Pass 2 set
@@ -173,10 +175,10 @@ The user writes a daily note every day and a weekly and a monthly note to look b
 
 #### Feature 7: Privacy
 
-- **User Story:** As the reviewer, I want the content of my days to stay in my vault, so that a review leaves no copy of my journal anywhere else.
+- **User Story:** As the reviewer, I want Tomo's own records to stay free of my journal and to know where my journal content rests on my machine, so that I can protect it like my vault.
 - **Acceptance Criteria:**
-  - [ ] Given any review run, When it reports or logs, Then no daily-note text, journal answer, tracker value or proposal text appears in logs, error output or cost records; they carry only paths, dates, counts and states
-  - [ ] Given a run ends by delivery, abort or drop, When it ends, Then Tomo's own working copies of daily-note content are removed, and the content exists only in the vault (including the inbox review document and the delivered note)
+  - [ ] Given any review run, When it reports or logs, Then no daily-note text, journal answer, tracker value or proposal text appears in Tomo's logs, error output or cost records; they carry only paths, dates, counts and states
+  - [ ] Given the privacy documentation, When a user reads it, Then it names every place on the machine where content read by Tomo rests — Claude Code's session transcripts in the container home, Tomo's working folders, the inbox — says that removing it is the user's choice, and recommends protecting the Tomo instance and home like the vault (for example an encrypted disk)
 
 #### Feature 8: Habits as numbers
 

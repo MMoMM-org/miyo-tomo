@@ -14,8 +14,8 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.1: 8 features, 57 criteria; approved by the owner 2026-11-11 |
-| solution.md | pending | |
+| requirements.md | completed | v1.2: 8 features, 59 criteria; v1.1 approved 2026-11-11, v1.2 amends F1, F5, F7 from the SDD decisions |
+| solution.md | completed | v1.0: 14 components, ADR-1..12 confirmed, all 59 PRD criteria traced to EARS criteria |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -44,6 +44,11 @@
 | 2026-11-11 | Readable instructions next to the instruction set for users without Hashi | Owner note; same pattern as /inbox and /note |
 | 2026-11-11 | Markdown review document is 80/20; edits it cannot carry safely go to the later Hashi editor spec | Owner note |
 | 2026-11-11 | PRD v1.1 approved; phase PRD → SDD | Owner: "passt so" |
+| 2026-11-11 | SDD ADR-1..6 confirmed: /note-style shim+skill+scripts; open state in the vault; review section with marker, insert then replace_section; adaptive pacing; vault-config-writer `review` subcommand; applied read from the instruction JSON | Owner confirmed the recommended set |
+| 2026-11-11 | PRD v1.2 — week counting: inferred from existing weekly notes, else asked in plain words; never from the Obsidian plugin config | Owner: "Die Obsidian config hat ja nichts damit zu tun wie der user seine Woche definiert" |
+| 2026-11-11 | PRD v1.2 — Templater templates: use the Tomo variant when set up; else keep the template and tell the user to run Templater after the move | Owner chose both options |
+| 2026-11-11 | SDD ADR-10..12 confirmed: /inbox skips doc_type review by filename suffix " Review" (no extra Kado call); /note's deliver loop extracted into lib/staged_delivery.py; the model writes only proposals.json, scripts compute habits, growth and link differences | Owner confirmed the recommended options |
+| 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 
 ## Context
 

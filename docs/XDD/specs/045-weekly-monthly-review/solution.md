@@ -604,7 +604,10 @@ review-read.py --period 2026-W13 --kind week [--stem S]
 review-doc.py write --stem S --proposals tomo-tmp/review/<stem>/proposals.json
   out: {status: written|refused|stopped, doc_path, target, target_exists, target_found_elsewhere?: path,
         counts: {group: n}, rejected: [{group, index, reason}],
-        problems?: [proposals-invalid|doc-name-taken|kado-write-failed]}
+        problems?: [proposals-invalid|doc-name-taken|review-exists|kado-write-failed|read-missing|read-invalid|
+                    setup-missing|setup-invalid|inbox-not-configured]}
+  # write never overwrites: an existing Tomo review document gives review-exists and keeps read.json and
+  # proposals.json; only `replace --confirm` writes over it, from those kept files (F6-AC1)
 
 review-doc.py parse --stem S            (reads the doc through Kado)
   out: {status: ok|not-found, approved: bool, items: {group: [{id?, origin: tomo|user, kept: bool, edited: bool}]},
@@ -935,6 +938,7 @@ sequenceDiagram
 | `setup-input`, writer | invalid confirmed input / schema violation | `status: invalid` / `refused` with pointers | nothing saved; the dialogue asks again |
 | `write` | invalid proposals file | `status: refused`, `proposals-invalid` | the model is asked to rewrite the file once; then the run stops |
 | `write` | `<name> Review.md` exists and is not Tomo's | `status: refused`, `doc-name-taken` | names the file; nothing overwritten |
+| `write` | Tomo's review document for the period already exists | `status: refused`, `review-exists` + `doc_path` | nothing overwritten, stage files kept; the skill asks to start over, then `replace --confirm` (F6-AC1) |
 | `write`, `deliver` | Kado write refused or failed | `status: stopped`, `kado-write-failed` | nothing claimed as written; deliver is resumable |
 | `parse` | document missing / renamed beyond recognition | `status: not-found` | offers start over |
 | `parse` / `preview` | Approved unticked / line missing | `not-approved` / `approved-line-missing` | names the box / how to restore `- [ ] Approved` (F5-AC1) |

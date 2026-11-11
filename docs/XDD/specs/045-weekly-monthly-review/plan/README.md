@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
-status: draft
-version: "1.0"
+status: approved
+version: "1.1"
 ---
 
 # Implementation Plan
@@ -119,13 +119,17 @@ When implementation requires changes from the specification:
 - **ADR-3**: review section at the place's heading level with marker `%% tomo-review <period> %%`; insert first, `replace_section` on rerun; risky line starts escaped.
 - **ADR-4**: paced and retried Kado reads (`ReviewPacer`, `KadoRateLimitError`, client counters).
 - **ADR-7**: week rule `(first_day, min_days_in_first_week)` inferred from notes or asked; never from the Obsidian config.
-- **ADR-10/11**: `/inbox` skips `doc_type: review` by the ` Review` filename suffix; `/note`'s deliver loop moves to `lib/staged_delivery.py`.
+- **ADR-10/11**: `/inbox` skips `doc_type: review` by the ` Review` filename suffix; `/note`'s deliver loop moves to `lib/staged_delivery.py` with caller-supplied steps.
+- **ADR-13**: Tomo items carry `%%t<n>%%` ids; `drop` withdraws a set Tomo already wrote.
 
 **Standing rules for every task**:
 
 - Never edit the eval-gated files (`agents/synthesis-conductor.md`, `agents/suggestion-conductor.md`, `skills/suggest-handling/SKILL.md`, `commands/inbox.md`, `dot_claude/settings.json`) or `tomo/schemas/hashi-instructions.schema.json`.
 - WHY goes into `docs/tomo/<mirrored path>.md` before the runtime file changes; runtime prose holds imperatives only.
-- Bump `# version:` on every edited managed file; edit skills via `tcs-helper:skill-author`.
+- Bump `# version:` on every edited managed file; every new script and lib starts with a header docstring saying why it exists and `# version: 0.1.0`; edit skills via `tcs-helper:skill-author`.
+- Every script catches unexpected exceptions at the top and prints only the class name to stderr.
+- New libs stay one responsibility each (≤ ~500 lines); in the large existing files add only the changes named here.
+- Commits and the PR reference spec 045 and #31.
 - Stage explicit paths only; never `git stash/reset/restore/clean/checkout`; never a `CLAUDE_ALLOW_*` override; report hook denials.
 - Unique temp and commit-message file names per agent; mutation checks only in an isolated copy, with `PYTHONDONTWRITEBYTECODE=1`.
 - The test vault is read-only; never write into its daily folder; never touch `tomo-privat`; paid evals and instance syncs only on the owner's instruction.
@@ -135,7 +139,7 @@ When implementation requires changes from the specification:
 ```bash
 # Testing (host, under the repo venv)
 ./venv/bin/python -m pytest tests/ -q                       # full suite
-./venv/bin/python -m pytest tests/test_review_*.py tests/test_period.py -q
+./venv/bin/python -m pytest tests/test_review_*.py tests/test_period.py tests/test_staged_delivery.py -q
 ./venv/bin/python -m pytest -m integration tests/test_review_integration.py   # opt-in, reads Privat-Test
 
 # Quality
@@ -164,7 +168,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [ ] [Phase 5: Command, skill and documentation](phase-5.md)
 - [ ] [Phase 6: Integration, live walk and close-out](phase-6.md)
 
-Phase dependencies: 1 → 2 → 3 → 4 → 5 → 6. Phase 2's setup tasks and Phase 3's habits task depend only on Phase 1 and may start early (marked in the phase files).
+Phase dependencies: 1 → 2 → 3 → 4 → 5 → 6. T2.1 and T2.2 may start once T1.1 is done; T3.5 (habits) may start once T2.1 is done (marked in the phase files).
 
 ---
 

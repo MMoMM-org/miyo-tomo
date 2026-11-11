@@ -14,9 +14,9 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.2: 8 features, 59 criteria; v1.1 approved 2026-11-11, v1.2 amends F1, F5, F7 from the SDD decisions |
-| solution.md | completed | v1.0: 14 components, ADR-1..12 confirmed, all 59 PRD criteria traced to EARS criteria |
-| plan/ | completed | 6 phases, 33 tasks (27 deliverables + 6 phase validations); PRD traceability table in phase-6.md |
+| requirements.md | completed | v1.3: 8 features, 59 criteria; v1.1 approved 2026-11-11; v1.2 SDD decisions; v1.3 validation findings (definitions, edge cases, KPI scope) |
+| solution.md | completed | v1.1: 19 components, ADR-1..13 confirmed, all 59 PRD criteria traced; validation findings worked in |
+| plan/ | completed | v1.1: 6 phases, 34 tasks (28 deliverables + 6 phase validations); PRD traceability table in phase-6.md, checked by script |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -50,6 +50,8 @@
 | 2026-11-11 | SDD ADR-10..12 confirmed: /inbox skips doc_type review by filename suffix " Review" (no extra Kado call); /note's deliver loop extracted into lib/staged_delivery.py; the model writes only proposals.json, scripts compute habits, growth and link differences | Owner confirmed the recommended options |
 | 2026-11-11 | Decomposition tier: Incremental | Classifier recommended Incremental (14 new components, 8 features, 59 criteria). Accepted. |
 | 2026-11-11 | Model tier: frontier | Classifier recommended frontier (novel_pattern=true: section marker line; high_risks=4; adr_count=12). Accepted with the cost sentence shown. |
+| 2026-11-11 | Spec validation (4 validators: consistency, code alignment, coverage/ambiguity, constitution): 9 FAIL, ~30 WARN; all worked in — PRD v1.3, SDD v1.1 (ADR-3/4/11 amended, ADR-13 new: item ids, withdrawal on drop), plan v1.1 (libs split, Kokoro FYI handoff T1.7, error table, write-failure tests) | Owner: "Alle einarbeiten" |
+| 2026-11-11 | Command name stays `/review`; Claude Code's built-in is `/code-review`; T5.2 checks the container first, a mod is the fallback | Owner |
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 
 ## Context

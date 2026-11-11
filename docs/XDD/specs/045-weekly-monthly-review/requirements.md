@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.2"
+version: "1.3"
 ---
 
 # Product Requirements Document
@@ -119,6 +119,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given an argument that is not a valid week or month (for example `2026-W54`, `2026-13`, `month 2026-W13`), When the user runs `/review`, Then Tomo says what it expected, shows one valid example, and writes nothing
   - [ ] Given a period kind that is not set up, When the user asks for it, Then Feature 1 runs first
   - [ ] Given week 53 or a week that spans two years, When it is reviewed, Then its days, its number and its note name follow the configured first day of the week (the ISO calendar when it is Monday)
+
 #### Feature 3: Reading the period
 
 - **User Story:** As the reviewer, I want Tomo to read everything my days hold — not only the log — so that the review reflects the whole period.
@@ -131,20 +132,21 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given a month whose weeks have no weekly notes, When Tomo reads it, Then the review is built from the dailies alone and the report says no weekly notes were found
   - [ ] Given the period, When Tomo reads it, Then it also lists the notes created in the period, the MOCs changed in the period and the MOCs those new notes link to, and calls this vault growth, not a history of edits
   - [ ] Given Tomo has read the period, When it reports, Then it shows per day whether a daily note was found, whether it held content, and which linked notes were missing or not readable
-  - [ ] Given no daily note in the period holds content, When Tomo reports, Then it says so, says an empty result may also mean the Kado key cannot read the folder, and writes nothing
+  - [ ] Given no daily note in the period holds content — no section the setup names carries text beyond the daily template's own skeleton — When Tomo reports, Then it says so, says an empty result may also mean the Kado key cannot read the folder, and writes nothing
   - [ ] Given Kado is unreachable or refuses access, When Tomo reads, Then it stops, shows the error, and writes nothing
-  - [ ] Given Kado's rate limit (shared with everything else Tomo runs at the time), When Tomo reads a period, Then it paces its calls and retries a call Kado turned away for the rate limit, waiting as long as Kado asks, so that a period is read completely rather than cut short
-  - [ ] Given a run in which Kado turned calls away for the rate limit, When Tomo reports, Then it says how many calls were retried and how long it waited, and suggests raising Kado's rate limit; when the retries do not stop, it slows down further, and only when a call still fails after its retries does it name what it could not read
+  - [ ] Given Kado's rate limit (shared with everything else Tomo runs at the time), When Tomo reads a period, Then it spaces its calls and retries a call Kado turned away for the rate limit, waiting as long as Kado asks, so that a period is read completely rather than cut short
+  - [ ] Given a run in which Kado turned calls away for the rate limit, When Tomo reports, Then it says how many calls were retried and how long it waited, and suggests raising Kado's rate limit; after every call that needed a retry it widens the spacing of the following calls, retries what still failed once more at the widest spacing at the end of the run, and names only what failed then
   - [ ] Given a run that could not read some notes, When the review document is written, Then the document says at its top which days or notes are missing from the review
+
 #### Feature 4: The review document (Pass 1)
 
 - **User Story:** As the reviewer, I want a review document I can edit item by item, so that only what I accept and how I phrase it lands in my note.
 - **Acceptance Criteria:**
   - [ ] Given the period was read, When Tomo writes the review document, Then it lands in the inbox under a name that shows the period (for example `2026-W13 Review`), states the target note and whether it exists or will be created, carries an unticked Approved checkbox, and nothing else in the vault is written
-  - [ ] Given the document, When the user opens it, Then the proposals are grouped — what happened and got done, what stayed open, recurring themes, where the vault grew, and the habits of Feature 8; for a month also what only the weekly reviews hold and what the dailies held that the weekly reviews left out — and every proposal is one ticked item with editable text
+  - [ ] Given the document, When the user opens it, Then the proposals are grouped — what happened and got done, what stayed open, recurring themes (a theme found on at least two days of the period), where the vault grew, and the habits of Feature 8; for a month also what only the weekly reviews hold and what the dailies held that the weekly reviews left out — and every proposal is one ticked item with editable text
   - [ ] Given a proposal from Tomo, When it is written, Then it carries at least one link to a daily note inside the period, or, for what only a weekly review holds, to that weekly note
   - [ ] Given a group with no proposal, When the document is written, Then the group shows one line saying nothing was found for it; that line never lands in the periodic note
-  - [ ] Given the review language from the setup, When Tomo writes the proposals, Then they are in that language
+  - [ ] Given the review language from the setup, When Tomo writes the proposals, Then they are in that language; group headings and Tomo's fixed lines are in that language for German and English and in English otherwise
   - [ ] Given the review document in the inbox, When the user runs `/inbox`, Then it is neither classified as a new item nor applied as another kind of document
   - [ ] Given the sections of the periodic note the setup names as the user's own (for example reflections, "in my own words"), When Tomo proposes the review, Then it proposes only its own section and never text for those sections
 
@@ -239,13 +241,18 @@ None. Everything the owner asked for is Must Have; the remaining ideas are Could
 - The periodic note appears between Pass 1 and Pass 2 → Expected: Pass 2 targets the existing note and adds the section instead of creating a note.
 - A daily note links a Dayplanner or journal note that does not exist or cannot be read → Expected: that day is read without it, and the per-day report names it.
 - Two daily notes carry the same date → Expected: both are read and the report names the duplicate.
+- The user rewrites a Tomo item and removes its source links → Expected: it still counts as Tomo's item, kept and edited, not as deleted plus added.
+- The user deletes or breaks the Approved line → Expected: Pass 2 says the line is missing and how to restore it; nothing is delivered.
+- The user renamed the review heading in the periodic note → Expected: a rerun still finds Tomo's section, says it was renamed, and replaces it there.
+- The user moved the periodic note to another folder → Expected: Tomo finds it by name before proposing a new note, and targets it where it is.
+- The user drops a review whose delivery failed midway → Expected: the instruction set Tomo already wrote is withdrawn, so Hashi applies nothing from it.
 
 ## Success Metrics
 
 ### Key Performance Indicators
 
 - **Adoption:** The owner runs a weekly review for 4 consecutive finished weeks in the live vault after release (measured after the spec closes).
-- **Engagement:** In a delivered review, at most 40 % of Tomo's proposals are unticked or deleted; above that the proposals are noise. Counted per group from item counts at Pass 1 and Pass 2, without storing any text.
+- **Engagement:** In a delivered review, at most 40 % of Tomo's proposals are unticked or deleted, over the whole review; the habit items Tomo computes are not counted. Counted from item counts at Pass 1 and Pass 2 (also reported per group), without storing any text.
 - **Quality:** 0 writes to the vault outside the inbox before the user applies in Hashi; 0 delivered proposals from Tomo without a source-day link in the period; 0 periodic notes with two Tomo review sections.
 - **Cost and time:** On the test vault's March 2026, a weekly Pass 1 costs at most $0.50, a monthly Pass 1 at most $2.00, a Pass 2 at most $0.20; a monthly Pass 1 finishes within 5 minutes.
 
@@ -293,7 +300,7 @@ All events carry counts and states only, never text (Feature 7).
 
 ## Open Questions
 
-None blocking. The questions of the first draft and the owner's notes on it (2026-11-11) were answered as follows, pending the owner's approval of this PRD:
+None blocking. The questions of the first draft and the owner's notes on it (2026-11-11) were answered as follows; v1.1 was approved on 2026-11-11, v1.2 and v1.3 carry the owner's design decisions and the validation findings of the same day:
 
 - [x] Monthly source: the month's dailies and the weekly notes of its weeks, marking what only the weekly reviews hold and what they left out (owner decision 2026-11-11; was Could Have in v1.0).
 - [x] Calling the review: `/review` and `/review month` for the last finished period; any argument that names a period by itself (`W13`, `2026-W13`, `2026-03`, an `@`-picked note) needs no `week` or `month` word.

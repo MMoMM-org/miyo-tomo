@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
-status: draft
-version: "1.0"
+status: approved
+version: "1.1"
 ---
 
 # Solution Design Document
@@ -73,7 +73,7 @@ version: "1.0"
 
 ## Constraints
 
-- **CON-1 Runtime and language.** Python scripts run in the Tomo container (Python 3.11; the host test run needs ≥ 3.9, `pyproject.toml:13`). Dependencies are stdlib, PyYAML and jsonschema only (`docker/Dockerfile:11-13`); week arithmetic and parsing use the stdlib. Runtime prose in `tomo/dot_claude/` holds imperatives only; every WHY lives in `docs/tomo/<mirrored path>.md` and is written before the runtime text (CLAUDE.md). Every edited managed file bumps its `# version:`.
+- **CON-1 Runtime and language.** Python scripts run in the Tomo container (Python 3.11; the host test run needs ≥ 3.9, `pyproject.toml:13`). Dependencies are stdlib, PyYAML and jsonschema only (`docker/Dockerfile:21-23`); week arithmetic and parsing use the stdlib. Runtime prose in `tomo/dot_claude/` holds imperatives only; every WHY lives in `docs/tomo/<mirrored path>.md` and is written before the runtime text (CLAUDE.md). Every edited managed file bumps its `# version:`.
 - **CON-2 Boundaries.** Tomo writes only to the inbox (MVP execution boundary); everything else reaches the vault as an instruction set the user applies in Hashi or by hand. No change to Hashi or Kado. No change to the eval-gated files (`agents/synthesis-conductor.md`, `agents/suggestion-conductor.md`, `skills/suggest-handling/SKILL.md`, `commands/inbox.md`, `dot_claude/settings.json`). The Hashi contract schema `tomo/schemas/hashi-instructions.schema.json` is a mirror and is never edited.
 - **CON-3 Data protection.** All vault access goes through Kado and its key (MiYo Constitution L1). Tomo's own logs, stderr and cost records carry metadata only — paths, dates, counts, states (Constitution L2, PRD F7-AC1). Where read content rests on the machine is documented, not cleaned up (PRD F7-AC2, owner decision 2026-11-11).
 - **CON-4 Rate limit.** Kado rate-limits per IP, by default 20 requests per 5 s, and that window is shared with the session's own `kado-*` MCP calls (`Kado/src/mcp/server.ts:105-157`, `Kado/docs/api-reference.md:41-84`). A review must pace and retry, never stop at a fixed budget (PRD F3).
@@ -112,6 +112,10 @@ version: "1.0"
 - doc: PRIVACY.md
   relevance: HIGH
   why: "Gets the /review paragraph and the new 'Where content rests on your machine' section"
+
+- doc: Kokoro ADR-028 (replace_section, mirror-only so far) and ADR-018 (doc_type list)
+  relevance: MEDIUM
+  why: "First Tomo producer of replace_section and a new doc_type → FYI handoff (Constitution Architecture L2)"
 
 - doc: evals/README.md
   relevance: MEDIUM
@@ -271,7 +275,7 @@ data:
 ### Cross-Component Boundaries (if applicable)
 
 - **API Contracts:** the Hashi instruction schema v3 (unchanged; this design only emits actions it already defines). The `doc-frontmatter` `tomo:` block (one new doc type). Kado tool semantics (unchanged; the `filter` argument already exists server-side).
-- **Team Ownership:** Tomo owns everything changed here. Hashi and Kado are consumed as they are; no handoff is needed.
+- **Team Ownership:** Tomo owns everything changed here. Hashi and Kado are consumed as they are; no change is asked of them. Kokoro gets an FYI handoff (`_outbox/for-kokoro/`): Tomo becomes the first producer of `replace_section` (Kokoro ADR-028 recorded it as mirror-only, and its rule routes such a change as an L2 handoff) and adds the doc_type `review` to the list in ADR-018 and `global/architecture/06-miyo-tomo-hashi.md`.
 - **Shared Resources:** the Kado rate-limit window (shared with the session's MCP calls and any other Tomo run); the inbox folder (shared with `/inbox` and `/note`).
 - **Breaking Change Policy:** no wire change. Adding `replace_section` to the producer schema aligns it with the contract it mirrors; the schema_version stays.
 
@@ -310,13 +314,17 @@ graph LR
     SK --> VCW[vault-config-writer.py review]
     SES --> PER[lib/period.py]
     SES --> RCFG[lib/review_config.py]
-    RD --> PER
-    RD --> RREAD[lib/review_read.py]
+    SES --> RST[lib/review_state.py]
+    RD --> RDAY[lib/review_day.py]
+    RD --> RPER[lib/review_period.py]
     RD --> HAB[lib/review_habits.py]
-    RREAD --> PACE[ReviewPacer]
+    RDAY --> PACE[lib/review_pacer.py]
+    RPER --> PACE
     PACE --> KC[lib/kado_client.py]
     DOC --> RDOC[lib/review_doc.py]
+    DOC --> RPAR[lib/review_doc_parse.py]
     INS --> RACT[lib/review_actions.py]
+    INS --> RST
     INS --> STG[lib/staged_delivery.py]
     INS --> RMD[lib/render_md.py]
     NI[note-instructions.py] --> STG
@@ -330,19 +338,25 @@ Responsibilities (one owner each):
 |---|---|
 | `commands/review.md` | Invoking the skill in-session with `$ARGUMENTS` verbatim |
 | `skills/periodic-review/SKILL.md` | The dialogue order: start → setup → read → propose → write doc → continue → preview → deliver; plain-text confirmations |
-| `lib/period.py` | Week/month arithmetic, the week rule, name-format rendering and parsing, overlapping weeks, argument parsing to a `Period` |
-| `lib/review_config.py` | Reading the review setup (config over profile), validating it, the heading-level check of the place |
-| `review-session.py` | `start` (parse request, list open reviews), `match` (setup preview against existing notes), `setup-input` (build the writer input from a confirmed proposal) |
-| `vault-config-writer.py review` | Writing the confirmed setup into `vault-config.yaml` text-preservingly |
-| `lib/review_read.py` + `review-read.py` | Reading the period through Kado under the pacer; splitting dailies into configured sections; same-day link resolution; tasks by ✅ date; weekly-note day blocks; vault growth; per-day report; `read.json` |
-| `ReviewPacer` (in `lib/review_read.py`) | Pacing, adaptive slow-down, retry accounting, the not-read list, abort on connection/auth errors |
+| `lib/period.py` | Week/month arithmetic, the week rule, name-format rendering, parsing and refusal of unsafe formats, overlapping weeks, argument parsing to a `Period` |
+| `lib/review_config.py` | Reading the review setup (config over profile), validating it, the heading-level check of the place (the only owner of that rule), the inbox-path guard `inbox_path()` every review write goes through |
+| `review-session.py` | `start` (parse request, list open reviews via `review_state`), `match` (setup preview against existing notes), `setup-input` (build the writer input from a confirmed proposal) |
+| `vault-config-writer.py review` | Writing the confirmed setup into `vault-config.yaml` text-preservingly, including absent nested keys and the new `review:` section |
+| `lib/review_pacer.py` | Spacing, widening after retries, the end-of-run retry pass, retry and wait accounting, the not-read list, abort on connection/auth errors |
+| `lib/review_day.py` | Reading one day: same-day links and embeds from the whole daily, configured sections, fields, tasks by ✅ date, size cap, per-day state |
+| `lib/review_period.py` | Reading a period: finding dailies (flat and year folders, duplicates), weekly notes of a month and their day blocks, link differences, vault growth, the report |
+| `review-read.py` | CLI over `review_day` + `review_period` + `review_habits`; writes `read.json`; prints the report |
 | `lib/review_habits.py` | Tracker numbers (counts, averages, missing/unreadable days, yesterday shift) |
-| `lib/review_doc.py` + `review-doc.py` | Validating `proposals.json`, rendering the review document, parsing the edited document, escaping, start-over replacement, delivered marking |
-| `lib/review_actions.py` | Choosing insert vs replace vs new note, building the review section text and the actions, the applied reader |
-| `lib/staged_delivery.py` | The ordered, resumable, identical-text-idempotent write of inbox payloads (extracted from `note-instructions.py`) |
+| `lib/review_doc.py` + `review-doc.py` | Validating `proposals.json`, rendering the review document with item ids, the label table, start-over replacement, the delivered mark function |
+| `lib/review_doc_parse.py` | Parsing the edited document: Approved line, items by id, user items, warnings |
+| `lib/review_actions.py` | Locating the target (by path, else by name), choosing insert vs replace vs new note, building the section text with escaping, the actions and the stamped new note |
+| `lib/review_state.py` | The one open-review state function: reads document frontmatter, `meta.json` and the set JSON (`applied`) and returns the canonical state |
+| `lib/staged_delivery.py` | The ordered, resumable, identical-text-idempotent write of inbox payloads (extracted from `note-instructions.py`; steps and targets supplied by the caller) |
 | `review-instructions.py` | `preview`, `deliver`, `drop`, `status` subcommands over the above |
 | `lib/render_md.py` | Readable `instructions.md`: copy-ready fenced content for `insert_under_marker` and `replace_section`, placement wording |
 | `inbox-triage.py` | Treating `review` documents as known and skipping them silently |
+
+Every new script and lib starts with a header docstring that says why the file exists and an initial `# version: 0.1.0`. Every script's `main` catches any exception and prints only its class name to stderr (CON-3).
 
 ### Directory Map
 
@@ -358,7 +372,7 @@ tomo/
 ├── scripts/
 │   ├── review-session.py                     # NEW: start / match / setup-input
 │   ├── review-read.py                        # NEW: read the period → read.json + report
-│   ├── review-doc.py                         # NEW: write / parse / replace / mark-delivered
+│   ├── review-doc.py                         # NEW: write / parse / replace
 │   ├── review-instructions.py                # NEW: preview / deliver / drop / status
 │   ├── vault-config-writer.py                # MODIFY: + `review` subcommand
 │   ├── note-instructions.py                  # MODIFY: use lib/staged_delivery.py
@@ -366,12 +380,17 @@ tomo/
 │   └── lib/
 │       ├── period.py                         # NEW
 │       ├── review_config.py                  # NEW
-│       ├── review_read.py                    # NEW (incl. ReviewPacer)
+│       ├── review_pacer.py                   # NEW
+│       ├── review_day.py                     # NEW
+│       ├── review_period.py                  # NEW
 │       ├── review_habits.py                  # NEW
 │       ├── review_doc.py                     # NEW
+│       ├── review_doc_parse.py               # NEW
 │       ├── review_actions.py                 # NEW
+│       ├── review_state.py                   # NEW
 │       ├── staged_delivery.py                # NEW: extracted deliver loop
-│       ├── kado_client.py                    # MODIFY: counters, KadoRateLimitError, filter
+│       ├── note_meta.py                      # MODIFY: step set supplied by the caller
+│       ├── kado_client.py                    # MODIFY: wait counters, KadoRateLimitError, filter
 │       ├── render_md.py                      # MODIFY: copy-ready insert/replace branches
 │       ├── tomo_lifecycle.py                 # MODIFY: + review
 │       └── wire_snapshot_parity.py           # MODIFY: drop replace_section exemption
@@ -391,32 +410,46 @@ docs/tomo/
 ├── dot_claude/skills/periodic-review.md      # NEW
 └── scripts/
     ├── review-session.md, review-read.md, review-doc.md, review-instructions.md   # NEW
-    ├── lib/period.md, review_config.md, review_read.md, review_habits.md,
-    │   review_doc.md, review_actions.md, staged_delivery.md                        # NEW
+    ├── lib/period.md, review_config.md, review_pacer.md, review_day.md,
+    │   review_period.md, review_habits.md, review_doc.md, review_doc_parse.md,
+    │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
-    │   instruction-render.md, lib/kado_client.md                                   # MODIFY
-PRIVACY.md                                    # MODIFY: /review paragraph + where content rests
+    │   instruction-render.md, lib/kado_client.md, lib/note_meta.md                 # MODIFY
+PRIVACY.md                                    # MODIFY: /review paragraph, record scope, where content rests
 docs/setup.md                                 # MODIFY: protect the instance like the vault (link to PRIVACY)
 tomo/dot_claude/commands/tomo-help.md         # MODIFY: list /review
+_outbox/for-kokoro/                           # NEW (gitignored): FYI handoff — first replace_section producer, doc_type review
 ```
 
 **Component**: tests (host only)
 ```
 tests/
-├── test_period.py                            # NEW: arithmetic, rule, formats, arguments
-├── test_review_config.py                     # NEW
+├── test_period.py                            # NEW: arithmetic, rule, formats, arguments, W53 months
+├── test_review_config.py                     # NEW (incl. inbox guard)
 ├── test_review_session.py                    # NEW
-├── test_review_read.py                       # NEW (fake vault, pacer, same-day rule, tasks)
+├── test_review_pacer.py                      # NEW
+├── test_review_day.py                        # NEW (same-day rule, sections, fields, tasks, size cap)
+├── test_review_period.py                     # NEW (dailies, duplicates, year folders, weeklies, growth)
 ├── test_review_habits.py                     # NEW
-├── test_review_doc.py                        # NEW (render, parse, escape, edits)
-├── test_review_instructions.py               # NEW (insert/replace/new note, resume, applied)
-├── test_review_privacy.py                    # NEW (marker allowlist)
+├── test_review_doc.py                        # NEW (render, ids, labels, write failure)
+├── test_review_doc_parse.py                  # NEW (edits, ids, Approved line)
+├── test_review_instructions.py               # NEW (insert/replace/new note, resume, drop, conflicts)
+├── test_review_state.py                      # NEW (canonical states)
+├── test_review_privacy.py                    # NEW (marker allowlist, exception handler)
+├── test_review_e2e.py                        # NEW (Phase 6)
+├── test_review_integration.py                # NEW (-m integration, Phase 6)
+├── test_045_close_out_gaps.py                # NEW (Phase 6, if gaps are found)
 ├── test_staged_delivery.py                   # NEW (+ existing /note tests stay green)
 ├── test_vault_config_writer_review.py        # NEW
 ├── test_inbox_triage_review_skip.py          # NEW
-├── test_kado_client_rate_limit.py            # NEW
-├── review_fake_vault.py                      # NEW: extends note_fake_vault with listNotes filter, 429 injection
-└── test_tomo_lifecycle.py                    # MODIFY: doc-type set
+├── review_fake_vault.py                      # NEW: extends note_fake_vault with listNotes filter, byName, 429/503 injection
+├── test_kado_client_retry.py                 # MODIFY: KadoRateLimitError, wait counters
+├── test_kado_client_attempts.py              # MODIFY: pace wait counter, filter pass-through
+├── test_tomo_lifecycle.py                    # MODIFY: doc-type set
+├── test_tomo_schema_parity.py                # MODIFY: replace_section no longer mirror-only
+├── test_wire_snapshot_parity.py              # MODIFY: sanctioned set without replace_section
+├── test_hashi_instructions_schema.py         # MODIFY: invert "replace_section absent from producer"
+└── test_035_schema_identity.py               # MODIFY: docstring
 ```
 
 ### Interface Specifications
@@ -454,7 +487,9 @@ No database. Two persistent shapes change.
 
 ```yaml
 # config/vault-config.yaml (written by vault-config-writer.py review)
-concepts.calendar.granularities.weekly:  {enabled: true, path: "Calendar/302 Weekly/"}     # existing keys, now set
+# None of these keys exist in tomo-instance today: the writer inserts absent nested keys
+# (4 levels deep) and creates the naming: and review: sections when they are missing.
+concepts.calendar.granularities.weekly:  {enabled: true, path: "Calendar/302 Weekly/"}
 concepts.calendar.granularities.monthly: {enabled: true, path: "Calendar/303 Monthly/"}
 concepts.calendar.granularities.daily.path: "Calendar/301 Daily/"   # only when the user confirms the trailing-space fix
 naming.calendar_patterns.weekly:  "GGGG-[W]WW"
@@ -463,7 +498,7 @@ templates.mapping.weekly:  "t_week_privat.md"      # as found; may be absent
 templates.mapping.monthly: "t_month_privat.md"
 
 review:                                  # NEW top-level section
-  language: de                           # review language (default: frontmatter locale of the dailies)
+  language: de                           # review language (default: frontmatter locale of the dailies, else en)
   week:
     first_day: monday                    # monday..sunday
     min_days_in_first_week: 4            # 4 = ISO; 1 = week 1 contains 1 January
@@ -471,9 +506,10 @@ review:                                  # NEW top-level section
     sections: ["Habit", "5 Year Journal", "Start of the Day", "ToDos", "Daily Log", "End of the Day"]
     skip_sections: ["On This Day... last year"]   # prefix match on heading text
     task_notes: ["Efforts/500 OnGoing/Next Todos.md"]   # living task notes
+    max_chars_per_day: 12000             # read cap per day; beyond it the day is "partly read"
   weekly:
     heading: "Tomo Review"
-    place: {anchor: "In my own words", placement: before}
+    place: {anchor: "In my own words", placement: before}    # placement: before | inside
     own_sections: ["In my own words", "Reflections"]
     template_variant: null               # e.g. "t_week_privat_tomo.md"
   monthly:
@@ -483,60 +519,85 @@ review:                                  # NEW top-level section
     template_variant: null
 ```
 
+Same-day links and embeds are collected from the **whole** daily, before the section filter: the owner's Dayplanner embed sits under a heading whose text changes every day (`## [[DP-2026-03-26|Dayplanner]]`), so a section list cannot name it.
+
 Tracker fields are not duplicated: F8 reads the existing `trackers.daily_note_trackers` (`today_fields`, `yesterday_fields`, `end_of_day_fields`) and their types; the setup may propose a type change (for example `Sleep` `text` → `duration`) through the existing `vault-config-writer.py trackers` subcommand.
 
 ```yaml
 # tomo-tmp/review/<stem>/   (<stem> = "<period-name>_review", e.g. "2026-W13_review")
-read.json        # content of the period (Pass 1 only; deleted after the document is written or on abort)
+read.json        # content of the period (Pass 1 only; deleted after the document is written or on abort;
+                 #  a session that ends without either leaves it until the next /review of that stem — named in PRIVACY.md)
 proposals.json   # model output (Pass 1 only; deleted with read.json)
-meta.json        # content-free: period, kind, doc_path, target, mode, generated, steps_done, failed_step
+meta.json        # content-free: period, kind, doc_path, target, mode, generated, steps_done, failed_step,
+                 #  pass1_counts {group: n}, withdrawn
 ```
 
 #### Internal API Changes
 
-Script CLIs (all print one JSON object on stdout, exit 0 for usable output; stderr carries a problem class only, never text or titles):
+Every script prints one JSON object on stdout. Exit codes: **0** for every outcome the skill can act on (the outcome is in `status` / `problems` / `error`), **2** for a usage error (unknown subcommand or flag, missing required argument), **1** only for an unexpected exception (stderr: the exception class name, nothing else). stderr never carries note text, titles or proposal text.
 
 ```yaml
 review-session.py start --args '<raw $ARGUMENTS>'
   out: {request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default"},
-        open_reviews: [{period, kind, doc_path, state: open|delivered|partly-applied|failed-delivery, stem}],
+        open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state (canonical list below)
         setup: {week: present|missing, month: present|missing},
         error?: {kind: invalid-period|unfinished-period|not-periodic-note|unknown-argument, expected, example}}
 
 review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N]
-  out: {proposal: {folder, format, first_day, min_days, template, template_kind: plain|templater|missing|unreadable,
+  out: {status: ok|stopped,
+        proposal: {folder, format, first_day, min_days, template, template_kind: plain|templater|missing|unreadable,
                    heading, place, own_sections, daily_sections, language},
-        evidence: {matched: [names], unmatched: [names], week_rule: inferred|ambiguous|default, notes_checked: n},
-        daily_path_fix?: {configured: "Calendar/301 Daily/ ", found: "Calendar/301 Daily/"}}
+        evidence: {matched: [names], unmatched: [names], week_rule: inferred|ambiguous|default, notes_checked: n,
+                   folder_listing: found|kado-none},
+        daily_path_fix?: {configured: "Calendar/301 Daily/ ", found: "Calendar/301 Daily/"},
+        error?: {kind: kado-unreachable|kado-auth|unsafe-format}}
 
-review-session.py setup-input --kind week|month --confirmed <json file>  → writes the writer input file, prints its path
+review-session.py setup-input --kind week|month --confirmed <json file>
+  out: {status: ok, input_path} | {status: invalid, errors: [json-pointer]}
 
 vault-config-writer.py review --input <json>   (validated against vault-config-review.schema.json)
+  out: as the other writer subcommands: {status: written|unchanged|refused, reason?}
 
 review-read.py --period 2026-W13 --kind week [--stem S]
-  out: {stem, report: {days: [{date, daily: found|missing|empty|failed, linked: [{path, state}]}],
-                       weekly_notes?: [{path, state}], calls, retried, waited_s, not_read: [paths],
-                       kado_empty: [sources]},
-        read_path: "tomo-tmp/review/<stem>/read.json", nothing_to_review: bool}
+  out: {status: ok|stopped, stem,
+        report: {days: [{date, dailies: [{path, state: found|empty|partly-read|failed}], duplicate: bool,
+                         linked: [{path, state: read|missing|failed}]}],
+                 weekly_notes?: [{path, state}], calls, retried, waited_s, not_read: [paths],
+                 kado_empty: [sources], advice: [raise-kado-limit|check-key-access]},
+        read_path: "tomo-tmp/review/<stem>/read.json", nothing_to_review: bool,
+        error?: {kind: kado-unreachable|kado-auth}}
 
 review-doc.py write --stem S --proposals tomo-tmp/review/<stem>/proposals.json
-  out: {doc_path, target, target_exists, counts: {group: n}, rejected: [{group, index, reason}]}
+  out: {status: written|refused|stopped, doc_path, target, target_exists, target_found_elsewhere?: path,
+        counts: {group: n}, rejected: [{group, index, reason}],
+        problems?: [proposals-invalid|doc-name-taken|kado-write-failed]}
 
 review-doc.py parse --stem S            (reads the doc through Kado)
-  out: {approved: bool, items: {group: [{origin: tomo|user, kept: bool}]}, counts..., warnings: [kind]}
+  out: {status: ok|not-found, approved: bool, items: {group: [{id?, origin: tomo|user, kept: bool, edited: bool}]},
+        counts: {kept, unticked, deleted, added}, warnings: [approved-line-missing|unknown-group|duplicate-group|frontmatter-broken]}
 
-review-doc.py replace --stem S --confirm   (start over; after the skill asked)
+review-doc.py replace --stem S [--confirm]
+  out: without --confirm {status: needs-confirm, doc_path}; with it {status: replaced|stopped}
 
 review-instructions.py preview --stem S
-  out: {mode: insert|replace|new-note, target, place, section_md, escaped_lines: n, templater_hint: bool,
-        problems: [place-missing|user-heading-collision|nothing-to-deliver], headings?: [names]}
+  out: {status: ok|stopped, mode: insert|replace|new-note, target, target_moved?: bool, place, section_md,
+        escaped_lines: n, templater_hint: bool, variant_missing?: bool,
+        problems: [place-missing|heading-renamed|user-heading-collision|nothing-to-deliver|not-approved|approved-line-missing],
+        headings?: [names]}
 
 review-instructions.py deliver --stem S [--place-anchor H]
-  out: {status: delivered|resumed|stopped, step, paths: {set_json, set_md, note?}, next: hashi-or-by-hand}
+  out: {status: delivered|resumed|refused|stopped, step, paths: {set_json, set_md, note?}, next: hashi-or-by-hand,
+        problems?: [not-approved|set-exists|doc-changed|kado-write-failed]}
+  # refused = nothing written (a problem the user must fix); stopped = a step failed after writing began (resumable)
 
 review-instructions.py drop --stem S
-review-instructions.py status --stem S   → {state: open|delivered|applied|partly-applied|move-refused}
+  out: {status: dropped|withdrawn|stopped}      # withdrawn = a set Tomo wrote was neutralised (see Error Handling)
+
+review-instructions.py status --stem S
+  out: {state}                                   # canonical list below
 ```
+
+**Canonical open-review states** (owned by `lib/review_state.py`, used everywhere): `open` · `failed-delivery` · `delivered` · `applied` · `move-refused` · `target-missing`.
 
 #### Application Data Models
 
@@ -547,7 +608,7 @@ ENTITY: Period (NEW, lib/period.py)
     days() -> list[date]
     weeks_overlapping() -> list[Period]            # month only
     is_finished(today) -> bool                     # end < today
-    note_path(folder, fmt, rule) -> list[str]      # flat, then <folder>/<YYYY>/ fallback
+    note_paths(folder, fmt, rule) -> list[str]     # flat, then <folder>/<year>/ — week year for weeks, calendar year otherwise
 
 ENTITY: WeekRule (NEW)
   FIELDS: first_day: 0..6 (0 = Monday), min_days_in_first_week: 1..7
@@ -555,32 +616,39 @@ ENTITY: WeekRule (NEW)
   INVARIANT: ISO == WeekRule(0, 4)
 
 ENTITY: ReviewSetup (NEW, lib/review_config.py) — the `review:` section plus calendar/naming/templates keys
-  BEHAVIORS: validate(); place_level(target_headings) -> int; check_format(fmt, rule) -> warnings
+  BEHAVIORS: validate(); place_level(target_headings) -> int; check_format(fmt, rule) -> warnings | refusal;
+             inbox_path(name) -> str   # refuses a name with "/", "\" or ".." and any result outside the inbox
 
 ENTITY: ReadResult (NEW) — read.json
-  FIELDS: period, days: [{date, sections: {name: text}, fields: {name: raw}, tasks: [{text, done, done_date, source}],
-          linked: [{path, kind: planner|journal|other, text}]}],
-          weekly: [{path, day_blocks: {date: text}, week_text: {section: text}, links: [target]}],
+  FIELDS: period, days: [{date, dailies: [path], sections: {name: text}, fields: {name: raw}, partly_read: bool,
+          tasks: [{text, done, done_date, source}], linked: [{path, kind: planner|journal|other, text}]}],
+          weekly: [{path, day_blocks: {date: text}, week_text: {section: text}, overlap_days: n, links: [target]}],
           growth: {created: [{path, links}], mocs_changed: [path], mocs_linked_by_new: [path]},
           only_in_weekly_links: [target], dailies_not_in_weekly: [target], report: ...
 
-ENTITY: Proposals (NEW) — proposals.json (model output)
-  FIELDS: language, groups: {done|open|themes|growth|weekly_only|resurfaced: [{text, sources: [vault path]}]}
+ENTITY: Proposals (NEW) — proposals.json (model output, schema review-proposals.schema.json)
+  FIELDS: language, groups: {done|open|themes|growth|weekly_only|not_in_weekly: [{text, sources: [vault path]}]}
   RULE: every item has ≥ 1 source inside the period (daily of a day in the period, or for weekly_only a weekly note
-        of an overlapping week); the habits group is never in this file (lib/review_habits.py builds it)
+        of an overlapping week); a theme item names ≥ 2 distinct days; the habits group is never in this file
 
-ENTITY: ReviewDoc (NEW) — the inbox document
-  FRONTMATTER: tomo: {doc_type: review, state: pending-approval|approved, period, kind, target, target_exists,
-                      language, stem, generated}
-  BODY: title, info callout (target, place, not-read list), "- [ ] Approved", one H2 per group,
-        items "- [x] text (sources)" with 2-space-indented continuation lines
+ENTITY: ReviewDoc (NEW) — the inbox document "<period-name> Review.md"
+  FRONTMATTER: tomo: {doc_type: review, state: pending-approval|approved, run_id, updated_at}   # schema-valid block
+               review_period, review_kind, review_target, review_target_exists, review_language, review_stem
+               # plain top-level keys outside tomo:, read by review_doc_parse and review_state
+  BODY: title, info callout (target, place, not-read list), "- [ ] Approved", one H2 per group (label table),
+        Tomo items "- [x] <text with its source links> %%t<n>%%"; user items "- [x] <text>" (no id);
+        continuation lines indented by 2 spaces
 
-ENTITY: ApprovedReview (NEW) — parse result: ordered groups → kept item texts (Tomo and user items)
+ENTITY: ApprovedReview (NEW) — parse result: ordered groups → kept item texts, each with origin and id
 
 ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
-  FIELDS: stem, period, kind, doc_path, target, mode, generated, steps_done: [doc-mark|note|set_json|set_md],
-          failed_step
+  FIELDS: stem, period, kind, doc_path, target, mode, generated, pass1_counts {group: n},
+          steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn
 ```
+
+**Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its text differs from Pass 1's, kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
+
+**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. The parser warns on each; the later Hashi editor spec takes them over.
 
 #### Integration Points
 
@@ -641,34 +709,38 @@ Traced walkthrough (verified with the stdlib against `date.isocalendar()` for IS
 | 2025-W53 | ISO | invalid (2025 has 52) | F2-AC7 error, example `2025-W52` |
 | 2026-03-01 | (Sun, 1) | 2026-W10 | ISO says W09 → shown as unmatched in the setup preview when it contradicts existing notes |
 
-Name formats are Moment-style and support only the tokens a periodic name needs: `GGGG`/`gggg` (week year), `WW`/`W`/`ww`/`w` (week), `YYYY`, `MM`, `M`, literals in `[...]`. `GGGG/WW` require the ISO rule; `gggg/ww` follow the configured rule; a format mixing `YYYY` with a week token is refused by `check_format` with the year-end example above.
+Name formats are Moment-style and support only the tokens a periodic name needs: `GGGG`/`gggg` (week year), `WW`/`W`/`ww`/`w` (week), `YYYY`, `MM`, `M`, literals in `[...]`. `GGGG/WW` require the ISO rule; `gggg/ww` follow the configured rule; a format mixing `YYYY` with a week token is refused by `check_format` with the year-end example above, and so is any format whose literals contain `/`, `\` or `..` (a name must never leave its folder). Months that contain week 53: January 2027 overlaps 2026-W53, December 2026 ends with it.
 
-**Week-rule inference (F1-AC3, F1-AC6):** `match` reads the frontmatter of up to 8 recent weekly notes (`journal-start-date`/`journal-end-date` when present, else the dated links of the note's day headings). The first day is the weekday of the start dates; `min_days` is fixed by the first note of a year whose week 1 is known. If all checked notes agree, `week_rule: inferred`; if they disagree or none carry dates, `week_rule: ambiguous` and the skill asks the user in plain words ("Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?") and maps the answer to `(first_day, min_days)`. The Obsidian plugin configuration is never read for this.
+**Week-rule inference (F1-AC3, F1-AC6):** `match` reads the frontmatter of up to 8 recent weekly notes (`journal-start-date`/`journal-end-date` when present, else the dated links of the note's day headings). The first day is the weekday of the start dates; `min_days` is fixed by the first note of a year whose week 1 is known. If all checked notes agree, `week_rule: inferred`; if they disagree or none carry dates, `week_rule: ambiguous` and the skill asks the user in plain words ("Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?") and maps the answer to `(first_day, min_days)`. The Obsidian plugin configuration is never read for this. A folder listing that returns nothing is reported as `folder_listing: kado-none` with the access hint, and the skill asks before proposing to create notes there.
 
 #### Example: same-day reading of one daily
 
 **Why this example**: the owner's dailies link tomorrow's planner and embed last year's log; reading "whatever is linked" would put other days into the week.
 
 ```text
-ALGORITHM: read_day(date D, daily text T, setup S)
-1. Split T into heading sections; keep sections whose heading text is in S.daily.sections; drop sections matching
-   S.daily.skip_sections (prefix) — e.g. "On This Day... last year - <weekday>".
-2. In kept sections, drop fenced dataview/dataviewjs blocks and inline `= ...` queries (never executed).
-3. Collect links and embeds (wiki links, quoth `path:`, dynbedded targets). A target is same-day when its name
-   contains D in the daily format (DP-2026-03-26, 5J-2026-03-26); a living task note in S.daily.task_notes is
-   always read once for the period, not per day; anything else is ignored.
+ALGORITHM: read_day(date D, daily files F[], setup S)
+0. F holds every daily for D (flat folder and <folder>/<YYYY>/); more than one → read all, report duplicate.
+1. In the WHOLE daily, collect links and embeds (wiki links, quoth `path:`, dynbedded targets), except inside
+   sections matching S.daily.skip_sections (prefix) — e.g. "On This Day... last year - <weekday>".
+   A target is same-day when its name contains D in the daily format (DP-2026-03-26, 5J-2026-03-26); a living
+   task note in S.daily.task_notes is read once for the period, not per day; anything else is ignored.
+2. Split the daily into heading sections; keep sections whose heading text is in S.daily.sections.
+3. In kept sections, drop fenced dataview/dataviewjs blocks and inline `= ...` queries (never executed).
 4. Read each same-day note once (paced). Inside it, drop embeds and sections whose heading names another date or
    year (the 5 Year Journal's "earlier years" subsections).
 5. Parse fields `Name:: value` and `**Name**:: value`; yesterday_fields are attributed to D-1.
 6. Parse tasks `- [x] … ✅ YYYY-MM-DD`: a task counts as done in the period iff its ✅ date is in the period,
    whichever file holds it; open tasks from task notes are labelled "open today".
+7. A day whose kept text exceeds S.daily.max_chars_per_day is cut at a section boundary and reported "partly-read".
+8. "Has content" = some kept section carries text beyond the daily template's skeleton (headings, field names,
+   empty list markers and template placeholders are skeleton).
 ```
 
-Trace on 2026-03-26 (structure only): the daily links `DP-2026-03-27` in its `DayPlanner::` field (other day → ignored) and embeds `DP-2026-03-26` via quoth (same day → read); `JahresJournal:: … [[5J-2026-03-26]]` → read, its "earlier years" subsections dropped; `![[2025-03-26#Daily Log]]` sits in the skipped "On This Day" section → not read. `DayEnergy` holding an unrun `<% … %>` on two March days → value unreadable (F8-AC2).
+Trace on 2026-03-26 (structure only): step 1 finds the quoth embed of `DP-2026-03-26` under `## [[DP-2026-03-26|Dayplanner]]` (same day → read, although that heading is in no section list), and `DP-2026-03-27` in the `DayPlanner::` field (other day → ignored); `JahresJournal:: … [[5J-2026-03-26]]` → read, its `### 5J-2022..2025` subsections dropped; `![[2025-03-26#Daily Log]]` sits in the skipped "On This Day" section → not collected. `DayEnergy` holding an unrun `<% … %>` on 2026-03-23 and 2026-03-31 → value unreadable (F8-AC2).
 
 #### Example: the review section and the heading-level rule
 
-**Why this example**: Hashi ends a section at the next heading of the same or higher level; a review heading one level too high swallows the user's own section and a rerun would delete it.
+**Why this example**: Hashi ends a section at the next heading of the same or higher level, and its `after` placement inserts directly below a heading line — before that heading's body (`Hashi/src/actions/anchorResolver.ts:30-40`). A wrong level or `after` would make the user's own text part of Tomo's section, and a rerun would delete it.
 
 ```text
 place = before "### In my own words" (level 3)  → review heading level 3, groups level 4
@@ -683,40 +755,49 @@ place = before "### In my own words" (level 3)  → review heading level 3, grou
 ### In my own words          ← untouched; the replace_section of a rerun stops here
 ```
 
-Rules in `lib/review_actions.py`:
-- placement `before`/`after` heading of level n → review heading level n; `inside` → n+1; groups one level deeper; a level above 6 is refused at setup.
-- item lines starting with `#`, `- [`, `>`, or a code fence are escaped (`\#`, `- \[`, `\>`, the fence's backticks escaped); the preview reports the count (F5-AC2).
+Rules (level rule owned by `lib/review_config.place_level`, applied by `lib/review_actions.py`):
+- placement for a heading anchor is `before` (review heading at the anchor's level n) or `inside` (level n+1, appended at the end of the anchor's section); `after` is refused at setup; groups one level deeper; a level above 6 is refused.
+- every line of an item — first and continuation lines — starting with `#`, `- [`, `>`, or a code fence is escaped (`\#`, `- \[`, `\>`, the fence's backticks escaped); the preview reports the count (F5-AC2).
 - content ends with one blank line; it is a pure function of the approved document (no clock values), so Hashi's identical-block check makes a resumed insert idempotent.
-- rerun: the target is read through Kado; a heading equal to `heading` followed by the marker line of the same period → `replace_section` on that heading; the same heading without the marker → `user-heading-collision`, never replaced.
+- rerun: the target is read through Kado and searched for the marker line `%% tomo-review <period> %%`. Marker found → `replace_section` on the heading directly above it, whatever its text (renamed → reported as `heading-renamed`). No marker but a heading equal to `heading` → `user-heading-collision`, never replaced. Neither → insert.
+- target lookup: by the configured path first; when absent, by name across the vault (`byName "<name>.md"`); a hit elsewhere becomes the target and is reported as `target_moved`.
 
 #### Example: pacer
 
 **Why this example**: the PRD replaces a call budget with pace-and-retry; the policy must be testable without Kado.
 
 ```python
-class ReviewPacer:                      # lib/review_read.py, modelled on link_members.LinkLookup
+class ReviewPacer:                      # lib/review_pacer.py, modelled on link_members.LinkLookup
     START, MAX = 0.3, 2.0               # seconds between sends; 0.25 s is exactly 20 per 5 s
     def __init__(self, client):
-        self.client, self.not_read = client, []
+        self.client, self.failed = client, []
         self._saved = client.min_interval
         client.min_interval = self.START
+    def retries(self):                  # the client already counts sends: attempts beyond calls are retries
+        return self.client.attempt_count - self.client.call_count
     def read(self, path, fn):
-        before = self.client.retry_count
+        before = self.retries()
         try:
             return fn(path)
-        except KadoRateLimitError:      # 429/503 outlasted the client's retries (Retry-After honoured)
-            self.not_read.append(path); return None
+        except KadoRateLimitError:      # 429 (Retry-After honoured) or 503 (backoff) outlasted the client's 4 retries
+            self.failed.append((path, fn)); return None
         finally:
-            if self.client.retry_count > before:
+            if self.retries() > before:
                 self.client.min_interval = min(self.MAX, self.client.min_interval * 2)
+    def finish(self):                   # end-of-run pass at the widest spacing; only what fails here is "not read"
+        self.client.min_interval = self.MAX
+        retry, self.failed = self.failed, []
+        not_read = [p for p, fn in retry if self._try(p, fn) is None]
+        self.client.min_interval = self._saved      # restore, as LinkLookup.close does
+        return not_read
     # KadoConnectionError / KadoAuthError propagate → review-read.py stops, writes nothing (F3-AC10)
-    def summary(self):
-        return {"calls": self.client.call_count, "retried": self.client.retry_count,
+    def summary(self, not_read):
+        return {"calls": self.client.call_count, "retried": self.retries(),
                 "waited_s": round(self.client.retry_wait_s + self.client.pace_wait_s, 1),
-                "not_read": self.not_read}
+                "not_read": not_read, "advice": ["raise-kado-limit"] if self.retries() else []}
 ```
 
-Estimate (inferred from the test vault): a week ≈ 30 calls (≈ 9 s at 0.3 s), a month ≈ 110 calls (≈ 35 s), well inside the 5-minute KPI even with several 5 s `Retry-After` waits.
+Estimate (inferred from the test vault, counted per Kado page): a week ≈ 30 calls (≈ 9 s at 0.3 s), a month ≈ 110 calls (≈ 35 s), within the 5-minute KPI even with several `Retry-After` waits (≤ 5 s each with Kado's default window; a 503 "busy" has no Retry-After and backs off up to 10 s). The KPIs are measured on an otherwise idle Kado.
 
 #### Test Examples as Interface Documentation
 
@@ -728,12 +809,15 @@ def test_a_link_to_tomorrows_planner_is_not_read(review_fake_vault):
     result = read_period(review_fake_vault, Period.week(2026, 13))
     assert "Efforts/300 Planner/DP-2026-03-30.md" not in result.paths_read
 
-def test_rerun_replaces_the_marked_section_only(review_fake_vault):
-    actions = build_actions(approved, target_text=WEEKLY_WITH_MARKED_SECTION)
-    assert [a["action"] for a in actions] == ["replace_section"]
+def test_rerun_finds_the_marker_under_a_renamed_heading(review_fake_vault):
+    preview = build_preview(approved, target_text=WEEKLY_WITH_RENAMED_MARKED_SECTION)
+    assert preview["mode"] == "replace" and "heading-renamed" in preview["problems"]
 
 def test_a_user_heading_named_like_the_review_is_never_replaced():
     assert preview(...)["problems"] == ["user-heading-collision"]
+
+def test_a_rewritten_tomo_item_keeps_its_origin():
+    assert parse(DOC_WITH_T3_REWRITTEN_WITHOUT_LINKS).items["done"][2] == {"id": "t3", "origin": "tomo", "kept": True, "edited": True}
 ```
 
 ## Runtime View
@@ -747,10 +831,10 @@ def test_a_user_heading_named_like_the_review_is_never_replaced():
 3. If the period kind is not set up, the setup dialogue runs (F1), saves via `vault-config-writer.py review`, and the request continues.
 4. `review-read.py` reads the period under the pacer and prints the per-day report; nothing to review → stop, nothing written.
 5. The model reads `read.json` and writes `proposals.json` (one creative step).
-6. `review-doc.py write` validates, renders and writes `<name> Review.md` to the inbox; `read.json` and `proposals.json` are deleted.
+6. `review-doc.py write` validates, renders and writes `<name> Review.md` to the inbox; `read.json` and `proposals.json` are deleted; the Pass 1 counts go to `meta.json`.
 7. User edits the document in Obsidian, ticks Approved.
 8. User runs `/review` again → open review offered → `review-doc.py parse` → `review-instructions.py preview` → the skill prints the section, target and place in plain text and asks `1 Deliver · 2 Abort`.
-9. `review-instructions.py deliver` writes (new note,) set JSON, set MD, then marks the document delivered.
+9. `review-instructions.py deliver` writes (new note,) set JSON, set MD, then marks the document delivered (steps `note → set_json → set_md → doc_mark`).
 10. User applies in Hashi (or by hand); the next `/review` reads `applied` from the set JSON.
 
 ```mermaid
@@ -764,7 +848,7 @@ sequenceDiagram
     participant K as Kado
     U->>SK: /review W13
     SK->>SES: start --args "W13"
-    SES->>K: byFrontmatter tomo.doc_type=review (inbox)
+    SES->>K: byFrontmatter tomo.doc_type=review (inbox), read_frontmatter per hit
     SES-->>SK: request 2026-W13, open_reviews []
     SK->>RD: --period 2026-W13
     RD->>K: byName globs, read dailies + same-day notes, listNotes(filter)
@@ -779,47 +863,69 @@ sequenceDiagram
     SK-->>U: section + target + "1 Deliver · 2 Abort"
     U->>SK: 1
     SK->>INS: deliver
-    INS->>K: write set json, set md, mark doc delivered
+    INS->>K: write (note), set json, set md, then mark doc delivered
     SK-->>U: next step: apply in Hashi or by hand
 ```
 
 ### Error Handling
 
-- **Invalid input** (`2026-W54`, `2026-13`, `month 2026-W13`, unknown word, `@` note not periodic): `start` returns `error` with what was expected and one valid example; the skill prints it; nothing written (F2-AC6/7).
-- **Unfinished or future period:** `error.kind = unfinished-period` with the last finished period named (F2-AC5).
-- **Kado unreachable / auth refused:** `KadoConnectionError`/`KadoAuthError` → the script stops with a problem class on stderr and `status: stopped` on stdout; the skill shows it; nothing written (F3-AC10).
-- **Rate limit:** retried inside the client (Retry-After honoured); the pacer slows down; what still fails is listed as not read in the report and at the top of the document (F3-AC11/12/13).
-- **Empty results:** a source with `[]` is reported as "Kado returned none" with the hint that the key may not reach the folder (Rule 6, F3-AC9); no daily with content → `nothing_to_review` and no document.
-- **Template missing or unreadable:** setup proposes the plain note and says an unreadable template may mean no access (F1-AC7).
-- **Not approved:** `parse` → `approved: false` → the skill names the box; nothing delivered (F5-AC1). Everything unticked → `nothing-to-deliver` → offer Abort or start over.
-- **Place missing in the target:** `preview` → `place-missing` with the note's headings; the skill asks for one or Abort; `deliver --place-anchor` uses the choice (F5-AC6).
-- **Same-named user heading:** `user-heading-collision` → never replaced; ask for another heading or Abort.
-- **Delivery fails midway:** `staged_delivery` records `failed_step` before each upload; the next `/review` sees `failed-delivery` and offers resume or drop; identical payloads count as done (F5-AC9).
-- **Target created between passes:** at delivery the target is probed; if it now exists, mode switches from new-note to insert (F6-AC4). If it appears after delivery, Hashi refuses the move ("Inconsistent state"); `status` reports `move-refused` on the next `/review`.
-- **Second delivery for a period:** `start` lists the delivered-not-applied set; `deliver` refuses a second set for the same stem (F6-AC2).
+| Operation | Failure | stdout | User message (by the skill) |
+|---|---|---|---|
+| `start` | invalid argument, `@` note not periodic | `error.kind` invalid-period / not-periodic-note, `expected`, `example` | what was expected + one example; nothing written (F2-AC5, F2-AC7) |
+| `start` | unfinished or future period | `error.kind = unfinished-period`, last finished period | only finished periods; names the last one (F2-AC6) |
+| any reader (`start`, `match`, `review-read`, `parse`, `preview`, `status`) | Kado unreachable / key refused | `status: stopped`, `error.kind` kado-unreachable / kado-auth | the error; nothing written (F3-AC10) |
+| `review-read` | rate limit | retries, widening, end pass; `not_read`, `advice: raise-kado-limit` | retried/waited counts, the advice, what is missing (F3-AC11..13) |
+| `review-read`, `match` | empty listing | `kado_empty` / `folder_listing: kado-none` | "Kado returned none" + the key may not reach the folder (Rule 6, F3-AC9) |
+| `review-read` | no daily has content | `nothing_to_review: true` | says so with the access hint; no document (F3-AC9) |
+| `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
+| `match` | unsafe name format | `error.kind = unsafe-format` | the format must not contain `/`, `\` or `..` |
+| `setup-input`, writer | invalid confirmed input / schema violation | `status: invalid` / `refused` with pointers | nothing saved; the dialogue asks again |
+| `write` | invalid proposals file | `status: refused`, `proposals-invalid` | the model is asked to rewrite the file once; then the run stops |
+| `write` | `<name> Review.md` exists and is not Tomo's | `status: refused`, `doc-name-taken` | names the file; nothing overwritten |
+| `write`, `deliver` | Kado write refused or failed | `status: stopped`, `kado-write-failed` | nothing claimed as written; deliver is resumable |
+| `parse` | document missing / renamed beyond recognition | `status: not-found` | offers start over |
+| `parse` / `preview` | Approved unticked / line missing | `not-approved` / `approved-line-missing` | names the box / how to restore `- [ ] Approved` (F5-AC1) |
+| `preview` | everything unticked | `nothing-to-deliver` | Abort or start over |
+| `preview` | place missing | `place-missing` + `headings` | asks for one or Abort; `deliver --place-anchor` uses it (F5-AC7) |
+| `preview` | same-named user heading without marker | `user-heading-collision` | never replaced; another heading or Abort |
+| `preview` | marker under a renamed heading | `heading-renamed` | replaced there; says so (F6-AC3) |
+| `preview` | template variant gone | `variant_missing: true`, `templater_hint: true` | raw template + Templater hint |
+| `deliver` | not approved / set exists for the stem | `status: refused` | nothing written (F5-AC1, F6-AC2) |
+| `deliver` | document changed during delivery (`expected_modified` mismatch on the mark) | `status: stopped`, `doc-changed`, `failed_step: doc_mark` | resume after saving; payloads already written count as done (F5-AC10) |
+| `deliver` | failure at any step | `status: stopped`, `failed_step` | next `/review` offers resume or drop; resume does not duplicate (F5-AC10) |
+| `deliver` | target appeared since Pass 1 | mode switches to insert | says it targets the existing note (F6-AC4) |
+| `drop` | a set Tomo wrote is in the inbox | `status: withdrawn` | the set JSON is rewritten with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files"; Kado offers Tomo no delete |
+| `status` | move refused by Hashi / target gone after delivery | `move-refused` / `target-missing` | reported on the next `/review` (F6-AC4) |
+| any script | unexpected exception | exit 1, stderr = class name only | the problem class; never content |
 
 ### Complex Logic (if applicable)
 
 ```
-ALGORITHM: open-review state (review-session.py start / review-instructions.py status)
-INPUT: inbox review documents found by byFrontmatter tomo.doc_type=review, their set JSON, meta.json
-1. doc state pending-approval and no set JSON                 → open
-2. meta.failed_step set                                        → failed-delivery (resume | drop)
-3. set JSON present, every action applied:true                 → applied (not offered; reported once)
-4. set JSON present, some applied, move_note not applied while
-   target exists and inbox copy remains                        → move-refused
-5. set JSON present, not all applied                           → delivered (waits for Hashi)
-OUTPUT: list ordered by period; the skill offers 1, 2, 4, 5 before the new request
+ALGORITHM: review_state(doc, meta, set_json, target, inbox)   # lib/review_state.py — the only state function
+INPUT: review documents found by byFrontmatter tomo.doc_type=review in the inbox (read_frontmatter per hit),
+       meta.json of the stem, the set JSON when present, probes of the target and the inbox copy
+1. meta.failed_step set, or doc state approved without a set JSON          → failed-delivery (resume | drop)
+2. no set JSON                                                              → open
+3. set JSON withdrawn (empty actions, meta.withdrawn)                       → not listed
+4. every action applied:true                                                → applied (reported once: meta.applied_reported)
+5. move_note not applied while the target exists and the inbox copy remains → move-refused
+6. insert/replace not applied and the target no longer at its path          → target-missing
+7. otherwise                                                                → delivered (waits for Hashi or by hand)
+OUTPUT: list ordered by period; the skill offers failed-delivery, open, move-refused, target-missing and delivered
+        before the new request
 ```
 
 ```
 ALGORITHM: month reading (F3-AC5/6)
 1. weeks = month.weeks_overlapping(rule)               # March 2026, ISO: W09..W14
-2. for each week: resolve its note; read it; split day blocks by headings that link a daily (date key);
-   drop blocks dated outside the month; keep week-level text tagged with the week and its overlap (days in month)
+2. for each week: resolve its note (flat, then <folder>/<week year>/); a listing that returns nothing is
+   kado_empty with the access hint, not "no weekly notes"; read the note; split day blocks by headings that
+   link a daily (date key), ending at the next heading of the day heading's level; skip configured non-period
+   sections (e.g. "Organisation", the "Review Check" task); drop blocks dated outside the month; keep week-level
+   text tagged with the week and its overlap (days in month)
 3. only_in_weekly_links = links in hand-written weekly text − links in any daily of the month
 4. dailies_not_in_weekly = links of dailies of the month − links in the weekly notes of their week
-5. the model gets both lists as hints; the "weekly_only" and "resurfaced" groups are its proposals over them
+5. the model gets both lists as facts; the "weekly_only" and "not_in_weekly" groups are its proposals over them
 6. no weekly notes at all → those groups absent; report says "no weekly notes found"
 ```
 
@@ -838,9 +944,9 @@ No change to the deployment. `/review` ships through the existing `install-tomo.
 
 - pattern: staged resumable delivery with identical-text idempotency (spec 044 ADR-2)
   relevance: CRITICAL
-  why: "F5-AC9 resume without duplicates; moved into lib/staged_delivery.py and shared"
+  why: "F5-AC10 resume without duplicates; moved into lib/staged_delivery.py and shared"
 
-- pattern: LinkLookup budget/pace context (spec 042)
+- pattern: LinkLookup pace context with restore on close (spec 042)
   relevance: HIGH
   why: "Template for ReviewPacer"
 
@@ -875,7 +981,7 @@ No change to the deployment. `/review` ships through the existing `install-tomo.
 │ >  "In my own words" · nicht gelesen: DP-2026-03-28       │
 │ - [ ] Approved                                            │
 │ ## Erledigt                                               │
-│ - [x] … ([[2026-03-24]], [[2026-03-26]])                  │
+│ - [x] … ([[2026-03-24]], [[2026-03-26]]) %%t1%%           │
 │ ## Offen                                                  │
 │ ## Wiederkehrende Themen                                  │
 │ ## Vault-Wachstum                                         │
@@ -890,21 +996,22 @@ stateDiagram-v2
     open --> open: user edits
     open --> delivered: Approved + Deliver
     open --> [*]: Abort / delete document
-    delivered --> failed: write fails midway
-    failed --> delivered: resume
-    failed --> [*]: drop
+    delivered --> failed_delivery: write fails midway
+    failed_delivery --> delivered: resume
+    failed_delivery --> [*]: drop (set withdrawn)
     delivered --> applied: Hashi applies all actions
     delivered --> move_refused: target existed at apply
+    delivered --> target_missing: target moved after delivery
     applied --> [*]
 ```
 
 ### System-Wide Patterns
 
-- **Security:** Kado key permissions only; inbox-only writes; no new network surface.
-- **Error Handling:** scripts exit 0 with a `status`/`problems` field for usable outcomes; non-zero only for usage errors; stderr = problem class only.
-- **Performance:** paced Kado calls (0.3 s start, ≤ 2 s); dailies read as whole notes and split locally (one call per day); growth in two filtered `listNotes` calls; `read.json` holds only configured sections to bound model input.
-- **i18n/L10n:** group headings, habit wording and report lines come from a small per-language table (de, en; fallback en); month names never depend on the process locale; the review language is a setup value defaulting to the dailies' `locale`.
-- **Logging/Auditing:** the "Review read", "Review document written" and "Review delivered" summaries are JSON on stdout with counts and states only; run cost goes to the existing cost log by hand after live runs.
+- **Security:** Kado key permissions only; inbox-only writes enforced in code — every review write path goes through `review_config.inbox_path()`, which refuses `/`, `\\`, `..` and anything outside the inbox; no new network surface.
+- **Error Handling:** exit 0 with `status`/`problems`/`error` for every outcome the skill can act on, 2 for usage errors, 1 for an unexpected exception; a top-level handler per script prints only the exception class name to stderr (see the Error Handling table).
+- **Performance:** paced Kado calls (0.3 s start, ≤ 2 s); dailies read as whole notes and split locally (one call per day); growth in two filtered `listNotes` queries (one call per 500-item page); `read.json` holds only configured sections to bound model input.
+- **i18n/L10n:** group headings, habit wording and report lines come from a small per-language table (de, en; any other language gets the English labels while the proposals stay in the review language, PRD F4-AC5); month names never depend on the process locale; the review language is a setup value defaulting to the dailies' `locale`, else `en`.
+- **Logging/Auditing:** the "Review read", "Review document written" and "Review delivered" summaries are JSON on stdout with counts and states only; the Pass 1 counts are kept in `meta.json` so Pass 2 can report kept / unticked / deleted / added for the engagement KPI; run cost goes to the existing cost log by hand after live runs.
 
 ### Multi-Component Patterns (if applicable)
 
@@ -921,16 +1028,16 @@ stateDiagram-v2
 
 - [x] ADR-2 Open state lives in the vault: the inbox review document (`tomo.doc_type: review`) and its instruction set; `tomo-tmp/review/<stem>/` keeps only content-free `meta.json` across sessions.
   - Rationale: the user edits between passes; the document is the source of truth and finds itself by frontmatter even when renamed.
-  - Trade-offs: Pass 2 rebuilds its payloads from the document; one byFrontmatter query per `/review` start.
+  - Trade-offs: Pass 2 rebuilds its payloads from the document; each `/review` start costs one byFrontmatter query plus one `read_frontmatter` per review document found (Kado's byFrontmatter returns empty frontmatter). Amended after validation 2026-11-11: the period, kind and target live as top-level frontmatter keys, because the `tomo:` block allows only doc_type, state, run_id, updated_at and sources.
   - User confirmed: 2026-11-11
 
-- [x] ADR-3 Review section: heading at the place's level, marker line `%% tomo-review <period> %%`; first delivery `insert_under_marker` (placement from the setup), a rerun `replace_section`; `replace_section` added to the producer schema and `render_md`; risky line starts escaped.
+- [x] ADR-3 Review section: heading at the place's level, marker line `%% tomo-review <period> %%`; first delivery `insert_under_marker` with placement `before` or `inside` (never `after`, which inserts above the anchor's own body), a rerun `replace_section` on the heading above the marker, whatever its text; `replace_section` added to the producer schema and `render_md`; every line of an item escaped. Amended after validation 2026-11-11.
   - Rationale: Hashi already executes both actions; the marker separates Tomo's section from a same-named user heading; the level rule protects the user's following section.
-  - Trade-offs: a rerun overwrites hand edits made inside the landed section (the preview says so); a heading added by hand between delivery and apply can still yield a second section (accepted, low likelihood).
+  - Trade-offs: a rerun overwrites hand edits made inside the landed section (the preview says so); a section added by hand between delivery and apply can still yield a second one (accepted, low likelihood); deleting the marker line turns the section into the user's.
   - User confirmed: 2026-11-11
 
-- [x] ADR-4 Pacing: `kado_client` gains `retry_count`, `retry_wait_s`, `pace_wait_s` and `KadoRateLimitError(KadoError)`; `ReviewPacer` starts at 0.3 s, doubles up to 2 s after retries, records what still failed and continues.
-  - Rationale: Kado always sends Retry-After ≤ 5 s; counters belong where the waiting happens, policy belongs to the run.
+- [x] ADR-4 Pacing: `kado_client` gains `retry_wait_s`, `pace_wait_s` and `KadoRateLimitError(KadoError)` (retries are derived as `attempt_count - call_count`); `ReviewPacer` starts at 0.3 s, doubles up to 2 s after retries, retries what failed once more at 2 s at the end of the run, then names what still failed.
+  - Rationale: Kado sends Retry-After on 429 (≤ 5 s with its default window) and the client backs off on 503; the wait counters belong where the waiting happens, the policy belongs to the run.
   - Trade-offs: a slow month on a busy Kado; mitigated by the report and the advice to raise the limit.
   - User confirmed: 2026-11-11
 
@@ -964,7 +1071,7 @@ stateDiagram-v2
   - Trade-offs: a renamed review document produces the existing "unknown doc_type" warning in `/inbox` (harmless; `/review` still finds it by frontmatter).
   - User confirmed: 2026-11-11
 
-- [x] ADR-11 Extract `/note`'s deliver loop (`_deliver_step`, `_mark_in_flight`, `_record`, `_fail`, `_stable_block`) into `lib/staged_delivery.py` and use it from both commands.
+- [x] ADR-11 Extract `/note`'s deliver loop (`_deliver_step`, `_mark_in_flight`, `_record`, `_fail`, `_stable_block`) into `lib/staged_delivery.py` and use it from both commands; the step set and the step → target map are supplied by the caller (`note_meta.STEPS` and `_targets()` are /note-specific today).
   - Rationale: DRY for the hardest-won code path (resume without duplicates); `/note`'s tests guard the move.
   - Trade-offs: touches `note-instructions.py` (not eval-gated) in a spec about `/review`; the refactor is its own commit with `/note`'s suite green before and after.
   - User confirmed: 2026-11-11
@@ -973,6 +1080,11 @@ stateDiagram-v2
   - Rationale: deterministic numbers (F8), testable Rule 3, no freehand document assembly.
   - Trade-offs: the proposal schema constrains phrasing to item lists.
   - User confirmed: 2026-11-11
+
+- [x] ADR-13 Item identity and withdrawal: each Tomo item carries an invisible id `%%t<n>%%` so an edited item keeps its origin; `drop` after a partial delivery rewrites the set JSON Tomo wrote with an empty `actions` list (schema-valid, nothing to apply) and marks its MD withdrawn, because Kado offers Tomo no delete.
+  - Rationale: the engagement KPI and Rule 3 need Tomo's items told apart from the user's after edits; a dropped review must not be applicable in Hashi.
+  - Trade-offs: an id the user deletes turns the item into a user item; withdrawn files stay in the inbox until the user deletes them.
+  - User confirmed: 2026-11-11 (validation findings, "Alle einarbeiten")
 
 ## Quality Requirements
 
@@ -991,7 +1103,7 @@ stateDiagram-v2
 - [ ] IF the template is missing or unreadable, THEN THE SYSTEM SHALL propose the plain note and name possible missing access (F1-AC7).
 - [ ] IF the week rule is ambiguous, THEN THE SYSTEM SHALL ask the user in plain words and never read the Obsidian plugin config (F1-AC6).
 - [ ] WHEN the user corrects, THE SYSTEM SHALL re-run `match` before asking again; nothing is saved before confirmation (F1-AC8).
-- [ ] WHEN confirmed, THE SYSTEM SHALL write only the review keys and a confirmed daily-path fix, then continue the request (F1-AC9); WHEN aborted, nothing is written (F1-AC10).
+- [ ] WHEN confirmed, THE SYSTEM SHALL write only the setup keys (calendar granularities, name patterns, template mapping, the `review:` section) and a confirmed daily-path fix, then continue the request in the same session (F1-AC9); WHEN aborted, nothing is written (F1-AC10).
 
 **Choosing the review — PRD F2**
 - [ ] WHEN `/review` starts and an open, failed or delivered-not-applied review exists, THE SYSTEM SHALL list them before the new request (F2-AC1).
@@ -1009,11 +1121,11 @@ stateDiagram-v2
 - [ ] THE SYSTEM SHALL list notes created in the period, MOCs changed in it and MOCs linked by the new notes, named "vault growth" (F3-AC7).
 - [ ] THE SYSTEM SHALL report per day: daily found, content, linked notes missing or unreadable (F3-AC8); IF no daily has content, THEN it SHALL say so with the access hint and write nothing (F3-AC9).
 - [ ] IF Kado is unreachable or refuses access, THEN THE SYSTEM SHALL stop, show the error and write nothing (F3-AC10).
-- [ ] WHILE Kado rate-limits, THE SYSTEM SHALL pace, retry as long as Kado asks, slow down further, report retries and waiting with the advice to raise Kado's limit, and name only what still failed (F3-AC11/12); THE document SHALL list missing parts at its top (F3-AC13).
+- [ ] WHILE Kado rate-limits, THE SYSTEM SHALL space its calls, retry as Kado asks, double the spacing after every retried call up to 2 s, retry what failed once more at the end, report retries and waiting with the advice to raise Kado's limit, and name only what still failed (F3-AC11/12); THE document SHALL list missing parts at its top (F3-AC13).
 
 **Review document — PRD F4**
 - [ ] WHEN the period was read, THE SYSTEM SHALL write `<period-name> Review.md` to the inbox with target, existence, unticked Approved, and nothing else (F4-AC1).
-- [ ] THE document SHALL group proposals (done, open, themes, growth, habits; month: weekly-only, resurfaced), each a ticked editable item (F4-AC2), each Tomo item with ≥ 1 source in the period (F4-AC3).
+- [ ] THE document SHALL group proposals (done, open, themes on ≥ 2 days, growth, habits; month: weekly_only, not_in_weekly), each a ticked editable item (F4-AC2), each Tomo item with ≥ 1 source in the period (F4-AC3).
 - [ ] WHEN a group is empty, THE document SHALL show one "nothing found" line that never lands (F4-AC4); proposals SHALL be in the setup language (F4-AC5).
 - [ ] WHEN `/inbox` runs, THE SYSTEM SHALL skip review documents without classifying or applying them (F4-AC6).
 - [ ] THE SYSTEM SHALL never propose text for the configured own sections (F4-AC7).
@@ -1025,7 +1137,7 @@ stateDiagram-v2
 - [ ] THE section SHALL contain only kept items; empty groups leave no heading (F5-AC6).
 - [ ] IF the place is missing, THEN THE SYSTEM SHALL say so before delivery and offer the note's headings or Abort (F5-AC7).
 - [ ] THE set SHALL validate against the Hashi contract and be listed by Hashi like a Pass 2 set (F5-AC8); readable instructions with copy-ready text SHALL sit beside it (F5-AC9).
-- [ ] IF delivery fails midway, THEN the next `/review` SHALL offer resume or drop, and resume SHALL not duplicate (F5-AC10).
+- [ ] IF delivery fails midway, THEN the next `/review` SHALL offer resume or drop; resume SHALL not duplicate, and drop SHALL withdraw any set Tomo already wrote (F5-AC10).
 - [ ] WHEN delivered, THE SYSTEM SHALL name target, place, set and instructions, and mark the document delivered in its first line (F5-AC11).
 
 **One review per period — PRD F6**
@@ -1035,7 +1147,7 @@ stateDiagram-v2
 - [ ] IF the target appears between Pass 1 and apply, THEN nothing SHALL be overwritten: insert at delivery, or the refused move reported on the next `/review` (F6-AC4).
 
 **Privacy — PRD F7**
-- [ ] THE SYSTEM SHALL keep daily text, journal answers, tracker values and proposal text out of stderr, logs and cost records (F7-AC1).
+- [ ] THE SYSTEM SHALL keep daily text, journal answers, tracker values and proposal text out of stderr, logs and cost records, also on an unexpected exception (F7-AC1).
 - [ ] PRIVACY.md SHALL name every place read content rests, that removal is the user's choice, and recommend protecting the instance and home like the vault (F7-AC2).
 
 **Habits — PRD F8**
@@ -1047,7 +1159,7 @@ stateDiagram-v2
 
 ### Known Technical Issues
 
-- `kado_client` ignores `RateLimit-Remaining`/`Reset` headers and raises a plain `KadoError` after retries (`kado_client.py:752`); fixed here only as far as `KadoRateLimitError` and counters.
+- `kado_client` ignores `RateLimit-Remaining`/`Reset` headers and raises a plain `KadoError` after retries (`kado_client.py:753`); a 503 "Server busy" carries no Retry-After (`Kado/src/mcp/server.ts:191`); fixed here only as far as `KadoRateLimitError` and counters.
 - `render_md` renders `insert_under_marker` content as a blockquote (not copy-ready) and has no `replace_section` branch.
 - The owner's monthly template computes week links with `YYYY-[W]ww` (`t_month_privat.md:254-262`) and links W06–W10 for February 2026 instead of W05–W09; `/review` never takes weeks from the monthly note. The template itself is the owner's to fix.
 - `vault-example.yaml:109` proposes `YYYY-[W]ww` for weekly names; corrected to `GGGG-[W]WW`.
@@ -1061,6 +1173,9 @@ stateDiagram-v2
 ### Implementation Gotchas
 
 - Hashi matches headings case-sensitively, first match wins, and does not mask YAML frontmatter; the review heading must be unique in the target.
+- Hashi's `after` on a heading anchor inserts directly below the heading line, before its body (`anchorResolver.ts:30-40`); the setup never offers it.
+- The new periodic note waits in the inbox stamped `rendered-note`/`pending-move` like `/note`'s note, so `/inbox` does not triage it; Hashi strips the `tomo:` block on move (`moveNote.ts:113`).
+- The existing files this spec extends are already large (`render_md.py`, `vault-config-writer.py`, `kado_client.py`, `inbox-triage.py`); add only the changes named here, no new logic clusters (Constitution L2).
 - A code fence opened inside an item hides all following headings from Hashi; fences in items are escaped.
 - `created` in Kado listings is the file's ctime and can be reset by copying or sync ("created on disk" in the report).
 - On case-insensitive macOS, `2026-w13` and `2026-W13` are the same file to the OS but not to Hashi's existence check; names are rendered exactly from the format.
@@ -1095,7 +1210,7 @@ stateDiagram-v2
 
 | Term | Definition | Context |
 |------|------------|---------|
-| `insert_under_marker` | Hashi action inserting content at a heading anchor (before/after/inside) | First delivery |
+| `insert_under_marker` | Hashi action inserting content at a heading anchor; this design uses `before` and `inside` only | First delivery |
 | `replace_section` | Hashi action replacing a heading's body up to the next same-or-higher heading | Rerun |
 | `move_note` | Hashi action moving an inbox note to its folder; refuses if the target exists | New periodic note |
 | `applied` | Per-action boolean Hashi writes into the set JSON | Applied state |

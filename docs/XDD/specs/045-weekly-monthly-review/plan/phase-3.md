@@ -45,7 +45,7 @@ This phase turns a period into a report, a fact file for the model and an editab
   4. Validate: tests green; RED proven by removing the slow-down and the end pass in an isolated copy.
   5. Success: rate limits slow the run instead of stopping it `[ref: PRD/F3-AC10, F3-AC11, F3-AC12]`
 
-- [ ] **T3.2 Reading a day** `[activity: domain-modeling]`
+- [x] **T3.2 Reading a day** `[activity: domain-modeling]`
 
   1. Prime: `[ref: SDD/Implementation Examples/same-day reading of one daily]`; structure of `Privat-Test/Calendar/301 Daily/2026-03-26.md`, `Efforts/300 Planner/DP-2026-03-26.md`, `Calendar/305 5 Year Journal/5J-2026-03-26.md`, `Efforts/500 OnGoing/Next Todos.md` (read only; never copy journal text into fixtures — write synthetic fixtures with the same structure)
   2. Test: `tests/test_review_day.py` — the quoth embed under the daily-changing `## [[DP-…|Dayplanner]]` heading is collected and read, tomorrow's planner link ignored; configured sections kept, "On This Day" skipped (its embed not collected); dataview/dataviewjs blocks and inline queries dropped; the 5J note read with its earlier-years subsections dropped; `Name:: v` and `**Name**:: v` fields parsed; yesterday fields attributed to D-1 (they land in the `fields` of the day entry dated D-1, which `review_habits` takes as is); tasks counted by ✅ date across files and next-day ✅ handled; task-note open tasks labelled "open today"; a plain-text daily still yields content; a skeleton-only daily has no content; a day over `max_chars_per_day` is cut at a section boundary and marked `partly-read`; a missing or unreadable linked note is reported for that day.

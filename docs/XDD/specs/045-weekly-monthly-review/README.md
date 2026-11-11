@@ -57,6 +57,8 @@
 | 2026-11-11 | Phase 2 complete: T2.1–T2.3 on fable, each spec- and code-reviewed (T2.1 one spec FAIL + one code FAIL, T2.2 one spec FAIL + one code FAIL, T2.3 one code FAIL — all fixed); new libs review_vault, week_rule_inference, vault_config_edit; full suite 8488 passed, 1 known unrelated failure; drift closed in 38a5733e (SDD v1.2) | Coordinator |
 | 2026-11-11 | Phase 2 decisions: review heading ≤ level 5 so groups stay ≤ 6; config rule beats inferred rule; --first-day/--min-days only together; no kado-none signal for an empty open-review search; duplicate stem → flat folder is the target (T4.1); place-too-deep preview problem (T4.1/T4.2); T4.3 probes the set JSON only for approved documents | Coordinator |
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
+| 2026-11-11 | Highest reachable rung: T3.2 BLOCKED on fable | Trigger: second review FAIL in a row (code review 34877879 → b9595c2a FAIL: two untested paths — digit-boundary rule inside is_navigation, cut_at_rule for other-day sections of linked notes); run halted for the owner |
+| 2026-11-11 | Stop overridden: T3.2 gets one more fable round for the two test gaps only, then one last code review | Owner chose "one more round"; the behaviour defects were already fixed, the open findings are tests that cannot fail |
 
 ## Context
 

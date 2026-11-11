@@ -1,5 +1,5 @@
 # vault_config_edit.py — text-preserving edits of one nested key in vault-config.yaml.
-# version: 0.2.0
+# version: 0.2.1
 """Insert, replace or remove one nested key in ``vault-config.yaml`` as text.
 
 ``set_path(text, path, value)`` finds the key line at each level by indent,
@@ -9,8 +9,10 @@ removes them when ``value`` is None, and leaves every other byte as it was —
 comments, blank lines, quoting and the order of unrelated keys included.
 A flow mapping on a parent's key line (``weekly: { enabled: true, ... }``) is
 rewritten as a block with the leaf merged in: every other member is copied as
-written onto its own line, the key line's comment stays on the key line. A
-scalar where a mapping is expected, or flow syntax the rewrite cannot scan
+written onto its own line, the key line's comment stays on the key line; a
+mapping emptied by the removal is written as ``{}`` so the key stays a
+mapping. A scalar where a mapping is expected, or flow syntax the rewrite
+cannot scan
 (explicit keys, duplicate or typed keys, unbalanced braces), raises
 ``EditRefused``.
 
@@ -242,6 +244,8 @@ def _flow_block(text: str, indent: str, step: int, rest: Tuple[str, ...], value:
             body.extend(nested[0])
     if pos is None:
         body.append(render_chain(rest, value, indent, step, nl))
+    if not body:
+        tail = " {}" + tail    # a key line without a block reads as null, not as the emptied mapping
     return body, tail
 
 

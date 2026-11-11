@@ -105,9 +105,12 @@ Every byte outside those lines stays identical. The byte-identity tests in
 `tests/test-vault-config-writer.py` are the guard: they compare the file
 before and after with the `note_include` lines removed.
 
-**Why a hand-written validator.** As for the other subcommands, `jsonschema`
-is not guaranteed in the container. The rule is small — exactly one key,
-`note_include`, a non-empty list of non-empty strings — and
+**Why a hand-written validator.** As for the other subcommands, the validator
+predates `jsonschema` becoming a Tomo runtime dependency (`docker/Dockerfile`
+installs `python3-jsonschema`; `lib/review_config` imports it for the
+`review` subcommand below). The rule is small — exactly one key,
+`note_include`, a non-empty list of non-empty strings — so the validator
+stays as it is, and
 `tomo/schemas/vault-config-templates.schema.json` documents the same contract.
 An empty list is rejected rather than read as "clear": "no note templates" is
 expressed by the key being absent, which is the state `/note`'s first-run

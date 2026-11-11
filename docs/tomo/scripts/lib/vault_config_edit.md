@@ -103,6 +103,16 @@ The review setup's reader treats an absent key and `null` alike. Writing
 (and a list's continuation lines) is the edit that matches what the user
 confirmed. A `null` for a key that does not exist is a no-op.
 
+### WHY an Emptied Flow Mapping Is Written as `{}`
+
+Removing the only member of a flow mapping (`weekly: { path: W/ }` with
+`path` set to `null`) left `weekly:` with no block below it, which YAML reads
+as `null` — the parent silently changed type from a mapping to a null, and
+`review_config.folder_for` then saw no mapping where the user had one. The
+rewrite now emits `weekly: {}` (the key-line comment still after it) when the
+block body is empty, so the parent stays the mapping it was and a later leaf
+insert descends into it as before (spec 045 Phase 2 drift finding).
+
 ## WHY an Inline Comment on a Replaced Line Is Not Kept
 
 `path: "Calendar/301 Daily/ "  # trailing space on purpose` becomes

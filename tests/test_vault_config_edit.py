@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_vault_config_edit.py — Behavioural tests for lib.vault_config_edit (spec 045 T2.1).
 
 Covers the text-preserving nested-key editor behind `vault-config-writer.py review`:
@@ -10,7 +10,7 @@ Covers the text-preserving nested-key editor behind `vault-config-writer.py revi
   key-line comment kept, every other member copied as written (nulls, plain and
   quoted scalars, floats, dates, nested flow mappings), a nested flow mapping
   descended into, a multi-line mapping handled, syntax the scan cannot rewrite
-  refused with its own message
+  refused with its own message, a mapping emptied by a removal written as `{}`
 - a same-named key under another parent never touched; quoted keys found
 - a scalar where a mapping is expected refused; CRLF endings kept
 - every byte outside the edited lines identical (diff = insertions only)
@@ -183,6 +183,18 @@ def test_flow_mapping_leaf_removed_added_and_bare_member_kept():
     assert set_path(config, ("weekly", "path"), None) == "weekly:\n  enabled: true\n  note:\n"
     assert set_path(config, ("weekly", "heading"), "H") == 'weekly:\n  enabled: true\n  note:\n  path: W/\n  heading: "H"\n'
     assert set_path(config, ("weekly", "missing"), None) == config
+
+
+def test_removing_the_only_flow_member_leaves_an_empty_mapping_not_a_null():
+    # `weekly:` alone reads back as null; the key stayed a mapping, so it is written as `{}`.
+    assert set_path("weekly: { path: W/ }\n", ("weekly", "path"), None) == "weekly: {}\n"
+    after = set_path("weekly: { path: W/ }  # c\nother: 1\n", ("weekly", "path"), None)
+    assert after == "weekly: {}  # c\nother: 1\n"
+    assert yaml.safe_load(after)["weekly"] == {}
+    nested = set_path("calendar: { granularities: { weekly: { path: W/ } } }\n",
+                      ("calendar", "granularities", "weekly", "path"), None)
+    assert nested == "calendar:\n  granularities:\n    weekly: {}\n"
+    assert yaml.safe_load(nested)["calendar"]["granularities"]["weekly"] == {}
 
 
 def test_flow_mapping_quoted_key_line_and_quoted_member_keys_keep_their_quotes():

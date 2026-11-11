@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.1"
+version: "1.2"
 ---
 
 # Solution Design Document
@@ -315,6 +315,13 @@ graph LR
     SES --> PER[lib/period.py]
     SES --> RCFG[lib/review_config.py]
     SES --> RST[lib/review_state.py]
+    SES --> RV[lib/review_vault.py]
+    SES --> WRI[lib/week_rule_inference.py]
+    WRI --> RV
+    RV --> KC
+    RCFG --> VCE[lib/vault_config_edit.py]
+    VCW --> RCFG
+    VCW --> VCE
     RD --> RDAY[lib/review_day.py]
     RD --> RPER[lib/review_period.py]
     RD --> HAB[lib/review_habits.py]
@@ -339,9 +346,12 @@ Responsibilities (one owner each):
 | `commands/review.md` | Invoking the skill in-session with `$ARGUMENTS` verbatim |
 | `skills/periodic-review/SKILL.md` | The dialogue order: start → setup → read → propose → write doc → continue → preview → deliver; plain-text confirmations |
 | `lib/period.py` | Week/month arithmetic, the week rule, name-format rendering, parsing and refusal of unsafe formats, overlapping weeks, argument parsing to a `Period` |
-| `lib/review_config.py` | Reading the review setup (config over profile), validating it, the heading-level check of the place (the only owner of that rule), the inbox-path guard `inbox_path()` every review write goes through |
-| `review-session.py` | `start` (parse request, list open reviews via `review_state`), `match` (setup preview against existing notes), `setup-input` (build the writer input from a confirmed proposal) |
-| `vault-config-writer.py review` | Writing the confirmed setup into `vault-config.yaml` text-preservingly, including absent nested keys and the new `review:` section |
+| `lib/review_config.py` | The setup's key layout, one owner for reader and writer (implemented, spec 045 Phase 2): `load_profile`, `folder_for` (config over profile), `inbox_folder`, `configured_formats`, `setup_present`, `review_setup()` → `ReviewSetup` or `SetupInvalid` (JSON pointers), `tracker_types`; the session shapes `current_setup` and `request_dict`; the writer side `input_problems` (schema + `period.check_format`) and `writer_edits` (`(path, value)` leaf edits); `place_level` (the only owner of the heading-level rule) and the inbox-path guard `inbox_path()` every review write goes through |
+| `lib/review_vault.py` | The Kado access of every review script (implemented, spec 045 Phase 2): `Vault` maps every Kado failure onto the SDD's error kinds once (`Stopped("kado-unreachable" \| "kado-auth")` stops the run; a failed single read degrades to None / `unreadable`), `review_documents` (the byFrontmatter query plus one frontmatter read per hit), `list_notes`, `template`, `folder_listed`; the date and heading helpers `frontmatter_start`, `headings`, `heading_start`. No second Kado error mapping anywhere |
+| `lib/week_rule_inference.py` | Inferring the week rule from the dates up to 8 recent weekly notes carry (`infer_rule` → `Inference` inferred \| ambiguous \| default with every `Checked` note), never from the Obsidian plugin configuration (implemented, spec 045 Phase 2) |
+| `lib/vault_config_edit.py` | Text-preserving insert / replace / remove of one nested key in `vault-config.yaml` (`set_path`, `get_path`), creating missing parents and sections, rewriting a flow mapping on a key line as a block; the line helpers `templates-include` shares (implemented, spec 045 Phase 2) |
+| `review-session.py` | `start` (parse request, list open reviews via `review_vault` + `review_state`), `match` (setup preview against existing notes via `review_vault` + `week_rule_inference`), `setup-input` (build the writer input from a confirmed proposal) (implemented, spec 045 Phase 2) |
+| `vault-config-writer.py review` | Applying `review_config.writer_edits` to `vault-config.yaml` text-preservingly through `vault_config_edit.set_path`, including absent nested keys and the new `review:` section, with the duplicate refusal and the per-leaf read-back before the atomic write (implemented, spec 045 Phase 2) |
 | `lib/review_pacer.py` | Spacing, widening after retries, the end-of-run retry pass, retry and wait accounting, the not-read list, abort on connection/auth errors |
 | `lib/review_day.py` | Reading one day: same-day links and embeds from the whole daily, configured sections, fields, tasks by ✅ date, size cap, per-day state |
 | `lib/review_period.py` | Reading a period: finding dailies (flat and year folders, duplicates), weekly notes of a month and their day blocks, link differences, vault growth, the report |
@@ -379,7 +389,10 @@ tomo/
 │   ├── inbox-triage.py                       # MODIFY: review doc_type filename rule + silent skip
 │   └── lib/
 │       ├── period.py                         # NEW
-│       ├── review_config.py                  # NEW
+│       ├── review_config.py                  # NEW (implemented, spec 045 Phase 2)
+│       ├── review_vault.py                   # NEW: Kado wrapper + weekly-note evidence (implemented, spec 045 Phase 2)
+│       ├── week_rule_inference.py            # NEW (implemented, spec 045 Phase 2)
+│       ├── vault_config_edit.py              # NEW: nested text-preserving config editor (implemented, spec 045 Phase 2)
 │       ├── review_pacer.py                   # NEW
 │       ├── review_day.py                     # NEW
 │       ├── review_period.py                  # NEW
@@ -413,8 +426,10 @@ docs/tomo/
     ├── lib/period.md, review_config.md, review_pacer.md, review_day.md,
     │   review_period.md, review_habits.md, review_doc.md, review_doc_parse.md,
     │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
+    ├── lib/review_vault.md, lib/week_rule_inference.md, lib/vault_config_edit.md  # NEW (implemented, spec 045 Phase 2)
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
     │   instruction-render.md, lib/kado_client.md, lib/note_meta.md                 # MODIFY
+docs/tomo/schemas/vault-config-review.schema.md  # NEW: WHY of the writer input contract (implemented, spec 045 Phase 2)
 PRIVACY.md                                    # MODIFY: /review paragraph, record scope, where content rests
 docs/setup.md                                 # MODIFY: protect the instance like the vault (link to PRIVACY)
 tomo/dot_claude/commands/tomo-help.md         # MODIFY: list /review
@@ -440,9 +455,13 @@ tests/
 ├── test_review_integration.py                # NEW (-m integration, Phase 6)
 ├── test_045_close_out_gaps.py                # NEW (Phase 6, if gaps are found)
 ├── test_staged_delivery.py                   # NEW (+ existing /note tests stay green)
-├── test_vault_config_writer_review.py        # NEW
+├── test_vault_config_writer_review.py        # NEW (implemented, spec 045 Phase 2)
+├── test_vault_config_edit.py                 # NEW: the nested editor, byte-identity outside the edited lines (implemented, spec 045 Phase 2)
+├── test_week_rule_inference.py               # NEW (implemented, spec 045 Phase 2)
 ├── test_inbox_triage_review_skip.py          # NEW
-├── review_fake_vault.py                      # NEW: extends note_fake_vault with listNotes filter, byName, 429/503 injection
+├── review_fake_vault.py                      # NEW: extends note_fake_vault with list_dir depth + Path-not-found, listNotes filter,
+│                                             #      byName, byFrontmatter empty-frontmatter hits, connection/auth error switches,
+│                                             #      paths_seen (implemented, spec 045 Phase 2; 429/503 injection arrives with the pacer)
 ├── test_kado_client_retry.py                 # MODIFY: KadoRateLimitError, wait counters
 ├── test_kado_client_attempts.py              # MODIFY: pace wait counter, filter pass-through
 ├── test_tomo_lifecycle.py                    # MODIFY: doc-type set
@@ -476,7 +495,7 @@ interfaces:
     why: "The one LLM-authored artifact; validated before it reaches the document"
 
   - name: "Review setup writer input"
-    doc: tomo/schemas/vault-config-review.schema.json (NEW)
+    doc: tomo/schemas/vault-config-review.schema.json (NEW; implemented, spec 045 Phase 2 — WHY in docs/tomo/schemas/vault-config-review.schema.md)
     relevance: MEDIUM
     why: "Never hand-composed YAML"
 ```
@@ -486,38 +505,41 @@ interfaces:
 No database. Two persistent shapes change.
 
 ```yaml
-# config/vault-config.yaml (written by vault-config-writer.py review)
+# config/vault-config.yaml (written by vault-config-writer.py review; the writer-input key that
+# produces each line is named in the comment — implemented, spec 045 Phase 2, review_config.writer_edits)
 # None of these keys exist in tomo-instance today: the writer inserts absent nested keys
 # (4 levels deep) and creates the naming: and review: sections when they are missing.
-concepts.calendar.granularities.weekly:  {enabled: true, path: "Calendar/302 Weekly/"}
+concepts.calendar.granularities.weekly:  {enabled: true, path: "Calendar/302 Weekly/"}   # input folder (enabled always true)
 concepts.calendar.granularities.monthly: {enabled: true, path: "Calendar/303 Monthly/"}
-concepts.calendar.granularities.daily.path: "Calendar/301 Daily/"   # only when the user confirms the trailing-space fix
-naming.calendar_patterns.weekly:  "GGGG-[W]WW"
+concepts.calendar.granularities.daily.path: "Calendar/301 Daily/"   # input daily_path_fix — only when the user confirms the trailing-space fix
+naming.calendar_patterns.weekly:  "GGGG-[W]WW"     # input format
 naming.calendar_patterns.monthly: "YYYY-MM"
-templates.mapping.weekly:  "t_week_privat.md"      # as found; may be absent
+templates.mapping.weekly:  "t_week_privat.md"      # input template; as found; may be absent; null removes the key
 templates.mapping.monthly: "t_month_privat.md"
 
 review:                                  # NEW top-level section
-  language: de                           # review language (default: frontmatter locale of the dailies, else en)
-  week:
+  language: de                           # input language (default: frontmatter locale of the dailies, else en)
+  week:                                  # input first_day + min_days; kind week only
     first_day: monday                    # monday..sunday
     min_days_in_first_week: 4            # 4 = ISO; 1 = week 1 contains 1 January
-  daily:
-    sections: ["Habit", "5 Year Journal", "Start of the Day", "ToDos", "Daily Log", "End of the Day"]
-    skip_sections: ["On This Day... last year"]   # prefix match on heading text
-    task_notes: ["Efforts/500 OnGoing/Next Todos.md"]   # living task notes
-    max_chars_per_day: 12000             # read cap per day; beyond it the day is "partly read"
+  daily:                                 # written only for the input keys present
+    sections: ["Habit", "5 Year Journal", "Start of the Day", "ToDos", "Daily Log", "End of the Day"]   # input daily_sections
+    skip_sections: ["On This Day... last year"]   # input skip_sections; prefix match on heading text
+    task_notes: ["Efforts/500 OnGoing/Next Todos.md"]   # input task_notes; living task notes
+    max_chars_per_day: 12000             # input max_chars_per_day; read cap per day; beyond it the day is "partly read"
   weekly:
-    heading: "Tomo Review"
-    place: {anchor: "In my own words", placement: before}    # placement: before | inside
-    own_sections: ["In my own words", "Reflections"]
-    template_variant: null               # e.g. "t_week_privat_tomo.md"
+    heading: "Tomo Review"               # input heading
+    place: {anchor: "In my own words", placement: before}    # input place; placement: before | inside
+    own_sections: ["In my own words", "Reflections"]         # input own_sections
+    template_variant: null               # input template_variant, e.g. "t_week_privat_tomo.md"; null removes the key
   monthly:
     heading: "Tomo Review"
     place: {anchor: "In my own words", placement: before}
     own_sections: ["In my own words", "Reflections"]
     template_variant: null
 ```
+
+The writer input (`tomo/schemas/vault-config-review.schema.json`, WHY in `docs/tomo/schemas/vault-config-review.schema.md`) carries `kind`, `folder`, `format`, `heading`, `place` and `language` as required keys, `first_day`/`min_days` for a week (forbidden for a month), and `template`, `template_variant`, `own_sections`, `daily_sections`, `skip_sections`, `task_notes`, `max_chars_per_day` and `daily_path_fix` as optional keys; an absent optional key changes nothing (implemented, spec 045 Phase 2).
 
 Same-day links and embeds are collected from the **whole** daily, before the section filter: the owner's Dayplanner embed sits under a heading whose text changes every day (`## [[DP-2026-03-26|Dayplanner]]`), so a section list cannot name it.
 
@@ -538,26 +560,37 @@ Every script prints one JSON object on stdout. Exit codes: **0** for every outco
 
 ```yaml
 review-session.py start --args '<raw $ARGUMENTS>'
-  out: {request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default"},
+  out: {status: ok|stopped,                                        # (implemented, spec 045 Phase 2)
+        request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default",
+                  start?: "2026-03-23", end?: "2026-03-29"},        # first and last day of a period request
+        current?: {week: <proposal shape>|null|{invalid: [json-pointer]}, month: ...},   # setup request only
         open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state (canonical list below)
+        skipped_review_docs: [{doc_path, reason: frontmatter-unreadable|period-missing}],   # never dropped silently
         setup: {week: present|missing, month: present|missing},
+        problems?: [inbox-not-configured],                          # no Kado call was made
         error?: {kind: invalid-period|unfinished-period|not-periodic-note|unknown-argument, expected, example,
-                 last_finished?: "2026-W13"}}     # last_finished on unfinished-period (implemented, spec 045 T1.1)
+                 last_finished?: "2026-W13"}                        # last_finished on unfinished-period (implemented, spec 045 T1.1)
+              | {kind: kado-unreachable|kado-auth, detail}}         # with status stopped
 
 review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N]
-  out: {status: ok|stopped,
+  out: {status: ok|stopped, kind,                                   # (implemented, spec 045 Phase 2)
         proposal: {folder, format, first_day, min_days, template, template_kind: plain|templater|missing|unreadable,
-                   heading, place, own_sections, daily_sections, language},
+                   heading, place: {anchor, placement}, own_sections, daily_sections, language},
         evidence: {matched: [names], unmatched: [names], week_rule: inferred|ambiguous|default, notes_checked: n,
-                   folder_listing: found|kado-none},
+                   folder_listing: found|kado-none,
+                   format_problems: [{kind, example}],              # period.check_format on the proposed format
+                   template_headings: [{level, text}]},             # anchor candidates of the template
         daily_path_fix?: {configured: "Calendar/301 Daily/ ", found: "Calendar/301 Daily/"},
-        error?: {kind: kado-unreachable|kado-auth|unsafe-format}}
+        hints: [plain sentences for the skill],                    # folder empty/denied, no notes to compare, template unreadable
+        error?: {kind: kado-unreachable|kado-auth|unsafe-format, detail?}}
 
 review-session.py setup-input --kind week|month --confirmed <json file>
-  out: {status: ok, input_path} | {status: invalid, errors: [json-pointer]}
+  out: {status: ok, kind, input_path}                               # (implemented, spec 045 Phase 2)
+     | {status: invalid, kind, errors: [json-pointer], problems: [{pointer, kind: schema|<FormatProblem kind>, example?}]}
 
 vault-config-writer.py review --input <json>   (validated against vault-config-review.schema.json)
-  out: as the other writer subcommands: {status: written|unchanged|refused, reason?}
+  out: {status: written, keys: [config key paths]}                 # paths only, never values (implemented, spec 045 Phase 2)
+     | {status: unchanged} | {status: refused, reason, pointers?, problems?}
 
 review-read.py --period 2026-W13 --kind week [--stem S]
   out: {status: ok|stopped, stem,
@@ -583,8 +616,10 @@ review-doc.py replace --stem S [--confirm]
 review-instructions.py preview --stem S
   out: {status: ok|stopped, mode: insert|replace|new-note, target, target_moved?: bool, place, section_md,
         escaped_lines: n, templater_hint: bool, variant_missing?: bool,
-        problems: [place-missing|heading-renamed|user-heading-collision|nothing-to-deliver|not-approved|approved-line-missing],
+        problems: [place-missing|place-too-deep|heading-renamed|user-heading-collision|nothing-to-deliver|not-approved|approved-line-missing],
         headings?: [names]}
+  # place-too-deep: the review heading would exceed level 5 at the configured anchor and placement
+  # (rule implemented in review_config.place_level, spec 045 Phase 2; the preview reports it in T4.2)
 
 review-instructions.py deliver --stem S [--place-anchor H]
   out: {status: delivered|resumed|refused|stopped, step, paths: {set_json, set_md, note?}, next: hashi-or-by-hand,
@@ -621,7 +656,13 @@ ENTITY: WeekRule (NEW)
   INVARIANT: ISO == WeekRule(0, 4)
 
 ENTITY: ReviewSetup (NEW, lib/review_config.py) — the `review:` section plus calendar/naming/templates keys
-  BEHAVIORS: validate(); place_level(target_headings) -> int;
+  FIELDS: kind, folder, format, rule: WeekRule, heading, anchor, placement: before|inside, inbox, language,
+          template?, template_base?, template_variant?, own_sections, daily_sections, skip_sections, task_notes,
+          max_chars_per_day, tracker_types {name: type}      # (implemented, spec 045 Phase 2)
+  CONSTRUCTION: review_setup(config, profile, kind, today=) -> ReviewSetup | None (setup missing)
+                raises SetupInvalid(pointers) for a present but broken setup   # replaces validate() (implemented, spec 045 Phase 2)
+  BEHAVIORS: place_level(target_headings) -> int   # PlaceMissing when the anchor is not among the headings,
+                                                   # PlaceRefused above level 5 (module function place_level(placement, level))
              inbox_path(name) -> str   # refuses a name with "/", "\" or ".." and any result outside the inbox
              # check_format(fmt, rule) -> warnings | refusal became period.check_format(fmt, kind, rule, *, today)
              # -> list[FormatProblem] in lib/period.py, FormatProblem.kind naming the problem (implemented, spec 045 T1.1)
@@ -767,7 +808,7 @@ Rules (level rule owned by `lib/review_config.place_level`, applied by `lib/revi
 - every line of an item — first and continuation lines — starting with `#`, `- [`, `>`, or a code fence is escaped (`\#`, `- \[`, `\>`, the fence's backticks escaped); the preview reports the count (F5-AC2).
 - content ends with one blank line; it is a pure function of the approved document (no clock values), so Hashi's identical-block check makes a resumed insert idempotent.
 - rerun: the target is read through Kado and searched for the marker line `%% tomo-review <period> %%`. Marker found → `replace_section` on the heading directly above it, whatever its text (renamed → reported as `heading-renamed`). No marker but a heading equal to `heading` → `user-heading-collision`, never replaced. Neither → insert.
-- target lookup: by the configured path first; when absent, by name across the vault (`byName "<name>.md"`); a hit elsewhere becomes the target and is reported as `target_moved`.
+- target lookup: by the configured path first — the paths `Period.note_paths(folder, fmt)` yields in order, the flat folder before `<folder>/<year>/`; when the same stem exists in both, the first path (the flat folder) is the target and the preview names the duplicate; when absent at every configured path, by name across the vault (`byName "<name>.md"`); a hit elsewhere becomes the target and is reported as `target_moved`.
 
 #### Example: pacer
 
@@ -894,6 +935,7 @@ sequenceDiagram
 | `parse` / `preview` | Approved unticked / line missing | `not-approved` / `approved-line-missing` | names the box / how to restore `- [ ] Approved` (F5-AC1) |
 | `preview` | everything unticked | `nothing-to-deliver` | Abort or start over |
 | `preview` | place missing | `place-missing` + `headings` | asks for one or Abort; `deliver --place-anchor` uses it (F5-AC7) |
+| `preview` | review heading would exceed level 5 at the anchor (`review_config.place_level` refuses; rule implemented, spec 045 Phase 2) | `place-too-deep` + `headings` | names the anchor and its level; asks for a shallower heading (`deliver --place-anchor`) or Abort; nothing written |
 | `preview` | same-named user heading without marker | `user-heading-collision` | never replaced; another heading or Abort |
 | `preview` | marker under a renamed heading | `heading-renamed` | replaced there; says so (F6-AC3) |
 | `preview` | template variant gone | `variant_missing: true`, `templater_hint: true` | raw template + Templater hint |
@@ -921,6 +963,8 @@ INPUT: review documents found by byFrontmatter tomo.doc_type=review in the inbox
 OUTPUT: list ordered by period; the skill offers failed-delivery, open, move-refused, target-missing and delivered
         before the new request
 ```
+
+Status after Phase 2 (implemented, spec 045 T2.3): `review_state` implements steps 1 and 2 (`failed-delivery`, `open`) and raises `StateNotClassified` when a set JSON is handed in; `open_reviews` passes no set JSON. Until T4.3 an approved review whose set was delivered therefore reads `failed-delivery` in the `start` listing — the honest answer while nothing verifies the set. T4.3 completes steps 3–7 and probes `<inbox>/<stem>_instructions.json` through Kado inside the listing (one read per approved document; ADR-6), so that `start` and `review-instructions.py status` classify from the same inputs. `open_reviews` orders by period start under the configured week rule and name formats and infers a missing `review_kind` by parsing the period under those formats; a document with unreadable frontmatter or without `review_period` is returned under `skipped_review_docs`, never dropped.
 
 ```
 ALGORITHM: month reading (F3-AC5/6)

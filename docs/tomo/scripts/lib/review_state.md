@@ -11,7 +11,8 @@
 WHY: SDD Internal API Changes names six canonical states (`open`,
 `failed-delivery`, `delivered`, `applied`, `move-refused`, `target-missing`)
 and three readers of them: `review-session.py start` (the listing),
-`review-instructions.py status` (one stem) and the skill's offers. A state
+`review-instructions.py status` (one stem; planned, Phase 4 T4.3) and the
+skill's offers. A state
 computed in two places drifts: `start` would call a review "open" while
 `status` calls the same stem "failed-delivery". `review_state` is the single
 function; `STATES` is the single list; every caller imports both and never

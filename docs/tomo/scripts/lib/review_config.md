@@ -89,9 +89,10 @@ groups stay ≤ 6) — is three lines, and three copies of three lines would
 drift. The cap is 5, not 6, because the review section's group headings
 (`Erledigt`, `Offen`, …) sit one level below the review heading and must
 stay valid Markdown headings; a review heading at level 6 would put its
-groups at level 7, which Markdown renders as literal `#######` text. `review_actions` (Phase 4) calls it;
-the setup schema refuses `after` at input time so the question never reaches
-delivery. `ReviewSetup.place_level(target_headings)` finds the anchor among
+groups at level 7, which Markdown renders as literal `#######` text.
+`review_actions` (planned, Phase 4 T4.1) calls it and reports a refusal as
+`place-too-deep`; the setup schema refuses `after` at input time so the
+question never reaches delivery. `ReviewSetup.place_level(target_headings)` finds the anchor among
 the target's headings case-sensitively, because Hashi matches headings
 case-sensitively and the first match wins; a missing anchor raises
 `PlaceMissing`, which the preview reports as `place-missing` with the
@@ -130,9 +131,9 @@ shape, None without one, `{"invalid": [pointers]}` when broken) and
 `request_dict` (the SDD request shape plus the period's first and last day)
 — need neither Kado nor argparse, so they belong with the setup model they
 read rather than with the subcommands that print them. Moving them keeps the
-script to its wiring and lets the next reader of the setup (Phase 3's
-`review-read`, Phase 4's `review-instructions`) take the same shapes from one
-place. `inbox_folder` replaced the inline lookup in `review_setup` so the two
+script to its wiring and lets the next reader of the setup (`review-read`,
+planned for Phase 3; `review-instructions`, planned for Phase 4) take the
+same shapes from one place. `inbox_folder` replaced the inline lookup in `review_setup` so the two
 cannot disagree on what "no inbox" means. Behaviour is unchanged; the
 script's tests still cover every shape through `start`.
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
 - review_setup layers config over profile (folders from the profile, the rest
   from the config), returns None while the setup is missing, validates a present
   one and reports JSON pointers
+- folder_for: config over profile, a blank or disabled config entry is None
+  and hides the profile (shared with review-session.py match)
 - input_problems validates the writer input against
   vault-config-review.schema.json (pointers) and refuses an unusable name format
 - writer_edits maps a confirmed input onto the config key paths, writes only
@@ -113,6 +115,20 @@ def test_config_folder_wins_over_profile_and_enabled_false_means_no_folder():
     with pytest.raises(rc.SetupInvalid) as exc:
         rc.review_setup(config, PROFILE, "week")
     assert "/concepts/calendar/granularities/weekly/path" in exc.value.pointers
+
+
+def test_folder_for_layers_config_over_profile_and_blank_path_is_none():
+    assert rc.folder_for(CONFIG, PROFILE, "weekly") == "Calendar/302 Weekly/"
+    assert rc.folder_for(CONFIG, PROFILE, "daily") == "Calendar/301 Daily/ "   # verbatim: the preview trims
+    assert rc.folder_for({}, {}, "weekly") is None
+    config = copy.deepcopy(CONFIG)
+    config["concepts"]["calendar"]["granularities"]["weekly"] = {"enabled": True, "path": "   "}
+    assert rc.folder_for(config, PROFILE, "weekly") is None      # blank in the config hides the profile
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "week")
+    assert exc.value.pointers == ["/concepts/calendar/granularities/weekly/path"]
+    config["concepts"]["calendar"]["granularities"]["weekly"] = {"enabled": False, "path": "Weeks/"}
+    assert rc.folder_for(config, PROFILE, "weekly") is None
 
 
 def test_month_setup_defaults_and_iso_rule_for_month_reading():

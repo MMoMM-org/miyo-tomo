@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2).
 
 Covers the setup preview and the confirmed-input step, on tests/review_fake_vault:
@@ -8,8 +8,9 @@ Covers the setup preview and the confirmed-input step, on tests/review_fake_vaul
   default when there is nothing to compare with
 - match: ISO names give GGGG-[W]WW + Monday; Sunday-dated names give the
   Sunday rule and gggg-[W]ww; a Sunday rule given by flags re-lists the ISO
-  notes it no longer matches
-- match: an empty listing is folder_listing kado-none, never "no notes"
+  notes it no longer matches; --first-day and --min-days only together
+- match: a found listing without a parsing name says "no notes to compare";
+  an empty listing is folder_listing kado-none, never "no notes"
 - match: template kinds plain|templater|missing|unreadable (no-access hint),
   place and daily sections proposed from the templates, configured values win
 - match: unsafe-format stops before any Kado call; Kado unreachable / auth
@@ -260,7 +261,7 @@ def test_match_given_format_wins_and_its_problems_are_listed(mod, instance, monk
 
 def test_match_folder_without_notes_is_default_iso_and_found(mod, instance, monkeypatch, capsys):
     _config(instance)
-    fake = ReviewFakeVault({WEEKLY + "attachments/banner.png": b"\x89PNG"})
+    fake = ReviewFakeVault({WEEKLY + "attachments/banner.png": b"\x89PNG", MONTHLY + "attachments/banner.png": b"\x89PNG"})
     code, out, *_ = _match(mod, monkeypatch, capsys, fake)
     ev = out["evidence"]
     assert ev["folder_listing"] == "found"
@@ -268,8 +269,24 @@ def test_match_folder_without_notes_is_default_iso_and_found(mod, instance, monk
     assert ev["matched"] == [] and ev["unmatched"] == []
     assert out["proposal"]["format"] == "GGGG-[W]WW"
     assert (out["proposal"]["first_day"], out["proposal"]["min_days"]) == ("monday", 4)
+    assert any("no notes to compare" in h and WEEKLY in h for h in out["hints"])
+    assert not any("Kado key" in h for h in out["hints"])
     code, out, *_ = _match(mod, monkeypatch, capsys, fake, kind="month")
     assert out["proposal"]["format"] == "YYYY-MM" and out["evidence"]["week_rule"] == "default"
+    assert out["evidence"]["folder_listing"] == "found"
+    assert any("no notes to compare" in h and MONTHLY in h for h in out["hints"])
+
+
+def test_match_parsing_names_are_notes_to_compare_even_when_unmatched(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault(_iso_files())
+    _, out, *_ = _match(mod, monkeypatch, capsys, fake, "--first-day", "sunday", "--min-days", "1")
+    assert out["evidence"]["unmatched"]
+    assert not any("no notes" in h.lower() for h in out["hints"])
+    fake = ReviewFakeVault({WEEKLY + "Weekly Index.md": "# Index\n"})
+    _, out, *_ = _match(mod, monkeypatch, capsys, fake)
+    assert out["evidence"]["unmatched"] == ["Weekly Index"] and out["evidence"]["week_rule"] == "default"
+    assert any("no notes to compare" in h for h in out["hints"])
 
 
 @pytest.mark.parametrize("fake", [ReviewFakeVault({}, folders=[WEEKLY]), ReviewFakeVault({})],
@@ -555,6 +572,8 @@ def test_unexpected_exception_exits_1_with_the_class_name_only(mod, instance, mo
 @pytest.mark.parametrize("argv", [["nope"], ["match"], ["match", "--kind", "year"],
                                   ["match", "--kind", "week", "--min-days", "9"],
                                   ["match", "--kind", "week", "--first-day", "someday"],
+                                  ["match", "--kind", "week", "--first-day", "sunday"],
+                                  ["match", "--kind", "week", "--min-days", "1"],
                                   ["setup-input", "--kind", "week"]])
 def test_usage_errors_exit_2(mod, instance, capsys, argv):
     with pytest.raises(SystemExit) as info:

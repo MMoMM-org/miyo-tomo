@@ -78,12 +78,18 @@ dates" for this note and the next note decides, or the dialogue asks.
 
 ## WHY `week_rule` Reports the Notes, and Flags Set the Proposal
 
-WHY: F1-AC5 and F1-AC8. When the skill re-runs `match` with `--first-day` or
-`--min-days` from the user's answer or correction, the proposal follows the
-flags and the matches are recomputed under them; `evidence.week_rule` still
-says what the notes showed (`inferred`, `ambiguous`, `default`), so the skill
-can show the notes the new rule no longer matches without pretending the
-notes agreed. `--format` works the same way. A dated note is `matched` only
+WHY: F1-AC5 and F1-AC8. When the skill re-runs `match` with `--first-day`
+and `--min-days` from the user's answer or correction, the proposal follows
+the flags and the matches are recomputed under them; `evidence.week_rule`
+still says what the notes showed (`inferred`, `ambiguous`, `default`), so the
+skill can show the notes the new rule no longer matches without pretending
+the notes agreed. `--format` works the same way. The two week flags are
+accepted only together; one alone is a usage error (exit 2). A week rule is
+one answer — the user names the first day and how week 1 is counted in the
+same breath, and the skill always passes both after that answer. Filling the
+missing half from the inferred or configured rule would silently pair the
+user's first day with a `min_days` the notes may never have supported, and
+the proposal would then show a rule nobody stated. A dated note is `matched` only
 when its name parses under the proposal's format and rule AND the resulting
 week starts on the note's date; a name that parses with contradicting dates
 is listed under `unmatched` (SDD walkthrough row 2026-03-01 under Sunday).
@@ -106,9 +112,20 @@ name that leaves its folder must not even be matched.
 WHY: PRD Rule 6, F3-AC9 and the memory rule that an empty Kado search hides a
 denial. A listing that returns nothing or `Path not found` is reported as
 `folder_listing: kado-none` with the access hint in `hints`; the skill asks
-before proposing to create notes there. `found` with an empty `matched` and
-`unmatched` means the folder answered with entries that are not notes — only
-then may the skill say it found no notes to compare with (F1-AC4).
+before proposing to create notes there. `found` with no name that parses
+under the proposal's format (an empty `matched` while the week rule is
+`default`, or a month folder with only non-periodic names) means the folder
+answered, but with nothing to compare the format against — only then does
+the script add the "no notes to compare" hint (F1-AC4), so the two wordings
+can never appear for the same listing. The script puts the sentence in
+`hints` rather than leaving it to the skill because the skill was observed
+saying "no notes" for a `kado-none` listing; a hint the script chose is the
+same on every run. Names that parse but fail their dates under a flagged rule
+are notes to compare — they are listed under `unmatched` without the hint.
+
+The folders come from `review_config.folder_for`, the same resolver `start`
+and the reader use (config over profile, a disabled or blank entry is None),
+so the preview and the session can never list two different folders.
 
 ## WHY the Template Is Classified by Reading It
 

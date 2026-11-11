@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.1.0
+# version: 0.1.1
 """Preview the /review setup of one period kind and build the writer input.
 
 /review reads a finished week or month and proposes a review section for its
@@ -16,7 +16,7 @@ language; ``setup-input`` turns the confirmed proposal into the input of
 
 Usage (cwd = instance root):
     python3 scripts/review-session.py match --kind week|month
-        [--folder P] [--format F] [--first-day D] [--min-days N] [--today YYYY-MM-DD]
+        [--folder P] [--format F] [--first-day D --min-days N] [--today YYYY-MM-DD]
     python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
         [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
 
@@ -37,7 +37,10 @@ Output: one JSON object on stdout, ASCII-escaped.
 Rules:
     Flags win over the config, the config over the inference, the inference
     over the defaults (ISO weeks ``GGGG-[W]WW``, months ``YYYY-MM``).
+    ``--first-day`` and ``--min-days`` come together or not at all (exit 2).
     ``evidence.week_rule`` always reports what the notes showed.
+    A ``found`` listing without a name that parses adds the "no notes to
+    compare" hint; a ``kado-none`` listing gets the access hint instead.
     Up to 8 recent weekly notes are read for their dates; a dated note is
     matched only when the proposal's format and rule reproduce its name on
     its start date. No note text reaches stdout or stderr.
@@ -45,7 +48,8 @@ Rules:
 Exit codes:
     0 — output usable (every status, every error object)
     1 — unexpected exception; stderr carries the exception class name only
-    2 — bad invocation (unknown subcommand or flag, bad value, unreadable --confirmed file)
+    2 — bad invocation (unknown subcommand or flag, bad value, one week flag without
+        the other, unreadable --confirmed file)
 
 Design notes: docs/tomo/scripts/review-session.md
 """
@@ -87,6 +91,8 @@ _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
+NO_NOTES_HINT = ("Found no notes to compare with in {folder}: the default naming is proposed. "
+                 "Say so when showing the proposal.")
 TEMPLATE_HINT = ("Kado could not read the template {path}; the Kado key may have no access "
                  "to it. A plain note (title and review section) is proposed instead.")
 
@@ -116,17 +122,6 @@ def _str(value) -> Optional[str]:
 def _str_list(value) -> Optional[List[str]]:
     if isinstance(value, list) and all(isinstance(v, str) for v in value):
         return list(value)
-    return None
-
-
-def configured_folder(config: dict, profile: dict, granularity: str) -> Optional[str]:
-    """``concepts.calendar.granularities.<g>.path``, config over profile; None when disabled."""
-    for root, head in ((config, "concepts"), (profile, "concept_defaults")):
-        found, entry = get_path(root, (head, "calendar", "granularities", granularity))
-        if found and isinstance(entry, dict):
-            if entry.get("enabled") is False:
-                return None
-            return entry.get("path") if isinstance(entry.get("path"), str) else None
     return None
 
 
@@ -404,7 +399,7 @@ def match(args: argparse.Namespace) -> dict:
     review = config.get("review") if isinstance(config.get("review"), dict) else {}
     hints: List[str] = []
 
-    folder = args.folder or configured_folder(config, profile, granularity) or ""
+    folder = args.folder or rc.folder_for(config, profile, granularity) or ""
     configured_fmt = _str(get_path(config, ("naming", "calendar_patterns", granularity))[1])
     fmt_for_names = args.format or configured_fmt or DEFAULT_FORMATS[kind]
     if any(mark in fmt_for_names for mark in ("/", "\\", "..")):
@@ -423,10 +418,8 @@ def match(args: argparse.Namespace) -> dict:
         if kind == WEEK and paths:
             inference = infer_rule(vault, stems, fmt_for_names)
         rule = inference.rule or _configured_rule(config) or ISO
-        if args.first_day is not None or args.min_days is not None:
-            rule = WeekRule.from_config(
-                args.first_day if args.first_day is not None else rule.first_day,
-                args.min_days if args.min_days is not None else rule.min_days_in_first_week)
+        if args.first_day is not None:
+            rule = WeekRule.from_config(args.first_day, args.min_days)
         if kind == WEEK:
             default_fmt = DEFAULT_FORMATS[WEEK] if rule == ISO else NON_ISO_WEEK_FORMAT
         else:
@@ -434,6 +427,8 @@ def match(args: argparse.Namespace) -> dict:
         fmt = args.format or configured_fmt or default_fmt
         problems = check_format(fmt, kind, rule, today=args.today)
         matched, unmatched = _match_names(stems, fmt, rule, kind, inference.checked)
+        if listing == "found" and inference.verdict == "default" and not matched:
+            hints.append(NO_NOTES_HINT.format(folder=folder))
 
         template_name = _str(get_path(templates, ("mapping", granularity))[1])
         template_path = _template_path(templates, template_name)
@@ -454,7 +449,7 @@ def match(args: argparse.Namespace) -> dict:
                     daily_sections = daily_sections_from(daily_text)
 
         result: dict = {"status": "ok", "kind": kind}
-        daily_configured = configured_folder(config, profile, "daily")
+        daily_configured = rc.folder_for(config, profile, "daily")
         if daily_configured and daily_configured != daily_configured.strip():
             trimmed = daily_configured.strip()
             if vault.folder_listed(trimmed):
@@ -571,8 +566,10 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--kind", required=True, choices=KINDS)
     m.add_argument("--folder", help="Folder of the periodic notes (default: config, then profile)")
     m.add_argument("--format", help="Name format (default: config, then inferred)")
-    m.add_argument("--first-day", choices=DAY_NAMES, help="First day of the week (default: inferred)")
-    m.add_argument("--min-days", type=_min_days_arg, help="Days week 1 must hold in the new year (default: inferred)")
+    m.add_argument("--first-day", choices=DAY_NAMES,
+                   help="First day of the week (default: inferred; needs --min-days)")
+    m.add_argument("--min-days", type=_min_days_arg,
+                   help="Days week 1 must hold in the new year (default: inferred; needs --first-day)")
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")
@@ -586,6 +583,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "match" and (args.first_day is None) != (args.min_days is None):
+        parser.error("--first-day and --min-days are given together or not at all")
     try:
         if args.command == "setup-input" and not Path(args.confirmed).is_file():
             print("review-session: --confirmed file not readable (FileNotFoundError)", file=sys.stderr)

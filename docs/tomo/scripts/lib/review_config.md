@@ -32,6 +32,16 @@ returns None otherwise, so `start` can report `setup: missing` and the skill
 runs Feature 1 first (F2-AC8). A granularity with `enabled: false` is treated
 as no folder: the user switched those notes off.
 
+`folder_for(config, profile, granularity)` is public because the setup
+preview (`review-session.py match`) resolves the same folders before any
+setup exists: the weekly or monthly folder to list and the daily folder to
+probe for the spelling fix. The script carried its own copy at first, and the
+two had already diverged on a blank path (`path: "   "`): the copy returned
+the blank string, this one returns None. One function, these semantics: a
+config entry that is disabled or whose path is blank is *no folder* and hides
+the profile — the user wrote something there, so the profile's folder is not
+what they meant.
+
 A present setup that is broken (a placement that is not `before`/`inside`, a
 week rule outside its range, a format that `period.check_format` refuses, no
 inbox) raises `SetupInvalid` with JSON pointers into the config, never a

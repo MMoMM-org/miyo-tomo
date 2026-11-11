@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.1.2
+# version: 0.1.3
 """The ``/review`` setup of one period kind (spec 045, T2.1).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -8,6 +8,9 @@ calendar_patterns.<kind>``, ``templates.mapping.<kind>`` and the ``review:``
 section — so what ``review-session.py start`` reads and what
 ``vault-config-writer.py review`` writes cannot drift.
 
+``folder_for(config, profile, granularity)`` resolves one periodic folder
+(config over profile, None when disabled or blank) for the reader and for the
+setup preview alike.
 ``review_setup(config, profile, kind)`` returns a ``ReviewSetup``, None while
 the setup is missing, or raises ``SetupInvalid`` (JSON pointers) when a
 present setup is broken. ``input_problems(data, today=...)`` checks a writer
@@ -145,7 +148,12 @@ def _str_list(value: Any) -> Optional[List[str]]:
     return None
 
 
-def _folder(config: dict, profile: dict, granularity: str) -> Optional[str]:
+def folder_for(config: dict, profile: dict, granularity: str) -> Optional[str]:
+    """``concepts.calendar.granularities.<granularity>.path``, config over profile.
+
+    None when the first entry found is disabled or its path is blank; the profile
+    is not consulted behind a config entry.
+    """
     for root, head in ((config, "concepts"), (profile, "concept_defaults")):
         found, entry = get_path(root, (head, "calendar", "granularities", granularity))
         if found and isinstance(entry, dict):
@@ -174,7 +182,7 @@ def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date
     section = get_path(config, ("review", granularity))[1]
     review = config.get("review") if isinstance(config.get("review"), dict) else {}
 
-    folder = _folder(config, profile, granularity)
+    folder = folder_for(config, profile, granularity)
     if folder is None:
         pointers.append(f"/concepts/calendar/granularities/{granularity}/path")
 

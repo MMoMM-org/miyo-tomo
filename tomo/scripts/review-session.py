@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.3.0
+# version: 0.3.1
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -53,6 +53,9 @@ Rules:
     inbox documents with ``tomo.doc_type=review`` (one byFrontmatter query, one
     frontmatter read per hit), found also when renamed; their state comes from
     lib/review_state (``open`` and ``failed-delivery`` in T2.3).
+    The listing is ordered by period start under the configured week rule and
+    name formats (lib/review_config.configured_formats), the pair the argument
+    was parsed with.
     Flags win over the config, the config over the inference, the inference
     over the defaults (ISO weeks ``GGGG-[W]WW``, months ``YYYY-MM``).
     ``--first-day`` and ``--min-days`` come together or not at all (exit 2).
@@ -89,7 +92,7 @@ from lib import review_config as rc  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import (  # noqa: E402
-    DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, SETUP, WEEK, Request, RequestError, WeekRule,
+    DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, SETUP, WEEK, RequestError, WeekRule,
     check_format, parse_args, parse_name,
 )
 from lib.review_state import open_reviews  # noqa: E402
@@ -153,70 +156,28 @@ def _template_path(templates: dict, name: Optional[str]) -> Optional[str]:
     return base.rstrip("/") + "/" + name
 
 
-def _configured_formats(config: dict) -> dict:
-    formats = {}
-    for kind in KINDS:
-        fmt = _str(get_path(config, ("naming", "calendar_patterns", rc.GRANULARITY[kind]))[1])
-        if fmt is not None:
-            formats[kind] = fmt
-    return formats
-
-
-def _inbox(config: dict, profile: dict) -> Optional[str]:
-    return (_str(get_path(config, ("concepts", "inbox"))[1])
-            or _str(get_path(profile, ("concept_defaults", "inbox"))[1]))
-
-
 # ---------------------------------------------------------------- start
-
-def request_dict(request: Request) -> dict:
-    """The SDD request shape plus the period's first and last day."""
-    data = request.to_dict()
-    if request.period is not None:
-        data["start"] = request.period.start.isoformat()
-        data["end"] = request.period.end.isoformat()
-    return data
-
-
-def current_setup(config: dict, profile: dict, kind: str, today: date) -> Optional[dict]:
-    """The saved setup of ``kind`` in the proposal's shape; None without one; the pointers when broken."""
-    try:
-        setup = rc.review_setup(config, profile, kind, today=today)
-    except rc.SetupInvalid as invalid:
-        return {"invalid": invalid.pointers}
-    if setup is None:
-        return None
-    return {
-        "folder": setup.folder, "format": setup.format,
-        "first_day": _day_name(setup.rule) if kind == WEEK else None,
-        "min_days": setup.rule.min_days_in_first_week if kind == WEEK else None,
-        "template": setup.template, "template_variant": setup.template_variant,
-        "heading": setup.heading, "place": {"anchor": setup.anchor, "placement": setup.placement},
-        "own_sections": setup.own_sections, "daily_sections": setup.daily_sections,
-        "skip_sections": setup.skip_sections, "task_notes": setup.task_notes,
-        "max_chars_per_day": setup.max_chars_per_day, "language": setup.language,
-    }
-
 
 def start(args: argparse.Namespace) -> dict:
     config = load_config(args.config)
     profile = rc.load_profile(Path(args.profiles_dir), config)
     rule = _configured_rule(config) or ISO
+    formats = rc.configured_formats(config)
     result: dict = {
         "status": "ok",
         "setup": {kind: "present" if rc.setup_present(config, kind) else "missing" for kind in KINDS},
         "open_reviews": [],
         "skipped_review_docs": [],
     }
-    parsed = parse_args(args.args, today=args.today, rule=rule, formats=_configured_formats(config))
+    parsed = parse_args(args.args, today=args.today, rule=rule, formats=formats)
     if isinstance(parsed, RequestError):
         result["error"] = parsed.to_dict()
         return result
-    result["request"] = request_dict(parsed)
+    result["request"] = rc.request_dict(parsed)
     if parsed.kind == SETUP:
-        result["current"] = {kind: current_setup(config, profile, kind, args.today) for kind in KINDS}
+        result["current"] = {kind: rc.current_setup(config, profile, kind, args.today) for kind in KINDS}
 
-    inbox = _inbox(config, profile)
+    inbox = rc.inbox_folder(config, profile)
     if inbox is None:
         result["problems"] = ["inbox-not-configured"]
         return result
@@ -226,7 +187,7 @@ def start(args: argparse.Namespace) -> dict:
         result["status"] = "stopped"
         result["error"] = {"kind": stop.kind, "detail": stop.detail}
         return result
-    reviews, skipped = open_reviews(docs, Path(args.tmp), rule=rule)
+    reviews, skipped = open_reviews(docs, Path(args.tmp), rule=rule, formats=formats)
     result["open_reviews"] = [review.to_dict() for review in reviews]
     result["skipped_review_docs"] = skipped
     return result

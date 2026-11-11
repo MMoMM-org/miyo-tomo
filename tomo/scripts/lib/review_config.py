@@ -1,6 +1,6 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.1.3
-"""The ``/review`` setup of one period kind (spec 045, T2.1).
+# version: 0.2.0
+"""The ``/review`` setup of one period kind (spec 045, T2.1, T2.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
 granularities.<weekly|monthly>`` (config over profile), ``naming.
@@ -21,6 +21,10 @@ is the only owner of the heading-level rule (before = the anchor's level,
 inside = one deeper, after refused; the review heading may not exceed level 5
 so its groups stay <= 6); ``inbox_path`` is the guard every review write goes
 through.
+The session shapes ``review-session.py start`` prints live here too:
+``configured_formats`` (the name formats per kind), ``inbox_folder`` (config
+over profile), ``current_setup`` (the saved setup in the proposal's shape) and
+``request_dict`` (the SDD request plus the period's first and last day).
 
 Needs PyYAML (profile) and jsonschema (a Tomo runtime dependency).
 
@@ -35,7 +39,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from lib.period import ISO, KINDS, MONTH, WEEK, WeekRule, check_format
+from lib.period import DAY_NAMES, ISO, KINDS, MONTH, WEEK, Request, WeekRule, check_format
 from lib.vault_config_edit import get_path
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "vault-config-review.schema.json"
@@ -163,6 +167,22 @@ def folder_for(config: dict, profile: dict, granularity: str) -> Optional[str]:
     return None
 
 
+def inbox_folder(config: dict, profile: dict) -> Optional[str]:
+    """``concepts.inbox``, else the profile's ``concept_defaults.inbox``; None when neither names one."""
+    return (_str(get_path(config, ("concepts", "inbox"))[1])
+            or _str(get_path(profile, ("concept_defaults", "inbox"))[1]))
+
+
+def configured_formats(config: dict) -> Dict[str, str]:
+    """``{kind: naming.calendar_patterns.<granularity>}`` for the kinds the config names."""
+    formats: Dict[str, str] = {}
+    for kind in KINDS:
+        fmt = _str(get_path(config, ("naming", "calendar_patterns", GRANULARITY[kind]))[1])
+        if fmt is not None:
+            formats[kind] = fmt
+    return formats
+
+
 def setup_present(config: dict, kind: str) -> bool:
     """True when the user confirmed a setup for ``kind``: a name format and a review section."""
     granularity = GRANULARITY[kind]
@@ -186,7 +206,7 @@ def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date
     if folder is None:
         pointers.append(f"/concepts/calendar/granularities/{granularity}/path")
 
-    inbox = _str(get_path(config, ("concepts", "inbox"))[1]) or _str(get_path(profile, ("concept_defaults", "inbox"))[1])
+    inbox = inbox_folder(config, profile)
     if inbox is None:
         pointers.append("/concepts/inbox")
 
@@ -257,6 +277,37 @@ def tracker_types(config: dict) -> Dict[str, str]:
             if isinstance(entry, dict) and _str(entry.get("name")) and _str(entry.get("type")):
                 types[entry["name"]] = entry["type"]
     return types
+
+
+# --- the session shapes --------------------------------------------------------------
+
+def current_setup(config: dict, profile: dict, kind: str, today: date) -> Optional[dict]:
+    """The saved setup of ``kind`` in the proposal's shape; None without one; the pointers when broken."""
+    try:
+        setup = review_setup(config, profile, kind, today=today)
+    except SetupInvalid as invalid:
+        return {"invalid": invalid.pointers}
+    if setup is None:
+        return None
+    return {
+        "folder": setup.folder, "format": setup.format,
+        "first_day": DAY_NAMES[setup.rule.first_day] if kind == WEEK else None,
+        "min_days": setup.rule.min_days_in_first_week if kind == WEEK else None,
+        "template": setup.template, "template_variant": setup.template_variant,
+        "heading": setup.heading, "place": {"anchor": setup.anchor, "placement": setup.placement},
+        "own_sections": setup.own_sections, "daily_sections": setup.daily_sections,
+        "skip_sections": setup.skip_sections, "task_notes": setup.task_notes,
+        "max_chars_per_day": setup.max_chars_per_day, "language": setup.language,
+    }
+
+
+def request_dict(request: Request) -> dict:
+    """The SDD request shape plus the period's first and last day."""
+    data = request.to_dict()
+    if request.period is not None:
+        data["start"] = request.period.start.isoformat()
+        data["end"] = request.period.end.isoformat()
+    return data
 
 
 # --- the writer input ----------------------------------------------------------------

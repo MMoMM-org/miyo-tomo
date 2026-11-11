@@ -43,6 +43,14 @@ keeps what is specific to the subcommands: the precedence of flags, config,
 inference and defaults, the name matching, the proposal, the writer input
 and the argparse wiring.
 
+The T2.3 code review found the script at 486 lines once `start` was in. The
+helpers that only turn the config into a shape and need neither Kado nor
+argparse — the configured name formats, the inbox folder, the current setup
+of a kind and the request dict — moved to `lib/review_config.py`
+(`configured_formats`, `inbox_folder`, `current_setup`, `request_dict`; WHY:
+`docs/tomo/scripts/lib/review_config.md`). The script imports them; nothing
+it prints changed.
+
 ## WHY the Config Beats the Inference
 
 WHY: the documented order is flags > config > inference > defaults, and the
@@ -217,7 +225,10 @@ consulted only for the content-free `meta.json` (`failed_step`) and never
 decides whether a review exists. The listing and the state are
 `lib/review_state` (WHY: `docs/tomo/scripts/lib/review_state.md`); the
 script only resolves the inbox (config over profile) and passes the
-documents on. An inbox that neither the config nor the profile names is
+documents on, together with the configured week rule **and** the configured
+name formats — the same pair the argument was parsed with, so the listing
+orders `2027-W01` by the day the request would give it (the first version
+passed the rule alone, and the default ISO format overrode it). An inbox that neither the config nor the profile names is
 reported as `problems: [inbox-not-configured]` with an empty listing rather
 than a crash: the request is still usable and the setup dialogue fixes the
 rest.

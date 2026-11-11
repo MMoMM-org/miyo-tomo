@@ -29,7 +29,11 @@ today raises `StateNotClassified`: returning a guessed `delivered` would
 claim a delivery nobody verified, and a state outside the canonical list
 would break the one-owner rule. The T2.3 lister never hands a set JSON in
 (it has no probe yet), so the exception cannot reach a user; the raise is a
-tripwire for T4.3, not a runtime path.
+tripwire for T4.3, not a runtime path. `open_reviews` carries a one-line
+code comment saying so, because a well-meant "read the set JSON too" edit
+before T4.3 would turn the tripwire into an abort of the whole listing
+(`StateNotClassified` escapes `start` as exit 1) — the comment names the
+task that lifts the restriction.
 
 ## WHY the Document Is the Source and `meta.json` Only Adds
 
@@ -58,6 +62,34 @@ act on.
 
 WHY: SDD `OUTPUT: list ordered by period`. Weeks and months interleave
 (`2026-W09`, `2026-03`, `2026-W13`), so the order is the period's first day
-under the configured week rule, name as the tie-breaker; a period name the
-rule cannot parse sorts last so the listing never hides it. The sort is
-stable across runs, which lets the skill number the offers.
+under the configured week rule **and the configured name formats**, name as
+the tie-breaker; a period name no format parses sorts last so the listing
+never hides it. The sort is stable across runs, which lets the skill number
+the offers.
+
+`open_reviews` takes `formats` (merged over `period.DEFAULT_FORMATS`, the
+same merge `period.parse_args` does) because the first version ordered with
+the defaults alone, and the default week format `GGGG-[W]WW` carries ISO
+tokens: `period.parse_name` applies the ISO rule to upper-case week tokens
+whatever `rule` says (`iso-tokens-need-iso-rule`), so the configured rule
+was silently ignored. Under a confirmed Sunday/1 setup with `gggg-[W]ww`,
+`2027-W01` starts 2026-12-27 and belongs before the month `2027-01`; ordered
+with `GGGG-[W]WW` it starts 2027-01-04 and lands after it. The T2.3 code
+review caught this; `start` now passes `review_config.configured_formats`
+together with the rule, so the listing counts weeks the way the request does.
+
+## WHY the Kind Is Inferred by Parsing, Not by a Letter
+
+WHY: a document without `review_kind` (written before the key existed, or
+the key removed by the user) still needs a kind for the listing and for the
+format its period is parsed with. The first version guessed `week` when the
+name contained a `W`; that letter is an artefact of the default format, not
+of the kind — a week named under `gggg.ww` (`2027.01`) carries no `W` and
+was listed as a month, parsed under `YYYY-MM` and sorted last. The kind is
+now the first kind, in `KINDS` order (week before month), whose configured
+format parses the name; a name no format parses falls back to the letter
+guess so the listing still shows a kind for it. Week first because a name
+that parses under both (a week format `gggg-ww` and the month format
+`YYYY-MM` both accept `2027-01`) is an ambiguity the frontmatter normally
+settles; the fallback only has to be deterministic, and the SDD's listing
+puts weeks first.

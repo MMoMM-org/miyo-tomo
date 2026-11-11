@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.1.0
+# version: 0.2.0
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -9,6 +9,11 @@ top-level ``review_period``, ``review_kind`` and ``review_stem`` keys name the
 review, ``tomo.state`` says whether the user approved it. ``meta.json`` under
 ``tomo-tmp/review/<stem>/`` is content-free and only adds ``failed_step``; a
 missing or broken meta counts as absent.
+
+``open_reviews`` orders the listing by period start under the configured
+week rule and name formats (the default ISO week format would override a
+configured rule) and infers a missing ``review_kind`` by parsing the period
+under those formats.
 
 T2.3 implements steps 1 and 2 of the algorithm (``failed-delivery``, ``open``).
 Steps 3–7 (``delivered``, ``applied``, ``move-refused``, ``target-missing``)
@@ -25,7 +30,7 @@ from datetime import date
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from lib.period import DEFAULT_FORMATS, ISO, KINDS, WeekRule, parse_name
+from lib.period import DEFAULT_FORMATS, ISO, KINDS, MONTH, WEEK, WeekRule, parse_name
 
 OPEN = "open"
 FAILED_DELIVERY = "failed-delivery"
@@ -100,17 +105,29 @@ def _str(value) -> Optional[str]:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _period_start(period: str, kind: str, rule: WeekRule) -> date:
-    """The period's first day for ordering; ``date.max`` when the name does not parse."""
-    fmt = DEFAULT_FORMATS.get(kind)
+def _period_start(period: str, kind: str, rule: WeekRule, formats: Dict[str, str]) -> date:
+    """The period's first day under ``formats[kind]`` for ordering; ``date.max`` when it does not parse."""
+    fmt = formats.get(kind)
     parsed = parse_name(period, fmt, rule) if fmt else None
     return parsed.start if parsed is not None else date.max
 
 
+def _infer_kind(period: str, rule: WeekRule, formats: Dict[str, str]) -> str:
+    """The first kind (week before month) whose format parses the name; a name no
+    format parses keeps the letter guess so the listing still shows a kind."""
+    for kind in KINDS:
+        if _period_start(period, kind, rule, formats) != date.max:
+            return kind
+    return WEEK if "W" in period.upper() else MONTH
+
+
 def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, *,
-                 rule: WeekRule = ISO) -> Tuple[List[OpenReview], List[dict]]:
+                 rule: WeekRule = ISO,
+                 formats: Optional[Dict[str, str]] = None) -> Tuple[List[OpenReview], List[dict]]:
     """``(reviews ordered by period start, skipped)`` over ``(doc_path, frontmatter)``
-    pairs; ``skipped`` names a document with unreadable frontmatter or no period."""
+    pairs; ``skipped`` names a document with unreadable frontmatter or no period.
+    ``formats`` are the configured name formats per kind, merged over the defaults."""
+    formats = dict(DEFAULT_FORMATS, **(formats or {}))
     reviews: List[Tuple[date, OpenReview]] = []
     skipped: List[dict] = []
     for doc_path, doc in docs:
@@ -123,9 +140,10 @@ def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, *,
             continue
         kind = doc.get("review_kind")
         if kind not in KINDS:
-            kind = "week" if "W" in period.upper() else "month"
+            kind = _infer_kind(period, rule, formats)
         stem = _str(doc.get("review_stem")) or f"{period}{STEM_SUFFIX}"
+        # No set_json here until T4.3 classifies it: StateNotClassified would abort the listing.
         state = review_state(doc, read_meta(meta_root, stem))
-        reviews.append((_period_start(period, kind, rule), OpenReview(period, kind, doc_path, stem, state)))
+        reviews.append((_period_start(period, kind, rule, formats), OpenReview(period, kind, doc_path, stem, state)))
     reviews.sort(key=lambda item: (item[0], item[1].period, item[1].doc_path))
     return [review for _, review in reviews], skipped

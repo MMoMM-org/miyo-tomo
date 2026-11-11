@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -18,6 +18,9 @@ Covers the /review setup model:
   result outside the inbox; an inbox spelled "./Inbox" or "a/./b" is normalised
   before the comparison and accepted
 - tracker_types reads trackers.daily_note_trackers and end_of_day_fields
+- the session shapes review-session.py start prints: configured_formats,
+  inbox_folder (config over profile), request_dict (plus first and last day),
+  current_setup (proposal shape | None | pointers)
 """
 from __future__ import annotations
 
@@ -343,3 +346,44 @@ def test_tracker_types_reads_all_three_lists_and_tolerates_junk():
     assert rc.tracker_types(CONFIG) == {"Sport": "boolean", "Sleep": "text", "DayEnergy": "integer", "Gratitude": "text"}
     assert rc.tracker_types({}) == {}
     assert rc.tracker_types({"trackers": {"daily_note_trackers": {"today_fields": ["junk", {"name": "X"}]}}}) == {}
+
+
+# --- the session shapes (moved from review-session.py, T2.3 review) ------------------
+
+def test_configured_formats_names_only_the_patterns_the_config_holds():
+    assert rc.configured_formats(CONFIG) == {"week": "gggg-[W]ww", "month": "YYYY-MM"}
+    assert rc.configured_formats({"naming": {"calendar_patterns": {"weekly": " ", "monthly": "YYYY-MM"}}}) == {"month": "YYYY-MM"}
+    assert rc.configured_formats({}) == {}
+
+
+def test_inbox_folder_is_config_over_profile_or_none():
+    assert rc.inbox_folder(CONFIG, PROFILE) == "100 Inbox/"
+    assert rc.inbox_folder({"concepts": {"inbox": "Eingang/"}}, PROFILE) == "Eingang/"
+    assert rc.inbox_folder({}, PROFILE) == "100 Inbox/"
+    assert rc.inbox_folder({"concepts": {"inbox": "  "}}, {}) is None
+
+
+def test_request_dict_adds_the_first_and_last_day():
+    from lib.period import Period, Request, SETUP, WEEK
+    week = Request(WEEK, Period.week(2027, 1, WeekRule(6, 1)), source="default")
+    assert rc.request_dict(week) == {"kind": "week", "period": "2027-W01", "year_inferred": False,
+                                     "source": "default", "start": "2026-12-27", "end": "2027-01-02"}
+    assert rc.request_dict(Request(SETUP)) == {"kind": "setup"}
+
+
+def test_current_setup_is_the_proposal_shape_none_or_the_pointers():
+    assert rc.current_setup(CONFIG, PROFILE, "week", TODAY) == {
+        "folder": "Calendar/302 Weekly/", "format": "gggg-[W]ww", "first_day": "sunday", "min_days": 1,
+        "template": "t_week_privat.md", "template_variant": None, "heading": "Tomo Review",
+        "place": {"anchor": "In my own words", "placement": "before"},
+        "own_sections": ["In my own words"], "daily_sections": ["Habit", "Daily Log"],
+        "skip_sections": ["On This Day"], "task_notes": ["Efforts/Next Todos.md"],
+        "max_chars_per_day": 9000, "language": "de",
+    }
+    month = rc.current_setup(CONFIG, PROFILE, "month", TODAY)
+    assert month["first_day"] is None and month["min_days"] is None and month["template"] is None
+    assert month["place"] == {"anchor": "Reflections", "placement": "inside"}
+    assert rc.current_setup({}, PROFILE, "week", TODAY) is None
+    broken = copy.deepcopy(CONFIG)
+    broken["review"]["weekly"]["place"]["placement"] = "after"
+    assert rc.current_setup(broken, PROFILE, "week", TODAY) == {"invalid": ["/review/weekly/place/placement"]}

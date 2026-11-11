@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_state.py — lib/review_state.py, the one owner of /review's
 open-review states (spec 045 T2.3; SDD Complex Logic review_state).
 
@@ -11,8 +11,10 @@ open-review states (spec 045 T2.3; SDD Complex Logic review_state).
 - read_meta: the content-free meta.json of a stem, None when missing or broken
 - open_reviews: one entry per review document found by frontmatter (renamed
   documents included), stem from review_stem or <period>_review, ordered by
-  period start under the rule, unreadable or period-less documents skipped
-  with a reason
+  period start under the configured rule AND name formats (the default ISO
+  format would override the rule), a missing review_kind inferred by parsing
+  the period under the configured formats, unreadable or period-less
+  documents skipped with a reason
 """
 from __future__ import annotations
 
@@ -130,16 +132,35 @@ def test_open_reviews_lists_every_document_by_period_with_its_state(tmp_path):
     ]
 
 
-def test_open_reviews_orders_by_the_rule_and_keeps_unparsable_last(tmp_path):
+def test_open_reviews_orders_by_the_configured_rule_and_formats_and_keeps_unparsable_last(tmp_path):
+    # 2027-W01 under gggg-[W]ww + (Sunday, 1) starts 2026-12-27, before the month 2027-01
+    # (2027-01-01); under the default GGGG-[W]WW the ISO rule applies whatever the rule
+    # says and 2027-W01 starts 2027-01-04, after it — so the two orders differ.
     sunday = WeekRule(6, 1)
     docs = [
-        (INBOX + "a.md", _doc("2027-W01", "week")),      # (Sun, 1): starts 2026-12-27
-        (INBOX + "b.md", _doc("2026-12", "month")),      # starts 2026-12-01
-        (INBOX + "c.md", _doc("not-a-period", "week")),
+        (INBOX + "a.md", _doc("2027-W01", "week")),
+        (INBOX + "b.md", _doc("2027-01", "month")),
+        (INBOX + "c.md", _doc("2026-12", "month")),
+        (INBOX + "d.md", _doc("not-a-period", "week")),
     ]
-    reviews, skipped = rs.open_reviews(docs, tmp_path, rule=sunday)
-    assert [r.period for r in reviews] == ["2026-12", "2027-W01", "not-a-period"]
+    reviews, skipped = rs.open_reviews(docs, tmp_path, rule=sunday, formats={"week": "gggg-[W]ww"})
+    assert [r.period for r in reviews] == ["2026-12", "2027-W01", "2027-01", "not-a-period"]
     assert skipped == []
+    reviews, _ = rs.open_reviews(docs, tmp_path)                       # the defaults: ISO
+    assert [r.period for r in reviews] == ["2026-12", "2027-01", "2027-W01", "not-a-period"]
+
+
+def test_open_reviews_infers_a_missing_kind_by_parsing_under_the_configured_formats(tmp_path):
+    sunday = WeekRule(6, 1)
+    week_without_w = _doc("2027.01", "week")
+    del week_without_w["review_kind"]
+    month = _doc("2027-01", "month")
+    del month["review_kind"]
+    docs = [(INBOX + "a.md", week_without_w), (INBOX + "b.md", month), (INBOX + "c.md", _doc("2026-12", "month"))]
+    reviews, _ = rs.open_reviews(docs, tmp_path, rule=sunday, formats={"week": "gggg.ww"})
+    assert [(r.period, r.kind) for r in reviews] == [("2026-12", "month"), ("2027.01", "week"), ("2027-01", "month")]
+    reviews, _ = rs.open_reviews(docs, tmp_path)                       # no W, no format: the letter guess
+    assert [(r.period, r.kind) for r in reviews] == [("2026-12", "month"), ("2027-01", "month"), ("2027.01", "month")]
 
 
 def test_open_reviews_skips_unreadable_and_period_less_documents(tmp_path):

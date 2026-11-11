@@ -118,6 +118,24 @@ the raw base, and every review write was refused as "outside the inbox".
 base that climbs out of the vault never reaches the comparison; a base that
 normalises to `.` (the vault root) is refused as not configured.
 
+## WHY the Session Shapes Live Here (T2.3)
+
+`review-session.py` passed the Constitution's ~500-line mark once `start`
+joined `match` and `setup-input`. The helpers that only turn the config into
+a shape — `configured_formats` (`naming.calendar_patterns` per kind, the
+`formats` both `period.parse_args` and `review_state.open_reviews` take),
+`inbox_folder` (config over profile, the lookup `review_setup` already made
+inline), `current_setup` (the saved setup of one kind in the proposal's
+shape, None without one, `{"invalid": [pointers]}` when broken) and
+`request_dict` (the SDD request shape plus the period's first and last day)
+— need neither Kado nor argparse, so they belong with the setup model they
+read rather than with the subcommands that print them. Moving them keeps the
+script to its wiring and lets the next reader of the setup (Phase 3's
+`review-read`, Phase 4's `review-instructions`) take the same shapes from one
+place. `inbox_folder` replaced the inline lookup in `review_setup` so the two
+cannot disagree on what "no inbox" means. Behaviour is unchanged; the
+script's tests still cover every shape through `start`.
+
 ## WHY Tracker Types Are Read, Not Stored
 
 F8 sums tracker fields by their configured type. The types already live in

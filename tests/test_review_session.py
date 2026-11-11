@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -13,7 +13,8 @@ tests/review_fake_vault:
   when broken); the missing setup is reported per kind
 - start: open review documents are found by tomo.doc_type=review in the inbox
   with one read_frontmatter per hit, also when renamed, listed by period with
-  the state from lib/review_state; an unreadable document is skipped, not
+  the state from lib/review_state, ordered under the configured week format
+  and rule (not the ISO default); an unreadable document is skipped, not
   hidden; no inbox lists nothing and says so; an argument error spends no call
 - start: Kado unreachable / auth give status stopped; stdout carries no note text
 - match: the week rule inferred from journal-start-date / day-heading links,
@@ -841,6 +842,26 @@ def test_start_lists_the_open_reviews_by_period_with_their_state(mod, instance, 
     assert reads == sorted([INBOX + "2026-W13 Review.md", INBOX + "Renamed by the user.md",
                             INBOX + "2026-03 Review.md", INBOX + "2026-W09 Review.md"])
     assert not any(m == "read_note" for m, _ in fake.events)
+
+
+def test_start_orders_the_open_reviews_under_the_configured_week_format_and_rule(mod, instance, monkeypatch, capsys):
+    # Sunday/1 with gggg-[W]ww: 2027-W01 starts 2026-12-27 and comes before the month 2027-01;
+    # ordered under the default ISO format it would start 2027-01-04 and come after it.
+    _config(instance, naming={"weekly": "gggg-[W]ww", "monthly": "YYYY-MM"},
+            review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    fake = ReviewFakeVault({
+        INBOX + "2027-01 Review.md": _review_doc("2027-01", "month"),
+        INBOX + "2027-W01 Review.md": _review_doc("2027-W01", "week"),
+        INBOX + "2026-12 Review.md": _review_doc("2026-12", "month"),
+    })
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "", today="2027-02-10")
+    assert code == 0 and out["status"] == "ok"
+    assert [r["period"] for r in out["open_reviews"]] == ["2026-12", "2027-W01", "2027-01"]
+    assert out["request"]["period"] == "2027-W06" and out["request"]["start"] == "2027-01-31"
+
+    _config(instance)                                                   # ISO defaults
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "", today="2027-02-10")
+    assert [r["period"] for r in out["open_reviews"]] == ["2026-12", "2027-01", "2027-W01"]
 
 
 def test_start_skips_an_unreadable_review_document_and_lists_the_rest(mod, instance, monkeypatch, capsys):

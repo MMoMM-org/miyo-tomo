@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-08 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
-| **Model tier** | {{MODEL_TIER}} |
+| **Current Phase** | PLAN |
+| **Decomposition tier** | Incremental |
+| **Model tier** | frontier |
 | **Last Updated** | 2026-11-11 |
 
 ## Documents
@@ -16,7 +16,7 @@
 |----------|--------|-------|
 | requirements.md | completed | v1.2: 8 features, 59 criteria; v1.1 approved 2026-11-11, v1.2 amends F1, F5, F7 from the SDD decisions |
 | solution.md | completed | v1.0: 14 components, ADR-1..12 confirmed, all 59 PRD criteria traced to EARS criteria |
-| plan/ | pending | |
+| plan/ | completed | 6 phases, 30 tasks (incl. 6 phase validations); PRD traceability table in phase-6.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -48,6 +48,8 @@
 | 2026-11-11 | PRD v1.2 — week counting: inferred from existing weekly notes, else asked in plain words; never from the Obsidian plugin config | Owner: "Die Obsidian config hat ja nichts damit zu tun wie der user seine Woche definiert" |
 | 2026-11-11 | PRD v1.2 — Templater templates: use the Tomo variant when set up; else keep the template and tell the user to run Templater after the move | Owner chose both options |
 | 2026-11-11 | SDD ADR-10..12 confirmed: /inbox skips doc_type review by filename suffix " Review" (no extra Kado call); /note's deliver loop extracted into lib/staged_delivery.py; the model writes only proposals.json, scripts compute habits, growth and link differences | Owner confirmed the recommended options |
+| 2026-11-11 | Decomposition tier: Incremental | Classifier recommended Incremental (14 new components, 8 features, 59 criteria). Accepted. |
+| 2026-11-11 | Model tier: frontier | Classifier recommended frontier (novel_pattern=true: section marker line; high_risks=4; adr_count=12). Accepted with the cost sentence shown. |
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 
 ## Context

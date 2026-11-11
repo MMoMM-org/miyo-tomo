@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_schema_identity.py — the two instruction schemas stop sharing an $id (spec 035 T3.2).
 
 Both `tomo/schemas/instructions.schema.json` (Tomo's producer copy) and
 `tomo/schemas/hashi-instructions.schema.json` (the contract — a verbatim
 mirror of Hashi's live wire schema) declared the SAME `$id`
 (`https://miyo.tomo/schemas/instructions.schema.json`) with identical title
-and description, despite differing structurally (the contract carries a
-`replace_section` $def the producer copy lacks). That collision is the
-mechanical cause of a consumer diffing the wrong file and reporting drift
-that did not exist.
+and description, despite differing structurally (at the time the contract
+carried a `replace_section` $def the producer copy lacked; spec 045 T1.4
+copied that $def into the producer, and the distinct `$id`s stay because
+the two documents have different roles, not because of any one $def).
+That collision is the mechanical cause of a consumer diffing the wrong
+file and reporting drift that did not exist.
 
 ADR-6: the producer copy takes a distinct `$id`; the contract keeps the
 canonical one, because the contract is the document a consumer vendors.

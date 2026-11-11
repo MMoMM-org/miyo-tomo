@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tomo_lifecycle.py — Tests for the tomo_lifecycle state-machine module.
 
 Covers T1.1 (F-47 Phase 1): validate_transition, is_terminal, is_pending, and
@@ -152,13 +152,27 @@ def test_is_pending_edge_cases():
 def test_state_machine_has_all_doc_types():
     """STATE_MACHINE must include every Tomo-produced doc-type.
 
-    garden-audit (spec 030) is the sixth peer, alongside the original five.
+    garden-audit (spec 030) is the sixth peer, alongside the original five;
+    review (spec 045 ADR-10) is the seventh.
     """
     required = {
         "source", "suggestions", "suggestions-fan", "moc-proposal",
-        "instructions", "garden-audit",
+        "instructions", "garden-audit", "review",
     }
     assert required == set(STATE_MACHINE.keys())
+
+
+def test_review_lifecycle_matches_suggestions_shape():
+    """[spec 045 T1.4] review runs pending-approval → approved and nothing else:
+    None → pending-approval is the only initial assignment, approved is terminal,
+    and no transition leads back out of it."""
+    assert STATE_MACHINE["review"]["states"] == ["pending-approval", "approved"]
+    assert validate_transition("review", None, "pending-approval") is True
+    assert validate_transition("review", "pending-approval", "approved") is True
+    assert validate_transition("review", None, "approved") is False
+    assert validate_transition("review", "approved", "pending-approval") is False
+    assert is_terminal("review", "approved") is True
+    assert is_terminal("review", "pending-approval") is False
 
 
 def test_state_machine_entries_have_required_keys():

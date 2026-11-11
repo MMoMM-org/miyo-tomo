@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_hashi_instructions_schema.py — JSON Schema validation tests for hashi-instructions.schema.json.
 
 Covers T4.0 (XDD 024 Phase 4): insert_under_marker action $def.
 Also validates insert_under_marker against Tomo's producer schema (instructions.schema.json)
 to guard against drift between the two copies.
 
+T1.4 (spec 045 Phase 1): replace_section enters the producer schema (first Tomo
+emitter, ADR-3) — the former not-in-producer assertion is inverted, not deleted.
+
 Spec: docs/XDD/specs/024-tag-handler-framework/
+      docs/XDD/specs/045-weekly-monthly-review/
 Handoff contract: _outbox/for-hashi/2026-06-23_tomo-to-hashi_insert-under-marker-action.md
 """
 from __future__ import annotations
@@ -177,7 +181,8 @@ def test_existing_instructions_no_regression(schema):
 
 # ---------------------------------------------------------------------------
 # T1.3 (spec 025 Phase 1) — block anchor + replace_section in mirror
-# ADR-7: add 'block' to both wire schemas; mirror replace_section, no Tomo emitter.
+# ADR-7: add 'block' to both wire schemas; mirror replace_section, no Tomo emitter
+# (superseded for replace_section by spec 045 T1.4 — see below).
 # ---------------------------------------------------------------------------
 
 TOMO_PRODUCER_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
@@ -216,18 +221,61 @@ def test_replace_section_validates_in_mirror(schema):
     validate(instance=_make_instructions([action]), schema=schema)
 
 
-def test_replace_section_not_in_tomo_producer(tomo_producer_schema):
-    """replace_section action is NOT present in Tomo's producer schema (no emitter; ADR-7).
-    Validates our deliberate asymmetry: mirror has replace_section, producer does not."""
+def _make_replace_section(**overrides) -> dict:
+    """Return a minimal valid replace_section action with all required fields."""
+    base = {
+        "id": "I01",
+        "action": "replace_section",
+        "target_path": "Calendar/302 Weekly/2026-W13.md",
+        "anchor": {"type": "heading", "value": "Tomo Review"},
+        "content": "%% tomo-review 2026-W13 %%\n\n- Done this week: X\n",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_replace_section_present_in_tomo_producer(tomo_producer_schema, schema):
+    """replace_section IS present in Tomo's producer schema — inverted from the
+    spec 025 ADR-7 asymmetry test when spec 045 ADR-3 (/review rerun delivery)
+    became its first Tomo emitter. The $def is a verbatim copy of the contract's,
+    so the two definitions must be equal, not merely both present."""
     action_refs = {
         entry.get("$ref", "")[len("#/$defs/"):]
         for entry in tomo_producer_schema["properties"]["actions"]["items"]["oneOf"]
     }
-    assert "replace_section" not in action_refs, (
-        "replace_section should NOT be in Tomo's producer schema actions.items.oneOf — "
-        "there is no Tomo emitter (spec 025 ADR-7). If an emitter is added later, "
-        "remove this test and add replace_section to instructions.schema.json."
+    assert "replace_section" in action_refs, (
+        "replace_section must be in Tomo's producer schema actions.items.oneOf — "
+        "/review emits it for a rerun (spec 045 ADR-3)."
     )
+    assert tomo_producer_schema["$defs"]["replace_section"] == schema["$defs"]["replace_section"], (
+        "the producer's replace_section $def must be a verbatim copy of the contract's"
+    )
+
+
+def test_replace_section_validates_against_both_schemas(tomo_producer_schema, schema):
+    """[spec 045 T1.4] One instruction set carrying replace_section validates
+    against the producer schema AND the Hashi mirror — the set /review writes
+    is accepted on both sides of the wire."""
+    instance = _make_instructions([_make_replace_section()])
+    validate(instance=instance, schema=tomo_producer_schema)
+    validate(instance=instance, schema=schema)
+
+
+def test_replace_section_missing_content_fails_in_producer(tomo_producer_schema):
+    """[spec 045 T1.4] The producer copy enforces the contract's required set:
+    a replace_section without content is refused before it reaches the wire."""
+    action = _make_replace_section()
+    del action["content"]
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=tomo_producer_schema)
+
+
+def test_replace_section_rejects_unknown_property_in_producer(tomo_producer_schema):
+    """[spec 045 T1.4] additionalProperties:false carried over with the copy —
+    a placement key (valid on insert_under_marker, not here) is refused."""
+    action = _make_replace_section(placement="inside")
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=tomo_producer_schema)
 
 
 def test_anchor_block_type_in_hashi_schema(schema):

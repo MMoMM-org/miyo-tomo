@@ -1,4 +1,4 @@
-# version: 0.3.2
+# version: 0.4.0
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -746,12 +746,15 @@ class TestVendoredCopies:
         targeted parity assertions (`link_to_moc`, `move_note`, the tomo
         block's presence), so its full delta was never asserted either way.
 
-        Measured, it is three changes, and all three are standing
+        Measured, it was three changes, and all three were standing
         agreements rather than drift: the Tomo-owned `properties.tomo`
         block (miyo-tomo#74, handoff 2026-06-20) and the contract-only
-        `$defs/replace_section` definition (spec 035 T3.2). Both are
-        `SANCTIONED_ASYMMETRIES` entries, so what F6-AC3 requires — nothing
-        the consumer has not been told about — holds here too.
+        `$defs/replace_section` definition (spec 035 T3.2). Spec 045 ADR-3
+        gave `replace_section` its first Tomo emitter, so the producer copy
+        now carries the definition verbatim and that delta is gone; the
+        remaining two sit under the one `SANCTIONED_ASYMMETRIES` prefix, so
+        what F6-AC3 requires — nothing the consumer has not been told
+        about — holds here too.
 
         This wire is deliberately NOT part of the PR #134 release; the
         release handoff said so in as many words, and Hashi's reply singled
@@ -774,7 +777,6 @@ class TestVendoredCopies:
             f"has carried: {reportable}"
         )
         assert {(c["pointer"], c["kind"]) for c in sanctioned} == {
-            ("/$defs/replace_section", "node_removed"),
             ("/properties/tomo", "added_property"),
             ("/properties/tomo/properties/skipped_daily/items", "node_added"),
         }, (
@@ -793,7 +795,10 @@ class TestVendoredCopies:
         because there the report IS the answer to "does the consumer accept
         what we emit". And each prefix names a surface the consumer
         provably does not read; that claim is what a reviewer should
-        re-check before this set grows.
+        re-check before this set grows. `/$defs/replace_section` left the
+        set with spec 045 ADR-3: once Tomo emits the action and both copies
+        hold the definition, the prefix would hide a real divergence
+        instead of scoping the comparison.
         """
         assert set(SANCTIONED_ASYMMETRIES) == {"hashi-instructions.schema.json"}, (
             "a published wire gained a sanctioned prefix — on suggestions or "
@@ -802,7 +807,6 @@ class TestVendoredCopies:
         )
         assert SANCTIONED_ASYMMETRIES["hashi-instructions.schema.json"] == (
             "/properties/tomo",
-            "/$defs/replace_section",
         )
 
     def test_sanctioning_matches_on_a_segment_boundary(self):

@@ -364,6 +364,29 @@
         ]
       }
     },
+    "/$defs/replace_section": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "anchor": "object",
+        "applied": "boolean",
+        "content": "string",
+        "id": "string",
+        "target_path": "string"
+      },
+      "required": [
+        "action",
+        "anchor",
+        "content",
+        "id",
+        "target_path"
+      ],
+      "values": {
+        "action": [
+          "replace_section"
+        ]
+      }
+    },
     "/$defs/resolve_dead_link": {
       "closed": true,
       "properties": {

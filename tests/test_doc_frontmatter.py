@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_doc_frontmatter.py — Tests for the doc_frontmatter helper module.
 
 Covers T1.2 (F-47 Phase 1): build_tomo_block, parse_tomo_block,
@@ -7,8 +7,12 @@ SchemaValidationError, and the dual dev/prod validation mode (ADR-4).
 
 T1.2 (XDD-018 Phase 1): sources[] array schema extension — replaces source_* pattern.
 
+T1.4 (spec 045 Phase 1): the review doc_type (pending-approval → approved);
+the review_* keys are top-level frontmatter, the tomo: block stays closed.
+
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
       docs/XDD/specs/018-agent-architecture-cleanup/
+      docs/XDD/specs/045-weekly-monthly-review/
 AC:   AC-1.5 (schema validation gates every producer write),
       AC-7.2 (every producer write schema-validated)
 """
@@ -318,6 +322,62 @@ def test_rendered_note_rejects_foreign_state(monkeypatch):
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     with pytest.raises(SchemaValidationError):
         build_tomo_block("rendered-note", "applied", "r1")
+
+
+# ---------------------------------------------------------------------------
+# review doc_type — spec 045 ADR-10 (/review inbox document)
+# ---------------------------------------------------------------------------
+
+_TOMO_BLOCK_KEYS = {"doc_type", "state", "run_id", "updated_at"}
+
+
+@pytest.mark.parametrize("state", ["pending-approval", "approved"])
+def test_review_doc_type_validates_both_states(monkeypatch, state):
+    """[spec 045 T1.4] doc_type=review accepts exactly the suggestions-shaped
+    lifecycle: pending-approval and approved, under strict validation."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    block = build_tomo_block("review", state, "2026-11-11-120000-abc123")
+    assert block["doc_type"] == "review"
+    assert block["state"] == state
+
+
+@pytest.mark.parametrize(
+    "state", ["pending-accept", "accepted", "pending-apply", "applied", "pending-move", "captured"]
+)
+def test_review_rejects_foreign_states(monkeypatch, state):
+    """[spec 045 T1.4] Every state another doc_type owns is refused for review —
+    the oneOf branch, not the enum, is what pins the pair."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    with pytest.raises(SchemaValidationError):
+        build_tomo_block("review", state, "2026-11-11-120000-abc123")
+
+
+def test_review_block_holds_only_schema_keys(monkeypatch):
+    """[spec 045 T1.4] The review keys (review_period, review_kind, ...) are
+    top-level frontmatter, never members of the tomo: block. The block a
+    producer gets back is the four lifecycle keys and nothing else."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    block = build_tomo_block("review", "pending-approval", "2026-11-11-120000-abc123")
+    assert set(block) == _TOMO_BLOCK_KEYS
+
+
+def test_review_block_refuses_review_keys_inside_tomo(monkeypatch):
+    """[spec 045 T1.4] The schema keeps the block closed: a tomo: block that
+    smuggles review_period in is invalid, which is what forces the review
+    keys to the top level."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema = json.loads(
+        (Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    block = build_tomo_block("review", "pending-approval", "2026-11-11-120000-abc123")
+    jsonschema.validate({"tomo": block, "review_period": "2026-W13"}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"tomo": {**block, "review_period": "2026-W13"}}, schema)
 
 
 # ---------------------------------------------------------------------------

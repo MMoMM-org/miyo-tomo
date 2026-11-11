@@ -14,7 +14,7 @@
       "properties": {
         "doc_type": {
           "type": "string",
-          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions", "rendered-note", "garden-audit"],
+          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions", "rendered-note", "garden-audit", "review"],
           "description": "Type of Tomo-produced doc. Determines which state values are valid."
         },
         "state": {
@@ -99,6 +99,13 @@
           "properties": {
             "doc_type": {"const": "garden-audit"},
             "state": {"enum": ["pending-accept", "accepted"]}
+          }
+        },
+        {
+          "description": "review — /review inbox document '<period> Review.md' (spec 045 ADR-10); approved when its instruction set is written. The review_* keys live as top-level frontmatter, outside this block.",
+          "properties": {
+            "doc_type": {"const": "review"},
+            "state": {"enum": ["pending-approval", "approved"]}
           }
         }
       ]

@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """wire_snapshot_parity.py — The snapshot-vs-upstream REPORT for a vendored
 consumer copy (spec 035 T2.4, generalised for T4.2's three vendored copies).
 
@@ -55,11 +55,10 @@ SANCTIONED_ASYMMETRIES = {
         # their validator, so reporting it answers a question this
         # comparison is not asking.
         "/properties/tomo",
-        # The contract carries a `replace_section` definition the producer
-        # copy does not — the structural difference spec 035 T3.2 gave the
-        # two documents distinct `$id`s over. Theirs having a definition we
-        # never emit cannot make them reject anything of ours.
-        "/$defs/replace_section",
+        # `/$defs/replace_section` was the second entry until spec 045
+        # ADR-3: the producer copy now carries the definition (copied from
+        # the contract), so the prefix would hide a divergence, not scope
+        # the comparison.
     ),
 }
 

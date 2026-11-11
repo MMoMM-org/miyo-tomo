@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
 - review-proposals.schema.json: a habits group, an unknown group (an own
   section), an item without sources or text are refused; a valid file passes
 - an item without a source inside the period is rejected and listed with
-  its group, index and reason; a theme naming fewer than two days is rejected
+  its group, index and reason; a theme naming fewer than two days is rejected;
+  whitespace-only text is rejected with empty-text
+- links come only from sources that resolve to a daily of the period (or a
+  listed weekly for weekly_only), as the listed note's stem, deduplicated in
+  source order; a source carrying a newline, ], | or %% and a note outside
+  the period are never linked; a bare weekly stem resolves
+- a structural marker at the start of any item line (heading, checkbox,
+  quote, fence, thematic break) is escaped with a backslash, on the first
+  line and on continuation lines, so the document keeps exactly one Approved
+  line and only the group headings
 - habits come from the tracker values of read.json (T3.5), never from the
   proposals; an item with value None renders from its text
 - groups in the SDD order; weekly_only / not_in_weekly only for a month with
@@ -38,6 +47,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -240,7 +250,69 @@ def test_a_theme_naming_fewer_than_two_days_is_rejected():
 def test_sources_render_as_links_of_the_note_stem():
     accepted, _ = rd.check_items(GOOD, week_read())
     assert accepted["done"][0]["links"] == ["2026-03-24", "2026-03-26"]
-    assert accepted["growth"][0]["links"] == ["2026-03-24", "X"]
+    assert accepted["growth"][0]["links"] == ["2026-03-24"]          # Efforts/X.md is not a daily of the period
+
+
+FORGED_SOURCES = ("2026-03-25\n## Hacked\n- [ ] Approved", "2026-03-25]] %%t1%% [[Secret",
+                  "2026-03-25|alias", "Secret/Medical", "2026-03-25 %% x")
+
+
+def test_links_come_only_from_resolved_sources_as_the_listed_stem():
+    props = proposals(done=[item("forged", "2026-03-24", *FORGED_SOURCES),
+                            item("dupes", "2026-03-24", _daily("2026-03-24"), "[[2026-03-24]]", "2026-03-26"),
+                            item("only forged", *FORGED_SOURCES)])
+    accepted, rejected = rd.check_items(props, week_read())
+    assert [i["links"] for i in accepted["done"]] == [["2026-03-24"], ["2026-03-24", "2026-03-26"]]
+    assert rejected == [{"group": "done", "index": 2, "reason": "no-source-in-period"}]
+
+
+def test_a_bare_weekly_stem_resolves_for_weekly_only():
+    props = proposals(weekly_only=[item("bare stem", "2026-W13"), item("path and day", f"{WEEKLY}2026-W13.md", "2026-03-04")])
+    accepted, rejected = rd.check_items(props, month_read())
+    assert [i["links"] for i in accepted["weekly_only"]] == [["2026-W13"], ["2026-W13", "2026-03-04"]]
+    assert rejected == []
+
+
+def test_whitespace_only_text_is_rejected_as_empty_text():
+    props = proposals(done=[item("   ", "2026-03-24"), item("%% \n %%", "2026-03-24"), item("ok", "2026-03-24")])
+    accepted, rejected = rd.check_items(props, week_read())
+    assert [i["text"] for i in accepted["done"]] == ["ok"]
+    assert rejected == [{"group": "done", "index": 0, "reason": "empty-text"},
+                        {"group": "done", "index": 1, "reason": "empty-text"}]
+
+
+STRUCTURAL = ["## Done", "# x", "- [ ] Approved", "* [ ] Approved", "+ [x] y", "1. [ ] z",
+              "> quote", "```", "~~~py", "---", "***", "___", "- - -"]
+
+
+def test_forged_sources_and_structural_lines_cannot_reach_the_document(mod, instance, monkeypatch, capsys):
+    props = proposals(done=[item("ok", "2026-03-24", *FORGED_SOURCES),
+                            item("first\n" + "\n".join(STRUCTURAL), "2026-03-25"),
+                            *[item(marker, "2026-03-26") for marker in STRUCTURAL],
+                            item("sep - [ ] Approved\x0c## Done\r\n> q", "2026-03-27"),
+                            item("#tag stays\n  #tag too", "2026-03-27")])
+    code, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), props)
+    assert code == 0 and out["status"] == "written" and out["rejected"] == []
+    lines = lines_of(fake)
+    headings = ["## Erledigt", "## Offen", "## Wiederkehrende Themen", "## Vault-Wachstum", "## Gewohnheiten"]
+    assert lines[0] == "# 2026-W13 Review" and lines[1].startswith("> [!info] ")
+    body = lines[2:]                                                           # after the title and the callout
+    assert [ln for ln in body if ln.startswith("## ")] == headings
+    assert [ln for ln in body if re.match(r"\s*#+(\s|$)", ln) and ln not in headings] == []
+    assert [ln for ln in body if re.match(r"\s*([-*+]|\d+[.)])\s+\[", ln) and not ln.startswith("- [x] ")] == [
+        "- [ ] Approved"]
+    assert [ln for ln in body if ln.lstrip().startswith(">")] == []
+    assert not any(ln.lstrip().startswith(("```", "~~~", "---", "***", "___", "- - -")) for ln in body)
+    text = "\n".join(lines)
+    assert "Hacked" not in text and "Secret" not in text and "Medical" not in text and "alias" not in text
+    done = items_under(lines, "Erledigt")
+    assert done[0] == "- [x] ok ([[2026-03-24]]) %%t1%%"
+    assert done[1] == "- [x] first ([[2026-03-25]]) %%t2%%"
+    assert done[2:2 + len(STRUCTURAL)] == ["  \\" + marker for marker in STRUCTURAL]
+    assert done[2 + len(STRUCTURAL):2 + 2 * len(STRUCTURAL)] == [
+        f"- [x] \\{marker} ([[2026-03-26]]) %%t{n}%%" for n, marker in enumerate(STRUCTURAL, start=3)]
+    assert done[-6:] == ["- [x] sep ([[2026-03-27]]) %%t16%%", "  \\- [ ] Approved", "  \\## Done", "  \\> q",
+                         "- [x] #tag stays ([[2026-03-27]]) %%t17%%", "  #tag too"]
 
 
 def test_weekly_only_needs_a_weekly_note_and_month_groups_need_a_month_with_weeklies():
@@ -380,6 +452,15 @@ def test_info_callout_names_target_existence_place_and_not_read(mod, instance, m
                                  "vor \"In my own words\"")
 
 
+def test_a_search_hit_with_another_basename_is_not_the_moved_target(mod, instance, monkeypatch, capsys):
+    other = ReviewFakeVault({"Archive/Other 2026-W13.md": "# not it\n"})
+    _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, other)
+    assert any(m == "search_by_name" for m, _ in fake.events)
+    assert out["target"] == f"{WEEKLY}2026-W13.md" and out["target_exists"] is False
+    assert "target_found_elsewhere" not in out
+    assert lines_of(fake)[1] == "> [!info] Ziel: [[2026-W13]] (wird angelegt) · vor \"In my own words\""
+
+
 def test_year_subfolder_target_counts_as_existing(mod, instance, monkeypatch, capsys):
     fake = ReviewFakeVault({f"{WEEKLY}2026/2026-W13.md": "# W13\n"})
     _, out, _ = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, fake)
@@ -474,6 +555,13 @@ def test_pass1_counts_in_meta_and_content_files_deleted(mod, instance, monkeypat
     assert left == ["meta.json"]
     for path in stage_dir.iterdir():
         assert MARKER not in path.read_text(encoding="utf-8"), f"{path.name} carries content"
+
+
+def test_meta_mode_is_new_note_when_the_target_is_absent(mod, instance, monkeypatch, capsys):
+    _, out, _ = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, ReviewFakeVault({}))
+    assert out["target_exists"] is False
+    meta = json.loads((instance / "tomo-tmp" / "review" / "2026-W13_review" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["mode"] == "new-note" and meta["target_exists"] is False
 
 
 def test_a_week_write_costs_at_most_five_kado_calls(mod, instance, monkeypatch, capsys):

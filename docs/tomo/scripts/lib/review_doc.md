@@ -31,6 +31,60 @@ listing: the SDD rule names only dailies (and weekly notes for
 a listing, not a review observation. An open question for the owner is
 recorded in the task report.
 
+An item whose `text` is empty after cleaning (whitespace only, or nothing
+but `%%` marks) passes the schema's `minLength: 1` yet has nothing to
+render; it is rejected with `empty-text` instead of producing a bare
+checkbox line with links and an id.
+
+## WHY Links Come Only From Resolved Sources, Never From the Model's String
+
+The first version rendered every source string as `[[<basename>]]`. Two
+things went wrong with that. A source is a model string, and a string such
+as `x\n## Hacked\n- [ ] Approved` rendered as a link spanning three lines —
+a forged column-0 heading and a second Approved line that Pass 2 would
+read. And a source outside the period (`Secret/Medical`) was linked,
+unchecked, as long as one other source of the item was in the period, so
+the document could point at any note the model named.
+
+Now a link is made only from a source that **resolves**: to a daily of a
+day in the period, or (for `weekly_only`) to a weekly note the reader
+listed. The link text is the stem of the note `read.json` lists — a vault
+path the reader got from Kado — never the model's string. Resolved sources
+are deduplicated in source order; a source that does not resolve is dropped
+from the links silently (it still counts for nothing: the item needs at
+least one resolved source to be accepted, and that rule is unchanged). The
+model's string is used as a lookup key only, so the worst a bad source can
+do is not appear.
+
+## WHY a Structural Marker at the Start of an Item Line Is Escaped
+
+The document is Markdown that Pass 2 parses by line shape: `- [x]` /
+`- [ ]` lines are items, `## ` lines are group headings, `- [ ] Approved`
+is the gate. The model's `text` is split into lines and every line after
+the first is indented by two spaces — indentation alone neutralises
+nothing: `  - [ ] Approved`, `  ## Done`, an unclosed code fence, `  > x`
+and `  ---` all render as structure (or swallow the rest of the document,
+in the fence's case) and a parser that strips whitespace reads them as
+Tomo's lines.
+
+So every item line — the first one too — that starts (after optional
+spaces) with a heading (`#` followed by space, `#` or end of line), a
+checkbox bullet (`- [`, `* [`, `+ [`, `1. [`), a quote (`>`), a fence
+(``` or ~~~) or a thematic break (`---`, `***`, `___`, also spaced forms
+like `- - -`) gets a leading backslash. CommonMark and Obsidian render
+`\#`, `\-`, `\>`, `` \` ``, `\~`, `\*` and `\_` as the plain character, so
+the text stays readable and the line is no longer structure. Everything
+else in the text stays verbatim; `#tag` at a line start is a tag, not a
+heading, and is left alone. `\r` and every other line separator Python's
+`splitlines` knows (` `, `\x0c`, …) end a line, so a separator that
+is not `\n` cannot smuggle an unescaped second line past the check.
+
+The T3.7 parser unescapes nothing: it keeps the item text verbatim, backslash
+included, because the text is the user's editing surface and the escape is
+part of what they see. Phase 4's landing (writing the approved items into
+the weekly/monthly note) has its own escaping decision; this one is about
+the review document only.
+
 ## WHY Habits Never Come From `proposals.json`
 
 `review_habits` computes the habits (T3.5, ADR-12). A `habits` key in

@@ -36,13 +36,13 @@
           "text": {
             "type": "string",
             "minLength": 1,
-            "description": "The proposal in the review language; a second line becomes a continuation line of the item."
+            "description": "The proposal in the review language; a second line becomes a continuation line of the item. Whitespace-only text is rejected (empty-text). A line starting with a heading, checkbox, quote, fence or thematic-break marker is rendered escaped, never as structure."
           },
           "sources": {
             "type": "array",
             "minItems": 1,
             "items": {"type": "string", "minLength": 1},
-            "description": "Vault paths or stems of the notes the proposal rests on; at least one must be a daily of the period (a weekly note of the period for weekly_only)."
+            "description": "Vault paths or stems of the notes the proposal rests on, as read.json lists them; at least one must be a daily of the period (a weekly note of the period for weekly_only). Only sources that resolve to such a note are rendered as links; any other source is dropped from the links."
           }
         }
       }

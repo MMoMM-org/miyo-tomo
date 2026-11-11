@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.1.0
+# version: 0.2.0
 """The review document ``<period> Review.md`` (spec 045, T3.6, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -8,16 +8,23 @@ against ``tomo/schemas/review-proposals.schema.json``; ``period_of`` rebuilds
 the ``Period`` from ``read.json`` under the configured week rule;
 ``check_items`` applies the source rule (every item needs a daily of the
 period, a ``weekly_only`` item a weekly note the reader listed, a theme two
-distinct days; the month-only groups only for a month with weekly notes) and
-returns the accepted items per group with their link stems and the rejected
-ones with group, index and reason; ``render_document`` renders the
+distinct days, a text that is not empty; the month-only groups only for a
+month with weekly notes) and returns the accepted items per group with their
+links and the rejected ones with group, index and reason. A link is the stem
+of a note ``read.json`` lists that a source resolved to — a daily of the
+period or, for ``weekly_only``, a listed weekly — deduplicated in source
+order; a source that resolves to nothing is dropped from the links, and no
+model string is ever rendered as a link. ``render_document`` renders the
 frontmatter (a schema-valid ``tomo:`` block plus the top-level ``review_*``
 keys) and the body: title, info callout, ``- [ ] Approved``, one H2 per group
 from the de/en label table (English otherwise), Tomo items as
 ``- [x] <text> ([[stem]], …) %%t<n>%%`` with the id on the checkbox line and
 continuation lines indented by two spaces, a plain ``- …`` bullet for an
-empty group. Habits arrive rendered from ``review_habits`` and get an id like
-every Tomo item; no habits means no habits heading.
+empty group. Every item line that starts with a structural marker (heading,
+checkbox bullet, quote, fence, thematic break) is escaped with a leading
+backslash so the text cannot forge a line Pass 2 would read. Habits arrive
+rendered from ``review_habits`` and get an id like every Tomo item; no habits
+means no habits heading.
 
 No Kado, no model, no file I/O beyond the schema. Needs jsonschema and PyYAML.
 
@@ -27,6 +34,7 @@ from __future__ import annotations
 
 import json
 import posixpath
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -53,9 +61,14 @@ NO_SOURCE = "no-source-in-period"
 THEME_DAYS = "theme-needs-two-days"
 MONTH_ONLY = "month-only-group"
 NO_WEEKLY = "no-weekly-notes"
+EMPTY_TEXT = "empty-text"
 
 ID_MARK = "%%"
 _CONTINUATION = "  "
+_ESCAPE = "\\"
+# A line that would be structure in the document: heading, checkbox bullet, quote, fence, thematic break.
+_STRUCTURAL = re.compile(r"#+(?:\s|$)|>|```|~~~|---|\*\*\*|___|(?:[-*+]|\d+[.)])\s+\[")
+_RULE = re.compile(r"([-*_])(?:\s*\1){2,}\s*$")
 
 _LABELS: Dict[str, Dict[str, str]] = {
     "en": {
@@ -136,9 +149,9 @@ def _stem(path: str) -> str:
 
 @dataclass
 class Sources:
-    """What a source may point at: dailies by path and by stem (→ date), weekly notes by path and stem."""
+    """What a source may resolve to, keyed by the listed path and by its stem: a daily → (day, stem), a weekly → stem."""
 
-    dailies: Dict[str, date] = field(default_factory=dict)
+    dailies: Dict[str, Tuple[date, str]] = field(default_factory=dict)
     weeklies: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -150,8 +163,9 @@ class Sources:
             except ValueError:
                 continue
             for path in entry.get("dailies") or []:
-                sources.dailies[str(path)] = day
-                sources.dailies.setdefault(_stem(str(path)), day)
+                stem = _stem(str(path))
+                sources.dailies[str(path)] = (day, stem)
+                sources.dailies.setdefault(stem, (day, stem))
         for entry in read.get("weekly") or []:
             path = str(entry.get("path") or "")
             if path:
@@ -159,7 +173,7 @@ class Sources:
                 sources.weeklies.setdefault(_stem(path), _stem(path))
         return sources
 
-    def day_of(self, source: str) -> Optional[date]:
+    def daily_of(self, source: str) -> Optional[Tuple[date, str]]:
         return self.dailies.get(source.strip()) or self.dailies.get(_stem(source))
 
     def weekly_of(self, source: str) -> Optional[str]:
@@ -178,16 +192,31 @@ def _group_reason(group: str, kind: str, has_weeklies: bool) -> Optional[str]:
     return None if has_weeklies else NO_WEEKLY
 
 
-def _item_reason(group: str, item: dict, sources: Sources) -> Optional[str]:
-    raw = [str(s) for s in item.get("sources") or []]
-    if group == WEEKLY_ONLY:
-        return None if any(sources.weekly_of(s) for s in raw) else NO_SOURCE
-    days = {d for d in (sources.day_of(s) for s in raw) if d is not None}
-    if not days:
-        return NO_SOURCE
+def _check_item(group: str, item: dict, sources: Sources) -> Tuple[Optional[str], List[str]]:
+    """``(reason, links)``: the rejection reason or None, and the stems of the resolved sources in source order."""
+    if _clean(item.get("text")) == [""]:
+        return EMPTY_TEXT, []
+    days: set = set()
+    weeklies = 0
+    links: List[str] = []
+    for source in (str(s) for s in item.get("sources") or []):
+        daily = sources.daily_of(source)
+        weekly = sources.weekly_of(source) if group == WEEKLY_ONLY and daily is None else None
+        if daily is not None:
+            days.add(daily[0])
+            link = daily[1]
+        elif weekly is not None:
+            weeklies += 1
+            link = weekly
+        else:
+            continue
+        if link not in links:
+            links.append(link)
+    if (not weeklies) if group == WEEKLY_ONLY else (not days):
+        return NO_SOURCE, links
     if group == THEMES and len(days) < MIN_THEME_DAYS:
-        return THEME_DAYS
-    return None
+        return THEME_DAYS, links
+    return None, links
 
 
 def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], List[dict]]:
@@ -209,11 +238,11 @@ def check_items(proposals: dict, read: dict) -> Tuple[Dict[str, List[dict]], Lis
             continue
         accepted[group] = []
         for index, item in enumerate(items):
-            reason = _item_reason(group, item, sources)
+            reason, links = _check_item(group, item, sources)
             if reason is not None:
                 rejected.append(_rejection(group, index, reason))
                 continue
-            accepted[group].append({"text": str(item["text"]), "links": [_stem(str(s)) for s in item["sources"]]})
+            accepted[group].append({"text": str(item["text"]), "links": links})
     return accepted, rejected
 
 
@@ -237,14 +266,20 @@ class DocInput:
     groups: Dict[str, List[dict]]        # group -> [{text, links}], habits included
 
 
-def _clean(text: str) -> List[str]:
-    lines = [ln.strip() for ln in str(text).replace(ID_MARK, "").replace("\r", "").split("\n")]
+def _clean(text: Any) -> List[str]:
+    """The non-empty stripped lines of ``text`` without id marks, on every line separator; ``[""]`` for none."""
+    lines = [ln.strip() for ln in str(text).replace(ID_MARK, "").splitlines()]
     return [ln for ln in lines if ln] or [""]
 
 
+def _neutralised(line: str) -> str:
+    """``line`` with a leading backslash when it would be a heading, checkbox, quote, fence or thematic break."""
+    return _ESCAPE + line if _STRUCTURAL.match(line) or _RULE.match(line) else line
+
+
 def item_lines(text: str, links: Sequence[str], number: int) -> List[str]:
-    """The checkbox line with links and id, then the continuation lines."""
-    first, *rest = _clean(text)
+    """The checkbox line with links and id, then the continuation lines; no line of the text is structure."""
+    first, *rest = (_neutralised(ln) for ln in _clean(text))
     link_part = f" ({', '.join(f'[[{link}]]' for link in links)})" if links else ""
     return [f"- [x] {first}{link_part} {ID_MARK}t{number}{ID_MARK}", *(_CONTINUATION + ln for ln in rest)]
 

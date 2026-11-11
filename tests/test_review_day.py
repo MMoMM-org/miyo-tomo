@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_day.py — Behavioural tests for lib.review_day and the markdown
 layer it applies, lib.review_md (spec 045 T3.2; PRD F3-AC1, F3-AC2, F3-AC3,
 F3-AC4, F3-AC8; SDD "same-day reading of one daily").
@@ -8,7 +8,11 @@ Covers one day's reading:
 - the quoth embed under the daily-changing `## [[DP-…|Dayplanner]]` heading is
   collected and read; tomorrow's planner link is ignored; the daily's own name
   is never re-read, even when the daily links itself
-- a day token matches on digit boundaries: `6.3.2026` is not in `16.3.2026`
+- a day token matches on digit boundaries: `6.3.2026` is not in `16.3.2026`;
+  a navigation line with a bare other date stays; with a year-less `D.M`
+  format only the token decides whether a link target is dated
+- an other-day section of a linked note ends at a thematic break; the
+  own-day prose behind the rule survives
 - configured sections are kept with their subsections; "On This Day" is
   skipped and its embed not collected
 - dataview/dataviewjs blocks, inline `= …` queries and quoth/dynbedded blocks
@@ -281,15 +285,34 @@ def test_a_day_token_matches_on_digit_boundaries_only():
 
 
 def test_a_navigation_line_recognises_the_day_token_on_digit_boundaries():
-    """In a linked note, `[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]` is navigation;
-    `[[Plan 16.3.2026]] has the notes` is not (the token is inside another number)."""
+    """In a linked note, `[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]` is navigation: the
+    bare date is the day's own token. `[[Plan 5.3.2026]] <== 16.3.2026 ==> [[Plan 7.3.2026]]` is
+    not: the bare `16.3.2026` is another date, so the line stays. `[[Plan 16.3.2026]] has the
+    notes` stays for its words."""
     settings = dict(SETTINGS, sections=["Daily Log"], date_format="D.M.YYYY")
-    note = "# Plan\n[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]\n[[Plan 16.3.2026]] has the notes\n- walk\n"
+    note = ("# Plan\n[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]\n"
+            "[[Plan 5.3.2026]] <== 16.3.2026 ==> [[Plan 7.3.2026]]\n"
+            "[[Plan 16.3.2026]] has the notes\n- walk\n")
     entry, _ = read(daily="## Daily Log\n- see [[Plan 6.3.2026]]\n", settings=settings,
                     notes={"Plan 6.3.2026": note}, day=date(2026, 3, 6), path="Calendar/6.3.2026.md")
     text = entry["linked"][0]["text"]
-    assert "Plan 5.3.2026" not in text and "Plan 7.3.2026" not in text
+    assert "<== 6.3.2026 ==>" not in text
+    assert "[[Plan 5.3.2026]] <== 16.3.2026 ==> [[Plan 7.3.2026]]" in text
     assert "[[Plan 16.3.2026]] has the notes" in text
+    assert "- walk" in text
+
+
+def test_a_year_less_day_token_decides_a_navigation_line_on_digit_boundaries():
+    """With `D.M` no target carries a year, so only the day token says whether a link is dated:
+    `[[16.3]] | [[26.3]]` is not navigation for day 6 (`6.3` is inside both numbers) and stays;
+    `[[6.3|Today]]` carries the token and goes."""
+    settings = dict(SETTINGS, sections=["Daily Log"], date_format="D.M")
+    note = "# Plan\n[[6.3|Today]]\n[[16.3]] | [[26.3]]\n- walk\n"
+    entry, _ = read(daily="## Daily Log\n- see [[Plan 6.3]]\n", settings=settings,
+                    notes={"Plan 6.3": note}, day=date(2026, 3, 6), path="Calendar/6.3.md")
+    text = entry["linked"][0]["text"]
+    assert "[[16.3]] | [[26.3]]" in text
+    assert "[[6.3|Today]]" not in text
     assert "- walk" in text
 
 
@@ -496,6 +519,19 @@ def test_a_line_linking_an_undated_note_stays_in_a_linked_note():
     assert "[[Assessment]]" in text
     assert "DP-2026-03-25" not in text and "DP-2026-03-27" not in text
     assert "- walk" in text
+
+
+def test_an_other_day_section_in_a_linked_note_ends_at_a_thematic_break():
+    """`## 2026-03-25` runs to the end of the note by heading level alone; the `---` after it cuts
+    the other-day section, so the own-day prose behind the rule survives and only the section goes."""
+    note = "# Plan\n## 2026-03-25\n- yesterday's line\n\n---\nown-day prose after the rule\n- walk\n"
+    daily = "## Daily Log\n- see [[Plan-2026-03-26]]\n"
+    entry, _ = read(daily=daily, notes={"Plan-2026-03-26": note})
+    text = entry["linked"][0]["text"]
+    assert "own-day prose after the rule" in text
+    assert "- walk" in text
+    assert "2026-03-25" not in text and "yesterday's line" not in text
+    assert "---" not in text
 
 
 def test_linked_note_fields_are_not_parsed_as_the_days_fields():

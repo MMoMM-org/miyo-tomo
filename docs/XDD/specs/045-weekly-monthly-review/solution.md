@@ -692,13 +692,17 @@ ENTITY: ReviewDoc (NEW) — the inbox document "<period-name> Review.md"
         continuation lines indented by 2 spaces
 
 ENTITY: ApprovedReview (NEW) — parse result: ordered groups → kept item texts, each with origin and id
+  RULE: in-process only — never written to a file; Phase 4 reads the document fresh through Kado and parses
+        it at preview and deliver time, so it always lands what the document holds now
 
 ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
   FIELDS: stem, period, kind, doc_path, target, mode, generated, pass1_counts {group: n},
+          pass1_links {t<n>: [link stem]} (the source-link stems of each Tomo item, dates and note stems only),
           steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn
+  RULE: nothing text-derived (no digest of item text — templated lines are recoverable by enumeration)
 ```
 
-**Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its text differs from Pass 1's, kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
+**Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its source links differ from Pass 1's (`pass1_links`; a retyped text that keeps its links reads as unedited, an accepted limit), kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
 
 **What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. The parser warns on each; the later Hashi editor spec takes them over.
 

@@ -1,5 +1,5 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.2.0
+# version: 0.3.0
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
@@ -8,15 +8,17 @@ daily"): same-day links collected from the whole body outside
 ``skip_sections`` and read once through ``read_note``; the configured
 ``sections`` kept with their subsections, or the whole body under ``text``
 when no configured heading is found; query and embed fences and inline
-queries dropped, never executed; a same-day note without its embeds,
-other-day sections, METADATA callout and navigation-only lines; raw
-``Name:: v`` fields, tasks with their ✅ date, the
+queries dropped, never executed; a thematic break and the navigation block
+behind it dropped, the words after a break kept; a same-day note without
+its embeds, other-day sections, METADATA callout and navigation-only
+lines; raw ``Name:: v`` fields, tasks with their ✅ date, the
 ``max_chars_per_day`` cap on a section boundary, ``has_content`` beyond the
 template skeleton. The yesterday-named fields go to ``previous_day_fields``;
 ``attribute_yesterday`` moves them onto the entry dated D-1 and
 ``yesterday_fields`` reads only those of one text. ``task_note_tasks`` and
 ``done_in_period`` are the period-level task rules; ``day_settings`` builds
-the settings dict. No Kado, no model, no file I/O.
+the settings dict. The markdown mechanics are ``lib/review_md.py``'s.
+No Kado, no model, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_day.md
 """
@@ -29,35 +31,27 @@ from datetime import date, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from lib.review_config import DEFAULT_MAX_CHARS, ReviewSetup
+from lib.review_md import (HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE, RULE_RE, YEAR_RE, block_text,
+                           body, cleaned, fence_state, has_token, headings, is_navigation, metadata_mask,
+                           ranges, trailing_navigation)
 from lib.vault_config_edit import get_path
 
 DEFAULT_DATE_FORMAT = "YYYY-MM-DD"
 LINKED_MISSING = "linked-missing"
 OPEN_TODAY = "open today"
 TEXT_SECTION = "text"
-QUERY_FENCES = ("dataview", "dataviewjs")
-EMBED_FENCES = ("quoth", "dynbedded")
 KIND_MARKS = (("planner", ("planner", "dp-")), ("journal", ("journal", "5year", "5j-")))
 
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
-_FENCE_RE = re.compile(r"^\s*(?:>\s*)*(`{3,}|~{3,})\s*([\w-]*)")
-_LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 _EMBED_LINE_RE = re.compile(r"^\s*(?:>\s*)*!\[\[")
-_INLINE_QUERY_RE = re.compile(r"`\$?=[^`]*`")
 _FIELD_RE = re.compile(r"^[\s>*+-]*(\*\*)?([A-Za-z][\w .&/-]*?)(?(1)\*\*)::(?!:)\s*(.*?)\s*$")
 _TRAILING_LINK_RE = re.compile(r"\s*(?:\[\[[^\]]*\]\]|\[[^\]]*\]\([^)]*\))\s*$")
 _TASK_RE = re.compile(r"^\s*(?:>\s*)*[-*+]\s+\[([ xX])\]\s+(.*?)\s*$")
 _DONE_RE = re.compile(r"\s*✅\s*(\d{4}-\d{2}-\d{2})")
-_ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
-_YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
-_PLACEHOLDER_RES = (re.compile(r"<%.*?%>", re.DOTALL), re.compile(r"`INPUT\[[^`]*\]`"), _INLINE_QUERY_RE)
-_RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
+_TEMPLATER_RE = re.compile(r"<%.*?%>", re.DOTALL)
+_INPUT_RE = re.compile(r"`INPUT\[[^`]*\]`")
+_PLACEHOLDER_RES = (_TEMPLATER_RE, _INPUT_RE, INLINE_QUERY_RE)
 _DAY_TOKEN_RE = re.compile(r"\[([^\]]*)\]|YYYY|YY|MM|M|DD|D")
-_QUOTE_RE = re.compile(r"^(?:>\s*)+")
-_METADATA_RE = re.compile(r"^(?:>\s*)+\[!metadata\]", re.IGNORECASE)
-_NAV_SEP_RE = re.compile(r"<==|==>|<=|=>|<-|->|[|·•\-–—=<>*_#\s]")
 
-Heading = Tuple[int, int, str]       # (line index, level, text)
 ReadNote = Callable[[str], Optional[str]]
 
 
@@ -91,101 +85,7 @@ def render_day(day: date, fmt: str) -> str:
     return _DAY_TOKEN_RE.sub(lambda m: m.group(1) if m.group(1) is not None else values[m.group(0)], fmt)
 
 
-# --- markdown structure -----------------------------------------------------------------
-
-def _body(text: str) -> Tuple[str, List[str]]:
-    """``(frontmatter text, body lines)``; the frontmatter is empty when there is none."""
-    lines = text.splitlines()
-    if lines and lines[0].strip() == "---":
-        for i in range(1, len(lines)):
-            if lines[i].strip() == "---":
-                return "\n".join(lines[1:i]), lines[i + 1:]
-    return "", lines
-
-
-def _fence_state(fence: Optional[str], line: str) -> Tuple[Optional[str], Optional[str]]:
-    """``(fence after this line, info string when this line opens one)``."""
-    opener = _FENCE_RE.match(line)
-    if not opener:
-        return fence, None
-    mark = opener.group(1)[0]
-    if fence is None:
-        return mark, opener.group(2).lower()
-    return (None if mark == fence else fence), None
-
-
-def _headings(lines: List[str]) -> Tuple[List[Heading], List[int]]:
-    """``(headings, thematic-break line indices)`` outside code fences."""
-    found: List[Heading] = []
-    rules: List[int] = []
-    fence: Optional[str] = None
-    for i, line in enumerate(lines):
-        before = fence
-        fence, _ = _fence_state(fence, line)
-        if before is not None or fence is not None:
-            continue
-        match = _HEADING_RE.match(line)
-        if match:
-            found.append((i, len(match.group(1)), match.group(2).strip()))
-        elif _RULE_RE.match(line.strip()):
-            rules.append(i)
-    return found, rules
-
-
-def _section_end(headings: List[Heading], rules: List[int], index: int, n_lines: int) -> int:
-    """First line after the section of ``headings[index]``: the next heading of its level or higher, or a rule."""
-    start, level, _ = headings[index]
-    end = n_lines
-    for other, lvl, _ in headings[index + 1:]:
-        if lvl <= level:
-            end = other
-            break
-    return min([end] + [r for r in rules if start < r < end])
-
-
-def _ranges(lines: List[str], structure: Tuple[List[Heading], List[int]],
-            match: Callable[[str], bool]) -> List[Tuple[int, int, str]]:
-    """``(start, end, heading)`` of every section whose heading ``match``es, in document order."""
-    headings, rules = structure
-    return [(start + 1, _section_end(headings, rules, i, len(lines)), text)
-            for i, (start, _, text) in enumerate(headings) if match(text)]
-
-
-def _after_rule(structure: Tuple[List[Heading], List[int]], n_lines: int) -> List[bool]:
-    """Per line: lies after a thematic break and before the next heading (belongs to no section)."""
-    headings, rules = structure
-    out = [False] * n_lines
-    for rule in rules:
-        end = next((start for start, _, _ in headings if start > rule), n_lines)
-        for i in range(rule, end):
-            out[i] = True
-    return out
-
-
-def _cleaned(lines: Iterable[str]) -> List[str]:
-    """Without query and embed fences and inline queries; other fences stay."""
-    out: List[str] = []
-    fence: Optional[str] = None
-    dropping = False
-    for line in lines:
-        before = fence
-        fence, info = _fence_state(fence, line)
-        if before is None and fence is not None:
-            dropping = info in QUERY_FENCES or info in EMBED_FENCES
-            if dropping:
-                continue
-        elif before is not None and fence is None and dropping:
-            dropping = False
-            continue
-        if dropping:
-            continue
-        out.append(_INLINE_QUERY_RE.sub("", line))
-    return out
-
-
-def _text(lines: List[str]) -> str:
-    return "\n".join(lines).strip("\n")
-
+# --- links, fields, tasks, content --------------------------------------------------------
 
 def _target(raw: str) -> str:
     name = raw.strip().replace("\\", "/")
@@ -197,14 +97,12 @@ def _links(lines: Iterable[str]) -> List[str]:
     """Wiki-link and embed targets, once each, in order of first appearance."""
     out: List[str] = []
     for line in lines:
-        for raw in _LINK_RE.findall(line):
+        for raw in LINK_RE.findall(line):
             target = _target(raw)
             if target and target not in out:
                 out.append(target)
     return out
 
-
-# --- fields, tasks, content ---------------------------------------------------------------
 
 def _fields(lines: Iterable[str]) -> Dict[str, str]:
     """``Name:: value`` and ``**Name**:: value`` with a value; a trailing link is cut, a meta-bind input is no value."""
@@ -214,7 +112,7 @@ def _fields(lines: Iterable[str]) -> Dict[str, str]:
         if not match:
             continue
         name, value = match.group(2).strip(), match.group(3)
-        value = _PLACEHOLDER_RES[1].sub("", value).strip()
+        value = _INPUT_RE.sub("", value).strip()
         while True:
             cut = _TRAILING_LINK_RE.sub("", value)
             if cut == value:
@@ -242,7 +140,7 @@ def _tasks(lines: Iterable[str], source: str) -> List[dict]:
 
 def _is_content(line: str) -> bool:
     s = re.sub(r"^(?:>\s*)+", "", line.strip())
-    if not s or s.startswith("[!") or s.startswith("<") or _RULE_RE.match(s) or _HEADING_RE.match(s):
+    if not s or s.startswith("[!") or s.startswith("<") or RULE_RE.match(s) or HEADING_RE.match(s):
         return False
     for placeholder in _PLACEHOLDER_RES:
         s = placeholder.sub("", s)
@@ -256,7 +154,7 @@ def _has_content(text: str) -> bool:
     fence: Optional[str] = None
     for line in text.splitlines():
         before = fence
-        fence, _ = _fence_state(fence, line)
+        fence, _ = fence_state(fence, line)
         if before is None and fence is None and _is_content(line):
             return True
     return False
@@ -266,52 +164,29 @@ def _has_content(text: str) -> bool:
 
 def _names_other_day(heading: str, day: date) -> bool:
     iso = day.isoformat()
-    if any(found != iso for found in _ISO_DATE_RE.findall(heading)):
+    if any(found != iso for found in ISO_DATE_RE.findall(heading)):
         return True
-    without_dates = _ISO_DATE_RE.sub("", heading)
-    return any(found != str(day.year) for found in _YEAR_RE.findall(without_dates))
-
-
-def _is_navigation(line: str, day: date, token: str) -> bool:
-    """Only wiki links to dated notes, arrows, separators and the day's own date on the line."""
-    s = _QUOTE_RE.sub("", line.strip())
-    targets = _LINK_RE.findall(s)
-    if not targets:
-        return False
-    rest = _NAV_SEP_RE.sub("", _LINK_RE.sub("", s).replace(day.isoformat(), "").replace(token, ""))
-    if rest:
-        return False
-    return all(_ISO_DATE_RE.search(t) or _YEAR_RE.search(t) or token in t for t in targets)
-
-
-def _metadata_mask(lines: Iterable[str]) -> List[bool]:
-    """Per line: inside a ``> [!METADATA]`` callout block (the quoted lines from its title on)."""
-    out: List[bool] = []
-    inside = False
-    for line in lines:
-        quoted = line.lstrip().startswith(">")
-        inside = quoted and (inside or _METADATA_RE.match(line.lstrip()) is not None)
-        out.append(inside)
-    return out
+    without_dates = ISO_DATE_RE.sub("", heading)
+    return any(found != str(day.year) for found in YEAR_RE.findall(without_dates))
 
 
 def _linked_text(text: str, day: date, token: str) -> str:
-    """The same-day note without embeds, queries, METADATA callouts, navigation-only lines and
-    the sections that name another date or year."""
-    _, lines = _body(text)
-    structure = _headings(lines)
-    dropped = [False] * len(lines)
-    for start, end, _ in _ranges(lines, structure, lambda h: _names_other_day(h, day)):
+    """The same-day note without embeds, queries, METADATA callouts, navigation-only lines,
+    thematic breaks with their trailing navigation and the sections that name another date or year."""
+    _, lines = body(text)
+    structure = headings(lines)
+    dropped = trailing_navigation(lines, structure, day, token)
+    for start, end, _ in ranges(lines, structure, lambda h: _names_other_day(h, day), cut_at_rule=True):
         for i in range(start - 1, end):
             dropped[i] = True
-    metadata = _metadata_mask(lines)
+    metadata = metadata_mask(lines)
     kept = [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
-            and not _EMBED_LINE_RE.match(line) and not _is_navigation(line, day, token)]
-    return _text(_cleaned(kept))
+            and not _EMBED_LINE_RE.match(line) and not is_navigation(line, day, token)]
+    return block_text(cleaned(kept))
 
 
 def _kind(target: str, text: str) -> str:
-    haystack = (target + "\n" + _body(text)[0]).lower()
+    haystack = (target + "\n" + body(text)[0]).lower()
     for kind, marks in KIND_MARKS:
         if any(mark in haystack for mark in marks):
             return kind
@@ -333,28 +208,27 @@ def _parse_daily(text: str, settings: dict) -> Tuple[Dict[str, str], List[str], 
     """``(kept sections {heading: text}, links outside skipped sections, links of the kept text)``;
     the whole body under ``TEXT_SECTION`` when no configured heading is found."""
     sections, skip, _, _, _, _ = _settings(settings)
-    _, lines = _body(text)
-    structure = _headings(lines)
-    skipped = [False] * len(lines)
-    for start, end, _ in _ranges(lines, structure, lambda h: any(h.startswith(p) for p in skip)):
+    _, lines = body(text)
+    structure = headings(lines)
+    dropped = trailing_navigation(lines, structure)
+    for start, end, _ in ranges(lines, structure, lambda h: any(h.startswith(p) for p in skip), cut_at_rule=True):
         for i in range(start - 1, end):
-            skipped[i] = True
+            dropped[i] = True
     kept: Dict[str, str] = {}
     kept_lines: List[str] = []
     for name in sections:
         parts: List[str] = []
-        for start, end, _ in _ranges(lines, structure, lambda h, n=name: h == n):
-            block = [line for i, line in enumerate(lines[start:end], start) if not skipped[i]]
-            parts.extend(_cleaned(block))
+        for start, end, _ in ranges(lines, structure, lambda h, n=name: h == n):
+            block = [line for i, line in enumerate(lines[start:end], start) if not dropped[i]]
+            parts.extend(cleaned(block))
             kept_lines.extend(block)
         if parts:
-            kept[name] = _text(parts)
+            kept[name] = block_text(parts)
     if not any(heading in sections for _, _, heading in structure[0]):
-        orphan = _after_rule(structure, len(lines))
-        kept_lines = [line for i, line in enumerate(lines) if not skipped[i] and not orphan[i]]
+        kept_lines = [line for i, line in enumerate(lines) if not dropped[i]]
         if any(line.strip() for line in kept_lines):
-            kept[TEXT_SECTION] = _text(_cleaned(kept_lines))
-    body_links = _links(line for i, line in enumerate(lines) if not skipped[i])
+            kept[TEXT_SECTION] = block_text(cleaned(kept_lines))
+    body_links = _links(line for i, line in enumerate(lines) if not dropped[i])
     return kept, body_links, _links(kept_lines)
 
 
@@ -378,7 +252,8 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
     targets: List[str] = []
     for _, body_links, _ in parsed:
         for target in body_links:
-            if token in target and target not in own and target not in task_stems and target not in targets:
+            if (has_token(target, token) and target not in own and target not in task_stems
+                    and target not in targets):
                 targets.append(target)
     problems: List[dict] = []
     linked: List[dict] = []
@@ -398,7 +273,7 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
         if total + len(text) > max_chars:
             partly = True
             if not kept_sections and not kept_linked and kind == "section":
-                kept_sections[name], hard_cut = text[:max_chars], True
+                kept_sections[name], hard_cut = text[:max_chars].rstrip(), True
             break
         total += len(text)
         if kind == "section":
@@ -440,7 +315,7 @@ def yesterday_fields(text: str, settings: dict) -> Dict[str, str]:
     """Only the ``yesterday_fields`` of one daily text (the daily after the period)."""
     yesterday = _settings(settings)[5]
     kept = _parse_daily(text, settings)[0]
-    fields = _fields(line for body in kept.values() for line in body.splitlines())
+    fields = _fields(line for body_text in kept.values() for line in body_text.splitlines())
     return {k: v for k, v in fields.items() if k in yesterday}
 
 
@@ -474,8 +349,8 @@ def _as_date(value: Any) -> Optional[date]:
 
 def task_note_tasks(path: str, text: str) -> List[dict]:
     """Every task of a living task note; open ones labelled ``open today``."""
-    _, lines = _body(text)
-    tasks = _tasks(_cleaned(lines), path)
+    _, lines = body(text)
+    tasks = _tasks(cleaned(lines), path)
     for task in tasks:
         if not task["done"]:
             task["label"] = OPEN_TODAY

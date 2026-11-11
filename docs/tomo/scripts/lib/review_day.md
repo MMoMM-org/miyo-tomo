@@ -8,7 +8,11 @@
 > tasks, the same-day linked notes, the link targets, the problems — plus
 > the two helpers that move `yesterday_fields` onto the day they describe.
 > No Kado, no model, no file I/O: every note text comes in through the
-> arguments or the injected `read_note` callable.
+> arguments or the injected `read_note` callable. The markdown mechanics it
+> applies — body and fences, section spans, thematic breaks and the
+> navigation block behind them, query fences, navigation lines, the exact
+> day-token test — live in `lib/review_md.py` (WHY in `review_md.md`); this
+> module holds the settings-driven decisions.
 
 ## WHY the Reader Takes Texts and a Callable, Not a Client
 
@@ -56,10 +60,15 @@ text): "On This Day... last year - Wednesday" embeds `![[2025-03-26#Daily
 Log]]`, last year's log, and collecting that link would put another year
 into the week.
 
-A target is *same-day* when its name contains the day in `date_format`:
+A target is *same-day* when its name contains the day in `date_format` on
+digit boundaries (`review_md.has_token`; a substring test read the 16th's
+planner on the 6th under `D.M.YYYY`, WHY in `review_md.md`):
 `DP-2026-03-26` and `5J-2026-03-26` are read, `DP-2026-03-27` in the
 `DayPlanner::` field is ignored, and the daily's own name (`2026-03-26`) is
-never re-read. A target whose name matches one of `task_notes` is skipped
+never re-read even when the daily links itself (the Today link of a
+navigation callout, a self-reference in the log) — reading it would feed
+the daily to the model twice and, with the planner's heading rule, drop
+half of it as another day's. A target whose name matches one of `task_notes` is skipped
 here even if it carried the date: a living task note is read once for the
 period by the caller (`task_note_tasks`), not once per day. Anything else is
 ignored (SDD step 1: "anything else is ignored").
@@ -74,22 +83,30 @@ planner; one hop only).
 ## WHY a Section Spans Its Subsections
 
 A kept section runs from its heading to the next heading of the same or a
-higher level, so "Habit" carries its "### Yesterday" and "### Today"
-subsections and their fields. A skipped section is cut the same way. Lines
-inside a code fence are never headings (the `quoth` block has `path:` lines,
-not `#` lines, but a `dataviewjs` block may print `#`). Heading text is
-matched exactly as the setup wrote it (the setup wizard copies heading
-texts; `skip_sections` is a prefix match because the owner's skip heading
-ends in the weekday name).
+higher level (`review_md.ranges`), so "Habit" carries its "### Yesterday"
+and "### Today" subsections and their fields. Heading text is matched
+exactly as the setup wrote it (the setup wizard copies heading texts;
+`skip_sections` is a prefix match because the owner's skip heading ends in
+the weekday name).
 
-A thematic break (`---` on its own line, outside a fence) closes a section
-too, although markdown does not say so: the owner's daily ends with `---`
-and a `[!METADATA]` callout of navigation links (week, month, quarter,
-year, yesterday), and by the heading rule alone those lines belong to
-"End of the Day" — the last configured section — and their links would
-reach `dailies_not_in_weekly` as "things the day held". The first run on
-the real structure showed exactly that leak. The lines after a break and
-before the next heading belong to no section.
+A thematic break (`---` on its own line, outside a fence) does **not**
+close a kept section: F3-AC4's plain-vault user writes `---` as a
+separator inside the day, and the words after it are still the day's. What
+is dropped is the rule line and the *trailing navigation block* behind it
+— the owner's daily ends with `---` and a `[!METADATA]` callout of
+navigation links (week, month, quarter, year, yesterday), which by the
+heading rule alone belonged to "End of the Day" and leaked its links into
+`dailies_not_in_weekly` as "things the day held". The block rule
+(`review_md.trailing_navigation`, WHY there) drops exactly that callout,
+a callout of bare links or navigation-only lines, and keeps the first
+other line and everything after it. The earlier version closed the
+section at the rule, which stopped the leak and lost every plain-vault
+line after a separator; the coordinator checked the real dailies — after
+a `---` there is always a heading or the METADATA callout, never prose —
+so the narrow rule covers both personas. A *skipped* section, by contrast,
+is cut at a rule (`cut_at_rule=True`): swallowing the day's words into a
+skip is silent loss, showing one extra navigation line is not (WHY
+"a break does end a dropped section" in `review_md.md`).
 
 ## WHY a Daily Without a Configured Section Is Read Whole, Under `text`
 
@@ -107,10 +124,12 @@ tasks and links are then taken from that text as from any kept section.
 
 The fallback keeps the other reading rules: a `skip_sections` heading
 inside the daily is still excluded with its body (it is other-day content
-wherever it stands), query and embed fences and inline queries are still
-dropped, and the thematic-break rule still applies — lines after a `---`
-and before the next heading belong to no section, so a trailing
-navigation block is not read as the day's words. When one configured
+wherever it stands, cut at a `---` like every skip), query and embed
+fences and inline queries are still dropped, and the trailing-block rule
+still applies — the `---` and the navigation block behind it (a
+`[[2026-03-25]] | [[2026-03-27]]` footer, a METADATA callout) are not read
+as the day's words, while prose after a `---` is: `Slept.`, a rule, `more
+text` reads as both lines. When one configured
 section *is* found, there is no fallback: the rest of the daily stays
 dropped as configured, even when that one section is empty — a skeleton
 daily is still a skeleton.
@@ -118,14 +137,11 @@ daily is still a skeleton.
 ## WHY Dataview, Inline Queries and Embed Blocks Are Dropped
 
 F3-AC2: the content comes from the embedded note itself, never from a
-plugin's rendering. A `dataview`/`dataviewjs` fence is a query, not a
-record; an inline `` `=this.yesterday.to-improve` `` or `` `$=…` `` is the
-same thing one line long; a `quoth` or `dynbedded` fence is an embed whose
-target was already collected in step 1 and is read as a note of its own.
-All four are removed from the kept text and are never executed. Other fences
-(a `calendar-nav` block, a `meta-bind-button`) stay as text — they are
-skeleton for the content test (next section) and the model is told nothing
-about them.
+plugin's rendering. `review_md.cleaned` removes `dataview`/`dataviewjs`
+fences, inline `` `=…` ``/`` `$=…` `` queries and `quoth`/`dynbedded`
+embed fences from every kept text (the embed targets were collected in
+step 1 and are read as notes of their own); nothing is executed. WHY and
+what stays in `review_md.md`.
 
 ## WHY a Linked Note Drops Sections That Name Another Date or Year
 
@@ -142,15 +158,14 @@ and the question of the day, not tracker values.
 Two more things in a same-day note are navigation, not the day's words,
 and are dropped from `linked[].text`: a `> [!METADATA]` callout (the whole
 callout block — the journal's holds the question of the day and the
-planner's its links) and a navigation-only line. A line is navigation-only
-when nothing but wiki links to dated notes remains once the arrows and
-separators (`<==`, `==>`, `->`, `|`, `·`, dashes) and the day's own date
-are removed — the journal's `[[5J-2026-03-25]] <== 2026-03-26 ==>
-[[5J-2026-03-27]]` line, the planner's yesterday/tomorrow header. Without
-this rule yesterday's and tomorrow's note names reached the model as
-content of the day and the review could name a day outside the period
-from them. A line that links an undated note (`[[Assessment]]`) is a
-reference the user wrote and stays.
+planner's its links) and a navigation-only line (`review_md.is_navigation`,
+called here with the day and its token so the day's own date on the line
+does not count as text). Without this rule yesterday's and tomorrow's note
+names reached the model as content of the day and the review could name a
+day outside the period from them. The other-day sections are cut at a
+thematic break like a skipped section of the daily, and the trailing-block
+rule runs here too, so a linked note's `---` footer is read like the
+daily's. What makes a line navigation is `review_md.md`'s.
 
 ## WHY Fields Keep Their Raw Value, Minus a Trailing Link
 
@@ -170,7 +185,16 @@ reads an absent name as *missing*. A bare `-` (`Sleep:: -`, the owner's
 `review_habits` that reads it as missing, so the reader must not drop or
 rewrite it. An unrun Templater tag `<% … %>` is
 kept raw on purpose: F8-AC2 wants that day named *unreadable*, which only
-the habits module can decide, and it needs the raw text to do so.
+the habits module can decide, and it needs the raw text to do so. At the
+same time the content test below treats `<% … %>` as skeleton, so a daily
+whose only "value" is an unrun tag has no content — and both are right at
+once because they answer different questions: `has_content` asks whether
+the user wrote anything that day (an unrun tag is the template, not
+writing), while the field asks what the tracker reads (an unrun tag is a
+value the tracker cannot read, which is the F8-AC2 signal, not an absent
+value, which would be silently *missing*). Dropping the tag from `fields`
+would turn an unreadable day into a missing one; counting it as content
+would turn a skeleton into a written day.
 
 ## WHY the Reader Owns the `yesterday_fields` Shift
 
@@ -232,9 +256,11 @@ sections come first in setup order, then the same-day notes; each whole
 unit is kept while the running total stays within the cap, and the day is
 marked `partly_read` at the first unit that does not fit. A cut inside a
 section would hand the model half a sentence and a heading without its
-body; a section boundary keeps every kept unit whole. When the first
-section alone exceeds the cap it is kept and cut hard at the cap, so a day
-is never read as empty because of the cap.
+body; a section boundary keeps every kept unit whole; a day whose units add up to
+exactly the cap is read whole and is not `partly_read`. When the first
+section alone exceeds the cap it is kept and cut hard at the cap (trailing
+whitespace of the cut stripped, so the text does not end mid-indent), so a
+day is never read as empty because of the cap.
 
 ## Output Shape
 

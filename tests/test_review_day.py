@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""test_review_day.py — Behavioural tests for lib.review_day (spec 045 T3.2;
-PRD F3-AC1, F3-AC2, F3-AC3, F3-AC4, F3-AC8; SDD "same-day reading of one daily").
+# version: 0.3.0
+"""test_review_day.py — Behavioural tests for lib.review_day and the markdown
+layer it applies, lib.review_md (spec 045 T3.2; PRD F3-AC1, F3-AC2, F3-AC3,
+F3-AC4, F3-AC8; SDD "same-day reading of one daily").
 
 Covers one day's reading:
 - the quoth embed under the daily-changing `## [[DP-…|Dayplanner]]` heading is
   collected and read; tomorrow's planner link is ignored; the daily's own name
-  is never re-read
+  is never re-read, even when the daily links itself
+- a day token matches on digit boundaries: `6.3.2026` is not in `16.3.2026`
 - configured sections are kept with their subsections; "On This Day" is
   skipped and its embed not collected
 - dataview/dataviewjs blocks, inline `= …` queries and quoth/dynbedded blocks
@@ -22,8 +24,14 @@ Covers one day's reading:
   `text` key (title heading, unconfigured headings), skip sections still
   excluded; one configured heading found → no fallback
 - a same-day note loses its METADATA callout and its navigation-only lines
+- a thematic break ends nothing by itself: prose after a `---` stays in its
+  section or under `text`; only the trailing navigation block behind the
+  rule (METADATA callout, callout of links, navigation-only lines) is
+  dropped; a skipped section is cut at a rule
 - a bare `-` field value passes through unchanged
-- a day over max_chars_per_day is cut at a section boundary, partly_read
+- a day over max_chars_per_day is cut at a section boundary, partly_read;
+  a day that fits the cap exactly is read whole
+- done_in_period includes ticks dated exactly on the period's first and last day
 - a missing or unreadable linked note is a problem of that day, the day read
 
 All fixtures are synthetic: same structure as the owner's vault, no journal text.
@@ -120,6 +128,7 @@ dv.paragraph("# From Yesterday " + page["Next Up"]);
 
 - 08:08: Slept badly again, the alarm went off anyway.
 - 13:30: Did the weekly review and went to the physio.
+- 21:00: Linked today's own note [[2026-03-26]] by mistake.
 
 ## Language Learning
 
@@ -249,10 +258,39 @@ def test_tomorrows_planner_link_is_ignored():
 
 
 def test_the_dailys_own_name_and_the_task_note_are_never_read():
-    _, asked = read()
+    """The daily links itself in the log ([[2026-03-26]]); it is never re-read and never a problem."""
+    entry, asked = read(notes=dict(NOTES))
+    assert "[[2026-03-26]]" in entry["sections"]["Daily Log"], "the self-link is in the kept text"
     assert "2026-03-26" not in asked
+    assert "2026-03-26" not in [p["path"] for p in entry["problems"]]
+    assert entry["problems"] == []
     assert "Next Todos" not in asked
     assert "Next Todos#Up Next" not in asked
+
+
+def test_a_day_token_matches_on_digit_boundaries_only():
+    """`D.M.YYYY`: day 6 is `6.3.2026`, which is a substring of `16.3.2026` and `26.3.2026`."""
+    settings = dict(SETTINGS, sections=["Daily Log"], date_format="D.M.YYYY")
+    daily = "## Daily Log\n- see [[Plan 6.3.2026]], [[Plan 16.3.2026]] and [[Plan 26.3.2026]]\n"
+    notes = {"Plan 6.3.2026": "# six\n- walk\n", "Plan 16.3.2026": "# sixteen\n- run\n",
+             "Plan 26.3.2026": "# twenty-six\n- swim\n"}
+    entry, asked = read(daily=daily, settings=settings, notes=notes, day=date(2026, 3, 6),
+                        path="Calendar/6.3.2026.md")
+    assert asked == ["Plan 6.3.2026"]
+    assert [i["path"] for i in entry["linked"]] == ["Plan 6.3.2026"]
+
+
+def test_a_navigation_line_recognises_the_day_token_on_digit_boundaries():
+    """In a linked note, `[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]` is navigation;
+    `[[Plan 16.3.2026]] has the notes` is not (the token is inside another number)."""
+    settings = dict(SETTINGS, sections=["Daily Log"], date_format="D.M.YYYY")
+    note = "# Plan\n[[Plan 5.3.2026]] <== 6.3.2026 ==> [[Plan 7.3.2026]]\n[[Plan 16.3.2026]] has the notes\n- walk\n"
+    entry, _ = read(daily="## Daily Log\n- see [[Plan 6.3.2026]]\n", settings=settings,
+                    notes={"Plan 6.3.2026": note}, day=date(2026, 3, 6), path="Calendar/6.3.2026.md")
+    text = entry["linked"][0]["text"]
+    assert "Plan 5.3.2026" not in text and "Plan 7.3.2026" not in text
+    assert "[[Plan 16.3.2026]] has the notes" in text
+    assert "- walk" in text
 
 
 def test_same_day_note_is_read_once_although_linked_twice():
@@ -338,12 +376,68 @@ def test_a_hash_inside_a_code_fence_is_not_a_heading():
     assert "Daily Log" in entry["sections"]
 
 
-def test_a_thematic_break_closes_a_section():
+def test_a_trailing_navigation_block_after_a_thematic_break_is_dropped():
     daily = "## Daily Log\n- the log line\n\n---\n> [!METADATA]-\n> - Week:: [[2026-W13]]\n> - Yesterday:: [[2026-03-25]]\n"
     entry, _ = read(daily=daily, notes={})
     assert entry["sections"]["Daily Log"] == "- the log line"
     assert entry["links"] == []
     assert "Week" not in entry["fields"]
+
+
+def test_the_real_daily_footer_rule_callout_rule_is_dropped_whole():
+    """The owner's daily ends `---`, METADATA callout, `---`: both rules and the callout go."""
+    entry, _ = read()
+    end = entry["sections"]["End of the Day"]
+    assert "---" not in end and "METADATA" not in end and "2026-W13" not in end
+    assert end.endswith("New Notes Today"), "the callout title before the footer is the last kept line"
+    assert "2026-W13" not in entry["links"]
+
+
+def test_prose_after_a_thematic_break_stays_in_its_section():
+    daily = "## Daily Log\n- a\n---\n- b\n"
+    entry, _ = read(daily=daily, notes={})
+    assert entry["sections"]["Daily Log"] == "- a\n- b"
+
+
+def test_prose_after_a_thematic_break_stays_under_text_in_the_fallback():
+    entry, _ = read(daily="Slept.\n\n---\nmore text\n", notes={})
+    text = entry["sections"]["text"]
+    assert "Slept." in text and "more text" in text
+    assert "---" not in text
+
+
+def test_rule_then_navigation_then_prose_drops_only_the_navigation_line():
+    """The first non-navigation line ends the block; a dated link line after it is the day's words."""
+    daily = ("## Daily Log\n- a\n\n---\n[[2026-03-25]] | [[2026-03-27]]\nmore prose after the footer\n"
+             "[[2026-03-24]] | [[2026-03-28]]\n")
+    entry, _ = read(daily=daily, notes={})
+    assert entry["sections"]["Daily Log"] == "- a\n\nmore prose after the footer\n[[2026-03-24]] | [[2026-03-28]]"
+    assert entry["links"] == ["2026-03-24", "2026-03-28"]
+
+
+def test_a_callout_of_links_only_after_a_rule_is_dropped_a_callout_with_words_stays():
+    nav = "## Daily Log\n- a\n---\n> [!nav]-\n> [[Assessment]] · [[Goals]]\n"
+    entry, _ = read(daily=nav, notes={})
+    assert entry["sections"]["Daily Log"] == "- a"
+    assert entry["links"] == []
+    words = "## Daily Log\n- a\n---\n> [!note]\n> remember [[Assessment]]\n"
+    entry, _ = read(daily=words, notes={})
+    assert entry["sections"]["Daily Log"] == "- a\n> [!note]\n> remember [[Assessment]]"
+    assert entry["links"] == ["Assessment"]
+
+
+def test_a_skipped_section_is_cut_at_a_thematic_break_the_prose_after_it_is_the_days():
+    """Skip ranges stop at a rule: the prose after it belongs to no section (read in the fallback,
+    not swallowed into the skip); the embed before the rule is still neither collected nor kept."""
+    daily = ("# 2026-03-26\n- the day's own line\n\n## On This Day... last year - Wednesday\n"
+             "![[LastYear-2026-03-26#Daily Log]]\n- last year's line\n\n---\n"
+             "Back to today: prose after the separator\n")
+    entry, asked = read(daily=daily, notes={})
+    assert asked == []
+    text = entry["sections"]["text"]
+    assert "the day's own line" in text and "Back to today" in text
+    assert "last year's line" not in text and "LastYear" not in text
+    assert entry["links"] == []
 
 
 def test_daily_sections_key_is_accepted_as_alias():
@@ -565,6 +659,14 @@ def test_task_note_open_tasks_are_open_today():
     assert all("label" not in t for t in tasks if t["done"])
 
 
+def test_done_in_period_includes_the_first_and_the_last_day_of_the_period():
+    tasks = rd.task_note_tasks("n.md", "- [x] before ✅ 2026-03-22\n- [x] first ✅ 2026-03-23\n"
+                                       "- [x] inside ✅ 2026-03-26\n- [x] last ✅ 2026-03-29\n"
+                                       "- [x] after ✅ 2026-03-30\n")
+    done = rd.done_in_period(tasks, date(2026, 3, 23), date(2026, 3, 29))
+    assert [t["text"] for t in done] == ["first", "inside", "last"]
+
+
 def test_a_tick_without_a_date_never_counts_as_done_in_the_period():
     tasks = rd.task_note_tasks("n.md", "- [x] ticked without a date\n- [x] dated ✅ 2026-03-24\n")
     assert [t["text"] for t in rd.done_in_period(tasks, date(2026, 3, 23), date(2026, 3, 29))] == ["dated"]
@@ -724,11 +826,21 @@ def test_a_day_over_the_cap_is_cut_at_a_section_boundary_and_partly_read():
     assert "Highlights" not in cut["fields"]
 
 
+def test_a_day_that_fits_the_cap_exactly_is_read_whole():
+    daily = "## Habit\n- Sleep:: 7h\n\n## Daily Log\n- the log line\n"
+    full, _ = read(daily=daily, notes={})
+    cap = sum(len(t) for t in full["sections"].values())
+    entry, _ = read(daily=daily, settings=dict(SETTINGS, max_chars_per_day=cap), notes={})
+    assert entry["partly_read"] is False
+    assert entry["sections"] == full["sections"]
+
+
 def test_the_first_section_alone_over_the_cap_is_kept_cut_hard():
     daily = "## Daily Log\n" + "- a line\n" * 100
-    entry, _ = read(daily=daily, settings=dict(SETTINGS, max_chars_per_day=50), notes={})
+    entry, _ = read(daily=daily, settings=dict(SETTINGS, max_chars_per_day=45), notes={})
     assert entry["partly_read"] is True
-    assert len(entry["sections"]["Daily Log"]) <= 50
+    assert len(entry["sections"]["Daily Log"]) <= 45
+    assert entry["sections"]["Daily Log"] == "- a line\n" * 4 + "- a line", "cut on a line end, newline stripped"
     assert entry["has_content"] is True
 
 

@@ -1,5 +1,5 @@
 # period.py — weeks, months, the week rule and the /review argument.
-# version: 0.1.0
+# version: 0.1.1
 """Week and month arithmetic for ``/review`` (spec 045).
 
 Owns the week rule (first day of the week, minimum days in week 1; ISO is
@@ -11,6 +11,9 @@ live at, and the parsing of the ``/review`` argument into a ``Request`` or a
 ``RequestError`` object.
 
 Stdlib only. ``today`` is always passed in; nothing here reads the clock.
+Years are supported in ``MIN_YEAR..MAX_YEAR`` (0002..9998); anything a
+``date`` cannot hold raises ``InvalidPeriod`` like a week number outside its
+year does.
 
 Design notes: docs/tomo/scripts/lib/period.md
 """
@@ -39,6 +42,9 @@ _YEAR_TOKENS = ("GGGG", "gggg", "YYYY")
 _MONTH_TOKENS = ("MM", "M")
 _UNSAFE = ("/", "\\", "..")
 _YEAR_SEARCH_LIMIT = 60
+# date() holds 1..9999; a week may start in the year before its week year and end in the year after.
+MIN_YEAR = 2
+MAX_YEAR = 9998
 
 _FULL_WEEK_RE = re.compile(r"(\d{4})-[Ww](\d{1,2})")
 _FULL_MONTH_RE = re.compile(r"(\d{4})-(\d{1,2})")
@@ -47,7 +53,13 @@ _BARE_MONTH_RE = re.compile(r"[Mm](\d{1,2})")
 
 
 class InvalidPeriod(ValueError):
-    """A week or month number that does not exist in its year."""
+    """A week or month number that does not exist in its year, or a year outside
+    ``MIN_YEAR..MAX_YEAR``."""
+
+
+def check_year(year: int) -> None:
+    if not MIN_YEAR <= year <= MAX_YEAR:
+        raise InvalidPeriod(f"year outside {MIN_YEAR:04d}..{MAX_YEAR:04d}")
 
 
 @dataclass(frozen=True)
@@ -74,20 +86,25 @@ class WeekRule:
         return cls(first_day=int(first_day), min_days_in_first_week=int(min_days))
 
     def week_start_of_year(self, week_year: int) -> date:
-        """First day of week 1 of ``week_year``."""
-        jan1 = date(week_year, 1, 1)
-        start = jan1 - timedelta(days=(jan1.weekday() - self.first_day) % 7)
+        """First day of week 1 of ``week_year``; ``InvalidPeriod`` when no date can hold it."""
+        try:
+            jan1 = date(week_year, 1, 1)
+            start = jan1 - timedelta(days=(jan1.weekday() - self.first_day) % 7)
+        except (ValueError, OverflowError):
+            raise InvalidPeriod(f"year outside {MIN_YEAR:04d}..{MAX_YEAR:04d}") from None
         days_in_year_of_that_week = 7 - (jan1 - start).days
         if days_in_year_of_that_week >= self.min_days_in_first_week:
             return start
         return start + timedelta(days=7)
 
     def weeks_in(self, week_year: int) -> int:
+        check_year(week_year)
         span = self.week_start_of_year(week_year + 1) - self.week_start_of_year(week_year)
         return span.days // 7
 
     def week_of(self, d: date) -> Tuple[int, int]:
         """``(week_year, week)`` of a date."""
+        check_year(d.year)
         for week_year in (d.year + 1, d.year, d.year - 1):
             start = self.week_start_of_year(week_year)
             if d >= start:
@@ -120,6 +137,7 @@ class Period:
 
     @classmethod
     def month(cls, year: int, number: int) -> "Period":
+        check_year(year)
         if not 1 <= number <= 12:
             raise InvalidPeriod("month number outside the year")
         last = calendar.monthrange(year, number)[1]
@@ -309,7 +327,7 @@ def _week_format_problems(fmt: str, tokens: List[str], rule: WeekRule, today: da
     problems: List[FormatProblem] = []
     if "YYYY" in tokens:
         example = ""
-        for year in range(today.year, today.year + _YEAR_SEARCH_LIMIT):
+        for year in range(today.year, min(today.year + _YEAR_SEARCH_LIMIT, MAX_YEAR)):
             d = _year_end_mismatch(rule, year)
             if d is not None:
                 week_year, week = rule.week_of(d)
@@ -373,7 +391,7 @@ def parse_args(raw: str, *, today: date, rule: WeekRule = ISO,
     words = text.split()
     if not words:
         return _default(WEEK, today, rule)
-    if words == [SETUP]:
+    if [w.lower() for w in words] == [SETUP]:
         return Request(SETUP)
     kind_word = words[0].lower() if words[0].lower() in KINDS else None
     rest = words[1:] if kind_word else words
@@ -419,22 +437,16 @@ def _parse_period_word(word: str, kind_word: Optional[str], today: date,
     if kind_word and kind_word != kind:
         wanted = "a week like 2026-W13" if kind_word == WEEK else "a month like 2026-03"
         return _invalid(kind_word, f"{wanted} after the word {kind_word}", today, rule)
-    if full_week:
-        year, number = int(full_week.group(1)), int(full_week.group(2))
+    if full_week or full_month:
+        year, number = int((full_week or full_month).group(1)), int((full_week or full_month).group(2))
+        if not MIN_YEAR <= year <= MAX_YEAR:
+            return _invalid(kind, f"a year between {MIN_YEAR:04d} and {MAX_YEAR:04d}", today, rule)
         try:
-            period = Period.week(year, number, rule)
+            period = Period.week(year, number, rule) if kind == WEEK else Period.month(year, number)
         except InvalidPeriod:
-            weeks = rule.weeks_in(year)
-            return _invalid(WEEK, f"a week of {year} between {year}-W01 and {year}-W{weeks:02d}",
-                            today, rule, example=f"{year}-W{weeks:02d}")
-        return _finished_or_error(period, today, rule, year_inferred=False, source="arg")
-    if full_month:
-        year, number = int(full_month.group(1)), int(full_month.group(2))
-        try:
-            period = Period.month(year, number)
-        except InvalidPeriod:
-            return _invalid(MONTH, f"a month of {year} between {year}-01 and {year}-12",
-                            today, rule, example=f"{year}-12")
+            last = f"{year}-W{rule.weeks_in(year):02d}" if kind == WEEK else f"{year}-12"
+            first = f"{year}-W01" if kind == WEEK else f"{year}-01"
+            return _invalid(kind, f"a {kind} of {year} between {first} and {last}", today, rule, example=last)
         return _finished_or_error(period, today, rule, year_inferred=False, source="arg")
     number = int((bare_week or bare_month).group(1))
     period = _latest_finished_with_number(kind, number, today, rule)
@@ -457,8 +469,8 @@ def _latest_finished_with_number(kind: str, number: int, today: date, rule: Week
     return None
 
 
-def _parse_at(path: str, today: date, rule: WeekRule, formats: Dict[str, str]) -> Union[Request, RequestError]:
-    name = path.strip()
+def _parse_at(text: str, today: date, rule: WeekRule, formats: Dict[str, str]) -> Union[Request, RequestError]:
+    name = text.strip()
     if name.startswith("[[") and name.endswith("]]"):
         name = name[2:-2]
     name = name.rsplit("/", 1)[-1]

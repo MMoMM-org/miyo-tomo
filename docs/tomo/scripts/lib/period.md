@@ -25,6 +25,36 @@ year, and the first days of January to week 52/53 of the previous one.
 divided by seven, so a 53-week year falls out of the rule itself rather than
 from a table of leap years.
 
+## WHY Years Are Limited to `MIN_YEAR..MAX_YEAR` (0002..9998)
+
+The argument and name regexes accept any four digits, so `0000-W13` and
+`9999-W01` reach the arithmetic. `date()` holds years 1..9999 only, and a week
+may start in the year before its week year or end in the year after it:
+`weeks_in(9999)` needs the start of week 1 of 10000, and under a Sunday-first
+rule week 1 of year 1 starts before 0001-01-01. Left alone these surface as a
+`ValueError` or `OverflowError` out of `review-session.py` instead of the JSON
+error object the skill expects (code review of T1.1).
+
+Two guards, so every entry point fails the same way: `weeks_in`, `week_of`,
+`week_start` and `Period.month` refuse a year outside `MIN_YEAR..MAX_YEAR` with
+`InvalidPeriod` up front, and `week_start_of_year` — the only place a date is
+built from a week year — turns a `ValueError`/`OverflowError` from `date()`
+into `InvalidPeriod` as well, for the one-year margin the guards leave open.
+One year of margin on each side of `date()`'s range is enough because a week
+spills at most six days past a year end.
+
+For the user this means: `2026-W54`, `0000-W13` and `9999-W01` are all
+`invalid-period` — the first with the last week of the named year as the
+example, the other two with the supported range in `expected` and the last
+finished period as the example (no week of year 0 could be offered). On the
+`@` path an unrepresentable year behaves like every other name that does not
+fit the format: `parse_name` returns None and the error is `not-periodic-note`,
+because the user pointed at a note, not at a period, and the note's name is
+what does not denote one.
+
+`today` is taken from the clock by the caller and must itself lie in the
+range; the lib does not guard it.
+
 ## WHY `Period` Carries Its Dates and No Rule
 
 A `Period` is a value: kind, year, number, first and last day. Two weeks with
@@ -109,6 +139,12 @@ kind word before a period name, and `@<path>`. A kind word in front of a period
 of the other kind (`month 2026-W13`) is an `invalid-period`, not silently
 reinterpreted (F2-AC7). Everything else is `unknown-argument` with the whole
 grammar as `expected`.
+
+The words `week`, `month` and `setup` are matched case-insensitively (`Setup`,
+`Month 2026-03`), as `W13`/`w13` and `M03`/`m03` already were: a capitalised
+word at the start of a chat message is the normal case, and refusing `Setup`
+with the whole grammar as the answer would tell the user nothing they could
+act on.
 
 The `example` of an error is always a period the user could type and have
 accepted: for an out-of-range week of a named year the last week of that year

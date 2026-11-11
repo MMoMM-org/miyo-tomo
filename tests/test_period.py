@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_period.py — Behavioural tests for lib.period (spec 045 T1.1).
 
 Covers the period arithmetic behind /review:
@@ -15,7 +15,10 @@ Covers the period arithmetic behind /review:
 - argument parsing to a request or an error object: '', month, setup, W13,
   2026-W13, M03, 2026-03, @<path>; invalid forms; a missing year picks the
   latest finished period; unfinished and future periods are refused with
-  the last finished one named
+  the last finished one named; the kind words and setup are case-insensitive
+- the supported year range MIN_YEAR..MAX_YEAR: a year date() cannot hold is
+  InvalidPeriod (never ValueError/OverflowError), invalid-period on the
+  argument path and not-periodic-note on the @ path
 """
 from __future__ import annotations
 
@@ -150,6 +153,86 @@ def test_week_number_outside_the_year_is_refused():
         Period.month(2026, 0)
 
 
+# --- the supported year range ------------------------------------------------------
+
+@pytest.mark.parametrize("rule", [ISO, SUNDAY_FIRST, WeekRule(first_day=0, min_days_in_first_week=7)])
+@pytest.mark.parametrize("year", [0, 1, 9999, 10000])
+def test_a_year_date_cannot_represent_is_an_invalid_period_not_a_crash(rule, year):
+    with pytest.raises(InvalidPeriod):
+        rule.weeks_in(year)
+    with pytest.raises(InvalidPeriod):
+        rule.week_start(year, 1)
+    with pytest.raises(InvalidPeriod):
+        Period.week(year, 1, rule)
+    with pytest.raises(InvalidPeriod):
+        Period.month(year, 3)
+
+
+def test_week_start_of_year_refuses_a_week_that_starts_before_year_one():
+    # (Sunday, 1): week 1 of year 1 starts on the Sunday before 0001-01-01, which date() cannot hold
+    with pytest.raises(InvalidPeriod):
+        SUNDAY_FIRST.week_start_of_year(1)
+    with pytest.raises(InvalidPeriod):
+        ISO.week_start_of_year(10000)
+
+
+def test_the_supported_range_itself_still_works_under_every_rule():
+    for rule in (ISO, SUNDAY_FIRST, WeekRule(first_day=6, min_days_in_first_week=7)):
+        assert rule.weeks_in(period.MIN_YEAR) in (52, 53)
+        assert rule.weeks_in(period.MAX_YEAR) in (52, 53)
+        assert Period.week(period.MIN_YEAR, 1, rule).number == 1
+        assert Period.week(period.MAX_YEAR, 52, rule).number == 52
+    assert Period.month(period.MIN_YEAR, 1).start == date(period.MIN_YEAR, 1, 1)
+    assert Period.month(period.MAX_YEAR, 12).end == date(period.MAX_YEAR, 12, 31)
+
+
+def test_a_date_outside_the_supported_range_has_no_week():
+    with pytest.raises(InvalidPeriod):
+        ISO.week_of(date(1, 6, 1))
+    with pytest.raises(InvalidPeriod):
+        ISO.week_of(date(9999, 6, 1))
+    with pytest.raises(InvalidPeriod):
+        Period.containing("week", date(1, 1, 1), SUNDAY_FIRST)
+    with pytest.raises(InvalidPeriod):
+        Period.month(period.MIN_YEAR, 1).previous()
+    with pytest.raises(InvalidPeriod):
+        Period.week(period.MIN_YEAR, 1, ISO).previous(ISO)
+
+
+@pytest.mark.parametrize("raw, example", [
+    ("0000-W13", "2026-W45"),
+    ("9999-W01", "2026-W45"),
+    ("0001-W01", "2026-W45"),
+    ("0000-03", "2026-10"),
+    ("9999-03", "2026-10"),
+    ("week 0000-W13", "2026-W45"),
+])
+@pytest.mark.parametrize("rule", [ISO, SUNDAY_FIRST])
+def test_a_year_outside_the_supported_range_is_an_invalid_period(raw, example, rule):
+    error = _parse(raw, rule=rule)
+    assert isinstance(error, RequestError), raw
+    assert error.kind == "invalid-period"
+    assert "0002" in error.expected and "9998" in error.expected
+    assert error.example == example
+
+
+@pytest.mark.parametrize("raw", ["@9999-W01", "@0000-03", "@0000-W13", "@Calendar/302 Weekly/0001-W01.md"])
+@pytest.mark.parametrize("rule", [ISO, SUNDAY_FIRST])
+def test_an_at_note_with_a_year_outside_the_supported_range_is_not_a_periodic_note(raw, rule):
+    formats = {"week": "GGGG-[W]WW" if rule == ISO else "gggg-[W]ww", "month": "YYYY-MM"}
+    error = _parse(raw, rule=rule, formats=formats)
+    assert isinstance(error, RequestError), raw
+    assert error.kind == "not-periodic-note"
+    assert error.example == "2026-W45"
+
+
+def test_parse_name_treats_an_unrepresentable_year_as_not_fitting():
+    assert parse_name("0000-W13", "GGGG-[W]WW", ISO) is None
+    assert parse_name("9999-W01", "GGGG-[W]WW", ISO) is None
+    assert parse_name("0001-W01", "gggg-[W]ww", SUNDAY_FIRST) is None
+    assert parse_name("0000-03", "YYYY-MM", ISO) is None
+
+
 # --- months and overlapping weeks ----------------------------------------------
 
 def test_march_2026_is_the_calendar_month():
@@ -213,6 +296,18 @@ def test_last_finished_period_of_each_kind():
 def test_week_note_paths_are_flat_then_the_week_year_folder():
     paths = Period.week(2026, 53).note_paths("Calendar/302 Weekly/", "GGGG-[W]WW")
     assert paths == ["Calendar/302 Weekly/2026-W53.md", "Calendar/302 Weekly/2026/2026-W53.md"]
+
+
+def test_week_one_starting_in_december_lives_in_the_new_week_year_folder():
+    week = Period.week(2026, 1)
+    assert week.start == date(2025, 12, 29)
+    paths = week.note_paths("Calendar/302 Weekly/", "GGGG-[W]WW")
+    assert paths == ["Calendar/302 Weekly/2026-W01.md", "Calendar/302 Weekly/2026/2026-W01.md"]
+    # (Sunday, 1): week 1 of 2028 starts on 2027-12-26
+    week = Period.week(2028, 1, SUNDAY_FIRST)
+    assert week.start == date(2027, 12, 26)
+    paths = week.note_paths("Weekly", "gggg-[W]ww")
+    assert paths == ["Weekly/2028-W01.md", "Weekly/2028/2028-W01.md"]
 
 
 def test_month_note_paths_use_the_calendar_year_folder():
@@ -347,6 +442,25 @@ def test_setup_word_asks_for_the_setup():
     assert request.kind == "setup"
     assert request.period is None
     assert request.to_dict() == {"kind": "setup"}
+
+
+@pytest.mark.parametrize("raw", ["Setup", "SETUP", " setup "])
+def test_the_setup_word_is_case_insensitive(raw):
+    request = _parse(raw)
+    assert isinstance(request, Request), raw
+    assert request.kind == "setup"
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("Month 2026-03", Period.month(2026, 3)),
+    ("WEEK 2026-W13", Period.week(2026, 13)),
+    ("Week", Period.week(2026, 45)),
+    ("MONTH", Period.month(2026, 10)),
+])
+def test_the_kind_words_are_case_insensitive(raw, expected):
+    request = _parse(raw)
+    assert isinstance(request, Request), raw
+    assert request.period == expected
 
 
 def test_default_week_follows_the_configured_rule():

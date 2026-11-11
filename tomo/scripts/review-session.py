@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.1.1
+# version: 0.2.0
 """Preview the /review setup of one period kind and build the writer input.
 
 /review reads a finished week or month and proposes a review section for its
@@ -41,9 +41,11 @@ Rules:
     ``evidence.week_rule`` always reports what the notes showed.
     A ``found`` listing without a name that parses adds the "no notes to
     compare" hint; a ``kado-none`` listing gets the access hint instead.
-    Up to 8 recent weekly notes are read for their dates; a dated note is
-    matched only when the proposal's format and rule reproduce its name on
-    its start date. No note text reaches stdout or stderr.
+    Up to 8 recent weekly notes are read for their dates (lib/week_rule_inference);
+    a dated note is matched only when the proposal's format and rule reproduce
+    its name on its start date. Two notes with the same name (folder and year
+    subfolder) are both checked and both listed. No note text reaches stdout
+    or stderr.
 
 Exit codes:
     0 — output usable (every status, every error object)
@@ -57,37 +59,27 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
-from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib import review_config as rc  # noqa: E402
-from lib.kado_client import (  # noqa: E402
-    KadoAuthError, KadoClient, KadoConnectionError, KadoError, KadoNotFoundError,
-)
+from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import (  # noqa: E402
     DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, WEEK, WeekRule, check_format, parse_name,
 )
+from lib.review_vault import TEMPLATER_MARK, Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
-from lib.vault_folder_lookup import VaultFolderLookup  # noqa: E402
+from lib.week_rule_inference import Checked, Inference, infer_rule  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_HEADING = "Tomo Review"
-NOTES_TO_CHECK = 8
 NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
-START_KEYS = ("journal-start-date",)
-END_KEYS = ("journal-end-date",)
-TEMPLATER_MARK = "<%"
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
-_DAY_LINK_RE = re.compile(r"\[\[(\d{4}-\d{2}-\d{2})")
-_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
@@ -95,15 +87,6 @@ NO_NOTES_HINT = ("Found no notes to compare with in {folder}: the default naming
                  "Say so when showing the proposal.")
 TEMPLATE_HINT = ("Kado could not read the template {path}; the Kado key may have no access "
                  "to it. A plain note (title and review section) is proposed instead.")
-
-
-class Stopped(Exception):
-    """Kado cannot be used for this preview; ``kind`` names the error kind."""
-
-    def __init__(self, kind: str, detail: str):
-        super().__init__(detail)
-        self.kind = kind
-        self.detail = detail
 
 
 # ---------------------------------------------------------------- config
@@ -149,210 +132,6 @@ def _template_path(templates: dict, name: Optional[str]) -> Optional[str]:
     return base.rstrip("/") + "/" + name
 
 
-# ---------------------------------------------------------------- Kado access
-
-class Vault:
-    """The Kado calls ``match`` makes, each mapped onto the SDD's error kinds."""
-
-    def __init__(self, client_factory):
-        try:
-            self.client = client_factory()
-        except KadoError as exc:
-            raise Stopped("kado-unreachable", str(exc)) from None
-
-    def _guard(self, exc: KadoError) -> None:
-        if isinstance(exc, KadoAuthError):
-            raise Stopped("kado-auth", str(exc)) from None
-        if isinstance(exc, KadoConnectionError):
-            raise Stopped("kado-unreachable", str(exc)) from None
-
-    def list_notes(self, folder: str) -> Optional[List[str]]:
-        """Paths of the ``.md`` files in ``folder`` and its direct subfolders;
-        None when Kado answered with nothing (an empty listing or ``Path not found``)."""
-        try:
-            items = self.client.list_dir(folder, depth=2)
-        except KadoNotFoundError:
-            return None
-        except KadoError as exc:
-            self._guard(exc)
-            raise Stopped("kado-unreachable", str(exc)) from None
-        if not items:
-            return None
-        return [str(i.get("path")) for i in items
-                if i.get("type") == "file" and str(i.get("path", "")).endswith(".md")]
-
-    def frontmatter(self, path: str) -> Optional[dict]:
-        try:
-            content = self.client.read_frontmatter(path).get("content")
-        except KadoError as exc:
-            self._guard(exc)
-            return None
-        return content if isinstance(content, dict) else None
-
-    def note(self, path: str) -> Optional[str]:
-        try:
-            content = self.client.read_note(path).get("content")
-        except KadoError as exc:
-            self._guard(exc)
-            return None
-        return content if isinstance(content, str) else None
-
-    def template(self, path: str) -> Tuple[str, Optional[str]]:
-        """``(kind, text)``: plain | templater | missing | unreadable."""
-        try:
-            content = self.client.read_note(path).get("content")
-        except KadoNotFoundError:
-            return "missing", None
-        except KadoError as exc:
-            self._guard(exc)
-            return "unreadable", None
-        text = content if isinstance(content, str) else ""
-        return ("templater" if TEMPLATER_MARK in text else "plain"), text
-
-    def folder_listed(self, folder: str) -> bool:
-        lookup = VaultFolderLookup(self.client)
-        state = lookup.state(folder)
-        if state == "unanswered":
-            # the lookup swallowed the error; a dead connection must still stop the preview
-            try:
-                self.client.list_dir(folder, depth=1)
-            except KadoError as exc:
-                self._guard(exc)
-        return state == "listed"
-
-
-# ---------------------------------------------------------------- dates and headings
-
-def _as_date(value) -> Optional[date]:
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value.strip()[:10])
-        except ValueError:
-            return None
-    return None
-
-
-def frontmatter_start(frontmatter: dict) -> Optional[date]:
-    for key in START_KEYS:
-        start = _as_date(frontmatter.get(key))
-        if start is not None:
-            return start
-    for key in END_KEYS:
-        end = _as_date(frontmatter.get(key))
-        if end is not None:
-            return end - timedelta(days=6)
-    return None
-
-
-def headings(text: str) -> List[Tuple[int, str]]:
-    """``(level, text)`` of every heading outside code fences."""
-    found: List[Tuple[int, str]] = []
-    fence: Optional[str] = None
-    for line in text.splitlines():
-        opener = _FENCE_RE.match(line)
-        if opener:
-            mark = opener.group(1)[0]
-            if fence is None:
-                fence = mark
-            elif mark == fence:
-                fence = None
-            continue
-        if fence is not None:
-            continue
-        match = _HEADING_RE.match(line)
-        if match:
-            found.append((len(match.group(1)), match.group(2).strip()))
-    return found
-
-
-def heading_start(text: str) -> Optional[date]:
-    """The week's first day from day-heading links, only when they cover a full week."""
-    dates: Set[date] = set()
-    for _, heading in headings(text):
-        for raw in _DAY_LINK_RE.findall(heading):
-            d = _as_date(raw)
-            if d is not None:
-                dates.add(d)
-    if len(dates) != 7 or (max(dates) - min(dates)).days != 6:
-        return None
-    return min(dates)
-
-
-# ---------------------------------------------------------------- the week rule
-
-@dataclass
-class Checked:
-    stem: str
-    start: Optional[date]
-    locale: Optional[str]
-
-
-@dataclass
-class Inference:
-    verdict: str                          # inferred | ambiguous | default
-    rule: Optional[WeekRule] = None
-    checked: List[Checked] = field(default_factory=list)
-
-
-def rules_fitting(year: int, number: int, start: date) -> Set[WeekRule]:
-    """Every rule starting on ``start``'s weekday under which (year, number) begins on ``start``."""
-    first_day = start.weekday()
-    fitting: Set[WeekRule] = set()
-    for min_days in range(1, 8):
-        rule = WeekRule(first_day, min_days)
-        try:
-            if rule.week_of(start) == (year, number):
-                fitting.add(rule)
-        except Exception:  # noqa: BLE001 — a date outside the supported years fits nothing
-            continue
-    return fitting
-
-
-def choose_rule(fitting: Set[WeekRule]) -> WeekRule:
-    """ISO's 4 when the notes allow it, else 1 (week 1 holds 1 January), else the smallest."""
-    by_min_days = {rule.min_days_in_first_week: rule for rule in fitting}
-    for preferred in (4, 1):
-        if preferred in by_min_days:
-            return by_min_days[preferred]
-    return by_min_days[min(by_min_days)]
-
-
-def recent_candidates(stems: Dict[str, str], fmt: str) -> List[Tuple[str, str, int, int]]:
-    """``(stem, path, year, number)`` of the names that parse, most recent first."""
-    found = []
-    for stem, path in stems.items():
-        period = parse_name(stem, fmt, ISO)
-        if period is not None:
-            found.append((stem, path, period.year, period.number))
-    found.sort(key=lambda item: (item[2], item[3]), reverse=True)
-    return found[:NOTES_TO_CHECK]
-
-
-def infer_rule(vault: Vault, stems: Dict[str, str], fmt: str) -> Inference:
-    candidates = recent_candidates(stems, fmt)
-    if not candidates:
-        return Inference("default")
-    checked: List[Checked] = []
-    fitting: Optional[Set[WeekRule]] = None
-    for stem, path, year, number in candidates:
-        frontmatter = vault.frontmatter(path) or {}
-        locale = _str(frontmatter.get("locale"))
-        start = frontmatter_start(frontmatter)
-        if start is None:
-            text = vault.note(path)
-            start = heading_start(text) if text else None
-        checked.append(Checked(stem, start, locale))
-        if start is None:
-            continue
-        rules = rules_fitting(year, number, start)
-        fitting = rules if fitting is None else fitting & rules
-    if not fitting:
-        return Inference("ambiguous", None, checked)
-    return Inference("inferred", choose_rule(fitting), checked)
-
-
 # ---------------------------------------------------------------- the proposal
 
 def _day_name(rule: WeekRule) -> str:
@@ -378,13 +157,14 @@ def daily_sections_from(template_text: str) -> List[str]:
             if level >= 2 and text and TEMPLATER_MARK not in text and "[[" not in text]
 
 
-def _match_names(stems: Dict[str, str], fmt: str, rule: WeekRule, kind: str,
+def _match_names(notes: List[Tuple[str, str]], fmt: str, rule: WeekRule, kind: str,
                  checked: List[Checked]) -> Tuple[List[str], List[str]]:
-    starts = {c.stem: c.start for c in checked if c.start is not None}
+    """Names under ``matched``/``unmatched``, one entry per note (a duplicated stem once per path)."""
+    starts = {c.path: c.start for c in checked if c.start is not None}
     matched, unmatched = [], []
-    for stem in stems:
+    for stem, path in notes:
         period = parse_name(stem, fmt, rule) if kind == WEEK else parse_name(stem, fmt)
-        fits = period is not None and (stem not in starts or period.start == starts[stem])
+        fits = period is not None and (path not in starts or period.start == starts[path])
         (matched if fits else unmatched).append(stem)
     return matched, unmatched
 
@@ -412,12 +192,12 @@ def match(args: argparse.Namespace) -> dict:
         if paths is None:
             hints.append(FOLDER_HINT.format(folder=folder))
             paths = []
-        stems = {PurePosixPath(p).name[:-3]: p for p in paths}
+        notes = [(PurePosixPath(p).name[:-3], p) for p in paths]
 
         inference = Inference("default")
-        if kind == WEEK and paths:
-            inference = infer_rule(vault, stems, fmt_for_names)
-        rule = inference.rule or _configured_rule(config) or ISO
+        if kind == WEEK and notes:
+            inference = infer_rule(vault, notes, fmt_for_names)
+        rule = _configured_rule(config) or inference.rule or ISO
         if args.first_day is not None:
             rule = WeekRule.from_config(args.first_day, args.min_days)
         if kind == WEEK:
@@ -426,7 +206,7 @@ def match(args: argparse.Namespace) -> dict:
             default_fmt = DEFAULT_FORMATS[MONTH]
         fmt = args.format or configured_fmt or default_fmt
         problems = check_format(fmt, kind, rule, today=args.today)
-        matched, unmatched = _match_names(stems, fmt, rule, kind, inference.checked)
+        matched, unmatched = _match_names(notes, fmt, rule, kind, inference.checked)
         if listing == "found" and inference.verdict == "default" and not matched:
             hints.append(NO_NOTES_HINT.format(folder=folder))
 
@@ -444,7 +224,7 @@ def match(args: argparse.Namespace) -> dict:
             daily_sections = []
             daily_path = _template_path(templates, _str(get_path(templates, ("mapping", "daily"))[1]))
             if daily_path is not None:
-                daily_kind, daily_text = vault.template(daily_path)
+                _, daily_text = vault.template(daily_path)
                 if daily_text:
                     daily_sections = daily_sections_from(daily_text)
 
@@ -567,9 +347,9 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--folder", help="Folder of the periodic notes (default: config, then profile)")
     m.add_argument("--format", help="Name format (default: config, then inferred)")
     m.add_argument("--first-day", choices=DAY_NAMES,
-                   help="First day of the week (default: inferred; needs --min-days)")
+                   help="First day of the week (default: config, then inferred; needs --min-days)")
     m.add_argument("--min-days", type=_min_days_arg,
-                   help="Days week 1 must hold in the new year (default: inferred; needs --first-day)")
+                   help="Days week 1 must hold in the new year (default: config, then inferred; needs --first-day)")
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")

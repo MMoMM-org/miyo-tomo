@@ -28,53 +28,43 @@ re-run the script or improvise. Exit 2 is reserved for a bad invocation
 1 for an unexpected exception, where stderr carries the exception class name
 and nothing else (ADR-9: stderr never carries note text, titles or paths).
 
-## WHY the Week Rule Comes From the Notes' Dates and Never From `.obsidian`
+## WHY the Kado Access and the Inference Live in `lib/`
 
-WHY: ADR-7 and F1-AC6. The Obsidian plugin configuration (`.obsidian/
-plugins/*/data.json`) says what a plugin would name a new note, not how the
-user's existing notes are counted; the two differ whenever the user changed
-the setting after the notes were made, or names the notes by hand. The notes
-carry their own evidence: `journal-start-date` (or `journal-end-date`, start
-= end − 6) in the frontmatter, else the dated links of the day headings. The
-test asserts that no path under `.obsidian` is ever requested from Kado.
+WHY: T2.2 code review. With `match` and `setup-input` alone the script passed
+600 lines, and T2.3 adds `start`, which needs the same Kado wrapper and the
+same date helpers. The wrapper, the `Stopped` exception and the helpers that
+read a weekly note's evidence are `lib/review_vault.py` (WHY:
+`docs/tomo/scripts/lib/review_vault.md` — the error mapping, `kado-none`,
+`journal-end-date` − 6, day headings as a full week); the week-rule
+inference is `lib/week_rule_inference.py` (WHY:
+`docs/tomo/scripts/lib/week_rule_inference.md` — never `.obsidian`, the
+eight-note budget, the rule intersection, duplicated stems). The script
+keeps what is specific to the subcommands: the precedence of flags, config,
+inference and defaults, the name matching, the proposal, the writer input
+and the argparse wiring.
 
-Up to eight notes are checked, the most recent by (year, week) of their
-names, because the user's current counting is what the next review targets;
-an old year counted differently would only make the rule ambiguous and the
-dialogue asks then anyway. Eight is the budget: one frontmatter read each,
-plus one note read only when the frontmatter holds no date, plus the folder
-listing, the template reads and at most one daily-folder probe stay within
-Kado's 20 calls per 5 s (CON-7), and the client retries a 429 with
-Kado's Retry-After when the window is shared (ADR-4).
+## WHY the Config Beats the Inference
 
-## WHY the Inference Intersects Candidate Rules Instead of Reading One Note
+WHY: the documented order is flags > config > inference > defaults, and the
+first draft had the inference ahead of the config. A `review.week` rule in
+the config is a setup the user confirmed; the inference reads what the notes
+look like today. If the notes were later renamed or an old year counted
+differently sits in the folder, the inference changing silently would show a
+proposal the user never confirmed, and `/review setup` would display a
+guess instead of the current setup (the same reason every other configured
+value wins over its proposal). `evidence.week_rule` still reports what the
+notes showed, and a configured rule the notes contradict puts those notes
+under `unmatched`, so the skill can say so.
 
-WHY: SDD "Week-rule inference": the first day is the weekday of the start
-dates; `min_days` is fixed by the notes whose year makes a difference. For a
-dated note the script keeps every rule `(start.weekday(), min_days 1..7)`
-under which the note's own week number falls on its start date, and
-intersects the sets over all dated notes. An empty intersection means the
-notes contradict each other (two first days, or a numbering no single rule
-reproduces) — `week_rule: ambiguous`, the skill asks in plain words. A
-non-empty set that does not pin `min_days` down (most years cannot tell
-`min_days` 1 from 4) is still `inferred`: every rule in the set reproduces
-every dated note, so the names the user has are the names the setup will
-produce (F1-AC3). The script picks 4 (ISO) when the set allows it, else 1
-(week 1 holds 1 January), else the smallest — the two conventions users
-actually set, preferred over an arbitrary middle value. No dated note at all
-is `ambiguous` as well: a rule guessed from nothing would target the wrong
-note silently (PRD risk 1). An empty folder or a listing Kado answered with
-nothing is `default`: there is nothing to compare with, ISO is proposed and
-the skill says so (F1-AC4).
+## WHY Two Notes With the Same Stem Are Both Listed
 
-## WHY Day-Heading Dates Count Only as a Full Week
-
-WHY: a weekly note without frontmatter dates may hold day headings for only
-the days the user wrote. Taking the earliest linked date as the week's start
-would read a note that starts on Wednesday as a Wednesday-first week and,
-with no other dated note, propose that rule as `inferred`. The heading dates
-count only when seven distinct dates span six days; anything else is "no
-dates" for this note and the next note decides, or the dialogue asks.
+WHY: the first draft keyed the listing by stem, so a note in the folder and
+its namesake in a year subfolder collapsed into one: `notes_checked`
+undercounted, the hidden copy's dates never reached the inference, and
+`matched`/`unmatched` showed one note where two exist. Every path is now
+matched on its own dates, and a duplicated stem appears once per note in
+the listing — the preview shows what the folder holds, and T2.3's `start`
+meets the duplicate as a known case rather than a surprise.
 
 ## WHY `week_rule` Reports the Notes, and Flags Set the Proposal
 

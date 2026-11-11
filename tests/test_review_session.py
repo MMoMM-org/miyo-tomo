@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2).
 
 Covers the setup preview and the confirmed-input step, on tests/review_fake_vault:
 - match: the week rule inferred from journal-start-date / day-heading links,
   ambiguous on contradicting starts, partial headings or no dates at all,
-  default when there is nothing to compare with
+  default when there is nothing to compare with; a configured rule wins over
+  the inference; two notes with the same stem are both checked and listed
 - match: ISO names give GGGG-[W]WW + Monday; Sunday-dated names give the
   Sunday rule and gggg-[W]ww; a Sunday rule given by flags re-lists the ISO
   notes it no longer matches; --first-day and --min-days only together
@@ -245,6 +246,47 @@ def test_match_sunday_flags_relist_the_iso_notes_as_unmatched(mod, instance, mon
     assert ev["week_rule"] == "inferred"          # what the notes showed, not the flags
     assert sorted(ev["unmatched"]) == ["2025-W50", "2026-W09", "2026-W10", "2026-W11", "2026-W12", "2026-W13", "Weekly Index"]
     assert ev["matched"] == ["2026-W14"]           # undated: matched by name alone
+
+
+def test_match_configured_rule_wins_over_the_inference(mod, instance, monkeypatch, capsys):
+    # flags > config > inference > defaults: a confirmed Sunday/1 setup is never
+    # overridden by what the ISO-dated notes show; the evidence still reports them.
+    _config(instance, review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    fake = ReviewFakeVault(_iso_files())
+    code, out, *_ = _match(mod, monkeypatch, capsys, fake)
+    p, ev = out["proposal"], out["evidence"]
+    assert code == 0 and out["status"] == "ok"
+    assert (p["first_day"], p["min_days"]) == ("sunday", 1)
+    assert p["format"] == "gggg-[W]ww"
+    assert ev["week_rule"] == "inferred"          # what the notes showed, not the config
+    assert sorted(ev["unmatched"]) == ["2025-W50", "2026-W09", "2026-W10", "2026-W11", "2026-W12", "2026-W13", "Weekly Index"]
+    assert ev["matched"] == ["2026-W14"]
+    assert not any("no notes" in h.lower() for h in out["hints"])
+
+
+def test_match_keeps_two_notes_with_the_same_stem(mod, instance, monkeypatch, capsys):
+    # the same name in the folder and in a year subfolder: both are checked and both are listed
+    _config(instance)
+    fake = ReviewFakeVault({
+        WEEKLY + "2026-W12.md": _weekly("2026-W12", "2026-03-16"),          # Monday
+        WEEKLY + "2025/2026-W12.md": _weekly("2026-W12", "2026-03-15"),     # Sunday: the hidden copy contradicts
+    })
+    _, out, *_ = _match(mod, monkeypatch, capsys, fake)
+    ev = out["evidence"]
+    assert ev["notes_checked"] == 2
+    assert ev["week_rule"] == "ambiguous"
+    assert ev["matched"] == ["2026-W12"] and ev["unmatched"] == ["2026-W12"]
+    assert ("read_frontmatter", WEEKLY + "2025/2026-W12.md") in fake.events
+    assert ("read_frontmatter", WEEKLY + "2026-W12.md") in fake.events
+
+    fake = ReviewFakeVault({
+        WEEKLY + "2026-W12.md": _weekly("2026-W12", "2026-03-16"),
+        WEEKLY + "2025/2026-W12.md": _weekly("2026-W12", "2026-03-16"),
+    })
+    _, out, *_ = _match(mod, monkeypatch, capsys, fake)
+    ev = out["evidence"]
+    assert ev["notes_checked"] == 2 and ev["week_rule"] == "inferred"
+    assert ev["matched"] == ["2026-W12", "2026-W12"] and ev["unmatched"] == []
 
 
 def test_match_given_format_wins_and_its_problems_are_listed(mod, instance, monkeypatch, capsys):

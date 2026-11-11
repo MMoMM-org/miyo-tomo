@@ -77,7 +77,7 @@ This phase turns a period into a report, a fact file for the model and an editab
   4. Validate: tests green; ruff clean.
   5. Success: habits show as numbers without Dataview `[ref: PRD/F8-AC1, F8-AC2, F8-AC3]`
 
-- [ ] **T3.6 Writing the review document** `[activity: backend-api]`
+- [x] **T3.6 Writing the review document** `[activity: backend-api]`
 
   1. Prime: `[ref: SDD/Application Data Models (Proposals, ReviewDoc, item identity); SDD/User Interface & UX]`; `lib/doc_frontmatter.py`; `suggestions-reducer.py` `render_moc_proposal_doc` (:1657-1721) as a style reference
   2. Test: `tests/test_review_doc.py` — `review-proposals.schema.json` validation; an item without a source inside the period is rejected and listed; a theme naming fewer than two days is rejected; habits come from T3.5, never from the proposals (rendered from each item's `text`; an item's `value` may be `None` for "no clear average"); groups in order, month-only groups (`weekly_only`, `not_in_weekly`) only for months; empty groups show one "nothing found" line; every Tomo item ends with a unique `%%t<n>%%`; group labels and lines from the de/en table with en fallback; info callout names target, existence (also `target_found_elsewhere`), place and not-read parts; unticked Approved; frontmatter = a schema-valid `tomo:` block (`review`, `pending-approval`, run_id, updated_at) plus the top-level `review_*` keys; the path comes from `review_config.inbox_path()`; an existing non-Tomo `<name> Review.md` gives `doc-name-taken` and nothing is overwritten; a refused or failed Kado write gives `status: stopped` and no document is reported; an invalid proposals file gives `proposals-invalid`; no text for own sections; Pass 1 counts written to `meta.json`; `read.json` and `proposals.json` deleted after writing.
@@ -96,5 +96,5 @@ This phase turns a period into a report, a fact file for the model and an editab
 - [ ] **T3.8 Phase Validation** `[activity: validate]`
 
   - Run Phase 1–3 tests, the full suite and ruff. Confirm no fixture contains text copied from the test vault's dailies, and no new lib exceeds ~500 lines.
-  - Tidy from the T3.4 code review: a `stopped` `review-read` output never carries `nothing_to_review: true`; `--stem .` is refused.
+  - Tidy from the T3.4 code review: a `stopped` `review-read` output never carries `nothing_to_review: true`; `--stem .` is refused; a test pins the `[[stem]]`-shaped source fallbacks in `review_doc.Sources` (review_doc.py:~177/180, unguarded per the T3.6 review).
   - Known limits to record in the drift check: full-path wiki-link stems resolve to "missing"; year-less daily formats do not recognise neighbour-day navigation lines; inline `[[…]]` in proposal text stays verbatim (the user reviews it).

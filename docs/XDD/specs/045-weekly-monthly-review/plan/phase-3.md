@@ -72,7 +72,7 @@ This phase turns a period into a report, a fact file for the model and an editab
 - [x] **T3.5 Habits as numbers** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: `[ref: SDD/Data Storage Changes (trackers reuse)]`; `shared-ctx-builder.py:578`
-  2. Test: `tests/test_review_habits.py` — booleans as day counts, integer/duration/time as averages over days with a value; missing and unreadable days named (an unrun `<% … %>` is unreadable), never zero; yesterday fields shifted; no trackers or no values → item or group absent; output in the setup language (de/en labels, en otherwise).
+  2. Test: `tests/test_review_habits.py` — booleans as day counts, integer/duration/time as averages over days with a value; missing and unreadable days named (an unrun `<% … %>` is unreadable), never zero; yesterday fields taken as `review_day` attributed them (the reader owns the shift); no trackers or no values → item or group absent; output in the setup language (de/en labels, en otherwise).
   3. Implement: `tomo/scripts/lib/review_habits.py`; WHY doc first.
   4. Validate: tests green; ruff clean.
   5. Success: habits show as numbers without Dataview `[ref: PRD/F8-AC1, F8-AC2, F8-AC3]`

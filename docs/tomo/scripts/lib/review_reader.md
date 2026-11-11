@@ -110,6 +110,12 @@ listing the end pass recovered (`review_period.md`, "WHY the Module Calls
 one that outlasts the client's retries is final: it goes straight to
 `not_read` (and `_failed`), never to `pending`, so the report marks it
 `failed` instead of leaving it pending forever. There is no second end pass
-because the pacer's `finish()` restores the client's interval once and a
-period is read once; the memory of the end pass (`finished`) is what tells
-`_get` which rule applies.
+because `finish()` runs once per period and keeps the widest interval
+installed until `close()` restores the saved one; the memory of the end pass
+(`finished`) is what tells `_get` which rule applies.
+
+## Known Limits
+
+- A link stem is looked up by exact `.md` stem, so a full-path stem such as
+  `[[Folder/Note]]` finds no note and reads as "missing" (the lookup side of
+  the limit named in `review_day.md`).

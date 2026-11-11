@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.2"
+version: "1.3"
 ---
 
 # Solution Design Document
@@ -355,6 +355,9 @@ Responsibilities (one owner each):
 | `lib/review_pacer.py` | Spacing, widening after retries, the end-of-run retry pass, retry and wait accounting, the not-read list, abort on connection/auth errors |
 | `lib/review_day.py` | Reading one day: same-day links and embeds from the whole daily, configured sections, fields, tasks by ✅ date, size cap, per-day state |
 | `lib/review_period.py` | Reading a period: finding dailies (flat and year folders, duplicates), weekly notes of a month and their day blocks, link differences, vault growth, the report |
+| `lib/review_md.py` | The markdown structure of a daily: frontmatter split, fence-aware headings and thematic breaks, section ranges, the trailing navigation block, query/embed fence removal; no setting, no Kado (implemented, spec 045 Phase 3) |
+| `lib/review_reader.py` | `PacedReader`: the one cache in front of `ReviewPacer.read` for notes, link-stem lookups, folder listings and `listNotes` queries; pending until the end pass, then `not_read` or `missing` (implemented, spec 045 Phase 3) |
+| `lib/review_weekly.py` | Daily name rendering and parsing, link targets and comparison keys, the split of a weekly note into day blocks and week text; no Kado call (implemented, spec 045 Phase 3) |
 | `review-read.py` | CLI over `review_day` + `review_period` + `review_habits`; writes `read.json`; prints the report |
 | `lib/review_habits.py` | Tracker numbers (counts, averages, missing/unreadable days); takes fields as the reader attributed them |
 | `lib/review_doc.py` + `review-doc.py` | Validating `proposals.json`, rendering the review document with item ids, the label table, start-over replacement, the delivered mark function |
@@ -396,6 +399,9 @@ tomo/
 │       ├── review_pacer.py                   # NEW
 │       ├── review_day.py                     # NEW
 │       ├── review_period.py                  # NEW
+│       ├── review_md.py                      # NEW: markdown structure of a daily (implemented, spec 045 Phase 3)
+│       ├── review_reader.py                  # NEW: PacedReader, cached paced Kado reads (implemented, spec 045 Phase 3)
+│       ├── review_weekly.py                  # NEW: daily names, link targets, weekly day blocks (implemented, spec 045 Phase 3)
 │       ├── review_habits.py                  # NEW
 │       ├── review_doc.py                     # NEW
 │       ├── review_doc_parse.py               # NEW
@@ -424,7 +430,7 @@ docs/tomo/
 └── scripts/
     ├── review-session.md, review-read.md, review-doc.md, review-instructions.md   # NEW
     ├── lib/period.md, review_config.md, review_pacer.md, review_day.md,
-    │   review_period.md, review_habits.md, review_doc.md, review_doc_parse.md,
+    │   review_period.md, review_md.md, review_reader.md, review_weekly.md, review_habits.md, review_doc.md, review_doc_parse.md,
     │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
     ├── lib/review_vault.md, lib/week_rule_inference.md, lib/vault_config_edit.md  # NEW (implemented, spec 045 Phase 2)
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
@@ -445,9 +451,12 @@ tests/
 ├── test_review_pacer.py                      # NEW
 ├── test_review_day.py                        # NEW (same-day rule, sections, fields, tasks, size cap)
 ├── test_review_period.py                     # NEW (dailies, duplicates, year folders, weeklies, growth)
+├── test_review_period_end_pass.py            # NEW: the end pass of a period read — recovered listings and notes, not_read (implemented, spec 045 Phase 3)
+├── review_period_fixtures.py                 # NEW: shared vault fixtures of the period-read tests (implemented, spec 045 Phase 3)
+├── test_review_read.py                       # NEW: review-read.py end to end over the fake vault — report, stops, read.json (implemented, spec 045 Phase 3)
 ├── test_review_habits.py                     # NEW
 ├── test_review_doc.py                        # NEW (render, ids, labels, write failure)
-├── test_review_doc_parse.py                  # NEW (edits, ids, Approved line)
+├── test_review_doc_parse.py                  # NEW (edits, ids, Approved line; implemented, spec 045 Phase 3)
 ├── test_review_instructions.py               # NEW (insert/replace/new note, resume, drop, conflicts)
 ├── test_review_state.py                      # NEW (canonical states)
 ├── test_review_privacy.py                    # NEW (marker allowlist, exception handler)
@@ -592,29 +601,49 @@ vault-config-writer.py review --input <json>   (validated against vault-config-r
   out: {status: written, keys: [config key paths]}                 # paths only, never values (implemented, spec 045 Phase 2)
      | {status: unchanged} | {status: refused, reason, pointers?, problems?}
 
-review-read.py --period 2026-W13 --kind week [--stem S]
-  out: {status: ok|stopped, stem,
+review-read.py --period 2026-W13 --kind week [--stem S]      (implemented, spec 045 Phase 3)
+  out: {status: ok|stopped, stem, period: {kind, name, start, end},
         report: {days: [{date, dailies: [{path, state: found|empty|partly-read|failed}], duplicate: bool,
-                         linked: [{path, state: read|missing|failed}]}],
-                 weekly_notes?: [{path, state}], calls, retried, waited_s, not_read: [paths],
-                 kado_empty: [sources], advice: [raise-kado-limit|check-key-access]},
-        read_path: "tomo-tmp/review/<stem>/read.json", nothing_to_review: bool,
-        error?: {kind: kado-unreachable|kado-auth}}
+                         linked: [{name, path|null, state: read|missing|failed}]}],
+                 day_after: {date, dailies: [{path, state: read|failed}]},
+                 task_notes: [{path, state}],
+                 weekly_status?: found|none-found|kado-empty|not-read|not-configured,   # month only
+                 weekly_notes?: [{week, path|null, state: read|failed|absent}],         # month only
+                 growth: {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
+                 calls, retried, waited_s, not_read: [paths], kado_empty: [sources],
+                 advice: [raise-kado-limit|check-key-access]},
+        read_path: "tomo-tmp/review/<stem>/read.json" | null, nothing_to_review?: bool,
+        error?: {kind: kado-unreachable|kado-auth, detail},
+        problems?: [setup-missing|setup-invalid|daily-not-configured|dailies-not-read], errors?: [json-pointer]}
+  # read_path is null on nothing_to_review and on every stop; nothing_to_review exists only when the period was
+  # read — a stopped output never carries it. setup-invalid brings errors (pointers); dailies-not-read means the
+  # daily folder listing was still in not_read after the end pass (nothing written)
 
-review-doc.py write --stem S --proposals tomo-tmp/review/<stem>/proposals.json
-  out: {status: written|refused|stopped, doc_path, target, target_exists, target_found_elsewhere?: path,
-        counts: {group: n}, rejected: [{group, index, reason}],
+review-doc.py write --stem S --proposals tomo-tmp/review/<stem>/proposals.json [--run-id R]   (implemented, spec 045 Phase 3)
+  out: {status: written|refused|stopped, stem, doc_path, target, target_exists, target_found_elsewhere?: path,
+        counts: {group: n}, rejected: [{group, index, reason}], calls,
         problems?: [proposals-invalid|doc-name-taken|review-exists|kado-write-failed|read-missing|read-invalid|
-                    setup-missing|setup-invalid|inbox-not-configured]}
+                    setup-missing|setup-invalid|inbox-not-configured],
+        errors?: [json-pointer]                  # with proposals-invalid and setup-invalid
+        error?: {kind}}                          # stopped: kado-write-failed carries the error class name; a Kado stop
+                                                 # (kado-unreachable|kado-auth) carries {kind, detail}
+  # `calls` is on written and on stopped (the write failed after Kado calls were made).
+  # rejected[].reason: no-source-in-period | theme-needs-two-days | month-only-group | no-weekly-notes | empty-text
   # write never overwrites: an existing Tomo review document gives review-exists and keeps read.json and
   # proposals.json; only `replace --confirm` writes over it, from those kept files (F6-AC1)
 
-review-doc.py parse --stem S            (reads the doc through Kado)
-  out: {status: ok|not-found, approved: bool, items: {group: [{id?, origin: tomo|user, kept: bool, edited: bool}]},
-        counts: {kept, unticked, deleted, added}, warnings: [approved-line-missing|unknown-group|duplicate-group|frontmatter-broken|item-outside-group]}
+review-doc.py parse --stem S [--doc-path P]            (reads the doc through Kado)
+  out: {status: ok|not-found|stopped, stem, doc_path, approved: bool, nothing_to_deliver: bool,
+        items: {group: [{id?, origin: tomo|user, kept: bool, edited: bool}]},
+        counts: {kept, unticked, deleted, added},
+        warnings: [approved-line-missing|unknown-group|duplicate-group|frontmatter-broken|item-outside-group],
+        error?: {kind: kado-unreachable|kado-auth, detail}}
+  # --doc-path overrides the doc_path of meta.json; not-found = no meta.json and no --doc-path, or nothing at the path
 
-review-doc.py replace --stem S [--confirm]
-  out: without --confirm {status: needs-confirm, doc_path}; with it {status: replaced|stopped}
+review-doc.py replace --stem S [--confirm | --abort] [--proposals <json>] [--run-id R]
+  out: no flag      {status: needs-confirm, stem, doc_path}      # nothing written, no Kado call
+       --confirm    as write, with status replaced instead of written
+       --abort      {status: aborted, stem}                      # deletes read.json and proposals.json; document and meta.json untouched
 
 review-instructions.py preview --stem S
   out: {status: ok|stopped, mode: insert|replace|new-note, target, target_moved?: bool, place, section_md,
@@ -670,13 +699,20 @@ ENTITY: ReviewSetup (NEW, lib/review_config.py) — the `review:` section plus c
              # check_format(fmt, rule) -> warnings | refusal became period.check_format(fmt, kind, rule, *, today)
              # -> list[FormatProblem] in lib/period.py, FormatProblem.kind naming the problem (implemented, spec 045 T1.1)
 
-ENTITY: ReadResult (NEW) — read.json
-  FIELDS: period, days: [{date, dailies: [path], sections: {name: text}, fields: {name: raw}, partly_read: bool,
+ENTITY: ReadResult (NEW) — read.json   (implemented, spec 045 Phase 3)
+  FIELDS: period: {kind, name, start, end},
+          days: [{date, dailies: [path], sections: {name: text}, fields: {name: raw}, partly_read: bool,
           has_content: bool, links: [target], problems: [{kind, path}],
-          tasks: [{text, done, done_date, source}], linked: [{path, kind: planner|journal|other, text}]}],
-          weekly: [{path, day_blocks: {date: text}, week_text: {section: text}, overlap_days: n, links: [target]}],
+          tasks: [{text, done, done_date, source}], linked: [{path, vault_path, kind: planner|journal|other, text}]}],
+          open_tasks: [task],                        # not-done tasks of the task notes, labelled "open today"
+          weekly: [{path, week, duplicate: bool, day_blocks: {date: text}, week_text: {section: text},
+          overlap_days: n, links: [target]}],        # month only
           growth: {created: [{path, links}], mocs_changed: [path], mocs_linked_by_new: [path]},
-          only_in_weekly_links: [target], dailies_not_in_weekly: [target], report: ...
+          only_in_weekly_links: [target], dailies_not_in_weekly: [target],   # month with weekly notes only
+          not_read: [paths], report: <the report review-read.py prints, incl. calls, retried, waited_s, advice>
+  RULE: `previous_day_fields` is a per-day working field of `review_day`; `attribute_yesterday` removes it and
+        moves its values onto the `fields` of the entry dated D-1, so it is absent from every `days[]` entry of
+        read.json. `linked[].vault_path` is the path the link stem resolved to (null when it did not resolve).
 
 ENTITY: Proposals (NEW) — proposals.json (model output, schema review-proposals.schema.json)
   FIELDS: language, groups: {done|open|themes|growth|weekly_only|not_in_weekly: [{text, sources: [vault path]}]}
@@ -690,21 +726,31 @@ ENTITY: ReviewDoc (NEW) — the inbox document "<period-name> Review.md"
   BODY: title, info callout (target, place, not-read list), "- [ ] Approved", one H2 per group (label table),
         Tomo items "- [x] <text with its source links> %%t<n>%%"; user items "- [x] <text>" (no id);
         continuation lines indented by 2 spaces
+  RULES (implemented, spec 045 Phase 3):
+    - an empty group renders one plain `- nothing found` / `- nichts gefunden` bullet (no checkbox, no id)
+    - the habits group is omitted when no tracker has a value in the period
+    - the month-only groups (weekly_only, not_in_weekly) appear only when the month has weekly notes
+    - `rejected[].reason` is one of no-source-in-period | theme-needs-two-days | month-only-group |
+      no-weekly-notes | empty-text
+    - a link comes only from a source that resolves to a daily of the period or, for weekly_only, to an
+      overlapping weekly note the reader listed; a source resolving to neither is dropped, never rendered
 
 ENTITY: ApprovedReview (NEW) — parse result: ordered groups → kept item texts, each with origin and id
   RULE: in-process only — never written to a file; Phase 4 reads the document fresh through Kado and parses
         it at preview and deliver time, so it always lands what the document holds now
 
 ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
-  FIELDS: stem, period, kind, doc_path, target, mode, generated, pass1_counts {group: n},
+  FIELDS: stem, period, kind, doc_path, target, target_exists, run_id, mode, generated, pass1_counts {group: n},
           pass1_links {t<n>: [link stem]} (the source-link stems of each Tomo item, dates and note stems only),
           steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn
   RULE: nothing text-derived (no digest of item text — templated lines are recoverable by enumeration)
+        `mode` is `insert` when the target note exists and `new-note` when it does not, as Pass 1 knew it
+        (implemented, spec 045 Phase 3); `replace` is decided later, by the marker search at preview
 ```
 
 **Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its source links differ from Pass 1's (`pass1_links`; a retyped text that keeps its links reads as unedited, an accepted limit), kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
 
-**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. The parser warns on each; the later Hashi editor spec takes them over.
+**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. As built (spec 045 Phase 3) the parser has exactly five warnings: `approved-line-missing`, `unknown-group`, `duplicate-group`, `frontmatter-broken` and `item-outside-group` (a checkbox line above the first heading, filed under `unknown`). Headings, lists, tables, fences, quotes and HTML inside an item are not detected: they are kept verbatim as item text, because only an exact column-0 Approved line, `## ` group heading or `- [ ] ` / `- [x] ` item start is structure. `review_doc` escapes a leading structural marker on every item line with `\` when it writes the document, and Phase 4 escapes again idempotently when it lands the text. An Approved line moved into a group still gates: the first column-0 Approved line of the document decides. The later Hashi editor spec takes the rest over.
 
 #### Integration Points
 
@@ -827,11 +873,11 @@ Rules (level rule owned by `lib/review_config.place_level`, applied by `lib/revi
 **Why this example**: the PRD replaces a call budget with pace-and-retry; the policy must be testable without Kado.
 
 ```python
-class ReviewPacer:                      # lib/review_pacer.py, modelled on link_members.LinkLookup
+class ReviewPacer:                      # lib/review_pacer.py, a context manager, modelled on link_members.LinkLookup
     START, MAX = 0.3, 2.0               # seconds between sends; 0.25 s is exactly 20 per 5 s
     def __init__(self, client):
         self.client, self.failed = client, []
-        self._saved = client.min_interval
+        self.recovered, self._saved, self._installed = {}, client.min_interval, True
         client.min_interval = self.START
     def retries(self):                  # the client already counts sends: attempts beyond calls are retries
         return self.client.attempt_count - self.client.call_count
@@ -845,11 +891,16 @@ class ReviewPacer:                      # lib/review_pacer.py, modelled on link_
             if self.retries() > before:
                 self.client.min_interval = min(self.MAX, self.client.min_interval * 2)
     def finish(self):                   # end-of-run pass at the widest spacing; only what fails here is "not read"
-        self.client.min_interval = self.MAX
+        self.client.min_interval = self.MAX         # stays installed: reads after the end pass keep the widest spacing
         retry, self.failed = self.failed, []
-        not_read = [p for p, fn in retry if self._try(p, fn) is None]
-        self.client.min_interval = self._saved      # restore, as LinkLookup.close does
+        not_read = []
+        for p, fn in retry:
+            try: self.recovered[p] = fn(p)          # values read in the end pass; the caller merges them
+            except KadoRateLimitError: not_read.append(p)
         return not_read
+    def close(self):                    # restores the saved interval once (also __exit__ of the context manager)
+        if self._installed:
+            self.client.min_interval = self._saved; self._installed = False
     # KadoConnectionError / KadoAuthError propagate → review-read.py stops, writes nothing (F3-AC10)
     def summary(self, not_read):
         return {"calls": self.client.call_count, "retried": self.retries(),
@@ -978,6 +1029,8 @@ OUTPUT: list ordered by period; the skill offers failed-delivery, open, move-ref
 ```
 
 Status after Phase 2 (implemented, spec 045 T2.3): `review_state` implements steps 1 and 2 (`failed-delivery`, `open`) and raises `StateNotClassified` when a set JSON is handed in; `open_reviews` passes no set JSON. Until T4.3 an approved review whose set was delivered therefore reads `failed-delivery` in the `start` listing — the honest answer while nothing verifies the set. T4.3 completes steps 3–7 and probes `<inbox>/<stem>_instructions.json` through Kado inside the listing (one read per approved document; ADR-6), so that `start` and `review-instructions.py status` classify from the same inputs. `open_reviews` orders by period start under the configured week rule and name formats and infers a missing `review_kind` by parsing the period under those formats; a document with unreadable frontmatter or without `review_period` is returned under `skipped_review_docs`, never dropped.
+
+As built, Phase 3 (implemented, spec 045 T3.1-T3.8): the read side is `review_md` (markdown structure), `review_day` (one daily), `review_weekly` (names, link targets, weekly day blocks), `review_reader` (`PacedReader`, the cache in front of the pacer) and `review_period` (the period read and its report), run by `review-read.py`; the document side is `review_doc`, `review_doc_parse` and `review-doc.py` (write / parse / replace). `ReviewPacer.finish()` runs once per period, keeps the widest interval installed and puts what it read into `recovered`; the interval is restored by `close()` / the context manager's exit. `review_state` and the `start` listing are unchanged since Phase 2.
 
 ```
 ALGORITHM: month reading (F3-AC5/6)

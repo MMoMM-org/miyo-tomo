@@ -164,3 +164,9 @@ label module would be a third file for twelve strings.
 
 JSON carries no comment; Tomo's schemas are versioned by the scripts that
 read them (repo rule: JSON schemas have no version header).
+
+## Known Limits
+
+- An inline `[[...]]` or `![[...]]` in the model's item text stays verbatim:
+  only the links the script renders from resolved sources are checked. The
+  user reviews the text before approval.

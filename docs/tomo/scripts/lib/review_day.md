@@ -275,3 +275,11 @@ the kept text, in order, once each), `problems` (`[{kind:
 `linked` (`[{path, kind: planner|journal|other, text}]`). The daily's own
 words sit in `sections`, `linked[].text` and `tasks[].text`; they go to
 `read.json`, never to stdout or stderr.
+
+## Known Limits
+
+- A daily format without a year (such as `D.M`) does not recognise the
+  neighbour-day navigation lines, because their link text cannot be read as
+  a date; those lines stay in the kept text.
+- A full-path wiki-link stem such as `[[Folder/Note]]` resolves to
+  "missing". The test vault's dailies hold none.

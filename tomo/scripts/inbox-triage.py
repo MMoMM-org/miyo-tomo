@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.1
+# version: 0.41.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -580,12 +580,18 @@ def _get_doc_type(hit: dict) -> str:
       *_suggestions.md      → suggestions
       *_moc-proposal-*.md   → moc-proposal
       *_instructions.md     → instructions
+      "* Review.md"         → review (spec 045 ADR-10; the /review document)
+
+    Only hits from the Tomo-stamped frontmatter buckets reach this function,
+    so the " Review" rule never touches a user's own note of that name.
     """
     tomo = (hit.get("frontmatter") or {}).get("tomo") or {}
     doc_type = tomo.get("doc_type", "")
     if doc_type:
         return doc_type
     stem = Path(hit.get("path", "")).stem
+    if stem.endswith(" Review"):
+        return "review"
     if stem.endswith("_suggestions-fan"):
         return "suggestions-fan"
     if stem.endswith("_suggestions"):
@@ -944,6 +950,10 @@ def read_approval_state(
                 f"[inbox-triage] WARNING: unknown doc_type for {doc.get('path', '?')}",
                 file=sys.stderr,
             )
+            continue
+        if doc_type == "review":
+            # spec 045 ADR-10: the /review document is the user's editing
+            # surface, not a Pass-2 input — skipped before any read, silently.
             continue
         tagged_pending.append((doc, doc_type))
     for doc in pending_accept_hits:

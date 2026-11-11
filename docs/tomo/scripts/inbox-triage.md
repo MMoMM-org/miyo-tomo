@@ -525,3 +525,48 @@ The `--pass1` help text was "Force suggest action" until v0.40.1, which promised
 a force the flag never gave since the alias change; it now reads "Run Pass 1
 (suggest), coverage/drift-respecting", matching `--pass2`. Pinned by
 `test_pass1_help_does_not_promise_a_force`.
+
+## Review documents are skipped before any read (spec 045 ADR-10, v0.41.0)
+
+`/review` (spec 045) keeps its open state in the vault as an inbox document
+with `tomo.doc_type: review` and the states `pending-approval` → `approved` —
+the same states the suggestions and moc-proposal documents use. `/inbox` must
+neither classify nor apply it (PRD F4-AC6), and the periodic note `/review`
+writes while its instruction set waits (`rendered-note`/`pending-move`) must
+not surface as a new source (PRD F5-AC4).
+
+WHY the existing states and not a new one: `pending-accept` falls back to
+`moc-proposal` in the pending loop (`_get_doc_type(doc) or "moc-proposal"`),
+so a review document stamped that way would be read and matched for an Accept
+box; a brand-new state is in no `query_frontmatter` bucket, so the document
+would land in `compute_new_sources` as a fresh item. Reusing
+`pending-approval`/`approved` puts the document into buckets triage already
+excludes from discovery, for free.
+
+WHY a filename rule and not a frontmatter read: Kado's byFrontmatter returns
+`frontmatter: {}`, so inside the buckets every doc_type comes from
+`_get_doc_type`'s filename fallback. The review document's stem ends with
+` Review` (`2026-W13 Review`, `2026-03 Review`), so `_get_doc_type` maps that
+suffix to `review`. The rule is a space-suffix, unlike the `_suggestions`-style
+underscore suffixes, because the review document's name is the period label
+the user reads in Obsidian. It costs no Kado call (ADR-10: no extra query in
+triage). The rule only ever sees hits from the Tomo-stamped buckets — a user's
+own `Book Review.md` with no `tomo` block is in no bucket, never reaches
+`_get_doc_type`, and stays a new item.
+
+WHY the skip sits before `read_note`: the pending loop reads every tagged
+document's body to scan its approval box and caches it. A review document has
+no box triage understands, its body is the user's editing surface, and caching
+it would add a manifest entry nothing consumes. `_get_doc_type` tags it
+`review` and the pending-approval loop `continue`s silently — no read, no
+cache, no `pending_approval` entry, no warning, and the run's call counters are
+the same as without the document. The `approved` bucket already reads only
+`suggestions`/`suggestions-fan` under `--pass2`, so an approved review document
+is skipped there without a new branch.
+
+Trade-off (ADR-10): a review document the user renamed away from the ` Review`
+suffix gets the existing "unknown doc_type" warning and is skipped — harmless,
+and `/review` still finds it by frontmatter. `pending-accept` is left alone:
+Tomo never stamps a review document with that state.
+
+Pinned by `tests/test_inbox_triage_review_skip.py`.

@@ -162,3 +162,11 @@ backtick longer than the longest run, at least four" rule has one home.
 longest run in the value, a space on each side when the value starts or ends
 with a backtick (CommonMark strips exactly one). Both are pure string
 functions with no imports beyond `re`, so the DAG-leaf rule above holds.
+
+Two edges found in the Phase 1 review (v0.7.1): an empty value used to
+render as `` `` ``, which CommonMark reads as two literal backticks, not a
+span — it now renders as `` ` ` ``, the smallest valid span (all-space
+content is never stripped, so it shows as one space). And a value that
+begins AND ends with a space (and is not all spaces) is padded too, because
+CommonMark strips one space from each end of exactly such a span; a space
+on one edge only is left alone, since nothing strips it.

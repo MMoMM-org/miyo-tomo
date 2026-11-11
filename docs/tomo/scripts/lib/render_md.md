@@ -1069,3 +1069,13 @@ heading — and `replace_section` got its own branch under "Replace the body of
 [instruction-render.md](../instruction-render.md#section-actions-render-copy-ready-spec-045-t15-render_md-v0370)
 (the task's named WHY site); this section exists so the mirrored path for
 `render_md.py` points at them.
+
+### WHY `_fenced_content` splits on `"\n"` only (v0.37.1, Phase 1 review)
+
+The fence body is the content a user copies by hand, so it must come back
+byte for byte. `str.splitlines()` also breaks a line on `\x0b`, `\x0c`,
+`\x1c`–`\x1e`, `\x85`, ` ` and ` ` and drops the character —
+a line separator inside a review line would silently become two lines.
+The body is therefore split on `"\n"` alone; one trailing newline is the
+line terminator and adds no empty line, a trailing blank line stays, and
+empty content yields an empty fence (the pre-existing pin).

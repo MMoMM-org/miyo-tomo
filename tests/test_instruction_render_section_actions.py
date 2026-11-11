@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_instruction_render_section_actions.py — copy-ready render for section actions.
 
 Spec 045 T1.5 (PRD F5-AC9): `insert_under_marker` and `replace_section` in
@@ -18,6 +18,10 @@ Mechanisms each test falsifies:
 - the code span around a backticked anchor (`render_helpers.code_span`):
   `test_a_backtick_in_the_anchor_does_not_break_the_line`
 - the peer-checkbox format: `test_every_section_action_keeps_the_peer_checkbox_format`
+- the "\n"-only split of the fence body (not `str.splitlines()`):
+  `test_fenced_content_keeps_a_line_separator_inside_a_line`
+- the empty / space-edged code span: `test_code_span_of_an_empty_text_is_a_code_span`,
+  `test_code_span_pads_when_both_edges_are_spaces`
 """
 from __future__ import annotations
 
@@ -32,6 +36,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from lib import render_helpers  # noqa: E402
 from lib.render_md import (  # noqa: E402
+    _fenced_content,
     _md_section_for,
     _render_action_md,
     render_instructions_md,
@@ -120,6 +125,32 @@ def test_empty_content_still_renders_a_closed_fence():
     md = _render_action_md(_replace(content=""), {})
     fence, body = _fenced_body(md)
     assert body == ""
+    assert _fenced_content("") == ["````markdown", "````"]
+
+
+# ── byte-faithful lines (spec 045 Phase 1 review) ───────────────────────────
+#
+# `str.splitlines()` also splits on \x0b, \x0c, \x1c-\x1e, \x85,   and
+#   and drops them; copy-ready content must come back byte for byte, so
+# the fence body is split on "\n" only.
+
+
+def test_fenced_content_keeps_a_line_separator_inside_a_line():
+    content = "one still one\nform\x0cfeed\nnel\x85end\n"
+    assert _fenced_content(content) == [
+        "````markdown", "one still one", "form\x0cfeed", "nel\x85end", "````",
+    ]
+    md = _render_action_md(_insert(content=content), {})
+    assert "\n".join(_fenced_content(content)) in md
+
+
+def test_fenced_content_without_a_trailing_newline_adds_none_twice():
+    assert _fenced_content("a\nb") == ["````markdown", "a", "b", "````"]
+
+
+def test_fenced_content_keeps_a_trailing_blank_line():
+    assert _fenced_content("a\n\n") == ["````markdown", "a", "", "````"]
+    assert _fenced_content("\n") == ["````markdown", "", "````"]
 
 
 # ── the placement wording ───────────────────────────────────────────────────
@@ -235,3 +266,19 @@ def test_code_span_pads_only_when_an_edge_is_a_backtick():
     assert render_helpers.code_span("has `one`") == "`` has `one` ``"
     assert render_helpers.code_span("`edge") == "`` `edge ``"
     assert render_helpers.code_span("``two``") == "``` ``two`` ```"
+
+
+def test_code_span_of_an_empty_text_is_a_code_span():
+    """"``" is a literal pair of backticks, not a span (CommonMark); an
+    all-space span renders as a space and is the smallest valid one."""
+    assert render_helpers.code_span("") == "` `"
+    assert render_helpers.code_span(" ") == "` `"
+
+
+def test_code_span_pads_when_both_edges_are_spaces():
+    """CommonMark strips one space from each end of a span that begins AND
+    ends with a space (unless it is all spaces), so such a value is padded
+    once; a space on one edge only is left alone."""
+    assert render_helpers.code_span(" both ") == "`  both  `"
+    assert render_helpers.code_span(" left") == "` left`"
+    assert render_helpers.code_span("right ") == "`right `"

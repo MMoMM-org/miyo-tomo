@@ -20,7 +20,12 @@ in a `oneOf` branch. A single enum of all states would let a `suggestions`
 document carry `pending-apply`; the branches make the pair the unit of
 validity, which is what `tomo_lifecycle.STATE_MACHINE` also encodes. Every
 new doc type adds both the enum member and a branch — one without the
-other is caught by `tests/test_doc_frontmatter.py`.
+other is caught by `tests/test_doc_frontmatter.py`
+(`test_every_doc_type_has_exactly_one_state_branch`), and a branch whose
+states drift from `STATE_MACHINE[doc_type]["states"]` by
+`test_state_branches_equal_the_lifecycle_state_machine`. The one member
+the state machine does not know is `rendered-note` — Hashi strips the
+block on apply, so it has no lifecycle — and that test pins it by name.
 
 ## WHY `review` Carries Only the Four Lifecycle Keys (spec 045, ADR-10)
 

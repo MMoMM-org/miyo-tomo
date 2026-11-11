@@ -541,7 +541,8 @@ review-session.py start --args '<raw $ARGUMENTS>'
   out: {request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default"},
         open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state (canonical list below)
         setup: {week: present|missing, month: present|missing},
-        error?: {kind: invalid-period|unfinished-period|not-periodic-note|unknown-argument, expected, example}}
+        error?: {kind: invalid-period|unfinished-period|not-periodic-note|unknown-argument, expected, example,
+                 last_finished?: "2026-W13"}}     # last_finished on unfinished-period (implemented, spec 045 T1.1)
 
 review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N]
   out: {status: ok|stopped,
@@ -608,7 +609,8 @@ ENTITY: Period (NEW, lib/period.py)
     days() -> list[date]
     weeks_overlapping() -> list[Period]            # month only
     is_finished(today) -> bool                     # end < today
-    note_paths(folder, fmt, rule) -> list[str]     # flat, then <folder>/<year>/ — week year for weeks, calendar year otherwise
+    note_paths(folder, fmt) -> list[str]           # flat, then <folder>/<year>/ — week year for weeks, calendar year otherwise
+                                                   # (implemented, spec 045 T1.1: no rule parameter — a Period already carries its numbers)
 
 ENTITY: WeekRule (NEW)
   FIELDS: first_day: 0..6 (0 = Monday), min_days_in_first_week: 1..7
@@ -616,8 +618,10 @@ ENTITY: WeekRule (NEW)
   INVARIANT: ISO == WeekRule(0, 4)
 
 ENTITY: ReviewSetup (NEW, lib/review_config.py) — the `review:` section plus calendar/naming/templates keys
-  BEHAVIORS: validate(); place_level(target_headings) -> int; check_format(fmt, rule) -> warnings | refusal;
+  BEHAVIORS: validate(); place_level(target_headings) -> int;
              inbox_path(name) -> str   # refuses a name with "/", "\" or ".." and any result outside the inbox
+             # check_format(fmt, rule) -> warnings | refusal became period.check_format(fmt, kind, rule, *, today)
+             # -> list[FormatProblem] in lib/period.py, FormatProblem.kind naming the problem (implemented, spec 045 T1.1)
 
 ENTITY: ReadResult (NEW) — read.json
   FIELDS: period, days: [{date, dailies: [path], sections: {name: text}, fields: {name: raw}, partly_read: bool,

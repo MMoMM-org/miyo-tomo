@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_doc_frontmatter.py — Tests for the doc_frontmatter helper module.
 
 Covers T1.2 (F-47 Phase 1): build_tomo_block, parse_tomo_block,
@@ -9,6 +9,8 @@ T1.2 (XDD-018 Phase 1): sources[] array schema extension — replaces source_* p
 
 T1.4 (spec 045 Phase 1): the review doc_type (pending-approval → approved);
 the review_* keys are top-level frontmatter, the tomo: block stays closed.
+Phase 1 review: every doc_type enum member has exactly one oneOf state
+branch, and the branches equal tomo_lifecycle.STATE_MACHINE.
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
       docs/XDD/specs/018-agent-architecture-cleanup/
@@ -350,6 +352,52 @@ def test_review_rejects_foreign_states(monkeypatch, state):
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     with pytest.raises(SchemaValidationError):
         build_tomo_block("review", state, "2026-11-11-120000-abc123")
+
+
+def _doc_type_branches() -> tuple[list[str], dict[str, list[str]]]:
+    """(the doc_type enum, {doc_type: its oneOf branch's state enum}) of the schema."""
+    import json
+
+    schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    tomo = schema["properties"]["tomo"]
+    branches: dict[str, list[str]] = {}
+    for branch in tomo["oneOf"]:
+        doc_type = branch["properties"]["doc_type"]["const"]
+        assert doc_type not in branches, f"two oneOf branches pin {doc_type}"
+        branches[doc_type] = branch["properties"]["state"]["enum"]
+    return tomo["properties"]["doc_type"]["enum"], branches
+
+
+_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+# Marks a rendered note staged in the inbox; Hashi strips the block on apply,
+# so it has no lifecycle in STATE_MACHINE (pinned, not forgotten).
+_DOC_TYPES_WITHOUT_LIFECYCLE = {"rendered-note"}
+
+
+def test_every_doc_type_has_exactly_one_state_branch():
+    """[spec 045 Phase 1 review] An enum member without a oneOf branch, or a
+    branch whose const is not an enum member, is a half-added doc type — the
+    schema would accept any state for it (or none). Every member has exactly
+    one branch, and no branch is orphaned."""
+    enum, branches = _doc_type_branches()
+    assert len(enum) == len(set(enum)), "duplicate doc_type enum member"
+    assert set(enum) == set(branches), (
+        f"enum without branch: {sorted(set(enum) - set(branches))}, "
+        f"branch without enum: {sorted(set(branches) - set(enum))}"
+    )
+
+
+def test_state_branches_equal_the_lifecycle_state_machine():
+    """[spec 045 Phase 1 review] The oneOf branches and `tomo_lifecycle.
+    STATE_MACHINE` encode the same doc_type → states pairs; the one type the
+    state machine does not know is pinned by name."""
+    from lib.tomo_lifecycle import STATE_MACHINE
+
+    enum, branches = _doc_type_branches()
+    assert set(enum) - set(STATE_MACHINE) == _DOC_TYPES_WITHOUT_LIFECYCLE
+    assert set(STATE_MACHINE) <= set(enum), sorted(set(STATE_MACHINE) - set(enum))
+    for doc_type, definition in STATE_MACHINE.items():
+        assert branches[doc_type] == definition["states"], doc_type
 
 
 def test_review_block_holds_only_schema_keys(monkeypatch):

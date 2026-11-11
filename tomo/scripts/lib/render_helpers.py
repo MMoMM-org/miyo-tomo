@@ -1,4 +1,4 @@
-# version: 0.7.0
+# version: 0.7.1
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
@@ -32,11 +32,18 @@ def code_span(text: str) -> str:
     """`text` as one inline code span, whatever backticks it holds.
 
     The delimiter is one backtick longer than the longest run inside the
-    text; a text that starts or ends with a backtick is padded with one space
-    on each side, which CommonMark strips again on render.
+    text; a text that starts or ends with a backtick, or that both starts and
+    ends with a space, is padded with one space on each side, which CommonMark
+    strips again on render. An empty text renders as "` `" — "``" would be two
+    literal backticks, not a span; all-space content is never stripped.
     """
     delimiter = "`" * (_longest_backtick_run(text) + 1)
-    if text.startswith("`") or text.endswith("`"):
+    if not text:
+        text = " "
+    elif (
+        text.startswith("`") or text.endswith("`")
+        or (text[0] == " " and text[-1] == " " and text.strip(" "))
+    ):
         text = f" {text} "
     return f"{delimiter}{text}{delimiter}"
 

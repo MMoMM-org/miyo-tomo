@@ -394,7 +394,8 @@ def appended_failure(script: str, fragment: str) -> re.Pattern:
 
 def kado_http_error() -> str:
     """The KadoRateLimitError text of a 503 that outlived its retries
-    (kado_client.py:34-35 retry constants, :781-786 the raise, spec 045 T1.2).
+    (kado_client.py: the `_RETRY_STATUSES` / `_MAX_RETRIES` constants and the
+    `raise KadoRateLimitError` in `KadoClient._call_tool`, spec 045 T1.2).
     Rendered from the f-string that raise carries, so the stub's text is
     whatever kado_client.py produces for code 503 / reason Service Unavailable."""
     source = KADO_CLIENT.read_text(encoding="utf-8")
@@ -421,6 +422,12 @@ def kado_http_error() -> str:
     template = call.args[0]
     assert isinstance(template, ast.JoinedStr), ast.unparse(template)
     values = {"exc.code": 503, "exc.reason": "Service Unavailable", "_MAX_RETRIES": 4}
+    placeholders = [
+        ast.unparse(part.value) for part in template.values
+        if isinstance(part, ast.FormattedValue)
+    ]
+    for key in placeholders:
+        assert key in values, f"unhandled placeholder {key}, update this pin"
     message = "".join(
         str(values[ast.unparse(part.value)]) if isinstance(part, ast.FormattedValue)
         else part.value

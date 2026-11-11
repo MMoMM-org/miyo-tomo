@@ -1,4 +1,4 @@
-# version: 0.37.0
+# version: 0.37.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -64,10 +64,16 @@ def _md_section_for(action: dict) -> str:
 
 
 def _fenced_content(content: str) -> list[str]:
-    """`content` as the lines of one copy-ready fenced block (spec 045 T1.5)."""
+    """`content` as the lines of one copy-ready fenced block (spec 045 T1.5).
+
+    Split on "\\n" only — never `str.splitlines()`, which also breaks on and
+    drops \\x0b, \\x0c, \\x1c-\\x1e, \\x85, \\u2028 and \\u2029; the body must
+    stay byte-faithful. One trailing newline terminates the last line.
+    """
     fence = fence_for(content)
-    body = content if content.endswith("\n") or not content else content + "\n"
-    return [f"{fence}markdown", *body.splitlines(), fence]
+    body = content[:-1] if content.endswith("\n") else content
+    lines = body.split("\n") if content else []
+    return [f"{fence}markdown", *lines, fence]
 
 
 def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:

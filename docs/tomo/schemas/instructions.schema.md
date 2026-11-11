@@ -34,9 +34,9 @@ first Tomo emitter, so the definition moved in verbatim from
 `hashi-instructions.schema.json`, the mirror-only exemption and the
 sanctioned-asymmetry prefix went out in the same commit, and
 `test_hashi_instructions_schema.py` now asserts the action is present
-here. The order in the `oneOf` follows the contract (directly after
-`insert_under_marker`); the schema-parity test compares the ref sets, not
-their order.
+here. The definition is placed directly after `insert_under_marker` in
+the `oneOf` (the overall order differs from the contract's); the
+schema-parity test compares the ref sets, not their order.
 
 ### Why the shape manifest was regenerated at `schema_version` 3, without a version move
 

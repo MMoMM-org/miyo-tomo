@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
@@ -20,12 +20,15 @@ On tests/review_fake_vault with synthetic read.json / proposals.json files:
 - Approved is unticked; the frontmatter is a schema-valid tomo: block plus
   the top-level review_* keys; the path comes from review_config.inbox_path
 - an existing non-Tomo "<name> Review.md" gives doc-name-taken and nothing
-  is written; Tomo's own review document is overwritten
+  is written; Tomo's own review document gives review-exists with its
+  doc_path, nothing is written, read.json and proposals.json stay and
+  meta.json is unchanged (write never overwrites; only replace --confirm does)
 - a failed Kado write gives status stopped, kado-write-failed, no doc_path,
   and keeps read.json and proposals.json; an invalid proposals file gives
   proposals-invalid and writes nothing
-- Pass 1 counts go to meta.json; read.json and proposals.json are deleted
-  after the write; a week write stays within five Kado calls
+- Pass 1 counts go to meta.json, which carries no proposal or daily text;
+  read.json and proposals.json are deleted after the write and nothing
+  else is left in the stage folder; a week write stays within five Kado calls
 - exit 2 for a bad invocation, exit 1 with the class name only on an
   unexpected exception; stdout and stderr never carry proposal text
 
@@ -416,10 +419,23 @@ def test_existing_non_tomo_document_is_doc_name_taken(mod, instance, monkeypatch
     stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
     assert (stage_dir / "read.json").exists() and (stage_dir / "proposals.json").exists()
 
-    own = ReviewFakeVault({f"{INBOX}2026-W13 Review.md": "---\ntomo:\n  doc_type: review\n  state: pending-approval\n"
-                                                         "  run_id: old\n  updated_at: x\n---\n# old\n"})
-    _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, own)
-    assert out["status"] == "written" and fake.writes == [f"{INBOX}2026-W13 Review.md"]
+
+def test_existing_tomo_review_is_review_exists_and_never_overwritten(mod, instance, monkeypatch, capsys):
+    doc_path = f"{INBOX}2026-W13 Review.md"
+    old_text = ("---\ntomo:\n  doc_type: review\n  state: pending-approval\n  run_id: old\n  updated_at: x\n"
+                "---\n# old\n")
+    own = ReviewFakeVault({doc_path: old_text, f"{WEEKLY}2026-W13.md": "# W13\n"})
+    stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
+    stage_dir.mkdir(parents=True)
+    old_meta = '{"stem": "2026-W13_review", "steps_done": ["previous"]}\n'
+    (stage_dir / "meta.json").write_text(old_meta, encoding="utf-8")
+    code, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, own)
+    assert code == 0 and out == {"status": "refused", "stem": "2026-W13_review", "doc_path": doc_path,
+                                 "target": f"{WEEKLY}2026-W13.md", "target_exists": True,
+                                 "problems": ["review-exists"]}
+    assert fake.writes == [] and fake.text(doc_path) == old_text
+    assert (stage_dir / "read.json").exists() and (stage_dir / "proposals.json").exists()
+    assert (stage_dir / "meta.json").read_text(encoding="utf-8") == old_meta
 
 
 def test_failed_kado_write_is_stopped_and_keeps_the_content_files(mod, instance, monkeypatch, capsys):
@@ -441,7 +457,12 @@ def test_invalid_proposals_file_is_refused_before_any_kado_call(mod, instance, m
 
 
 def test_pass1_counts_in_meta_and_content_files_deleted(mod, instance, monkeypatch, capsys):
-    _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(), GOOD)
+    props = json.loads(json.dumps(GOOD))
+    props["groups"]["done"][0]["text"] = MARKER
+    read = week_read()
+    read["days"][0]["sections"]["Daily Log"] = MARKER + " daily"
+    _, out, fake = write(mod, monkeypatch, capsys, instance, read, props)
+    assert MARKER in fake.text(out["doc_path"])                  # the document is the only copy that keeps it
     stage_dir = instance / "tomo-tmp" / "review" / "2026-W13_review"
     meta = json.loads((stage_dir / "meta.json").read_text(encoding="utf-8"))
     assert meta["pass1_counts"] == {"done": 1, "open": 1, "themes": 1, "growth": 1, "habits": 1}
@@ -449,7 +470,10 @@ def test_pass1_counts_in_meta_and_content_files_deleted(mod, instance, monkeypat
     assert meta["doc_path"] == out["doc_path"] and meta["target"] == out["target"] and meta["mode"] == "insert"
     assert meta["run_id"] == "r-test" and meta["generated"] and meta["steps_done"] == [] and not meta["failed_step"]
     assert not (stage_dir / "read.json").exists() and not (stage_dir / "proposals.json").exists()
-    assert MARKER not in (stage_dir / "meta.json").read_text(encoding="utf-8")
+    left = sorted(p.name for p in stage_dir.iterdir())
+    assert left == ["meta.json"]
+    for path in stage_dir.iterdir():
+        assert MARKER not in path.read_text(encoding="utf-8"), f"{path.name} carries content"
 
 
 def test_a_week_write_costs_at_most_five_kado_calls(mod, instance, monkeypatch, capsys):

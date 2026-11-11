@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it (Pass 1).
-# version: 0.1.0
+# version: 0.2.0
 """Write the Pass 1 review document of /review (spec 045 T3.6, PRD F4).
 
 After the period was read (``read.json``) and the model wrote its proposals
@@ -19,7 +19,7 @@ Usage (cwd = instance root):
 Output: one JSON object on stdout, ASCII-escaped.
     write: status written, stem, doc_path, target, target_exists, target_found_elsewhere?,
            counts {group: n}, rejected [{group, index, reason}], calls
-         | status refused, problems [proposals-invalid | doc-name-taken | read-missing |
+         | status refused, problems [proposals-invalid | doc-name-taken | review-exists | read-missing |
            read-invalid | setup-missing | setup-invalid | inbox-not-configured], errors? [pointers]
          | status stopped, problems [kado-write-failed] or error {kind kado-unreachable|kado-auth, detail}
 
@@ -27,11 +27,13 @@ Rules:
     The proposals are validated before any Kado call. The target is the first
     of the period's note paths (flat, then the year subfolder) that exists;
     when neither does, one byName search finds a note of that exact name the
-    user moved, and the document targets it there. A ``<period> Review.md``
-    that is not Tomo's review document is never overwritten; Tomo's own is.
-    A refused or failed write reports no document and keeps the content
-    files. Nothing of a proposal, a daily or the document reaches stdout or
-    stderr.
+    user moved, and the document targets it there. ``write`` never
+    overwrites: a ``<period> Review.md`` that is not Tomo's review document
+    gives ``doc-name-taken``, Tomo's own review of the period gives
+    ``review-exists`` with its ``doc_path``; only ``replace --confirm``
+    (T3.7) writes over it, from the kept files. A refused or failed write
+    keeps ``read.json``, ``proposals.json`` and ``meta.json`` as they were.
+    Nothing of a proposal, a daily or the document reaches stdout or stderr.
 
 Exit codes:
     0 — output usable (every status)
@@ -111,18 +113,21 @@ def find_target(vault: Vault, candidates: List[str], name: str) -> Tuple[str, bo
     return candidates[0], False, None
 
 
-def doc_name_taken(vault: Vault, doc_path: str) -> bool:
-    """True when a file sits at ``doc_path`` that is not Tomo's review document."""
+ABSENT, NOT_TOMO, TOMO_REVIEW = "absent", "not-tomo", "tomo-review"
+
+
+def doc_state(vault: Vault, doc_path: str) -> str:
+    """What sits at ``doc_path``: ``ABSENT``, ``NOT_TOMO`` (a file that is not Tomo's review) or ``TOMO_REVIEW``."""
     try:
         content = vault.client.read_frontmatter(doc_path).get("content")
     except KadoNotFoundError:
-        return False
+        return ABSENT
     except KadoAuthError as exc:
         raise Stopped("kado-auth", str(exc)) from None
     except KadoError as exc:
         raise Stopped("kado-unreachable", str(exc)) from None
     tomo = content.get("tomo") if isinstance(content, dict) else None
-    return not (isinstance(tomo, dict) and tomo.get("doc_type") == rd.DOC_TYPE)
+    return TOMO_REVIEW if isinstance(tomo, dict) and tomo.get("doc_type") == rd.DOC_TYPE else NOT_TOMO
 
 
 # ---------------------------------------------------------------- write
@@ -167,7 +172,8 @@ def _write_meta(stage: Path, inp: rd.DocInput, counts: dict, doc_path: str) -> N
     atomic_write_text(stage / META_FILE, json.dumps(meta, ensure_ascii=True, indent=2) + "\n")
 
 
-def write_document(args: argparse.Namespace) -> dict:
+def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) -> dict:
+    """Check, render and write the document; over Tomo's own review only when the flag says so."""
     stage = Path(args.tmp) / args.stem
     read = _load_read(stage)
     proposals, problems = rd.load_proposals(Path(args.proposals))
@@ -194,8 +200,11 @@ def write_document(args: argparse.Namespace) -> dict:
     result = {"stem": args.stem, "doc_path": doc_path, "target": target, "target_exists": exists}
     if elsewhere:
         result["target_found_elsewhere"] = elsewhere
-    if doc_name_taken(vault, doc_path):
+    state = doc_state(vault, doc_path)
+    if state == NOT_TOMO:
         return {"status": "refused", **result, "problems": ["doc-name-taken"]}
+    if state == TOMO_REVIEW and not allow_overwrite_review:
+        return {"status": "refused", **result, "problems": ["review-exists"]}
 
     inp = rd.DocInput(
         period_name=period.name, kind=period.kind, language=setup.language, stem=args.stem,
@@ -217,6 +226,11 @@ def write_document(args: argparse.Namespace) -> dict:
         path.unlink(missing_ok=True)
     return {"status": "written", **result, "counts": counts, "rejected": rejected,
             "calls": vault.client.call_count}
+
+
+def write_document(args: argparse.Namespace) -> dict:
+    """The ``write`` subcommand: never over Tomo's own review document."""
+    return render_and_write(args, allow_overwrite_review=False)
 
 
 # ---------------------------------------------------------------- main

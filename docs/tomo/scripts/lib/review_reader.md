@@ -26,20 +26,45 @@ same-day note on every day that links it; the cache answers the second ask
 without a call. The same cache lets `finish()` re-run a day for free: the
 daily text, the resolved stems and the linked notes are all there.
 
-Every cache key is prefixed by the kind of read — `read:<path>`,
-`name:<stem>`, `dir:<folder>`, `notes:<folder>?<fields and filter>` — because
-the first version keyed by the bare name and argued that a note (`.md`), a
-folder (`/`) and a stem could not collide. They can: a configured folder
-arrives as the config spells it, with or without the trailing `/`, a stem may
-equal a folder name, and the created-notes query (`listNotes` over `/` with a
-`createdAfter` filter) and an unfiltered MOC listing over the same prefix are
-two different questions to Kado that a path-only key would answer with one
-cached result. The query's `fields` and `filter` are therefore part of the
-`notes:` key (sorted, JSON), so one period never reads two queries as one.
-The prefix is internal: the key is what the pacer records and what `finish()`
-merges by, while `not_read` and `missing` carry the plain path, stem or
-folder the caller asked for, which is what the report prints and what
-`review-read.py` hands to `pacer.summary`.
+A note's key is its vault path, bare: `<path>`. The other three kinds carry
+a mark that tells them apart from a path and from each other —
+`name:<stem>`, `dir:<folder>`, `notes:<folder>?<fields and filter>` —
+because the first version keyed everything by the bare string and argued
+that a note (`.md`), a folder (`/`) and a stem could not collide. They can,
+and each mark that stays is one a test shows missing
+(`tests/test_review_period_end_pass.py`, "cache keys"):
+
+- `name:` — a link stem is text as written in a daily, and Obsidian accepts a
+  full-path link (`[[Efforts/300 Planner/DP-2026-03-25.md]]`); without the
+  mark such a stem keys into the text of the note already read at that path,
+  and `target()` then reads that text as a path. With the mark the stem is
+  looked up by name like any other (and resolves to nothing: `byName` matches
+  the basename, which never equals a full path).
+- `dir:` — a task note configured with the daily folder's string (a
+  misconfiguration, but one `vault-config.yaml` can hold: `task_notes` is
+  taken as written) would otherwise be served the cached listing as its text
+  and crash the task parser; with the mark the note read reaches Kado, which
+  refuses a non-`.md` path (`VALIDATION_ERROR`, a `KadoToolError` that
+  propagates like a connection error).
+- `notes:…?<query>` — the created-notes query (`listNotes` over `/` with a
+  `createdAfter` filter) and an unfiltered MOC listing over the same prefix
+  are two different questions to Kado that a path-only key would answer with
+  one cached result; the query's `fields` and `filter` are part of the key
+  (sorted, JSON), so one period never reads two queries as one. The `?` and
+  the braces are what separate a query key from a bare path (a vault name
+  cannot contain `?`); the word `notes:` in front is a label for whoever
+  reads a pacer trace, and no test can show it missing.
+
+A path carries no mark because nothing could be shown to need one: the
+other three kinds are marked, and a vault path cannot contain the `:` a
+mark would have to collide with (Obsidian forbids it in a name), so a
+`read:` prefix separated a path from nothing a vault can produce. The first
+version had one, and every test stayed green without it; a mark that no test
+can show missing is a claim the module cannot keep, so it went. The marks
+are internal: the key is what the pacer records and what `finish()` merges
+by, while `not_read` and `missing` carry the plain path, stem or folder the
+caller asked for, which is what the report prints and what `review-read.py`
+hands to `pacer.summary`.
 
 `answered(key)` is the one test for "Kado answered with nothing" against
 "Kado has not answered" (pending or failed); it takes the full key, built by

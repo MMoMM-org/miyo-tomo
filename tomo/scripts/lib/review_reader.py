@@ -1,5 +1,5 @@
 # review_reader.py — the paced, cached Kado reads of a period read: notes, link stems, listings, the end pass.
-# version: 0.2.0
+# version: 0.3.0
 """Kado access of ``lib/review_period.py`` (spec 045, T3.3; PRD F3-AC10..12).
 
 ``PacedReader`` is one cache in front of ``ReviewPacer.read``: every note,
@@ -8,11 +8,12 @@ note read on seven days costs one call and the day re-run after the end pass
 costs none. ``note(path)`` reads a note; ``target(stem)`` resolves a link
 stem to its vault path with one ``byName`` (exact ``.md`` stem) and reads
 it; ``folder(path)`` lists the ``.md`` files of a folder and its direct
-subfolders; ``notes(path, **kw)`` is a ``listNotes`` query. Cache keys are
-prefixed by kind (``read:``, ``name:``, ``dir:``, ``notes:`` with the query's
-fields and filter), so a stem equal to a folder name, or two queries over one
-prefix, never share an entry; ``not_read`` and ``missing`` carry the plain
-path, stem or folder asked for. A read the pacer recorded as failed is
+subfolders; ``notes(path, **kw)`` is a ``listNotes`` query. A note's cache
+key is its vault path; a stem, a folder and a query are marked (``name:``,
+``dir:``, ``notes:`` with the query's fields and filter), so a stem spelled
+like a note path or a folder, a task note spelled like a folder, or two
+queries over one prefix never share an entry; ``not_read`` and ``missing``
+carry the plain path, stem or folder asked for. A read the pacer recorded as failed is
 *pending* (``hit_pending`` tells the caller its unit of work is incomplete)
 until ``finish()`` runs the pacer's end pass and merges what it recovered;
 what still failed is ``not_read``, and a read that fails after ``finish()``
@@ -46,11 +47,7 @@ class PacedReader:
         self._names: Dict[str, str] = {}
         self._failed: Set[str] = set()
 
-    # --- keys -----------------------------------------------------------------------
-    @staticmethod
-    def read_key(path: str) -> str:
-        return f"read:{path}"
-
+    # --- keys (a note's key is its path) --------------------------------------------
     @staticmethod
     def name_key(stem: str) -> str:
         return f"name:{stem}"
@@ -102,7 +99,7 @@ class PacedReader:
         return content if isinstance(content, str) else None
 
     def note(self, path: str) -> Optional[str]:
-        return self._get(self.read_key(path), path, lambda: self._note_text(path))
+        return self._get(path, path, lambda: self._note_text(path))
 
     def _lookup(self, stem: str) -> str:
         """The vault path whose stem is ``stem`` (``.md`` only), else ``""``."""

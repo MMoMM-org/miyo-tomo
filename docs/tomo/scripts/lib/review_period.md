@@ -201,6 +201,27 @@ are the only reads made after the end pass; nothing read before is read again
 final — `PacedReader` sends it straight to `not_read` (`review_reader.md`,
 "WHY `finish()` Merges Into the Cache"), so the report still names it.
 
+The reads after `finish()` live in one helper, `_after_end_pass()`: the
+re-run of the incomplete days and the day after from the cache, then the
+dailies of a recovered daily listing, then the weeks of a recovered weekly
+listing. `run()` reads as collect → `finish()` → `_after_end_pass()` →
+assemble, so the one place that may still call Kado after the end pass is
+named, not spread over the assembly.
+
+#### WHY `not_read` Is One List, Assigned Last
+
+WHY: review of T3.3 (blocking). The weekly notes of a recovered weekly
+listing are read by `_weekly_entries` while the report is assembled — after
+the end pass, so a note that fails then is final. The first version
+snapshotted `result["not_read"]` before that, and `report["not_read"]` after:
+a weekly note that failed at that point was `failed` in `weekly_notes` and in
+`report.not_read` but absent from `result["not_read"]`, the list
+`review-read.py` hands to `pacer.summary` — the summary said nothing was
+unread while the report named a failed note. `run()` now assembles the weekly
+entries first and sets `result["not_read"]` and `report["not_read"]` from one
+list as its last statement, after the last read of the run; the two can no
+longer differ.
+
 A listing that is still not read after the end pass stays exactly that: the
 folder is in `not_read`, `kado_empty` and the advice stay empty (Kado never
 answered, so "the key may not reach the folder" would be a wrong hint), the

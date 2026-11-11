@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
-day blocks and week text, the two link differences, vault growth, the end
-pass (including a folder listing it recovers or does not), the cache keys,
-the DST-crossing bounds, and the Kado-empty reporting (spec 045 T3.3; PRD
-F3-AC5, F3-AC6, F3-AC7, F3-AC9, F3-AC12; SDD Complex Logic "month reading").
+day blocks and week text, the two link differences, vault growth, the
+DST-crossing bounds, and the Kado-empty reporting (spec 045 T3.3; PRD
+F3-AC5, F3-AC6, F3-AC7, F3-AC9; SDD Complex Logic "month reading").
 
-The day readers are stubs that follow the wave-B seam: a daily's `Name:: v`
-lines are today's fields, `Y-Name:: v` lines are yesterday fields,
-`linked:: <stem>` lines name a same-day note the day reads through
-`read_note(stem)`. One test wires the real `lib.review_day` functions
-through the period reader instead. Fixtures are synthetic; they share only
-the structure of the owner's notes.
+The fixtures and the stub day readers are tests/review_period_fixtures.py's;
+one test wires the real `lib.review_day` functions through the period reader
+instead. The end pass and the cache keys are tests/test_review_period_end_pass.py's.
 """
 from __future__ import annotations
 
 import os
-import re
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
-
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
@@ -32,15 +25,32 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from review_fake_vault import ReviewFakeVault  # noqa: E402
-from lib.kado_client import _MAX_RETRIES, KadoConnectionError  # noqa: E402
+from review_period_fixtures import (  # noqa: E402
+    DAILY,
+    MARCH,
+    MOCS,
+    PLANNER,
+    TASK_NOTE,
+    TASK_NOTE_TEXT,
+    W09_NOTE,
+    W13,
+    WEEKLY,
+    daily,
+    day_report,
+    entry,
+    growth_vault,
+    month_sources,
+    month_vault,
+    reads_of,
+    run,
+    week_sources,
+    week_vault,
+)
 from lib.period import ISO, Period  # noqa: E402
-from lib.review_pacer import ReviewPacer  # noqa: E402
 from lib.review_period import (  # noqa: E402
     ADVICE_CHECK_ACCESS,
-    DayReaders,
     PeriodSources,
     period_bounds_ms,
-    read_period,
     sources_from_config,
 )
 from lib.review_weekly import (  # noqa: E402
@@ -49,195 +59,6 @@ from lib.review_weekly import (  # noqa: E402
     daily_name,
     weekly_content,
 )
-
-DAILY = "Calendar/301 Daily/"
-WEEKLY = "Calendar/302 Weekly/"
-PLANNER = "Efforts/300 Planner/"
-MOCS = "100 MOCs/"
-TASK_NOTE = "Efforts/500 OnGoing/Next Todos.md"
-W13 = Period.week(2026, 13)              # 2026-03-23 .. 2026-03-29
-MARCH = Period.month(2026, 3)
-SETTINGS = {"sections": ["Daily Log"], "task_notes": [TASK_NOTE]}
-
-_FIELD_RE = re.compile(r"^(Y-)?([A-Za-z]+):: (.+)$", re.M)
-_LINK_RE = re.compile(r"\[\[([^\]|#]+)")
-_LINKED_RE = re.compile(r"^linked:: (.+)$", re.M)
-_TASK_RE = re.compile(r"^- \[([ x])\] (.+?)(?: ✅ (\d{4}-\d{2}-\d{2}))?$", re.M)
-
-
-# ── the seam stubs ──
-
-def stub_read_day(day, dailies, settings, read_note):
-    text = "\n".join(dailies[p] for p in sorted(dailies))
-    fields = {name: value for y, name, value in _FIELD_RE.findall(text) if not y}
-    previous = {name: value for y, name, value in _FIELD_RE.findall(text) if y}
-    linked, problems = [], []
-    for stem in _LINKED_RE.findall(text):
-        content = read_note(stem)
-        if content is None:
-            problems.append({"kind": "linked-missing", "path": stem})
-        else:
-            linked.append({"path": stem, "kind": "other", "text": content})
-    body = "\n".join(line for line in text.splitlines()
-                     if line and "::" not in line and not line.startswith(("#", "---", "tags:"))).strip()
-    return {
-        "date": day.isoformat(), "dailies": sorted(dailies), "sections": {"Daily Log": body},
-        "fields": fields, "partly_read": False, "has_content": bool(body),
-        "links": _LINK_RE.findall(text) + [item["path"] for item in linked],
-        "problems": problems, "tasks": [], "linked": linked, "previous_day_fields": previous,
-    }
-
-
-def stub_yesterday_fields(text, settings):
-    return {name: value for y, name, value in _FIELD_RE.findall(text) if y}
-
-
-def stub_attribute_yesterday(entries, after_period):
-    by_date = {e["date"]: dict(e) for e in entries}
-    for entry in by_date.values():
-        previous = entry.pop("previous_day_fields", {})
-        before = (date.fromisoformat(entry["date"]) - timedelta(days=1)).isoformat()
-        if before in by_date:
-            by_date[before]["fields"] = dict(by_date[before]["fields"], **previous)
-    ordered = [by_date[k] for k in sorted(by_date)]
-    if ordered and after_period:
-        ordered[-1]["fields"] = dict(ordered[-1]["fields"], **after_period)
-    for entry in ordered:
-        entry.pop("previous_day_fields", None)
-    return ordered
-
-
-def stub_task_note_tasks(path, text):
-    tasks = [{"text": t, "done": mark == "x", "done_date": done or None, "source": path}
-             for mark, t, done in _TASK_RE.findall(text)]
-    for task in tasks:
-        if not task["done"]:
-            task["label"] = "open today"
-    return tasks
-
-
-def stub_done_in_period(tasks, start, end):
-    return [t for t in tasks if t["done"] and t["done_date"] and start <= date.fromisoformat(t["done_date"]) <= end]
-
-
-READERS = DayReaders(stub_read_day, stub_yesterday_fields, stub_attribute_yesterday,
-                     stub_task_note_tasks, stub_done_in_period)
-
-
-# ── fixtures ──
-
-def week_sources(**extra) -> PeriodSources:
-    return PeriodSources(daily_folder=DAILY, **extra)
-
-
-def month_sources(**extra) -> PeriodSources:
-    kw = dict(daily_folder=DAILY, weekly_folder=WEEKLY, weekly_format="GGGG-[W]WW",
-              own_sections=["In my own words", "Reflections"], moc_folders=[MOCS])
-    kw.update(extra)
-    return PeriodSources(**kw)
-
-
-def daily(day: date, text: str, year_folder: bool = False) -> tuple[str, str]:
-    folder = f"{DAILY}{day.year}/" if year_folder else DAILY
-    return f"{folder}{day.isoformat()}.md", f"---\ntags: [daily]\n---\n# {day.isoformat()}\n{text}\n"
-
-
-def planner(day: date, text: str = "- planned") -> tuple[str, str]:
-    return f"{PLANNER}DP-{day.isoformat()}.md", f"# Plan\n{text}\n"
-
-
-TASK_NOTE_TEXT = "- [x] done in week ✅ 2026-03-24\n- [x] done before ✅ 2026-03-01\n- [ ] still open\n"
-
-
-def week_vault(**files) -> ReviewFakeVault:
-    base = dict([
-        daily(date(2026, 3, 23), "Monday log [[Alpha]]\nSleep:: 6\nY-Mood:: 3"),
-        daily(date(2026, 3, 24), "Tuesday log [[Beta]]\nY-Mood:: 4", year_folder=True),
-        daily(date(2026, 3, 25), "Wednesday log\nlinked:: DP-2026-03-25"),
-        daily(date(2026, 3, 26), ""),
-        daily(date(2026, 3, 27), "Friday log [[Gamma]]\nlinked:: DP-2026-03-25"),
-        daily(date(2026, 3, 29), "Sunday log\nSleep:: 8"),
-        daily(date(2026, 3, 30), "Monday after [[AfterLink]]\nY-Mood:: 5\nSleep:: 7"),
-        planner(date(2026, 3, 25)),
-    ])
-    base[TASK_NOTE] = TASK_NOTE_TEXT
-    base.update(files)
-    return ReviewFakeVault(base, folders=[DAILY, WEEKLY, MOCS])
-
-
-W09_NOTE = """---
-journal-start-date: 2026-02-23
----
-# Weekly Review: [[2026-W09]]
-## Theme of the week
-Theme [[Theme Note]]
-## Review of the Week
-### [[2026-02-28|2026-02-28 Sat]]
-- february text [[Feb Note]]
-### [[2026-03-01|2026-03-01 Sun]]
-#### Notes of the Day %% fold %%
-- march text [[March Note]]
-#### My final thoughts for that day
-- thoughts [[Thought Note]]
-#### Review Check
-- [x] Review daily logs ✅ 2026-03-02 [[Check Note]]
-### Learnings of the Week
-- learned [[Learn Note]]
-### In my own words
-Own words [[Own Note]] and [[Alpha]]
-## Organisation
-### [[2026-03-02|2026-03-02 Mon]]
-- plan [[Plan Note]]
-"""
-
-W13_NOTE = """# Weekly Review: [[2026-W13]]
-## Review of the Week
-### [[2026-03-23|2026-03-23 Mon]]
-- monday block [[Alpha]] [[Delta]]
-### [[2026-03-29|2026-03-29 Sun]]
-- sunday block
-#### Review Check
-- [x] Review daily logs ✅ 2026-03-30
-### Reflections
-Reflection [[Epsilon]] [[2026-03-25]] [[2026-W13]]
-### In my own words
-
-## Organisation
-- next week [[Zeta]]
-"""
-
-
-def month_vault(**files) -> ReviewFakeVault:
-    base = dict([
-        daily(date(2026, 3, 1), "first [[March Note]] [[Only Daily]]"),
-        daily(date(2026, 3, 23), "monday [[Alpha]] [[Omega]] [[DP-2026-03-23]]\nlinked:: DP-2026-03-23"),
-        daily(date(2026, 3, 24), "tuesday [[Beta]]", year_folder=True),
-        daily(date(2026, 3, 31), "last day\nY-Mood:: 1"),
-        daily(date(2026, 4, 1), "april\nY-Mood:: 9"),
-        planner(date(2026, 3, 23)),
-    ])
-    base[f"{WEEKLY}2026/2026-W09.md"] = W09_NOTE
-    base[f"{WEEKLY}2026-W13.md"] = W13_NOTE
-    base[TASK_NOTE] = TASK_NOTE_TEXT
-    base.update(files)
-    return ReviewFakeVault(base, folders=[DAILY, WEEKLY, MOCS])
-
-
-def run(vault, period, sources, settings=SETTINGS, readers=READERS):
-    with ReviewPacer(vault) as pacer:
-        return read_period(period, sources, settings, vault, pacer, readers=readers)
-
-
-def day_report(result, day: str) -> dict:
-    return next(d for d in result["report"]["days"] if d["date"] == day)
-
-
-def entry(result, day: str) -> dict:
-    return next(e for e in result["days"] if e["date"] == day)
-
-
-def reads_of(vault, path: str) -> list:
-    return [p for method, p in vault.events if method == "read_note" and p == path]
 
 
 # ── names and bounds ──
@@ -390,129 +211,6 @@ def test_a_missing_task_note_is_reported_and_nothing_else_changes():
     assert result["open_tasks"] == []
 
 
-# ── the end pass ──
-
-def test_a_rate_limited_daily_is_recovered_by_the_end_pass():
-    vault = week_vault()
-    path = f"{DAILY}2026-03-23.md"
-    vault.rate_limit(path, failures=_MAX_RETRIES + 1)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == []
-    assert entry(result, "2026-03-23")["has_content"] is True
-    assert "Alpha" in entry(result, "2026-03-23")["links"]
-    assert day_report(result, "2026-03-23")["dailies"] == [{"path": path, "state": "found"}]
-
-
-def test_a_daily_that_still_fails_at_the_end_is_not_read_and_marked_failed():
-    vault = week_vault()
-    path = f"{DAILY}2026-03-23.md"
-    vault.rate_limit(path)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == [path]
-    assert day_report(result, "2026-03-23")["dailies"] == [{"path": path, "state": "failed"}]
-    assert entry(result, "2026-03-23")["has_content"] is False
-    assert vault.min_interval == 0.0
-
-
-def test_a_rate_limited_linked_note_is_recovered_without_a_second_daily_read():
-    vault = week_vault()
-    path = f"{PLANNER}DP-2026-03-25.md"
-    vault.rate_limit(path, failures=_MAX_RETRIES + 1)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == []
-    linked = {"name": "DP-2026-03-25", "path": path, "state": "read"}
-    assert day_report(result, "2026-03-25")["linked"] == [linked]
-    assert day_report(result, "2026-03-27")["linked"] == [linked]
-    assert reads_of(vault, f"{DAILY}2026-03-25.md") == [f"{DAILY}2026-03-25.md"]
-
-
-def test_a_rate_limited_name_lookup_is_recovered_by_the_end_pass():
-    vault = week_vault()
-    vault.rate_limit("DP-2026-03-25", failures=_MAX_RETRIES + 1)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == []
-    assert day_report(result, "2026-03-25")["linked"][0]["state"] == "read"
-
-
-def test_a_linked_note_that_still_fails_is_marked_failed():
-    vault = week_vault()
-    path = f"{PLANNER}DP-2026-03-25.md"
-    vault.rate_limit(path)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == [path]
-    assert day_report(result, "2026-03-25")["linked"] == [{"name": "DP-2026-03-25", "path": path, "state": "failed"}]
-
-
-def test_a_connection_error_propagates():
-    vault = week_vault()
-    vault.connection_error = KadoConnectionError("down")
-    with pytest.raises(KadoConnectionError):
-        run(vault, W13, week_sources())
-
-
-def test_a_rate_limited_daily_listing_recovered_by_the_end_pass_reads_the_whole_period():
-    free = run(week_vault(), W13, week_sources())
-    vault = week_vault()
-    vault.rate_limit(DAILY, failures=_MAX_RETRIES + 1)
-    result = run(vault, W13, week_sources())
-    assert result == free
-    assert result["not_read"] == []
-    assert entry(result, "2026-03-23")["has_content"] is True
-    assert entry(result, "2026-03-29")["fields"] == {"Sleep": "8", "Mood": "5"}
-    assert result["report"]["day_after"]["dailies"] == [{"path": f"{DAILY}2026-03-30.md", "state": "read"}]
-    dailies = [p for p in vault.files if p.startswith(DAILY)]
-    assert all(reads_of(vault, p) == [p] for p in dailies), vault.events
-    assert reads_of(vault, TASK_NOTE) == [TASK_NOTE]
-    assert [p for m, p in vault.events if m == "list_dir"] == [DAILY, DAILY]
-
-
-def test_a_daily_listing_that_still_fails_leaves_the_period_unread_without_an_access_hint():
-    vault = week_vault()
-    vault.rate_limit(DAILY)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == [DAILY]
-    assert result["report"]["not_read"] == [DAILY]
-    assert result["report"]["kado_empty"] == []
-    assert result["report"]["advice"] == []
-    assert len(result["days"]) == 7
-    assert all(e["dailies"] == [] and e["has_content"] is False for e in result["days"])
-    assert all(d["dailies"] == [] for d in result["report"]["days"])
-    assert result["report"]["day_after"] == {"date": "2026-03-30", "dailies": []}
-    assert result["report"]["task_notes"] == [{"path": TASK_NOTE, "state": "read"}]
-    assert not any(p.startswith(DAILY) and p != DAILY for p in vault.paths_seen)
-
-
-def test_a_daily_that_fails_after_a_recovered_listing_is_still_marked_failed():
-    vault = week_vault()
-    vault.rate_limit(DAILY, failures=_MAX_RETRIES + 1)
-    path = f"{DAILY}2026-03-23.md"
-    vault.rate_limit(path)
-    result = run(vault, W13, week_sources())
-    assert result["not_read"] == [path]
-    assert day_report(result, "2026-03-23")["dailies"] == [{"path": path, "state": "failed"}]
-    assert entry(result, "2026-03-24")["has_content"] is True
-
-
-# ── cache keys ──
-
-def test_a_link_stem_equal_to_a_folder_name_does_not_share_a_cache_entry():
-    path, text = daily(date(2026, 3, 25), "Wednesday\nlinked:: Notes")
-    vault = week_vault(**{path: text, "Other/Notes.md": "a note called Notes", "Notes/Topic MOC.md": "moc"})
-    result = run(vault, W13, week_sources(moc_folders=["Notes"]))
-    assert day_report(result, "2026-03-25")["linked"] == [{"name": "Notes", "path": "Other/Notes.md", "state": "read"}]
-    assert result["report"]["growth"]["kado_none"] == ["created"]
-    assert [p for m, p in vault.events if m == "list_notes" and p == "Notes"] == ["Notes"]
-
-
-def test_the_created_query_and_a_moc_listing_over_the_same_prefix_are_two_reads():
-    vault = _growth_vault()
-    result = run(vault, W13, week_sources(moc_folders=["/"]))
-    assert [p for m, p in vault.events if m == "list_notes" and p == "/"] == ["/", "/"]
-    assert f"{MOCS}Quiet MOC.md" in result["growth"]["mocs_changed"]
-    assert result["growth"]["mocs_linked_by_new"] == [f"{MOCS}Other MOC.md", f"{MOCS}Topic MOC.md"]
-    assert [c["path"] for c in result["growth"]["created"]] == ["Notes/Edge.md", "Notes/New One.md", "Notes/New Two.md"]
-
-
 # ── weekly notes of a month ──
 
 def test_month_resolves_weekly_notes_flat_and_in_the_week_year_folder():
@@ -623,63 +321,10 @@ def test_empty_weekly_listing_is_kado_empty_not_none_found():
     assert result["weekly"] == []
 
 
-def test_a_rate_limited_weekly_listing_recovered_by_the_end_pass_reads_the_weekly_notes():
-    free = run(month_vault(), MARCH, month_sources())
-    vault = month_vault()
-    vault.rate_limit(WEEKLY, failures=_MAX_RETRIES + 1)
-    result = run(vault, MARCH, month_sources())
-    assert result == free
-    assert result["report"]["weekly_status"] == "found"
-    assert [w["path"] for w in result["weekly"]] == [f"{WEEKLY}2026/2026-W09.md", f"{WEEKLY}2026-W13.md"]
-    assert result["only_in_weekly_links"] == free["only_in_weekly_links"]
-    assert result["not_read"] == []
-    assert all(reads_of(vault, w["path"]) == [w["path"]] for w in result["weekly"])
-    assert [p for m, p in vault.events if m == "list_dir" and p == WEEKLY] == [WEEKLY, WEEKLY]
-
-
-def test_a_weekly_listing_that_still_fails_is_not_read_without_an_access_hint():
-    vault = month_vault()
-    vault.rate_limit(WEEKLY)
-    result = run(vault, MARCH, month_sources())
-    assert result["report"]["weekly_status"] == "not-read"
-    assert result["not_read"] == [WEEKLY]
-    assert result["report"]["kado_empty"] == []
-    assert result["report"]["advice"] == []
-    assert result["weekly"] == []
-    assert result["report"]["weekly_notes"] == []
-    assert "only_in_weekly_links" not in result and "dailies_not_in_weekly" not in result
-    assert entry(result, "2026-03-23")["has_content"] is True
-    assert not any(p.startswith(WEEKLY) and p != WEEKLY for p in vault.paths_seen)
-
-
 # ── growth ──
 
-def _growth_vault(page_size=None) -> ReviewFakeVault:
-    vault = week_vault(**{
-        "Notes/New One.md": "new [[Topic MOC]] [[Alpha]]",
-        "Notes/New Two.md": "new two [[Other MOC|alias]]",
-        "Notes/Edge.md": "at the last millisecond",
-        "Notes/Too Late.md": "one millisecond after",
-        "Notes/Old.md": "old",
-        f"{MOCS}Topic MOC.md": "moc",
-        f"{MOCS}Other MOC.md": "moc",
-        f"{MOCS}Quiet MOC.md": "moc",
-    })
-    start_ms, end_ms = period_bounds_ms(W13)
-    vault.stamp("Notes/New One.md", created=start_ms, modified=start_ms)
-    vault.stamp("Notes/New Two.md", created=start_ms + 5, modified=start_ms + 5)
-    vault.stamp("Notes/Edge.md", created=end_ms, modified=end_ms)
-    vault.stamp("Notes/Too Late.md", created=end_ms + 1, modified=end_ms + 1)
-    vault.stamp("Notes/Old.md", created=start_ms - 1, modified=start_ms - 1)
-    vault.stamp(f"{MOCS}Topic MOC.md", created=0, modified=start_ms - 1)
-    vault.stamp(f"{MOCS}Other MOC.md", created=0, modified=start_ms + 100)
-    vault.stamp(f"{MOCS}Quiet MOC.md", created=0, modified=end_ms)
-    vault.page_size = page_size
-    return vault
-
-
 def test_growth_lists_created_notes_with_links_mocs_changed_and_mocs_linked_across_pages():
-    vault = _growth_vault(page_size=2)
+    vault = growth_vault(page_size=2)
     result = run(vault, W13, week_sources(moc_folders=[MOCS]))
     growth = result["growth"]
     assert growth["created"] == [
@@ -712,7 +357,7 @@ def test_moc_listing_costs_one_call_per_page_and_the_week_stays_within_budget():
 
 
 def test_growth_without_moc_folders_queries_no_mocs():
-    vault = _growth_vault()
+    vault = growth_vault()
     result = run(vault, W13, week_sources())
     assert result["growth"]["mocs_changed"] == [] and result["growth"]["mocs_linked_by_new"] == []
     assert result["report"]["growth"]["moc_folders"] == 0
@@ -730,7 +375,7 @@ def test_empty_growth_results_are_reported_as_kado_returned_none():
 
 
 def test_a_created_query_that_still_fails_is_not_read_and_not_kado_none():
-    vault = _growth_vault()
+    vault = growth_vault()
     vault.rate_limit("/")
     result = run(vault, W13, week_sources(moc_folders=[MOCS]))
     assert result["not_read"] == ["/"]
@@ -742,7 +387,7 @@ def test_a_created_query_that_still_fails_is_not_read_and_not_kado_none():
 
 
 def test_a_moc_listing_that_still_fails_is_not_read_and_not_kado_none():
-    vault = _growth_vault()
+    vault = growth_vault()
     vault.rate_limit(MOCS)
     result = run(vault, W13, week_sources(moc_folders=[MOCS]))
     assert result["not_read"] == [MOCS]

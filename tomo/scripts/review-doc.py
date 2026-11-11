@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.3.0
+# version: 0.4.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045 T3.6/T3.7, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
 (``proposals.json``), ``write`` checks the proposals against the period,
 computes the habits from the tracker values, probes the target note, renders
 ``<period> Review.md`` and writes it to the inbox through Kado — the only
-vault write of Pass 1. The Pass 1 counts and a content-free fingerprint per
-Tomo item go to ``meta.json`` of the stem; ``read.json`` and
-``proposals.json`` are deleted once the document is written (ADR-9).
-``parse`` reads the edited document back through Kado and writes the kept
-items with their verbatim text to ``approved.json`` of the stem; stdout
-gets counts and ids only. ``replace`` is the confirmed start-over: it writes
-a new document over Tomo's own from the files ``write`` kept on
-``review-exists``; ``--abort`` discards those files instead.
+vault write of Pass 1. The Pass 1 counts and the source-link stems per Tomo
+item (``pass1_links``, nothing text-derived) go to ``meta.json`` of the
+stem; ``read.json`` and ``proposals.json`` are deleted once the document is
+written (ADR-9). ``parse`` reads the edited document back through Kado and
+prints counts and ids only; it writes no file — the document is the source
+of truth and Phase 4 reads it fresh. ``replace`` is the confirmed
+start-over: it writes a new document over Tomo's own from the files
+``write`` kept on ``review-exists``; ``--abort`` discards those files
+instead.
 
 Usage (cwd = instance root):
     python3 scripts/review-doc.py write --stem <period>_review --proposals <json>
@@ -33,8 +34,7 @@ Output: one JSON object on stdout, ASCII-escaped.
     parse: status ok, stem, doc_path, approved, nothing_to_deliver,
            items {group: [{id?, origin tomo|user, kept, edited}]},
            counts {kept, unticked, deleted, added},
-           warnings [approved-line-missing | unknown-group | duplicate-group | frontmatter-broken],
-           approved_path
+           warnings [approved-line-missing | unknown-group | duplicate-group | frontmatter-broken]
          | status not-found, stem, doc_path?        (no meta.json and no --doc-path, or nothing at the path)
          | status stopped, error {kind kado-unreachable|kado-auth, detail}
     replace: status needs-confirm, stem, doc_path   (neither flag: nothing written, no Kado call)
@@ -54,9 +54,10 @@ Rules:
     as they were. ``replace --abort`` deletes ``read.json`` and
     ``proposals.json`` and touches neither the document nor ``meta.json``.
     ``parse`` reads the document at ``--doc-path`` or at the ``doc_path`` of
-    ``meta.json``, writes ``approved.json`` on every successful parse (also
-    for an unapproved document) and nothing else. Nothing of a proposal, a
-    daily or the document reaches stdout or stderr.
+    ``meta.json`` and writes nothing; ``edited`` per Tomo item is whether its
+    link stems differ from ``pass1_links`` (an id the map lacks is never
+    edited). Nothing of a proposal, a daily or the document reaches stdout
+    or stderr.
 
 Exit codes:
     0 — output usable (every status)
@@ -93,7 +94,6 @@ DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
 READ_FILE = "read.json"
 PROPOSALS_FILE = "proposals.json"
-APPROVED_FILE = "approved.json"
 _UNSAFE = ("/", "\\", "..")
 
 
@@ -193,7 +193,7 @@ def _write_meta(stage: Path, inp: rd.DocInput, counts: dict, doc_path: str, text
         "target": inp.target, "target_exists": inp.target_exists,
         "mode": "insert" if inp.target_exists else "new-note", "run_id": inp.run_id,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "pass1_counts": counts, "pass1_items": rdp.fingerprints(text),
+        "pass1_counts": counts, "pass1_links": rdp.link_stems(text),
         "steps_done": [], "failed_step": "", "withdrawn": False,
     }
     atomic_write_text(stage / META_FILE, json.dumps(meta, ensure_ascii=True, indent=2) + "\n")
@@ -256,7 +256,7 @@ def render_and_write(args: argparse.Namespace, *, allow_overwrite_review: bool) 
                 "problems": ["kado-write-failed"], "error": {"kind": type(exc).__name__},
                 "calls": vault.client.call_count}
     _write_meta(stage, inp, counts, doc_path, text)
-    for path in (stage / READ_FILE, proposals_path, stage / APPROVED_FILE):
+    for path in (stage / READ_FILE, proposals_path):
         path.unlink(missing_ok=True)
     return {"status": "written", **result, "counts": counts, "rejected": rejected,
             "calls": vault.client.call_count}
@@ -283,8 +283,7 @@ def _read_document(vault: Vault, doc_path: str) -> Optional[str]:
 
 
 def parse_document(args: argparse.Namespace) -> dict:
-    """The ``parse`` subcommand: the edited document → ``approved.json`` and counts on stdout."""
-    stage = Path(args.tmp) / args.stem
+    """The ``parse`` subcommand: the edited document → counts and ids on stdout, nothing written."""
     meta = read_meta(Path(args.tmp), args.stem) or {}
     doc_path = args.doc_path or meta.get("doc_path")
     if not isinstance(doc_path, str) or not doc_path:
@@ -292,17 +291,13 @@ def parse_document(args: argparse.Namespace) -> dict:
     text = _read_document(Vault(KadoClient), doc_path)
     if text is None:
         return {"status": "not-found", "stem": args.stem, "doc_path": doc_path}
-    pass1 = meta.get("pass1_items") if isinstance(meta.get("pass1_items"), dict) else None
+    pass1 = meta.get("pass1_links") if isinstance(meta.get("pass1_links"), dict) else None
     counts = meta.get("pass1_counts") if isinstance(meta.get("pass1_counts"), dict) else {}
     total = sum(n for n in counts.values() if isinstance(n, int))
-    parsed = rdp.parse_document(text, pass1_items=pass1, pass1_total=total)
-    approved_path = stage / APPROVED_FILE
-    stage.mkdir(parents=True, exist_ok=True)
-    record = parsed.approved_review(stem=args.stem, doc_path=doc_path)
-    atomic_write_text(approved_path, json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+    parsed = rdp.parse_document(text, pass1_links=pass1, pass1_total=total)
     return {"status": "ok", "stem": args.stem, "doc_path": doc_path, "approved": parsed.approved,
             "nothing_to_deliver": parsed.nothing_to_deliver(), "items": parsed.public_items(),
-            "counts": parsed.counts(), "warnings": parsed.warnings, "approved_path": approved_path.as_posix()}
+            "counts": parsed.counts(), "warnings": parsed.warnings}
 
 
 # ---------------------------------------------------------------- replace
@@ -351,7 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--run-id", help="Run id for the document's tomo: block (default: a fresh one)")
     w.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
-    r = sub.add_parser("parse", help="Read the edited document back: approved.json in the stage, counts on stdout")
+    r = sub.add_parser("parse", help="Read the edited document back: counts and ids on stdout, nothing written")
     r.add_argument("--stem", required=True, type=_stem_arg, help="<period>_review, the tomo-tmp/review/ folder")
     r.add_argument("--doc-path", help="The document's vault path (default: doc_path of meta.json)")
 

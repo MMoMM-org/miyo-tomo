@@ -6,7 +6,8 @@
 > and 7, SDD ENTITY ReviewDoc / ApprovedReview, item identity, the 80/20
 > boundary, ADR-9, ADR-13): the Approved line, the groups, Tomo's items by
 > id, the user's items, the warnings. No Kado, no file I/O; `review-doc.py
-> parse` reads the document and writes what this module returns.
+> parse` reads the document and prints the content-free part of what this
+> module returns; the ApprovedReview record stays in-process.
 
 ## WHY Only an Exact Column-0 Line Is Structure
 
@@ -50,23 +51,55 @@ never guessed (SDD item identity). A second line carrying an id already
 seen (the user copied a Tomo line) is a user item: one id names one Pass 1
 item.
 
-## WHY `edited` Needs a Fingerprint in `meta.json`
+## WHY `edited` Compares Source Links, Not a Digest of the Text
 
-`edited` is "the text differs from Pass 1's" (SDD). Pass 1's text exists
-only in the document: `read.json` and `proposals.json` are deleted after
-the write (ADR-9), and the document is what the user edited. Comparing
-needs a trace of the Pass 1 text that holds no content. `fingerprints`
-hashes each Tomo item as rendered — the checkbox line after the box, id
-stripped, plus its continuation lines — to a truncated SHA-256 per id, and
-`review-doc.py write` stores the map as `pass1_items` in the content-free
-`meta.json`. A fingerprint is not content: it cannot be read back into a
-sentence, and it is computed from the same parser the edited document goes
-through, so the only way to match it is an unchanged item. Without a
-fingerprint for an id (an older `meta.json`, a forged id) `edited` is
-False: the parser reports a difference it can see, never one it guesses.
+`edited` is "the item differs from Pass 1's" (SDD item identity). Pass 1's
+text exists only in the document: `read.json` and `proposals.json` are
+deleted after the write (ADR-9), and the document is what the user edited.
+Comparing needs a trace of Pass 1 in `meta.json`, and `meta.json` is
+content-free (SDD ENTITY ReviewDeliveryMeta: nothing text-derived).
 
-The fingerprint ignores the tick state: unticking is not editing, and an
-unticked item is not landed anyway.
+The first version stored a truncated SHA-256 of each item's text. That is
+text-derived: a digest of a templated line is recoverable by enumeration.
+The habit line `Sport: 6 von 7 Tagen` has eight possible values of one
+number; whoever holds `meta.json` and the template can hash all eight and
+read the user's habit count off the match. The same holds for every short,
+low-entropy sentence. A hash hides long free text and nothing else, so it
+is not a content-free trace.
+
+What `meta.json` may hold is structure the document already exposes to
+Tomo's own bookkeeping: the `[[stem]]` source links of each Tomo item —
+daily-note dates and note stems, the same values `pass1_counts` and
+`target` already name. `link_stems` collects, per Tomo id, the stems of
+every `[[…]]` in the item as rendered (`|alias` and `#heading` cut off, so
+a link the user decorated is still the same stem), and `review-doc.py
+write` stores the map as `pass1_links`. The parser then reads `edited` as:
+the item's current link stems are not the list Pass 1 stored.
+
+**Ordered and de-duplicated.** The stems are compared as a list in document
+order with repeats dropped, not as a set. A reorder of the sources is an
+edit the user made on purpose — `([[2026-03-26]], [[2026-03-24]])` reads
+differently from the rendered order — and the landing should say so; a set
+would call it unchanged. A link typed twice is still one source, so
+duplicates do not make a second edit. The tick state is not part of it:
+unticking is not editing, and an unticked item is not landed anyway.
+
+**Presence is `in`, not truthiness.** A habit item renders without links,
+so its Pass 1 entry is `[]`. It is still present in `pass1_links`, and a
+habit the user gave a link is edited. An id absent from `pass1_links` (an
+older `meta.json`, a forged id, a `meta.json` from the digest version with
+`pass1_items` and no `pass1_links`) gives `edited: False`: the parser
+reports a difference it can see, never one it guesses. `pass1_links` also
+gives `deleted` its exact id set.
+
+**The accepted limit.** A retyped text that keeps its links reads as
+unedited; so does a changed continuation line. The SDD accepts this: the
+links are what the landing resolves (the anchor dates and the note stems
+the text points to), the words are the user's either way, and the landed
+text is always what the document holds now, edited flag or not. The flag
+drives nothing but the count report and the `edited` marker Phase 4 may
+show; a false "unedited" costs a marker, a text digest costs the habit
+count.
 
 ## WHY Group Headings Are Matched Over Every Language
 
@@ -92,22 +125,26 @@ one group, in document order.
 ## WHY the Counts Are Four Numbers
 
 `kept` and `unticked` split Tomo's items by their box; `deleted` is every
-Pass 1 id (from `pass1_items`, else the sum of `pass1_counts`) that the
+Pass 1 id (from `pass1_links`, else the sum of `pass1_counts`) that the
 document no longer carries; `added` is the user's ticked items — the ones
 that land. An unticked line without an id is a note to self and counts
 nowhere. These four are what the engagement KPI and the skill's report need
 (ADR-13 rationale), and they carry no text, so they may go to stdout.
 
-## WHY the Result Carries the Text and stdout Does Not (ADR-9)
+## WHY the Result Carries the Text, stdout Does Not, and No File Does (ADR-9)
 
 Phase 4 lands the kept text; the skill reports counts. `ParsedDoc` holds the
 items with their verbatim text and continuation lines; `approved_review`
 turns it into the ApprovedReview record (kept items only, groups in the
-document's rendering order) that `review-doc.py parse` writes to
-`tomo-tmp/review/<stem>/approved.json` — content, in the place the SDD
-already names as resting content. `public_items` is the same structure
-without text (`id`, `origin`, `kept`, `edited`), for stdout. One module
-produces both so they cannot drift.
+document's rendering order). The record is an in-process value, never a
+file (SDD ENTITY ApprovedReview): the vault document is the source of
+truth and may change between the parse that reports counts and the
+delivery that lands text, so Phase 4 reads the document fresh through Kado
+at preview and at deliver time and calls `approved_review` on that — it
+always lands what the document holds now, and `tomo-tmp` holds no second
+copy of the user's text beyond the files ADR-9 already accounts for.
+`public_items` is the same structure without text (`id`, `origin`, `kept`,
+`edited`), for stdout. One module produces both so they cannot drift.
 
 ## WHY a Broken Frontmatter Is a Warning, Not a Stop
 

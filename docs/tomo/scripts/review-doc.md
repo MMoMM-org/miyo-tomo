@@ -28,26 +28,38 @@ is `not-found`, like a document that is gone from its path: the skill
 offers to start over (SDD Error Handling). One Kado read, `kado-read
 note`, is the whole cost; the document is parsed by `lib/review_doc_parse`.
 
-## WHY `parse` Writes `approved.json` and Prints Counts Only (ADR-9)
+## WHY `parse` Prints Counts Only and Writes No File (ADR-9)
 
-Pass 2 (Phase 4) needs the kept items' verbatim text; the skill needs
-counts, the Approved state and the warnings. stdout is the skill's — and
-the transcript's — so it carries `items` as `{id, origin, kept, edited}`,
-the four counts, `approved`, `nothing_to_deliver` and the warnings, never
-a line of the document. The text goes to `tomo-tmp/review/<stem>/
-approved.json`, the stage folder the SDD already documents as resting
-content (PRIVACY.md), as the ApprovedReview record: kept items only, groups
-in rendering order, each with `text` and `lines` as the user left them.
-`parse` writes it on every run, also when the document is not approved
-(the file says so), so Phase 4 reads one file and never re-parses.
+The skill needs counts, the Approved state and the warnings. stdout is the
+skill's — and the transcript's — so it carries `items` as `{id, origin,
+kept, edited}`, the four counts, `approved`, `nothing_to_deliver` and the
+warnings, never a line of the document. `parse` writes nothing: no
+`approved.json`, no change to `meta.json`. The first version wrote the
+ApprovedReview record (kept items with their verbatim text) to the stage
+for Phase 4 to read; it was dropped because the vault document is the
+source of truth and may change between the parse that reports counts and
+the delivery that lands text — the user ticks one more box, Obsidian
+Sync brings a later edit — and a landed stale copy would contradict "Pass
+2 lands what the user left". So Phase 4 reads the document fresh through
+Kado at preview and at deliver time and calls the lib's
+`ParsedDoc.approved_review()` in-process (SDD ENTITY ApprovedReview). A
+second gain: `tomo-tmp` holds no extra content file beyond those ADR-9
+already accounts for, and nothing has to delete it on a rewrite. One
+`kado-read note` is the whole cost of a `parse`.
 
-## WHY `edited` Comes From `pass1_items` in `meta.json`
+## WHY `edited` Comes From `pass1_links` in `meta.json`
 
-`write` stores a truncated SHA-256 per Tomo item id (`pass1_items`) next to
-`pass1_counts`; `parse` compares. The rationale — Pass 1's text exists only
-in the document after ADR-9's deletion, and a fingerprint is not content —
-is in `docs/tomo/scripts/lib/review_doc_parse.md`. `pass1_items` also gives
-`deleted` its exact id set.
+`write` stores, per Tomo item id, the ordered list of `[[stem]]` source
+links as rendered (`pass1_links`) next to `pass1_counts`; `parse` compares
+the item's current link stems with it, as an ordered, de-duplicated list.
+The rationale — why a text digest was rejected (a templated habit line is
+recoverable by enumerating its values), why presence is `in` and not
+truthiness (a habit's entry is `[]`), and the accepted limit that a retyped
+text keeping its links reads as unedited — is in
+`docs/tomo/scripts/lib/review_doc_parse.md`. `pass1_links` also gives
+`deleted` its exact id set. A `meta.json` from the digest version carries
+`pass1_items` and no `pass1_links`; it is read like a `meta.json` without
+the map: `edited` False everywhere, `deleted` from the `pass1_counts` sum.
 
 ## WHY `replace` Has Three Answers (`needs-confirm`, `--confirm`, `--abort`)
 
@@ -61,7 +73,7 @@ from the `read.json` and `proposals.json` that `write` kept on
 `review-exists` (the default `--proposals` is the stage copy), so no
 second read and no second model pass. A success is reported as `replaced`;
 `meta.json` is rewritten by the same path (`steps_done` empty, fresh
-counts and fingerprints — the reset); the stage content files go away as
+counts and link stems — the reset); the stage content files go away as
 after `write`; a non-Tomo file at the path is still `doc-name-taken`,
 because the overwrite flag covers Tomo's own document and nothing else.
 
@@ -71,13 +83,6 @@ content does not linger for a run that is not going anywhere. Both files
 are deleted; the document and `meta.json` stay untouched, because the
 existing review goes on exactly as it was. `--confirm` and `--abort` are
 mutually exclusive on the parser so a mixed call is exit 2, not a guess.
-
-## WHY a Rewrite Also Removes `approved.json`
-
-`approved.json` is the parse of one document. After `write` or `replace`
-puts a new document at the path, a leftover `approved.json` would describe
-the previous one; Phase 4 must never land a stale parse, so the successful
-write path removes it with the other stage files.
 
 ## WHY the Script Does the Kado Calls and the Lib Does Not
 

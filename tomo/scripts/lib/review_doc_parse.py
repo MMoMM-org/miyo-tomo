@@ -1,5 +1,5 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, items by id, user items.
-# version: 0.1.0
+# version: 0.2.0
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -10,13 +10,15 @@ warnings. Only an exact column-0 line is structure — the Approved line, a
 line after an item start is that item's text, verbatim. A checkbox line
 carrying ``%%t<n>%%`` is Tomo's item (the id is stripped from the text, a
 second occurrence of an id is a user item); a checkbox line without an id
-is the user's. ``edited`` compares the item's fingerprint with the
-``pass1_items`` map ``review-doc.py write`` stored in ``meta.json``;
-``fingerprints`` computes that map from a rendered document. ``counts``
+is the user's. ``edited`` is structural: the item's ``[[stem]]`` link stems
+(ordered, de-duplicated, ``|alias`` and ``#heading`` cut off) differ from
+the ``pass1_links`` map ``review-doc.py write`` stored in ``meta.json``; an
+id absent from the map is never edited. ``link_stems`` computes that map
+from a rendered document — nothing text-derived, no digest. ``counts``
 gives kept / unticked / deleted (by Pass 1 id) / added (the user's ticked
-items); ``approved_review`` is the ApprovedReview record with the kept
-items' text for Phase 4; ``public_items`` is the same without text, for
-stdout.
+items); ``approved_review`` is the in-process ApprovedReview record with
+the kept items' text for Phase 4 (never a file); ``public_items`` is the
+same without text, for stdout.
 
 No Kado, no file I/O. Needs PyYAML.
 
@@ -24,7 +26,6 @@ Design notes: docs/tomo/scripts/lib/review_doc_parse.md
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set
@@ -42,7 +43,7 @@ _FENCE = "---"
 _ITEM = re.compile(r"^- \[([ xX])\](?: (.*))?$")
 _HEADING = re.compile(r"^## (.*?)\s*$")
 _APPROVED = re.compile(r"^- \[([ xX])\] Approved$")
-_FINGERPRINT_CHARS = 16
+_LINK = re.compile(r"\[\[([^\]|#]+)")
 
 
 @dataclass
@@ -55,10 +56,13 @@ class Item:
     lines: List[str] = field(default_factory=list)
     edited: bool = False
 
-    def fingerprint(self) -> str:
-        """A truncated SHA-256 of the text and continuation lines; the tick state does not count."""
-        raw = "\n".join([self.text, *self.lines]).encode("utf-8")
-        return hashlib.sha256(raw).hexdigest()[:_FINGERPRINT_CHARS]
+    def link_stems(self) -> List[str]:
+        """The ``[[stem]]`` stems of the text and continuation lines in order, each once; the tick state does not count."""
+        stems: List[str] = []
+        for stem in _LINK.findall("\n".join([self.text, *self.lines])):
+            if stem.strip() and stem.strip() not in stems:
+                stems.append(stem.strip())
+        return stems
 
     def public(self) -> dict:
         """What stdout may carry: the id, the origin, the box, the edit flag; no text."""
@@ -209,9 +213,9 @@ def _warn(warnings: List[str], warning: str) -> None:
 
 # --- the entry points ------------------------------------------------------------------------
 
-def parse_document(text: str, pass1_items: Optional[Dict[str, str]] = None,
+def parse_document(text: str, pass1_links: Optional[Dict[str, List[str]]] = None,
                    pass1_total: Optional[int] = None) -> ParsedDoc:
-    """Parse the document text. ``pass1_items`` is the id → fingerprint map of Pass 1 (``edited`` and
+    """Parse the document text. ``pass1_links`` is the id → link stems map of Pass 1 (``edited`` and
     ``deleted`` come from it); ``pass1_total`` alone gives ``deleted`` by count when the map is missing."""
     warnings: List[str] = []
     front, body = _split_frontmatter(text.splitlines())
@@ -220,16 +224,16 @@ def parse_document(text: str, pass1_items: Optional[Dict[str, str]] = None,
     approved, items, order = _parse_body(body, warnings)
     if approved is None:
         _warn(warnings, APPROVED_MISSING)
-    reference = pass1_items or {}
+    reference = pass1_links or {}
     for item in items:
-        if item.origin == TOMO and item.id in reference:
-            item.edited = item.fingerprint() != reference[item.id]
+        if item.origin == TOMO and item.id in reference and isinstance(reference[item.id], list):
+            item.edited = item.link_stems() != [str(s) for s in reference[item.id]]
     seen = {it.id for it in items if it.origin == TOMO}
     deleted = len(set(reference) - seen) if reference else max(0, (pass1_total or 0) - len(seen))
     warnings.sort()
     return ParsedDoc(front if isinstance(front, dict) else {}, bool(approved), items, warnings, deleted, order)
 
 
-def fingerprints(text: str) -> Dict[str, str]:
-    """``{id: fingerprint}`` of every Tomo item in a rendered document, for ``meta.json``."""
-    return {it.id: it.fingerprint() for it in parse_document(text).items if it.origin == TOMO and it.id}
+def link_stems(text: str) -> Dict[str, List[str]]:
+    """``{id: [link stem, ...]}`` of every Tomo item in a rendered document, for ``meta.json``."""
+    return {it.id: it.link_stems() for it in parse_document(text).items if it.origin == TOMO and it.id}

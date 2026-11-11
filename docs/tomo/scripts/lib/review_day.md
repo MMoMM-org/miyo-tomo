@@ -91,6 +91,30 @@ reach `dailies_not_in_weekly` as "things the day held". The first run on
 the real structure showed exactly that leak. The lines after a break and
 before the next heading belong to no section.
 
+## WHY a Daily Without a Configured Section Is Read Whole, Under `text`
+
+F3-AC4 and the plain-vault persona: a daily that is only free text — no
+heading at all, a title heading (`# 2026-03-26`) over free text, or
+headings none of which the setup names — must still feed the review. The
+section rule alone would keep nothing from such a day and report it as
+empty, which the first review of this module found: the fallback fired
+only when the daily had *no* heading, so a titled plain daily was read as
+no content. The rule now is: when no configured section heading is found
+in a daily, its whole body is read as one section keyed `text` — a
+literal key, not the first configured name, so the model and the report
+never attribute free text to a section the user did not write. Fields,
+tasks and links are then taken from that text as from any kept section.
+
+The fallback keeps the other reading rules: a `skip_sections` heading
+inside the daily is still excluded with its body (it is other-day content
+wherever it stands), query and embed fences and inline queries are still
+dropped, and the thematic-break rule still applies — lines after a `---`
+and before the next heading belong to no section, so a trailing
+navigation block is not read as the day's words. When one configured
+section *is* found, there is no fallback: the rest of the daily stays
+dropped as configured, even when that one section is empty — a skeleton
+daily is still a skeleton.
+
 ## WHY Dataview, Inline Queries and Embed Blocks Are Dropped
 
 F3-AC2: the content comes from the embedded note itself, never from a
@@ -115,6 +139,19 @@ and it is never followed further (one hop, SDD step 4). Fields are parsed
 from the daily only: the linked notes' `::` lines are the weather callout
 and the question of the day, not tracker values.
 
+Two more things in a same-day note are navigation, not the day's words,
+and are dropped from `linked[].text`: a `> [!METADATA]` callout (the whole
+callout block — the journal's holds the question of the day and the
+planner's its links) and a navigation-only line. A line is navigation-only
+when nothing but wiki links to dated notes remains once the arrows and
+separators (`<==`, `==>`, `->`, `|`, `·`, dashes) and the day's own date
+are removed — the journal's `[[5J-2026-03-25]] <== 2026-03-26 ==>
+[[5J-2026-03-27]]` line, the planner's yesterday/tomorrow header. Without
+this rule yesterday's and tomorrow's note names reached the model as
+content of the day and the review could name a day outside the period
+from them. A line that links an undated note (`[[Assessment]]`) is a
+reference the user wrote and stays.
+
 ## WHY Fields Keep Their Raw Value, Minus a Trailing Link
 
 `Name:: value` and `**Name**:: value` are parsed from the kept sections as
@@ -128,7 +165,10 @@ the link is navigation beside the value, and a boolean tracker reading
 target still reaches the link collection of step 1. A meta-bind
 `` `INPUT[…]` `` is no value either (the input renders a field stored
 elsewhere) and a field without a value is not recorded — `review_habits`
-reads an absent name as *missing*. An unrun Templater tag `<% … %>` is
+reads an absent name as *missing*. A bare `-` (`Sleep:: -`, the owner's
+"nothing today" mark) passes through as the raw value `-`; it is
+`review_habits` that reads it as missing, so the reader must not drop or
+rewrite it. An unrun Templater tag `<% … %>` is
 kept raw on purpose: F8-AC2 wants that day named *unreadable*, which only
 the habits module can decide, and it needs the raw text to do so.
 
@@ -199,8 +239,9 @@ is never read as empty because of the cap.
 ## Output Shape
 
 One `ReadResult.days[]` entry: `date` (ISO), `dailies` (the paths given),
-`sections` (`{heading: text}` in setup order; two dailies for one date are
-joined), `fields` (`{name: raw}`, today and end-of-day names),
+`sections` (`{heading: text}` in setup order, or `{"text": …}` for a
+daily in which no configured heading was found; two dailies for one date
+are joined), `fields` (`{name: raw}`, today and end-of-day names),
 `previous_day_fields` (`{name: raw}`, the yesterday names — removed again by
 `attribute_yesterday`), `partly_read`, `has_content`, `links` (targets of
 the kept text, in order, once each), `problems` (`[{kind:

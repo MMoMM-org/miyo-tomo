@@ -1,14 +1,16 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.1.0
+# version: 0.2.0
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
 one date into one ``ReadResult.days[]`` entry (SDD "same-day reading of one
 daily"): same-day links collected from the whole body outside
 ``skip_sections`` and read once through ``read_note``; the configured
-``sections`` kept with their subsections; query and embed fences and inline
-queries dropped, never executed; a same-day note without its embeds and
-other-day sections; raw ``Name:: v`` fields, tasks with their ✅ date, the
+``sections`` kept with their subsections, or the whole body under ``text``
+when no configured heading is found; query and embed fences and inline
+queries dropped, never executed; a same-day note without its embeds,
+other-day sections, METADATA callout and navigation-only lines; raw
+``Name:: v`` fields, tasks with their ✅ date, the
 ``max_chars_per_day`` cap on a section boundary, ``has_content`` beyond the
 template skeleton. The yesterday-named fields go to ``previous_day_fields``;
 ``attribute_yesterday`` moves them onto the entry dated D-1 and
@@ -32,6 +34,7 @@ from lib.vault_config_edit import get_path
 DEFAULT_DATE_FORMAT = "YYYY-MM-DD"
 LINKED_MISSING = "linked-missing"
 OPEN_TODAY = "open today"
+TEXT_SECTION = "text"
 QUERY_FENCES = ("dataview", "dataviewjs")
 EMBED_FENCES = ("quoth", "dynbedded")
 KIND_MARKS = (("planner", ("planner", "dp-")), ("journal", ("journal", "5year", "5j-")))
@@ -50,6 +53,9 @@ _YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 _PLACEHOLDER_RES = (re.compile(r"<%.*?%>", re.DOTALL), re.compile(r"`INPUT\[[^`]*\]`"), _INLINE_QUERY_RE)
 _RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 _DAY_TOKEN_RE = re.compile(r"\[([^\]]*)\]|YYYY|YY|MM|M|DD|D")
+_QUOTE_RE = re.compile(r"^(?:>\s*)+")
+_METADATA_RE = re.compile(r"^(?:>\s*)+\[!metadata\]", re.IGNORECASE)
+_NAV_SEP_RE = re.compile(r"<==|==>|<=|=>|<-|->|[|·•\-–—=<>*_#\s]")
 
 Heading = Tuple[int, int, str]       # (line index, level, text)
 ReadNote = Callable[[str], Optional[str]]
@@ -143,6 +149,17 @@ def _ranges(lines: List[str], structure: Tuple[List[Heading], List[int]],
     headings, rules = structure
     return [(start + 1, _section_end(headings, rules, i, len(lines)), text)
             for i, (start, _, text) in enumerate(headings) if match(text)]
+
+
+def _after_rule(structure: Tuple[List[Heading], List[int]], n_lines: int) -> List[bool]:
+    """Per line: lies after a thematic break and before the next heading (belongs to no section)."""
+    headings, rules = structure
+    out = [False] * n_lines
+    for rule in rules:
+        end = next((start for start, _, _ in headings if start > rule), n_lines)
+        for i in range(rule, end):
+            out[i] = True
+    return out
 
 
 def _cleaned(lines: Iterable[str]) -> List[str]:
@@ -255,15 +272,41 @@ def _names_other_day(heading: str, day: date) -> bool:
     return any(found != str(day.year) for found in _YEAR_RE.findall(without_dates))
 
 
-def _linked_text(text: str, day: date) -> str:
-    """The same-day note without embeds, queries and the sections that name another date or year."""
+def _is_navigation(line: str, day: date, token: str) -> bool:
+    """Only wiki links to dated notes, arrows, separators and the day's own date on the line."""
+    s = _QUOTE_RE.sub("", line.strip())
+    targets = _LINK_RE.findall(s)
+    if not targets:
+        return False
+    rest = _NAV_SEP_RE.sub("", _LINK_RE.sub("", s).replace(day.isoformat(), "").replace(token, ""))
+    if rest:
+        return False
+    return all(_ISO_DATE_RE.search(t) or _YEAR_RE.search(t) or token in t for t in targets)
+
+
+def _metadata_mask(lines: Iterable[str]) -> List[bool]:
+    """Per line: inside a ``> [!METADATA]`` callout block (the quoted lines from its title on)."""
+    out: List[bool] = []
+    inside = False
+    for line in lines:
+        quoted = line.lstrip().startswith(">")
+        inside = quoted and (inside or _METADATA_RE.match(line.lstrip()) is not None)
+        out.append(inside)
+    return out
+
+
+def _linked_text(text: str, day: date, token: str) -> str:
+    """The same-day note without embeds, queries, METADATA callouts, navigation-only lines and
+    the sections that name another date or year."""
     _, lines = _body(text)
     structure = _headings(lines)
     dropped = [False] * len(lines)
     for start, end, _ in _ranges(lines, structure, lambda h: _names_other_day(h, day)):
         for i in range(start - 1, end):
             dropped[i] = True
-    kept = [line for i, line in enumerate(lines) if not dropped[i] and not _EMBED_LINE_RE.match(line)]
+    metadata = _metadata_mask(lines)
+    kept = [line for i, line in enumerate(lines) if not dropped[i] and not metadata[i]
+            and not _EMBED_LINE_RE.match(line) and not _is_navigation(line, day, token)]
     return _text(_cleaned(kept))
 
 
@@ -287,7 +330,8 @@ def _settings(settings: dict) -> Tuple[List[str], List[str], List[str], int, str
 
 
 def _parse_daily(text: str, settings: dict) -> Tuple[Dict[str, str], List[str], List[str]]:
-    """``(kept sections {heading: text}, links outside skipped sections, links of the kept text)``."""
+    """``(kept sections {heading: text}, links outside skipped sections, links of the kept text)``;
+    the whole body under ``TEXT_SECTION`` when no configured heading is found."""
     sections, skip, _, _, _, _ = _settings(settings)
     _, lines = _body(text)
     structure = _headings(lines)
@@ -305,9 +349,11 @@ def _parse_daily(text: str, settings: dict) -> Tuple[Dict[str, str], List[str], 
             kept_lines.extend(block)
         if parts:
             kept[name] = _text(parts)
-    if not structure[0] and sections:
-        kept[sections[0]] = _text(_cleaned(lines))
-        kept_lines = list(lines)
+    if not any(heading in sections for _, _, heading in structure[0]):
+        orphan = _after_rule(structure, len(lines))
+        kept_lines = [line for i, line in enumerate(lines) if not skipped[i] and not orphan[i]]
+        if any(line.strip() for line in kept_lines):
+            kept[TEXT_SECTION] = _text(_cleaned(kept_lines))
     body_links = _links(line for i, line in enumerate(lines) if not skipped[i])
     return kept, body_links, _links(kept_lines)
 
@@ -327,7 +373,7 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
     token = render_day(day, fmt)
     own = {_target(path) for path in dailies}
     parsed = [_parse_daily(text, settings) for text in dailies.values()]
-    merged = _merge_sections(sections, [p[0] for p in parsed])
+    merged = _merge_sections(sections + [TEXT_SECTION], [p[0] for p in parsed])
 
     targets: List[str] = []
     for _, body_links, _ in parsed:
@@ -341,7 +387,7 @@ def read_day(day: date, dailies: Dict[str, str], settings: dict, read_note: Read
         if text is None:
             problems.append({"kind": LINKED_MISSING, "path": target})
             continue
-        linked.append({"path": target, "kind": _kind(target, text), "text": _linked_text(text, day)})
+        linked.append({"path": target, "kind": _kind(target, text), "text": _linked_text(text, day, token)})
 
     units: List[Tuple[str, str, str]] = [("section", n, t) for n, t in merged.items()]
     units += [("linked", item["path"], item["text"]) for item in linked]

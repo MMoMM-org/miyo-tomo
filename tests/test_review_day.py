@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_day.py — Behavioural tests for lib.review_day (spec 045 T3.2;
 PRD F3-AC1, F3-AC2, F3-AC3, F3-AC4, F3-AC8; SDD "same-day reading of one daily").
 
@@ -18,6 +18,11 @@ Covers one day's reading:
 - tasks carry their ✅ date across files; done_in_period counts by that date;
   task-note open tasks are "open today"; read_day never reads a task note
 - a plain-text daily still has content; a skeleton-only daily has none
+- a daily in which no configured heading is found is read whole under the
+  `text` key (title heading, unconfigured headings), skip sections still
+  excluded; one configured heading found → no fallback
+- a same-day note loses its METADATA callout and its navigation-only lines
+- a bare `-` field value passes through unchanged
 - a day over max_chars_per_day is cut at a section boundary, partly_read
 - a missing or unreadable linked note is a problem of that day, the day read
 
@@ -77,7 +82,7 @@ locale: de
 JahresJournal:: true [[5J-2026-03-26]]
 
 ## On This Day... last year - Wednesday
-![[2025-03-26#Daily Log]]
+![[LastYear-2026-03-26#Daily Log]]
 
 ## Start of the Day
 
@@ -263,10 +268,11 @@ def test_a_target_named_like_a_task_note_is_not_read_per_day():
 
 
 def test_embed_in_skipped_section_is_not_collected():
+    """The embed's target carries the day's own date, so only the skip filter keeps it out."""
     entry, asked = read()
-    assert "2025-03-26" not in asked
-    assert not any(target.startswith("2025-03-26") for target in asked)
-    assert "2025-03-26" not in entry["links"]
+    assert "LastYear-2026-03-26" not in asked
+    assert not any(target.startswith("LastYear-") for target in asked)
+    assert "LastYear-2026-03-26" not in entry["links"]
 
 
 def test_skipped_subsection_inside_a_kept_section_is_neither_collected_nor_kept():
@@ -305,7 +311,7 @@ def test_unconfigured_and_skipped_sections_are_absent():
     assert "Temperature" not in text
     assert "Learned Words" not in text
     assert "On This Day" not in text
-    assert "2025-03-26" not in text
+    assert "LastYear-2026-03-26" not in text
     assert "Week:: [[2026-W13]]" not in text
 
 
@@ -353,7 +359,7 @@ def test_links_are_the_targets_of_the_kept_text():
     assert "DP-2026-03-26" in entry["links"]
     assert "5J-2026-03-26" in entry["links"]
     assert "2026-W13" not in entry["links"]      # metadata callout, not a configured section
-    assert "2025-03-26" not in entry["links"]    # skipped section
+    assert "LastYear-2026-03-26" not in entry["links"]    # skipped section
     assert entry["links"].count("DP-2026-03-26") == 1
 
 
@@ -375,6 +381,27 @@ def test_planner_heading_naming_other_days_is_dropped_schedule_kept():
     assert "DP-2026-03-25" not in planner["text"]
     assert "INPUT[" not in planner["text"]
     assert "Get up" in planner["text"]
+
+
+def test_journal_metadata_callout_and_navigation_line_are_dropped():
+    entry, _ = read()
+    journal = next(i for i in entry["linked"] if i["path"] == "5J-2026-03-26")
+    assert "QuestionOfTheDay" not in journal["text"]
+    assert "METADATA" not in journal["text"]
+    assert "5J-2026-03-25" not in journal["text"]
+    assert "5J-2026-03-27" not in journal["text"]
+    assert "<==" not in journal["text"]
+    assert "Reading and a long walk" in journal["text"]
+
+
+def test_a_line_linking_an_undated_note_stays_in_a_linked_note():
+    note = "# Plan\n[[DP-2026-03-25]] <== [[2026-03-26]] ==> [[DP-2026-03-27]]\n[[Assessment]]\n- walk\n"
+    daily = "## Daily Log\n- see [[Plan-2026-03-26]]\n"
+    entry, _ = read(daily=daily, notes={"Plan-2026-03-26": note})
+    text = entry["linked"][0]["text"]
+    assert "[[Assessment]]" in text
+    assert "DP-2026-03-25" not in text and "DP-2026-03-27" not in text
+    assert "- walk" in text
 
 
 def test_linked_note_fields_are_not_parsed_as_the_days_fields():
@@ -414,6 +441,15 @@ def test_trailing_link_is_cut_from_a_field_value():
     assert entry["fields"]["DayPlanner"] == "false"
     assert entry["fields"]["Japanese"] == "false"
     assert entry["fields"]["JahresJournal"] == "true"
+
+
+def test_a_bare_dash_value_passes_through_unchanged():
+    """`Sleep:: -` is the owner's "nothing" mark; review_habits reads `-` as missing, so it must arrive raw."""
+    from lib import review_habits as rh
+
+    entry, _ = read(daily=DAILY.replace("Sleep:: 06:45", "Sleep:: -"))
+    assert entry["fields"]["Sleep"] == "-"
+    assert rh.parse_value("time", entry["fields"]["Sleep"]) is None, "review_habits reads the raw dash as missing"
 
 
 def test_fields_outside_kept_sections_are_not_parsed():
@@ -541,6 +577,72 @@ def test_plain_text_daily_still_yields_content():
     entry, _ = read(daily=daily, settings=dict(SETTINGS, sections=["Daily Log"]))
     assert entry["has_content"] is True
     assert "Went for a walk" in "\n".join(entry["sections"].values())
+
+
+PLAIN_TITLED = """# 2026-03-26
+
+Slept in, then a long call with Anna about the move.
+
+- Sleep:: 7h
+- [x] Pay the deposit ✅ 2026-03-26
+- [ ] Call the landlord
+
+## Abends
+
+Cooked, read [[Assessment]] again.
+
+---
+[[2026-03-25]] | [[2026-03-27]]
+"""
+
+
+def test_plain_daily_with_a_title_heading_is_read_whole_under_text():
+    entry, _ = read(daily=PLAIN_TITLED, notes={})
+    assert list(entry["sections"]) == ["text"]
+    assert entry["has_content"] is True
+    text = entry["sections"]["text"]
+    assert "long call with Anna" in text and "Cooked, read" in text
+    assert entry["fields"]["Sleep"] == "7h"
+    assert sorted(t["text"] for t in entry["tasks"]) == ["Call the landlord", "Pay the deposit"]
+    assert next(t for t in entry["tasks"] if t["text"] == "Pay the deposit")["done_date"] == "2026-03-26"
+    assert entry["links"] == ["Assessment"]
+    assert "2026-03-25" not in text, "the navigation block after the thematic break is not the day's words"
+
+
+def test_plain_daily_with_only_unconfigured_headings_is_read_whole():
+    daily = "## Morgens\n- up early, swim\n\n## Abends\n- Sport:: true\n"
+    entry, _ = read(daily=daily, notes={})
+    assert list(entry["sections"]) == ["text"]
+    assert "up early, swim" in entry["sections"]["text"]
+    assert entry["fields"]["Sport"] == "true"
+    assert entry["has_content"] is True
+
+
+def test_skip_section_inside_a_whole_read_daily_stays_excluded():
+    daily = ("# 2026-03-26\n- the day's own line\n\n## On This Day... last year - Wednesday\n"
+             "![[LastYear-2026-03-26#Daily Log]]\n- last year's line\n\n## Abends\n- evening line\n")
+    entry, asked = read(daily=daily, notes={})
+    assert asked == []
+    text = entry["sections"]["text"]
+    assert "the day's own line" in text and "evening line" in text
+    assert "last year's line" not in text and "LastYear" not in text
+    assert entry["links"] == []
+
+
+def test_one_configured_section_found_means_no_fallback():
+    daily = "# 2026-03-26\n- a free line outside any section\n\n## Daily Log\n- the log line\n\n## Abends\n- evening\n"
+    entry, _ = read(daily=daily, notes={})
+    assert list(entry["sections"]) == ["Daily Log"]
+    assert entry["sections"]["Daily Log"] == "- the log line"
+    assert "free line" not in "\n".join(entry["sections"].values())
+
+
+def test_an_empty_configured_section_is_still_no_fallback():
+    daily = "# 2026-03-26\n- a free line\n\n## Daily Log\n\n## Abends\n- evening\n"
+    entry, _ = read(daily=daily, notes={})
+    assert "text" not in entry["sections"]
+    assert "free line" not in "\n".join(entry["sections"].values())
+    assert entry["has_content"] is False
 
 
 SKELETON = """---

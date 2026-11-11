@@ -89,6 +89,22 @@ document step finds nothing to build (`review-doc.py write` → `read-missing`).
 The status stays `ok`: Kado was reached and answered; it is the period that
 holds nothing.
 
+## WHY a `stopped` Output Never Carries `nothing_to_review`
+
+WHY: T3.8 tidy from the T3.4 code review. `nothing_to_review: true` tells
+the skill "the period is empty, say so and name the access hint". A stop is
+the opposite statement: the period was *not* read (the daily listing stayed
+in `not_read`, Kado was unreachable, the key was refused). The first version
+of the dailies-not-read stop raised `Stopped(**out)` after the empty-period
+flag had been computed over seven never-read days, so that stop printed
+`status: stopped` next to `nothing_to_review: true` — a consumer keying on
+the flag would have read a refused listing as an empty period and told the
+user to check key access. The flag is therefore computed only after the
+not-read stop has been passed, so every `status: stopped` output lacks the
+key (the Kado stops never had it: they stop inside `_read`, before `out`
+grows). The rule is one the skill can rely on: `nothing_to_review` present
+means the period was read; `stopped` means it was not.
+
 ## WHY Reads After a Recovered Listing Run at 2 s
 
 WHY: T3.4 decision on `ReviewPacer.finish()` (WHY:
@@ -111,7 +127,12 @@ and `read_path`, so the skill never composes the path. stderr carries the
 exception class name on an unexpected error and nothing else; the privacy
 test over the script asserts that a marker from a daily's text reaches neither
 stream. `--stem` is accepted (the SDD's `[--stem S]`) and refused when it
-contains `/`, `\` or `..`, as `review-doc.py` refuses it.
+contains `/`, `\` or `..`, as `review-doc.py` refuses it. It is also refused
+when it is empty, whitespace or exactly `.` (T3.8 tidy): those pass the
+marker check but do not name a folder *under* `--tmp` — `Path(tmp) / "."` is
+`tomo-tmp/review` itself, so `read.json` would land beside every other
+review's stage folder and `review-doc.py write --stem .` would delete it
+from there. A stem is a plain folder name or it is a usage error (exit 2).
 
 ## WHY Every Actionable Outcome Exits 0
 

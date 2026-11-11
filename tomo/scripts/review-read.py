@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.1.0
+# version: 0.1.1
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -26,10 +26,11 @@ Output: one JSON object on stdout, ASCII-escaped.
             growth {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
             calls, retried, waited_s, not_read [paths], kado_empty [sources],
             advice [raise-kado-limit | check-key-access]},
-    read_path "tomo-tmp/review/<stem>/read.json" | null, nothing_to_review bool,
+    read_path "tomo-tmp/review/<stem>/read.json" | null, nothing_to_review bool (status ok only),
     error {kind kado-unreachable|kado-auth, detail} when stopped by Kado,
     problems [setup-missing | setup-invalid | daily-not-configured | dailies-not-read] when stopped
-        before or without a usable read (errors [pointers] with setup-invalid)
+        before or without a usable read (errors [pointers] with setup-invalid);
+        a stopped output never carries nothing_to_review
 
 Rules:
     One KadoClient per run, built before the first call and wrapped by one
@@ -44,7 +45,7 @@ Exit codes:
     0 — output usable (every status, every error object)
     1 — unexpected exception; stderr carries the exception class name only
     2 — bad invocation (missing argument, bad --kind, a period name that does
-        not fit the kind, an unsafe --stem)
+        not fit the kind, a --stem that is empty, ".", or carries /, \\ or ..)
 
 Design notes: docs/tomo/scripts/review-read.md
 """
@@ -100,8 +101,8 @@ def period_from(name: str, kind: str, rule: WeekRule) -> Optional[Period]:
 
 
 def _stem_arg(text: str) -> str:
-    if not text.strip() or any(mark in text for mark in _UNSAFE):
-        raise argparse.ArgumentTypeError("a plain folder name without /, \\ or ..")
+    if text.strip() in ("", ".") or any(mark in text for mark in _UNSAFE):
+        raise argparse.ArgumentTypeError("a plain folder name, not empty or ., without /, \\ or ..")
     return text
 
 
@@ -179,12 +180,13 @@ def run(args: argparse.Namespace) -> dict:
     out["period"] = result["period"]
     out["report"] = report
     out["read_path"] = None
-    out["nothing_to_review"] = not any(d.get("has_content") for d in result["days"])
     if sources.daily_folder in result["not_read"]:
         # the listing failed for the whole run: no daily was read; a review without its dailies is never built
         if ADVICE_RAISE_LIMIT not in report["advice"]:
             report["advice"].append(ADVICE_RAISE_LIMIT)
         raise Stopped(problems=["dailies-not-read"], **out)
+    # only a read period is empty or not: a stopped output never carries the flag
+    out["nothing_to_review"] = not any(d.get("has_content") for d in result["days"])
     if out["nothing_to_review"]:
         if ADVICE_CHECK_ACCESS not in report["advice"]:
             report["advice"].append(ADVICE_CHECK_ACCESS)

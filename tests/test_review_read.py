@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4;
+# version: 0.1.1
+"""test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
 On tests/review_fake_vault with the fixtures of tests/review_period_fixtures
@@ -18,10 +18,13 @@ and the real lib.review_day readers:
 - no daily with content: nothing_to_review true, advice check-key-access,
   no read.json; an empty daily listing says the same with kado_empty
 - Kado unreachable / auth: status stopped with error.kind, nothing written
+- no stopped output (dailies-not-read, kado-unreachable) carries the
+  nothing_to_review key: a stop says the period was not read, the flag
+  would say it was read and found empty
 - one KadoClient per run, built once, its counters are the report's
 - setup missing / invalid, daily folder not configured: stopped with problems
-- exit 2 for a bad invocation, exit 1 with the class name only on an
-  unexpected exception
+- exit 2 for a bad invocation (including --stem ".", "", whitespace or a
+  path mark), exit 1 with the class name only on an unexpected exception
 - a week stays <= 40 calls and a month <= 140 without retries
 
 All data is synthetic.
@@ -325,6 +328,30 @@ def test_a_client_that_cannot_be_built_is_kado_unreachable(mod, instance, monkey
     assert code == 0 and out["status"] == "stopped" and out["error"]["kind"] == "kado-unreachable"
 
 
+def _stop_dailies_not_read(fake: ReviewFakeVault) -> None:
+    fake.rate_limit(DAILY)
+
+
+def _stop_kado_unreachable(fake: ReviewFakeVault) -> None:
+    fake.connection_error = KadoConnectionError("down")
+
+
+@pytest.mark.parametrize("arrange, expected", [
+    (_stop_dailies_not_read, {"problems": ["dailies-not-read"]}),
+    (_stop_kado_unreachable, {"error": {"kind": "kado-unreachable", "detail": "down"}}),
+])
+def test_a_stopped_output_never_carries_nothing_to_review(mod, instance, monkeypatch, capsys, arrange, expected):
+    # RED (dailies-not-read) when the flag is computed before the not-read stop: seven never-read days
+    # look like an empty period, and a consumer keying on the flag would say "check key access"
+    fake = week_vault()
+    arrange(fake)
+    code, out, _ = _week(mod, monkeypatch, capsys, fake)
+    assert code == 0 and out["status"] == "stopped"
+    assert all(out[key] == value for key, value in expected.items())
+    assert "nothing_to_review" not in out, out
+    assert not (instance / "tomo-tmp").exists()
+
+
 # ---------------------------------------------------------------- setup and arguments
 
 def test_a_missing_setup_stops_without_a_call(mod, instance, monkeypatch, capsys):
@@ -381,6 +408,12 @@ def test_a_given_stem_names_the_stage_folder(mod, instance, monkeypatch, capsys)
     ["--period", "2026-W13", "--kind", "month"],
     ["--period", "2026-W60", "--kind", "week"],
     ["--period", "2026-W13", "--kind", "week", "--stem", "../x"],
+    ["--period", "2026-W13", "--kind", "week", "--stem", "a/b"],
+    ["--period", "2026-W13", "--kind", "week", "--stem", "a\\b"],
+    ["--period", "2026-W13", "--kind", "week", "--stem", ".."],
+    ["--period", "2026-W13", "--kind", "week", "--stem", "."],       # Path(tmp) / "." is the review folder itself
+    ["--period", "2026-W13", "--kind", "week", "--stem", ""],
+    ["--period", "2026-W13", "--kind", "week", "--stem", "  "],
 ])
 def test_a_bad_invocation_exits_2(mod, instance, monkeypatch, capsys, argv):
     with pytest.raises(SystemExit) as exc:

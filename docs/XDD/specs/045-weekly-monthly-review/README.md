@@ -59,6 +59,8 @@
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 | 2026-11-11 | Highest reachable rung: T3.2 BLOCKED on fable | Trigger: second review FAIL in a row (code review 34877879 → b9595c2a FAIL: two untested paths — digit-boundary rule inside is_navigation, cut_at_rule for other-day sections of linked notes); run halted for the owner |
 | 2026-11-11 | Stop overridden: T3.2 gets one more fable round for the two test gaps only, then one last code review | Owner chose "one more round"; the behaviour defects were already fixed, the open findings are tests that cannot fail |
+| 2026-11-11 | Highest reachable rung: T3.3 BLOCKED on fable | Trigger: second review FAIL in a row (code review ebcf6657 → fbdc7524 FAIL: result.not_read snapshotted before weekly notes read after a recovered listing — a failed weekly note is missing from it); run halted for the owner |
+| 2026-11-11 | Stop overridden: T3.3 gets one more fable round (not_read snapshot fix, per-prefix cache-key tests, test-file split), then one last code review | Owner chose "one more round" |
 
 ## Context
 

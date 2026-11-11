@@ -480,7 +480,9 @@ terminal for a long draft. `view.md` is the deterministic copy the
   own Markdown paragraph so the pane draws them as separate lines.
 - `note.md` follows in a fence one backtick longer than the longest backtick
   run in it (at least four), so a code block inside the note cannot end the
-  fence early.
+  fence early. The rule is `lib/render_helpers.fence_for`, shared with the
+  instruction renderer's section actions since spec 045 T1.5; this script
+  no longer carries its own copy.
 - `stage` removes `view.md` before it does anything else and writes it again
   only when the stage has a title and the filled-note check passes. A refused
   stage (exit 2), an untitled stage or a failing check therefore leaves no

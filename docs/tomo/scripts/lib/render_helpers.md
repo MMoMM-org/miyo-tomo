@@ -148,3 +148,17 @@ function. It used to live in `render_actions`; once `render_actions` imported
 It belongs beside `resolve_source_path`, whose output it always finishes, and
 it is a pure string function, so the DAG-leaf rule above holds.
 `render_actions` re-exports it for its existing callers and tests.
+
+## `fence_for` and `code_span` Live Here (spec 045 T1.5, v0.7.0)
+
+Two renderers show user text inside Markdown code constructs and must not let
+a backtick in that text end the construct early: `note-instructions.py`'s
+`view.md` (the whole staged note in a fence) and `render_md.py`'s section
+actions (the block to copy in a fence, the anchor heading in a code span).
+`_fence_for` was a private function of `note-instructions.py`; the second
+caller moved it here as `fence_for` rather than copying it, so the "one
+backtick longer than the longest run, at least four" rule has one home.
+`code_span` is its inline sibling: delimiter one backtick longer than the
+longest run in the value, a space on each side when the value starts or ends
+with a backtick (CommonMark strips exactly one). Both are pure string
+functions with no imports beyond `re`, so the DAG-leaf rule above holds.

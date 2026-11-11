@@ -1,4 +1,4 @@
-# version: 0.36.1
+# version: 0.37.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -25,7 +25,9 @@ from lib.render_helpers import (
     WITHDRAWAL_GUARDS,
     _moc_stem,
     _stem,
+    code_span,
     describe_withdrawal_cause_for_user,
+    fence_for,
 )
 from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
@@ -52,13 +54,20 @@ def _md_section_for(action: dict) -> str:
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
-    if kind == "insert_under_marker":
+    if kind in ("insert_under_marker", "replace_section"):
         return "tag_handler_updates"
     if kind == "delete_source":
         return "deletions"
     if kind == "skip":
         return "skips"
     return "new_files"
+
+
+def _fenced_content(content: str) -> list[str]:
+    """`content` as the lines of one copy-ready fenced block (spec 045 T1.5)."""
+    fence = fence_for(content)
+    body = content if content.endswith("\n") or not content else content + "\n"
+    return [f"{fence}markdown", *body.splitlines(), fence]
 
 
 def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
@@ -297,14 +306,42 @@ def _render_action_md(
     if kind == "insert_under_marker":
         target = action.get("target_path", "")
         anchor = action.get("anchor") or {}
-        anchor_value = anchor.get("value", "")
+        anchor_ref = code_span(anchor.get("value") or "")
         placement = action.get("placement", "inside")
-        lines = [f"{heading_prefix}Insert under `{anchor_value}` in [[{_stem(target)}]]", "- [ ] Applied"]
+        # Worded as Hashi applies each placement to a heading anchor; `after`
+        # lands between the heading line and its body.
+        if placement == "before":
+            where = f"immediately above the heading line {anchor_ref}"
+        elif placement == "after":
+            where = (f"immediately below the heading line {anchor_ref}, above "
+                     "the section's own body")
+        else:
+            where = (f"as the last lines of the section under {anchor_ref}, above "
+                     "the next heading of the same or higher level")
+        lines = [f"{heading_prefix}Insert {placement} {anchor_ref} in [[{_stem(target)}]]",
+                 "- [ ] Applied"]
         lines.append(f"- **Target:** [[{_stem(target)}]]")
-        lines.append(f"- **Marker:** `{anchor_value}` (heading, placement: {placement})")
+        lines.append(f"- **Anchor:** {anchor_ref} (heading, placement: {placement})")
+        lines.append(f"- **Where:** {where}")
         lines.append("- **Insert this block:**")
-        for content_line in (action.get("content", "") or "").splitlines():
-            lines.append(f"  > {content_line}")
+        lines.extend(_fenced_content(action.get("content") or ""))
+        return "\n".join(lines)
+
+    if kind == "replace_section":
+        target = action.get("target_path", "")
+        anchor = action.get("anchor") or {}
+        anchor_ref = code_span(anchor.get("value") or "")
+        lines = [f"{heading_prefix}Replace the body of {anchor_ref} in [[{_stem(target)}]]",
+                 "- [ ] Applied"]
+        lines.append(f"- **Target:** [[{_stem(target)}]]")
+        lines.append(f"- **Anchor:** {anchor_ref} (heading)")
+        lines.append(
+            "- **Where:** everything between that heading line and the next "
+            "heading of the same or higher level is discarded; the heading "
+            "line itself stays"
+        )
+        lines.append("- **Replace it with this block:**")
+        lines.extend(_fenced_content(action.get("content") or ""))
         return "\n".join(lines)
 
     if kind == "edit_note_text":

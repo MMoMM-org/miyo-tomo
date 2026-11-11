@@ -1230,3 +1230,68 @@ vault, and in UTC it sat two hours off and could carry the wrong date near midni
 `generated` is a machine timestamp and stays UTC. `upload-rendered.py` derives the
 instruction filenames from `generated`, so it converts to local time as well; if it
 did not, `md_peer` would name a file that was never written.
+
+## Section Actions Render Copy-Ready (spec 045 T1.5, render_md v0.37.0)
+
+PRD F5-AC9: a user without Hashi applies the review by hand from
+`instructions.md` — "the section text ready to copy, the target note and the
+exact place". Two things in `lib/render_md.py` stood in the way (SDD "Known
+Technical Issues"):
+
+- `insert_under_marker` rendered its content as a nested blockquote (`  > line`),
+  so copying it gave the user `> ` prefixes and a two-space indent to strip from
+  every line, and a line that was itself a quote or a heading became ambiguous.
+  Its heading said "Insert under" for every placement, which is wrong for
+  `before` (the block goes *above* the anchor) and silent about `inside`.
+- `replace_section` had no branch at all: it fell to the
+  "(unknown action: replace_section)" placeholder and, through
+  `_md_section_for`'s trailing default, into "## New Files" — a rerun's
+  replace would have been listed as a new file with no content.
+
+WHY a fence and not a blockquote: a fenced code block is the one Markdown
+construct Obsidian shows verbatim and copies verbatim — no prefix, no indent,
+no re-interpretation of the lines inside it. The fence is one backtick longer
+than the longest backtick run in the content (at least four), the same rule
+`note-instructions.py` already used for `view.md`, so a code block inside the
+review section cannot close the fence early. The rule now lives once, as
+`lib/render_helpers.fence_for`; `note-instructions.py` imports it rather than
+keeping its own copy (see `docs/tomo/scripts/lib/render_helpers.md`).
+
+WHY the placement wording names the anchor heading and only that: the user
+has to find *one* line in the target note and know which side of it the block
+goes. The three placements the schema allows are worded as Hashi applies them
+(`Hashi/src/actions/anchorResolver.ts:30-40`): `before` = immediately above
+the anchor heading line; `inside` = as the last lines of that heading's
+section, above the next heading of the same or higher level; `after` =
+immediately below the heading line, above the section's own body. `/review`
+emits only `before` and `inside` (SDD ADR-3 — `after` would put the review
+above the user's own text), but the renderer words whatever placement an
+action carries rather than refusing one, because the tag-handler consolidation
+already emits `insert_under_marker` with its own placements and this renderer
+serves both.
+
+WHY `replace_section` has its own heading, "Replace the body of `…`": the
+reader must not mistake a replace for an insert. An insert adds; a replace
+discards everything between the heading line and the next heading of the same
+or higher level and keeps the heading line. The block says so in one line and
+then gives the new body in the same fence, so applying by hand is select-
+and-paste rather than merge. It is grouped with `insert_under_marker` in
+`_md_section_for` (the "Tag-Handler Updates" bucket) because the two are
+siblings — same anchor, same target, same fence — and the bucket is the one
+the section-action family already lives in; a bucket of its own would split
+siblings and widen the renderer beyond the two branches this task adds.
+
+WHY a backtick in the anchor needs `code_span`: the anchor value is the
+heading text the user searches for, shown in inline code. A heading such as
+``Notes on `git` `` holds a backtick, and a single-backtick span would end at
+it and leave the rest of the heading as prose. `lib/render_helpers.code_span`
+uses a delimiter one backtick longer than the longest run inside the value
+and pads with a space when the value itself starts or ends with a backtick
+(CommonMark strips exactly one such space on each side), so the line stays one
+code span whatever the heading holds.
+
+What is unchanged, deliberately: every action block still opens with
+`### Inn — …` and `- [ ] Applied` — Hashi's peer-checkbox format, which its
+instruction-set listing and the `applied` reader depend on — and the
+`- **Target:**` / `- **Anchor:**` lines keep their shape, so nothing that
+parses the readable document for those lines moves.

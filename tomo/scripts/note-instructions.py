@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -69,7 +69,6 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
-import re
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
@@ -94,6 +93,7 @@ from lib.note_paths import (  # noqa: E402
     has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
 )
 from lib.note_process import PROCESS_DIR, read_process  # noqa: E402
+from lib.render_helpers import fence_for  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 from lib.render_withhold import (  # noqa: E402
     make_folder_listing, validate_destinations, withdraw_unjustified_deletes,
@@ -173,11 +173,6 @@ def remove_view() -> None:
     _view_path().unlink(missing_ok=True)
 
 
-def _fence_for(text: str) -> str:
-    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
-    return "`" * max(4, longest + 1)
-
-
 def render_view(meta, note_text: str) -> str:
     """Return the approval header (SKILL step 6 wording) and note_text in a fence."""
     lines = [f"Template: {meta.template_stem} · Final name: {meta.destination_file()} · "
@@ -185,7 +180,7 @@ def render_view(meta, note_text: str) -> str:
     if meta.source_path and not meta.keep_source:
         lines.append(f"Source {meta.source_path} is deleted when you apply "
                      "the instruction set in Hashi.")
-    fence = _fence_for(note_text)
+    fence = fence_for(note_text)
     body = note_text if note_text.endswith("\n") else note_text + "\n"
     return "\n\n".join(lines) + f"\n\n{fence}markdown\n{body}{fence}\n"
 

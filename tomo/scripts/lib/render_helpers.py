@@ -1,14 +1,44 @@
-# version: 0.6.0
+# version: 0.7.0
 """render_helpers.py — pure, cross-module primitives for instruction rendering.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Holds the
 tiny stem helpers used by every render submodule (render_actions, render_md,
-render_resolve) and the orchestrator. Pure string ops — no Kado, no I/O, no
-dependency on any other render module (keeps the module graph a DAG).
+render_resolve) and the orchestrator, plus the backtick-safe code constructs
+(`fence_for`, `code_span`) that render_md and note-instructions wrap user text
+in. Pure string ops — no Kado, no I/O, no dependency on any other render
+module (keeps the module graph a DAG).
 """
 from __future__ import annotations
 
+import re
+
 from lib.file_extensions import KNOWN_FILE_EXTENSIONS
+
+
+def _longest_backtick_run(text: str) -> int:
+    return max((len(run) for run in re.findall(r"`+", text)), default=0)
+
+
+def fence_for(text: str) -> str:
+    """The code-fence delimiter that no backtick run in `text` can close early.
+
+    One backtick longer than the longest run in the text, at least four, so a
+    fenced block inside the text stays inside the outer fence.
+    """
+    return "`" * max(4, _longest_backtick_run(text) + 1)
+
+
+def code_span(text: str) -> str:
+    """`text` as one inline code span, whatever backticks it holds.
+
+    The delimiter is one backtick longer than the longest run inside the
+    text; a text that starts or ends with a backtick is padded with one space
+    on each side, which CommonMark strips again on render.
+    """
+    delimiter = "`" * (_longest_backtick_run(text) + 1)
+    if text.startswith("`") or text.endswith("`"):
+        text = f" {text} "
+    return f"{delimiter}{text}{delimiter}"
 
 
 def _stem(path: str | None) -> str:

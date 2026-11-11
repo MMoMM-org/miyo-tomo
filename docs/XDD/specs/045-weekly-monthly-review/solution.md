@@ -669,6 +669,7 @@ ENTITY: ReviewSetup (NEW, lib/review_config.py) — the `review:` section plus c
 
 ENTITY: ReadResult (NEW) — read.json
   FIELDS: period, days: [{date, dailies: [path], sections: {name: text}, fields: {name: raw}, partly_read: bool,
+          has_content: bool, links: [target], problems: [{kind, path}],
           tasks: [{text, done, done_date, source}], linked: [{path, kind: planner|journal|other, text}]}],
           weekly: [{path, day_blocks: {date: text}, week_text: {section: text}, overlap_days: n, links: [target]}],
           growth: {created: [{path, links}], mocs_changed: [path], mocs_linked_by_new: [path]},

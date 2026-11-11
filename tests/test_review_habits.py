@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_habits.py — Behavioural tests for lib.review_habits (spec 045 T3.5, PRD F8).
 
 Covers the habits group as numbers:
@@ -9,14 +9,14 @@ Covers the habits group as numbers:
 - missing days (no field, empty value) and unreadable values ("ja" for a
   number, "7" for a yes/no field, an unrun Templater `<% … %>`) are named
   by date and never counted as zero (F8-AC2)
-- yesterday_fields values shift to the previous day: the value in the
-  period's first daily is dropped, the value in the daily after the period
-  counts for the last day; shift_yesterday=False leaves them in place
+- fields are taken as the reader attributed them: a value under date D
+  counts for D for every tracker, yesterday_fields included — the reader
+  owns the D-1 shift (SDD daily reading step 5), this module never shifts
+- a date listed twice keeps the later entry's value
 - text trackers are skipped; no trackers, or no value on any day → the item
   or the whole result is absent (F8-AC3)
 - the rendered line follows the de/en label table, English otherwise
-- tracker_defs reads the three tracker lists of the config in order, with
-  the yesterday flag
+- tracker_defs reads the three tracker lists of the config in order
 
 All data is synthetic.
 """
@@ -41,8 +41,8 @@ def day(d: date, **fields) -> dict:
     return {"date": d.isoformat(), "fields": dict(fields)}
 
 
-def tracker(name: str, type_: str, yesterday: bool = False) -> rh.TrackerDef:
-    return rh.TrackerDef(name=name, type=type_, yesterday=yesterday)
+def tracker(name: str, type_: str) -> rh.TrackerDef:
+    return rh.TrackerDef(name=name, type=type_)
 
 
 def one(items: list, name: str) -> dict:
@@ -74,9 +74,11 @@ def test_boolean_counts_days_true_over_days_with_value():
 
 @pytest.mark.parametrize("raw,expected", [
     ("true", True), ("True", True), ("yes", True), ("ja", True), ("x", True), ("X", True),
-    ("1", True), ("✅", True), ("[x]", True), (True, True),
+    ("1", True), ("✅", True), ("[x]", True), ("[X]", True), (True, True),
+    ("done", True), ("Done", True), ("y", True), ("Y", True), ("j", True), ("J", True),
     ("false", False), ("no", False), ("nein", False), ("0", False), ("❌", False),
-    ("[ ]", False), (False, False),
+    ("[ ]", False), ("[]", False), (False, False),
+    ("n", False), ("N", False), ("-", False),
 ])
 def test_boolean_spellings(raw, expected):
     items = rh.habits([tracker("Sport", "boolean")], [day(PERIOD[0], Sport=raw)], PERIOD, "en")
@@ -187,44 +189,43 @@ def test_time_without_colon_or_out_of_range_is_unreadable():
     assert item["days_with_value"] == 1
 
 
-# --- yesterday fields ----------------------------------------------------------------
+# --- fields are taken as the reader attributed them (the reader owns the D-1 shift) --
 
-def test_yesterday_field_counts_for_the_previous_day():
+def test_yesterday_field_value_counts_for_the_day_it_is_listed_under():
+    """A yesterday_fields tracker (the owner's Sleep) is configured as such, yet its value
+    under date D counts for D: the reader already moved it to the day it describes."""
+    config = {"trackers": {"daily_note_trackers": {
+        "today_fields": [],
+        "yesterday_fields": [{"name": "Sleep", "type": "duration"}],
+    }}}
     after = PERIOD[-1] + timedelta(days=1)
     days = [
-        day(PERIOD[0], Sleep="1h"),   # about the day before the period: dropped
-        day(PERIOD[1], Sleep="7h"),   # about PERIOD[0]
-        day(PERIOD[2], Sleep="8h"),   # about PERIOD[1]
-        day(after, Sleep="6h"),       # about PERIOD[-1]: counts
+        day(PERIOD[0], Sleep="7h"),   # counts for PERIOD[0], not for the day before the period
+        day(PERIOD[1], Sleep="8h"),   # counts for PERIOD[1]
+        day(after, Sleep="6h"),       # outside the period: ignored, not moved onto PERIOD[-1]
     ]
-    item = one(rh.habits([tracker("Sleep", "duration", yesterday=True)], days, PERIOD, "en"), "Sleep")
-    assert item["days_with_value"] == 3
-    assert item["value"] == pytest.approx(420.0)  # (7 + 8 + 6) h / 3, the 1h is not in the period
-    assert item["missing"] == ["2026-03-25", "2026-03-26", "2026-03-27", "2026-03-28"]
-
-
-def test_yesterday_unreadable_is_named_by_the_day_it_describes():
-    days = [day(PERIOD[1], Sleep="<% tp.x %>"), day(PERIOD[2], Sleep="7h")]
-    item = one(rh.habits([tracker("Sleep", "duration", yesterday=True)], days, PERIOD, "en"), "Sleep")
-    assert item["unreadable"] == ["2026-03-23"]
-
-
-def test_shift_yesterday_false_keeps_values_on_their_day():
-    days = [day(PERIOD[0], Sleep="7h"), day(PERIOD[1], Sleep="8h")]
-    item = one(rh.habits([tracker("Sleep", "duration", yesterday=True)], days, PERIOD, "en",
-                         shift_yesterday=False), "Sleep")
+    item = one(rh.habits(rh.tracker_defs(config), days, PERIOD, "en"), "Sleep")
     assert item["days_with_value"] == 2
-    assert "2026-03-23" not in item["missing"]
+    assert item["value"] == pytest.approx(450.0)  # (7 + 8) h / 2; the 6h after the period is not in it
+    assert item["missing"] == ["2026-03-25", "2026-03-26", "2026-03-27", "2026-03-28", "2026-03-29"]
 
 
-def test_today_field_is_not_shifted():
-    days = [day(PERIOD[0], Sport="true")]
-    item = one(rh.habits([tracker("Sport", "boolean")], days, PERIOD, "en"), "Sport")
-    assert item["days_with_value"] == 1
-    assert "2026-03-23" not in item["missing"]
+def test_unreadable_value_is_named_by_the_date_it_is_listed_under():
+    config = {"trackers": {"daily_note_trackers": {
+        "yesterday_fields": [{"name": "Sleep", "type": "duration"}],
+    }}}
+    days = [day(PERIOD[1], Sleep="<% tp.x %>"), day(PERIOD[2], Sleep="7h")]
+    item = one(rh.habits(rh.tracker_defs(config), days, PERIOD, "en"), "Sleep")
+    assert item["unreadable"] == ["2026-03-24"]
 
 
-def test_a_day_outside_the_period_is_ignored_for_today_fields():
+def test_habits_takes_no_shift_switch():
+    days = [day(PERIOD[0], Sleep="7h")]
+    with pytest.raises(TypeError):
+        rh.habits([tracker("Sleep", "duration")], days, PERIOD, "en", shift_yesterday=False)
+
+
+def test_a_day_outside_the_period_is_ignored():
     days = [day(PERIOD[-1] + timedelta(days=1), Sport="true"), day(FIRST - timedelta(days=1), Sport="true")]
     assert rh.habits([tracker("Sport", "boolean")], days, PERIOD, "en") == []
 
@@ -268,6 +269,21 @@ def test_a_day_lists_dates_sorted_and_only_once():
     item = one(rh.habits([tracker("Energy", "integer")], days, PERIOD, "en"), "Energy")
     assert item["unreadable"] == ["2026-03-25"]
     assert item["missing"] == sorted(item["missing"])
+
+
+def test_a_date_listed_twice_keeps_the_later_entry():
+    days = [day(PERIOD[0], Energy="2"), day(PERIOD[1], Energy="4"), day(PERIOD[0], Energy="6")]
+    item = one(rh.habits([tracker("Energy", "integer")], days, PERIOD, "en"), "Energy")
+    assert item["days_with_value"] == 2
+    assert item["value"] == pytest.approx(5.0)  # (6 + 4) / 2: the later 6 replaced the 2, not (2 + 4 + 6) / 3
+
+
+def test_a_later_unreadable_entry_replaces_an_earlier_readable_one():
+    days = [day(PERIOD[0], Energy="4"), day(PERIOD[1], Energy="3"), day(PERIOD[0], Energy="ja")]
+    item = one(rh.habits([tracker("Energy", "integer")], days, PERIOD, "en"), "Energy")
+    assert item["unreadable"] == ["2026-03-23"]
+    assert item["days_with_value"] == 1
+    assert item["value"] == pytest.approx(3.0)
 
 
 # --- rendered line (label table) -------------------------------------------------------
@@ -322,7 +338,7 @@ def test_other_language_falls_back_to_english():
 
 # --- tracker_defs from the config ------------------------------------------------------
 
-def test_tracker_defs_reads_the_three_lists_in_order_with_the_yesterday_flag():
+def test_tracker_defs_reads_the_three_lists_in_order():
     config = {"trackers": {
         "daily_note_trackers": {
             "today_fields": [{"name": "Sport", "type": "boolean"}, {"name": "Energy", "type": "integer"}],
@@ -331,10 +347,10 @@ def test_tracker_defs_reads_the_three_lists_in_order_with_the_yesterday_flag():
         "end_of_day_fields": {"fields": [{"name": "Highlights", "type": "text"}]},
     }}
     defs = rh.tracker_defs(config)
-    assert [(d.name, d.type, d.yesterday) for d in defs] == [
-        ("Sport", "boolean", False), ("Energy", "integer", False),
-        ("Sleep", "duration", True), ("Highlights", "text", False),
+    assert [(d.name, d.type) for d in defs] == [
+        ("Sport", "boolean"), ("Energy", "integer"), ("Sleep", "duration"), ("Highlights", "text"),
     ]
+    assert not hasattr(defs[2], "yesterday")
 
 
 def test_tracker_defs_without_trackers_is_empty():

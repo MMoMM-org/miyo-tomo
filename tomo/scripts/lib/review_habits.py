@@ -1,5 +1,5 @@
 # review_habits.py — the habits group of a review: tracker values of a period as counts and averages.
-# version: 0.1.0
+# version: 0.2.0
 """Habits as numbers for ``/review`` (spec 045, T3.5, PRD F8).
 
 One pure function, ``habits(trackers, days, period_days, language)``: the
@@ -13,26 +13,24 @@ integer, duration (minutes) or time (minutes since midnight) tracker. Text
 trackers are skipped. A day without the field or with an empty value is
 *missing*, a value the type rule cannot read ("ja" for a number, "7" for a
 yes/no field, an unrun Templater ``<% … %>``) is *unreadable*; both are
-named by date and never counted as zero. ``yesterday_fields`` values are
-attributed to the previous day (``shift_yesterday=False`` for a caller that
-already did). Each item carries its structured numbers and the rendered
-line from the de/en label table (English for any other language). No Kado,
-no model, no I/O; the values stay in the result, never on stdout or stderr.
+named by date and never counted as zero. Fields arrive already attributed
+to the day they describe — the reader owns the ``yesterday_fields`` shift
+to D-1 — and are taken as given; a date listed twice keeps the later entry.
+Each item carries its structured numbers and the rendered line from the
+de/en label table (English for any other language). No Kado, no model, no
+I/O; the values stay in the result, never on stdout or stderr.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from lib.review_config import tracker_types
-from lib.vault_config_edit import get_path
 
 NUMERIC_TYPES = ("integer", "duration", "time")
 COUNT_TYPES = ("boolean",)
-
-_YESTERDAY_LIST = ("trackers", "daily_note_trackers", "yesterday_fields")
 
 _TRUE = {"true", "yes", "ja", "x", "1", "✅", "[x]", "done", "y", "j"}
 _FALSE = {"false", "no", "nein", "0", "❌", "[ ]", "[]", "n", "-"}
@@ -68,17 +66,11 @@ _LABELS: Dict[str, Dict[str, str]] = {
 class TrackerDef:
     name: str
     type: str
-    yesterday: bool = False
 
 
 def tracker_defs(config: dict) -> List[TrackerDef]:
-    """The configured trackers in config order; ``yesterday`` marks the ``yesterday_fields`` list."""
-    types = tracker_types(config)
-    found, yesterday_fields = get_path(config, _YESTERDAY_LIST)
-    yesterday = set()
-    if found and isinstance(yesterday_fields, list):
-        yesterday = {f.get("name") for f in yesterday_fields if isinstance(f, dict)}
-    return [TrackerDef(name=name, type=type_, yesterday=name in yesterday) for name, type_ in types.items()]
+    """The configured trackers in config order (today, yesterday and end-of-day lists)."""
+    return [TrackerDef(name=name, type=type_) for name, type_ in tracker_types(config).items()]
 
 
 # --- value rules -----------------------------------------------------------------------
@@ -203,8 +195,8 @@ def _as_date(value: Any) -> Optional[date]:
         return None
 
 
-def _values_by_day(tracker: TrackerDef, days: Iterable[dict], shift: bool) -> Dict[date, Any]:
-    """Raw values keyed by the day they describe; a later daily for the same day wins."""
+def _values_by_day(tracker: TrackerDef, days: Iterable[dict]) -> Dict[date, Any]:
+    """Raw values keyed by the date the reader listed them under; a later entry for the same date wins."""
     out: Dict[date, Any] = {}
     for entry in days:
         fields = entry.get("fields") or {}
@@ -213,8 +205,6 @@ def _values_by_day(tracker: TrackerDef, days: Iterable[dict], shift: bool) -> Di
         day = _as_date(entry.get("date"))
         if day is None:
             continue
-        if shift and tracker.yesterday:
-            day = day - timedelta(days=1)
         out[day] = fields[tracker.name]
     return out
 
@@ -262,8 +252,6 @@ def habits(
     days: Iterable[dict],
     period_days: Sequence[date],
     language: str,
-    *,
-    shift_yesterday: bool = True,
 ) -> List[dict]:
     """The habits items, one per tracker with a value in the period; ``[]`` means no habits group."""
     period = [d for d in (_as_date(p) for p in period_days) if d is not None]
@@ -272,7 +260,7 @@ def habits(
     for tracker in trackers:
         if tracker.type not in COUNT_TYPES + NUMERIC_TYPES:
             continue
-        values = _values_by_day(tracker, day_list, shift_yesterday)
+        values = _values_by_day(tracker, day_list)
         item = _item(tracker, values, period, language)
         if item is not None:
             items.append(item)

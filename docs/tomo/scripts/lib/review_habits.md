@@ -29,30 +29,49 @@ below have one owner. The trackers come from the existing
 `trackers.daily_note_trackers` (`today_fields`, `yesterday_fields`) and
 `trackers.end_of_day_fields.fields` (SDD Data Storage Changes: F8 reuses
 them, never a second tracker list). `review_config.tracker_types()` already
-flattens the three lists to `{name: type}`; it loses which list a tracker
-came from, and the `yesterday_fields` list matters here (next section), so
-`tracker_defs(config)` reuses `tracker_types()` for the types and reads the
-`yesterday_fields` names once more for the flag. Config order is kept so the
-items appear in the order the user wrote the setup.
+flattens the three lists to `{name: type}` in config order, and that is all
+this module needs: which list a tracker came from does not matter here (next
+section), so `tracker_defs(config)` is a thin wrapper over `tracker_types()`
+and carries no `yesterday` flag. Config order is kept so the items appear in
+the order the user wrote the setup.
 
 `active: false` does not exclude a tracker: that switch exists for inbox
 classification ("does Tomo propose this field"); a value that is in the daily
 is the user's record and is summed like any other.
 
-## WHY `yesterday_fields` Shift by One Day
+## WHY This Module Never Shifts `yesterday_fields`
 
 A `yesterday_fields` value written in the daily of D describes D−1 (the
-owner's `Sleep` of last night is written in the morning). The item is about
-the days of the period, so a value on D counts for D−1: the value in the
-first daily of the period describes the day before the period and is
-dropped; the value in the daily *after* the period describes the period's
-last day and counts when the caller passes that day. `review_day.py`
-attributes yesterday fields to D−1 as well (T3.2 key decision); the shift
-happens in whichever module sees the raw per-daily values first, and this
-module takes `shift_yesterday=False` when a caller already shifted — the
-default shifts, because the fake-vault and CLI tests of this spec feed the
-daily's own fields. A double shift would move every value two days back
-and silently misreport, so the flag exists and the caller names it.
+owner's `Sleep` of last night is written in the morning). That shift has
+exactly one owner: the period reader, `review_day.py`. It attributes
+yesterday fields to D−1 when it parses them, and it reads the daily of the
+day *after* the period for its yesterday fields only, so the period's last
+day is not always missing (SDD "Daily note reading", step 5; coordinator
+decision in commit `ba97337f`). `ReadResult.days[].fields` therefore arrive
+here already keyed by the day they describe, and this module takes them as
+given: a value under date D counts for D, whichever tracker list the name
+came from.
+
+An earlier version shifted here too, behind a `shift_yesterday` flag with a
+`yesterday` flag per tracker. Two modules that each know the rule is one
+module too many: the default of the flag decided whether a value was moved
+once or twice, and a double shift moves every value two days back and
+silently misreports. Dropping the shift here, together with the flag and the
+second read of the `yesterday_fields` list, leaves nothing to get wrong on
+this side; a wrong attribution is now a reader bug, visible in the reader's
+own tests.
+
+## WHY a Later Daily for the Same Day Wins
+
+`ReadResult.days[]` can carry the same date twice: the reader reports a
+duplicate daily (flat folder and `<folder>/<YYYY>/`, SDD step 0) rather than
+choosing. This module keeps the *last* entry's value for a date and ignores
+the earlier ones. The reader lists the duplicate in its findings, so the user
+is told; picking one value here keeps the item's arithmetic deterministic
+instead of averaging a day with itself or naming it both missing and
+unreadable. "Later wins" rather than "first wins" because the reader appends
+in read order and the later file is the one it read last — the rule is
+stated so a test can pin it, not because either order is more correct.
 
 ## WHY Missing and Unreadable Days Are Named, Never Zero (F8-AC2)
 
@@ -70,9 +89,12 @@ repair (SDD: the setup may propose `Sleep` `text` → `duration`).
 
 ## WHY These Value Rules
 
-- **boolean**: `true/false`, `yes/no`, `ja/nein`, `x`, `1/0`, `✅/❌`, a
-  checkbox `[x]`/`[ ]`, case-insensitive. These are the spellings the
-  trackers wizard and the owner's dailies use; anything else is unreadable.
+- **boolean**: true is `true`, `yes`, `ja`, `y`, `j`, `x`, `1`, `✅`,
+  `done` or a ticked checkbox `[x]`; false is `false`, `no`, `nein`, `n`,
+  `0`, `❌`, `-` or an unticked checkbox `[ ]` / `[]`; all case-insensitive.
+  These are the spellings the trackers wizard and the owner's dailies use,
+  plus the one-letter German/English shorthands and the `done` / `-` pair a
+  hand-written journal falls into; anything else is unreadable.
 - **integer**: an integer or a decimal (`7.5` or German `7,5`). The type says
   integer, but a `7.5` energy is still a number and refusing it would name
   half the owner's days unreadable; the average is rendered with one

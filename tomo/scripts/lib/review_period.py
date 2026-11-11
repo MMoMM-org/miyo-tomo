@@ -1,5 +1,5 @@
 # review_period.py — reads a period for /review: dailies, the day after, a month's weekly notes, link differences, growth.
-# version: 0.2.0
+# version: 0.3.0
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
@@ -17,9 +17,15 @@ nothing is named in ``report.growth.kado_none``. A month always carries a
 Day reading is ``lib/review_day.py``'s: its functions arrive as a
 ``DayReaders`` value (default: imported lazily). Every Kado call goes through
 ``lib/review_reader.PacedReader`` on ``ReviewPacer.read``; ``read_period``
-calls ``finish()`` itself and re-runs the days whose reads the end pass
-recovered, so the caller only prints ``pacer.summary(result["not_read"])``.
-Connection and auth errors propagate.
+calls ``finish()`` itself, re-runs the days whose reads the end pass
+recovered and, when the end pass recovered a daily or weekly folder listing,
+resolves and reads that listing's notes then (the only reads after the end
+pass), so the caller only prints ``pacer.summary(result["not_read"])``. A
+folder listing still in ``not_read`` leaves its days or weeks empty with no
+``kado_empty`` and no advice: a daily folder there is a period that could
+not be read (``review-read.py`` stops with ``raise-kado-limit``), a weekly
+folder there is ``weekly_status: not-read``. Connection and auth errors
+propagate.
 
 Design notes: docs/tomo/scripts/lib/review_period.md
 """
@@ -141,16 +147,18 @@ class _PeriodRead:
             self.growth_kado_none.append(part)
 
     # dailies
-    def _find_dailies(self) -> None:
+    def _find_dailies(self) -> Optional[List[str]]:
+        """Fill ``found`` from the daily folder listing; returns the listing (None: not answered or empty)."""
         listing = self.reader.folder(self.sources.daily_folder)
         if listing is None:
-            self._empty(self.sources.daily_folder, "dailies")
+            self._empty(self.reader.dir_key(self.sources.daily_folder), "dailies")
         keys = {path_key(p): p for p in listing or []}
         base = self.sources.daily_folder.rstrip("/") + "/"
         for day in self.period.days() + [self.after]:
             name = daily_name(day, self.sources.daily_format)
             candidates = (f"{base}{name}.md", f"{base}{day.year}/{name}.md")
             self.found[day] = [keys[path_key(c)] for c in candidates if path_key(c) in keys]
+        return listing
 
     def _texts(self, day: date) -> Dict[str, str]:
         texts = {}
@@ -203,10 +211,12 @@ class _PeriodRead:
 
     # weekly notes of a month
     def _find_weeklies(self) -> Tuple[Optional[List[str]], List[Tuple[Period, List[str]]]]:
+        """The weekly folder listing and the note paths per overlapping week; no weeks without a listing."""
         listing = self.reader.folder(self.sources.weekly_folder)
         if listing is None:
-            self._empty(self.sources.weekly_folder, "weekly")
-        keys = {path_key(p): p for p in listing or []}
+            self._empty(self.reader.dir_key(self.sources.weekly_folder), "weekly")
+            return None, []
+        keys = {path_key(p): p for p in listing}
         weeks = []
         for week in self.period.weeks_overlapping(self.sources.rule):
             candidates = week.note_paths(self.sources.weekly_folder, self.sources.weekly_format)
@@ -262,8 +272,12 @@ class _PeriodRead:
         return only_in_weekly, unique_targets(not_in_weekly)
 
     # growth
+    @staticmethod
+    def _created_query(start_ms: int, end_ms: int) -> dict:
+        return {"fields": ["links"], "filter": {"createdAfter": start_ms, "createdBefore": end_ms}}
+
     def _created_items(self, start_ms: int, end_ms: int) -> Optional[List[dict]]:
-        return self.reader.notes(ROOT, fields=["links"], filter={"createdAfter": start_ms, "createdBefore": end_ms})
+        return self.reader.notes(ROOT, **self._created_query(start_ms, end_ms))
 
     def _growth_fetch(self, start_ms: int, end_ms: int) -> None:
         self._created_items(start_ms, end_ms)
@@ -273,7 +287,7 @@ class _PeriodRead:
     def _growth(self, start_ms: int, end_ms: int) -> dict:
         created_items = self._created_items(start_ms, end_ms)
         if created_items is None:
-            self._growth_none(ROOT, GROWTH_CREATED)
+            self._growth_none(self.reader.notes_key(ROOT, **self._created_query(start_ms, end_ms)), GROWTH_CREATED)
         created = [{"path": str(item.get("path")),
                     "links": unique_targets([str(link.get("target") or "") for link in item.get("links") or []
                                              if isinstance(link, dict)])}
@@ -283,7 +297,7 @@ class _PeriodRead:
         for prefix in self.sources.moc_folders:
             items = self.reader.notes(prefix)
             if items is None:
-                self._growth_none(prefix, GROWTH_MOCS)
+                self._growth_none(self.reader.notes_key(prefix), GROWTH_MOCS)
                 continue
             mocs.extend(i for i in items if i.get("path"))
         linked = {link_key(t) for c in created for t in c["links"]}
@@ -315,7 +329,7 @@ class _PeriodRead:
 
     def run(self) -> dict:
         period, sources = self.period, self.sources
-        self._find_dailies()
+        daily_listing = self._find_dailies()
         entries: Dict[date, dict] = {}
         incomplete: Set[date] = set()
         self._run_days(period.days(), entries, incomplete)
@@ -339,6 +353,12 @@ class _PeriodRead:
         self._run_days(sorted(incomplete), entries, set())
         if after_incomplete:
             after_fields = self._after_fields()
+        if daily_listing is None and self._find_dailies() is not None:
+            # the end pass recovered the daily listing: nothing of the period was read yet
+            self._run_days(period.days(), entries, set())
+            after_fields = self._after_fields()
+        if is_month and weekly_configured and weekly_listing is None:
+            weekly_listing, weeks = self._find_weeklies()
         days = self.readers.attribute_yesterday([entries[d] for d in sorted(entries)], after_fields)
         for entry in days:
             for item in entry.get("linked", []):
@@ -354,7 +374,7 @@ class _PeriodRead:
         report: Dict[str, Any] = {
             "days": [self._day_report(date.fromisoformat(e["date"]), e) for e in days],
             "day_after": {"date": self.after.isoformat(),
-                          "dailies": [{"path": p, "state": "failed" if self.reader.cache.get(p) is None else "read"}
+                          "dailies": [{"path": p, "state": "failed" if self.reader.note(p) is None else "read"}
                                       for p in self.found.get(self.after, [])]},
             "task_notes": task_report,
         }

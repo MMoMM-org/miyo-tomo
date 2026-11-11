@@ -184,6 +184,49 @@ growth. The report marks a daily or linked note `failed` when its path is in
 `not_read` and `missing` otherwise. `review-read.py` therefore calls
 `pacer.summary(result["not_read"])` and never `finish()` again.
 
+### WHY a Recovered Folder Listing Re-Reads Its Period
+
+WHY: review of T3.3 (critical). The daily and weekly folder listings are the
+first calls of a run and everything else hangs on them: without the listing
+no daily is found, so no daily is read and no day is incomplete. The first
+version built `found` once from the pending listing and never looked again,
+so a listing rate-limited at the start and recovered by the end pass left
+every day empty, nothing in `not_read`, `kado_empty` empty — a silent empty
+review, the one outcome F3-AC12 forbids. The run therefore remembers which
+listings were pending and, after `finish()`, resolves the dailies (and a
+month's weekly notes) from the recovered listing and reads them: every day
+of the period, the day after, every weekly note of an overlapping week. These
+are the only reads made after the end pass; nothing read before is read again
+(the re-run days had nothing to read), and a note that fails even then is
+final — `PacedReader` sends it straight to `not_read` (`review_reader.md`,
+"WHY `finish()` Merges Into the Cache"), so the report still names it.
+
+A listing that is still not read after the end pass stays exactly that: the
+folder is in `not_read`, `kado_empty` and the advice stay empty (Kado never
+answered, so "the key may not reach the folder" would be a wrong hint), the
+days stay empty with `dailies: []`, a month's `weekly_status` is `not-read`
+with no per-week rows (`weekly_notes: []` — no week was looked for, so none
+is "absent"; the same holds for `kado-empty`). This module says nothing more. The contract with `review-read.py` (T3.4): a
+daily-folder listing in `result["not_read"]` is a period that could not be
+read at all, which the script turns into `status: stopped` with the
+`raise-kado-limit` advice (`review_pacer.ADVICE_RAISE_LIMIT`) rather than
+writing a `read.json` of 31 empty days; a weekly-folder listing in
+`not_read` is a month read without its weekly notes, reported as such and
+not a stop.
+
+## WHY Period Bounds Are Local Days, Not 24-Hour Multiples
+
+WHY: Kado filters by Unix ms; the user's notes are created in local time.
+`period_bounds_ms` takes midnight of the first day and midnight of the day
+after the last through `datetime.timestamp()` on naive values, i.e. the local
+zone, so a note created at 00:30 on the first day counts and one at 23:59 on
+the last day counts — in every zone. A week that crosses a DST change is 167
+or 169 hours long in that zone, and the bounds follow the clock, not a
+`7 × 86 400 000` constant; the next period's `start_ms` is this period's
+`end_ms + 1` either way. The test suite pins `TZ=UTC` (`tests/conftest.py`),
+where no DST exists, so the DST case is tested under an explicitly set
+`Europe/Berlin` zone and the zone is restored afterwards.
+
 ## WHY `sources_from_config` Lives Here
 
 WHY: a month read needs the weekly setup (folder, format, own sections) next

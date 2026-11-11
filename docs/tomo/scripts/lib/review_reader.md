@@ -18,16 +18,35 @@ key and survive a rate limit" — and no knowledge of days, weeks or growth.
 every `KadoError` to `Stopped`, which would turn the pacer's
 `KadoRateLimitError` into a stop instead of a retry, and it is not paced.
 
-## WHY One Cache Keyed by Path, Stem or Folder
+## WHY One Cache, Keyed by Kind
 
 WHY: SDD same-day reading, step 1 ("a living task note is read once for the
 period, not per day") and F3-AC12. `read_day` asks for a task note or a
 same-day note on every day that links it; the cache answers the second ask
 without a call. The same cache lets `finish()` re-run a day for free: the
-daily text, the resolved stems and the linked notes are all there. Keys
-cannot collide: note keys end in `.md`, folder keys end in `/` or are `/`,
-and a link stem is a bare basename without `.md` (`review_day._target`
-strips it).
+daily text, the resolved stems and the linked notes are all there.
+
+Every cache key is prefixed by the kind of read — `read:<path>`,
+`name:<stem>`, `dir:<folder>`, `notes:<folder>?<fields and filter>` — because
+the first version keyed by the bare name and argued that a note (`.md`), a
+folder (`/`) and a stem could not collide. They can: a configured folder
+arrives as the config spells it, with or without the trailing `/`, a stem may
+equal a folder name, and the created-notes query (`listNotes` over `/` with a
+`createdAfter` filter) and an unfiltered MOC listing over the same prefix are
+two different questions to Kado that a path-only key would answer with one
+cached result. The query's `fields` and `filter` are therefore part of the
+`notes:` key (sorted, JSON), so one period never reads two queries as one.
+The prefix is internal: the key is what the pacer records and what `finish()`
+merges by, while `not_read` and `missing` carry the plain path, stem or
+folder the caller asked for, which is what the report prints and what
+`review-read.py` hands to `pacer.summary`.
+
+`answered(key)` is the one test for "Kado answered with nothing" against
+"Kado has not answered" (pending or failed); it takes the full key, built by
+`dir_key()` / `notes_key()`, so the period reader asks about exactly the
+listing or query it made. No other method decides that question — a second
+one would drift from this one, and the access hint (`kado_empty`) and the
+growth "returned none" name both rest on it.
 
 ## WHY a Link Stem Is Resolved With One `byName`
 
@@ -55,10 +74,17 @@ query that is still pending is never counted as "Kado returned none"
 
 ## WHY `finish()` Merges Into the Cache
 
-WHY: the pacer stores late values in `recovered` (path → value) rather than
+WHY: the pacer stores late values in `recovered` (key → value) rather than
 calling back; the reader copies them over its pending keys, leaving None for
 what still failed, so a re-run reads only the cache and makes no call for a
-path in `not_read`. Folder listings are the first calls of a run and are not
-re-run after the end pass: a listing that fails even after the pacer's widest
-spacing means Kado was saturated before the read began, and the report names
-it in `not_read` with its sources empty rather than reading a period twice.
+key in `not_read`.
+
+A read made after `finish()` — the dailies and weekly notes of a folder
+listing the end pass recovered (`review_period.md`, "WHY the Module Calls
+`finish()`") — is a plain paced read with no further end pass behind it, so
+one that outlasts the client's retries is final: it goes straight to
+`not_read` (and `_failed`), never to `pending`, so the report marks it
+`failed` instead of leaving it pending forever. There is no second end pass
+because the pacer's `finish()` restores the client's interval once and a
+period is read once; the memory of the end pass (`finished`) is what tells
+`_get` which rule applies.

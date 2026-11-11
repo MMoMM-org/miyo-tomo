@@ -74,8 +74,12 @@ Hashi ends a section at the next heading of the same or higher level, so a
 review heading at the wrong level swallows the user's next section and a
 rerun's `replace_section` deletes it (SDD Implementation Examples). The rule —
 `before` places the heading at the anchor's level, `inside` one level deeper,
-`after` is never accepted, a level above 6 is refused — is three lines, and
-three copies of three lines would drift. `review_actions` (Phase 4) calls it;
+`after` is never accepted, the review heading may not exceed level 5 (its
+groups stay ≤ 6) — is three lines, and three copies of three lines would
+drift. The cap is 5, not 6, because the review section's group headings
+(`Erledigt`, `Offen`, …) sit one level below the review heading and must
+stay valid Markdown headings; a review heading at level 6 would put its
+groups at level 7, which Markdown renders as literal `#######` text. `review_actions` (Phase 4) calls it;
 the setup schema refuses `after` at input time so the question never reaches
 delivery. `ReviewSetup.place_level(target_headings)` finds the anchor among
 the target's headings case-sensitively, because Hashi matches headings

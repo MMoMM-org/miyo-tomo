@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.1.0
+# version: 0.1.1
 """The ``/review`` setup of one period kind (spec 045, T2.1).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -15,8 +15,9 @@ input against ``tomo/schemas/vault-config-review.schema.json`` and the name
 format through ``period.check_format``; ``writer_edits(data)`` turns it into
 ``(path, value)`` leaf edits, None meaning "remove the key". ``place_level``
 is the only owner of the heading-level rule (before = the anchor's level,
-inside = one deeper, after refused, above 6 refused); ``inbox_path`` is the
-guard every review write goes through.
+inside = one deeper, after refused; the review heading may not exceed level 5
+so its groups stay <= 6); ``inbox_path`` is the guard every review write goes
+through.
 
 Needs PyYAML (profile) and jsonschema (a Tomo runtime dependency).
 
@@ -40,7 +41,7 @@ GRANULARITY = {WEEK: "weekly", MONTH: "monthly"}
 BEFORE = "before"
 INSIDE = "inside"
 PLACEMENTS = (BEFORE, INSIDE)
-MAX_LEVEL = 6
+MAX_REVIEW_LEVEL = 5    # the review's group headings sit one level deeper and must stay <= 6
 DEFAULT_LANGUAGE = "en"
 DEFAULT_MAX_CHARS = 12000
 _UNSAFE = ("/", "\\", "..")
@@ -306,15 +307,20 @@ def writer_edits(data: dict) -> List[Edit]:
 # --- the level rule and the inbox guard ----------------------------------------------
 
 def place_level(placement: str, anchor_level: int) -> int:
-    """Level of the review heading: ``before`` = the anchor's, ``inside`` = one deeper."""
+    """Level of the review heading: ``before`` = the anchor's, ``inside`` = one deeper.
+
+    Refused above ``MAX_REVIEW_LEVEL`` (5): the group headings below it would exceed level 6.
+    """
     if placement == BEFORE:
         level = anchor_level
     elif placement == INSIDE:
         level = anchor_level + 1
     else:
         raise PlaceRefused("placement must be before or inside")
-    if level > MAX_LEVEL:
-        raise PlaceRefused(f"review heading level {level} is above {MAX_LEVEL}")
+    if level > MAX_REVIEW_LEVEL:
+        raise PlaceRefused(
+            f"review heading level {level} is above {MAX_REVIEW_LEVEL}: its group headings would exceed level 6"
+        )
     return level
 
 

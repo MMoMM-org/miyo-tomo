@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Setup and session start"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 2
 ---
@@ -36,7 +36,7 @@ This phase lets the vault keeper confirm the setup once and lets every `/review`
 - [ ] **T2.1 Review config and writer subcommand** `[activity: data-architecture]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/vault-config-writer.py:9-17, 730, 826, 888, 947-968`; `tests/test-vault-config-writer.py`; `tomo/schemas/vault-config-templates.schema.json`; `tomo-instance/config/vault-config.yaml:21-27, 439-449, 474-638` (read only); `tomo/profiles/miyo.yaml:48-49` `[ref: SDD/Data Storage Changes; ADR-5]`
-  2. Test: `tests/test_vault_config_writer_review.py` and `tests/test_review_config.py` — on a copy of the instance config the writer inserts absent nested keys (`concepts.calendar.granularities.weekly`, 4 levels deep), creates the missing `naming:` and `review:` sections, sets patterns and template mapping, leaves every other byte unchanged, refuses duplicate keys and schema violations (`status: refused` with pointers), fixes the daily path only when the input says so; `review_config` layers config over profile, validates, owns `place_level` (before → anchor level, inside → +1, refuses `after` and a level above 6), and `inbox_path()` refuses `/`, `\`, `..` and any result outside the inbox; tracker types read from `trackers.daily_note_trackers`.
+  2. Test: `tests/test_vault_config_writer_review.py` and `tests/test_review_config.py` — on a copy of the instance config the writer inserts absent nested keys (`concepts.calendar.granularities.weekly`, 4 levels deep), creates the missing `naming:` and `review:` sections, sets patterns and template mapping, leaves every other byte unchanged, refuses duplicate keys and schema violations (`status: refused` with pointers), fixes the daily path only when the input says so; `review_config` layers config over profile, validates, owns `place_level` (before → anchor level, inside → +1, refuses `after`; the review heading may not exceed level 5 — its groups stay ≤ 6), and `inbox_path()` refuses `/`, `\`, `..` and any result outside the inbox; tracker types read from `trackers.daily_note_trackers`.
   3. Implement: `tomo/schemas/vault-config-review.schema.json`, the `review` subcommand, `tomo/scripts/lib/review_config.py`; WHY docs (`vault-config-writer.md`, `lib/review_config.md`) first; version bumps.
   4. Validate: writer and config tests green; existing writer tests green; ruff clean.
   5. Success: a confirmed setup is saved without touching anything else; `/review setup` can change it `[ref: PRD/F1-AC2, F1-AC9, F1-AC10]`

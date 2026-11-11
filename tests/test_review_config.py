@@ -10,8 +10,8 @@ Covers the /review setup model:
   vault-config-review.schema.json (pointers) and refuses an unusable name format
 - writer_edits maps a confirmed input onto the config key paths, writes only
   what the input carries, removes a key on null, fixes the daily path only when told
-- place_level: before = anchor level, inside = +1, after refused, above 6 refused,
-  missing anchor reported
+- place_level: before = anchor level, inside = +1, after refused; the review
+  heading may not exceed level 5 (its groups stay <= 6); missing anchor reported
 - inbox_path refuses "/", "\\", "..", an empty name, an empty inbox and any
   result outside the inbox
 - tracker_types reads trackers.daily_note_trackers and end_of_day_fields
@@ -256,13 +256,16 @@ def test_daily_path_fix_only_when_the_input_says_so():
 def test_place_level_rule():
     assert rc.place_level("before", 3) == 3
     assert rc.place_level("inside", 3) == 4
-    assert rc.place_level("before", 6) == 6
+    assert rc.place_level("before", 5) == 5
+    assert rc.place_level("inside", 4) == 5
     with pytest.raises(rc.PlaceRefused):
         rc.place_level("after", 3)
-    with pytest.raises(rc.PlaceRefused):
-        rc.place_level("inside", 6)
-    with pytest.raises(rc.PlaceRefused):
-        rc.place_level("before", 7)
+
+
+@pytest.mark.parametrize("placement, anchor_level", [("before", 6), ("inside", 5), ("inside", 6), ("before", 7)])
+def test_place_level_refuses_a_review_heading_above_5_because_its_groups_would_exceed_6(placement, anchor_level):
+    with pytest.raises(rc.PlaceRefused, match="exceed level 6"):
+        rc.place_level(placement, anchor_level)
 
 
 def test_setup_place_level_finds_the_anchor_case_sensitively():

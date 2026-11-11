@@ -763,7 +763,7 @@ place = before "### In my own words" (level 3)  → review heading level 3, grou
 ```
 
 Rules (level rule owned by `lib/review_config.place_level`, applied by `lib/review_actions.py`):
-- placement for a heading anchor is `before` (review heading at the anchor's level n) or `inside` (level n+1, appended at the end of the anchor's section); `after` is refused at setup; groups one level deeper; a level above 6 is refused.
+- placement for a heading anchor is `before` (review heading at the anchor's level n) or `inside` (level n+1, appended at the end of the anchor's section); `after` is refused at setup; groups one level deeper; the review heading may not exceed level 5 (its groups stay ≤ 6).
 - every line of an item — first and continuation lines — starting with `#`, `- [`, `>`, or a code fence is escaped (`\#`, `- \[`, `\>`, the fence's backticks escaped); the preview reports the count (F5-AC2).
 - content ends with one blank line; it is a pure function of the approved document (no clock values), so Hashi's identical-block check makes a resumed insert idempotent.
 - rerun: the target is read through Kado and searched for the marker line `%% tomo-review <period> %%`. Marker found → `replace_section` on the heading directly above it, whatever its text (renamed → reported as `heading-renamed`). No marker but a heading equal to `heading` → `user-heading-collision`, never replaced. Neither → insert.

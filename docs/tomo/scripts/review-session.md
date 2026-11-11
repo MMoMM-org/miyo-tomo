@@ -4,8 +4,8 @@
 > The script is the deterministic session start of `/review` (spec 045,
 > ADR-1, ADR-5, ADR-7, ADR-8): `match` previews the setup of one period kind
 > against the notes that exist (F1), `setup-input` turns a confirmed proposal
-> into the writer input (T2.2); `start` (T2.3) parses the request and lists
-> the open reviews.
+> into the writer input (T2.2); `start` parses the request, reports the
+> setup per kind and lists the open reviews with their state (T2.3, F2).
 
 ## WHY the Setup Preview Is a Script
 
@@ -179,6 +179,60 @@ two cannot disagree. The input is written atomically to
 `tomo-tmp/review/setup-<kind>.json` (`--output` overrides) and `input_path`
 names it; the skill passes it to the writer and removes it, as `/note` does
 with `note-include.json`.
+
+## WHY `start` Parses the Argument Before It Reaches Kado
+
+WHY: F2 (every argument form yields the request or one error with the
+expectation and an example) and the Error Handling rows for `start`:
+"nothing written". The argument is parsed by `lib/period.parse_args` under
+the configured week rule (`review.week`, else ISO) and the configured name
+formats (`naming.calendar_patterns`, else the defaults), so `/review` with
+no argument names the last finished week the way the user counts weeks, and
+`@<note>` recognises the user's own names. An argument error returns at
+once with `error`, `setup` and an empty listing — no Kado call is spent on a
+typo, the skill shows the expectation and the example, and the user's retry
+lists the open reviews. The script carries `status: ok` with that `error`
+so that one key (`status`) says whether Kado was reached, as in `match`;
+`status: stopped` with `error.kind` `kado-unreachable` / `kado-auth` is the
+only other shape.
+
+## WHY the Request Carries Its First and Last Day
+
+WHY: two week rules can name the same week number for different days (the
+ISO week `2026-W45` and the Sunday-first `2026-W45` start a day apart), and
+`/review` must say which seven days it is about before it reads anything.
+`request.start` and `request.end` are the period's dates under the rule the
+argument was parsed with; the SDD's `period` name stays the key the later
+scripts take.
+
+## WHY the Open Reviews Come From the Vault
+
+WHY: ADR-2: the open state lives in the inbox document. `start` runs one
+`byFrontmatter` query (`tomo.doc_type=review`, `filter.path` = the inbox —
+the same call `inbox-triage.py` makes) and one `read_frontmatter` per hit,
+because Kado's `byFrontmatter` returns an empty frontmatter; the document's
+own keys (`review_period`, `review_kind`, `review_stem`, `tomo.state`) name
+the review, so a renamed document is still found and listed. `tomo-tmp` is
+consulted only for the content-free `meta.json` (`failed_step`) and never
+decides whether a review exists. The listing and the state are
+`lib/review_state` (WHY: `docs/tomo/scripts/lib/review_state.md`); the
+script only resolves the inbox (config over profile) and passes the
+documents on. An inbox that neither the config nor the profile names is
+reported as `problems: [inbox-not-configured]` with an empty listing rather
+than a crash: the request is still usable and the setup dialogue fixes the
+rest.
+
+## WHY `setup` Returns the Current Values
+
+WHY: F1-AC10 (`/review setup` changes the setup) and the plan: the setup
+dialogue must show what is saved before it proposes anything. For a `setup`
+request the output carries `current.week` and `current.month`: the saved
+values in the shape of `match`'s proposal (so the skill shows one table),
+`null` for a kind without a setup, or `{"invalid": [pointers]}` when a
+setup is present but `review_config` refuses it — the dialogue then names
+the keys instead of silently proposing over them. `setup.week` /
+`setup.month` (`present` / `missing`) are in every output so the skill runs
+the setup first when the requested kind has none (F2).
 
 ## WHY the JSON Is Written ASCII-Escaped
 

@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.2.0
-"""Preview the /review setup of one period kind and build the writer input.
+# version: 0.3.0
+"""Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
 periodic note. Before the first review of a kind the user confirms where those
 notes live, how they are named, how weeks are counted, which template they
 use, where the review goes and which daily sections count (spec 045 F1). This
-script makes that preview the same on every run: ``match`` lists the folder,
-matches the existing names against the proposed format, infers the week rule
-from the notes' own dates (never from the Obsidian plugin configuration),
-classifies the template and proposes heading, place, daily sections and
-language; ``setup-input`` turns the confirmed proposal into the input of
-``vault-config-writer.py review``. Nothing is saved by either subcommand.
+script makes every start the same: ``start`` parses the argument under the
+configured week rule and name formats, reports the setup per kind and lists
+the open review documents of the inbox with their state (F2); ``match`` lists
+the folder, matches the existing names against the proposed format, infers
+the week rule from the notes' own dates (never from the Obsidian plugin
+configuration), classifies the template and proposes heading, place, daily
+sections and language; ``setup-input`` turns the confirmed proposal into the
+input of ``vault-config-writer.py review``. Nothing is saved by any of them.
 
 Usage (cwd = instance root):
+    python3 scripts/review-session.py start --args='<raw $ARGUMENTS>'
+        [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
     python3 scripts/review-session.py match --kind week|month
         [--folder P] [--format F] [--first-day D --min-days N] [--today YYYY-MM-DD]
     python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
         [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
 
 Output: one JSON object on stdout, ASCII-escaped.
+    start: status ok|stopped,
+           request {kind week|month, period, year_inferred, source arg|at|default, start, end}
+             | request {kind setup} + current {week, month: values | null | {invalid [pointers]}}
+             | error {kind invalid-period|unfinished-period|not-periodic-note|unknown-argument,
+                      expected, example, last_finished?},
+           setup {week present|missing, month present|missing},
+           open_reviews [{period, kind, doc_path, stem, state}] ordered by period,
+           skipped_review_docs [{doc_path, reason}], problems [inbox-not-configured]?,
+           error {kind kado-unreachable|kado-auth, detail} when stopped
     match: status ok|stopped, kind,
            proposal {folder, format, first_day, min_days, template, template_kind
                      plain|templater|missing|unreadable, heading, place {anchor, placement},
@@ -35,6 +48,11 @@ Output: one JSON object on stdout, ASCII-escaped.
                | status invalid, errors [json pointers], problems [{pointer, kind, example?}]
 
 Rules:
+    ``start`` parses the argument before any Kado call; an argument error
+    returns with an empty listing and no call spent. The open reviews are the
+    inbox documents with ``tomo.doc_type=review`` (one byFrontmatter query, one
+    frontmatter read per hit), found also when renamed; their state comes from
+    lib/review_state (``open`` and ``failed-delivery`` in T2.3).
     Flags win over the config, the config over the inference, the inference
     over the defaults (ISO weeks ``GGGG-[W]WW``, months ``YYYY-MM``).
     ``--first-day`` and ``--min-days`` come together or not at all (exit 2).
@@ -71,13 +89,16 @@ from lib import review_config as rc  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import (  # noqa: E402
-    DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, WEEK, WeekRule, check_format, parse_name,
+    DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, SETUP, WEEK, Request, RequestError, WeekRule,
+    check_format, parse_args, parse_name,
 )
+from lib.review_state import open_reviews  # noqa: E402
 from lib.review_vault import TEMPLATER_MARK, Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
 from lib.week_rule_inference import Checked, Inference, infer_rule  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
+DEFAULT_TMP = "tomo-tmp/review"
 DEFAULT_HEADING = "Tomo Review"
 NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
 
@@ -130,6 +151,85 @@ def _template_path(templates: dict, name: Optional[str]) -> Optional[str]:
     if base is None:
         return name
     return base.rstrip("/") + "/" + name
+
+
+def _configured_formats(config: dict) -> dict:
+    formats = {}
+    for kind in KINDS:
+        fmt = _str(get_path(config, ("naming", "calendar_patterns", rc.GRANULARITY[kind]))[1])
+        if fmt is not None:
+            formats[kind] = fmt
+    return formats
+
+
+def _inbox(config: dict, profile: dict) -> Optional[str]:
+    return (_str(get_path(config, ("concepts", "inbox"))[1])
+            or _str(get_path(profile, ("concept_defaults", "inbox"))[1]))
+
+
+# ---------------------------------------------------------------- start
+
+def request_dict(request: Request) -> dict:
+    """The SDD request shape plus the period's first and last day."""
+    data = request.to_dict()
+    if request.period is not None:
+        data["start"] = request.period.start.isoformat()
+        data["end"] = request.period.end.isoformat()
+    return data
+
+
+def current_setup(config: dict, profile: dict, kind: str, today: date) -> Optional[dict]:
+    """The saved setup of ``kind`` in the proposal's shape; None without one; the pointers when broken."""
+    try:
+        setup = rc.review_setup(config, profile, kind, today=today)
+    except rc.SetupInvalid as invalid:
+        return {"invalid": invalid.pointers}
+    if setup is None:
+        return None
+    return {
+        "folder": setup.folder, "format": setup.format,
+        "first_day": _day_name(setup.rule) if kind == WEEK else None,
+        "min_days": setup.rule.min_days_in_first_week if kind == WEEK else None,
+        "template": setup.template, "template_variant": setup.template_variant,
+        "heading": setup.heading, "place": {"anchor": setup.anchor, "placement": setup.placement},
+        "own_sections": setup.own_sections, "daily_sections": setup.daily_sections,
+        "skip_sections": setup.skip_sections, "task_notes": setup.task_notes,
+        "max_chars_per_day": setup.max_chars_per_day, "language": setup.language,
+    }
+
+
+def start(args: argparse.Namespace) -> dict:
+    config = load_config(args.config)
+    profile = rc.load_profile(Path(args.profiles_dir), config)
+    rule = _configured_rule(config) or ISO
+    result: dict = {
+        "status": "ok",
+        "setup": {kind: "present" if rc.setup_present(config, kind) else "missing" for kind in KINDS},
+        "open_reviews": [],
+        "skipped_review_docs": [],
+    }
+    parsed = parse_args(args.args, today=args.today, rule=rule, formats=_configured_formats(config))
+    if isinstance(parsed, RequestError):
+        result["error"] = parsed.to_dict()
+        return result
+    result["request"] = request_dict(parsed)
+    if parsed.kind == SETUP:
+        result["current"] = {kind: current_setup(config, profile, kind, args.today) for kind in KINDS}
+
+    inbox = _inbox(config, profile)
+    if inbox is None:
+        result["problems"] = ["inbox-not-configured"]
+        return result
+    try:
+        docs = Vault(KadoClient).review_documents(inbox)
+    except Stopped as stop:
+        result["status"] = "stopped"
+        result["error"] = {"kind": stop.kind, "detail": stop.detail}
+        return result
+    reviews, skipped = open_reviews(docs, Path(args.tmp), rule=rule)
+    result["open_reviews"] = [review.to_dict() for review in reviews]
+    result["skipped_review_docs"] = skipped
+    return result
 
 
 # ---------------------------------------------------------------- the proposal
@@ -342,6 +442,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--profiles-dir", default=str(DEFAULT_PROFILES_DIR), help="framework profiles directory")
     sub = p.add_subparsers(dest="command", required=True)
 
+    st = sub.add_parser("start", help="The request, the setup per kind and the open reviews")
+    st.add_argument("--args", required=True, help="$ARGUMENTS verbatim (use --args=<text>)")
+    st.add_argument("--tmp", default=DEFAULT_TMP, help="Where tomo-tmp/review/<stem>/meta.json lives")
+    st.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
+
     m = sub.add_parser("match", help="Preview the setup of one period kind against the existing notes")
     m.add_argument("--kind", required=True, choices=KINDS)
     m.add_argument("--folder", help="Folder of the periodic notes (default: config, then profile)")
@@ -369,7 +474,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "setup-input" and not Path(args.confirmed).is_file():
             print("review-session: --confirmed file not readable (FileNotFoundError)", file=sys.stderr)
             return 2
-        result = match(args) if args.command == "match" else setup_input(args)
+        result = {"start": start, "match": match, "setup-input": setup_input}[args.command](args)
     except Exception as exc:  # noqa: BLE001 — the contract: class name only, exit 1
         print(type(exc).__name__, file=sys.stderr)
         return 1

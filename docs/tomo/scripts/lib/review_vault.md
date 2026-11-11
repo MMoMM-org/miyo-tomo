@@ -44,6 +44,17 @@ that the lookup swallowed as `unanswered`: the lookup is built for the inbox
 reducer, where a failed listing reads as empty; for the preview an
 `unanswered` probe must still stop the run when the cause is the connection.
 
+## WHY `review_documents` Reads One Frontmatter per Hit
+
+WHY: ADR-2 and the memory rule that Kado's `byFrontmatter` returns
+`frontmatter: {}`. `review_documents` runs the query `inbox-triage.py` runs
+(`tomo.doc_type=review` with the inbox as `filter.path`) and then one
+`read_frontmatter` per hit, the budget ADR-2 accepts for a `/review` start.
+A failed query stops the run (`kado-unreachable` / `kado-auth`, like the
+listing), a failed single frontmatter read returns None for that document
+so the lister can report it as skipped: one unreadable document must not
+hide the others.
+
 ## WHY `journal-end-date` Counts as Start − 6
 
 WHY: ADR-7 and F1-AC6: the week rule comes from the notes' own dates. The

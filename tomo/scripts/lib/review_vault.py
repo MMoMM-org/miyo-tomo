@@ -1,10 +1,11 @@
 # review_vault.py — the Kado calls of /review's session script and the evidence a weekly note carries.
-# version: 0.1.0
+# version: 0.1.1
 """Kado access for ``review-session.py`` and the date evidence of weekly notes (spec 045).
 
 Owns ``Vault``, the wrapper that maps every Kado failure onto the SDD's error
 kinds (``Stopped("kado-unreachable" | "kado-auth")`` stops the run; a failed
-single read degrades to None / ``unreadable``), and the helpers that read a
+single read degrades to None / ``unreadable``), the review-document query of
+a session start (``review_documents``), and the helpers that read a
 weekly note's evidence: ``frontmatter_start`` (``journal-start-date``, else
 ``journal-end-date`` − 6), ``headings`` (level and text outside code fences)
 and ``heading_start`` (the week's first day from the day-heading links, only
@@ -25,6 +26,7 @@ from lib.vault_folder_lookup import VaultFolderLookup
 START_KEYS = ("journal-start-date",)
 END_KEYS = ("journal-end-date",)
 TEMPLATER_MARK = "<%"
+REVIEW_DOC_QUERY = "tomo.doc_type=review"
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 _DAY_LINK_RE = re.compile(r"\[\[(\d{4}-\d{2}-\d{2})")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
@@ -98,6 +100,18 @@ class Vault:
             return "unreadable", None
         text = content if isinstance(content, str) else ""
         return ("templater" if TEMPLATER_MARK in text else "plain"), text
+
+    def review_documents(self, inbox: str) -> List[Tuple[str, Optional[dict]]]:
+        """``(path, frontmatter)`` of every ``tomo.doc_type=review`` document under
+        ``inbox``: one byFrontmatter query, then one frontmatter read per hit (Kado's
+        query returns empty frontmatter); None for a document whose read failed."""
+        try:
+            hits = self.client.search_by_frontmatter(REVIEW_DOC_QUERY, path_prefix=inbox)
+        except KadoError as exc:
+            self._guard(exc)
+            raise Stopped("kado-unreachable", str(exc)) from None
+        paths = [str(h.get("path")) for h in hits if isinstance(h, dict) and h.get("path")]
+        return [(path, self.frontmatter(path)) for path in paths]
 
     def folder_listed(self, folder: str) -> bool:
         lookup = VaultFolderLookup(self.client)

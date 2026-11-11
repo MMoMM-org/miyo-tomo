@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
-# version: 0.1.2
-"""test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2).
+# version: 0.2.0
+"""test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3).
 
-Covers the setup preview and the confirmed-input step, on tests/review_fake_vault:
+Covers the session start, the setup preview and the confirmed-input step, on
+tests/review_fake_vault:
+- start: no argument is the last finished week under the configured rule,
+  `month` the last finished month; every argument form yields the request
+  (with its first and last day) or an error with kind, expectation and one
+  example; `@` notes resolve under the configured names or give
+  not-periodic-note; week 53 and year-spanning weeks resolve under the rule
+- start: `setup` returns the current values (null without a setup, pointers
+  when broken); the missing setup is reported per kind
+- start: open review documents are found by tomo.doc_type=review in the inbox
+  with one read_frontmatter per hit, also when renamed, listed by period with
+  the state from lib/review_state; an unreadable document is skipped, not
+  hidden; no inbox lists nothing and says so; an argument error spends no call
+- start: Kado unreachable / auth give status stopped; stdout carries no note text
 - match: the week rule inferred from journal-start-date / day-heading links,
   ambiguous on contradicting starts, partial headings or no dates at all,
   default when there is nothing to compare with; a configured rule wins over
@@ -628,3 +641,256 @@ def test_stdout_is_ascii_escaped(mod, instance, monkeypatch, capsys):
     fake = ReviewFakeVault(_iso_files())
     _, out, raw, _ = _match(mod, monkeypatch, capsys, fake)
     assert raw.isascii() and out["proposal"]["heading"] == "Überblick"
+
+
+# ---------------------------------------------------------------- start
+
+WEEK_SETUP = {
+    "language": "de",
+    "week": {"first_day": "sunday", "min_days_in_first_week": 1},
+    "daily": {"sections": ["Habit", "Daily Log"], "skip_sections": ["On This Day"],
+              "task_notes": ["Efforts/Next Todos.md"], "max_chars_per_day": 9000},
+    "weekly": {"heading": "Tomo Review", "place": {"anchor": "In my own words", "placement": "before"},
+               "own_sections": ["In my own words"], "template_variant": None},
+}
+INBOX = "100 Inbox/"
+
+
+def _review_doc(period: str, kind: str, state: str = "pending-approval", stem: str | None = None,
+                doc_type: str = "review") -> str:
+    fm = {"tomo": {"doc_type": doc_type, "state": state, "run_id": "r1", "updated_at": "2026-11-11T10:00:00"},
+          "review_period": period, "review_kind": kind, "review_target": f"{WEEKLY}{period}.md",
+          "review_target_exists": True, "review_language": "de"}
+    if stem is not None:
+        fm["review_stem"] = stem
+    return "---\n" + yaml.safe_dump(fm) + "---\n# " + period + " Review\n\n" + BODY_MARKER + "\n\n- [ ] Approved\n"
+
+
+def _start(mod, monkeypatch, capsys, fake, text: str, *extra, today: str = TODAY):
+    return _run(mod, monkeypatch, capsys, ["start", f"--args={text}", "--today", today, *extra], fake)
+
+
+def test_start_no_argument_is_the_last_finished_week_under_the_configured_rule(mod, instance, monkeypatch, capsys):
+    # 2027-01-05 is a Tuesday. ISO: week 1 of 2027 starts 2027-01-04, so the last finished week
+    # is 2026-W53. (Sunday, 1): week 1 holds 1 January and starts 2026-12-27; the week of
+    # 2027-01-05 starts 2027-01-03, so the last finished week is 2027-W01.
+    _config(instance)
+    code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "", today="2027-01-05")
+    assert code == 0 and out["status"] == "ok" and "error" not in out
+    assert out["request"] == {"kind": "week", "period": "2026-W53", "year_inferred": False, "source": "default",
+                              "start": "2026-12-28", "end": "2027-01-03"}
+
+    _config(instance, review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "", today="2027-01-05")
+    assert out["request"] == {"kind": "week", "period": "2027-W01", "year_inferred": False, "source": "default",
+                              "start": "2026-12-27", "end": "2027-01-02"}
+
+
+def test_start_month_is_the_last_finished_month(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "month")
+    assert out["request"] == {"kind": "month", "period": "2026-10", "year_inferred": False, "source": "default",
+                              "start": "2026-10-01", "end": "2026-10-31"}
+
+
+@pytest.mark.parametrize("text, kind, period, inferred", [
+    ("week", "week", "2026-W45", False),
+    ("2026-W13", "week", "2026-W13", False),
+    ("W13", "week", "2026-W13", True),
+    ("week 2026-W13", "week", "2026-W13", False),
+    ("2026-03", "month", "2026-03", False),
+    ("M03", "month", "2026-03", True),
+    ("month 2026-03", "month", "2026-03", False),
+    ("  Month   M3 ", "month", "2026-03", True),
+])
+def test_start_every_argument_form_yields_the_request(mod, instance, monkeypatch, capsys, text, kind, period, inferred):
+    _config(instance)
+    code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), text)
+    assert code == 0 and "error" not in out
+    assert (out["request"]["kind"], out["request"]["period"], out["request"]["year_inferred"]) == (kind, period, inferred)
+    assert out["request"]["source"] == ("default" if text.strip() == "week" else "arg")
+
+
+@pytest.mark.parametrize("text, kind, example, extra", [
+    ("week 2026-03", "invalid-period", "2026-W45", {}),
+    ("month W13", "invalid-period", "2026-10", {}),
+    ("2026-W60", "invalid-period", "2026-W53", {}),
+    ("2026-13", "invalid-period", "2026-12", {}),
+    ("2026-W46", "unfinished-period", "2026-W45", {"last_finished": "2026-W45"}),
+    ("2026-12", "unfinished-period", "2026-10", {"last_finished": "2026-10"}),
+    ("foo", "unknown-argument", "2026-W45", {}),
+    ("week 2026-W13 extra", "unknown-argument", "2026-W45", {}),
+])
+def test_start_every_bad_argument_yields_kind_expectation_and_example(mod, instance, monkeypatch, capsys,
+                                                                       text, kind, example, extra):
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, text)
+    assert code == 0 and out["status"] == "ok" and "request" not in out
+    assert out["error"]["kind"] == kind and out["error"]["example"] == example
+    assert out["error"]["expected"]
+    for key, value in extra.items():
+        assert out["error"][key] == value
+    assert out["open_reviews"] == [] and fake.call_count == 0      # nothing spent on a typo
+    assert out["setup"] == {"week": "missing", "month": "missing"}
+
+
+def test_start_at_note_resolves_under_the_configured_names(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), f"@{WEEKLY}2026-W13.md")
+    assert out["request"] == {"kind": "week", "period": "2026-W13", "year_inferred": False, "source": "at",
+                              "start": "2026-03-23", "end": "2026-03-29"}
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "@[[2026-03]]")
+    assert (out["request"]["kind"], out["request"]["period"], out["request"]["source"]) == ("month", "2026-03", "at")
+
+    _config(instance, naming={"weekly": "gggg-[W]ww", "monthly": "YYYY-MM"},
+            review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "@2026-W10")
+    assert out["request"]["period"] == "2026-W10" and out["request"]["start"] == "2026-03-01"
+
+
+def test_start_at_note_that_fits_no_name_format_is_not_periodic_note(mod, instance, monkeypatch, capsys):
+    _config(instance, naming={"weekly": "[KW]WW-GGGG", "monthly": "YYYY-MM"})
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "@Weekly Index")
+    assert out["error"]["kind"] == "not-periodic-note"
+    assert "[KW]WW-GGGG" in out["error"]["expected"] and "YYYY-MM" in out["error"]["expected"]
+    assert out["error"]["example"] == "2026-W45"
+
+
+def test_start_week_53_and_year_spanning_weeks_resolve_under_the_rule(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "2026-W53", today="2027-01-10")
+    assert "error" not in out
+    assert (out["request"]["period"], out["request"]["start"], out["request"]["end"]) == ("2026-W53", "2026-12-28", "2027-01-03")
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "2027-W01", today="2027-01-20")
+    assert (out["request"]["start"], out["request"]["end"]) == ("2027-01-04", "2027-01-10")
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "W53", today="2027-01-10")
+    assert out["request"]["period"] == "2026-W53" and out["request"]["year_inferred"] is True
+
+    _config(instance, review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "2027-W01", today="2027-01-20")
+    assert (out["request"]["start"], out["request"]["end"]) == ("2026-12-27", "2027-01-02")
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "2027-W53", today="2027-01-20")
+    assert out["error"]["kind"] == "invalid-period" and out["error"]["example"] == "2027-W52"
+
+
+def test_start_setup_returns_the_current_values(mod, instance, monkeypatch, capsys):
+    _config(instance, naming={"weekly": "gggg-[W]ww"}, templates=_templates_config(weekly="t_week.md"),
+            review=WEEK_SETUP)
+    code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "setup")
+    assert code == 0 and out["request"] == {"kind": "setup"}
+    assert out["setup"] == {"week": "present", "month": "missing"}
+    assert out["current"]["month"] is None
+    assert out["current"]["week"] == {
+        "folder": WEEKLY, "format": "gggg-[W]ww", "first_day": "sunday", "min_days": 1,
+        "template": "t_week.md", "template_variant": None, "heading": "Tomo Review",
+        "place": {"anchor": "In my own words", "placement": "before"},
+        "own_sections": ["In my own words"], "daily_sections": ["Habit", "Daily Log"],
+        "skip_sections": ["On This Day"], "task_notes": ["Efforts/Next Todos.md"],
+        "max_chars_per_day": 9000, "language": "de",
+    }
+
+    broken = dict(WEEK_SETUP, weekly={"heading": "Tomo Review", "place": {"anchor": "X", "placement": "after"}})
+    _config(instance, naming={"weekly": "gggg-[W]ww"}, review=broken)
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "setup")
+    assert out["current"]["week"] == {"invalid": ["/review/weekly/place/placement"]}
+    assert out["setup"]["week"] == "present"
+
+
+def test_start_reports_the_missing_setup_per_kind(mod, instance, monkeypatch, capsys):
+    _config(instance, naming={"monthly": "YYYY-MM"}, review={"monthly": {"heading": "Tomo Review"}})
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "")
+    assert out["setup"] == {"week": "missing", "month": "present"}
+    assert "current" not in out
+    _config(instance, naming={"weekly": "GGGG-[W]WW"})          # a format without a review section
+    _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "")
+    assert out["setup"] == {"week": "missing", "month": "missing"}
+
+
+def test_start_lists_the_open_reviews_by_period_with_their_state(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review"),
+        INBOX + "Renamed by the user.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-03 Review.md": _review_doc("2026-03", "month", stem="2026-03_review"),
+        INBOX + "2026-W09 Review.md": _review_doc("2026-W09", "week"),                  # no review_stem
+        INBOX + "Suggestions.md": _review_doc("2026-W11", "week", doc_type="suggestions"),
+        "Other/2026-W10 Review.md": _review_doc("2026-W10", "week"),                    # outside the inbox
+        WEEKLY + "2026-W13.md": _weekly("2026-W13", "2026-03-23"),
+    })
+    stage = instance / "tomo-tmp" / "review" / "2026-03_review"
+    stage.mkdir(parents=True)
+    (stage / "meta.json").write_text(json.dumps({"stem": "2026-03_review", "failed_step": "set_md"}), encoding="utf-8")
+
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "ok"
+    assert out["open_reviews"] == [
+        {"period": "2026-W09", "kind": "week", "doc_path": INBOX + "2026-W09 Review.md",
+         "stem": "2026-W09_review", "state": "open"},
+        {"period": "2026-03", "kind": "month", "doc_path": INBOX + "2026-03 Review.md",
+         "stem": "2026-03_review", "state": "failed-delivery"},
+        {"period": "2026-W12", "kind": "week", "doc_path": INBOX + "Renamed by the user.md",
+         "stem": "2026-W12_review", "state": "failed-delivery"},
+        {"period": "2026-W13", "kind": "week", "doc_path": INBOX + "2026-W13 Review.md",
+         "stem": "2026-W13_review", "state": "open"},
+    ]
+    assert out["skipped_review_docs"] == []
+    searches = [p for m, p in fake.events if m == "search_by_frontmatter"]
+    assert searches == ["tomo.doc_type=review"]
+    reads = sorted(p for m, p in fake.events if m == "read_frontmatter")
+    assert reads == sorted([INBOX + "2026-W13 Review.md", INBOX + "Renamed by the user.md",
+                            INBOX + "2026-03 Review.md", INBOX + "2026-W09 Review.md"])
+    assert not any(m == "read_note" for m, _ in fake.events)
+
+
+def test_start_skips_an_unreadable_review_document_and_lists_the_rest(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week"),
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week"),
+    })
+    fake.fail[("read_frontmatter", INBOX + "2026-W12 Review.md")] = KadoToolError("kado-read returned an error")
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [r["period"] for r in out["open_reviews"]] == ["2026-W13"]
+    assert out["skipped_review_docs"] == [{"doc_path": INBOX + "2026-W12 Review.md", "reason": "frontmatter-unreadable"}]
+
+
+def test_start_without_an_inbox_lists_nothing_and_says_so(mod, instance, monkeypatch, capsys):
+    (instance / "config" / "vault-config.yaml").write_text("profile: miyo\n", encoding="utf-8")
+    (instance / "empty").mkdir()
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    monkeypatch.setattr(mod, "KadoClient", fake)
+    code = mod.main(["--profiles-dir", "empty", "start", "--args=", "--today", TODAY])
+    out = json.loads(capsys.readouterr()[0])
+    assert code == 0 and out["status"] == "ok" and out["request"]["period"] == "2026-W45"
+    assert out["open_reviews"] == [] and out["problems"] == ["inbox-not-configured"]
+    assert fake.call_count == 0
+
+
+def test_start_kado_unreachable_stops(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    fake.connection_error = KadoConnectionError("Kado unreachable at 127.0.0.1:23026 (ConnectionRefusedError)")
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "stopped"
+    assert out["error"]["kind"] == "kado-unreachable" and "127.0.0.1:23026" in out["error"]["detail"]
+    assert out["open_reviews"] == [] and out["request"]["period"] == "2026-W45"
+
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    fake.auth_error = KadoAuthError("401")
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert out["status"] == "stopped" and out["error"]["kind"] == "kado-auth"
+
+
+def test_start_stdout_carries_no_note_text(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    _, out, raw, err = _start(mod, monkeypatch, capsys, fake, "")
+    assert BODY_MARKER not in raw and BODY_MARKER not in err and "Approved" not in raw
+    assert raw.isascii()
+
+
+def test_start_without_args_exits_2(mod, instance, capsys):
+    with pytest.raises(SystemExit) as info:
+        mod.main(["start"])
+    assert info.value.code == 2

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reading the period and the review document"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 3
 ---
@@ -56,7 +56,7 @@ This phase turns a period into a report, a fact file for the model and an editab
 - [ ] **T3.3 Period sources, month and vault growth** `[activity: domain-modeling]`
 
   1. Prime: `[ref: SDD/Complex Logic (month reading)]`; structure of `Privat-Test/Calendar/302 Weekly/2026-W13.md` (read only)
-  2. Test: `tests/test_review_period.py` — dailies found flat and in `<folder>/<YYYY>/`; two dailies for one date both read and reported as duplicate; overlapping weekly notes resolved (flat and `<folder>/<week year>/`); day blocks keyed by the linked date and ending at the next heading of their level, out-of-month blocks dropped, `#### Review Check` and `## Organisation` not counted; week-level text tagged with week and overlap; `only_in_weekly_links` and `dailies_not_in_weekly` computed; no weekly notes → "no weekly notes found"; an empty weekly-folder listing → `kado_empty` with the access hint (not "no weekly notes"); growth: notes created in the period with their links, MOCs changed in the period, MOCs linked by new notes, from two filtered `list_notes` queries across pages; an empty Kado result is reported as "Kado returned none".
+  2. Test: `tests/test_review_period.py` — dailies found flat and in `<folder>/<YYYY>/`; the daily of the day after the period is read for its `yesterday_fields` only (they land on the period's last day; its content, links and tasks are not counted; absent → that day's value is missing); two dailies for one date both read and reported as duplicate; overlapping weekly notes resolved (flat and `<folder>/<week year>/`); day blocks keyed by the linked date and ending at the next heading of their level, out-of-month blocks dropped, `#### Review Check` and `## Organisation` not counted; week-level text tagged with week and overlap; `only_in_weekly_links` and `dailies_not_in_weekly` computed; no weekly notes → "no weekly notes found"; an empty weekly-folder listing → `kado_empty` with the access hint (not "no weekly notes"); growth: notes created in the period with their links, MOCs changed in the period, MOCs linked by new notes, from two filtered `list_notes` queries across pages; an empty Kado result is reported as "Kado returned none".
   3. Implement: `tomo/scripts/lib/review_period.py`; WHY doc first.
   4. Validate: tests green; ruff clean.
   5. Success: a month reads its weekly reviews and reports vault growth `[ref: PRD/F3-AC5, F3-AC6, F3-AC7, F3-AC9]`

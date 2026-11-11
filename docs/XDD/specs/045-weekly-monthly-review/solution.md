@@ -776,7 +776,10 @@ ALGORITHM: read_day(date D, daily files F[], setup S)
 3. In kept sections, drop fenced dataview/dataviewjs blocks and inline `= ...` queries (never executed).
 4. Read each same-day note once (paced). Inside it, drop embeds and sections whose heading names another date or
    year (the 5 Year Journal's "earlier years" subsections).
-5. Parse fields `Name:: value` and `**Name**:: value`; yesterday_fields are attributed to D-1.
+5. Parse fields `Name:: value` and `**Name**:: value`; yesterday_fields are attributed to D-1. The reader owns
+   this shift — `review_habits` receives fields already attributed and never shifts again. The daily of the day
+   after the period is read for its yesterday_fields only (no content, no links), so the period's last day
+   is not always "missing".
 6. Parse tasks `- [x] … ✅ YYYY-MM-DD`: a task counts as done in the period iff its ✅ date is in the period,
    whichever file holds it; open tasks from task notes are labelled "open today".
 7. A day whose kept text exceeds S.daily.max_chars_per_day is cut at a section boundary and reported "partly-read".

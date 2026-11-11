@@ -393,14 +393,41 @@ def appended_failure(script: str, fragment: str) -> re.Pattern:
 
 
 def kado_http_error() -> str:
-    """The KadoError text of a 503 that outlived its retries
-    (kado_client.py:33-34 retry constants, :699-700 the message)."""
+    """The KadoRateLimitError text of a 503 that outlived its retries
+    (kado_client.py:34-35 retry constants, :781-786 the raise, spec 045 T1.2).
+    Rendered from the f-string that raise carries, so the stub's text is
+    whatever kado_client.py produces for code 503 / reason Service Unavailable."""
     source = KADO_CLIENT.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     assert "_RETRY_STATUSES = {429, 503}" in source
     assert "_MAX_RETRIES = 4" in source
-    assert 'suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""' in source
-    assert 'raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}")' in source
-    return "HTTP 503 from Kado: Service Unavailable (after 4 retries)"
+    raises = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call)
+        and ast.unparse(n.exc.func) == "KadoRateLimitError"
+    ]
+    assert len(raises) == 1, f"kado_client.py: {len(raises)} raise KadoRateLimitError sites"
+    raised, call = raises[0], raises[0].exc
+    assert ast.unparse(raised.cause) == "exc"
+    assert [ast.unparse(k) for k in call.keywords] == ["status=exc.code"]
+    guards = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.If) and ast.unparse(n.test) == "exc.code in _RETRY_STATUSES"
+        and n.body == [raised] and not n.orelse
+    ]
+    assert len(guards) == 1, "the KadoRateLimitError raise is not the body of the 429/503 guard"
+    # The non-retry fall-through right after the guard stays a plain KadoError.
+    assert 'raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc' in source
+    template = call.args[0]
+    assert isinstance(template, ast.JoinedStr), ast.unparse(template)
+    values = {"exc.code": 503, "exc.reason": "Service Unavailable", "_MAX_RETRIES": 4}
+    message = "".join(
+        str(values[ast.unparse(part.value)]) if isinstance(part, ast.FormattedValue)
+        else part.value
+        for part in template.values
+    )
+    assert message == "HTTP 503 from Kado: Service Unavailable (after 4 retries)"
+    return message
 
 
 def upload_with(tmp_path, upload):

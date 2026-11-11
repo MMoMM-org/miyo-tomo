@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """test_kado_client_retry.py — Unit tests for HTTP retry-with-backoff in KadoClient._call_tool.
 
 Covers F-34 rate-limit resilience: _call_tool retries on HTTP 429/503 using
@@ -187,7 +187,8 @@ def test_429_then_success():
 
 
 def test_429_exhausted_raises():
-    """429 every time: raises KadoError after exhausting retries; time.sleep called _MAX_RETRIES times."""
+    """429 every time: raises KadoRateLimitError (a KadoError, caught as one here) after
+    exhausting retries; time.sleep called _MAX_RETRIES times."""
     client = _make_client()
 
     with patch("urllib.request.urlopen", side_effect=_make_http_error(429)) as mock_open, \

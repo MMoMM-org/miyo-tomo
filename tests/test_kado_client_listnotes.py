@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_kado_client_listnotes.py — Unit tests for KadoClient.list_notes
 and KadoClient.read_inline_fields.
 
 Covers T1.1 (F-34 Phase 1): verifies call-shape, pagination, and return
 normalisation for the two new KadoClient methods that support MSP
-Condition B accumulation.
+Condition B accumulation. Also the universal ``filter`` pass-through on
+list_notes and _search_all (spec 045, ADR-4).
 
 Spec: docs/XDD/specs/015-msp-condition-b-accumulation/
+      docs/XDD/specs/045-weekly-monthly-review/ (SDD ADR-4)
 """
 from __future__ import annotations
 
@@ -154,6 +156,83 @@ def test_list_notes_paginates_via_cursor():
     assert len(results) == 2
     assert results[0]["path"] == "200 Notes/a.md"
     assert results[1]["path"] == "200 Notes/b.md"
+
+
+# ---------------------------------------------------------------------------
+# filter — Kado's universal filter, passed through verbatim (spec 045, ADR-4)
+# ---------------------------------------------------------------------------
+
+_WEEK_FILTER = {"createdAfter": 1774828800000, "createdBefore": 1775433599999}
+
+
+def test_list_notes_passes_filter_through_on_every_cursor_page():
+    """Kado's cursor is a bare offset, so the filter must be repeated per page."""
+    client = _make_client()
+    seen: list[dict] = []
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        seen.append(arguments)
+        if len(seen) == 1:
+            return _make_search_page([{"path": "Calendar/a.md"}], next_cursor="c1")
+        return _make_search_page([{"path": "Calendar/b.md"}], next_cursor=None)
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    results = client.list_notes("Calendar/", filter=_WEEK_FILTER)
+
+    assert [r["path"] for r in results] == ["Calendar/a.md", "Calendar/b.md"]
+    assert len(seen) == 2
+    assert seen[0]["filter"] == _WEEK_FILTER
+    assert seen[1]["filter"] == _WEEK_FILTER
+    assert seen[1]["cursor"] == "c1"
+    assert seen[0]["operation"] == "listNotes" and seen[0]["path"] == "Calendar/"
+
+
+def test_list_notes_omits_filter_when_none():
+    """filter=None (default) leaves the request body as before — no filter key."""
+    client = _make_client()
+    captured = {}
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        captured["args"] = arguments
+        return _make_search_page([])
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    client.list_notes("200 Notes/")
+
+    assert "filter" not in captured["args"]
+
+
+def test_search_all_passes_filter_for_any_operation():
+    """_search_all accepts filter for every operation, not only listNotes."""
+    client = _make_client()
+    captured = {}
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        captured["args"] = arguments
+        return _make_search_page([])
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    client._search_all("byName", query="Review", filter={"modifiedAfter": 1})
+
+    assert captured["args"]["operation"] == "byName"
+    assert captured["args"]["query"] == "Review"
+    assert captured["args"]["filter"] == {"modifiedAfter": 1}
+
+
+def test_list_notes_filter_reaches_the_wire_unchanged():
+    """Through the real transport: the filter object is sent verbatim in the JSON-RPC body."""
+    client = _make_client()
+    page = _make_search_page([], next_cursor=None)
+
+    with patch("urllib.request.urlopen", return_value=_make_rpc_response_ctx(page)) as mock_open:
+        client.list_notes("Calendar/", filter=_WEEK_FILTER)
+
+    req = mock_open.call_args.args[0]
+    sent = json.loads(req.data.decode("utf-8"))
+    assert sent["params"]["arguments"]["filter"] == _WEEK_FILTER
 
 
 # ---------------------------------------------------------------------------

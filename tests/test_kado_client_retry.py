@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_kado_client_retry.py — Unit tests for HTTP retry-with-backoff in KadoClient._call_tool.
 
 Covers F-34 rate-limit resilience: _call_tool retries on HTTP 429/503 using
 exponential backoff, honors the Retry-After header, and raises immediately on
-non-retryable codes (401, 403, 404).
+non-retryable codes (401, 403, 404). A 429/503 that outlasts the retries is a
+KadoRateLimitError carrying the status (spec 045, ADR-4).
 
 Spec: docs/XDD/specs/015-msp-condition-b-accumulation/
+      docs/XDD/specs/045-weekly-monthly-review/ (PRD F3-AC10; SDD ADR-4)
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ from lib.kado_client import (  # noqa: E402
     KadoClient,
     KadoError,
     KadoNotFoundError,
+    KadoRateLimitError,
     _retry_delay,
     _RETRY_AFTER_CAP,
     _RETRY_BACKOFF_BASE,
@@ -196,6 +199,80 @@ def test_429_exhausted_raises():
     assert "retries" in str(exc_info.value).lower()
     assert mock_sleep.call_count == _MAX_RETRIES
     assert mock_open.call_count == _MAX_RETRIES + 1
+
+
+# ---------------------------------------------------------------------------
+# KadoRateLimitError — a 429/503 that outlasts the retries (spec 045, ADR-4)
+# ---------------------------------------------------------------------------
+
+
+def test_rate_limit_error_is_a_kado_error():
+    assert issubclass(KadoRateLimitError, KadoError)
+
+
+def test_429_exhausted_raises_rate_limit_error_with_status():
+    """429 every time: the exhausted chain is a KadoRateLimitError with .status == 429."""
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(429, retry_after="1")), \
+         patch("time.sleep"):
+        with pytest.raises(KadoRateLimitError) as exc_info:
+            client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+
+    assert exc_info.value.status == 429
+    assert "429" in str(exc_info.value)
+    assert "retries" in str(exc_info.value).lower()
+
+
+def test_503_exhausted_raises_rate_limit_error_with_status_503():
+    """503 every time (no Retry-After, backoff): KadoRateLimitError with .status == 503."""
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(503)) as mock_open, \
+         patch("time.sleep") as mock_sleep:
+        with pytest.raises(KadoRateLimitError) as exc_info:
+            client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+
+    assert exc_info.value.status == 503
+    assert mock_sleep.call_count == _MAX_RETRIES
+    assert mock_open.call_count == _MAX_RETRIES + 1
+
+
+def test_rate_limit_error_is_caught_by_an_except_kado_error_clause():
+    """Existing callers that degrade on KadoError need no new except clause."""
+    client = _make_client()
+    caught = None
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(429)), \
+         patch("time.sleep"):
+        try:
+            client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+        except KadoError as exc:
+            caught = exc
+
+    assert isinstance(caught, KadoRateLimitError)
+
+
+def test_500_is_not_a_rate_limit_error():
+    """A non-retryable status stays a plain KadoError: only 429/503 mean rate limiting."""
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(500)), \
+         patch("time.sleep"):
+        with pytest.raises(KadoError) as exc_info:
+            client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+
+    assert not isinstance(exc_info.value, KadoRateLimitError)
+
+
+def test_a_429_that_succeeds_on_retry_does_not_raise_rate_limit_error():
+    """Only an exhausted chain is a rate-limit failure; a recovered 429 is invisible."""
+    client = _make_client()
+
+    with patch("urllib.request.urlopen",
+               side_effect=[_make_http_error(429), _make_success_response({"k": "v"})]), \
+         patch("time.sleep"):
+        assert client._call_tool("kado-read", {"operation": "note", "path": "foo.md"}) == {"k": "v"}
 
 
 # ---------------------------------------------------------------------------

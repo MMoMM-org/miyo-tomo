@@ -1,8 +1,9 @@
 # WHY: lib/kado_client.py
 
 > Rationale for the request-budget additions to `tomo/scripts/lib/kado_client.py`
-> (spec 042, ADR-4) and for the transport-error wrapping (spec 044). The rest
-> of the client is documented in its docstrings.
+> (spec 042, ADR-4), for the transport-error wrapping (spec 044) and for the
+> wait counters, the rate-limit error and the search filter (spec 045, ADR-4).
+> The rest of the client is documented in its docstrings.
 
 ## Attempts vs calls — `attempt_count` is a second counter
 
@@ -63,3 +64,48 @@ retried: a timeout has already waited `_DEFAULT_TIMEOUT`, and retry stays the
 policy for the 429/503 statuses Kado sends on purpose. Callers that catch
 `KadoError` handle the new case without new except clauses, which is the same
 reason `KadoBudgetExhausted` subclasses it.
+
+## Wait counters — `retry_wait_s` and `pace_wait_s` live where the sleeping happens
+
+WHY: `/review` (spec 045) replaces a call budget with pace-and-retry and has to
+tell the user how long a run spent waiting, so the user can decide whether to
+raise Kado's limit. The client is the only place that knows the two kinds of
+wait: `retry_wait_s` accumulates every delay slept before a 429/503 retry (the
+`Retry-After` value or the jittered backoff, exactly what `time.sleep` is
+handed), `pace_wait_s` accumulates every sleep `_pace` makes to keep sends
+`min_interval` apart. They are two counters, not one, because they answer
+different questions — retry waiting means Kado pushed back, pacing waiting is
+the client's own choice — and the report advises raising the limit only on the
+first. Both start at 0.0 and are plain public floats a caller may read or
+reset; nothing in the client reads them back.
+
+There is no `retry_count`: retries are already `attempt_count - call_count`
+(every attempt beyond the first per call is a retry). A third counter would be
+a second source of truth for the same number.
+
+## `KadoRateLimitError` — a 429/503 that outlasts the retries is its own class
+
+WHY: a 429 or 503 that survives all `_MAX_RETRIES` used to surface as a plain
+`KadoError`, indistinguishable from a 500 or a protocol error. The review
+pacer needs to tell "Kado is rate-limiting, retry this later at a wider
+spacing" apart from "something else broke, stop the run" — the first path is
+retried at the end of the run, the second (`KadoConnectionError`,
+`KadoAuthError`) stops it. `KadoRateLimitError` subclasses `KadoError`, carries
+the HTTP status in `.status` (429 or 503, so a caller can tell `Retry-After`
+pressure from a busy server), keeps the existing message text, and is raised
+only when the retries are exhausted — a 429 that succeeds on retry is still
+invisible to the caller. Existing `except KadoError` clauses catch it unchanged.
+
+## `filter` on `list_notes` and `_search_all` — the universal filter, passed through
+
+WHY: a weekly review reads the notes created in a period; without the filter
+the client would list the whole folder and drop most of it on the caller's
+side, paying a Kado page per 500 notes. Kado's search tools accept a universal
+`filter` object (`modifiedAfter`/`modifiedBefore`/`createdAfter`/
+`createdBefore` in Unix milliseconds, plus `path`, `tags`, `frontmatter`) that
+is applied server-side on every operation. The client does not interpret it:
+`filter` is an opaque dict sent verbatim as the `filter` argument, and it is
+repeated on every cursor page because Kado's cursor does not carry the filter
+— a page requested without it would return the unfiltered remainder. `None`
+(the default) omits the key, so every existing caller's request body is
+byte-for-byte unchanged.

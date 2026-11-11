@@ -1,16 +1,21 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, items by id, user items.
-# version: 0.2.0
+# version: 0.3.0
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
-``ParsedDoc``: the frontmatter, whether the exact column-0 ``- [x] Approved``
-line is ticked, every item in document order with its group, and the
-warnings. Only an exact column-0 line is structure — the Approved line, a
-``## `` group heading, a ``- [ ] `` / ``- [x] `` item start; every other
-line after an item start is that item's text, verbatim. A checkbox line
-carrying ``%%t<n>%%`` is Tomo's item (the id is stripped from the text, a
-second occurrence of an id is a user item); a checkbox line without an id
-is the user's. ``edited`` is structural: the item's ``[[stem]]`` link stems
+``ParsedDoc``: the frontmatter, whether the first exact column-0
+``- [x] Approved`` line is ticked, every item in document order with its
+group, and the warnings. Only an exact column-0 line is structure — the
+Approved line, a ``## `` group heading, a ``- [ ] `` / ``- [x] `` item
+start (``X`` ticks too); every other line after an item start is that
+item's text, verbatim. What an editor adds around a line is tolerated — a
+leading BOM, CRLF line ends, whitespace after ``Approved``, closing hashes
+on a heading — leading whitespace is not. A checkbox line carrying
+``%%t<n>%%`` is Tomo's item (the first id names it, every id is stripped
+from the text, a second occurrence of an id is a user item); a checkbox
+line without an id is the user's; a checkbox line above the first heading
+is filed under ``unknown`` with ``item-outside-group``. ``edited`` is
+structural: the item's ``[[stem]]`` link stems
 (ordered, de-duplicated, ``|alias`` and ``#heading`` cut off) differ from
 the ``pass1_links`` map ``review-doc.py write`` stored in ``meta.json``; an
 id absent from the map is never edited. ``link_stems`` computes that map
@@ -36,13 +41,15 @@ TOMO, USER = "tomo", "user"
 UNKNOWN = "unknown"
 APPROVED_MISSING = "approved-line-missing"
 UNKNOWN_GROUP = "unknown-group"
+ITEM_OUTSIDE_GROUP = "item-outside-group"
 DUPLICATE_GROUP = "duplicate-group"
 FRONTMATTER_BROKEN = "frontmatter-broken"
 
 _FENCE = "---"
+_BOM = "﻿"
 _ITEM = re.compile(r"^- \[([ xX])\](?: (.*))?$")
-_HEADING = re.compile(r"^## (.*?)\s*$")
-_APPROVED = re.compile(r"^- \[([ xX])\] Approved$")
+_HEADING = re.compile(r"^## (.*?)[\s#]*$")
+_APPROVED = re.compile(r"^- \[([ xX])\] Approved\s*$")
 _LINK = re.compile(r"\[\[([^\]|#]+)")
 
 
@@ -150,8 +157,7 @@ def _item_of(group: str, box: str, rest: str, seen_ids: Set[str]) -> Item:
     """The item a checkbox line starts; the first id on the line names Tomo's item unless it was seen already."""
     match = rd.ID_PATTERN.search(rest)
     item_id = match.group(1) if match else None
-    text = (rest[:match.start()] + rest[match.end():]) if match else rest
-    text = text.strip() if match else rest.rstrip()
+    text = rd.ID_PATTERN.sub("", rest).strip() if match else rest.rstrip()
     if item_id is not None and item_id not in seen_ids:
         seen_ids.add(item_id)
         return Item(group, item_id, TOMO, box.lower() == "x", text)
@@ -193,8 +199,12 @@ def _parse_body(lines: Iterable[str], warnings: List[str]) -> tuple:
             current = None
             continue
         start = _ITEM.match(line)
-        if start and group is not None:
-            current = _item_of(group, start.group(1), start.group(2) or "", seen_ids)
+        if start:
+            if group is None:
+                _warn(warnings, ITEM_OUTSIDE_GROUP)
+                if UNKNOWN not in order:
+                    order.append(UNKNOWN)
+            current = _item_of(group or UNKNOWN, start.group(1), start.group(2) or "", seen_ids)
             items.append(current)
             continue
         if current is not None:
@@ -218,7 +228,7 @@ def parse_document(text: str, pass1_links: Optional[Dict[str, List[str]]] = None
     """Parse the document text. ``pass1_links`` is the id → link stems map of Pass 1 (``edited`` and
     ``deleted`` come from it); ``pass1_total`` alone gives ``deleted`` by count when the map is missing."""
     warnings: List[str] = []
-    front, body = _split_frontmatter(text.splitlines())
+    front, body = _split_frontmatter(text[len(_BOM):].splitlines() if text.startswith(_BOM) else text.splitlines())
     if not _is_review(front):
         _warn(warnings, FRONTMATTER_BROKEN)
     approved, items, order = _parse_body(body, warnings)

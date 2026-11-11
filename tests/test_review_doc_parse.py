@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -8,7 +8,12 @@ Documents are built with review_doc.render_document and then edited the way
 a user would in Obsidian, so parse and write agree on the shape: only an
 exact column-0 line is the Approved line, a group heading or an item start
 (an indented `  - [ ] Approved` or `  ## Done` is item text); Approved
-ticked, unticked or missing; kept / unticked / deleted Tomo items by id; a
+ticked, unticked or missing, the first column-0 Approved line decides; `[X]`
+ticks Tomo's and the user's items; every `%%t<n>%%` on a line is stripped
+and the first names the item; a checkbox line above the first heading is
+kept under `unknown` with `item-outside-group`; a BOM, whitespace after
+`Approved`, closing hashes on a heading and CRLF line ends are tolerated,
+indentation is not; kept / unticked / deleted Tomo items by id; a
 Tomo item rewritten without its links stays Tomo's and edited; `edited` is
 structural — the item's ordered, de-duplicated `[[stem]]` link stems differ
 from Pass 1's `pass1_links` (a dropped link, a reorder, a link added to a
@@ -152,13 +157,126 @@ def test_approved_ticked_unticked_or_missing():
     assert parse(text).approved is False
     assert parse(text.replace("- [ ] Approved", "- [x] Approved")).approved is True
     assert parse(text.replace("- [ ] Approved", "- [X] Approved")).approved is True
-    for broken in ("- [ ]Approved", "-[ ] Approved", "- [ ] Approved now", " - [ ] Approved", "Approved"):
+    for broken in ("- [ ]Approved", "-[ ] Approved", " - [ ] Approved", "Approved"):
         doc = parse(text.replace("- [ ] Approved", broken))
         assert doc.approved is False and doc.warnings == ["approved-line-missing"], broken
+    # a mangled line that still reads as a checkbox is no gate and one stray item
+    doc = parse(text.replace("- [ ] Approved", "- [ ] Approved now"))
+    assert doc.approved is False and doc.warnings == ["approved-line-missing", "item-outside-group"]
     doc = parse(replace_line(text, "- [ ] Approved", None))
     assert doc.approved is False and doc.warnings == ["approved-line-missing"]
     # a ticked Approved line is never a user item
     assert parse(text.replace("- [ ] Approved", "- [x] Approved")).counts()["added"] == 0
+
+
+def test_the_first_column_zero_approved_line_decides():
+    text = document()
+    t3 = line_of(text, "t3")
+    # top ticked, a copy inside a group unticked: approved
+    doc = parse(text.replace("- [ ] Approved", "- [x] Approved").replace(t3, t3 + "\n- [ ] Approved"))
+    assert doc.approved is True and doc.warnings == [] and doc.counts()["added"] == 0
+    # top unticked, a copy inside a group ticked: not approved
+    doc = parse(text.replace(t3, t3 + "\n- [x] Approved"))
+    assert doc.approved is False and doc.warnings == [] and doc.counts()["added"] == 0
+    # two at the top, first unticked
+    doc = parse(text.replace("- [ ] Approved\n", "- [ ] Approved\n- [x] Approved\n", 1))
+    assert doc.approved is False
+    doc = parse(text.replace("- [ ] Approved\n", "- [x] Approved\n- [ ] Approved\n", 1))
+    assert doc.approved is True
+
+
+def test_an_uppercase_x_ticks_tomo_and_user_items():
+    text = document()
+    t1 = line_of(text, "t1")
+    text = replace_line(text, t1, "- [X]" + t1[5:] + "\n- [X] Mein Punkt\n- [x] auch meiner")
+    doc = parse(text)
+    t1_item = by_id(doc)["t1"]
+    assert (t1_item.origin, t1_item.kept, t1_item.text) == ("tomo", True, "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])")
+    mine = doc.groups()["done"][1]
+    assert (mine.origin, mine.kept, mine.text) == ("user", True, "Mein Punkt")
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 2}
+    assert by_id(parse(text.replace("- [X] Mein Punkt", "- [ ] Mein Punkt")))["t1"].kept is True
+
+
+def test_every_id_on_the_line_is_stripped_and_the_first_names_the_item():
+    text = document()
+    reference = rdp.link_stems(text)
+    merged = replace_line(replace_line(text, line_of(text, "t3"), None), line_of(text, "t2"), "- [X] b %%t2%% %%t3%%")
+    doc = parse(merged, reference)
+    t2 = by_id(doc)["t2"]
+    assert (t2.origin, t2.kept, t2.text) == ("tomo", True, "b")
+    assert "%%" not in t2.text and "t3" not in by_id(doc)
+    assert doc.counts() == {"kept": 4, "unticked": 0, "deleted": 1, "added": 0}          # t3 deleted: absent elsewhere
+    assert "%%" not in json.dumps(doc.approved_review())
+    # t3 still on its own line: not deleted, and the merged line's second id is still stripped
+    doc = parse(replace_line(text, line_of(text, "t2"), "- [x] b %%t2%% %%t3%%"), reference)
+    assert doc.counts()["deleted"] == 0 and by_id(doc)["t2"].text == "b" and by_id(doc)["t3"].text.startswith("Steuer")
+    # the first id names the item also when it leads; the ends are trimmed, inner whitespace stays verbatim
+    doc = parse(replace_line(text, line_of(text, "t2"), "- [x] %%t2%% b  %%t3%%  c"), reference)
+    assert by_id(doc)["t2"].text == "b    c" and by_id(doc)["t2"].origin == "tomo"
+    assert rdp.link_stems(merged) == {"t1": reference["t1"], "t2": [], "t4": reference["t4"], "t5": []}
+
+
+def test_an_item_above_the_first_heading_is_kept_under_unknown_with_a_warning():
+    text = document()
+    reference = rdp.link_stems(text)
+    # a ticked user line between the Approved line and the first heading
+    doc = parse(text.replace("- [ ] Approved\n", "- [ ] Approved\n- [x] Mein Punkt oben\n  mit Zeile\n", 1), reference)
+    assert doc.warnings == ["item-outside-group"] and "unknown-group" not in doc.warnings
+    stray = doc.groups()["unknown"]
+    assert [(it.origin, it.kept, it.text, it.lines) for it in stray] == [("user", True, "Mein Punkt oben", ["  mit Zeile"])]
+    assert list(doc.groups())[-1] == "unknown" and doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 1}
+    assert doc.approved_review()["groups"]["unknown"][0]["text"] == "Mein Punkt oben"
+    # a Tomo item moved above the first heading: kept by id, not deleted
+    t4 = line_of(text, "t4")
+    moved = replace_line(text, t4, None).replace("- [ ] Approved\n", "- [ ] Approved\n" + t4 + "\n", 1)
+    doc = parse(moved, reference)
+    assert doc.warnings == ["item-outside-group"]
+    assert [(it.id, it.origin, it.kept, it.edited) for it in doc.groups()["unknown"]] == [("t4", "tomo", True, False)]
+    assert doc.groups()["growth"] == [] and doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0}
+    assert doc.public_items()["unknown"] == [{"id": "t4", "origin": "tomo", "kept": True, "edited": False}]
+    # a stray line above the first heading never becomes the gate or a group
+    doc = parse(text.replace("- [ ] Approved\n", "- [ ] Approved\n- [ ] unten notiert\n", 1), reference)
+    assert doc.approved is False and doc.counts()["added"] == 0 and doc.groups()["unknown"][0].kept is False
+
+
+def test_a_bom_trailing_space_and_closing_hashes_are_tolerated_but_not_indentation():
+    text = document()
+    reference = rdp.link_stems(text)
+    plain = parse(text, reference)
+    # a leading byte-order mark does not break the frontmatter
+    bom = parse("﻿" + text, reference)
+    assert bom.warnings == [] and bom.frontmatter == plain.frontmatter and bom.counts() == plain.counts()
+    assert parse("﻿" + text.replace("- [ ] Approved", "- [x] Approved"), reference).approved is True
+    # trailing whitespace after Approved is still the gate; leading whitespace is not
+    assert parse(text.replace("- [ ] Approved\n", "- [x] Approved \n", 1), reference).approved is True
+    assert parse(text.replace("- [ ] Approved\n", "- [x] Approved\t  \n", 1), reference).approved is True
+    doc = parse(text.replace("- [ ] Approved\n", " - [x] Approved\n", 1), reference)
+    assert doc.approved is False and doc.warnings == ["approved-line-missing"]
+    # closing hashes on a heading keep the group
+    hashed = text.replace("## Erledigt", "## Erledigt ###").replace("## Offen", "## Offen ##  ").replace("## Gewohnheiten", "## Gewohnheiten #")
+    doc = parse(hashed, reference)
+    assert doc.warnings == [] and list(doc.groups()) == ["done", "open", "themes", "growth", "habits"]
+    assert [it.id for it in doc.groups()["done"]] == ["t1", "t2"] and [it.id for it in doc.groups()["habits"]] == ["t5"]
+    # an indented heading is still no heading: its items fall before the first group
+    doc = parse(text.replace("## Erledigt", "  ## Erledigt ##"), reference)
+    assert doc.warnings == ["item-outside-group"] and "done" not in doc.groups()
+    assert [it.id for it in doc.groups()["unknown"]] == ["t1", "t2"]
+
+
+def test_a_crlf_document_parses_like_its_lf_twin():
+    text = tick(document(), "t1", False)
+    t3 = line_of(text, "t3")
+    text = replace_line(text, t3, t3 + "\n- [x] Meins\n  zweite\n\n  vierte").replace("- [ ] Approved", "- [x] Approved")
+    reference = rdp.link_stems(text)
+    assert "\r" not in text
+    lf, crlf = parse(text, reference), parse(text.replace("\n", "\r\n"), reference)
+    assert crlf.approved is True and crlf.warnings == lf.warnings == []
+    assert [it.record() for it in crlf.items] == [it.record() for it in lf.items]
+    assert crlf.counts() == lf.counts() == {"kept": 4, "unticked": 1, "deleted": 0, "added": 1}
+    assert crlf.frontmatter == lf.frontmatter and crlf.group_order == lf.group_order
+    assert not any("\r" in ln for it in crlf.items for ln in [it.text, *it.lines])
+    assert rdp.link_stems(text.replace("\n", "\r\n")) == reference
 
 
 def test_tomo_items_counted_by_id_kept_unticked_deleted():

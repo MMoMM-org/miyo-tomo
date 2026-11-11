@@ -37,19 +37,63 @@ something the document cannot carry safely, and the honest reading of an
 exact `- [x] Approved` is still "the user ticked Approved". A ticked line
 that reads `- [x] Approved` can therefore never become a user item.
 
+**The first column-0 Approved line decides.** A document can carry two
+(the user copied the line, or typed a second one into a group). The parser
+takes the first one in document order and ignores the rest: Tomo rendered
+exactly one, at the top, so the first is the one Tomo asked about, and a
+later copy is the user's stray text. "Any ticked Approved line approves"
+would let a copied line deep in a group approve a review the user never
+ticked at the top; "all must agree" would turn a stray copy into a silent
+`approved: false`. Both are guesses; the first line is the rendered one.
+
+## WHY the Grammar Tolerates What Editors Add, Not What Users Indent
+
+Obsidian and other editors leave marks on a saved file that are not the
+user's edits: a UTF-8 byte-order mark at the start, `\r\n` line ends, a
+trailing space after a word, closing hashes on a heading (`## Done ##`,
+written by some Markdown tools and accepted by CommonMark). Each of these
+would otherwise break structure the user never touched — a BOM makes the
+first line `﻿---` and the frontmatter "missing", a trailing space makes
+`- [x] Approved ` fail the exact match and the review "unapproved", a
+closing-hash heading becomes `unknown-group`. So the parser strips one
+leading U+FEFF before it looks for the frontmatter, lets the Approved line
+end in whitespace, strips closing hashes and whitespace from a heading's
+label, and reads lines with `splitlines()`, which treats `\r\n` as one line
+end — a CRLF document parses to the same result as its LF twin.
+
+None of this loosens the column-0 rule. Leading whitespace is the user's
+own mark (an item's continuation line is exactly that), so ` - [x]
+Approved` and `  ## Done` stay item text, as before. Tolerance is for what
+the editor adds around the line, never for where the line stands.
+
 ## WHY Tomo's Items Are Told Apart by Id, Not by Links (ADR-13)
 
 The PRD's edge case: a Tomo item rewritten without its source links is
 still Tomo's — kept and edited, not deleted plus added. The links are
 part of the text the user may retype; the id `%%t<n>%%` on the checkbox
 line is the only thing that survives a rewrite. The parser takes the first
-id it finds on the checkbox line (the user may have typed after it), strips
-it from the text, and files the item as `origin: tomo`. A ticked line
-without an id is `origin: user`. An id the user deleted makes the item a
-user item and its id counts as deleted — the count difference is reported,
-never guessed (SDD item identity). A second line carrying an id already
-seen (the user copied a Tomo line) is a user item: one id names one Pass 1
-item.
+id it finds on the checkbox line (the user may have typed after it), and
+files the item as `origin: tomo`. A ticked line without an id is `origin:
+user`. An id the user deleted makes the item a user item and its id counts
+as deleted — the count difference is reported, never guessed (SDD item
+identity). A second line carrying an id already seen (the user copied a
+Tomo line) is a user item: one id names one Pass 1 item.
+
+**Every id on the line is stripped from the text.** When the user merges
+two Tomo lines into one (`- [x] b %%t2%% %%t3%%`), the first id names the
+item and the second is a Pass 1 id this line does not represent — `t3` is
+deleted unless another line still carries it. The `%%t3%%` marker is still
+Tomo's bookkeeping, not the user's words: leaving it in the kept text would
+land an Obsidian comment in the periodic note, and the next `link_stems`
+of a replaced document would read it as a second item's marker. So the text
+is the checkbox line with every `%%t<n>%%` removed, whitespace trimmed;
+the ids themselves are never text.
+
+**`[X]` is a tick.** Obsidian writes a lowercase `x`, but a user typing the
+box by hand, or a plugin, may write `X`; CommonMark task lists accept both.
+A ticked item read as unticked would silently drop the user's choice, so
+the box is compared case-insensitively — for Tomo's items, the user's
+items and the Approved line alike.
 
 ## WHY `edited` Compares Source Links, Not a Digest of the Text
 
@@ -121,6 +165,25 @@ warning does.
 
 A heading rendered twice (`duplicate-group`) keeps both lists under the
 one group, in document order.
+
+## WHY an Item Above the First Heading Is Kept, Too
+
+The rendered document has no checkbox line between the Approved line and
+the first group heading, but the user may put one there: a Tomo line cut
+and pasted upward, or a note of their own typed under the title. The first
+version dropped such a line without a word — no item, no warning, no count
+— which is the one thing the parser must never do: a ticked Tomo item
+would vanish from `kept` and appear in `deleted`, and the user's own ticked
+line would vanish altogether. So a checkbox line before any heading is
+parsed like any other and filed under the group key `unknown` — the parser
+does not guess which group the user meant, exactly as for a renamed
+heading — with the warning `item-outside-group`. `unknown-group` keeps
+its meaning (a heading matched no label); the two warnings name two
+different things the user did, and the skill's report can say which. The
+Approved line is still matched first, so it is never such an item; and a
+mangled Approved line that still reads as a checkbox (`- [ ] Approved now`)
+is reported as both `approved-line-missing` and `item-outside-group`,
+which is what it is: no gate, one stray line.
 
 ## WHY the Counts Are Four Numbers
 

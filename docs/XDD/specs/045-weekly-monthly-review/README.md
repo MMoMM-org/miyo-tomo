@@ -16,7 +16,7 @@
 |----------|--------|-------|
 | requirements.md | completed | v1.2: 8 features, 59 criteria; v1.1 approved 2026-11-11, v1.2 amends F1, F5, F7 from the SDD decisions |
 | solution.md | completed | v1.0: 14 components, ADR-1..12 confirmed, all 59 PRD criteria traced to EARS criteria |
-| plan/ | completed | 6 phases, 30 tasks (incl. 6 phase validations); PRD traceability table in phase-6.md |
+| plan/ | completed | 6 phases, 33 tasks (27 deliverables + 6 phase validations); PRD traceability table in phase-6.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.3
+# version: 0.6.0
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -15,6 +15,12 @@ Subcommands (one per top-level vault-config section):
                       (input {"note_include": [...]}; inserts or replaces only
                       the templates.note_include lines, never the whole
                       templates: block; appends a templates: block if absent)
+  review            → tomo/schemas/vault-config-review.schema.json
+                      (one confirmed /review setup; edits only the keys the
+                      input names across concepts, naming, templates and the
+                      review: section, inserting absent nested keys and
+                      missing sections; prints {status: written|unchanged|
+                      refused, reason?, pointers?, keys?} on stdout, exit 0)
 
 The writer does textual section replacement, not a full YAML round-trip, so
 comments, formatting, and unrelated sections stay byte-for-byte identical.
@@ -29,7 +35,8 @@ Usage:
     --input tomo-tmp/tags.json --stdout
 
 Exit codes:
-  0 — success (section written or printed)
+  0 — success (section written or printed; for `review` every outcome the
+      skill acts on, the outcome being in `status`)
   1 — validation failure (input doesn't match the schema) or YAML would be
       invalid after writing (aborts before touching the target file)
   2 — I/O or argument error
@@ -41,12 +48,25 @@ import json
 import os
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
 import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from lib import review_config  # noqa: E402
+from lib.vault_config_edit import (  # noqa: E402
+    EditRefused,
+    get_path,
+    is_key_line as _is_key_line,
+    is_list_continuation as _is_list_continuation,
+    leading_ws as _leading_ws,
+    newline_of as _newline_of,
+    set_path,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -684,16 +704,6 @@ def render_templates_include_lines(
     return newline.join(lines) + newline
 
 
-def _newline_of(text: str) -> str:
-    """The ending of the file's first line: CRLF files get CRLF insertions."""
-    first = text.find("\n")
-    return "\r\n" if first > 0 and text[first - 1] == "\r" else "\n"
-
-
-def _leading_ws(line: str) -> str:
-    return line[: len(line) - len(line.lstrip(" \t"))]
-
-
 def _section_extent(lines: list[str], section_key: str) -> tuple[int, int] | None:
     """(header index, index after the last non-blank body line) or None."""
     start = next((i for i, ln in enumerate(lines) if _is_top_level_key_line(ln, section_key)), None)
@@ -712,19 +722,6 @@ def _child_indent(body: list[str]) -> str:
         if ln.strip() and not ln.lstrip().startswith("#"):
             return _leading_ws(ln)
     return "  "
-
-
-def _is_key_line(line: str, indent: str, key: str) -> bool:
-    """`<indent>key:`, plain or quoted — YAML reads all three as the same key."""
-    spellings = (f"{key}:", f'"{key}":', f"'{key}':")
-    return _leading_ws(line) == indent and line.lstrip().startswith(spellings)
-
-
-def _is_list_continuation(line: str, indent: str) -> bool:
-    ws = _leading_ws(line)
-    return bool(line.strip()) and (
-        len(ws) > len(indent) or (ws == indent and line.lstrip().startswith("- "))
-    )
 
 
 def _key_extent(body: list[str], indent: str, key: str) -> tuple[int, int] | None:
@@ -823,8 +820,15 @@ def _describe_yaml_error(exc: yaml.YAMLError) -> str:
     return type(exc).__name__ + (f" at line {mark.line + 1}" if mark else "")
 
 
-def _duplicate_refusal(original: str, updated: str) -> str | None:
-    """Why the result must not be written, or None. Never names a key or value."""
+def _duplicate_refusal(
+    original: str, updated: str, sections: tuple[str, ...] = ("templates",),
+) -> str | None:
+    """Why the result must not be written, or None. Never names a key or value.
+
+    `sections` are the top-level blocks the edit lands in: a duplicate already
+    inside one of them is refused too, because the edit could land in the
+    copy YAML ignores.
+    """
     try:
         after = _duplicate_keys(updated)
     except yaml.YAMLError as exc:
@@ -841,10 +845,11 @@ def _duplicate_refusal(original: str, updated: str) -> str | None:
     if introduced:
         return (f"duplicate mapping key introduced by the edit "
                 f"(line {min(introduced)} of the result)")
-    shadowed = [rep.lines[1] for p, rep in before.items() if p[0] == "templates"]
+    shadowed = {p[0]: rep.lines[1] for p, rep in before.items() if p[0] in sections}
     if shadowed:
-        return (f"pre-existing duplicate key in the templates: block, already in the config "
-                f"(line {min(shadowed)}); the edit could land in the copy YAML ignores, "
+        section = min(shadowed, key=shadowed.get)
+        return (f"pre-existing duplicate key in the {section}: block, already in the config "
+                f"(line {shadowed[section]}); the edit could land in the copy YAML ignores, "
                 "fix the file first")
     return None
 
@@ -921,6 +926,85 @@ def cmd_templates_include(args: argparse.Namespace) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# `review` subcommand — leaf edits across concepts, naming, templates and the
+# review: section (spec 045, ADR-5). Outcome as JSON on stdout, exit 0.
+# ──────────────────────────────────────────────────────────────────────────────
+
+REVIEW_SECTIONS = ("concepts", "naming", "templates", "review")
+
+
+def _emit(payload: dict) -> int:
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _refused(reason: str, **extra) -> int:
+    return _emit({"status": "refused", "reason": reason, **extra})
+
+
+def _leaf_holds(parsed, path: tuple[str, ...], value) -> bool:
+    found, current = get_path(parsed, path)
+    return (value is None and not found) or (found and current == value)
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    data, rc = _load_json_input(Path(args.input))
+    if rc == 2:
+        return 2
+    if rc is not None:
+        return _refused("input is not valid JSON")
+    problems = review_config.input_problems(data, today=date.today())
+    if problems:
+        pointers = sorted({p.pointer for p in problems})
+        return _refused("input does not match vault-config-review.schema.json or names an unusable format",
+                        pointers=pointers, problems=[p.to_dict() for p in problems])
+    edits = review_config.writer_edits(data)
+
+    config_path = Path(args.config)
+    try:
+        with open(config_path, encoding="utf-8", newline="") as fh:
+            current = fh.read()
+    except FileNotFoundError:
+        print(f"error: config not found: {config_path}", file=sys.stderr)
+        return 2
+    try:
+        original = yaml.safe_load(current)
+    except yaml.YAMLError as exc:
+        return _refused(f"config is not usable ({_describe_yaml_error(exc)})")
+    if not isinstance(original, dict):
+        return _refused("config is not a mapping")
+
+    updated, changed = current, []
+    for path, value in edits:
+        if _leaf_holds(original, path, value):
+            continue
+        try:
+            updated = set_path(updated, path, value)
+        except EditRefused as exc:
+            return _refused(f"{exc} at {'.'.join(path)}")
+        changed.append(".".join(path))
+    if not changed:
+        return _emit({"status": "unchanged"})
+
+    refusal = _duplicate_refusal(current, updated, REVIEW_SECTIONS)
+    if refusal:
+        return _refused(refusal)
+    try:
+        parsed = yaml.safe_load(updated)
+    except yaml.YAMLError as exc:
+        return _refused(f"resulting YAML is not usable ({_describe_yaml_error(exc)})")
+    not_read_back = [".".join(path) for path, value in edits if not _leaf_holds(parsed, path, value)]
+    if not_read_back:
+        return _refused(f"resulting YAML would not read back {', '.join(not_read_back)}")
+    try:
+        _atomic_write(config_path, updated)
+    except OSError as exc:
+        print(f"error: could not write {config_path}: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    return _emit({"status": "written", "keys": changed})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -966,6 +1050,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_args(p_tpl, "vault-config-templates")
     p_tpl.set_defaults(func=cmd_templates_include)
+
+    p_rev = sub.add_parser(
+        "review",
+        help="Save one confirmed /review setup; edits only the keys the input names (JSON on stdout).",
+    )
+    p_rev.add_argument(
+        "--input", required=True,
+        help="Path to JSON input matching tomo/schemas/vault-config-review.schema.json",
+    )
+    p_rev.add_argument(
+        "--config", default="config/vault-config.yaml",
+        help="Path to vault-config.yaml (default: config/vault-config.yaml)",
+    )
+    p_rev.set_defaults(func=cmd_review)
 
     return p
 

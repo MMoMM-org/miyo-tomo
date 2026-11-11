@@ -1,0 +1,104 @@
+# WHY: lib/review_config.py
+
+> Rationale for decisions in `tomo/scripts/lib/review_config.py`.
+> The module owns the `/review` setup (spec 045, T2.1): reading it from
+> `vault-config.yaml` layered over the profile, validating it, the writer-input
+> contract (`tomo/schemas/vault-config-review.schema.json`) and the mapping of
+> a confirmed setup onto config keys, the heading-level rule of the place, and
+> the inbox-path guard every review write goes through.
+
+## WHY One Owner for the Key Layout
+
+The setup lives in four config sections (`concepts.calendar.granularities`,
+`naming.calendar_patterns`, `templates.mapping`, `review`) because three of
+them already exist for other features and the profile already names the
+weekly and monthly folders. A reader (`review-session.py start`) and a writer
+(`vault-config-writer.py review`) that each spelled those paths would drift —
+the same three-way drift spec 038 found between spec, schema and consumer. So
+`review_setup()` reads the keys and `writer_edits()` produces the edits for
+the same keys from one module; the writer applies edits, it does not know
+what a review setup is.
+
+## WHY Config Over Profile, and What "Missing" Means
+
+`concepts.calendar.granularities.<weekly|monthly>` falls back to the profile
+(`tomo/profiles/miyo.yaml` carries both folders), so a vault on the MiYo
+profile needs no folder answer when the folders are where the profile says.
+Nothing else falls back: the name format and the review section are the
+user's confirmation and the profile has no opinion on them. A setup counts as
+*present* for a kind when the config holds `naming.calendar_patterns.<kind>`
+and `review.<weekly|monthly>` with a heading and a place; `review_setup()`
+returns None otherwise, so `start` can report `setup: missing` and the skill
+runs Feature 1 first (F2-AC8). A granularity with `enabled: false` is treated
+as no folder: the user switched those notes off.
+
+A present setup that is broken (a placement that is not `before`/`inside`, a
+week rule outside its range, a format that `period.check_format` refuses, no
+inbox) raises `SetupInvalid` with JSON pointers into the config, never a
+`KeyError`: the skill shows what to fix and `/review setup` repairs it.
+
+Defaults when a present setup leaves a key out: ISO week rule, language `en`,
+no daily sections, 12000 chars per day. These mirror the SDD's example
+config; the language default `frontmatter locale of the dailies` is the
+setup preview's job (`match`), not the reader's.
+
+## WHY `writer_edits` Writes Only What the Input Carries
+
+`/review setup` "saves only what the user confirms" (F1-AC2) and "no other
+setting changes" (F1-AC9). The writer input therefore names the confirmed
+values and nothing else: an optional key absent from the input produces no
+edit, and the daily-path correction is an edit only when the input holds
+`daily_path_fix`. A `null` template or template variant removes the config
+key, because a mapping that names a file the user just said is not the
+template would be read back as the template on the next run — absent and
+null are the same to the reader, so the key goes.
+
+## WHY the Schema Is Validated Here, Not in the Writer
+
+The other writer subcommands carry hand-written validators because they
+predate `jsonschema` being a Tomo runtime dependency (it is in the Docker
+image and the venv). The review input is nested (`place`, lists, a `kind`
+that decides whether the week rule is required), and a hand-written mirror
+of that would be the third copy of the contract. `input_problems()` runs the
+schema and returns JSON pointers (`/place/placement`), which is what the
+setup dialogue needs to ask again (SDD Error Handling: "refused with
+pointers"). The name format is checked in the same call through
+`period.check_format` under the input's own week rule, so a format that is
+schema-valid text but unusable as a name (`YYYY-[W]WW`, a `/` literal) is
+refused before anything is written, with pointer `/format` and the problem
+kinds.
+
+## WHY `place_level` Is the Only Owner of the Level Rule
+
+Hashi ends a section at the next heading of the same or higher level, so a
+review heading at the wrong level swallows the user's next section and a
+rerun's `replace_section` deletes it (SDD Implementation Examples). The rule —
+`before` places the heading at the anchor's level, `inside` one level deeper,
+`after` is never accepted, a level above 6 is refused — is three lines, and
+three copies of three lines would drift. `review_actions` (Phase 4) calls it;
+the setup schema refuses `after` at input time so the question never reaches
+delivery. `ReviewSetup.place_level(target_headings)` finds the anchor among
+the target's headings case-sensitively, because Hashi matches headings
+case-sensitively and the first match wins; a missing anchor raises
+`PlaceMissing`, which the preview reports as `place-missing` with the
+headings it did find (F5-AC7).
+
+## WHY `inbox_path` Refuses by Shape and by Result
+
+Every review write goes to the inbox (CON-security: inbox-only writes
+enforced in code). The name is refused when it contains `/`, `\` or `..`, and
+the joined path is normalised and must still start with the inbox folder.
+Both checks, because each alone has a hole: a name of `.` passes the
+character check and resolves to the folder itself; a path check alone would
+accept `sub/..name` whose meaning depends on the resolver. An empty inbox
+configuration is refused too — joining onto `""` would put the file at the
+vault root.
+
+## WHY Tracker Types Are Read, Not Stored
+
+F8 sums tracker fields by their configured type. The types already live in
+`trackers.daily_note_trackers` (`today_fields`, `yesterday_fields`) and
+`trackers.end_of_day_fields`, written by the trackers wizard; copying them
+into `review:` would be a second place to keep in step. `tracker_types()`
+returns `{name: type}` over all three lists; a type change the setup proposes
+goes through the existing `trackers` writer subcommand (SDD Data Storage).

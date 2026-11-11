@@ -199,3 +199,64 @@ block is the user's and the edit does not change it. It matches the sibling
 subcommands, which print the block they would write, and it never reads or
 writes the config — so it cannot report the duplicate or read-back refusals a
 real save would hit.
+
+## Why `review` edits leaves across four sections (spec 045, ADR-5)
+
+`/review`'s setup (spec 045) saves a confirmed proposal into keys that live in
+four top-level sections: `concepts.calendar.granularities.<weekly|monthly>`,
+`naming.calendar_patterns.<kind>`, `templates.mapping.<kind>` and the new
+`review:` section. In the instance config none of them exist; `naming:` and
+`review:` are whole sections that are missing, and the granularity sits four
+levels deep under a hand-curated `concepts:` block. Rendering any of those
+blocks from the input would repeat the tracker loss above on a larger scale.
+
+So `review` applies a list of leaf edits — one config key path and one value
+each — through `lib/vault_config_edit.set_path`, which inserts, replaces or
+removes exactly that key and creates missing parents (and missing sections)
+on the way. Everything else stays byte-identical; the guard is
+`tests/test_vault_config_writer_review.py`, which runs the subcommand on a
+copy of the instance config and asserts that the diff consists of insertions
+only.
+
+**Why the key list comes from `lib/review_config`.** The writer does not know
+what a review setup is. `review_config.writer_edits()` turns the input into
+`(path, value)` pairs, and the same module reads those paths back for
+`review-session.py start`; one owner, no drift between what is saved and
+what is read.
+
+**Why the input is validated by schema, with pointers.** The input is nested
+and conditional (a week needs its rule, a month must not carry one). It is
+checked against `tomo/schemas/vault-config-review.schema.json` by
+`jsonschema`, which is a Tomo runtime dependency (Docker image and venv),
+and the refusal lists JSON pointers so the setup dialogue can ask again for
+exactly those fields. The name format is refused in the same step when
+`period.check_format` finds it unusable (`/format`).
+
+**Why the result is a JSON object on stdout and exit 0.** The skill acts on
+`status` (`written`, `unchanged`, `refused` with `reason` and, for input
+problems, `pointers`), as it does for every spec 045 script (SDD Internal API
+Changes). Exit 2 stays for a missing input or config file; exit 1 for a
+crash. The older subcommands keep their stderr-and-exit-code contract; it was
+not changed with this one.
+
+**Why an edit whose value is already in the file is skipped.** A rerun of
+`/review setup` that confirms the same values must not rewrite a line to a
+different spelling (block list to flow list, unquoted to quoted). Each leaf
+is compared against the parsed config first; when nothing differs the
+subcommand reports `unchanged` and does not write.
+
+**Why the duplicate refusal covers the four sections.** The `templates-include`
+rule — refuse a duplicate the edit introduces anywhere, refuse a pre-existing
+duplicate inside the section the edit lands in — is applied with
+`concepts`, `naming`, `templates` and `review` as the sections. A duplicate
+in some other block is left alone for the reason given above.
+
+**Why the read-back checks every leaf.** After the edit the result is parsed
+and each written path must hold its value (a removed key must be absent).
+A flow mapping, an inline `{}` or a quoted key the matcher handled wrongly
+would otherwise save a file that reads back as something else.
+
+**Why `keys` in the output are paths, never values.** Stdout ends in the
+model's context and the transcript; folder names and section headings are
+the user's configuration. The written key paths (`review.weekly.heading`)
+say what was saved without repeating it.

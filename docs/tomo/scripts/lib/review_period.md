@@ -45,6 +45,36 @@ Kado answers the same for an empty folder and for one the key may not reach
 (`weekly_status: none-found`) is said only when the listing had entries and
 none matched a week; a listing the pacer could not get is `not-read`.
 
+`kado_empty` and the `check-key-access` advice come from these two folder
+listings ONLY. A daily folder the key cannot list leaves nothing to review,
+so an empty listing there is an access problem worth a hint. The growth
+queries (created notes, the MOC listings) are not: see "WHY Growth Is Two
+Listings". The advice is therefore `[check-key-access]` exactly when
+`kado_empty` is non-empty, and a quiet week with every daily found never
+carries it.
+
+## WHY a Month Always Says Something About Its Weekly Notes
+
+WHY: F3-AC6 ("the report says no weekly notes were found") and the review
+of T3.3. A month read without a weekly folder or weekly name format in the
+config used to emit no `weekly_status` at all, which the skill could only
+read as "the reader forgot" — indistinguishable from a week. A month now
+always carries `weekly: []`, `weekly_notes: []` and a `weekly_status`; the
+states are:
+
+| `weekly_status` | meaning |
+|---|---|
+| `not-configured` | no weekly folder or format in the config; no Kado call was made for weekly notes |
+| `found` | at least one weekly note of an overlapping week was read |
+| `none-found` | the folder listed entries, none matched an overlapping week |
+| `kado-empty` | the listing returned nothing (`kado_empty: weekly`, access hint) |
+| `not-read` | the listing failed and the end pass did not recover it |
+
+`not-configured` is distinct from `none-found` because the remedy differs:
+the first asks for setup, the second for writing weekly notes. The two
+link-difference lists (`only_in_weekly_links`, `dailies_not_in_weekly`) are
+present only when a weekly note was read, in every state.
+
 ## WHY the Day After the Period Is Read for Its Yesterday Fields Only
 
 WHY: SDD same-day reading, step 5. `yesterday_fields` of a daily describe
@@ -112,10 +142,35 @@ linked by a new note is one whose stem a created note's link targets name.
 Kado's `links` field holds raw link text (`metadataCache` outlinks, not
 resolved paths), so without the MOC listing a bare-stem link could not be
 recognised as a MOC; filtering that listing by `modifiedAfter` would lose
-exactly the MOCs the new notes link to. A created query that returns nothing
-is `kado_empty: created` ("Kado returned none"), an empty MOC listing
-`kado_empty: mocs`; no configured MOC folder means no MOC query and
-`moc_folders: 0` in the report.
+exactly the MOCs the new notes link to. No configured MOC folder means no
+MOC query and `moc_folders: 0` in the report.
+
+### WHY an Empty Growth Part Is Not an Access Problem
+
+WHY: review of T3.3. A week in which nothing was created is the normal
+case, and a MOC folder that holds no MOC is a setup oddity, not a denial
+worth the `check-key-access` hint — but Kado still cannot tell "nothing"
+from "not permitted" (Rule 6), so the wording stays "Kado returned none",
+never "no notes were created". The two are kept apart by where they are
+reported: an empty created query or MOC listing lands as a name in
+`report.growth.kado_none` (`created`, `mocs`; the list is always present,
+`[]` when every query answered with items), while `kado_empty` and the
+advice are reserved for the daily and weekly listings. A growth query the
+pacer could not get is in `not_read`, not in `kado_none`.
+
+### WHY the MOC Listing Is Unfiltered and Uncapped (Cost)
+
+WHY: Kado's `links` field holds raw link text, so a created note's
+`[[Topic MOC]]` can be recognised as a MOC only against a list of the MOC
+stems — the whole folder, every time. The cost is one `listNotes` call per
+configured MOC folder per 500 MOCs (Kado's page limit; pages are followed).
+Measured on the test vault (spec 045 review of T3.3): 30 notes in its one
+MOC folder `Atlas/200 Maps/` out of 5447 notes in the vault → one page at
+limit 500 → one call. A vault would need more than 500 MOCs in one folder
+before the listing costs a second call, which is why there is no cap: a cap
+would drop exactly the MOCs it did not fetch from `mocs_linked_by_new`
+silently. The created query pages the same way over the notes created in
+the period, which a week or month keeps small.
 
 ## WHY the Module Calls `finish()` and Re-Runs Incomplete Days
 

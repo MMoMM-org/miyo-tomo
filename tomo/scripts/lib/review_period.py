@@ -1,5 +1,5 @@
 # review_period.py — reads a period for /review: dailies, the day after, a month's weekly notes, link differences, growth.
-# version: 0.1.0
+# version: 0.2.0
 """Reading a period for ``/review`` (spec 045, T3.3; PRD F3-AC5..7, F3-AC9).
 
 Owns what lies between one day and the report: finding the dailies of every
@@ -10,7 +10,11 @@ each living task note once for the period, resolving the weekly notes a
 month overlaps and splitting them (``lib/review_weekly.py``), the two link
 differences (``only_in_weekly_links``, ``dailies_not_in_weekly``), vault
 growth from the created-notes query and the MOC listings, and the per-source
-report. Day reading is ``lib/review_day.py``'s: its functions arrive as a
+report. ``kado_empty`` and the ``check-key-access`` advice come from the
+daily and weekly folder listings only; a growth query Kado answered with
+nothing is named in ``report.growth.kado_none``. A month always carries a
+``weekly_status`` (``not-configured`` without a weekly folder and format).
+Day reading is ``lib/review_day.py``'s: its functions arrive as a
 ``DayReaders`` value (default: imported lazily). Every Kado call goes through
 ``lib/review_reader.PacedReader`` on ``ReviewPacer.read``; ``read_period``
 calls ``finish()`` itself and re-runs the days whose reads the end pass
@@ -43,6 +47,8 @@ from lib.vault_paths import path_key
 
 ADVICE_CHECK_ACCESS = "check-key-access"
 WEEKLY_FOUND, WEEKLY_NONE, WEEKLY_KADO_EMPTY, WEEKLY_NOT_READ = "found", "none-found", "kado-empty", "not-read"
+WEEKLY_NOT_CONFIGURED = "not-configured"
+GROWTH_CREATED, GROWTH_MOCS = "created", "mocs"
 PROBLEM_LINKED_MISSING = "linked-missing"
 ROOT = "/"
 
@@ -121,6 +127,7 @@ class _PeriodRead:
         self.period, self.sources, self.settings, self.readers = period, sources, settings, readers
         self.reader = PacedReader(client, pacer)
         self.kado_empty: List[str] = []
+        self.growth_kado_none: List[str] = []
         self.found: Dict[date, List[str]] = {}
         self.after = period.end + timedelta(days=1)
         self.task_notes: List[str] = [p for p in settings.get("task_notes") or [] if isinstance(p, str)]
@@ -128,6 +135,10 @@ class _PeriodRead:
     def _empty(self, key: str, source: str) -> None:
         if self.reader.answered(key) and source not in self.kado_empty:
             self.kado_empty.append(source)
+
+    def _growth_none(self, key: str, part: str) -> None:
+        if self.reader.answered(key) and part not in self.growth_kado_none:
+            self.growth_kado_none.append(part)
 
     # dailies
     def _find_dailies(self) -> None:
@@ -262,7 +273,7 @@ class _PeriodRead:
     def _growth(self, start_ms: int, end_ms: int) -> dict:
         created_items = self._created_items(start_ms, end_ms)
         if created_items is None:
-            self._empty(ROOT, "created")
+            self._growth_none(ROOT, GROWTH_CREATED)
         created = [{"path": str(item.get("path")),
                     "links": unique_targets([str(link.get("target") or "") for link in item.get("links") or []
                                              if isinstance(link, dict)])}
@@ -272,7 +283,7 @@ class _PeriodRead:
         for prefix in self.sources.moc_folders:
             items = self.reader.notes(prefix)
             if items is None:
-                self._empty(prefix, "mocs")
+                self._growth_none(prefix, GROWTH_MOCS)
                 continue
             mocs.extend(i for i in items if i.get("path"))
         linked = {link_key(t) for c in created for t in c["links"]}
@@ -314,8 +325,9 @@ class _PeriodRead:
         for path in self.task_notes:
             self.reader.note(path)
         weekly_listing, weeks = (None, [])
-        is_month = period.kind == MONTH and bool(sources.weekly_folder and sources.weekly_format)
-        if is_month:
+        is_month = period.kind == MONTH
+        weekly_configured = bool(sources.weekly_folder and sources.weekly_format)
+        if is_month and weekly_configured:
             weekly_listing, weeks = self._find_weeklies()
             for _, paths in weeks:
                 for path in paths:
@@ -347,16 +359,18 @@ class _PeriodRead:
             "task_notes": task_report,
         }
         if is_month:
-            weekly, weekly_report = self._weekly_entries(weeks)
+            weekly, weekly_report = self._weekly_entries(weeks) if weekly_configured else ([], [])
             result["weekly"] = weekly
             if weekly:
                 result["only_in_weekly_links"], result["dailies_not_in_weekly"] = self._link_differences(days, weekly)
-            report["weekly_status"] = (WEEKLY_FOUND if weekly else WEEKLY_NONE if weekly_listing is not None
+            report["weekly_status"] = (WEEKLY_NOT_CONFIGURED if not weekly_configured
+                                       else WEEKLY_FOUND if weekly
+                                       else WEEKLY_NONE if weekly_listing is not None
                                        else WEEKLY_KADO_EMPTY if "weekly" in self.kado_empty else WEEKLY_NOT_READ)
             report["weekly_notes"] = weekly_report
         report["growth"] = {"created": len(growth["created"]), "mocs_changed": len(growth["mocs_changed"]),
                             "mocs_linked_by_new": len(growth["mocs_linked_by_new"]),
-                            "moc_folders": len(sources.moc_folders)}
+                            "moc_folders": len(sources.moc_folders), "kado_none": list(self.growth_kado_none)}
         report["kado_empty"] = list(self.kado_empty)
         report["not_read"] = list(self.reader.not_read)
         report["advice"] = [ADVICE_CHECK_ACCESS] if self.kado_empty else []

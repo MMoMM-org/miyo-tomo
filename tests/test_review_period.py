@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
@@ -310,8 +310,8 @@ def test_two_dailies_for_one_date_are_both_read_and_reported_duplicate():
 def test_empty_daily_listing_is_kado_empty_with_the_access_hint():
     vault = ReviewFakeVault({"Other/x.md": "x"}, folders=[])
     result = run(vault, W13, week_sources(), settings={"sections": ["Daily Log"]})
-    assert result["report"]["kado_empty"] == ["dailies", "created"]
-    assert ADVICE_CHECK_ACCESS in result["report"]["advice"]
+    assert result["report"]["kado_empty"] == ["dailies"]
+    assert result["report"]["advice"] == [ADVICE_CHECK_ACCESS]
     assert all(e["dailies"] == [] for e in result["days"])
     assert len(result["days"]) == 7
 
@@ -496,6 +496,37 @@ def test_month_without_weekly_notes_says_none_found():
     assert "only_in_weekly_links" not in result and "dailies_not_in_weekly" not in result
 
 
+def test_month_without_weekly_config_says_not_configured_and_lists_nothing():
+    vault = month_vault()
+    for sources in (month_sources(weekly_folder=None), month_sources(weekly_format=None)):
+        result = run(vault, MARCH, sources)
+        assert result["report"]["weekly_status"] == "not-configured"
+        assert result["weekly"] == []
+        assert result["report"]["weekly_notes"] == []
+        assert "only_in_weekly_links" not in result and "dailies_not_in_weekly" not in result
+        assert "weekly" not in result["report"]["kado_empty"]
+        assert result["report"]["advice"] == []
+    assert not any(p.startswith(WEEKLY) for p in vault.paths_seen)
+    assert len(result["days"]) == 31
+
+
+def test_a_weekly_note_flat_and_in_the_year_folder_is_read_twice_and_marked_duplicate():
+    nested = f"{WEEKLY}2026/2026-W13.md"
+    vault = month_vault(**{nested: "# Weekly Review: [[2026-W13]]\n## Review of the Week\n"
+                                   "### [[2026-03-24|2026-03-24 Tue]]\n- copy block [[Copy Link]]\n"})
+    result = run(vault, MARCH, month_sources())
+    w13 = [w for w in result["weekly"] if w["week"] == "2026-W13"]
+    assert [w["path"] for w in w13] == [f"{WEEKLY}2026-W13.md", nested]
+    assert all(w["duplicate"] is True for w in w13)
+    assert w13[1]["day_blocks"] == {"2026-03-24": "- copy block [[Copy Link]]"}
+    assert "Copy Link" in result["only_in_weekly_links"]
+    assert "Beta" in result["dailies_not_in_weekly"]          # neither W13 copy mentions Tuesday's link
+    w13_rows = [w for w in result["report"]["weekly_notes"] if w["week"] == "2026-W13"]
+    assert w13_rows == [{"week": "2026-W13", "path": f"{WEEKLY}2026-W13.md", "state": "read"},
+                        {"week": "2026-W13", "path": nested, "state": "read"}]
+    assert next(w for w in result["weekly"] if w["week"] == "2026-W09")["duplicate"] is False
+
+
 def test_empty_weekly_listing_is_kado_empty_not_none_found():
     vault = month_vault()
     del vault.files[f"{WEEKLY}2026/2026-W09.md"]
@@ -548,9 +579,22 @@ def test_growth_lists_created_notes_with_links_mocs_changed_and_mocs_linked_acro
     created_filters = [f for f in vault.list_notes_filters if f and "createdAfter" in f]
     assert created_filters and all(f == {"createdAfter": start_ms, "createdBefore": end_ms} for f in created_filters)
     assert len(created_filters) >= 2          # the created query crossed pages with the filter repeated
-    assert result["report"]["growth"] == {"created": 3, "mocs_changed": 2, "mocs_linked_by_new": 2, "moc_folders": 1}
+    assert result["report"]["growth"] == {"created": 3, "mocs_changed": 2, "mocs_linked_by_new": 2,
+                                          "moc_folders": 1, "kado_none": []}
     assert result["report"]["kado_empty"] == []
     assert result["report"]["advice"] == []
+
+
+def test_moc_listing_costs_one_call_per_page_and_the_week_stays_within_budget():
+    mocs = {f"{MOCS}MOC {n:02d}.md": "moc" for n in range(5)}
+    vault = week_vault(**mocs)
+    vault.page_size = 2
+    result = run(vault, W13, week_sources(moc_folders=[MOCS]))
+    moc_calls = [p for method, p in vault.events if method == "list_notes" and p == MOCS]
+    assert len(moc_calls) == 3                      # 5 MOCs at 2 per page: ceil(5 / 2) pages, one call each
+    assert result["report"]["growth"]["moc_folders"] == 1
+    assert result["report"]["growth"]["kado_none"] == ["created"]
+    assert vault.call_count <= 40, vault.events
 
 
 def test_growth_without_moc_folders_queries_no_mocs():
@@ -565,8 +609,10 @@ def test_empty_growth_results_are_reported_as_kado_returned_none():
     vault = week_vault()
     result = run(vault, W13, week_sources(moc_folders=[MOCS]))
     assert result["growth"] == {"created": [], "mocs_changed": [], "mocs_linked_by_new": []}
-    assert result["report"]["kado_empty"] == ["created", "mocs"]
-    assert ADVICE_CHECK_ACCESS in result["report"]["advice"]
+    assert result["report"]["growth"]["kado_none"] == ["created", "mocs"]
+    assert result["report"]["advice"] == []
+    assert "created" not in result["report"]["kado_empty"] and "mocs" not in result["report"]["kado_empty"]
+    assert result["report"]["kado_empty"] == []
 
 
 # ── the real day reader through the period reader ──

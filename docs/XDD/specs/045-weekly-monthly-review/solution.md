@@ -611,7 +611,7 @@ review-doc.py write --stem S --proposals tomo-tmp/review/<stem>/proposals.json
 
 review-doc.py parse --stem S            (reads the doc through Kado)
   out: {status: ok|not-found, approved: bool, items: {group: [{id?, origin: tomo|user, kept: bool, edited: bool}]},
-        counts: {kept, unticked, deleted, added}, warnings: [approved-line-missing|unknown-group|duplicate-group|frontmatter-broken]}
+        counts: {kept, unticked, deleted, added}, warnings: [approved-line-missing|unknown-group|duplicate-group|frontmatter-broken|item-outside-group]}
 
 review-doc.py replace --stem S [--confirm]
   out: without --confirm {status: needs-confirm, doc_path}; with it {status: replaced|stopped}

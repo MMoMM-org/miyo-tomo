@@ -64,15 +64,30 @@ time before the same stop. The pacer lets every other `KadoError` through, so
 does, and writes nothing. `KadoNotFoundError` propagates for the same reason:
 a missing linked note is the day reader's finding, not a rate-limit event.
 
-## WHY `min_interval` Is Restored (Context Manager)
+## WHY `min_interval` Is Restored by `close()`, Not by `finish()`
 
 WHY: the pattern of `LinkLookup.close`. The pacer changes a shared client's
 state; a caller that reuses the client after the read (the same script writes
 `read.json` and may probe the inbox) must not inherit a 2 s spacing. The
-previous value is saved at construction and restored by `finish()`, by
-`close()` and by `__exit__` — also when `read()` raised — and the restore is
-idempotent, so `with ReviewPacer(client) as pacer: … pacer.finish()` restores
-exactly once.
+previous value is saved at construction and restored by `close()` and by
+`__exit__` — also when `read()` raised — and the restore is idempotent, so
+`with ReviewPacer(client) as pacer: … pacer.finish()` restores exactly once,
+at the exit.
+
+`finish()` itself keeps the widest interval installed (T3.4 decision, 0.2.0;
+until then it restored the saved value, as the SDD example sketched). The
+period read makes reads *after* the end pass: when the end pass recovered a
+daily or weekly folder listing, the notes that listing exposes are resolved
+and read only then (`lib/review_period.py`). Those reads happen on the same
+Kado that just turned the listing away for the whole run, so they must run at
+the spacing the run widened to — 2 s — and not at the restored value (0 s
+for a plain client), which would fire the first seven dailies into a window
+that is known to be full and make the one not-read list grow after the end
+pass. The interval therefore holds until `close()`; a script that wants the
+old spacing back closes the pacer (or leaves the `with` block) before it
+reuses the client. `tests/test_review_pacer.py` pins the interval after
+`finish()`, `tests/test_review_read.py` pins the sends after a recovered
+listing.
 
 ## WHY the Fake Vault Simulates the Client's Retry Loop
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_pacer.py — the pacing policy of /review's period read and the
 fake vault it is tested against (spec 045 T3.1; PRD F3-AC10, F3-AC11,
 F3-AC12; SDD ADR-4, Implementation Examples / pacer).
@@ -14,8 +14,9 @@ proven against the real client by a parity test.
 Part 2 — lib/review_pacer.ReviewPacer: start at 0.3 s, doubling up to 2 s
 after a call that needed retries, failed paths retried once at 2 s at the
 end, only those failing then reported, connection and auth errors propagate,
-summary() with calls / retried / waited_s / not_read / advice, min_interval
-restored afterwards (also after an exception).
+summary() with calls / retried / waited_s / not_read / advice, the widest
+interval kept after finish() (reads after the end pass stay at 2 s; T3.4),
+min_interval restored by close() and the exit (also after an exception).
 """
 from __future__ import annotations
 
@@ -418,18 +419,23 @@ def test_connection_error_in_the_end_pass_propagates_and_restores():
     assert fake.min_interval == 0.05
 
 
-def test_min_interval_is_restored_to_the_previous_value_by_finish_and_by_exit():
+def test_finish_keeps_the_widest_interval_until_close_restores_the_previous_value():
+    # RED when finish() restores the saved interval again (T3.4): reads after the end pass must stay at 2 s
     fake = _vault()
     fake.min_interval = 0.05
     pacer = ReviewPacer(fake)
     assert fake.min_interval == 0.3
-    pacer.finish()
+    assert pacer.finish() == []
+    assert fake.min_interval == MAX_INTERVAL_S, "finish() leaves the widest spacing installed"
+    pacer.read(A, fake.read_note)
+    assert fake.sends[-1]["interval"] == MAX_INTERVAL_S, "a read after the end pass is sent at 2 s"
+    pacer.close()
     assert fake.min_interval == 0.05
     with ReviewPacer(fake):
         assert fake.min_interval == 0.3
-    assert fake.min_interval == 0.05
+    assert fake.min_interval == 0.05, "the context manager's exit restores"
     with ReviewPacer(fake) as pacer:
-        pacer.finish()
+        pacer.close()
         fake.min_interval = 0.07
     assert fake.min_interval == 0.07, "the restore happens once, not again on exit"
 

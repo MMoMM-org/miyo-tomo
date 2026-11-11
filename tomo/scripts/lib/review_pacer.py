@@ -1,5 +1,5 @@
 # review_pacer.py — paces /review's Kado reads: spacing, widening after retries, the end-of-run pass, the not-read list.
-# version: 0.1.0
+# version: 0.2.0
 """The pacing policy of ``review-read.py`` (spec 045, ADR-4; PRD F3-AC10..12).
 
 A period read must come back complete and slow on a busy Kado, never cut
@@ -11,9 +11,10 @@ retries every recorded path once more at the widest spacing in ``finish()``
 and names only what still failed. Connection, auth and not-found errors
 propagate: they are the caller's to map, not pacing events. The counters come
 from the client (``call_count``, ``attempt_count``, ``retry_wait_s``,
-``pace_wait_s``); retries are ``attempt_count - call_count``. The previous
-``min_interval`` is restored by ``finish()``, ``close()`` and the context
-manager's exit, once.
+``pace_wait_s``); retries are ``attempt_count - call_count``. ``finish()``
+leaves the widest spacing installed, so reads made after the end pass (the
+notes of a listing it recovered) stay at it; the previous ``min_interval``
+is restored by ``close()`` and the context manager's exit, once.
 
 Design notes: docs/tomo/scripts/lib/review_pacer.md
 """
@@ -66,18 +67,15 @@ class ReviewPacer:
                 self.client.min_interval = min(MAX_INTERVAL_S, self.client.min_interval * 2)
 
     def finish(self) -> List[str]:
-        """Retry every failed path once at the widest spacing; return the paths that still failed."""
+        """Retry every failed path once at the widest spacing, which stays installed; return what still failed."""
         self.client.min_interval = MAX_INTERVAL_S
         retry, self.failed = self.failed, []
         not_read: List[str] = []
-        try:
-            for path, fn in retry:
-                try:
-                    self.recovered[path] = fn(path)
-                except KadoRateLimitError:
-                    not_read.append(path)
-        finally:
-            self.close()
+        for path, fn in retry:
+            try:
+                self.recovered[path] = fn(path)
+            except KadoRateLimitError:
+                not_read.append(path)
         return not_read
 
     def summary(self, not_read: List[str]) -> dict:

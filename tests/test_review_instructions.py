@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -19,13 +19,20 @@ raw Templater template with `templater_hint`, vanished variant with `variant_mis
 stamped rendered-note/pending-move plus one move_note; every item line is escaped once and
 counted, a line review_doc already escaped lands with exactly one backslash; ids are stripped;
 the content ends with one blank line and is byte-identical across builds; only kept items land
-and empty groups leave no heading; an unapproved, gate-less or empty review emits nothing; every
-set validates against the producer schema, Tomo's Hashi copy and Hashi's vendored copy.
+and empty groups leave no heading; kept items under an unknown heading are counted as `unlanded`
+and named `unlanded-items` while the known ones still land, also next to `nothing-to-deliver`;
+an unapproved, gate-less or empty review emits nothing; every heading emitted or matched is the
+heading as Hashi's parser reads it (closing hashes kept, every ``` or ~~~ line toggles a fence,
+no quoted fence) — `hashi_headings` here is a test-local copy of that rule — while a configured
+anchor or the review heading matches it with or without closing hashes; a refused replace
+reports the found heading as the place; every set validates against the producer schema,
+Tomo's Hashi copy and Hashi's vendored copy.
 T4.2 adds the review-instructions.py tests to this file. All data is synthetic.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -107,6 +114,28 @@ def hashi_section_body(text: str, heading: str) -> list[str]:
     i, level, _ = next(h for h in heads if h[2] == heading)
     end = next((j for j, lvl, _ in heads if j > i and lvl <= level), len(lines))
     return lines[i + 1:end]
+
+
+def hashi_headings(text: str) -> list[tuple[int, int, str]]:
+    """Hashi's parseHeadings over fencedLineMask (markdownStructure.ts), reimplemented here on purpose:
+    ``^(#{1,6})\\s+(.*)$`` trimmed, closing hashes kept; any ``^\\s*(```|~~~)`` line toggles the fence."""
+    found = []
+    fenced = False
+    for i, line in enumerate(text.split("\n")):
+        if re.match(r"^\s*(?:```|~~~)", line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            found.append((i, len(m.group(1)), m.group(2).strip()))
+    return found
+
+
+def hashi_resolves(text: str, value: str) -> tuple[int, int, str] | None:
+    """anchorResolver.ts:100 — the first heading whose text equals ``value`` exactly."""
+    return next((h for h in hashi_headings(text) if h[2] == value), None)
 
 
 def schema_errors(doc: dict, path: Path) -> list[str]:
@@ -222,6 +251,62 @@ def test_actions_a_marker_with_no_heading_above_it_is_place_missing():
     assert p.problems == ["place-missing"] and p.headings == ["Woche"] and p.actions == []
 
 
+# ---------------------------------------------------------------- headings as Hashi reads them
+
+def test_actions_replace_anchors_the_heading_as_hashi_reads_it_closing_hashes_kept():
+    note = f"# {PERIOD}\n\n## Woche ##   \n{MARKER}\n### Erledigt\n- alt\n\n## {OWN}\nmeine Worte\n"
+    p = plan(target_text=note)
+    assert p.mode == "replace" and p.problems == ["heading-renamed"]
+    [action] = p.actions
+    assert action["action"] == "replace_section" and action["anchor"]["value"] == "Woche ##"
+    assert p.place == {"anchor": "Woche ##", "placement": "replace", "level": 2}
+    assert p.section_md.startswith(f"## Woche ##\n{MARKER}\n")
+    # Hashi resolves the emitted value to the heading above the marker — and would not resolve the bare text
+    assert hashi_resolves(note, action["anchor"]["value"]) == (2, 2, "Woche ##")
+    assert hashi_resolves(note, "Woche") is None
+
+
+def test_actions_a_configured_anchor_matches_with_or_without_closing_hashes_and_emits_hashis_text():
+    note = NOTE.replace("## Woche\n", "## Woche ##\n", 1)
+    p = plan(target_text=note, setup=setup(anchor="Woche", placement="inside"))
+    assert p.problems == []
+    [action] = p.actions
+    assert action["anchor"]["value"] == "Woche ##" and p.place["anchor"] == "Woche ##"
+    assert hashi_resolves(note, action["anchor"]["value"]) == (2, 2, "Woche ##")
+    # the other way round: the user wrote the anchor with closing hashes, the note has none
+    p = plan(setup=setup(anchor="Woche ##", placement="inside"))
+    assert p.problems == [] and p.actions[0]["anchor"]["value"] == "Woche"
+    assert hashi_resolves(NOTE, "Woche") == (2, 2, "Woche")
+    # the review heading too: `Tomo Review ##` above the marker is not a rename, and without the marker a collision
+    landed = landed_note().replace(f"## {HEADING}\n", f"## {HEADING} ##\n", 1)
+    p = plan(target_text=landed)
+    assert p.mode == "replace" and p.problems == [] and p.actions[0]["anchor"]["value"] == f"{HEADING} ##"
+    p = plan(target_text=NOTE.replace("## Woche\ntext der Woche", f"## {HEADING} ##\nmy own weekly thoughts"))
+    assert p.problems == ["user-heading-collision"] and p.actions == []
+    # an own section with closing hashes is still an own section
+    p = plan(target_text=NOTE.replace(f"## {OWN}\n", f"## {OWN} ##\n", 1), setup=setup(anchor=OWN, placement="inside"))
+    assert p.problems == ["user-heading-collision"] and p.actions == []
+
+
+def test_actions_fences_toggle_as_hashi_toggles_them():
+    # a fence opened with ``` and closed with ~~~ is closed to Hashi: the heading after it is an anchor
+    toggled = NOTE.replace("text der Woche", "```\ncode\n~~~\n## Extra\nmore")
+    assert [h[2] for h in hashi_headings(toggled)] == [PERIOD, "Woche", "Extra", OWN]
+    p = plan(target_text=toggled, setup=setup(anchor="Extra"))
+    assert p.problems == [] and p.actions[0]["anchor"]["value"] == "Extra"
+    # a quoted fence is no fence to Hashi: the heading between two `> ```` lines is an anchor
+    quoted = NOTE.replace("text der Woche", "> ```\n## Extra\n> ```")
+    assert [h[2] for h in hashi_headings(quoted)] == [PERIOD, "Woche", "Extra", OWN]
+    p = plan(target_text=quoted, setup=setup(anchor="Extra"))
+    assert p.problems == [] and p.actions[0]["anchor"]["value"] == "Extra"
+    # and the marker follows the same mask: under the toggled-closed fence it counts, under an open one not
+    marked = NOTE.replace("text der Woche", f"```\ncode\n~~~\n{MARKER}\n- alt")
+    assert plan(target_text=marked).mode == "replace"
+    unclosed = NOTE.replace("text der Woche", f"```\n{MARKER}\n- alt")
+    p = plan(target_text=unclosed)
+    assert p.mode == "insert" and p.problems == ["place-missing"] and p.headings == [PERIOD, "Woche"]
+
+
 # ---------------------------------------------------------------- target lookup
 
 def test_actions_a_target_found_by_name_elsewhere_is_the_target():
@@ -265,6 +350,8 @@ def test_actions_a_review_heading_above_level_5_is_place_too_deep():
     marked = f"# T\n## a\n### b\n#### c\n##### e\n###### {HEADING}\n{MARKER}\n- x\n\n## {OWN}\n"
     p = plan(target_text=marked)
     assert p.mode == "replace" and p.problems == ["place-too-deep"] and p.actions == []
+    # the place reported is the heading found above the marker, not the setup's anchor
+    assert p.place == {"anchor": HEADING, "placement": "replace", "level": 6}
 
 
 def test_actions_a_missing_place_names_the_notes_headings():
@@ -416,6 +503,35 @@ def test_actions_a_user_item_lands_like_tomos_and_an_unknown_group_does_not():
     assert "unknown-group" in review["warnings"]
     p = plan(review)
     assert "- Mein Punkt\n" in p.section_md and "verloren" not in p.section_md
+
+
+def test_actions_unlanded_items_are_named_and_the_landed_ones_still_land():
+    text = document()
+    for item_id in ("t2", "t3", "t4", "t5"):
+        text = tick(text, item_id, False)                      # t1 is the one landed item
+    text = text.replace("## Gewohnheiten\n", "## Eigene Gruppe\n- [x] verloren\n- [x] auch verloren\n- [ ] nicht\n"
+                        "## Gewohnheiten\n", 1)
+    review = approved(text)
+    assert "unknown-group" in review["warnings"]
+    p = plan(review)
+    assert p.problems == ["unlanded-items"] and p.unlanded == 2
+    assert p.preview()["unlanded"] == 2 and p.preview()["problems"] == ["unlanded-items"]
+    [action] = p.actions
+    assert action["action"] == "insert_under_marker"
+    assert p.section_md == f"## {HEADING}\n{MARKER}\n### Erledigt\n{FIRST_ITEM}\n"
+    assert "verloren" not in p.section_md
+    # with nothing unlanded the count is absent from the preview
+    assert plan().unlanded == 0 and "unlanded" not in plan().preview()
+
+
+def test_actions_only_unlanded_items_is_nothing_to_deliver_and_unlanded_items():
+    text = document()
+    for item_id in ("t1", "t2", "t3", "t4", "t5"):
+        text = tick(text, item_id, False)
+    text = text.replace("## Gewohnheiten\n", "## Eigene Gruppe\n- [x] verloren\n## Gewohnheiten\n", 1)
+    p = plan(approved(text))
+    assert p.problems == ["nothing-to-deliver", "unlanded-items"] and p.unlanded == 1 and p.actions == []
+    assert plan(approved(text), target_text=None).problems == ["nothing-to-deliver", "unlanded-items"]
 
 
 def test_actions_an_unapproved_gateless_or_empty_review_emits_nothing():

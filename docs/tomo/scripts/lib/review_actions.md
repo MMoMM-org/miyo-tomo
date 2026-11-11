@@ -29,8 +29,50 @@ opposite in both cases, and the second one deletes the user's writing. The
 marker is an Obsidian comment, invisible in reading view, and it carries the
 period so a monthly note that quotes a weekly review's marker cannot match.
 
-The marker search covers the note's body outside code fences, the same lines
-Hashi's heading parser sees; a marker inside a fence is quoted text.
+The marker search covers the note's lines outside code fences by Hashi's
+fence rule (next section), the same lines Hashi's heading parser sees; a
+marker inside a fence is quoted text.
+
+## WHY Headings Are Parsed by Hashi's Rule, Not `review_md`'s
+
+Every heading this module emits as an anchor value, or matches a configured
+anchor, `setup.heading` or an own section against, must be the heading Hashi
+will resolve — otherwise a plan that passes every check here fails in Hashi
+with `anchor not found`, or lands under a different heading. Hashi's reading
+is `Hashi/src/actions/markdownStructure.ts`: `parseHeadings` takes the text
+after the hashes, trimmed, and KEEPS closing hashes (`## Woche ##` is
+`Woche ##`); `fencedLineMask` toggles on every line that opens with optional
+whitespace and ``` or ~~~, whatever the fence character or its length, with
+no `>` prefix (a quoted fence is not a fence to Hashi). `anchorResolver.ts`
+(`resolveHeading`) and `sectionLocator.ts` then take the FIRST heading whose
+text equals the anchor value exactly, over the whole file content including
+the frontmatter — a YAML comment `# x` in the frontmatter is a level-1
+heading to Hashi, so it is one here too.
+
+`review_md.headings` reads for `review_day` — a CommonMark-shaped parser that
+strips closing hashes and closes a fence only with its own character. Its
+reading of a daily is never handed to Hashi, so it stays as it is; feeding
+its headings into an anchor would emit `Woche` for a note whose heading Hashi
+reads as `Woche ##`. The two parsers differ exactly where notes differ in the
+wild (closing hashes, a ``` opened and ~~~ closed, a fence inside a
+blockquote), so this module carries its own mirror of Hashi's two regexes
+(`hashi_headings`, `fenced_mask`) and uses nothing else for the target, the
+marker search and the template of a new note. The mirror has no behaviour of
+its own: when Hashi's parser changes, this one changes with it.
+
+Matching is tolerant, emission exact. A configured anchor or `setup.heading`
+of `Woche` matches a note heading `Woche ##` (both sides compared after
+stripping closing hashes and trailing whitespace — the user wrote the same
+heading either way), and the emitted `anchor.value` and the reported place
+are Hashi's text, `Woche ##`, which Hashi resolves exactly. The tolerant
+first match is also what Hashi's exact first match resolves to: an earlier
+heading with exactly the emitted text would have matched tolerantly first.
+The shadowing check for a replace (the heading above the marker must be the
+first with that text) stays exact, because it asks what Hashi will do with
+the value this module emits, not what the user meant. `heading-renamed` and
+`user-heading-collision` compare tolerantly: `Tomo Review ##` is Tomo's
+heading, not a rename, and a user's `Tomo Review ##` without the marker is a
+collision.
 
 ## WHY replace_section Anchors the Heading Above the Marker
 
@@ -77,7 +119,9 @@ following user section part of Tomo's. `place_level` is the single owner of
 that rule (T2.1), including the refusal above level 5 (`place-too-deep`, with
 the note's headings so the user can pick another place). A replaced section
 keeps the heading the note already has, so its level comes from that heading;
-above level 5 it is refused the same way.
+above level 5 it is refused the same way, and the place reported with the
+refusal is that heading and its level — the place at fault — not the setup's
+anchor, which the replace never used.
 
 ## WHY Every Item Line Is Escaped Again, Idempotently
 
@@ -105,9 +149,21 @@ escaped.
 Unticked and deleted items are absent from the ApprovedReview record already
 (F5-AC6). A group whose items were all unticked would otherwise land as a bare
 heading — noise the user did not approve. An item whose text is empty lands
-nothing. Items under a heading the parser did not recognise (`unknown`, warned
-as `unknown-group`) have no label to land under; they are left out, and the
-preview — which shows exactly the section — makes that visible.
+nothing.
+
+## WHY Unlanded Items Are a Named Problem, Not a Silent Omission
+
+Items under a heading the parser did not recognise (`unknown`, warned as
+`unknown-group`) have no label to land under, so they cannot land. Leaving
+them out silently would make the preview the only place that shows it, and
+a user who ticked an item under a heading of their own and reads "1 item
+lands" has no way to tell a parser miss from a deliberate omission. So the
+plan counts the kept non-empty items of `unknown` (`unlanded`, in the
+preview) and names the problem `unlanded-items` whenever that count is above
+zero — also next to `nothing-to-deliver`, when the only kept items are the
+unlanded ones, so the user learns why nothing lands. The problem does not
+refuse: the landed items still land, the user decides whether to move the
+others under a known heading first.
 
 ## WHY Own Sections Are Never the Anchor Tomo Writes Into
 

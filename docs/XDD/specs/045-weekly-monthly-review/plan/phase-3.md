@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reading the period and the review document"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 3
 ---
@@ -93,7 +93,7 @@ This phase turns a period into a report, a fact file for the model and an editab
   4. Validate: tests green; ruff clean.
   5. Success: Pass 2 reads exactly what the user left `[ref: PRD/F5-AC1, F5-AC6, F6-AC1; PRD/Business Rules 1-3, 7; PRD/Edge Cases]`
 
-- [ ] **T3.8 Phase Validation** `[activity: validate]`
+- [x] **T3.8 Phase Validation** `[activity: validate]`
 
   - Run Phase 1–3 tests, the full suite and ruff. Confirm no fixture contains text copied from the test vault's dailies, and no new lib exceeds ~500 lines.
   - Tidy from the T3.4 code review: a `stopped` `review-read` output never carries `nothing_to_review: true`; `--stem .` is refused; a test pins the `[[stem]]`-shaped source fallbacks in `review_doc.Sources` (review_doc.py:~177/180, unguarded per the T3.6 review).

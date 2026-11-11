@@ -91,22 +91,68 @@ repair (SDD: the setup may propose `Sleep` `text` → `duration`).
 
 - **boolean**: true is `true`, `yes`, `ja`, `y`, `j`, `x`, `1`, `✅`,
   `done` or a ticked checkbox `[x]`; false is `false`, `no`, `nein`, `n`,
-  `0`, `❌`, `-` or an unticked checkbox `[ ]` / `[]`; all case-insensitive.
+  `0`, `❌` or an unticked checkbox `[ ]` / `[]`; all case-insensitive.
   These are the spellings the trackers wizard and the owner's dailies use,
-  plus the one-letter German/English shorthands and the `done` / `-` pair a
-  hand-written journal falls into; anything else is unreadable.
+  plus the one-letter German/English shorthands and `done` a hand-written
+  journal falls into; anything else is unreadable. A bare `-` is neither: it
+  is the placeholder a template leaves behind when nothing was filled in, so
+  it is *missing* — the day is listed under `missing` and is not in the
+  count's denominator. Reading it as false would lower every count by the
+  days the user simply did not answer.
 - **integer**: an integer or a decimal (`7.5` or German `7,5`). The type says
   integer, but a `7.5` energy is still a number and refusing it would name
   half the owner's days unreadable; the average is rendered with one
-  decimal either way.
+  decimal either way. Comma and dot are both decimal marks and there is no
+  thousands separator: `1,000` and `1.000` read as 1.0, not as a thousand.
 - **duration**: `7h30`, `7h 30m`, `7:30`, `450m`, `90 min`, `1.5h`, and a
   plain number read as hours (the schema's scale hint for such fields is
-  `hours`). Averaged in minutes, rendered back as `7h 40m`.
-- **time**: `HH:mm` (`H:mm`, optional seconds), averaged in minutes since
-  midnight and rendered as `HH:mm`. The mean is arithmetic, not circular: a
-  wake-up time does not straddle midnight, and a bedtime tracker that does
-  would average wrongly — a known limit, named here rather than guessed at.
+  `hours`). Averaged in minutes, rendered back as `7h 40m`. In the
+  hours-plus-minutes spellings (`7h 90m`, `7:90`) a minute part above 59 is
+  unreadable: it is a typo or a different unit, and reading it as 8h 30m
+  would hide that. `25:00` is a valid duration (25 hours; an h:mm duration
+  has no clock bound) while the same text is unreadable as a time.
+- **time**: `HH:mm` (`H:mm`, optional seconds), hours 0–23 and minutes
+  0–59, averaged on the 24 h clock and rendered as `HH:mm`. The average is
+  the *circular mean*: each time is a point on the clock face (an angle,
+  minutes × 2π / 1440), the points are averaged as vectors and the angle of
+  the resultant is the average. Bedtimes 23:30 and 00:30 then average to
+  00:00, 22:00 and 02:00 to 00:00, and wake-ups 07:00 and 08:00 still to
+  07:30 — the plain arithmetic mean would put the two bedtimes at 12:00. The
+  instance's `ToBed` yesterday tracker holds bedtimes that straddle
+  midnight, so the arithmetic mean was not a theoretical limit but a wrong
+  number in the first real weekly note. When the points cancel out (00:00
+  and 12:00, or three times eight hours apart) the resultant has no
+  direction and the average is undefined: the item then carries `value:
+  null`, `rendered` is the "no clear average" label (de: "kein klarer
+  Durchschnitt"), the line says so instead of showing a time, and
+  `days_with_value`, `missing` and `unreadable` are listed as for any other
+  item. The threshold is a resultant length below 1e-9 (floating point noise
+  around zero), and the computed minutes are rounded to a millionth before
+  rendering so that an exact half-minute is not pushed below the .5 by
+  floating point error.
 - **text**: skipped (F8 is about numbers; a text field has no sum).
+
+## WHY No Value Can Make the Module Raise
+
+`_item` catches only `Unreadable`; a value the parsers cannot read is a
+named day, nothing else. That contract holds only if parsing itself never
+leaks another exception, and the numbers a journal can hold are not bounded
+by anything: a stuck key or a pasted blob can produce a run of hundreds of
+digits. `float()` turns a 309-digit run into `inf`, `inf` times 60 is still
+`inf`, the average of `+inf` and `-inf` is `nan`, and rendering either
+raises `OverflowError` in `int()`. Two guards close this. The regexes bound
+every digit run to nine digits (`\d{1,9}`): no tracker value has more, and
+nine digits keep every intermediate finite. And `parse_value` rejects any
+non-finite result with `Unreadable` regardless of how it was produced, so
+a future spelling that bypasses the bound still cannot leak `inf`.
+
+## WHY Half-Up Rounding for Duration and Time
+
+Python's `round()` rounds halves to even: 450.5 minutes becomes 450, 451.5
+becomes 452. A user who sees 7h 30m and 7h 31m averaged to "7h 30m" has no
+way to know the .5 was dropped by a tie rule. Rendering uses
+`math.floor(x + 0.5)` — a half always rounds up — so the rendered minute
+is the one a person would write down.
 
 ## WHY the Group Can Be Absent (F8-AC3)
 
@@ -120,7 +166,8 @@ because the user never asked for habits they did not configure.
 
 Each item: `tracker`, `type`, `kind` (`count` for boolean, `average`
 otherwise), `value` (the count, or the average: a number, minutes for
-duration and time), `rendered` (the value as text), `days_with_value`,
+duration and time; `null` for a time average with no clear direction),
+`rendered` (the value as text, or the "no clear average" label), `days_with_value`,
 `days_in_period`, `missing` and `unreadable` (ISO dates, sorted) and `text`
 (the whole line in the review language). Dates are the only daily-note
 content in the item; the values are the user's own numbers, and they go to

@@ -35,9 +35,11 @@ module therefore learns nothing about them; the lifecycle entry is the
 same four keys every other type carries.
 
 The transition trigger names the step that flips the state: the `doc_mark`
-step of `review-instructions.py deliver` (SDD Primary Flow step 9), the
-last of `note → set_json → set_md → doc_mark`, so that `approved` in the
-frontmatter means "the instruction set for this document was written" —
-`review_state` reads `approved` without a set JSON as a failed delivery to
-resume. The user's tick alone does not change the frontmatter; it is read
-by `review-doc.py parse` and refused as `not-approved` when absent.
+step of `review-instructions.py deliver` (planned, spec 045 Phase 4; SDD
+Primary Flow step 9), the last of `note → set_json → set_md → doc_mark`, so
+that `approved` in the frontmatter means "the instruction set for this
+document was written" — `review_state` (planned, spec 045 Phase 2 T2.3,
+completed in Phase 4) reads `approved` without a set JSON as a failed
+delivery to resume. The user's tick alone does not change the frontmatter;
+it is read by `review-doc.py parse` (planned, spec 045 Phase 3) and refused
+as `not-approved` when absent.

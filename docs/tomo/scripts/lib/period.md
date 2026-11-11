@@ -32,8 +32,9 @@ The argument and name regexes accept any four digits, so `0000-W13` and
 may start in the year before its week year or end in the year after it:
 `weeks_in(9999)` needs the start of week 1 of 10000, and under a Sunday-first
 rule week 1 of year 1 starts before 0001-01-01. Left alone these surface as a
-`ValueError` or `OverflowError` out of `review-session.py` instead of the JSON
-error object the skill expects (code review of T1.1).
+`ValueError` or `OverflowError` out of `review-session.py` (planned, spec 045
+Phase 2) instead of the JSON error object the skill expects (code review of
+T1.1).
 
 Two guards, so every entry point fails the same way: `weeks_in`, `week_of`,
 `week_start` and `Period.month` refuse a year outside `MIN_YEAR..MAX_YEAR` with
@@ -127,8 +128,8 @@ with an example instead of a date 7 days past the year's end.
 
 ## WHY Argument Parsing Returns an Object Instead of Raising
 
-`review-session.py start` prints one JSON object and exits 0 for every outcome
-the skill can act on (SDD Internal API Changes). `parse_args` returns either a
+`review-session.py start` (planned, spec 045 Phase 2) prints one JSON object
+and exits 0 for every outcome the skill can act on (SDD Internal API Changes). `parse_args` returns either a
 `Request` or a `RequestError` whose `to_dict()` is that JSON. `today` is a
 required keyword so a test can fix the calendar; the lib never calls
 `date.today()` itself.

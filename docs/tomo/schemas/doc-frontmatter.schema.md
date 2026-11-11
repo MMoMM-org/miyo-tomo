@@ -38,6 +38,7 @@ and `ENTITY: ReviewDoc`, 2026-11-11). Opening the block for one producer
 would either loosen `additionalProperties` for every producer or grow a
 per-type property set inside the `oneOf`, and both make the block's
 closed-set guarantee conditional. The open root is the place such keys
-were always meant to live; `review_doc_parse` and `review_state` read them
-there. The `tomo:` block of a review document is therefore
+were always meant to live; `review_doc_parse` (planned, spec 045 Phase 3)
+and `review_state` (planned, spec 045 Phase 2 T2.3, completed in Phase 4)
+read them there. The `tomo:` block of a review document is therefore
 schema-identical to a `suggestions` block except for `doc_type`.

@@ -1260,10 +1260,13 @@ keeping its own copy (see `docs/tomo/scripts/lib/render_helpers.md`).
 WHY the placement wording names the anchor heading and only that: the user
 has to find *one* line in the target note and know which side of it the block
 goes. The three placements the schema allows are worded as Hashi applies them
-(`Hashi/src/actions/anchorResolver.ts:30-40`): `before` = immediately above
-the anchor heading line; `inside` = as the last lines of that heading's
-section, above the next heading of the same or higher level; `after` =
-immediately below the heading line, above the section's own body. `/review`
+in `Hashi/src/actions/insertUnderMarker.ts` (`insertUnderMarker`): `before` =
+immediately above the anchor heading line and `after` = immediately below the
+heading line, above the section's own body — both from `anchorLine` /
+`insertAfter` of `resolveAnchor` in `anchorResolver.ts`; `inside` on a heading
+= as the last lines of that heading's section, above the next heading of the
+same or higher level — from `locateSection` in `sectionLocator.ts`, the one
+placement `insertUnderMarker` resolves without `resolveAnchor`. `/review`
 emits only `before` and `inside` (SDD ADR-3 — `after` would put the review
 above the user's own text), but the renderer words whatever placement an
 action carries rather than refusing one, because the tag-handler consolidation
@@ -1280,6 +1283,11 @@ and-paste rather than merge. It is grouped with `insert_under_marker` in
 siblings — same anchor, same target, same fence — and the bucket is the one
 the section-action family already lives in; a bucket of its own would split
 siblings and widen the renderer beyond the two branches this task adds.
+
+render_md 0.37.1 (Phase 1 review) refined `_fenced_content` to split the fence
+body on `"\n"` only, so the copied text comes back byte for byte; the reason
+is in `docs/tomo/scripts/lib/render_md.md` ("WHY `_fenced_content` splits on
+`"\n"` only").
 
 WHY a backtick in the anchor needs `code_span`: the anchor value is the
 heading text the user searches for, shown in inline code. A heading such as

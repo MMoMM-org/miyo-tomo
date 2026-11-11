@@ -15,7 +15,7 @@ identical-text comparison, the never-rewrite rule for a done step) and each
 was fixed after a live failure. A second copy for `/review` would drift from
 the first the next time either learned something. The loop moved as it was:
 `_deliver_step`, `_mark_in_flight`, `_record`, `_fail` and `_stable_block`
-became `StagedDelivery.deliver_step`, `mark_in_flight`, `record`, `fail` and
+(removed names) became `StagedDelivery.deliver_step`, `mark_in_flight`, `record`, `fail` and
 the module function `stable_block`, with their bodies unchanged. `/note`'s
 whole suite ran before and after the move with the same result, which is the
 proof the move preserved behaviour; the refactor is its own commit so that

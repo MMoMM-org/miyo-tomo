@@ -607,7 +607,10 @@ ENTITY: Period (NEW, lib/period.py)
   FIELDS: kind: week|month, year: int, number: int, start: date, end: date (inclusive), name: str
   BEHAVIORS:
     days() -> list[date]
-    weeks_overlapping() -> list[Period]            # month only
+    weeks_overlapping(rule=ISO) -> list[Period]    # month only (implemented, spec 045 T1.1: takes the week rule)
+    week(year, number, rule=ISO) -> Period         # classmethod; InvalidPeriod outside the year (implemented, spec 045 T1.1)
+    containing(kind, d, rule=ISO) -> Period        # classmethod (implemented, spec 045 T1.1: optional rule)
+    previous(rule=ISO) -> Period                   # (implemented, spec 045 T1.1: optional rule)
     is_finished(today) -> bool                     # end < today
     note_paths(folder, fmt) -> list[str]           # flat, then <folder>/<year>/ — week year for weeks, calendar year otherwise
                                                    # (implemented, spec 045 T1.1: no rule parameter — a Period already carries its numbers)

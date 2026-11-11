@@ -15,7 +15,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.3: 8 features, 59 criteria; v1.1 approved 2026-11-11; v1.2 SDD decisions; v1.3 validation findings (definitions, edge cases, KPI scope) |
-| solution.md | completed | v1.1: 19 components, ADR-1..13 confirmed, all 59 PRD criteria traced; validation findings worked in |
+| solution.md | completed | v1.2 (Phase 2 as-built); v1.1: 19 components, ADR-1..13 confirmed, all 59 PRD criteria traced; validation findings worked in |
 | plan/ | completed | v1.1: 6 phases, 34 tasks (28 deliverables + 6 phase validations); PRD traceability table in phase-6.md, checked by script |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -54,6 +54,8 @@
 | 2026-11-11 | Command name stays `/review`; Claude Code's built-in is `/code-review`; T5.2 checks the container first, a mod is the fallback | Owner |
 | 2026-11-11 | Phase 1 complete: T1.1–T1.7 implemented on fable, each spec- and code-reviewed (T1.1 and T1.2 one FAIL each, fixed); full suite 8294 passed, 1 known unrelated failure (test_install_smoke_ide_bridge_block_exists); drift check closed in 7bfbc2a6 | Coordinator |
 | 2026-11-11 | Process: commit 1acbfe03 carries T1.1 and T1.4 under T1.1's subject (parallel agents shared the index); one fable commit used its own Co-Authored-By line. Not rewritten (no amend/rebase); both disappear in the squash merge. Rule tightened: `git commit -F … -- <paths>` and the attribution copied verbatim | Coordinator |
+| 2026-11-11 | Phase 2 complete: T2.1–T2.3 on fable, each spec- and code-reviewed (T2.1 one spec FAIL + one code FAIL, T2.2 one spec FAIL + one code FAIL, T2.3 one code FAIL — all fixed); new libs review_vault, week_rule_inference, vault_config_edit; full suite 8488 passed, 1 known unrelated failure; drift closed in 38a5733e (SDD v1.2) | Coordinator |
+| 2026-11-11 | Phase 2 decisions: review heading ≤ level 5 so groups stay ≤ 6; config rule beats inferred rule; --first-day/--min-days only together; no kado-none signal for an empty open-review search; duplicate stem → flat folder is the target (T4.1); place-too-deep preview problem (T4.1/T4.2); T4.3 probes the set JSON only for approved documents | Coordinator |
 | 2026-11-11 | PRD v1.2 — F7-AC2 cleanup promise replaced by documentation of where content rests (transcripts, working folders, inbox) and a recommendation to protect the instance like the vault | Owner: content stays on the machine anyway; a cleanup script is overkill and inflexible |
 
 ## Context

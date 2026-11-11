@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
@@ -604,7 +604,7 @@ def test_exit_codes(mod, instance, monkeypatch, capsys):
         mod.main(["write", "--stem", "../x", "--proposals", "p.json"])
     assert stop.value.code == 2
     with pytest.raises(SystemExit) as stop:
-        mod.main(["parse", "--stem", "x"])
+        mod.main(["parse"])                                   # --stem is required on every subcommand
     assert stop.value.code == 2
     capsys.readouterr()
     stem, path = stage(instance, week_read(), GOOD)

@@ -2,17 +2,82 @@
 
 > Rationale for decisions in `tomo/scripts/review-doc.py`.
 > The script owns the review document of `/review` in the inbox (spec 045,
-> T3.6 `write`; `parse` and `replace` follow in T3.7): it turns the read
-> period and the model's `proposals.json` into `<period> Review.md`, writes
-> it through Kado, records the Pass 1 counts and removes the content files.
+> T3.6 `write`, T3.7 `parse` and `replace`): it turns the read period and
+> the model's `proposals.json` into `<period> Review.md`, writes it through
+> Kado, records the Pass 1 counts and removes the content files; later it
+> reads the edited document back for Pass 2 and, on a confirmed start-over,
+> writes a new document over its own.
 
 ## WHY One Script With Subcommands
 
 SDD Internal API Changes names `review-doc.py write | parse | replace`. One
-argparse parser with subparsers lets T3.7 add `parse` and `replace` without
-a second script or a second exception handler; `write` is the only
-subcommand in T3.6 and the parser already carries the shared `--config`,
-`--profiles-dir` and `--tmp` options at the top level.
+argparse parser with subparsers holds the three without a second script or
+a second exception handler; the parser carries the shared `--config`,
+`--profiles-dir` and `--tmp` options at the top level, and every subcommand
+takes `--stem`, so the one `Refused` / `Stopped` handler in `main` can name
+the stem for all of them.
+
+## WHY `parse` Reads the Document From `meta.json`'s Path
+
+`parse --stem S` has only the stem. The document's path was decided by
+`write` (the inbox path of `<period> Review.md`) and recorded in the
+content-free `meta.json`, so `parse` reads it there; the skill may hand in
+`--doc-path` from the `start` listing instead (that listing finds documents
+by frontmatter, renamed ones included). No `meta.json` and no `--doc-path`
+is `not-found`, like a document that is gone from its path: the skill
+offers to start over (SDD Error Handling). One Kado read, `kado-read
+note`, is the whole cost; the document is parsed by `lib/review_doc_parse`.
+
+## WHY `parse` Writes `approved.json` and Prints Counts Only (ADR-9)
+
+Pass 2 (Phase 4) needs the kept items' verbatim text; the skill needs
+counts, the Approved state and the warnings. stdout is the skill's — and
+the transcript's — so it carries `items` as `{id, origin, kept, edited}`,
+the four counts, `approved`, `nothing_to_deliver` and the warnings, never
+a line of the document. The text goes to `tomo-tmp/review/<stem>/
+approved.json`, the stage folder the SDD already documents as resting
+content (PRIVACY.md), as the ApprovedReview record: kept items only, groups
+in rendering order, each with `text` and `lines` as the user left them.
+`parse` writes it on every run, also when the document is not approved
+(the file says so), so Phase 4 reads one file and never re-parses.
+
+## WHY `edited` Comes From `pass1_items` in `meta.json`
+
+`write` stores a truncated SHA-256 per Tomo item id (`pass1_items`) next to
+`pass1_counts`; `parse` compares. The rationale — Pass 1's text exists only
+in the document after ADR-9's deletion, and a fingerprint is not content —
+is in `docs/tomo/scripts/lib/review_doc_parse.md`. `pass1_items` also gives
+`deleted` its exact id set.
+
+## WHY `replace` Has Three Answers (`needs-confirm`, `--confirm`, `--abort`)
+
+F6-AC1: starting over names the document that will be replaced and asks
+again. `replace --stem S` alone answers `needs-confirm` with the
+`doc_path`, computed the way `write` computes it (the kept `read.json`'s
+period under the setup's inbox) — no Kado call, nothing written, the skill
+asks the question. `replace --confirm` is `render_and_write` with
+`allow_overwrite_review=True`: the same check, render and write as `write`,
+from the `read.json` and `proposals.json` that `write` kept on
+`review-exists` (the default `--proposals` is the stage copy), so no
+second read and no second model pass. A success is reported as `replaced`;
+`meta.json` is rewritten by the same path (`steps_done` empty, fresh
+counts and fingerprints — the reset); the stage content files go away as
+after `write`; a non-Tomo file at the path is still `doc-name-taken`,
+because the overwrite flag covers Tomo's own document and nothing else.
+
+`replace --abort` is the user declining to start over: the run that
+produced the kept `read.json` and `proposals.json` is over, and ADR-9 says
+content does not linger for a run that is not going anywhere. Both files
+are deleted; the document and `meta.json` stay untouched, because the
+existing review goes on exactly as it was. `--confirm` and `--abort` are
+mutually exclusive on the parser so a mixed call is exit 2, not a guess.
+
+## WHY a Rewrite Also Removes `approved.json`
+
+`approved.json` is the parse of one document. After `write` or `replace`
+puts a new document at the path, a leftover `approved.json` would describe
+the previous one; Phase 4 must never land a stale parse, so the successful
+write path removes it with the other stage files.
 
 ## WHY the Script Does the Kado Calls and the Lib Does Not
 

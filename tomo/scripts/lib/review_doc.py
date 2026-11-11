@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.2.0
+# version: 0.2.1
 """The review document ``<period> Review.md`` (spec 045, T3.6, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -24,7 +24,8 @@ empty group. Every item line that starts with a structural marker (heading,
 checkbox bullet, quote, fence, thematic break) is escaped with a leading
 backslash so the text cannot forge a line Pass 2 would read. Habits arrive
 rendered from ``review_habits`` and get an id like every Tomo item; no habits
-means no habits heading.
+means no habits heading. ``ID_PATTERN`` and ``group_labels`` are the shared
+vocabulary of ``review_doc_parse``, which reads the document back.
 
 No Kado, no model, no file I/O beyond the schema. Needs jsonschema and PyYAML.
 
@@ -64,6 +65,7 @@ NO_WEEKLY = "no-weekly-notes"
 EMPTY_TEXT = "empty-text"
 
 ID_MARK = "%%"
+ID_PATTERN = re.compile(r"%%(t\d+)%%")
 _CONTINUATION = "  "
 _ESCAPE = "\\"
 # A line that would be structure in the document: heading, checkbox bullet, quote, fence, thematic break.
@@ -94,6 +96,11 @@ class ReadInvalid(ValueError):
 
 def labels(language: str) -> Dict[str, str]:
     return _LABELS.get((language or "").lower(), _LABELS["en"])
+
+
+def group_labels() -> Dict[str, str]:
+    """Every group heading label of every language → its group key."""
+    return {table[group]: group for table in _LABELS.values() for group in GROUPS}
 
 
 def doc_name(period_name: str) -> str:

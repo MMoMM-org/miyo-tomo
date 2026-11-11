@@ -110,6 +110,11 @@ follow and belong to the item above. `%%` sequences inside the model's text
 are removed before rendering so no text can forge or break an id, and ids
 are numbered over the whole document, so they stay unique across groups.
 
+The id's form (`ID_PATTERN`) and the heading labels of every language
+(`group_labels`) are exported from this module (0.2.1) because
+`review_doc_parse` reads the document back by exactly these shapes; one
+owner for the vocabulary means the writer and the parser cannot drift.
+
 ## WHY the "Nothing Found" Line Is a Plain Bullet
 
 F4-AC4: an empty group shows one line and that line never lands. A

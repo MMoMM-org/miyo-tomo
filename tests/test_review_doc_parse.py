@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -262,6 +262,28 @@ def test_a_bom_trailing_space_and_closing_hashes_are_tolerated_but_not_indentati
     doc = parse(text.replace("## Erledigt", "  ## Erledigt ##"), reference)
     assert doc.warnings == ["item-outside-group"] and "done" not in doc.groups()
     assert [it.id for it in doc.groups()["unknown"]] == ["t1", "t2"]
+
+
+def test_a_heading_made_only_of_hashes_is_an_unknown_group_never_a_merge():
+    # `## ###` is a column-0 heading whose label is empty after the closing hashes are cut: it opens
+    # the `unknown` group with `unknown-group`. RED when the parser skips a heading with an empty
+    # label (`if heading and heading.group(1).strip():`): `## ###` then is no boundary at all and
+    # t3 is merged into the preceding `done` group, which is exactly the silent re-grouping the
+    # structural grammar must never do
+    text = document()
+    reference = rdp.link_stems(text)
+    doc = parse(text.replace("## Offen", "## ###"), reference)
+    assert doc.warnings == ["unknown-group"]
+    assert "open" not in doc.groups()
+    assert [it.id for it in doc.groups()["done"]] == ["t1", "t2"], "t3 was merged into the group above"
+    assert [it.id for it in doc.groups()["unknown"]] == ["t3"]
+    assert list(doc.groups()) == ["done", "themes", "growth", "habits", "unknown"]
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0}
+    # the same with a space-only label and with the hashes spaced out
+    for heading in ("## ", "## # # #", "##  ##\t"):
+        doc = parse(text.replace("## Offen", heading), reference)
+        assert [it.id for it in doc.groups().get("unknown", [])] == ["t3"], heading
+        assert [it.id for it in doc.groups()["done"]] == ["t1", "t2"], heading
 
 
 def test_a_crlf_document_parses_like_its_lf_twin():

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_review_state.py — lib/review_state.py, the one owner of /review's
 open-review states (spec 045 T2.3; SDD Complex Logic review_state).
 
@@ -8,7 +8,10 @@ open-review states (spec 045 T2.3; SDD Complex Logic review_state).
   JSON → failed-delivery; pending-approval without a set → open; a set JSON
   handed in raises StateNotClassified (steps 3–7 arrive in T4.3); a missing
   or corrupt meta counts as absent
+- safe_stem: the one stem guard (T3.8) — a plain folder name passes; empty,
+  whitespace, ".", "..", or anything carrying "/" or "\\" is refused
 - read_meta: the content-free meta.json of a stem, None when missing or broken
+  AND None for an unsafe stem — "." never reads <root>/meta.json
 - open_reviews: one entry per review document found by frontmatter (renamed
   documents included), stem from review_stem or <period>_review, ordered by
   period start under the configured rule AND name formats (the default ISO
@@ -53,6 +56,32 @@ def _meta(root: Path, stem: str, **fields) -> None:
 def test_states_are_the_sdd_list_in_order():
     assert rs.STATES == ("open", "failed-delivery", "delivered", "applied", "move-refused", "target-missing")
     assert rs.OPEN == "open" and rs.FAILED_DELIVERY == "failed-delivery"
+
+
+# ---------------------------------------------------------------- safe_stem
+
+@pytest.mark.parametrize("stem", ["2026-W13_review", "2026-03_review", "custom_review", "a.b", "x"])
+def test_safe_stem_accepts_a_plain_folder_name(stem):
+    assert rs.safe_stem(stem) is True
+
+
+@pytest.mark.parametrize("stem", ["", " ", "\t", ".", "..", "a/b", "/a", "a\\b", "..\\x", "../x", "a..b", "./a"])
+def test_safe_stem_refuses_what_is_not_a_folder_under_the_root(stem):
+    assert rs.safe_stem(stem) is False
+
+
+def test_read_meta_refuses_an_unsafe_stem_and_never_reads_the_root(tmp_path):
+    # RED when read_meta joins the stem without the guard: "." resolves to <root>/meta.json and
+    # ".." to the parent's, both of which exist here and carry a failed_step
+    (tmp_path / "root").mkdir()
+    (tmp_path / "root" / "meta.json").write_text(json.dumps({"failed_step": "root-level"}), encoding="utf-8")
+    (tmp_path / "meta.json").write_text(json.dumps({"failed_step": "parent-level"}), encoding="utf-8")
+    _meta(tmp_path / "root", "2026-W13_review", failed_step="set_md")
+    assert rs.read_meta(tmp_path / "root", ".") is None
+    assert rs.read_meta(tmp_path / "root", "..") is None
+    assert rs.read_meta(tmp_path / "root", "") is None
+    assert rs.read_meta(tmp_path / "root", "2026-W13_review/../..") is None
+    assert rs.read_meta(tmp_path / "root", "2026-W13_review") == {"stem": "2026-W13_review", "failed_step": "set_md"}
 
 
 # ---------------------------------------------------------------- review_state

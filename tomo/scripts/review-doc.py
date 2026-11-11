@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.4.1
+# version: 0.4.2
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045 T3.6/T3.7, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
@@ -63,7 +63,8 @@ Rules:
 Exit codes:
     0 — output usable (every status)
     1 — unexpected exception; stderr carries the exception class name only
-    2 — bad invocation (unknown subcommand or flag, missing argument, unsafe --stem)
+    2 — bad invocation (unknown subcommand or flag, missing argument, a --stem that is
+        empty, ".", "..", or carries / or \\ — lib/review_state.safe_stem)
 
 Design notes: docs/tomo/scripts/review-doc.md
 """
@@ -87,7 +88,7 @@ from lib import review_habits as rh  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
-from lib.review_state import META_FILE, read_meta  # noqa: E402
+from lib.review_state import META_FILE, read_meta, safe_stem  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
 from lib.run_id import generate as generate_run_id  # noqa: E402
 
@@ -95,7 +96,6 @@ DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
 READ_FILE = "read.json"
 PROPOSALS_FILE = "proposals.json"
-_UNSAFE = ("/", "\\", "..")
 
 
 class Refused(Exception):
@@ -329,8 +329,8 @@ def _date_arg(text: str) -> date:
 
 
 def _stem_arg(text: str) -> str:
-    if not text.strip() or any(mark in text for mark in _UNSAFE):
-        raise argparse.ArgumentTypeError("expected a plain stem like 2026-W13_review")
+    if not safe_stem(text):
+        raise argparse.ArgumentTypeError("expected a plain stem like 2026-W13_review (not empty, . or .., no / or \\)")
     return text
 
 

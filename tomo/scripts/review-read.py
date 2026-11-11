@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.1.1
+# version: 0.1.2
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -69,12 +69,11 @@ from lib.period import KINDS, MONTH, WEEK, InvalidPeriod, Period, WeekRule  # no
 from lib.review_day import day_settings  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, ReviewPacer  # noqa: E402
 from lib.review_period import ADVICE_CHECK_ACCESS, read_period, sources_from_config  # noqa: E402
-from lib.review_state import STEM_SUFFIX  # noqa: E402
+from lib.review_state import STEM_SUFFIX, safe_stem  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
 READ_FILE = "read.json"
-_UNSAFE = ("/", "\\", "..")
 _PERIOD_RE = {WEEK: re.compile(r"^(\d{4})-W(\d{2})$"), MONTH: re.compile(r"^(\d{4})-(\d{2})$")}
 
 
@@ -101,8 +100,8 @@ def period_from(name: str, kind: str, rule: WeekRule) -> Optional[Period]:
 
 
 def _stem_arg(text: str) -> str:
-    if text.strip() in ("", ".") or any(mark in text for mark in _UNSAFE):
-        raise argparse.ArgumentTypeError("a plain folder name, not empty or ., without /, \\ or ..")
+    if not safe_stem(text):
+        raise argparse.ArgumentTypeError("a plain folder name, not empty, . or .., without / or \\")
     return text
 
 

@@ -1,5 +1,5 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, items by id, user items.
-# version: 0.3.0
+# version: 0.3.1
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -46,7 +46,7 @@ DUPLICATE_GROUP = "duplicate-group"
 FRONTMATTER_BROKEN = "frontmatter-broken"
 
 _FENCE = "---"
-_BOM = "﻿"
+_BOM = "\ufeff"
 _ITEM = re.compile(r"^- \[([ xX])\](?: (.*))?$")
 _HEADING = re.compile(r"^## (.*?)[\s#]*$")
 _APPROVED = re.compile(r"^- \[([ xX])\] Approved\s*$")
@@ -228,7 +228,8 @@ def parse_document(text: str, pass1_links: Optional[Dict[str, List[str]]] = None
     """Parse the document text. ``pass1_links`` is the id → link stems map of Pass 1 (``edited`` and
     ``deleted`` come from it); ``pass1_total`` alone gives ``deleted`` by count when the map is missing."""
     warnings: List[str] = []
-    front, body = _split_frontmatter(text[len(_BOM):].splitlines() if text.startswith(_BOM) else text.splitlines())
+    without_bom = text[len(_BOM):] if text.startswith(_BOM) else text
+    front, body = _split_frontmatter(without_bom.splitlines())
     if not _is_review(front):
         _warn(warnings, FRONTMATTER_BROKEN)
     approved, items, order = _parse_body(body, warnings)

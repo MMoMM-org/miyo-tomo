@@ -146,7 +146,12 @@ Repo rule for agent-called scripts and ADR-9: 0 for every outcome the skill
 can act on (`status`, `problems`, `error`), 2 for a bad invocation
 (argparse, an unsafe `--stem`), 1 only for an unexpected exception, where
 stderr carries the exception class name and nothing else — never a path, a
-proposal or a line of the document.
+proposal or a line of the document. An unsafe `--stem` is what
+`lib/review_state.safe_stem` refuses — empty, whitespace, `.`, `..`, or
+carrying `/` or `\` — the same guard `review-read.py` and `read_meta` use;
+`.` in particular would make `write` stage and delete files in
+`tomo-tmp/review` itself (docs/tomo/scripts/lib/review_state.md, "WHY One
+Stem Guard").
 
 ## WHY `--run-id` Is Optional
 

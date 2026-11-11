@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
@@ -619,6 +619,27 @@ def test_missing_read_or_setup_is_refused(mod, instance, monkeypatch, capsys):
     (instance / "config" / "vault-config.yaml").write_text("concepts:\n  inbox: 100 Inbox/\n", encoding="utf-8")
     code, out, _ = write(mod, monkeypatch, capsys, instance, week_read(), GOOD, ReviewFakeVault({}))
     assert code == 0 and out["status"] == "refused" and out["problems"] == ["setup-missing"]
+
+
+@pytest.mark.parametrize("argv", [
+    ["write", "--stem", ".", "--proposals", "p.json"],
+    ["parse", "--stem", "."],
+    ["replace", "--stem", ".", "--abort"],
+    ["write", "--stem", "..", "--proposals", "p.json"],
+    ["parse", "--stem", " "],
+    ["replace", "--stem", "a\\b", "--confirm"],
+])
+def test_a_stem_that_is_not_a_folder_under_tmp_is_a_usage_error_on_every_subcommand(mod, instance, monkeypatch, capsys, argv):
+    # RED when review-doc.py keeps its own stem check without ".": `--stem .` resolves the stage to
+    # tomo-tmp/review itself, so write/replace would create and delete files there and parse would
+    # read tomo-tmp/review/meta.json; the shared lib/review_state.safe_stem refuses it with exit 2
+    stage_root = instance / "tomo-tmp" / "review"
+    stage_root.mkdir(parents=True)
+    (stage_root / "meta.json").write_text('{"doc_path": "100 Inbox/x.md"}', encoding="utf-8")
+    with pytest.raises(SystemExit) as stop:
+        mod.main(argv)
+    assert stop.value.code == 2
+    assert sorted(p.name for p in stage_root.iterdir()) == ["meta.json"], "the review root was touched"
 
 
 def test_exit_codes(mod, instance, monkeypatch, capsys):

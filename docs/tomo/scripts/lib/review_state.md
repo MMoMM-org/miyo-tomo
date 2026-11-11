@@ -59,6 +59,26 @@ removed, still names its period; deriving the stem from it keeps `meta.json`
 and the set JSON reachable instead of listing a review no later step can
 act on.
 
+## WHY One Stem Guard (`safe_stem`) Lives Here
+
+WHY: a stem names a folder *under* `tomo-tmp/review/`, and three callers
+joined it onto that root — `read_meta` here, `review-read.py --stem` and
+`review-doc.py --stem`. Each had its own copy of the check, and the copies
+drifted: `review-read.py` refused `.` while `review-doc.py` did not, so
+`review-doc.py write --stem .` would have staged, written and then deleted
+files in `tomo-tmp/review` itself, beside every other review's folder, and
+`read_meta(root, ".")` read `tomo-tmp/review/meta.json` as if it were a
+stem's. One predicate, `safe_stem`, now refuses what cannot be a plain
+folder name — empty or whitespace, `.`, `..`, anything carrying `/` or
+`\` — and the three callers call it; the CLIs keep their argparse
+`type=` wrappers only to turn `False` into exit 2. It lives in this module
+because this module already owns the stem's shape (`STEM_SUFFIX`) and the
+stage layout (`<root>/<stem>/meta.json`); a guard beside the layout it
+guards cannot drift from it. The check is a substring test on purpose: a
+`..` anywhere (`a..b`) is refused although it is a legal folder name, since
+no `<period>_review` stem ever contains it and the cost of a false refusal
+is one exit 2.
+
 ## WHY the Listing Is Ordered by Period Start
 
 WHY: SDD `OUTPUT: list ordered by period`. Weeks and months interleave

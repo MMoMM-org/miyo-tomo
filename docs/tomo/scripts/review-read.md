@@ -128,11 +128,15 @@ exception class name on an unexpected error and nothing else; the privacy
 test over the script asserts that a marker from a daily's text reaches neither
 stream. `--stem` is accepted (the SDD's `[--stem S]`) and refused when it
 contains `/`, `\` or `..`, as `review-doc.py` refuses it. It is also refused
-when it is empty, whitespace or exactly `.` (T3.8 tidy): those pass the
+when it is empty, whitespace or exactly `.`: those pass the
 marker check but do not name a folder *under* `--tmp` — `Path(tmp) / "."` is
 `tomo-tmp/review` itself, so `read.json` would land beside every other
 review's stage folder and `review-doc.py write --stem .` would delete it
 from there. A stem is a plain folder name or it is a usage error (exit 2).
+The check is `lib/review_state.safe_stem`, shared with `review-doc.py` and
+`read_meta` (T3.8: the three private copies had drifted — see
+docs/tomo/scripts/lib/review_state.md, "WHY One Stem Guard"); the argparse
+`type=` wrapper here only turns its `False` into exit 2.
 
 ## WHY Every Actionable Outcome Exits 0
 

@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.2.0
+# version: 0.2.1
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -9,6 +9,11 @@ top-level ``review_period``, ``review_kind`` and ``review_stem`` keys name the
 review, ``tomo.state`` says whether the user approved it. ``meta.json`` under
 ``tomo-tmp/review/<stem>/`` is content-free and only adds ``failed_step``; a
 missing or broken meta counts as absent.
+
+``safe_stem`` is the one guard for a stem: a plain folder name under
+``tomo-tmp/review/``, never empty, ``.``, ``..`` or carrying ``/`` or ``\\``.
+``read_meta`` applies it, and ``review-read.py`` / ``review-doc.py`` call it
+from their ``--stem`` argparse types (T3.8: three private copies had drifted).
 
 ``open_reviews`` orders the listing by period start under the configured
 week rule and name formats (the default ISO week format would override a
@@ -43,11 +48,22 @@ STATES = (OPEN, FAILED_DELIVERY, DELIVERED, APPLIED, MOVE_REFUSED, TARGET_MISSIN
 DOC_STATE_APPROVED = "approved"
 META_FILE = "meta.json"
 STEM_SUFFIX = "_review"
-_UNSAFE = ("/", "\\", "..")
+_UNSAFE_MARKS = ("/", "\\", "..")
+_NOT_A_FOLDER = ("", ".")
 
 
 class StateNotClassified(NotImplementedError):
     """A set JSON was handed in: steps 3–7 of the algorithm arrive in spec 045 T4.3."""
+
+
+# ---------------------------------------------------------------- the stem
+
+def safe_stem(stem: str) -> bool:
+    """Whether ``stem`` names a plain folder under the stage root: not empty or whitespace,
+    not ``.`` or ``..``, and without ``/``, ``\\`` or ``..`` anywhere."""
+    if not isinstance(stem, str) or stem.strip() in _NOT_A_FOLDER:
+        return False
+    return not any(mark in stem for mark in _UNSAFE_MARKS)
 
 
 # ---------------------------------------------------------------- the state
@@ -75,8 +91,8 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
 # ---------------------------------------------------------------- meta.json
 
 def read_meta(root: Path, stem: str) -> Optional[dict]:
-    """``<root>/<stem>/meta.json`` as a dict; None when missing, unparsable or not an object."""
-    if not stem or any(mark in stem for mark in _UNSAFE):
+    """``<root>/<stem>/meta.json`` as a dict; None when missing, unparsable, not an object or the stem is unsafe."""
+    if not safe_stem(stem):
         return None
     path = Path(root) / stem / META_FILE
     try:

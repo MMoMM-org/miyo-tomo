@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.2.1
+# version: 0.2.2
 """The review document ``<period> Review.md`` (spec 045, T3.6, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -22,7 +22,8 @@ from the de/en label table (English otherwise), Tomo items as
 continuation lines indented by two spaces, a plain ``- …`` bullet for an
 empty group. Every item line that starts with a structural marker (heading,
 checkbox bullet, quote, fence, thematic break) is escaped with a leading
-backslash so the text cannot forge a line Pass 2 would read. Habits arrive
+backslash so the text cannot forge a line Pass 2 would read (``neutralised``
+is that predicate, shared with ``review_actions`` for the landing). Habits arrive
 rendered from ``review_habits`` and get an id like every Tomo item; no habits
 means no habits heading. ``ID_PATTERN`` and ``group_labels`` are the shared
 vocabulary of ``review_doc_parse``, which reads the document back.
@@ -279,14 +280,16 @@ def _clean(text: Any) -> List[str]:
     return [ln for ln in lines if ln] or [""]
 
 
-def _neutralised(line: str) -> str:
-    """``line`` with a leading backslash when it would be a heading, checkbox, quote, fence or thematic break."""
+def neutralised(line: str) -> str:
+    """``line`` with a leading backslash when it would be a heading, checkbox, quote, fence or thematic break.
+
+    Idempotent: a line that already starts with the backslash matches no marker and is returned unchanged."""
     return _ESCAPE + line if _STRUCTURAL.match(line) or _RULE.match(line) else line
 
 
 def item_lines(text: str, links: Sequence[str], number: int) -> List[str]:
     """The checkbox line with links and id, then the continuation lines; no line of the text is structure."""
-    first, *rest = (_neutralised(ln) for ln in _clean(text))
+    first, *rest = (neutralised(ln) for ln in _clean(text))
     link_part = f" ({', '.join(f'[[{link}]]' for link in links)})" if links else ""
     return [f"- [x] {first}{link_part} {ID_MARK}t{number}{ID_MARK}", *(_CONTINUATION + ln for ln in rest)]
 

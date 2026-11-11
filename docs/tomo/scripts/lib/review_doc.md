@@ -83,7 +83,11 @@ The T3.7 parser unescapes nothing: it keeps the item text verbatim, backslash
 included, because the text is the user's editing surface and the escape is
 part of what they see. Phase 4's landing (writing the approved items into
 the weekly/monthly note) has its own escaping decision; this one is about
-the review document only.
+the review document only. The predicate is public as `neutralised` (0.2.2)
+because `review_actions` runs the same one over every landed line: one
+predicate on both sides is what makes the second pass idempotent — a line
+this module escaped starts with a backslash, which no marker pattern
+matches, so it lands with exactly one.
 
 ## WHY Habits Never Come From `proposals.json`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -76,6 +76,9 @@ USER_TEXT_FIELDS = {
     ("review-session", "match", "anchor_candidates[]"):
         ({"weekly"}, "without a template heading to propose the place from, the headings of the two most recent "
                      "periodic notes are offered for the anchor pick (F1-AC7, Phase 6 live-walk fix)"),
+    ("review-session", "match", "proposal.place.anchor"):
+        ({"weekly"}, "--anchor echoes the heading the user picked from anchor_candidates[] or typed: the periodic "
+                     "note's own text, the same rule as --place-anchor (fix round 1 of the live-walk fix)"),
     ("review-instructions", "preview", "section_md"):
         ({"proposal"}, "the preview prints the section as it will land, so the user reads it before Deliver (F5-AC2)"),
     ("review-instructions", "preview", "headings[]"):
@@ -286,10 +289,17 @@ def _session(w: Walk) -> None:
                     ["--config", "config/no-mapping.yaml", "match", "--kind", "week", "--today", TODAY])
     assert rc == 0 and out["template_candidates"] == ["t_week"] and out["needs_anchor"] is True, out
     assert any(WKL in h for h in out["anchor_candidates"]), "the recent weekly note's marker heading is a candidate"
+    picked = next(h for h in out["anchor_candidates"] if WKL in h)
     rc, out = w.run("review-session", "match",
                     ["--config", "config/no-mapping.yaml", "match", "--kind", "week", "--template", "t_week",
                      "--today", TODAY])
     assert rc == 0 and out["proposal"]["template"] == "t_week.md" and "needs_anchor" not in out, out
+    # `0 none` and the picked heading carried on a rerun: no candidates, no anchor question, the anchor echoed
+    rc, out = w.run("review-session", "match",
+                    ["--config", "config/no-mapping.yaml", "match", "--kind", "week", "--template", "none",
+                     "--anchor", picked, "--today", TODAY])
+    assert rc == 0 and "template_candidates" not in out and "needs_anchor" not in out, out
+    assert out["proposal"]["template"] is None and out["proposal"]["place"]["anchor"] == picked, out
 
 
 def _week(w: Walk) -> None:

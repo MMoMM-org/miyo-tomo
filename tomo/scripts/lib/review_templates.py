@@ -1,6 +1,6 @@
 # review_templates.py — the template candidates and the anchor candidates of the /review setup preview.
-# version: 0.1.0
-"""The two questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8).
+# version: 0.2.0
+"""The two questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8), and their answers.
 
 ``template_candidates(vault, base_path, kind)`` lists the notes of
 ``templates.base_path`` whose file name fits the kind (``week``/``woche``,
@@ -8,7 +8,14 @@
 ``.md``, sorted case-insensitively; None when Kado answered with nothing.
 ``template_name(text)`` normalises a ``--template`` value to its ``.md`` file
 name and raises ``ValueError`` for a name that would leave the folder;
-``template_vault_path(base_path, name)`` is where the script reads it.
+``template_choice(text)`` is the same with the bare word ``none`` — the user's
+"no template" answer — returned as ``NO_TEMPLATE``; ``anchor_text(text)`` is
+the ``--anchor`` answer, trimmed, one non-blank line or ``ValueError``.
+``template_vault_path(base_path, name)`` is where the script reads a template;
+``resolve_template(vault, base_path, name, kind, no_template=...)`` reads and
+classifies the named template or, with no name and ``no_template`` False, lists
+the candidates once, returning the hint sentence of an unreadable template or
+a ``kado-none`` templates folder.
 ``anchor_candidates_from_notes(vault, notes, fmt, rule, kind)`` reads the two
 periodic notes with the latest period under the proposed format and rule and
 returns their headings below the title, most recent first, duplicates dropped.
@@ -27,7 +34,12 @@ from lib.review_vault import TEMPLATER_MARK, headings
 
 KIND_WORDS = {WEEK: ("week", "woche"), MONTH: ("month", "monat")}
 RECENT_NOTES = 2
+NO_TEMPLATE = "none"
 _UNSAFE = ("..", "\\")
+TEMPLATE_HINT = ("Kado could not read the template {path}; the Kado key may have no access "
+                 "to it. A plain note (title and review section) is proposed instead.")
+TEMPLATES_FOLDER_HINT = ("Kado returned none for the templates folder {folder}: it may be empty, or the Kado "
+                         "key may not reach it. No template is proposed.")
 
 
 def template_candidates(vault, base_path: str, kind: str) -> Optional[List[str]]:
@@ -54,12 +66,43 @@ def template_vault_path(base_path: Optional[str], name: Optional[str]) -> Option
     return base_path.rstrip("/") + "/" + name
 
 
+def resolve_template(vault, base_path: Optional[str], name: Optional[str], kind: str, *,
+                     no_template: bool = False) -> Tuple[str, Optional[str], Optional[List[str]], Optional[str]]:
+    """``(template_kind, template_text, candidates, hint)``: the named template read and classified (candidates
+    None), or — with no name and ``no_template`` False — the candidates of ``base_path`` listed once (``[]``
+    without a base path or for a ``kado-none`` listing); ``no_template`` is the "no template" answer: nothing
+    listed, candidates None. ``hint`` is the sentence for an unreadable template or a ``kado-none`` folder."""
+    path = template_vault_path(base_path, name)
+    if path is not None:
+        template_kind, text = vault.template(path)
+        return template_kind, text, None, TEMPLATE_HINT.format(path=path) if template_kind == "unreadable" else None
+    if no_template:
+        return "missing", None, None, None
+    candidates = template_candidates(vault, base_path, kind) if base_path else []
+    if candidates is None:
+        return "missing", None, [], TEMPLATES_FOLDER_HINT.format(folder=base_path)
+    return "missing", None, candidates, None
+
+
 def template_name(text: str) -> str:
     """The ``.md`` file name of a ``--template`` value; ``ValueError`` for an unsafe or blank name."""
     name = text.strip()
     if not name or name == "." or name.startswith("/") or any(mark in name for mark in _UNSAFE):
         raise ValueError("a template name below templates.base_path, without .., \\ or a leading /")
     return name if name.endswith(".md") else name + ".md"
+
+
+def template_choice(text: str) -> str:
+    """``NO_TEMPLATE`` for the bare word ``none`` (the ``0 none`` answer), else ``template_name``."""
+    return NO_TEMPLATE if text == NO_TEMPLATE else template_name(text)
+
+
+def anchor_text(text: str) -> str:
+    """The ``--anchor`` answer trimmed; ``ValueError`` unless it is one non-blank line."""
+    anchor = text.strip()
+    if not anchor or "\n" in anchor or "\r" in anchor:
+        raise ValueError("one non-blank line, the text of the heading")
+    return anchor
 
 
 def template_anchor_candidates(template_headings: List[Tuple[int, str]]) -> List[Tuple[int, str]]:

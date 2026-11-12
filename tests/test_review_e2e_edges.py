@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -14,8 +14,10 @@ correction replaces the saved setup (the other keys kept); a week with only a fe
 seven days) → the report names each day, the dailies found, and the document is written for the existing
 weekly note; a first setup whose config maps no weekly template (the owner's instance, Phase 6 live walk) → `match`
 lists the templates folder's `template_candidates` and marks `needs_anchor`, the user's pick is passed back as
-`--template`, Confirm saves the mapping key beside the setup, and the review then reads. Every write attempted
-through the client is under the inbox prefix, per test and in the sweep.
+`--template`, Confirm saves the mapping key beside the setup, and the review then reads; the same setup with `0 none`
+and a typed anchor (fix round 1) → the week-rule rerun carries `--template none` and lists the templates folder no
+second time, the Correct rerun carries `--anchor` and keeps the heading, Confirm saves the anchor and no mapping
+key. Every write attempted through the client is under the inbox prefix, per test and in the sweep.
 
 The read-side edge cases of the PRD are unit-tested, not walked here: a linked Dayplanner or journal note that
 is missing or cannot be read → tests/test_review_day.py::test_missing_linked_note_is_a_problem_of_that_day_and_the_day_still_read
@@ -158,6 +160,40 @@ def test_first_setup_without_a_template_mapping_asks_for_the_template_and_saves_
     assert after["review"]["weekly"]["place"] == {"anchor": "In my own words", "placement": "before"}
     out = walk.start(WEEK_PERIOD)
     assert out["setup"] == {"week": "present", "month": "missing"}, out
+    read = walk.read(WEEK_PERIOD, WEEK)
+    assert read["status"] == "ok" and read["nothing_to_review"] is False, read
+    assert walk.vault.recorded == [], "the setup writes only the config file"
+
+
+def test_first_setup_with_no_template_keeps_that_answer_and_the_typed_anchor_on_every_rerun(tmp_path, monkeypatch,
+                                                                                            capsys, request):
+    """Fix round 1 of the live-walk fix: the user types `0` (no template) and then a heading. Each later `match`
+    of step 2 — the week-rule rerun, a Correct rerun — carries `--template none` and, once given, `--anchor`, so the
+    templates folder is listed once, the candidates are not offered again and the heading is not asked again;
+    Confirm saves the anchor and touches no mapping key, and the review then reads the period."""
+    config = config_without_setup()
+    config["templates"] = {"base_path": "Templates/", "mapping": {"daily": "t_day.md"}}
+    walk = Walk(tmp_path, monkeypatch, capsys, request.node.nodeid, config=config)
+    first = walk.match(WEEK)
+    assert first["template_candidates"] == ["t_week"] and first["needs_anchor"] is True, first
+    assert "Review of the Week" in first["anchor_candidates"]
+    p = first["proposal"]
+    rerun = walk.match(WEEK, "--folder", p["folder"], "--format", p["format"], "--first-day", "monday",
+                       "--min-days", "4", "--template", "none")                     # the week-rule rerun after `0`
+    assert "template_candidates" not in rerun and rerun["proposal"]["template"] is None, rerun
+    assert rerun["needs_anchor"] is True and rerun["anchor_candidates"] == first["anchor_candidates"]
+    corrected = walk.match(WEEK, "--folder", p["folder"], "--template", "none",
+                           "--anchor", "Review of the Week")                        # a Correct after the heading
+    assert corrected["proposal"]["place"]["anchor"] == "Review of the Week", corrected
+    assert "needs_anchor" not in corrected and "template_candidates" not in corrected
+    assert [e for e in walk.vault.events if e == ("list_dir", "Templates/")] == [("list_dir", "Templates/")], \
+        "the templates folder is listed once, on the first call"
+    saved = walk.setup(WEEK, "--template", "none", "--anchor", "Review of the Week")
+    assert saved["status"] == "written" and not any(k.startswith("templates.") for k in saved["keys"]), saved
+    after = yaml.safe_load((walk.root / "config" / "vault-config.yaml").read_text(encoding="utf-8"))
+    assert after["templates"] == {"base_path": "Templates/", "mapping": {"daily": "t_day.md"}}, "no mapping key"
+    assert after["review"]["weekly"]["place"] == {"anchor": "Review of the Week", "placement": "before"}
+    assert walk.start(WEEK_PERIOD)["setup"]["week"] == "present"
     read = walk.read(WEEK_PERIOD, WEEK)
     assert read["status"] == "ok" and read["nothing_to_review"] is False, read
     assert walk.vault.recorded == [], "the setup writes only the config file"

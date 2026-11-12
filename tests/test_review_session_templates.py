@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_session_templates.py — the template choice and the anchor question of `review-session.py match`
 (spec 045 Phase 6, live-walk defect: a proposal with `template: null` and `anchor: null` that `setup-input` refused).
 
@@ -15,11 +15,19 @@ other templates) and no `templates.mapping.<weekly|monthly>` entry:
   `setup-input` refuses that proposal unchanged (`/place/anchor`) and accepts it with a candidate put in.
 - `setup-input` + `vault-config-writer.py review` save the chosen template to `templates.mapping.weekly`
   and leave `base_path` and the other mapping entries alone; `0 none` (template null) touches no mapping key.
+- the two answers survive a rerun (fix round 1 of the live-walk fix): `--template none` is the `0 none` answer
+  — no listing, no `template_candidates`, the plain note, and it wins over a mapping entry like any flag;
+  `--anchor <heading>` is the typed or picked anchor — trimmed into `place.anchor`, no `needs_anchor`, no
+  periodic-note read, winning over the template's proposal and the configured anchor; a blank or multi-line
+  anchor is a usage error; a rerun with both keeps both. SKILL.md step 2 carries `--template <template>` on
+  every `match` call after the first and `--anchor "<anchor>"` once the anchor is given (pinned structurally
+  here; the verbatim lines are in tests/test_review_skill.py).
 """
 from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -28,6 +36,7 @@ import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
+SKILL = TESTS_DIR.parent / "tomo" / "dot_claude" / "skills" / "periodic-review" / "SKILL.md"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
@@ -361,3 +370,101 @@ def test_none_saves_nothing_to_the_mapping(mod, instance, monkeypatch, capsys):
     assert not any(key.startswith("templates.") for key in written["keys"]), written["keys"]
     after = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert after["templates"]["mapping"] == {"atomic_note": "t_note_tomo.md", "daily": "t_day.md"}
+
+
+# ---------------------------------------------------------------- (e) the two answers carried on a rerun
+
+def test_template_none_lists_nothing_and_proposes_the_plain_note(mod, instance, monkeypatch, capsys):
+    """`--template none` is the `0 none` answer passed back: the templates folder is not listed again, the
+    output carries no `template_candidates`, and the plain note is proposed; the anchor question still stands."""
+    _config(instance, templates=_no_mapping())
+    fake = _vault()
+    out = _match(mod, monkeypatch, capsys, fake, "--template", "none")
+    assert "template_candidates" not in out
+    assert out["proposal"]["template"] is None and out["proposal"]["template_kind"] == "missing"
+    assert _listings(fake, TEMPLATES) == [], "`none` answers the question: no second listing"
+    assert _note_reads(fake, TEMPLATES) == [TEMPLATES + "t_day.md"], "no template is read"
+    assert out["needs_anchor"] is True and out["proposal"]["place"]["anchor"] is None
+
+    # `none` wins over a mapping entry like every flag (a Correct from a mapped template to the plain note)
+    _config(instance, templates=_no_mapping(weekly="t_week_privat.md"))
+    fake = _vault()
+    out = _match(mod, monkeypatch, capsys, fake, "--template", "none")
+    assert out["proposal"]["template"] is None and "template_candidates" not in out
+    assert _note_reads(fake, TEMPLATES) == [TEMPLATES + "t_day.md"]
+
+    # a template file literally named `none` is chosen with its extension
+    extra = {TEMPLATES + "none.md": "# n\n\n## Named none\n"}
+    out = _match(mod, monkeypatch, capsys, _vault(**extra), "--template", "none.md")
+    assert out["proposal"]["template"] == "none.md" and out["proposal"]["place"]["anchor"] == "Named none"
+
+
+def test_anchor_flag_sets_the_place_and_asks_no_anchor_question(mod, instance, monkeypatch, capsys):
+    """`--anchor` is the typed or picked heading passed back: trimmed into `place.anchor`, no `needs_anchor`,
+    no `anchor_candidates`, no periodic-note read; it wins over the template's proposal and the configured anchor."""
+    _config(instance, templates=_no_mapping())
+    fake = _vault()
+    out = _match(mod, monkeypatch, capsys, fake, "--template", "none", "--anchor", "  Review of the Week ")
+    assert out["proposal"]["place"] == {"anchor": "Review of the Week", "placement": "before"}
+    assert "needs_anchor" not in out and "anchor_candidates" not in out and "template_candidates" not in out
+    assert _note_reads(fake, WEEKLY) == [], "a given anchor costs no periodic-note read"
+    assert _listings(fake, TEMPLATES) == []
+
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_privat", "--anchor", "Theme")
+    assert out["proposal"]["template"] == "t_week_privat.md" and out["proposal"]["place"]["anchor"] == "Theme"
+    assert [h["text"] for h in out["evidence"]["template_headings"]] == ["Theme", "Reflections"], \
+        "the template's headings are still the evidence; the flag only sets the place"
+
+    _config(instance, templates=_no_mapping(),
+            review={"weekly": {"heading": "Tomo Review", "place": {"anchor": "Notes", "placement": "inside"}}})
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "none", "--anchor", "Reflections")
+    assert out["proposal"]["place"] == {"anchor": "Reflections", "placement": "inside"}
+
+
+def test_a_rerun_with_both_flags_keeps_both_choices(mod, instance, monkeypatch, capsys):
+    """The week-rule rerun and every Correct rerun of SKILL.md step 2 carry the user's two answers: the
+    rerun asks neither question again and spends neither the listing nor the two note reads."""
+    _config(instance, templates=_no_mapping())
+    first = _match(mod, monkeypatch, capsys, _vault())
+    assert first["template_candidates"] and first["needs_anchor"] is True
+    anchor = first["anchor_candidates"][0]
+    fake = _vault()
+    rerun = _match(mod, monkeypatch, capsys, fake, "--folder", WEEKLY, "--format", "GGGG-[W]WW",
+                   "--first-day", "monday", "--min-days", "4", "--template", "none", "--anchor", anchor)
+    assert rerun["proposal"]["template"] is None and rerun["proposal"]["place"]["anchor"] == anchor
+    assert "template_candidates" not in rerun and "needs_anchor" not in rerun and "anchor_candidates" not in rerun
+    assert _listings(fake, TEMPLATES) == [] and _note_reads(fake, WEEKLY) == []
+    assert rerun["proposal"]["folder"] == WEEKLY and rerun["proposal"]["first_day"] == "monday"
+
+
+@pytest.mark.parametrize("value", ["", "   ", "a\nb"])
+def test_a_blank_or_multi_line_anchor_is_a_usage_error(mod, instance, capsys, value):
+    _config(instance, templates=_no_mapping())
+    with pytest.raises(SystemExit) as info:
+        mod.main(["--profiles-dir", "profiles", "match", "--kind", "week", "--anchor", value])
+    out, err = capsys.readouterr()
+    assert info.value.code == 2 and out == "" and "--anchor" in err
+
+
+# ---------------------------------------------------------------- (f) the skill carries both answers
+
+def _setup_step() -> str:
+    text = SKILL.read_text(encoding="utf-8")
+    begin = text.index("\n## 2. Setup\n")
+    return text[begin:text.index("\n## ", begin + 1)]
+
+
+def test_every_later_match_call_of_the_setup_step_carries_the_template_choice():
+    """A literal model drops a flag it is not shown: every `match` call of step 2 after the first carries
+    `--template <template>`, `<template>` is defined once (the chosen name in quotes, or `none`), and the
+    rule names `--anchor "<anchor>"` for every call after the anchor is given."""
+    step = _setup_step()
+    calls = re.findall(r"python3 scripts/review-session\.py match[^`\n]*", step)
+    assert calls[0] == "python3 scripts/review-session.py match --kind <kind>", calls
+    assert len(calls) >= 3, "the template rerun and the week-rule rerun are written out"
+    assert all("--template <template>" in call for call in calls[1:]), calls
+    assert "`0` → `<template>` is `none`" in step
+    assert "A number → `<template>` is `\"<name>\"`" in step
+    assert "Every later `match` call of this step carries `--template <template>`" in step
+    assert "`--anchor \"<anchor>\"`" in step
+    assert "The answer is `<anchor>`" in step

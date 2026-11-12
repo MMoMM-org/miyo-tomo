@@ -17,7 +17,12 @@ argparse and no proposal logic in them; the script keeps the precedence
 headings propose (`template_anchor_candidates`, `propose_anchor`,
 `daily_sections_from`) and the join of a name onto `templates.base_path`
 (`template_vault_path`) moved with them: they are template rules, and the
-script stays under the cap with them gone.
+script stays under the cap with them gone. Fix round 1 (`--template none`,
+`--anchor`) pushed the script to 511 lines, so the resolution itself —
+read and classify the named template, or list the candidates once, with the
+two hint sentences for an unreadable template and a `kado-none` templates
+folder — moved here as `resolve_template`; the script keeps the precedence
+(`none` > flag > mapping) and appends the hint the function returns.
 
 ## WHY the Candidates Come From a Listing, Not a Guess
 
@@ -60,6 +65,29 @@ argparse type (exit 2, a bad invocation), the same class as a bad `--kind`,
 so the skill shows the usage error and the user types another name. A `/`
 inside the name is allowed: the candidates list subfolder entries as
 `archive/Wochenplan alt`.
+
+## WHY `template_choice` Knows `none` and `anchor_text` Trims One Line
+
+WHY: fix round 1 of the live-walk fix (the WHY of the rerun problem itself:
+`docs/tomo/scripts/review-session.md`, "WHY `--template none` and `--anchor`
+Carry the Answers on Every Rerun"). `template_choice(text)` is
+`template_name` with one reserved word: the bare value `none` is the
+`0 none` answer and returns the `NO_TEMPLATE` sentinel, so the script can
+tell "the user chose no template" from "no flag was given" — the two look the
+same in the proposal (`template: null`) but only the second lists the
+candidates. The word is reserved bare and exact: `none.md` is a template
+file of that name, `None` or ` none ` are not spellings a literal model
+produces from the skill's `none`, and a vault whose template is called
+`none` still reaches it with the extension. `anchor_text(text)` is the
+`--anchor` rule: the answer is trimmed (a copied heading carries whitespace)
+and must be one non-blank line — a heading is one line, and `setup-input`
+requires a non-blank `place.anchor`, so refusing a blank or multi-line value
+at the flag (`ValueError`, exit 2 through the script's argparse wrapper)
+keeps the refusal where the user typed it. Leading `#` are not stripped: the
+candidates are offered as text without them, and an anchor that does not
+match a heading is caught by `review-instructions.py preview` as
+`place-missing` with the headings to pick from, which is a better place to
+learn it than a silent rewrite of the answer.
 
 ## WHY `needs_anchor` Reads the Two Most Recent Periodic Notes
 

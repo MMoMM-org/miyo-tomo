@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.5.0
+# version: 0.6.0
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -15,15 +15,16 @@ the week rule from the notes' own dates (never from the Obsidian plugin
 configuration), classifies the template — the mapping's, the ``--template``
 one, or lists the candidates of the templates folder when neither names one —
 and proposes heading, place, daily sections and language, marking a place
-whose anchor it cannot propose; ``setup-input`` turns the confirmed proposal
-into the input of ``vault-config-writer.py review``. Nothing is saved by any
-of them.
+whose anchor it cannot propose unless ``--anchor`` names it; ``setup-input``
+turns the confirmed proposal into the input of ``vault-config-writer.py
+review``. Nothing is saved by any of them.
 
 Usage (cwd = instance root):
     python3 scripts/review-session.py start --args='<raw $ARGUMENTS>'
         [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
     python3 scripts/review-session.py match --kind week|month
-        [--folder P] [--format F] [--first-day D --min-days N] [--template T] [--today YYYY-MM-DD]
+        [--folder P] [--format F] [--first-day D --min-days N] [--template T|none] [--anchor H]
+        [--today YYYY-MM-DD]
     python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
         [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
 
@@ -47,9 +48,11 @@ Output: one JSON object on stdout, ASCII-escaped.
                      template_headings},
            daily_path_fix {configured, found} (only when the other spelling exists),
            template_candidates [names below templates.base_path, without .md] (only when neither
-             the mapping nor --template names a template; [] without a base_path or for kado-none),
+             the mapping nor --template names a template and --template is not none;
+             [] without a base_path or for kado-none),
            needs_anchor true, anchor_candidates [headings of the two most recent periodic notes]
-             (only when no anchor could be proposed: no template heading, no configured anchor),
+             (only when no anchor could be proposed: no --anchor, no configured anchor, no
+             template heading),
            hints [plain sentences for the skill],
            error {kind kado-unreachable|kado-auth|unsafe-format, detail?}
     setup-input: status ok, input_path, kind
@@ -86,15 +89,19 @@ Rules:
     field, by design.
     The template is ``--template`` (with or without ``.md``), else
     ``templates.mapping.<granularity>``; with neither, the templates folder is
-    listed once (lib/review_templates) and nothing is read. The anchor is the
-    configured one, else proposed from the template's headings; with neither,
+    listed once (lib/review_templates) and nothing is read. ``--template none``
+    is the user's "no template" answer: no mapping lookup, no listing, the
+    plain note. The anchor is ``--anchor`` (trimmed), else the configured one,
+    else proposed from the template's headings; with none of them,
     ``needs_anchor`` is set and two periodic notes are read for candidates.
+    The skill repeats both answers on every rerun of ``match``.
 
 Exit codes:
     0 — output usable (every status, every error object)
     1 — unexpected exception; stderr carries the exception class name only
     2 — bad invocation (unknown subcommand or flag, bad value, one week flag without
-        the other, an unsafe --template name, unreadable --confirmed file)
+        the other, an unsafe --template name, a blank or multi-line --anchor,
+        unreadable --confirmed file)
 
 Design notes: docs/tomo/scripts/review-session.md
 """
@@ -120,8 +127,8 @@ from lib.period import (  # noqa: E402
 )
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import (  # noqa: E402
-    anchor_candidates_from_notes, daily_sections_from, propose_anchor, template_anchor_candidates,
-    template_candidates, template_name, template_vault_path,
+    NO_TEMPLATE, anchor_candidates_from_notes, anchor_text, daily_sections_from, propose_anchor,
+    resolve_template, template_anchor_candidates, template_choice, template_vault_path,
 )
 from lib.review_vault import Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
@@ -137,10 +144,6 @@ FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the
                "may not reach it. Ask before proposing to create notes there.")
 NO_NOTES_HINT = ("Found no notes to compare with in {folder}: the default naming is proposed. "
                  "Say so when showing the proposal.")
-TEMPLATE_HINT = ("Kado could not read the template {path}; the Kado key may have no access "
-                 "to it. A plain note (title and review section) is proposed instead.")
-TEMPLATES_FOLDER_HINT = ("Kado returned none for the templates folder {folder}: it may be empty, or the Kado "
-                         "key may not reach it. No template is proposed.")
 
 
 # ---------------------------------------------------------------- config
@@ -298,23 +301,16 @@ def match(args: argparse.Namespace) -> dict:
             hints.append(NO_NOTES_HINT.format(folder=folder))
 
         base = _str(templates.get("base_path"))
-        template = args.template or _str(get_path(templates, ("mapping", granularity))[1])
-        template_path = template_vault_path(base, template)
-        template_kind, template_text = "missing", None
-        candidates: Optional[List[str]] = None
-        if template_path is not None:
-            template_kind, template_text = vault.template(template_path)
-            if template_kind == "unreadable":
-                hints.append(TEMPLATE_HINT.format(path=template_path))
-        else:
-            candidates = template_candidates(vault, base, kind) if base else []
-            if candidates is None:
-                candidates = []
-                hints.append(TEMPLATES_FOLDER_HINT.format(folder=base))
+        no_template = args.template == NO_TEMPLATE
+        template = None if no_template else args.template or _str(get_path(templates, ("mapping", granularity))[1])
+        template_kind, template_text, candidates, hint = resolve_template(vault, base, template, kind,
+                                                                          no_template=no_template)
+        if hint is not None:
+            hints.append(hint)
         template_headings = template_anchor_candidates(headings(template_text)) if template_text else []
 
         place = section.get("place") if isinstance(section.get("place"), dict) else {}
-        anchor = _str(place.get("anchor")) or propose_anchor(template_headings)
+        anchor = args.anchor or _str(place.get("anchor")) or propose_anchor(template_headings)
         anchor_candidates = anchor_candidates_from_notes(vault, notes, fmt, rule, kind) if anchor is None else None
 
         daily_sections = _str_list(get_path(review, ("daily", "sections"))[1])
@@ -437,11 +433,14 @@ def _min_days_arg(text: str) -> int:
     return value
 
 
-def _template_arg(text: str) -> str:
-    try:
-        return template_name(text)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected {exc}") from None
+def _typed(convert):
+    """An argparse type over a lib rule that raises ``ValueError`` with the expectation as its message."""
+    def typed(text: str):
+        try:
+            return convert(text)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"expected {exc}") from None
+    return typed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -463,9 +462,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="First day of the week (default: config, then inferred; needs --min-days)")
     m.add_argument("--min-days", type=_min_days_arg,
                    help="Days week 1 must hold in the new year (default: config, then inferred; needs --first-day)")
-    m.add_argument("--template", type=_template_arg,
-                   help="The chosen template, a name below templates.base_path (default: the mapping; "
-                        "with neither, the candidates are listed)")
+    m.add_argument("--template", type=_typed(template_choice),
+                   help="The chosen template, a name below templates.base_path, or none for no template "
+                        "(default: the mapping; with neither, the candidates are listed)")
+    m.add_argument("--anchor", type=_typed(anchor_text),
+                   help="The chosen heading for the review section's place (default: the configured anchor, "
+                        "then the template's headings; with none, needs_anchor is set)")
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")

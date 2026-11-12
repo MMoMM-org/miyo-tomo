@@ -175,6 +175,38 @@ anchor or one proposed from the template leaves both keys out and costs no
 read. The first `match` output carries the template candidates and the
 anchor candidates together, so `0 none` needs no second call.
 
+### WHY `--template none` and `--anchor` Carry the Answers on Every Rerun
+
+WHY: the spec review of the live-walk fix (fix round 1). The dialogue reruns
+`match` after both questions are answered — the week-rule rerun with
+`--first-day`/`--min-days`, every Correct of the folder, the format, the rule
+or the template — and the first version had no way to tell a rerun what the
+user had already said. After `0 none` the proposal's `template` is null, so
+the next call found neither a mapping entry nor `--template`, listed the
+templates folder again and the skill asked the template question a second
+time; the typed anchor was lost the same way, because `needs_anchor` came
+back with the candidates and the model had nothing to pass. A prose rule
+("carry the choice") puts the memory in the model; the fix puts it in the
+call, where a literal model copies it: `--template none` is the `0 none`
+answer — no listing, no `template_candidates`, `template` null and the plain
+note — and `--anchor <heading>` is the picked or typed heading: `place.anchor`
+is set from it, `needs_anchor` is not marked and the two periodic notes are
+not read. Both are flags, so both win over the config like `--folder` and
+`--format` do: `none` over a mapping entry (a Correct from a mapped template
+to the plain note), `--anchor` over a configured anchor and over the heading
+a template would propose (the user's answer stands even when a corrected
+template has headings of its own; the template's headings are still listed
+in `evidence.template_headings`). The word `none` is reserved as the bare
+value only — `none.md` is a template file of that name — and the anchor is
+trimmed and must be one non-blank line, refused as a usage error (exit 2)
+like an unsafe template name, so a blank answer never reaches `setup-input`.
+Both rules are `lib/review_templates.template_choice` and `anchor_text`
+(WHY: `docs/tomo/scripts/lib/review_templates.md`); the script wraps them
+into argparse types. The skill carries `--template <template>` on every
+`match` call after the first and `--anchor "<anchor>"` once the anchor is
+given, so the script asks each question once however often the dialogue
+reruns.
+
 ## WHY the Place and the Daily Sections Come From the Templates
 
 WHY: F1-AC1 asks for a proposal of the review heading, its place and the

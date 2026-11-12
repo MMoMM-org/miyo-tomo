@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_integration.py — review-read.py over Privat-Test through a live Kado
 (spec 045 T6.2; PRD Assumptions; SDD Quality Requirements).
 
@@ -11,7 +11,8 @@ Opt-in on three counts, every test skips otherwise: ``-m integration``,
     TOMO_LIVE_KADO=1 ./venv/bin/python -m pytest tests/test_review_integration.py -m integration -q
 
 Two runs of ``review-read.py`` the way the skill drives it (one per module:
-2026-W13 as a week, 2026-03 as a month) on a throw-away instance directory
+2026-W13 as a week, 2026-03 as a month, each with the skill's ``--stem
+<period>_review``) on a throw-away instance directory
 with a synthetic review setup over the vault's real folders. The client is
 the real ``KadoClient`` with every tool call recorded and every ``kado-write``
 held back and recorded instead of sent, so the counters are the client's own
@@ -20,14 +21,17 @@ structure of ``read.json`` (paths, kinds, states, counts) and never a note's
 text; no assertion message carries text either:
 
 - every March daily is found once, under its flat path; the week's days too
-- the same-day Dayplanner of every day with content is read; the planner of
-  the day after the period is not requested; the day after's daily is read
-  for the week and absent for the month
+- the same-day Dayplanner of every day with content is read, for the week
+  and for the month; the planner of the day after the period is not
+  requested; the day after's daily is read for the week and absent for the
+  month
 - the same-day 5-year-journal note is read; no earlier year of it is
   requested (no read under a year subfolder, no name query for another year)
 - a month finds the weekly notes W09..W13 and reports W14 absent; a week
   requests no weekly note
-- a week stays within 40 calls, a month within 140, nothing stays unread
+- a week stays within 45 calls, a month within 170 (the SDD's Quality
+  Requirement, Performance: the owner's dailies each link one same-day
+  Dayplanner and one 5-year-journal note), nothing stays unread
 - no write was performed
 
 All data is the vault's own; only names reach this file.
@@ -68,7 +72,7 @@ MONTHLY = "Calendar/303 Monthly/"
 JOURNAL = "Calendar/305 5 Year Journal/"
 PLANNER = "Efforts/300 Planner/"
 MOCS = "Atlas/200 Maps/"
-WEEK_LIMIT, MONTH_LIMIT = 40, 140
+WEEK_LIMIT, MONTH_LIMIT = 45, 170  # SDD Quality Requirements, Performance: Kado calls without retries
 
 W13_DAYS = [date(2026, 3, 23) + timedelta(days=i) for i in range(7)]
 MARCH_DAYS = [date(2026, 3, 1) + timedelta(days=i) for i in range(31)]
@@ -205,7 +209,11 @@ def _run_period(live: Tuple[str, str], root: Path, period: str, kind: str) -> Ru
         mp.chdir(root)
         mp.setattr(mod, "KadoClient", lambda: client)
         with contextlib.redirect_stdout(buffer):
-            code = mod.main(["--profiles-dir", "profiles", "--today", TODAY, "--period", period, "--kind", kind])
+            code = mod.main(["--profiles-dir", "profiles", "--today", TODAY, "--period", period, "--kind", kind,
+                             "--stem", f"{period}_review"])
+    assert code == 0, f"review-read.py exited {code}"
+    out = json.loads(buffer.getvalue())
+    assert out["stem"] == f"{period}_review", out.get("stem")
     assert code == 0, f"review-read.py exited {code}"
     out = json.loads(buffer.getvalue())
     assert out["status"] == "ok", {k: out.get(k) for k in ("status", "problems", "error")}
@@ -251,17 +259,19 @@ def test_the_week_finds_its_seven_dailies(week_run):
 
 # ---------------------------------------------------------------- the planner
 
-def test_the_same_day_dayplanner_is_read_for_every_day_with_content(week_run):
-    with_content = [date.fromisoformat(d["date"]) for d in week_run.report["days"]
+@pytest.mark.parametrize("run_name, period", [("week_run", "2026-W13"), ("month_run", "2026-03")])
+def test_the_same_day_dayplanner_is_read_for_every_day_with_content(request, run_name, period):
+    run: Run = request.getfixturevalue(run_name)
+    with_content = [date.fromisoformat(d["date"]) for d in run.report["days"]
                     if any(x["state"] == "found" for x in d["dailies"])]
-    assert with_content, "no day of 2026-W13 with content"
+    assert with_content, f"no day of {period} with content"
     not_read = [d.isoformat() for d in with_content
                 if {"path": planner_path(d), "state": "read"}
-                not in [{"path": item["path"], "state": item["state"]} for item in week_run.day(d)["linked"]]]
-    assert not_read == [], f"days whose same-day planner is not among the read linked notes: {not_read}"
-    kinds = {(e["date"], item["vault_path"]): item["kind"] for e in week_run.read_json()["days"]
-             for item in e["linked"]}
-    assert all(kinds.get((d.isoformat(), planner_path(d))) == "planner" for d in with_content), kinds
+                not in [{"path": item["path"], "state": item["state"]} for item in run.day(d)["linked"]]]
+    assert not_read == [], f"{period}: days whose same-day planner is not among the read linked notes: {not_read}"
+    kinds = {(e["date"], item["vault_path"]): item["kind"] for e in run.read_json()["days"] for item in e["linked"]}
+    not_planner = [d.isoformat() for d in with_content if kinds.get((d.isoformat(), planner_path(d))) != "planner"]
+    assert not_planner == [], f"{period}: days whose same-day planner is not of kind planner in read.json: {not_planner}"
 
 
 @pytest.mark.parametrize("run_name, period_days, after", [

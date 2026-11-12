@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -17,7 +17,10 @@ lists the templates folder's `template_candidates` and marks `needs_anchor`, the
 `--template`, Confirm saves the mapping key beside the setup, and the review then reads; the same setup with `0 none`
 and a typed anchor (fix round 1) → the week-rule rerun carries `--template none` and lists the templates folder no
 second time, the Correct rerun carries `--anchor` and keeps the heading, Confirm saves the anchor and no mapping
-key. Every write attempted through the client is under the inbox prefix, per test and in the sweep.
+key; weekly notes that disagree on the first day (final fix round) → the first `match` reports `ambiguous`, the rerun
+with the answer and every Correct rerun carrying `--first-day`/`--min-days` report `given`, so the week question is
+asked once, and Confirm saves the answered rule. Every write attempted through the client is under the inbox prefix,
+per test and in the sweep.
 
 The read-side edge cases of the PRD are unit-tested, not walked here: a linked Dayplanner or journal note that
 is missing or cannot be read → tests/test_review_day.py::test_missing_linked_note_is_a_problem_of_that_day_and_the_day_still_read
@@ -196,6 +199,37 @@ def test_first_setup_with_no_template_keeps_that_answer_and_the_typed_anchor_on_
     assert walk.start(WEEK_PERIOD)["setup"]["week"] == "present"
     read = walk.read(WEEK_PERIOD, WEEK)
     assert read["status"] == "ok" and read["nothing_to_review"] is False, read
+    assert walk.vault.recorded == [], "the setup writes only the config file"
+
+
+def test_ambiguous_weekly_notes_ask_the_week_question_once_and_every_rerun_keeps_the_answer(tmp_path, monkeypatch,
+                                                                                            capsys, request):
+    """Final fix round of the live-walk fix: the weekly notes disagree on the first day (one Sunday-dated note
+    among the Monday ones), so the first `match` reports `ambiguous` and the skill asks the week question. The
+    rerun with the answer (`--first-day monday --min-days 4`, the template carried) reports `given` — the notes
+    still disagree, but the answer stands, so nothing asks again — and so does a Correct rerun that carries the
+    answer; Confirm saves the answered rule."""
+    walk = Walk(tmp_path, monkeypatch, capsys, request.node.nodeid, config=config_without_setup())
+    walk.vault.files[f"{WEEKLY}2026-W15.md"] = ("---\njournal-start-date: 2026-04-12\n---\n# 2026-W15\n\n"
+                                                "## Review of the Week\n\n## In my own words\n")   # a Sunday
+    first = walk.match(WEEK)
+    assert first["status"] == "ok" and first["evidence"]["week_rule"] == "ambiguous", first
+    assert "template_candidates" not in first and "needs_anchor" not in first, "the mapped template answers both"
+    p = first["proposal"]
+    answer = ("--folder", p["folder"], "--format", p["format"], "--first-day", "monday", "--min-days", "4",
+              "--template", p["template"])
+    rerun = walk.match(WEEK, *answer)                                             # the week-rule rerun
+    assert rerun["evidence"]["week_rule"] == "given", rerun
+    assert (rerun["proposal"]["first_day"], rerun["proposal"]["min_days"]) == ("monday", 4)
+    assert "2026-W15" in rerun["evidence"]["unmatched"], "the note the answer does not fit is still shown"
+    corrected = walk.match(WEEK, *answer, "--anchor", p["place"]["anchor"])      # a Correct after the answer
+    assert corrected["evidence"]["week_rule"] == "given", corrected
+    assert corrected["proposal"]["place"]["anchor"] == p["place"]["anchor"]
+    saved = walk.setup(WEEK, *answer)
+    assert saved["status"] == "written" and "review.week.first_day" in saved["keys"], saved
+    after = yaml.safe_load((walk.root / "config" / "vault-config.yaml").read_text(encoding="utf-8"))
+    assert after["review"]["week"] == {"first_day": "monday", "min_days_in_first_week": 4}
+    assert walk.start(WEEK_PERIOD)["setup"]["week"] == "present"
     assert walk.vault.recorded == [], "the setup writes only the config file"
 
 

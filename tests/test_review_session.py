@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -23,7 +23,9 @@ tests/review_fake_vault:
   the inference; two notes with the same stem are both checked and listed
 - match: ISO names give GGGG-[W]WW + Monday; Sunday-dated names give the
   Sunday rule and gggg-[W]ww; a Sunday rule given by flags re-lists the ISO
-  notes it no longer matches; --first-day and --min-days only together
+  notes it no longer matches and reports week_rule `given` (the user's answer
+  stands, so the skill's `ambiguous` question is asked once); --first-day and
+  --min-days only together
 - match: a found listing without a parsing name says "no notes to compare";
   an empty listing is folder_listing kado-none, never "no notes"
 - match: template kinds plain|templater|missing|unreadable (no-access hint),
@@ -257,9 +259,44 @@ def test_match_sunday_flags_relist_the_iso_notes_as_unmatched(mod, instance, mon
     p, ev = out["proposal"], out["evidence"]
     assert (p["first_day"], p["min_days"]) == ("sunday", 1)
     assert p["format"] == "gggg-[W]ww"
-    assert ev["week_rule"] == "inferred"          # what the notes showed, not the flags
+    assert ev["week_rule"] == "given"             # the flags are the user's answer; the notes' verdict is replaced
     assert sorted(ev["unmatched"]) == ["2025-W50", "2026-W09", "2026-W10", "2026-W11", "2026-W12", "2026-W13", "Weekly Index"]
     assert ev["matched"] == ["2026-W14"]           # undated: matched by name alone
+
+
+def test_match_with_the_week_flags_reports_given_so_the_question_is_asked_once(mod, instance, monkeypatch, capsys):
+    """Phase 6 final fix round: the skill asks the week question on `ambiguous` only. The rerun after the
+    answer carries `--first-day`/`--min-days`; the notes still disagree, so reporting their verdict made a
+    literal model ask a second time, and after every Correct rerun. With the flags `week_rule` is `given`."""
+    _config(instance)
+    contradicting = {
+        WEEKLY + "2026-W13.md": _weekly("2026-W13", "2026-03-23"),   # Monday
+        WEEKLY + "2026-W12.md": _weekly("2026-W12", "2026-03-15"),   # Sunday
+    }
+    _, first, *_ = _match(mod, monkeypatch, capsys, ReviewFakeVault(contradicting))
+    assert first["evidence"]["week_rule"] == "ambiguous", "without the flags: what the notes showed, as before"
+
+    _, rerun, *_ = _match(mod, monkeypatch, capsys, ReviewFakeVault(contradicting),
+                          "--first-day", "monday", "--min-days", "4")
+    ev = rerun["evidence"]
+    assert ev["week_rule"] == "given"
+    assert (rerun["proposal"]["first_day"], rerun["proposal"]["min_days"]) == ("monday", 4)
+    assert ev["matched"] == ["2026-W13"] and ev["unmatched"] == ["2026-W12"], \
+        "the notes the answer does not fit are still listed; that is the evidence the skill shows"
+    assert ev["notes_checked"] == 2
+
+    # a Correct rerun carrying the answer, and the flags over undated notes: still given, never ambiguous
+    _, corrected, *_ = _match(mod, monkeypatch, capsys, ReviewFakeVault(contradicting),
+                              "--folder", WEEKLY, "--format", "GGGG-[W]WW", "--first-day", "monday", "--min-days", "4")
+    assert corrected["evidence"]["week_rule"] == "given"
+    undated = {WEEKLY + "2026-W13.md": _weekly("2026-W13"), WEEKLY + "2026-W12.md": _weekly("2026-W12")}
+    _, out, *_ = _match(mod, monkeypatch, capsys, ReviewFakeVault(undated), "--first-day", "sunday", "--min-days", "1")
+    assert out["evidence"]["week_rule"] == "given"
+
+    # a configured rule without the flags keeps reporting the notes (the config is not the user's answer here)
+    _config(instance, review={"week": {"first_day": "sunday", "min_days_in_first_week": 1}})
+    _, out, *_ = _match(mod, monkeypatch, capsys, ReviewFakeVault(contradicting))
+    assert out["evidence"]["week_rule"] == "ambiguous"
 
 
 def test_match_configured_rule_wins_over_the_inference(mod, instance, monkeypatch, capsys):

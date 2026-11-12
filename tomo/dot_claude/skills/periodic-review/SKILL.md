@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.8
+# version: 0.1.9
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -70,16 +70,16 @@ python3 scripts/review-session.py match --kind <kind> --template <template>
 ```
 
 with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without `template_candidates`, `<template>` is `"<proposal.template>"` when `proposal.template` is set, else `none`.
-- Every later `match` call of this step carries `--template <template>` and, once `<anchor>` is given, `--anchor "<anchor>"`: the script then lists no candidates and asks for no anchor, so each question is asked once. Never drop either flag from a rerun.
+- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given `--anchor "<anchor>"`, and once the week question is answered `--first-day <day> --min-days <n>`: the script then lists no candidates, asks for no anchor and reports `week_rule` `given`, so each question is asked once. Never drop one of these flags from a rerun.
 - Print `proposal`, `evidence` (`matched`, `unmatched`, `week_rule`, `folder_listing`, `format_problems`) and every line of `hints`.
 - `evidence.folder_listing` is `kado-none` → the `hints` line says so; ask before proposing to create notes there.
 - `proposal.template_kind` is `missing` → say that a plain note (title and review section) is proposed. `unreadable` → say the same and that the template may not be readable by the Kado key (no access).
 - `daily_path_fix` is set → print `configured` and `found` and say the saved value is corrected to `found` only on Confirm.
-- `evidence.week_rule` is `ambiguous` (week only) → ask in plain text, before the confirm question: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?" Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week with 1 January, `4` for at least four days), rerun `python3 scripts/review-session.py match --kind <kind> --folder "<folder>" --format "<format>" --first-day <day> --min-days <n> --template <template>` with the proposal's folder and format, and print the new proposal, evidence and hints.
+- `evidence.week_rule` is `ambiguous` (week only) → ask in plain text, before the confirm question: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?" Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week with 1 January, `4` for at least four days), rerun `python3 scripts/review-session.py match --kind <kind> --folder "<folder>" --format "<format>" --first-day <day> --min-days <n> --template <template>` with the proposal's folder and format, and print the new proposal, evidence and hints. Its `evidence.week_rule` is `given`: the question is answered and not asked again; only `ambiguous` asks it.
 - `needs_anchor` is true → say that no heading could be proposed for the place of the review section (no template, or none with a heading below its title); print `anchor_candidates` as a numbered list and ask: Which heading, by number or typed? End the turn. The answer is `<anchor>` and `proposal.place.anchor`; print the proposal with it in place. Never offer Confirm while `place.anchor` is null.
 
 Ask `1 Confirm · 2 Correct · 3 Abort`.
-- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, `--template` — a corrected template is `<template>` from then on, `none` for no template), the proposal's values for the others, `--template <template>` and `--anchor "<anchor>"` when given, and print the new proposal, evidence and hints; for heading, place, own sections, daily sections or language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.
+- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, `--template` — a corrected template is `<template>` from then on, `none` for no template), the proposal's values for the others, `--template <template>`, `--anchor "<anchor>"` when given and `--first-day <day> --min-days <n>` once the week question was answered, and print the new proposal, evidence and hints; for heading, place, own sections, daily sections or language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.
 - Abort: stop; nothing is saved and nothing is written. A kind confirmed and saved earlier in this run stays saved.
 - Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, the corrected values in place; add `daily_path_fix` from the `match` output only when the user confirmed it. Then run:
 

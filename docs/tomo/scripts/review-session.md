@@ -61,8 +61,10 @@ differently sits in the folder, the inference changing silently would show a
 proposal the user never confirmed, and `/review setup` would display a
 guess instead of the current setup (the same reason every other configured
 value wins over its proposal). `evidence.week_rule` still reports what the
-notes showed, and a configured rule the notes contradict puts those notes
-under `unmatched`, so the skill can say so.
+notes showed when no week flag is passed (the config is not an answer the
+user gave in this dialogue; see the next section for the flags), and a
+configured rule the notes contradict puts those notes under `unmatched`, so
+the skill can say so.
 
 ## WHY Two Notes With the Same Stem Are Both Listed
 
@@ -74,14 +76,29 @@ matched on its own dates, and a duplicated stem appears once per note in
 the listing — the preview shows what the folder holds, and T2.3's `start`
 meets the duplicate as a known case rather than a surprise.
 
-## WHY `week_rule` Reports the Notes, and Flags Set the Proposal
+## WHY `week_rule` Is `given` Once the Flags Are Passed, and Reports the Notes Otherwise
 
-WHY: F1-AC5 and F1-AC8. When the skill re-runs `match` with `--first-day`
-and `--min-days` from the user's answer or correction, the proposal follows
-the flags and the matches are recomputed under them; `evidence.week_rule`
-still says what the notes showed (`inferred`, `ambiguous`, `default`), so the
-skill can show the notes the new rule no longer matches without pretending
-the notes agreed. `--format` works the same way. The two week flags are
+WHY: F1-AC5 and F1-AC8, and the final fix round of the live-walk fix (spec
+review of 428822c3..73ed7348). When the skill re-runs `match` with
+`--first-day` and `--min-days` from the user's answer or correction, the
+proposal follows the flags and the matches are recomputed under them. The
+first version kept `evidence.week_rule` at what the notes showed on every
+call, "so the skill can show the notes the new rule no longer matches
+without pretending the notes agreed" — but the skill keys the week question
+on `ambiguous`, and notes that disagreed before the answer still disagree
+after it: the rerun said `ambiguous` again and a literal model asked the
+week question a second time, and once more after every Correct rerun. Now
+`week_rule` is `given` whenever `--first-day` was passed: the flags are the
+user's answer, and the answer stands. The notes' own verdict is not reported
+beside it, because nothing reads it — the "no notes to compare" hint is
+computed inside the script from the inference, and what the skill shows the
+user is `matched`/`unmatched`, which still list the notes the answered rule
+does not fit (the evidence the first version was keeping the verdict for).
+Without the flags the field reports the notes as before (`inferred`,
+`ambiguous`, `default`): a configured rule is not an answer given in this
+dialogue, so a saved setup whose notes disagree still gets the question on
+`/review setup`, and its answer then reruns with the flags. `--format` works
+the same way as the week flags. The two week flags are
 accepted only together; one alone is a usage error (exit 2). A week rule is
 one answer — the user names the first day and how week 1 is counted in the
 same breath, and the skill always passes both after that answer. Filling the
@@ -203,9 +220,10 @@ like an unsafe template name, so a blank answer never reaches `setup-input`.
 Both rules are `lib/review_templates.template_choice` and `anchor_text`
 (WHY: `docs/tomo/scripts/lib/review_templates.md`); the script wraps them
 into argparse types. The skill carries `--template <template>` on every
-`match` call after the first and `--anchor "<anchor>"` once the anchor is
-given, so the script asks each question once however often the dialogue
-reruns.
+`match` call after the first, `--anchor "<anchor>"` once the anchor is
+given and `--first-day <day> --min-days <n>` once the week question is
+answered (the week flags make `week_rule` `given`; the section above), so
+the script asks each question once however often the dialogue reruns.
 
 ## WHY the Place and the Daily Sections Come From the Templates
 

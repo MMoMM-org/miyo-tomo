@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.0
+# version: 0.6.1
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -43,7 +43,7 @@ Output: one JSON object on stdout, ASCII-escaped.
            proposal {folder, format, first_day, min_days, template, template_kind
                      plain|templater|missing|unreadable, heading, place {anchor, placement},
                      own_sections, daily_sections, language},
-           evidence {matched, unmatched, week_rule inferred|ambiguous|default,
+           evidence {matched, unmatched, week_rule given|inferred|ambiguous|default,
                      notes_checked, folder_listing found|kado-none, format_problems,
                      template_headings},
            daily_path_fix {configured, found} (only when the other spelling exists),
@@ -78,7 +78,8 @@ Rules:
     Flags win over the config, the config over the inference, the inference
     over the defaults (ISO weeks ``GGGG-[W]WW``, months ``YYYY-MM``).
     ``--first-day`` and ``--min-days`` come together or not at all (exit 2).
-    ``evidence.week_rule`` always reports what the notes showed.
+    ``evidence.week_rule`` is ``given`` when ``--first-day`` was passed (the user's
+    answer stands; the skill asks on ``ambiguous`` only), else what the notes showed.
     A ``found`` listing without a name that parses adds the "no notes to
     compare" hint; a ``kado-none`` listing gets the access hint instead.
     Up to 8 recent weekly notes are read for their dates (lib/week_rule_inference);
@@ -94,7 +95,7 @@ Rules:
     plain note. The anchor is ``--anchor`` (trimmed), else the configured one,
     else proposed from the template's headings; with none of them,
     ``needs_anchor`` is set and two periodic notes are read for candidates.
-    The skill repeats both answers on every rerun of ``match``.
+    The skill repeats both answers and the week answer on every rerun of ``match``.
 
 Exit codes:
     0 — output usable (every status, every error object)
@@ -351,7 +352,7 @@ def match(args: argparse.Namespace) -> dict:
     result["evidence"] = {
         "matched": matched,
         "unmatched": unmatched,
-        "week_rule": inference.verdict,
+        "week_rule": "given" if args.first_day is not None else inference.verdict,
         "notes_checked": len(inference.checked),
         "folder_listing": listing,
         "format_problems": [{"kind": p.kind, "example": p.example} for p in problems],

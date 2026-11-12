@@ -188,7 +188,13 @@ when it is `ambiguous` — the notes disagree or carry no dates — does the ski
 vocabulary: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least
 four days in the new year?" (F1-AC6). The answer is mapped to `(first_day, min_days)` — "Monday, four days" is ISO
 `(Monday, 4)`, "Sunday, 1 January" is `(Sunday, 1)` — and passed back as `--first-day` and `--min-days` to `match`,
-whose new matches show which existing notes the rule no longer fits (F1-AC5) before the user confirms. The Obsidian
+whose new matches show which existing notes the rule no longer fits (F1-AC5) before the user confirms. That rerun
+reports `week_rule` as `given` (final fix round of the live-walk fix): the notes still disagree after the answer, and
+the first version reported their verdict on every call, so the rerun said `ambiguous` again and a literal model asked
+the question a second time — and after every Correct rerun. The skill therefore acts on `ambiguous` alone, says so
+beside the rerun, and carries `--first-day`/`--min-days` on every later `match` of the step exactly as it carries
+`--template` and `--anchor` (the carry rule names all three), so a Correct that drops the answer cannot bring
+`ambiguous` back (WHY of the value: `docs/tomo/scripts/review-session.md`, "WHY `week_rule` Is `given`"). The Obsidian
 periodic-notes plugin configuration is never read for this (owner decision: "wenn wir das nicht erkennen können
 fragen wir den user"), because the plugin's setting and the user's actual notes can disagree, and the notes are the
 truth. With `inferred` or `default` the rule is shown with the proposal and the ordinary Confirm covers it; asking

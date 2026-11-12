@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.8")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.9")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -273,6 +273,22 @@ def test_setup_asks_the_week_question_in_plain_words_only_when_ambiguous():
             "--first-day <day> --min-days <n> --template <template>") in text, \
         "the week-rule rerun carries the template answer (fix round 1: it listed the candidates again)"
     assert "ISO" not in text
+    # the question is keyed on `ambiguous` alone; the rerun's `given` asks nothing (final fix round)
+    assert text.count("`evidence.week_rule` is `ambiguous`") == 1
+    assert ("Its `evidence.week_rule` is `given`: the question is answered and not asked again; only "
+            "`ambiguous` asks it.") in text
+    assert "`week_rule` is `given`" not in text.replace("Its `evidence.week_rule` is `given`", ""), \
+        "no branch acts on `given`, `inferred` or `default`"
+
+
+def test_every_later_match_call_carries_the_week_answer_like_the_template_and_the_anchor():
+    """Final fix round: a Correct rerun that drops `--first-day`/`--min-days` reports the notes' `ambiguous`
+    again and re-asks the week question; the carry rule and the Correct branch name the two flags."""
+    text = _section("2. Setup")
+    assert ("- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given "
+            "`--anchor \"<anchor>\"`, and once the week question is answered `--first-day <day> --min-days <n>`: "
+            "the script then lists no candidates, asks for no anchor and reports `week_rule` `given`, so each "
+            "question is asked once. Never drop one of these flags from a rerun.") in text
 
 
 def test_setup_names_the_access_hint_for_kado_none_and_unreadable_templates():
@@ -292,7 +308,8 @@ def test_setup_correction_reruns_match_for_names_and_carries_other_values_and_wr
     assert ("- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` "
             "with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, "
             "`--template` — a corrected template is `<template>` from then on, `none` for no template), the "
-            "proposal's values for the others, `--template <template>` and `--anchor \"<anchor>\"` when given, and "
+            "proposal's values for the others, `--template <template>`, `--anchor \"<anchor>\"` when given and "
+            "`--first-day <day> --min-days <n>` once the week question was answered, and "
             "print the new proposal, evidence and hints; for heading, place, own sections, daily sections or "
             "language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. "
             "Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
@@ -325,9 +342,10 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
             "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "
             "`<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else `none`.") in text
-    assert ("- Every later `match` call of this step carries `--template <template>` and, once `<anchor>` is given, "
-            "`--anchor \"<anchor>\"`: the script then lists no candidates and asks for no anchor, so each question "
-            "is asked once. Never drop either flag from a rerun.") in text
+    assert ("- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given "
+            "`--anchor \"<anchor>\"`, and once the week question is answered `--first-day <day> --min-days <n>`: "
+            "the script then lists no candidates, asks for no anchor and reports `week_rule` `given`, so each "
+            "question is asked once. Never drop one of these flags from a rerun.") in text
     assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
         "the template question comes before the proposal is printed: its answer changes the proposal"
 

@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.14"
+version: "1.15"
 ---
 
 # Solution Design Document
@@ -620,7 +620,10 @@ review-session.py match --kind week|month [--folder P] [--format F] [--first-day
                                                                     #  (with or without .md) > templates.mapping.<kind>
                                                                     # place.anchor: --anchor (trimmed, one non-blank line, else exit 2)
                                                                     #  > review.<kind>.place.anchor > the template's headings
-        evidence: {matched: [names], unmatched: [names], week_rule: inferred|ambiguous|default, notes_checked: n,
+        evidence: {matched: [names], unmatched: [names], week_rule: given|inferred|ambiguous|default, notes_checked: n,
+                                                                    # week_rule: given whenever --first-day/--min-days were passed (the
+                                                                    #  user's answer stands; the skill asks on ambiguous only — final fix
+                                                                    #  round), else what the notes showed; matched/unmatched follow the rule in use
                    folder_listing: found|kado-none,
                    format_problems: [{kind, example}],              # period.check_format on the proposed format
                    template_headings: [{level, text}]},             # anchor candidates of the template
@@ -1062,6 +1065,7 @@ sequenceDiagram
 | `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
 | `match` | no `templates.mapping.<kind>` entry and no `--template` (the owner's instance, Phase 6 live walk) | `template_candidates` (the templates folder's notes that fit the kind; `[]` + a hint naming the folder when Kado answered with nothing for it) | the skill asks which template, numbered with `0 none` last, before it prints the proposal; a number reruns `match --template`, `0` keeps the plain note and saves nothing to the mapping; every later `match` of the step carries the answer as `--template "<name>"` or `--template none`, so the candidates are listed once (F1-AC7; fix round 1) |
 | `match` | no anchor can be proposed (no template, `0 none`, a template without a heading below its title; no configured anchor, no `--anchor`) | `needs_anchor: true` + `anchor_candidates` (headings of the two most recent periodic notes) | the skill asks "Which heading, by number or typed?" before it offers Confirm and puts the answer into `place.anchor`; Confirm is never offered while the anchor is null; every later `match` of the step carries the answer as `--anchor "<heading>"`, so the heading is asked once; `setup-input` still validates (F1-AC7; fix round 1) |
+| `match` | the weekly notes disagree on the first day or carry no dates (`week_rule: ambiguous`) | the week question in plain words; the rerun with `--first-day`/`--min-days` reports `week_rule: given` (the notes still disagree, but the answer stands) | the skill asks on `ambiguous` only, before Confirm; every later `match` of the step carries `--first-day <day> --min-days <n>` like `--template` and `--anchor`, so the question is asked once (F1-AC6; final fix round: the first version reported the notes' verdict on every call and the rerun re-asked) |
 | `match` | unsafe name format | `error.kind = unsafe-format` | the format must not contain `/`, `\` or `..` |
 | `setup-input`, writer | invalid confirmed input / schema violation | `status: invalid` / `refused` with pointers | nothing saved; the dialogue asks again |
 | `write` | invalid proposals file | `status: refused`, `proposals-invalid` | the model is asked to rewrite the file once; then the run stops |

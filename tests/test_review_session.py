@@ -928,6 +928,56 @@ def test_start_reports_applied_once_and_the_second_start_does_not_list_it(mod, i
     _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
     assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W13_review", "open")]
     assert fake.writes == []                                                     # nothing of the vault is written
+    assert "notices" not in out                                                  # the flag was written
+
+
+def test_start_keeps_the_listing_when_the_applied_flag_cannot_be_written(mod, instance, monkeypatch, capsys):
+    """Falsifies an unguarded ``_record_applied``: an OSError from the flag write would reach main()'s
+    handler — the class name on stderr, exit 1, the whole listing lost. The listing is the answer; the
+    flag is bookkeeping, and its failure only means the applied review is offered again next time."""
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W12_review_instructions.json": _set_json(_insert_action(True, WEEKLY + "2026-W12.md")),
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review"),
+    })
+    meta_path = _complete_meta(instance, "2026-W12_review")
+    real_save_meta = mod.rdl.save_meta
+
+    def no_space(stage, meta):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(mod.rdl, "save_meta", no_space)
+    code, out, _, err = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "ok" and err == ""
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "applied"),
+                                                                      ("2026-W13_review", "open")]
+    assert out["notices"] == ["applied-not-recorded"]
+    assert "applied_reported" not in json.loads(meta_path.read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(mod.rdl, "save_meta", real_save_meta)                   # the stage is writable again
+    code, out, _, err = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and "notices" not in out
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "applied"),
+                                                                      ("2026-W13_review", "open")]
+    assert json.loads(meta_path.read_text(encoding="utf-8"))["applied_reported"] is True
+
+
+def test_start_keeps_the_listing_when_the_stage_folder_cannot_be_created(mod, instance, monkeypatch, capsys):
+    """The ``mkdir`` of a missing stage is guarded like the write: a file where the stage folder
+    should be raises OSError (FileExistsError / NotADirectoryError), not exit 1."""
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W12_review_instructions.json": _set_json(_insert_action(True, WEEKLY + "2026-W12.md")),
+    })
+    review_root = instance / "tomo-tmp" / "review"
+    review_root.mkdir(parents=True)
+    (review_root / "2026-W12_review").write_text("not a folder\n", encoding="utf-8")
+    code, out, _, err = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "ok" and err == ""
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "applied")]
+    assert out["notices"] == ["applied-not-recorded"]
 
 
 def test_start_reports_applied_once_also_when_the_meta_is_gone(mod, instance, monkeypatch, capsys):

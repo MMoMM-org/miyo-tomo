@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.4.0
+# version: 0.4.1
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -33,6 +33,7 @@ Output: one JSON object on stdout, ASCII-escaped.
            setup {week present|missing, month present|missing},
            open_reviews [{period, kind, doc_path, stem, state}] ordered by period,
            skipped_review_docs [{doc_path, reason}], problems [inbox-not-configured]?,
+           notices [applied-not-recorded]? (the applied flag could not be written),
            error {kind kado-unreachable|kado-auth, detail} when stopped
     match: status ok|stopped, kind,
            proposal {folder, format, first_day, min_days, template, template_kind
@@ -58,6 +59,9 @@ Rules:
     set (ADR-6); a refused or failed probe stops the run, never reads as absent.
     A withdrawn review is not listed; an ``applied`` review is listed once —
     ``start`` writes ``applied_reported`` into its ``meta.json`` after listing it.
+    A stage that cannot be written (``OSError``) keeps the listing and ``status
+    ok`` and adds ``notices: [applied-not-recorded]``; the review is offered
+    again on the next start.
     The listing is ordered by period start under the configured week rule and
     name formats (lib/review_config.configured_formats), the pair the argument
     was parsed with.
@@ -110,6 +114,7 @@ DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
 DEFAULT_HEADING = "Tomo Review"
 NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
+APPLIED_NOT_RECORDED = "applied-not-recorded"
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
@@ -200,20 +205,27 @@ def start(args: argparse.Namespace) -> dict:
         return result
     result["open_reviews"] = [review.to_dict() for review in reviews]
     result["skipped_review_docs"] = skipped
-    _record_applied(Path(args.tmp), reviews)
+    if not _record_applied(Path(args.tmp), reviews):
+        result["notices"] = [APPLIED_NOT_RECORDED]
     return result
 
 
-def _record_applied(root: Path, reviews: List[OpenReview]) -> None:
-    """Mark the meta of every review listed as ``applied``: the listing offers it once."""
+def _record_applied(root: Path, reviews: List[OpenReview]) -> bool:
+    """Mark the meta of every review listed as ``applied``: the listing offers it once. False when
+    a stage could not be written; the review is offered again on the next start."""
+    recorded = True
     for review in reviews:
         if review.state != APPLIED:
             continue
         meta = read_meta(root, review.stem) or {"stem": review.stem}
         meta[APPLIED_REPORTED] = True
         stage = root / review.stem
-        stage.mkdir(parents=True, exist_ok=True)
-        rdl.save_meta(stage, rdl.ReviewMeta(meta))
+        try:
+            stage.mkdir(parents=True, exist_ok=True)
+            rdl.save_meta(stage, rdl.ReviewMeta(meta))
+        except OSError:
+            recorded = False
+    return recorded
 
 
 # ---------------------------------------------------------------- the proposal

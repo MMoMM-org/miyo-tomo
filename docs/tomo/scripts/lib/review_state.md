@@ -135,6 +135,14 @@ per hit (T2.3), plus per approved document with an open meta one
 `read_file` of the set, plus for a set that waits one probe (insert or
 replace) or one to two (move). A closed meta (withdrawn) costs none.
 
+WHY `stem_state` checks `withdrawn` before the set read although
+`review_state` checks it again: the early return exists to skip the Kado
+read of the set, not to classify. A withdrawn review is never listed
+whatever its set says, so reading the set would spend a call (and risk a
+`Stopped` on a refused key) for an answer already known. The repeated check
+in `review_state` is the classifier's own rule for callers that hand it a
+set directly; neither check replaces the other.
+
 ## WHY `applied` Is Offered Once, and the Listing Applies It, Not the Classifier
 
 WHY: SDD step 4: "applied (reported once: `meta.applied_reported`)". The

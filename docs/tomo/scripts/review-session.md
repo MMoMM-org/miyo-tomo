@@ -256,6 +256,29 @@ knows it reported. A review whose `meta.json` is gone (a cleaned
 on every start. Nothing of the vault is written; `tomo-tmp` is the
 instance's own stage.
 
+#### WHY a Failed Flag Write Keeps the Listing and Adds `notices: [applied-not-recorded]`
+
+WHY: the flag is bookkeeping about the listing, not part of it. The first
+version wrote it unguarded after the result was built, so a read-only or
+full `tomo-tmp` raised `OSError` into `main()`'s handler: the class name on
+stderr, exit 1, and the whole listing — request, setup, every open review —
+lost over a file whose only job is to silence a repeat. Now `_record_applied`
+catches `OSError` per review (the `mkdir` and the `save_meta` alike) and
+`start` still returns `status: ok` with the full listing; the only
+consequence of a swallowed failure is that the applied review is offered
+again on the next start, which is the pre-flag behaviour and harmless.
+
+The failure is still told: the result carries `notices: ["applied-not-recorded"]`
+(the key only when a write failed, the name once however many reviews it
+hit), so the skill can add one line — the review will be shown again next
+time — instead of leaving the user to meet the same "applied" twice without
+a reason. `notices` is the non-refusing vocabulary `review-instructions.py
+preview` / `deliver` already use, and a bare name keeps the key metadata
+only: no path, no stem (the stem is already in `open_reviews`), no error
+text. Nothing reaches stderr, because stderr's one meaning for this script
+is "unexpected exception, exit 1" and a recorded, non-fatal failure is
+neither.
+
 ## WHY `setup` Returns the Current Values
 
 WHY: F1-AC10 (`/review setup` changes the setup) and the plan: the setup

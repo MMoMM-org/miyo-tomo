@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.3.0
+# version: 0.3.1
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -174,7 +174,8 @@ def _present(vault: Vault, path) -> Optional[bool]:
 def stem_state(vault: Vault, doc: dict, meta: Optional[dict], stem: str, inbox: str) -> Optional[str]:
     """The state of ``stem`` with the probes (ADR-6): the set JSON is read for an approved document,
     the move's source (then its destination, while the source exists) or the insert's target only
-    when the set waits. ``review_vault.Stopped`` on any Kado failure that is not NOT_FOUND;
+    when the set waits. A withdrawn meta returns None before the set is read: a review that is
+    never listed costs no Kado call. ``review_vault.Stopped`` on any Kado failure that is not NOT_FOUND;
     ``review_config.UnsafePath`` when ``inbox`` cannot hold a set."""
     if _record(meta).withdrawn():
         return None

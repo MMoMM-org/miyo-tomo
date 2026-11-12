@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -32,7 +32,9 @@ probe stops `status`. T4.4: `drop` reads the set JSON first (one `read_file`) an
 `already-applied` when any action carries `applied: true` — nothing written, meta and set unchanged;
 an absent set (NOT_FOUND) or an unreadable one withdraws; a failed read stops by kind; the set JSON is
 rewritten under `expected_modified` from that read, and Kado's CONFLICT on it is `set-changed`,
-resumable by a second `drop`. All data is synthetic.
+resumable by a second `drop`. P5: a `drop` whose MD write failed (set emptied, meta unmarked) is listed
+again as `failed-delivery` by `status` and `start`; `deliver` on the emptied set refuses `set-withdrawn`
+and writes nothing; a second `drop` completes the withdrawal under the guard. All data is synthetic.
 """
 from __future__ import annotations
 
@@ -56,6 +58,7 @@ from review_fake_vault import ReviewFakeVault, split_frontmatter  # noqa: E402
 from note_fake_vault import Killed  # noqa: E402
 from lib import review_actions as ra  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
+from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_doc_read as rdr  # noqa: E402
 from lib import review_state as rs  # noqa: E402
@@ -254,7 +257,8 @@ def test_cli_reader_answers_not_found_and_stops_on_kado(doc_mod, ins, instance, 
 
 def test_cli_every_problem_name_is_pinned_to_refusing_or_notice():
     assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "nothing-to-deliver", "place-missing",
-                                 "place-too-deep", "user-heading-collision", "set-exists", "already-applied"}
+                                 "place-too-deep", "user-heading-collision", "set-exists", "set-withdrawn",
+                                 "already-applied"}
     assert set(rdl.NOTICES) == {"heading-renamed", "unlanded-items", "variant_missing", "templater_hint",
                                 "template_unmergeable"}
     assert not set(rdl.REFUSING) & set(rdl.NOTICES)
@@ -748,6 +752,57 @@ def test_drop_kado_failure_is_stopped_and_keeps_the_stage(doc_mod, ins, instance
     _, out, err = run(ins, monkeypatch, capsys, ["drop", "--stem", STEM], fake)
     assert out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
     assert err == "" and meta_of(instance)["withdrawn"] is False
+
+
+@pytest.mark.parametrize("delivery", ["complete", "stopped-at-set_md"])
+def test_drop_that_failed_after_the_set_write_is_listed_again_and_a_second_drop_completes_it(
+        doc_mod, ins, ses, instance, monkeypatch, capsys, delivery):
+    """Owner decision (spec 045 P5): a half-withdrawn drop — the set emptied, the MD write failed, meta.json
+    unmarked — must be listed by the next /review. `complete` falsifies `actions == []` alone hiding the stem
+    from `start` (the document is `approved`, so the set is read): the stem is `failed-delivery` until meta
+    says withdrawn. `stopped-at-set_md` is listed either way (the document is still pending, the set unread)
+    and falsifies Resume on the emptied set: `deliver` would skip `set_json` as done, write the MD with the
+    actions and mark the document, leaving an empty set that reads `applied` — it refuses `set-withdrawn`
+    instead and writes nothing, so Drop is the path that works. The second `drop` rewrites the set under the
+    guard, writes the MD and marks the meta; then nothing is listed."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(None))         # new-note: a move_note
+    if delivery == "complete":
+        assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+    else:
+        fake.fail[("write_note", SET_MD)] = KadoError("503")
+        assert cli("deliver", "--stem", STEM)[1]["failed_step"] == "set_md"
+        capsys.readouterr()
+    fake.fail[("write_note", SET_MD)] = KadoError("503")
+    # the drop writes the empty set, then fails on the MD: half withdrawn
+    _, out, _ = cli("drop", "--stem", STEM)
+    assert out["status"] == "stopped" and out["problems"] == ["kado-write-failed"]
+    assert set_json_of(fake)["actions"] == []
+    assert (SET_MD in fake.files) is (delivery == "complete")                 # the delivered MD still lists the actions
+    assert delivery != "complete" or "delete these files" not in fake.text(SET_MD)
+    meta = meta_of(instance)
+    assert meta["withdrawn"] is False and "set_json" in meta["steps_done"]
+    # the next /review lists it again, as a begun-but-unfinished delivery
+    assert cli("status", "--stem", STEM)[1] == {"state": "failed-delivery", "stem": STEM}
+    assert start_listing(ses, monkeypatch, capsys, fake) == [(STEM, "failed-delivery")]
+    # Resume on the emptied set is refused and writes nothing
+    fake.events.clear()
+    _, out, _ = cli("deliver", "--stem", STEM)
+    assert out["status"] == "refused" and out["problems"] == ["set-withdrawn"] and writes(fake) == []
+    assert set_json_of(fake)["actions"] == [] and meta_of(instance) == meta
+    assert rd.is_delivered(fake.text(DOC), "de") is (delivery == "complete")      # the mark as it was
+    # Drop once more completes the withdrawal: set rewritten under the guard, MD written, meta marked
+    fake.fail.clear()
+    fake.events.clear()
+    fake.guards.clear()
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out["status"] == "withdrawn"
+    assert out["paths"] == {"set_json": SET_JSON, "set_md": SET_MD, "note": NEW_NOTE}
+    assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
+    assert fake.guards == [(SET_JSON, fake.modified[SET_JSON] - 1)]
+    assert set_json_of(fake)["actions"] == [] and "delete these files" in fake.text(SET_MD)
+    assert meta_of(instance)["withdrawn"] is True and meta_of(instance)["failed_step"] == ""
+    assert cli("status", "--stem", STEM)[1] == {"state": None, "stem": STEM}
+    assert start_listing(ses, monkeypatch, capsys, fake) == []
 
 
 # ---------------------------------------------------------------- drop against what Hashi left (T4.4)

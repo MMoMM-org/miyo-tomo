@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.3.3
+# version: 0.4.0
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -17,11 +17,16 @@ through ``review_vault.kado_stops``. ``read_set`` is the one reader of the
 set JSON — ``review-instructions.py drop`` reads through it too, before it
 rewrites the set — and returns the parsed object with the file's
 ``modified`` (``SetRead``); ``any_applied`` says whether Hashi marked any of
-its actions ``applied``.
+its actions ``applied``; ``is_emptied_set`` whether it is the set ``drop``
+writes (an empty ``actions`` list), the one predicate ``review-instructions.py``
+uses to refuse ``set-withdrawn``.
 
-The order implemented: withdrawn
-(``meta.withdrawn``, or a set whose ``actions`` list is empty) → not listed;
-a begun delivery (``review_delivery.ReviewMeta.started()``) without
+The order implemented: ``meta.withdrawn`` → not listed; an emptied set →
+not listed when no delivery began (meta absent, no step done or in flight),
+``failed-delivery`` under a begun delivery that meta does not call withdrawn
+(a drop that wrote the set but failed before the meta mark; the next
+``/review`` offers it again); a begun delivery
+(``review_delivery.ReviewMeta.started()``) without
 ``doc_mark``, or an approved document without a set → ``failed-delivery``;
 no set → ``open``; every action ``applied`` → ``applied``; an unapplied
 ``move_note`` whose source and destination both exist → ``move-refused``; an
@@ -113,6 +118,11 @@ def any_applied(set_json: Optional[dict]) -> bool:
     return any(_applied(a) for a in _actions(set_json) or [])
 
 
+def is_emptied_set(set_json: Optional[dict]) -> bool:
+    """Whether ``set_json`` is a readable set with an empty ``actions`` list — what ``drop`` writes."""
+    return _actions(set_json) == []
+
+
 def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = None, *,
                  target_exists: Optional[bool] = None,
                  inbox_copy_exists: Optional[bool] = None) -> Optional[str]:
@@ -123,8 +133,12 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     record = _record(meta)
     actions = _actions(set_json)
     # step 3 before step 1: a withdrawn review is never listed
-    if record.withdrawn() or (set_json is not None and actions == []):
+    if record.withdrawn():
         return None
+    # the emptied set is drop's signature: withdrawn when no begun record contradicts it, a drop that
+    # wrote the set but not the meta mark under one
+    if actions == []:
+        return FAILED_DELIVERY if record.started() else None
     # step 1: a begun delivery without its last step, or an approved document whose set is gone
     if (record.started() and rdl.DOC_MARK not in record.steps_done) or (
             doc_state(doc) == DOC_STATE_APPROVED and set_json is None):

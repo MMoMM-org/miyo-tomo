@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.3
+# version: 0.1.4
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -165,6 +165,7 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this list. 0 → stop.
   - `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick → say a heading of the user's with the same name is never replaced and the review never lands inside one of the user's own sections; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
   - `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.
+  - `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
 - `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line per entry of `notices` and per flag set:
   - `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.
   - `target_appeared` true → the target note was created since Pass 1; the plan targets it instead of a new note.
@@ -182,7 +183,7 @@ python3 scripts/review-instructions.py deliver --stem <stem>
 
 Add `--place-anchor "<heading>"` when a heading was chosen in step 7. Branch on `status` first:
 - `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and `paths.note` when set, and "Next: review and apply the instruction set in Hashi, or by hand with the readable instructions." Then the step 7 notice lines for `notices` and `target_appeared`.
-- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` → as in step 7. Any other → the step 7 lines; nothing was written.
+- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` or `set-withdrawn` → as in step 7. Any other → the step 7 lines; nothing was written.
 - `stopped` → `doc-changed` → say the document was edited, or is open with unsaved edits, since the preview: save it and run `/review` again; the payloads in `paths` already written count as done, and the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at `failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.
 - `not-found` → as in step 6.
 
@@ -199,5 +200,5 @@ Branch on `status` first:
   - `already-applied` → say Hashi already applied an action of this review, so nothing is withdrawn and nothing more is delivered; stop.
 - `stopped` → one line per problem:
   - `set-changed` → say the set changed between read and write; run `drop` once more.
-  - `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once more. A second `kado-write-failed` → show it and stop.
+  - `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once more. A second `kado-write-failed` → show it, say the next `/review` lists this review again and offers Drop, and stop.
 - `not-found` → as in step 6.

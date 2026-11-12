@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.2
+# version: 0.2.3
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -19,7 +19,8 @@ it reads the set JSON first (``lib/review_state.read_set``) and refuses when
 Hashi marked any action ``applied`` (nothing written, nothing changed),
 withdraws over an absent or unreadable set, and writes the set JSON guarded
 by the ``modified`` that read returned; before any step it removes the
-stage. ``status`` names the review's state
+stage. It marks ``meta.json`` withdrawn last, so a drop that failed on the
+MD write is listed again by the next ``/review``. ``status`` names the review's state
 through ``lib/review_state.stem_state`` — the function ``review-session.py
 start`` uses per listed document — which reads the set JSON for an approved
 document and probes the target and the inbox copy for a waiting set (ADR-6).
@@ -38,7 +39,7 @@ Output: one JSON object on stdout, ASCII-escaped.
              set_exists, resume
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
              mode, target, place, notices, target_appeared?
-           | status refused, stem, problems [<refusing problems>|set-exists|name-taken], exists_path?, step?
+           | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|name-taken], exists_path?, step?
            | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed]
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
            | status refused, stem, problems [already-applied]
@@ -47,7 +48,9 @@ Output: one JSON object on stdout, ASCII-escaped.
     every subcommand: status not-found, stem, doc_path? | status refused, stem, problems [setup-missing|
              setup-invalid|inbox-not-configured], errors? | status stopped, stem, error {kind, detail}
 
-Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists);
+Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists); a set
+    at the path with an empty actions list on a begun delivery is a drop that did not finish, refused
+    (set-withdrawn) before set-exists is considered — drop completes it, deliver never resumes over it;
     steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
     is the last step — a refused guard (Kado's error code CONFLICT, or the client's KadoConcurrencyError)
     is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable.
@@ -125,11 +128,6 @@ def _note(vault: Vault, path: str) -> Optional[str]:
         except KadoNotFoundError:
             return None
     return content if isinstance(content, str) else None
-
-
-def _exists(vault: Vault, path: str) -> bool:
-    with kado_stops():
-        return bool(vault.client.path_exists(path))
 
 
 # ---------------------------------------------------------------- the context of one run
@@ -239,8 +237,13 @@ def load_run(args: argparse.Namespace) -> Run:
     plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, _template(vault, setup, target),
                                 anchor=getattr(args, "place_anchor", None), run_id=meta.run_id,
                                 generated=meta.generated)
-    set_exists = _exists(vault, paths[rdl.SET_JSON])
-    problems, notices = rdl.classify(plan, [rdl.SET_EXISTS] if meta.second_set(set_exists) else [])
+    held = rs.read_set(vault, paths[rdl.SET_JSON])
+    set_exists = held is not None
+    if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):
+        extra = [rdl.SET_WITHDRAWN]                                    # a drop that did not finish: never resumed over
+    else:
+        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists) else []
+    problems, notices = rdl.classify(plan, extra)
     return Run(args.stem, stage, meta, setup, profile, vault, read, paths, set_exists, plan, problems, notices)
 
 

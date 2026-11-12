@@ -325,7 +325,7 @@ delivery left, a lone new note included, so the user can delete them in Obsidian
 only the stage. The skill reports `status: withdrawn` with the `paths`, or `dropped` with `removed`. `already-applied`
 is refused: Hashi applied an action, so the set is the vault's history now and nothing is withdrawn and nothing more
 is delivered (the skill says so and offers nothing). `set-changed` means the set was edited between read and write;
-the skill runs drop once more. A withdrawn review is never listed again.
+the skill runs drop once more. A withdrawn review — one whose `meta.json` says so — is never listed again.
 
 `kado-write-failed` from `drop` is not "nothing was withdrawn" (the first draft of the skill said that; T5.2 fix
 round): `drop` writes the withdrawn set JSON first and the readable MD second, and marks `meta.json` only after
@@ -333,11 +333,18 @@ both. A failure on the second write leaves the set already empty — nothing for
 the inbox still lists the actions and the stage still says a delivery failed. The skill therefore says the
 withdrawal may be partly written and nothing else changed, and runs `drop` once more in the same turn: a rerun
 reads the empty set back (not applied), rewrites it under the guard and writes the MD, then marks the stage. Once,
-not until it works: a Kado that refuses every write would loop. The rerun has to happen in the session, because the
-next `/review` would not offer it — `lib/review_state.review_state` lists no review whose set has an empty
-`actions` list, so the half-withdrawn stem is invisible to `start` while its MD still names the actions. The second
-failure is shown and the run stops; the user sees both inbox files in Obsidian. Closing that listing gap (a
-`withdrawn` that reads `meta.json` only) is a script decision outside the skill.
+not until it works: a Kado that refuses every write would loop. The second failure is shown, the skill says the
+next `/review` lists the review again and offers Drop, and the run stops; the user sees both inbox files in
+Obsidian. That later offer exists since the Phase 5 cleanup (owner decision): `lib/review_state.review_state`
+withdraws a stem only when `meta.json` says so, and lists a begun stem whose set was emptied without the mark as
+`failed-delivery` — the state whose offer is `1 Resume · 2 Drop` (docs/tomo/scripts/lib/review_state.md, "WHY an
+Emptied Set Withdraws Only Without a Begun Record"). Drop is the path that works there; Resume runs `deliver`,
+which refuses `set-withdrawn` on an emptied set rather than resuming over it (it would skip the set as done and
+mark the document; docs/tomo/scripts/review-instructions.md, "WHY an Emptied Set on a Begun Stem Is
+`set-withdrawn`"), so the skill's `set-withdrawn` line says an earlier Drop emptied the set but did not finish
+and asks `1 Drop · 2 Abort` — the one place Pass 2 routes from the deliver step into the drop step. The listing
+cannot tell a half-withdrawn stem from any other failed delivery, and a seventh state for it was rejected (the
+six are the SDD's canonical list); the refusal from `deliver` is where the two part, so the skill asks there.
 
 ## Why the Skill Does Not Call `status` in the Flow
 

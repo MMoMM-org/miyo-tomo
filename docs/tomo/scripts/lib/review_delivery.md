@@ -16,7 +16,11 @@ refuses — the safe default for a problem nobody has classified yet.
 Rationale for the split: docs/tomo/scripts/review-instructions.md, "WHY
 Problems Are Split". `ALREADY_APPLIED` (`already-applied`) is `drop`'s
 refusal, not the plan's; it lives in `REFUSING` so the pin test names it
-with the others and no script spells it on its own.
+with the others and no script spells it on its own. `SET_WITHDRAWN`
+(`set-withdrawn`, P5) is `preview`'s and `deliver`'s refusal of an emptied
+set on a begun stem (docs/tomo/scripts/review-instructions.md, "WHY an
+Emptied Set on a Begun Stem Is `set-withdrawn`"); it lives beside
+`SET_EXISTS` for the same reason.
 
 ## WHY `ReviewMeta` Wraps the Dict
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry.
 
 The dialogue criteria of /review are model behaviour; this file proves that each
@@ -35,7 +35,9 @@ third fix round: a `user-heading-collision` on the rerun after a heading pick
 went back to the heading pick — the same-named-heading cause
 (`lib/review_actions._existing_note`, before `_insertion`) never reads
 `--place-anchor`, and the preview output does not tell it from the
-own-section cause, so the pick is offered once.
+own-section cause, so the pick is offered once. RED before the Phase 5
+cleanup: no `set-withdrawn` line (the refusing set grew by it) and the second
+`kado-write-failed` of `drop` did not say the next `/review` offers Drop again.
 """
 from __future__ import annotations
 
@@ -92,7 +94,7 @@ def _body() -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.3")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.4")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -663,7 +665,8 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
             "`paths.note` when set, and \"Next: review and apply the instruction set in Hashi, or by hand with the "
             "readable instructions.\"") in text
     assert ("- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; "
-            "stop. `set-exists` → as in step 7. Any other → the step 7 lines; nothing was written.") in text
+            "stop. `set-exists` or `set-withdrawn` → as in step 7. Any other → the step 7 lines; nothing was written."
+            ) in text
     assert ("- `stopped` → `doc-changed` → say the document was edited, or is open with unsaved edits, since the "
             "preview: save it and run `/review` again; the payloads in `paths` already written count as done, and "
             "the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at "
@@ -685,8 +688,18 @@ def test_drop_kado_write_failed_names_the_partial_withdrawal_and_reruns_once():
     text = _section("9. Drop a failed delivery")
     assert ("- `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing "
             "for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once "
-            "more. A second `kado-write-failed` → show it and stop.") in text
+            "more. A second `kado-write-failed` → show it, say the next `/review` lists this review again and "
+            "offers Drop, and stop.") in text
     assert "nothing was withdrawn; stop" not in text
+
+
+def test_set_withdrawn_routes_from_the_deliver_step_into_drop():
+    """P5: a drop that emptied the set but failed before the meta mark is listed again as failed-delivery;
+    Resume (`deliver`) refuses `set-withdrawn` on the emptied set, and the skill offers Drop there."""
+    text = _section("7. Preview")
+    assert ("- `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable "
+            "file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with "
+            "`<stem>`, Abort → stop.") in text
 
 
 # `drop` answers with these statuses (tomo/scripts/review-instructions.py, drop(), plus main's
@@ -768,6 +781,8 @@ ERROR_HANDLING_ROWS = {
     "preview template_unmergeable": "a plain note is built instead",
     "preview unlanded-items": "`unlanded` kept items are under a heading the parser does not know and do not land",
     "preview / deliver set-exists": "say an instruction set for this review already waits for Hashi; nothing is delivered",
+    "preview / deliver set-withdrawn": "say an earlier Drop emptied the instruction set but did not finish",
+    "drop kado-write-failed twice": "say the next `/review` lists this review again and offers Drop",
     "deliver name-taken": "say a note at `exists_path` is not Tomo's and nothing was overwritten",
     "deliver doc-changed": "save it and run `/review` again; the payloads in `paths` already written count as done",
     "deliver failed step": "the next `/review` offers Resume or Drop",

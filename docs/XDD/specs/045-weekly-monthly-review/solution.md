@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.6"
+version: "1.7"
 ---
 
 # Solution Design Document
@@ -657,12 +657,13 @@ review-instructions.py preview --stem S [--place-anchor H]
         variant_missing?: true, template_unmergeable?: "<reason>", unlanded?: n, headings?: [names],
         problems: [refusing names], notices: [names], set_exists: bool, resume: bool}   # (implemented, spec 045 Phase 4)
   # problems refuse a delivery (nothing is written): not-approved | approved-line-missing | nothing-to-deliver |
-  #   place-missing | place-too-deep | user-heading-collision | set-exists. A name that is in neither list refuses too.
+  #   place-missing | place-too-deep | user-heading-collision | set-exists | set-withdrawn. A name that is in neither list refuses too.
   # notices are shown and the delivery proceeds: heading-renamed | unlanded-items | variant_missing | templater_hint |
   #   template_unmergeable.
   # place-too-deep: the review heading would exceed level 5 at the configured anchor and placement
   # (rule: review_config.place_level, spec 045 Phase 2). set-exists: a delivery now would be a second set; preview
-  # reports it as deliver does. target_appeared: Pass 1 said new-note and the fresh plan does not (the reverse case,
+  # reports it as deliver does. set-withdrawn (SDD 1.7): the set at the path has an empty actions list and this
+  # delivery began — a drop that did not finish; the set is read (lib/review_state.read_set), not only probed. target_appeared: Pass 1 said new-note and the fresh plan does not (the reverse case,
   # a target that vanished, is not flagged). A refused replace reports mode replace and the heading found above the marker.
 
 review-instructions.py deliver --stem S [--place-anchor H]
@@ -1035,6 +1036,7 @@ sequenceDiagram
 | `preview` | template has a `tomo:` block or cannot be merged | notice `template_unmergeable` (+ the reason) | a plain note is built instead; says so |
 | `preview` | kept items under a heading the parser did not know | notice `unlanded-items` + `unlanded: n` | names the count; those items do not land |
 | `preview`, `deliver` | a set for the stem exists and this delivery did not write it, or the delivery is complete or withdrawn | `set-exists` | nothing written (F6-AC2) |
+| `preview`, `deliver` | the set at the stem's path has an empty `actions` list and this delivery began (a `drop` that wrote the set but did not finish; SDD 1.7) | `set-withdrawn` | nothing written; the skill says an earlier Drop emptied the set but did not finish and offers Drop or Abort — resuming over the emptied set would skip it as done and mark the document |
 | `deliver` | any refusing problem | `status: refused`, `problems` | nothing written (F5-AC1, F6-AC2) |
 | `deliver` | a payload's path holds a note that is not Tomo's identical text | `status: refused`, `name-taken`, `exists_path`, `step` | names the file; nothing overwritten |
 | `deliver` | the guarded mark is refused: Kado's error code `CONFLICT` (a `KadoToolError` whose JSON payload says so; `write_note` never raises `KadoConcurrencyError`, which counts too) — a stale `modified` or the document open with unsaved edits | `status: stopped`, `doc-changed`, `failed_step: doc_mark` | resume after saving; payloads already written count as done (F5-AC10). Accepted gap: resume does not re-check the landed set against the edited document |
@@ -1042,9 +1044,9 @@ sequenceDiagram
 | `deliver` | failure at any step | `status: stopped`, `failed_step` | next `/review` offers resume or drop; resume does not duplicate (F5-AC10) |
 | `preview`, `deliver` | target appeared since Pass 1 (meta said `new-note`, the fresh plan does not; the by-name search ignores hits inside the inbox) | `target_appeared: true`, mode `insert` or `replace` | says it targets the existing note (F6-AC4) |
 | `drop` | no delivery step began | `status: dropped`, `removed` | only the stage is removed |
-| `drop` | a delivery step began, done or in flight (the note step alone counts) | `status: withdrawn`, `paths` | the set JSON is written with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files" and names every file the delivery left, a lone new note included; `meta.json` keeps `withdrawn: true`, so a later `deliver` is `set-exists`; Kado offers Tomo no delete |
+| `drop` | a delivery step began, done or in flight (the note step alone counts) | `status: withdrawn`, `paths` | the set JSON is written with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files" and names every file the delivery left, a lone new note included; `meta.json` keeps `withdrawn: true`, so a later `deliver` is `set-exists`; Kado offers Tomo no delete. The set is written first, the MD second, the meta mark last: a `kado-write-failed` on the MD leaves the set empty, the MD listing the actions and the meta unmarked — the skill reruns `drop` once in the session, and the next `/review` lists the stem as `failed-delivery` again until the mark is written (SDD 1.7) |
 | `status` | move refused by Hashi / target gone after delivery | `state: move-refused` / `target-missing` | reported on the next `/review` (F6-AC4) |
-| `status` | the review is withdrawn | `state: null` | not listed |
+| `status` | the review is withdrawn (`meta.withdrawn`, or an emptied set with no begun record) | `state: null` | not listed |
 | any script | unexpected exception | exit 1, stderr = class name only | the problem class; never content |
 
 ### Complex Logic (if applicable)
@@ -1057,9 +1059,13 @@ INPUT: the review document's frontmatter (found by byFrontmatter tomo.doc_type=r
 1. read <inbox>/<stem>_instructions.json — only when the document state is approved; absent only on KadoNotFoundError,
    an unreadable file reads as present
 review_state(doc, meta, set_json, target_exists, inbox_copy_exists):
-2. meta.withdrawn, or a set JSON with actions == []                         → None (not listed; `status` prints state null)
+2. meta.withdrawn, or a set JSON with actions == [] on a stem whose delivery never began
+   (meta absent, no step done or in flight — the set alone says withdrawn)  → None (not listed; `status` prints state null)
 3. a begun delivery (ReviewMeta.started(): a step done or in flight) without doc_mark in steps_done,
-   or the document approved and no set JSON                                 → failed-delivery (resume | drop)
+   or a begun delivery whose set JSON has actions == [] while meta is not withdrawn (a drop that wrote
+   the set but failed before the MD and the meta mark; SDD 1.7, owner decision),
+   or the document approved and no set JSON                                 → failed-delivery (resume | drop;
+   on the emptied set resume refuses set-withdrawn and the skill offers drop, which completes the withdrawal)
 4. no set JSON                                                              → open
 5. a set that is not a readable instruction set                             → delivered
 6. every action applied:true                                                → applied
@@ -1165,6 +1171,7 @@ stateDiagram-v2
     delivered --> failed_delivery: write fails midway
     failed_delivery --> delivered: resume
     failed_delivery --> [*]: drop (set withdrawn)
+    failed_delivery --> failed_delivery: drop fails after the set write (listed again; resume refuses set-withdrawn)
     delivered --> applied: Hashi applies all actions
     delivered --> move_refused: target existed at apply
     delivered --> target_missing: target moved after delivery

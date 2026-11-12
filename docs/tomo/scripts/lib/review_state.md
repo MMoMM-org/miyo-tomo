@@ -63,14 +63,47 @@ review is listed as `failed-delivery` forever: `drop` after a partial
 delivery keeps `meta.json` with its `steps_done` and `withdrawn: true`
 (ADR-13 — Kado offers Tomo no delete, so the record of what was written
 must stay), and that record satisfies step 1. The function therefore tests
-step 3 first — `meta.withdrawn`, or a set JSON whose `actions` list is empty
-(what `drop` writes over a delivered set) — and only then step 1. Where the
-SDD's numbering and this order disagree, this order is the one implemented;
-the step names in the code keep the SDD's numbers so the two can be read
-side by side.
+step 3 first — `meta.withdrawn` — and only then step 1. Where the SDD's
+numbering and this order disagree, this order is the one implemented; the
+step names in the code keep the SDD's numbers so the two can be read side by
+side.
 
 A withdrawn meta also costs no probe: the answer is fixed before the set is
 read, so `stem_state` returns before touching Kado.
+
+### WHY an Emptied Set Withdraws Only Without a Begun Record (P5)
+
+WHY: owner decision, spec 045 Phase 5 cleanup. Until then a set JSON whose
+`actions` list is empty counted as withdrawn whatever `meta.json` said.
+`review-instructions.py drop` writes that empty set first, the readable MD
+second and marks `meta.json` last (docs/tomo/scripts/review-instructions.md,
+"WHY `drop` Withdraws Instead of Deleting"); a Kado failure on the MD write
+therefore leaves the set empty, the MD still listing the actions and the
+meta unmarked. Read as withdrawn, that stem vanished from `start` after a
+drop of a complete delivery (the document is `approved`, so the set is read)
+while its MD in the inbox still named the actions, and only the one in-session
+rerun the skill makes could finish it. The rule is now: a stem is withdrawn
+when `meta.json` says so; an emptied set is `drop`'s signature and is trusted
+only when no begun delivery record contradicts it (meta absent, or no step
+done or in flight — a cleaned `tomo-tmp` after a finished drop). On a begun
+stem that meta does not call withdrawn, the emptied set is a drop that did
+not finish: `failed-delivery`, the state the SDD gives a begun-but-unfinished
+delivery, so the next `/review` offers Resume and Drop again. Drop is the
+path that works — it reads the empty set back (nothing applied), rewrites it
+under the guard, writes the MD and marks the meta. Resume (`deliver`) on an
+emptied set is refused as `set-withdrawn` (`is_emptied_set` is the one
+predicate both use; docs/tomo/scripts/review-instructions.md, "WHY the
+Second Set Is Refused Before Anything Is Built"), because on a delivery
+stopped before `doc_mark` the loop would skip `set_json` as done, write the
+MD with the actions and mark the document — an empty set that this function
+would then read as `applied` (every action of none is applied). Listing the
+stem with a seventh state was rejected: the skill's offers are the six, and
+`failed-delivery` already names Drop.
+
+The alternative order — an emptied set under a begun meta reading None, as
+before — was the one bug the owner named; `failed-delivery` under an absent
+meta was rejected because Drop on a stem with no begun record only removes
+the stage (`dropped`) and the stem would be listed forever.
 
 ## WHY a Begun Delivery Is Read Through `ReviewMeta.started()`
 
@@ -188,9 +221,10 @@ WHY: a file at the set path that is not JSON, not an object, or whose
 (which overwrites a file Tomo cannot read); `applied` would claim what
 nobody verified. `delivered` — waits for Hashi or by hand — is the state
 under which the user looks at the inbox, and Hashi's validator will say what
-is wrong with the file. An empty `actions` list alone is the withdrawal
-signature, because only `drop` writes one: `nothing-to-deliver` refuses
-before a set is built.
+is wrong with the file. An empty `actions` list is the withdrawal signature,
+because only `drop` writes one: `nothing-to-deliver` refuses before a set is
+built — read as withdrawn without a begun record, as a drop that did not
+finish under one ("WHY an Emptied Set Withdraws Only Without a Begun Record").
 
 ## WHY an Unsafe `review_stem` Is Skipped, Never Read as Meta-Absent
 

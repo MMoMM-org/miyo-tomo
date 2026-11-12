@@ -52,6 +52,32 @@ refusal, because the only honest second answer would be "nothing to do", and
 the SDD chose the refusal so the skill says the set waits for Hashi. A set
 this delivery wrote and did not finish is the resume case, not a second set.
 
+### WHY an Emptied Set on a Begun Stem Is `set-withdrawn`, Not Resumed (P5)
+
+Owner decision, spec 045 Phase 5 cleanup. `drop` writes the empty set
+before the MD and marks `meta.json` last, so a drop whose MD write failed
+leaves a begun stem with an emptied set and an unmarked meta; the listing
+offers it again as `failed-delivery` (docs/tomo/scripts/lib/review_state.md,
+"WHY an Emptied Set Withdraws Only Without a Begun Record"), and Resume runs
+`deliver`. On that set `deliver` misbehaves twice over: a delivery stopped
+before `doc_mark` has `set_json` in `steps_done`, so the loop skips the set
+as done, writes the MD with the actions and marks the document — the inbox
+then holds an empty set beside an MD that lists actions, and the state
+function reads the empty set as `applied`; a delivery whose `set_json` was
+in flight finds other text at the path and refuses `name-taken`, naming the
+set JSON as if it were the user's note. The probe of the set is therefore a
+read (`review_state.read_set`, the same reader `drop` and `stem_state` use;
+one call, as `path_exists` was), and a set with an empty `actions` list on a
+stem whose delivery began and whose meta is not marked withdrawn refuses
+`set-withdrawn` before `set-exists` is considered: nothing written, and the
+skill offers Drop, which completes the withdrawal. Once the mark is written
+the drop is finished and a later `deliver` stays `set-exists`, as the SDD
+says for a withdrawn review — the skill then says the set waits, which is
+wrong for an emptied set, but the review is unlisted and no step leads there. A begun delivery never writes an empty set itself
+(`nothing-to-deliver` refuses before a set is built), so on a begun stem the
+signature is `drop`'s. On a stem whose delivery never began the same file
+stays `set-exists` — a file this delivery did not write, whatever it holds.
+
 ## WHY the Steps Are `note → set_json → set_md → doc_mark` (ADR-11)
 
 The order is the order of harm. The new note (only in `new-note` mode) is
@@ -160,9 +186,12 @@ instruction set, so Hashi lists and validates it and finds nothing to do —
 and rewrites the MD peer to say "withdrawn — delete these files", naming
 every file the delivery left (the staged new note too). `meta.json` stays,
 with `withdrawn: true` and the failed step cleared, so the state function
-can leave the review unlisted (SDD Complex Logic step 3; T4.3). A delivery
-that never began (no step done, none in flight) left nothing in the vault
-to neutralise, and the stage directory is simply removed.
+can leave the review unlisted (SDD Complex Logic step 3; T4.3) — the meta
+mark is what withdraws; a drop that failed before it is listed again by the
+next `/review` (P5, docs/tomo/scripts/lib/review_state.md, "WHY an Emptied
+Set Withdraws Only Without a Begun Record"). A delivery that never began (no
+step done, none in flight) left nothing in the vault to neutralise, and the
+stage directory is simply removed.
 
 ### WHY Any Started Delivery Is Withdrawn, Not Only One With a Set
 
@@ -277,7 +306,7 @@ to the user on purpose (F5-AC2).
 
 `preview`: the document (1), the target candidates (1–2), a by-name search
 when neither exists (1), the template and its variant for a new note (0–2),
-the set probe (1). `deliver`: the same, then per uploaded step one probe and
+the set read (1; its `actions` decide `set-withdrawn`). `deliver`: the same, then per uploaded step one probe and
 one write, and the document mark (1). `drop` on a begun delivery: the set
 JSON (1), then the two writes. `status`: the frontmatter (1), the set
 JSON for an approved document (1), then for a waiting set one probe (insert

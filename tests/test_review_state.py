@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_state.py — lib/review_state.py, the one owner of /review's
-open-review states (spec 045 T2.3, T4.3; SDD Complex Logic review_state; ADR-6).
+open-review states (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state; ADR-6).
 
 - STATES is the canonical six-state list in the SDD's order; review_state
   returns one of them or None (not listed), nothing else
-- review_state, in the implemented order: withdrawn (meta.withdrawn or a set
-  JSON with an empty actions list) → None, BEFORE the begun-delivery reading
-  (coordinator 2026-11-12); a begun delivery (ReviewMeta.started(): a step
-  done or in flight) without doc_mark → failed-delivery, also with
+- review_state, in the implemented order: meta.withdrawn → None, BEFORE the
+  begun-delivery reading (coordinator 2026-11-12); an emptied set (actions
+  == [], what drop writes) → None on a stem whose delivery never began, but
+  failed-delivery on a begun stem meta does not call withdrawn (a drop whose
+  MD write failed; owner decision P5: listed again, Resume or Drop); a begun
+  delivery (ReviewMeta.started(): a step done or in flight) without doc_mark
+  → failed-delivery, also with
   steps_done ["note"] and no failed_step; approved without a set JSON →
   failed-delivery; pending without a set → open; every action applied →
   applied; an unapplied move_note whose source (inbox copy) and destination
@@ -192,12 +195,36 @@ def test_withdrawn_is_tested_before_the_begun_delivery_reading():
     assert rs.review_state(_doc("2026-W13", "week"), dropped) is None
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), dropped) is None
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), dropped, _set()) is None
-    # the set Tomo wrote over a delivered one: an empty actions list, whatever the meta says
-    assert rs.review_state(_doc("2026-W13", "week", APPROVED), {"failed_step": "doc_mark"}, _set()) is None
+    # the set Tomo wrote over a delivered one, with no begun record to contradict it: withdrawn
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), None, _set()) is None
+    assert rs.review_state(_doc("2026-W13", "week", APPROVED), {}, _set()) is None
     assert rs.review_state(_doc("2026-W13", "week", APPROVED), {"withdrawn": True}, _set(_move(True))) is None
     # withdrawn: false is not withdrawn
     assert rs.review_state(_doc("2026-W13", "week"), {"withdrawn": False}) == "open"
+
+
+# ---------------------------------------------------------------- review_state: a drop that did not finish
+
+@pytest.mark.parametrize("meta", [
+    {"steps_done": ["set_json"], "failed_step": "set_md"},                              # deliver died at set_md
+    {"steps_done": ["note"], "failed_step": "set_json", "withdrawn": False},             # the set was in flight
+    {"steps_done": ["set_json", "set_md", "doc_mark"], "failed_step": ""},                # a complete delivery
+    {"failed_step": "doc_mark"},
+], ids=["set_md-failed", "set_json-in-flight", "complete", "doc_mark-failed"])
+def test_an_emptied_set_on_a_begun_stem_not_marked_withdrawn_is_failed_delivery(meta):
+    """Falsifies `actions == []` alone meaning withdrawn: `drop` writes the empty set first and marks
+    meta.json last, so a drop whose MD write failed leaves the set empty, the MD listing the actions and
+    the meta unmarked. Owner decision (spec 045 P5): only meta.withdrawn withdraws; such a stem is a
+    begun-but-unfinished delivery, listed again so the next /review offers Resume or Drop."""
+    assert rs.review_state(_doc("2026-W13", "week", APPROVED), meta, _set()) == "failed-delivery"
+    assert rs.review_state(_doc("2026-W13", "week", APPROVED), dict(meta, withdrawn=True), _set()) is None
+
+
+def test_is_emptied_set_is_the_withdrawal_signature_only():
+    assert rs.is_emptied_set(_set()) is True
+    assert rs.is_emptied_set({"actions": []}) is True
+    for not_emptied in (None, {}, {"actions": None}, {"actions": "nope"}, {"actions": ["nope"]}, _set(_move())):
+        assert rs.is_emptied_set(not_emptied) is False
 
 
 # ---------------------------------------------------------------- review_state: steps 4-7
@@ -334,7 +361,11 @@ def test_stem_state_withdrawn_costs_no_probe_and_an_unreadable_set_is_delivered(
     assert rs.stem_state(vault, doc, {"withdrawn": True, "steps_done": ["set_json"]}, STEM, INBOX) is None
     assert _probes(fake) == []
     vault, fake = _vault({SET: _set_bytes()})
-    assert rs.stem_state(vault, doc, {"steps_done": ["set_json", "set_md", "doc_mark"]}, STEM, INBOX) is None
+    assert rs.stem_state(vault, doc, None, STEM, INBOX) is None
+    assert _probes(fake) == [("read_file", SET)]
+    # the emptied set on a begun stem that meta does not call withdrawn: a drop that did not finish
+    vault, fake = _vault({SET: _set_bytes()})
+    assert rs.stem_state(vault, doc, {"steps_done": ["set_json", "set_md", "doc_mark"]}, STEM, INBOX) == "failed-delivery"
     assert _probes(fake) == [("read_file", SET)]
     vault, fake = _vault({SET: b"{not json"})
     assert rs.stem_state(vault, doc, None, STEM, INBOX) == "delivered"
@@ -431,6 +462,23 @@ def test_open_reviews_never_lists_a_withdrawn_review_nor_an_applied_one_already_
     assert skipped == []
     assert [(r.period, r.state) for r in reviews] == [("2026-W10", "applied")]
     assert INBOX + "2026-W12_review_instructions.json" not in fake.paths_seen      # withdrawn meta: no probe
+
+
+def test_open_reviews_lists_a_half_withdrawn_stem_as_failed_delivery_until_meta_says_withdrawn(tmp_path):
+    """`drop` emptied the set but its MD write failed: the set holds nothing, the MD lists the actions,
+    meta.json is not marked. The listing offers it again (Resume or Drop) instead of hiding it."""
+    _meta(tmp_path, "2026-W12_review", steps_done=["note", "set_json"], failed_step="set_md", withdrawn=False)
+    _meta(tmp_path, "2026-W11_review", steps_done=["note", "set_json"], failed_step="set_md", withdrawn=True)
+    vault, fake = _vault({INBOX + "2026-W12_review_instructions.json": _set_bytes(),
+                          INBOX + "2026-W11_review_instructions.json": _set_bytes()})
+    docs = [
+        (INBOX + "2026-W12 Review.md", _doc("2026-W12", "week", APPROVED, stem="2026-W12_review")),
+        (INBOX + "2026-W11 Review.md", _doc("2026-W11", "week", APPROVED, stem="2026-W11_review")),
+    ]
+    reviews, skipped = rs.open_reviews(docs, tmp_path, vault, INBOX)
+    assert skipped == []
+    assert [(r.period, r.state) for r in reviews] == [("2026-W12", "failed-delivery")]
+    assert [p for m, p in fake.events if m == "read_file"] == [INBOX + "2026-W12_review_instructions.json"]
 
 
 def test_open_reviews_skips_an_unsafe_stem_never_classifying_it_as_meta_absent(tmp_path):

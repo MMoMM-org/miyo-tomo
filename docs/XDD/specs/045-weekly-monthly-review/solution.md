@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.3"
+version: "1.4"
 ---
 
 # Solution Design Document
@@ -350,7 +350,7 @@ Responsibilities (one owner each):
 | `lib/review_vault.py` | The Kado access of every review script (implemented, spec 045 Phase 2): `Vault` maps every Kado failure onto the SDD's error kinds once (`Stopped("kado-unreachable" \| "kado-auth")` stops the run; a failed single read degrades to None / `unreadable`), `review_documents` (the byFrontmatter query plus one frontmatter read per hit), `list_notes`, `template`, `folder_listed`; the date and heading helpers `frontmatter_start`, `headings`, `heading_start`. No second Kado error mapping anywhere |
 | `lib/week_rule_inference.py` | Inferring the week rule from the dates up to 8 recent weekly notes carry (`infer_rule` → `Inference` inferred \| ambiguous \| default with every `Checked` note), never from the Obsidian plugin configuration (implemented, spec 045 Phase 2) |
 | `lib/vault_config_edit.py` | Text-preserving insert / replace / remove of one nested key in `vault-config.yaml` (`set_path`, `get_path`), creating missing parents and sections, rewriting a flow mapping on a key line as a block; the line helpers `templates-include` shares (implemented, spec 045 Phase 2) |
-| `review-session.py` | `start` (parse request, list open reviews via `review_vault` + `review_state`), `match` (setup preview against existing notes via `review_vault` + `week_rule_inference`), `setup-input` (build the writer input from a confirmed proposal) (implemented, spec 045 Phase 2) |
+| `review-session.py` | `start` (parse request, list open reviews via `review_vault` + `review_state.open_reviews`, record each listed applied review as reported), `match` (setup preview against existing notes via `review_vault` + `week_rule_inference`), `setup-input` (build the writer input from a confirmed proposal) (implemented, spec 045 Phase 2) |
 | `vault-config-writer.py review` | Applying `review_config.writer_edits` to `vault-config.yaml` text-preservingly through `vault_config_edit.set_path`, including absent nested keys and the new `review:` section, with the duplicate refusal and the per-leaf read-back before the atomic write (implemented, spec 045 Phase 2) |
 | `lib/review_pacer.py` | Spacing, widening after retries, the end-of-run retry pass, retry and wait accounting, the not-read list, abort on connection/auth errors |
 | `lib/review_day.py` | Reading one day: same-day links and embeds from the whole daily, configured sections, fields, tasks by ✅ date, size cap, per-day state |
@@ -362,10 +362,12 @@ Responsibilities (one owner each):
 | `lib/review_habits.py` | Tracker numbers (counts, averages, missing/unreadable days); takes fields as the reader attributed them |
 | `lib/review_doc.py` + `review-doc.py` | Validating `proposals.json`, rendering the review document with item ids, the label table, start-over replacement, the delivered mark function |
 | `lib/review_doc_parse.py` | Parsing the edited document: Approved line, items by id, user items, warnings |
-| `lib/review_actions.py` | Locating the target (by path, else by name), choosing insert vs replace vs new note, building the section text with escaping, the actions and the stamped new note |
-| `lib/review_state.py` | The one open-review state function: reads document frontmatter, `meta.json` and the set JSON (`applied`) and returns the canonical state |
+| `lib/review_doc_read.py` | The one shared reader of the review document for `parse`, `preview` and `deliver`: `doc_path_of`, and `read_document` (the Kado read, Kado's `modified` stamp, the parse with `meta.pass1_links` and the Pass 1 total) so `edited` and `deleted` are computed one way (implemented, spec 045 Phase 4) |
+| `lib/review_actions.py` | Locating the target (by path, else by name outside the inbox), choosing insert vs replace vs new note, the heading and marker rules as Hashi reads the file, building the section text with escaping, the actions and the stamped new note (implemented, spec 045 Phase 4) |
+| `lib/review_delivery.py` | The delivery around the plan: `classify` (refusing problems against notices), `ReviewMeta` (the `meta.json` dict as the staged loop's record: `started()`, `withdrawn()`, `second_set()`), set paths, template paths, the set's MD peer, the withdrawn set and its MD (implemented, spec 045 Phase 4) |
+| `lib/review_state.py` | The one open-review state function and `stem_state`, the one probe-and-classify step: reads document frontmatter, `meta.json`, the set JSON (`applied`) and the probes, and returns the canonical state or None; also `safe_stem`, `read_meta` and the listing `open_reviews` (implemented, spec 045 Phase 4) |
 | `lib/staged_delivery.py` | The ordered, resumable, identical-text-idempotent write of inbox payloads (extracted from `note-instructions.py`; steps and targets supplied by the caller) |
-| `review-instructions.py` | `preview`, `deliver`, `drop`, `status` subcommands over the above |
+| `review-instructions.py` | `preview`, `deliver`, `drop`, `status` subcommands over the above (implemented, spec 045 Phase 4) |
 | `lib/render_md.py` | Readable `instructions.md`: copy-ready fenced content for `insert_under_marker` and `replace_section`, placement wording |
 | `inbox-triage.py` | Treating `review` documents as known and skipping them silently |
 
@@ -405,8 +407,10 @@ tomo/
 │       ├── review_habits.py                  # NEW
 │       ├── review_doc.py                     # NEW
 │       ├── review_doc_parse.py               # NEW
-│       ├── review_actions.py                 # NEW
-│       ├── review_state.py                   # NEW
+│       ├── review_actions.py                 # NEW (implemented, spec 045 Phase 4)
+│       ├── review_delivery.py                # NEW: problem classes, meta adapter, set paths, withdrawn set (implemented, spec 045 Phase 4)
+│       ├── review_doc_read.py                # NEW: the one reader of the review document for Pass 2 (implemented, spec 045 Phase 4)
+│       ├── review_state.py                   # NEW (implemented, spec 045 Phase 4)
 │       ├── staged_delivery.py                # NEW: extracted deliver loop
 │       ├── note_meta.py                      # MODIFY: step set supplied by the caller
 │       ├── kado_client.py                    # MODIFY: wait counters, KadoRateLimitError, filter
@@ -560,7 +564,7 @@ read.json        # content of the period (Pass 1 only; deleted after the documen
                  #  a session that ends without either leaves it until the next /review of that stem — named in PRIVACY.md)
 proposals.json   # model output (Pass 1 only; deleted with read.json)
 meta.json        # content-free: period, kind, doc_path, target, mode, generated, steps_done, failed_step,
-                 #  pass1_counts {group: n}, withdrawn
+                 #  pass1_counts {group: n}, pass1_links, withdrawn, applied_reported
 ```
 
 #### Internal API Changes
@@ -573,10 +577,12 @@ review-session.py start --args '<raw $ARGUMENTS>'
         request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default",
                   start?: "2026-03-23", end?: "2026-03-29"},        # first and last day of a period request
         current?: {week: <proposal shape>|null|{invalid: [json-pointer]}, month: ...},   # setup request only
-        open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state (canonical list below)
-        skipped_review_docs: [{doc_path, reason: frontmatter-unreadable|period-missing}],   # never dropped silently
+        open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state.stem_state (canonical list below);
+                                                                    # a withdrawn review is not listed; an applied one is listed once
+        skipped_review_docs: [{doc_path, reason: frontmatter-unreadable|period-missing|stem-unsafe}],   # never dropped silently
         setup: {week: present|missing, month: present|missing},
         problems?: [inbox-not-configured],                          # no Kado call was made
+        notices?: [applied-not-recorded],                           # the applied flag could not be written; status stays ok
         error?: {kind: invalid-period|unfinished-period|not-periodic-note|unknown-argument, expected, example,
                  last_finished?: "2026-W13"}                        # last_finished on unfinished-period (implemented, spec 045 T1.1)
               | {kind: kado-unreachable|kado-auth, detail}}         # with status stopped
@@ -645,24 +651,36 @@ review-doc.py replace --stem S [--confirm | --abort] [--proposals <json>] [--run
        --confirm    as write, with status replaced instead of written
        --abort      {status: aborted, stem}                      # deletes read.json and proposals.json; document and meta.json untouched
 
-review-instructions.py preview --stem S
-  out: {status: ok|stopped, mode: insert|replace|new-note, target, target_moved?: bool, place, section_md,
-        escaped_lines: n, templater_hint: bool, variant_missing?: bool,
-        problems: [place-missing|place-too-deep|heading-renamed|user-heading-collision|nothing-to-deliver|not-approved|approved-line-missing],
-        headings?: [names]}
+review-instructions.py preview --stem S [--place-anchor H]
+  out: {status: ok|stopped, stem, doc_path, mode: insert|replace|new-note, target, target_moved?: true, duplicates?: [paths],
+        target_appeared?: true, place: {anchor, placement, level}, section_md, escaped_lines: n, templater_hint: bool,
+        variant_missing?: true, template_unmergeable?: "<reason>", unlanded?: n, headings?: [names],
+        problems: [refusing names], notices: [names], set_exists: bool, resume: bool}   # (implemented, spec 045 Phase 4)
+  # problems refuse a delivery (nothing is written): not-approved | approved-line-missing | nothing-to-deliver |
+  #   place-missing | place-too-deep | user-heading-collision | set-exists. A name that is in neither list refuses too.
+  # notices are shown and the delivery proceeds: heading-renamed | unlanded-items | variant_missing | templater_hint |
+  #   template_unmergeable.
   # place-too-deep: the review heading would exceed level 5 at the configured anchor and placement
-  # (rule implemented in review_config.place_level, spec 045 Phase 2; the preview reports it in T4.2)
+  # (rule: review_config.place_level, spec 045 Phase 2). set-exists: a delivery now would be a second set; preview
+  # reports it as deliver does. target_appeared: Pass 1 said new-note and the fresh plan does not (the reverse case,
+  # a target that vanished, is not flagged). A refused replace reports mode replace and the heading found above the marker.
 
 review-instructions.py deliver --stem S [--place-anchor H]
-  out: {status: delivered|resumed|refused|stopped, step, paths: {set_json, set_md, note?}, next: hashi-or-by-hand,
-        problems?: [not-approved|set-exists|doc-changed|kado-write-failed]}
+  out: {status: delivered|resumed, stem, step: "", paths: {set_json, set_md, note?}, next: hashi-or-by-hand,
+        mode, target, place, notices, problems: [], target_appeared?: true, ...the preview keys except section_md}
+     | {status: refused, stem, problems: [<refusing names>|name-taken], notices, exists_path?, step?}
+     | {status: stopped, stem, step, failed_step, paths, problems: [doc-changed|kado-write-failed]}
   # refused = nothing written (a problem the user must fix); stopped = a step failed after writing began (resumable)
+  # name-taken: a payload's path holds a note that is not Tomo's identical text (exists_path names it)
+  # deliver success carries no section_md; the section is the preview's
 
 review-instructions.py drop --stem S
-  out: {status: dropped|withdrawn|stopped}      # withdrawn = a set Tomo wrote was neutralised (see Error Handling)
+  out: {status: dropped, stem, removed: bool}                       # no step began: only the stage is removed
+     | {status: withdrawn, stem, paths: {set_json, set_md, note?}}  # a step began (done or in flight): see Error Handling
+     | {status: stopped, stem, problems: [kado-write-failed], error: {kind}}
 
 review-instructions.py status --stem S
-  out: {state}                                   # canonical list below
+  out: {state, stem}                             # canonical list below; state is null for a withdrawn review
 ```
 
 **Canonical open-review states** (owned by `lib/review_state.py`, used everywhere): `open` · `failed-delivery` · `delivered` · `applied` · `move-refused` · `target-missing`.
@@ -742,15 +760,19 @@ ENTITY: ApprovedReview (NEW) — parse result: ordered groups → kept item text
 ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
   FIELDS: stem, period, kind, doc_path, target, target_exists, run_id, mode, generated, pass1_counts {group: n},
           pass1_links {t<n>: [link stem]} (the source-link stems of each Tomo item, dates and note stems only),
-          steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn
+          steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn, applied_reported
   RULE: nothing text-derived (no digest of item text — templated lines are recoverable by enumeration)
         `mode` is `insert` when the target note exists and `new-note` when it does not, as Pass 1 knew it
-        (implemented, spec 045 Phase 3); `replace` is decided later, by the marker search at preview
+        (implemented, spec 045 Phase 3); `replace` is decided later, by the marker search at preview.
+        Preview and deliver compare it with the fresh plan: `target_appeared` is set when meta said `new-note` and
+        the plan does not. The reverse (the target vanished since Pass 1) is not flagged.
+        `withdrawn: true` is written by `drop` once a step began; `applied_reported: true` by `start` after it lists an
+        applied review. `start` creates a minimal meta (`stem`, empty `steps_done`, empty `failed_step`) when none exists.
 ```
 
 **Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its source links differ from Pass 1's (`pass1_links`; a retyped text that keeps its links reads as unedited, an accepted limit), kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
 
-**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. As built (spec 045 Phase 3) the parser has exactly five warnings: `approved-line-missing`, `unknown-group`, `duplicate-group`, `frontmatter-broken` and `item-outside-group` (a checkbox line above the first heading, filed under `unknown`). Headings, lists, tables, fences, quotes and HTML inside an item are not detected: they are kept verbatim as item text, because only an exact column-0 Approved line, `## ` group heading or `- [ ] ` / `- [x] ` item start is structure. `review_doc` escapes a leading structural marker on every item line with `\` when it writes the document, and Phase 4 escapes again idempotently when it lands the text. An Approved line moved into a group still gates: the first column-0 Approved line of the document decides. The later Hashi editor spec takes the rest over.
+**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. As built (spec 045 Phase 3) the parser has exactly five warnings: `approved-line-missing`, `unknown-group`, `duplicate-group`, `frontmatter-broken` and `item-outside-group` (a checkbox line above the first heading, filed under `unknown`). Headings, lists, tables, fences, quotes and HTML inside an item are not detected: they are kept verbatim as item text, because only an exact column-0 Approved line, `## ` group heading or `- [ ] ` / `- [x] ` item start is structure. `review_doc` escapes a leading structural marker on every item line with `\` when it writes the document, and the delivery escapes again idempotently when it lands the text. An Approved line moved into a group still gates: the first column-0 Approved line of the document decides. The later Hashi editor spec takes the rest over.
 
 #### Integration Points
 
@@ -863,10 +885,13 @@ place = before "### In my own words" (level 3)  → review heading level 3, grou
 
 Rules (level rule owned by `lib/review_config.place_level`, applied by `lib/review_actions.py`):
 - placement for a heading anchor is `before` (review heading at the anchor's level n) or `inside` (level n+1, appended at the end of the anchor's section); `after` is refused at setup; groups one level deeper; the review heading may not exceed level 5 (its groups stay ≤ 6).
-- every line of an item — first and continuation lines — starting with `#`, `- [`, `>`, or a code fence is escaped (`\#`, `- \[`, `\>`, the fence's backticks escaped); the preview reports the count (F5-AC2).
+- every line of an item — first and continuation lines — that would be structure in a document gets a backslash prefixed to the line (`\# x`, `\> x`, `\- [ ] x`). `review_doc.neutralised` escapes a line that starts with: one or more `#` followed by whitespace or the end of the line; `>`; a code fence opener (three backticks or `~~~`); `---`, `***` or `___`; a list marker (`-`, `*`, `+`, or digits with `.` or `)`) followed by whitespace and `[`; or a thematic break of three or more of the same `-`, `*` or `_` with optional spaces between. The function is idempotent (a prefixed line matches no marker), so the document writer and the delivery both apply it once; the preview reports the count of lines escaped at delivery (F5-AC2). `%%` pairs are not in the set (open follow-up, README Decisions Log 2026-11-12).
 - content ends with one blank line; it is a pure function of the approved document (no clock values), so Hashi's identical-block check makes a resumed insert idempotent.
-- rerun: the target is read through Kado and searched for the marker line `%% tomo-review <period> %%`. Marker found → `replace_section` on the heading directly above it, whatever its text (renamed → reported as `heading-renamed`). No marker but a heading equal to `heading` → `user-heading-collision`, never replaced. Neither → insert.
-- target lookup: by the configured path first — the paths `Period.note_paths(folder, fmt)` yields in order, the flat folder before `<folder>/<year>/`; when the same stem exists in both, the first path (the flat folder) is the target and the preview names the duplicate; when absent at every configured path, by name across the vault (`byName "<name>.md"`); a hit elsewhere becomes the target and is reported as `target_moved`.
+- heading recognition mirrors Hashi's `parseHeadings` exactly (`review_actions.hashi_headings`): the target is split on `\n` only; a line that opens with ``` or `~~~` after JS whitespace toggles a fence and is itself fenced, frontmatter included; a heading is one to six `#`, JS whitespace, then the text up to the end of the line, trimmed with ECMAScript's whitespace set (`JS_WS`); closing hashes stay in the text; a line ending in CR, or holding U+2028 or U+2029, is no heading. Matching is tolerant, emission is exact: the configured anchor, the review heading and the own sections match a note heading with or without closing hashes and trailing whitespace, and the emitted anchor value or `replace_section` value is the heading's text as Hashi reads it, so Hashi resolves the same heading.
+- the marker `%% tomo-review <period> %%` counts only at column 0, outside a fence, with trailing whitespace tolerated; an indented copy is an item's continuation line, not the marker.
+- rerun: the target is read through Kado and searched for the marker. Marker found → mode `replace`, a `replace_section` on the heading directly above it, whatever its text (a text that differs from `heading` → notice `heading-renamed`). A marker with no heading above it → `place-missing`. A refused replace still reports mode `replace` and the heading found above the marker as the place. Collisions are `user-heading-collision` and never replaced: a heading equal to `heading` without a marker; a marker under an own section; a marker under a heading that an earlier heading of the same text shadows (Hashi resolves the first match); an `inside` placement into an own section. Neither marker nor collision → insert at the place.
+- a new note: the template is chosen by ADR-8 and the section placed by the same before/inside rule; a template whose frontmatter carries a `tomo:` block or cannot be merged (an unclosed fence) falls back to the plain note and the notice `template_unmergeable` names the reason; no template gives a title H1 and the section at level 2.
+- target lookup: by the configured path first — the paths `Period.note_paths(folder, fmt)` yields in order, the flat folder before `<folder>/<year>/`; when the same stem exists in both, the first path (the flat folder) is the target and the preview names the duplicate; when absent at every configured path, by name across the vault (`byName "<name>.md"`); a hit elsewhere becomes the target and is reported as `target_moved`; hits inside the inbox (the staged copy) are ignored.
 
 #### Example: pacer
 
@@ -994,43 +1019,64 @@ sequenceDiagram
 | `write` | invalid proposals file | `status: refused`, `proposals-invalid` | the model is asked to rewrite the file once; then the run stops |
 | `write` | `<name> Review.md` exists and is not Tomo's | `status: refused`, `doc-name-taken` | names the file; nothing overwritten |
 | `write` | Tomo's review document for the period already exists | `status: refused`, `review-exists` + `doc_path` | nothing overwritten, stage files kept; the skill asks to start over, then `replace --confirm` (F6-AC1) |
-| `write`, `deliver` | Kado write refused or failed | `status: stopped`, `kado-write-failed` | nothing claimed as written; deliver is resumable |
+| `write`, `deliver`, `drop` | Kado write refused or failed (a refused write inside `deliver` or `drop` is always this, never `kado-unreachable` / `kado-auth`, which are the read-side mapping `kado_stops`) | `status: stopped`, `kado-write-failed` | nothing claimed as written; deliver is resumable |
 | `parse` | document missing / renamed beyond recognition | `status: not-found` | offers start over |
 | `parse` / `preview` | Approved unticked / line missing | `not-approved` / `approved-line-missing` | names the box / how to restore `- [ ] Approved` (F5-AC1) |
 | `preview` | everything unticked | `nothing-to-deliver` | Abort or start over |
 | `preview` | place missing | `place-missing` + `headings` | asks for one or Abort; `deliver --place-anchor` uses it (F5-AC7) |
 | `preview` | review heading would exceed level 5 at the anchor (`review_config.place_level` refuses; rule implemented, spec 045 Phase 2) | `place-too-deep` + `headings` | names the anchor and its level; asks for a shallower heading (`deliver --place-anchor`) or Abort; nothing written |
-| `preview` | same-named user heading without marker | `user-heading-collision` | never replaced; another heading or Abort |
-| `preview` | marker under a renamed heading | `heading-renamed` | replaced there; says so (F6-AC3) |
-| `preview` | template variant gone | `variant_missing: true`, `templater_hint: true` | raw template + Templater hint |
-| `deliver` | not approved / set exists for the stem | `status: refused` | nothing written (F5-AC1, F6-AC2) |
-| `deliver` | document changed during delivery (`expected_modified` mismatch on the mark) | `status: stopped`, `doc-changed`, `failed_step: doc_mark` | resume after saving; payloads already written count as done (F5-AC10) |
+| `preview` | a same-named user heading without marker; an `inside` placement into an own section; a marker under an own section; a marker under a heading an earlier heading of the same text shadows | `user-heading-collision` | never replaced; another heading or Abort |
+| `preview` | the marker has no heading above it | `place-missing`, mode `replace` | names the problem; Abort or start over |
+| `preview` | marker under a renamed heading | notice `heading-renamed` | replaced there; says so (F6-AC3) |
+| `preview` | template variant gone | notices `variant_missing`, `templater_hint` | raw template + Templater hint |
+| `preview` | template has a `tomo:` block or cannot be merged | notice `template_unmergeable` (+ the reason) | a plain note is built instead; says so |
+| `preview` | kept items under a heading the parser did not know | notice `unlanded-items` + `unlanded: n` | names the count; those items do not land |
+| `preview`, `deliver` | a set for the stem exists and this delivery did not write it, or the delivery is complete or withdrawn | `set-exists` | nothing written (F6-AC2) |
+| `deliver` | any refusing problem | `status: refused`, `problems` | nothing written (F5-AC1, F6-AC2) |
+| `deliver` | a payload's path holds a note that is not Tomo's identical text | `status: refused`, `name-taken`, `exists_path`, `step` | names the file; nothing overwritten |
+| `deliver` | the guarded mark is refused: Kado's error code `CONFLICT` (a `KadoToolError` whose JSON payload says so; `write_note` never raises `KadoConcurrencyError`, which counts too) — a stale `modified` or the document open with unsaved edits | `status: stopped`, `doc-changed`, `failed_step: doc_mark` | resume after saving; payloads already written count as done (F5-AC10). Accepted gap: resume does not re-check the landed set against the edited document |
+| `deliver` | any other refused mark, e.g. `VALIDATION_ERROR` whatever its message says | `status: stopped`, `kado-write-failed`, `failed_step: doc_mark` | resumable |
 | `deliver` | failure at any step | `status: stopped`, `failed_step` | next `/review` offers resume or drop; resume does not duplicate (F5-AC10) |
-| `deliver` | target appeared since Pass 1 | mode switches to insert | says it targets the existing note (F6-AC4) |
-| `drop` | a set Tomo wrote is in the inbox | `status: withdrawn` | the set JSON is rewritten with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files"; Kado offers Tomo no delete |
-| `status` | move refused by Hashi / target gone after delivery | `move-refused` / `target-missing` | reported on the next `/review` (F6-AC4) |
+| `preview`, `deliver` | target appeared since Pass 1 (meta said `new-note`, the fresh plan does not; the by-name search ignores hits inside the inbox) | `target_appeared: true`, mode `insert` or `replace` | says it targets the existing note (F6-AC4) |
+| `drop` | no delivery step began | `status: dropped`, `removed` | only the stage is removed |
+| `drop` | a delivery step began, done or in flight (the note step alone counts) | `status: withdrawn`, `paths` | the set JSON is written with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files" and names every file the delivery left, a lone new note included; `meta.json` keeps `withdrawn: true`, so a later `deliver` is `set-exists`; Kado offers Tomo no delete |
+| `status` | move refused by Hashi / target gone after delivery | `state: move-refused` / `target-missing` | reported on the next `/review` (F6-AC4) |
+| `status` | the review is withdrawn | `state: null` | not listed |
 | any script | unexpected exception | exit 1, stderr = class name only | the problem class; never content |
 
 ### Complex Logic (if applicable)
 
 ```
-ALGORITHM: review_state(doc, meta, set_json, target, inbox)   # lib/review_state.py — the only state function
-INPUT: review documents found by byFrontmatter tomo.doc_type=review in the inbox (read_frontmatter per hit),
-       meta.json of the stem, the set JSON when present, probes of the target and the inbox copy
-1. meta.failed_step set, or doc state approved without a set JSON          → failed-delivery (resume | drop)
-2. no set JSON                                                              → open
-3. set JSON withdrawn (empty actions, meta.withdrawn)                       → not listed
-4. every action applied:true                                                → applied (reported once: meta.applied_reported)
-5. move_note not applied while the target exists and the inbox copy remains → move-refused
-6. insert/replace not applied and the target no longer at its path          → target-missing
-7. otherwise                                                                → delivered (waits for Hashi or by hand)
-OUTPUT: list ordered by period; the skill offers failed-delivery, open, move-refused, target-missing and delivered
-        before the new request
+ALGORITHM: stem_state(vault, doc, meta, stem, inbox) -> state | None   # lib/review_state.py — the one probe-and-classify step
+INPUT: the review document's frontmatter (found by byFrontmatter tomo.doc_type=review in the inbox, read_frontmatter
+       per hit), meta.json of the stem, the set JSON when the document is approved, probes of the target
+0. meta.withdrawn                                                          → None, before any Kado call
+1. read <inbox>/<stem>_instructions.json — only when the document state is approved; absent only on KadoNotFoundError,
+   an unreadable file reads as present
+review_state(doc, meta, set_json, target_exists, inbox_copy_exists):
+2. meta.withdrawn, or a set JSON with actions == []                         → None (not listed; `status` prints state null)
+3. a begun delivery (ReviewMeta.started(): a step done or in flight) without doc_mark in steps_done,
+   or the document approved and no set JSON                                 → failed-delivery (resume | drop)
+4. no set JSON                                                              → open
+5. a set that is not a readable instruction set                             → delivered
+6. every action applied:true                                                → applied
+7. an unapplied move_note while its source (the inbox copy) and its destination both exist → move-refused
+8. an unapplied insert_under_marker / replace_section while its target_path is gone       → target-missing
+9. otherwise                                                                → delivered (waits for Hashi or by hand)
+PROBES: only for a waiting set (the state before probing is `delivered`), taken from the first unapplied action.
+        A move: the source first, the destination only while the source exists. An insert or replace: target_path.
+        A probe answers "absent" only on KadoNotFoundError; any other Kado failure stops the run through
+        review_vault.kado_stops (kado-auth for a refused key, else kado-unreachable) — a denial never reads as absent.
+OUTPUT: open_reviews lists the states ordered by period start; the skill offers failed-delivery, open, move-refused,
+        target-missing and delivered before the new request. An applied review is listed once (meta.applied_reported).
+        `start` and `review-instructions.py status` both call stem_state, so they classify from the same inputs.
 ```
 
-Status after Phase 2 (implemented, spec 045 T2.3): `review_state` implements steps 1 and 2 (`failed-delivery`, `open`) and raises `StateNotClassified` when a set JSON is handed in; `open_reviews` passes no set JSON. Until T4.3 an approved review whose set was delivered therefore reads `failed-delivery` in the `start` listing — the honest answer while nothing verifies the set. T4.3 completes steps 3–7 and probes `<inbox>/<stem>_instructions.json` through Kado inside the listing (one read per approved document; ADR-6), so that `start` and `review-instructions.py status` classify from the same inputs. `open_reviews` orders by period start under the configured week rule and name formats and infers a missing `review_kind` by parsing the period under those formats; a document with unreadable frontmatter or without `review_period` is returned under `skipped_review_docs`, never dropped.
+`open_reviews` orders by period start under the configured week rule and name formats and infers a missing `review_kind` by parsing the period under those formats. A document with unreadable frontmatter, without `review_period`, or whose stem is not a plain folder name (`safe_stem`) is returned under `skipped_review_docs` (`frontmatter-unreadable`, `period-missing`, `stem-unsafe`), never dropped. ADR-6 sets the cost: one set read per approved document at every `start`, plus the probes of a waiting set. After listing an applied review `start` writes `applied_reported` into its `meta.json` (a minimal `meta.json` when none exists) and does not list it again; `status` still answers `applied`. The vault stays the source of truth, so a reported applied review still costs one set read per `start`. A stage that cannot be written keeps `status: ok` and the listing and adds `notices: [applied-not-recorded]`; the review is offered again on the next `start`.
 
-As built, Phase 3 (implemented, spec 045 T3.1-T3.8): the read side is `review_md` (markdown structure), `review_day` (one daily), `review_weekly` (names, link targets, weekly day blocks), `review_reader` (`PacedReader`, the cache in front of the pacer) and `review_period` (the period read and its report), run by `review-read.py`; the document side is `review_doc`, `review_doc_parse` and `review-doc.py` (write / parse / replace). `ReviewPacer.finish()` runs once per period, keeps the widest interval installed and puts what it read into `recovered`; the interval is restored by `close()` / the context manager's exit. `review_state` and the `start` listing are unchanged since Phase 2.
+As built, Phase 3 (implemented, spec 045 T3.1-T3.8): the read side is `review_md` (markdown structure), `review_day` (one daily), `review_weekly` (names, link targets, weekly day blocks), `review_reader` (`PacedReader`, the cache in front of the pacer) and `review_period` (the period read and its report), run by `review-read.py`; the document side is `review_doc`, `review_doc_parse` and `review-doc.py` (write / parse / replace). `ReviewPacer.finish()` runs once per period, keeps the widest interval installed and puts what it read into `recovered`; the interval is restored by `close()` / the context manager's exit.
+
+As built, Phase 4 (implemented, spec 045 T4.1-T4.3): `review_actions` builds the plan (target, mode, section, actions, new note) from the approved document and the target as Kado holds it now; `review_delivery` splits the plan's problems into refusing problems and notices (`classify`) and owns the meta adapter, the set paths and the withdrawn set; `review_doc_read` is the one reader of the document for `parse`, `preview` and `deliver`; `review_state.stem_state` is the one probe-and-classify step for `start` and `status`; `review-instructions.py` runs `preview`, `deliver`, `drop` and `status`. `deliver` writes the new note (new-note mode only), the set JSON and its MD through `staged_delivery`, then marks the document with one write guarded by the `modified` stamp the reader saw. A refused guard is read from Kado's error code `CONFLICT` (an open editor with unsaved edits is `CONFLICT` too), so both are `doc-changed`; any other refused write is `kado-write-failed`. Resume after `doc-changed` does not re-check the landed set against the edited document; payloads already written count as done (accepted). `mark_delivered` returns a text without a `tomo:` block unchanged; that is reachable only when the user deleted the frontmatter, and the listing never finds such a document (it searches by `tomo.doc_type`).
 
 ```
 ALGORITHM: month reading (F3-AC5/6)
@@ -1148,7 +1194,7 @@ stateDiagram-v2
   - Trade-offs: Pass 2 rebuilds its payloads from the document; each `/review` start costs one byFrontmatter query plus one `read_frontmatter` per review document found (Kado's byFrontmatter returns empty frontmatter). Amended after validation 2026-11-11: the period, kind and target live as top-level frontmatter keys, because the `tomo:` block allows only doc_type, state, run_id, updated_at and sources.
   - User confirmed: 2026-11-11
 
-- [x] ADR-3 Review section: heading at the place's level, marker line `%% tomo-review <period> %%`; first delivery `insert_under_marker` with placement `before` or `inside` (never `after`, which inserts above the anchor's own body), a rerun `replace_section` on the heading above the marker, whatever its text; `replace_section` added to the producer schema and `render_md`; every line of an item escaped. Amended after validation 2026-11-11.
+- [x] ADR-3 Review section: heading at the place's level, marker line `%% tomo-review <period> %%`; first delivery `insert_under_marker` with placement `before` or `inside` (never `after`, which inserts above the anchor's own body), a rerun `replace_section` on the heading above the marker, whatever its text; `replace_section` added to the producer schema and `render_md`; every line of an item escaped. Headings and the marker are read as Hashi's parser reads them (see the heading rules under the review-section example). Amended after validation 2026-11-11.
   - Rationale: Hashi already executes both actions; the marker separates Tomo's section from a same-named user heading; the level rule protects the user's following section.
   - Trade-offs: a rerun overwrites hand edits made inside the landed section (the preview says so); a section added by hand between delivery and apply can still yield a second one (accepted, low likelihood); deleting the marker line turns the section into the user's.
   - User confirmed: 2026-11-11
@@ -1163,7 +1209,7 @@ stateDiagram-v2
   - Trade-offs: one more writer subcommand to maintain.
   - User confirmed: 2026-11-11
 
-- [x] ADR-6 Applied state is read from `applied` in `<stem>_instructions.json` through Kado; a refused move shows as an inbox copy left while the target exists.
+- [x] ADR-6 Applied state is read from `applied` in `<stem>_instructions.json` through Kado; a refused move shows as an inbox copy left while the target exists. The set is read for an approved document only; the probes (a move's source, then its destination while the source exists; an insert's or replace's `target_path`) run only for a waiting set, from its first unapplied action, and only `KadoNotFoundError` means absent.
   - Rationale: Hashi writes `applied` per action and never sets `tomo.state=applied`.
   - Trade-offs: depends on Hashi keeping that field (it is in the v3 contract).
   - User confirmed: 2026-11-11
@@ -1198,7 +1244,7 @@ stateDiagram-v2
   - Trade-offs: the proposal schema constrains phrasing to item lists.
   - User confirmed: 2026-11-11
 
-- [x] ADR-13 Item identity and withdrawal: each Tomo item carries an invisible id `%%t<n>%%` so an edited item keeps its origin; `drop` after a partial delivery rewrites the set JSON Tomo wrote with an empty `actions` list (schema-valid, nothing to apply) and marks its MD withdrawn, because Kado offers Tomo no delete.
+- [x] ADR-13 Item identity and withdrawal: each Tomo item carries an invisible id `%%t<n>%%` so an edited item keeps its origin; `drop` once any delivery step began (done or in flight, the new note alone included) writes the set JSON with an empty `actions` list (schema-valid, nothing to apply) and an MD that says withdrawn and names every file left, a lone new note too, because Kado offers Tomo no delete; before any step began it removes only the stage. `meta.json` keeps `withdrawn: true`, and a withdrawn review is not listed.
   - Rationale: the engagement KPI and Rule 3 need Tomo's items told apart from the user's after edits; a dropped review must not be applicable in Hashi.
   - Trade-offs: an id the user deletes turns the item into a user item; withdrawn files stay in the inbox until the user deletes them.
   - User confirmed: 2026-11-11 (validation findings, "Alle einarbeiten")

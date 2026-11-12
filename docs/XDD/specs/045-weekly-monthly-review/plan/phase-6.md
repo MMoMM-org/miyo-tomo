@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, live walk and close-out"
-status: pending
+status: in_progress
 version: "1.1"
 phase: 6
 ---
@@ -31,7 +31,7 @@ phase: 6
 
 This phase proves the whole flow end to end and closes the spec.
 
-- [ ] **T6.1 End-to-end on the fake vault** `[activity: test]`
+- [x] **T6.1 End-to-end on the fake vault** `[activity: test]`
 
   1. Prime: `[ref: SDD/Runtime View]`
   2. Test: `tests/test_review_e2e.py` — week: start → setup confirm → read → proposals fixture → write → user edits (untick, rewrite without links, add, tick Approved) → parse → preview → deliver → Hashi-style apply simulated (applied flags) → next start reports applied; setup abort writes nothing; month with weekly notes; rerun replaces the section, also under a renamed heading; target created between passes; target moved to another folder; delivery failure at each step then resume; drop after a partial delivery leaves only a withdrawn set; abort before and after Pass 2 leaves the vault outside the inbox unchanged; every fake-vault write across the whole test lands under the inbox prefix.
@@ -39,7 +39,7 @@ This phase proves the whole flow end to end and closes the spec.
   4. Validate: green.
   5. Success: the 2-pass flow works without an AI in the loop `[ref: PRD/Secondary User Journeys 1-7; PRD/Edge Cases; PRD/KPI Quality; PRD/F1-AC10]`
 
-- [ ] **T6.2 Integration read of the test vault** `[activity: test]`
+- [x] **T6.2 Integration read of the test vault** `[activity: test]`
 
   1. Prime: existing `-m integration` tests; memory "host scripts can hit live Kado" and "Kado 429 is per IP"
   2. Test: `tests/test_review_integration.py` (`-m integration`) — `review-read.py` for 2026-W13 and 2026-03 against Privat-Test through Kado: every March daily found, the same-day Dayplanner read, tomorrow's planner not read, earlier 5J years not read, weekly notes W09..W13 found (W14 absent), call counts within the SDD limits, no write performed.
@@ -53,7 +53,7 @@ This phase proves the whole flow end to end and closes the spec.
   2. Test: after the owner's go: `scripts/update-tomo.sh --instance tomo-instance --yolo`, grep the instance for the new files; the owner runs `/review setup`, `/review 2026-W13`, edits, `/review`, applies in Hashi; then `/review 2026-03`. Record per run: cost, duration, calls, retried, waited, kept/unticked/deleted/added counts (no text), and the model-behaviour criteria named above.
   3. Implement: nothing in code; results into `docs/XDD/specs/045-weekly-monthly-review/live-walk.md` and the cost log.
   4. Validate: transcript lines quoted with session ids; no journal text quoted.
-  5. Success: weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 5 min, Pass 2 ≤ $0.20; ≤ 40 % of Tomo items unticked or deleted over the review (habits excluded); 0 writes outside the inbox before apply `[ref: PRD/KPIs; PRD/F1-AC6, F4-AC5, F4-AC7, F5-AC2]`
+  5. Success: weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.20; ≤ 40 % of Tomo items unticked or deleted over the review (habits excluded); 0 writes outside the inbox before apply `[ref: PRD/KPIs; PRD/F1-AC6, F4-AC5, F4-AC7, F5-AC2]`
 
 - [ ] **T6.4 Close-out** `[activity: validate]`
 

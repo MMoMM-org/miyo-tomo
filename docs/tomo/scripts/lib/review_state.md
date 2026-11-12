@@ -127,6 +127,52 @@ and `applied` stays the honest answer there — `start` writes it a minimal
 meta with `applied_reported`, as before. A begun record over an applied
 set is unchanged: `failed-delivery` without `doc_mark`, `applied` with it.
 
+## WHY a Complete Delivery Whose Set Is Gone Is Finished, Not Failed (Phase 6, pre-live-walk)
+
+WHY: owner decision 2026-11-12. The "approved document without a set →
+`failed-delivery`" clause was written for a lost record: the document says
+`approved`, so a delivery wrote the set once, and with no set and no
+`meta.json` the honest offer is resume or drop. But the same clause fired
+for a delivery that *finished* — `meta.json` records `doc_mark` in
+`steps_done` — whose set JSON the user deleted from the inbox by hand after
+Hashi applied it (Hashi marks actions `applied` and never deletes a set;
+only the user does). That stem was listed `failed-delivery` on every
+`/review`, and Resume → `deliver` refused `set-exists`, because
+`review_delivery.ReviewMeta.second_set` is True whenever `doc_mark` is done,
+whatever sits at the path: the skill then said a set waits for Hashi
+although none was there, forever, with Drop the only way out — a Drop that
+writes a withdrawn set for a review that had landed.
+
+The rule now (step 3b, between the fresh-record rule and step 1): an
+approved document with no set JSON whose record carries `doc_mark` is
+finished and not listed — None, the same value `applied_reported` and
+`withdrawn` lead to, so `status` prints `state: null` for it. The three
+conditions are all needed. `doc_mark` is the proof the delivery completed;
+without it (a begun record that died at the mark, a lost `meta.json`, a
+fresh record that never began) the set's absence still means a delivery to
+resume, and `failed-delivery` stays — and there `deliver` does resume,
+since `second_set` is False with no set at the path. The document must be
+approved, because `stem_state` reads the set only for an approved document
+and a pending one with a complete record has always read `open` from the
+meta alone. The set must be absent: a complete record beside a present set
+keeps reading from the set (`applied`, `delivered`, the probes, the
+half-withdrawn emptied set as `failed-delivery`). The neighbours are
+untouched: `withdrawn` is tested first as before; the fresh-record-over-
+applied-set rule needs a present set; meta None keeps its reading, since a
+record that is gone cannot prove the delivery completed, and the owner
+chose not to guess — an approved document with no meta and no set stays
+`failed-delivery`, the "lost record" case the clause was written for.
+
+The stem still costs the one set read per `start`: finished is learned from
+the set being gone, and a withdrawn meta is the only answer known before
+Kado is asked. Start over keeps working for the period afterwards: the
+document is still found by its frontmatter, `write` refuses `review-exists`,
+`replace --confirm` resets `meta.json` (no step done), the rerun reads
+`open`, and its `deliver` meets no set at the path. The alternative — a
+seventh state, or listing it `applied` once more — was rejected: the review
+was already applied and, when `start` listed it, already reported; a
+deleted set is the user's tidy-up, not news.
+
 ## WHY a Begun Delivery Is Read Through `ReviewMeta.started()`
 
 WHY: coordinator decision 2026-11-12, from the T4.2 fix round. The SDD's
@@ -271,7 +317,9 @@ record — `steps_done`, `failed_step`, `withdrawn`, `applied_reported` —
 nothing more. A missing or unparsable `meta.json` therefore counts as
 absent, never as an error: an approved document with no meta and no set is
 `failed-delivery`, which offers resume or drop — the honest answer when the
-delivery's record is lost — while an approved document with no meta but a
+delivery's record is lost (a record that says `doc_mark` is the one case
+read as finished instead; "WHY a Complete Delivery Whose Set Is Gone Is
+Finished, Not Failed") — while an approved document with no meta but a
 set in the inbox is whatever the set says. A document whose frontmatter
 Kado cannot read or that carries no `review_period` is listed under
 `skipped_review_docs` with its reason rather than dropped.

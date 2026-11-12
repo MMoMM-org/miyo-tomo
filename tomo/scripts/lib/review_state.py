@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.5.0
+# version: 0.6.0
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -31,9 +31,11 @@ not listed when no delivery began (meta absent, no step done or in flight),
 (a drop that wrote the set but failed before the meta mark; the next
 ``/review`` offers it again); a present record that never began a delivery
 over a set whose every action is applied → ``open`` (the finished set of an
-earlier run of the period, beside a rerun's fresh record); a begun delivery
-(``review_delivery.ReviewMeta.started()``) without
-``doc_mark``, or an approved document without a set → ``failed-delivery``;
+earlier run of the period, beside a rerun's fresh record); an approved
+document without a set whose record carries ``doc_mark`` → not listed (a
+complete delivery whose set the user deleted after applying); a begun
+delivery (``review_delivery.ReviewMeta.started()``) without ``doc_mark``,
+or an approved document without a set → ``failed-delivery``;
 no set → ``open``; every action ``applied`` → ``applied``; an unapplied
 ``move_note`` whose source and destination both exist → ``move-refused``; an
 unapplied insert or replace whose target is gone → ``target-missing``;
@@ -146,10 +148,11 @@ def is_emptied_set(set_json: Optional[dict]) -> bool:
 def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = None, *,
                  target_exists: Optional[bool] = None,
                  inbox_copy_exists: Optional[bool] = None) -> Optional[str]:
-    """The state of one review, or None for one that is not listed: ``doc`` is the document's
-    frontmatter, ``meta`` the stem's meta.json (None when absent), ``set_json`` the instruction
-    set when it exists in the inbox (None when absent); ``target_exists`` and
-    ``inbox_copy_exists`` are the probe answers for steps 5 and 6 (None: not probed)."""
+    """The state of one review, or None for one that is not listed (withdrawn, or a complete
+    delivery whose set is gone): ``doc`` is the document's frontmatter, ``meta`` the stem's
+    meta.json (None when absent), ``set_json`` the instruction set when it exists in the inbox
+    (None when absent); ``target_exists`` and ``inbox_copy_exists`` are the probe answers for
+    steps 5 and 6 (None: not probed)."""
     record = _record(meta)
     actions = _actions(set_json)
     # step 3 before step 1: a withdrawn review is never listed
@@ -163,9 +166,12 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     # earlier run of the period (a rerun after replace --confirm writes over it), not this review's
     if isinstance(meta, dict) and not record.started() and all_applied(set_json):
         return OPEN
+    approved_without_set = doc_state(doc) == DOC_STATE_APPROVED and set_json is None
+    # step 3b: a complete delivery whose set the user deleted after applying — finished, not listed
+    if approved_without_set and rdl.DOC_MARK in record.steps_done:
+        return None
     # step 1: a begun delivery without its last step, or an approved document whose set is gone
-    if (record.started() and rdl.DOC_MARK not in record.steps_done) or (
-            doc_state(doc) == DOC_STATE_APPROVED and set_json is None):
+    if (record.started() and rdl.DOC_MARK not in record.steps_done) or approved_without_set:
         return FAILED_DELIVERY
     # step 2
     if set_json is None:

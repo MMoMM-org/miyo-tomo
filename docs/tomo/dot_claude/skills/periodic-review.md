@@ -273,12 +273,16 @@ complete (`doc_mark` done) or withdrawn — the `set_applied` flag is not consul
 over only by a *fresh* record: Start over (`replace --confirm`) resets `meta.json`, so the rerun's `deliver` meets the
 set with `set_applied` true and no `doc_mark`. A completed delivery whose set Hashi applied later never reaches the
 preview: `start` lists it as `applied` (step 1, line "the review was applied"), no branch of that entry goes to step
-6 or 7, and once `applied_reported` is set it is not listed at all. The one record that reaches `preview`/`deliver`
-with `doc_mark` done is a `failed-delivery` whose set is gone from the inbox while the document still carries the
-approved state (`lib/review_state.stem_state`, the "approved document whose set is gone" clause): Resume → `deliver`
-answers `set-exists`, and the skill's line then says a set waits although none is at the path — not a Hashi-applied
-case, since Hashi marks actions `applied` and never deletes the set, but a user who deleted it by hand reads a wrong
-line (open, reported at the T6.1 fix round; no behaviour change).
+6 or 7, and once `applied_reported` is set it is not listed at all. No record with `doc_mark` done reaches
+`preview`/`deliver` through the listing any more: until the Phase 6 pre-live-walk fix, a completed delivery whose set
+the user deleted from the inbox by hand (Hashi marks actions `applied` and never deletes a set) was listed
+`failed-delivery` by the "approved document whose set is gone" clause of `lib/review_state`, Resume → `deliver`
+answered `set-exists`, and this line then said a set waits although none was at the path. Owner decision 2026-11-12:
+such a stem is finished and not listed (state None, like `applied_reported` and withdrawn; SDD 1.11, step 3b;
+docs/tomo/scripts/lib/review_state.md, "WHY a Complete Delivery Whose Set Is Gone Is Finished, Not Failed"). An
+approved document without a set whose record lacks `doc_mark` stays `failed-delivery`, and Resume there delivers —
+`second_set` is False with no set at the path — so the `set-exists` line is never printed for an absent set. The skill
+text did not change: its `failed-delivery` entry and the `set-exists` line were already right for the cases that remain.
 
 The same three problems with `mode` `replace` are a different case. The Tomo marker was found in the target note, so
 the plan is a `replace_section` on the heading directly above the marker, whatever the user chose at setup

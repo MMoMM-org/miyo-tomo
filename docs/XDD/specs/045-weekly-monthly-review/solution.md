@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.10"
+version: "1.11"
 ---
 
 # Solution Design Document
@@ -466,6 +466,7 @@ tests/
 ├── test_review_deliver.py                    # NEW (Phase 4): review-instructions.py preview/deliver/drop/status over the fake vault; MODIFY: a drop that failed after the set write is listed again (implemented, spec 045 Phase 5)
 ├── test_review_deliver_rerun.py              # NEW: a rerun writes its set over the first run's fully applied set, set-exists for a waiting or partly applied one, the resume over the old MD (split out of test_review_deliver.py; implemented, spec 045 Phase 6 fix round)
 ├── test_review_state.py                      # NEW (canonical states; MODIFY: a fresh record over a fully applied set reads open, Phase 6 fix round)
+├── test_review_state_finished.py             # NEW: a complete delivery (doc_mark) whose set the user deleted is finished — not listed, status null — while a record short of doc_mark stays failed-delivery; the neighbouring rules unchanged (implemented, spec 045 Phase 6, pre-live-walk fix)
 ├── test_review_privacy.py                    # NEW (marker allowlist, exception handler; implemented, spec 045 Phase 5)
 ├── review_privacy_fixture.py                 # NEW: the marked vault of the privacy walk, never a production code path (implemented, spec 045 Phase 5)
 ├── test_review_privacy_docs.py               # NEW: PRIVACY.md clauses, docs/setup.md, README, the vault-example.yaml review example (implemented, spec 045 Phase 5)
@@ -477,7 +478,7 @@ tests/
 ├── review_skill_helpers.py                   # NEW: paths, text slicers and rule-line pins shared by the test_review_skill*.py files (implemented, spec 045 Phase 5)
 ├── test_review_sdd_map.py                    # NEW: this Directory Map names every review file that exists (glob-driven), the Phase 5 markers, the example-config check, the empty-listing row (implemented, spec 045 Phase 5)
 ├── test_review_e2e.py                        # NEW: the 2-pass flow end to end on the fake vault without an AI — setup confirm/abort, the user's edits, deliver, Hashi's apply simulated, reruns, the target appearing or moved, the aborts, the inbox-prefix guard per test and per module (implemented, spec 045 Phase 6)
-├── test_review_e2e_failures.py               # NEW: the month in new-note mode, a failure at each delivery step then Resume, drop after a partial delivery, the half-withdrawn drop listed again with Resume refused (implemented, spec 045 Phase 6)
+├── test_review_e2e_failures.py               # NEW: the month in new-note mode, a failure at each delivery step then Resume, drop after a partial delivery, the half-withdrawn drop listed again with Resume refused, the set deleted by hand after Hashi applied it (not listed, Start over works) (implemented, spec 045 Phase 6)
 ├── test_review_e2e_edges.py                  # NEW: everything unticked, the document renamed or moved, the Approved line deleted, /review setup over a saved setup, a sparse week; names the unit tests of the read-side edge cases (implemented, spec 045 Phase 6 fix round)
 ├── review_e2e_walk.py                        # NEW: the driver of the e2e tests — the scripts as the skill calls them, the user's edits and Hashi's apply on the fake, the recorder of every write attempt for the inbox guard; never a production code path (implemented, spec 045 Phase 6)
 ├── test_review_integration.py                # NEW (-m integration, Phase 6)
@@ -593,7 +594,8 @@ review-session.py start --args '<raw $ARGUMENTS>'
                   start?: "2026-03-23", end?: "2026-03-29"},        # first and last day of a period request
         current?: {week: <proposal shape>|null|{invalid: [json-pointer]}, month: ...},   # setup request only
         open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state.stem_state (canonical list below);
-                                                                    # a withdrawn review is not listed; an applied one is listed once
+                                                                    # a withdrawn review is not listed, nor a complete delivery (doc_mark)
+                                                                    # whose set is gone from the inbox; an applied one is listed once
         skipped_review_docs: [{doc_path, reason: frontmatter-unreadable|period-missing|stem-unsafe}],   # never dropped silently
         setup: {week: present|missing, month: present|missing},
         problems?: [inbox-not-configured],                          # no Kado call was made
@@ -706,7 +708,7 @@ review-instructions.py status --stem S
   out: {state, stem}                             # canonical list below; state is null for a withdrawn review
 ```
 
-**Canonical open-review states** (owned by `lib/review_state.py`, used everywhere): `open` · `failed-delivery` · `delivered` · `applied` · `move-refused` · `target-missing`.
+**Canonical open-review states** (owned by `lib/review_state.py`, used everywhere): `open` · `failed-delivery` · `delivered` · `applied` · `move-refused` · `target-missing`. Not a state but None (not listed, `status` prints `state: null`): a withdrawn review, and a complete delivery (`doc_mark` recorded) whose set JSON is gone from the inbox — the user deleted it after Hashi applied it (SDD 1.11, owner decision 2026-11-12).
 
 #### Application Data Models
 
@@ -1067,6 +1069,7 @@ sequenceDiagram
 | `drop` | a delivery step began, done or in flight (the note step alone counts) | `status: withdrawn`, `paths` | the set JSON is written with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files" and names every file the delivery left, a lone new note included; `meta.json` keeps `withdrawn: true`, so a later `deliver` is `set-exists`; Kado offers Tomo no delete. The set is written first, the MD second, the meta mark last: a `kado-write-failed` on the MD leaves the set empty, the MD listing the actions and the meta unmarked — the skill reruns `drop` once in the session, and the next `/review` lists the stem as `failed-delivery` again until the mark is written (SDD 1.7) |
 | `status` | move refused by Hashi / target gone after delivery | `state: move-refused` / `target-missing` | reported on the next `/review` (F6-AC4) |
 | `status` | the review is withdrawn (`meta.withdrawn`, or an emptied set with no begun record) | `state: null` | not listed |
+| `status` | the delivery is complete (`doc_mark` in `meta.steps_done`), the document approved, and the set JSON is gone from the inbox — deleted by the user after Hashi applied it | `state: null` | not listed (finished; SDD 1.11). An approved document without a set whose meta lacks `doc_mark` — lost, never begun, or stopped before the mark — stays `failed-delivery`, and Resume there delivers (no `set-exists` without a set at the path) |
 | any script | unexpected exception | exit 1, stderr = class name only | the problem class; never content |
 
 ### Complex Logic (if applicable)
@@ -1084,11 +1087,18 @@ review_state(doc, meta, set_json, target_exists, inbox_copy_exists):
 3. a begun delivery (ReviewMeta.started(): a step done or in flight) without doc_mark in steps_done,
    or a begun delivery whose set JSON has actions == [] while meta is not withdrawn (a drop that wrote
    the set but failed before the MD and the meta mark; SDD 1.7, owner decision),
-   or the document approved and no set JSON                                 → failed-delivery (resume | drop;
+   or the document approved and no set JSON while meta lacks doc_mark (3b)  → failed-delivery (resume | drop;
    on the emptied set resume refuses set-withdrawn and the skill offers drop, which completes the withdrawal)
 3a. meta present, no step done or in flight, and every action of the set applied (all_applied)
    — the finished set of an earlier run beside a rerun's fresh record     → open (the rerun's deliver writes over it;
    meta absent stays step 6: a cleaned stage beside an applied set is a finished review)
+3b. the document approved, no set JSON, and doc_mark in meta.steps_done — a complete delivery whose set the user
+   deleted from the inbox after Hashi applied it (Hashi never deletes a set) → None (finished, not listed; the
+   approved-without-a-set reading of step 3 is for a record that lacks doc_mark: lost, never begun, or stopped
+   before the mark — there deliver resumes, since second_set is False with no set at the path; SDD 1.11, owner
+   decision 2026-11-12. Start over keeps working: write refuses review-exists, replace --confirm resets meta.json)
+   Step 3b is tested after 3a and before step 3's clauses; 3 and 3b never overlap (3b needs doc_mark, the
+   begun-without-doc_mark clause of 3 excludes it, and the emptied-set clause needs a set).
 4. no set JSON                                                              → open
 5. a set that is not a readable instruction set                             → delivered
 6. every action applied:true                                                → applied

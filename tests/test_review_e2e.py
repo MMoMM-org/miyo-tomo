@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_e2e.py — the 2-pass /review flow end to end on the fake vault, without an AI in the loop
 (spec 045 T6.1; PRD Secondary User Journeys 1, 2, 5, 6, 7; PRD Edge Cases; KPI Quality; F1-AC10; SDD Runtime View).
 
@@ -12,7 +12,8 @@ start reporting `applied` once; a setup Abort writes nothing; a rerun of the per
 first run's applied set and replaces the section (one marker, one heading) — also under a renamed heading; the target created between the
 passes turns new-note into insert; the target moved to another folder is found by name and targeted
 there; an Abort before Pass 2 (the document deleted) and after it (the set deleted, never applied)
-leaves the vault outside the inbox unchanged; every write attempted through the client lands under the
+leaves the vault outside the inbox unchanged — and the complete delivery whose set is gone is not listed
+again (owner decision 2026-11-12); every write attempted through the client lands under the
 inbox prefix — per test (the fixture) and over whatever ran before the sweep test. The failure paths of
 delivery and drop, and the month, are in test_review_e2e_failures.py; the document edge cases, the
 setup rerun and the sparse period in test_review_e2e_edges.py. All data is synthetic.
@@ -269,7 +270,9 @@ def test_abort_after_pass_2_by_not_applying_changes_nothing_outside_the_inbox(re
     assert walk.listing() == [(WEEK_STEM, "delivered")]
     walk.user_deletes(SET_JSON, SET_MD)                                    # the set deleted by hand in Obsidian
     assert walk.vault.outside_inbox() == before
-    assert walk.listing() == [(WEEK_STEM, "failed-delivery")], "an approved document whose set is gone"
+    # the delivery was complete (doc_mark): a set gone from the inbox is the user's abort, not a failed delivery
+    # to resume (owner decision 2026-11-12; until then it was listed failed-delivery with a Resume that refused)
+    assert walk.listing() == [] and walk.status(WEEK_STEM) == {"state": None, "stem": WEEK_STEM}
     assert set(walk.vault.recorded) == {WEEK_DOC, SET_JSON, SET_MD}
 
 

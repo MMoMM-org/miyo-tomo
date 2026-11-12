@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_e2e_failures.py — the month and the failure paths of /review end to end on the fake vault
 (spec 045 T6.1; PRD Secondary User Journeys 3, 4, 5, 7; PRD Edge Cases; F5-AC10; KPI Quality; SDD Runtime View,
-Error Handling).
+Error Handling; SDD 1.11 step 3b).
 
 The companion of test_review_e2e.py over the same driver (tests/review_e2e_walk.py): the month over its
 dailies and weekly notes in new-note mode — the new note waits in the inbox, Hashi's move lands it in the
@@ -11,7 +11,9 @@ set MD, the document mark) is `stopped` with that `failed_step`, the next start 
 and Resume finishes with every payload written once; a drop after a partial delivery leaves only a
 withdrawn set (an empty `actions` list Hashi applies nothing from, an MD naming every file to delete) and
 the review is never listed again; a drop whose MD write failed (set emptied, meta unmarked) is listed
-again, Resume on it refuses `set-withdrawn` and writes nothing, a second drop completes it. Every write
+again, Resume on it refuses `set-withdrawn` and writes nothing, a second drop completes it; a set the user deleted
+by hand after Hashi applied it (the delivery complete, `doc_mark` recorded) is finished — not listed, `status` null —
+and a later `/review` of the period starts over through `replace --confirm` and delivers again. Every write
 attempted through the client — the injected failures included — is under the inbox prefix, per test and
 over whatever ran before the sweep test. All data is synthetic.
 """
@@ -173,6 +175,38 @@ def test_half_withdrawn_drop_is_listed_again_resume_refuses_and_a_second_drop_co
     assert "delete these files" in walk.vault.text(SET_MD) and walk.meta(MONTH_STEM)["withdrawn"] is True
     assert walk.listing() == [] and walk.status(MONTH_STEM)["state"] is None
     assert walk.hashi_apply(MONTH_STEM) == []
+
+
+# ── the set deleted by hand after Hashi applied it: finished, and the period can start over ──
+
+
+def test_set_deleted_after_apply_is_not_listed_and_the_period_starts_over(ready: Walk):
+    """RED before the fix for the listing: an approved document whose set is gone read `failed-delivery` on
+    every /review, and Resume refused `set-exists` with no set at the path (owner decision 2026-11-12)."""
+    walk = ready
+    _approved_month(walk)
+    assert walk.deliver(MONTH_STEM)["status"] == "delivered"
+    assert walk.hashi_apply(MONTH_STEM) == ["applied"]
+    walk.user_deletes(SET_JSON, SET_MD)                                          # the user tidies the inbox
+    assert walk.meta(MONTH_STEM)["steps_done"][-1] == "doc_mark" and "applied_reported" not in walk.meta(MONTH_STEM)
+    assert frontmatter(walk.doc(MONTH_DOC))["tomo"]["state"] == "approved"
+    assert walk.listing() == [], "a complete delivery whose set is gone is finished, not failed-delivery"
+    assert walk.status(MONTH_STEM) == {"state": None, "stem": MONTH_STEM}
+    # a later `/review 2026-03`: nothing open, the request is the period; Pass 1 refuses review-exists, Start over
+    out = walk.start(MONTH_PERIOD)
+    assert out["open_reviews"] == [] and out["request"]["kind"] == "month", out
+    assert walk.read(MONTH_PERIOD, MONTH)["status"] == "ok"
+    out = walk.write(MONTH_STEM, MONTH)
+    assert out["status"] == "refused" and out["problems"] == ["review-exists"] and out["doc_path"] == MONTH_DOC, out
+    out = walk.replace(MONTH_STEM, "--confirm")
+    assert out["status"] == "replaced" and walk.meta(MONTH_STEM)["steps_done"] == [], out
+    assert walk.listing() == [(MONTH_STEM, "open")]
+    walk.approve(MONTH_DOC)
+    out = walk.deliver(MONTH_STEM)
+    assert out["status"] == "delivered" and out["mode"] == "replace", out                 # the note landed first time
+    assert walk.listing() == [(MONTH_STEM, "delivered")]
+    assert walk.hashi_apply(MONTH_STEM) == ["applied"] and walk.listing() == [(MONTH_STEM, "applied")]
+    assert tomo_sections(walk.vault.text(MONTH_TARGET)) == 1
 
 
 # ── the module's sweep: every write of every test above, under the inbox prefix ──────────

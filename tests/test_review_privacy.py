@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
 tomo-tmp/review/ that outlive a step — carry paths, dates, counts and states only.
 One walk runs every review script and every subcommand of it, in-process, on
-one fake vault whose daily text, journal answers, tracker values, weekly-note
-text and the model's proposals each carry their own marker string, plus one
-readable tracker value (`READABLE`) the habits do count: session start (a
+one fake vault (tests/review_privacy_fixture.py: the markers, the config, the
+vault and the proposals) whose daily text, journal answers, tracker values,
+weekly-note text and the model's proposals each carry their own marker string,
+plus one readable tracker value (`READABLE`) the habits do count: session start (a
 period, `setup`, the open reviews), `match` and `setup-input` for both kinds,
 the week read, the document write, parse, preview with a place problem,
 preview and deliver with a `--place-anchor` that is a marker-bearing heading
@@ -48,11 +49,9 @@ import argparse
 import copy
 import importlib.util
 import json
-import re
 import sys
 import traceback
 from contextlib import contextmanager
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -63,28 +62,13 @@ SCRIPTS_DIR = TESTS_DIR.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
-from review_fake_vault import ReviewFakeVault  # noqa: E402
+from review_privacy_fixture import (  # noqa: E402
+    ANCHOR, ANS, CONFIG, DAY, INBOX, KIND_OF, MARKER_RE, PRP, READABLE, TRK, WKL, build_vault, proposals,
+)
 from lib import review_day as rday  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib.kado_client import KadoError  # noqa: E402
-
-# One marker per kind of journal content; lowercase and `_` so it survives any rendering.
-MARKERS = {
-    "daily": "zzpriv_day_7f3a",        # daily-note text (body lines, tasks, the task note, a planner)
-    "answer": "zzpriv_ans_7f3a",       # a journal answer: a prompt's text value in a daily, a 5-year journal
-    "tracker": "zzpriv_trk_7f3a",      # a tracker value the habits cannot read
-    "proposal": "zzpriv_prp_7f3a",     # the model's proposal text and the user's edits of it
-    "weekly": "zzpriv_wkl_7f3a",       # weekly-note text: the target's body and headings
-}
-KIND_OF = {"day": "daily", "ans": "answer", "trk": "tracker", "prp": "proposal", "wkl": "weekly"}
-MARKER_RE = re.compile(r"zzpriv_(day|ans|trk|prp|wkl)_7f3a")
-DAY, ANS, TRK, PRP, WKL = (MARKERS[k] for k in ("daily", "answer", "tracker", "proposal", "weekly"))
-# One tracker value the habits can read: it is counted into an average, so it may surface where a
-# marker the parser rejects never would. Its only legitimate places are read.json and the habits
-# line of the document (which the preview's section_md shows). A digit run no date, count or id has.
-READABLE = "434343"
-ANCHOR = f"Notes {WKL}"                 # the heading the user picks from the headings[] list
 
 # (script, subcommand, field) -> (marker kinds it may carry, why).
 # Field syntax: dotted keys, `[]` walks a list.
@@ -100,103 +84,10 @@ USER_TEXT_FIELDS = {
 }
 
 TODAY = "2026-11-11"
-INBOX = "100 Inbox/"
-DAILY = "Calendar/301 Daily/"
-WEEKLY = "Calendar/302 Weekly/"
-MONTHLY = "Calendar/303 Monthly/"
-MOCS = "100 MOCs/"
-JOURNAL = "Journal/"
-PLANNER = "Efforts/300 Planner/"
-TASK_NOTE = "Efforts/500 OnGoing/Next Todos.md"
 WEEK_STEM, MONTH_STEM = "2026-W13_review", "2026-03_review"
 WEEK_DOC, MONTH_DOC = f"{INBOX}2026-W13 Review.md", f"{INBOX}2026-03 Review.md"
 MONTH_SET_MD = f"{INBOX}{MONTH_STEM}_instructions.md"
 SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions")
-SUBCOMMANDS_OF = {}       # script -> the subcommands its real parser knows; filled when the scripts load
-
-CONFIG = {
-    "profile": "miyo",
-    "concepts": {
-        "inbox": INBOX,
-        "calendar": {"granularities": {"daily": {"enabled": True, "path": DAILY},
-                                       "weekly": {"enabled": True, "path": WEEKLY},
-                                       "monthly": {"enabled": True, "path": MONTHLY}}},
-        "map_note": {"paths": [MOCS]},
-    },
-    "naming": {"calendar_patterns": {"daily": "YYYY-MM-DD", "weekly": "GGGG-[W]WW", "monthly": "YYYY-MM"}},
-    "templates": {"base_path": "Templates/",
-                  "mapping": {"weekly": "t_week.md", "monthly": "t_month.md", "daily": "t_day.md"}},
-    "review": {
-        "language": "en",
-        "week": {"first_day": "monday", "min_days_in_first_week": 4},
-        "daily": {"sections": [], "skip_sections": [], "task_notes": [TASK_NOTE], "max_chars_per_day": 12000},
-        "weekly": {"heading": "Tomo Review", "place": {"anchor": "In my own words", "placement": "before"},
-                   "own_sections": ["In my own words"]},
-        "monthly": {"heading": "Tomo Review", "place": {"anchor": "Reflections", "placement": "before"},
-                    "own_sections": ["Reflections"]},
-    },
-    "trackers": {"daily_note_trackers": {"today_fields": [{"name": "Sport", "type": "boolean"},
-                                                          {"name": "Sleep", "type": "integer"},
-                                                          {"name": "Energy", "type": "integer"}]}},
-}
-
-
-# ── the vault ────────────────────────────────────────────────────────────
-
-
-def _daily(day: str, text: str) -> tuple[str, str]:
-    return f"{DAILY}{day}.md", f"---\ntags: [daily]\n---\n# {day}\n{text}\n"
-
-
-def _weekly(name: str, start: date, *, target_without_anchor: bool = False) -> str:
-    day = start.isoformat()
-    lines = ["---", f"journal-start-date: {day}", "---", f"# {name}", "", f"week text {WKL}", "",
-             "## Review of the Week", f"### [[{day}|{day} Mon]]", f"- day block {WKL} [[Alpha]]", ""]
-    if target_without_anchor:       # the week flow's target: no anchor heading, one heading carrying the marker
-        lines += [f"## Notes {WKL}", f"more {WKL}", "", "## Woche", f"text {WKL}", ""]
-    else:
-        lines += ["## In my own words", f"own words {WKL}", ""]
-    return "\n".join(lines) + "\n"
-
-
-def _vault() -> ReviewFakeVault:
-    files = dict([
-        _daily("2026-03-01", f"first of march {DAY}\nSport:: yes\nSleep:: 6"),
-        _daily("2026-03-10", f"{DAY} mid march\nSport:: no"),
-        _daily("2026-03-23", f"monday {DAY} [[Alpha]]\nSport:: yes\nSleep:: 7\nGrateful:: {ANS}"),
-        _daily("2026-03-24", f"tuesday {DAY}\n- [x] task {DAY} ✅ 2026-03-24\nSport:: yes\nSleep:: {TRK}"),
-        _daily("2026-03-25", f"wednesday {DAY} [[5J-2026-03-25]] [[DP-2026-03-25|Dayplanner]]\nSport:: {TRK}\nSleep:: 8"),
-        _daily("2026-03-26", f"thursday {DAY}\nSport:: yes\nSleep:: 6\nEnergy:: {READABLE}"),
-        _daily("2026-03-27", f"friday {DAY}\nSport:: yes"),
-        _daily("2026-03-29", f"sunday {DAY}\nSport:: yes\nSleep:: 7\nGrateful:: {ANS} again"),
-        _daily("2026-03-30", f"monday after {DAY}\nSleep:: 7"),
-        _daily("2026-03-31", f"last {DAY}\nSport:: no"),
-        _daily("2026-04-01", f"april {DAY}"),
-    ])
-    files[f"{JOURNAL}5J-2026-03-25.md"] = f"# 5J-2026-03-25\nWhat made today good?\nAnswer {ANS} in journal\n"
-    files[f"{PLANNER}DP-2026-03-25.md"] = f"# Plan\n- planned {DAY}\n"
-    files[TASK_NOTE] = f"- [x] done {DAY} ✅ 2026-03-24\n- [ ] open {DAY}\n"
-    files[f"{MOCS}Topic MOC.md"] = "moc\n"
-    for name, start in (("2026-W09", date(2026, 2, 23)), ("2026-W10", date(2026, 3, 2)),
-                        ("2026-W11", date(2026, 3, 9)), ("2026-W12", date(2026, 3, 16)),
-                        ("2026-W14", date(2026, 3, 30))):
-        files[f"{WEEKLY}{name}.md"] = _weekly(name, start)
-    files[f"{WEEKLY}2026-W13.md"] = _weekly("2026-W13", date(2026, 3, 23), target_without_anchor=True)
-    files["Templates/t_week.md"] = "---\ntags: weekly\n---\n# <% tp.file.title %>\n\n## Woche\n\n## In my own words\n\n"
-    files["Templates/t_month.md"] = "# <% tp.file.title %>\n\n## Theme\n\n## Reflections\n\n"
-    files["Templates/t_day.md"] = "## Daily Log\n\n## Habits\n"
-    return ReviewFakeVault(files, folders=[DAILY, WEEKLY, MONTHLY, MOCS, INBOX])
-
-
-def _proposals(kind: str) -> dict:
-    if kind == "week":
-        groups = {"done": [{"text": f"Cleaned up {PRP}", "sources": ["2026-03-23", "2026-03-24"]}],
-                  "open": [{"text": f"Taxes {PRP}", "sources": ["2026-03-26"]}],
-                  "themes": [{"text": f"Sleep {PRP}", "sources": ["2026-03-23", "2026-03-25"]}]}
-    else:
-        groups = {"done": [{"text": f"March done {PRP}", "sources": ["2026-03-01", "2026-03-23"]}],
-                  "weekly_only": [{"text": f"only weekly {PRP}", "sources": ["2026-W13"]}]}
-    return {"language": "en", "groups": groups}
 
 
 # ── loading and running ──────────────────────────────────────────────────
@@ -259,6 +150,7 @@ class Walk:
 
     def __init__(self, capsys, mods, root: Path, vault):
         self.capsys, self.mods, self.root, self.vault = capsys, mods, root, vault
+        self.subcommands = {name: _subcommands(mod) for name, mod in mods.items()}
         self.calls, self.bad_calls, self.forced_calls = [], [], []
         self.stage_files: dict = {}
         self.read_files: dict = {}          # label -> read.json text, taken before the write deletes it
@@ -286,25 +178,23 @@ class Walk:
                     leaks.append((str(path.relative_to(self.root)), sorted(kinds)))
         return leaks
 
-    def run(self, script: str, sub: str, argv: list[str]) -> tuple[int, dict]:
+    def _record(self, bucket: list, script: str, sub: str, argv: list[str]) -> dict:
         call = self._call(script, ["--profiles-dir", "profiles", *argv])
         call["sub"] = sub
-        self.calls.append(call)
+        bucket.append(call)
+        return call
+
+    def run(self, script: str, sub: str, argv: list[str]) -> tuple[int, dict]:
+        call = self._record(self.calls, script, sub, argv)
         return call["rc"], _payload(call["stdout"])
 
     def run_bad(self, script: str, sub: str, argv: list[str]) -> int:
         """A bad invocation: its stdout is not JSON, so it is kept apart."""
-        call = self._call(script, ["--profiles-dir", "profiles", *argv])
-        call["sub"] = sub
-        self.bad_calls.append(call)
-        return call["rc"]
+        return self._record(self.bad_calls, script, sub, argv)["rc"]
 
     def run_forced(self, script: str, sub: str, argv: list[str]) -> dict:
         """A run under a forced exception: judged on exit code and stderr only."""
-        call = self._call(script, ["--profiles-dir", "profiles", *argv])
-        call["sub"] = sub
-        self.forced_calls.append(call)
-        return call
+        return self._record(self.forced_calls, script, sub, argv)
 
     # the stage of a stem
     def stage(self, stem: str) -> Path:
@@ -313,7 +203,7 @@ class Walk:
     def write_proposals(self, stem: str, kind: str) -> Path:
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(_proposals(kind)), encoding="utf-8")
+        path.write_text(json.dumps(proposals(kind)), encoding="utf-8")
         return path
 
     def note_stage_files(self, label: str, stem: str) -> None:
@@ -349,11 +239,10 @@ def walk(tmp_path, monkeypatch, capsys):
     (tmp_path / "profiles").mkdir()
     (tmp_path / "profiles" / "miyo.yaml").write_text(yaml.safe_dump({"concept_defaults": {}}), encoding="utf-8")
     (tmp_path / "config" / "vault-config.yaml").write_text(yaml.safe_dump(CONFIG), encoding="utf-8")
-    vault = _vault()
+    vault = build_vault()
     mods = {name: _load(name) for name in SCRIPTS}
-    for name, mod in mods.items():
+    for mod in mods.values():
         monkeypatch.setattr(mod, "KadoClient", vault)
-        SUBCOMMANDS_OF[name] = _subcommands(mod)
     w = Walk(capsys, mods, tmp_path, vault)
     _session(w)
     _week(w)
@@ -482,6 +371,9 @@ def _raise_with(message_of):
     return boom
 
 
+_REAL_FIELDS = rday._fields
+
+
 def _fields_raising_on_a_marker_line(lines):
     """The daily field parser, failing on the first line that carries a marker — with that line."""
     lines = list(lines)
@@ -489,9 +381,6 @@ def _fields_raising_on_a_marker_line(lines):
     if hit is not None:
         raise ValueError(f"cannot parse the line {hit!r}")
     return _REAL_FIELDS(lines)
-
-
-_REAL_FIELDS = rday._fields
 
 
 def _forced_exceptions(w: Walk) -> None:
@@ -528,7 +417,7 @@ def _label(call: dict) -> str:
 
 def test_every_script_and_every_subcommand_ran_in_the_walk(walk):
     """Enumerated from the real parsers: a new subcommand without privacy coverage fails here."""
-    expected = {(script, sub) for script in SCRIPTS for sub in SUBCOMMANDS_OF[script]}
+    expected = {(script, sub) for script in SCRIPTS for sub in walk.subcommands[script]}
     assert expected >= {("review-session", "start"), ("review-read", "-"), ("review-doc", "replace"),
                         ("review-instructions", "drop")}
     assert {(c["script"], c["sub"]) for c in walk.calls} == expected

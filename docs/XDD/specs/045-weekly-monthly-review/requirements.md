@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.4"
+version: "1.5"
 ---
 
 # Product Requirements Document
@@ -101,7 +101,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given no existing periodic notes, When Tomo proposes a name format, Then it proposes ISO weeks (`2026-W13`, starting Monday) and calendar months (`2026-03`) and says it found no notes to compare with
   - [ ] Given the user sets a first day of the week other than Monday, When Tomo shows the matches, Then week numbers and the week's year follow that first day, and the existing notes the name format no longer matches are shown before the user confirms
   - [ ] Given existing weekly notes do not show how the user counts weeks (which day starts a week, which week is week 1), When Tomo proposes the setup, Then it asks the user in plain words how their weeks are counted and derives the rule from the answer; the Obsidian plugin configuration is never taken as the user's week
-  - [ ] Given no template for the period kind, or a template Kado cannot read, When Tomo proposes the setup, Then it says so and proposes a plain note (title and review section) instead, and says an unreadable template may mean the Kado key has no access
+  - [ ] Given no template mapped for the period kind, When Tomo proposes the setup, Then it lists the notes of the templates folder whose name fits the kind and asks which one, or none; given none chosen, or a template Kado cannot read, Then it says so and proposes a plain note (title and review section) instead, says an unreadable template may mean the Kado key has no access, and — when no heading of the template can be proposed as the place — asks at which heading of the periodic note the review goes before it offers to confirm
   - [ ] Given the user corrects a proposal, When Tomo has applied it, Then it shows the new matches again before asking, and nothing is saved until the user confirms
   - [ ] Given the user confirms, When the setup is saved, Then no other setting changes except a correction the user confirmed in the same dialogue (for example a daily folder path with a stray trailing space), and the review request continues in the same session
   - [ ] Given the user aborts the setup, When the session ends, Then nothing is saved and nothing is written to the vault

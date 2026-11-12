@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.12"
+version: "1.13"
 ---
 
 # Solution Design Document
@@ -348,6 +348,7 @@ Responsibilities (one owner each):
 | `lib/period.py` | Week/month arithmetic, the week rule, name-format rendering, parsing and refusal of unsafe formats, overlapping weeks, argument parsing to a `Period` |
 | `lib/review_config.py` | The setup's key layout, one owner for reader and writer (implemented, spec 045 Phase 2): `load_profile`, `folder_for` (config over profile), `inbox_folder`, `configured_formats`, `setup_present`, `review_setup()` → `ReviewSetup` or `SetupInvalid` (JSON pointers), `tracker_types`; the session shapes `current_setup` and `request_dict`; the writer side `input_problems` (schema + `period.check_format`) and `writer_edits` (`(path, value)` leaf edits); `place_level` (the only owner of the heading-level rule) and the inbox-path guard `inbox_path()` every review write goes through |
 | `lib/review_vault.py` | The Kado access of every review script (implemented, spec 045 Phase 2): `Vault` maps every Kado failure onto the SDD's error kinds once (`Stopped("kado-unreachable" \| "kado-auth")` stops the run; a failed single read degrades to None / `unreadable`), `review_documents` (the byFrontmatter query plus one frontmatter read per hit), `list_notes`, `template`, `folder_listed`; the date and heading helpers `frontmatter_start`, `headings`, `heading_start`. No second Kado error mapping anywhere |
+| `lib/review_templates.py` | The two questions `match` can leave open (implemented, spec 045 Phase 6 live-walk fix): `template_candidates` (the notes of `templates.base_path` whose file name fits the kind, one listing, sorted), `template_name` (the `--template` value with `.md`, refusing `..`, `\` and a leading `/`), `anchor_candidates_from_notes` (the headings of the two most recent periodic notes, two reads at most), and what a template's headings propose (`template_anchor_candidates`, `propose_anchor`, `daily_sections_from`) |
 | `lib/week_rule_inference.py` | Inferring the week rule from the dates up to 8 recent weekly notes carry (`infer_rule` → `Inference` inferred \| ambiguous \| default with every `Checked` note), never from the Obsidian plugin configuration (implemented, spec 045 Phase 2) |
 | `lib/vault_config_edit.py` | Text-preserving insert / replace / remove of one nested key in `vault-config.yaml` (`set_path`, `get_path`), creating missing parents and sections, rewriting a flow mapping on a key line as a block; the line helpers `templates-include` shares (implemented, spec 045 Phase 2) |
 | `review-session.py` | `start` (parse request, list open reviews via `review_vault` + `review_state.open_reviews`, record each listed applied review as reported), `match` (setup preview against existing notes via `review_vault` + `week_rule_inference`), `setup-input` (build the writer input from a confirmed proposal) (implemented, spec 045 Phase 2) |
@@ -396,6 +397,7 @@ tomo/
 │       ├── period.py                         # NEW
 │       ├── review_config.py                  # NEW (implemented, spec 045 Phase 2)
 │       ├── review_vault.py                   # NEW: Kado wrapper + weekly-note evidence (implemented, spec 045 Phase 2)
+│       ├── review_templates.py               # NEW: template candidates of the templates folder, --template name rule, the anchor candidates of the recent periodic notes, what a template's headings propose (implemented, spec 045 Phase 6 live-walk fix)
 │       ├── week_rule_inference.py            # NEW (implemented, spec 045 Phase 2)
 │       ├── vault_config_edit.py              # NEW: nested text-preserving config editor (implemented, spec 045 Phase 2)
 │       ├── review_pacer.py                   # NEW
@@ -437,6 +439,7 @@ docs/tomo/
     │   review_period.md, review_md.md, review_reader.md, review_weekly.md, review_habits.md, review_doc.md, review_doc_parse.md,
     │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
     ├── lib/review_vault.md, lib/week_rule_inference.md, lib/vault_config_edit.md  # NEW (implemented, spec 045 Phase 2)
+    ├── lib/review_templates.md                                                     # NEW: WHY the candidates are listed, the words, the two recent notes (implemented, spec 045 Phase 6 live-walk fix)
     ├── lib/review_delivery.md, lib/review_doc_read.md                              # NEW: WHY of the delivery adapter and the one document reader (implemented, spec 045 Phase 4)
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
     │   instruction-render.md, lib/kado_client.md, lib/note_meta.md                 # MODIFY
@@ -453,6 +456,7 @@ tests/
 ├── test_period.py                            # NEW: arithmetic, rule, formats, arguments, W53 months
 ├── test_review_config.py                     # NEW (incl. inbox guard)
 ├── test_review_session.py                    # NEW
+├── test_review_session_templates.py          # NEW: match without a mapping entry lists the template candidates, --template resolves the choice, needs_anchor + anchor_candidates when no anchor can be proposed, setup-input refuses the unchanged proposal, the writer saves the choice to templates.mapping.weekly and `0 none` touches no mapping key (implemented, spec 045 Phase 6 live-walk fix)
 ├── test_review_pacer.py                      # NEW
 ├── test_review_day.py                        # NEW (same-day rule, sections, fields, tasks, size cap)
 ├── test_review_period.py                     # NEW (dailies, duplicates, year folders, weeklies, growth)
@@ -605,16 +609,26 @@ review-session.py start --args '<raw $ARGUMENTS>'
                  last_finished?: "2026-W13"}                        # last_finished on unfinished-period (implemented, spec 045 T1.1)
               | {kind: kado-unreachable|kado-auth, detail}}         # with status stopped
 
-review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N]
-  out: {status: ok|stopped, kind,                                   # (implemented, spec 045 Phase 2)
+review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N] [--template T]
+  out: {status: ok|stopped, kind,                                   # (implemented, spec 045 Phase 2; --template and the
+                                                                    #  two question keys: Phase 6 live-walk fix, lib/review_templates.py)
         proposal: {folder, format, first_day, min_days, template, template_kind: plain|templater|missing|unreadable,
                    heading, place: {anchor, placement}, own_sections, daily_sections, language},
+                                                                    # template: --template (with or without .md) > templates.mapping.<kind>
         evidence: {matched: [names], unmatched: [names], week_rule: inferred|ambiguous|default, notes_checked: n,
                    folder_listing: found|kado-none,
                    format_problems: [{kind, example}],              # period.check_format on the proposed format
                    template_headings: [{level, text}]},             # anchor candidates of the template
         daily_path_fix?: {configured: "Calendar/301 Daily/ ", found: "Calendar/301 Daily/"},
-        hints: [plain sentences for the skill],                    # folder empty/denied, no notes to compare, template unreadable
+        template_candidates?: [names],                             # only when neither the mapping nor --template names a template:
+                                                                    #  notes of templates.base_path whose file name holds week/woche
+                                                                    #  (month/monat), case-insensitive, one listing, sorted, no .md;
+                                                                    #  [] without a base_path or for a kado-none listing (+ hint)
+        needs_anchor?: true, anchor_candidates?: [headings],        # only when no anchor could be proposed (no configured anchor, no
+                                                                    #  template heading): the headings of the two most recent periodic
+                                                                    #  notes of the kind, two read_note calls at most; the skill asks
+        hints: [plain sentences for the skill],                    # folder empty/denied, no notes to compare, template unreadable,
+                                                                    #  templates folder kado-none
         error?: {kind: kado-unreachable|kado-auth|unsafe-format, detail?}}
 
 review-session.py setup-input --kind week|month --confirmed <json file>
@@ -1040,6 +1054,8 @@ sequenceDiagram
 | `review-read`, `match` | empty listing | `kado_empty` / `folder_listing: kado-none` | "Kado returned none" + the key may not reach the folder (Rule 6, F3-AC9); after `match`, the skill asks before proposing to create notes in that folder (the setup step) |
 | `review-read` | no daily has content | `nothing_to_review: true` | says so with the access hint; no document (F3-AC9) |
 | `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
+| `match` | no `templates.mapping.<kind>` entry and no `--template` (the owner's instance, Phase 6 live walk) | `template_candidates` (the templates folder's notes that fit the kind; `[]` + a hint naming the folder when Kado answered with nothing for it) | the skill asks which template, numbered with `0 none` last, before it prints the proposal; a number reruns `match --template`, `0` keeps the plain note and saves nothing to the mapping (F1-AC7) |
+| `match` | no anchor can be proposed (no template, `0 none`, a template without a heading below its title; no configured anchor) | `needs_anchor: true` + `anchor_candidates` (headings of the two most recent periodic notes) | the skill asks "Which heading, by number or typed?" before it offers Confirm and puts the answer into `place.anchor`; Confirm is never offered while the anchor is null; `setup-input` still validates (F1-AC7) |
 | `match` | unsafe name format | `error.kind = unsafe-format` | the format must not contain `/`, `\` or `..` |
 | `setup-input`, writer | invalid confirmed input / schema violation | `status: invalid` / `refused` with pointers | nothing saved; the dialogue asks again |
 | `write` | invalid proposals file | `status: refused`, `proposals-invalid` | the model is asked to rewrite the file once; then the run stops |
@@ -1309,7 +1325,7 @@ stateDiagram-v2
 - [ ] WHEN `/review setup` runs, THE SYSTEM SHALL show the current values and save only a confirmed proposal (F1-AC2).
 - [ ] WHEN existing notes are named `2026-W13`-style, THE SYSTEM SHALL propose `GGGG-[W]WW` with the ISO rule (F1-AC3); WHEN none exist, ISO weeks and `YYYY-MM` with "no notes to compare" (F1-AC4).
 - [ ] IF the first day is not Monday, THEN THE SYSTEM SHALL recompute the matches under the new rule before confirmation (F1-AC5).
-- [ ] IF the template is missing or unreadable, THEN THE SYSTEM SHALL propose the plain note and name possible missing access (F1-AC7).
+- [ ] IF no template is mapped for the kind, THEN THE SYSTEM SHALL list the templates folder's notes that fit the kind and ask which one or none; IF the template is missing or unreadable, THEN THE SYSTEM SHALL propose the plain note and name possible missing access; IF no anchor can be proposed, THEN THE SYSTEM SHALL ask at which heading the review sits before Confirm (F1-AC7).
 - [ ] IF the week rule is ambiguous, THEN THE SYSTEM SHALL ask the user in plain words and never read the Obsidian plugin config (F1-AC6).
 - [ ] WHEN the user corrects, THE SYSTEM SHALL re-run `match` before asking again; nothing is saved before confirmation (F1-AC8).
 - [ ] WHEN confirmed, THE SYSTEM SHALL write only the setup keys (calendar granularities, name patterns, template mapping, the `review:` section) and a confirmed daily-path fix, then continue the request in the same session (F1-AC9); WHEN aborted, nothing is written (F1-AC10).

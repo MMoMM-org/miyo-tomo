@@ -37,12 +37,15 @@ the user and calls the dialog straight after a Read, with no visible text, and t
 `claude plugin eval` never offers `AskUserQuestion` either, so the paid evidence can only prove the typed path. Every
 question of this skill is therefore the same message as the content it refers to: the content, then one numbered
 option line as the last line (`1 Deliver · 2 Abort`, `1 Confirm · 2 Correct · 3 Abort`, `1 Resume · 2 Drop`,
-`1 Continue · 2 Start over · 3 Abort`), and the turn ends. The next user message is the answer, mapped to an option
-by number or by word; anything else is asked again in plain text. There is no second channel: the message the model
-writes is the one the user reads. The numbers follow spec 044's 0.2.9 decision (one key instead of a typed word) and
-stay consecutive. The preview-in-dialog form of `/note` 0.2.11 is not used here: the review section is the user's own
-approved text and short, so a plain reprint costs little, and the `/note` form is still unproven in Hashi's session
-view. Revisit if the platform shows tool inputs to the user or the model reliably prints before a tool call.
+`1 Continue · 2 Start over · 3 Abort`, `1 Replace · 2 Keep it`, `1 Start over · 2 Abort`, and for a heading choice
+the numbered `headings` list with "Which number, or 0 Abort?" so every listed number stays valid), and the turn ends.
+The next user message is the answer, mapped to an option by number or by word; anything else is asked again in plain
+text. There is no second channel: the message the model writes is the one the user reads. The numbers follow spec
+044's 0.2.9 decision (one key instead of a typed word) and stay consecutive. The preview-in-dialog form of `/note`
+0.2.11 is not used here (owner decision at T5.2): the review section is the user's own approved text and short, so a
+plain reprint costs little, and the `/note` form is still unproven in Hashi's session view. `AskUserQuestion` is
+therefore not in the skill's `allowed-tools` and not named in its text at all. Revisit if the platform shows tool
+inputs to the user or the model reliably prints before a tool call.
 
 ## Why Session Start Is a Script
 
@@ -92,20 +95,31 @@ count and where the review goes. `start` reports `setup.week` / `setup.month`; w
 setup dialogue runs for that kind: `review-session.py match --kind` previews the proposal against the existing notes
 (folder, format, first day, min_days, template and its kind, heading, place, own sections, daily sections, language,
 with `evidence.matched` and `evidence.unmatched` so the user confirms against real note names, F1-AC1), the skill
-prints it and asks `1 Confirm · 2 Correct · 3 Abort`. A correction reruns
-`review-session.py match --kind --folder --format --first-day --min-days` with the corrected values as flags and
-shows the new matches before asking again (F1-AC8) — the skill never edits the proposal in its head, because the
-matches must come from the same code that will parse the names later. Confirm writes the proposal to a JSON file,
-`review-session.py setup-input --kind --confirmed` validates it against the schema and the format rules before the
-writer sees it (`status: invalid` with pointers → the dialogue asks again), and
-`vault-config-writer.py review --input` saves exactly the keys the input
-names, text-preservingly (ADR-5): the skill never composes YAML. `daily_path_fix` is applied only when the user
-confirmed it in the same dialogue (F1-AC9); no other setting changes.
+prints the proposal, the `evidence` and every line of `hints` (the script's own wording for a `kado-none` listing, a
+folder without comparable notes and an unreadable template, so the access hint is never paraphrased) and asks
+`1 Confirm · 2 Correct · 3 Abort`. A correction of the folder, the name format, the first day or the week-1 rule
+reruns `review-session.py match --kind --folder --format --first-day --min-days` with the corrected value as its flag
+and shows the new matches before asking again (F1-AC8) — the skill never computes matches in its head, because they
+must come from the same code that will parse the names later. A correction of a value `match` takes no flag for
+(heading, place, own sections, daily sections, language) is printed back in the proposal and carried in the confirmed
+file; `setup-input` validates it there, so a wrong value is refused by the schema, not by the model. Confirm writes
+the `proposal` object of the last `match` output, as it is, to `tomo-tmp/review/confirmed-<kind>.json` (with
+`daily_path_fix` from the same output only when the user confirmed it, F1-AC9); `review-session.py setup-input --kind
+--confirmed` validates the file against the schema and the format rules before the writer sees it (`status:
+invalid` with pointers → `1 Correct · 2 Abort`, and Correct is the same correction branch), and `vault-config-writer.py review --input` saves exactly the keys
+the input names, text-preservingly (ADR-5): the skill never composes YAML. No other setting changes. Both helper
+files are removed after the save; they are not state.
 
 After the save the skill reruns `review-session.py start --args` with the original argument and continues the
 request in the same session (F1-AC9): the user asked for a review, not for a setup, and `start`'s period resolution
 depends on the rule just saved. The open reviews it already handled are skipped on the rerun. Abort saves nothing and
 writes nothing (F1-AC10): the writer is called only after Confirm, and no vault write happens before Pass 1's `write`.
+
+`/review setup` (F1-AC2) runs the same dialogue for the week kind and then for the month kind, each starting from
+`current.<kind>` as `start` reports it (the saved values, `null`, or `invalid` pointers, printed before the
+proposal), and ends without a review: the user asked for the setup. Abort ends the setup; a kind already confirmed
+and saved before the abort stays saved, because the writer ran at its Confirm — the same rule as `/note`'s saved
+`note_include`.
 
 ## Why the Week Question Is Asked in Plain Words (ADR-7)
 
@@ -162,6 +176,17 @@ one link to a daily inside the period (F4-AC3). It writes them to `proposals.jso
 second refusal ends the run — looping on a schema the model cannot satisfy would burn the user's time. The model
 proposes only Tomo's own section, never text for the sections the setup names as the user's own (F4-AC7).
 
+## Why the Review Language Is Read From the Config File
+
+WHY: The proposals must be in the review language of the setup (F4-AC5) and `proposals.json` names it, but no script
+of the ordinary path prints it: `start` reports the setup only as `present` / `missing`, `review-read.py` prints the
+report and `read.json` carries the period's content, not the setup. The skill therefore reads the one key
+`review.language` from `config/vault-config.yaml` — the instance's own configuration, not the vault, and a value the
+user confirmed in the setup dialogue — before it writes `proposals.json`. The alternative calls (`start --args='setup'`
+for `current.<kind>.language`, or `match` for a proposal) each cost Kado calls for a value that is already on disk.
+Known gap, noted at T5.2: a `language` key on `review-read.py`'s output would remove the only config read of the
+skill; until then the skill reads that key and nothing else from the file and never writes it.
+
 ## Why Pass 1 Ends With `write`, Deletes the Working Files and Ends the Turn (ADR-2, ADR-9)
 
 WHY: `review-doc.py write --stem --proposals` is the only vault write of Pass 1: `<period> Review.md` in the inbox,
@@ -191,7 +216,9 @@ the user decides.
 WHY: The document is the source of truth, so Pass 2 reads it fresh every time. `review-doc.py parse --stem` reads the
 edited document back through Kado and prints counts and ids only — `approved`, `nothing_to_deliver`, the kept /
 unticked / deleted / added counts and the warnings — and writes nothing; the skill reports the counts so the user sees
-what their edits did. An unticked Approved box ends the turn with the box named (F5-AC1); `approved-line-missing`
+what their edits did. `status: not-found` means the document is gone or renamed beyond recognition: the skill says
+so and asks `1 Start over · 2 Abort` — start over is Pass 1 again for that period, abort leaves everything as it is.
+An unticked Approved box ends the turn with the box named (F5-AC1); `approved-line-missing`
 says how to restore `- [ ] Approved` at column 0. The other parse warnings get one plain line each: `unknown-group` (a
 heading the parser does not know; its items do not land), `duplicate-group` (the second heading of that name is
 ignored), `frontmatter-broken` (the document's frontmatter could not be read; the period is taken from `meta.json`),
@@ -251,7 +278,9 @@ WHY: `review-instructions.py status --stem` names one stem's state through the s
 says what happened; a second call would cost one set read and the probes for a value already in hand. `status` is
 the direct question — for a test, the owner, or a later skill step that must re-check one stem (for example a
 `doc-changed` resume in the same session) — and it answers `applied` even after `start` reported it once, because the
-"offered once" rule belongs to the listing. The skill may use it for exactly that re-check and for nothing else.
+"offered once" rule belongs to the listing. The skill as shipped at T5.2 does not call it at all: every state it acts
+on is in `start`'s listing or in the `status` field of the script it just ran, and a `doc-changed` stop ends the
+run with "save the document and run `/review` again", so no re-check is needed in the same session.
 
 ## Why the Privacy Boundary Is Documented in the Skill, Not Cleaned Up (ADR-9, F7)
 
@@ -284,26 +313,37 @@ and forbids the skill's base directory.
 ## Why STRICT Is Rare
 
 WHY: Per the repo rule, a `STRICT` block with a one-line `Why:` is only for a deviation actually observed in a run.
-The runtime text holds imperatives only; every rationale lives in this file. The one candidate from the start is the
-plain-text question rule, because spec 044 observed the deviation live; T5.2 decides from the container run whether
-it is needed here.
+The runtime text holds imperatives only; every rationale lives in this file. The skill ships without a `STRICT`
+block (decided at T5.2): the deviation spec 044 observed was a dialog called after a bare Read, and this skill has no
+dialog to call — `AskUserQuestion` is not in its tools and every question is the plain-text form. A `STRICT` is
+added only when a `/review` run shows a deviation of its own.
 
 ## Why There Is No Eval Gate
 
 WHY: ADR-1's trade-off: the skill's prose is not covered by the CLAUDE.md eval gate, because gating every later edit
-would cost a paid run each time. T5.2 may add one owner-run eval case under `evals/` for the open-review-first order
-and the plain-text Deliver / Abort turn end; later edits are reviewed by hand and by the static CLI-contract sweep
-over `tomo/dot_claude/skills` (every subcommand and flag the skill names must exist in the parsers), which is also what
-`tests/test_review_why_docs.py` applies to this document.
+would cost a paid run each time. No eval case exists under `evals/` for `/review` (paid evals are owner-instructed;
+an owner-run case for the open-review-first order and the plain-text Deliver / Abort turn end stays an option).
+Later edits are reviewed by hand and by the static tests of `tests/test_review_skill.py`: every `python3
+scripts/review-*.py` call in any `tomo/dot_claude/skills/**/SKILL.md` parses with the called script's own argparse
+parser (prefix abbreviations refused), every subcommand and flag named in a backtick mention exists in the parsers,
+every Error Handling row of the SDD has its user message in the skill, every `parse` warning has its line, `status`
+is branched before any other key, and the option lines this document names appear in the skill verbatim. The same
+parser-derived contract (`tests/review_cli_contract.py`) is what `tests/test_review_why_docs.py` applies to this
+document, so the three cannot drift apart silently.
 
 ## Why the Runtime Details Look the Way They Do
 
-WHY: The stem is `<period>_review` (`2026-W13_review`), given as `--stem` to every Pass 1 and Pass 2 call, because
-`start` names the period and `review-read.py` defaults the stem from it; one stem keeps one review's stage apart from
-another's. `--today` is a suppressed test flag and never passed by the skill. The confirmed-setup JSON goes to
-`tomo-tmp/review/` and is read by `setup-input`, whose `--output` defaults to `tomo-tmp/review/setup-<kind>.json`, the
-file the writer's `--input` takes; both are helper files, not state. The skill pins no `model`: the proposals are the
-model's work (ADR-12), so it runs on the session's model. The description carries `MUST BE USED` per the authoring
-rules, with a `NOT for` clause that keeps inbox triage with `/inbox` and single notes with `/note`. `allowed-tools`
-holds Bash, Read and Write (`proposals.json`, the confirmed-setup file) and nothing that reaches the vault: every
-vault access goes through the scripts and Kado.
+WHY: The stem is `<period>_review` (`2026-W13_review`), given as `--stem` to every Pass 1 and Pass 2 call,
+`review-read.py` included, because `start` names the period and one explicit stem keeps one review's stage apart
+from another's and from the script's default. `--today` is a suppressed test flag and never passed by the skill. The
+confirmed-setup JSON is `tomo-tmp/review/confirmed-<kind>.json`, read by `setup-input`, whose `--output` defaults to
+`tomo-tmp/review/setup-<kind>.json`, the file the writer's `--input` takes; both are helper files, not state, and
+removed after the save. The skill pins no `model`: the proposals are the model's work (ADR-12), so it runs on the
+session's model. `user-invocable: true` and an `argument-hint` make the skill itself show in the `/` menu beside the
+shim, as `/note` does. The description carries `MUST BE USED` per the authoring rules, with a `NOT for` clause that
+keeps inbox triage with `/inbox` and single notes with `/note`. `allowed-tools` holds Bash, Read and Write
+(`proposals.json`, the confirmed-setup file; Read for `read.json` and the one config key) and nothing that reaches the
+vault: every vault access goes through the scripts and Kado. The skill's body follows the `/note` precedent (a Rules
+list, then numbered steps) rather than the authoring plugin's Persona / Interface / Constraints layout: the repo rule
+for runtime files allows imperatives only, and a persona or an interface block would be prose the model does not act
+on.

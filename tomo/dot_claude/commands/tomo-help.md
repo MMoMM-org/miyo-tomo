@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.22
+# version: 0.2.23
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -30,30 +30,31 @@ The user just wants the menu. Show this (keep formatting tight):
     4. /inbox — process inbox items (2-pass workflow)
     5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
     6. /garden-audit — audit the vault for orphans, dead links, broken up::, stale MOCs (+ configure/suggest/stats)
+    7. /review — weekly or monthly review of your daily notes into the periodic note (2-pass, + setup)
 
   Concepts
-    7. Lifecycle state machine (`tomo.state` frontmatter)
-    8. 2-pass suggestion/instruction model
-    9. Knowledge Stack (profile → config → cache)
-   10. Framework profiles (miyo, lyt)
+    8. Lifecycle state machine (`tomo.state` frontmatter)
+    9. 2-pass suggestion/instruction model
+   10. Knowledge Stack (profile → config → cache)
+   11. Framework profiles (miyo, lyt)
 
   Configuration
-   11. vault-config.yaml — concept paths, frontmatter, templates
-   12. User rules — vault-specific behavioral conventions
-   13. Kado MCP — connection, bearer token, .mcp.json
-   14. Git user identity
+   12. vault-config.yaml — concept paths, frontmatter, templates
+   13. User rules — vault-specific behavioral conventions
+   14. Kado MCP — connection, bearer token, .mcp.json
+   15. Git user identity
 
   Troubleshooting
-   15. Kado not connected / tools missing
-   16. /explore-vault fails or finds nothing
-   17. Docker / image / container issues
-   18. OAuth / re-auth (outside the container)
-   19. First-run setup issues
+   16. Kado not connected / tools missing
+   17. /explore-vault fails or finds nothing
+   18. Docker / image / container issues
+   19. OAuth / re-auth (outside the container)
+   20. First-run setup issues
 
   Operations
-   20. Update Tomo to a newer source version
-   21. Cleanup & re-install (testing)
-   22. Debug shell in the container
+   21. Update Tomo to a newer source version
+   22. Cleanup & re-install (testing)
+   23. Debug shell in the container
 ```
 
 Then ask: `Which topic? Enter a number or describe what you need.`
@@ -114,6 +115,13 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - `/garden-audit suggest` — after ticking `[ ] Suggest targets` on dead-link/broken-`up::` findings, computes candidate replace/repoint targets and rewrites those findings with a `Pick one:` list (tick a pick, or type your own — typed wins)
   - `/garden-audit stats` — read-only overview relayed to chat (no vault write): open findings by area × check, totals per check/tier, active exclusions, temporaries on pushback (with days remaining), and reappeared (expired) exclusions
   - Point at: `.claude/agents/garden-auditor.md`, `.claude/commands/garden-audit.md`
+
+- **review / weekly review / monthly review / periodic note / week / month / review setup / W13 / 2026-W13** →
+  - `/review` reviews the last finished week; `/review month` the last finished month; `/review 2026-W13`, `/review W13`, `/review 2026-03` or an `@`-picked weekly or monthly note name a period
+  - First run per period kind: `/review` proposes the setup (folder, name format, first day of the week, template, review heading and place, daily sections, language) against your existing notes and saves it only after you confirm; `/review setup` shows the saved values and runs the same dialogue again
+  - 2-pass: Pass 1 writes `<period> Review.md` to your inbox — edit the items, tick `[x] Approved`, run `/review` again; Pass 2 shows the section as it will land and delivers the instruction set for Hashi (readable instructions included for applying by hand)
+  - Open reviews are always offered first (continue, start over, resume or drop); one review per period — a rerun replaces Tomo's section, never adds a second
+  - Point at: `.claude/skills/periodic-review/SKILL.md`, `.claude/commands/review.md`, `config/vault-config.yaml` (`review:`)
 
 ### Concepts
 

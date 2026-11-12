@@ -27,9 +27,15 @@ directly in the session the user is typing in. Revisit only if the platform lets
 
 WHY: The owner's word for the feature is "review" (weekly and monthly review), and the review document is
 `<period> Review.md`, so the command carries the same word. Claude Code's built-in review command is `/code-review`,
-so no collision is expected; T5.2 confirms in a `tomo-instance` container session that a project `/review` is offered
-and not shadowed before the runtime file ships. If it is shadowed, the fallback is a mod or another name, decided by
-the owner, never a silent rename.
+so no collision was expected, and the owner confirmed in a `tomo-instance` container session (T5.2, 2026-11-12) that
+a project `/review` is offered and not shadowed. Should a later Claude Code version shadow it, the fallback is a mod
+or another name, decided by the owner, never a silent rename.
+
+## Why the Shim Carries `argument-hint` but No Example List
+
+WHY: The `argument-hint` in the frontmatter is what the `/` menu shows next to the command, so it names the argument
+kinds in a few words (a period, `month`, `setup`, an `@`-picked note). It is a menu label, not help: the forms
+themselves stay with `review-session.py start` and `tomo-help.md`, as the section above says.
 
 ## Why the Command Carries No Argument Help
 

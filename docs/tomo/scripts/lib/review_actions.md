@@ -33,6 +33,16 @@ The marker search covers the note's lines outside code fences by Hashi's
 fence rule (next section), the same lines Hashi's heading parser sees; a
 marker inside a fence is quoted text.
 
+The marker counts only at column 0. Tomo writes it there and nowhere else;
+an indented copy is something else — most likely a landed item's
+continuation line (`item_lines` indents continuations by two spaces and
+`review_doc.neutralised` does not escape `%%`, so a user who pastes the
+marker text into an item lands it verbatim, indented). A `strip()` match
+read that copy as the signature: with the real marker deleted the rerun
+"found" the marker under the item's heading and replaced that section.
+Hence `line.rstrip() == marker`: no leading whitespace, trailing whitespace
+tolerated (a CRLF note keeps its `\r`, and the marker is still Tomo's line).
+
 ## WHY Headings Are Parsed by Hashi's Rule, Not `review_md`'s
 
 Every heading this module emits as an anchor value, or matches a configured
@@ -87,9 +97,9 @@ each difference makes Tomo emit an anchor Hashi cannot resolve:
   both regexes use it in place of `\s`, and the heading text is trimmed with
   `str.strip(JS_WS)`. The V8 oracle for every edge character is in the test
   file's docstring.
-- Only the mirror uses `JS_WS`. Tomo's own marker match (`line.strip() ==
-  marker`) stays Python's: the marker line is Tomo's signature, not
-  something Hashi resolves.
+- Only the mirror uses `JS_WS`. Tomo's own marker match (`line.rstrip() ==
+  marker`, column 0) stays Python's: the marker line is Tomo's signature,
+  not something Hashi resolves.
 
 Matching is tolerant, emission exact. A configured anchor or `setup.heading`
 of `Woche` matches a note heading `Woche ##` (both sides compared after
@@ -222,7 +232,11 @@ as a duplicate so the preview can say so; a hit elsewhere becomes the target
 and is reported as `target_moved` (Edge Cases); with nothing anywhere the
 first candidate is the destination of a new note. Keeping that rule here, not
 in the script, keeps "which note is the target" testable without Kado and
-identical between `review-doc.py write` and the delivery.
+identical between `review-doc.py write` and the delivery. The hits elsewhere
+come from a Kado search whose order is the index's, not a promise; they are
+sorted by path before the first is taken, so two builds of the same plan —
+the preview and the delivery, or a resume — pick the same note whatever
+order the search answered in.
 
 ## WHY a New Note Follows ADR-8 in This Order
 
@@ -239,6 +253,31 @@ an anchor the template lacks is `place-missing` with those headings.
 The new note is stamped `rendered-note` / `pending-move` with
 `updated_at = generated`, like `/note`'s draft (`note-instructions.py`), so a
 resume rebuilds the same bytes and Hashi strips the block on the move.
+
+The stamp goes through `doc_frontmatter.merge_tomo_block_into_markdown`,
+which refuses two template shapes with `FrontmatterMergeError`: a
+frontmatter that already holds a top-level `tomo:` key (the merge would
+write a duplicate key, which a YAML reader silently resolves to one of the
+two) and a leading `---` fence that never closes (there is no frontmatter
+to merge into). Both came out of the template the user
+configured, not out of the review, so neither refuses the delivery: the
+plan falls back to the plain note — the same note a missing template
+yields — and records the notice `template_unmergeable`, holding the merge
+helper's reason, so the preview can say which of the two shapes to fix
+(T4.2 shows it as a notice, like `variant_missing`). One notice name, not
+two: both shapes share the consequence (the template was dropped for this
+delivery) and the fix site (edit the template file); the reason text
+already tells them apart, and a second flag would duplicate that. The
+fallback resets `templater_hint` (the plain note holds no Templater code)
+and keeps `variant_missing` (it is still true of the variant). A template
+whose frontmatter carries `tomo:` is not the variant convention — the
+variant replaces Templater tokens, nothing else.
+
+The template's text is taken by the exact bytes: `_split_lines` mirrors
+Hashi's `content.split("\n")`, and the rebuilt note ends with a newline
+only when the template did. A note whose template lacks the final newline
+lands without one; adding it would make the plain-vs-template byte
+promise above false for that template.
 
 ## WHY the Set Holds One Action
 

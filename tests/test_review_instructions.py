@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -11,12 +11,16 @@ an existing target without the marker gets one insert_under_marker with `before`
 turns it into one replace_section on the heading above the marker, also when that heading was
 renamed (`heading-renamed`), with a body Hashi's identical-block check reads as already landed;
 the same heading without the marker — or the marker under an own section, or under a heading an
-earlier user heading shadows — is `user-heading-collision` with no action; a note found by name
-elsewhere is the target (`target_moved`); the flat folder wins over the year subfolder and the
-duplicate is named; a review heading above level 5 is `place-too-deep`, an absent anchor
-`place-missing`, both with the note's headings; an absent target yields a new note (variant,
-raw Templater template with `templater_hint`, vanished variant with `variant_missing`, plain)
-stamped rendered-note/pending-move plus one move_note; every item line is escaped once and
+earlier user heading shadows — is `user-heading-collision` with no action; the marker counts at
+column 0 only, an indented copy (an item's continuation line) is not it; a note found by name
+elsewhere is the target (`target_moved`), the lexically first hit whatever order the search
+answered in; the flat folder wins over the year subfolder and the duplicate is named; a review
+heading above level 5 is `place-too-deep`, an absent anchor `place-missing`, both with the
+note's headings; an absent target yields a new note (variant, raw Templater template with
+`templater_hint`, vanished variant with `variant_missing`, plain; a template whose frontmatter
+holds `tomo:` or never closes its fence falls back to the plain note with `template_unmergeable`
+holding the reason) stamped rendered-note/pending-move plus one move_note, the template's final
+newline kept byte for byte; every item line is escaped once and
 counted, a line review_doc already escaped lands with exactly one backslash; ids are stripped;
 the content ends with one blank line and is byte-identical across builds; only kept items land
 and empty groups leave no heading; kept items under an unknown heading are counted as `unlanded`
@@ -275,6 +279,23 @@ def test_actions_own_sections_are_never_targeted():
     assert plan(setup=setup(anchor=OWN, placement="before")).problems == []
 
 
+def test_actions_an_indented_marker_copy_is_not_the_marker():
+    # the marker lands verbatim as an item's continuation line (`%%` is not structure to review_doc.neutralised)
+    indented = f"  {MARKER}"
+    assert rd.neutralised(indented.strip()) == MARKER
+    # the real marker deleted, only the indented copy left under the review heading: no marker → collision
+    without = landed_note().replace(f"{MARKER}\n", "", 1).replace(f"{FIRST_ITEM}\n", f"{FIRST_ITEM}\n{indented}\n", 1)
+    assert MARKER not in without.split("\n") and indented in without.split("\n")
+    p = plan(target_text=without)
+    assert p.mode == "insert" and p.problems == ["user-heading-collision"] and p.actions == []
+    # under a user heading with no review heading anywhere: a plain insert
+    p = plan(target_text=NOTE.replace("text der Woche", f"- mein Punkt\n{indented}"))
+    assert p.mode == "insert" and p.problems == [] and p.actions[0]["action"] == "insert_under_marker"
+    # the real marker is matched with trailing whitespace, never with leading
+    assert ra._marker_index([f"{MARKER}  \t"], MARKER) == 0
+    assert ra._marker_index([f" {MARKER}"], MARKER) is None
+
+
 def test_actions_a_marker_with_no_heading_above_it_is_place_missing():
     p = plan(target_text=f"{MARKER}\n- old\n\n## Woche\n")
     assert p.problems == ["place-missing"] and p.headings == ["Woche"] and p.actions == []
@@ -436,6 +457,14 @@ def test_actions_nothing_anywhere_means_a_new_note_at_the_first_candidate():
     assert ra.locate_target(candidates, {}, []) == ra.Target(TARGET, None, False, [])
 
 
+def test_actions_the_hit_elsewhere_is_the_lexically_first_whatever_order_the_search_answered():
+    candidates = Period.week(2026, 13).note_paths(WEEKLY, "gggg-[W]ww")
+    texts = {"Zettel/2026-W13.md": NOTE, "Archive/2026-W13.md": NOTE}
+    reverse = ["Zettel/2026-W13.md", "Archive/2026-W13.md"]
+    assert ra.locate_target(candidates, texts, reverse).path == "Archive/2026-W13.md"
+    assert ra.locate_target(candidates, texts, reversed(reverse)).path == "Archive/2026-W13.md"
+
+
 # ---------------------------------------------------------------- the level rule and the place
 
 def test_actions_a_review_heading_above_level_5_is_place_too_deep():
@@ -533,6 +562,49 @@ def test_actions_new_note_plain_when_there_is_no_template():
     assert p.note_text.split("---\n", 2)[2] == f"# {PERIOD}\n\n{p.section_md}"
     assert p.section_md.startswith(f"## {HEADING}\n{MARKER}\n### Erledigt\n")
     assert p.actions[0]["action"] == "move_note"
+
+
+def test_actions_new_note_keeps_the_templates_final_newline_byte_for_byte():
+    head, body_end = f"# {PERIOD}\n\n## Woche\n\n", "## In my own words"
+    for tail in ("", "\n", "\n\n"):
+        p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=head + body_end + tail))
+        assert p.problems == []
+        assert p.note_text.split("---\n", 2)[2] == f"{head}{p.section_md}\n{body_end}{tail}"
+    # inside the last section of a template without a final newline: the section's own newline is the last byte
+    p = plan(target_text=None, setup=setup(anchor=OWN, placement="inside", own_sections=[], template="t_week.md"),
+             template=ra.Template(raw=head + body_end))
+    assert p.note_text.split("---\n", 2)[2] == f"{head}{body_end}\n{p.section_md}"
+
+
+TOMO_TEMPLATE = f"---\ntags: weekly\ntomo:\n  foo: 1\n---\n# {PERIOD}\n\n## Woche\n\n## In my own words\n"
+
+
+@pytest.mark.parametrize("which", ["raw", "variant"])
+def test_actions_new_note_template_with_a_tomo_block_falls_back_to_the_plain_note(which):
+    kw = dict(setup=setup(template="t_week.md", template_variant="t_week_tomo.md"))
+    template = ra.Template(raw=TOMO_TEMPLATE, variant=None) if which == "raw" \
+        else ra.Template(raw=RAW_TEMPLATE, variant=TOMO_TEMPLATE)
+    p = plan(target_text=None, template=template, **kw)
+    assert p.mode == "new-note" and p.problems == []
+    assert p.template_unmergeable == "Frontmatter already carries a top-level 'tomo:' key."
+    assert p.preview()["template_unmergeable"] == p.template_unmergeable
+    [action] = p.actions
+    assert action["action"] == "move_note" and action["destination"] == TARGET
+    # the plain note, byte-identical to the one a missing template yields
+    plain = plan(target_text=None, setup=setup(template="t_week.md", template_variant="t_week_tomo.md"))
+    assert p.note_text == plain.note_text and p.place == plain.place and p.section_md == plain.section_md
+    assert p.note_text.split("---\n", 2)[2] == f"# {PERIOD}\n\n{p.section_md}"
+    assert frontmatter_of(p.note_text) == frontmatter_of(plain.note_text) and "foo" not in p.note_text
+    assert p.templater_hint is False and p.variant_missing is (which == "raw")
+    assert "template_unmergeable" not in plain.preview() and plain.template_unmergeable is None
+
+
+def test_actions_new_note_template_with_an_unclosed_frontmatter_fence_falls_back_to_the_plain_note():
+    unclosed = f"---\ntags: weekly\n# {PERIOD}\n\n## Woche\n\n## In my own words\n"
+    p = plan(target_text=None, setup=setup(template="t_week.md"), template=ra.Template(raw=unclosed))
+    assert p.problems == [] and p.template_unmergeable == "Leading frontmatter fence is unclosed."
+    assert p.note_text == plan(target_text=None).note_text and p.actions[0]["action"] == "move_note"
+    assert p.preview()["template_unmergeable"] == "Leading frontmatter fence is unclosed."
 
 
 def test_actions_new_note_template_without_the_anchor_is_place_missing():

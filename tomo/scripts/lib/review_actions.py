@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.3.0
+# version: 0.4.0
 """Build the delivery plan of an approved review (spec 045, T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -9,15 +9,18 @@ was found by name elsewhere and which duplicate the year subfolder holds) and, f
 the ``Template`` texts, and returns a ``ReviewPlan``: the mode (``insert`` | ``replace`` |
 ``new-note``), the place, the section as it will land, the count of lines escaped here, the
 count of kept items that cannot land (``unlanded``: under a heading the parser did not know),
-the Templater hint, the problems (``not-approved``, ``approved-line-missing``,
+the Templater hint, the notice ``template_unmergeable`` (the template's frontmatter could not
+take the stamp — a ``tomo:`` key already there or an unclosed fence — so the plain note was
+built instead, with the merge helper's reason), the problems (``not-approved``, ``approved-line-missing``,
 ``nothing-to-deliver``, ``unlanded-items``, ``place-missing``, ``place-too-deep``,
 ``heading-renamed``, ``user-heading-collision``) with the note's headings where the place is at
 fault, and the actions: one ``insert_under_marker`` (``before`` or ``inside``, never ``after``)
 when the target holds no marker of this period, one ``replace_section`` on the heading above the
 marker when it does — whatever that heading's text — or one ``move_note`` for a new note that
-waits in the inbox stamped rendered-note/pending-move. A heading with the review's text but no
-marker, a marker under an own section, or a marker under a heading an earlier heading of the
-same text shadows is a collision: nothing is emitted. A refused replace (the marker proves the
+waits in the inbox stamped rendered-note/pending-move. The marker counts at column 0 only
+(trailing whitespace tolerated); an indented copy is an item's continuation line. A heading
+with the review's text but no marker, a marker under an own section, or a marker under a
+heading an earlier heading of the same text shadows is a collision: nothing is emitted. A refused replace (the marker proves the
 rerun) reports mode ``replace`` and the heading found above the marker as the place. Every heading
 matched or emitted is the heading as Hashi's parser reads the file (``hashi_headings``: closing
 hashes kept, every line opening with ``` or ~~~ toggles a fence, frontmatter included, the file
@@ -45,7 +48,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from lib import review_config as rc
 from lib import review_doc as rd
 from lib import review_md
-from lib.doc_frontmatter import build_tomo_block, merge_tomo_block_into_markdown
+from lib.doc_frontmatter import FrontmatterMergeError, build_tomo_block, merge_tomo_block_into_markdown
 from lib.review_doc_parse import APPROVED_MISSING
 from lib.review_vault import TEMPLATER_MARK
 from lib.wire_version import wire_schema_version
@@ -111,6 +114,7 @@ class ReviewPlan:
     unlanded: int = 0                          # kept items under an unknown heading: they cannot land
     templater_hint: bool = False
     variant_missing: bool = False
+    template_unmergeable: Optional[str] = None  # the template could not take the stamp: the reason; plain note built
     problems: List[str] = field(default_factory=list)
     headings: List[str] = field(default_factory=list)
     actions: List[dict] = field(default_factory=list)
@@ -126,7 +130,7 @@ class ReviewPlan:
         }
         for key, value in (("target_moved", self.target_moved), ("duplicates", list(self.duplicates)),
                            ("unlanded", self.unlanded), ("variant_missing", self.variant_missing),
-                           ("headings", list(self.headings))):
+                           ("template_unmergeable", self.template_unmergeable), ("headings", list(self.headings))):
             if value:
                 out[key] = value
         return out
@@ -249,8 +253,10 @@ def bare(text: str) -> str:
 
 
 def _marker_index(lines: List[str], marker: str) -> Optional[int]:
+    """The first unfenced line that is ``marker`` at column 0, trailing whitespace tolerated; an
+    indented copy (an item's continuation line) is not the marker."""
     fenced = fenced_mask(lines)
-    return next((i for i, line in enumerate(lines) if not fenced[i] and line.strip() == marker), None)
+    return next((i for i, line in enumerate(lines) if not fenced[i] and line.rstrip() == marker), None)
 
 
 def _first(headings: Headings, text: str) -> Optional[Tuple[int, int, str]]:
@@ -381,30 +387,48 @@ def _template_choice(setup: rc.ReviewSetup, template: Template) -> Tuple[Optiona
     return template.raw, TEMPLATER_MARK in template.raw, setup.template_variant is not None
 
 
+def _plain_note(plan: ReviewPlan, setup: rc.ReviewSetup, name: str, period: str, groups: list) -> str:
+    """The note without a template: the title as H1, the review section at ``PLAIN_LEVEL``."""
+    plan.place = {"anchor": None, "placement": setup.placement, "level": PLAIN_LEVEL}
+    plan.section_md, _ = render_section(setup.heading, PLAIN_LEVEL, period, groups)
+    return f"# {name}\n\n{plan.section_md}"
+
+
+def _templated_note(plan: ReviewPlan, setup: rc.ReviewSetup, text: str, anchor: str, period: str, groups: list
+                    ) -> Optional[str]:
+    """The template ``text`` with the section placed by the before/inside rule; None with the problem recorded."""
+    lines, trailing = _split_lines(text)
+    placed = _insertion(plan, setup, anchor, hashi_headings(lines), len(lines))
+    if placed is None:
+        return None
+    value, level, at = placed
+    plan.place = {"anchor": value, "placement": setup.placement, "level": level}
+    plan.section_md, _ = render_section(setup.heading, level, period, groups)
+    # Hashi's spliceLines: the block's lines, trailing blank included, at the index
+    lines[at:at] = plan.section_md.split("\n")
+    return "\n".join(lines) + ("\n" if trailing else "")
+
+
 def _new_note(plan: ReviewPlan, setup: rc.ReviewSetup, template: Template, anchor: str, period: str,
               groups: list, run_id: str, generated: str) -> ReviewPlan:
     text, plan.templater_hint, plan.variant_missing = _template_choice(setup, template)
     name = posixpath.basename(plan.target)
     name = name[:-3] if name.endswith(".md") else name
-    if text is None:
-        level = PLAIN_LEVEL
-        plan.place = {"anchor": None, "placement": setup.placement, "level": level}
-        plan.section_md, _ = render_section(setup.heading, level, period, groups)
-        note = f"# {name}\n\n{plan.section_md}"
-    else:
-        lines, trailing = _split_lines(text)
-        placed = _insertion(plan, setup, anchor, hashi_headings(lines), len(lines))
-        if placed is None:
-            return plan
-        value, level, at = placed
-        plan.place = {"anchor": value, "placement": setup.placement, "level": level}
-        plan.section_md, _ = render_section(setup.heading, level, period, groups)
-        # Hashi's spliceLines: the block's lines, trailing blank included, at the index
-        lines[at:at] = plan.section_md.split("\n")
-        note = "\n".join(lines) + ("\n" if trailing else "")
     block = build_tomo_block(NOTE_DOC_TYPE, NOTE_STATE, run_id)
     block["updated_at"] = generated
-    plan.note_text = merge_tomo_block_into_markdown(note, block)
+    if text is None:
+        plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, groups), block)
+    else:
+        note = _templated_note(plan, setup, text, anchor, period, groups)
+        if note is None:
+            return plan
+        try:
+            plan.note_text = merge_tomo_block_into_markdown(note, block)
+        except FrontmatterMergeError as error:
+            # the template's frontmatter cannot take the stamp: the plain note, as a missing template yields
+            plan.template_unmergeable = str(error)
+            plan.templater_hint = False
+            plan.note_text = merge_tomo_block_into_markdown(_plain_note(plan, setup, name, period, groups), block)
     plan.note_path = setup.inbox_path(f"{name}.md")
     plan.actions = [{"id": ACTION_ID, "action": "move_note", "source": plan.note_path, "destination": plan.target,
                      "title": name, "rendered_file": f"{name}.md", "source_inbox_item": None}]

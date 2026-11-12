@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.1.0
+# version: 0.1.1
 """The delivery-side helpers of ``review-instructions.py`` (spec 045 T4.2; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -10,9 +10,11 @@ notices as names; a name in neither tuple refuses. ``STEPS`` is the delivery
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
 ``meta.json`` dict the attributes ``staged_delivery`` records into
 (``steps_done`` shared, ``failed_step``, ``run_id``, ``generated``);
-``save_meta`` persists the dict atomically. ``set_paths`` gives the set's
-inbox paths through ``ReviewSetup.inbox_path``; ``template_paths`` the
-template's and the variant's vault paths. ``set_md`` renders the readable
+``save_meta`` persists the dict atomically. ``set_json_path`` names the set
+JSON from the inbox folder and the stem alone (what ``review_state`` has
+without a setup); ``set_paths`` gives both set paths through
+``ReviewSetup.inbox_path``; ``template_paths`` the template's and the
+variant's vault paths. ``set_md`` renders the readable
 peer through ``render_md`` with the stable tomo block; ``withdrawn_set`` and
 ``withdrawn_md`` are what ``drop`` writes over a set Tomo already delivered:
 the envelope with an empty ``actions`` list and an MD that names the files
@@ -30,9 +32,9 @@ from lib import review_actions as ra
 from lib import review_config as rc
 from lib.doc_frontmatter import merge_tomo_block_into_markdown
 from lib.note_io import atomic_write_text
+from lib.note_meta import META_FILE
 from lib.render_md import render_instructions_md
 from lib.review_doc_parse import APPROVED_MISSING
-from lib.review_state import META_FILE
 from lib.staged_delivery import stable_block
 from lib.wire_version import wire_schema_version
 
@@ -116,9 +118,14 @@ def save_meta(stage: Path, meta: ReviewMeta) -> None:
 
 # --- paths ----------------------------------------------------------------------------
 
+def set_json_path(inbox: str, stem: str) -> str:
+    """``<inbox>/<stem>_instructions.json``; ``UnsafePath`` from ``review_config.inbox_path``."""
+    return rc.inbox_path(inbox, f"{stem}{INSTRUCTIONS_SUFFIX}.json")
+
+
 def set_paths(setup: rc.ReviewSetup, stem: str) -> Dict[str, str]:
     """``{set_json, set_md}`` of ``stem`` in the inbox; ``UnsafePath`` from ``inbox_path``."""
-    return {SET_JSON: setup.inbox_path(f"{stem}{INSTRUCTIONS_SUFFIX}.json"),
+    return {SET_JSON: set_json_path(setup.inbox, stem),
             SET_MD: setup.inbox_path(f"{stem}{INSTRUCTIONS_SUFFIX}.md")}
 
 

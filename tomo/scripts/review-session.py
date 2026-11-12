@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.3.1
+# version: 0.4.0
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -52,7 +52,12 @@ Rules:
     returns with an empty listing and no call spent. The open reviews are the
     inbox documents with ``tomo.doc_type=review`` (one byFrontmatter query, one
     frontmatter read per hit), found also when renamed; their state comes from
-    lib/review_state (``open`` and ``failed-delivery`` in T2.3).
+    lib/review_state.stem_state — the function ``review-instructions.py status``
+    uses for one stem — which reads ``<inbox>/<stem>_instructions.json`` for an
+    approved document and probes the target and the inbox copy for a waiting
+    set (ADR-6); a refused or failed probe stops the run, never reads as absent.
+    A withdrawn review is not listed; an ``applied`` review is listed once —
+    ``start`` writes ``applied_reported`` into its ``meta.json`` after listing it.
     The listing is ordered by period start under the configured week rule and
     name formats (lib/review_config.configured_formats), the pair the argument
     was parsed with.
@@ -89,13 +94,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib import review_config as rc  # noqa: E402
+from lib import review_delivery as rdl  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import (  # noqa: E402
     DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, SETUP, WEEK, RequestError, WeekRule,
     check_format, parse_args, parse_name,
 )
-from lib.review_state import open_reviews  # noqa: E402
+from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_vault import TEMPLATER_MARK, Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
 from lib.week_rule_inference import Checked, Inference, infer_rule  # noqa: E402
@@ -182,15 +188,32 @@ def start(args: argparse.Namespace) -> dict:
         result["problems"] = ["inbox-not-configured"]
         return result
     try:
-        docs = Vault(KadoClient).review_documents(inbox)
+        vault = Vault(KadoClient)
+        docs = vault.review_documents(inbox)
+        reviews, skipped = open_reviews(docs, Path(args.tmp), vault, inbox, rule=rule, formats=formats)
     except Stopped as stop:
         result["status"] = "stopped"
         result["error"] = {"kind": stop.kind, "detail": stop.detail}
         return result
-    reviews, skipped = open_reviews(docs, Path(args.tmp), rule=rule, formats=formats)
+    except rc.UnsafePath:
+        result["problems"] = ["inbox-not-configured"]
+        return result
     result["open_reviews"] = [review.to_dict() for review in reviews]
     result["skipped_review_docs"] = skipped
+    _record_applied(Path(args.tmp), reviews)
     return result
+
+
+def _record_applied(root: Path, reviews: List[OpenReview]) -> None:
+    """Mark the meta of every review listed as ``applied``: the listing offers it once."""
+    for review in reviews:
+        if review.state != APPLIED:
+            continue
+        meta = read_meta(root, review.stem) or {"stem": review.stem}
+        meta[APPLIED_REPORTED] = True
+        stage = root / review.stem
+        stage.mkdir(parents=True, exist_ok=True)
+        rdl.save_meta(stage, rdl.ReviewMeta(meta))
 
 
 # ---------------------------------------------------------------- the proposal

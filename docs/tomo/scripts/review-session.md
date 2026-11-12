@@ -221,17 +221,40 @@ the same call `inbox-triage.py` makes) and one `read_frontmatter` per hit,
 because Kado's `byFrontmatter` returns an empty frontmatter; the document's
 own keys (`review_period`, `review_kind`, `review_stem`, `tomo.state`) name
 the review, so a renamed document is still found and listed. `tomo-tmp` is
-consulted only for the content-free `meta.json` (`failed_step`) and never
-decides whether a review exists. The listing and the state are
-`lib/review_state` (WHY: `docs/tomo/scripts/lib/review_state.md`); the
-script only resolves the inbox (config over profile) and passes the
-documents on, together with the configured week rule **and** the configured
-name formats — the same pair the argument was parsed with, so the listing
-orders `2027-W01` by the day the request would give it (the first version
-passed the rule alone, and the default ISO format overrode it). An inbox that neither the config nor the profile names is
-reported as `problems: [inbox-not-configured]` with an empty listing rather
-than a crash: the request is still usable and the setup dialogue fixes the
-rest.
+consulted only for the content-free `meta.json` (`steps_done`,
+`failed_step`, `withdrawn`, `applied_reported`) and never decides whether a
+review exists. The listing and the state are `lib/review_state` (WHY:
+`docs/tomo/scripts/lib/review_state.md`); the script only resolves the
+inbox (config over profile) and passes the documents on with the vault,
+together with the configured week rule **and** the configured name formats
+— the same pair the argument was parsed with, so the listing orders
+`2027-W01` by the day the request would give it (the first version passed
+the rule alone, and the default ISO format overrode it). An inbox that
+neither the config nor the profile names is reported as `problems:
+[inbox-not-configured]` with an empty listing rather than a crash: the
+request is still usable and the setup dialogue fixes the rest.
+
+### WHY the Listing Probes the Set JSON (T4.3) and `start` Writes `applied_reported`
+
+WHY: ADR-6: an approved document's state lives in `<inbox>/<stem>_instructions.json`,
+where Hashi writes `applied` per action. The listing hands every document
+to `review_state.stem_state`, which reads the set through Kado for an
+approved document (a pending one cannot have a set and costs no read) and
+probes the target and the inbox copy only for a set that waits — the same
+function `review-instructions.py status` calls, so `start` and `status`
+never disagree. A Kado failure on a probe stops the run like the
+frontmatter query does (`kado-auth` / `kado-unreachable`), because reading
+a refused key as "absent" would list every delivered review as
+`failed-delivery` and offer resume and drop on sets that exist.
+
+`applied` is reported once (SDD step 4). The classifier stays pure and the
+listing drops an `applied` review whose meta says `applied_reported`; it is
+`start` that writes the flag, after printing is decided, for every
+`applied` review in the list — the script that reports is the one that
+knows it reported. A review whose `meta.json` is gone (a cleaned
+`tomo-tmp`) gets a minimal one with the flag, otherwise it would be offered
+on every start. Nothing of the vault is written; `tomo-tmp` is the
+instance's own stage.
 
 ## WHY `setup` Returns the Current Values
 

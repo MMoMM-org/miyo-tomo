@@ -191,13 +191,20 @@ headings. The user picks one in the dialogue; the skill passes it as
 setup's. The setup is not changed — the next period's note may have the
 configured place.
 
-## WHY `status` Classifies Without the Set JSON Until T4.3
+## WHY `status` Goes Through `review_state.stem_state` (T4.3)
 
-`status` reads the document's frontmatter and `meta.json` and asks
-`lib/review_state.review_state`. Steps 3–7 of the state algorithm (the set
-JSON and the probes) arrive in T4.3; until then an approved, delivered
-review reads `failed-delivery` here as in the `start` listing — the SDD's
-documented interim answer.
+`status` reads `meta.json` for the document's path, the document's
+frontmatter through Kado, resolves the inbox (config over profile — the
+only part of the setup it needs, so an incomplete setup does not hide the
+state) and hands the five inputs to `lib/review_state.stem_state`, the one
+function that reads the set JSON and runs the probes (ADR-6). `start` hands
+the same function the same inputs per listed document, so the two cannot
+disagree about a stem; a test records both scripts' calls and compares
+them. `status` prints the state as classified — `applied` stays `applied`
+here even after `start` reported it once, because the "offered once" rule
+belongs to the listing, not to a direct question — and `state: null` for a
+withdrawn review, which the listing never shows. An inbox that nothing
+names is `inbox-not-configured`, as in `preview`.
 
 ## WHY the Exit Codes and the Bare Class Name on stderr
 
@@ -213,4 +220,8 @@ to the user on purpose (F5-AC2).
 `preview`: the document (1), the target candidates (1–2), a by-name search
 when neither exists (1), the template and its variant for a new note (0–2),
 the set probe (1). `deliver`: the same, then per uploaded step one probe and
-one write, and the document mark (1). A week stays well under the budget.
+one write, and the document mark (1). `status`: the frontmatter (1), the set
+JSON for an approved document (1), then for a waiting set one probe (insert
+or replace: the target) or one to two (move: the source, then the
+destination only while the source exists). A week stays well under the
+budget.

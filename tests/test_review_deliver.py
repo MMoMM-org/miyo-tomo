@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2;
+# version: 0.2.0
+"""test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
 
@@ -24,10 +24,15 @@ insert; `--place-anchor` lands at the user's heading; `drop` after any started d
 set, or only the new note landed — rewrites the set with an empty `actions` list (schema-valid) and
 marks the MD withdrawn naming every file left, before any step removes only the stage; the set validates against both
 schema copies and the MD peer carries `### I01 —` and `- [ ] Applied`; stderr names problem
-classes only; an unexpected exception is exit 1 with the class name. All data is synthetic.
+classes only; an unexpected exception is exit 1 with the class name. T4.3: `status` and
+`review-session.py start` classify a stem through the one `review_state.stem_state` with the same
+inputs (recorded) and agree on delivered, move-refused, applied (reported once by `start`, still
+answered by `status`), target-missing and withdrawn (`state: null`, never listed); a refused set
+probe stops `status`. All data is synthetic.
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import sys
@@ -49,6 +54,7 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_doc_read as rdr  # noqa: E402
+from lib import review_state as rs  # noqa: E402
 from lib.kado_client import KadoConcurrencyError, KadoConnectionError, KadoError, KadoToolError  # noqa: E402
 from test_review_doc import INBOX, MARKER, WEEKLY, _config, item, proposals, stage, week_read  # noqa: E402
 
@@ -669,6 +675,92 @@ def test_cli_status_names_the_state(doc_mod, ins, instance, monkeypatch, capsys)
     assert run(ins, monkeypatch, capsys, ["status", "--stem", STEM], fake)[1] == {"state": "open", "stem": STEM}
     assert run(ins, monkeypatch, capsys, ["status", "--stem", "2026-W14_review"], fake)[1] == {
         "status": "not-found", "stem": "2026-W14_review"}
+
+
+# ---------------------------------------------------------------- status and start: one function (T4.3)
+
+SES_SCRIPT = SCRIPTS_DIR / "review-session.py"
+
+
+@pytest.fixture
+def ses():
+    return _load(SES_SCRIPT, "review_session_script_t43")
+
+
+def start_listing(ses, monkeypatch, capsys, fake) -> list:
+    monkeypatch.setattr(ses, "KadoClient", fake)
+    assert ses.main(["--profiles-dir", "profiles", "start", "--args=", "--today", "2026-11-12"]) == 0
+    out, err = capsys.readouterr()
+    assert MARKER not in out and err == ""
+    out = json.loads(out)
+    assert out["status"] == "ok", out
+    return [(r["stem"], r["state"]) for r in out["open_reviews"]]
+
+
+def set_applied(fake) -> None:
+    doc = set_json_of(fake)
+    for action in doc["actions"]:
+        action["applied"] = True
+    fake.files[SET_JSON] = (json.dumps(doc, indent=2) + "\n").encode("utf-8")
+
+
+def test_cli_status_and_start_classify_a_stem_through_one_function_with_the_same_inputs(
+        doc_mod, ins, ses, instance, monkeypatch, capsys):
+    """Falsifies a `status` that classifies on its own (T4.2's interim `review_state(front, meta)`):
+    both scripts must reach `review_state.stem_state` with the same document, meta, stem and inbox."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(None))
+    assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+    calls: list = []
+    real = rs.stem_state
+
+    def recording(vault_, doc, meta, stem, inbox):
+        calls.append((vault_.client, copy.deepcopy(doc), copy.deepcopy(meta), stem, inbox))
+        return real(vault_, doc, meta, stem, inbox)
+    monkeypatch.setattr(rs, "stem_state", recording)
+    assert cli("status", "--stem", STEM)[1] == {"state": "delivered", "stem": STEM}
+    assert start_listing(ses, monkeypatch, capsys, fake) == [(STEM, "delivered")]
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert calls[0][0] is fake and calls[0][3:] == (STEM, INBOX)
+    assert calls[0][1]["tomo"]["state"] == "approved" and calls[0][2]["steps_done"][-1] == "doc_mark"
+
+
+def test_cli_status_and_start_agree_on_delivered_move_refused_applied_and_withdrawn(
+        doc_mod, ins, ses, instance, monkeypatch, capsys):
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(None))        # new-note: a move_note
+    assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+
+    def both():
+        return cli("status", "--stem", STEM)[1]["state"], start_listing(ses, monkeypatch, capsys, fake)
+    assert both() == ("delivered", [(STEM, "delivered")])
+    fake.files[TARGET] = NOTE                                 # the destination appeared: Hashi refuses the move
+    assert both() == ("move-refused", [(STEM, "move-refused")])
+    del fake.files[TARGET]
+    del fake.files[NEW_NOTE]                                  # the copy moved by hand: nothing refused
+    assert both() == ("delivered", [(STEM, "delivered")])
+    set_applied(fake)                                         # Hashi wrote applied: reported once
+    assert both() == ("applied", [(STEM, "applied")])
+    assert meta_of(instance)["applied_reported"] is True
+    assert both() == ("applied", [])                          # status still answers; the listing offered it once
+    assert cli("drop", "--stem", STEM)[1]["status"] == "withdrawn"
+    assert both() == (None, [])                               # withdrawn: never listed
+
+
+def test_cli_status_and_start_agree_on_target_missing(doc_mod, ins, ses, instance, monkeypatch, capsys):
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())             # insert mode
+    assert cli("deliver", "--stem", STEM)[1]["mode"] == "insert"
+    assert (cli("status", "--stem", STEM)[1]["state"], start_listing(ses, monkeypatch, capsys, fake)) == (
+        "delivered", [(STEM, "delivered")])
+    del fake.files[TARGET]
+    assert (cli("status", "--stem", STEM)[1]["state"], start_listing(ses, monkeypatch, capsys, fake)) == (
+        "target-missing", [(STEM, "target-missing")])
+
+
+def test_cli_status_stops_on_a_refused_set_probe(doc_mod, ins, instance, monkeypatch, capsys):
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault())
+    assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+    fake.fail[("read_file", SET_JSON)] = KadoToolError("kado-read returned an error: FORBIDDEN")
+    _, out, _ = cli("status", "--stem", STEM)
+    assert out["status"] == "stopped" and out["error"]["kind"] == "kado-unreachable"
 
 
 def test_cli_exit_codes_and_a_bare_class_name_on_stderr(doc_mod, ins, instance, monkeypatch, capsys):

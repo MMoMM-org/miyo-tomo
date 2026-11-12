@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.1.1
-"""Pass 2 of /review (spec 045 T4.2; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-11, ADR-13).
+# version: 0.2.0
+"""Pass 2 of /review (spec 045 T4.2, T4.3; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6,
+ADR-11, ADR-13).
 
 ``preview`` reads the approved document fresh through Kado, builds the plan
 (``lib/review_actions``) against the target note as it is now, and prints the
@@ -15,7 +16,9 @@ without a duplicate. ``drop`` withdraws any delivery that began — a step
 done or in flight — by writing the set with an empty ``actions`` list and
 an MD that names every file the delivery left (the new note among them);
 before any step it removes the stage. ``status`` names the review's state
-through ``lib/review_state``.
+through ``lib/review_state.stem_state`` — the function ``review-session.py
+start`` uses per listed document — which reads the set JSON for an approved
+document and probes the target and the inbox copy for a waiting set (ADR-6).
 
 Usage (cwd = instance root):
     python3 scripts/review-instructions.py preview --stem <period>_review [--place-anchor H]
@@ -35,7 +38,7 @@ Output: one JSON object on stdout, ASCII-escaped.
            | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed]
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
            | status stopped, stem, problems [kado-write-failed]
-    status:  state, stem
+    status:  state (one of lib/review_state.STATES, or null for a withdrawn review), stem
     every subcommand: status not-found, stem, doc_path? | status refused, stem, problems [setup-missing|
              setup-invalid|inbox-not-configured], errors? | status stopped, stem, error {kind, detail}
 
@@ -77,8 +80,8 @@ from lib.kado_client import (  # noqa: E402
 )
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib.period import parse_name, render_name  # noqa: E402
+from lib import review_state as rs  # noqa: E402
 from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
-from lib.review_state import read_meta, review_state, safe_stem  # noqa: E402
 from lib.review_vault import Stopped, Vault, kado_stops  # noqa: E402
 from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
 
@@ -149,12 +152,16 @@ class Run:
         return out
 
 
-def _setup(args: argparse.Namespace, kind: str) -> tuple:
+def _config_and_profile(args: argparse.Namespace) -> tuple:
     try:
         config = load_vault_config(args.config)
     except ConfigError:
         config = {}
-    profile = rc.load_profile(Path(args.profiles_dir), config)
+    return config, rc.load_profile(Path(args.profiles_dir), config)
+
+
+def _setup(args: argparse.Namespace, kind: str) -> tuple:
+    config, profile = _config_and_profile(args)
     try:
         setup = rc.review_setup(config, profile, kind, today=args.today)
     except rc.SetupInvalid as invalid:
@@ -202,7 +209,7 @@ def _template(vault: Vault, setup: rc.ReviewSetup, target: ra.Target) -> Optiona
 def load_run(args: argparse.Namespace) -> Run:
     """Read the document, the target and the template; build the plan; classify its problems."""
     stage = Path(args.tmp) / args.stem
-    meta_data = read_meta(Path(args.tmp), args.stem)
+    meta_data = rs.read_meta(Path(args.tmp), args.stem)
     doc_path = doc_path_of(meta_data)
     if doc_path is None:
         raise NotFound()
@@ -327,7 +334,7 @@ def _remove_stage(stage: Path) -> bool:
 
 def drop(args: argparse.Namespace) -> dict:
     stage = Path(args.tmp) / args.stem
-    meta_data = read_meta(Path(args.tmp), args.stem)
+    meta_data = rs.read_meta(Path(args.tmp), args.stem)
     meta = rdl.ReviewMeta(meta_data) if meta_data is not None else None
     if meta is None or not meta.started():
         return {"status": "dropped", "stem": args.stem, "removed": _remove_stage(stage)}
@@ -359,14 +366,23 @@ def drop(args: argparse.Namespace) -> dict:
 # ---------------------------------------------------------------- status
 
 def status(args: argparse.Namespace) -> dict:
-    meta = read_meta(Path(args.tmp), args.stem)
+    meta = rs.read_meta(Path(args.tmp), args.stem)
     doc_path = doc_path_of(meta)
     if doc_path is None:
         raise NotFound()
-    front = Vault(KadoClient).frontmatter(doc_path)
+    config, profile = _config_and_profile(args)
+    inbox = rc.inbox_folder(config, profile)
+    if inbox is None:
+        raise Refused("inbox-not-configured")
+    vault = Vault(KadoClient)
+    front = vault.frontmatter(doc_path)
     if front is None:
         raise NotFound(doc_path)
-    return {"state": review_state(front, meta), "stem": args.stem}
+    try:
+        state = rs.stem_state(vault, front, meta, args.stem, inbox)
+    except rc.UnsafePath:
+        raise Refused("inbox-not-configured") from None
+    return {"state": state, "stem": args.stem}
 
 
 # ---------------------------------------------------------------- main
@@ -376,7 +392,7 @@ def _utc_now() -> str:
 
 
 def _stem_arg(text: str) -> str:
-    if not safe_stem(text):
+    if not rs.safe_stem(text):
         raise argparse.ArgumentTypeError("expected a plain stem like 2026-W13_review (not empty, . or .., no / or \\)")
     return text
 

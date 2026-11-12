@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.2.1
-"""test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3).
+# version: 0.3.0
+"""test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
 tests/review_fake_vault:
@@ -862,6 +862,114 @@ def test_start_orders_the_open_reviews_under_the_configured_week_format_and_rule
     _config(instance)                                                   # ISO defaults
     code, out, *_ = _start(mod, monkeypatch, capsys, fake, "", today="2027-02-10")
     assert [r["period"] for r in out["open_reviews"]] == ["2026-12", "2027-01", "2027-W01"]
+
+
+def _set_json(*actions) -> bytes:
+    doc = {"schema_version": "3.0.0", "type": "tomo-instructions", "generated": "2026-11-11T10:00:00Z",
+           "profile": "miyo", "md_peer": "x_instructions", "actions": list(actions)}
+    return (json.dumps(doc) + "\n").encode("utf-8")
+
+
+def _insert_action(applied: bool, target: str) -> dict:
+    return {"id": "I01", "action": "insert_under_marker", "target_path": target,
+            "anchor": {"type": "heading", "value": "X"}, "placement": "before", "content": "x\n", "applied": applied}
+
+
+def _complete_meta(instance: Path, stem: str, **extra) -> Path:
+    stage = instance / "tomo-tmp" / "review" / stem
+    stage.mkdir(parents=True, exist_ok=True)
+    meta = {"stem": stem, "doc_path": INBOX + stem.replace("_review", " Review.md"),
+            "steps_done": ["set_json", "set_md", "doc_mark"], "failed_step": "", "withdrawn": False, **extra}
+    (stage / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return stage / "meta.json"
+
+
+def test_start_probes_the_set_json_of_approved_documents_and_lists_a_delivered_review_as_delivered(
+        mod, instance, monkeypatch, capsys):
+    """Falsifies a listing that classifies without the probe (T2.3's interim): the approved, delivered
+    review would read failed-delivery and the fake would record no read of its set (ADR-6)."""
+    _config(instance)
+    set_w12 = INBOX + "2026-W12_review_instructions.json"
+    fake = ReviewFakeVault({
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review"),
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W11 Review.md": _review_doc("2026-W11", "week", "approved", stem="2026-W11_review"),
+        set_w12: _set_json(_insert_action(False, WEEKLY + "2026-W12.md")),
+        WEEKLY + "2026-W12.md": _weekly("2026-W12", "2026-03-16"),
+    })
+    _complete_meta(instance, "2026-W12_review")
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "ok"
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [
+        ("2026-W11_review", "failed-delivery"),          # approved, no set anywhere
+        ("2026-W12_review", "delivered"),                # approved, the set waits for Hashi
+        ("2026-W13_review", "open"),
+    ]
+    set_reads = [p for m, p in fake.events if m == "read_file"]
+    assert sorted(set_reads) == [INBOX + "2026-W11_review_instructions.json", set_w12]
+    assert INBOX + "2026-W13_review_instructions.json" not in fake.paths_seen       # pending: no probe
+    assert WEEKLY + "2026-W12.md" in fake.paths_seen                                 # the waiting insert's target
+
+
+def test_start_reports_applied_once_and_the_second_start_does_not_list_it(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W12_review_instructions.json": _set_json(_insert_action(True, WEEKLY + "2026-W12.md")),
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review"),
+    })
+    meta_path = _complete_meta(instance, "2026-W12_review")
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "applied"),
+                                                                      ("2026-W13_review", "open")]
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["applied_reported"] is True and meta["steps_done"] == ["set_json", "set_md", "doc_mark"]
+    assert meta["doc_path"] == INBOX + "2026-W12 Review.md"                     # the record is kept, not replaced
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W13_review", "open")]
+    assert fake.writes == []                                                     # nothing of the vault is written
+
+
+def test_start_reports_applied_once_also_when_the_meta_is_gone(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W12_review_instructions.json": _set_json(_insert_action(True, WEEKLY + "2026-W12.md")),
+    })
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "applied")]
+    meta_path = instance / "tomo-tmp" / "review" / "2026-W12_review" / "meta.json"
+    assert json.loads(meta_path.read_text(encoding="utf-8"))["applied_reported"] is True
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert out["open_reviews"] == []
+
+
+def test_start_skips_a_document_whose_stem_is_unsafe_with_its_reason(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="../2026-W13_review"),
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem=".."),
+        INBOX + "2026-W11 Review.md": _review_doc("2026-W11", "week", stem="2026-W11_review"),
+    })
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W11_review", "open")]
+    assert out["skipped_review_docs"] == [{"doc_path": INBOX + "2026-W12 Review.md", "reason": "stem-unsafe"},
+                                          {"doc_path": INBOX + "2026-W13 Review.md", "reason": "stem-unsafe"}]
+    assert not any(p.endswith("_instructions.json") for p in fake.paths_seen)
+
+
+def test_start_a_refused_set_probe_stops_and_is_never_read_as_absent(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+    })
+    fake.fail[("read_file", INBOX + "2026-W12_review_instructions.json")] = KadoAuthError("401 key refused")
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "stopped" and out["error"]["kind"] == "kado-auth"
+    assert out["open_reviews"] == []
+    fake.fail[("read_file", INBOX + "2026-W12_review_instructions.json")] = KadoToolError("kado-read: FORBIDDEN")
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert out["status"] == "stopped" and out["error"]["kind"] == "kado-unreachable"
 
 
 def test_start_skips_an_unreadable_review_document_and_lists_the_rest(mod, instance, monkeypatch, capsys):

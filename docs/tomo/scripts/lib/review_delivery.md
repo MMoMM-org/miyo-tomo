@@ -28,6 +28,20 @@ run unchanged and the script persist the dict it read, with every other key
 meta was rejected: it would have to enumerate and re-serialise every key
 the Pass 1 writer and the state function own.
 
+### WHY `META_FILE` Comes From `note_meta`, and `set_json_path` Exists (T4.3)
+
+`review_state` reads a begun delivery through `ReviewMeta.started()`
+(coordinator decision 2026-11-12), so it imports this module; this module
+imported `META_FILE` from `review_state`, and the two edges made a cycle.
+The file name is not `review_state`'s: `meta.json` is the stage file of
+every staged delivery, and `lib/note_meta.META_FILE` already owns it for
+`staged_delivery`. `save_meta` now takes it from there, and the back edge
+is gone. `set_json_path(inbox, stem)` names the set's inbox path from the
+inbox folder alone, because the state function has an inbox and a stem but
+no `ReviewSetup` (a listing must not require a complete setup to say where
+a set lives); `set_paths` uses it so the two cannot spell the suffix
+differently.
+
 ## WHY the MD Peer Comes From `render_md`
 
 The readable instructions are what `/inbox` and `/note` write

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_sdd_map.py — spec 045 Phase 5: the SDD's Directory Map lists every /review file that exists.
 
 The Directory Map of docs/XDD/specs/045-weekly-monthly-review/solution.md is
@@ -14,7 +14,10 @@ Also pinned, as drift found at the Phase 5 checkpoint (round D):
 - the map lines of the three runtime documents of Phase 5 carry an implemented marker (D3);
 - the SDD names how the commented `review:` example of vault-example.yaml is checked (D4);
 - the Error Handling row for an empty listing names that the skill asks before
-  proposing to create notes in that folder (R6; SKILL.md step 2).
+  proposing to create notes in that folder (R6; SKILL.md step 2);
+- the `place-too-deep` row says insert/new-note names the anchor and the
+  placement — the refused preview carries no level (lib/review_actions sets
+  `place.level` only after `_insertion` succeeds).
 """
 from __future__ import annotations
 
@@ -122,6 +125,17 @@ def test_sdd_names_how_the_commented_review_example_is_checked() -> None:
     for phrase in ("lib.review_config", "review_setup", "current_setup",
                    "vault-config-review.schema.json", "input_problems", "tests/test_review_privacy_docs.py"):
         assert phrase in line, f"missing {phrase!r} in: {line}"
+
+
+# --- place-too-deep: insert/new-note names the anchor and the placement, not a level ------
+
+def test_error_handling_place_too_deep_row_names_anchor_and_placement() -> None:
+    """lib/review_actions sets `place.level` only after `_insertion` succeeds, so a refused insert/new-note
+    preview carries anchor and placement (what SKILL.md names); only replace mode knows the level 6."""
+    rows = [ln for ln in _section(_sdd(), "Error Handling").splitlines() if "`place-too-deep` + `headings`" in ln]
+    assert len(rows) == 1, rows
+    assert "names the anchor and the placement" in rows[0], rows[0]
+    assert "names the anchor and its level" not in rows[0], rows[0]
 
 
 # --- R6: the empty-listing row names the ask before creating notes there ------------------

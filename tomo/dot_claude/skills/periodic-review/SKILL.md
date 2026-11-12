@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.9
+# version: 0.1.10
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -63,7 +63,7 @@ python3 scripts/review-session.py match --kind <kind>
 ```
 
 - `status` `stopped` → the stopped rule. `error.kind` `unsafe-format` → say the name format must not contain `/`, `\` or `..` and ask for another format; rerun `match` with it as `--format`.
-- `template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes of the templates folder fit it; ask, numbered on one line with `0 none` last: `1 <name> · 2 <name> · 0 none`. End the turn. A number → `<template>` is `"<name>"`, the chosen name in double quotes; run:
+- `template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes of the templates folder fit it; ask, numbered on one line with `0 none` last: `1 <name> · 2 <name> · 0 none`. End the turn. A number → `<template>` is `"<name>"`, the chosen name in double quotes; a typed name → `<template>` is that name in double quotes; run:
 
 ```bash
 python3 scripts/review-session.py match --kind <kind> --template <template>

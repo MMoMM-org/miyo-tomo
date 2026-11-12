@@ -1,16 +1,20 @@
 # review_templates.py — the template candidates and the anchor candidates of the /review setup preview.
-# version: 0.2.0
+# version: 0.2.1
 """The two questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8), and their answers.
 
 ``template_candidates(vault, base_path, kind)`` lists the notes of
-``templates.base_path`` whose file name fits the kind (``week``/``woche``,
-``month``/``monat``; case-insensitive), as names below the base path without
-``.md``, sorted case-insensitively; None when Kado answered with nothing.
-``template_name(text)`` normalises a ``--template`` value to its ``.md`` file
-name and raises ``ValueError`` for a name that would leave the folder;
-``template_choice(text)`` is the same with the bare word ``none`` — the user's
-"no template" answer — returned as ``NO_TEMPLATE``; ``anchor_text(text)`` is
-the ``--anchor`` answer, trimmed, one non-blank line or ``ValueError``.
+``templates.base_path`` whose file name — the basename alone, never a folder
+above it — holds a kind word as a substring (``week``/``woche``,
+``month``/``monat``; case-insensitive; ``t_weekend`` counts), as names below
+the base path without ``.md``, sorted case-insensitively; None when Kado
+answered with nothing. ``template_name(text)`` normalises a trimmed
+``--template`` value to its ``.md`` file name and raises ``ValueError`` for a
+name that would leave the folder (a ``..`` segment, ``\\``, a leading ``/``)
+or spans lines; ``template_choice(text)`` is the same with the trimmed word
+``none`` — the user's "no template" answer — returned as ``NO_TEMPLATE``, so a
+template file called ``none.md`` is chosen with its extension only;
+``anchor_text(text)`` is the ``--anchor`` answer, trimmed, one non-blank line
+or ``ValueError``.
 ``template_vault_path(base_path, name)`` is where the script reads a template;
 ``resolve_template(vault, base_path, name, kind, no_template=...)`` reads and
 classifies the named template or, with no name and ``no_template`` False, lists
@@ -35,7 +39,8 @@ from lib.review_vault import TEMPLATER_MARK, headings
 KIND_WORDS = {WEEK: ("week", "woche"), MONTH: ("month", "monat")}
 RECENT_NOTES = 2
 NO_TEMPLATE = "none"
-_UNSAFE = ("..", "\\")
+CLIMB = ".."
+_UNSAFE = ("\\", "\n", "\r")
 TEMPLATE_HINT = ("Kado could not read the template {path}; the Kado key may have no access "
                  "to it. A plain note (title and review section) is proposed instead.")
 TEMPLATES_FOLDER_HINT = ("Kado returned none for the templates folder {folder}: it may be empty, or the Kado "
@@ -43,7 +48,8 @@ TEMPLATES_FOLDER_HINT = ("Kado returned none for the templates folder {folder}: 
 
 
 def template_candidates(vault, base_path: str, kind: str) -> Optional[List[str]]:
-    """Names below ``base_path`` whose file name fits ``kind``; None for a ``kado-none`` listing."""
+    """Names below ``base_path`` whose basename (not a folder above it) holds a word of ``kind`` as a substring;
+    None for a ``kado-none`` listing."""
     paths = vault.list_notes(base_path)
     if paths is None:
         return None
@@ -85,16 +91,20 @@ def resolve_template(vault, base_path: Optional[str], name: Optional[str], kind:
 
 
 def template_name(text: str) -> str:
-    """The ``.md`` file name of a ``--template`` value; ``ValueError`` for an unsafe or blank name."""
+    """The ``.md`` file name of a trimmed ``--template`` value; ``ValueError`` for a blank name, a ``..`` path
+    segment (``t_week..old`` is a name), ``\\``, a line break or a leading ``/``."""
     name = text.strip()
-    if not name or name == "." or name.startswith("/") or any(mark in name for mark in _UNSAFE):
-        raise ValueError("a template name below templates.base_path, without .., \\ or a leading /")
+    if (not name or name == "." or name.startswith("/") or CLIMB in name.split("/")
+            or any(mark in name for mark in _UNSAFE)):
+        raise ValueError("a template name below templates.base_path on one line, without a .. segment, \\ "
+                         "or a leading /")
     return name if name.endswith(".md") else name + ".md"
 
 
 def template_choice(text: str) -> str:
-    """``NO_TEMPLATE`` for the bare word ``none`` (the ``0 none`` answer), else ``template_name``."""
-    return NO_TEMPLATE if text == NO_TEMPLATE else template_name(text)
+    """``NO_TEMPLATE`` for the trimmed word ``none`` (the ``0 none`` answer), else ``template_name``; a template
+    file called ``none.md`` is reached with its extension only."""
+    return NO_TEMPLATE if text.strip() == NO_TEMPLATE else template_name(text)
 
 
 def anchor_text(text: str) -> str:

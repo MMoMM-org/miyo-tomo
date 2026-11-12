@@ -161,7 +161,13 @@ coming back on each rerun. So the skill defines `<template>` once — the chosen
 `none` for `0`, or the proposal's template when no question was asked — and `<anchor>` as the answer to the anchor
 question (or a corrected anchor), and the rule says that every later `match` call of the step carries
 `--template <template>` and, once given, `--anchor "<anchor>"`; the week-rule rerun example and the Correct branch
-spell both out, because a literal model copies the example and drops a flag the example lacks.
+spell both out, because a literal model copies the example and drops a flag the example lacks. A typed name
+is an answer too (code review round 1 of the fix): the list is a recall filter — a substring match on the file
+name, so `t_weekend` sits next to `t_week`, and a template named without the kind word is not on it at all —
+and a user who knows the file types its name; the skill says that a typed name is `<template>` in double quotes,
+the same form as a number's name, so the rerun is the same `match --template` call and the script's own
+refusal of an unsafe name (exit 2, the usage error) is the only check. Without that line a literal model has no
+rule for the typed answer and either asks again or guesses a number.
 `review-session.py match --kind --folder --format --first-day --min-days --template --anchor` then answers
 without the candidates and without `needs_anchor` (`--template none` lists nothing; `--anchor` sets
 `place.anchor` and reads no note), so each question is asked once however often the dialogue reruns (WHY of the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_session_templates.py — the template choice and the anchor question of `review-session.py match`
 (spec 045 Phase 6, live-walk defect: a proposal with `template: null` and `anchor: null` that `setup-input` refused).
 
@@ -22,6 +22,10 @@ other templates) and no `templates.mapping.<weekly|monthly>` entry:
   anchor is a usage error; a rerun with both keeps both. SKILL.md step 2 carries `--template <template>` on
   every `match` call after the first and `--anchor "<anchor>"` once the anchor is given (pinned structurally
   here; the verbatim lines are in tests/test_review_skill.py).
+- code review round 1 of that fix: the candidate filter reads the file name only (a `weekly/` folder lists
+  nothing for its name) and matches a substring of it (`t_weekend` is listed); `--template " none "` is the
+  `none` answer (trimmed), so `none.md` is chosen with its extension only; `..` is refused as a path segment,
+  not as a substring, and a line break is refused; the skill says what a typed template name means.
 """
 from __future__ import annotations
 
@@ -199,6 +203,24 @@ def test_without_a_base_path_or_with_a_kado_none_listing_the_candidates_are_empt
     assert any(TEMPLATES in h and "may not reach" in h for h in out["hints"]), out["hints"]
 
 
+def test_the_filter_reads_the_file_name_only_and_matches_a_substring_of_it(mod, instance, monkeypatch, capsys):
+    """The kind words are looked for in the file name alone — a note in a folder called `weekly/` or `Monatlich/`
+    is not listed for the folder's name (mutation: matching the whole relative stem lists them) — and anywhere in
+    it: `t_weekend` and `Monatsabschluss` are listed, the user drops them from the numbered list with `0 none`."""
+    _config(instance, templates=_no_mapping())
+    extra = {
+        TEMPLATES + "weekly/t_notes.md": "# in a week folder\n",
+        TEMPLATES + "Monatlich/t_x.md": "# in a month folder\n",
+        TEMPLATES + "t_weekend.md": "# weekend\n",
+        TEMPLATES + "Monatsabschluss.md": "# end of month\n",
+    }
+    out = _match(mod, monkeypatch, capsys, _vault(**extra))
+    assert out["template_candidates"] == ["archive/Wochenplan alt", "t_week", "t_week_privat", "t_week_work",
+                                          "t_weekend"]
+    out = _match(mod, monkeypatch, capsys, _vault(**extra), kind="month")
+    assert out["template_candidates"] == ["Monatsabschluss", "Monatsübersicht", "t_month", "t_month_privat"]
+
+
 # ---------------------------------------------------------------- (b) the chosen template
 
 def test_the_chosen_template_gives_its_kind_and_the_anchor_from_its_headings(mod, instance, monkeypatch, capsys):
@@ -230,13 +252,36 @@ def test_the_flag_wins_over_the_mapping_and_a_missing_choice_is_reported_as_toda
     assert out["needs_anchor"] is True
 
 
-@pytest.mark.parametrize("name", ["../t_week", "/t_week", "t\\week", " ", "."])
+@pytest.mark.parametrize("name", ["../t_week", "/t_week", "t\\week", " ", ".", "archive/../t_week", "..",
+                                  "t_week\nalt", "t_week\ralt"])
 def test_an_unsafe_template_name_is_a_usage_error(mod, instance, capsys, name):
     _config(instance, templates=_no_mapping())
     with pytest.raises(SystemExit) as info:
         mod.main(["--profiles-dir", "profiles", "match", "--kind", "week", "--template", name])
     out, err = capsys.readouterr()
     assert info.value.code == 2 and out == "" and "--template" in err
+
+
+def test_two_dots_inside_a_segment_are_a_name_not_a_climb():
+    """`..` is refused as a path segment (it climbs out of the templates folder), not as a substring: a template
+    called `t_week..old` is a name below the folder like any other."""
+    from lib.review_templates import template_name
+    assert template_name("t_week..old") == "t_week..old.md"
+    assert template_name("archive/..week.md") == "archive/..week.md"
+
+
+def test_the_none_answer_is_trimmed_and_a_template_called_none_needs_its_extension(mod, instance, monkeypatch, capsys):
+    """`--template " none "` is the `0 none` answer like the bare word (the flag is trimmed before the word is
+    compared), so a template file called `none.md` is chosen with its extension only, never by the bare name."""
+    from lib.review_templates import NO_TEMPLATE, template_choice
+    assert template_choice(" none ") == NO_TEMPLATE and template_choice("none") == NO_TEMPLATE
+    assert template_choice("none.md") == "none.md" and template_choice(" t_week ") == "t_week.md"
+
+    _config(instance, templates=_no_mapping())
+    fake = _vault(**{TEMPLATES + "none.md": "# n\n\n## Named none\n"})
+    out = _match(mod, monkeypatch, capsys, fake, "--template", " none ")
+    assert "template_candidates" not in out and out["proposal"]["template"] is None
+    assert _listings(fake, TEMPLATES) == [] and _note_reads(fake, TEMPLATES) == [TEMPLATES + "t_day.md"]
 
 
 # ---------------------------------------------------------------- (c) the anchor question
@@ -465,6 +510,7 @@ def test_every_later_match_call_of_the_setup_step_carries_the_template_choice():
     assert all("--template <template>" in call for call in calls[1:]), calls
     assert "`0` → `<template>` is `none`" in step
     assert "A number → `<template>` is `\"<name>\"`" in step
+    assert "a typed name → `<template>` is that name in double quotes" in step
     assert "Every later `match` call of this step carries `--template <template>`" in step
     assert "`--anchor \"<anchor>\"`" in step
     assert "The answer is `<anchor>`" in step

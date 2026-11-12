@@ -42,7 +42,18 @@ gets, two levels deep, because template folders hold subfolders too) and
 keeps the notes whose file name fits the kind: `week` or `woche` for a week,
 `month` or `monat` for a month, case-insensitive. The words cover the
 owner's English file names and German ones; a vault that names its templates
-otherwise gets an empty list and the plain note, as before. The candidates
+otherwise gets an empty list and the plain note, as before. The word is
+looked for in the file name alone, never in the folders above it: a
+templates subfolder called `weekly/` or `Monatlich/` says what its notes are
+for, not which of them is the periodic template, and listing every note in
+it would offer `weekly/t_notes` as a week template (code review round 1 of
+the fix pinned this; the filter had matched the basename all along but no
+test failed when a mutation matched the whole relative stem). Inside the file
+name the word matches as a substring, so `t_weekend` and `Monatsabschluss`
+are listed too: the match is a recall filter for a numbered question the
+user answers with `0 none` last, and a stricter rule (a word boundary, a
+prefix) would hide a vault's real template names — `Wochenplan`,
+`Monatsübersicht` — to spare the user one wrong entry in a list of four. The candidates
 are sorted case-insensitively so the numbered question is the same on every
 run and the user's "2" means the same file next time. Names are the path
 below `base_path` without `.md` — what the user sees in Obsidian — and
@@ -56,7 +67,7 @@ folder, never "there are no templates" (Rule 6). No candidate is read before
 it is chosen: reading three or four templates to show their headings would
 spend reads on files the user is about to reject.
 
-## WHY `--template` Refuses `..`, `\` and a Leading `/`
+## WHY `--template` Refuses a `..` Segment, `\`, a Line Break and a Leading `/`
 
 WHY: the name is joined to `templates.base_path` and read through Kado. A
 name that climbs out of the folder would read a note outside the templates
@@ -64,7 +75,14 @@ folder and save that path into `templates.mapping`. The refusal is the
 argparse type (exit 2, a bad invocation), the same class as a bad `--kind`,
 so the skill shows the usage error and the user types another name. A `/`
 inside the name is allowed: the candidates list subfolder entries as
-`archive/Wochenplan alt`.
+`archive/Wochenplan alt`. `..` is refused as a path segment (`../t_week`,
+`archive/../t_week`, the bare `..`), not as a substring: only a whole
+segment climbs, and a template called `t_week..old` is a name below the
+folder like any other (code review round 1; the first version refused the
+substring and with it that name). A line break is refused with the same
+error: a name is one line, and a `--template` value with a second line would
+save a two-line path into `templates.mapping` — the same rule `anchor_text`
+applies to `--anchor`.
 
 ## WHY `template_choice` Knows `none` and `anchor_text` Trims One Line
 
@@ -75,10 +93,15 @@ Carry the Answers on Every Rerun"). `template_choice(text)` is
 `0 none` answer and returns the `NO_TEMPLATE` sentinel, so the script can
 tell "the user chose no template" from "no flag was given" — the two look the
 same in the proposal (`template: null`) but only the second lists the
-candidates. The word is reserved bare and exact: `none.md` is a template
-file of that name, `None` or ` none ` are not spellings a literal model
-produces from the skill's `none`, and a vault whose template is called
-`none` still reaches it with the extension. `anchor_text(text)` is the
+candidates. The value is trimmed before the word is compared, as
+`template_name` trims every other value (code review round 1: the first
+version compared the raw text, so ` none ` would have become the template
+`none.md` while ` t_week ` became `t_week`); the word is then reserved
+lowercase and exact, `None` is not a spelling a literal model produces from
+the skill's `none`. The consequence is deliberate: a template file called
+`none.md` cannot be chosen by its bare name — `--template none` is always
+the "no template" answer — and is reached with the extension, `none.md`,
+which `template_name` keeps as it is. `anchor_text(text)` is the
 `--anchor` rule: the answer is trimmed (a copied heading carries whitespace)
 and must be one non-blank line — a heading is one line, and `setup-input`
 requires a non-blank `place.anchor`, so refusing a blank or multi-line value

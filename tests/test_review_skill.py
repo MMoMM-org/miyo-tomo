@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.2.4
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.9")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.10")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -337,7 +337,8 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     assert ("`template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes "
             "of the templates folder fit it; ask, numbered on one line with `0 none` last: "
             "`1 <name> · 2 <name> · 0 none`. End the turn.") in text
-    assert "A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; run:" in text
+    assert ("A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; a typed name → `<template>` "
+            "is that name in double quotes; run:") in text
     assert "python3 scripts/review-session.py match --kind <kind> --template <template>" in text
     assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
             "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "

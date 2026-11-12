@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.4
+# version: 0.1.5
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -17,7 +17,7 @@ Review one finished week or month with the user: Pass 1 writes a review document
 - A non-zero exit: show the output and the stderr line verbatim and stop.
 - Every question is plain text in the visible reply: first the content, copied from the Read or Bash result, then the question, numbered on one line as `1 First · 2 Second` as the last line. Then end the turn.
 - The next user message is the answer: a typed number or option word; when it is unclear, ask again in plain text.
-- Show the `error`, `expected`, `example`, `problems`, `errors`, `warnings`, `notices` and `hints` of a script verbatim; never paraphrase them.
+- Show the `error`, `expected`, `example` and `errors` of a script verbatim, and the `hints` of step 2 and the `problems` of step 4; never paraphrase them. Every other `problems` entry, `warnings` entry and `notices` entry is said by the line its step gives it; without one, verbatim.
 - Never quote `read.json`, a daily note, a journal answer or a tracker value in your reply; print the scripts' reports and `section_md` only.
 - Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result may mean the Kado key cannot read the folder; say so.
 - On Abort at any question, run no further script and write nothing; say in one line what stays as it is.
@@ -41,13 +41,13 @@ Say one line per entry of `skipped_review_docs` with its `doc_path` and `reason`
 
 Handle every entry of `open_reviews` before the new request, in the order listed. Print each by `period`, `kind` and `state`, then branch on `state`:
 - `failed-delivery` → ask `1 Resume · 2 Drop`. Resume → step 8 with the entry's `stem`. Drop → step 9 with the entry's `stem`.
-- `open` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with `review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays as it is.
+- `open` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with `review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays as it is and end the run: no further entry, not the new request.
 - `delivered` → say in one line that its instruction set waits for Hashi, or for the user to apply it by hand; no second set is delivered.
 - `move-refused` → say in one line that the target note existed when Hashi applied the move, so the inbox copy is still there; the user decides in Obsidian.
 - `target-missing` → say in one line that the target note is gone since delivery; the user decides in Obsidian.
 - `applied` → say in one line that the review was applied. When `notices` holds `applied-not-recorded`, add that the line will show once more next time.
 
-Continue with the next entry, then with the new request, after each one ends. When the request names the same `period` as an open review, that open review is the request: stop after it.
+Continue with the next entry, then with the new request, after each one ends without an Abort; an Abort at any question of an entry ends the whole run: no further entry, not the new request. When the request names the same `period` as an open review, that open review is the request: stop after it.
 
 Then the new request, by `request.kind`:
 - `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop.
@@ -100,7 +100,7 @@ python3 scripts/review-read.py --period <period> --kind <kind> --stem <stem>
 Branch on `status` first:
 - `stopped` with `error` → the stopped rule. `stopped` with `problems` → show them verbatim (`setup-missing`, `setup-invalid` with `errors`, `daily-not-configured`, `dailies-not-read`) and the `report` when present, and stop; nothing is written. Never read `nothing_to_review` from a `stopped` output.
 - `ok` with `nothing_to_review` true → say that no daily note of the period holds content, that an empty result may also mean the Kado key cannot read the folder, and stop; nothing is written.
-- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
+- `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
 
 ## 5. Propose and write the document
 
@@ -162,11 +162,12 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.
   - `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what is wrong with the heading above the Tomo marker in the target note: there is none (`place-missing`); it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`); it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop.
   - `user-heading-collision` with `mode` `insert` or `new-note` after a heading pick (the rerun with `--place-anchor`) → say the target note holds a heading that clashes with the review: one named like the review heading, or the picked heading is one of the user's own sections; the user renames or removes the clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop. Never print `headings` or ask for a number a second time.
-  - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this list. 0 → stop.
+  - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → name `place.anchor` and `place.placement`, and say that this heading is not in the target note (`place-missing`), or that the review heading would pass level 5 under it (`place-too-deep`); print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this list. 0 → stop.
   - `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick → say a heading of the user's with the same name is never replaced and the review never lands inside one of the user's own sections; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
   - `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.
   - `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
-- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line per entry of `notices` and per flag set:
+- `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
+  - `mode` `replace` → the note already holds Tomo's review section; it is replaced, not added to.
   - `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.
   - `target_appeared` true → the target note was created since Pass 1; the plan targets it instead of a new note.
   - `variant_missing` or `templater_hint` → the template's Tomo variant is gone, or the template holds Templater code; the readable instructions say to run Templater after the move.
@@ -198,6 +199,7 @@ Branch on `status` first:
 - `dropped` → say only the stage was removed (`removed`); nothing was in the inbox.
 - `refused` → one line per problem:
   - `already-applied` → say Hashi already applied an action of this review, so nothing is withdrawn and nothing more is delivered; stop.
+  - `setup-missing`, `setup-invalid` or `inbox-not-configured` → as the `refused` line of step 7: show `problems` and `errors` verbatim and stop.
 - `stopped` → one line per problem:
   - `set-changed` → say the set changed between read and write; run `drop` once more.
   - `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once more. A second `kado-write-failed` → show it, say the next `/review` lists this review again and offers Drop, and stop.

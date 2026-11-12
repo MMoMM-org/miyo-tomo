@@ -88,6 +88,14 @@ never from files the model inspects:
 dropped silently: a document Tomo cannot classify is still the user's file. When the request names the same period as
 an open review, the open review is the request. Only after the list is handled does the skill turn to the new request.
 
+An Abort at any question of an open review ends the whole run (Phase 5 drift round). The rule says "on Abort, run no
+further script", but the first draft's step 1 said "continue with the next entry, then with the new request, after
+each one ends" — read literally, an Abort at `1 Continue · 2 Start over · 3 Abort` ended that entry and the skill went
+on to `parse` the next one and to `review-read.py` and `write` for the new request, after the user had said Abort.
+The step now says that an Abort at an entry's question ends the run: no further entry, not the new request. The user
+who wants the next entry handled runs `/review` again; the price is one extra call, the alternative is a vault write
+after an Abort.
+
 ## Why Setup Runs Before the First Read and the Request Continues in the Same Session (F1)
 
 WHY: Nothing can be read before Tomo knows where the periodic notes live, how they are named, which daily sections
@@ -145,8 +153,12 @@ WHY: A Kado key without read access to a folder gets an empty listing, indisting
 proposing to create notes there. The same wording applies to `template_kind: unreadable`: the skill says the
 template may be unreadable because the key has no access, proposes a plain note (title and review section) and
 continues (F1-AC7); `missing` proposes the plain note without the access hint. In Pass 1, `review-read.py`'s
-`kado_empty` sources and the `check-key-access` advice are reported the same way (F3-AC9). The skill never says a
-folder is empty or a note does not exist.
+`kado_empty` sources are reported with the access hint, and its `advice` `check-key-access` (`lib/review_period.
+ADVICE_CHECK_ACCESS`, set whenever `kado_empty` is non-empty) has its own line: Kado answered with nothing for those
+sources and the key may not reach those folders; the user checks its access (F3-AC9). The first draft had a line for
+`raise-kado-limit` only, so the second advice token reached the console as a bare word (Phase 5 drift round);
+`tests/test_review_skill.py` now reads the `ADVICE_*` constants the script imports and demands a line per token. The
+skill never says a folder is empty or a note does not exist.
 
 ## Why the Period Read Is a Script and `status` Is Branched First
 
@@ -246,8 +258,8 @@ that let two members through the first time (T5.2 fix round). Refusing: `not-app
 answer it as well as `parse`; the skill says how to restore `- [ ] Approved` at the line start and stops),
 `nothing-to-deliver` (everything unticked → Abort or start over), `place-missing` and `place-too-deep` with `mode`
 `insert` or `new-note` (the configured place is not in the target or would push the review heading past level 5: the
-skill lists the `headings` the note has and asks for one or Abort, then reruns `review-instructions.py preview
---place-anchor` with the chosen heading, F5-AC7), `user-heading-collision` with `mode` `insert` or `new-note` (a
+skill names `place.anchor` and `place.placement`, lists the `headings` the note has and asks for one or Abort, then
+reruns `review-instructions.py preview --place-anchor` with the chosen heading, F5-AC7), `user-heading-collision` with `mode` `insert` or `new-note` (a
 same-named heading of the user's without the marker is never replaced, and the review never lands inside an own
 section: another heading or Abort, offered once — see "Why the Heading Pick Is Offered Once"), `set-exists` (a set
 for the stem waits for Hashi; nothing is delivered, F6-AC2).
@@ -267,6 +279,26 @@ before the heading-pick bullets, that says plainly what is wrong with the headin
 the note in Obsidian (moves the marker under a heading of Tomo's, renames the colliding heading, or lifts the
 section). The heading-pick bullets name `mode` `insert` or `new-note` explicitly rather than "otherwise", so exactly
 one bullet matches each (problem, mode) pair for a literal model.
+
+The heading-pick bullet names `place.anchor` and `place.placement`, not the anchor's level (Phase 5 drift round). The
+SDD's `place-too-deep` row says "names the anchor and its level", but on a refused insert or new-note plan the preview
+output does not carry the level: `lib/review_actions.build_review_plan` seeds `place` with `anchor` and `placement`
+only, `_existing_note` and `_templated_note` assign the `level` key after `_insertion` succeeded, and `_refuse` copies
+the `headings` as texts without their levels. Only the replace branch sets `place.level` before it refuses. So the
+bullet names the two fields the output has — the heading the plan looked for and whether the review goes before or
+inside it — and says the review heading would pass level 5 under it; a bullet that named `place.level` would send a
+literal model looking for a key that is not there. Carrying the anchor's level in the refusal is a script change the
+owner has not asked for; the test pins the seed shape so the bullet and the output cannot drift apart silently.
+
+## Why a Replace Preview Says the Section Is Replaced (F6-AC3)
+
+WHY: `mode` `replace` means the marker was found in the target note, so the plan is a `replace_section` and the
+section the note holds now goes away when Hashi applies it. The first draft printed `mode` with the plan and said
+"replaced there" only for the `heading-renamed` notice, so a replace under the configured heading — the common
+rerun — told the user nothing about what happens to the section already in the note (Phase 5 drift round, F6-AC3).
+The `ok` output has one line for `mode` `replace` now, before the notices: the note already holds Tomo's review
+section; it is replaced, not added to. The line is a flag of the `ok` output, not a notice, because
+`lib/review_delivery.NOTICES` is what the plan reports as notices and `mode` is not a problem of the plan.
 
 ## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
 
@@ -345,6 +377,28 @@ mark the document; docs/tomo/scripts/review-instructions.md, "WHY an Emptied Set
 and asks `1 Drop · 2 Abort` — the one place Pass 2 routes from the deliver step into the drop step. The listing
 cannot tell a half-withdrawn stem from any other failed delivery, and a seventh state for it was rejected (the
 six are the SDD's canonical list); the refusal from `deliver` is where the two part, so the skill asks there.
+
+`drop` refuses three more problems that are not its own: `setup-missing` and `setup-invalid` (with `errors`) from
+`_setup`, which it needs for the inbox and the set paths, and `inbox-not-configured` when the inbox path is unsafe
+(the `Refused(...)` raises in the `_setup` and `drop` bodies of the Pass 2 script; its header lists them under "every
+subcommand"). The first draft's drop step had a line for `already-applied` only, so a drop on a broken setup reached
+the model with no branch (Phase 5 drift round). The step reuses the `refused` line of the preview step — show
+`problems` and `errors` verbatim and stop — rather than wording the three again: they are the same refusals with the
+same cure (fix the setup, run `/review` again), and one wording cannot drift from the other. The test reads the
+`Refused("<token>")` literals of those two bodies, so a fourth refusal added to the path fails the suite without a line.
+
+## Why the Verbatim Rule Names Only What No Step Says in Its Own Words
+
+WHY: The first rule list said to show `problems`, `warnings`, `notices` and `hints` verbatim and never paraphrase
+them, while steps 6 to 8 give `warnings`, `notices` and the preview's `problems` one plain-language line each — a
+contradiction a literal model resolves either way, printing the bare token and the line, or the token alone (Phase
+5 drift round). The rule is narrowed to what no step reworks: `error`, `expected`, `example` and `errors` (the
+scripts write them for the user, see "Why Script Errors Are Shown Verbatim"), the `hints` of the setup step (the
+script's own access wording) and the `problems` of the read step (shown with the `report`). Everything else — a
+`problems` entry, a `warnings` entry, a `notices` entry — is said by the line its step gives it, and without such a
+line it is shown verbatim, so a token the scripts add before the skill has a line for it still reaches the user
+unparaphrased. The steps that say "verbatim" themselves (`write`'s and `preview`'s `refused` branches, `drop`'s shared
+refusals) are the fallback written out.
 
 ## Why the Skill Does Not Call `status` in the Flow
 

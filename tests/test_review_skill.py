@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry.
 
 The dialogue criteria of /review are model behaviour; this file proves that each
@@ -38,6 +38,12 @@ went back to the heading pick — the same-named-heading cause
 own-section cause, so the pick is offered once. RED before the Phase 5
 cleanup: no `set-withdrawn` line (the refusing set grew by it) and the second
 `kado-write-failed` of `drop` did not say the next `/review` offers Drop again.
+RED before the Phase 5 drift round: the verbatim rule listed `warnings`,
+`notices` and `problems` that steps 6-8 say in their own words; an Abort at
+an open-review question went on with the next entry and the new request; no
+line for `mode` `replace` in the preview, for `check-key-access`, nor for
+`drop`'s shared refusals (`setup-missing`, `setup-invalid`,
+`inbox-not-configured`); the heading pick did not name `place.anchor`.
 """
 from __future__ import annotations
 
@@ -94,7 +100,7 @@ def _body() -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.4")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.5")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -165,8 +171,9 @@ PLAIN_FORM = ("- Every question is plain text in the visible reply: first the co
               "the turn.")
 ANSWER_RULE = ("- The next user message is the answer: a typed number or option word; when it is unclear, ask again "
                "in plain text.")
-VERBATIM_RULE = ("- Show the `error`, `expected`, `example`, `problems`, `errors`, `warnings`, `notices` and `hints` "
-                 "of a script verbatim; never paraphrase them.")
+VERBATIM_RULE = ("- Show the `error`, `expected`, `example` and `errors` of a script verbatim, and the `hints` of "
+                 "step 2 and the `problems` of step 4; never paraphrase them. Every other `problems` entry, "
+                 "`warnings` entry and `notices` entry is said by the line its step gives it; without one, verbatim.")
 PRIVACY_RULE = ("- Never quote `read.json`, a daily note, a journal answer or a tracker value in your reply; print "
                 "the scripts' reports and `section_md` only.")
 ACCESS_RULE = ("- Never say a folder is empty or a note does not exist: `kado-none`, `kado_empty` and an empty result "
@@ -185,6 +192,15 @@ def _rules() -> list[str]:
                               "abort", "exit"])
 def test_rules_hold_each_line(rule):
     assert rule in _rules(), rule
+
+
+def test_the_verbatim_rule_does_not_cover_what_the_steps_say_in_their_own_words():
+    """Steps 6-8 map `warnings`, `notices` and the preview's `problems` to plain lines; a rule that demands
+    them verbatim contradicts those lines."""
+    rules = " ".join(_rules())
+    assert "`warnings`, `notices` and `hints` of a script verbatim" not in rules
+    assert "`problems`, `errors`, `warnings`" not in rules
+    assert "said by the line its step gives it" in rules
 
 
 def test_scripts_run_from_the_working_directory_not_the_skill_dir():
@@ -230,7 +246,7 @@ OPEN_REVIEW_STATES = {
     "open": ("- `open` → ask `1 Continue · 2 Start over · 3 Abort`. Continue → step 6 with the entry's `stem`. "
              "Start over → step 4 with the entry's `period` and `kind` (the `write` there refuses with "
              "`review-exists` and step 5 asks before replacing). Abort → say in one line that the document stays "
-             "as it is."),
+             "as it is and end the run: no further entry, not the new request."),
     "delivered": ("- `delivered` → say in one line that its instruction set waits for Hashi, or for the user to "
                   "apply it by hand; no second set is delivered."),
     "move-refused": ("- `move-refused` → say in one line that the target note existed when Hashi applied the move, "
@@ -245,6 +261,16 @@ OPEN_REVIEW_STATES = {
 @pytest.mark.parametrize("state", OPEN_REVIEW_STATES)
 def test_every_listed_state_has_its_offer(state):
     assert OPEN_REVIEW_STATES[state] in _section("1. Start"), state
+
+
+def test_an_abort_at_an_open_review_question_ends_the_whole_run():
+    """Rule: on Abort no further script runs. Going on with the next entry or the new request would run
+    `parse`, `review-read` and `write` after the user said Abort."""
+    text = _section("1. Start")
+    assert ("Continue with the next entry, then with the new request, after each one ends without an Abort; an "
+            "Abort at any question of an entry ends the whole run: no further entry, not the new request.") in text
+    assert "Abort → say in one line that the document stays as it is." not in text
+    assert "and end the run: no further entry, not the new request." in OPEN_REVIEW_STATES["open"]
 
 
 def test_the_listed_states_are_the_scripts_states():
@@ -371,6 +397,25 @@ def test_the_read_report_names_states_pacing_and_the_limit_advice():
             "raising Kado's rate limit.") in text
     assert ("When `not_read` is non-empty, say that these days or notes are missing from the review and that the "
             "document will name them at its top; never say that everything was read.") in text
+
+
+ADVICE_LINES = {
+    "raise-kado-limit": ("When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit "
+                         "and suggest raising Kado's rate limit."),
+    "check-key-access": ("When `advice` holds `check-key-access`, say that Kado answered with nothing for the "
+                         "`kado_empty` sources and that the Kado key may not reach those folders; the user checks "
+                         "its access."),
+}
+
+
+def test_every_advice_of_the_read_script_has_its_line():
+    """The advice set is the `ADVICE_*` constants review-read.py imports (lib/review_pacer, lib/review_period)."""
+    script = load_script("review-read.py")
+    advice = {value for name, value in vars(script).items() if name.startswith("ADVICE_")}
+    assert advice == set(ADVICE_LINES), sorted(advice ^ set(ADVICE_LINES))
+    text = _section("4. Read the period")
+    for token, line in ADVICE_LINES.items():
+        assert line in text, token
 
 
 # ── Proposals and the document (F4, F6) ─────────────────────────────────────
@@ -507,8 +552,9 @@ PREVIEW_PROBLEMS = {
         "review heading, or the picked heading is one of the user's own sections; the user renames or removes the "
         "clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` "
         "and `kind`, Abort → stop. Never print `headings` or ask for a number a second time."),
-    "place-missing": ("- `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured "
-                      "place is not in the target note, or would push the review heading past level 5; print "
+    "place-missing": ("- `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → name `place.anchor` "
+                      "and `place.placement`, and say that this heading is not in the target note (`place-missing`), "
+                      "or that the review heading would pass level 5 under it (`place-too-deep`); print "
                       "`headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` "
                       "with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this "
                       "list. 0 → stop."),
@@ -540,6 +586,28 @@ def test_every_preview_notice_is_one_line_and_the_question_still_follows(notice)
     text = _section("7. Preview")
     assert PREVIEW_NOTICES[notice] in text, notice
     assert text.index(PREVIEW_NOTICES[notice]) < text.index("Then ask `1 Deliver · 2 Abort`"), notice
+
+
+REPLACE_MODE_LINE = "- `mode` `replace` → the note already holds Tomo's review section; it is replaced, not added to."
+
+
+def test_a_replace_preview_says_the_section_is_replaced_not_added():
+    """Mode `replace` (the marker found in the target) is a flag of the `ok` output, not a notice: without a line
+    the user sees a `replace_section` plan and is not told their note's section goes away."""
+    text = _section("7. Preview")
+    at = text.index(REPLACE_MODE_LINE)
+    assert text.index("- `ok` with empty `problems` →") < at < text.index("Then ask `1 Deliver · 2 Abort`")
+
+
+def test_the_heading_pick_names_the_place_fields_the_refusal_carries():
+    """On a refused insert or new-note plan `place` holds `anchor` and `placement` only (lib/review_actions
+    assigns `level` after `_insertion` succeeds), and `headings` is texts only — so the bullet names those two."""
+    source = (REPO / "tomo" / "scripts" / "lib" / "review_actions.py").read_text(encoding="utf-8")
+    assert 'list(target.duplicates), {"anchor": anchor, "placement": setup.placement})' in source
+    head = PREVIEW_PROBLEMS["place-missing"]
+    assert "name `place.anchor` and `place.placement`" in head
+    assert "`place.level`" not in head
+    assert "(`place-missing`)" in head and "(`place-too-deep`)" in head
 
 
 def _branch_head(bullet: str) -> str:
@@ -709,10 +777,22 @@ DROP_STATUSES = ("withdrawn", "dropped", "refused", "stopped", "not-found")
 
 
 def _drop_problems() -> set[str]:
+    """`drop`'s own tokens plus every `Refused("<token>")` its path raises (`_setup` and `drop` bodies)."""
     script = load_script("review-instructions.py")
     from lib import review_delivery as rdl
 
-    return {rdl.ALREADY_APPLIED, script.SET_CHANGED, script.KADO_WRITE_FAILED}
+    source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
+    setup_body = source[source.index("def _setup("):source.index("def _target(")]
+    drop_body = source[source.index("def drop("):source.index("def status(")]
+    raised = set(re.findall(r'Refused\("([a-z-]+)"', setup_body + drop_body))
+    assert raised == {"setup-missing", "setup-invalid", "inbox-not-configured"}, sorted(raised)
+    return {rdl.ALREADY_APPLIED, script.SET_CHANGED, script.KADO_WRITE_FAILED} | raised
+
+
+def test_drop_shared_refusals_reuse_the_preview_refused_line():
+    text = _section("9. Drop a failed delivery")
+    assert ("- `setup-missing`, `setup-invalid` or `inbox-not-configured` → as the `refused` line of step 7: show "
+            "`problems` and `errors` verbatim and stop.") in text
 
 
 @pytest.mark.parametrize("status", DROP_STATUSES)
@@ -771,6 +851,10 @@ ERROR_HANDLING_ROWS = {
     "parse approved-line-missing": "restore `- [ ] Approved` at column 0",
     "preview nothing-to-deliver": "say nothing is ticked and ask `1 Start over · 2 Abort`",
     "preview place-missing / place-too-deep": "print `headings` as a numbered list and ask: Which number, or 0 Abort?",
+    "preview place-too-deep names the anchor": "name `place.anchor` and `place.placement`",
+    "preview mode replace": "the note already holds Tomo's review section; it is replaced, not added to",
+    "review-read check-key-access": "the Kado key may not reach those folders; the user checks its access",
+    "drop setup-missing / setup-invalid / inbox-not-configured": "`inbox-not-configured` → as the `refused` line of step 7",
     "preview marker without a heading above (place-missing, mode replace)": "with `mode` `replace` → say what is wrong with the heading above the Tomo marker in the target note: there is none (`place-missing`)",
     "preview place-too-deep, mode replace": "it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`",
     "preview user-heading-collision, mode replace": "it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`)",

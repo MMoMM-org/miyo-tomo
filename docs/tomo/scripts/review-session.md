@@ -134,10 +134,46 @@ found, or no mapping at all; `unreadable` is any other Kado failure on the
 read (a tool error, a refused key) and the hint says the key may have no
 access — Kado answers the same way for both. A broken connection is not
 `unreadable`: it stops the whole preview as `kado-unreachable`, because the
-listing that succeeded a moment ago would be stale evidence. No template
-search is attempted when the mapping is absent: a guessed file would have to
-be confirmed by the user anyway, and a plain note (title and review section)
-is the documented fallback.
+listing that succeeded a moment ago would be stale evidence.
+
+### WHY an Absent Mapping Lists Candidates and `--template` Names the Choice
+
+WHY: the live walk (container session 5b959432, Phase 6). The first version
+attempted no template search when the mapping was absent ("a guessed file
+would have to be confirmed by the user anyway"). The owner's instance maps
+no `weekly` or `monthly` template while the templates folder holds
+`t_week*.md` and `t_month*.md`; the proposal came back with `template: null`
+and, since the anchor is proposed from the template's headings, `place.anchor:
+null` — a proposal `setup-input` rejects. Now `match` lists the templates
+folder once when neither the mapping nor `--template` names a template, and
+prints the notes whose file name fits the kind as `template_candidates`
+(`lib/review_templates.py`; WHY: `docs/tomo/scripts/lib/review_templates.md`
+— the words, the order, the names). The skill asks which one, with `0 none`,
+and reruns `match` with `--template <name>`: the choice goes through the
+same read and the same heading proposal as a mapping entry, so a chosen
+template and a configured one can never produce different proposals.
+`--template` wins over a mapping entry like every other flag; the proposal
+carries the name with `.md` and `setup-input` passes it on as `template`, the
+key the writer already saves to `templates.mapping.<granularity>`. `0 none`
+keeps the first output: no rerun, `template` stays null, and the writer
+removes a mapping key that is not there — nothing is saved to the mapping.
+A mapping entry is used as before, without a listing and without a question.
+
+### WHY `needs_anchor` Is Marked Instead of Left to `setup-input`
+
+WHY: the same walk. The proposal must never carry an anchor the writer will
+refuse without saying so first: `setup-input`'s `/place/anchor` pointer
+after Confirm sends the user back into the Correct branch with no heading
+to choose from. When no anchor can be proposed — no template, `0 none`, a
+template without a heading below its title — the output carries
+`needs_anchor: true` and `anchor_candidates`, the headings of the two most
+recent periodic notes of the kind (two reads at most; the choice of two and
+the order are in `review_templates.md`). The skill asks which heading before
+it offers Confirm and puts the answer into the proposal; `setup-input` still
+validates, so a typed heading that is blank is refused there. A configured
+anchor or one proposed from the template leaves both keys out and costs no
+read. The first `match` output carries the template candidates and the
+anchor candidates together, so `0 none` needs no second call.
 
 ## WHY the Place and the Daily Sections Come From the Templates
 
@@ -160,8 +196,9 @@ title and Templater headings are left out because neither can be a place.
 WHY: SDD Data Storage Changes: the review language defaults to the
 frontmatter `locale` of the dailies, else `en`. The weekly notes checked for
 the rule carry the same key in the owner's vault, so no extra read is spent;
-a month preview reads no note and falls back to the configured language or
-`en` — the week setup normally runs first and has saved it by then.
+a month preview reads no note for the language (the two reads a `needs_anchor`
+month spends are for headings, not `locale`) and falls back to the configured
+language or `en` — the week setup normally runs first and has saved it by then.
 
 ## WHY the Daily-Path Fix Is Proposed Only When the Other Spelling Exists
 

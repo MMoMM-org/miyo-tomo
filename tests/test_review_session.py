@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -455,7 +455,10 @@ def test_match_month_lists_names_and_needs_no_week_rule(mod, instance, monkeypat
     assert sorted(ev["matched"]) == ["2025-12", "2026-02", "2026-03"]
     assert ev["unmatched"] == ["Monthly Index"]
     assert p["language"] == "en"
-    assert not any(e[0] in ("read_note", "read_frontmatter") for e in fake.events)
+    assert not any(e[0] == "read_frontmatter" for e in fake.events), "a month infers no week rule"
+    # no template and no configured anchor: the two most recent monthly notes are read for anchor candidates
+    assert sorted(e[1] for e in fake.events if e[0] == "read_note") == [MONTHLY + "2026-02.md", MONTHLY + "2026-03.md"]
+    assert out["needs_anchor"] is True
 
 
 # ---------------------------------------------------------------- match: stops and fixes

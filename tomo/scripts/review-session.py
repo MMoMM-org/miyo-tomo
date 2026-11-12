@@ -121,7 +121,7 @@ from lib.period import (  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import (  # noqa: E402
     anchor_candidates_from_notes, daily_sections_from, propose_anchor, template_anchor_candidates,
-    template_candidates, template_name,
+    template_candidates, template_name, template_vault_path,
 )
 from lib.review_vault import Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
@@ -175,15 +175,6 @@ def _configured_rule(config: dict) -> Optional[WeekRule]:
         return WeekRule.from_config(week.get("first_day"), week.get("min_days_in_first_week", 4))
     except (ValueError, TypeError):
         return None
-
-
-def _template_path(templates: dict, name: Optional[str]) -> Optional[str]:
-    if name is None:
-        return None
-    base = _str(templates.get("base_path"))
-    if base is None:
-        return name
-    return base.rstrip("/") + "/" + name
 
 
 # ---------------------------------------------------------------- start
@@ -306,8 +297,9 @@ def match(args: argparse.Namespace) -> dict:
         if listing == "found" and inference.verdict == "default" and not matched:
             hints.append(NO_NOTES_HINT.format(folder=folder))
 
+        base = _str(templates.get("base_path"))
         template = args.template or _str(get_path(templates, ("mapping", granularity))[1])
-        template_path = _template_path(templates, template)
+        template_path = template_vault_path(base, template)
         template_kind, template_text = "missing", None
         candidates: Optional[List[str]] = None
         if template_path is not None:
@@ -315,7 +307,6 @@ def match(args: argparse.Namespace) -> dict:
             if template_kind == "unreadable":
                 hints.append(TEMPLATE_HINT.format(path=template_path))
         else:
-            base = _str(templates.get("base_path"))
             candidates = template_candidates(vault, base, kind) if base else []
             if candidates is None:
                 candidates = []
@@ -329,7 +320,7 @@ def match(args: argparse.Namespace) -> dict:
         daily_sections = _str_list(get_path(review, ("daily", "sections"))[1])
         if daily_sections is None:
             daily_sections = []
-            daily_path = _template_path(templates, _str(get_path(templates, ("mapping", "daily"))[1]))
+            daily_path = template_vault_path(base, _str(get_path(templates, ("mapping", "daily"))[1]))
             if daily_path is not None:
                 _, daily_text = vault.template(daily_path)
                 if daily_text:

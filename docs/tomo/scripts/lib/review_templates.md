@@ -13,7 +13,11 @@ WHY: the script stood at 482 lines before the live-walk fix and the
 Constitution caps dense files at ~300–500 LOC. Listing candidates and
 reading the headings of recent periodic notes are two small rules with no
 argparse and no proposal logic in them; the script keeps the precedence
-(flag > mapping > candidates) and the output shape.
+(flag > mapping > candidates) and the output shape. What a template's
+headings propose (`template_anchor_candidates`, `propose_anchor`,
+`daily_sections_from`) and the join of a name onto `templates.base_path`
+(`template_vault_path`) moved with them: they are template rules, and the
+script stays under the cap with them gone.
 
 ## WHY the Candidates Come From a Listing, Not a Guess
 

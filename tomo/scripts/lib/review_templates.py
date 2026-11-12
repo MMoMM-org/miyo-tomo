@@ -7,7 +7,8 @@
 ``month``/``monat``; case-insensitive), as names below the base path without
 ``.md``, sorted case-insensitively; None when Kado answered with nothing.
 ``template_name(text)`` normalises a ``--template`` value to its ``.md`` file
-name and raises ``ValueError`` for a name that would leave the folder.
+name and raises ``ValueError`` for a name that would leave the folder;
+``template_vault_path(base_path, name)`` is where the script reads it.
 ``anchor_candidates_from_notes(vault, notes, fmt, rule, kind)`` reads the two
 periodic notes with the latest period under the proposed format and rule and
 returns their headings below the title, most recent first, duplicates dropped.
@@ -42,6 +43,15 @@ def template_candidates(vault, base_path: str, kind: str) -> Optional[List[str]]
         if any(word in PurePosixPath(stem).name.lower() for word in KIND_WORDS[kind]):
             names.append(stem)
     return sorted(names, key=str.lower)
+
+
+def template_vault_path(base_path: Optional[str], name: Optional[str]) -> Optional[str]:
+    """The vault path of a template name below ``base_path`` (the bare name without one); None for no name."""
+    if name is None:
+        return None
+    if base_path is None:
+        return name
+    return base_path.rstrip("/") + "/" + name
 
 
 def template_name(text: str) -> str:

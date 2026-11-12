@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.2.2
+# version: 0.3.0
 """The review document ``<period> Review.md`` (spec 045, T3.6, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -27,6 +27,9 @@ is that predicate, shared with ``review_actions`` for the landing). Habits arriv
 rendered from ``review_habits`` and get an id like every Tomo item; no habits
 means no habits heading. ``ID_PATTERN`` and ``group_labels`` are the shared
 vocabulary of ``review_doc_parse``, which reads the document back.
+``mark_delivered`` (T4.2, F5-AC11) is the delivered mark: ``tomo.state``
+becomes ``approved`` and the title line gets the language's "delivered"
+word; idempotent, a marked text comes back unchanged.
 
 No Kado, no model, no file I/O beyond the schema. Needs jsonschema and PyYAML.
 
@@ -49,8 +52,11 @@ SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "review-proposal
 
 DOC_TYPE = "review"
 DOC_STATE = "pending-approval"
+DOC_STATE_DELIVERED = "approved"
 DOC_SUFFIX = " Review"
 APPROVED_LINE = "- [ ] Approved"
+_FENCE = "---"
+_DELIVERED_SEP = " — "
 
 DONE, OPEN, THEMES, GROWTH, HABITS, WEEKLY_ONLY, NOT_IN_WEEKLY = (
     "done", "open", "themes", "growth", "habits", "weekly_only", "not_in_weekly")
@@ -79,14 +85,14 @@ _LABELS: Dict[str, Dict[str, str]] = {
         WEEKLY_ONLY: "Only in the weekly reviews", NOT_IN_WEEKLY: "Not in the weekly reviews",
         "nothing": "nothing found", "target": "Target", "exists": "exists", "created": "will be created",
         "elsewhere": "found at {path}", "before": "before", "inside": "inside",
-        "not_read": "not read", "partly_read": "partly read",
+        "not_read": "not read", "partly_read": "partly read", "delivered": "delivered",
     },
     "de": {
         DONE: "Erledigt", OPEN: "Offen", THEMES: "Wiederkehrende Themen", GROWTH: "Vault-Wachstum",
         HABITS: "Gewohnheiten", WEEKLY_ONLY: "Nur in den Wochenreviews", NOT_IN_WEEKLY: "Nicht in den Wochenreviews",
         "nothing": "nichts gefunden", "target": "Ziel", "exists": "vorhanden", "created": "wird angelegt",
         "elsewhere": "gefunden unter {path}", "before": "vor", "inside": "in",
-        "not_read": "nicht gelesen", "partly_read": "teilweise gelesen",
+        "not_read": "nicht gelesen", "partly_read": "teilweise gelesen", "delivered": "geliefert",
     },
 }
 
@@ -339,3 +345,53 @@ def render_document(inp: DocInput) -> Tuple[str, Dict[str, int]]:
     }
     front_yaml = yaml.safe_dump(front, sort_keys=False, allow_unicode=True, default_flow_style=False)
     return f"---\n{front_yaml}---\n" + "\n".join(lines) + "\n", counts
+
+
+# --- the delivered mark ------------------------------------------------------------------
+
+def _split(text: str) -> Tuple[Optional[dict], List[str], List[str]]:
+    """``(frontmatter, its raw lines, body lines)``; frontmatter None when the block is missing or broken."""
+    import yaml
+
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != _FENCE:
+        return None, [], lines
+    for index in range(1, len(lines)):
+        if lines[index].strip() == _FENCE:
+            try:
+                front = yaml.safe_load("\n".join(lines[1:index]))
+            except yaml.YAMLError:
+                return None, [], lines
+            return (front if isinstance(front, dict) else None), lines[1:index], lines[index + 1:]
+    return None, [], lines
+
+
+def is_delivered(text: str, language: str) -> bool:
+    """Whether ``text`` already carries the delivered mark: state approved and the word on the title line."""
+    front, _, body = _split(text)
+    tomo = front.get("tomo") if isinstance(front, dict) else None
+    approved = isinstance(tomo, dict) and tomo.get("state") == DOC_STATE_DELIVERED
+    title = next((ln for ln in body if ln.strip()), "")
+    return approved and title.endswith(_DELIVERED_SEP + labels(language)["delivered"])
+
+
+def mark_delivered(text: str, language: str, updated_at: str) -> str:
+    """``text`` with ``tomo.state`` approved (``updated_at`` set) and the title line marked delivered.
+
+    Idempotent: a marked text comes back unchanged; a text without a usable
+    frontmatter or a ``tomo`` block is returned unchanged too (nothing to mark)."""
+    import yaml
+
+    front, _, body = _split(text)
+    tomo = front.get("tomo") if isinstance(front, dict) else None
+    if not isinstance(tomo, dict):
+        return text
+    word = _DELIVERED_SEP + labels(language)["delivered"]
+    index = next((i for i, ln in enumerate(body) if ln.strip()), None)
+    if index is not None and body[index].startswith("# ") and not body[index].endswith(word):
+        body[index] = body[index].rstrip() + word
+    if tomo.get("state") != DOC_STATE_DELIVERED:
+        tomo["state"] = DOC_STATE_DELIVERED
+        tomo["updated_at"] = updated_at
+    front_yaml = yaml.safe_dump(front, sort_keys=False, allow_unicode=True, default_flow_style=False)
+    return f"{_FENCE}\n{front_yaml}{_FENCE}\n" + "\n".join(body)

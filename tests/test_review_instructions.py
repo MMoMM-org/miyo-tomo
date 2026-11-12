@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -44,7 +44,7 @@ and is compared with `unicodedata`. V8 22 oracle, `/^(#{1,6})\s+(.*)$/` then `.t
 `## Woche\u0085` → `Woche\u0085` (kept); `##\u001CWoche` → no heading; `##᠎Woche` → no
 heading; `##\r` → `` (empty text); `/^\s*(?:```|~~~)/` on `﻿```` → fence, on
 `\u0085```` → no fence.
-T4.2 adds the review-instructions.py tests to this file. All data is synthetic.
+The review-instructions.py tests of T4.2 live in tests/test_review_deliver.py. All data is synthetic.
 """
 from __future__ import annotations
 

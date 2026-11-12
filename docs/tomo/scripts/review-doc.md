@@ -27,6 +27,11 @@ by frontmatter, renamed ones included). No `meta.json` and no `--doc-path`
 is `not-found`, like a document that is gone from its path: the skill
 offers to start over (SDD Error Handling). One Kado read, `kado-read
 note`, is the whole cost; the document is parsed by `lib/review_doc_parse`.
+Since T4.2 the read and the parse — path lookup, the note read, the
+`pass1_links` map handed to the parser — live in `lib/review_doc_read`,
+shared with `review-instructions.py preview` and `deliver`, so the three
+commands cannot disagree on `edited` and `deleted`
+(docs/tomo/scripts/lib/review_doc_read.md).
 
 ## WHY `parse` Prints Counts Only and Writes No File (ADR-9)
 

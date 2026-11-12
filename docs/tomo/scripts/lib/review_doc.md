@@ -164,6 +164,24 @@ System-Wide Patterns i18n, F4-AC5). The habits lines have their own table in
 overlap. One table per module keeps each under the size limit; a shared
 label module would be a third file for twelve strings.
 
+## WHY `mark_delivered` Lives Here (spec 045 T4.2, F5-AC11)
+
+The delivered mark changes two things in the document this module
+rendered: `tomo.state` becomes `approved` (SDD ReviewDoc) and the first body
+line — the `# <period> Review` title — gets ` — delivered` / ` — geliefert`
+from the same label table as the rest of the document. The function is pure
+and idempotent (a marked text comes back unchanged), so the delivery can
+decide from its result whether a write is still needed and a resumed mark
+never stacks a second word. It parses the frontmatter the way
+`review_doc_parse` does (the first `---` block, `yaml.safe_load`) and
+serialises it back with `yaml.safe_dump` — a round trip of Tomo's own
+frontmatter, never a regex edit; only the `tomo` block changes, the
+top-level `review_*` keys are rewritten as read. The run id stays the
+document's: the mark is the same run's last step, not a new run. Why the
+whole text is written once with one guard rather than a frontmatter merge
+plus a title write: docs/tomo/scripts/review-instructions.md, "WHY the Mark
+Is One Guarded write_note, Last".
+
 ## WHY the Schema Has No Version Header
 
 JSON carries no comment; Tomo's schemas are versioned by the scripts that

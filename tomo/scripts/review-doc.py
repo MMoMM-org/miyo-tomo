@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.4.2
+# version: 0.5.0
 """The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045 T3.6/T3.7, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
@@ -55,10 +55,11 @@ Rules:
     as they were. ``replace --abort`` deletes ``read.json`` and
     ``proposals.json`` and touches neither the document nor ``meta.json``.
     ``parse`` reads the document at ``--doc-path`` or at the ``doc_path`` of
-    ``meta.json`` and writes nothing; ``edited`` per Tomo item is whether its
-    link stems differ from ``pass1_links`` (an id the map lacks is never
-    edited). Nothing of a proposal, a daily or the document reaches stdout
-    or stderr.
+    ``meta.json`` through ``lib/review_doc_read`` (shared with
+    ``review-instructions.py``) and writes nothing; ``edited`` per Tomo item
+    is whether its link stems differ from ``pass1_links`` (an id the map
+    lacks is never edited). Nothing of a proposal, a daily or the document
+    reaches stdout or stderr.
 
 Exit codes:
     0 — output usable (every status)
@@ -88,6 +89,7 @@ from lib import review_habits as rh  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import Period, render_name  # noqa: E402
+from lib.review_doc_read import doc_path_of, read_document  # noqa: E402
 from lib.review_state import META_FILE, read_meta, safe_stem  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
 from lib.run_id import generate as generate_run_id  # noqa: E402
@@ -270,32 +272,16 @@ def write_document(args: argparse.Namespace) -> dict:
 
 # ---------------------------------------------------------------- parse
 
-def _read_document(vault: Vault, doc_path: str) -> Optional[str]:
-    """The document text; None when nothing is at the path; ``Stopped`` when Kado cannot answer."""
-    try:
-        content = vault.client.read_note(doc_path).get("content")
-    except KadoNotFoundError:
-        return None
-    except KadoAuthError as exc:
-        raise Stopped("kado-auth", str(exc)) from None
-    except KadoError as exc:
-        raise Stopped("kado-unreachable", str(exc)) from None
-    return content if isinstance(content, str) else None
-
-
 def parse_document(args: argparse.Namespace) -> dict:
     """The ``parse`` subcommand: the edited document → counts and ids on stdout, nothing written."""
     meta = read_meta(Path(args.tmp), args.stem) or {}
-    doc_path = args.doc_path or meta.get("doc_path")
-    if not isinstance(doc_path, str) or not doc_path:
+    doc_path = doc_path_of(meta, args.doc_path)
+    if doc_path is None:
         return {"status": "not-found", "stem": args.stem}
-    text = _read_document(Vault(KadoClient), doc_path)
-    if text is None:
+    read = read_document(Vault(KadoClient), doc_path, meta)
+    if read is None:
         return {"status": "not-found", "stem": args.stem, "doc_path": doc_path}
-    pass1 = meta.get("pass1_links") if isinstance(meta.get("pass1_links"), dict) else None
-    counts = meta.get("pass1_counts") if isinstance(meta.get("pass1_counts"), dict) else {}
-    total = sum(n for n in counts.values() if isinstance(n, int))
-    parsed = rdp.parse_document(text, pass1_links=pass1, pass1_total=total)
+    parsed = read.parsed
     return {"status": "ok", "stem": args.stem, "doc_path": doc_path, "approved": parsed.approved,
             "nothing_to_deliver": parsed.nothing_to_deliver(), "items": parsed.public_items(),
             "counts": parsed.counts(), "warnings": parsed.warnings}

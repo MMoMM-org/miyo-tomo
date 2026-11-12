@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.10
+# version: 0.1.11
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -48,6 +48,8 @@ Handle every entry of `open_reviews` before the new request, in the order listed
 - `applied` → say in one line that the review was applied. When `notices` holds `applied-not-recorded`, add that the line will show once more next time.
 
 Continue with the next entry, then with the new request, after each one ends without an Abort; an Abort at any question of an entry ends the whole run: no further entry, not the new request. When the request names the same `period` as an open review, that open review is the request: stop after it.
+
+`request` is null (`request_withheld` `open-reviews`) → there is no new request: say in one line that a bare `/review` starts no new period while a review is listed, and that `/review <period>` (`2026-W13`, `2026-03`) or `/review month` names one; end the run after the last entry.
 
 Then the new request, by `request.kind`:
 - `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop.
@@ -108,7 +110,7 @@ python3 scripts/review-read.py --period <period> --kind <kind> --stem <stem>
 
 Branch on `status` first:
 - `stopped` with `error` → the stopped rule. `stopped` with `problems` → show them verbatim (`setup-missing`, `setup-invalid` with `errors`, `daily-not-configured`, `dailies-not-read`) and the `report` when present, and stop; nothing is written. Never read `nothing_to_review` from a `stopped` output.
-- `ok` with `nothing_to_review` true → say that no daily note of the period holds content, that an empty result may also mean the Kado key cannot read the folder, and stop; nothing is written.
+- `ok` with `nothing_to_review` true → say that no daily note of the period holds content and name the days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders. Stop; nothing is written.
 - `ok` otherwise → print the `report` as the script prints it: per day the dailies found and their `state`, the `linked` notes with `state` `missing` or `failed`, `day_after`, `task_notes`, `weekly_status` and `weekly_notes` when present, `growth`, `kado_empty` with the access hint, and the pacing line: `calls`, `retried`, `waited_s`, `not_read`. When `advice` holds `raise-kado-limit`, say that Kado turned calls away for its rate limit and suggest raising Kado's rate limit. When `advice` holds `check-key-access`, say that Kado answered with nothing for the `kado_empty` sources and that the Kado key may not reach those folders; the user checks its access. When `not_read` is non-empty, say that these days or notes are missing from the review and that the document will name them at its top; never say that everything was read. Then step 5.
 
 ## 5. Propose and write the document

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.4
+# version: 0.2.5
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.10")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.11")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -237,6 +237,18 @@ def test_skipped_review_docs_get_one_line_each_never_silence():
             "(`frontmatter-unreadable`, `period-missing`, `stem-unsafe`); never drop one silently.") in text
 
 
+def test_a_withheld_request_ends_the_run_after_the_listed_reviews():
+    """Phase 6 live walk (container session 68459faa): a bare `/review` with open 2026-W13 delivered W13 and then
+    read the default week 2026-W45. `start` now withholds the request (`request` null); the step says the run ends
+    there and how a period is named, and never routes a null request by `request.kind`."""
+    text = _section("1. Start")
+    line = ("`request` is null (`request_withheld` `open-reviews`) → there is no new request: say in one line that "
+            "a bare `/review` starts no new period while a review is listed, and that `/review <period>` "
+            "(`2026-W13`, `2026-03`) or `/review month` names one; end the run after the last entry.")
+    assert line in text
+    assert text.index(line) < text.index("Then the new request, by `request.kind`:")
+
+
 def test_after_the_list_the_request_routes_by_kind_and_setup():
     text = _section("1. Start")
     assert "- `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop." in text
@@ -389,9 +401,15 @@ def test_read_branches_on_status_before_nothing_to_review():
             "written.") in text
 
 
-def test_nothing_to_review_says_so_with_the_access_hint_and_writes_nothing():
-    assert ("- `ok` with `nothing_to_review` true → say that no daily note of the period holds content, that an "
-            "empty result may also mean the Kado key cannot read the folder, and stop; nothing is written.") in _section("4. Read the period")
+def test_nothing_to_review_says_so_and_names_the_access_hint_only_on_the_advice():
+    """Phase 6 live walk: a week with no dailies in a folder that holds dailies for other dates got the access
+    hint. The hint is said on `check-key-access` only (Kado answered with nothing), never for a quiet period."""
+    text = _section("4. Read the period")
+    assert ("- `ok` with `nothing_to_review` true → say that no daily note of the period holds content and name the "
+            "days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing for "
+            "the `kado_empty` sources and that the Kado key may not reach those folders. Stop; nothing is written."
+            ) in text
+    assert "that an empty result may also mean the Kado key cannot read the folder" not in text
 
 
 def test_the_read_report_names_states_pacing_and_the_limit_advice():
@@ -415,9 +433,13 @@ ADVICE_LINES = {
 
 
 def test_every_advice_of_the_read_script_has_its_line():
-    """The advice set is the `ADVICE_*` constants review-read.py imports (lib/review_pacer, lib/review_period)."""
-    script = load_script("review-read.py")
-    advice = {value for name, value in vars(script).items() if name.startswith("ADVICE_")}
+    """The advice set is the `ADVICE_*` constants of the two libs whose reports review-read.py prints
+    (lib/review_pacer, lib/review_period); the script itself appends none since the Phase 6 live-walk fix."""
+    load_script("review-read.py")
+    from lib import review_pacer, review_period  # the scripts put tomo/scripts on sys.path
+
+    advice = {value for lib in (review_pacer, review_period)
+              for name, value in vars(lib).items() if name.startswith("ADVICE_")}
     assert advice == set(ADVICE_LINES), sorted(advice ^ set(ADVICE_LINES))
     text = _section("4. Read the period")
     for token, line in ADVICE_LINES.items():

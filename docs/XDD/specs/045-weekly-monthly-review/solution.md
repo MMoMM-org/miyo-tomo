@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.16"
+version: "1.17"
 ---
 
 # Solution Design Document
@@ -596,7 +596,12 @@ Every script prints one JSON object on stdout. Exit codes: **0** for every outco
 review-session.py start --args '<raw $ARGUMENTS>'
   out: {status: ok|stopped,                                        # (implemented, spec 045 Phase 2)
         request: {kind: week|month|setup, period?: "2026-W13", year_inferred?: bool, source?: "arg|at|default",
-                  start?: "2026-03-23", end?: "2026-03-29"},        # first and last day of a period request
+                  start?: "2026-03-23", end?: "2026-03-29"}        # first and last day of a period request
+               | null,                                              # a blank argument while open_reviews is non-empty
+        request_withheld?: open-reviews,                            # only beside a null request: no new period starts
+                                                                    # until the user names one; a kind word (`month`),
+                                                                    # a period, an @ note and `setup` are never withheld
+                                                                    # (Phase 6 live walk, owner decision)
         current?: {week: <proposal shape>|null|{invalid: [json-pointer]}, month: ...},   # setup request only
         open_reviews: [{period, kind, doc_path, stem, state}],      # state from review_state.stem_state (canonical list below);
                                                                     # a withdrawn review is not listed, nor a complete delivery (doc_mark)
@@ -658,7 +663,9 @@ review-read.py --period 2026-W13 --kind week [--stem S]      (implemented, spec 
                  weekly_notes?: [{week, path|null, state: read|failed|absent}],         # month only
                  growth: {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
                  calls, retried, waited_s, not_read: [paths], kado_empty: [sources],
-                 advice: [raise-kado-limit|check-key-access]},
+                 advice: [raise-kado-limit|check-key-access]},      # check-key-access only with a non-empty kado_empty
+                                                                    # (a listing Kado answered empty), never for a
+                                                                    # period whose dates the listed folder lacks
         read_path: "tomo-tmp/review/<stem>/read.json" | null, nothing_to_review?: bool,
         error?: {kind: kado-unreachable|kado-auth, detail},
         problems?: [setup-missing|setup-invalid|daily-not-configured|dailies-not-read], errors?: [json-pointer]}
@@ -1012,7 +1019,7 @@ def test_a_rewritten_tomo_item_keeps_its_origin():
 #### Primary Flow: finished week to applied review
 
 1. User runs `/review` (or `W13`, `2026-W13`, `@…/2026-W13.md`).
-2. `review-session.py start` parses the request and lists open reviews; the skill offers any open review first (F2-AC1).
+2. `review-session.py start` parses the request and lists open reviews; the skill offers any open review first (F2-AC1). A bare `/review` while a review is listed carries no request (`request: null`, `request_withheld: open-reviews`): the run ends after the listed reviews, and a new period starts only when the user names one (`2026-W13`, `/review month`) or nothing is listed (F2-AC2; Phase 6 live walk, owner decision).
 3. If the period kind is not set up, the setup dialogue runs (F1), saves via `vault-config-writer.py review`, and the request continues.
 4. `review-read.py` reads the period under the pacer and prints the per-day report; nothing to review → stop, nothing written.
 5. The model reads `read.json` and writes `proposals.json` (one creative step).
@@ -1058,10 +1065,11 @@ sequenceDiagram
 |---|---|---|---|
 | `start` | invalid argument, `@` note not periodic | `error.kind` invalid-period / not-periodic-note, `expected`, `example` | what was expected + one example; nothing written (F2-AC5, F2-AC7) |
 | `start` | unfinished or future period | `error.kind = unfinished-period`, last finished period | only finished periods; names the last one (F2-AC6) |
+| `start` | blank argument while a review is listed (any state) | `request: null`, `request_withheld: open-reviews` | one line: a bare `/review` starts no new period while a review is listed; `/review <period>` or `/review month` names one; the run ends after the last listed entry, nothing is read for a default week (F2-AC1/2; Phase 6 live walk, container session 68459faa: the skill read the default week after delivering the open review) |
 | any reader (`start`, `match`, `review-read`, `parse`, `preview`, `status`) | Kado unreachable / key refused | `status: stopped`, `error.kind` kado-unreachable / kado-auth | the error; nothing written (F3-AC10) |
 | `review-read` | rate limit | retries, widening, end pass; `not_read`, `advice: raise-kado-limit` | retried/waited counts, the advice, what is missing (F3-AC11..13) |
 | `review-read`, `match` | empty listing | `kado_empty` / `folder_listing: kado-none` | "Kado returned none" + the key may not reach the folder (Rule 6, F3-AC9); after `match`, the skill asks before proposing to create notes in that folder (the setup step) |
-| `review-read` | no daily has content | `nothing_to_review: true` | says so with the access hint; no document (F3-AC9) |
+| `review-read` | no daily has content | `nothing_to_review: true` | says so and names the days of the report; the access hint only when `advice` holds `check-key-access` (a listing Kado answered empty), never for a period whose dates a listed folder lacks; no document (F3-AC9; Phase 6 live walk: a week after the test vault's last daily got the hint although Kado had listed the folder) |
 | `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
 | `match` | no `templates.mapping.<kind>` entry and no `--template` (the owner's instance, Phase 6 live walk) | `template_candidates` (the templates folder's notes that fit the kind; `[]` + a hint naming the folder when Kado answered with nothing for it) | the skill asks which template, numbered with `0 none` last, before it prints the proposal; a number reruns `match --template`, `0` keeps the plain note and saves nothing to the mapping; every later `match` of the step carries the answer as `--template "<name>"` or `--template none`, so the candidates are listed once (F1-AC7; fix round 1) |
 | `match` | no anchor can be proposed (no template, `0 none`, a template without a heading below its title; no configured anchor, no `--anchor`) | `needs_anchor: true` + `anchor_candidates` (headings of the two most recent periodic notes) | the skill asks "Which heading, by number or typed?" before it offers Confirm and puts the answer into `place.anchor`; Confirm is never offered while the anchor is null; every later `match` of the step carries the answer as `--anchor "<heading>"`, so the heading is asked once; `setup-input` still validates (F1-AC7; fix round 1) |
@@ -1341,8 +1349,8 @@ stateDiagram-v2
 - [ ] WHEN confirmed, THE SYSTEM SHALL write only the setup keys (calendar granularities, name patterns, template mapping, the `review:` section) and a confirmed daily-path fix, then continue the request in the same session (F1-AC9); WHEN aborted, nothing is written (F1-AC10).
 
 **Choosing the review — PRD F2**
-- [ ] WHEN `/review` starts and an open, failed or delivered-not-applied review exists, THE SYSTEM SHALL list them before the new request (F2-AC1).
-- [ ] WHEN no argument is given, THE SYSTEM SHALL choose the last finished week under the rule; `month` the last finished month (F2-AC2).
+- [ ] WHEN `/review` starts and an open, failed or delivered-not-applied review exists, THE SYSTEM SHALL list them before the new request; a bare `/review` SHALL end after them without starting a new period (F2-AC1).
+- [ ] WHEN no argument is given and no review is listed, THE SYSTEM SHALL choose the last finished week under the rule; `month` the last finished month, also beside a listed review (F2-AC2).
 - [ ] WHEN the argument names a period or an `@` periodic note, THE SYSTEM SHALL review it without a `week`/`month` word (F2-AC3); WHEN the year is missing, THE SYSTEM SHALL take the latest finished one and name the year (F2-AC4).
 - [ ] IF an `@` note does not fit either name format, THEN THE SYSTEM SHALL say so with the format and write nothing (F2-AC5).
 - [ ] IF the period is unfinished or future, or the argument invalid, THEN THE SYSTEM SHALL explain with one valid example and write nothing (F2-AC6/7).

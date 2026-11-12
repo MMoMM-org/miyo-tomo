@@ -99,6 +99,17 @@ The step now says that an Abort at an entry's question ends the run: no further 
 who wants the next entry handled runs `/review` again; the price is one extra call, the alternative is a vault write
 after an Abort.
 
+A bare `/review` while a review is listed starts no new period (Phase 6 live walk, container session 68459faa; owner
+decision). `start` listed open `2026-W13` beside the default request `2026-W45`, and after delivering W13 the skill
+read W45 — a week the user never asked for; they typed `/review` to pick up the open review. The decision is the
+script's, not a prose rule (see [review-session](../../scripts/review-session.md), "WHY a Bare `/review` Carries No
+Request While a Review Is Listed"): with a blank argument and any listed review, `start` returns `request: null` with
+`request_withheld: open-reviews`. The step has one line for it — a bare `/review` starts no new period while a
+review is listed; `/review <period>` or `/review month` names one — and ends the run after the last entry; the
+routing by `request.kind` is reached only with a request. A named period keeps its request beside the listing (the
+same-period rule above still applies), and so does `/review month`: the kind word is an argument. When nothing is
+listed, a bare `/review` is the last finished week as before (F2-AC2).
+
 ## Why Setup Runs Before the First Read and the Request Continues in the Same Session (F1)
 
 WHY: Nothing can be read before Tomo knows where the periodic notes live, how they are named, which daily sections
@@ -220,8 +231,20 @@ a `hints` line that names the folder, never "no templates". In Pass 1, `review-r
 ADVICE_CHECK_ACCESS`, set whenever `kado_empty` is non-empty) has its own line: Kado answered with nothing for those
 sources and the key may not reach those folders; the user checks its access (F3-AC9). The first draft had a line for
 `raise-kado-limit` only, so the second advice token reached the console as a bare word (Phase 5 drift round);
-`tests/test_review_skill.py` now reads the `ADVICE_*` constants the script imports and demands a line per token. The
+`tests/test_review_skill.py` now reads the `ADVICE_*` constants of the two libs that produce the advice
+(`lib/review_pacer`, `lib/review_period`) and demands a line per token. The
 skill never says a folder is empty or a note does not exist.
+
+`nothing_to_review` says the hint on the advice only (Phase 6 live walk, owner decision). The first version of the
+step said "an empty result may also mean the Kado key cannot read the folder" on every empty period, and
+`review-read.py` set `check-key-access` whenever nothing was to review; in the live walk a week after the test
+vault's last daily (2026-09-12) got the access hint although Kado had listed the daily folder with notes for other
+dates. The script now leaves the advice to the listings (`kado_empty`; see
+[review-read](../../scripts/review-read.md), "WHY 'Nothing to Review' Writes Nothing and Says the Access Hint on
+the Advice Only"), and the step says that no daily of the period holds content, names the days of `report.days`
+(each with its dailies, so the user sees which dates were found and which were not), and adds the access line only
+when `advice` holds `check-key-access`. A quiet period is reported as quiet; a folder Kado answered nothing for is
+still never called empty.
 
 ## Why the Period Read Is a Script and `status` Is Branched First
 

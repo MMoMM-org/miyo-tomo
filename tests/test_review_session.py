@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -9,6 +9,9 @@ tests/review_fake_vault:
   (with its first and last day) or an error with kind, expectation and one
   example; `@` notes resolve under the configured names or give
   not-periodic-note; week 53 and year-spanning weeks resolve under the rule
+- start: a bare argument while any review is listed carries no runnable
+  request (`request` null, `request_withheld: open-reviews`); a named period,
+  a kind word (`month`), `setup` and an argument error are never withheld
 - start: `setup` returns the current values (null without a setup, pointers
   when broken); the missing setup is reported per kind
 - start: open review documents are found by tomo.doc_type=review in the inbox
@@ -734,6 +737,84 @@ def test_start_month_is_the_last_finished_month(mod, instance, monkeypatch, caps
                               "start": "2026-10-01", "end": "2026-10-31"}
 
 
+# ── a bare /review while a review is listed (Phase 6 live walk, container session 68459faa) ──
+
+
+def test_start_bare_with_a_listed_review_withholds_the_request(mod, instance, monkeypatch, capsys):
+    """Live: `start --args=''` listed open 2026-W13 and request 2026-W45 (default); after delivering W13 the skill
+    read W45. A bare `/review` names no period: while any review is listed the output carries no runnable request
+    (`request` null, `request_withheld: open-reviews`), so the run ends after the listed reviews."""
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review")})
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["status"] == "ok" and "error" not in out
+    assert [(r["period"], r["state"]) for r in out["open_reviews"]] == [("2026-W13", "open")]
+    assert out["request"] is None and out["request_withheld"] == "open-reviews"
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "   ")
+    assert out["request"] is None and out["request_withheld"] == "open-reviews"
+
+
+def test_start_bare_withholds_the_request_for_every_listed_state(mod, instance, monkeypatch, capsys):
+    """A one-line state (`delivered`, `applied`) is a listed review too: the owner's rule is "at least one open
+    review", and the listing is what the skill handles before any request."""
+    _config(instance)
+    fake = ReviewFakeVault({
+        INBOX + "2026-W12 Review.md": _review_doc("2026-W12", "week", "approved", stem="2026-W12_review"),
+        INBOX + "2026-W12_review_instructions.json": _set_json(_insert_action(False, WEEKLY + "2026-W12.md")),
+        WEEKLY + "2026-W12.md": _weekly("2026-W12", "2026-03-16"),
+    })
+    _complete_meta(instance, "2026-W12_review")
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [("2026-W12_review", "delivered")]
+    assert out["request"] is None and out["request_withheld"] == "open-reviews"
+
+
+def test_start_bare_without_a_listed_review_is_the_default_week(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "Suggestions.md": _review_doc("2026-W11", "week", doc_type="suggestions")})
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "")
+    assert code == 0 and out["open_reviews"] == []
+    assert out["request"]["period"] == "2026-W45" and out["request"]["source"] == "default"
+    assert "request_withheld" not in out
+
+
+@pytest.mark.parametrize("text, period", [
+    ("2026-W13", "2026-W13"),          # the same period as the listed review: the skill's same-period rule applies
+    ("2026-W10", "2026-W10"),
+    ("W10", "2026-W10"),
+    (f"@{WEEKLY}2026-W10.md", "2026-W10"),
+    ("2026-03", "2026-03"),
+])
+def test_start_a_named_period_with_a_listed_review_keeps_the_request(mod, instance, monkeypatch, capsys, text, period):
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review")})
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, text)
+    assert [r["period"] for r in out["open_reviews"]] == ["2026-W13"]
+    assert out["request"]["period"] == period and "request_withheld" not in out
+
+
+@pytest.mark.parametrize("text, kind, period", [("month", "month", "2026-10"), ("week", "week", "2026-W45"),
+                                                (" Month ", "month", "2026-10")])
+def test_start_a_kind_word_with_a_listed_review_keeps_the_request(mod, instance, monkeypatch, capsys, text, kind, period):
+    """`/review month` names the kind: an argument, not a bare call — the request stays (source still `default`)."""
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review")})
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, text)
+    assert [r["period"] for r in out["open_reviews"]] == ["2026-W13"]
+    assert (out["request"]["kind"], out["request"]["period"], out["request"]["source"]) == (kind, period, "default")
+    assert "request_withheld" not in out
+
+
+def test_start_bare_setup_and_errors_are_not_withheld(mod, instance, monkeypatch, capsys):
+    """`setup` is a request of its own kind; an argument error has no request to withhold and spends no call."""
+    _config(instance)
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week", stem="2026-W13_review")})
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "setup")
+    assert out["request"] == {"kind": "setup"} and "request_withheld" not in out
+    _, out, *_ = _start(mod, monkeypatch, capsys, fake, "foo")
+    assert "request" not in out and "request_withheld" not in out and out["error"]["kind"] == "unknown-argument"
+
+
 @pytest.mark.parametrize("text, kind, period, inferred", [
     ("week", "week", "2026-W45", False),
     ("2026-W13", "week", "2026-W13", False),
@@ -894,13 +975,13 @@ def test_start_orders_the_open_reviews_under_the_configured_week_format_and_rule
         INBOX + "2027-W01 Review.md": _review_doc("2027-W01", "week"),
         INBOX + "2026-12 Review.md": _review_doc("2026-12", "month"),
     })
-    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "", today="2027-02-10")
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "week", today="2027-02-10")   # the kind word: kept
     assert code == 0 and out["status"] == "ok"
     assert [r["period"] for r in out["open_reviews"]] == ["2026-12", "2027-W01", "2027-01"]
     assert out["request"]["period"] == "2027-W06" and out["request"]["start"] == "2027-01-31"
 
     _config(instance)                                                   # ISO defaults
-    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "", today="2027-02-10")
+    code, out, *_ = _start(mod, monkeypatch, capsys, fake, "week", today="2027-02-10")
     assert [r["period"] for r in out["open_reviews"]] == ["2026-12", "2027-01", "2027-W01"]
 
 

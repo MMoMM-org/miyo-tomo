@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.5"
+version: "1.6"
 ---
 
 # Product Requirements Document
@@ -110,8 +110,8 @@ The user writes a daily note every day and a weekly and a monthly note to look b
 
 - **User Story:** As the reviewer, I want `/review` to pick up an open review or the last finished week or month, so that the common case needs no argument and I never lose an edited review.
 - **Acceptance Criteria:**
-  - [ ] Given an open review exists (a review document not yet delivered, or a delivered instruction set not yet applied), When the user runs `/review` with or without a period, Then before anything else Tomo shows each open review by period and state and offers to continue it
-  - [ ] Given no open review and no period argument, When the user runs `/review`, Then the period is the last finished week, from the configured first day of the week to the day before the next one; `/review month` takes the last finished calendar month
+  - [ ] Given an open review exists (a review document not yet delivered, or a delivered instruction set not yet applied), When the user runs `/review` with or without a period, Then before anything else Tomo shows each open review by period and state and offers to continue it; without a period, the run ends after the open reviews and no new period starts until the user names one
+  - [ ] Given no open review and no period argument, When the user runs `/review`, Then the period is the last finished week, from the configured first day of the week to the day before the next one; `/review month` takes the last finished calendar month, also when an open review is listed
   - [ ] Given a period named by itself — a week (`2026-W13`), a month (`2026-03`), or an existing weekly or monthly note picked with `@` — When the user runs `/review` with it, Then that period is reviewed, without a `week` or `month` word
   - [ ] Given a week or month without a year (for example `W13`, `M03`), When the user runs `/review` with it, Then the period is the most recent finished one of that number, and Tomo names the year it chose before reading
   - [ ] Given a note picked with `@` whose name does not fit the configured name format of either period kind, When the user runs `/review` with it, Then Tomo says the note is not a weekly or monthly note under the setup, shows the name format, and writes nothing
@@ -132,7 +132,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given a month whose weeks have no weekly notes, When Tomo reads it, Then the review is built from the dailies alone and the report says no weekly notes were found
   - [ ] Given the period, When Tomo reads it, Then it also lists the notes created in the period, the MOCs changed in the period and the MOCs those new notes link to, and calls this vault growth, not a history of edits
   - [ ] Given Tomo has read the period, When it reports, Then it shows per day whether a daily note was found, whether it held content, and which linked notes were missing or not readable
-  - [ ] Given no daily note in the period holds content — no section the setup names carries text beyond the daily template's own skeleton — When Tomo reports, Then it says so, says an empty result may also mean the Kado key cannot read the folder, and writes nothing
+  - [ ] Given no daily note in the period holds content — no section the setup names carries text beyond the daily template's own skeleton — When Tomo reports, Then it says so, names the days, says that the Kado key may not reach the folder only when Kado answered a listing with nothing (never when the folder holds notes of other dates), and writes nothing
   - [ ] Given Kado is unreachable or refuses access, When Tomo reads, Then it stops, shows the error, and writes nothing
   - [ ] Given Kado's rate limit (shared with everything else Tomo runs at the time), When Tomo reads a period, Then it spaces its calls and retries a call Kado turned away for the rate limit, waiting as long as Kado asks, so that a period is read completely rather than cut short
   - [ ] Given a run in which Kado turned calls away for the rate limit, When Tomo reports, Then it says how many calls were retried and how long it waited, and suggests raising Kado's rate limit; after every call that needed a retry it widens the spacing of the following calls, retries what still failed once more at the widest spacing at the end of the run, and names only what failed then

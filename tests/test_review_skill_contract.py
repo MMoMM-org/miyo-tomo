@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_skill_contract.py — spec 045 T5.2 / P5: the SDD's Error Handling rows, the WHY document's
 option lines and the CLI-contract sweep over every skill that names a review script.
 
@@ -40,7 +40,8 @@ ERROR_HANDLING_ROWS = {
     "any reader kado unreachable / auth": STOPPED_RULE,
     "review-read rate limit": "suggest raising Kado's rate limit",
     "review-read / match empty listing": ACCESS_RULE,
-    "review-read no daily has content": "say that no daily note of the period holds content, that an empty result may also mean the Kado key cannot read the folder, and stop; nothing is written",
+    "start bare argument while a review is listed": "say in one line that a bare `/review` starts no new period while a review is listed",
+    "review-read no daily has content": "say that no daily note of the period holds content and name the days of `report.days`; when `advice` holds `check-key-access`, add that Kado answered with nothing",
     "match template missing / unreadable": "the template may not be readable by the Kado key (no access)",
     "match no mapping entry for the kind": "`1 <name> · 2 <name> · 0 none`",
     "match no anchor could be proposed": "Which heading, by number or typed?",

@@ -291,6 +291,40 @@ so that one key (`status`) says whether Kado was reached, as in `match`;
 `status: stopped` with `error.kind` `kado-unreachable` / `kado-auth` is the
 only other shape.
 
+## WHY a Bare `/review` Carries No Request While a Review Is Listed
+
+WHY: the Phase 6 live walk (container session 68459faa) and the owner's
+decision on it. `start --args=''` listed open `2026-W13` and, beside it, the
+default request `2026-W45`; the skill delivered W13 as asked and then — step
+1 said "then with the new request" — ran `review-read.py --period 2026-W45`.
+The user had typed `/review` to pick up the open review, not to start a new
+week; a bare call names no period, so the default is a guess the user never
+made. A prose rule in the skill ("skip the default when a review was
+handled") puts the decision in the model, and the live run shows the model
+following the text it has. The decision therefore lives in `start`: when the
+raw argument is blank (whitespace only counts as blank) and the listing holds
+at least one review — any state, `delivered` and `applied` included, because
+the listing is what the skill handles and "at least one open review" is the
+rule as decided — the output carries `request: null` and
+`request_withheld: "open-reviews"`, and the skill ends the run after the last
+entry. The key is present only beside a null request, so a reader that finds
+`request` null knows why without a second lookup; no other shape of `request`
+changes. A new period starts when the user names one (`2026-W13`, `W13`,
+`2026-03`, `@<note>`) or when nothing is listed — then a bare call is the last
+finished week as before. `/review month` and `/review week` keep their request
+beside the listing: the kind word is an argument that names what the user
+wants (`source` stays `default`, the period is still computed), only the
+empty call is withheld. The same-period rule of the skill (the request names
+a listed period → that review is the request) still applies to a named
+period. `setup` is never withheld — it asks for the setup dialogue, not for a
+period — and an argument error has no request to withhold. The withholding
+happens after the listing succeeded: a `stopped` output (Kado unreachable,
+key refused) keeps the parsed request, because no listing exists to decide
+against, and the skill stops on `status` before it reads the request anyway.
+The check reads the raw argument rather than `request.source`, because the
+kind words share `source: default` with the empty call and must not share
+its fate.
+
 ## WHY the Request Carries Its First and Last Day
 
 WHY: two week rules can name the same week number for different days (the

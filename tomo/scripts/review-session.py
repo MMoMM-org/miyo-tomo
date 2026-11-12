@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.1
+# version: 0.6.2
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -32,6 +32,8 @@ Output: one JSON object on stdout, ASCII-escaped.
     start: status ok|stopped,
            request {kind week|month, period, year_inferred, source arg|at|default, start, end}
              | request {kind setup} + current {week, month: values | null | {invalid [pointers]}}
+             | request null + request_withheld open-reviews (a blank argument while open_reviews
+               is non-empty: no new period starts until the user names one)
              | error {kind invalid-period|unfinished-period|not-periodic-note|unknown-argument,
                       expected, example, last_finished?},
            setup {week present|missing, month present|missing},
@@ -75,6 +77,11 @@ Rules:
     The listing is ordered by period start under the configured week rule and
     name formats (lib/review_config.configured_formats), the pair the argument
     was parsed with.
+    A blank argument (whitespace only counts as blank) with a non-empty listing
+    withholds the request: ``request`` is null and ``request_withheld`` says
+    ``open-reviews``, whatever the states listed. A kind word (``month``,
+    ``week``), a named period, an ``@`` note and ``setup`` keep their request
+    beside the listing; a ``stopped`` output keeps the parsed request too.
     Flags win over the config, the config over the inference, the inference
     over the defaults (ISO weeks ``GGGG-[W]WW``, months ``YYYY-MM``).
     ``--first-day`` and ``--min-days`` come together or not at all (exit 2).
@@ -140,6 +147,7 @@ DEFAULT_TMP = "tomo-tmp/review"
 DEFAULT_HEADING = "Tomo Review"
 NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
 APPLIED_NOT_RECORDED = "applied-not-recorded"
+REQUEST_WITHHELD = "open-reviews"
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
@@ -221,6 +229,10 @@ def start(args: argparse.Namespace) -> dict:
     result["skipped_review_docs"] = skipped
     if not _record_applied(Path(args.tmp), reviews):
         result["notices"] = [APPLIED_NOT_RECORDED]
+    if reviews and not args.args.strip():
+        # a bare /review names no period: while a review is listed there is no new request
+        result["request"] = None
+        result["request_withheld"] = REQUEST_WITHHELD
     return result
 
 

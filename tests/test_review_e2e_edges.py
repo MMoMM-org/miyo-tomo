@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -148,6 +148,32 @@ def test_approved_and_an_item_ticked_through_the_tasks_plugin_parse_preview_and_
     assert "✅" not in walk.doc(f"{INBOX}{WEEK_STEM}_instructions.md")
     assert "✅" not in json.dumps(walk.set_json(WEEK_STEM), ensure_ascii=False)
     assert walk.listing() == [(WEEK_STEM, "delivered")]
+
+
+# ── a bare /review while a review is listed ──────────────────────────────────────────────
+
+
+def test_bare_start_with_an_open_review_carries_no_request_before_or_after_its_delivery(ready: Walk):
+    """Phase 6 live walk (container session 68459faa): open 2026-W13, a bare `/review` → `start` listed W13 and
+    request 2026-W45 (default); after Continue → Deliver the skill ran `review-read.py --period 2026-W45`. Now the
+    bare `start` carries no request while W13 is listed, and none after the delivery either (the delivered set is
+    still listed), so the skill has no period to read; a named period keeps its request beside the listing."""
+    walk = ready
+    text = _approved_week(walk)
+    walk.edit_document(WEEK_DOC, text.replace(APPROVED, TICKED, 1))
+    out = walk.start()
+    assert out["status"] == "ok" and [(r["stem"], r["state"]) for r in out["open_reviews"]] == [(WEEK_STEM, "open")]
+    assert out["request"] is None and out["request_withheld"] == "open-reviews", out
+    assert walk.parse(WEEK_STEM)["approved"] is True                             # Continue
+    assert walk.preview(WEEK_STEM)["problems"] == []
+    assert walk.deliver(WEEK_STEM)["status"] == "delivered"
+    out = walk.start()                                                           # the next bare /review
+    assert [(r["stem"], r["state"]) for r in out["open_reviews"]] == [(WEEK_STEM, "delivered")]
+    assert out["request"] is None and out["request_withheld"] == "open-reviews", out
+    assert not walk.stage("2026-W45_review").exists(), "no period was read for the default week"
+    out = walk.start(SPARSE_PERIOD)                                              # a named period beside the listing
+    assert out["request"]["period"] == SPARSE_PERIOD and "request_withheld" not in out
+    assert [r["stem"] for r in out["open_reviews"]] == [WEEK_STEM]
 
 
 # ── journey 2: /review setup with a saved setup ──────────────────────────────────────────

@@ -280,6 +280,18 @@ The archive holds `tomo-install.json`, the instance's `config/`, `.mcp.json`, `.
 
 Your vault is not in the archive. Back it up separately.
 
+### Protect the instance like your vault
+
+The instance directory holds more than settings. Claude Code keeps a
+transcript of every session in `home/.claude/projects/`, with everything the
+model read — for a `/review` run that is your daily notes and journal entries
+in full — and `instance/tomo-tmp/` keeps working files between steps. Tomo
+does not clean these up; removing them is your choice. Keep `instance/`,
+`home/` and every backup archive on the same footing as your vault: an
+encrypted disk, the same backup and sync rules, never shared or committed.
+[PRIVACY.md → Where read content rests](../PRIVACY.md#where-read-content-rests)
+names each place.
+
 The archive contains your Kado and Claude Code credentials. It is written readable by you only, so treat every copy the same way. It sits next to the instance and survives a cleanup, not a disk failure, so keep a copy on another device.
 
 To restore, run the installer first so the instance exists, then `restore-tomo.sh`. `--dry-run` shows what would be restored, and `--force` skips the prompt. With `--instance`, the archive must come from that same instance, otherwise the restore stops before it writes anything.

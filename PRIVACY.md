@@ -56,14 +56,47 @@ Canvas) and write it to your inbox:
   every other Tomo command: Kado on loopback and the Anthropic API. No
   additional endpoints are contacted.
 
+During **`/review`** — when you ask Tomo to review a finished week or month:
+
+- **Your daily notes of the period** — from every daily note dated in the
+  period, the sections you named in the setup (for example the Daily Log, the
+  end-of-day fields, your habits), the **tracker values** such as sleep, energy
+  and sport, the tasks with their done state, and the notes those sections
+  link or embed for the same day — in a journal-style vault that is the
+  Dayplanner and the entry of the current year in the **5 Year Journal**. Only
+  text that belongs to the period reaches the model; earlier years and "On
+  This Day" sections do not.
+- **Living task notes** you named in the setup (for example a `Next Todos`
+  note), so the review can tell which tasks were done in the period.
+- **Weekly notes** of the weeks that overlap the month, for a monthly review.
+- **Vault growth** — the **paths** of the notes created in the period and of
+  the MOCs changed in it, not their content.
+- **The weekly or monthly note itself**, so the review section can be placed
+  under the right heading, and during the setup its template.
+- **The review document you edited** — in Pass 2 the items you kept, with
+  your wording, are read back to build the instruction set.
+
+A review reads your journal, so it reaches the most personal content a vault
+holds. Folders you do not want reviewed — a therapy journal, client notes —
+keep behind Kado **deny rules**: `/review` reads only what the Kado key
+allows, and the run report says when a day could not be read. The setup
+chooses which daily sections are read; sections it does not name stay out.
+
 This is the intended design: you trigger the run, and the model needs your note
 content and the target MOCs' structure to propose accurate placements. Tomo
 proposes; you confirm before anything is applied.
 
-## What is recorded (metadata only)
+## What Tomo records (metadata only)
 
-Per MiYo Constitution L2, Tomo's operation traces record **metadata only** and
-go to **stderr** (local) — never to any external service.
+Per MiYo Constitution L2, **Tomo's own records** — its logs, its error output
+on **stderr** and its cost records — carry **metadata only**: paths, dates,
+counts and states. They go nowhere but your machine, never to any external
+service.
+
+This scope is deliberate: "metadata only" is a promise about what Tomo writes
+*about* a run, **not** a promise that no content rests on your machine. The
+content Tomo reads also rests in places Tomo does not own; the section
+[Where read content rests](#where-read-content-rests) names them.
 
 The MOC-insertion resolution telemetry (`instruction-render.py`) emits a single
 metadata-only line per run containing:
@@ -74,7 +107,46 @@ metadata-only line per run containing:
 - MOC vault **paths**.
 
 It **never** records heading text, callout text, note content, or frontmatter
-values.
+values. The `/review` scripts follow the same rule: no daily-note text, journal
+answer, tracker value or proposal text appears in their error output or in
+the cost log — only paths, dates, counts and states (tested).
+
+## Where read content rests
+
+Everything the model reads has to pass through your machine, and some of it
+stays there after the run. These are the places, named so that you can decide
+what to do with them:
+
+- **Claude Code's session transcripts in the container home.** Every Tomo
+  session is a Claude Code session, and Claude Code keeps a transcript of each
+  one — including every tool result the model saw, so the daily notes,
+  journal entries, tracker values and proposals of a `/review` run, and the
+  note bodies of an `/inbox` run, are in there in full. They live in the
+  instance's Docker home under `home/.claude/projects/`. Tomo never reads,
+  trims or deletes them. A backup made with `backup-tomo.sh` archives the
+  Docker home, so it archives the transcripts too.
+- **Tomo's working folder `tomo-tmp/`** in the instance workspace. A `/review`
+  run keeps what it read in `tomo-tmp/review/<period>_review/read.json` and
+  the model's proposals in `proposals.json`. Both are deleted once the review
+  document is written to the inbox or the run is aborted; a session that
+  ended without writing or aborting leaves `read.json` and `proposals.json`
+  there until the next `/review` of that period. What stays afterwards
+  (`meta.json`) is metadata only. Other
+  commands keep their working files there too, for example the per-item
+  results of `/inbox` and the draft of `/note`.
+- **Your inbox.** The review document (`<period> Review.md`) holds the
+  proposals built from your journal; the instruction set
+  (`<period>_review_instructions.json` and `.md`) holds the items you
+  approved, in your wording; a review of a week or month without a note yet
+  adds that new note. They stay in the inbox after you applied them, like
+  every other document Tomo delivers — removing them is yours to do.
+
+Tomo does not remove any of this; whether and when to remove it is **your
+choice**. Because the transcripts and the working folder can hold your journal
+as plainly as the vault does, protect the instance directory — both `instance/`
+and `home/` — **like your vault**: keep it on an encrypted disk (for example a
+FileVault-protected volume), give it the same backup and sync rules, and do not
+share or commit it.
 
 ## Credentials
 

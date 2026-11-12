@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.7
+# version: 1.8
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -103,10 +103,13 @@ naming:
     project: "Project"
     source: "Source"
 
-  # Filename patterns per calendar granularity (Moment.js format tokens)
+  # Filename patterns per calendar granularity (Moment.js format tokens).
+  # Weekly names use the ISO week-year (GGGG) with the ISO week (WW): the days
+  # around New Year belong to the week they are in, not to the calendar year.
+  # YYYY-[W]ww names those days after the wrong week; /review refuses it.
   calendar_patterns:
     daily: "YYYY-MM-DD"
-    weekly: "YYYY-[W]ww"
+    weekly: "GGGG-[W]WW"
     monthly: "YYYY-MM"
     quarterly: "YYYY-[Q]Q"
     yearly: "YYYY"
@@ -526,3 +529,53 @@ daily_log:
     past: false                 # MVP: never auto-create past daily notes
     today: false                # MVP: never auto-create today's note (user creates manually)
     future: false               # MVP: never auto-create future notes
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Review
+# ──────────────────────────────────────────────────────────────────────────────
+# The /review setup for weekly and monthly reviews. Written by `/review setup`
+# through scripts/vault-config-writer.py review (schema:
+# tomo/schemas/vault-config-review.schema.json). Do not hand-edit — the setup
+# also enables the weekly/monthly folder under concepts.calendar.granularities,
+# sets naming.calendar_patterns.weekly/monthly and templates.mapping.weekly/
+# monthly in the same run. The section is absent until the first setup; the
+# block below shows a complete example.
+#
+# language                 — review language, BCP 47 (de, en, pt-BR)
+# week.first_day           — first day of the week: monday..sunday
+# week.min_days_in_first_week — days of the new year week 1 must hold: 4 = ISO,
+#                            1 = week 1 contains 1 January
+# daily.sections           — daily-note sections the review reads; nothing else is read
+# daily.skip_sections      — sections never read, prefix match on the heading text
+# daily.task_notes         — living task notes shared by all days
+# daily.max_chars_per_day  — read cap per day; beyond it the day counts as partly read
+# weekly|monthly.heading   — the review heading written into the periodic note
+# weekly|monthly.place     — anchor heading + placement: before (same level,
+#                            above it) | inside (one level deeper, at its end)
+# weekly|monthly.own_sections — sections of the periodic note you write by hand
+# weekly|monthly.template_variant — Tomo-ready variant of a Templater template, or null
+#
+# review:
+#   language: "de"
+#   week:
+#     first_day: "monday"
+#     min_days_in_first_week: 4
+#   daily:
+#     sections: ["Habit", "5 Year Journal", "Start of the Day", "ToDos", "Daily Log", "End of the Day"]
+#     skip_sections: ["On This Day... last year"]
+#     task_notes: ["Efforts/Areas/Next Todos.md"]
+#     max_chars_per_day: 12000
+#   weekly:
+#     heading: "Tomo Review"
+#     place:
+#       anchor: "In my own words"
+#       placement: "before"
+#     own_sections: ["In my own words", "Reflections"]
+#     template_variant: null
+#   monthly:
+#     heading: "Tomo Review"
+#     place:
+#       anchor: "In my own words"
+#       placement: "before"
+#     own_sections: ["In my own words", "Reflections"]
+#     template_variant: null

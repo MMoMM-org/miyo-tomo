@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.9"
+version: "1.10"
 ---
 
 # Solution Design Document
@@ -956,7 +956,7 @@ class ReviewPacer:                      # lib/review_pacer.py, a context manager
                 "not_read": not_read, "advice": ["raise-kado-limit"] if self.retries() else []}
 ```
 
-Estimate (derived, counted per Kado call; owner decision 2026-11-12, T6.1 fix round): each daily is one read, and in the owner's vault each daily links one same-day `DP-` (Dayplanner) note and one same-day `5J-` (journal) note, each resolved by `byName` and then read — 1 + 2 × 2 = 5 calls per daily. A month ≈ 31 × 5 = 155, plus the listings, the weekly notes (≈ 6 reads, their day blocks) and the vault-growth queries ≈ 15 → ≤ 170 without retries (≈ 51 s at 0.3 s); a week ≈ 7 × 5 = 35 plus the same overhead for one week ≈ 10 → ≤ 45 (≈ 14 s). The earlier figures of 30 and 110 were estimated, not measured, from a fixture whose dailies link no planner or journal notes; the integration read of the owner's test vault (tests/test_review_integration.py, T6.2, run on request against live Kado) asserts the limits and reported 163 calls for March 2026 in its fix-round run (commit 9cdf8296). Within the 5-minute KPI even with several `Retry-After` waits (≤ 5 s each with Kado's default window; a 503 "busy" has no Retry-After and backs off up to 10 s). The KPIs are measured on an otherwise idle Kado.
+Estimate (derived, counted per Kado call; owner decision 2026-11-12, T6.1 fix round): each daily is one read, and in the owner's vault each daily links one same-day `DP-` (Dayplanner) note and one same-day `5J-` (journal) note, each resolved by `byName` and then read — 1 + 2 × 2 = 5 calls per daily. A month ≈ 31 × 5 = 155, plus the listings, the weekly notes (≈ 6 reads, their day blocks) and the vault-growth queries ≈ 15 → ≤ 170 without retries (≈ 51 s at 0.3 s); a week ≈ 7 × 5 = 35 plus the same overhead for one week ≈ 10 → ≤ 45 (≈ 14 s). The earlier figures of 30 and 110 were estimated, not measured, from a fixture whose dailies link no planner or journal notes; the integration read of the owner's test vault (tests/test_review_integration.py, T6.2, run on request against live Kado) asserts the limits and reported 163 calls for March 2026 in its fix-round run (commit 9cdf8296). Within the 7-minute KPI (owner decision 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time, ≈ 51 s at 0.3 s) even with several `Retry-After` waits (≤ 5 s each with Kado's default window; a 503 "busy" has no Retry-After and backs off up to 10 s); the full derivation is in docs/tomo/scripts/lib/review_pacer.md. The KPIs are measured on an otherwise idle Kado.
 
 #### Test Examples as Interface Documentation
 
@@ -1284,7 +1284,7 @@ stateDiagram-v2
 
 ## Quality Requirements
 
-- **Performance:** weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00, Pass 2 ≤ $0.20 on the test vault's March 2026; monthly Pass 1 ≤ 5 min wall clock including pacing; a week ≤ 45 Kado calls, a month ≤ 170 without retries (owner decision 2026-11-12: derived from one daily read plus one same-day `DP-` and one `5J-` note per daily, each `byName` + read, plus listings, weekly notes and growth — see the pacer's estimate; the earlier 40/140 rested on the 30/110 estimate, which was not measured).
+- **Performance:** weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00, Pass 2 ≤ $0.20 on the test vault's March 2026; monthly Pass 1 ≤ 7 min wall clock including pacing (owner decision 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time, ≈ 51 s at the 0.3 s start interval); a week ≤ 45 Kado calls, a month ≤ 170 without retries (owner decision 2026-11-12: derived from one daily read plus one same-day `DP-` and one `5J-` note per daily, each `byName` + read, plus listings, weekly notes and growth — the derivation is in docs/tomo/scripts/lib/review_pacer.md and summarised under Implementation Examples, "Estimate"; the earlier 40/140 rested on the 30/110 estimate, which was not measured).
 - **Usability:** every proposal carries a source link; every report names counts, states and missing parts; all confirmations work in plain text.
 - **Security:** 0 writes outside the inbox before apply; 0 daily-note text, journal answer, tracker value or proposal text in Tomo's stderr, logs or cost records (privacy test over every script and subcommand).
 - **Reliability:** a delivery interrupted at any step resumes without a duplicate payload or section; a rerun never yields two Tomo review sections; a same-named user heading is never replaced.

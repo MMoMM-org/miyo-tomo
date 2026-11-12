@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test_review_period.py — reading a period for /review: dailies flat and in
 year folders, the day after the period, duplicates, link stems resolved to
 vault paths, task notes read once, the weekly notes of a month with their
@@ -353,7 +353,7 @@ def test_moc_listing_costs_one_call_per_page_and_the_week_stays_within_budget():
     assert len(moc_calls) == 3                      # 5 MOCs at 2 per page: ceil(5 / 2) pages, one call each
     assert result["report"]["growth"]["moc_folders"] == 1
     assert result["report"]["growth"]["kado_none"] == ["created"]
-    assert vault.call_count <= 40, vault.events
+    assert vault.call_count <= 45, vault.events       # the SDD's week limit (Quality Requirements, Performance)
 
 
 def test_growth_without_moc_folders_queries_no_mocs():

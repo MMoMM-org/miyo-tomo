@@ -266,9 +266,19 @@ reruns `review-instructions.py preview --place-anchor` with the chosen heading, 
 same-named heading of the user's without the marker is never replaced, and the review never lands inside an own
 section: another heading or Abort, offered once — see "Why the Heading Pick Is Offered Once"), `set-exists` (a set
 for the stem waits for Hashi and is not applied yet; nothing is delivered, F6-AC2). The skill's `set-exists` line says
-"not applied yet" on purpose (0.1.6, T6.1 fix round): a set Hashi applied in full is written over by the rerun's
-`deliver`, so the script never answers `set-exists` for it, and the line must not claim that *any* set at the path
-blocks the delivery.
+"not applied yet" on purpose (0.1.6, T6.1 fix round), because the line must not claim that *any* set at the path
+blocks the delivery. `lib/review_delivery.second_set` answers `set-exists` in two cases: a set this record did not
+write sits at the path and any action in it waits (`set_applied` false), or this record's own delivery is already
+complete (`doc_mark` done) or withdrawn — the `set_applied` flag is not consulted then. A fully applied set is written
+over only by a *fresh* record: Start over (`replace --confirm`) resets `meta.json`, so the rerun's `deliver` meets the
+set with `set_applied` true and no `doc_mark`. A completed delivery whose set Hashi applied later never reaches the
+preview: `start` lists it as `applied` (step 1, line "the review was applied"), no branch of that entry goes to step
+6 or 7, and once `applied_reported` is set it is not listed at all. The one record that reaches `preview`/`deliver`
+with `doc_mark` done is a `failed-delivery` whose set is gone from the inbox while the document still carries the
+approved state (`lib/review_state.stem_state`, the "approved document whose set is gone" clause): Resume → `deliver`
+answers `set-exists`, and the skill's line then says a set waits although none is at the path — not a Hashi-applied
+case, since Hashi marks actions `applied` and never deletes the set, but a user who deleted it by hand reads a wrong
+line (open, reported at the T6.1 fix round; no behaviour change).
 
 The same three problems with `mode` `replace` are a different case. The Tomo marker was found in the target note, so
 the plan is a `replace_section` on the heading directly above the marker, whatever the user chose at setup

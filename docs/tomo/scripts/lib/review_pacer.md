@@ -34,8 +34,36 @@ for a second process. A call that needed retries is the signal that the
 window is full, so the spacing doubles after it — `0.3 → 0.6 → 1.2 → 2.0` —
 and stays doubled; a call without retries never narrows it again, because
 the pressure that caused the retry is usually another process that is still
-running. 2 s is the cap: at 2 s a month (≈ 110 calls) still fits the
-five-minute KPI, and anything slower would not be a review session anymore.
+running. 2 s is the cap: anything slower would not be a review session
+anymore, and a narrower cap would not clear a full window (Kado's
+`Retry-After` is up to 5 s).
+
+### The Call Count and the Duration KPI
+
+This is the derivation the SDD's Quality Requirements (Performance) point at
+(owner decisions 2026-11-12, T6.1 fix round). Counted per Kado call on the
+owner's note shape: each daily is one read, and every daily links one
+same-day `DP-` (Dayplanner) note and one same-day `5J-` (five-year journal)
+note, each resolved by `byName` and then read — 1 + 2 × 2 = 5 calls per
+daily. A month ≈ 31 × 5 = 155, plus the folder listings, the weekly notes
+(≈ 6) and the two vault-growth queries ≈ 15 → ≤ 170 calls without retries; a
+week ≈ 7 × 5 = 35 plus ≈ 10 → ≤ 45. The earlier figure of ≈ 110 calls a month
+was estimated from a fixture whose dailies link no planner or journal note,
+not measured; the integration read of the owner's test vault
+(`tests/test_review_integration.py`, run on request against live Kado)
+counted 163 for March 2026.
+
+What the pacer makes of it: at `START_INTERVAL_S` (0.3 s) a 170-call month
+paces ≈ 51 s and a 45-call week ≈ 14 s. A run that doubled to
+`MAX_INTERVAL_S` after its first retried call and stayed there — the spacing
+never narrows — paces 170 × 2 s ≈ 340 s, and `finish()` adds one more send
+per not-read path at the same 2 s, all before the model's own time. So the
+monthly Pass 1 KPI is 7 min, not 5: at the cap the pacing alone passes five
+minutes, and lowering the cap to fit would trade a complete read for a fast
+one, which is the budget the PRD rejected. The SDD's Performance line and the
+PRD's Cost-and-time KPI carry the same numbers; `tests/test_review_sdd_map.py`
+pins all three documents, `tests/test_review_read.py` and
+`tests/test_review_period.py` pin the limits on the fake vault.
 
 ## WHY a Failed Read Returns None and Is Retried Once at the End
 

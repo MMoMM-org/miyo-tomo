@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -25,7 +25,8 @@ and the real lib.review_day readers:
 - setup missing / invalid, daily folder not configured: stopped with problems
 - exit 2 for a bad invocation (including --stem ".", "", whitespace or a
   path mark), exit 1 with the class name only on an unexpected exception
-- a week stays <= 40 calls and a month <= 140 without retries
+- a week stays <= 45 calls and a month <= 170 without retries (the SDD's
+  Quality Requirement, Performance; owner decision 2026-11-12)
 
 All data is synthetic.
 """
@@ -189,17 +190,17 @@ def test_a_month_run_reports_the_weekly_notes_and_stays_within_the_call_budget(m
     assert report["weekly_status"] == "found"
     assert {w["path"] for w in report["weekly_notes"] if w["path"]} == {f"{WEEKLY}2026/2026-W09.md", f"{WEEKLY}2026-W13.md"}
     assert all(w["state"] == "read" for w in report["weekly_notes"] if w["path"])
-    assert report["calls"] == fake.call_count <= 140, fake.events
+    assert report["calls"] == fake.call_count <= 170, fake.events
     read = json.loads(_read_json(instance, "2026-03_review").read_text(encoding="utf-8"))
     assert [w["week"] for w in read["weekly"]] == ["2026-W09", "2026-W13"]
     assert "only_in_weekly_links" in read
 
 
-def test_a_week_stays_within_forty_calls_without_retries(mod, instance, monkeypatch, capsys):
+def test_a_week_stays_within_forty_five_calls_without_retries(mod, instance, monkeypatch, capsys):
     fake = _week_with_links()
     _, out, _ = _week(mod, monkeypatch, capsys, fake)
     assert out["report"]["retried"] == 0
-    assert out["report"]["calls"] == fake.call_count <= 40, fake.events
+    assert out["report"]["calls"] == fake.call_count <= 45, fake.events
 
 
 def test_one_client_per_run_built_once_before_the_first_call_under_one_pacer(mod, instance, monkeypatch, capsys):

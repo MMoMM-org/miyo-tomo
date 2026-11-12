@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.3"
+version: "1.4"
 ---
 
 # Product Requirements Document
@@ -254,7 +254,7 @@ None. Everything the owner asked for is Must Have; the remaining ideas are Could
 - **Adoption:** The owner runs a weekly review for 4 consecutive finished weeks in the live vault after release (measured after the spec closes).
 - **Engagement:** In a delivered review, at most 40 % of Tomo's proposals are unticked or deleted, over the whole review; the habit items Tomo computes are not counted. Counted from item counts at Pass 1 and Pass 2 (also reported per group), without storing any text.
 - **Quality:** 0 writes to the vault outside the inbox before the user applies in Hashi; 0 delivered proposals from Tomo without a source-day link in the period; 0 periodic notes with two Tomo review sections.
-- **Cost and time:** On the test vault's March 2026, a weekly Pass 1 costs at most $0.50, a monthly Pass 1 at most $2.00, a Pass 2 at most $0.20; a monthly Pass 1 finishes within 5 minutes.
+- **Cost and time:** On the test vault's March 2026, a weekly Pass 1 costs at most $0.50, a monthly Pass 1 at most $2.00, a Pass 2 at most $0.20; a monthly Pass 1 finishes within 7 minutes (raised from 5 on 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time).
 
 ### Tracking Requirements
 
@@ -292,7 +292,7 @@ All events carry counts and states only, never text (Feature 7).
 | A wrong week name format targets a note that does not exist and creates a duplicate weekly note | High | Medium | The setup proposes the format from existing notes and shows the matches before saving (F1); the document and the delivery name the target and whether it exists (F4, F5) |
 | Proposals read as generic summary and the user unticks most of them | High | Medium | Every proposal links its source days (F4); engagement KPI tracked from the first delivered review |
 | A month needs many reads and Kado's shared rate limit turns calls away, so the review silently covers less | Medium | High | Paced calls with retries until Kado accepts, a report of retries and waiting with the advice to raise Kado's limit, and an explicit "not read" report in the run and the document for what still failed (F3) |
-| A month that reads dailies and weekly reviews takes too long | Medium | Medium | Pacing is reported with its waiting time; the 5-minute KPI is measured on the test vault's March 2026 |
+| A month that reads dailies and weekly reviews takes too long | Medium | Medium | Pacing is reported with its waiting time; the 7-minute KPI is measured on the test vault's March 2026 |
 | Journal content leaks into logs or cost records | High | Low | Feature 7, tested over every output |
 | The test vault's recent dailies are near-empty skeletons and the gap after 2026-09-12 must stay broken | Medium | High | Live walk on March 2026 (earlier periods are allowed, F2); no fixture writes into the daily folder |
 | The review place does not exist in some periodic notes (older layouts) | Medium | Medium | Delivery checks the place first and offers the note's actual headings (F5) |

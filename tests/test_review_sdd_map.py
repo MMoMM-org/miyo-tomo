@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_review_sdd_map.py — spec 045 Phase 5: the SDD's Directory Map lists every /review file that exists.
 
 The Directory Map of docs/XDD/specs/045-weekly-monthly-review/solution.md is
@@ -18,6 +18,11 @@ Also pinned, as drift found at the Phase 5 checkpoint (round D):
 - the `place-too-deep` row says insert/new-note names the anchor and the
   placement — the refused preview carries no level (lib/review_actions sets
   `place.level` only after `_insertion` succeeds).
+
+Pinned at the T6.1 fix round (owner decisions 2026-11-12): the SDD's Performance
+requirement says week ≤ 45 / month ≤ 170 Kado calls and a 7-minute monthly KPI,
+its derivation pointer names docs/tomo/scripts/lib/review_pacer.md and that
+document derives the numbers; the PRD's Cost-and-time KPI says 7 minutes.
 """
 from __future__ import annotations
 
@@ -144,3 +149,46 @@ def test_error_handling_empty_listing_row_names_the_ask_before_creating_notes() 
     rows = [ln for ln in _section(_sdd(), "Error Handling").splitlines() if "kado-none" in ln]
     assert len(rows) == 1, rows
     assert "asks before proposing to create notes" in rows[0], rows[0]
+
+
+# --- T6.1 fix round: the Performance requirement carries the owner's limits, and its pointer holds -----
+
+PRD = SDD.with_name("requirements.md")
+PACER_WHY = ROOT / "docs" / "tomo" / "scripts" / "lib" / "review_pacer.md"
+
+
+def _performance_requirement() -> str:
+    rows = [ln for ln in _section(_sdd(), "Quality Requirements").splitlines() if ln.startswith("- **Performance:**")]
+    assert len(rows) == 1, rows
+    return rows[0]
+
+
+def test_sdd_performance_requirement_says_45_170_calls_and_the_seven_minute_kpi() -> None:
+    """Owner decisions 2026-11-12: week ≤ 45 and month ≤ 170 Kado calls (each daily links one same-day DP- and
+    one 5J- note, byName + read each); the monthly Pass 1 KPI is 7 min, not 5 (a 170-call month at the pacer's
+    2 s cap paces ≈ 340 s before model time)."""
+    line = _performance_requirement()
+    assert "a week ≤ 45 Kado calls, a month ≤ 170" in line, line
+    assert "monthly Pass 1 ≤ 7 min" in line, line
+    assert "≤ 5 min" not in line and "5-minute" not in line, line
+
+
+def test_sdd_performance_requirement_points_at_the_derivation_in_the_pacer_why() -> None:
+    """The requirement's pointer must name a document that holds the call-count derivation; `review_pacer.md`
+    derives 45/170 from START_INTERVAL_S, the doubling, the 2 s cap and finish()."""
+    line = _performance_requirement()
+    assert "docs/tomo/scripts/lib/review_pacer.md" in line, line
+    why = PACER_WHY.read_text(encoding="utf-8")
+    for phrase in ("1 + 2 × 2 = 5", "≤ 170", "≤ 45", "340 s", "7 min"):
+        assert phrase in why, f"review_pacer.md lacks {phrase!r}"
+    assert "(≈ 110 calls) still fits" not in why and "five-minute" not in why, \
+        "stale 110-call / five-minute claim in review_pacer.md"
+
+
+def test_prd_cost_and_time_kpi_says_seven_minutes() -> None:
+    text = PRD.read_text(encoding="utf-8")
+    rows = [ln for ln in text.splitlines() if ln.startswith("- **Cost and time:**")]
+    assert len(rows) == 1, rows
+    assert "a monthly Pass 1 finishes within 7 minutes" in rows[0], rows[0]
+    assert "5 minutes" not in rows[0], rows[0]
+    assert "5-minute KPI" not in text, "the PRD's risk table still names the five-minute KPI"

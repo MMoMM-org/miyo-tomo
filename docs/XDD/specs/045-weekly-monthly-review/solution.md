@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.4"
+version: "1.5"
 ---
 
 # Solution Design Document
@@ -1027,9 +1027,9 @@ sequenceDiagram
 | `parse` / `preview` | Approved unticked / line missing | `not-approved` / `approved-line-missing` | names the box / how to restore `- [ ] Approved` (F5-AC1) |
 | `preview` | everything unticked | `nothing-to-deliver` | Abort or start over |
 | `preview` | place missing | `place-missing` + `headings` | asks for one or Abort; `deliver --place-anchor` uses it (F5-AC7) |
-| `preview` | review heading would exceed level 5 at the anchor (`review_config.place_level` refuses; rule implemented, spec 045 Phase 2) | `place-too-deep` + `headings` | names the anchor and its level; asks for a shallower heading (`deliver --place-anchor`) or Abort; nothing written |
-| `preview` | a same-named user heading without marker; an `inside` placement into an own section; a marker under an own section; a marker under a heading an earlier heading of the same text shadows | `user-heading-collision` | never replaced; another heading or Abort |
-| `preview` | the marker has no heading above it | `place-missing`, mode `replace` | names the problem; Abort or start over |
+| `preview` | review heading would exceed level 5 at the anchor (`review_config.place_level` refuses; rule implemented, spec 045 Phase 2) | `place-too-deep` + `headings` | names the anchor and its level; asks for a shallower heading (`deliver --place-anchor`) or Abort; nothing written. In mode `replace` (the heading above the marker is level 6; `--place-anchor` is never read there) names the problem; Start over or Abort |
+| `preview` | a same-named user heading without marker; an `inside` placement into an own section; a marker under an own section; a marker under a heading an earlier heading of the same text shadows | `user-heading-collision` | never replaced; another heading or Abort. In mode `replace` (the marker under an own section or a shadowed heading; `--place-anchor` is never read there) names the problem; Start over or Abort |
+| `preview` | the marker has no heading above it | `place-missing`, mode `replace` | names the problem; Start over or Abort |
 | `preview` | marker under a renamed heading | notice `heading-renamed` | replaced there; says so (F6-AC3) |
 | `preview` | template variant gone | notices `variant_missing`, `templater_hint` | raw template + Templater hint |
 | `preview` | template has a `tomo:` block or cannot be merged | notice `template_unmergeable` (+ the reason) | a plain note is built instead; says so |

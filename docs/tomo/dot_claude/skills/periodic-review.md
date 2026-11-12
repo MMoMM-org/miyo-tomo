@@ -244,16 +244,28 @@ skill's Pass 2 for every member — a token the scripts add without a skill line
 that let two members through the first time (T5.2 fix round). Refusing: `not-approved`, `approved-line-missing`
 (the plan's gate refuses it before `not-approved` — `lib/review_actions._gate` — so `preview` and `deliver` can
 answer it as well as `parse`; the skill says how to restore `- [ ] Approved` at the line start and stops),
-`nothing-to-deliver` (everything unticked → Abort or start over), `place-missing` and `place-too-deep` (the configured
-place is not in the target or would push the review heading past level 5: the skill lists the `headings` the note
-has and asks for one or Abort, then reruns `review-instructions.py preview --place-anchor` with the chosen heading,
-F5-AC7), `user-heading-collision` (a same-named heading of the user's without the marker is never replaced: another
-heading or Abort), `set-exists` (a set for the stem waits for Hashi; nothing is delivered, F6-AC2). One `place-missing`
-is different: with `mode` `replace` the Tomo marker was found in the target note but no heading stands above it
-(`lib/review_actions._existing_note`, `place.anchor` null). A replace needs the heading the marker sits under, so
-`--place-anchor` is ignored there and the heading pick would loop. The SDD's Error Handling row for that case says
-"names the problem; Abort or start over", so the skill says what it found and asks `1 Start over · 2 Abort` — start
-over is Pass 1 again for the period, abort leaves the document open; the user fixes the note in Obsidian. Notices:
+`nothing-to-deliver` (everything unticked → Abort or start over), `place-missing` and `place-too-deep` with `mode`
+`insert` or `new-note` (the configured place is not in the target or would push the review heading past level 5: the
+skill lists the `headings` the note has and asks for one or Abort, then reruns `review-instructions.py preview
+--place-anchor` with the chosen heading, F5-AC7), `user-heading-collision` with `mode` `insert` or `new-note` (a
+same-named heading of the user's without the marker is never replaced: another heading or Abort), `set-exists` (a set
+for the stem waits for Hashi; nothing is delivered, F6-AC2).
+
+The same three problems with `mode` `replace` are a different case. The Tomo marker was found in the target note, so
+the plan is a `replace_section` on the heading directly above the marker, whatever the user chose at setup
+(`lib/review_actions._existing_note`, marker branch): `--place-anchor` is never read there. The branch refuses in
+three ways — no heading above the marker (`place-missing`, `place.anchor` null), the heading above it is one of the
+user's own sections or an earlier heading of the same text shadows it (`user-heading-collision`), the heading is
+level 6 so a review heading there would pass level 5 (`place-too-deep`) — and every one keeps `mode` `replace` and
+the `headings` list. Offering the heading pick for any of them reruns `preview --place-anchor` into the same marker
+branch and the same refusal, forever; the first fix round saw this for `place-missing` only, and the code review of
+that round found the other two (second T5.2 fix round). The SDD's Error Handling rows for all three say "names the
+problem; Start over or Abort" in replace mode, so the skill has one bullet for the three with `mode` `replace`, placed
+before the heading-pick bullets, that says plainly what is wrong with the heading above the marker and asks
+`1 Start over · 2 Abort` — start over is Pass 1 again for the period, abort leaves the document open; the user fixes
+the note in Obsidian (moves the marker under a heading of Tomo's, renames the colliding heading, or lifts the
+section). The heading-pick bullets name `mode` `insert` or `new-note` explicitly rather than "otherwise", so exactly
+one bullet matches each (problem, mode) pair for a literal model. Notices:
 `heading-renamed` (the marker was found under a renamed heading; the section is replaced there, F6-AC3),
 `target_appeared` (the user created the target since Pass 1; the plan targets it instead of a new note, F6-AC4),
 `variant_missing` and `templater_hint` (the template's Tomo variant is gone or the template holds Templater code; the

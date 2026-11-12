@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry.
 
 The dialogue criteria of /review are model behaviour; this file proves that each
@@ -28,7 +28,9 @@ tomo/dot_claude/skills/periodic-review/SKILL.md exists, and tomo-help.md does
 not list /review. RED before the T5.2 fix round: no `place-missing` branch for
 mode `replace`, no stop line for `approved-line-missing` in Pass 2, `drop`'s
 `kado-write-failed` said nothing was withdrawn, `replace --confirm` was
-reported as `written` without a status branch.
+reported as `written` without a status branch. RED before the second fix
+round: `place-too-deep` and `user-heading-collision` with mode `replace` went
+to the heading pick, which replace mode never reads (a loop).
 """
 from __future__ import annotations
 
@@ -85,7 +87,7 @@ def _body() -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.1")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.2")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -415,6 +417,8 @@ def test_every_status_of_replace_confirm_has_a_branch_in_the_write_list(status):
 
 
 def test_write_statuses_hand_listed_here_are_the_scripts():
+    # Coupled to review-doc.py's function names (`render_and_write`, `write_document`, `replace_document`,
+    # `_date_arg`) and its `"status": "..."` literals: a rename there fails this slice, not the skill.
     source = (REPO / "tomo" / "scripts" / "review-doc.py").read_text(encoding="utf-8")
     body = source[source.index("def render_and_write("):source.index("def write_document(")]
     assert set(re.findall(r'"status": "([a-z-]+)"', body)) == {"refused", "stopped", "written"}
@@ -484,16 +488,19 @@ PREVIEW_PROBLEMS = {
     "approved-line-missing": ("- `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` "
                               "at the line start and tick it; stop."),
     "nothing-to-deliver": "- `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.",
-    "place-missing-replace": ("- `place-missing` with `mode` `replace` → say the Tomo marker in the target note has no "
-                              "heading above it and ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's "
-                              "`period` and `kind`, Abort → stop."),
-    "place-missing": ("- `place-missing` otherwise, or `place-too-deep` → say the configured place is not in the target "
-                      "note, or would push the review heading past level 5; print `headings` as a numbered list and "
-                      "ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` "
-                      "and keep it for step 8. 0 → stop."),
-    "user-heading-collision": ("- `user-heading-collision` → say a heading of the user's with the same name is never "
-                               "replaced; print `headings` as a numbered list and ask: Which number, or 0 Abort? "
-                               "(as above)."),
+    "replace-mode": ("- `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what "
+                     "is wrong with the heading above the Tomo marker in the target note: there is none "
+                     "(`place-missing`); it is one of the user's own sections, or an earlier heading of the same name "
+                     "stands above it (`user-heading-collision`); it is too deep to replace under, the review heading "
+                     "would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`; Start over → step 4 with "
+                     "the entry's `period` and `kind`, Abort → stop."),
+    "place-missing": ("- `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured "
+                      "place is not in the target note, or would push the review heading past level 5; print "
+                      "`headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` "
+                      "with that heading as `--place-anchor` and keep it for step 8. 0 → stop."),
+    "user-heading-collision": ("- `user-heading-collision` with `mode` `insert` or `new-note` → say a heading of the "
+                               "user's with the same name is never replaced; print `headings` as a numbered list and "
+                               "ask: Which number, or 0 Abort? (as above)."),
     "set-exists": "- `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.",
 }
 PREVIEW_NOTICES = {
@@ -520,9 +527,36 @@ def test_every_preview_notice_is_one_line_and_the_question_still_follows(notice)
     assert text.index(PREVIEW_NOTICES[notice]) < text.index("Then ask `1 Deliver · 2 Abort`"), notice
 
 
-def test_the_replace_mode_place_missing_branch_comes_before_the_heading_pick():
+def _branch_head(bullet: str) -> str:
+    """The bullet up to its arrow: the condition a literal model matches, not any later mention of the tokens."""
+    return bullet[:bullet.index("→") + 1]
+
+
+def _branch_at(text: str, bullet: str) -> int:
+    head = _branch_head(bullet)
+    assert text.count(head) == 1, head
+    return text.index(head)
+
+
+def test_the_replace_mode_branch_covers_all_three_problems_and_comes_before_the_heading_pick():
+    """Replace mode never reads `--place-anchor` (lib/review_actions._existing_note, marker branch), so the heading
+    pick would refuse forever for any of the three; the replace bullet is matched first and names all three."""
     text = _section("7. Preview")
-    assert text.index(PREVIEW_PROBLEMS["place-missing-replace"]) < text.index(PREVIEW_PROBLEMS["place-missing"])
+    replace = _branch_head(PREVIEW_PROBLEMS["replace-mode"])
+    for problem in ("place-missing", "place-too-deep", "user-heading-collision"):
+        assert f"`{problem}`" in replace, problem
+    assert "`mode` `replace`" in replace
+    at = _branch_at(text, PREVIEW_PROBLEMS["replace-mode"])
+    assert at < _branch_at(text, PREVIEW_PROBLEMS["place-missing"])
+    assert at < _branch_at(text, PREVIEW_PROBLEMS["user-heading-collision"])
+
+
+@pytest.mark.parametrize("pick", ["place-missing", "user-heading-collision"])
+def test_the_heading_pick_branches_apply_to_insert_and_new_note_only(pick):
+    head = _branch_head(PREVIEW_PROBLEMS[pick])
+    assert "with `mode` `insert` or `new-note`" in head
+    assert "`replace`" not in head
+    assert "otherwise" not in head
 
 
 def _delivery_vocabulary():
@@ -639,6 +673,8 @@ def test_every_drop_status_has_its_branch(status):
 
 
 def test_drop_statuses_hand_listed_here_are_the_scripts():
+    # Coupled to review-instructions.py's function names (`drop`, `status`) and its `"status": "..."` literals:
+    # a rename there fails this slice, not the skill.
     source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
     body = source[source.index("def drop("):source.index("def status(")]
     assert set(re.findall(r'"status": "([a-z-]+)"', body)) == set(DROP_STATUSES) - {"not-found"}
@@ -652,6 +688,8 @@ def test_every_drop_problem_token_of_the_script_has_its_line():
 
 def test_drop_writes_the_set_before_the_readable_peer_so_a_late_failure_is_partial():
     """The skill's `kado-write-failed` wording rests on this order; a swap would make it wrong."""
+    # Coupled to review-instructions.py's `drop` / `status` names and its write_file / write_note / meta call
+    # text: a rename there fails this slice, not the skill.
     source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
     body = source[source.index("def drop("):source.index("def status(")]
     assert body.index("write_file(paths[rdl.SET_JSON]") < body.index("write_note(paths[rdl.SET_MD]")
@@ -685,7 +723,9 @@ ERROR_HANDLING_ROWS = {
     "parse approved-line-missing": "restore `- [ ] Approved` at column 0",
     "preview nothing-to-deliver": "say nothing is ticked and ask `1 Start over · 2 Abort`",
     "preview place-missing / place-too-deep": "print `headings` as a numbered list and ask: Which number, or 0 Abort?",
-    "preview marker without a heading above (place-missing, mode replace)": "say the Tomo marker in the target note has no heading above it and ask `1 Start over · 2 Abort`",
+    "preview marker without a heading above (place-missing, mode replace)": "with `mode` `replace` → say what is wrong with the heading above the Tomo marker in the target note: there is none (`place-missing`)",
+    "preview place-too-deep, mode replace": "it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`",
+    "preview user-heading-collision, mode replace": "it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`)",
     "preview user-heading-collision": "say a heading of the user's with the same name is never replaced",
     "preview heading-renamed": "the marker was found under a renamed heading; the section is replaced there",
     "preview template variant gone": "the readable instructions say to run Templater after the move",

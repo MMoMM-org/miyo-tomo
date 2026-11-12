@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry.
 
 The dialogue criteria of /review are model behaviour; this file proves that each
@@ -30,7 +30,12 @@ mode `replace`, no stop line for `approved-line-missing` in Pass 2, `drop`'s
 `kado-write-failed` said nothing was withdrawn, `replace --confirm` was
 reported as `written` without a status branch. RED before the second fix
 round: `place-too-deep` and `user-heading-collision` with mode `replace` went
-to the heading pick, which replace mode never reads (a loop).
+to the heading pick, which replace mode never reads (a loop). RED before the
+third fix round: a `user-heading-collision` on the rerun after a heading pick
+went back to the heading pick — the same-named-heading cause
+(`lib/review_actions._existing_note`, before `_insertion`) never reads
+`--place-anchor`, and the preview output does not tell it from the
+own-section cause, so the pick is offered once.
 """
 from __future__ import annotations
 
@@ -87,7 +92,7 @@ def _body() -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.2")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.3")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -494,13 +499,21 @@ PREVIEW_PROBLEMS = {
                      "stands above it (`user-heading-collision`); it is too deep to replace under, the review heading "
                      "would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`; Start over → step 4 with "
                      "the entry's `period` and `kind`, Abort → stop."),
+    "user-heading-collision-after-pick": (
+        "- `user-heading-collision` with `mode` `insert` or `new-note` after a heading pick (the rerun with "
+        "`--place-anchor`) → say the target note holds a heading that clashes with the review: one named like the "
+        "review heading, or the picked heading is one of the user's own sections; the user renames or removes the "
+        "clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` "
+        "and `kind`, Abort → stop. Never print `headings` or ask for a number a second time."),
     "place-missing": ("- `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured "
                       "place is not in the target note, or would push the review heading past level 5; print "
                       "`headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` "
-                      "with that heading as `--place-anchor` and keep it for step 8. 0 → stop."),
-    "user-heading-collision": ("- `user-heading-collision` with `mode` `insert` or `new-note` → say a heading of the "
-                               "user's with the same name is never replaced; print `headings` as a numbered list and "
-                               "ask: Which number, or 0 Abort? (as above)."),
+                      "with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this "
+                      "list. 0 → stop."),
+    "user-heading-collision": ("- `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick "
+                               "→ say a heading of the user's with the same name is never replaced and the review "
+                               "never lands inside one of the user's own sections; print `headings` as a numbered "
+                               "list and ask: Which number, or 0 Abort? (as above)."),
     "set-exists": "- `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.",
 }
 PREVIEW_NOTICES = {
@@ -549,6 +562,28 @@ def test_the_replace_mode_branch_covers_all_three_problems_and_comes_before_the_
     at = _branch_at(text, PREVIEW_PROBLEMS["replace-mode"])
     assert at < _branch_at(text, PREVIEW_PROBLEMS["place-missing"])
     assert at < _branch_at(text, PREVIEW_PROBLEMS["user-heading-collision"])
+
+
+def test_a_collision_after_a_heading_pick_ends_with_start_over_or_abort_never_a_second_pick():
+    """`_first(headings, setup.heading)` in lib/review_actions._existing_note refuses before `_insertion` and never
+    reads `--place-anchor`, and the preview output does not tell that cause from the own-section one (same
+    `problems`, `headings`, `mode` and `place`), so the pick is offered once: the after-pick bullet is matched
+    before both pick bullets, offers no list, and both picks route the rerun back through the list."""
+    text = _section("7. Preview")
+    after = PREVIEW_PROBLEMS["user-heading-collision-after-pick"]
+    assert after in text
+    at = _branch_at(text, after)
+    assert _branch_at(text, PREVIEW_PROBLEMS["replace-mode"]) < at
+    assert at < _branch_at(text, PREVIEW_PROBLEMS["place-missing"])
+    assert at < _branch_at(text, PREVIEW_PROBLEMS["user-heading-collision"])
+    assert "after a heading pick" in _branch_head(after) and "`--place-anchor`" in _branch_head(after)
+    assert "before any heading pick" in _branch_head(PREVIEW_PROBLEMS["user-heading-collision"])
+    assert "Which number" not in after and "numbered list" not in after
+    assert "`1 Start over · 2 Abort`" in after
+    assert "Never print `headings` or ask for a number a second time." in after
+    assert "branch on the rerun by this list" in PREVIEW_PROBLEMS["place-missing"]
+    assert "(as above)" in PREVIEW_PROBLEMS["user-heading-collision"]
+    assert text.count("Which number, or 0 Abort?") == 2
 
 
 @pytest.mark.parametrize("pick", ["place-missing", "user-heading-collision"])
@@ -727,6 +762,7 @@ ERROR_HANDLING_ROWS = {
     "preview place-too-deep, mode replace": "it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`",
     "preview user-heading-collision, mode replace": "it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`)",
     "preview user-heading-collision": "say a heading of the user's with the same name is never replaced",
+    "preview user-heading-collision after a heading pick": "the user renames or removes the clashing heading in Obsidian. Ask `1 Start over · 2 Abort`",
     "preview heading-renamed": "the marker was found under a renamed heading; the section is replaced there",
     "preview template variant gone": "the readable instructions say to run Templater after the move",
     "preview template_unmergeable": "a plain note is built instead",

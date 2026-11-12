@@ -248,7 +248,8 @@ answer it as well as `parse`; the skill says how to restore `- [ ] Approved` at 
 `insert` or `new-note` (the configured place is not in the target or would push the review heading past level 5: the
 skill lists the `headings` the note has and asks for one or Abort, then reruns `review-instructions.py preview
 --place-anchor` with the chosen heading, F5-AC7), `user-heading-collision` with `mode` `insert` or `new-note` (a
-same-named heading of the user's without the marker is never replaced: another heading or Abort), `set-exists` (a set
+same-named heading of the user's without the marker is never replaced, and the review never lands inside an own
+section: another heading or Abort, offered once — see "Why the Heading Pick Is Offered Once"), `set-exists` (a set
 for the stem waits for Hashi; nothing is delivered, F6-AC2).
 
 The same three problems with `mode` `replace` are a different case. The Tomo marker was found in the target note, so
@@ -265,7 +266,33 @@ before the heading-pick bullets, that says plainly what is wrong with the headin
 `1 Start over · 2 Abort` — start over is Pass 1 again for the period, abort leaves the document open; the user fixes
 the note in Obsidian (moves the marker under a heading of Tomo's, renames the colliding heading, or lifts the
 section). The heading-pick bullets name `mode` `insert` or `new-note` explicitly rather than "otherwise", so exactly
-one bullet matches each (problem, mode) pair for a literal model. Notices:
+one bullet matches each (problem, mode) pair for a literal model.
+
+## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
+
+WHY: `user-heading-collision` with `mode` `insert` has two causes in `lib/review_actions._existing_note`, and only
+one of them is cured by a heading pick. The first: the target note already holds a heading named like the review
+heading, without Tomo's marker (`_first(headings, setup.heading)`, checked before `_insertion`). That check never reads
+the anchor, so a rerun with `--place-anchor` refuses again whatever heading the user picks — the only cure is to rename
+or remove that heading in Obsidian (or move the marker under it so the rerun becomes a `replace`). The second: an
+`inside` placement into one of the user's own sections (`_insertion`), which is anchor-dependent, so a pick of a
+heading that is not an own section lands. `new-note` mode has the second cause only (the template is not searched for
+the review heading). The preview output cannot tell the two apart: both refuse through `_refuse` with the same
+`problems`, the same `headings` list, `mode` `insert` and a `place` that still holds the constructor's `anchor` and
+`placement` without `level`; nothing in the output names the configured review heading, and `section_md` is empty on
+a refusal. `place.placement` `before` would prove the first cause, but `inside` proves nothing, so a branch on it would
+leave the loop open. The owner chose a skill-only fix, no script change.
+
+So the pick is made loop-safe instead of cause-aware: the first `user-heading-collision` in `insert` or `new-note` mode
+lists the `headings` and asks for one; when the rerun with `--place-anchor` (from this bullet or from the
+`place-missing` / `place-too-deep` pick) answers `user-heading-collision` again, the skill names the clash — the note
+holds a heading named like the review heading, or the picked heading is an own section — tells the user to rename or
+remove the clashing heading in Obsidian, asks `1 Start over · 2 Abort`, and never prints the list or asks for a number
+a second time. The price is one wasted pick and one preview read for the first cause; the alternative, a model that
+keeps offering the list, was the observed defect (the second fix round's review found it after the replace-mode fix).
+The after-pick bullet stands before both pick bullets, and the first-collision bullet says "before any heading pick",
+so exactly one bullet matches a literal model's rerun. Both pick bullets say to branch on the rerun by the same list,
+so the after-pick bullet is reached rather than the pick repeated. Notices:
 `heading-renamed` (the marker was found under a renamed heading; the section is replaced there, F6-AC3),
 `target_appeared` (the user created the target since Pass 1; the plan targets it instead of a new note, F6-AC4),
 `variant_missing` and `templater_hint` (the template's Tomo variant is gone or the template holds Templater code; the

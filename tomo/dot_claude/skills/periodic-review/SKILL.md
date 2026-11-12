@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.2
+# version: 0.1.3
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -161,8 +161,9 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` at the line start and tick it; stop.
   - `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.
   - `place-missing`, `place-too-deep` or `user-heading-collision` with `mode` `replace` → say what is wrong with the heading above the Tomo marker in the target note: there is none (`place-missing`); it is one of the user's own sections, or an earlier heading of the same name stands above it (`user-heading-collision`); it is too deep to replace under, the review heading would pass level 5 (`place-too-deep`). Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop.
-  - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` and keep it for step 8. 0 → stop.
-  - `user-heading-collision` with `mode` `insert` or `new-note` → say a heading of the user's with the same name is never replaced; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
+  - `user-heading-collision` with `mode` `insert` or `new-note` after a heading pick (the rerun with `--place-anchor`) → say the target note holds a heading that clashes with the review: one named like the review heading, or the picked heading is one of the user's own sections; the user renames or removes the clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop. Never print `headings` or ask for a number a second time.
+  - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this list. 0 → stop.
+  - `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick → say a heading of the user's with the same name is never replaced and the review never lands inside one of the user's own sections; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
   - `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.
 - `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line per entry of `notices` and per flag set:
   - `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.

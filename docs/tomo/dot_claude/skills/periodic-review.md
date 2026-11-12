@@ -1,0 +1,309 @@
+# WHY: periodic-review (skill)
+
+> Rationale for `tomo/dot_claude/skills/periodic-review/SKILL.md`.
+> Spec 045 (issue #31, `docs/XDD/specs/045-weekly-monthly-review/`). ADR numbers and F-AC ids refer to its
+> `solution.md` and `requirements.md`. Entry point: [review](../commands/review.md). Precedent:
+> [note-from-template](note-from-template.md) (spec 044), whose shape this skill copies.
+> The scripts' own WHY: [review-session](../../scripts/review-session.md), [review-read](../../scripts/review-read.md),
+> [review-doc](../../scripts/review-doc.md), [review-instructions](../../scripts/review-instructions.md),
+> [vault-config-writer](../../scripts/vault-config-writer.md).
+
+## Why the Skill Owns the Order and Scripts Own Every State Change (ADR-1)
+
+WHY: `/review` has the 2-pass shape of `/inbox` and `/note`: Pass 1 writes a document the user edits, Pass 2 turns
+the edited document into an instruction set. The PRD forbids a black box (every item editable before it lands) and
+Constitution L1 demands that the domain behaviour is testable without an AI. So the skill holds only the dialogue
+order — start, setup, read, propose, write the document, continue, preview, deliver — and every read of the vault,
+every write, every rendering and every state decision is a script call with one JSON object on stdout. The model does
+exactly one creative step: it reads `read.json` and writes `proposals.json` (ADR-12). The skill writes two local files
+itself and nothing else: `proposals.json` and the confirmed-setup JSON that `review-session.py setup-input --confirmed`
+reads. Everything the skill tells the user comes from a script's output; it never reads the vault directly and never
+composes YAML, markdown documents or instruction sets by hand. The price is more scripts than an LLM-driven flow and a
+skill whose prose is outside the eval gate (see "Why There Is No Eval Gate").
+
+## Why /review Runs in the Main Session, Not as a Subagent
+
+WHY: The skill asks the user at the setup confirmation, the week question, start over, Deliver or Abort, resume or
+drop, and the place question. Subagents cannot ask the user and cannot use the Agent tool (Anthropic platform
+constraint), so the command shim loads the skill in the main session and no step dispatches a subagent. Revisit if
+the platform changes.
+
+## Why Every Question Is Plain Text and the Turn Ends There
+
+WHY: Spec 044 learned this live, three times (sessions c573b7b7, afc60d6c, 2e8fb1d3 in
+[note-from-template](note-from-template.md#why-questions-about-a-draft-or-a-list-are-plain-text)): calling
+`AskUserQuestion` after printed content fails on claude-sonnet-5-5 — the model treats its own tool output as shown to
+the user and calls the dialog straight after a Read, with no visible text, and the user approves what they never saw.
+`claude plugin eval` never offers `AskUserQuestion` either, so the paid evidence can only prove the typed path. Every
+question of this skill is therefore the same message as the content it refers to: the content, then one numbered
+option line as the last line (`1 Deliver · 2 Abort`, `1 Confirm · 2 Correct · 3 Abort`, `1 Resume · 2 Drop`,
+`1 Continue · 2 Start over · 3 Abort`), and the turn ends. The next user message is the answer, mapped to an option
+by number or by word; anything else is asked again in plain text. There is no second channel: the message the model
+writes is the one the user reads. The numbers follow spec 044's 0.2.9 decision (one key instead of a typed word) and
+stay consecutive. The preview-in-dialog form of `/note` 0.2.11 is not used here: the review section is the user's own
+approved text and short, so a plain reprint costs little, and the `/note` form is still unproven in Hashi's session
+view. Revisit if the platform shows tool inputs to the user or the model reliably prints before a tool call.
+
+## Why Session Start Is a Script
+
+WHY: `review-session.py start --args` parses `$ARGUMENTS` verbatim (`--args='<text>'` in single quotes, each `'`
+written as `'\''`, so a request beginning with `-` is not read as an option and nothing in the user's text is
+expanded by the shell). It resolves the period under the configured week rule and name formats, reports the setup per
+kind (`present` / `missing`) and lists the open reviews with their state. A prose "if the argument has a W in it"
+depends on the model; the script's answer is deterministic and tested. An unusable argument comes back as
+`error.kind` with `expected` and one `example` (`invalid-period`, `not-periodic-note`, `unknown-argument`, F2-AC5,
+F2-AC7) or, for a period that has not ended, `unfinished-period` with `last_finished` (F2-AC6): the skill shows
+exactly that and stops, and nothing is written. A week or month without a year (`W13`) is resolved to the most
+recent finished one and `year_inferred` is true, so the skill names the year before reading (F2-AC4). `status:
+stopped` with `kado-unreachable` or `kado-auth` is shown and ends the run before anything else, and
+`problems: [inbox-not-configured]` means no Kado call was made at all. The skill never guesses a period from the
+argument text.
+
+## Why Open Reviews Come First (F2-AC1)
+
+WHY: A review document in the inbox is the user's edited work, and a delivered set that Hashi has not applied is a
+pending change to the vault. Starting a new period first would bury both, and an edited review could be lost to a
+second document for the same period. So the skill handles every entry of `open_reviews` before the new request,
+in the order `start` lists them (by period start), with the request itself last — the same precedence as `/note`'s
+kept drafts. The state decides the offer, and the state comes from the script (`lib/review_state.stem_state`, ADR-6),
+never from files the model inspects:
+
+- `failed-delivery` → `1 Resume · 2 Drop`: resume reruns `review-instructions.py deliver` (steps already done are
+  skipped, F5-AC10); drop runs `review-instructions.py drop` (see "Why drop Withdraws").
+- `open` → `1 Continue · 2 Start over · 3 Abort`: continue is Pass 2 (see "Why Pass 2 Is parse, Then preview"); start
+  over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); abort leaves the document as it is.
+- `delivered` → one line: the set waits for Hashi or for the user to apply it by hand; no second set is delivered
+  (F6-AC2, the script would refuse it as `set-exists` anyway).
+- `move-refused` / `target-missing` → one line each: the target existed when Hashi applied the move, so the inbox
+  copy is still there; or the target is gone since delivery (F6-AC4). Nothing to deliver; the user decides in
+  Obsidian.
+- `applied` → one line, listed once (`start` records `applied_reported`); `notices: [applied-not-recorded]` means the
+  line will show once more next time.
+
+`skipped_review_docs` (`frontmatter-unreadable`, `period-missing`, `stem-unsafe`) are named in one line each, never
+dropped silently: a document Tomo cannot classify is still the user's file. When the request names the same period as
+an open review, the open review is the request. Only after the list is handled does the skill turn to the new request.
+
+## Why Setup Runs Before the First Read and the Request Continues in the Same Session (F1)
+
+WHY: Nothing can be read before Tomo knows where the periodic notes live, how they are named, which daily sections
+count and where the review goes. `start` reports `setup.week` / `setup.month`; when the requested kind is `missing`
+(F2-AC8), or the request is `setup` (F1-AC2, `current` carries the saved values or their `invalid` pointers), the
+setup dialogue runs for that kind: `review-session.py match --kind` previews the proposal against the existing notes
+(folder, format, first day, min_days, template and its kind, heading, place, own sections, daily sections, language,
+with `evidence.matched` and `evidence.unmatched` so the user confirms against real note names, F1-AC1), the skill
+prints it and asks `1 Confirm · 2 Correct · 3 Abort`. A correction reruns
+`review-session.py match --kind --folder --format --first-day --min-days` with the corrected values as flags and
+shows the new matches before asking again (F1-AC8) — the skill never edits the proposal in its head, because the
+matches must come from the same code that will parse the names later. Confirm writes the proposal to a JSON file,
+`review-session.py setup-input --kind --confirmed` validates it against the schema and the format rules before the
+writer sees it (`status: invalid` with pointers → the dialogue asks again), and
+`vault-config-writer.py review --input` saves exactly the keys the input
+names, text-preservingly (ADR-5): the skill never composes YAML. `daily_path_fix` is applied only when the user
+confirmed it in the same dialogue (F1-AC9); no other setting changes.
+
+After the save the skill reruns `review-session.py start --args` with the original argument and continues the
+request in the same session (F1-AC9): the user asked for a review, not for a setup, and `start`'s period resolution
+depends on the rule just saved. The open reviews it already handled are skipped on the rerun. Abort saves nothing and
+writes nothing (F1-AC10): the writer is called only after Confirm, and no vault write happens before Pass 1's `write`.
+
+## Why the Week Question Is Asked in Plain Words (ADR-7)
+
+WHY: Which day starts a week and which week is week 1 decide which note a review targets; a wrong rule creates a
+duplicate weekly note (PRD risk 1). `match` infers the rule from the dates the user's own weekly notes carry
+(`journal-start-date`, day headings) and reports `evidence.week_rule` as `inferred`, `ambiguous` or `default`. Only
+when it is `ambiguous` — the notes disagree or carry no dates — does the skill ask, in plain words, not in ISO
+vocabulary: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least
+four days in the new year?" (F1-AC6). The answer is mapped to `(first_day, min_days)` — "Monday, four days" is ISO
+`(Monday, 4)`, "Sunday, 1 January" is `(Sunday, 1)` — and passed back as `--first-day` and `--min-days` to `match`,
+whose new matches show which existing notes the rule no longer fits (F1-AC5) before the user confirms. The Obsidian
+periodic-notes plugin configuration is never read for this (owner decision: "wenn wir das nicht erkennen können
+fragen wir den user"), because the plugin's setting and the user's actual notes can disagree, and the notes are the
+truth. With `inferred` or `default` the rule is shown with the proposal and the ordinary Confirm covers it; asking
+anyway would be a spurious question.
+
+## Why `kado-none` and an Unreadable Template Are Never "Nothing There"
+
+WHY: A Kado key without read access to a folder gets an empty listing, indistinguishable from an empty folder (Rule
+6 of the SDD; memory: an empty Kado search hides a denial). So `evidence.folder_listing: kado-none` is reported as
+"Kado returned none for this folder — it may be empty, or the key may not reach it", and the skill asks before
+proposing to create notes there. The same wording applies to `template_kind: unreadable`: the skill says the
+template may be unreadable because the key has no access, proposes a plain note (title and review section) and
+continues (F1-AC7); `missing` proposes the plain note without the access hint. In Pass 1, `review-read.py`'s
+`kado_empty` sources and the `check-key-access` advice are reported the same way (F3-AC9). The skill never says a
+folder is empty or a note does not exist.
+
+## Why the Period Read Is a Script and `status` Is Branched First
+
+WHY: `review-read.py --period --kind` reads the whole period under the pacer — every daily, the day after for its
+yesterday fields, the same-day linked notes, the task notes, a month's weekly notes, the vault growth — and writes
+`read.json`. The model reading the vault itself would read other days through "On This Day" embeds, execute nothing
+but follow Dataview blocks wrongly, and hit the rate limit with no accounting; the script owns the same-day rule, the
+pacing and the report (F3-AC1 to F3-AC13). The skill branches on `status` before any other key: a `stopped` output
+(`kado-unreachable`, `kado-auth`, `dailies-not-read`, `setup-missing`, `setup-invalid`, `daily-not-configured`)
+never carries `nothing_to_review`, and reading `nothing_to_review` off a stopped output would turn a connection
+failure into "your week was empty". With `status: ok` and `nothing_to_review: true` the skill says no daily of the
+period holds content, adds the access hint (an empty result may also mean the key cannot read the folder) and stops;
+nothing is written (F3-AC9). Otherwise the report is shown as the script prints it — per day which dailies were
+found and in what state, which linked notes were missing or not readable — plus the pacing line: `retried`,
+`waited_s`, `not_read` and the `raise-kado-limit` advice when Kado turned calls away (F3-AC12). The skill never
+summarises the report into "everything was read" when `not_read` is non-empty; the document will name the missing
+days at its top (F3-AC13) and the user must see that before approving.
+
+## Why the Model Writes Only `proposals.json` (ADR-12)
+
+WHY: Habits, vault growth and the link differences of a month are numbers and lists; computed by the script they are
+deterministic and testable (F8), and the model gets them as facts in `read.json`. The model's job is the one thing a
+script cannot do: read the period's text and propose the items — what got done, what stayed open, recurring themes,
+and for a month what only the weekly notes hold and what they left out — in the review language, each with at least
+one link to a daily inside the period (F4-AC3). It writes them to `proposals.json` in the schema
+`tomo/schemas/review-proposals.schema.json` and nothing else: no document, no section, no frontmatter.
+`review-doc.py write` validates the file; a `proposals-invalid` refusal names the pointers, the skill rewrites the file once, and a
+second refusal ends the run — looping on a schema the model cannot satisfy would burn the user's time. The model
+proposes only Tomo's own section, never text for the sections the setup names as the user's own (F4-AC7).
+
+## Why Pass 1 Ends With `write`, Deletes the Working Files and Ends the Turn (ADR-2, ADR-9)
+
+WHY: `review-doc.py write --stem --proposals` is the only vault write of Pass 1: `<period> Review.md` in the inbox,
+with the target note and whether it exists, the unticked Approved box and the grouped items (F4-AC1). The skill
+reports `doc_path`, `target`, `target_exists`, the `counts` per group and `rejected` items, then ends the turn: the
+user edits the document in Obsidian, and the next `/review` finds it as an open review (ADR-2: the open state lives in
+the vault, not in `tomo-tmp`, because the user edits between passes). `write` deletes `read.json` and
+`proposals.json` once the document is written (ADR-9): the journal content the model read has no job after that, and
+the stage keeps only the content-free `meta.json`. The refusals are shown verbatim: `doc-name-taken` names the file
+that is not Tomo's and nothing is overwritten; `review-exists` is the start-over case (next section);
+`kado-write-failed` means nothing was claimed as written. Abort at any point before `write` deletes nothing in the
+vault, because nothing was written there.
+
+## Why Start Over Asks Twice (F6-AC1)
+
+WHY: Replacing the review document destroys the user's edits in it. So when the user chooses Start over for an open
+review, or `write` refuses with `review-exists` (Tomo's document for the period already exists and the stage files are
+kept), the skill names the document that will be replaced (`doc_path`) and asks again, `1 Replace · 2 Keep it`.
+`review-doc.py replace --confirm` writes the new document over Tomo's own from the kept `read.json` and
+`proposals.json`; `review-doc.py replace --abort` deletes those two files and keeps the document. The script itself
+answers `needs-confirm` when neither flag is given, so the skill cannot replace without the flag, and the decision
+is recorded in the call. A rerun of the whole period (read again, propose again) is the same path: `write` refuses,
+the user decides.
+
+## Why Pass 2 Is `parse`, Then `preview`, and Deliver Is a Plain-Text Question (F5-AC1, F5-AC2)
+
+WHY: The document is the source of truth, so Pass 2 reads it fresh every time. `review-doc.py parse --stem` reads the
+edited document back through Kado and prints counts and ids only — `approved`, `nothing_to_deliver`, the kept /
+unticked / deleted / added counts and the warnings — and writes nothing; the skill reports the counts so the user sees
+what their edits did. An unticked Approved box ends the turn with the box named (F5-AC1); `approved-line-missing`
+says how to restore `- [ ] Approved` at column 0. The other parse warnings get one plain line each: `unknown-group` (a
+heading the parser does not know; its items do not land), `duplicate-group` (the second heading of that name is
+ignored), `frontmatter-broken` (the document's frontmatter could not be read; the period is taken from `meta.json`),
+`item-outside-group` (an item above the first heading, filed under unknown). Then
+`review-instructions.py preview --stem` builds the plan against the target note as Kado holds it now and prints `section_md` — the only note content
+that ever reaches the console, on purpose: the user must see the section as it will land, with their own text and
+the items they added — plus the `target`, `mode` (`insert`, `replace`, `new-note`) and `place`. The skill prints all
+of that and asks `1 Deliver · 2 Abort`; a change is made by editing the document and continuing again (F5-AC2), never
+by telling the model what to change, because the document is the only editing surface. Abort runs nothing and
+writes nothing: the document stays open for the next `/review`.
+
+The preview's `problems` refuse and `notices` inform, and the skill never confuses the two. Refusing: `not-approved`,
+`nothing-to-deliver` (everything unticked → Abort or start over), `place-missing` and `place-too-deep` (the configured
+place is not in the target or would push the review heading past level 5: the skill lists the `headings` the note
+has and asks for one or Abort, then reruns `review-instructions.py preview --place-anchor` with the chosen heading,
+F5-AC7), `user-heading-collision` (a same-named heading of the user's without the marker is never replaced: another
+heading or Abort), `set-exists` (a set for the stem waits for Hashi; nothing is delivered, F6-AC2). Notices:
+`heading-renamed` (the marker was found under a renamed heading; the section is replaced there, F6-AC3),
+`target_appeared` (the user created the target since Pass 1; the plan targets it instead of a new note, F6-AC4),
+`variant_missing` and `templater_hint` (the template's Tomo variant is gone or the template holds Templater code; the
+readable instructions tell the user to run Templater after the move, ADR-8), `template_unmergeable` (a plain note is
+built instead), `unlanded-items` (kept items under an unknown heading do not land; the count is named). A notice
+is said in one line and the Deliver question still follows.
+
+## Why `deliver` Is Branched on `status`, Then on `problems` or `failed_step`
+
+WHY: `review-instructions.py deliver --stem` (with `--place-anchor` when the user chose one) writes, in order, the new
+note (new-note mode only), the set JSON and the set MD through `lib/staged_delivery`, then marks the document delivered
+with one write guarded by the `modified` the reader saw (ADR-11; steps `note → set_json → set_md → doc_mark`). The
+skill never runs those steps itself. `status: delivered` or `resumed` is reported with the target, the place, the set
+JSON and the set MD paths and the next step, apply in Hashi or by hand (F5-AC11). `status: refused` names the
+`problems` and nothing was written: `name-taken` names `exists_path` (a note at a payload's path that is not Tomo's
+identical text; never overwritten), the plan problems are the preview's. `status: stopped` carries `failed_step` and is
+resumable: `doc-changed` means the document was edited or is open with unsaved edits since the preview; the skill says
+to save it and run `/review` again, and the payloads already written count as done; `kado-write-failed` is a Kado
+refusal or failure at that step. Either way the next `/review` lists the stem as `failed-delivery` with Resume / Drop
+(F5-AC10). The skill reads `status` first because the same key `problems` appears under `refused` and `stopped` with
+opposite meanings for the user: fix the document, or just try again.
+
+## Why `drop` Withdraws and Abort Before Delivery Writes Nothing (ADR-13)
+
+WHY: Abort at the Deliver question is free: nothing was written, the document stays open. Drop is offered only for a
+`failed-delivery`, where files may already be in the inbox. Kado offers Tomo no delete, so
+`review-instructions.py drop --stem` cannot remove them; it withdraws instead: once any delivery step began it writes the set JSON with an empty
+`actions` list (schema-valid, nothing for Hashi to apply) and an MD that says withdrawn and names every file the
+delivery left, a lone new note included, so the user can delete them in Obsidian; before any step began it removes
+only the stage. The skill reports `status: withdrawn` with the `paths`, or `dropped` with `removed`. `already-applied`
+is refused: Hashi applied an action, so the set is the vault's history now and nothing is withdrawn (the skill says so
+and offers nothing). `set-changed` means the set was edited between read and write; the skill says to run drop again.
+A withdrawn review is never listed again.
+
+## Why the Skill Does Not Call `status` in the Flow
+
+WHY: `review-instructions.py status --stem` names one stem's state through the same `stem_state` function that
+`start` runs per listed document, so the two cannot disagree. The skill gets every state it needs from
+`start`'s `open_reviews` at the beginning of the run, and after `deliver` or `drop` the script's own `status` field
+says what happened; a second call would cost one set read and the probes for a value already in hand. `status` is
+the direct question — for a test, the owner, or a later skill step that must re-check one stem (for example a
+`doc-changed` resume in the same session) — and it answers `applied` even after `start` reported it once, because the
+"offered once" rule belongs to the listing. The skill may use it for exactly that re-check and for nothing else.
+
+## Why the Privacy Boundary Is Documented in the Skill, Not Cleaned Up (ADR-9, F7)
+
+WHY: Tomo's own records stay free of the journal: every review script prints counts, paths, dates and states only,
+stderr carries an exception's class name and nothing else, and the cost log takes the numbers the skill reports
+(F7-AC1, tested by `tests/test_review_privacy.py`). The skill keeps that boundary on the console: it prints the
+scripts' reports and `section_md` — the user's own approved section — and never quotes `read.json`, a daily, a
+journal answer or a tracker value into its reply. Where the content does rest — the session transcript in the
+container home (the model read `read.json`), `tomo-tmp/review/<stem>/read.json` until `write` or `replace --abort`
+deletes it (a session that ends without either leaves it until the next `/review` of that stem), the inbox document —
+is named in `PRIVACY.md` with the advice to protect instance and home like the vault. No cleanup script and no
+cleanup promise: the data is local anyway, a script would be forgotten or inflexible, and a promise Tomo cannot keep
+for the transcript would be false. The skill tells the user nothing about this; the documentation does (F7-AC2).
+
+## Why Script Errors Are Shown Verbatim
+
+WHY: The review scripts write their `error.detail`, `expected` and `example` for the user and name only the problem
+class, never a title, a path of a journal note or note text. A paraphrase would hide the cause ("something went
+wrong" for `unfinished-period`) and could add what the script left out on purpose. Exit 2 (a bad invocation) and
+exit 1 (an unexpected exception, class name on stderr) are shown as they are and end the run; nothing the user could
+type cures them.
+
+## Why Scripts Run From the Working Directory, Not the Skill Directory
+
+WHY: The same observed deviation as `/note`: the Skill tool result begins "Base directory for this skill: …", and
+with "run every script from the instance root" the model cd'd into the skill's base directory, so `python3
+scripts/…` exited 2 and three calls were spent finding `scripts/`. The sentence names the session's working directory
+and forbids the skill's base directory.
+
+## Why STRICT Is Rare
+
+WHY: Per the repo rule, a `STRICT` block with a one-line `Why:` is only for a deviation actually observed in a run.
+The runtime text holds imperatives only; every rationale lives in this file. The one candidate from the start is the
+plain-text question rule, because spec 044 observed the deviation live; T5.2 decides from the container run whether
+it is needed here.
+
+## Why There Is No Eval Gate
+
+WHY: ADR-1's trade-off: the skill's prose is not covered by the CLAUDE.md eval gate, because gating every later edit
+would cost a paid run each time. T5.2 may add one owner-run eval case under `evals/` for the open-review-first order
+and the plain-text Deliver / Abort turn end; later edits are reviewed by hand and by the static CLI-contract sweep
+over `tomo/dot_claude/skills` (every subcommand and flag the skill names must exist in the parsers), which is also what
+`tests/test_review_why_docs.py` applies to this document.
+
+## Why the Runtime Details Look the Way They Do
+
+WHY: The stem is `<period>_review` (`2026-W13_review`), given as `--stem` to every Pass 1 and Pass 2 call, because
+`start` names the period and `review-read.py` defaults the stem from it; one stem keeps one review's stage apart from
+another's. `--today` is a suppressed test flag and never passed by the skill. The confirmed-setup JSON goes to
+`tomo-tmp/review/` and is read by `setup-input`, whose `--output` defaults to `tomo-tmp/review/setup-<kind>.json`, the
+file the writer's `--input` takes; both are helper files, not state. The skill pins no `model`: the proposals are the
+model's work (ADR-12), so it runs on the session's model. The description carries `MUST BE USED` per the authoring
+rules, with a `NOT for` clause that keeps inbox triage with `/inbox` and single notes with `/note`. `allowed-tools`
+holds Bash, Read and Write (`proposals.json`, the confirmed-setup file) and nothing that reaches the vault: every
+vault access goes through the scripts and Kado.

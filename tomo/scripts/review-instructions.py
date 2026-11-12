@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.0
-"""Pass 2 of /review (spec 045 T4.2, T4.3; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6,
-ADR-11, ADR-13).
+# version: 0.2.1
+"""Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
+ADR-13).
 
 ``preview`` reads the approved document fresh through Kado, builds the plan
 (``lib/review_actions``) against the target note as it is now, and prints the

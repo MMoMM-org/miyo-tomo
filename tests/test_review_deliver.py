@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -330,6 +330,52 @@ def test_cli_preview_new_note_names_the_templater_hint(doc_mod, ins, instance, m
     assert out["place"] == {"anchor": OWN, "placement": "before", "level": 2}
 
 
+UNMERGEABLE_TEMPLATE = "---\ntomo: mine\n---\n# <% tp.file.title %>\n\n## Woche\n\n## In my own words\n\n"
+
+
+@pytest.mark.parametrize("notice", ["unlanded-items", "variant_missing", "template_unmergeable"])
+def test_cli_each_notice_is_shown_without_refusing_and_deliver_lands(doc_mod, ins, instance, monkeypatch, capsys,
+                                                                     notice):
+    """Falsifies a notice that refuses, or one the plan never raises: an item the user added under a heading
+    of their own, a configured variant file the vault lacks, and a template whose frontmatter already holds
+    ``tomo:`` each name their notice in ``notices`` (never in ``problems``) on ``preview``, and ``deliver``
+    proceeds to ``delivered`` naming it again."""
+    if notice == "unlanded-items":
+        fake = prepared(doc_mod, instance, monkeypatch, capsys, vault())
+        fake.files[DOC] += "\n## Eigene Rubrik\n- [x] mein eigener Punkt\n"
+        fake.modified[DOC] += 1
+    elif notice == "variant_missing":
+        cfg_path = instance / "config" / "vault-config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        cfg["review"]["weekly"]["template_variant"] = "t_week_tomo.md"          # not in the fake vault
+        cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+        fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(None))
+    else:
+        fake = prepared(doc_mod, instance, monkeypatch, capsys,
+                        vault(None, **{"Templates/t_week.md": UNMERGEABLE_TEMPLATE}))
+    _, out, _ = run(ins, monkeypatch, capsys, ["preview", "--stem", STEM], fake)
+    assert out["status"] == "ok" and out["problems"] == [] and notice in out["notices"]
+    if notice == "unlanded-items":
+        assert out["unlanded"] == 1 and out["mode"] == "insert"
+    elif notice == "variant_missing":
+        assert out["variant_missing"] is True and out["mode"] == "new-note"
+    else:
+        assert "tomo" in out["template_unmergeable"] and out["templater_hint"] is False
+    assert writes(fake) == []
+    _, out, err = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
+    assert out["status"] == "delivered" and notice in out["notices"] and err == ""
+    assert out["paths"]["set_json"] == SET_JSON and len(set_json_of(fake)["actions"]) == 1
+    assert split_frontmatter(fake.text(DOC))[0]["tomo"]["state"] == "approved"
+    if notice == "unlanded-items":          # the user's item under the unknown heading did not land
+        [action] = set_json_of(fake)["actions"]
+        assert MARKER in action["content"] and "mein eigener Punkt" not in action["content"]
+    else:
+        assert out["mode"] == "new-note" and NEW_NOTE in fake.files
+    if notice == "template_unmergeable":
+        front, body = split_frontmatter(fake.text(NEW_NOTE))
+        assert front["tomo"]["doc_type"] == "rendered-note" and "mine" not in str(front) and "<%" not in body
+
+
 # ---------------------------------------------------------------- deliver
 
 def test_deliver_writes_the_set_in_order_and_marks_the_document_last(doc_mod, ins, instance, monkeypatch, capsys):
@@ -379,6 +425,7 @@ def test_deliver_new_note_writes_the_note_first_and_moves_it(doc_mod, ins, insta
     assert action["action"] == "move_note" and action["source"] == NEW_NOTE and action["destination"] == TARGET
     md = fake.text(SET_MD)
     assert "### I01 — Move note: 2026-W13" in md and "- [ ] Applied" in md and "Templater" in md
+    assert f"- **From:** `{NEW_NOTE}`" in md and f"- **To:** `{TARGET}`" in md      # the move's destination is named
 
 
 def test_deliver_refuses_an_unapproved_document_and_writes_nothing(doc_mod, ins, instance, monkeypatch, capsys):
@@ -388,6 +435,30 @@ def test_deliver_refuses_an_unapproved_document_and_writes_nothing(doc_mod, ins,
     assert writes(fake) == [] and not (instance / "tomo-tmp" / "review" / STEM / "meta.json").read_text().count(
         '"failed_step": "set')
     assert meta_of(instance)["steps_done"] == []
+
+
+@pytest.mark.parametrize("problem", ["nothing-to-deliver", "user-heading-collision", "approved-line-missing"])
+def test_deliver_refuses_each_refusing_problem_and_writes_nothing(doc_mod, ins, instance, monkeypatch, capsys,
+                                                                  problem):
+    """Falsifies a refusing problem that still writes, or one that is not named: every item unticked, a note
+    heading with Tomo's text and no marker, and a document without its Approved line each refuse the
+    delivery by name, with no vault write, no step recorded and the document still pending."""
+    if problem == "user-heading-collision":
+        fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(NOTE.replace("## Woche", "## Tomo Review")))
+    else:
+        fake = prepared(doc_mod, instance, monkeypatch, capsys, vault())
+        if problem == "nothing-to-deliver":
+            fake.files[DOC] = fake.files[DOC].replace("- [x] ", "- [ ] ").replace("- [ ] Approved", "- [x] Approved", 1)
+        else:
+            fake.files[DOC] = fake.files[DOC].replace("- [x] Approved\n", "", 1)
+        fake.modified[DOC] += 1
+    _, out, err = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
+    assert out["status"] == "refused" and out["stem"] == STEM and out["problems"] == [problem]
+    assert "paths" not in out and err == ""
+    assert writes(fake) == [] and fake.writes == []
+    assert SET_JSON not in fake.files and SET_MD not in fake.files and NEW_NOTE not in fake.files
+    assert split_frontmatter(fake.text(DOC))[0]["tomo"]["state"] == "pending-approval"
+    assert meta_of(instance)["steps_done"] == [] and meta_of(instance)["failed_step"] == ""
 
 
 def test_deliver_refuses_a_second_set_for_the_same_stem(doc_mod, ins, instance, monkeypatch, capsys):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # review-doc.py — The review document of /review in the inbox: write it, parse it back, replace it.
-# version: 0.5.0
-"""The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045 T3.6/T3.7, PRD F4-F6).
+# version: 0.5.1
+"""The review document of /review: write (Pass 1), parse (Pass 2), replace (start over) (spec 045, PRD F4-F6).
 
 After the period was read (``read.json``) and the model wrote its proposals
 (``proposals.json``), ``write`` checks the proposals against the period,

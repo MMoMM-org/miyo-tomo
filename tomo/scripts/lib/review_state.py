@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.3.1
+# version: 0.3.2
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -15,7 +15,7 @@ start`` (per listed document, through ``open_reviews``) and
 "absent" only on ``KadoNotFoundError``; any other Kado failure stops the run
 through ``review_vault.kado_stops``.
 
-The order implemented (coordinator decision 2026-11-12): withdrawn
+The order implemented: withdrawn
 (``meta.withdrawn``, or a set whose ``actions`` list is empty) → not listed;
 a begun delivery (``review_delivery.ReviewMeta.started()``) without
 ``doc_mark``, or an approved document without a set → ``failed-delivery``;
@@ -112,7 +112,7 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     ``inbox_copy_exists`` are the probe answers for steps 5 and 6 (None: not probed)."""
     record = _record(meta)
     actions = _actions(set_json)
-    # step 3, first: a withdrawn review is never listed (coordinator decision 2026-11-12)
+    # step 3 before step 1: a withdrawn review is never listed
     if record.withdrawn() or (set_json is not None and actions == []):
         return None
     # step 1: a begun delivery without its last step, or an approved document whose set is gone
@@ -172,7 +172,7 @@ def _present(vault: Vault, path) -> Optional[bool]:
 
 
 def stem_state(vault: Vault, doc: dict, meta: Optional[dict], stem: str, inbox: str) -> Optional[str]:
-    """The state of ``stem`` with the probes (ADR-6): the set JSON is read for an approved document,
+    """The state of ``stem`` with the probes: the set JSON is read for an approved document,
     the move's source (then its destination, while the source exists) or the insert's target only
     when the set waits. A withdrawn meta returns None before the set is read: a review that is
     never listed costs no Kado call. ``review_vault.Stopped`` on any Kado failure that is not NOT_FOUND;

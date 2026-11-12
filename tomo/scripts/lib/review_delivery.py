@@ -1,6 +1,6 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.1.1
-"""The delivery-side helpers of ``review-instructions.py`` (spec 045 T4.2; ADR-11, ADR-13).
+# version: 0.1.2
+"""The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
 notices)``: ``REFUSING`` names stop a delivery (nothing is written),

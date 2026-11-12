@@ -1,6 +1,6 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.3.0
-"""The review document ``<period> Review.md`` (spec 045, T3.6, PRD F4, ADR-12, ADR-13).
+# version: 0.3.1
+"""The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
 script writes: ``load_proposals`` / ``proposal_problems`` validate the file
@@ -27,7 +27,7 @@ is that predicate, shared with ``review_actions`` for the landing). Habits arriv
 rendered from ``review_habits`` and get an id like every Tomo item; no habits
 means no habits heading. ``ID_PATTERN`` and ``group_labels`` are the shared
 vocabulary of ``review_doc_parse``, which reads the document back.
-``mark_delivered`` (T4.2, F5-AC11) is the delivered mark: ``tomo.state``
+``mark_delivered`` (F5-AC11) is the delivered mark: ``tomo.state``
 becomes ``approved`` and the title line gets the language's "delivered"
 word; idempotent, a marked text comes back unchanged.
 

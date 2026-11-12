@@ -1,6 +1,6 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.4.0
-"""Build the delivery plan of an approved review (spec 045, T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
+# version: 0.4.1
+"""Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
 ``build_review_plan`` takes the ApprovedReview record (``ParsedDoc.approved_review()``), the
@@ -379,7 +379,8 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
 
 
 def _template_choice(setup: rc.ReviewSetup, template: Template) -> Tuple[Optional[str], bool, bool]:
-    """``(text, templater_hint, variant_missing)`` by ADR-8; text None means a plain note."""
+    """``(text, templater_hint, variant_missing)``: the variant text when one is configured and readable,
+    else the raw template (``variant_missing`` when a variant was configured), else None for a plain note."""
     if setup.template is None or template.raw is None:
         return None, False, False
     if setup.template_variant is not None and template.variant is not None:

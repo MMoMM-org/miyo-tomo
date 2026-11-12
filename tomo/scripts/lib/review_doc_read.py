@@ -1,6 +1,6 @@
 # review_doc_read.py — the one reader of the /review document for Pass 2: path, note read, parse with pass1_links.
-# version: 0.1.1
-"""Read the edited review document back for ``parse``, ``preview`` and ``deliver`` (spec 045 T4.2).
+# version: 0.1.2
+"""Read the edited review document back for ``parse``, ``preview`` and ``deliver`` (spec 045).
 
 ``doc_path_of(meta, override)`` is the path a Pass 2 command reads: the
 caller's ``--doc-path`` or ``meta.json``'s ``doc_path``; None when neither

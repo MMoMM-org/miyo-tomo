@@ -677,7 +677,10 @@ review-instructions.py deliver --stem S [--place-anchor H]
 review-instructions.py drop --stem S
   out: {status: dropped, stem, removed: bool}                       # no step began: only the stage is removed
      | {status: withdrawn, stem, paths: {set_json, set_md, note?}}  # a step began (done or in flight): see Error Handling
-     | {status: stopped, stem, problems: [kado-write-failed], error: {kind}}
+     | {status: refused, stem, problems: [already-applied]}         # an action of the set carries applied: true; nothing written
+     | {status: stopped, stem, problems: [set-changed|kado-write-failed], error: {kind}}
+  # a begun drop reads the set JSON first (absent only on NotFound, an unreadable set still withdraws) and
+  # writes the empty set guarded by that read's modified; a CONFLICT there is set-changed, rerun drop
 
 review-instructions.py status --stem S
   out: {state, stem}                             # canonical list below; state is null for a withdrawn review
@@ -1300,7 +1303,7 @@ stateDiagram-v2
 - [ ] THE section SHALL contain only kept items; empty groups leave no heading (F5-AC6).
 - [ ] IF the place is missing, THEN THE SYSTEM SHALL say so before delivery and offer the note's headings or Abort (F5-AC7).
 - [ ] THE set SHALL validate against the Hashi contract and be listed by Hashi like a Pass 2 set (F5-AC8); readable instructions with copy-ready text SHALL sit beside it (F5-AC9).
-- [ ] IF delivery fails midway, THEN the next `/review` SHALL offer resume or drop; resume SHALL not duplicate, and drop SHALL withdraw any set Tomo already wrote (F5-AC10).
+- [ ] IF delivery fails midway, THEN the next `/review` SHALL offer resume or drop; resume SHALL not duplicate, and drop SHALL withdraw any set Tomo already wrote, unless Hashi already applied it (`already-applied`) (F5-AC10).
 - [ ] WHEN delivered, THE SYSTEM SHALL name target, place, set and instructions, and mark the document delivered in its first line (F5-AC11).
 
 **One review per period — PRD F6**

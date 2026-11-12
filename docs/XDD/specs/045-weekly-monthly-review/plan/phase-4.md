@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Delivery and open-review state"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 4
 ---
@@ -58,6 +58,6 @@ This phase turns an approved document into an instruction set, readable instruct
   4. Validate: tests green; ruff clean.
   5. Success: every open review is offered first, and a set waiting for Hashi blocks a second one `[ref: PRD/F2-AC1, F5-AC10, F6-AC2, F6-AC4]`
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Run Phase 1–4 tests, the full suite and ruff. Validate one generated set with Hashi's schema copy and its `instructions.md` peer-checkbox format (`### Inn …` + `- [ ] Applied`).

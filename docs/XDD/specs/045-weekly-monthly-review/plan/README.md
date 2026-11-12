@@ -164,7 +164,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Shared foundations](phase-1.md)
 - [x] [Phase 2: Setup and session start](phase-2.md)
 - [x] [Phase 3: Reading the period and the review document](phase-3.md)
-- [ ] [Phase 4: Delivery and open-review state](phase-4.md)
+- [x] [Phase 4: Delivery and open-review state](phase-4.md)
 - [ ] [Phase 5: Command, skill and documentation](phase-5.md)
 - [ ] [Phase 6: Integration, live walk and close-out](phase-6.md)
 

@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
 tomo-tmp/review/ that outlive a step — carry paths, dates, counts and states only.
 One walk runs every review script and every subcommand of it, in-process, on
 one fake vault whose daily text, journal answers, tracker values, weekly-note
-text and the model's proposals each carry their own marker string: session
-start (a period, `setup`, the open reviews), `match` and `setup-input` for
-both kinds, the week read, the document write, parse, preview with a place
-problem, deliver with `--place-anchor`, status, a second deliver (set-exists),
-drop after a complete delivery; the month read, a write refused by
-`review-exists`, `replace` without a flag, `--confirm` and `--abort`, a
-new-note preview, a delivery that fails at the set MD, drop after it. One
-forced exception per script, raised while a marker-bearing text is being
-parsed, must leave only the class name on stderr. A list of bad invocations
-puts a marker into the arguments; neither stream may echo it.
+text and the model's proposals each carry their own marker string, plus one
+readable tracker value (`READABLE`) the habits do count: session start (a
+period, `setup`, the open reviews), `match` and `setup-input` for both kinds,
+the week read, the document write, parse, preview with a place problem,
+preview and deliver with a `--place-anchor` that is a marker-bearing heading
+of the target, status, a second deliver (set-exists), drop after a complete
+delivery; the month read, a write refused by `review-exists`, `replace`
+without a flag, `--confirm` and `--abort`, a new-note preview, a delivery
+that fails at the set MD, drop after it. One forced exception per script,
+raised while a marker-bearing text is being parsed, must leave only the
+class name on stderr. A list of bad invocations puts a marker into the
+arguments; neither stream may echo it.
 
 USER_TEXT_FIELDS names every stdout field that carries user text by design,
 which marker kinds it may carry and why. The walk then asserts:
@@ -27,6 +29,12 @@ which marker kinds it may carry and why. The walk then asserts:
 - a named field carries only its own kinds, and every named field really
   carried its marker (no stale entry);
 - no marker in any file under tomo-tmp/review/ that a step leaves behind;
+- the readable tracker value reaches read.json and the document's habits
+  line, and nothing else of Tomo's: not stderr, not stdout outside the named
+  fields, no working file but read.json;
+- every marker kind really reached the scripts: the daily text, the journal
+  answer and the tracker values were in read.json before the write deleted
+  it, the tracker marker's days are named unreadable in the habits line;
 - read.json and proposals.json are gone after `write`, `replace --confirm`
   and `replace --abort`, and kept after a refused or failed write.
 
@@ -72,6 +80,11 @@ MARKERS = {
 KIND_OF = {"day": "daily", "ans": "answer", "trk": "tracker", "prp": "proposal", "wkl": "weekly"}
 MARKER_RE = re.compile(r"zzpriv_(day|ans|trk|prp|wkl)_7f3a")
 DAY, ANS, TRK, PRP, WKL = (MARKERS[k] for k in ("daily", "answer", "tracker", "proposal", "weekly"))
+# One tracker value the habits can read: it is counted into an average, so it may surface where a
+# marker the parser rejects never would. Its only legitimate places are read.json and the habits
+# line of the document (which the preview's section_md shows). A digit run no date, count or id has.
+READABLE = "434343"
+ANCHOR = f"Notes {WKL}"                 # the heading the user picks from the headings[] list
 
 # (script, subcommand, field) -> (marker kinds it may carry, why).
 # Field syntax: dotted keys, `[]` walks a list.
@@ -80,6 +93,10 @@ USER_TEXT_FIELDS = {
         ({"proposal"}, "the preview prints the section as it will land, so the user reads it before Deliver (F5-AC2)"),
     ("review-instructions", "preview", "headings[]"):
         ({"weekly"}, "a place problem names the target note's headings, so the user can choose one (F5-AC7)"),
+    ("review-instructions", "preview", "place.anchor"):
+        ({"weekly"}, "--place-anchor echoes the heading the user picked from headings[]: the target's own text"),
+    ("review-instructions", "deliver", "place.anchor"):
+        ({"weekly"}, "--place-anchor echoes the heading the user picked from headings[]: the target's own text"),
 }
 
 TODAY = "2026-11-11"
@@ -119,7 +136,8 @@ CONFIG = {
                     "own_sections": ["Reflections"]},
     },
     "trackers": {"daily_note_trackers": {"today_fields": [{"name": "Sport", "type": "boolean"},
-                                                          {"name": "Sleep", "type": "integer"}]}},
+                                                          {"name": "Sleep", "type": "integer"},
+                                                          {"name": "Energy", "type": "integer"}]}},
 }
 
 
@@ -148,14 +166,14 @@ def _vault() -> ReviewFakeVault:
         _daily("2026-03-23", f"monday {DAY} [[Alpha]]\nSport:: yes\nSleep:: 7\nGrateful:: {ANS}"),
         _daily("2026-03-24", f"tuesday {DAY}\n- [x] task {DAY} ✅ 2026-03-24\nSport:: yes\nSleep:: {TRK}"),
         _daily("2026-03-25", f"wednesday {DAY} [[5J-2026-03-25]] [[DP-2026-03-25|Dayplanner]]\nSport:: {TRK}\nSleep:: 8"),
-        _daily("2026-03-26", f"thursday {DAY}\nSport:: yes\nSleep:: 6"),
+        _daily("2026-03-26", f"thursday {DAY}\nSport:: yes\nSleep:: 6\nEnergy:: {READABLE}"),
         _daily("2026-03-27", f"friday {DAY}\nSport:: yes"),
         _daily("2026-03-29", f"sunday {DAY}\nSport:: yes\nSleep:: 7\nGrateful:: {ANS} again"),
         _daily("2026-03-30", f"monday after {DAY}\nSleep:: 7"),
         _daily("2026-03-31", f"last {DAY}\nSport:: no"),
         _daily("2026-04-01", f"april {DAY}"),
     ])
-    files[f"{JOURNAL}5J-2026-03-25.md"] = f"# 5J-2026-03-25\nWhat made today good?\nAnswer {ANS}\n"
+    files[f"{JOURNAL}5J-2026-03-25.md"] = f"# 5J-2026-03-25\nWhat made today good?\nAnswer {ANS} in journal\n"
     files[f"{PLANNER}DP-2026-03-25.md"] = f"# Plan\n- planned {DAY}\n"
     files[TASK_NOTE] = f"- [x] done {DAY} ✅ 2026-03-24\n- [ ] open {DAY}\n"
     files[f"{MOCS}Topic MOC.md"] = "moc\n"
@@ -218,6 +236,10 @@ def _kinds(text: str) -> set[str]:
     return {KIND_OF[m] for m in MARKER_RE.findall(text)}
 
 
+def _kinds_and_readable(text: str) -> set[str]:
+    return _kinds(text) | ({"readable"} if READABLE in text else set())
+
+
 def _payload(out: str) -> dict:
     return json.loads(out) if out.strip() else {}
 
@@ -239,6 +261,7 @@ class Walk:
         self.capsys, self.mods, self.root, self.vault = capsys, mods, root, vault
         self.calls, self.bad_calls, self.forced_calls = [], [], []
         self.stage_files: dict = {}
+        self.read_files: dict = {}          # label -> read.json text, taken before the write deletes it
 
     def _call(self, script: str, argv: list[str]) -> dict:
         try:
@@ -253,11 +276,12 @@ class Walk:
                 "tmp_leaks": self._tmp_leaks()}
 
     def _tmp_leaks(self) -> list:
-        """Markers in any file under tomo-tmp/review/ except the two the model reads and writes by design."""
+        """Markers or the readable value in any file under tomo-tmp/review/ except the two the model
+        reads and writes by design."""
         leaks = []
         for path in sorted((self.root / "tomo-tmp").rglob("*")):
             if path.is_file() and path.name not in ("read.json", "proposals.json"):
-                kinds = _kinds(path.read_text(encoding="utf-8", errors="replace"))
+                kinds = _kinds_and_readable(path.read_text(encoding="utf-8", errors="replace"))
                 if kinds:
                     leaks.append((str(path.relative_to(self.root)), sorted(kinds)))
         return leaks
@@ -295,6 +319,9 @@ class Walk:
     def note_stage_files(self, label: str, stem: str) -> None:
         stage = self.stage(stem)
         self.stage_files[label] = ((stage / "read.json").exists(), (stage / "proposals.json").exists())
+
+    def keep_read_file(self, label: str, read_path: str) -> None:
+        self.read_files[label] = Path(read_path).read_text(encoding="utf-8")
 
 
 def _named(call: dict) -> dict:
@@ -363,6 +390,7 @@ def _week(w: Walk) -> None:
     rc, out = w.run("review-read", "-", ["--period", "2026-W13", "--kind", "week", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["nothing_to_review"] is False, out
     assert out["report"]["days"][2]["linked"][0]["state"] == "read"
+    w.keep_read_file("week", out["read_path"])
     path = w.write_proposals(WEEK_STEM, "week")
     rc, out = w.run("review-doc", "write", ["write", "--stem", WEEK_STEM, "--proposals", str(path),
                                             "--run-id", "r-week", "--today", TODAY])
@@ -377,14 +405,17 @@ def _week(w: Walk) -> None:
     rc, out = w.run("review-doc", "parse", ["parse", "--stem", WEEK_STEM])
     assert rc == 0 and out["approved"] is True and out["counts"]["added"] == 1, out
     rc, out = w.run("review-instructions", "preview", ["preview", "--stem", WEEK_STEM])
-    assert rc == 0 and out["problems"] == ["place-missing"] and out["headings"], out
-    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", "Woche"])
-    assert rc == 0 and out["status"] == "delivered" and out["place"]["anchor"] == "Woche", out
+    assert rc == 0 and out["problems"] == ["place-missing"] and ANCHOR in out["headings"], out
+    # the user picks a heading from that list: preview and deliver echo it as the place
+    rc, out = w.run("review-instructions", "preview", ["preview", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
+    assert rc == 0 and out["problems"] == [] and out["place"]["anchor"] == ANCHOR, out
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
+    assert rc == 0 and out["status"] == "delivered" and out["place"]["anchor"] == ANCHOR, out
     rc, out = w.run("review-instructions", "status", ["status", "--stem", WEEK_STEM])
     assert rc == 0 and out == {"state": "delivered", "stem": WEEK_STEM}, out
     rc, out = w.run("review-session", "start", ["start", "--args=", "--today", TODAY])
     assert rc == 0 and [(r["stem"], r["state"]) for r in out["open_reviews"]] == [(WEEK_STEM, "delivered")], out
-    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", "Woche"])
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
     assert rc == 0 and out["status"] == "refused" and out["problems"] == ["set-exists"], out
     rc, out = w.run("review-instructions", "drop", ["drop", "--stem", WEEK_STEM])
     assert rc == 0 and out["status"] == "withdrawn", out
@@ -395,6 +426,7 @@ def _week(w: Walk) -> None:
 def _month_read(w: Walk) -> Path:
     rc, out = w.run("review-read", "-", ["--period", "2026-03", "--kind", "month", "--today", TODAY])
     assert rc == 0 and out["status"] == "ok" and out["report"]["weekly_status"] == "found", out
+    w.keep_read_file("month", out["read_path"])
     return w.write_proposals(MONTH_STEM, "month")
 
 
@@ -566,6 +598,18 @@ def test_no_marker_in_tomos_working_files_after_any_step(walk):
     assert leaks == []
 
 
+def test_a_readable_tracker_value_stays_in_read_json_and_the_document(walk):
+    """The value the habits count is in read.json and the habits line; the averages must not carry it
+    anywhere else of Tomo's: stderr, stdout outside the named fields, a working file."""
+    assert READABLE in walk.read_files["week"] and READABLE in walk.read_files["month"]
+    assert f"Energy: average {READABLE}.0 over 1 days" in walk.vault.text(WEEK_DOC), "the habits counted it"
+    calls = walk.calls + walk.bad_calls + walk.forced_calls
+    assert [_label(c) for c in calls if READABLE in c["stderr"]] == []
+    assert [_label(c) for c in walk.calls if READABLE in _audit(c)[1]] == []
+    assert [_label(c) for c in walk.bad_calls + walk.forced_calls if READABLE in c["stdout"]] == []
+    assert [(_label(c), c["tmp_leaks"]) for c in calls if any("readable" in k for _, k in c["tmp_leaks"])] == []
+
+
 def test_read_and_proposal_files_are_gone_after_write_and_abort_and_kept_after_a_refusal(walk):
     gone, kept = (False, False), (True, True)
     assert walk.stage_files == {
@@ -586,3 +630,10 @@ def test_every_marker_reached_the_scripts(walk):
     reads = [c for c in walk.calls if c["script"] == "review-read" and _payload(c["stdout"]).get("read_path")]
     assert reads and all(not Path(_payload(c["stdout"])["read_path"]).exists() for c in reads)
     assert _payload(reads[0]["stdout"])["report"]["days"][2]["linked"][0]["name"] == "5J-2026-03-25"
+    for label in ("week", "month"):
+        assert _kinds(walk.read_files[label]) >= {"daily", "answer", "tracker"}, label
+        assert f"Answer {ANS} in journal" in walk.read_files[label], f"the 5-year journal note was read ({label})"
+    # the tracker marker reached the habits: its two days are named unreadable in the document
+    doc = walk.vault.text(WEEK_DOC)
+    assert "Sleep:" in doc and "unreadable: 2026-03-24" in doc, "Sleep:: TRK on 2026-03-24"
+    assert "Sport:" in doc and "unreadable: 2026-03-25" in doc, "Sport:: TRK on 2026-03-25"

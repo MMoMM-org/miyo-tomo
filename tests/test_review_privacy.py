@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -73,6 +73,9 @@ from lib.kado_client import KadoError  # noqa: E402
 # (script, subcommand, field) -> (marker kinds it may carry, why).
 # Field syntax: dotted keys, `[]` walks a list.
 USER_TEXT_FIELDS = {
+    ("review-session", "match", "anchor_candidates[]"):
+        ({"weekly"}, "without a template heading to propose the place from, the headings of the two most recent "
+                     "periodic notes are offered for the anchor pick (F1-AC7, Phase 6 live-walk fix)"),
     ("review-instructions", "preview", "section_md"):
         ({"proposal"}, "the preview prints the section as it will land, so the user reads it before Deliver (F5-AC2)"),
     ("review-instructions", "preview", "headings[]"):
@@ -273,6 +276,20 @@ def _session(w: Walk) -> None:
         rc, out = w.run("review-session", "setup-input",
                         ["setup-input", "--kind", kind, "--confirmed", str(confirmed), "--today", TODAY])
         assert rc == 0 and out["status"] == "ok", out
+    # no template mapped and no anchor configured: the candidates of the templates folder (names only) and the
+    # recent weekly notes' headings (the marker-bearing field named above) reach stdout; a chosen template is read
+    no_mapping = copy.deepcopy(CONFIG)
+    no_mapping["templates"]["mapping"] = {"daily": "t_day.md"}
+    no_mapping["review"] = {k: CONFIG["review"][k] for k in ("language", "week", "daily")}
+    (w.root / "config" / "no-mapping.yaml").write_text(yaml.safe_dump(no_mapping), encoding="utf-8")
+    rc, out = w.run("review-session", "match",
+                    ["--config", "config/no-mapping.yaml", "match", "--kind", "week", "--today", TODAY])
+    assert rc == 0 and out["template_candidates"] == ["t_week"] and out["needs_anchor"] is True, out
+    assert any(WKL in h for h in out["anchor_candidates"]), "the recent weekly note's marker heading is a candidate"
+    rc, out = w.run("review-session", "match",
+                    ["--config", "config/no-mapping.yaml", "match", "--kind", "week", "--template", "t_week",
+                     "--today", TODAY])
+    assert rc == 0 and out["proposal"]["template"] == "t_week.md" and "needs_anchor" not in out, out
 
 
 def _week(w: Walk) -> None:

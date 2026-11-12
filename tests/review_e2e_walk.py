@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -188,12 +188,13 @@ class Walk:
         return [(r["stem"], r["state"]) for r in out["open_reviews"]]
 
     # ── step 2: the setup dialogue ──
-    def match(self, kind: str) -> dict:
-        return self.run("review-session", "match", "--kind", kind, "--today", TODAY)
+    def match(self, kind: str, *flags: str) -> dict:
+        """`flags` are the answers the skill passes back, e.g. `--template <name>` after the template question."""
+        return self.run("review-session", "match", "--kind", kind, *flags, "--today", TODAY)
 
-    def setup(self, kind: str, **corrections) -> dict:
+    def setup(self, kind: str, *flags: str, **corrections) -> dict:
         """match → Confirm: confirmed-<kind>.json, setup-input, the writer, both files removed."""
-        out = self.match(kind)
+        out = self.match(kind, *flags)
         assert out["status"] == "ok", out
         confirmed = self.root / "tomo-tmp" / "review" / f"confirmed-{kind}.json"
         confirmed.parent.mkdir(parents=True, exist_ok=True)

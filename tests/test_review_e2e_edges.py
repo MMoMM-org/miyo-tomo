@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -12,7 +12,10 @@ warns `approved-line-missing`, `preview` and `deliver` refuse it, nothing is del
 saved setup → `start` returns `current.<kind>` with the saved values, `match` proposes, and Confirm with a
 correction replaces the saved setup (the other keys kept); a week with only a few dailies (2026-W14: three of
 seven days) → the report names each day, the dailies found, and the document is written for the existing
-weekly note. Every write attempted through the client is under the inbox prefix, per test and in the sweep.
+weekly note; a first setup whose config maps no weekly template (the owner's instance, Phase 6 live walk) → `match`
+lists the templates folder's `template_candidates` and marks `needs_anchor`, the user's pick is passed back as
+`--template`, Confirm saves the mapping key beside the setup, and the review then reads. Every write attempted
+through the client is under the inbox prefix, per test and in the sweep.
 
 The read-side edge cases of the PRD are unit-tested, not walked here: a linked Dayplanner or journal note that
 is missing or cannot be read → tests/test_review_day.py::test_missing_linked_note_is_a_problem_of_that_day_and_the_day_still_read
@@ -33,6 +36,7 @@ if str(TESTS_DIR) not in sys.path:
 
 from review_e2e_walk import (  # noqa: E402
     APPROVED, CONFIG, INBOX, TICKED, WEEK, WEEK_DOC, WEEK_PERIOD, WEEK_STEM, WEEKLY, WRITES, Walk,
+    config_without_setup,
 )
 
 SPARSE_PERIOD, SPARSE_STEM = "2026-W14", "2026-W14_review"
@@ -126,6 +130,36 @@ def test_setup_rerun_shows_the_saved_setup_and_a_confirmed_correction_replaces_i
     assert after["review"]["weekly"]["place"] == before["review"]["weekly"]["place"]
     assert after["review"]["monthly"] == before["review"]["monthly"], "the other kind is untouched"
     assert walk.start("setup")["current"]["week"]["heading"] == "Wochenrückblick"
+    assert walk.vault.recorded == [], "the setup writes only the config file"
+
+
+# ── journey 1 again, the owner's instance: no weekly template mapped ─────────────────────
+
+
+def test_first_setup_without_a_template_mapping_asks_for_the_template_and_saves_it(tmp_path, monkeypatch, capsys,
+                                                                                    request):
+    """Phase 6 live walk (container session 5b959432): `templates.mapping` without `weekly`, the templates folder
+    holding `t_week*.md`. The first `match` lists the candidates and marks `needs_anchor` (both questions in one
+    call); the skill's answer `2` is `--template t_week_privat`; its headings propose the anchor; Confirm saves
+    `templates.mapping.weekly` beside the setup, and the review reads the period."""
+    config = config_without_setup()
+    config["templates"] = {"base_path": "Templates/", "mapping": {"daily": "t_day.md"}}
+    walk = Walk(tmp_path, monkeypatch, capsys, request.node.nodeid, config=config)
+    walk.vault.files["Templates/t_week_privat.md"] = "# Weekly\n\n## Theme\n\n## In my own words\n"
+    assert walk.start(WEEK_PERIOD)["setup"]["week"] == "missing"
+    first = walk.match(WEEK)
+    assert first["status"] == "ok" and first["template_candidates"] == ["t_week", "t_week_privat"], first
+    assert first["proposal"]["template"] is None and first["proposal"]["place"]["anchor"] is None
+    assert first["needs_anchor"] is True and "Review of the Week" in first["anchor_candidates"], first
+    saved = walk.setup(WEEK, "--template", "t_week_privat")                       # the user typed 2
+    assert saved["status"] == "written" and "templates.mapping.weekly" in saved["keys"], saved
+    after = yaml.safe_load((walk.root / "config" / "vault-config.yaml").read_text(encoding="utf-8"))
+    assert after["templates"] == {"base_path": "Templates/", "mapping": {"daily": "t_day.md", "weekly": "t_week_privat.md"}}
+    assert after["review"]["weekly"]["place"] == {"anchor": "In my own words", "placement": "before"}
+    out = walk.start(WEEK_PERIOD)
+    assert out["setup"] == {"week": "present", "month": "missing"}, out
+    read = walk.read(WEEK_PERIOD, WEEK)
+    assert read["status"] == "ok" and read["nothing_to_review"] is False, read
     assert walk.vault.recorded == [], "the setup writes only the config file"
 
 

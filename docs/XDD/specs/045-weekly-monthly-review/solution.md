@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.11"
+version: "1.12"
 ---
 
 # Solution Design Document
@@ -1090,9 +1090,11 @@ review_state(doc, meta, set_json, target_exists, inbox_copy_exists):
    the set but failed before the MD and the meta mark; SDD 1.7, owner decision),
    or the document approved and no set JSON while meta lacks doc_mark (3b)  → failed-delivery (resume | drop;
    on the emptied set resume refuses set-withdrawn and the skill offers drop, which completes the withdrawal)
-3a. meta present, no step done or in flight, and every action of the set applied (all_applied)
+3a. meta present, no step done or in flight, not applied_reported, and every action of the set applied (all_applied)
    — the finished set of an earlier run beside a rerun's fresh record     → open (the rerun's deliver writes over it;
-   meta absent stays step 6: a cleaned stage beside an applied set is a finished review)
+   meta absent stays step 6: a cleaned stage beside an applied set is a finished review; the minimal meta `start`
+   writes for a reported applied review — no step, applied_reported — is not a fresh record and stays step 6 too,
+   so the listing drops it and `status` answers applied; SDD 1.12)
 3b. the document approved, no set JSON, and doc_mark in meta.steps_done — a complete delivery whose set the user
    deleted from the inbox after Hashi applied it (Hashi never deletes a set) → None (finished, not listed; the
    approved-without-a-set reading of step 3 is for a record that lacks doc_mark: lost, never begun, or stopped

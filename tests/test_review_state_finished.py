@@ -19,6 +19,12 @@ skill said a set waits for Hashi although none was there. The rule now:
   begun stem is `failed-delivery`; a fresh record over a fully applied set is `open`; a pending document
   with a complete record costs no read and is `open` as before
 - `open_reviews` omits the finished stem while still listing the resumable one
+
+Regression (873c8478, caught by test_review_session.py::test_start_reports_applied_once_also_when_the_meta_is_gone):
+the fresh-record-over-an-applied-set rule read the minimal meta `start` writes when it reports an applied review
+whose meta was gone (`{stem, steps_done: [], failed_step: "", applied_reported: true}`) as a never-begun record, so
+the next `start` listed the stem `open` forever. The rule now also needs `not applied_reported(meta)`: a record
+that reported the set as applied is not a rerun's fresh record over it.
 """
 from __future__ import annotations
 
@@ -81,6 +87,36 @@ def test_the_finished_rule_needs_the_approved_document_and_the_absent_set():
     vault, fake = _vault({})
     assert rs.stem_state(vault, pending, COMPLETE, STEM, INBOX) == "open"
     assert _probes(fake) == []
+
+
+def test_a_start_minimal_record_beside_an_applied_set_stays_silent(tmp_path):
+    """RED before the fix: the minimal meta `start` writes for a reported applied review (no step done, no step
+    in flight, applied_reported) read as a fresh record over an applied set → open, and the stem was listed on
+    every later start. It is a reported applied review: the classifier answers applied (status still does) and
+    the listing drops it, like every other applied_reported stem."""
+    doc = _doc("2026-W13", "week", APPROVED)
+    reported = {"stem": STEM, "steps_done": [], "failed_step": "", "applied_reported": True}
+    assert rs.review_state(doc, reported, _set(_move(True))) == "applied"
+    assert rs.review_state(doc, {"applied_reported": True}, _set(_insert(True))) == "applied"
+    vault, fake = _vault({SET: _set_bytes(_move(True))})
+    assert rs.stem_state(vault, doc, reported, STEM, INBOX) == "applied"
+    assert _probes(fake) == [("read_file", SET)]
+    _meta(tmp_path, STEM, **{k: v for k, v in reported.items() if k != "stem"})
+    reviews, skipped = rs.open_reviews([(INBOX + "2026-W13 Review.md", _doc("2026-W13", "week", APPROVED,
+                                                                            stem=STEM))], tmp_path, vault, INBOX)
+    assert (reviews, skipped) == ([], [])
+
+
+def test_a_fresh_record_without_applied_reported_beside_an_applied_set_reads_open():
+    """The guard: the rerun's fresh record (replace --confirm resets meta.json; no applied_reported) over the
+    earlier run's applied set still reads open, whatever other keys the record carries."""
+    doc = _doc("2026-W13", "week", APPROVED)
+    assert rs.review_state(doc, {"steps_done": [], "failed_step": ""}, _set(_move(True))) == "open"
+    assert rs.review_state(doc, {"stem": STEM, "run_id": "r2", "applied_reported": False}, _set(_move(True))) == "open"
+    assert rs.review_state(doc, {}, _set(_insert(True))) == "open"
+    vault, fake = _vault({SET: _set_bytes(_move(True))})
+    assert rs.stem_state(vault, doc, {"steps_done": [], "failed_step": ""}, STEM, INBOX) == "open"
+    assert _probes(fake) == [("read_file", SET)]
 
 
 def test_open_reviews_omits_the_finished_stem_and_still_lists_the_resumable_one(tmp_path):

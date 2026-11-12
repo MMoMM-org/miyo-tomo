@@ -40,6 +40,10 @@ Primary Flow step 9), the last of `note → set_json → set_md → doc_mark`, s
 that `approved` in the frontmatter means "the instruction set for this
 document was written" — `review_state` (planned, spec 045 Phase 2 T2.3,
 completed in Phase 4) reads `approved` without a set JSON as a failed
-delivery to resume. The user's tick alone does not change the frontmatter;
+delivery to resume, unless the stem's `meta.json` records `doc_mark`: then
+the delivery completed and the user deleted the applied set from the inbox,
+and the review is finished, not listed (spec 045 Phase 6; see
+docs/tomo/scripts/lib/review_state.md, "WHY a Complete Delivery Whose Set
+Is Gone Is Finished, Not Failed"). The user's tick alone does not change the frontmatter;
 it is read by `review-doc.py parse` (planned, spec 045 Phase 3) and refused
 as `not-approved` when absent.

@@ -127,6 +127,24 @@ and `applied` stays the honest answer there — `start` writes it a minimal
 meta with `applied_reported`, as before. A begun record over an applied
 set is unchanged: `failed-delivery` without `doc_mark`, `applied` with it.
 
+The rule also needs the record not to carry `applied_reported`
+(`applied_reported(meta)` False). WHY: the minimal meta `start` writes when
+it reports an applied review whose `meta.json` was gone — `{stem,
+steps_done: [], failed_step: "", applied_reported: true}` — is present and
+never began a delivery, so the rule as first written (873c8478) read it as
+a rerun's fresh record over the earlier run's set and the next `start`
+listed the stem `open` forever
+(`test_start_reports_applied_once_also_when_the_meta_is_gone` caught it).
+A record that reported the set as applied is not a fresh record over it:
+it falls through to step 4 and reads `applied`, which `status` still
+answers and the listing drops, as for every other reported stem. The
+rerun's fresh record never carries the flag: `replace --confirm` resets
+`meta.json`, and `start` writes the flag only beside a set it listed as
+`applied`, which a fresh record cannot be (it reads `open`). Making the
+listing's `applied_reported` filter part of the classifier instead was
+rejected: `status` answers `applied` for a reported stem by design (see
+"WHY `applied` Is Offered Once, and the Listing Applies It").
+
 ## WHY a Complete Delivery Whose Set Is Gone Is Finished, Not Failed (Phase 6, pre-live-walk)
 
 WHY: owner decision 2026-11-12. The "approved document without a set →

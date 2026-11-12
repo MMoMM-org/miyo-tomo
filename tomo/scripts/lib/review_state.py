@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.6.0
+# version: 0.6.1
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -30,8 +30,10 @@ not listed when no delivery began (meta absent, no step done or in flight),
 ``failed-delivery`` under a begun delivery that meta does not call withdrawn
 (a drop that wrote the set but failed before the meta mark; the next
 ``/review`` offers it again); a present record that never began a delivery
-over a set whose every action is applied → ``open`` (the finished set of an
-earlier run of the period, beside a rerun's fresh record); an approved
+and does not carry ``applied_reported``, over a set whose every action is
+applied → ``open`` (the finished set of an earlier run of the period, beside
+a rerun's fresh record; the minimal record ``start`` writes for a reported
+applied review is not one); an approved
 document without a set whose record carries ``doc_mark`` → not listed (a
 complete delivery whose set the user deleted after applying); a begun
 delivery (``review_delivery.ReviewMeta.started()``) without ``doc_mark``,
@@ -162,9 +164,10 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     # wrote the set but not the meta mark under one
     if actions == []:
         return FAILED_DELIVERY if record.started() else None
-    # a present record that never began, beside a set every action of which is applied: the finished set of an
-    # earlier run of the period (a rerun after replace --confirm writes over it), not this review's
-    if isinstance(meta, dict) and not record.started() and all_applied(set_json):
+    # a present record that never began and never reported the set, beside a set every action of which is
+    # applied: the finished set of an earlier run of the period (a rerun after replace --confirm writes over
+    # it), not this review's. The minimal record start writes for a reported applied review falls through.
+    if isinstance(meta, dict) and not record.started() and not applied_reported(meta) and all_applied(set_json):
         return OPEN
     approved_without_set = doc_state(doc) == DOC_STATE_APPROVED and set_json is None
     # step 3b: a complete delivery whose set the user deleted after applying — finished, not listed

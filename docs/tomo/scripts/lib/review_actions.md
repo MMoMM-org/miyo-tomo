@@ -60,6 +60,37 @@ blockquote), so this module carries its own mirror of Hashi's two regexes
 marker search and the template of a new note. The mirror has no behaviour of
 its own: when Hashi's parser changes, this one changes with it.
 
+The mirror is exact down to the character classes, because Python's `re`
+and ECMAScript read the same two regexes differently in three places, and
+each difference makes Tomo emit an anchor Hashi cannot resolve:
+
+- Line terminators. Hashi splits the file on `\n` only, so a CRLF note
+  keeps its `\r` at the end of every line, and ECMAScript's `.` does not
+  match `\r` (nor U+2028, U+2029) while its `$` without the `m` flag matches
+  only at the end of the string — `## Woche\r` is NOT a heading to Hashi.
+  Python's `.` matches `\r` and `str.strip()` removes it, so the naive mirror
+  found `Woche` and emitted it, and Hashi answered `anchor not found`. The
+  text group is therefore `[^\r\n  ]*`, anchored with `\Z`, and the
+  split stays `\n` only: a CRLF target has no headings at all, which the
+  plan reports as `place-missing` (with an empty heading list) instead of
+  emitting an anchor that fails downstream. The same holds for a heading
+  line that contains U+2028 or U+2029.
+- Whitespace. ECMAScript's `\s` and `String.prototype.trim` share one set:
+  WhiteSpace (U+0009, U+000B, U+000C, U+FEFF and Unicode `Zs`) plus
+  LineTerminator (U+000A, U+000D, U+2028, U+2029). Python's `\s` and
+  `str.strip()` use `str.isspace()`, which adds U+001C to U+001F and U+0085
+  and lacks U+FEFF. So a BOM after the hashes is whitespace to Hashi (the
+  heading is found, the BOM trimmed) but text to Python, and a NEL or a
+  file separator is the opposite. `JS_WS` holds the ECMAScript set as a
+  literal (the `Zs` members have been stable since Unicode 6.3 dropped
+  U+180E; a test compares the literal with `unicodedata` so a drift shows),
+  both regexes use it in place of `\s`, and the heading text is trimmed with
+  `str.strip(JS_WS)`. The V8 oracle for every edge character is in the test
+  file's docstring.
+- Only the mirror uses `JS_WS`. Tomo's own marker match (`line.strip() ==
+  marker`) stays Python's: the marker line is Tomo's signature, not
+  something Hashi resolves.
+
 Matching is tolerant, emission exact. A configured anchor or `setup.heading`
 of `Woche` matches a note heading `Woche ##` (both sides compared after
 stripping closing hashes and trailing whitespace — the user wrote the same
@@ -89,6 +120,15 @@ checked against what Hashi would do, not against what Tomo meant.
 
 A marker with no heading above it has no section Hashi could address; it is
 reported as `place-missing` with the note's headings, and nothing is emitted.
+
+Every refused replace reports what it found, not what the setup said. The
+marker proves the run is a rerun, so the plan's mode is `replace` and its
+place is the heading above the marker — its Hashi text and level — whether
+the refusal is `place-too-deep`, `user-heading-collision` (an own section,
+or a heading an earlier heading of the same text shadows) or `place-missing`
+(then anchor and level are `None`, with the note's headings beside them). The
+setup's anchor and placement never took part in a replace, so reporting them
+would send the user to fix a place the plan did not use.
 
 ## WHY the Content Is the Section Body Hashi Will Compare
 

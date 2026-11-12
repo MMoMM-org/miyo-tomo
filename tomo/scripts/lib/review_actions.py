@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.2.0
+# version: 0.3.0
 """Build the delivery plan of an approved review (spec 045, T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -17,11 +17,14 @@ when the target holds no marker of this period, one ``replace_section`` on the h
 marker when it does — whatever that heading's text — or one ``move_note`` for a new note that
 waits in the inbox stamped rendered-note/pending-move. A heading with the review's text but no
 marker, a marker under an own section, or a marker under a heading an earlier heading of the
-same text shadows is a collision: nothing is emitted. Every heading matched or emitted is the
-heading as Hashi's parser reads the file (``hashi_headings``: closing hashes kept, every line
-opening with ``` or ~~~ toggles a fence, frontmatter included); a configured anchor, the review
-heading and the own sections match a note heading with or without closing hashes, the emitted
-anchor value is Hashi's text. Heading levels come from ``review_config.place_level``; every
+same text shadows is a collision: nothing is emitted. A refused replace (the marker proves the
+rerun) reports mode ``replace`` and the heading found above the marker as the place. Every heading
+matched or emitted is the heading as Hashi's parser reads the file (``hashi_headings``: closing
+hashes kept, every line opening with ``` or ~~~ toggles a fence, frontmatter included, the file
+split on ``\\n`` only, ECMAScript's whitespace set ``JS_WS`` and line terminators — a CRLF line is
+no heading); a configured anchor, the review heading and the own sections match a note heading
+with or without closing hashes, the emitted anchor value is Hashi's text. Heading levels come
+from ``review_config.place_level``; every
 landed item line runs through ``review_doc.neutralised`` once more (idempotent); ids are
 stripped; the content ends with one blank line and depends on nothing but the arguments.
 ``locate_target`` picks the target among the configured paths (flat folder first, the duplicate
@@ -62,8 +65,16 @@ NOTE_DOC_TYPE, NOTE_STATE = "rendered-note", "pending-move"
 PLAIN_LEVEL = 2          # the review heading of a plain new note, under its H1 title
 _MARKER = "%% tomo-review {period} %%"
 _CONTINUATION = "  "
-_HASHI_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")        # Hashi markdownStructure.ts CODE_FENCE_RE
-_HASHI_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")    # Hashi markdownStructure.ts HEADING_RE
+# ECMAScript's `\s` and `String.prototype.trim()` set, as a literal: WhiteSpace (U+0009, U+000B, U+000C,
+# U+FEFF, Unicode Zs) + LineTerminator (U+000A, U+000D, U+2028, U+2029). Python's `\s`/`str.strip()`
+# differ (U+001C-001F and U+0085 in, U+FEFF out), so the mirror spells the set out.
+JS_WS = ("\t\v\f﻿              "
+         "  　\n\r  ")
+_JS_LINE_TERMINATORS = "\n\r  "                  # what ECMAScript's `.` never matches
+_JS_S = f"[{re.escape(JS_WS)}]"
+_HASHI_FENCE_RE = re.compile(rf"^{_JS_S}*(?:```|~~~)")  # Hashi markdownStructure.ts CODE_FENCE_RE
+_HASHI_HEADING_RE = re.compile(                           # Hashi markdownStructure.ts HEADING_RE: `.` and `$`
+    rf"^(#{{1,6}}){_JS_S}+([^{re.escape(_JS_LINE_TERMINATORS)}]*)\Z")   # as ECMAScript reads them
 _CLOSING_HASHES_RE = re.compile(r"[ \t]+#+$")
 
 Headings = List[Tuple[int, int, str]]     # (line index, level, text), review_md's shape
@@ -219,7 +230,8 @@ def fenced_mask(lines: Sequence[str]) -> List[bool]:
 
 def hashi_headings(lines: Sequence[str]) -> Headings:
     """``(line index, level, text)`` of every heading as Hashi's ``parseHeadings`` reads these lines:
-    the text after the hashes, trimmed, closing hashes kept; fenced lines skipped."""
+    the text after the hashes, trimmed by ECMAScript's set, closing hashes kept; a line holding a
+    ``\\r``, U+2028 or U+2029 is no heading; fenced lines skipped."""
     fenced = fenced_mask(lines)
     found: Headings = []
     for index, line in enumerate(lines):
@@ -227,7 +239,7 @@ def hashi_headings(lines: Sequence[str]) -> Headings:
             continue
         match = _HASHI_HEADING_RE.match(line)
         if match:
-            found.append((index, len(match.group(1)), match.group(2).strip()))
+            found.append((index, len(match.group(1)), match.group(2).strip(JS_WS)))
     return found
 
 
@@ -329,14 +341,15 @@ def _existing_note(plan: ReviewPlan, setup: rc.ReviewSetup, target: Target, anch
     headings = hashi_headings(lines)
     marker_at = _marker_index(lines, marker_line(period))
     if marker_at is not None:
+        plan.mode = REPLACE                    # the marker proves the rerun; a refusal reports what it found
         above = next((h for h in reversed(headings) if h[0] < marker_at), None)
         if above is None:
+            plan.place = {"anchor": None, "placement": REPLACE, "level": None}
             return _refuse(plan, PLACE_MISSING, headings)
         _, level, text = above
+        plan.place = {"anchor": text, "placement": REPLACE, "level": level}
         if _own(setup, text) or _resolved(headings, text) != above:
             return _refuse(plan, HEADING_COLLISION, headings)
-        plan.mode = REPLACE
-        plan.place = {"anchor": text, "placement": REPLACE, "level": level}
         if _level_or_refuse(plan, rc.BEFORE, level, headings) is None:
             return plan
         if bare(text) != bare(setup.heading):

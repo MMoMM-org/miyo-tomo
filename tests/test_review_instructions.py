@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
+# version: 0.3.0
+r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
 The approved review is built the way production builds it: review_doc.render_document → the user
@@ -25,8 +25,21 @@ an unapproved, gate-less or empty review emits nothing; every heading emitted or
 heading as Hashi's parser reads it (closing hashes kept, every ``` or ~~~ line toggles a fence,
 no quoted fence) — `hashi_headings` here is a test-local copy of that rule — while a configured
 anchor or the review heading matches it with or without closing hashes; a refused replace
-reports the found heading as the place; every set validates against the producer schema,
-Tomo's Hashi copy and Hashi's vendored copy.
+(too deep, collision, no heading above the marker) reports mode `replace` and the found heading
+as the place; every set validates against the producer schema, Tomo's Hashi copy and Hashi's
+vendored copy.
+
+The mirror is exact to ECMAScript, pinned as `test_hashi_mirror_*`: Hashi splits on `\n` only
+and its `.` matches no line terminator, so a CRLF line or one holding U+2028/U+2029 is no
+heading (`place-missing`, no anchor Hashi cannot resolve); its `\s` and `trim()` share one set
+(WhiteSpace U+0009/000B/000C/FEFF + Zs, LineTerminator U+000A/000D/2028/2029) that Python's
+`\s`/`strip()` do not (they add U+001C-001F and U+0085, lack U+FEFF), so `ra.JS_WS` is that set
+and is compared with `unicodedata`. V8 22 oracle, `/^(#{1,6})\s+(.*)$/` then `.trim()`:
+`## Woche\r` → no heading; `## Wo che` → no heading; `##﻿Woche` → `Woche`;
+`## Woche` → `Woche`; `##　Woche　` → `Woche`; `##\u0085Woche` → no heading;
+`## Woche\u0085` → `Woche\u0085` (kept); `##\u001CWoche` → no heading; `##᠎Woche` → no
+heading; `##\r` → `` (empty text); `/^\s*(?:```|~~~)/` on `﻿```` → fence, on
+`\u0085```` → no fence.
 T4.2 adds the review-instructions.py tests to this file. All data is synthetic.
 """
 from __future__ import annotations
@@ -34,6 +47,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import jsonschema
@@ -116,20 +130,31 @@ def hashi_section_body(text: str, heading: str) -> list[str]:
     return lines[i + 1:end]
 
 
+# ECMAScript `\s` / `String.prototype.trim`, spelled here independently of ra.JS_WS: the V8 scan of
+# every code point `/\s/` matches (see the docstring).
+ES_WS = "\t\n\v\f\r   " + "".join(chr(c) for c in range(0x2000, 0x200B)) + "    　﻿"
+ES_LINE_TERMINATORS = "\n\r  "
+_ES_WS = f"[{re.escape(ES_WS)}]"
+_ES_FENCE = re.compile(rf"^{_ES_WS}*(?:```|~~~)")
+_ES_HEADING = re.compile(rf"^(#{{1,6}}){_ES_WS}+([^{re.escape(ES_LINE_TERMINATORS)}]*)\Z")
+
+
 def hashi_headings(text: str) -> list[tuple[int, int, str]]:
-    """Hashi's parseHeadings over fencedLineMask (markdownStructure.ts), reimplemented here on purpose:
-    ``^(#{1,6})\\s+(.*)$`` trimmed, closing hashes kept; any ``^\\s*(```|~~~)`` line toggles the fence."""
+    """Hashi's parseHeadings over fencedLineMask (markdownStructure.ts), reimplemented here on purpose
+    with ECMAScript's character classes: ``^(#{1,6})\\s+(.*)$`` trimmed (``.`` matches no line
+    terminator, ``$`` only the end), closing hashes kept; any ``^\\s*(```|~~~)`` line toggles the fence;
+    the file is split on ``\\n`` only."""
     found = []
     fenced = False
     for i, line in enumerate(text.split("\n")):
-        if re.match(r"^\s*(?:```|~~~)", line):
+        if _ES_FENCE.match(line):
             fenced = not fenced
             continue
         if fenced:
             continue
-        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        m = _ES_HEADING.match(line)
         if m:
-            found.append((i, len(m.group(1)), m.group(2).strip()))
+            found.append((i, len(m.group(1)), m.group(2).strip(ES_WS)))
     return found
 
 
@@ -232,6 +257,9 @@ def test_actions_a_marker_under_a_heading_an_earlier_user_heading_shadows_is_a_c
     shadowed = landed_note().replace("## Woche\ntext der Woche", f"## {HEADING}\nthe user's own section")
     p = plan(target_text=shadowed)
     assert p.problems == ["user-heading-collision"] and p.actions == []
+    # the marker proves a rerun: the refusal reports the replace it did not do, at the heading it found
+    assert p.mode == "replace" and p.place == {"anchor": HEADING, "placement": "replace", "level": 2}
+    assert p.headings[:3] == [PERIOD, HEADING, HEADING] and p.headings[-1] == OWN
 
 
 def test_actions_own_sections_are_never_targeted():
@@ -239,6 +267,7 @@ def test_actions_own_sections_are_never_targeted():
     moved = NOTE.replace("meine Worte", f"{MARKER}\n### Erledigt\n- alt")
     p = plan(target_text=moved)
     assert p.problems == ["user-heading-collision"] and p.actions == []
+    assert p.mode == "replace" and p.place == {"anchor": OWN, "placement": "replace", "level": 2}
     # inside an own section: never inserted into
     p = plan(setup=setup(anchor=OWN, placement="inside"))
     assert p.problems == ["user-heading-collision"] and p.actions == []
@@ -249,6 +278,8 @@ def test_actions_own_sections_are_never_targeted():
 def test_actions_a_marker_with_no_heading_above_it_is_place_missing():
     p = plan(target_text=f"{MARKER}\n- old\n\n## Woche\n")
     assert p.problems == ["place-missing"] and p.headings == ["Woche"] and p.actions == []
+    # a rerun with nothing Hashi could address: the place is the (absent) heading, not the setup's anchor
+    assert p.mode == "replace" and p.place == {"anchor": None, "placement": "replace", "level": None}
 
 
 # ---------------------------------------------------------------- headings as Hashi reads them
@@ -305,6 +336,75 @@ def test_actions_fences_toggle_as_hashi_toggles_them():
     unclosed = NOTE.replace("text der Woche", f"```\n{MARKER}\n- alt")
     p = plan(target_text=unclosed)
     assert p.mode == "insert" and p.problems == ["place-missing"] and p.headings == [PERIOD, "Woche"]
+
+
+# ---------------------------------------------------------------- the mirror is exact to ECMAScript
+
+def test_hashi_mirror_a_crlf_target_has_no_heading_to_hashi_and_is_place_missing():
+    crlf = NOTE.replace("\n", "\r\n")
+    assert hashi_headings(crlf) == [] and ra.hashi_headings(crlf.split("\n")) == []
+    p = plan(target_text=crlf)
+    assert p.mode == "insert" and p.problems == ["place-missing"] and p.headings == [] and p.actions == []
+    # the marker is Tomo's own match and still found on a CRLF line; with no heading above it to Hashi
+    # the rerun is refused with an empty place, never with an anchor Hashi cannot resolve
+    p = plan(target_text=landed_note().replace("\n", "\r\n"))
+    assert p.mode == "replace" and p.problems == ["place-missing"] and p.actions == []
+    assert p.place == {"anchor": None, "placement": "replace", "level": None} and p.headings == []
+    # a lone CR is a line terminator to Hashi's `.` as well: the text group ends before it
+    assert ra.hashi_headings(["## Woche\r", "##\r", "## \r"]) == [(1, 2, ""), (2, 2, "")]
+
+
+@pytest.mark.parametrize("terminator", [" ", " "])
+def test_hashi_mirror_a_heading_line_holding_a_js_line_terminator_is_no_heading(terminator):
+    note = NOTE.replace("## Woche\n", f"## Wo{terminator}che\n", 1)
+    assert [h[2] for h in hashi_headings(note)] == [PERIOD, OWN]
+    p = plan(target_text=note, setup=setup(anchor=f"Wo{terminator}che"))
+    assert p.problems == ["place-missing"] and p.headings == [PERIOD, OWN] and p.actions == []
+    assert plan(target_text=note, setup=setup(anchor="Woche")).problems == ["place-missing"]
+
+
+def test_hashi_mirror_js_ws_is_ecmascripts_whitespace_set():
+    zs = {chr(c) for c in range(0x110000) if unicodedata.category(chr(c)) == "Zs"}
+    assert set(ra.JS_WS) == zs | set("\t\v\f﻿") | set("\n\r  ")
+    assert len(ra.JS_WS) == len(set(ra.JS_WS))
+    assert set(ra.JS_WS) == set(ES_WS)                         # the test's own spelling agrees
+    # the three characters that separate the two languages, each on the ECMAScript side
+    assert "﻿" in ra.JS_WS and not "﻿".isspace()
+    assert "\x85" not in ra.JS_WS and "\x85".isspace()
+    assert "\x1c" not in ra.JS_WS and "\x1c".isspace()
+    assert "᠎" not in ra.JS_WS                          # Cf since Unicode 6.3, not Zs
+
+
+def test_hashi_mirror_a_bom_after_the_hashes_is_whitespace_and_trimmed():
+    note = NOTE.replace("## Woche\n", "##﻿Woche﻿\n", 1)
+    assert hashi_headings(note)[1] == (2, 2, "Woche")
+    p = plan(target_text=note, setup=setup(anchor="Woche", placement="inside"))
+    assert p.problems == [] and p.actions[0]["anchor"]["value"] == "Woche"
+    assert p.place == {"anchor": "Woche", "placement": "inside", "level": 3}
+    # NBSP and the ideographic space are Zs: whitespace to both regexes
+    assert ra.hashi_headings(["## Woche ", "##　Woche　"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
+    # tab, VT and FF are WhiteSpace too
+    assert ra.hashi_headings(["##\tWoche\t", "##\v\fWoche"]) == [(0, 2, "Woche"), (1, 2, "Woche")]
+    # and a BOM opens a fence line to Hashi, so the heading inside is no anchor
+    assert ra.fenced_mask(["﻿```", "## x", "```"]) == [True, True, True]
+
+
+@pytest.mark.parametrize("char", ["\x85", "\x1c", "᠎"])
+def test_hashi_mirror_characters_outside_ecmascripts_set_are_text(char):
+    # after the hashes it is not the required whitespace: no heading
+    assert ra.hashi_headings([f"##{char}Woche"]) == [] and hashi_headings(f"##{char}Woche") == []
+    assert ra.hashi_headings([f"## {char}Woche"]) == [(0, 2, f"{char}Woche")]
+    # trailing, it is kept in the text: Hashi resolves `Woche<char>`, never `Woche`, and whatever the
+    # plan emits for a bare `Woche` anchor (tolerant match, exact emission) is the text Hashi resolves
+    note = NOTE.replace("## Woche\n", f"## Woche{char}\n", 1)
+    assert hashi_headings(note)[1] == (2, 2, f"Woche{char}") and hashi_resolves(note, "Woche") is None
+    p = plan(target_text=note, setup=setup(anchor=f"Woche{char}"))
+    assert p.problems == [] and p.actions[0]["anchor"]["value"] == f"Woche{char}"
+    p = plan(target_text=note, setup=setup(anchor="Woche"))
+    assert all(hashi_resolves(note, a["anchor"]["value"]) == (2, 2, f"Woche{char}") for a in p.actions)
+    assert p.problems == [] or (p.problems == ["place-missing"] and p.headings == [PERIOD, f"Woche{char}", OWN])
+    # and it does not open a fence
+    assert ra.fenced_mask([f"{char}```", "## x"]) == [False, False]
 
 
 # ---------------------------------------------------------------- target lookup

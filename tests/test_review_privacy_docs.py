@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
@@ -13,7 +13,10 @@ the created notes, not their content; in Pass 2 the parsed document gives the
 model counts and ids only and the preview shows the section as it will land —
 the habit averages among its lines — never "read back"; the note's headings
 reach the model when the place cannot be resolved, which is every refusal
-that sets them, not only a missing heading) and recommends Kado deny rules
+that sets them, not only a missing heading; during the setup the names of the
+templates in the templates folder and the headings of the two most recent
+weekly or monthly notes reach the model, their headings and not their text —
+fix round 1 of the Phase 6 live-walk fix) and recommends Kado deny rules
 for folders not to be reviewed, in one sentence.
 
 Each phrase test is pinned to the clause it guards: deleting that clause from
@@ -162,6 +165,15 @@ def test_review_paragraph_names_when_the_headings_reach_the_model() -> None:
     para = _review_paragraph()
     _one_sentence_has(para, "place cannot be resolved", "note's headings")
     assert "when that heading cannot be found" not in _plain(para)
+
+
+def test_review_paragraph_names_what_the_setup_shows_the_model() -> None:
+    """`review-session.py match` prints `template_candidates` (names below templates.base_path) and, when no
+    anchor can be proposed, `anchor_candidates` (the headings of the two most recent periodic notes): both
+    reach the model during the setup, so the paragraph names them in one plain sentence — headings, not text."""
+    para = _review_paragraph()
+    _one_sentence_has(para, "during the setup", "names of the templates", "headings of your two most recent",
+                      "not their text")
 
 
 def test_review_paragraph_says_the_previewed_section_holds_the_habit_averages() -> None:

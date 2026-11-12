@@ -72,7 +72,10 @@ During **`/review`** — when you ask Tomo to review a finished week or month:
 - **Vault growth** — the **paths** of the notes created in the period and of
   the MOCs changed in it, not their content.
 - **The weekly or monthly note itself**, so the review section can be placed
-  under the right heading, and during the setup its template.
+  under the right heading, and during the setup its template. During the setup
+  the model also sees the names of the templates in your templates folder and,
+  when no heading for the review's place can be proposed, the headings of your
+  two most recent weekly or monthly notes — their headings, not their text.
 - **The review document you edited** — in Pass 2 a script reads the edited
   document and tells the model only counts and ids: how many items you kept,
   unticked, deleted or added. The model then sees the preview of the review

@@ -37,3 +37,7 @@ A missing document is a normal answer (None → `not-found`); a refused key or
 a dead connection is `review_vault.Stopped` with the SDD's error kinds, so
 the scripts' one `Stopped` handler prints `status: stopped`. Any other
 read failure is also a stop: a Pass 2 command cannot guess at the document.
+The mapping is `review_vault.kado_stops`, shared with the script's own
+reads, so the reader and the script cannot stop for different reasons on
+the same failure (docs/tomo/scripts/review-instructions.md, "WHY the Kado
+Stop Mapping Is One Helper").

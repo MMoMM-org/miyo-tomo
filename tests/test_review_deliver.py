@@ -14,12 +14,15 @@ Templater hint, the problems and the note's headings for a place problem; `deliv
 unapproved document, any refusing problem and a second set for the same stem with nothing
 written; writes (note,) `<stem>_instructions.json`, `<stem>_instructions.md` in that order through
 `inbox_path()` and marks the document `approved` with "delivered" on its first line as the LAST
-step, guarded by `expected_modified`; a guard refusal is `doc-changed` with `failed_step:
-doc_mark`; a failed Kado write is `kado-write-failed`; a delivery interrupted at any step (a Kado
-error, a kill, a landed-but-unrecorded upload) resumes without a duplicate write; a target that
-appeared since Pass 1 turns new-note into insert; `--place-anchor` lands at the user's heading;
-`drop` after a partial delivery rewrites the set with an empty `actions` list (schema-valid) and
-marks the MD withdrawn, without a set removes only the stage; the set validates against both
+step, guarded by `expected_modified`; a guard refusal — the plain `KadoToolError` production sees,
+carrying Kado's `{"code":"CONFLICT",...}` payload, or the client's `KadoConcurrencyError` — is
+`doc-changed` with `failed_step: doc_mark`, while a tool error of another code is
+`kado-write-failed` even when its message says "mismatch"; a failed Kado write is
+`kado-write-failed`; a delivery interrupted at any step (a Kado error, a kill, a landed-but-unrecorded
+upload) resumes without a duplicate write; a target that appeared since Pass 1 turns new-note into
+insert; `--place-anchor` lands at the user's heading; `drop` after any started delivery — a partial
+set, or only the new note landed — rewrites the set with an empty `actions` list (schema-valid) and
+marks the MD withdrawn naming every file left, before any step removes only the stage; the set validates against both
 schema copies and the MD peer carries `### I01 —` and `- [ ] Applied`; stderr names problem
 classes only; an unexpected exception is exit 1 with the class name. All data is synthetic.
 """
@@ -46,7 +49,7 @@ from lib import review_actions as ra  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_doc_read as rdr  # noqa: E402
-from lib.kado_client import KadoConcurrencyError, KadoConnectionError, KadoError  # noqa: E402
+from lib.kado_client import KadoConcurrencyError, KadoConnectionError, KadoError, KadoToolError  # noqa: E402
 from test_review_doc import INBOX, MARKER, WEEKLY, _config, item, proposals, stage, week_read  # noqa: E402
 
 DOC_SCRIPT = SCRIPTS_DIR / "review-doc.py"
@@ -62,6 +65,9 @@ SET_MD = f"{INBOX}{STEM}_instructions.md"
 NEW_NOTE = f"{INBOX}2026-W13.md"
 TARGET = f"{WEEKLY}2026-W13.md"
 OWN = "In my own words"
+# the live refusal of Kado's write guard, as KadoClient.write_note raises it (a plain KadoToolError)
+GUARD_REFUSED = ('kado-write returned an error: {"code":"CONFLICT",'
+                 '"message":"File was updated in the background. Re-read before retrying."}')
 NOTE = f"# 2026-W13\n\n## Woche\ntext der Woche\n\n## {OWN}\nmeine Worte\n"
 REVIEW_MARKER = "%% tomo-review 2026-W13 %%"
 LANDED = f"# 2026-W13\n\n## Tomo Review\n{REVIEW_MARKER}\n### Erledigt\n- alt\n\n## {OWN}\nmeine Worte\n"
@@ -74,7 +80,8 @@ PROPS = proposals(done=[item(f"Woche aufgeräumt {MARKER}", "2026-03-24", "2026-
 # ---------------------------------------------------------------- fakes and fixtures
 
 class GuardedVault(ReviewFakeVault):
-    """The fake plus Kado's guard on a note write and a hook run after a write lands."""
+    """The fake plus Kado's guard on a note write (refused exactly as production sees it) and a hook
+    run after a write lands."""
 
     def __init__(self, files=None):
         super().__init__(files)
@@ -83,7 +90,7 @@ class GuardedVault(ReviewFakeVault):
     def write_note(self, path, content, expected_modified=None):
         if expected_modified is not None and path in self.files and expected_modified != self.modified.get(path):
             self._call("write_note", path)
-            raise KadoConcurrencyError("kado-write returned an error: CONFLICT File was updated in the background")
+            raise KadoToolError(GUARD_REFUSED)
         out = super().write_note(path, content, expected_modified)
         self._after(path)
         return out
@@ -467,7 +474,7 @@ def test_deliver_doc_changed_stops_at_doc_mark_and_resumes_after_saving(doc_mod,
     fake.after_write[SET_MD] = lambda: fake._bump(DOC)      # the user saves during the delivery
     _, out, err = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
     assert out["status"] == "stopped" and out["problems"] == ["doc-changed"] and out["failed_step"] == "doc_mark"
-    assert err == "review-instructions: delivery failed at doc_mark (KadoConcurrencyError)\n"
+    assert err == "review-instructions: delivery failed at doc_mark (KadoToolError)\n"
     assert split_frontmatter(fake.text(DOC))[0]["tomo"]["state"] == "pending-approval"
     assert meta_of(instance)["steps_done"] == ["set_json", "set_md"]
     _, out, _ = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
@@ -478,6 +485,43 @@ def test_deliver_doc_changed_stops_at_doc_mark_and_resumes_after_saving(doc_mod,
     # the guard is the modified time the reader saw: every doc write carries it
     marks = [e for e in fake.events if e == ("write_note", DOC)]
     assert len(marks) == 2
+
+
+CONFLICT_REFUSALS = {
+    "kado-conflict-json": (KadoToolError(GUARD_REFUSED), "doc-changed"),
+    "kado-conflict-in-prose": (KadoToolError('kado-write returned an error: refused: {"code":"CONFLICT",'
+                                             '"message":"File was updated in the background."} (see log)'),
+                               "doc-changed"),
+    "client-concurrency-error": (KadoConcurrencyError("kado-write returned an error: expectedModified mismatch"),
+                                 "doc-changed"),
+    "validation-error-saying-mismatch": (KadoToolError('kado-write returned an error: {"code":"VALIDATION_ERROR",'
+                                                       '"message":"frontmatter mismatch: expected a mapping"}'),
+                                         "kado-write-failed"),
+    "conflict-named-in-the-message-only": (KadoToolError('kado-write returned an error: {"code":"IO_ERROR",'
+                                                         '"message":"CONFLICT while writing"}'),
+                                           "kado-write-failed"),
+}
+
+
+@pytest.mark.parametrize("refusal", list(CONFLICT_REFUSALS))
+def test_deliver_doc_mark_refusal_is_doc_changed_only_for_kados_conflict_code(doc_mod, ins, instance, monkeypatch,
+                                                                              capsys, refusal):
+    """Falsifies a substring match: a VALIDATION_ERROR saying "mismatch", or an IO_ERROR whose message says
+    CONFLICT, is kado-write-failed; only code CONFLICT (JSON or the exact token) and the client's
+    KadoConcurrencyError are doc-changed. Every outcome is resumable."""
+    exc, problem = CONFLICT_REFUSALS[refusal]
+    fake = prepared(doc_mod, instance, monkeypatch, capsys, vault())
+    fake.fail[("write_note", DOC)] = exc
+    _, out, err = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
+    assert out["status"] == "stopped" and out["problems"] == [problem] and out["failed_step"] == "doc_mark"
+    assert out["step"] == "doc_mark" and out["paths"] == {"set_json": SET_JSON, "set_md": SET_MD}
+    assert err == f"review-instructions: delivery failed at doc_mark ({type(exc).__name__})\n"
+    assert meta_of(instance)["steps_done"] == ["set_json", "set_md"] and meta_of(instance)["failed_step"] == "doc_mark"
+    assert split_frontmatter(fake.text(DOC))[0]["tomo"]["state"] == "pending-approval"
+    fake.fail.clear()
+    _, out, _ = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
+    assert out["status"] == "resumed" and meta_of(instance)["steps_done"] == ["set_json", "set_md", "doc_mark"]
+    assert split_frontmatter(fake.text(DOC))[0]["tomo"]["state"] == "approved"
 
 
 def test_deliver_mark_is_idempotent_when_the_write_landed_unrecorded(doc_mod, ins, instance, monkeypatch, capsys):
@@ -542,11 +586,11 @@ def test_drop_after_a_partial_delivery_withdraws_the_set(doc_mod, ins, instance,
     assert out["status"] == "refused" and out["problems"] == ["set-exists"]
 
 
-def test_drop_without_a_set_removes_only_the_stage(doc_mod, ins, instance, monkeypatch, capsys):
-    fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(None))
-    fake.fail[("write_note", NEW_NOTE)] = KadoError("503")
-    assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["failed_step"] == "note"
-    fake.fail.clear()
+def test_drop_before_any_step_removes_only_the_stage(doc_mod, ins, instance, monkeypatch, capsys):
+    """A delivery that never began (here: refused on an unapproved document) left nothing to neutralise."""
+    fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(None), approve=False)
+    assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["status"] == "refused"
+    assert meta_of(instance)["steps_done"] == [] and meta_of(instance)["failed_step"] == ""
     fake.events.clear()
     _, out, _ = run(ins, monkeypatch, capsys, ["drop", "--stem", STEM], fake)
     assert out == {"status": "dropped", "stem": STEM, "removed": True}
@@ -554,6 +598,57 @@ def test_drop_without_a_set_removes_only_the_stage(doc_mod, ins, instance, monke
     assert DOC in fake.files
     _, out, _ = run(ins, monkeypatch, capsys, ["drop", "--stem", STEM], fake)
     assert out == {"status": "dropped", "stem": STEM, "removed": False}
+
+
+@pytest.mark.parametrize("fault", ["killed-after-the-note-landed", "killed-after-the-note-was-recorded",
+                                   "kado-error-on-the-note"])
+def test_drop_after_the_note_step_began_withdraws_and_names_the_note(doc_mod, ins, instance, monkeypatch, capsys,
+                                                                     fault):
+    """Falsifies `drop` withdrawing only when set_json was reached: a kill after the note landed (in flight),
+    a kill after it was recorded (set_json never started) and a failed note write all leave a started
+    delivery, and the user is told through the withdrawn MD which files to delete — the note among them."""
+    fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(None))
+    monkeypatch.setattr(ins, "KadoClient", fake)
+
+    def die():
+        raise Killed()
+    if fault == "kado-error-on-the-note":
+        fake.fail[("write_note", NEW_NOTE)] = KadoError("503")
+        assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["failed_step"] == "note"
+        fake.fail.clear()
+        assert NEW_NOTE not in fake.files
+    else:
+        save_meta = rdl.save_meta
+
+        def save_then_die(stage, meta):       # the kill between record(note) and set_json's in-flight mark
+            save_meta(stage, meta)
+            if meta.steps_done == ["note"] and meta.failed_step == "":
+                die()
+        if fault == "killed-after-the-note-landed":
+            fake.after_write[NEW_NOTE] = die
+        else:
+            monkeypatch.setattr(rdl, "save_meta", save_then_die)
+        with pytest.raises(Killed):
+            ins.main(["--profiles-dir", "profiles", "deliver", "--stem", STEM])
+        capsys.readouterr()
+        monkeypatch.setattr(rdl, "save_meta", save_meta)
+        assert NEW_NOTE in fake.files
+    meta = meta_of(instance)
+    assert "set_json" not in meta["steps_done"] and meta["failed_step"] != "set_json"
+    assert (meta["steps_done"], meta["failed_step"]) == ((["note"], "") if fault == "killed-after-the-note-was-recorded"
+                                                         else ([], "note"))
+    fake.events.clear()
+    code, out, err = run(ins, monkeypatch, capsys, ["drop", "--stem", STEM], fake)
+    assert code == 0 and err == "" and out["status"] == "withdrawn"
+    assert out["paths"] == {"set_json": SET_JSON, "set_md": SET_MD, "note": NEW_NOTE}
+    assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
+    assert set_json_of(fake)["actions"] == []
+    body = split_frontmatter(fake.text(SET_MD))[1]
+    assert "delete these files" in body and f"`{NEW_NOTE}`" in body and f"`{SET_JSON}`" in body
+    meta = meta_of(instance)
+    assert meta["withdrawn"] is True and meta["failed_step"] == ""
+    _, out, _ = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
+    assert out["status"] == "refused" and out["problems"] == ["set-exists"]
 
 
 def test_drop_kado_failure_is_stopped_and_keeps_the_stage(doc_mod, ins, instance, monkeypatch, capsys):

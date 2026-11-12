@@ -38,6 +38,16 @@ levels deep (`depth=2`), because the owner's vault keeps older periodic
 notes in year subfolders; a flat listing would miss them and the format
 would be matched against the current year alone.
 
+`kado_stops()` is the context manager for the callers that do not degrade:
+Pass 2 (`review-instructions.py` and `lib/review_doc_read`) must stop on
+any Kado failure, because a delivery cannot guess at the document, the
+target or the set probe. The manager maps a refused key to `kado-auth` and
+every other `KadoError` to `kado-unreachable`, the SDD's two stop kinds;
+the caller catches `KadoNotFoundError` inside the block where "nothing
+there" is an answer. It lives here, next to `Stopped`, so the script and
+the reader share one mapping instead of four copies of two `except`
+clauses (spec 045 T4.2 fix round).
+
 `folder_listed` probes a folder through `lib/vault_folder_lookup` (one
 `list_dir`, the result cached per lookup) and re-raises a dead connection
 that the lookup swallowed as `unanswered`: the lookup is built for the inbox

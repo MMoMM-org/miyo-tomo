@@ -1,5 +1,5 @@
 # review_doc_read.py — the one reader of the /review document for Pass 2: path, note read, parse with pass1_links.
-# version: 0.1.0
+# version: 0.1.1
 """Read the edited review document back for ``parse``, ``preview`` and ``deliver`` (spec 045 T4.2).
 
 ``doc_path_of(meta, override)`` is the path a Pass 2 command reads: the
@@ -11,7 +11,8 @@ and ``deleted`` are computed one way for every command. It returns a
 ``DocRead`` — the path, the text, Kado's ``modified`` stamp (the guard for
 the delivered mark) and the ``ParsedDoc`` — or None when nothing is at the
 path. A refused key or a dead connection raises ``review_vault.Stopped``
-with the SDD's error kinds; any other read failure stops the same way.
+with the SDD's error kinds; any other read failure stops the same way
+(``review_vault.kado_stops``, shared with the script's own reads).
 
 Design notes: docs/tomo/scripts/lib/review_doc_read.md
 """
@@ -21,8 +22,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from lib import review_doc_parse as rdp
-from lib.kado_client import KadoAuthError, KadoError, KadoNotFoundError
-from lib.review_vault import Stopped
+from lib.kado_client import KadoNotFoundError
+from lib.review_vault import kado_stops
 
 
 @dataclass
@@ -41,14 +42,11 @@ def doc_path_of(meta: Optional[dict], override: Optional[str] = None) -> Optiona
 
 def read_document(vault, doc_path: str, meta: Optional[dict]) -> Optional[DocRead]:
     """The document at ``doc_path`` parsed with ``meta``'s Pass 1 map; None when nothing is there."""
-    try:
-        note = vault.client.read_note(doc_path)
-    except KadoNotFoundError:
-        return None
-    except KadoAuthError as exc:
-        raise Stopped("kado-auth", str(exc)) from None
-    except KadoError as exc:
-        raise Stopped("kado-unreachable", str(exc)) from None
+    with kado_stops():
+        try:
+            note = vault.client.read_note(doc_path)
+        except KadoNotFoundError:
+            return None
     text = note.get("content")
     if not isinstance(text, str):
         return None

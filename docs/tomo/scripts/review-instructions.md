@@ -93,12 +93,56 @@ the first body line (the title) carries the word; `lib/review_doc.mark_delivered
 produces the marked text (idempotent). The whole text is written once with
 `expected_modified` set to the `modified` the reader saw when it parsed the
 document — the one guard that matters: the delivered set was built from
-exactly that text. A refused guard (Kado's `CONFLICT`, or the client's
-`KadoConcurrencyError`) is `doc-changed` with `failed_step: doc_mark`: the
-user saved in between, the set already landed and stays valid, the resume
-re-reads and marks. Any other failure on the mark is `kado-write-failed`,
-resumable the same way. A document already marked (the write landed, the
-record did not) is recorded without a second write.
+exactly that text. A refused guard is `doc-changed` with `failed_step:
+doc_mark`: the user saved in between, the set already landed and stays
+valid, the resume re-reads and marks. Any other failure on the mark is
+`kado-write-failed`, resumable the same way. A document already marked (the
+write landed, the record did not) is recorded without a second write.
+
+### WHY the Refused Guard Is Recognised by Kado's Error Code
+
+`KadoClient.write_note` never raises `KadoConcurrencyError` — only
+`write_frontmatter` does. A refused guard on a note write arrives as a plain
+`KadoToolError` whose text is the client's `kado-write returned an error: `
+followed by Kado's MCP error payload, a JSON object with `code` and
+`message`. The live refusal of the write guard is, verbatim:
+
+```
+kado-write returned an error: {"code":"CONFLICT","message":"File was updated in the background. Re-read before retrying."}
+```
+
+Kado sends `code: CONFLICT` for two causes: the write guard (the file's
+`modified` is not the `expectedModified` the write carried) and the refusal
+to write a note that is open and dirty in an editor. Both mean the same
+thing for the review — the user is or was editing the document, so the
+delivered text is not the text in the vault; the honest next step for both
+is "save, then resume", which re-reads and marks. Both therefore map to
+`doc-changed`; the script does not tell them apart.
+
+The classification parses the JSON after the client's prefix and compares
+`code` with `CONFLICT`. When the payload is not parseable JSON (Kado wraps
+it in prose one day), the exact token `"code":"CONFLICT"` is the fallback —
+the token `JSON.stringify` emits, no spaces. An earlier version matched the
+loose substrings `CONFLICT` or `mismatch` anywhere in the text: `mismatch`
+appears nowhere on Kado's note-write path, but it does appear in other
+error messages (a `VALIDATION_ERROR` whose message says what mismatched),
+and such a failure would have been reported as `doc-changed` — telling the
+user to save and resume when the resume would fail the same way. The
+`KadoConcurrencyError` branch stays, so a client that one day raises it on
+note writes too is classified the same.
+
+### WHY the Kado Stop Mapping Is One Helper
+
+The reads of this script (the target note, the set probe, the by-name
+search) and the shared document reader all stop a run the same way: a
+refused key is `kado-auth`, any other Kado failure `kado-unreachable`
+(SDD Error Handling). Four hand-written copies of the same two `except`
+clauses would let one of them stop for a different reason the day someone
+edits three; `lib/review_vault.kado_stops` is the one context manager they
+share, next to `Stopped` itself. A `KadoNotFoundError`
+that is an answer (nothing at the path) is caught inside the block by the
+caller, because only the caller knows whether "not found" is an answer or
+a failure.
 
 Two writes — a guarded frontmatter merge for the state, then a note write
 for the title — were rejected: the second write would need the first one's
@@ -114,9 +158,30 @@ instruction set, so Hashi lists and validates it and finds nothing to do —
 and rewrites the MD peer to say "withdrawn — delete these files", naming
 every file the delivery left (the staged new note too). `meta.json` stays,
 with `withdrawn: true` and the failed step cleared, so the state function
-can leave the review unlisted (SDD Complex Logic step 3; T4.3). Without a
-recorded set there is nothing in the vault to neutralise and the stage
-directory is simply removed.
+can leave the review unlisted (SDD Complex Logic step 3; T4.3). A delivery
+that never began (no step done, none in flight) left nothing in the vault
+to neutralise, and the stage directory is simply removed.
+
+### WHY Any Started Delivery Is Withdrawn, Not Only One With a Set
+
+The first step in `new-note` mode is the note. A delivery killed after the
+note landed — before `set_json` was recorded, or before it was even marked
+in flight — leaves `<inbox>/<period>.md` in the inbox with nothing in
+`meta.json` beyond `note` done or in flight. An earlier version withdrew
+only when `set_json` was done or in flight; for this case it removed the
+stage and answered `dropped`, and the new note stayed in the inbox with
+nothing telling the user. `drop` now withdraws whenever `meta.started()`:
+the same withdrawn set JSON and MD are written and the MD names the note
+with the set's files, so the user is told what to delete through the one
+channel the SDD gives `drop`. Returning `dropped` with the note's path was
+the alternative; it would have added a second shape for the skill to
+handle, while the withdrawn path already exists and names every file the
+delivery left. The cost is two inbox files for a delivery whose first write
+never landed (a Kado error on the note, nothing in the vault) — the same
+cost the design already accepts for a `set_json` in flight; `meta.json`
+cannot tell a failed first write from a kill after it landed, and probing
+the note would read a denied path as absent (memory rule: an empty Kado
+answer hides a denial).
 
 ## WHY `--place-anchor` Exists
 

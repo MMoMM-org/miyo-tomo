@@ -1,10 +1,13 @@
 # review_vault.py — the Kado calls of /review's session script and the evidence a weekly note carries.
-# version: 0.1.1
+# version: 0.1.2
 """Kado access for ``review-session.py`` and the date evidence of weekly notes (spec 045).
 
 Owns ``Vault``, the wrapper that maps every Kado failure onto the SDD's error
 kinds (``Stopped("kado-unreachable" | "kado-auth")`` stops the run; a failed
-single read degrades to None / ``unreadable``), the review-document query of
+single read degrades to None / ``unreadable``), ``kado_stops``, the context
+manager for the Pass 2 callers that never degrade (any Kado failure inside
+the block is ``Stopped``; the caller catches ``KadoNotFoundError`` inside it
+where "nothing there" is an answer), the review-document query of
 a session start (``review_documents``), and the helpers that read a
 weekly note's evidence: ``frontmatter_start`` (``journal-start-date``, else
 ``journal-end-date`` − 6), ``headings`` (level and text outside code fences)
@@ -17,8 +20,9 @@ Design notes: docs/tomo/scripts/lib/review_vault.md
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from datetime import date, timedelta
-from typing import List, Optional, Set, Tuple
+from typing import Iterator, List, Optional, Set, Tuple
 
 from lib.kado_client import KadoAuthError, KadoConnectionError, KadoError, KadoNotFoundError
 from lib.vault_folder_lookup import VaultFolderLookup
@@ -39,6 +43,18 @@ class Stopped(Exception):
         super().__init__(detail)
         self.kind = kind
         self.detail = detail
+
+
+@contextmanager
+def kado_stops() -> Iterator[None]:
+    """A Kado failure inside the block stops the run: a refused key is ``kado-auth``, any other
+    ``KadoError`` ``kado-unreachable``. Catch ``KadoNotFoundError`` inside the block where it is an answer."""
+    try:
+        yield
+    except KadoAuthError as exc:
+        raise Stopped("kado-auth", str(exc)) from None
+    except KadoError as exc:
+        raise Stopped("kado-unreachable", str(exc)) from None
 
 
 # ---------------------------------------------------------------- Kado access

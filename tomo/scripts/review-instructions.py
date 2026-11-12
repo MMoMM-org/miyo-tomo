@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.1.0
+# version: 0.1.1
 """Pass 2 of /review (spec 045 T4.2; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-11, ADR-13).
 
 ``preview`` reads the approved document fresh through Kado, builds the plan
@@ -11,9 +11,11 @@ this order, the new note (``new-note`` mode only), ``<stem>_instructions.json``
 and ``<stem>_instructions.md`` to the inbox through ``lib/staged_delivery``,
 then marks the document delivered with one write guarded by the ``modified``
 the reader saw; ``meta.json`` records every step so a failed delivery resumes
-without a duplicate. ``drop`` withdraws a set Tomo wrote (an empty
-``actions`` list and an MD that says so) or removes the stage. ``status``
-names the review's state through ``lib/review_state``.
+without a duplicate. ``drop`` withdraws any delivery that began — a step
+done or in flight — by writing the set with an empty ``actions`` list and
+an MD that names every file the delivery left (the new note among them);
+before any step it removes the stage. ``status`` names the review's state
+through ``lib/review_state``.
 
 Usage (cwd = instance root):
     python3 scripts/review-instructions.py preview --stem <period>_review [--place-anchor H]
@@ -39,9 +41,10 @@ Output: one JSON object on stdout, ASCII-escaped.
 
 Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists);
     steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
-    is the last step — a refused guard is doc-changed with failed_step doc_mark, any other write failure
-    kado-write-failed, both resumable. Nothing of the document or a note reaches stdout except preview's
-    section_md; stderr names problem classes only.
+    is the last step — a refused guard (Kado's error code CONFLICT, or the client's KadoConcurrencyError)
+    is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable.
+    Nothing of the document or a note reaches stdout except preview's section_md; stderr names problem
+    classes only.
 
 Exit codes:
     0 — output usable (every status)
@@ -70,13 +73,13 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib.kado_client import (  # noqa: E402
-    KadoAuthError, KadoClient, KadoConcurrencyError, KadoError, KadoNotFoundError, KadoToolError,
+    KadoClient, KadoConcurrencyError, KadoError, KadoNotFoundError, KadoToolError,
 )
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib.period import parse_name, render_name  # noqa: E402
 from lib.review_doc_read import DocRead, doc_path_of, read_document  # noqa: E402
 from lib.review_state import read_meta, review_state, safe_stem  # noqa: E402
-from lib.review_vault import Stopped, Vault  # noqa: E402
+from lib.review_vault import Stopped, Vault, kado_stops  # noqa: E402
 from lib.staged_delivery import DeliveryStop, StagedDelivery  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
@@ -84,6 +87,8 @@ DEFAULT_TMP = "tomo-tmp/review"
 SCRIPT = "review-instructions"
 NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
+CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
+TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
 
 
 class Refused(Exception):
@@ -102,24 +107,17 @@ class NotFound(Exception):
 
 def _note(vault: Vault, path: str) -> Optional[str]:
     """The note's text; None when nothing is at ``path``; ``Stopped`` on any other failure."""
-    try:
-        content = vault.client.read_note(path).get("content")
-    except KadoNotFoundError:
-        return None
-    except KadoAuthError as exc:
-        raise Stopped("kado-auth", str(exc)) from None
-    except KadoError as exc:
-        raise Stopped("kado-unreachable", str(exc)) from None
+    with kado_stops():
+        try:
+            content = vault.client.read_note(path).get("content")
+        except KadoNotFoundError:
+            return None
     return content if isinstance(content, str) else None
 
 
 def _exists(vault: Vault, path: str) -> bool:
-    try:
+    with kado_stops():
         return bool(vault.client.path_exists(path))
-    except KadoAuthError as exc:
-        raise Stopped("kado-auth", str(exc)) from None
-    except KadoError as exc:
-        raise Stopped("kado-unreachable", str(exc)) from None
 
 
 # ---------------------------------------------------------------- the context of one run
@@ -182,12 +180,8 @@ def _target(vault: Vault, setup: rc.ReviewSetup, period_name: str) -> ra.Target:
     elsewhere: List[str] = []
     if all(texts.get(p) is None for p in candidates):
         name = f"{render_name(period, setup.format)}.md"
-        try:
+        with kado_stops():
             hits = vault.client.search_by_name(name)
-        except KadoAuthError as exc:
-            raise Stopped("kado-auth", str(exc)) from None
-        except KadoError as exc:
-            raise Stopped("kado-unreachable", str(exc)) from None
         inbox = setup.inbox.strip().strip("/") + "/"
         elsewhere = sorted(str(h.get("path")) for h in hits
                            if isinstance(h, dict) and posixpath.basename(str(h.get("path") or "")) == name
@@ -243,10 +237,23 @@ def preview(args: argparse.Namespace) -> dict:
 
 # ---------------------------------------------------------------- deliver
 
+def _tool_error_code(exc: KadoToolError) -> Optional[str]:
+    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
+    token when the payload is not JSON; None when neither names a code."""
+    text = str(exc)
+    payload = text.split(TOOL_ERROR_PREFIX, 1)[1] if TOOL_ERROR_PREFIX in text else text
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return CONFLICT if f'"code":"{CONFLICT}"' in payload else None
+    code = data.get("code") if isinstance(data, dict) else None
+    return code if isinstance(code, str) else None
+
+
 def _is_conflict(exc: KadoError) -> bool:
-    """Kado refused the guard: the client's concurrency error, or a tool error naming CONFLICT."""
+    """Kado refused the guard: the client's concurrency error, or a tool error whose code is CONFLICT."""
     return isinstance(exc, KadoConcurrencyError) or (
-        isinstance(exc, KadoToolError) and ("CONFLICT" in str(exc) or "mismatch" in str(exc)))
+        isinstance(exc, KadoToolError) and _tool_error_code(exc) == CONFLICT)
 
 
 def _mark_document(run: Run, delivery: StagedDelivery) -> None:
@@ -322,7 +329,7 @@ def drop(args: argparse.Namespace) -> dict:
     stage = Path(args.tmp) / args.stem
     meta_data = read_meta(Path(args.tmp), args.stem)
     meta = rdl.ReviewMeta(meta_data) if meta_data is not None else None
-    if meta is None or not meta.wrote_set():
+    if meta is None or not meta.started():
         return {"status": "dropped", "stem": args.stem, "removed": _remove_stage(stage)}
     kind = str(meta.data.get("kind"))
     setup, profile = _setup(args, kind)

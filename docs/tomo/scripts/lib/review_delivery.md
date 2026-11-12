@@ -14,7 +14,9 @@ two tuples `REFUSING` and `NOTICES` are the whole rule, so a test can pin
 every name to its side and the reviewer reads one place. An unknown name
 refuses — the safe default for a problem nobody has classified yet.
 Rationale for the split: docs/tomo/scripts/review-instructions.md, "WHY
-Problems Are Split".
+Problems Are Split". `ALREADY_APPLIED` (`already-applied`) is `drop`'s
+refusal, not the plan's; it lives in `REFUSING` so the pin test names it
+with the others and no script spells it on its own.
 
 ## WHY `ReviewMeta` Wraps the Dict
 

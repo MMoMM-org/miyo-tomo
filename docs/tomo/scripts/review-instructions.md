@@ -30,8 +30,10 @@ must change something first) and what the user should merely know before
 choosing Deliver or Abort. `lib/review_delivery.classify` is the one place
 that sorts the names: `not-approved`, `approved-line-missing`,
 `nothing-to-deliver`, `place-missing`, `place-too-deep`,
-`user-heading-collision` and `set-exists` refuse — `deliver` writes nothing
-when any is present; `heading-renamed`, `unlanded-items`,
+`user-heading-collision`, `set-exists` and `already-applied` refuse —
+`deliver` writes nothing when any is present (`already-applied` is `drop`'s
+refusal, see below; it sits in the same tuple so the one pin test covers
+it); `heading-renamed`, `unlanded-items`,
 `variant_missing`, `templater_hint` and `template_unmergeable` are notices —
 shown, delivery proceeds. The plan's boolean flags join the notices as names
 so the skill reads one list. A name the classification does not know is
@@ -183,6 +185,62 @@ cannot tell a failed first write from a kill after it landed, and probing
 the note would read a denied path as absent (memory rule: an empty Kado
 answer hides a denial).
 
+### WHY `drop` Reads the Set First and Refuses on Any `applied` Action
+
+Coordinator decision 2026-11-12 (T4.4 fix round). A delivery that reached
+`doc_mark` is a set Hashi may already have executed, in full or in part:
+Hashi's `executor/jsonAppliedWriter.ts` rewrites `<stem>_instructions.json`
+with `applied: true` per action it ran (monotonic, batched once per source
+after the run). An earlier `drop` rewrote the set without looking — the
+applied record was erased, `status` read the review as withdrawn while its
+section sat in the periodic note (or its note had been moved), and the
+withdrawn MD told the user to delete files Hashi had already moved. `drop`
+now reads the set JSON at its path through Kado before it writes. One
+action with `applied: true` is enough to refuse (`already-applied`): there
+is no partial withdrawal — the actions Hashi ran cannot be undone by a set
+with nothing in it, and a set that lists only the unapplied remainder as
+withdrawn would still erase the record of what ran. The stage, the meta and
+both inbox files stay as they are, and the answer names no content; the
+user resolves the applied review by hand (the `applied` state offers that).
+
+The set is read through `lib/review_state.read_set`, the same reader
+`stem_state` uses, made public for this — a second parser would decide
+"applied" differently one day. Absent (`KadoNotFoundError`) means nothing
+landed at the path — a delivery killed before `set_json`, or a set the user
+already deleted — and the withdrawal proceeds as before. Any other Kado
+failure on that read stops the run through `kado_stops` (`kado-auth`,
+`kado-unreachable`), never as absent: a key that cannot read the inbox would
+otherwise withdraw over a set it was not allowed to see (memory rule: an
+empty Kado answer hides a denial).
+
+### WHY an Unreadable Set Still Withdraws
+
+A file at the set path that is not JSON, not an object, or whose `actions`
+is not a list of objects is not proof that Hashi applied anything — Hashi's
+writer keeps the set a valid instruction set, so a broken file was broken
+by something else. Refusing would leave a review nobody can close: `status`
+reads such a set as `delivered` (docs/tomo/scripts/lib/review_state.md,
+"WHY an Unreadable Set JSON Reads as `delivered`"), Hashi's validator
+rejects it, and `drop` would be the only way out. So `drop` proceeds as it
+did before this fix: the withdrawn set replaces the unreadable file. The
+guard below still applies, so a file that changed under the read is not
+overwritten blind.
+
+### WHY the Set Write Is Guarded (`set-changed`)
+
+Hashi may write `applied` between `drop`'s read and its write — the user
+runs Hashi and `/review` in the same minute. The set JSON is therefore
+written with `expected_modified` set to the `modified` the read returned,
+the same guard the document mark uses. A refused guard (Kado's `CONFLICT`,
+recognised by `_is_conflict` exactly as on the mark) is `set-changed`:
+`status: stopped`, nothing written, the stage and the meta unchanged,
+resumable by running `drop` again — the second run reads the set as it is
+now and refuses or withdraws on what it finds. Any other failure stays
+`kado-write-failed`. The MD peer is not guarded: `drop` holds no `modified`
+for it, and a read only for the guard would cost a call for a file Hashi
+never rewrites (its peer sync ticks boxes through Obsidian, not the set
+path). A set absent on the read is written without a guard, as before.
+
 ## WHY `--place-anchor` Exists
 
 F5-AC7: when the configured place is missing, the preview offers the note's
@@ -220,7 +278,8 @@ to the user on purpose (F5-AC2).
 `preview`: the document (1), the target candidates (1–2), a by-name search
 when neither exists (1), the template and its variant for a new note (0–2),
 the set probe (1). `deliver`: the same, then per uploaded step one probe and
-one write, and the document mark (1). `status`: the frontmatter (1), the set
+one write, and the document mark (1). `drop` on a begun delivery: the set
+JSON (1), then the two writes. `status`: the frontmatter (1), the set
 JSON for an approved document (1), then for a waiting set one probe (insert
 or replace: the target) or one to two (move: the source, then the
 destination only while the source exists). A week stays well under the

@@ -114,6 +114,20 @@ the periodic notes into `target-missing`. `KadoClient.path_exists` is not
 used for the same reason: it is correct, but a probe that catches only
 NOT_FOUND inside `kado_stops` says the rule in one place.
 
+### WHY `read_set` Is Public and Carries `modified`
+
+WHY: T4.4 fix round, coordinator decision 2026-11-12. `review-instructions.py
+drop` must know whether Hashi applied any action before it rewrites the set
+(docs/tomo/scripts/review-instructions.md, "WHY `drop` Reads the Set
+First"). A private `_read_set` would have been copied into the script, and
+two readers of the same file would drift on what "unreadable" means. The
+reader is public, and it returns the file's `modified` beside the parsed
+object (`SetRead`), because `drop` writes the set back with that value as
+`expected_modified`; reading the file twice to get it would cost a call.
+The rules are unchanged: None only on `KadoNotFoundError`, `{}` for a file
+that is not a JSON object, any other Kado failure stops through
+`kado_stops`. `stem_state` reads `.data` and ignores `modified`.
+
 ## WHY Only Approved Documents Are Probed, and the Step 5/6 Probes Are Lazy
 
 WHY: ADR-6 and the coordinator's cost decision 2026-11-11. A set JSON can

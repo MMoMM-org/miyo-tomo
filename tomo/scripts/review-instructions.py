@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.1
+# version: 0.2.2
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -15,7 +15,11 @@ the reader saw; ``meta.json`` records every step so a failed delivery resumes
 without a duplicate. ``drop`` withdraws any delivery that began — a step
 done or in flight — by writing the set with an empty ``actions`` list and
 an MD that names every file the delivery left (the new note among them);
-before any step it removes the stage. ``status`` names the review's state
+it reads the set JSON first (``lib/review_state.read_set``) and refuses when
+Hashi marked any action ``applied`` (nothing written, nothing changed),
+withdraws over an absent or unreadable set, and writes the set JSON guarded
+by the ``modified`` that read returned; before any step it removes the
+stage. ``status`` names the review's state
 through ``lib/review_state.stem_state`` — the function ``review-session.py
 start`` uses per listed document — which reads the set JSON for an approved
 document and probes the target and the inbox copy for a waiting set (ADR-6).
@@ -37,7 +41,8 @@ Output: one JSON object on stdout, ASCII-escaped.
            | status refused, stem, problems [<refusing problems>|set-exists|name-taken], exists_path?, step?
            | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed]
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
-           | status stopped, stem, problems [kado-write-failed]
+           | status refused, stem, problems [already-applied]
+           | status stopped, stem, problems [set-changed|kado-write-failed], error {kind}
     status:  state (one of lib/review_state.STATES, or null for a withdrawn review), stem
     every subcommand: status not-found, stem, doc_path? | status refused, stem, problems [setup-missing|
              setup-invalid|inbox-not-configured], errors? | status stopped, stem, error {kind, detail}
@@ -46,6 +51,9 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
     is the last step — a refused guard (Kado's error code CONFLICT, or the client's KadoConcurrencyError)
     is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable.
+    drop refuses already-applied on any action with applied: true (no partial withdrawal); its set
+    read answers absent only on NOT_FOUND, any other Kado failure stops the run; a refused guard on
+    the set write is set-changed, resumable by running drop again.
     Nothing of the document or a note reaches stdout except preview's section_md; stderr names problem
     classes only.
 
@@ -90,6 +98,7 @@ DEFAULT_TMP = "tomo-tmp/review"
 SCRIPT = "review-instructions"
 NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
+SET_CHANGED = "set-changed"
 CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
 TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
 
@@ -349,10 +358,19 @@ def drop(args: argparse.Namespace) -> dict:
         paths[rdl.NOTE] = setup.inbox_path(posixpath.basename(target))
     files = [paths[k] for k in (rdl.SET_JSON, rdl.SET_MD, rdl.NOTE) if k in paths]
     vault = Vault(KadoClient)
+    held = rs.read_set(vault, paths[rdl.SET_JSON])
+    if held is not None and rs.any_applied(held.data):
+        return {"status": "refused", "stem": args.stem, "problems": [rdl.ALREADY_APPLIED]}
+    set_bytes = (json.dumps(rdl.withdrawn_set(args.stem, meta, profile), indent=2,
+                            ensure_ascii=False) + "\n").encode("utf-8")
     try:
-        vault.client.write_file(paths[rdl.SET_JSON],
-                               (json.dumps(rdl.withdrawn_set(args.stem, meta, profile), indent=2,
-                                           ensure_ascii=False) + "\n").encode("utf-8"))
+        vault.client.write_file(paths[rdl.SET_JSON], set_bytes,
+                                expected_modified=held.modified if held is not None else None)
+    except KadoError as exc:
+        return {"status": "stopped", "stem": args.stem,
+                "problems": [SET_CHANGED if _is_conflict(exc) else KADO_WRITE_FAILED],
+                "error": {"kind": type(exc).__name__}}
+    try:
         vault.client.write_note(paths[rdl.SET_MD], rdl.withdrawn_md(args.stem, meta, profile, files))
     except KadoError as exc:
         return {"status": "stopped", "stem": args.stem, "problems": [KADO_WRITE_FAILED],

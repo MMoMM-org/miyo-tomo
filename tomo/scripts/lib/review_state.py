@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.3.2
+# version: 0.3.3
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -13,7 +13,11 @@ only when the set waits, and calls ``review_state``; ``review-session.py
 start`` (per listed document, through ``open_reviews``) and
 ``review-instructions.py status`` both go through it. A probe answers
 "absent" only on ``KadoNotFoundError``; any other Kado failure stops the run
-through ``review_vault.kado_stops``.
+through ``review_vault.kado_stops``. ``read_set`` is the one reader of the
+set JSON — ``review-instructions.py drop`` reads through it too, before it
+rewrites the set — and returns the parsed object with the file's
+``modified`` (``SetRead``); ``any_applied`` says whether Hashi marked any of
+its actions ``applied``.
 
 The order implemented: withdrawn
 (``meta.withdrawn``, or a set whose ``actions`` list is empty) → not listed;
@@ -38,6 +42,7 @@ Design notes: docs/tomo/scripts/lib/review_state.md
 """
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass
 from datetime import date
@@ -103,6 +108,11 @@ def _applied(action: dict) -> bool:
     return action.get("applied") is True
 
 
+def any_applied(set_json: Optional[dict]) -> bool:
+    """Whether any action of a readable set carries ``applied: true``; an unreadable set is never applied."""
+    return any(_applied(a) for a in _actions(set_json) or [])
+
+
 def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = None, *,
                  target_exists: Optional[bool] = None,
                  inbox_copy_exists: Optional[bool] = None) -> Optional[str]:
@@ -140,19 +150,29 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
 
 # ---------------------------------------------------------------- the probes
 
-def _read_set(vault: Vault, path: str) -> Optional[dict]:
-    """The set JSON at ``path``; None only when Kado says NOT_FOUND; a file that is not a JSON
-    object is ``{}`` (present, unreadable). Any other Kado failure stops the run."""
+@dataclass(frozen=True)
+class SetRead:
+    """The set JSON as read: ``data`` is ``{}`` for a file that is not a JSON object (present,
+    unreadable); ``modified`` is the file's stamp for a guarded write back, None when Kado gave none."""
+    data: dict
+    modified: Optional[int]
+
+
+def read_set(vault: Vault, path: str) -> Optional[SetRead]:
+    """The set JSON at ``path`` with its ``modified``; None only when Kado says NOT_FOUND. Any other
+    Kado failure stops the run."""
     with kado_stops():
         try:
-            raw = vault.client.read_file_bytes(path)
+            result = vault.client.read_file(path)
         except KadoNotFoundError:
             return None
+    result = result if isinstance(result, dict) else {}
+    modified = result.get("modified")
     try:
-        data = json.loads(raw.decode("utf-8"))
+        data = json.loads(base64.b64decode(result.get("content") or "").decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        data = {}
+    return SetRead(data if isinstance(data, dict) else {}, modified if isinstance(modified, int) else None)
 
 
 def _present(vault: Vault, path) -> Optional[bool]:
@@ -179,7 +199,8 @@ def stem_state(vault: Vault, doc: dict, meta: Optional[dict], stem: str, inbox: 
     ``review_config.UnsafePath`` when ``inbox`` cannot hold a set."""
     if _record(meta).withdrawn():
         return None
-    set_json = _read_set(vault, rdl.set_json_path(inbox, stem)) if doc_state(doc) == DOC_STATE_APPROVED else None
+    held = read_set(vault, rdl.set_json_path(inbox, stem)) if doc_state(doc) == DOC_STATE_APPROVED else None
+    set_json = held.data if held is not None else None
     state = review_state(doc, meta, set_json)
     if state != DELIVERED:
         return state

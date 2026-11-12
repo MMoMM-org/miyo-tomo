@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.2.1
-"""test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3;
+# version: 0.2.2
+"""test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
 
@@ -28,7 +28,11 @@ classes only; an unexpected exception is exit 1 with the class name. T4.3: `stat
 `review-session.py start` classify a stem through the one `review_state.stem_state` with the same
 inputs (recorded) and agree on delivered, move-refused, applied (reported once by `start`, still
 answered by `status`), target-missing and withdrawn (`state: null`, never listed); a refused set
-probe stops `status`. All data is synthetic.
+probe stops `status`. T4.4: `drop` reads the set JSON first (one `read_file`) and refuses
+`already-applied` when any action carries `applied: true` — nothing written, meta and set unchanged;
+an absent set (NOT_FOUND) or an unreadable one withdraws; a failed read stops by kind; the set JSON is
+rewritten under `expected_modified` from that read, and Kado's CONFLICT on it is `set-changed`,
+resumable by a second `drop`. All data is synthetic.
 """
 from __future__ import annotations
 
@@ -55,7 +59,9 @@ from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_doc_read as rdr  # noqa: E402
 from lib import review_state as rs  # noqa: E402
-from lib.kado_client import KadoConcurrencyError, KadoConnectionError, KadoError, KadoToolError  # noqa: E402
+from lib.kado_client import (  # noqa: E402
+    KadoAuthError, KadoConcurrencyError, KadoConnectionError, KadoError, KadoToolError,
+)
 from test_review_doc import INBOX, MARKER, WEEKLY, _config, item, proposals, stage, week_read  # noqa: E402
 
 DOC_SCRIPT = SCRIPTS_DIR / "review-doc.py"
@@ -92,6 +98,7 @@ class GuardedVault(ReviewFakeVault):
     def __init__(self, files=None):
         super().__init__(files)
         self.after_write: dict = {}
+        self.guards: list = []                  # every write_file as (path, expected_modified)
 
     def write_note(self, path, content, expected_modified=None):
         if expected_modified is not None and path in self.files and expected_modified != self.modified.get(path):
@@ -102,6 +109,10 @@ class GuardedVault(ReviewFakeVault):
         return out
 
     def write_file(self, path, data, expected_modified=None):
+        self.guards.append((path, expected_modified))
+        if expected_modified is not None and path in self.files and expected_modified != self.modified.get(path):
+            self._call("write_file", path)
+            raise KadoToolError(GUARD_REFUSED)
         out = super().write_file(path, data, expected_modified)
         self._after(path)
         return out
@@ -243,7 +254,7 @@ def test_cli_reader_answers_not_found_and_stops_on_kado(doc_mod, ins, instance, 
 
 def test_cli_every_problem_name_is_pinned_to_refusing_or_notice():
     assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "nothing-to-deliver", "place-missing",
-                                 "place-too-deep", "user-heading-collision", "set-exists"}
+                                 "place-too-deep", "user-heading-collision", "set-exists", "already-applied"}
     assert set(rdl.NOTICES) == {"heading-renamed", "unlanded-items", "variant_missing", "templater_hint",
                                 "template_unmergeable"}
     assert not set(rdl.REFUSING) & set(rdl.NOTICES)
@@ -739,6 +750,175 @@ def test_drop_kado_failure_is_stopped_and_keeps_the_stage(doc_mod, ins, instance
     assert err == "" and meta_of(instance)["withdrawn"] is False
 
 
+# ---------------------------------------------------------------- drop against what Hashi left (T4.4)
+
+def delivered(doc_mod, ins, instance, monkeypatch, capsys):
+    """``(cli, fake)`` after a complete delivery in new-note mode (one ``move_note``), events cleared."""
+    cli, fake = ready(doc_mod, ins, instance, monkeypatch, capsys, vault(None))
+    assert cli("deliver", "--stem", STEM)[1]["status"] == "delivered"
+    assert meta_of(instance)["steps_done"] == ["note", "set_json", "set_md", "doc_mark"]
+    fake.events.clear()
+    fake.writes.clear()
+    fake.guards.clear()
+    return cli, fake
+
+
+def store_set(fake, doc: dict) -> bytes:
+    """Hashi's rewrite of the set: the file is replaced and its ``modified`` moves on."""
+    fake.files[SET_JSON] = (json.dumps(doc, indent=2) + "\n").encode("utf-8")
+    fake._bump(SET_JSON)
+    return fake.files[SET_JSON]
+
+
+def untouched(instance, fake, meta_before: dict, set_before: bytes) -> None:
+    assert writes(fake) == [] and fake.writes == []
+    assert meta_of(instance) == meta_before and fake.files[SET_JSON] == set_before
+    assert (instance / "tomo-tmp" / "review" / STEM / "meta.json").exists()
+
+
+@pytest.mark.parametrize("marked", ["the-one-action", "one-of-two"])
+def test_drop_refuses_a_set_hashi_already_applied_and_writes_nothing(doc_mod, ins, instance, monkeypatch, capsys,
+                                                                    marked):
+    """Falsifies a `drop` that rewrites the set blind: one action Hashi marked `applied: true` — the set's
+    only action, or one of two with the other still waiting — refuses the withdrawal by name, with no vault
+    write, the set JSON byte-identical, meta.json unchanged and the stage kept; `status` still answers from
+    the set as Hashi left it."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    doc = set_json_of(fake)
+    if marked == "one-of-two":
+        waiting = copy.deepcopy(doc["actions"][0])
+        waiting["id"] = "I02"
+        doc["actions"].append(waiting)
+    doc["actions"][0]["applied"] = True
+    set_before = store_set(fake, doc)
+    meta_before = meta_of(instance)
+    code, out, err = cli("drop", "--stem", STEM)
+    assert code == 0 and err == ""
+    assert out == {"status": "refused", "stem": STEM, "problems": ["already-applied"]}
+    untouched(instance, fake, meta_before, set_before)
+    assert [e for e in fake.events if e[0].startswith("read")] == [("read_file", SET_JSON)]
+    assert cli("status", "--stem", STEM)[1]["state"] == ("applied" if marked == "the-one-action" else "delivered")
+
+
+def test_drop_withdraws_a_set_no_action_of_which_is_applied_with_the_reads_guard(doc_mod, ins, instance, monkeypatch,
+                                                                                capsys):
+    """The set as delivered (`applied` absent, or `false`) withdraws as before, and the set JSON is written
+    with the `modified` the read returned as its guard."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    doc = set_json_of(fake)
+    doc["actions"][0]["applied"] = False
+    store_set(fake, doc)
+    seen = fake.modified[SET_JSON]
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out["status"] == "withdrawn"
+    assert out["paths"] == {"set_json": SET_JSON, "set_md": SET_MD, "note": NEW_NOTE}
+    assert fake.events[:1] == [("read_file", SET_JSON)]
+    assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
+    assert fake.guards == [(SET_JSON, seen)]
+    assert set_json_of(fake)["actions"] == [] and meta_of(instance)["withdrawn"] is True
+    assert cli("status", "--stem", STEM)[1]["state"] is None
+
+
+def test_drop_withdraws_when_the_set_json_is_absent(doc_mod, ins, instance, monkeypatch, capsys):
+    """NOT_FOUND on the set read means nothing landed (or the user deleted it): the withdrawal proceeds,
+    the set JSON written without a guard."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    del fake.files[SET_JSON]
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out["status"] == "withdrawn"
+    assert fake.events[:1] == [("read_file", SET_JSON)]
+    assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
+    assert fake.guards == [(SET_JSON, None)]
+    assert set_json_of(fake)["actions"] == [] and meta_of(instance)["withdrawn"] is True
+
+
+@pytest.mark.parametrize("broken", [b"not json at all", b'{"actions": "I01"}', b'[{"applied": true}]'])
+def test_drop_withdraws_over_an_unreadable_set(doc_mod, ins, instance, monkeypatch, capsys, broken):
+    """A file that is not a JSON object, or whose `actions` is not a list of objects, is not proof of
+    applied: the withdrawal proceeds as before, guarded by the read's `modified`."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    fake.files[SET_JSON] = broken
+    fake._bump(SET_JSON)
+    seen = fake.modified[SET_JSON]
+    _, out, err = cli("drop", "--stem", STEM)
+    assert err == "" and out["status"] == "withdrawn"
+    assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
+    assert fake.guards == [(SET_JSON, seen)]
+    assert set_json_of(fake)["actions"] == []
+
+
+@pytest.mark.parametrize("failure, kind", [(KadoAuthError("401"), "kado-auth"),
+                                           (KadoToolError("kado-read returned an error: FORBIDDEN"),
+                                            "kado-unreachable")])
+def test_drop_stops_on_a_failed_set_read_and_writes_nothing(doc_mod, ins, instance, monkeypatch, capsys,
+                                                            failure, kind):
+    """Falsifies a failed read taken as absent: a refused key or any other Kado failure on the set read
+    stops the run by its kind — nothing written, the stage and meta unchanged, the set JSON as it was."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    set_before = fake.files[SET_JSON]
+    meta_before = meta_of(instance)
+    fake.fail[("read_file", SET_JSON)] = failure
+    code, out, err = cli("drop", "--stem", STEM)
+    assert code == 0 and err == ""
+    assert out["status"] == "stopped" and out["stem"] == STEM and out["error"]["kind"] == kind
+    assert "problems" not in out
+    untouched(instance, fake, meta_before, set_before)
+
+
+def hashi_writes_after_the_read(fake, mutate) -> None:
+    """Hashi rewrites the set between `drop`'s read and its write: `mutate(doc)` is applied once, right
+    after the first read of the set JSON, and the file's `modified` moves on."""
+    real = fake.read_file
+
+    def read_then_hashi(path):
+        out = real(path)
+        if path == SET_JSON:
+            fake.read_file = real
+            doc = set_json_of(fake)
+            mutate(doc)
+            store_set(fake, doc)
+        return out
+    fake.read_file = read_then_hashi
+
+
+def _apply(doc):
+    doc["actions"][0]["applied"] = True
+
+
+def _patch_without_applying(doc):
+    doc["actions"][0]["destination"] = TARGET            # the fixer rewrote a field; nothing applied
+
+
+@pytest.mark.parametrize("between, second", [(_apply, "refused"), (_patch_without_applying, "withdrawn")])
+def test_drop_set_changed_under_the_guard_is_stopped_and_resumable(doc_mod, ins, instance, monkeypatch, capsys,
+                                                                   between, second):
+    """Falsifies an unguarded set write: Hashi writing the set between the read and the write refuses the
+    guard (Kado's CONFLICT, as production sees it) — `set-changed`, nothing written, the stage kept. A
+    second `drop` reads the set as it is now: refused `already-applied` when Hashi applied, withdrawn when
+    it only patched."""
+    cli, fake = delivered(doc_mod, ins, instance, monkeypatch, capsys)
+    meta_before = meta_of(instance)
+    seen = fake.modified[SET_JSON]
+    hashi_writes_after_the_read(fake, between)
+    code, out, err = cli("drop", "--stem", STEM)
+    assert code == 0 and err == ""
+    assert out["status"] == "stopped" and out["stem"] == STEM and out["problems"] == ["set-changed"]
+    assert fake.guards == [(SET_JSON, seen)] and fake.writes == []
+    assert [e for e in fake.events if e[0] == "write_note"] == []
+    assert meta_of(instance) == meta_before and meta_before["withdrawn"] is False
+    assert set_json_of(fake)["actions"][0].get("applied", False) is (between is _apply)
+    fake.events.clear()
+    fake.guards.clear()
+    _, out, _ = cli("drop", "--stem", STEM)
+    assert out["status"] == second
+    if second == "refused":
+        assert out["problems"] == ["already-applied"] and fake.writes == []
+        assert meta_of(instance) == meta_before and set_json_of(fake)["actions"][0]["applied"] is True
+    else:
+        assert fake.guards == [(SET_JSON, fake.modified[SET_JSON] - 1)]
+        assert set_json_of(fake)["actions"] == [] and meta_of(instance)["withdrawn"] is True
+
+
 # ---------------------------------------------------------------- status and the CLI contract
 
 def test_cli_status_names_the_state(doc_mod, ins, instance, monkeypatch, capsys):
@@ -812,6 +992,12 @@ def test_cli_status_and_start_agree_on_delivered_move_refused_applied_and_withdr
     assert both() == ("applied", [(STEM, "applied")])
     assert meta_of(instance)["applied_reported"] is True
     assert both() == ("applied", [])                          # status still answers; the listing offered it once
+    assert cli("drop", "--stem", STEM)[1] == {"status": "refused", "stem": STEM, "problems": ["already-applied"]}
+    assert both() == ("applied", [])                          # the applied record survived the drop
+    unapplied = set_json_of(fake)                             # a set Hashi never ran (test-only reset)
+    for action in unapplied["actions"]:
+        del action["applied"]
+    fake.files[SET_JSON] = (json.dumps(unapplied, indent=2) + "\n").encode("utf-8")
     assert cli("drop", "--stem", STEM)[1]["status"] == "withdrawn"
     assert both() == (None, [])                               # withdrawn: never listed
 

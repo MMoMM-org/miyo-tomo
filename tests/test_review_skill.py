@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.7")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.8")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -270,7 +270,8 @@ def test_setup_asks_the_week_question_in_plain_words_only_when_ambiguous():
     assert ("Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week "
             "with 1 January, `4` for at least four days)") in text
     assert ("python3 scripts/review-session.py match --kind <kind> --folder \"<folder>\" --format \"<format>\" "
-            "--first-day <day> --min-days <n>") in text
+            "--first-day <day> --min-days <n> --template <template>") in text, \
+        "the week-rule rerun carries the template answer (fix round 1: it listed the candidates again)"
     assert "ISO" not in text
 
 
@@ -290,9 +291,11 @@ def test_setup_correction_reruns_match_for_names_and_carries_other_values_and_wr
     text = _section("2. Setup")
     assert ("- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` "
             "with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, "
-            "`--template`) and the proposal's values for the others, and print the new proposal, evidence and "
-            "hints; for heading, place, own sections, daily sections or language, print the proposal with the "
-            "corrected value. Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
+            "`--template` — a corrected template is `<template>` from then on, `none` for no template), the "
+            "proposal's values for the others, `--template <template>` and `--anchor \"<anchor>\"` when given, and "
+            "print the new proposal, evidence and hints; for heading, place, own sections, daily sections or "
+            "language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. "
+            "Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
     assert ("- Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, "
             "the corrected values in place; add `daily_path_fix` from the `match` output only when the user "
             "confirmed it.") in text
@@ -317,12 +320,14 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     assert ("`template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes "
             "of the templates folder fit it; ask, numbered on one line with `0 none` last: "
             "`1 <name> · 2 <name> · 0 none`. End the turn.") in text
-    assert "A number → run:" in text
-    assert "python3 scripts/review-session.py match --kind <kind> --template \"<name>\"" in text
-    assert ("with the flags of the last `match` call added, and continue with its output. `0` → continue with "
-            "this output: no template, a plain note.") in text
-    assert ("Every later `match` call of this step carries `--template \"<template>\"` with `proposal.template` "
-            "when it is set, so the template question is asked once.") in text
+    assert "A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; run:" in text
+    assert "python3 scripts/review-session.py match --kind <kind> --template <template>" in text
+    assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
+            "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "
+            "`<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else `none`.") in text
+    assert ("- Every later `match` call of this step carries `--template <template>` and, once `<anchor>` is given, "
+            "`--anchor \"<anchor>\"`: the script then lists no candidates and asks for no anchor, so each question "
+            "is asked once. Never drop either flag from a rerun.") in text
     assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
         "the template question comes before the proposal is printed: its answer changes the proposal"
 
@@ -333,8 +338,9 @@ def test_setup_asks_for_the_anchor_before_confirm_when_none_could_be_proposed():
     text = _section("2. Setup")
     assert ("`needs_anchor` is true → say that no heading could be proposed for the place of the review section "
             "(no template, or none with a heading below its title); print `anchor_candidates` as a numbered list "
-            "and ask: Which heading, by number or typed? End the turn. The answer is `proposal.place.anchor`; "
-            "print the proposal with it in place. Never offer Confirm while `place.anchor` is null.") in text
+            "and ask: Which heading, by number or typed? End the turn. The answer is `<anchor>` and "
+            "`proposal.place.anchor`; print the proposal with it in place. Never offer Confirm while "
+            "`place.anchor` is null.") in text
     assert text.index("`needs_anchor` is true") < text.index("Ask `1 Confirm · 2 Correct · 3 Abort`.")
     assert text.index("`evidence.week_rule` is `ambiguous`") < text.index("`needs_anchor` is true"), \
         "the anchor question follows the week question: its rerun is the output the candidates come from"

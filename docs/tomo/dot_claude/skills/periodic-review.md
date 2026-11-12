@@ -150,10 +150,25 @@ note types the one number that never shifts. A number reruns `review-session.py 
 and the flags already given, so the chosen template takes the same path as a configured one (read, classified,
 its headings proposing the anchor); `0` keeps the first output, whose `template` is null and whose `template_kind`
 is `missing` — the plain-note line already covers it, and nothing is saved to the mapping (the writer removes a key
-that is not there). Every later `match` call of the step carries `--template` with the proposal's template, so the
-question is asked once: without that rule a folder correction would list the candidates again. The choice is saved
-through `setup-input` as `template`, the key `vault-config-writer.py review --input` already writes to
-`templates.mapping.<weekly|monthly>`; no new writer key, no new schema key.
+that is not there). The choice is saved through `setup-input` as `template`, the key `vault-config-writer.py review
+--input` already writes to `templates.mapping.<weekly|monthly>`; no new writer key, no new schema key.
+
+The answers are carried on every rerun as flags, not remembered by the model (fix round 1 of the live-walk fix,
+spec review). The first version said "every later `match` call carries `--template` with the proposal's template
+when it is set" — but after `0 none` the proposal's template is null, so the week-rule rerun and every Correct rerun
+found no template and the script listed the candidates again; the typed anchor was lost the same way, `needs_anchor`
+coming back on each rerun. So the skill defines `<template>` once — the chosen name in double quotes, or the word
+`none` for `0`, or the proposal's template when no question was asked — and `<anchor>` as the answer to the anchor
+question (or a corrected anchor), and the rule says that every later `match` call of the step carries
+`--template <template>` and, once given, `--anchor "<anchor>"`; the week-rule rerun example and the Correct branch
+spell both out, because a literal model copies the example and drops a flag the example lacks.
+`review-session.py match --kind --folder --format --first-day --min-days --template --anchor` then answers
+without the candidates and without `needs_anchor` (`--template none` lists nothing; `--anchor` sets
+`place.anchor` and reads no note), so each question is asked once however often the dialogue reruns (WHY of the
+flags: `docs/tomo/scripts/review-session.md`, "WHY `--template none` and `--anchor` Carry the Answers on Every
+Rerun"). The `<template>` definition covers the no-question case on purpose: a mapped template is carried as
+`"<proposal.template>"` (the flag equals the mapping, harmless), and an empty candidate list (no `base_path`) is
+carried as `none`, so a literal model never meets an undefined placeholder.
 
 The anchor: when `match` can propose none — no template, `0 none`, a template whose only heading is its title — it
 marks the output `needs_anchor: true` and lists `anchor_candidates`, the headings of the two most recent periodic

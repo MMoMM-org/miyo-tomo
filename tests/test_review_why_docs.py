@@ -22,9 +22,14 @@ Mechanisms a mutation of the parsers falsifies:
 - ``test_every_review_script_span_is_a_contract_mention`` — a backtick span that
   names a review script but matches no mention form (wrapped, reworded) fails,
   so it cannot slip past the sweeps above silently.
+- ``test_skill_doc_attaches_every_visible_flag_of_match`` — a flag added to
+  ``review-session.py match`` (``--template none`` / ``--anchor``, fix round 1 of
+  the Phase 6 live-walk fix) without a ``match …`` mention naming it fails; the
+  suppressed test flag ``--today`` is exempt.
 """
 from __future__ import annotations
 
+import argparse
 import re
 
 import pytest
@@ -100,6 +105,17 @@ def test_skill_doc_names_no_subcommand_the_parsers_lack(skill_doc, subcommands):
         if flag not in flags(subcommands[script][sub])
     )
     assert not bad_flags, f"the skill WHY document attaches flags a subcommand does not take: {bad_flags}"
+
+
+def test_skill_doc_attaches_every_visible_flag_of_match(skill_doc, subcommands):
+    """The flags the setup dialogue passes back are the contract the WHY document explains: every flag of
+    `match` with a help text must sit in some `review-session.py match …` mention of the document."""
+    match_parser = subcommands["review-session.py"]["match"]
+    visible = {opt for action in match_parser._actions if action.help != argparse.SUPPRESS
+               for opt in action.option_strings} - {"-h", "--help"}
+    attached = {flag for script, sub, mention_flags in sub_mentions(skill_doc)
+                if (script, sub) == ("review-session.py", "match") for flag in mention_flags}
+    assert visible <= attached, f"flags of `match` no mention of the skill WHY document attaches: {sorted(visible - attached)}"
 
 
 def test_skill_doc_names_the_review_writer_subcommand(skill_doc, parsers):

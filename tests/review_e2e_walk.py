@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -22,12 +22,15 @@ on the action in the set JSON the way Hashi's jsonAppliedWriter writes it; the
 MD peer is not touched — Hashi never ticks it).
 
 The inbox guard (PRD KPI Quality, F1-AC10): `RecordingVault` records every
-write Tomo's scripts make through the client — note, file and frontmatter —
-into the vault's `recorded` list and into the module-level `WRITES` (test id,
-path). Each test's `walk` fixture asserts after the test that every recorded
-path starts with the configured inbox prefix; the last test of each file
-asserts the same over `WRITES` as a whole, so a write outside the inbox fails
-twice: in the test that made it and in the module's final sweep.
+write Tomo's scripts ATTEMPT through the client — note, file and frontmatter,
+before Kado's guard or an injected failure can refuse it — into the vault's
+`recorded` list and into the module-level `WRITES` (test id, path). Each
+test's `walk` fixture asserts after the test that every recorded path starts
+with the configured inbox prefix; a sweep test in each file asserts the same
+over whatever `WRITES` holds when it runs (any order, any subset), so a write
+outside the inbox fails in the test that attempted it and in every sweep
+that runs after it. Shared by test_review_e2e.py, test_review_e2e_failures.py
+and test_review_e2e_edges.py.
 """
 from __future__ import annotations
 
@@ -80,12 +83,17 @@ class RecordingVault(GuardedVault):
         self.test_id = test_id
 
     def _record(self, path: str) -> None:
+        """Every write attempt, before the guard or an injected failure decides whether it lands."""
         self.recorded.append(path)
         WRITES.append((self.test_id, path))
 
-    def _store(self, path, data):
+    def write_note(self, path, content, expected_modified=None):
         self._record(path)
-        super()._store(path, data)
+        return super().write_note(path, content, expected_modified)
+
+    def write_file(self, path, data, expected_modified=None):
+        self._record(path)
+        return super().write_file(path, data, expected_modified)
 
     def write_frontmatter(self, path, frontmatter, mode="merge", expected_modified=None):
         self._record(path)
@@ -144,17 +152,17 @@ class Walk:
     def read(self, period: str, kind: str) -> dict:
         return self.run("review-read", "--period", period, "--kind", kind, "--stem", f"{period}_review")
 
-    def write(self, stem: str, kind: str) -> dict:
+    def write(self, stem: str, kind: str, props: dict | None = None) -> dict:
         path = self.stage(stem) / "proposals.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(proposals(kind)), encoding="utf-8")
+        path.write_text(json.dumps(props if props is not None else proposals(kind)), encoding="utf-8")
         return self.run("review-doc", "write", "--stem", stem, "--proposals", str(path), "--today", TODAY)
 
-    def pass1(self, period: str, kind: str) -> dict:
+    def pass1(self, period: str, kind: str, props: dict | None = None) -> dict:
         """Steps 4 and 5 of the skill: read the period, propose, write the document."""
         read = self.read(period, kind)
         assert read["status"] == "ok" and read["nothing_to_review"] is False, read
-        return self.write(f"{period}_review", kind)
+        return self.write(f"{period}_review", kind, props)
 
     def replace(self, stem: str, *flags: str) -> dict:
         return self.run("review-doc", "replace", "--stem", stem, *flags, "--today", TODAY)

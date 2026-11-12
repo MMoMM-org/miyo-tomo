@@ -12,9 +12,10 @@ start reporting `applied` once; a setup Abort writes nothing; a rerun of the per
 first run's applied set and replaces the section (one marker, one heading) — also under a renamed heading; the target created between the
 passes turns new-note into insert; the target moved to another folder is found by name and targeted
 there; an Abort before Pass 2 (the document deleted) and after it (the set deleted, never applied)
-leaves the vault outside the inbox unchanged; every write through the client lands under the inbox
-prefix — per test (the fixture) and over the whole module (the last test). The failure paths of
-delivery and drop, and the month, are in test_review_e2e_failures.py. All data is synthetic.
+leaves the vault outside the inbox unchanged; every write attempted through the client lands under the
+inbox prefix — per test (the fixture) and over whatever ran before the sweep test. The failure paths of
+delivery and drop, and the month, are in test_review_e2e_failures.py; the document edge cases, the
+setup rerun and the sparse period in test_review_e2e_edges.py. All data is synthetic.
 """
 from __future__ import annotations
 
@@ -303,8 +304,8 @@ def test_month_setup_then_new_note_targets_the_monthly_folder(walk: Walk):
 # ── the module's sweep: every write of every test above, under the inbox prefix ──────────
 
 
-def test_every_write_of_the_module_landed_under_the_inbox_prefix():
-    assert len(WRITES) >= 20, WRITES
-    assert {t for t, _ in WRITES} >= {f"{Path(__file__).name}::test_week_from_first_start_through_hashi_apply"
-                                      .replace(Path(__file__).name, f"tests/{Path(__file__).name}")}, WRITES
+def test_every_write_attempted_so_far_was_under_the_inbox_prefix():
+    """Order-independent: whatever tests ran before this one, in this module or a sibling, every write they
+    attempted through the client (landed or refused) was under the inbox; nothing is assumed about how many."""
     assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
+    assert all(isinstance(t, str) and Path(t.split("::")[0]).name.startswith("test_review_e2e") for t, _ in WRITES)

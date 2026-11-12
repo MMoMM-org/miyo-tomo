@@ -12,8 +12,8 @@ and Resume finishes with every payload written once; a drop after a partial deli
 withdrawn set (an empty `actions` list Hashi applies nothing from, an MD naming every file to delete) and
 the review is never listed again; a drop whose MD write failed (set emptied, meta unmarked) is listed
 again, Resume on it refuses `set-withdrawn` and writes nothing, a second drop completes it. Every write
-through the client lands under the inbox prefix — per test and over the whole module. All data is
-synthetic.
+attempted through the client — the injected failures included — is under the inbox prefix, per test and
+over whatever ran before the sweep test. All data is synthetic.
 """
 from __future__ import annotations
 
@@ -178,7 +178,8 @@ def test_half_withdrawn_drop_is_listed_again_resume_refuses_and_a_second_drop_co
 # ── the module's sweep: every write of every test above, under the inbox prefix ──────────
 
 
-def test_every_write_of_the_module_landed_under_the_inbox_prefix():
-    here = f"tests/{Path(__file__).name}::"
-    assert len([t for t, _ in WRITES if t.startswith(here)]) >= 20, WRITES
+def test_every_write_attempted_so_far_was_under_the_inbox_prefix():
+    """Order-independent: whatever ran before this test, every write attempted through the client (landed or
+    refused — the injected failures above are attempts too) was under the inbox; no count is assumed."""
     assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
+    assert all(isinstance(t, str) and Path(t.split("::")[0]).name.startswith("test_review_e2e") for t, _ in WRITES)

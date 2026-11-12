@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry.
 
 The dialogue criteria of /review are model behaviour; this file proves that each
@@ -16,9 +16,19 @@ from the SDD section "Runtime View / Error Handling"
 (docs/XDD/specs/045-weekly-monthly-review/solution.md) — the table is prose,
 not a machine-readable list — one entry per row that carries a user message.
 
+The refusing problems, the notices and `drop`'s problem tokens are read from
+lib/review_delivery.REFUSING / NOTICES, lib/review_actions and
+review-instructions.py's constants, so a token the scripts add without a skill
+line fails here; the statuses of `drop` and `replace --confirm` are literals in
+the scripts and hand-listed, each with a test that reads them back from the
+source.
+
 RED before T5.2: neither tomo/dot_claude/commands/review.md nor
 tomo/dot_claude/skills/periodic-review/SKILL.md exists, and tomo-help.md does
-not list /review.
+not list /review. RED before the T5.2 fix round: no `place-missing` branch for
+mode `replace`, no stop line for `approved-line-missing` in Pass 2, `drop`'s
+`kado-write-failed` said nothing was withdrawn, `replace --confirm` was
+reported as `written` without a status branch.
 """
 from __future__ import annotations
 
@@ -75,7 +85,7 @@ def _body() -> str:
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.0")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.1")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -383,9 +393,33 @@ def test_review_exists_asks_twice_before_replacing():
     text = _section("5. Propose and write the document")
     assert ("- `refused` with `review-exists` → say Tomo's review document for the period already exists at "
             "`doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. "
-            "Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and report its output "
-            "as a `written` one. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and "
-            "say in one line that the document is kept.") in text
+            "Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and branch on its "
+            "`status` by this list, `replaced` as `written`. Keep it → run "
+            "`python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the "
+            "document is kept.") in text
+    assert "report its output as a `written` one" not in text
+
+
+# `replace --confirm` is `render_and_write(allow_overwrite_review=True)` with `written` renamed
+# (tomo/scripts/review-doc.py, replace_document / render_and_write / main's Refused and Stopped
+# handlers); the script exposes no status constants, so the outcomes are hand-listed here.
+REPLACE_CONFIRM_STATUSES = ("replaced", "refused", "stopped")
+
+
+@pytest.mark.parametrize("status", REPLACE_CONFIRM_STATUSES)
+def test_every_status_of_replace_confirm_has_a_branch_in_the_write_list(status):
+    text = _section("5. Propose and write the document")
+    branch = "- `written` →" if status == "replaced" else f"- `{status}`"
+    assert branch in text, status
+    assert "`replaced` as `written`" in text
+
+
+def test_write_statuses_hand_listed_here_are_the_scripts():
+    source = (REPO / "tomo" / "scripts" / "review-doc.py").read_text(encoding="utf-8")
+    body = source[source.index("def render_and_write("):source.index("def write_document(")]
+    assert set(re.findall(r'"status": "([a-z-]+)"', body)) == {"refused", "stopped", "written"}
+    replace = source[source.index("def replace_document("):source.index("def _date_arg(")]
+    assert 'result["status"] = "replaced"' in replace
 
 
 def test_pass_1_ends_the_turn_with_the_document_report():
@@ -447,11 +481,16 @@ def test_preview_prints_the_section_target_and_place_then_asks_deliver_or_abort_
 
 PREVIEW_PROBLEMS = {
     "not-approved": "- `not-approved` → name the box `- [ ] Approved`; stop.",
+    "approved-line-missing": ("- `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` "
+                              "at the line start and tick it; stop."),
     "nothing-to-deliver": "- `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.",
-    "place-missing": ("- `place-missing` or `place-too-deep` → say the configured place is not in the target note, or "
-                      "would push the review heading past level 5; print `headings` as a numbered list and ask: Which "
-                      "number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` and keep it "
-                      "for step 8. 0 → stop."),
+    "place-missing-replace": ("- `place-missing` with `mode` `replace` → say the Tomo marker in the target note has no "
+                              "heading above it and ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's "
+                              "`period` and `kind`, Abort → stop."),
+    "place-missing": ("- `place-missing` otherwise, or `place-too-deep` → say the configured place is not in the target "
+                      "note, or would push the review heading past level 5; print `headings` as a numbered list and "
+                      "ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` "
+                      "and keep it for step 8. 0 → stop."),
     "user-heading-collision": ("- `user-heading-collision` → say a heading of the user's with the same name is never "
                                "replaced; print `headings` as a numbered list and ask: Which number, or 0 Abort? "
                                "(as above)."),
@@ -481,6 +520,67 @@ def test_every_preview_notice_is_one_line_and_the_question_still_follows(notice)
     assert text.index(PREVIEW_NOTICES[notice]) < text.index("Then ask `1 Deliver · 2 Abort`"), notice
 
 
+def test_the_replace_mode_place_missing_branch_comes_before_the_heading_pick():
+    text = _section("7. Preview")
+    assert text.index(PREVIEW_PROBLEMS["place-missing-replace"]) < text.index(PREVIEW_PROBLEMS["place-missing"])
+
+
+def _delivery_vocabulary():
+    """``(REFUSING, NOTICES)`` of lib/review_delivery and the problem constants of lib/review_actions."""
+    load_script("review-instructions.py")
+    from lib import review_actions as ra  # the scripts put tomo/scripts on sys.path
+    from lib import review_delivery as rdl
+
+    return rdl.REFUSING, rdl.NOTICES, ra
+
+
+# Tokens a Pass 2 bullet names that are statuses, keys or modes, never a problem of the plan or of drop.
+NOT_PROBLEM_TOKENS = {"ok", "problems", "stopped", "not-found", "refused", "status", "mode", "error", "headings",
+                      "insert", "replace", "new-note"}
+
+
+def _problem_bullets(*headings: str) -> set[str]:
+    """Every token a `- `<token>`` bullet of the named sections branches on (`- `a` or `b` →` names both)."""
+    bullets: set[str] = set()
+    for heading in headings:
+        for line in re.findall(r"- (`[^→]+`)[^→]*→", _section(heading)):
+            bullets.update(re.findall(r"`([a-z]+(?:-[a-z]+)*)`", line))
+    return bullets - NOT_PROBLEM_TOKENS
+
+
+def test_the_refusing_set_is_derived_and_every_token_has_a_stop_line_in_pass_2():
+    refusing, notices, _ = _delivery_vocabulary()
+    assert not set(refusing) & set(notices)
+    covered = _problem_bullets("7. Preview", "9. Drop a failed delivery")
+    missing = sorted(set(refusing) - covered)
+    assert not missing, f"refusing problems without a branch in the skill's Pass 2: {missing}"
+
+
+def test_every_refusing_preview_problem_pinned_here_is_in_the_refusing_set():
+    refusing, _, _ = _delivery_vocabulary()
+    pinned = _problem_bullets("7. Preview") - set(PREVIEW_NOTICES)
+    assert pinned <= set(refusing), sorted(pinned - set(refusing))
+    assert {"approved-line-missing", "already-applied"} <= set(refusing)
+
+
+def test_the_notice_set_is_derived():
+    _, notices, _ = _delivery_vocabulary()
+    expected = set(notices) | {"target_appeared"}
+    assert set(PREVIEW_NOTICES) <= expected
+    named = set(re.findall(r"`([a-z_-]+)`", " ".join(PREVIEW_NOTICES.values())))
+    missing = sorted(expected - named)
+    assert not missing, f"notices without a line pinned here: {missing}"
+
+
+def test_every_problem_constant_of_review_actions_is_classified():
+    refusing, notices, ra = _delivery_vocabulary()
+    not_problems = {ra.INSERT, ra.REPLACE, ra.NEW_NOTE, ra.NOTE_DOC_TYPE, ra.NOTE_STATE, ra.WIRE_TYPE}
+    tokens = {value for name, value in vars(ra).items()
+              if name.isupper() and isinstance(value, str) and re.fullmatch(r"[a-z]+(?:-[a-z]+)+", value)}
+    unclassified = sorted(tokens - not_problems - set(refusing) - set(notices))
+    assert not unclassified, f"review_actions problems in neither REFUSING nor NOTICES: {unclassified}"
+
+
 def test_place_anchor_goes_to_preview_and_deliver():
     assert "With a chosen heading add `--place-anchor \"<heading>\"`." in _section("7. Preview")
     assert "Add `--place-anchor \"<heading>\"` when a heading was chosen in step 7." in _section("8. Deliver")
@@ -507,9 +607,55 @@ def test_drop_reports_withdrawn_dropped_already_applied_and_set_changed():
     assert ("- `withdrawn` → say the set was withdrawn (nothing for Hashi to apply) and name every file in `paths` "
             "so the user can delete them in Obsidian.") in text
     assert "- `dropped` → say only the stage was removed (`removed`); nothing was in the inbox." in text
-    assert "- `refused` with `already-applied` → say Hashi already applied an action, so nothing is withdrawn." in text
-    assert ("- `stopped` with `set-changed` → say the set changed between read and write; run drop again. "
-            "`kado-write-failed` → nothing was withdrawn; stop.") in text
+    assert ("- `already-applied` → say Hashi already applied an action of this review, so nothing is withdrawn "
+            "and nothing more is delivered; stop.") in text
+    assert ("- `set-changed` → say the set changed between read and write; run `drop` once more.") in text
+
+
+def test_drop_kado_write_failed_names_the_partial_withdrawal_and_reruns_once():
+    text = _section("9. Drop a failed delivery")
+    assert ("- `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing "
+            "for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once "
+            "more. A second `kado-write-failed` → show it and stop.") in text
+    assert "nothing was withdrawn; stop" not in text
+
+
+# `drop` answers with these statuses (tomo/scripts/review-instructions.py, drop(), plus main's
+# NotFound / Refused / Stopped handlers); the script exposes its problem tokens as constants but not
+# its statuses, so the statuses are hand-listed here and the problems are read from the code.
+DROP_STATUSES = ("withdrawn", "dropped", "refused", "stopped", "not-found")
+
+
+def _drop_problems() -> set[str]:
+    script = load_script("review-instructions.py")
+    from lib import review_delivery as rdl
+
+    return {rdl.ALREADY_APPLIED, script.SET_CHANGED, script.KADO_WRITE_FAILED}
+
+
+@pytest.mark.parametrize("status", DROP_STATUSES)
+def test_every_drop_status_has_its_branch(status):
+    assert f"- `{status}`" in _section("9. Drop a failed delivery"), status
+
+
+def test_drop_statuses_hand_listed_here_are_the_scripts():
+    source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
+    body = source[source.index("def drop("):source.index("def status(")]
+    assert set(re.findall(r'"status": "([a-z-]+)"', body)) == set(DROP_STATUSES) - {"not-found"}
+
+
+def test_every_drop_problem_token_of_the_script_has_its_line():
+    covered = _problem_bullets("9. Drop a failed delivery")
+    missing = sorted(_drop_problems() - covered)
+    assert not missing, f"drop problems without a branch: {missing}"
+
+
+def test_drop_writes_the_set_before_the_readable_peer_so_a_late_failure_is_partial():
+    """The skill's `kado-write-failed` wording rests on this order; a swap would make it wrong."""
+    source = (REPO / "tomo" / "scripts" / "review-instructions.py").read_text(encoding="utf-8")
+    body = source[source.index("def drop("):source.index("def status(")]
+    assert body.index("write_file(paths[rdl.SET_JSON]") < body.index("write_note(paths[rdl.SET_MD]")
+    assert body.index("write_note(paths[rdl.SET_MD]") < body.index('meta.data["withdrawn"] = True')
 
 
 def test_status_is_never_called_by_the_skill():
@@ -533,11 +679,13 @@ ERROR_HANDLING_ROWS = {
     "write doc-name-taken": "not Tomo's review document and nothing was overwritten",
     "write review-exists": "ask `1 Replace · 2 Keep it`",
     "write / deliver / drop kado-write-failed": "`kado-write-failed` → say nothing was written and stop",
+    "drop kado-write-failed after the set write": "say the withdrawal may be partly written",
     "parse not-found": "ask `1 Start over · 2 Abort`",
     "parse / preview not approved": "name the box `- [ ] Approved`",
     "parse approved-line-missing": "restore `- [ ] Approved` at column 0",
     "preview nothing-to-deliver": "say nothing is ticked and ask `1 Start over · 2 Abort`",
     "preview place-missing / place-too-deep": "print `headings` as a numbered list and ask: Which number, or 0 Abort?",
+    "preview marker without a heading above (place-missing, mode replace)": "say the Tomo marker in the target note has no heading above it and ask `1 Start over · 2 Abort`",
     "preview user-heading-collision": "say a heading of the user's with the same name is never replaced",
     "preview heading-renamed": "the marker was found under a renamed heading; the section is replaced there",
     "preview template variant gone": "the readable instructions say to run Templater after the move",

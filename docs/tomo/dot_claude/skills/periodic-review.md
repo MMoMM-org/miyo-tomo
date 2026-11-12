@@ -37,8 +37,9 @@ the user and calls the dialog straight after a Read, with no visible text, and t
 `claude plugin eval` never offers `AskUserQuestion` either, so the paid evidence can only prove the typed path. Every
 question of this skill is therefore the same message as the content it refers to: the content, then one numbered
 option line as the last line (`1 Deliver · 2 Abort`, `1 Confirm · 2 Correct · 3 Abort`, `1 Resume · 2 Drop`,
-`1 Continue · 2 Start over · 3 Abort`, `1 Replace · 2 Keep it`, `1 Start over · 2 Abort`, and for a heading choice
-the numbered `headings` list with "Which number, or 0 Abort?" so every listed number stays valid), and the turn ends.
+`1 Continue · 2 Start over · 3 Abort`, `1 Replace · 2 Keep it`, `1 Start over · 2 Abort` — also for the marker
+without a heading above it, see Pass 2 — and for a heading choice the numbered `headings` list with
+"Which number, or 0 Abort?" so every listed number stays valid), and the turn ends.
 The next user message is the answer, mapped to an option by number or by word; anything else is asked again in plain
 text. There is no second channel: the message the model writes is the one the user reads. The numbers follow spec
 044's 0.2.9 decision (one key instead of a typed word) and stay consecutive. The preview-in-dialog form of `/note`
@@ -211,6 +212,13 @@ answers `needs-confirm` when neither flag is given, so the skill cannot replace 
 is recorded in the call. A rerun of the whole period (read again, propose again) is the same path: `write` refuses,
 the user decides.
 
+`replace --confirm` is `write`'s own path with the one refusal lifted, so it answers with `write`'s statuses — `refused`
+(`doc-name-taken` when the file turned into a note that is not Tomo's between the two calls, `proposals-invalid`,
+`read-missing`, `setup-invalid` and the rest), `stopped` (`kado-write-failed`, a reader stop) — and `replaced` where
+`write` says `written`. The skill therefore branches on its `status` by the same list it has for `write`, with
+`replaced` read as `written`; the first draft of the skill reported the output "as a written one" without a branch,
+which would have read a `refused` or `stopped` answer for `doc_path` and `counts` it does not carry (T5.2 fix round).
+
 ## Why Pass 2 Is `parse`, Then `preview`, and Deliver Is a Plain-Text Question (F5-AC1, F5-AC2)
 
 WHY: The document is the source of truth, so Pass 2 reads it fresh every time. `review-doc.py parse --stem` reads the
@@ -230,12 +238,22 @@ of that and asks `1 Deliver · 2 Abort`; a change is made by editing the documen
 by telling the model what to change, because the document is the only editing surface. Abort runs nothing and
 writes nothing: the document stays open for the next `/review`.
 
-The preview's `problems` refuse and `notices` inform, and the skill never confuses the two. Refusing: `not-approved`,
+The preview's `problems` refuse and `notices` inform, and the skill never confuses the two. The refusing names are
+`lib/review_delivery.REFUSING`, and `tests/test_review_skill.py` reads that tuple and demands a stop line in the
+skill's Pass 2 for every member — a token the scripts add without a skill line fails the suite, which is the gap
+that let two members through the first time (T5.2 fix round). Refusing: `not-approved`, `approved-line-missing`
+(the plan's gate refuses it before `not-approved` — `lib/review_actions._gate` — so `preview` and `deliver` can
+answer it as well as `parse`; the skill says how to restore `- [ ] Approved` at the line start and stops),
 `nothing-to-deliver` (everything unticked → Abort or start over), `place-missing` and `place-too-deep` (the configured
 place is not in the target or would push the review heading past level 5: the skill lists the `headings` the note
 has and asks for one or Abort, then reruns `review-instructions.py preview --place-anchor` with the chosen heading,
 F5-AC7), `user-heading-collision` (a same-named heading of the user's without the marker is never replaced: another
-heading or Abort), `set-exists` (a set for the stem waits for Hashi; nothing is delivered, F6-AC2). Notices:
+heading or Abort), `set-exists` (a set for the stem waits for Hashi; nothing is delivered, F6-AC2). One `place-missing`
+is different: with `mode` `replace` the Tomo marker was found in the target note but no heading stands above it
+(`lib/review_actions._existing_note`, `place.anchor` null). A replace needs the heading the marker sits under, so
+`--place-anchor` is ignored there and the heading pick would loop. The SDD's Error Handling row for that case says
+"names the problem; Abort or start over", so the skill says what it found and asks `1 Start over · 2 Abort` — start
+over is Pass 1 again for the period, abort leaves the document open; the user fixes the note in Obsidian. Notices:
 `heading-renamed` (the marker was found under a renamed heading; the section is replaced there, F6-AC3),
 `target_appeared` (the user created the target since Pass 1; the plan targets it instead of a new note, F6-AC4),
 `variant_missing` and `templater_hint` (the template's Tomo variant is gone or the template holds Templater code; the
@@ -266,9 +284,21 @@ WHY: Abort at the Deliver question is free: nothing was written, the document st
 `actions` list (schema-valid, nothing for Hashi to apply) and an MD that says withdrawn and names every file the
 delivery left, a lone new note included, so the user can delete them in Obsidian; before any step began it removes
 only the stage. The skill reports `status: withdrawn` with the `paths`, or `dropped` with `removed`. `already-applied`
-is refused: Hashi applied an action, so the set is the vault's history now and nothing is withdrawn (the skill says so
-and offers nothing). `set-changed` means the set was edited between read and write; the skill says to run drop again.
-A withdrawn review is never listed again.
+is refused: Hashi applied an action, so the set is the vault's history now and nothing is withdrawn and nothing more
+is delivered (the skill says so and offers nothing). `set-changed` means the set was edited between read and write;
+the skill runs drop once more. A withdrawn review is never listed again.
+
+`kado-write-failed` from `drop` is not "nothing was withdrawn" (the first draft of the skill said that; T5.2 fix
+round): `drop` writes the withdrawn set JSON first and the readable MD second, and marks `meta.json` only after
+both. A failure on the second write leaves the set already empty — nothing for Hashi to apply — while the MD in
+the inbox still lists the actions and the stage still says a delivery failed. The skill therefore says the
+withdrawal may be partly written and nothing else changed, and runs `drop` once more in the same turn: a rerun
+reads the empty set back (not applied), rewrites it under the guard and writes the MD, then marks the stage. Once,
+not until it works: a Kado that refuses every write would loop. The rerun has to happen in the session, because the
+next `/review` would not offer it — `lib/review_state.review_state` lists no review whose set has an empty
+`actions` list, so the half-withdrawn stem is invisible to `start` while its MD still names the actions. The second
+failure is shown and the run stops; the user sees both inbox files in Obsidian. Closing that listing gap (a
+`withdrawn` that reads `meta.json` only) is a script decision outside the skill.
 
 ## Why the Skill Does Not Call `status` in the Flow
 

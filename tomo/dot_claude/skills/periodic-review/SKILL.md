@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.0
+# version: 0.1.1
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -126,7 +126,7 @@ Branch on `status` first:
 - `stopped` → the stopped rule; `problems` `kado-write-failed` → say nothing was written and stop.
 - `refused` with `proposals-invalid` → show `errors` verbatim, rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop.
 - `refused` with `doc-name-taken` → say `doc_path` is a note that is not Tomo's review document and nothing was overwritten; stop.
-- `refused` with `review-exists` → say Tomo's review document for the period already exists at `doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and report its output as a `written` one. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the document is kept.
+- `refused` with `review-exists` → say Tomo's review document for the period already exists at `doc_path` and that replacing it discards the user's edits in it; ask `1 Replace · 2 Keep it`. Replace → run `python3 scripts/review-doc.py replace --stem <stem> --confirm` and branch on its `status` by this list, `replaced` as `written`. Keep it → run `python3 scripts/review-doc.py replace --stem <stem> --abort` and say in one line that the document is kept.
 - `refused` with any other problem (`read-missing`, `read-invalid`, `setup-missing`, `setup-invalid`, `inbox-not-configured`) → show `problems` and `errors` verbatim and stop.
 - `written` → report `doc_path`, `target` and `target_exists`, `target_found_elsewhere` when set, `counts` per group and every `rejected` item with its `group`, `index` and `reason`. Then say: edit the document in Obsidian, tick `- [x] Approved` and run `/review` again. End the turn.
 
@@ -158,8 +158,10 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
 - `stopped` → the stopped rule. `not-found` → as in step 6. `refused` → show `problems` and `errors` verbatim and stop.
 - `ok` with a non-empty `problems` → one line per problem:
   - `not-approved` → name the box `- [ ] Approved`; stop.
+  - `approved-line-missing` → say the Approved line is missing; restore `- [ ] Approved` at the line start and tick it; stop.
   - `nothing-to-deliver` → say nothing is ticked and ask `1 Start over · 2 Abort` as in step 6.
-  - `place-missing` or `place-too-deep` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` and keep it for step 8. 0 → stop.
+  - `place-missing` with `mode` `replace` → say the Tomo marker in the target note has no heading above it and ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop.
+  - `place-missing` otherwise, or `place-too-deep` → say the configured place is not in the target note, or would push the review heading past level 5; print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor` and keep it for step 8. 0 → stop.
   - `user-heading-collision` → say a heading of the user's with the same name is never replaced; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
   - `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.
 - `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line per entry of `notices` and per flag set:
@@ -192,6 +194,9 @@ python3 scripts/review-instructions.py drop --stem <stem>
 Branch on `status` first:
 - `withdrawn` → say the set was withdrawn (nothing for Hashi to apply) and name every file in `paths` so the user can delete them in Obsidian.
 - `dropped` → say only the stage was removed (`removed`); nothing was in the inbox.
-- `refused` with `already-applied` → say Hashi already applied an action, so nothing is withdrawn.
-- `stopped` with `set-changed` → say the set changed between read and write; run drop again. `kado-write-failed` → nothing was withdrawn; stop.
+- `refused` → one line per problem:
+  - `already-applied` → say Hashi already applied an action of this review, so nothing is withdrawn and nothing more is delivered; stop.
+- `stopped` → one line per problem:
+  - `set-changed` → say the set changed between read and write; run `drop` once more.
+  - `kado-write-failed` → say the withdrawal may be partly written (the set may already hold nothing for Hashi while the readable file still lists the actions) and nothing else changed; run `drop` once more. A second `kado-write-failed` → show it and stop.
 - `not-found` → as in step 6.

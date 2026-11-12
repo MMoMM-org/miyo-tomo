@@ -223,7 +223,11 @@ the one `review_habits` keeps.
 text and from the same-day notes into `{text, done, done_date, source}`;
 the date is kept as read and the text loses only the ✅ suffix — its
 markdown (bold, links) stays, because the model reads it as the user wrote
-it and a source link inside the text is evidence. Whether a
+it and a source link inside the text is evidence. The marker pattern is
+`review_md.DONE_MARK_RE`, shared with `review_doc_parse` since the Phase 6
+fix round (the Tasks plugin writes the same marker onto the review
+document's ticked lines); it is anchored nowhere here because a daily's
+task line may carry the user's own text after the date. Whether a
 task counts as done *in the period* is a question of the period, not of
 the day: the owner ticks "Anything to change for tomorrow?" in the daily of
 D with ✅ D+1 after midnight, and a task note's ticks fall on any day. So

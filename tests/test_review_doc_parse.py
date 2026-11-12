@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -13,7 +13,11 @@ ticks Tomo's and the user's items; every `%%t<n>%%` on a line is stripped
 and the first names the item; a checkbox line above the first heading is
 kept under `unknown` with `item-outside-group`; a BOM, whitespace after
 `Approved`, closing hashes on a heading and CRLF line ends are tolerated,
-indentation is not; kept / unticked / deleted Tomo items by id; a
+indentation is not; a trailing Tasks done marker (` ✅ YYYY-MM-DD`, as the
+Obsidian Tasks plugin appends it to a ticked line) keeps the Approved line
+the gate and is stripped from a ticked item's text without making it
+edited, any other trailing text is the user's (Phase 6 live walk); kept /
+unticked / deleted Tomo items by id; a
 Tomo item rewritten without its links stays Tomo's and edited; `edited` is
 structural — the item's ordered, de-duplicated `[[stem]]` link stems differ
 from Pass 1's `pass1_links` (a dropped link, a reorder, a link added to a
@@ -284,6 +288,60 @@ def test_a_heading_made_only_of_hashes_is_an_unknown_group_never_a_merge():
         doc = parse(text.replace("## Offen", heading), reference)
         assert [it.id for it in doc.groups().get("unknown", [])] == ["t3"], heading
         assert [it.id for it in doc.groups()["done"]] == ["t1", "t2"], heading
+
+
+DONE_MARK = " ✅ 2026-11-12"          # what the Obsidian Tasks plugin appends to a line the user ticks
+
+
+def test_a_tasks_done_marker_after_approved_is_still_the_gate():
+    # Phase 6 live walk: the owner ticked Approved in Obsidian with the Tasks plugin installed; the line became
+    # `- [x] Approved ✅ 2026-11-12` and parse answered approved false, approved-line-missing, item-outside-group
+    text = document()
+    reference = rdp.link_stems(text)
+    doc = parse(text.replace("- [ ] Approved\n", f"- [x] Approved{DONE_MARK}\n", 1), reference)
+    assert doc.approved is True and doc.warnings == []
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0} and "unknown" not in doc.groups()
+    assert parse(text.replace("- [ ] Approved\n", f"- [X] Approved{DONE_MARK}  \n", 1), reference).approved is True
+    assert parse(text.replace("- [ ] Approved\n", "- [x] Approved ✅2026-11-12\n", 1), reference).approved is True
+    assert parse(text.replace("- [ ] Approved\n", "- [x] Approved  ✅ 2026-11-12\t\n", 1), reference).approved is True
+    # unticked stays unticked, with or without a stale marker
+    assert parse(text.replace("- [ ] Approved\n", f"- [ ] Approved{DONE_MARK}\n", 1), reference).approved is False
+    assert parse(text, reference).approved is False
+    # only the done marker is tolerated: any other trailing text is the user's and the line is no gate
+    for other in (" 📅 2026-11-12", " ⏳ 2026-11-12", " ✅ 2026-11-12 📅 2026-11-13", " ✅ heute", " ✅", " 2026-11-12"):
+        doc = parse(text.replace("- [ ] Approved\n", f"- [x] Approved{other}\n", 1), reference)
+        assert doc.approved is False and doc.warnings == ["approved-line-missing", "item-outside-group"], other
+
+
+def test_a_tasks_done_marker_on_a_ticked_item_is_stripped_and_is_no_edit():
+    text = document()
+    reference = rdp.link_stems(text)
+    t1 = line_of(text, "t1")
+    plain = "Woche aufgeräumt ([[2026-03-24]], [[2026-03-26]])"
+    # a Tomo item re-ticked in Obsidian: Tasks appends the marker after the id
+    doc = parse(replace_line(text, t1, t1 + DONE_MARK).replace("- [ ] Approved", "- [x] Approved" + DONE_MARK), reference)
+    item = by_id(doc)["t1"]
+    assert (item.origin, item.kept, item.edited, item.text, item.lines) == ("tomo", True, False, plain, [])
+    assert doc.counts() == {"kept": 5, "unticked": 0, "deleted": 0, "added": 0} and doc.warnings == []
+    assert "✅" not in json.dumps(doc.approved_review(), ensure_ascii=False)
+    assert rdp.link_stems(replace_line(text, t1, t1 + DONE_MARK)) == reference
+    # the marker before the id is stripped the same way
+    doc = parse(replace_line(text, t1, t1[:-len(" %%t1%%")] + DONE_MARK + " %%t1%%"), reference)
+    assert (by_id(doc)["t1"].text, by_id(doc)["t1"].edited) == (plain, False)
+    # a user-edited item (a link dropped) carrying the marker: edited, the marker stripped
+    doc = parse(replace_line(text, t1, "- [x] Woche aufgeräumt ([[2026-03-24]]) %%t1%%" + DONE_MARK), reference)
+    assert (by_id(doc)["t1"].edited, by_id(doc)["t1"].text) == (True, "Woche aufgeräumt ([[2026-03-24]])")
+    # the user's own ticked line carrying the marker: added, the marker stripped
+    doc = parse(replace_line(text, t1, t1 + "\n- [x] Mein Punkt" + DONE_MARK), reference)
+    mine = doc.groups()["done"][1]
+    assert (mine.origin, mine.kept, mine.text) == ("user", True, "Mein Punkt") and doc.counts()["added"] == 1
+    # an unticked item is still unticked; a marker on a continuation line or inside the text is the user's words
+    doc = parse(replace_line(text, t1, "- [ ]" + t1[5:] + DONE_MARK), reference)
+    assert (by_id(doc)["t1"].kept, by_id(doc)["t1"].text) == (False, plain)
+    doc = parse(text.replace("  zweite Zeile", "  zweite Zeile" + DONE_MARK), reference)
+    assert by_id(doc)["t2"].lines == ["  zweite Zeile" + DONE_MARK]
+    doc = parse(replace_line(text, t1, "- [x] am ✅ 2026-03-24 erledigt %%t1%%"), reference)
+    assert by_id(doc)["t1"].text == "am ✅ 2026-03-24 erledigt"
 
 
 def test_a_crlf_document_parses_like_its_lf_twin():

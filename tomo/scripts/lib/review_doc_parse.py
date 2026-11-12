@@ -1,5 +1,5 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, items by id, user items.
-# version: 0.3.1
+# version: 0.3.2
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -10,7 +10,9 @@ Approved line, a ``## `` group heading, a ``- [ ] `` / ``- [x] `` item
 start (``X`` ticks too); every other line after an item start is that
 item's text, verbatim. What an editor adds around a line is tolerated — a
 leading BOM, CRLF line ends, whitespace after ``Approved``, closing hashes
-on a heading — leading whitespace is not. A checkbox line carrying
+on a heading, the Tasks plugin's trailing `` ✅ YYYY-MM-DD`` done marker on
+the Approved line and on a checkbox line (cut from the item's text, never
+an edit) — leading whitespace is not. A checkbox line carrying
 ``%%t<n>%%`` is Tomo's item (the first id names it, every id is stripped
 from the text, a second occurrence of an id is a user item); a checkbox
 line without an id is the user's; a checkbox line above the first heading
@@ -36,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from lib import review_doc as rd
+from lib.review_md import DONE_MARK_RE
 
 TOMO, USER = "tomo", "user"
 UNKNOWN = "unknown"
@@ -51,6 +54,12 @@ _ITEM = re.compile(r"^- \[([ xX])\](?: (.*))?$")
 _HEADING = re.compile(r"^## (.*?)[\s#]*$")
 _APPROVED = re.compile(r"^- \[([ xX])\] Approved\s*$")
 _LINK = re.compile(r"\[\[([^\]|#]+)")
+_TRAILING_DONE_MARK = re.compile(DONE_MARK_RE.pattern + r"\s*$")
+
+
+def _without_done_mark(line: str) -> str:
+    """The line without the trailing `` ✅ YYYY-MM-DD`` the Tasks plugin appends when a box is ticked."""
+    return _TRAILING_DONE_MARK.sub("", line)
 
 
 @dataclass
@@ -157,7 +166,7 @@ def _item_of(group: str, box: str, rest: str, seen_ids: Set[str]) -> Item:
     """The item a checkbox line starts; the first id on the line names Tomo's item unless it was seen already."""
     match = rd.ID_PATTERN.search(rest)
     item_id = match.group(1) if match else None
-    text = rd.ID_PATTERN.sub("", rest).strip() if match else rest.rstrip()
+    text = _without_done_mark(rd.ID_PATTERN.sub("", rest)).strip() if match else _without_done_mark(rest).rstrip()
     if item_id is not None and item_id not in seen_ids:
         seen_ids.add(item_id)
         return Item(group, item_id, TOMO, box.lower() == "x", text)
@@ -180,7 +189,7 @@ def _parse_body(lines: Iterable[str], warnings: List[str]) -> tuple:
     group: Optional[str] = None
     current: Optional[Item] = None
     for line in lines:
-        gate = _APPROVED.match(line)
+        gate = _APPROVED.match(_without_done_mark(line))
         if gate:
             if approved is None:
                 approved = gate.group(1).lower() == "x"

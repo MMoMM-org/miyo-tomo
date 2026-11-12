@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.15"
+version: "1.16"
 ---
 
 # Solution Design Document
@@ -821,7 +821,7 @@ ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
 
 **Item identity.** Each Tomo item ends with an Obsidian comment id `%%t<n>%%` (invisible in reading view). The parser treats a line with an id as Tomo's item — edited when its source links differ from Pass 1's (`pass1_links`; a retyped text that keeps its links reads as unedited, an accepted limit), kept when ticked — and a ticked line without an id as a user item. An id the user deleted turns that item into a user item; the count difference is reported, never guessed. The id is stripped from the landed text.
 
-**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. As built (spec 045 Phase 3) the parser has exactly five warnings: `approved-line-missing`, `unknown-group`, `duplicate-group`, `frontmatter-broken` and `item-outside-group` (a checkbox line above the first heading, filed under `unknown`). Headings, lists, tables, fences, quotes and HTML inside an item are not detected: they are kept verbatim as item text, because only an exact column-0 Approved line, `## ` group heading or `- [ ] ` / `- [x] ` item start is structure. `review_doc` escapes a leading structural marker on every item line with `\` when it writes the document, and the delivery escapes again idempotently when it lands the text. An Approved line moved into a group still gates: the first column-0 Approved line of the document decides. The later Hashi editor spec takes the rest over.
+**What the markdown document cannot carry safely (80/20 boundary, PRD Won't-Have):** headings inside an item, nested lists deeper than one level, tables, code fences, block quotes and HTML inside an item, edits to the frontmatter, renamed or duplicated group headings, and moving the Approved line into a group. As built (spec 045 Phase 3) the parser has exactly five warnings: `approved-line-missing`, `unknown-group`, `duplicate-group`, `frontmatter-broken` and `item-outside-group` (a checkbox line above the first heading, filed under `unknown`). Headings, lists, tables, fences, quotes and HTML inside an item are not detected: they are kept verbatim as item text, because only an exact column-0 Approved line, `## ` group heading or `- [ ] ` / `- [x] ` item start is structure. `review_doc` escapes a leading structural marker on every item line with `\` when it writes the document, and the delivery escapes again idempotently when it lands the text. An Approved line moved into a group still gates: the first column-0 Approved line of the document decides. A trailing Tasks done marker (` ✅ YYYY-MM-DD`, which the Obsidian Tasks plugin appends to a checkbox line when its box is ticked) is tolerated on the Approved line and cut from a checkbox line's text before the item is compared with Pass 1 and landed — one pattern, `review_md.DONE_MARK_RE`, shared with the daily reader (spec 045 Phase 6 fix round); the plugin's other fields (`📅 ⏳ 🛫 ➕ 🔁`) and a marker on a continuation line are the user's text. The later Hashi editor spec takes the rest over.
 
 #### Integration Points
 

@@ -1,5 +1,5 @@
 # review_day.py — one day of /review: the daily's kept sections, fields, tasks and same-day notes.
-# version: 0.3.0
+# version: 0.3.1
 """Reading one day for ``/review`` (spec 045, T3.2; PRD F3-AC1..4, F3-AC8).
 
 ``read_day(day, dailies, settings, read_note)`` turns the daily text(s) of
@@ -31,9 +31,9 @@ from datetime import date, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from lib.review_config import DEFAULT_MAX_CHARS, ReviewSetup
-from lib.review_md import (HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE, RULE_RE, YEAR_RE, block_text,
-                           body, cleaned, fence_state, has_token, headings, is_navigation, metadata_mask,
-                           ranges, trailing_navigation)
+from lib.review_md import (DONE_MARK_RE, HEADING_RE, INLINE_QUERY_RE, ISO_DATE_RE, LINK_RE, RULE_RE, YEAR_RE,
+                           block_text, body, cleaned, fence_state, has_token, headings, is_navigation,
+                           metadata_mask, ranges, trailing_navigation)
 from lib.vault_config_edit import get_path
 
 DEFAULT_DATE_FORMAT = "YYYY-MM-DD"
@@ -46,7 +46,6 @@ _EMBED_LINE_RE = re.compile(r"^\s*(?:>\s*)*!\[\[")
 _FIELD_RE = re.compile(r"^[\s>*+-]*(\*\*)?([A-Za-z][\w .&/-]*?)(?(1)\*\*)::(?!:)\s*(.*?)\s*$")
 _TRAILING_LINK_RE = re.compile(r"\s*(?:\[\[[^\]]*\]\]|\[[^\]]*\]\([^)]*\))\s*$")
 _TASK_RE = re.compile(r"^\s*(?:>\s*)*[-*+]\s+\[([ xX])\]\s+(.*?)\s*$")
-_DONE_RE = re.compile(r"\s*✅\s*(\d{4}-\d{2}-\d{2})")
 _TEMPLATER_RE = re.compile(r"<%.*?%>", re.DOTALL)
 _INPUT_RE = re.compile(r"`INPUT\[[^`]*\]`")
 _PLACEHOLDER_RES = (_TEMPLATER_RE, _INPUT_RE, INLINE_QUERY_RE)
@@ -130,9 +129,9 @@ def _tasks(lines: Iterable[str], source: str) -> List[dict]:
         if not match:
             continue
         done, text = match.group(1).lower() == "x", match.group(2)
-        found = _DONE_RE.search(text)
+        found = DONE_MARK_RE.search(text)
         done_date = found.group(1) if found else None
-        text = _DONE_RE.sub("", text).strip()
+        text = DONE_MARK_RE.sub("", text).strip()
         if text:
             out.append({"text": text, "done": done, "done_date": done_date, "source": source})
     return out

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -8,7 +8,9 @@ unticked → `parse` says `nothing_to_deliver`, `preview` and `deliver` refuse `
 written; the review document renamed inside the inbox → `start` still lists it by its period (its frontmatter,
 under the new path) while `parse` by stem reports `not-found` with the path the stage knows, so the skill offers
 Start over; moved out of the inbox → not listed, `not-found` the same way; the Approved line deleted → `parse`
-warns `approved-line-missing`, `preview` and `deliver` refuse it, nothing is delivered; `/review setup` with a
+warns `approved-line-missing`, `preview` and `deliver` refuse it, nothing is delivered; Approved and one item ticked
+with the Obsidian Tasks plugin installed (` ✅ YYYY-MM-DD` appended to each line, Phase 6 live walk) → `parse` approves
+with the same counts and items as a plain tick, the preview section and the delivered MD carry no marker; `/review setup` with a
 saved setup → `start` returns `current.<kind>` with the saved values, `match` proposes, and Confirm with a
 correction replaces the saved setup (the other keys kept); a week with only a few dailies (2026-W14: three of
 seven days) → the report names each day, the dailies found, and the document is written for the existing
@@ -29,6 +31,7 @@ tests/test_review_period.py::test_two_dailies_for_one_date_are_both_read_and_rep
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -115,6 +118,36 @@ def test_deleted_approved_line_is_approved_line_missing_and_nothing_is_delivered
     out = walk.deliver(WEEK_STEM)
     assert out["status"] == "refused" and out["problems"] == ["approved-line-missing"] and "paths" not in out
     assert walk.vault.recorded == [WEEK_DOC] and walk.listing() == [(WEEK_STEM, "open")]
+
+
+# ── the Tasks plugin appends a done marker to every ticked line ─────────────────────────
+
+
+def test_approved_and_an_item_ticked_through_the_tasks_plugin_parse_preview_and_deliver_without_the_marker(ready: Walk):
+    # Phase 6 live walk (container session da0eedd9): with the Obsidian Tasks plugin installed, ticking a box appends
+    # ` ✅ YYYY-MM-DD` to the line, so `- [x] Approved ✅ 2026-11-12` parsed as unapproved plus one stray item
+    walk = ready
+    text = _approved_week(walk)
+    [tomo_line] = [ln for ln in text.splitlines() if ln.endswith("%%t1%%")]
+    walk.edit_document(WEEK_DOC, text.replace(APPROVED, TICKED, 1))
+    untouched = walk.parse(WEEK_STEM)
+    assert untouched["status"] == "ok" and untouched["approved"] is True and untouched["warnings"] == [], untouched
+    marked = text.replace(f"{APPROVED}\n", f"{TICKED} ✅ 2026-11-12\n", 1)
+    marked = marked.replace(f"{tomo_line}\n", f"{tomo_line} ✅ 2026-11-12\n", 1)          # the item re-ticked
+    assert marked.count("✅") == 2
+    walk.edit_document(WEEK_DOC, marked)
+    out = walk.parse(WEEK_STEM)
+    assert out["status"] == "ok" and out["approved"] is True and out["warnings"] == [], out
+    assert out["counts"] == untouched["counts"] and out["items"] == untouched["items"], out
+    out = walk.preview(WEEK_STEM)
+    assert out["status"] == "ok" and out["problems"] == [], out
+    assert "✅" not in out["section_md"] and "2026-11-12" not in out["section_md"], out["section_md"]
+    out = walk.deliver(WEEK_STEM)
+    assert out["status"] == "delivered", out
+    # the delivered MD and JSON carry the kept text without the marker (today's date is in their stamps, not the text)
+    assert "✅" not in walk.doc(f"{INBOX}{WEEK_STEM}_instructions.md")
+    assert "✅" not in json.dumps(walk.set_json(WEEK_STEM), ensure_ascii=False)
+    assert walk.listing() == [(WEEK_STEM, "delivered")]
 
 
 # ── journey 2: /review setup with a saved setup ──────────────────────────────────────────

@@ -66,6 +66,41 @@ own mark (an item's continuation line is exactly that), so ` - [x]
 Approved` and `  ## Done` stay item text, as before. Tolerance is for what
 the editor adds around the line, never for where the line stands.
 
+## WHY a Trailing Tasks Done Marker Is Tolerated and Stripped
+
+The Obsidian Tasks plugin appends ` ✅ YYYY-MM-DD` to a checkbox line the
+moment its box is ticked — in the Phase 6 live walk (spec 045) the owner
+ticked Approved and the line became `- [x] Approved ✅ 2026-11-12`;
+the exact-match grammar answered `approved: false`, `approved-line-missing`
+and `item-outside-group`, and counted the gate as one added user item. The
+same happens to every Tomo item the user unticks and ticks again: the
+marker would have landed in the periodic note as part of the kept text.
+The marker is a plugin's mark on the line, exactly like a BOM or a trailing
+space, not the user's words, so it belongs with what the grammar tolerates:
+
+- The Approved line is matched after a trailing done marker is cut, so
+  `- [x] Approved ✅ 2026-11-12` is the gate (and an unticked line with a
+  stale marker is still unticked — the plugin removes the marker on untick,
+  and a marker left behind changes no box). Anything else after `Approved`
+  stays what it was: no gate, one stray line.
+- A checkbox line's text loses one trailing done marker after the ids are
+  stripped — Tasks writes it after `%%t<n>%%`, a plugin that keeps the
+  comment last would write it before, and both end up trailing once the
+  ids are gone. The kept text, `approved_review`, the rendered section and
+  the delivered MD therefore carry no marker, and `edited` is unaffected
+  either way: the marker is no `[[link]]`, so the link stems do not change.
+- Only a *trailing* marker on the *checkbox line* is the plugin's. A `✅`
+  date inside the text or on a continuation line is the user's words and
+  stays verbatim; a daily's own tasks never bring one into the document,
+  because `review_day` drops the marker from a task's text before the
+  model ever sees it, and the model proposes the item text.
+
+The pattern is `review_md.DONE_MARK_RE`, the one `review_day` already uses
+for a daily's tasks, anchored to the line end here — one definition of the
+marker for both readers. Only the done marker is known; the plugin's other
+fields (`📅 ⏳ 🛫 ➕ 🔁`) are typed on purpose and remain the user's text
+(see `docs/tomo/scripts/lib/review_md.md`).
+
 ## WHY Tomo's Items Are Told Apart by Id, Not by Links (ADR-13)
 
 The PRD's edge case: a Tomo item rewritten without its source links is

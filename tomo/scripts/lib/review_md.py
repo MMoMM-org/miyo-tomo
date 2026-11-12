@@ -1,8 +1,10 @@
 # review_md.py — the markdown structure a /review read works on: body, fences, sections, breaks, navigation.
-# version: 0.1.0
+# version: 0.1.1
 """Markdown structure for ``/review`` reading (spec 045, T3.2; PRD F3-AC1, F3-AC2, F3-AC4).
 
-``body`` splits frontmatter from body lines; ``headings`` finds headings and
+``DONE_MARK_RE`` is the Tasks plugin's `` ✅ YYYY-MM-DD`` done marker, the one
+pattern ``review_day`` (a daily's tasks) and ``review_doc_parse`` (the ticked
+review document) both read; ``body`` splits frontmatter from body lines; ``headings`` finds headings and
 thematic breaks outside code fences; ``ranges`` gives a section its
 subsections (cut at a break only when asked); ``trailing_navigation`` marks
 a break and the navigation block behind it — a METADATA callout, a callout
@@ -29,6 +31,7 @@ LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 INLINE_QUERY_RE = re.compile(r"`\$?=[^`]*`")
 RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+DONE_MARK_RE = re.compile(r"\s*✅\s*(\d{4}-\d{2}-\d{2})")     # the Tasks plugin's done marker on a ticked line
 YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 QUOTE_RE = re.compile(r"^(?:>\s*)+")
 METADATA_RE = re.compile(r"^(?:>\s*)+\[!metadata\]", re.IGNORECASE)

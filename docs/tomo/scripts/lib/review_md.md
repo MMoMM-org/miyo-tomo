@@ -27,6 +27,29 @@ lower layer: it imports nothing from `review_day`, and the public seam of
 `day_settings`, `render_day`, `task_note_tasks`, `done_in_period`,
 `yesterday_field_names`) is unchanged by the split.
 
+## WHY the Tasks Done Marker Is One Pattern Here
+
+`DONE_MARK_RE` (`\s*✅\s*(YYYY-MM-DD)`) is the ` ✅ YYYY-MM-DD` the
+Obsidian Tasks plugin appends to a checkbox line when its box is ticked. Two
+readers of `/review` meet it: `review_day` reads the done date off a daily's
+tasks and drops the marker from the task text (anywhere on the line,
+`search` + `sub`), and `review_doc_parse` reads the review document the
+user ticked in Obsidian — with the plugin installed, `- [x] Approved`
+became `- [x] Approved ✅ 2026-11-12` in the Phase 6 live walk and the
+gate was "missing" (spec 045 Phase 6 fix round). The parser needs the
+trailing form only (`DONE_MARK_RE.pattern + r"\s*$"`), so it anchors the
+shared pattern rather than keeping a second regex that could drift from the
+first (one token, one definition). The pattern lives here, not in
+`review_day`, because `review_doc_parse` must not import the day reader —
+its settings, its period rules — for one markdown token; `review_md` is the
+lower layer both already sit on (the `review_day` import is unchanged in
+meaning, only in origin).
+
+Only the done marker is known. The plugin's other fields (`📅` due, `⏳`
+scheduled, `🛫` start, `➕` created, `🔁` recurrence) are typed by the user
+on purpose, never added by a tick, so they stay the user's text wherever
+they appear; `❌` cancelled goes with a `[-]` box, which is no tick.
+
 ## WHY a Section Spans Its Subsections
 
 A section runs from its heading to the next heading of the same or a

@@ -77,10 +77,12 @@ During **`/review`** — when you ask Tomo to review a finished week or month:
   document and tells the model only counts and ids: how many items you kept,
   unticked, deleted or added. The model then sees the preview of the review
   section as it will land in your weekly or monthly note — the items you kept
-  and added, in your wording — with the note's path and the heading it goes
-  under; when that heading cannot be found, the note's headings too, so you
-  can pick one. The instruction set is written to your inbox by a script and is
-  not shown to the model.
+  and added, in your wording, the habit averages among them (a line such as
+  "Energy: average 3 over 6 days" is part of the section) — with the note's
+  path and the heading it goes under; when the place cannot be resolved (the
+  heading is missing, too deep, or clashes with one of your own), the note's
+  headings too, so you can pick one. The instruction set is written to your
+  inbox by a script and is not shown to the model.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
@@ -11,8 +11,10 @@ the delivered files is the user's job); removal is the user's choice; both
 encrypted disk); the /review paragraph names what reaches the model (paths of
 the created notes, not their content; in Pass 2 the parsed document gives the
 model counts and ids only and the preview shows the section as it will land —
-never "read back") and recommends Kado deny rules for folders not to be
-reviewed, in one sentence.
+the habit averages among its lines — never "read back"; the note's headings
+reach the model when the place cannot be resolved, which is every refusal
+that sets them, not only a missing heading) and recommends Kado deny rules
+for folders not to be reviewed, in one sentence.
 
 Each phrase test is pinned to the clause it guards: deleting that clause from
 PRIVACY.md fails the test (proven by mutation in an isolated copy, T5.3-fix1).
@@ -145,10 +147,25 @@ def test_review_paragraph_names_what_reaches_the_model() -> None:
 
 def test_review_paragraph_says_what_pass_2_shows_the_model() -> None:
     para = _review_paragraph()
-    _one_sentence_has(para, "review document you edited", "counts and ids")
+    _one_sentence_has(para, "review document you edited", "only counts and ids")
     _one_sentence_has(para, "section as it will land", "items you kept", "your wording")
     _has(para, "instruction set", "not shown to the model")
     assert "read back" not in _plain(para), "Pass 2 does not read the document back to the model"
+
+
+def test_review_paragraph_names_when_the_headings_reach_the_model() -> None:
+    """The note's headings reach the model on every refusal that sets them (lib/review_actions `_refuse`:
+    place-missing, place-too-deep, user-heading-collision), not only when the heading is missing."""
+    para = _review_paragraph()
+    _one_sentence_has(para, "place cannot be resolved", "note's headings")
+    assert "when that heading cannot be found" not in _plain(para)
+
+
+def test_review_paragraph_says_the_previewed_section_holds_the_habit_averages() -> None:
+    """The habits group is a group of the document (lib/review_doc GROUPS); its kept items land in
+    section_md like every other group, so the preview the model sees carries the averages."""
+    para = _review_paragraph()
+    _one_sentence_has(para, "habit averages", "part of the section")
 
 
 def test_review_paragraph_recommends_kado_deny_rules() -> None:

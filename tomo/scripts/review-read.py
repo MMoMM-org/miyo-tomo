@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.1.2
+# version: 0.1.3
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -36,8 +36,9 @@ Rules:
     One KadoClient per run, built before the first call and wrapped by one
     ReviewPacer, so the summary's counters cover the whole run and nothing
     else. The period name is resolved under the configured week rule.
-    No daily with content → nothing_to_review true, the check-key-access
-    advice, nothing written. The daily folder listing still in not_read
+    No daily with content → nothing_to_review true, nothing written; the
+    check-key-access advice comes from the folder listings alone (kado_empty,
+    lib/review_period), never from the empty period. The daily folder listing still in not_read
     after the end pass → status stopped, dailies-not-read, nothing written.
     Kado unreachable or a refused key → status stopped, nothing written.
 
@@ -68,7 +69,7 @@ from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noq
 from lib.period import KINDS, MONTH, WEEK, InvalidPeriod, Period, WeekRule  # noqa: E402
 from lib.review_day import day_settings  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, ReviewPacer  # noqa: E402
-from lib.review_period import ADVICE_CHECK_ACCESS, read_period, sources_from_config  # noqa: E402
+from lib.review_period import read_period, sources_from_config  # noqa: E402
 from lib.review_state import STEM_SUFFIX, safe_stem  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
@@ -184,11 +185,10 @@ def run(args: argparse.Namespace) -> dict:
         if ADVICE_RAISE_LIMIT not in report["advice"]:
             report["advice"].append(ADVICE_RAISE_LIMIT)
         raise Stopped(problems=["dailies-not-read"], **out)
-    # only a read period is empty or not: a stopped output never carries the flag
+    # only a read period is empty or not: a stopped output never carries the flag; the access advice is the
+    # listings' (kado_empty), never the empty period's
     out["nothing_to_review"] = not any(d.get("has_content") for d in result["days"])
     if out["nothing_to_review"]:
-        if ADVICE_CHECK_ACCESS not in report["advice"]:
-            report["advice"].append(ADVICE_CHECK_ACCESS)
         return out
     path = Path(args.tmp) / stem / READ_FILE
     path.parent.mkdir(parents=True, exist_ok=True)

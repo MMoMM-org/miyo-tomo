@@ -76,18 +76,30 @@ that stays in `not_read` does not stop the run — the month is still built
 from the dailies and `weekly_status: not-read` says what is missing (F3-AC6,
 F3-AC13).
 
-## WHY "Nothing to Review" Writes Nothing and Carries the Access Hint
+## WHY "Nothing to Review" Writes Nothing and Says the Access Hint on the Advice Only
 
 WHY: F3-AC9 and PRD Rule 6. `nothing_to_review` is true when no day of the
 period has content beyond the template skeleton (`has_content` from
-`review_day`), which is also what the run looks like when the Kado key
-cannot read the daily folder — Kado answers an empty listing for a denied
-folder. The script cannot tell the two apart, so it says both: the report
-carries `check-key-access` whenever nothing is to review, not only when the
-listing was empty (`kado_empty`), and no `read.json` is written, so the
-document step finds nothing to build (`review-doc.py write` → `read-missing`).
-The status stays `ok`: Kado was reached and answered; it is the period that
-holds nothing.
+`review_day`): no `read.json` is written, so the document step finds nothing
+to build (`review-doc.py write` → `read-missing`). The status stays `ok`:
+Kado was reached and answered; it is the period that holds nothing.
+
+The first version appended `check-key-access` to the advice whenever nothing
+was to review, "because the script cannot tell a quiet period from a denied
+folder". It can: `lib/review_period.py` sets `kado_empty` and the advice
+exactly when a folder listing Kado answered came back empty (`[]` or `Path
+not found`), and a listing that returned notes — of other dates — is a
+folder the key reaches. In the Phase 6 live walk the test vault's dailies end
+2026-09-12, and a later week got the access hint although Kado had listed
+the daily folder with notes; the user was told to check a key that worked.
+Now the script leaves the advice to the lib: nothing is appended on
+`nothing_to_review`, `check-key-access` appears only with a non-empty
+`kado_empty`, and the skill says the hint only on that token (owner
+decision, Phase 6). A period whose dailies were all found but empty, or
+whose dates are missing from a folder that holds other dates, is reported
+as quiet — the per-day report names each day with its dailies, so the user
+sees which dates were found. A denied folder still gets the hint, because
+Kado answers it with an empty listing and that listing is `kado_empty`.
 
 ## WHY a `stopped` Output Never Carries `nothing_to_review`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -278,19 +278,33 @@ def test_reads_after_a_listing_recovered_by_the_end_pass_are_sent_at_the_widest_
 
 # ---------------------------------------------------------------- nothing to review
 
-def test_no_daily_with_content_is_nothing_to_review_with_the_access_hint_and_no_file(
+def test_no_daily_with_content_is_nothing_to_review_without_the_access_hint_and_no_file(
         mod, instance, monkeypatch, capsys):
-    # RED when the nothing_to_review check is removed: read.json would be written for an empty week
+    # RED when the nothing_to_review check is removed: read.json would be written for an empty week.
+    # RED while the script appends check-key-access on nothing_to_review: Kado listed every daily (Phase 6 live walk)
     files = dict(daily(date(2026, 3, 23 + i), "") for i in range(7))
     fake = ReviewFakeVault({**files, TASK_NOTE: "- [ ] open\n"}, folders=[DAILY, WEEKLY, MOCS])
     code, out, _ = _week(mod, monkeypatch, capsys, fake)
     assert code == 0 and out["status"] == "ok"
     assert out["nothing_to_review"] is True
-    assert out["report"]["advice"] == [ADVICE_CHECK_ACCESS]
+    assert out["report"]["advice"] == []
     assert out["report"]["kado_empty"] == []
     assert all(d["dailies"] == [{"path": f"{DAILY}{d['date']}.md", "state": "empty"}] for d in out["report"]["days"])
     assert out["read_path"] is None
     assert not (instance / "tomo-tmp").exists()
+
+
+def test_a_week_without_dailies_in_a_folder_that_holds_other_dates_gets_no_access_hint(mod, instance, monkeypatch,
+                                                                                       capsys):
+    """Phase 6 live walk: the test vault's dailies end 2026-09-12; a later week got `check-key-access` although Kado
+    listed the folder. The listing answered with notes, none of the period: nothing to review, no advice."""
+    files = dict(daily(date(2026, 3, 2 + i), f"march {i}") for i in range(7))              # 2026-W10, not W13
+    fake = ReviewFakeVault({**files, TASK_NOTE: "- [ ] open\n"}, folders=[DAILY, WEEKLY, MOCS])
+    code, out, _ = _week(mod, monkeypatch, capsys, fake)
+    assert code == 0 and out["status"] == "ok" and out["nothing_to_review"] is True
+    assert all(d["dailies"] == [] for d in out["report"]["days"]) and len(out["report"]["days"]) == 7
+    assert out["report"]["kado_empty"] == [] and out["report"]["advice"] == []
+    assert out["read_path"] is None and not (instance / "tomo-tmp").exists()
 
 
 def test_an_empty_daily_listing_is_nothing_to_review_and_kado_empty(mod, instance, monkeypatch, capsys):

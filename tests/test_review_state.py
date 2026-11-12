@@ -241,6 +241,25 @@ def test_every_action_applied_is_applied():
                            target_exists=True) == "delivered"
 
 
+def test_a_fresh_record_over_a_fully_applied_set_reads_open_and_all_applied_needs_an_action():
+    """Owner decision 2026-11-12 (T6.1 fix round): after `replace --confirm` the rerun's fresh meta sits beside
+    the first run's applied set; it reads `open`, never `applied`, or the listing would report it once and drop
+    the approved document. Only a present record that never began counts: meta None stays `applied` (a cleaned
+    stage), a begun or complete record keeps its reading."""
+    doc = _doc("2026-W13", "week", APPROVED)
+    fresh = {"steps_done": [], "failed_step": "", "withdrawn": False}
+    assert rs.review_state(doc, fresh, _set(_move(True))) == "open"
+    assert rs.review_state(doc, fresh, _set(_insert(True), _insert(True, "replace_section"))) == "open"
+    assert rs.review_state(doc, None, _set(_move(True))) == "applied"
+    assert rs.review_state(doc, {"steps_done": ["set_json", "set_md", "doc_mark"]}, _set(_move(True))) == "applied"
+    assert rs.review_state(doc, {"steps_done": ["set_json"]}, _set(_move(True))) == "failed-delivery"
+    assert rs.review_state(doc, fresh, _set(_insert(True), _insert(False)), target_exists=True) == "delivered"
+    assert rs.all_applied(_set(_move(True))) is True and rs.all_applied(_set(_insert(True), _insert(True))) is True
+    for not_applied in (None, {}, {"actions": []}, {"actions": ["nope"]}, _set(_move()), _set(_move(True), _move()),
+                        _set(dict(_insert(), applied="yes"))):
+        assert rs.all_applied(not_applied) is False, not_applied
+
+
 def test_move_refused_when_the_target_and_the_inbox_copy_both_exist():
     doc = _doc("2026-W13", "week", APPROVED)
     assert rs.review_state(doc, None, _set(_move()), target_exists=True, inbox_copy_exists=True) == "move-refused"

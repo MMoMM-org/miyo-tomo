@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.5
+# version: 0.1.6
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -164,7 +164,7 @@ With a chosen heading add `--place-anchor "<heading>"`. Branch on `status` first
   - `user-heading-collision` with `mode` `insert` or `new-note` after a heading pick (the rerun with `--place-anchor`) → say the target note holds a heading that clashes with the review: one named like the review heading, or the picked heading is one of the user's own sections; the user renames or removes the clashing heading in Obsidian. Ask `1 Start over · 2 Abort`; Start over → step 4 with the entry's `period` and `kind`, Abort → stop. Never print `headings` or ask for a number a second time.
   - `place-missing` or `place-too-deep` with `mode` `insert` or `new-note` → name `place.anchor` and `place.placement`, and say that this heading is not in the target note (`place-missing`), or that the review heading would pass level 5 under it (`place-too-deep`); print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` with that heading as `--place-anchor`, keep it for step 8 and branch on the rerun by this list. 0 → stop.
   - `user-heading-collision` with `mode` `insert` or `new-note` before any heading pick → say a heading of the user's with the same name is never replaced and the review never lands inside one of the user's own sections; print `headings` as a numbered list and ask: Which number, or 0 Abort? (as above).
-  - `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.
+  - `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.
   - `set-withdrawn` → say an earlier Drop emptied the instruction set but did not finish (its readable file may still list the actions); nothing is delivered. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
 - `ok` with empty `problems` → print `target`, `mode` (`insert`, `replace` or `new-note`), `place` (`anchor`, `placement`, `level`) and `section_md` in full, in a fenced block, copied from the Bash result. Then one line for `mode` `replace`, per entry of `notices` and per flag set:
   - `mode` `replace` → the note already holds Tomo's review section; it is replaced, not added to.

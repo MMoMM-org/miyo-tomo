@@ -105,6 +105,28 @@ before — was the one bug the owner named; `failed-delivery` under an absent
 meta was rejected because Drop on a stem with no begun record only removes
 the stage (`dropped`) and the stem would be listed forever.
 
+## WHY a Fresh Record Over a Fully Applied Set Reads `open` (T6.1 fix round)
+
+WHY: owner decision 2026-11-12 — a rerun of a period writes its new set
+over the first run's fully applied set instead of refusing `set-exists`
+(docs/tomo/scripts/review-instructions.md, "WHY a Fully Applied Set Is
+Written Over"). Between `review-doc.py replace --confirm` (a fresh
+`meta.json`: no step done or in flight) and that delivery, the approved new
+document sits beside the old set, and steps 4–6 read "every action
+applied" as `applied`: the listing would report the rerun as finished once,
+record `applied_reported`, and never offer the approved document again —
+the rerun would be lost. So a record that is present but never began a
+delivery, over a set whose every action is applied, reads `open`: the set
+is the finished one of an earlier run, not this review's. `all_applied`
+is the predicate (`review_delivery.second_set` uses the same one, so the
+listing and the refusal cannot disagree); an empty `actions` list never
+counts, that is `drop`'s signature and handled first. The rule needs the
+meta to be present: with no stage at all (meta None) an approved document
+beside an applied set is a finished review whose `tomo-tmp` was cleaned,
+and `applied` stays the honest answer there — `start` writes it a minimal
+meta with `applied_reported`, as before. A begun record over an applied
+set is unchanged: `failed-delivery` without `doc_mark`, `applied` with it.
+
 ## WHY a Begun Delivery Is Read Through `ReviewMeta.started()`
 
 WHY: coordinator decision 2026-11-12, from the T4.2 fix round. The SDD's

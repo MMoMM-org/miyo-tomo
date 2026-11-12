@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.4.0
+# version: 0.5.0
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -17,15 +17,21 @@ through ``review_vault.kado_stops``. ``read_set`` is the one reader of the
 set JSON — ``review-instructions.py drop`` reads through it too, before it
 rewrites the set — and returns the parsed object with the file's
 ``modified`` (``SetRead``); ``any_applied`` says whether Hashi marked any of
-its actions ``applied``; ``is_emptied_set`` whether it is the set ``drop``
-writes (an empty ``actions`` list), the one predicate ``review-instructions.py``
-uses to refuse ``set-withdrawn``.
+its actions ``applied``, ``all_applied`` whether it marked every one (at
+least one action; the predicate ``review_delivery.ReviewMeta.second_set``
+takes, so a rerun may write over the finished set of an earlier run);
+``without_applied`` is the set with the ``applied`` flags stripped, for
+comparing a landed set with a rebuilt one; ``is_emptied_set`` whether it is
+the set ``drop`` writes (an empty ``actions`` list), the one predicate
+``review-instructions.py`` uses to refuse ``set-withdrawn``.
 
 The order implemented: ``meta.withdrawn`` → not listed; an emptied set →
 not listed when no delivery began (meta absent, no step done or in flight),
 ``failed-delivery`` under a begun delivery that meta does not call withdrawn
 (a drop that wrote the set but failed before the meta mark; the next
-``/review`` offers it again); a begun delivery
+``/review`` offers it again); a present record that never began a delivery
+over a set whose every action is applied → ``open`` (the finished set of an
+earlier run of the period, beside a rerun's fresh record); a begun delivery
 (``review_delivery.ReviewMeta.started()``) without
 ``doc_mark``, or an approved document without a set → ``failed-delivery``;
 no set → ``open``; every action ``applied`` → ``applied``; an unapplied
@@ -118,6 +124,20 @@ def any_applied(set_json: Optional[dict]) -> bool:
     return any(_applied(a) for a in _actions(set_json) or [])
 
 
+def all_applied(set_json: Optional[dict]) -> bool:
+    """Whether a readable set holds at least one action and every one carries ``applied: true``."""
+    actions = _actions(set_json)
+    return bool(actions) and all(_applied(a) for a in actions)
+
+
+def without_applied(set_json: Optional[dict]) -> Optional[dict]:
+    """``set_json`` with the ``applied`` key dropped from every action; None for an unreadable set."""
+    actions = _actions(set_json)
+    if actions is None:
+        return None
+    return {**set_json, "actions": [{k: v for k, v in a.items() if k != "applied"} for a in actions]}
+
+
 def is_emptied_set(set_json: Optional[dict]) -> bool:
     """Whether ``set_json`` is a readable set with an empty ``actions`` list — what ``drop`` writes."""
     return _actions(set_json) == []
@@ -139,6 +159,10 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     # wrote the set but not the meta mark under one
     if actions == []:
         return FAILED_DELIVERY if record.started() else None
+    # a present record that never began, beside a set every action of which is applied: the finished set of an
+    # earlier run of the period (a rerun after replace --confirm writes over it), not this review's
+    if isinstance(meta, dict) and not record.started() and all_applied(set_json):
+        return OPEN
     # step 1: a begun delivery without its last step, or an approved document whose set is gone
     if (record.started() and rdl.DOC_MARK not in record.steps_done) or (
             doc_state(doc) == DOC_STATE_APPROVED and set_json is None):

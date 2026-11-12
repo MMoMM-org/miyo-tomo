@@ -95,7 +95,7 @@ PREVIEW_PROBLEMS = {
                                "→ say a heading of the user's with the same name is never replaced and the review "
                                "never lands inside one of the user's own sections; print `headings` as a numbered "
                                "list and ask: Which number, or 0 Abort? (as above)."),
-    "set-exists": "- `set-exists` → say an instruction set for this review already waits for Hashi; nothing is delivered. Stop.",
+    "set-exists": "- `set-exists` → say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered. Stop.",
 }
 PREVIEW_NOTICES = {
     "heading-renamed": "- `heading-renamed` → the marker was found under a renamed heading; the section is replaced there.",

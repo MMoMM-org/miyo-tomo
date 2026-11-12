@@ -464,7 +464,8 @@ tests/
 ├── test_review_doc_parse.py                  # NEW (edits, ids, Approved line; implemented, spec 045 Phase 3)
 ├── test_review_instructions.py               # NEW (insert/replace/new note, resume, drop, conflicts)
 ├── test_review_deliver.py                    # NEW (Phase 4): review-instructions.py preview/deliver/drop/status over the fake vault; MODIFY: a drop that failed after the set write is listed again (implemented, spec 045 Phase 5)
-├── test_review_state.py                      # NEW (canonical states)
+├── test_review_deliver_rerun.py              # NEW: a rerun writes its set over the first run's fully applied set, set-exists for a waiting or partly applied one, the resume over the old MD (split out of test_review_deliver.py; implemented, spec 045 Phase 6 fix round)
+├── test_review_state.py                      # NEW (canonical states; MODIFY: a fresh record over a fully applied set reads open, Phase 6 fix round)
 ├── test_review_privacy.py                    # NEW (marker allowlist, exception handler; implemented, spec 045 Phase 5)
 ├── review_privacy_fixture.py                 # NEW: the marked vault of the privacy walk, never a production code path (implemented, spec 045 Phase 5)
 ├── test_review_privacy_docs.py               # NEW: PRIVACY.md clauses, docs/setup.md, README, the vault-example.yaml review example (implemented, spec 045 Phase 5)
@@ -668,14 +669,18 @@ review-instructions.py preview --stem S [--place-anchor H]
   out: {status: ok|stopped, stem, doc_path, mode: insert|replace|new-note, target, target_moved?: true, duplicates?: [paths],
         target_appeared?: true, place: {anchor, placement, level}, section_md, escaped_lines: n, templater_hint: bool,
         variant_missing?: true, template_unmergeable?: "<reason>", unlanded?: n, headings?: [names],
-        problems: [refusing names], notices: [names], set_exists: bool, resume: bool}   # (implemented, spec 045 Phase 4)
+        problems: [refusing names], notices: [names], set_exists: bool, set_applied: bool, resume: bool}   # (implemented, spec 045 Phase 4; set_applied Phase 6)
   # problems refuse a delivery (nothing is written): not-approved | approved-line-missing | nothing-to-deliver |
   #   place-missing | place-too-deep | user-heading-collision | set-exists | set-withdrawn. A name that is in neither list refuses too.
   # notices are shown and the delivery proceeds: heading-renamed | unlanded-items | variant_missing | templater_hint |
   #   template_unmergeable.
   # place-too-deep: the review heading would exceed level 5 at the configured anchor and placement
   # (rule: review_config.place_level, spec 045 Phase 2). set-exists: a delivery now would be a second set; preview
-  # reports it as deliver does. set-withdrawn (SDD 1.7): the set at the path has an empty actions list and this
+  # reports it as deliver does. A set at the path whose every action is applied (set_applied, lib/review_state.all_applied)
+  # is the finished set of an earlier run of the period and not a second set: deliver writes the new set JSON over it
+  # under the modified the probe read (Kado's CONFLICT there is kado-write-failed, resumable) and the new MD over the old,
+  # with set_replaced: true in meta.json so a resume overwrites the old MD too and never rewrites the set it landed
+  # itself (owner decision 2026-11-12, T6.1 fix round). set-withdrawn (SDD 1.7): the set at the path has an empty actions list and this
   # delivery began — a drop that did not finish; the set is read (lib/review_state.read_set), not only probed. target_appeared: Pass 1 said new-note and the fresh plan does not (the reverse case,
   # a target that vanished, is not flagged). A refused replace reports mode replace and the heading found above the marker.
 
@@ -1048,7 +1053,8 @@ sequenceDiagram
 | `preview` | template variant gone | notices `variant_missing`, `templater_hint` | raw template + Templater hint |
 | `preview` | template has a `tomo:` block or cannot be merged | notice `template_unmergeable` (+ the reason) | a plain note is built instead; says so |
 | `preview` | kept items under a heading the parser did not know | notice `unlanded-items` + `unlanded: n` | names the count; those items do not land |
-| `preview`, `deliver` | a set for the stem exists and this delivery did not write it, or the delivery is complete or withdrawn | `set-exists` | nothing written (F6-AC2) |
+| `preview`, `deliver` | a set for the stem exists that this delivery did not write and any action in it is not applied (none applied, or some), or the delivery is complete or withdrawn | `set-exists` | nothing written (F6-AC2); the skill says the set waits for Hashi and is not applied yet |
+| `preview`, `deliver` | a set for the stem exists that this delivery did not write and every action in it is applied (`lib/review_state.all_applied`; the emptied set of a drop never counts) — the finished set of an earlier run of the period, met by a rerun after `replace --confirm` | no problem; `set_applied: true` | `deliver` writes the new set JSON over it under the `modified` the probe read (a `CONFLICT` there is `kado-write-failed`, resumable) and the new MD over the old one; `meta.json` keeps `set_replaced: true` so a resume overwrites the old MD too and never rewrites the set it landed itself; the stem reads `open` before the delivery, `delivered` after it (F6-AC2, F6-AC3; owner decision 2026-11-12, T6.1 fix round) |
 | `preview`, `deliver` | the set at the stem's path has an empty `actions` list and this delivery began (a `drop` that wrote the set but did not finish; SDD 1.7) | `set-withdrawn` | nothing written; the skill says an earlier Drop emptied the set but did not finish and offers Drop or Abort — resuming over the emptied set would skip it as done and mark the document |
 | `deliver` | any refusing problem | `status: refused`, `problems` | nothing written (F5-AC1, F6-AC2) |
 | `deliver` | a payload's path holds a note that is not Tomo's identical text | `status: refused`, `name-taken`, `exists_path`, `step` | names the file; nothing overwritten |
@@ -1079,6 +1085,9 @@ review_state(doc, meta, set_json, target_exists, inbox_copy_exists):
    the set but failed before the MD and the meta mark; SDD 1.7, owner decision),
    or the document approved and no set JSON                                 → failed-delivery (resume | drop;
    on the emptied set resume refuses set-withdrawn and the skill offers drop, which completes the withdrawal)
+3a. meta present, no step done or in flight, and every action of the set applied (all_applied)
+   — the finished set of an earlier run beside a rerun's fresh record     → open (the rerun's deliver writes over it;
+   meta absent stays step 6: a cleaned stage beside an applied set is a finished review)
 4. no set JSON                                                              → open
 5. a set that is not a readable instruction set                             → delivered
 6. every action applied:true                                                → applied
@@ -1328,8 +1337,8 @@ stateDiagram-v2
 
 **One review per period — PRD F6**
 - [ ] WHEN the user starts over, THE SYSTEM SHALL name the document to be replaced and ask again (F6-AC1).
-- [ ] WHILE a delivered set is not applied, THE SYSTEM SHALL refuse a second set (F6-AC2).
-- [ ] WHEN the target holds the marked section, THE SYSTEM SHALL say so and replace it (F6-AC3).
+- [ ] WHILE a delivered set is not applied in full, THE SYSTEM SHALL refuse a second set; WHEN every action of the set is applied, a rerun's delivery SHALL write its set over it (F6-AC2).
+- [ ] WHEN the target holds the marked section, THE SYSTEM SHALL say so and replace it, also when the applied set of the earlier run still sits in the inbox (F6-AC3).
 - [ ] IF the target appears between Pass 1 and apply, THEN nothing SHALL be overwritten: insert at delivery, or the refused move reported on the next `/review` (F6-AC4).
 
 **Privacy — PRD F7**

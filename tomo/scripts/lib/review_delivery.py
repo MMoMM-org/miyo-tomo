@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.1.4
+# version: 0.1.5
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -14,7 +14,11 @@ finish), both listed among ``REFUSING`` so one pin covers every name.
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
 ``meta.json`` dict the attributes ``staged_delivery`` records into
 (``steps_done`` shared, ``failed_step``, ``run_id``, ``generated``);
-``save_meta`` persists the dict atomically. ``set_json_path`` names the set
+``second_set(set_exists, set_applied)`` says whether a delivery now would
+be a second set — a complete or withdrawn delivery always, a set this
+delivery did not write unless every action in it is applied (a rerun
+writes over the finished set of an earlier run); ``save_meta`` persists
+the dict atomically. ``set_json_path`` names the set
 JSON from the inbox folder and the stem alone (what ``review_state`` has
 without a setup); ``set_paths`` gives both set paths through
 ``ReviewSetup.inbox_path``; ``template_paths`` the template's and the
@@ -112,10 +116,13 @@ class ReviewMeta:
     def withdrawn(self) -> bool:
         return self.data.get("withdrawn") is True
 
-    def second_set(self, set_exists: bool) -> bool:
+    def second_set(self, set_exists: bool, set_applied: bool = False) -> bool:
         """Whether a delivery now would be a second set: this one is complete or withdrawn, or a set
-        this delivery did not write sits at the path."""
-        return DOC_MARK in self.steps_done or self.withdrawn() or (set_exists and not self.wrote_set())
+        this delivery did not write sits at the path — unless every action in it is applied
+        (``set_applied``: the finished set of an earlier run, written over)."""
+        if DOC_MARK in self.steps_done or self.withdrawn():
+            return True
+        return set_exists and not set_applied and not self.wrote_set()
 
 
 def save_meta(stage: Path, meta: ReviewMeta) -> None:

@@ -8,8 +8,8 @@ tomo/dot_claude/skills/periodic-review/SKILL.md calls them; the user's edits and
 simulated on the fake vault's files. Pinned here: the week — start with no setup, the setup dialogue
 confirmed through `vault-config-writer.py review`, read, proposals, write, the user's edits (untick,
 rewrite without links, add, tick Approved), parse counts, preview, deliver, Hashi's apply, the next
-start reporting `applied` once; a setup Abort writes nothing; a rerun of the period replaces the
-section (one marker, one heading) — also under a renamed heading; the target created between the
+start reporting `applied` once; a setup Abort writes nothing; a rerun of the period writes its set over the
+first run's applied set and replaces the section (one marker, one heading) — also under a renamed heading; the target created between the
 passes turns new-note into insert; the target moved to another folder is found by name and targeted
 there; an Abort before Pass 2 (the document deleted) and after it (the set deleted, never applied)
 leaves the vault outside the inbox unchanged; every write through the client lands under the inbox
@@ -179,18 +179,21 @@ def test_rerun_replaces_the_section_instead_of_adding_a_second(ready: Walk, rena
     out = walk.replace(WEEK_STEM, "--confirm")
     assert out["status"] == "replaced" and walk.meta(WEEK_STEM)["steps_done"] == [], out
     assert "- [ ] Approved" in walk.doc(WEEK_DOC)
+    assert walk.listing() == [(WEEK_STEM, "open")], "the rerun is open, not the first run's applied"
     walk.approve(WEEK_DOC)
-    # the applied set of the first run still sits in the inbox: a second set is refused until the user removes it
-    assert walk.preview(WEEK_STEM)["problems"] == ["set-exists"]
-    assert walk.deliver(WEEK_STEM)["problems"] == ["set-exists"] and SET_JSON in walk.vault.files
-    walk.user_deletes(SET_JSON, SET_MD)
+    assert walk.listing() == [(WEEK_STEM, "open")]
+    # the applied set of the first run still sits in the inbox: the rerun writes its set over it (owner decision)
+    old_modified = walk.vault.modified[SET_JSON]
     out = walk.preview(WEEK_STEM)
-    assert out["mode"] == "replace" and out["problems"] == [], out
+    assert out["mode"] == "replace" and out["problems"] == [] and out["set_applied"] is True, out
     assert out["notices"] == (["heading-renamed"] if renamed else [])
     assert out["place"] == {"anchor": "Rückblick" if renamed else "Tomo Review", "placement": "replace", "level": 2}
     out = walk.deliver(WEEK_STEM)
     assert out["status"] == "delivered" and out["mode"] == "replace", out
+    assert walk.vault.guards[-1] == (SET_JSON, old_modified), "the old set is replaced under its modified stamp"
     assert walk.set_json(WEEK_STEM)["actions"][0]["action"] == "replace_section"
+    assert not walk.set_json(WEEK_STEM)["actions"][0].get("applied") and "### I01" in walk.vault.text(SET_MD)
+    assert walk.listing() == [(WEEK_STEM, "delivered")]
     assert walk.hashi_apply(WEEK_STEM) == ["applied"]
     target = walk.vault.text(WEEK_TARGET)
     assert tomo_sections(target) == 1 and target.count("### Done") == 1, "one Tomo section (KPI Quality)"

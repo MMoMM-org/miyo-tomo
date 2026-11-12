@@ -67,7 +67,7 @@ ERROR_HANDLING_ROWS = {
     "preview template variant gone": "the readable instructions say to run Templater after the move",
     "preview template_unmergeable": "a plain note is built instead",
     "preview unlanded-items": "`unlanded` kept items are under a heading the parser does not know and do not land",
-    "preview / deliver set-exists": "say an instruction set for this review already waits for Hashi; nothing is delivered",
+    "preview / deliver set-exists": "say an instruction set for this review waits for Hashi and is not applied yet; nothing is delivered",
     "preview / deliver set-withdrawn": "say an earlier Drop emptied the instruction set but did not finish",
     "drop kado-write-failed twice": "say the next `/review` lists this review again and offers Drop",
     "deliver name-taken": "say a note at `exists_path` is not Tomo's and nothing was overwritten",

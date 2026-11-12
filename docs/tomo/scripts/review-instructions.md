@@ -46,11 +46,55 @@ pins every name to its side.
 F6-AC2 and Rule 5: one instruction set per period. `deliver` probes
 `<inbox>/<stem>_instructions.json` first. A file there that this delivery
 did not write — `meta.json` neither recorded `set_json` as done nor as the
-step in flight — is `set-exists`: refused, nothing written. A delivery whose
+step in flight — is `set-exists` while any action in it waits: refused,
+nothing written. A delivery whose
 `doc_mark` is recorded is complete; running `deliver` again is the same
 refusal, because the only honest second answer would be "nothing to do", and
 the SDD chose the refusal so the skill says the set waits for Hashi. A set
 this delivery wrote and did not finish is the resume case, not a second set.
+The one set that is not a second set is a finished one — every action
+applied — of an earlier run of the period; see the next section.
+
+### WHY a Fully Applied Set Is Written Over, Not Refused (T6.1 fix round)
+
+Owner decision 2026-11-12. A rerun of a period (F6-AC3: `review-doc.py
+replace --confirm`, a fresh document, a fresh `meta.json` with no step done)
+finds the first run's set still in the inbox, because Kado offers Tomo no
+delete and Hashi leaves the applied set where it is. Refusing `set-exists`
+there sent the user to delete two files by hand before the rerun could land
+— the e2e walk of T6.1 had to script that deletion, which is how the gap
+was found. Once *every* action in the set carries `applied: true`
+(`review_state.all_applied`; Hashi writes the flag atomically and
+monotonically, ADR-6) the set is history: the vault holds its effect and
+nothing of it waits. So `deliver` writes the new set JSON and MD over it.
+The set JSON write is guarded by the `modified` the probe read
+(`review_state.read_set`, the same read `drop` guards with): a set Hashi
+rewrote between read and write — the one way it could stop being fully
+applied — refuses with Kado's `CONFLICT`, reported as `kado-write-failed`
+(resumable: the resume reads the stamp afresh; no new problem name, so the
+skill's step 8 lines hold). The MD peer is Tomo's own file, written plain,
+as `drop` writes its withdrawn MD. The overwrite steps go through the same
+`StagedDelivery` records (`mark_in_flight`, `record`, `fail`) as an upload,
+so a failure among them resumes like any other; the loop's own
+`deliver_step` is not used for them because its rule "other text at the
+path is `name-taken`" is right for a user's note and wrong here.
+`meta.json` keeps `set_replaced: true` from the first write on, because a
+resume must also overwrite the old MD after the new set JSON landed
+(`set_json` done, `set_md` not) — the probe then reads the new, unapplied
+set and could not tell a rerun from a fresh delivery. On that resume the
+set JSON step compares the set at the path, its `applied` flags stripped,
+with the rebuilt payload: Tomo's own landed set is recorded done, never
+rewritten (a rewrite would clear a flag Hashi may have set meanwhile).
+
+A set with no action applied, or with some, stays `set-exists`: the
+listing shows the stem as `delivered`, the skill says the set waits for
+Hashi. A withdrawn set (`meta.withdrawn`) stays `set-exists` as before; it
+is never fully applied (its `actions` list is empty, and `all_applied`
+needs at least one action). After the rerun's delivery the new set waits
+unapplied, so the stem reads `delivered`, then `applied` once Hashi applied
+it; between `replace --confirm` and the delivery a fresh record over the
+old applied set reads `open` (docs/tomo/scripts/lib/review_state.md, "WHY a
+Fresh Record Over a Fully Applied Set Reads `open`").
 
 ### WHY an Emptied Set on a Begun Stem Is `set-withdrawn`, Not Resumed (P5)
 

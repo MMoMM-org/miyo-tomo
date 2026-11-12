@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.3
+# version: 0.2.4
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -12,7 +12,13 @@ this order, the new note (``new-note`` mode only), ``<stem>_instructions.json``
 and ``<stem>_instructions.md`` to the inbox through ``lib/staged_delivery``,
 then marks the document delivered with one write guarded by the ``modified``
 the reader saw; ``meta.json`` records every step so a failed delivery resumes
-without a duplicate. ``drop`` withdraws any delivery that began — a step
+without a duplicate. A set at the stem's path that this delivery did not
+write refuses ``set-exists`` while any action in it waits; once every action
+is applied (``lib/review_state.all_applied`` — the finished set of an earlier
+run of the period) ``deliver`` writes the new set JSON over it, guarded by the
+``modified`` the probe read, and the new MD over the old one, and keeps
+``set_replaced`` in ``meta.json`` so a resume overwrites the old MD too and
+never rewrites the set it landed itself. ``drop`` withdraws any delivery that began — a step
 done or in flight — by writing the set with an empty ``actions`` list and
 an MD that names every file the delivery left (the new note among them);
 it reads the set JSON first (``lib/review_state.read_set``) and refuses when
@@ -36,7 +42,7 @@ Output: one JSON object on stdout, ASCII-escaped.
     preview: status ok, stem, doc_path, mode insert|replace|new-note, target, target_moved?, duplicates?,
              target_appeared?, place {anchor, placement, level}, section_md, escaped_lines, templater_hint,
              variant_missing?, template_unmergeable?, unlanded?, problems [refusing], notices, headings?,
-             set_exists, resume
+             set_exists, set_applied, resume
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
              mode, target, place, notices, target_appeared?
            | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|name-taken], exists_path?, step?
@@ -48,7 +54,9 @@ Output: one JSON object on stdout, ASCII-escaped.
     every subcommand: status not-found, stem, doc_path? | status refused, stem, problems [setup-missing|
              setup-invalid|inbox-not-configured], errors? | status stopped, stem, error {kind, detail}
 
-Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists); a set
+Rules: a refusing problem means nothing is written; a second set for the stem is refused (set-exists) unless
+    every action of the set at the path is applied — then deliver writes over it, the set JSON under the
+    modified the probe read (Kado's CONFLICT there is kado-write-failed, resumable); a set
     at the path with an empty actions list on a begun delivery is a drop that did not finish, refused
     (set-withdrawn) before set-exists is considered — drop completes it, deliver never resumes over it;
     steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
@@ -102,6 +110,7 @@ SCRIPT = "review-instructions"
 NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
 SET_CHANGED = "set-changed"
+SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
 CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
 TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
 
@@ -142,10 +151,19 @@ class Run:
     vault: Vault
     read: DocRead
     paths: Dict[str, str]
-    set_exists: bool
+    held: Optional[rs.SetRead]
+    replaces_set: bool
     plan: ra.ReviewPlan
     problems: List[str]
     notices: List[str]
+
+    @property
+    def set_exists(self) -> bool:
+        return self.held is not None
+
+    @property
+    def set_applied(self) -> bool:
+        return self.held is not None and rs.all_applied(self.held.data)
 
     def output(self, *, section: bool, **extra) -> dict:
         """The plan's preview shape; ``section_md`` only when ``section`` (the preview prints it on purpose)."""
@@ -238,20 +256,23 @@ def load_run(args: argparse.Namespace) -> Run:
                                 anchor=getattr(args, "place_anchor", None), run_id=meta.run_id,
                                 generated=meta.generated)
     held = rs.read_set(vault, paths[rdl.SET_JSON])
-    set_exists = held is not None
+    set_exists, set_applied = held is not None, held is not None and rs.all_applied(held.data)
     if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):
         extra = [rdl.SET_WITHDRAWN]                                    # a drop that did not finish: never resumed over
     else:
-        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists) else []
+        extra = [rdl.SET_EXISTS] if meta.second_set(set_exists, set_applied) else []
     problems, notices = rdl.classify(plan, extra)
-    return Run(args.stem, stage, meta, setup, profile, vault, read, paths, set_exists, plan, problems, notices)
+    # the finished set of an earlier run is written over; the flag outlives the first write for the resume
+    replaces_set = not problems and (set_applied or meta.data.get(SET_REPLACED) is True)
+    return Run(args.stem, stage, meta, setup, profile, vault, read, paths, held, replaces_set, plan, problems, notices)
 
 
 # ---------------------------------------------------------------- preview
 
 def preview(args: argparse.Namespace) -> dict:
     run = load_run(args)
-    return run.output(section=True, status="ok", set_exists=run.set_exists, resume=run.meta.started())
+    return run.output(section=True, status="ok", set_exists=run.set_exists, set_applied=run.set_applied,
+                      resume=run.meta.started())
 
 
 # ---------------------------------------------------------------- deliver
@@ -305,6 +326,26 @@ def _public_paths(paths: Dict[str, str]) -> Dict[str, str]:
     return {key: paths[key] for key in (rdl.SET_JSON, rdl.SET_MD, rdl.NOTE) if key in paths}
 
 
+def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str, set_doc: dict) -> None:
+    """A set step written over the finished set of an earlier run: the set JSON under the ``modified`` the probe
+    read, the MD plain; the set this delivery landed itself (the same actions, ``applied`` aside) is never
+    rewritten. Recorded like an uploaded step."""
+    path = run.paths[step]
+    if step == rdl.SET_JSON and run.held is not None and rs.without_applied(run.held.data) == rs.without_applied(set_doc):
+        delivery.record(step)
+        return
+    delivery.mark_in_flight(step)
+    try:
+        if step == rdl.SET_JSON:
+            run.vault.client.write_file(path, payload.encode("utf-8"),
+                                        expected_modified=run.held.modified if run.held is not None else None)
+        else:
+            run.vault.client.write_note(path, payload)
+    except KadoError as exc:
+        raise delivery.fail(step, exc) from exc
+    delivery.record(step)
+
+
 def deliver(args: argparse.Namespace) -> dict:
     run = load_run(args)
     if run.problems:
@@ -317,11 +358,17 @@ def deliver(args: argparse.Namespace) -> dict:
     if rdl.NOTE in paths:
         payloads[rdl.NOTE] = run.plan.note_text or ""
     resumed = run.meta.started()
+    if run.replaces_set:
+        run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
     delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
                               lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
     try:
         for step in (rdl.NOTE, rdl.SET_JSON, rdl.SET_MD):
-            if step in paths and step not in run.meta.steps_done:
+            if step not in paths or step in run.meta.steps_done:
+                continue
+            if run.replaces_set and step != rdl.NOTE:
+                _overwrite_step(run, delivery, step, payloads[step], set_doc)
+            else:
                 delivery.deliver_step(step, payloads[step])
         _mark_document(run, delivery)
     except DeliveryStop as stop:

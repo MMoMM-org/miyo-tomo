@@ -171,8 +171,8 @@ The user writes a daily note every day and a weekly and a monthly note to look b
 - **User Story:** As the reviewer, I want reruns of the same period to continue what exists, so that I never get two reviews in one note or lose my edits.
 - **Acceptance Criteria:**
   - [ ] Given an open review for a period, When the user asks to start over, Then Tomo names the document that will be replaced and asks again before replacing it
-  - [ ] Given a delivered instruction set for the period that is not yet applied, When the user continues the review, Then Tomo delivers no second set and says the existing one waits for Hashi
-  - [ ] Given the target note already holds a Tomo review section, When the user reviews that period again, Then Tomo says so, and Pass 2 replaces that section instead of adding a second one
+  - [ ] Given a delivered instruction set for the period that is not yet applied in full, When the user continues the review, Then Tomo delivers no second set and says the existing one waits for Hashi; once every action of it is applied, a rerun of the period delivers its set over it
+  - [ ] Given the target note already holds a Tomo review section, When the user reviews that period again, Then Tomo says so, and Pass 2 replaces that section instead of adding a second one — without the user deleting the applied set of the earlier run from the inbox first
   - [ ] Given the target note was created by the user between Pass 1 and applying in Hashi, When Tomo delivers or the user applies, Then nothing is overwritten: Tomo targets the existing note at delivery, or the apply refuses the move and Tomo's report on the next `/review` says so
 
 #### Feature 7: Privacy

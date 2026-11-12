@@ -22,6 +22,27 @@ set on a begun stem (docs/tomo/scripts/review-instructions.md, "WHY an
 Emptied Set on a Begun Stem Is `set-withdrawn`"); it lives beside
 `SET_EXISTS` for the same reason.
 
+## WHY `second_set` Takes Whether the Set at the Path Is Applied (T6.1 fix round)
+
+Owner decision 2026-11-12 (spec 045 T6.1 finding: the PRD said F6-AC3 "a
+rerun replaces the section" while the SDD said every set at the path is
+`set-exists`, and the e2e walk had to delete the applied set by hand to get
+the rerun through). `second_set(set_exists, set_applied)` now reads: a
+complete delivery (`doc_mark` recorded) or a withdrawn one is always a second
+set; a set this delivery did not write (`wrote_set()` false) is a second set
+*unless every action in it is applied* — then it is the finished set of an
+earlier run of the same period, the vault already holds its effect, and the
+rerun's `deliver` writes the new set over it
+(docs/tomo/scripts/review-instructions.md, "WHY a Fully Applied Set Is
+Written Over"). A set with no action applied, or with some applied, stays
+`set-exists`: Hashi may still be working on it, and a partial apply is the
+user's problem to look at before anything new lands. The predicate for
+"every action applied" is `review_state.all_applied` — the same reading the
+state function uses for `applied` (ADR-6), an empty `actions` list never
+counting (that is `drop`'s signature, see `SET_WITHDRAWN`) — so the two
+cannot drift. The flag is an argument, not a read inside `ReviewMeta`,
+because the adapter holds no set and no Kado.
+
 ## WHY `ReviewMeta` Wraps the Dict
 
 `meta.json` of a review is a plain JSON object `review-doc.py write`

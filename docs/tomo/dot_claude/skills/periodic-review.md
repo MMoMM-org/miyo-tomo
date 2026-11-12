@@ -77,7 +77,10 @@ never from files the model inspects:
 - `open` → `1 Continue · 2 Start over · 3 Abort`: continue is Pass 2 (see "Why Pass 2 Is parse, Then preview"); start
   over goes through `review-doc.py replace` (see "Why Start Over Asks Twice"); abort leaves the document as it is.
 - `delivered` → one line: the set waits for Hashi or for the user to apply it by hand; no second set is delivered
-  (F6-AC2, the script would refuse it as `set-exists` anyway).
+  (F6-AC2, the script would refuse it as `set-exists` anyway). A set Hashi applied in full is no longer `delivered`:
+  the stem reads `applied`, and a rerun of the period (Start over) writes its new set over it — the skill has no line
+  for that, because `deliver` answers `delivered` as for any first set (owner decision 2026-11-12, T6.1 fix round;
+  docs/tomo/scripts/review-instructions.md, "WHY a Fully Applied Set Is Written Over").
 - `move-refused` / `target-missing` → one line each: the target existed when Hashi applied the move, so the inbox
   copy is still there; or the target is gone since delivery (F6-AC4). Nothing to deliver; the user decides in
   Obsidian.
@@ -262,7 +265,10 @@ skill names `place.anchor` and `place.placement`, lists the `headings` the note 
 reruns `review-instructions.py preview --place-anchor` with the chosen heading, F5-AC7), `user-heading-collision` with `mode` `insert` or `new-note` (a
 same-named heading of the user's without the marker is never replaced, and the review never lands inside an own
 section: another heading or Abort, offered once — see "Why the Heading Pick Is Offered Once"), `set-exists` (a set
-for the stem waits for Hashi; nothing is delivered, F6-AC2).
+for the stem waits for Hashi and is not applied yet; nothing is delivered, F6-AC2). The skill's `set-exists` line says
+"not applied yet" on purpose (0.1.6, T6.1 fix round): a set Hashi applied in full is written over by the rerun's
+`deliver`, so the script never answers `set-exists` for it, and the line must not claim that *any* set at the path
+blocks the delivery.
 
 The same three problems with `mode` `replace` are a different case. The Tomo marker was found in the target note, so
 the plan is a `replace_section` on the heading directly above the marker, whatever the user chose at setup

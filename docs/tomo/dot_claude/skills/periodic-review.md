@@ -109,10 +109,10 @@ setup dialogue runs for that kind: `review-session.py match --kind` previews the
 with `evidence.matched` and `evidence.unmatched` so the user confirms against real note names, F1-AC1), the skill
 prints the proposal, the `evidence` and every line of `hints` (the script's own wording for a `kado-none` listing, a
 folder without comparable notes and an unreadable template, so the access hint is never paraphrased) and asks
-`1 Confirm · 2 Correct · 3 Abort`. A correction of the folder, the name format, the first day or the week-1 rule
-reruns `review-session.py match --kind --folder --format --first-day --min-days` with the corrected value as its flag
-and shows the new matches before asking again (F1-AC8) — the skill never computes matches in its head, because they
-must come from the same code that will parse the names later. A correction of a value `match` takes no flag for
+`1 Confirm · 2 Correct · 3 Abort`. A correction of the folder, the name format, the first day, the week-1 rule or the
+template reruns `review-session.py match --kind --folder --format --first-day --min-days --template` with the corrected
+value as its flag and shows the new matches before asking again (F1-AC8) — the skill never computes matches in its
+head, because they must come from the same code that will parse the names later. A correction of a value `match` takes no flag for
 (heading, place, own sections, daily sections, language) is printed back in the proposal and carried in the confirmed
 file; `setup-input` validates it there, so a wrong value is refused by the schema, not by the model. Confirm writes
 the `proposal` object of the last `match` output, as it is, to `tomo-tmp/review/confirmed-<kind>.json` (with
@@ -132,6 +132,37 @@ writes nothing (F1-AC10): the writer is called only after Confirm, and no vault 
 proposal), and ends without a review: the user asked for the setup. Abort ends the setup; a kind already confirmed
 and saved before the abort stays saved, because the writer ran at its Confirm — the same rule as `/note`'s saved
 `note_include`.
+
+## Why the Template and the Anchor Are Asked Before Confirm (Phase 6 Live Walk)
+
+WHY: the live walk of `/review setup` (container session 5b959432) ended in a dead end. The owner's instance maps no
+`weekly` or `monthly` template, while the templates folder holds `t_week.md`, `t_week_privat.md`, `t_week_work.md`
+and the `t_month*` siblings; `match` proposed `template: null` and, since the anchor is proposed from the template's
+headings, `place.anchor: null`. The user confirmed, `setup-input` answered `invalid` with `/place/anchor`, and the
+Correct branch had no heading to offer. Owner decisions (2026-11-12): the dialogue asks for the template and for the
+anchor before it offers Confirm; English in the dialogue is fine, the review documents stay in `review.language`.
+
+So `match` lists `template_candidates` — the notes of `templates.base_path` whose name fits the kind — when neither
+the mapping nor `--template` names a template (WHY of the words and the order: `docs/tomo/scripts/lib/review_templates.md`),
+and the skill asks first, before it prints the proposal, because the answer changes the proposal: `1 <name> · 2 <name> · 0 none`,
+numbered on one line in the plain-text form every other question has, `0 none` last so a user who keeps the plain
+note types the one number that never shifts. A number reruns `review-session.py match --kind --template` with the name
+and the flags already given, so the chosen template takes the same path as a configured one (read, classified,
+its headings proposing the anchor); `0` keeps the first output, whose `template` is null and whose `template_kind`
+is `missing` — the plain-note line already covers it, and nothing is saved to the mapping (the writer removes a key
+that is not there). Every later `match` call of the step carries `--template` with the proposal's template, so the
+question is asked once: without that rule a folder correction would list the candidates again. The choice is saved
+through `setup-input` as `template`, the key `vault-config-writer.py review --input` already writes to
+`templates.mapping.<weekly|monthly>`; no new writer key, no new schema key.
+
+The anchor: when `match` can propose none — no template, `0 none`, a template whose only heading is its title — it
+marks the output `needs_anchor: true` and lists `anchor_candidates`, the headings of the two most recent periodic
+notes of the kind. The skill prints them numbered and asks "Which heading, by number or typed?" after the week
+question (whose rerun is the output the candidates come from) and before Confirm, puts the answer into
+`place.anchor`, and never offers Confirm while the anchor is null: `setup-input` still validates, so the refusal
+the walk met can only come from a typed heading that is blank, and the Correct branch then has the list to offer.
+The candidates are the user's own headings and reach the console by design, like the `headings` of the Pass 2
+place pick; `tests/test_review_privacy.py` names the field.
 
 ## Why the Week Question Is Asked in Plain Words (ADR-7)
 
@@ -155,7 +186,9 @@ WHY: A Kado key without read access to a folder gets an empty listing, indisting
 "Kado returned none for this folder — it may be empty, or the key may not reach it", and the skill asks before
 proposing to create notes there. The same wording applies to `template_kind: unreadable`: the skill says the
 template may be unreadable because the key has no access, proposes a plain note (title and review section) and
-continues (F1-AC7); `missing` proposes the plain note without the access hint. In Pass 1, `review-read.py`'s
+continues (F1-AC7); `missing` proposes the plain note without the access hint — after the template question above,
+when the mapping named none. A `kado-none` listing of the templates folder itself gives an empty candidate list and
+a `hints` line that names the folder, never "no templates". In Pass 1, `review-read.py`'s
 `kado_empty` sources are reported with the access hint, and its `advice` `check-key-access` (`lib/review_period.
 ADVICE_CHECK_ACCESS`, set whenever `kado_empty` is non-empty) has its own line: Kado answered with nothing for those
 sources and the key may not reach those folders; the user checks its access (F3-AC9). The first draft had a line for

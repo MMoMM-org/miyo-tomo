@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.6")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.7")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -288,11 +288,11 @@ def test_setup_unsafe_format_names_the_rule():
 
 def test_setup_correction_reruns_match_for_names_and_carries_other_values_and_writes_only_on_confirm():
     text = _section("2. Setup")
-    assert ("- Correct: for the folder, the format, the first day or the week-1 rule, rerun `match` with the "
-            "corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`) and the "
-            "proposal's values for the others, and print the new proposal, evidence and hints; for heading, place, "
-            "own sections, daily sections or language, print the proposal with the corrected value. Then ask "
-            "`1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
+    assert ("- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` "
+            "with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, "
+            "`--template`) and the proposal's values for the others, and print the new proposal, evidence and "
+            "hints; for heading, place, own sections, daily sections or language, print the proposal with the "
+            "corrected value. Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
     assert ("- Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, "
             "the corrected values in place; add `daily_path_fix` from the `match` output only when the user "
             "confirmed it.") in text
@@ -308,6 +308,36 @@ def test_setup_abort_saves_nothing_and_an_earlier_saved_kind_stays():
     text = _section("2. Setup")
     assert ("- Abort: stop; nothing is saved and nothing is written. A kind confirmed and saved earlier in this run "
             "stays saved.") in text
+
+
+def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
+    """Phase 6 live walk: no `templates.mapping.<kind>` → `match` lists `template_candidates`; the skill asks,
+    numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2)."""
+    text = _section("2. Setup")
+    assert ("`template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes "
+            "of the templates folder fit it; ask, numbered on one line with `0 none` last: "
+            "`1 <name> · 2 <name> · 0 none`. End the turn.") in text
+    assert "A number → run:" in text
+    assert "python3 scripts/review-session.py match --kind <kind> --template \"<name>\"" in text
+    assert ("with the flags of the last `match` call added, and continue with its output. `0` → continue with "
+            "this output: no template, a plain note.") in text
+    assert ("Every later `match` call of this step carries `--template \"<template>\"` with `proposal.template` "
+            "when it is set, so the template question is asked once.") in text
+    assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
+        "the template question comes before the proposal is printed: its answer changes the proposal"
+
+
+def test_setup_asks_for_the_anchor_before_confirm_when_none_could_be_proposed():
+    """Owner decision 3: a proposal with `needs_anchor` is never offered to Confirm; the skill asks which heading
+    (the `anchor_candidates`, numbered, or a typed heading) and puts the answer into `place.anchor`."""
+    text = _section("2. Setup")
+    assert ("`needs_anchor` is true → say that no heading could be proposed for the place of the review section "
+            "(no template, or none with a heading below its title); print `anchor_candidates` as a numbered list "
+            "and ask: Which heading, by number or typed? End the turn. The answer is `proposal.place.anchor`; "
+            "print the proposal with it in place. Never offer Confirm while `place.anchor` is null.") in text
+    assert text.index("`needs_anchor` is true") < text.index("Ask `1 Confirm · 2 Correct · 3 Abort`.")
+    assert text.index("`evidence.week_rule` is `ambiguous`") < text.index("`needs_anchor` is true"), \
+        "the anchor question follows the week question: its rerun is the output the candidates come from"
 
 
 def test_daily_path_fix_is_applied_only_on_confirm():

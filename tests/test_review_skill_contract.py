@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_skill_contract.py — spec 045 T5.2 / P5: the SDD's Error Handling rows, the WHY document's
 option lines and the CLI-contract sweep over every skill that names a review script.
 
@@ -42,6 +42,8 @@ ERROR_HANDLING_ROWS = {
     "review-read / match empty listing": ACCESS_RULE,
     "review-read no daily has content": "say that no daily note of the period holds content, that an empty result may also mean the Kado key cannot read the folder, and stop; nothing is written",
     "match template missing / unreadable": "the template may not be readable by the Kado key (no access)",
+    "match no mapping entry for the kind": "`1 <name> · 2 <name> · 0 none`",
+    "match no anchor could be proposed": "Which heading, by number or typed?",
     "match unsafe name format": "the name format must not contain `/`, `\\` or `..`",
     "setup-input / writer invalid": "`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`",
     "write proposals-invalid": "rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop",
@@ -98,6 +100,7 @@ def test_every_option_line_the_why_document_names_is_in_the_skill():
 
 def test_the_why_document_names_the_skills_question_wording():
     assert "Which number, or 0 Abort?" in _text(SKILL_WHY)
+    assert "Which heading, by number or typed?" in _text(SKILL_WHY)
 
 
 # ── CLI-contract sweep over every skill that names a review script ──────────
@@ -110,7 +113,7 @@ def _all_review_calls() -> list[tuple[str, str, str]]:
 
 def test_the_review_skill_calls_every_script_of_the_flow():
     calls = Counter(script for skill, script, _ in _all_review_calls() if skill == "periodic-review")
-    assert calls == {"review-session.py": 4, "review-read.py": 1, "review-doc.py": 4, "review-instructions.py": 3,
+    assert calls == {"review-session.py": 5, "review-read.py": 1, "review-doc.py": 4, "review-instructions.py": 3,
                      "vault-config-writer.py": 1}
 
 

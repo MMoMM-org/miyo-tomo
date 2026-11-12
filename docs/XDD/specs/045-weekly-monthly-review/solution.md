@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.7"
+version: "1.8"
 ---
 
 # Solution Design Document
@@ -380,10 +380,10 @@ Every new script and lib starts with a header docstring that says why the file e
 tomo/
 ├── dot_claude/
 │   ├── commands/
-│   │   └── review.md                         # NEW: shim
+│   │   └── review.md                         # NEW: shim (implemented, spec 045 Phase 5)
 │   └── skills/
 │       └── periodic-review/
-│           └── SKILL.md                      # NEW: the /review flow
+│           └── SKILL.md                      # NEW: the /review flow (implemented, spec 045 Phase 5)
 ├── scripts/
 │   ├── review-session.py                     # NEW: start / match / setup-input
 │   ├── review-read.py                        # NEW: read the period → read.json + report
@@ -429,20 +429,21 @@ tomo/
 **Component**: documentation (WHY layer, written before the runtime text)
 ```
 docs/tomo/
-├── dot_claude/commands/review.md             # NEW
-├── dot_claude/skills/periodic-review.md      # NEW
+├── dot_claude/commands/review.md             # NEW (implemented, spec 045 Phase 5)
+├── dot_claude/skills/periodic-review.md      # NEW (implemented, spec 045 Phase 5)
 └── scripts/
     ├── review-session.md, review-read.md, review-doc.md, review-instructions.md   # NEW
     ├── lib/period.md, review_config.md, review_pacer.md, review_day.md,
     │   review_period.md, review_md.md, review_reader.md, review_weekly.md, review_habits.md, review_doc.md, review_doc_parse.md,
     │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
     ├── lib/review_vault.md, lib/week_rule_inference.md, lib/vault_config_edit.md  # NEW (implemented, spec 045 Phase 2)
+    ├── lib/review_delivery.md, lib/review_doc_read.md                              # NEW: WHY of the delivery adapter and the one document reader (implemented, spec 045 Phase 4)
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
     │   instruction-render.md, lib/kado_client.md, lib/note_meta.md                 # MODIFY
 docs/tomo/schemas/vault-config-review.schema.md  # NEW: WHY of the writer input contract (implemented, spec 045 Phase 2)
-PRIVACY.md                                    # MODIFY: /review paragraph, record scope, where content rests
-docs/setup.md                                 # MODIFY: protect the instance like the vault (link to PRIVACY)
-tomo/dot_claude/commands/tomo-help.md         # MODIFY: list /review
+PRIVACY.md                                    # MODIFY: /review paragraph, record scope, where content rests (implemented, spec 045 Phase 5)
+docs/setup.md                                 # MODIFY: protect the instance like the vault (link to PRIVACY) (implemented, spec 045 Phase 5)
+tomo/dot_claude/commands/tomo-help.md         # MODIFY: list /review (implemented, spec 045 Phase 5)
 _outbox/for-kokoro/                           # NEW (gitignored): FYI handoff — first replace_section producer, doc_type review
 ```
 
@@ -462,8 +463,18 @@ tests/
 ├── test_review_doc.py                        # NEW (render, ids, labels, write failure)
 ├── test_review_doc_parse.py                  # NEW (edits, ids, Approved line; implemented, spec 045 Phase 3)
 ├── test_review_instructions.py               # NEW (insert/replace/new note, resume, drop, conflicts)
+├── test_review_deliver.py                    # NEW (Phase 4): review-instructions.py preview/deliver/drop/status over the fake vault; MODIFY: a drop that failed after the set write is listed again (implemented, spec 045 Phase 5)
 ├── test_review_state.py                      # NEW (canonical states)
-├── test_review_privacy.py                    # NEW (marker allowlist, exception handler)
+├── test_review_privacy.py                    # NEW (marker allowlist, exception handler; implemented, spec 045 Phase 5)
+├── review_privacy_fixture.py                 # NEW: the marked vault of the privacy walk, never a production code path (implemented, spec 045 Phase 5)
+├── test_review_privacy_docs.py               # NEW: PRIVACY.md clauses, docs/setup.md, README, the vault-example.yaml review example (implemented, spec 045 Phase 5)
+├── review_cli_contract.py                    # NEW: the /review CLI contract read from the scripts' own argparse parsers, shared by the WHY-doc and skill tests (implemented, spec 045 Phase 5)
+├── test_review_why_docs.py                   # NEW: the WHY documents name every subcommand the parsers have and none they lack (implemented, spec 045 Phase 5)
+├── test_review_skill.py                      # NEW: the shim, the skill's Pass 1 imperatives per criterion and its rules, the help entry (implemented, spec 045 Phase 5)
+├── test_review_skill_pass2.py                # NEW: the skill's Pass 2 steps — every refusing problem and notice has its line, drop statuses read from the script (split out at Phase 5; implemented, spec 045 Phase 5)
+├── test_review_skill_contract.py             # NEW: the SDD's Error Handling rows in the skill, the WHY document's option lines, the CLI-contract sweep over every skill naming a review script (implemented, spec 045 Phase 5)
+├── review_skill_helpers.py                   # NEW: paths, text slicers and rule-line pins shared by the test_review_skill*.py files (implemented, spec 045 Phase 5)
+├── test_review_sdd_map.py                    # NEW: this Directory Map names every review file that exists (glob-driven), the Phase 5 markers, the example-config check, the empty-listing row (implemented, spec 045 Phase 5)
 ├── test_review_e2e.py                        # NEW (Phase 6)
 ├── test_review_integration.py                # NEW (-m integration, Phase 6)
 ├── test_045_close_out_gaps.py                # NEW (Phase 6, if gaps are found)
@@ -1015,7 +1026,7 @@ sequenceDiagram
 | `start` | unfinished or future period | `error.kind = unfinished-period`, last finished period | only finished periods; names the last one (F2-AC6) |
 | any reader (`start`, `match`, `review-read`, `parse`, `preview`, `status`) | Kado unreachable / key refused | `status: stopped`, `error.kind` kado-unreachable / kado-auth | the error; nothing written (F3-AC10) |
 | `review-read` | rate limit | retries, widening, end pass; `not_read`, `advice: raise-kado-limit` | retried/waited counts, the advice, what is missing (F3-AC11..13) |
-| `review-read`, `match` | empty listing | `kado_empty` / `folder_listing: kado-none` | "Kado returned none" + the key may not reach the folder (Rule 6, F3-AC9) |
+| `review-read`, `match` | empty listing | `kado_empty` / `folder_listing: kado-none` | "Kado returned none" + the key may not reach the folder (Rule 6, F3-AC9); after `match`, the skill asks before proposing to create notes in that folder (the setup step) |
 | `review-read` | no daily has content | `nothing_to_review: true` | says so with the access hint; no document (F3-AC9) |
 | `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
 | `match` | unsafe name format | `error.kind = unsafe-format` | the format must not contain `/`, `\` or `..` |
@@ -1336,6 +1347,7 @@ stateDiagram-v2
 - `render_md` renders `insert_under_marker` content as a blockquote (not copy-ready) and has no `replace_section` branch.
 - The owner's monthly template computes week links with `YYYY-[W]ww` (`t_month_privat.md:254-262`) and links W06–W10 for February 2026 instead of W05–W09; `/review` never takes weeks from the monthly note. The template itself is the owner's to fix.
 - `vault-example.yaml:109` proposes `YYYY-[W]ww` for weekly names; corrected to `GGGG-[W]WW`.
+- The commented `review:` example in `tomo/config/vault-example.yaml` is checked as a whole, not by eye: `tests/test_review_privacy_docs.py` uncomments it, merges it into the example config, has the real reader accept it (`lib.review_config.review_setup`), derives the writer input from it (`current_setup`), validates that input with jsonschema against `vault-config-review.schema.json` and asserts `input_problems` finds nothing — for `week` and `month` (T5.3 as accepted by the owner; implemented, spec 045 Phase 5).
 - The instance's daily path has a trailing space; the setup offers the correction.
 
 ### Technical Debt

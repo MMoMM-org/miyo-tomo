@@ -81,7 +81,7 @@ The wizard step is labelled **Hashi IDE Bridge**. To enable it, grab two things 
 - **Auth token** — Hashi generates a `hashi_<uuid>` token; copy it from Hashi's settings. The wizard rejects anything not in `hashi_<uuid>` form.
 - **Port** — must match the port Hashi listens on (Hashi's default is `23027`). If you change it on one side, change it on the other; a mismatch is the most common failure.
 
-The wizard writes an IDE lock file to `tomo-home/.claude/ide/<port>.lock` and records the choice in `tomo-install.json`. On the next launch the container spawns a `socat` proxy (container `localhost:<port>` → `host.docker.internal:<port>`) and auto-connects Claude Code to the bridge — no manual `/ide` needed.
+The wizard writes an IDE lock file to the instance home at `home/.claude/ide/<port>.lock` and records the choice in `tomo-install.json`. On the next launch the container spawns a `socat` proxy (container `localhost:<port>` → `host.docker.internal:<port>`) and auto-connects Claude Code to the bridge — no manual `/ide` needed.
 
 > **The green Hashi icon means *connected*, not *working*.** It confirms the socket handshake only — it does **not** verify that editor context is actually flowing or that the rest of Hashi is healthy. If the icon is green but context isn't reaching Claude, see [Troubleshooting → Tomo Context](troubleshooting.md#tomo-context-ide-bridge) and Hashi's own [context guide](https://github.com/MMoMM-org/miyo-tomo-hashi/blob/main/docs/context.md).
 
@@ -280,6 +280,10 @@ The archive holds `tomo-install.json`, the instance's `config/`, `.mcp.json`, `.
 
 Your vault is not in the archive. Back it up separately.
 
+The archive contains your Kado and Claude Code credentials. It is written readable by you only, so treat every copy the same way. It sits next to the instance and survives a cleanup, not a disk failure, so keep a copy on another device.
+
+To restore, run the installer first so the instance exists, then `restore-tomo.sh`. `--dry-run` shows what would be restored, and `--force` skips the prompt. With `--instance`, the archive must come from that same instance, otherwise the restore stops before it writes anything.
+
 ### Protect the instance like your vault
 
 The instance directory holds more than settings. Claude Code keeps a
@@ -291,10 +295,6 @@ does not clean these up; removing them is your choice. Keep `instance/`,
 encrypted disk, the same backup and sync rules, never shared or committed.
 [PRIVACY.md → Where read content rests](../PRIVACY.md#where-read-content-rests)
 names each place.
-
-The archive contains your Kado and Claude Code credentials. It is written readable by you only, so treat every copy the same way. It sits next to the instance and survives a cleanup, not a disk failure, so keep a copy on another device.
-
-To restore, run the installer first so the instance exists, then `restore-tomo.sh`. `--dry-run` shows what would be restored, and `--force` skips the prompt. With `--instance`, the archive must come from that same instance, otherwise the restore stops before it writes anything.
 
 ## Cleanup / Re-install
 

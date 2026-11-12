@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
@@ -19,7 +19,10 @@ for folders not to be reviewed, in one sentence.
 Each phrase test is pinned to the clause it guards: deleting that clause from
 PRIVACY.md fails the test (proven by mutation in an isolated copy, T5.3-fix1).
 
-Pins docs/setup.md linking to that PRIVACY.md section, the README naming
+Pins docs/setup.md linking to that PRIVACY.md section (and, drift round D of
+Phase 5: the credentials and restore paragraphs staying under the Backup and
+Restore heading ahead of the Protect subsection, and the IDE lock path naming
+the instance home `home/`, never `tomo-home/`), the README naming
 /review, and tomo/config/vault-example.yaml: the weekly pattern GGGG-[W]WW and
 a commented review: example that the real reader (lib.review_config) accepts
 and whose writer-input form validates against vault-config-review.schema.json.
@@ -183,6 +186,24 @@ def test_setup_guide_links_to_the_privacy_section() -> None:
                 for h in re.findall(r"^#+ (.+)$", _privacy(), re.M)}
     assert set(links) <= headings, f"dangling anchors: {set(links) - headings}"
     _has(setup, "like your vault")
+
+
+def test_setup_guide_keeps_the_credentials_paragraph_under_the_backup_heading() -> None:
+    """D6: the "Protect the instance like your vault" subsection follows the archive-credentials and
+    restore paragraphs, so those stay under the Backup and Restore heading instead of under Protect."""
+    backup = _section(SETUP.read_text(encoding="utf-8"), r"Backup and Restore")
+    credentials = backup.index("The archive contains your Kado and Claude Code credentials")
+    restore = backup.index("To restore, run the installer first")
+    protect = backup.index("### Protect the instance like your vault")
+    assert credentials < restore < protect, (credentials, restore, protect)
+
+
+def test_setup_guide_names_the_instance_home_for_the_ide_lock() -> None:
+    """D7: the instance home is `home/` (setup.md names it so for the gitconfig and the Docker mount);
+    the IDE lock path the wizard writes is `<home>/.claude/ide/<port>.lock` (scripts/lib/configure-ide-bridge.sh)."""
+    setup = SETUP.read_text(encoding="utf-8")
+    assert "tomo-home/.claude" not in setup
+    assert "`home/.claude/ide/<port>.lock`" in setup
 
 
 def test_readme_names_review() -> None:

@@ -73,8 +73,14 @@ During **`/review`** — when you ask Tomo to review a finished week or month:
   the MOCs changed in it, not their content.
 - **The weekly or monthly note itself**, so the review section can be placed
   under the right heading, and during the setup its template.
-- **The review document you edited** — in Pass 2 the items you kept, with
-  your wording, are read back to build the instruction set.
+- **The review document you edited** — in Pass 2 a script reads the edited
+  document and tells the model only counts and ids: how many items you kept,
+  unticked, deleted or added. The model then sees the preview of the review
+  section as it will land in your weekly or monthly note — the items you kept
+  and added, in your wording — with the note's path and the heading it goes
+  under; when that heading cannot be found, the note's headings too, so you
+  can pick one. The instruction set is written to your inbox by a script and is
+  not shown to the model.
 
 A review reads your journal, so it reaches the most personal content a vault
 holds. Folders you do not want reviewed — a therapy journal, client notes —
@@ -127,11 +133,11 @@ what to do with them:
   Docker home, so it archives the transcripts too.
 - **Tomo's working folder `tomo-tmp/`** in the instance workspace. A `/review`
   run keeps what it read in `tomo-tmp/review/<period>_review/read.json` and
-  the model's proposals in `proposals.json`. Both are deleted once the review
-  document is written to the inbox or the run is aborted; a session that
-  ended without writing or aborting leaves `read.json` and `proposals.json`
-  there until the next `/review` of that period. What stays afterwards
-  (`meta.json`) is metadata only. Other
+  the model's proposals in `proposals.json`. Tomo deletes `read.json` and
+  `proposals.json` once the review document is written to the inbox or the
+  run is aborted; a session that ended without writing or aborting leaves
+  `read.json` and `proposals.json` there until the next `/review` of that
+  period. What stays afterwards (`meta.json`) is metadata only. Other
   commands keep their working files there too, for example the per-item
   results of `/inbox` and the draft of `/note`.
 - **Your inbox.** The review document (`<period> Review.md`) holds the
@@ -141,8 +147,8 @@ what to do with them:
   adds that new note. They stay in the inbox after you applied them, like
   every other document Tomo delivers — removing them is yours to do.
 
-Tomo does not remove any of this; whether and when to remove it is **your
-choice**. Because the transcripts and the working folder can hold your journal
+Beyond those two working files, Tomo does not remove any of this; whether and
+when to remove it is **your choice**. Because the transcripts and the working folder can hold your journal
 as plainly as the vault does, protect the instance directory — both `instance/`
 and `home/` — **like your vault**: keep it on an encrypted disk (for example a
 FileVault-protected volume), give it the same backup and sync rules, and do not

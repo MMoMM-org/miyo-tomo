@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
 records; every place read content rests is named — the session transcripts in
-the container home, tomo-tmp (including the read.json a session leaves behind
-when it ends without writing or aborting), the inbox; removal is the user's
-choice; the instance and home are to be protected like the vault (for example
-an encrypted disk); the /review paragraph names what reaches the model and
-recommends Kado deny rules for folders not to be reviewed.
+the container home, tomo-tmp (read.json and proposals.json deleted on write or
+abort, left behind by a session that ends without either), the inbox (removing
+the delivered files is the user's job); removal is the user's choice; both
+`instance/` and `home/` are to be protected like the vault (for example an
+encrypted disk); the /review paragraph names what reaches the model (paths of
+the created notes, not their content; in Pass 2 the parsed document gives the
+model counts and ids only and the preview shows the section as it will land —
+never "read back") and recommends Kado deny rules for folders not to be
+reviewed, in one sentence.
+
+Each phrase test is pinned to the clause it guards: deleting that clause from
+PRIVACY.md fails the test (proven by mutation in an isolated copy, T5.3-fix1).
 
 Pins docs/setup.md linking to that PRIVACY.md section, the README naming
 /review, and tomo/config/vault-example.yaml: the weekly pattern GGGG-[W]WW and
@@ -76,13 +83,24 @@ def _has(text: str, *phrases: str) -> None:
     assert not missing, f"missing phrases: {missing}"
 
 
+def _sentences(text: str) -> list[str]:
+    """The plain-text sentences of ``text`` (split at '.' or ';')."""
+    return re.split(r"(?<=[.;])\s", _plain(text))
+
+
+def _one_sentence_has(text: str, *phrases: str) -> None:
+    """Some single sentence of ``text`` holds every phrase — the phrases make one claim, not several."""
+    assert any(all(p.lower() in s for p in phrases) for s in _sentences(text)), \
+        f"no single sentence holds all of {phrases}"
+
+
 # --- (a) metadata only is scoped to Tomo's own records ----------------------------------
 
 def test_metadata_only_is_scoped_to_tomos_own_records() -> None:
     recorded = _section(_privacy(), r"What Tomo records.*")
     _has(recorded, "metadata only", "tomo's own records", "logs", "error output", "cost records")
     # the scope is stated: the claim covers Tomo's records, not every place content rests
-    _has(recorded, "not", "where read content rests")
+    _has(recorded, "not a promise that no content rests", "where read content rests")
 
 
 # --- (b) every place read content rests is named ----------------------------------------
@@ -94,20 +112,27 @@ def test_names_every_place_read_content_rests() -> None:
     _has(rests, "inbox", "review.md", "_instructions.json")
 
 
+def test_read_json_and_proposals_json_are_deleted_on_write_or_abort() -> None:
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "deletes `read.json` and `proposals.json`", "written to the inbox", "aborted")
+
+
 def test_read_json_is_named_as_left_behind_by_an_unfinished_session() -> None:
-    rests = _plain(_section(_privacy(), r"Where read content rests"))
-    sentences = [s for s in re.split(r"(?<=[.;])\s", rests) if "read.json" in s]
-    assert sentences, "no sentence names read.json"
-    assert any(all(p in s for p in ("session", "ended", "without writing", "abort", "next `/review`"))
-               for s in sentences), f"no read.json sentence names the unfinished session: {sentences}"
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "read.json", "session", "ended", "without writing", "abort", "next `/review`")
+
+
+def test_removing_the_delivered_inbox_files_is_the_users_job() -> None:
+    rests = _section(_privacy(), r"Where read content rests")
+    _one_sentence_has(rests, "stay in the inbox", "removing them is yours to do")
 
 
 # --- (c) removal is the user's choice; protect instance and home like the vault ---------
 
 def test_removal_is_the_users_choice_and_protection_is_recommended() -> None:
     rests = _section(_privacy(), r"Where read content rests")
-    _has(rests, "your choice", "does not remove", "like your vault", "encrypted disk")
-    _has(rests, "instance", "home")
+    _has(rests, "your choice", "does not remove", "encrypted disk")
+    _one_sentence_has(rests, "protect the instance directory", "both `instance/` and `home/`", "like your vault")
 
 
 # --- (d) the /review paragraph names what reaches the model -----------------------------
@@ -115,12 +140,20 @@ def test_removal_is_the_users_choice_and_protection_is_recommended() -> None:
 def test_review_paragraph_names_what_reaches_the_model() -> None:
     para = _review_paragraph()
     _has(para, "daily note", "sections", "5 year journal", "tracker values", "sleep", "energy", "sport")
-    _has(para, "paths", "notes created in the period")
+    _one_sentence_has(para, "paths", "notes created in the period", "not their content")
+
+
+def test_review_paragraph_says_what_pass_2_shows_the_model() -> None:
+    para = _review_paragraph()
+    _one_sentence_has(para, "review document you edited", "counts and ids")
+    _one_sentence_has(para, "section as it will land", "items you kept", "your wording")
+    _has(para, "instruction set", "not shown to the model")
+    assert "read back" not in _plain(para), "Pass 2 does not read the document back to the model"
 
 
 def test_review_paragraph_recommends_kado_deny_rules() -> None:
     para = _review_paragraph()
-    _has(para, "kado", "deny rules", "not want", "review")
+    _one_sentence_has(para, "kado", "deny rules", "folders you do not want reviewed")
 
 
 # --- docs/setup.md links to the privacy section; README names /review -------------------
@@ -181,7 +214,21 @@ def test_commented_review_example_is_a_valid_setup(kind: str) -> None:
     assert setup is not None and setup.heading and setup.daily_sections
 
     proposal = rc.current_setup(config, profile, kind, TODAY)
-    writer_input = {"kind": kind, **{k: v for k, v in proposal.items() if v is not None}}
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    # the None keys are dropped before validation — only keys the schema leaves optional may be, so a
+    # required field missing from the proposal cannot hide behind the filter
+    dropped = {k for k, v in proposal.items() if v is None}
+    assert dropped.isdisjoint(_required_keys(schema, kind)), f"required keys dropped: {dropped}"
+    writer_input = {"kind": kind, **{k: v for k, v in proposal.items() if v is not None}}
     jsonschema.Draft202012Validator(schema).validate(writer_input)   # the writer input validates
     assert rc.input_problems(writer_input, today=TODAY) == []
+
+
+def _required_keys(schema: dict, kind: str) -> set[str]:
+    """The keys vault-config-review.schema.json requires for ``kind``: the top-level list plus the kind's allOf branch."""
+    required = set(schema["required"])
+    for clause in schema.get("allOf", []):
+        if clause["if"]["properties"]["kind"]["const"] == kind:
+            required |= set(clause["then"].get("required", []))
+    assert "kind" in required and (kind != "week" or {"first_day", "min_days"} <= required)
+    return required

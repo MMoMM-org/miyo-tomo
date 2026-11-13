@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -102,6 +102,17 @@ class RecordingVault(GuardedVault):
     def outside_inbox(self) -> dict:
         """Every file not under the inbox, by path: the part of the vault Tomo may never change."""
         return {p: d for p, d in self.files.items() if not p.startswith(INBOX)}
+
+
+def sweep_writes_under_inbox(walk: "Walk") -> None:
+    """The sweep tests' body: drive one write of its own (Pass 1 of the week), so the sweep never runs over an
+    empty list whatever the order, then assert every write any walk attempted so far was under the inbox."""
+    out = walk.pass1(WEEK_PERIOD, WEEK)
+    assert out["status"] == "written", out
+    assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
+    assert walk.vault.recorded == [WEEK_DOC], "the sweep's own walk attempted exactly one write"
+    assert (walk.vault.test_id, WEEK_DOC) in WRITES, "the walk's writes reach the module-level list"
+    assert all(isinstance(t, str) and Path(t.split("::")[0]).name.startswith("test_review_e2e") for t, _ in WRITES)
 
 
 def config_without_setup() -> dict:

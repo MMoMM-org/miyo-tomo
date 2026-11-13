@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_e2e.py — the 2-pass /review flow end to end on the fake vault, without an AI in the loop
 (spec 045 T6.1; PRD Secondary User Journeys 1, 2, 5, 6, 7; PRD Edge Cases; KPI Quality; F1-AC10; SDD Runtime View).
 
@@ -32,7 +32,7 @@ if str(TESTS_DIR) not in sys.path:
 
 from review_e2e_walk import (  # noqa: E402
     CONFIG, INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, MONTH_TARGET, TICKED, WEEK, WEEK_DOC, WEEK_PERIOD,
-    WEEK_STEM, WEEK_TARGET, WEEK_TARGET_TEXT, WRITES, Walk, frontmatter, tomo_sections,
+    WEEK_STEM, WEEK_TARGET, WEEK_TARGET_TEXT, Walk, sweep_writes_under_inbox, frontmatter, tomo_sections,
 )
 
 SET_JSON, SET_MD = f"{INBOX}{WEEK_STEM}_instructions.json", f"{INBOX}{WEEK_STEM}_instructions.md"
@@ -144,15 +144,22 @@ def test_week_from_first_start_through_hashi_apply(walk: Walk):
 
 
 def test_setup_abort_saves_nothing_and_writes_nothing(walk: Walk):
-    config_before = (walk.root / "config" / "vault-config.yaml").read_bytes()
-    assert walk.start(WEEK_PERIOD)["setup"]["week"] == "missing"
-    out = walk.match(WEEK)
-    assert out["status"] == "ok" and out["proposal"]["folder"] == "Calendar/302 Weekly/", out
+    """What an Abort is at the script level: the skill runs no further script (SKILL.md: Abort at any question),
+    so everything before it - `match`, a Correct rerun of `match` - must already have changed nothing. Walked
+    after the week was saved, so "a kind confirmed earlier in this run stays saved" is part of it."""
+    walk.setup(WEEK)
+    saved = (walk.root / "config" / "vault-config.yaml").read_bytes()
+    recorded_before = list(walk.vault.recorded)
+    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
+    first = walk.match(MONTH)
+    assert first["status"] == "ok" and first["proposal"]["folder"] == "Calendar/303 Monthly/", first
+    corrected = walk.match(MONTH, "--folder", "Calendar/Other/")          # the Correct branch: rerun with the value
+    assert corrected["status"] == "ok" and corrected["proposal"]["folder"] == "Calendar/Other/", corrected
     # the user answers Abort: no confirmed file, no setup-input, no writer, no further script
-    assert (walk.root / "config" / "vault-config.yaml").read_bytes() == config_before
-    assert walk.vault.recorded == [] and walk.vault.writes == []
-    assert not (walk.root / "tomo-tmp").exists() or list((walk.root / "tomo-tmp").rglob("*")) == []
-    assert walk.start(WEEK_PERIOD)["setup"]["week"] == "missing"
+    assert (walk.root / "config" / "vault-config.yaml").read_bytes() == saved
+    assert walk.vault.recorded == recorded_before and walk.vault.writes == []
+    assert list((walk.root / "tomo-tmp").rglob("*.json")) == [], "no confirmed-/setup- file left by match"
+    assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
 
 
 # ── F6-AC3: a rerun replaces the section, also under a renamed heading ───────────────────
@@ -308,8 +315,7 @@ def test_month_setup_then_new_note_targets_the_monthly_folder(walk: Walk):
 # ── the module's sweep: every write of every test above, under the inbox prefix ──────────
 
 
-def test_every_write_attempted_so_far_was_under_the_inbox_prefix():
-    """Order-independent: whatever tests ran before this one, in this module or a sibling, every write they
-    attempted through the client (landed or refused) was under the inbox; nothing is assumed about how many."""
-    assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
-    assert all(isinstance(t, str) and Path(t.split("::")[0]).name.startswith("test_review_e2e") for t, _ in WRITES)
+def test_every_write_attempted_so_far_was_under_the_inbox_prefix(ready: Walk):
+    """Self-contained: drives its own Pass 1 write, so it fails on a write outside the inbox when run alone or
+    first, and over whatever ran before it (landed or refused attempts alike) once others have run."""
+    sweep_writes_under_inbox(ready)

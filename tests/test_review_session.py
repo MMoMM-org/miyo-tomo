@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -405,6 +405,7 @@ def test_match_lists_the_folder_once_two_levels_deep(mod, instance, monkeypatch,
     _match(mod, monkeypatch, capsys, fake)
     listings = [e for e in fake.events if e[0] == "list_dir"]
     assert listings == [("list_dir", WEEKLY)]
+    assert fake.list_dir_depths == [(WEEKLY, 2)], "the folder and its direct subfolders: two levels, not one"
 
 
 # ---------------------------------------------------------------- match: template, place, sections

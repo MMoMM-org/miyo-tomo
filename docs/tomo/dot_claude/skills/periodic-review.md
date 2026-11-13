@@ -196,6 +196,41 @@ the walk met can only come from a typed heading that is blank, and the Correct b
 The candidates are the user's own headings and reach the console by design, like the `headings` of the Pass 2
 place pick; `tests/test_review_privacy.py` names the field.
 
+## Why Setup Asks When the Template Has No Frontmatter Block (Phase 6 Live Walk, 2026-11-13)
+
+WHY: the month live walk chose the raw template `t_month_privat.md` (no `_tomo` variant). Its first line is a
+Templater code block (`<%* … -%>`); the opening `---` of its frontmatter is rendered by
+`<% await tp.file.include("[[x_frontmatter]]") -%>` and only the closing `---` is literal. Pass 2's `_new_note`
+(`lib/review_actions.py`) runs `merge_tomo_block_into_markdown`, which looks for `---` at line 1, finds none and
+prepends a fresh block; Templater then ran on file creation and the note carried two frontmatter blocks. A template
+that starts with `---` (`t_note_tomo.md`, Templater only inside values) merges cleanly. Owner decision (2026-11-13):
+the check and the question belong to the setup — the same step 2 that `/review setup` and a first-run setup inside
+`/review week|month` share — and nothing in Pass 1 or Pass 2 asks or checks this: the user decides once, when the
+template is chosen, not on every delivery.
+
+So `match` reports `proposal.template_frontmatter` (true when the template's first line is `---` and a later line
+closes it — the rule `merge_tomo_block_into_markdown` itself applies, taken from `body_after_frontmatter`, so the
+check and the merge can never disagree; false otherwise; null without a template text, because `none`, the candidate
+list, a missing and an unreadable template are already covered by the plain-note line) and marks the output
+`needs_template_ok: true` when it is false and no answer was carried (WHY of the field and the flag:
+`docs/tomo/scripts/review-session.md`, "WHY `template_frontmatter` Is Reported"). The skill asks once, after the
+`template_kind` lines and before Confirm, in the plain-text form every other question has:
+`1 Use it as it is · 2 I'll create a Tomo variant`. `1` keeps today's behaviour exactly (owner decision: Pass 1 and
+Pass 2 unchanged; the raw template is used and Tomo prepends its block as before) and is carried on every later
+`match` call of the step as `--template-frontmatter-ok <ok-template>`, the fourth flag of the carry rule — a flag,
+not a memory, for the reason the section above gives (`review-session.py match --kind --template --template-frontmatter-ok`
+then sets no `needs_template_ok`). The flag names the template the answer was given for, and the skill freezes that
+name as `<ok-template>` when the answer is given, so a Correct to another template without a block asks again for
+that template (the script honours the flag only when it names the resolved template), while a stale flag on a
+template with a block is harmless. The Correct branch names the flag beside the other three and points back at the
+question line, because a literal model that reruns `match` from the Correct branch otherwise never reads the
+`needs_template_ok` of the new output. `2` is the Abort branch with one more sentence: nothing is saved for that
+kind, and the user is told how the way out looks — a `_tomo` variant of the template next to it (`<template>` with
+`_tomo` before `.md`, the `template_variant` convention of ADR-8) whose first line is `---` and whose frontmatter
+is closed by `---`, then `/review setup` again and the variant chosen. A variant is the way out, not a code change,
+because the owner handles the same template's `tp.file.move` by a variant too, and because only the user knows which
+Templater lines of the frontmatter the variant may keep as literals.
+
 ## Why the Week Question Is Asked in Plain Words (ADR-7)
 
 WHY: Which day starts a week and which week is week 1 decide which note a review targets; a wrong rule creates a

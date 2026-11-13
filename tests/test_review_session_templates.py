@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_review_session_templates.py — the template choice and the anchor question of `review-session.py match`
 (spec 045 Phase 6, live-walk defect: a proposal with `template: null` and `anchor: null` that `setup-input` refused).
 
@@ -26,6 +26,14 @@ other templates) and no `templates.mapping.<weekly|monthly>` entry:
   nothing for its name) and matches a substring of it (`t_weekend` is listed); `--template " none "` is the
   `none` answer (trimmed), so `none.md` is chosen with its extension only; `..` is refused as a path segment,
   not as a substring, and a line break is refused; the skill says what a typed template name means.
+- the template's frontmatter block (live-walk fix 2026-11-13: the month template's opening `---` came only from a
+  Templater include, Pass 2 found no block at line 1 and prepended its own, and the rendered note carried two):
+  the proposal says `template_frontmatter` true when the template's first line is `---` and a later line closes
+  it, false otherwise (Templater code first, a lone unclosed `---`, an empty template), null without a template (none, the candidate
+  list, missing, unreadable); a false value marks the output `needs_template_ok` so the skill asks, and the answer
+  `1` is carried back as `--template-frontmatter-ok <name>`, honoured only for the template it was given for, so
+  a Correct to another template without a block asks again. The field is dropped from the writer input like
+  `template_kind`. No template text reaches stdout (the `BODY` marker sits in the Templater template's body).
 """
 from __future__ import annotations
 
@@ -56,6 +64,11 @@ T_WEEK = "---\ntags: weekly\n---\n# <% tp.file.title %>\n\n## Woche\n\n## In my 
 T_WEEK_PRIVAT = "# Weekly\n\n## Theme\n\n## Reflections\n"
 T_WEEK_WORK = "# Work week\n\nno headings below the title\n"
 T_MONTH = "# <% tp.file.title %>\n\n## Monat\n\n## Reflections\n"
+# the live-walk shape: Templater code at line 1, the opening fence only inside an include, the closing one literal
+T_MONTH_INCLUDE = ("<%*\nconst title = tp.file.title;\n-%>\n"
+                   "<% await tp.file.include(\"[[x_frontmatter]]\") -%>\ntags: monthly\n---\n"
+                   f"# <% title %>\n\n{BODY}\n\n## Monat\n\n## Reflections\n")
+T_WEEK_UNCLOSED = "---\ntags: weekly\n# Weekly\n\n## Reflections\n"
 
 
 def _templates() -> dict:
@@ -489,6 +502,121 @@ def test_a_blank_or_multi_line_anchor_is_a_usage_error(mod, instance, capsys, va
         mod.main(["--profiles-dir", "profiles", "match", "--kind", "week", "--anchor", value])
     out, err = capsys.readouterr()
     assert info.value.code == 2 and out == "" and "--anchor" in err
+
+
+# ---------------------------------------------------------------- (g) the template's frontmatter block
+
+def test_a_template_that_opens_a_frontmatter_block_at_its_first_line_needs_no_ok(mod, instance, monkeypatch, capsys):
+    """`t_week.md` starts with `---` and closes it: Pass 2 merges Tomo's block into it, so nothing is asked."""
+    _config(instance, templates=_no_mapping())
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week")
+    assert out["proposal"]["template_frontmatter"] is True
+    assert "needs_template_ok" not in out
+
+    _config(instance, templates=_no_mapping(weekly="t_week.md"))
+    out = _match(mod, monkeypatch, capsys, _vault())
+    assert out["proposal"]["template_frontmatter"] is True and "needs_template_ok" not in out, \
+        "a mapped template is checked like a chosen one"
+
+
+def test_a_fence_that_comes_only_from_a_templater_include_is_no_block(mod, instance, monkeypatch, capsys):
+    """The live-walk template: line 1 is Templater code and the opening `---` is rendered by an include, so the
+    text Tomo reads has no block at line 1 (mutation: looking for `---` anywhere reads the closing fence as one)."""
+    _config(instance, templates=_no_mapping())
+    extra = {TEMPLATES + "t_month_include.md": T_MONTH_INCLUDE}
+    out = _match(mod, monkeypatch, capsys, _vault(**extra), "--template", "t_month_include", kind="month")
+    assert out["proposal"]["template_kind"] == "templater" and out["proposal"]["place"]["anchor"] == "Reflections"
+    assert out["proposal"]["template_frontmatter"] is False
+    assert out["needs_template_ok"] is True
+
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_privat")
+    assert out["proposal"]["template_frontmatter"] is False and out["needs_template_ok"] is True, \
+        "a plain template without any frontmatter is asked about too: Tomo would prepend its block"
+
+
+def test_a_lone_opening_fence_without_a_closing_one_is_no_block(mod, instance, monkeypatch, capsys):
+    """An unclosed fence is what Pass 2 cannot merge into (it falls back to the plain note), so it counts as no
+    block (mutation: the first line alone deciding reads it as true)."""
+    _config(instance, templates=_no_mapping())
+    extra = {TEMPLATES + "t_week_unclosed.md": T_WEEK_UNCLOSED}
+    out = _match(mod, monkeypatch, capsys, _vault(**extra), "--template", "t_week_unclosed")
+    assert out["proposal"]["template_frontmatter"] is False and out["needs_template_ok"] is True
+
+
+def test_an_empty_template_is_a_read_text_without_a_block(mod, instance, monkeypatch, capsys):
+    """An empty template was read (kind `plain`), so the field is false and the question is asked: Tomo would
+    prepend its block to it (mutation: a truthiness test on the text reads it as never read, null, never asked)."""
+    _config(instance, templates=_no_mapping())
+    extra = {TEMPLATES + "t_week_empty.md": ""}
+    out = _match(mod, monkeypatch, capsys, _vault(**extra), "--template", "t_week_empty")
+    assert out["proposal"]["template_kind"] == "plain"
+    assert out["proposal"]["template_frontmatter"] is False and out["needs_template_ok"] is True
+
+
+def test_without_a_template_the_field_is_null_and_nothing_is_asked(mod, instance, monkeypatch, capsys):
+    """`none`, the candidate list, a missing name and an unreadable template: no text was read, so the field is
+    null and the question is not asked (the plain-note line of the skill already covers these)."""
+    from lib.kado_client import KadoError
+    _config(instance, templates=_no_mapping())
+    for extra in (["--template", "none"], [], ["--template", "t_gone"]):
+        out = _match(mod, monkeypatch, capsys, _vault(), *extra)
+        assert out["proposal"]["template_frontmatter"] is None, extra
+        assert "needs_template_ok" not in out, extra
+
+    fake = _vault()
+    fake.fail[("read_note", TEMPLATES + "t_week.md")] = KadoError("tool error")
+    out = _match(mod, monkeypatch, capsys, fake, "--template", "t_week")
+    assert out["proposal"]["template_kind"] == "unreadable"
+    assert out["proposal"]["template_frontmatter"] is None and "needs_template_ok" not in out
+
+
+def test_the_ok_answer_is_carried_as_a_flag_bound_to_the_template_it_answered_for(mod, instance, monkeypatch, capsys):
+    """`--template-frontmatter-ok <name>` is the `1 Use it as it is` answer passed back on every rerun of the step:
+    the output says the truth (`template_frontmatter` false) but asks no more. The flag names the template it
+    answered for, with or without `.md`, so a Correct to another template without a block asks again, and a
+    template with a block is never asked whatever the flag names."""
+    _config(instance, templates=_no_mapping())
+    first = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_privat")
+    assert first["needs_template_ok"] is True
+
+    for ok in ("t_week_privat", "t_week_privat.md", " t_week_privat "):
+        fake = _vault()
+        rerun = _match(mod, monkeypatch, capsys, fake, "--template", "t_week_privat", "--anchor", "Theme",
+                       "--first-day", "monday", "--min-days", "4", "--template-frontmatter-ok", ok)
+        assert rerun["proposal"]["template_frontmatter"] is False, ok
+        assert "needs_template_ok" not in rerun, ok
+        assert rerun["proposal"]["place"]["anchor"] == "Theme" and "needs_anchor" not in rerun
+        assert _listings(fake, TEMPLATES) == []
+
+    corrected = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_work",
+                       "--template-frontmatter-ok", "t_week_privat")
+    assert corrected["proposal"]["template_frontmatter"] is False and corrected["needs_template_ok"] is True, \
+        "the OK was given for t_week_privat, not for the corrected template"
+
+    with_block = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week",
+                        "--template-frontmatter-ok", "t_week_privat")
+    assert with_block["proposal"]["template_frontmatter"] is True and "needs_template_ok" not in with_block
+
+
+@pytest.mark.parametrize("value", ["../t_week", "t_week\nalt", " "])
+def test_an_unsafe_ok_value_is_a_usage_error_like_the_template_name(mod, instance, capsys, value):
+    _config(instance, templates=_no_mapping())
+    with pytest.raises(SystemExit) as info:
+        mod.main(["--profiles-dir", "profiles", "match", "--kind", "week", "--template", "t_week_privat",
+                  "--template-frontmatter-ok", value])
+    out, err = capsys.readouterr()
+    assert info.value.code == 2 and out == "" and "--template-frontmatter-ok" in err
+
+
+def test_the_frontmatter_field_is_dropped_from_the_writer_input_like_template_kind(mod, instance, monkeypatch, capsys):
+    _config(instance, templates=_no_mapping())
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_privat")
+    assert out["proposal"]["template_frontmatter"] is False
+    accepted = _setup_input(mod, monkeypatch, capsys, instance, {"kind": "week", **out["proposal"]})
+    assert accepted["status"] == "ok"
+    written = json.loads((instance / accepted["input_path"]).read_text(encoding="utf-8"))
+    assert "template_frontmatter" not in written and "template_kind" not in written
+    assert written["template"] == "t_week_privat.md"
 
 
 # ---------------------------------------------------------------- (f) the skill carries both answers

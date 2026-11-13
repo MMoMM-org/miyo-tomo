@@ -45,6 +45,7 @@ ERROR_HANDLING_ROWS = {
     "match template missing / unreadable": "the template may not be readable by the Kado key (no access)",
     "match no mapping entry for the kind": "`1 <name> · 2 <name> · 0 none`",
     "match no anchor could be proposed": "Which heading, by number or typed?",
+    "match template without a frontmatter block at line 1": "`1 Use it as it is · 2 I'll create a Tomo variant`",
     "match unsafe name format": "the name format must not contain `/`, `\\` or `..`",
     "setup-input / writer invalid": "`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`",
     "write proposals-invalid": "rewrite `proposals.json` once and rerun `write`; a second `proposals-invalid` → show it and stop",

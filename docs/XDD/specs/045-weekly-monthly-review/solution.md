@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.18"
+version: "1.19"
 ---
 
 # Solution Design Document
@@ -456,7 +456,7 @@ tests/
 ├── test_period.py                            # NEW: arithmetic, rule, formats, arguments, W53 months
 ├── test_review_config.py                     # NEW (incl. inbox guard)
 ├── test_review_session.py                    # NEW
-├── test_review_session_templates.py          # NEW: match without a mapping entry lists the template candidates, --template resolves the choice, needs_anchor + anchor_candidates when no anchor can be proposed, setup-input refuses the unchanged proposal, the writer saves the choice to templates.mapping.weekly and `0 none` touches no mapping key (implemented, spec 045 Phase 6 live-walk fix)
+├── test_review_session_templates.py          # NEW: match without a mapping entry lists the template candidates, --template resolves the choice, needs_anchor + anchor_candidates when no anchor can be proposed, setup-input refuses the unchanged proposal, the writer saves the choice to templates.mapping.weekly and `0 none` touches no mapping key; template_frontmatter + needs_template_ok and the --template-frontmatter-ok carry (implemented, spec 045 Phase 6 live-walk fixes)
 ├── test_review_pacer.py                      # NEW
 ├── test_review_day.py                        # NEW (same-day rule, sections, fields, tasks, size cap)
 ├── test_review_period.py                     # NEW (dailies, duplicates, year folders, weeklies, growth)
@@ -616,14 +616,25 @@ review-session.py start --args '<raw $ARGUMENTS>'
               | {kind: kado-unreachable|kado-auth, detail}}         # with status stopped
 
 review-session.py match --kind week|month [--folder P] [--format F] [--first-day D] [--min-days N] [--template T|none] [--anchor H]
+                        [--template-frontmatter-ok T]
   out: {status: ok|stopped, kind,                                   # (implemented, spec 045 Phase 2; --template and the
                                                                     #  two question keys: Phase 6 live-walk fix, lib/review_templates.py;
                                                                     #  --template none and --anchor: fix round 1 — the skill carries both
-                                                                    #  answers on every rerun of match, so neither question is asked twice)
+                                                                    #  answers on every rerun of match, so neither question is asked twice;
+                                                                    #  template_frontmatter, needs_template_ok and --template-frontmatter-ok:
+                                                                    #  P6 live walk 2026-11-13, ADR-8 amendment)
         proposal: {folder, format, first_day, min_days, template, template_kind: plain|templater|missing|unreadable,
+                   template_frontmatter: true|false|null,
                    heading, place: {anchor, placement}, own_sections, daily_sections, language},
                                                                     # template: --template none (null, nothing listed) > --template T
                                                                     #  (with or without .md) > templates.mapping.<kind>
+                                                                    # template_frontmatter: the template text opens a frontmatter block at
+                                                                    #  its first line and closes it (lib/review_templates
+                                                                    #  .template_has_frontmatter = doc_frontmatter.body_after_frontmatter's
+                                                                    #  rule, the one Pass 2's merge applies); false for Templater code first,
+                                                                    #  a lone unclosed ---, an empty text; null when no text was read (none,
+                                                                    #  the candidate list, missing, unreadable); dropped by setup-input like
+                                                                    #  template_kind
                                                                     # place.anchor: --anchor (trimmed, one non-blank line, else exit 2)
                                                                     #  > review.<kind>.place.anchor > the template's headings
         evidence: {matched: [names], unmatched: [names], week_rule: given|inferred|ambiguous|default, notes_checked: n,
@@ -642,6 +653,12 @@ review-session.py match --kind week|month [--folder P] [--format F] [--first-day
         needs_anchor?: true, anchor_candidates?: [headings],        # only when no anchor could be proposed (no --anchor, no configured
                                                                     #  anchor, no template heading): the headings of the two most recent
                                                                     #  periodic notes of the kind, two read_note calls at most; the skill asks
+        needs_template_ok?: true,                                   # only when template_frontmatter is false and --template-frontmatter-ok
+                                                                    #  (the --template syntax, else exit 2) does not name the resolved template:
+                                                                    #  the skill asks `1 Use it as it is · 2 I'll create a Tomo variant` once;
+                                                                    #  `1` is carried as --template-frontmatter-ok <template> on every later
+                                                                    #  match of the step, bound to that template, so a corrected template
+                                                                    #  without a block is asked about again; the field stays false under it
         hints: [plain sentences for the skill],                    # folder empty/denied, no notes to compare, template unreadable,
                                                                     #  templates folder kado-none
         error?: {kind: kado-unreachable|kado-auth|unsafe-format, detail?}}
@@ -1086,6 +1103,7 @@ sequenceDiagram
 | `match` | template missing / unreadable | `template_kind` missing / unreadable | plain note proposed; unreadable may mean no access (F1-AC7) |
 | `match` | no `templates.mapping.<kind>` entry and no `--template` (the owner's instance, Phase 6 live walk) | `template_candidates` (the templates folder's notes that fit the kind; `[]` + a hint naming the folder when Kado answered with nothing for it) | the skill asks which template, numbered with `0 none` last, before it prints the proposal; a number reruns `match --template`, `0` keeps the plain note and saves nothing to the mapping; every later `match` of the step carries the answer as `--template "<name>"` or `--template none`, so the candidates are listed once (F1-AC7; fix round 1) |
 | `match` | no anchor can be proposed (no template, `0 none`, a template without a heading below its title; no configured anchor, no `--anchor`) | `needs_anchor: true` + `anchor_candidates` (headings of the two most recent periodic notes) | the skill asks "Which heading, by number or typed?" before it offers Confirm and puts the answer into `place.anchor`; Confirm is never offered while the anchor is null; every later `match` of the step carries the answer as `--anchor "<heading>"`, so the heading is asked once; `setup-input` still validates (F1-AC7; fix round 1) |
+| `match` | the chosen template has no frontmatter block at its first line (`template_frontmatter: false`: Templater code first with the opening `---` only inside an include, a lone unclosed `---`, a template without any frontmatter) and `--template-frontmatter-ok` does not name it | `needs_template_ok: true` | the skill says the template `<template>` has no frontmatter block at its first line and asks `1 Use it as it is · 2 I'll create a Tomo variant` once, after the template is chosen and before Confirm; `1` keeps today's behaviour (Pass 2 prepends Tomo's block as before) and is carried as `--template-frontmatter-ok <template>` on every later `match` of the step; `2` is Abort for that kind — nothing saved — plus the way out: a `_tomo` variant next to the template whose first line is `---` and whose frontmatter is closed by `---`, then `/review setup` again (ADR-8 amendment; P6 live walk 2026-11-13: the raw month template rendered a note with two frontmatter blocks) |
 | `match` | the weekly notes disagree on the first day or carry no dates (`week_rule: ambiguous`) | the week question in plain words; the rerun with `--first-day`/`--min-days` reports `week_rule: given` (the notes still disagree, but the answer stands) | the skill asks on `ambiguous` only, before Confirm; every later `match` of the step carries `--first-day <day> --min-days <n>` like `--template` and `--anchor`, so the question is asked once (F1-AC6; final fix round: the first version reported the notes' verdict on every call and the rerun re-asked) |
 | `match` | unsafe name format | `error.kind = unsafe-format` | the format must not contain `/`, `\` or `..` |
 | `setup-input`, writer | invalid confirmed input / schema violation | `status: invalid` / `refused` with pointers | nothing saved; the dialogue asks again |
@@ -1316,6 +1334,7 @@ stateDiagram-v2
   - Rationale: Tomo does not execute Templater; the owner chose both paths.
   - Trade-offs: without a variant the new note shows Templater code until the user runs it.
   - User confirmed: 2026-11-11 ("1 und 2")
+  - Amendment (P6 live walk, 2026-11-13): a raw template whose opening `---` is only rendered by a Templater include has no block at line 1 for Pass 2's merge, which prepends its own; Templater then ran on creation and the note carried two frontmatter blocks. The setup (step 2 — `/review setup` and the first-run setup of `/review week|month` alike) reports `template_frontmatter` from the merge's own rule and asks once when it is false: `1 Use it as it is` keeps the raw path exactly as above, carried as `--template-frontmatter-ok` on every rerun of the step; `2 I'll create a Tomo variant` stops the setup of that kind with nothing saved and names the way out (a `_tomo` variant starting with `---`, then `/review setup` again). Pass 1 and Pass 2 are unchanged; a variant is the way out, not a code change (owner decision 2026-11-13).
 
 - [x] ADR-9 Privacy: Tomo's own logs, stderr and cost records stay content-free (tested); where read content rests (session transcripts in the container home, `tomo-tmp`, the inbox) is documented in PRIVACY.md with the advice to protect instance and home like the vault; no cleanup promise or script.
   - Rationale: the data is local anyway; a cleanup script would be forgotten or inflexible; Tomo's own records can end up in shared places (the cost log lives in the repo).

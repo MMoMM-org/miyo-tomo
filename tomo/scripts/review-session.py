@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.2
+# version: 0.6.3
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -24,7 +24,7 @@ Usage (cwd = instance root):
         [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
     python3 scripts/review-session.py match --kind week|month
         [--folder P] [--format F] [--first-day D --min-days N] [--template T|none] [--anchor H]
-        [--today YYYY-MM-DD]
+        [--template-frontmatter-ok T] [--today YYYY-MM-DD]
     python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
         [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
 
@@ -43,8 +43,8 @@ Output: one JSON object on stdout, ASCII-escaped.
            error {kind kado-unreachable|kado-auth, detail} when stopped
     match: status ok|stopped, kind,
            proposal {folder, format, first_day, min_days, template, template_kind
-                     plain|templater|missing|unreadable, heading, place {anchor, placement},
-                     own_sections, daily_sections, language},
+                     plain|templater|missing|unreadable, template_frontmatter true|false|null,
+                     heading, place {anchor, placement}, own_sections, daily_sections, language},
            evidence {matched, unmatched, week_rule given|inferred|ambiguous|default,
                      notes_checked, folder_listing found|kado-none, format_problems,
                      template_headings},
@@ -55,6 +55,8 @@ Output: one JSON object on stdout, ASCII-escaped.
            needs_anchor true, anchor_candidates [headings of the two most recent periodic notes]
              (only when no anchor could be proposed: no --anchor, no configured anchor, no
              template heading),
+           needs_template_ok true (only when template_frontmatter is false and
+             --template-frontmatter-ok does not name the resolved template),
            hints [plain sentences for the skill],
            error {kind kado-unreachable|kado-auth|unsafe-format, detail?}
     setup-input: status ok, input_path, kind
@@ -102,14 +104,23 @@ Rules:
     plain note. The anchor is ``--anchor`` (trimmed), else the configured one,
     else proposed from the template's headings; with none of them,
     ``needs_anchor`` is set and two periodic notes are read for candidates.
-    The skill repeats both answers and the week answer on every rerun of ``match``.
+    ``template_frontmatter`` is whether the template text read opens a
+    frontmatter block at its first line and closes it (lib/review_templates
+    .template_has_frontmatter, the rule of Pass 2's merge); null when no text
+    was read (none, the candidate list, missing, unreadable). A false value
+    sets ``needs_template_ok`` — the skill asks once whether to use the
+    template as it is — unless ``--template-frontmatter-ok`` (the ``--template``
+    syntax) names the resolved template: the answer is bound to the template
+    it was given for, so a corrected template without a block is asked about
+    again. The field stays false under the flag; only the question key goes.
+    The skill repeats every answer on every rerun of ``match``.
 
 Exit codes:
     0 — output usable (every status, every error object)
     1 — unexpected exception; stderr carries the exception class name only
     2 — bad invocation (unknown subcommand or flag, bad value, one week flag without
-        the other, an unsafe --template name, a blank or multi-line --anchor,
-        unreadable --confirmed file)
+        the other, an unsafe --template or --template-frontmatter-ok name, a blank or
+        multi-line --anchor, unreadable --confirmed file)
 
 Design notes: docs/tomo/scripts/review-session.md
 """
@@ -136,7 +147,7 @@ from lib.period import (  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import (  # noqa: E402
     NO_TEMPLATE, anchor_candidates_from_notes, anchor_text, daily_sections_from, propose_anchor,
-    resolve_template, template_anchor_candidates, template_choice, template_vault_path,
+    resolve_template, template_anchor_candidates, template_choice, template_has_frontmatter, template_vault_path,
 )
 from lib.review_vault import Stopped, Vault, headings  # noqa: E402
 from lib.vault_config_edit import get_path  # noqa: E402
@@ -321,6 +332,8 @@ def match(args: argparse.Namespace) -> dict:
         if hint is not None:
             hints.append(hint)
         template_headings = template_anchor_candidates(headings(template_text)) if template_text else []
+        template_frontmatter = template_has_frontmatter(template_text) if template_text is not None else None
+        needs_template_ok = template_frontmatter is False and args.template_frontmatter_ok != template
 
         place = section.get("place") if isinstance(section.get("place"), dict) else {}
         anchor = args.anchor or _str(place.get("anchor")) or propose_anchor(template_headings)
@@ -355,6 +368,7 @@ def match(args: argparse.Namespace) -> dict:
         "min_days": rule.min_days_in_first_week if kind == WEEK else None,
         "template": template,
         "template_kind": template_kind,
+        "template_frontmatter": template_frontmatter,
         "heading": _str(section.get("heading")) or DEFAULT_HEADING,
         "place": {"anchor": anchor, "placement": placement},
         "own_sections": _str_list(section.get("own_sections")) or [],
@@ -375,6 +389,8 @@ def match(args: argparse.Namespace) -> dict:
     if anchor_candidates is not None:
         result["needs_anchor"] = True
         result["anchor_candidates"] = anchor_candidates
+    if needs_template_ok:
+        result["needs_template_ok"] = True
     result["hints"] = hints
     return result
 
@@ -481,6 +497,9 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--anchor", type=_typed(anchor_text),
                    help="The chosen heading for the review section's place (default: the configured anchor, "
                         "then the template's headings; with none, needs_anchor is set)")
+    m.add_argument("--template-frontmatter-ok", type=_typed(template_choice),
+                   help="The template the user agreed to use without a frontmatter block (the --template syntax); "
+                        "needs_template_ok is then not set for it")
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")

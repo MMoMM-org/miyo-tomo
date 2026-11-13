@@ -1,6 +1,6 @@
 # review_templates.py — the template candidates and the anchor candidates of the /review setup preview.
-# version: 0.2.1
-"""The two questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8), and their answers.
+# version: 0.2.2
+"""The questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8), and their answers.
 
 ``template_candidates(vault, base_path, kind)`` lists the notes of
 ``templates.base_path`` whose file name — the basename alone, never a folder
@@ -19,7 +19,12 @@ or ``ValueError``.
 ``resolve_template(vault, base_path, name, kind, no_template=...)`` reads and
 classifies the named template or, with no name and ``no_template`` False, lists
 the candidates once, returning the hint sentence of an unreadable template or
-a ``kado-none`` templates folder.
+a ``kado-none`` templates folder. ``template_has_frontmatter(text)`` says
+whether a template text opens a YAML frontmatter block at its first line and
+closes it — by the rule of ``doc_frontmatter.body_after_frontmatter``, the
+same test Pass 2's merge applies, so a template whose opening ``---`` is only
+rendered by a Templater include, a lone unclosed ``---`` and an empty text are
+"no block" (the setup asks before Tomo would prepend a second block).
 ``anchor_candidates_from_notes(vault, notes, fmt, rule, kind)`` reads the two
 periodic notes with the latest period under the proposed format and rule and
 returns their headings below the title, most recent first, duplicates dropped.
@@ -33,6 +38,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
 
+from lib.doc_frontmatter import body_after_frontmatter
 from lib.period import MONTH, WEEK, WeekRule, parse_name
 from lib.review_vault import TEMPLATER_MARK, headings
 
@@ -88,6 +94,11 @@ def resolve_template(vault, base_path: Optional[str], name: Optional[str], kind:
     if candidates is None:
         return "missing", None, [], TEMPLATES_FOLDER_HINT.format(folder=base_path)
     return "missing", None, candidates, None
+
+
+def template_has_frontmatter(text: str) -> bool:
+    """True when ``text`` opens a frontmatter block at its first line and closes it: the merge's own test."""
+    return body_after_frontmatter(text) != text
 
 
 def template_name(text: str) -> str:

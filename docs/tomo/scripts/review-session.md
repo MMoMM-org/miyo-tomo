@@ -225,6 +225,41 @@ given and `--first-day <day> --min-days <n>` once the week question is
 answered (the week flags make `week_rule` `given`; the section above), so
 the script asks each question once however often the dialogue reruns.
 
+### WHY `template_frontmatter` Is Reported and `--template-frontmatter-ok` Carries the Answer
+
+WHY: the month live walk of 2026-11-13 (Phase 6). The chosen raw template
+`t_month_privat.md` starts with a Templater code block and gets its opening
+`---` from a `tp.file.include`; only the closing `---` is literal. Pass 2's
+`merge_tomo_block_into_markdown` finds no fence at line 1, prepends a fresh
+block, and after Templater rendered the note on creation it carried two
+frontmatter blocks. The owner decided that the setup asks once, when the
+template is chosen, and that Pass 1 and Pass 2 stay as they are. So `match`
+adds `template_frontmatter` to the proposal: true when the template text has
+a block by the merge's own rule (`lib/review_templates.template_has_frontmatter`,
+which is `doc_frontmatter.body_after_frontmatter`'s test — WHY:
+`docs/tomo/scripts/lib/review_templates.md`), false when it has none (Templater
+code first, a lone unclosed `---`, an empty template), null when no text was
+read (`none`, the candidate list, `missing`, `unreadable` — the plain-note
+line already covers those and nothing would be prepended to a template that
+is not used). The field sits in the proposal beside `template_kind` so a
+confirmed proposal carries it as evidence and `setup-input` drops it like
+`template_kind` (`_INPUT_KEYS`): it is a preview fact, not a setting.
+
+The question is signalled by a separate key, `needs_template_ok: true`, the
+way `needs_anchor` is, instead of by the false value alone: the script is
+stateless, every rerun of the step would report false again for the same
+template, and the skill would ask again — the problem the section above
+solved for `--template none` and `--anchor`. The answer `1 Use it as it is`
+is carried as `--template-frontmatter-ok <name>`, and the flag suppresses
+`needs_template_ok` only when its name (normalised by `template_choice`, so
+with or without `.md`) equals the resolved template. A bare flag would carry
+an OK given for one template over to a corrected one without a block; a bound
+flag asks again for the new template and is harmless on one with a block
+(`template_frontmatter` true never asks). The flag takes the `--template`
+type, so an unsafe value is the same exit 2. The field keeps telling the
+truth under the flag — false — because the proposal is evidence; only the
+question key is suppressed.
+
 ## WHY the Place and the Daily Sections Come From the Templates
 
 WHY: F1-AC1 asks for a proposal of the review heading, its place and the

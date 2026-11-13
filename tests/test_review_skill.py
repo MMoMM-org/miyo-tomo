@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.12")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.13")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -293,14 +293,18 @@ def test_setup_asks_the_week_question_in_plain_words_only_when_ambiguous():
         "no branch acts on `given`, `inferred` or `default`"
 
 
+CARRY_RULE = ("- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given "
+              "`--anchor \"<anchor>\"`, once the week question is answered `--first-day <day> --min-days <n>`, and "
+              "once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the "
+              "script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no "
+              "`needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun.")
+
+
 def test_every_later_match_call_carries_the_week_answer_like_the_template_and_the_anchor():
     """Final fix round: a Correct rerun that drops `--first-day`/`--min-days` reports the notes' `ambiguous`
-    again and re-asks the week question; the carry rule and the Correct branch name the two flags."""
-    text = _section("2. Setup")
-    assert ("- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given "
-            "`--anchor \"<anchor>\"`, and once the week question is answered `--first-day <day> --min-days <n>`: "
-            "the script then lists no candidates, asks for no anchor and reports `week_rule` `given`, so each "
-            "question is asked once. Never drop one of these flags from a rerun.") in text
+    again and re-asks the week question; the carry rule and the Correct branch name the two flags. The
+    frontmatter fix adds the fourth carried flag to the same rule."""
+    assert CARRY_RULE in _section("2. Setup")
 
 
 def test_setup_names_the_access_hint_for_kado_none_and_unreadable_templates():
@@ -320,10 +324,12 @@ def test_setup_correction_reruns_match_for_names_and_carries_other_values_and_wr
     assert ("- Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` "
             "with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, "
             "`--template` — a corrected template is `<template>` from then on, `none` for no template), the "
-            "proposal's values for the others, `--template <template>`, `--anchor \"<anchor>\"` when given and "
-            "`--first-day <day> --min-days <n>` once the week question was answered, and "
-            "print the new proposal, evidence and hints; for heading, place, own sections, daily sections or "
-            "language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. "
+            "proposal's values for the others, `--template <template>`, `--anchor \"<anchor>\"` when given, "
+            "`--first-day <day> --min-days <n>` once the week question was answered and "
+            "`--template-frontmatter-ok <ok-template>` once the frontmatter question was answered with `1`, and "
+            "print the new proposal, evidence and hints; its `needs_template_ok` line above applies; for heading, "
+            "place, own sections, daily sections or language, print the proposal with the corrected value; a "
+            "corrected anchor is `<anchor>` from then on. "
             "Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.") in text
     assert ("- Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, "
             "the corrected values in place; add `daily_path_fix` from the `match` output only when the user "
@@ -355,12 +361,29 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
             "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "
             "`<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else `none`.") in text
-    assert ("- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given "
-            "`--anchor \"<anchor>\"`, and once the week question is answered `--first-day <day> --min-days <n>`: "
-            "the script then lists no candidates, asks for no anchor and reports `week_rule` `given`, so each "
-            "question is asked once. Never drop one of these flags from a rerun.") in text
+    assert CARRY_RULE in text
     assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
         "the template question comes before the proposal is printed: its answer changes the proposal"
+
+
+def test_setup_asks_when_the_template_has_no_frontmatter_block():
+    """Phase 6 live walk (2026-11-13): the month template opened its frontmatter only inside a Templater include,
+    Pass 2 prepended Tomo's block and the rendered note carried two. Owner decision: the setup asks once, after
+    the template is chosen and before Confirm; `1` keeps today's behaviour and is carried as a flag bound to the
+    template; `2` stops the setup with nothing saved and tells the user how to build the `_tomo` variant."""
+    text = _section("2. Setup")
+    assert ("- `needs_template_ok` is true → say that the template `<template>` has no frontmatter block at its "
+            "first line and ask: `1 Use it as it is · 2 I'll create a Tomo variant`. End the turn. "
+            "`1` → `<ok-template>` is `<template>` as it is now; continue. "
+            "`2` → the Abort branch below; say in its line: create a Tomo variant of the template, `<template>` "
+            "with `_tomo` before `.md`, next to it, whose first line is `---` and whose frontmatter is closed by "
+            "`---`; then run `/review setup` again and choose the variant.") in text
+    assert text.index("`proposal.template_kind` is `missing`") < text.index("`needs_template_ok` is true") \
+        < text.index("Ask `1 Confirm · 2 Correct · 3 Abort`."), \
+        "asked after the template is chosen and classified, before Confirm"
+    assert text.count("`needs_template_ok` is true") == 1, "one question line; the Correct branch points back at it"
+    assert text.count("--template-frontmatter-ok <ok-template>") == 2, "the carry rule and the Correct branch"
+    assert "AskUserQuestion" not in text
 
 
 def test_setup_asks_for_the_anchor_before_confirm_when_none_could_be_proposed():

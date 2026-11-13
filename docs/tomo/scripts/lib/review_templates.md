@@ -112,6 +112,26 @@ match a heading is caught by `review-instructions.py preview` as
 `place-missing` with the headings to pick from, which is a better place to
 learn it than a silent rewrite of the answer.
 
+## WHY `template_has_frontmatter` Is the Merge's Own Rule
+
+WHY: the month live walk of 2026-11-13 (Phase 6): a raw Templater template
+whose opening `---` is rendered by an include has no block at line 1 for
+`doc_frontmatter.merge_tomo_block_into_markdown`, which prepends its own,
+and the rendered note carried two frontmatter blocks. The setup now asks
+when the chosen template has no block (WHY of the question and the carried
+answer: `docs/tomo/scripts/review-session.md`, "WHY `template_frontmatter`
+Is Reported"). `template_has_frontmatter(text)` decides "has a block" with
+the merge's own test, `body_after_frontmatter(text) != text`: that helper
+strips the first leading `---` … `---` block and returns the text unchanged
+when the first line is not `---` or the fence is unclosed — exactly the two
+cases in which the merge prepends or refuses. Reusing it instead of a second
+line scan means the check and the merge cannot drift apart: whatever the
+merge will treat as a block, the setup reports as one, and an unclosed fence
+is "no block" here as it is a `FrontmatterMergeError` there (Pass 2 falls back
+to the plain note for it). No YAML is parsed: the question is about the
+fence, not the keys, and the template's Templater tokens inside the block are
+none of the setup's business.
+
 ## WHY `needs_anchor` Reads the Two Most Recent Periodic Notes
 
 WHY: `setup-input` requires an anchor, and the owner decided that the

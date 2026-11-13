@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_review_habits.py — Behavioural tests for lib.review_habits (spec 045 T3.5, PRD F8).
 
 Covers the habits group as numbers:
@@ -379,9 +379,12 @@ def test_huge_digit_runs_are_unreadable_never_a_raise(type_, raw):
 def test_very_long_digit_runs_are_unreadable_never_a_raise():
     """Past int()'s 4300-digit limit `int()` raises ValueError in the old minute regexes."""
     longer = "1" * 5000
-    for type_, raw in (("duration", "7h " + longer + "m"), ("duration", longer + "m"), ("integer", longer)):
-        items = rh.habits([tracker("X", type_)], [day(PERIOD[0], X=raw)], PERIOD, "en")
-        assert items == [], (type_, raw[:20])
+    for type_, raw, good in (("duration", "7h " + longer + "m", "7h"), ("duration", longer + "m", "7h"),
+                             ("integer", longer, "4")):
+        days = [day(PERIOD[0], X=raw), day(PERIOD[1], X=good)]       # a readable day, so the tracker has an item
+        item = one(rh.habits([tracker("X", type_)], days, PERIOD, "en"), "X")
+        assert item["unreadable"] == ["2026-03-23"], (type_, raw[:20])
+        assert "2026-03-23" not in item["missing"] and item["days_with_value"] == 1, (type_, raw[:20])
 
 
 def test_mixed_huge_positive_and_negative_are_unreadable_not_nan():
@@ -393,8 +396,12 @@ def test_mixed_huge_positive_and_negative_are_unreadable_not_nan():
 
 
 def test_native_non_finite_numbers_are_unreadable():
-    days = [day(PERIOD[0], Energy=float("inf")), day(PERIOD[1], Energy=float("nan")), day(PERIOD[2], Energy=10**400)]
-    assert rh.habits([tracker("Energy", "integer")], days, PERIOD, "en") == []
+    days = [day(PERIOD[0], Energy=float("inf")), day(PERIOD[1], Energy=float("nan")), day(PERIOD[2], Energy=10**400),
+            day(PERIOD[3], Energy=4)]                                  # a readable day, so the tracker has an item
+    item = one(rh.habits([tracker("Energy", "integer")], days, PERIOD, "en"), "Energy")
+    assert item["unreadable"] == ["2026-03-23", "2026-03-24", "2026-03-25"]
+    assert not set(item["unreadable"]) & set(item["missing"])
+    assert item["days_with_value"] == 1 and item["value"] == pytest.approx(4.0)
 
 
 def test_integer_comma_and_dot_are_decimal_marks_not_thousands_separators():

@@ -7,6 +7,18 @@
 > content-free `meta.json` reader, the probe-and-classify step one stem goes
 > through, and the listing `start` prints.
 
+## Step Numbers
+
+The code comments and the module docstring of `review_state` use the SDD's
+step numbers (Complex Logic: 0 to 9, with 3a and 3b), and the three state
+conditions that take a rule of their own are named predicates
+(`_is_finished_set_of_an_earlier_run` = 3a, `_is_delivery_complete_and_set_deleted`
+= 3b, `_is_delivery_without_its_last_step` = 3). Older sections of this document
+were written against an earlier numbering (a begun delivery as "step 1", the
+withdrawn meta as "step 3", the two probes as "step 5/6"); read them by their
+rule, not the number: the probes are now steps 7 and 8, the begun delivery is
+step 3 and the withdrawn meta is step 2 (#261).
+
 ## WHY One Function Owns the States
 
 WHY: SDD Internal API Changes names six canonical states (`open`,

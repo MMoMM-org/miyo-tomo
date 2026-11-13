@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """review_deliver_helpers.py — the shared fixtures, constants and helpers of the review-instructions delivery tests.
 
 Moved out of test_review_deliver.py (#260) so test_review_deliver.py, test_review_deliver_report.py,
@@ -36,6 +36,12 @@ INS_SCRIPT = SCRIPTS_DIR / "review-instructions.py"
 SCHEMAS = [REPO / "tomo" / "schemas" / "instructions.schema.json",
            REPO / "tomo" / "schemas" / "hashi-instructions.schema.json"]
 HASHI_VENDORED = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
+# Every schema a delivered set must satisfy: Tomo's two, and Hashi's own vendored copy when the sibling checkout
+# exists. Without the checkout the vendored case is reported as skipped, never silently left out (#261).
+SCHEMA_PARAMS = [pytest.param(path, id=path.name) for path in SCHEMAS] + [
+    pytest.param(HASHI_VENDORED, id="hashi-vendored",
+                 marks=pytest.mark.skipif(not HASHI_VENDORED.exists(),
+                                          reason=f"the Hashi checkout is absent: {HASHI_VENDORED} not found"))]
 
 STEM = "2026-W13_review"
 DOC = f"{INBOX}2026-W13 Review.md"

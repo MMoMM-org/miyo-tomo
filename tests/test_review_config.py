@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -134,7 +134,7 @@ def test_folder_for_layers_config_over_profile_and_blank_path_is_none():
     assert rc.folder_for(config, PROFILE, "weekly") is None
 
 
-def test_month_setup_defaults_and_iso_rule_for_month_reading():
+def test_month_setup_defaults_and_the_configured_week_rule_for_the_overlapping_weeks():
     setup = rc.review_setup(CONFIG, PROFILE, "month")
     assert setup.kind == "month" and setup.folder == "Calendar/303 Monthly/" and setup.format == "YYYY-MM"
     assert setup.placement == "inside" and setup.template is None

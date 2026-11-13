@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_state_finished.py — a completed delivery whose set the user deleted is finished, not failed
 (spec 045 Phase 6, pre-live-walk fix; owner decision 2026-11-12; SDD Complex Logic stem_state step 3b).
 
@@ -35,7 +35,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-from test_review_state import (  # noqa: E402
+from review_state_helpers import (  # noqa: E402
     APPROVED, INBOX, PENDING, SET, STEM, _doc, _insert, _meta, _move, _probes, _set, _set_bytes, _vault,
 )
 from lib import review_state as rs  # noqa: E402

@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.6.1
+# version: 0.6.2
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -25,22 +25,19 @@ comparing a landed set with a rebuilt one; ``is_emptied_set`` whether it is
 the set ``drop`` writes (an empty ``actions`` list), the one predicate
 ``review-instructions.py`` uses to refuse ``set-withdrawn``.
 
-The order implemented: ``meta.withdrawn`` → not listed; an emptied set →
-not listed when no delivery began (meta absent, no step done or in flight),
-``failed-delivery`` under a begun delivery that meta does not call withdrawn
-(a drop that wrote the set but failed before the meta mark; the next
-``/review`` offers it again); a present record that never began a delivery
-and does not carry ``applied_reported``, over a set whose every action is
-applied → ``open`` (the finished set of an earlier run of the period, beside
-a rerun's fresh record; the minimal record ``start`` writes for a reported
-applied review is not one); an approved
-document without a set whose record carries ``doc_mark`` → not listed (a
-complete delivery whose set the user deleted after applying); a begun
-delivery (``review_delivery.ReviewMeta.started()``) without ``doc_mark``,
-or an approved document without a set → ``failed-delivery``;
-no set → ``open``; every action ``applied`` → ``applied``; an unapplied
-``move_note`` whose source and destination both exist → ``move-refused``; an
-unapplied insert or replace whose target is gone → ``target-missing``;
+The order implemented (the step numbers are the SDD's, Complex Logic): 2 a withdrawn meta → not
+listed; 2/3 an emptied set → not listed when no delivery began (meta absent, no step done or in
+flight), ``failed-delivery`` under a begun delivery that meta does not call withdrawn (a drop that
+wrote the set but failed before the meta mark; the next ``/review`` offers it again); 3a a present
+record that never began a delivery and does not carry ``applied_reported``, over a set whose every
+action is applied → ``open`` (the finished set of an earlier run of the period, beside a rerun's
+fresh record; the minimal record ``start`` writes for a reported applied review is not one); 3b an
+approved document without a set whose record carries ``doc_mark`` → not listed (a complete delivery
+whose set the user deleted after applying); 3 a begun delivery (``review_delivery.ReviewMeta.started()``)
+without ``doc_mark``, or an approved document without a set → ``failed-delivery``; 4 no set →
+``open``; 5 a set that is not a readable instruction set → ``delivered``; 6 every action ``applied``
+→ ``applied``; 7 an unapplied ``move_note`` whose source and destination both exist →
+``move-refused``; 8 an unapplied insert or replace whose target is gone → ``target-missing``; 9
 otherwise ``delivered`` (an unreadable set among them). ``open_reviews``
 drops an ``applied`` review whose meta carries ``applied_reported`` (the
 caller that reported it writes the flag), lists a document whose stem fails
@@ -147,6 +144,21 @@ def is_emptied_set(set_json: Optional[dict]) -> bool:
     return _actions(set_json) == []
 
 
+def _is_finished_set_of_an_earlier_run(meta: Optional[dict], record: rdl.ReviewMeta, set_json: Optional[dict]) -> bool:
+    """Step 3a: a present record that never began and never reported, beside a fully applied set."""
+    return isinstance(meta, dict) and not record.started() and not applied_reported(meta) and all_applied(set_json)
+
+
+def _is_delivery_without_its_last_step(record: rdl.ReviewMeta, approved_without_set: bool) -> bool:
+    """Step 3: a begun delivery short of ``doc_mark``, or an approved document whose set is gone."""
+    return (record.started() and rdl.DOC_MARK not in record.steps_done) or approved_without_set
+
+
+def _is_delivery_complete_and_set_deleted(record: rdl.ReviewMeta, approved_without_set: bool) -> bool:
+    """Step 3b: ``doc_mark`` recorded, the document approved, and the set deleted after applying."""
+    return approved_without_set and rdl.DOC_MARK in record.steps_done
+
+
 def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = None, *,
                  target_exists: Optional[bool] = None,
                  inbox_copy_exists: Optional[bool] = None) -> Optional[str]:
@@ -154,44 +166,45 @@ def review_state(doc: dict, meta: Optional[dict], set_json: Optional[dict] = Non
     delivery whose set is gone): ``doc`` is the document's frontmatter, ``meta`` the stem's
     meta.json (None when absent), ``set_json`` the instruction set when it exists in the inbox
     (None when absent); ``target_exists`` and ``inbox_copy_exists`` are the probe answers for
-    steps 5 and 6 (None: not probed)."""
+    steps 7 and 8 (None: not probed)."""
     record = _record(meta)
     actions = _actions(set_json)
-    # step 3 before step 1: a withdrawn review is never listed
+    # step 2: a withdrawn review is never listed
     if record.withdrawn():
         return None
-    # the emptied set is drop's signature: withdrawn when no begun record contradicts it, a drop that
-    # wrote the set but not the meta mark under one
+    # steps 2 and 3: the emptied set is drop's signature: withdrawn when no begun record contradicts it, a drop
+    # that wrote the set but not the meta mark under one
     if actions == []:
         return FAILED_DELIVERY if record.started() else None
-    # a present record that never began and never reported the set, beside a set every action of which is
+    # step 3a: a present record that never began and never reported the set, beside a set every action of which is
     # applied: the finished set of an earlier run of the period (a rerun after replace --confirm writes over
     # it), not this review's. The minimal record start writes for a reported applied review falls through.
-    if isinstance(meta, dict) and not record.started() and not applied_reported(meta) and all_applied(set_json):
+    if _is_finished_set_of_an_earlier_run(meta, record, set_json):
         return OPEN
     approved_without_set = doc_state(doc) == DOC_STATE_APPROVED and set_json is None
     # step 3b: a complete delivery whose set the user deleted after applying — finished, not listed
-    if approved_without_set and rdl.DOC_MARK in record.steps_done:
+    if _is_delivery_complete_and_set_deleted(record, approved_without_set):
         return None
-    # step 1: a begun delivery without its last step, or an approved document whose set is gone
-    if (record.started() and rdl.DOC_MARK not in record.steps_done) or approved_without_set:
+    # step 3: a begun delivery without its last step, or an approved document whose set is gone
+    if _is_delivery_without_its_last_step(record, approved_without_set):
         return FAILED_DELIVERY
-    # step 2
+    # step 4
     if set_json is None:
         return OPEN
+    # step 5: not a readable instruction set
     if actions is None:
         return DELIVERED
-    # step 4
+    # step 6
     if all(_applied(a) for a in actions):
         return APPLIED
     waiting = [a for a in actions if not _applied(a)]
-    # step 5: what a refused move leaves behind — the copy still in the inbox beside the target
+    # step 7: what a refused move leaves behind — the copy still in the inbox beside the target
     if any(a.get("action") == MOVE_NOTE for a in waiting) and target_exists is True and inbox_copy_exists is True:
         return MOVE_REFUSED
-    # step 6
+    # step 8
     if any(a.get("action") in SECTION_ACTIONS for a in waiting) and target_exists is False:
         return TARGET_MISSING
-    # step 7
+    # step 9
     return DELIVERED
 
 

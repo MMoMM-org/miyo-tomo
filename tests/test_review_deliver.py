@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.5
+# version: 0.2.7
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -46,8 +46,7 @@ import yaml
 
 from review_deliver_helpers import (  # noqa: E402,F401 — puts tomo/scripts on the path; ins, doc_mod, instance are fixtures
     SCRIPTS_DIR,
-    SCHEMAS,
-    HASHI_VENDORED,
+    SCHEMA_PARAMS,
     STEM,
     DOC,
     SET_JSON,
@@ -265,7 +264,8 @@ def test_cli_each_notice_is_shown_without_refusing_and_deliver_lands(doc_mod, in
 
 # ---------------------------------------------------------------- deliver
 
-def test_deliver_writes_the_set_in_order_and_marks_the_document_last(doc_mod, ins, instance, monkeypatch, capsys):
+@pytest.mark.parametrize("schema", SCHEMA_PARAMS)
+def test_deliver_writes_the_set_in_order_and_marks_the_document_last(schema, doc_mod, ins, instance, monkeypatch, capsys):
     fake = prepared(doc_mod, instance, monkeypatch, capsys, vault())
     code, out, err = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)
     assert code == 0 and err == ""
@@ -283,8 +283,7 @@ def test_deliver_writes_the_set_in_order_and_marks_the_document_last(doc_mod, in
     assert action["action"] == "insert_under_marker" and action["target_path"] == TARGET
     assert action["anchor"] == {"type": "heading", "value": OWN} and action["placement"] == "before"
     assert action["content"].startswith("## Tomo Review\n" + REVIEW_MARKER + "\n") and MARKER in action["content"]
-    for schema in SCHEMAS + ([HASHI_VENDORED] if HASHI_VENDORED.exists() else []):
-        assert schema_errors(doc, schema) == [], schema.name
+    assert schema_errors(doc, schema) == [], schema.name
     front, body = split_frontmatter(fake.text(SET_MD))
     assert front["tomo"] == {"doc_type": "instructions", "state": "pending-apply", "run_id": "r-test",
                              "updated_at": meta["generated"]}
@@ -311,7 +310,9 @@ def test_deliver_new_note_writes_the_note_first_and_moves_it(doc_mod, ins, insta
     [action] = set_json_of(fake)["actions"]
     assert action["action"] == "move_note" and action["source"] == NEW_NOTE and action["destination"] == TARGET
     md = fake.text(SET_MD)
-    assert "### I01 — Move note: 2026-W13" in md and "- [ ] Applied" in md and "Templater" in md
+    assert "### I01 — Move note: 2026-W13" in md and "- [ ] Applied" in md
+    assert "- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P" in md.splitlines(), \
+        "F5-AC5: the readable instruction is the whole line, command name included"
     assert f"- **From:** `{NEW_NOTE}`" in md and f"- **To:** `{TARGET}`" in md      # the move's destination is named
 
 
@@ -523,7 +524,8 @@ def test_deliver_name_taken_for_the_new_note_refuses_before_any_write(doc_mod, i
 
 # ---------------------------------------------------------------- drop
 
-def test_drop_after_a_partial_delivery_withdraws_the_set(doc_mod, ins, instance, monkeypatch, capsys):
+@pytest.mark.parametrize("schema", SCHEMA_PARAMS)
+def test_drop_after_a_partial_delivery_withdraws_the_set(schema, doc_mod, ins, instance, monkeypatch, capsys):
     fake = prepared(doc_mod, instance, monkeypatch, capsys, vault(None))
     fake.fail[("write_note", SET_MD)] = KadoError("503")
     assert run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM], fake)[1]["status"] == "stopped"
@@ -535,8 +537,7 @@ def test_drop_after_a_partial_delivery_withdraws_the_set(doc_mod, ins, instance,
     assert writes(fake) == [("write_file", SET_JSON), ("write_note", SET_MD)]
     doc = set_json_of(fake)
     assert doc["actions"] == [] and doc["md_peer"] == f"{STEM}_instructions" and doc["type"] == "tomo-instructions"
-    for schema in SCHEMAS + ([HASHI_VENDORED] if HASHI_VENDORED.exists() else []):
-        assert schema_errors(doc, schema) == [], schema.name
+    assert schema_errors(doc, schema) == [], schema.name
     front, body = split_frontmatter(fake.text(SET_MD))
     assert front["tomo"]["doc_type"] == "instructions" and front["action_count"] == 0
     assert "withdrawn" in body.lower() and "delete these files" in body

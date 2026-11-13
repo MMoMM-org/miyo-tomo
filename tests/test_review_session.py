@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.5
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -68,6 +68,7 @@ MONTHLY = "Calendar/303 Monthly/"
 DAILY = "Calendar/301 Daily/"
 TEMPLATES = "X/Templates/"
 BODY_MARKER = "BODY-MARKER-9c1e private journal line"
+FM_MARKER = "FM-MARKER-4b7d frontmatter value start never echoes"
 
 WEEK_TEMPLATE = (
     "---\nweek: <% tw %>\n---\n"
@@ -404,6 +405,7 @@ def test_match_lists_the_folder_once_two_levels_deep(mod, instance, monkeypatch,
     _match(mod, monkeypatch, capsys, fake)
     listings = [e for e in fake.events if e[0] == "list_dir"]
     assert listings == [("list_dir", WEEKLY)]
+    assert fake.list_dir_depths == [(WEEKLY, 2)], "the folder and its direct subfolders: two levels, not one"
 
 
 # ---------------------------------------------------------------- match: template, place, sections
@@ -1183,11 +1185,19 @@ def test_start_kado_unreachable_stops(mod, instance, monkeypatch, capsys):
 
 
 def test_start_stdout_carries_no_note_text(mod, instance, monkeypatch, capsys):
+    """`start` reads the review document's frontmatter, never its text. The body marker cannot reach it either
+    way (and _run would catch it), so the check that can fail is on what start does read: a frontmatter value
+    it has no use for must not be echoed, and no note is read (read_note) - the body is never fetched."""
     _config(instance)
-    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": _review_doc("2026-W13", "week")})
+    doc = _review_doc("2026-W13", "week").replace("review_language: de\n", f"review_language: de\nreview_note: {FM_MARKER}\n")
+    assert FM_MARKER in doc
+    fake = ReviewFakeVault({INBOX + "2026-W13 Review.md": doc})
     _, out, raw, err = _start(mod, monkeypatch, capsys, fake, "")
-    assert BODY_MARKER not in raw and BODY_MARKER not in err and "Approved" not in raw
+    assert [r["stem"] for r in out["open_reviews"]] == ["2026-W13_review"]
+    assert FM_MARKER not in raw and FM_MARKER not in err and BODY_MARKER not in raw and "Approved" not in raw
     assert raw.isascii()
+    assert ("read_frontmatter", INBOX + "2026-W13 Review.md") in fake.events
+    assert [e for e in fake.events if e[0] == "read_note"] == [], "start fetches no note text"
 
 
 def test_start_without_args_exits_2(mod, instance, capsys):

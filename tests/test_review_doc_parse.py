@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_review_doc_parse.py — lib/review_doc_parse.py and review-doc.py parse / replace
 (spec 045 T3.7, PRD F5-AC1, F5-AC6, F6-AC1, Business Rules 1-3 and 7, Edge Cases,
 SDD ENTITY ApprovedReview / ReviewDeliveryMeta, item identity).
@@ -304,6 +304,10 @@ def test_a_tasks_done_marker_after_approved_is_still_the_gate():
     assert parse(text.replace("- [ ] Approved\n", f"- [X] Approved{DONE_MARK}  \n", 1), reference).approved is True
     assert parse(text.replace("- [ ] Approved\n", "- [x] Approved ✅2026-11-12\n", 1), reference).approved is True
     assert parse(text.replace("- [ ] Approved\n", "- [x] Approved  ✅ 2026-11-12\t\n", 1), reference).approved is True
+    # the emoji presentation selector (U+FE0F) some editors append to the check mark is part of the marker
+    for gap in ("", " "):
+        marked = f"- [x] Approved ✅\ufe0f{gap}2026-11-12\n"
+        assert parse(text.replace("- [ ] Approved\n", marked, 1), reference).approved is True, repr(marked)
     # unticked stays unticked, with or without a stale marker
     assert parse(text.replace("- [ ] Approved\n", f"- [ ] Approved{DONE_MARK}\n", 1), reference).approved is False
     assert parse(text, reference).approved is False

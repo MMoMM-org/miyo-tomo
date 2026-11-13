@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """review_fake_vault.py — one in-memory vault behind the /review scripts
 (spec 045, from T2.2 on; the shared fake of Phase 3 from T3.1 on).
 
@@ -101,6 +101,7 @@ class ReviewFakeVault(NoteFakeVault):
         self.connection_error: Exception | None = None
         self.auth_error: Exception | None = None
         self.list_notes_filters: list = []
+        self.list_dir_depths: list = []          # (path, depth) of every list_dir
         self.page_size: int | None = None
         # KadoClient's pacing and accounting surface
         self.attempt_count = 0
@@ -200,6 +201,7 @@ class ReviewFakeVault(NoteFakeVault):
 
     def list_dir(self, path="/", *, depth=None, limit=500):
         self._call("list_dir", path)
+        self.list_dir_depths.append((path, depth))
         folder = _folder_key(path)
         known = folder in self.folders or any(p.startswith(folder) for p in self.files)
         if not known:

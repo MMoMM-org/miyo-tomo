@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.5
+# version: 0.1.6
 """test_review_e2e_edges.py — the document edge cases, the setup rerun and a sparse period of /review end to end
 on the fake vault (spec 045 T6.1 fix round; PRD Edge Cases, Secondary User Journeys 2 and 6, F5-AC1, Rule 7).
 
@@ -43,7 +43,7 @@ if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
 from review_e2e_walk import (  # noqa: E402
-    APPROVED, CONFIG, INBOX, TICKED, WEEK, WEEK_DOC, WEEK_PERIOD, WEEK_STEM, WEEKLY, WRITES, Walk,
+    APPROVED, CONFIG, INBOX, TICKED, WEEK, WEEK_DOC, WEEK_PERIOD, WEEK_STEM, WEEKLY, Walk, sweep_writes_under_inbox,
     config_without_setup,
 )
 
@@ -315,7 +315,7 @@ def test_sparse_period_reads_its_few_dailies_and_writes_the_document(ready: Walk
 # ── the sweep: every write attempted so far, under the inbox prefix ──────────────────────
 
 
-def test_every_write_attempted_so_far_was_under_the_inbox_prefix():
-    """Order-independent: whatever ran before this test, every write attempted through the client was under
-    the inbox; no count is assumed."""
-    assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
+def test_every_write_attempted_so_far_was_under_the_inbox_prefix(ready: Walk):
+    """Self-contained: drives its own Pass 1 write, so it fails on a write outside the inbox when run alone or
+    first, and over whatever ran before it (landed or refused attempts alike) once others have run."""
+    sweep_writes_under_inbox(ready)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_state_listing.py — lib/review_state.open_reviews, the listing `review-session.py start` prints
 (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state OUTPUT; ADR-6).
 
@@ -21,7 +21,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-from test_review_state import (  # noqa: E402
+from review_state_helpers import (  # noqa: E402
     APPROVED, INBOX, PENDING, _doc, _empty_vault, _insert, _meta, _move, _set_bytes, _vault,
 )
 from lib import review_state as rs  # noqa: E402

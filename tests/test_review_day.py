@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.3
 """test_review_day.py — Behavioural tests for lib.review_day and the markdown
 layer it applies, lib.review_md (spec 045 T3.2; PRD F3-AC1, F3-AC2, F3-AC3,
 F3-AC4, F3-AC8; SDD "same-day reading of one daily").
@@ -46,10 +46,15 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib import review_day as rd  # noqa: E402
+from lib.review_pacer import ReviewPacer  # noqa: E402
+from lib.review_reader import PacedReader  # noqa: E402
+from review_fake_vault import ReviewFakeVault  # noqa: E402
 
 DAY = date(2026, 3, 26)
 DAILY_PATH = "Calendar/301 Daily/2026-03-26.md"
@@ -549,10 +554,22 @@ def test_missing_linked_note_is_a_problem_of_that_day_and_the_day_still_read():
 
 
 def test_unreadable_linked_note_reported_the_same_way():
-    entry, _ = read(notes={})
+    """F3-AC8 at the day level: a linked note Kado cannot deliver (every read turned away, as production sees
+    it) is a `linked-missing` problem of the day exactly like one that does not exist, and the day is still
+    read. Run through the real reader, so the two are told apart where production tells them apart: only the
+    unreadable one is in `not_read`."""
+    planner = "Efforts/300 Planner/DP-2026-03-26.md"
+    vault = ReviewFakeVault({DAILY_PATH: DAILY, planner: PLANNER})          # the 5J note does not exist
+    vault.rate_limit(planner)                                               # the planner is never delivered
+    with ReviewPacer(vault) as pacer:
+        reader = PacedReader(vault, pacer)
+        reader.finish()                                                     # end pass first: reads fail for good
+        entry = rd.read_day(DAY, {DAILY_PATH: DAILY}, SETTINGS, reader.target)
     paths = sorted(p["path"] for p in entry["problems"] if p["kind"] == "linked-missing")
     assert paths == ["5J-2026-03-26", "DP-2026-03-26"]
-    assert entry["linked"] == []
+    assert entry["linked"] == [] and entry["has_content"] is True and "Daily Log" in entry["sections"]
+    assert reader.not_read == [planner], "only the unreadable note is not_read; the missing one is not"
+    assert planner not in reader.missing
 
 
 # --- fields (SDD step 5) ---------------------------------------------------------------
@@ -672,6 +689,15 @@ def test_next_day_tick_keeps_its_own_date():
     nxt = next(t for t in entry["tasks"] if "Anything to change" in t["text"])
     assert nxt["done"] is True and nxt["done_date"] == "2026-03-27"
     assert "✅" not in nxt["text"]
+
+
+@pytest.mark.parametrize("mark", ["✅", "✅\ufe0f"], ids=["plain-check", "with-variation-selector"])
+def test_the_done_marker_is_read_with_or_without_the_emoji_variation_selector(mark):
+    """U+FE0F after the check mark (a keyboard or editor adds it) is part of the Tasks done marker: the tick keeps
+    its date and the marker, selector included, leaves the task text."""
+    tasks = rd.task_note_tasks("n.md", f"- [x] Pay the invoice {mark} 2026-03-26\n- [x] Call back {mark}2026-03-27\n")
+    assert [(t["text"], t["done"], t["done_date"]) for t in tasks] == [
+        ("Pay the invoice", True, "2026-03-26"), ("Call back", True, "2026-03-27")]
 
 
 def test_done_in_period_counts_by_tick_date_whichever_file_holds_it():

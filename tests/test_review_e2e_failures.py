@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_e2e_failures.py — the month and the failure paths of /review end to end on the fake vault
 (spec 045 T6.1; PRD Secondary User Journeys 3, 4, 5, 7; PRD Edge Cases; F5-AC10; KPI Quality; SDD Runtime View,
 Error Handling; SDD 1.11 step 3b).
@@ -29,7 +29,7 @@ if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
 from review_e2e_walk import (  # noqa: E402
-    CONFIG, INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, MONTH_TARGET, WRITES, Walk, frontmatter,
+    CONFIG, INBOX, MONTH, MONTH_DOC, MONTH_PERIOD, MONTH_STEM, MONTH_TARGET, Walk, sweep_writes_under_inbox, frontmatter,
     tomo_sections,
 )
 from lib.kado_client import KadoError  # noqa: E402
@@ -212,8 +212,7 @@ def test_set_deleted_after_apply_is_not_listed_and_the_period_starts_over(ready:
 # ── the module's sweep: every write of every test above, under the inbox prefix ──────────
 
 
-def test_every_write_attempted_so_far_was_under_the_inbox_prefix():
-    """Order-independent: whatever ran before this test, every write attempted through the client (landed or
-    refused — the injected failures above are attempts too) was under the inbox; no count is assumed."""
-    assert [(t, p) for t, p in WRITES if not p.startswith(INBOX)] == []
-    assert all(isinstance(t, str) and Path(t.split("::")[0]).name.startswith("test_review_e2e") for t, _ in WRITES)
+def test_every_write_attempted_so_far_was_under_the_inbox_prefix(ready: Walk):
+    """Self-contained: drives its own Pass 1 write, so it fails on a write outside the inbox when run alone or
+    first, and over whatever ran before it (landed or refused attempts alike) once others have run."""
+    sweep_writes_under_inbox(ready)

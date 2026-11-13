@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_inbox_triage_review_skip.py — /inbox skips review documents (spec 045
 T1.6, ADR-10; PRD F4-AC6, F5-AC4).
 
@@ -203,7 +203,7 @@ class TestGetDocTypeReviewRule:
     @pytest.mark.parametrize("stem", ["2026-W13_Review", "2026-W13Review", "Reviewed"])
     def test_only_the_space_suffix_counts(self, stem):
         mod = _load_module()
-        assert mod._get_doc_type(_bucket_hit(INBOX_PATH + stem + ".md")) != "review"
+        assert mod._get_doc_type(_bucket_hit(INBOX_PATH + stem + ".md")) == "", "no suffix rule matches: no doc type"
 
 
 # ---------------------------------------------------------------------------

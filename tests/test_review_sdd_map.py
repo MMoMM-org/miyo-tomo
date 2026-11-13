@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_sdd_map.py — spec 045 Phase 5: the SDD's Directory Map lists every /review file that exists.
 
 The Directory Map of docs/XDD/specs/045-weekly-monthly-review/solution.md is
@@ -103,8 +103,11 @@ def test_the_glob_lists_the_review_files_that_exist() -> None:
 
 @pytest.mark.parametrize("block,path", _EXISTING, ids=[str(p) for _, p in _EXISTING])
 def test_directory_map_names_every_existing_review_file(block: str, path: Path) -> None:
-    assert _named_in(_map_blocks()[block], *_names(path)), \
-        f"SDD Directory Map block `{block}` does not name {path}"
+    assert _named_in(_map_blocks()[block], *_names(path)), (
+        f"{path} is not in the Directory Map of {SDD.relative_to(ROOT)}: add a line naming "
+        f"{' and '.join(f'`{n}`' for n in _names(path))} (with a one-line role and `# NEW (implemented, spec 045 ...)`) "
+        f"to the fenced tree block that starts with `{block}`, under the folder it lives in"
+    )
 
 
 # --- D3: implemented markers on the Phase 5 runtime documents -----------------------------

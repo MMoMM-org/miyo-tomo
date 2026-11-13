@@ -29,7 +29,7 @@ lower layer: it imports nothing from `review_day`, and the public seam of
 
 ## WHY the Tasks Done Marker Is One Pattern Here
 
-`DONE_MARK_RE` (`\s*✅\s*(YYYY-MM-DD)`) is the ` ✅ YYYY-MM-DD` the
+`DONE_MARK_RE` (`\s*✅\ufe0f?\s*(YYYY-MM-DD)`) is the ` ✅ YYYY-MM-DD` the
 Obsidian Tasks plugin appends to a checkbox line when its box is ticked. Two
 readers of `/review` meet it: `review_day` reads the done date off a daily's
 tasks and drops the marker from the task text (anywhere on the line,
@@ -45,10 +45,17 @@ its settings, its period rules — for one markdown token; `review_md` is the
 lower layer both already sit on (the `review_day` import is unchanged in
 meaning, only in origin).
 
+The optional `\ufe0f` is the emoji presentation selector some keyboards and
+editors put right after the check mark (`✅️`). Without it the marker did not
+match, so a ticked task lost its done date and the approval gate of a document
+ticked that way read as "missing" (#261). The plain form still matches, and the
+selector leaves the task text together with the marker.
+
 Only the done marker is known. The plugin's other fields (`📅` due, `⏳`
-scheduled, `🛫` start, `➕` created, `🔁` recurrence) are typed by the user
-on purpose, never added by a tick, so they stay the user's text wherever
-they appear; `❌` cancelled goes with a `[-]` box, which is no tick.
+scheduled, `🛫` start, `🔁` recurrence) are typed by the user on purpose,
+and `➕` created is stamped when a task is created, never by a tick; none of
+them is a done marker, so they stay the user's text wherever they appear; `❌`
+cancelled goes with a `[-]` box, which is no tick.
 
 ## WHY a Section Spans Its Subsections
 

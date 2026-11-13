@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_pacer.py — the pacing policy of /review's period read and the
 fake vault it is tested against (spec 045 T3.1; PRD F3-AC10, F3-AC11,
 F3-AC12; SDD ADR-4, Implementation Examples / pacer).
@@ -38,6 +38,9 @@ sys.path.insert(0, str(TESTS_DIR))
 from review_fake_vault import ReviewFakeVault  # noqa: E402
 from lib.kado_client import (  # noqa: E402
     _MAX_RETRIES,
+    _RETRY_BACKOFF_BASE,
+    _RETRY_BACKOFF_CAP,
+    _RETRY_STATUSES,
     KadoAuthError,
     KadoClient,
     KadoConnectionError,
@@ -290,6 +293,14 @@ def test_fake_accounting_matches_the_real_client_on_one_429_scenario():
 # ===========================================================================
 # Part 2 — ReviewPacer
 # ===========================================================================
+
+
+def test_the_clients_retry_constants_are_the_ones_the_pacer_budget_rests_on():
+    """The fake imports these from production, so every fake-based test follows a change of them silently; the
+    45- and 170-call budgets and the pacer's 0.3 s / 2 s spacing were derived with exactly these (SDD Performance)."""
+    assert _MAX_RETRIES == 4
+    assert _RETRY_BACKOFF_BASE == 0.5 and _RETRY_BACKOFF_CAP == 10.0
+    assert _RETRY_STATUSES == {429, 503}
 
 
 def test_constants_match_the_sdd():

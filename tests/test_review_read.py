@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.1.4
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -55,6 +55,7 @@ from review_period_fixtures import (  # noqa: E402
     TASK_NOTE,
     WEEKLY,
     daily,
+    growth_vault,
     month_vault,
     week_vault,
 )
@@ -193,7 +194,26 @@ def test_a_month_run_reports_the_weekly_notes_and_stays_within_the_call_budget(m
     assert report["calls"] == fake.call_count <= 170, fake.events
     read = json.loads(_read_json(instance, "2026-03_review").read_text(encoding="utf-8"))
     assert [w["week"] for w in read["weekly"]] == ["2026-W09", "2026-W13"]
-    assert "only_in_weekly_links" in read
+    # F3-AC5: the links only a weekly note carries (no daily links them; the periodic notes' own names do not
+    # count) and the links of a day's block that the weekly of its week lacks, in document and day order
+    assert read["only_in_weekly_links"] == ["Thought Note", "Own Note", "Delta", "Epsilon"]
+    assert read["dailies_not_in_weekly"] == ["Only Daily", "Omega", "Beta"]
+    # the weekly's blocks of days outside the month (W09's 2026-02-28) are dropped, their links with them
+    assert [sorted(w["day_blocks"]) for w in read["weekly"]] == [["2026-03-01"], ["2026-03-23", "2026-03-29"]]
+    assert "Feb Note" not in read["weekly"][0]["links"] and "Feb Note" not in read["only_in_weekly_links"]
+
+
+def test_a_week_run_reports_what_the_week_grew(mod, instance, monkeypatch, capsys):
+    """F3-AC7 through the script: the printed counts and read.json's lists name the notes created in the week,
+    the MOCs changed in it and the MOCs the new notes link to."""
+    code, out, _ = _week(mod, monkeypatch, capsys, growth_vault())
+    assert code == 0 and out["status"] == "ok"
+    assert out["report"]["growth"] == {"created": 3, "mocs_changed": 2, "mocs_linked_by_new": 2,
+                                       "moc_folders": 1, "kado_none": []}
+    growth = json.loads(_read_json(instance).read_text(encoding="utf-8"))["growth"]
+    assert [c["path"] for c in growth["created"]] == ["Notes/Edge.md", "Notes/New One.md", "Notes/New Two.md"]
+    assert growth["mocs_changed"] == [f"{MOCS}Other MOC.md", f"{MOCS}Quiet MOC.md"]
+    assert growth["mocs_linked_by_new"] == [f"{MOCS}Other MOC.md", f"{MOCS}Topic MOC.md"]
 
 
 def test_a_week_stays_within_forty_five_calls_without_retries(mod, instance, monkeypatch, capsys):

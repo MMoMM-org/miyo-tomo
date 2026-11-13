@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.4
 """test_review_doc.py — lib/review_doc.py and review-doc.py write (spec 045 T3.6, PRD F4, F3-AC13).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files:
@@ -118,7 +118,7 @@ def proposals(language="de", **groups) -> dict:
     return {"language": language, "groups": groups}
 
 
-def _config(instance: Path, *, language="de", trackers=True, inbox=INBOX) -> None:
+def _config(instance: Path, *, language="de", trackers=True, inbox=INBOX, fields=None) -> None:
     cfg: dict = {
         "concepts": {"inbox": inbox, "calendar": {"granularities": {
             "daily": {"enabled": True, "path": DAILY},
@@ -135,7 +135,7 @@ def _config(instance: Path, *, language="de", trackers=True, inbox=INBOX) -> Non
         },
     }
     if trackers:
-        cfg["trackers"] = {"daily_note_trackers": {"today_fields": [{"name": "Sport", "type": "boolean"}]}}
+        cfg["trackers"] = {"daily_note_trackers": {"today_fields": fields or [{"name": "Sport", "type": "boolean"}]}}
     (instance / "config" / "vault-config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
 
@@ -419,6 +419,20 @@ def test_habits_come_from_the_tracker_values_and_are_absent_without_them(mod, in
                             proposals(habits=[item("Sport: 7 von 7 Tagen", "2026-03-24")]))
     assert code == 0 and out["status"] == "refused" and out["problems"] == ["proposals-invalid"]
     assert out["errors"] == ["/groups"] and fake.writes == [] and fake.call_count == 0
+
+
+def test_a_number_tracker_gives_an_average_and_an_unreadable_value_is_named_not_counted(mod, instance, monkeypatch,
+                                                                                         capsys):
+    """F8-AC1 / F8-AC2 through `review-doc write`: an integer tracker is an average over the days with a value
+    (the 3, 4 and 5), the word "ja" is listed unreadable and is neither a 0 in the average nor a missing day."""
+    _config(instance, fields=[{"name": "Energy", "type": "integer"}])
+    energy = {"2026-03-23": "3", "2026-03-24": "4", "2026-03-25": "5", "2026-03-26": "ja"}
+    days = [_day(d, **({"Energy": energy[d]} if d in energy else {})) for d in WEEK_DAYS]
+    _, out, fake = write(mod, monkeypatch, capsys, instance, week_read(days=days), GOOD)
+    assert out["status"] == "written" and out["counts"]["habits"] == 1
+    assert items_under(lines_of(fake), "Gewohnheiten") == [
+        "- [x] Energy: Durchschnitt 4,0 über 3 Tage (7 Tage im Zeitraum; fehlt: 2026-03-27, 2026-03-28, 2026-03-29; "
+        "unlesbar: 2026-03-26) %%t5%%"], "the average of 3, 4 and 5; the unreadable day is listed once and is no 0"
 
 
 def test_a_habit_without_a_clear_average_renders_from_its_text():

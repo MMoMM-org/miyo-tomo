@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.6"
+version: "1.7"
 ---
 
 # Product Requirements Document
@@ -254,7 +254,7 @@ None. Everything the owner asked for is Must Have; the remaining ideas are Could
 - **Adoption:** The owner runs a weekly review for 4 consecutive finished weeks in the live vault after release (measured after the spec closes).
 - **Engagement:** In a delivered review, at most 40 % of Tomo's proposals are unticked or deleted, over the whole review; the habit items Tomo computes are not counted. Counted from item counts at Pass 1 and Pass 2 (also reported per group), without storing any text.
 - **Quality:** 0 writes to the vault outside the inbox before the user applies in Hashi; 0 delivered proposals from Tomo without a source-day link in the period; 0 periodic notes with two Tomo review sections.
-- **Cost and time:** On the test vault's March 2026, a weekly Pass 1 costs at most $0.50, a monthly Pass 1 at most $2.00, a Pass 2 at most $0.20; a monthly Pass 1 finishes within 7 minutes (raised from 5 on 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time).
+- **Cost and time:** On the test vault's March 2026, a weekly Pass 1 costs at most $0.50, a monthly Pass 1 at most $2.00, a Pass 2 at most $0.75 (raised from $0.20 on 2026-11-13: the live walk measured $0.32 for a week and $0.66 for a month, most of it the skill text loaded per `/review` plus parse and preview); a monthly Pass 1 finishes within 7 minutes (raised from 5 on 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time).
 
 ### Tracking Requirements
 

@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.19"
+version: "1.20"
 ---
 
 # Solution Design Document
@@ -1363,7 +1363,7 @@ stateDiagram-v2
 
 ## Quality Requirements
 
-- **Performance:** weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00, Pass 2 ≤ $0.20 on the test vault's March 2026; monthly Pass 1 ≤ 7 min wall clock including pacing (owner decision 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time, ≈ 51 s at the 0.3 s start interval); a week ≤ 45 Kado calls, a month ≤ 170 without retries (owner decision 2026-11-12: derived from one daily read plus one same-day `DP-` and one `5J-` note per daily, each `byName` + read, plus listings, weekly notes and growth — the derivation is in docs/tomo/scripts/lib/review_pacer.md and summarised under Implementation Examples, "Estimate"; the earlier 40/140 rested on the 30/110 estimate, which was not measured).
+- **Performance:** weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00, Pass 2 ≤ $0.75 (raised from $0.20, owner 2026-11-13) on the test vault's March 2026; monthly Pass 1 ≤ 7 min wall clock including pacing (owner decision 2026-11-12: a 170-call month at the pacer's 2 s cap paces ≈ 340 s before model time, ≈ 51 s at the 0.3 s start interval); a week ≤ 45 Kado calls, a month ≤ 170 without retries (owner decision 2026-11-12: derived from one daily read plus one same-day `DP-` and one `5J-` note per daily, each `byName` + read, plus listings, weekly notes and growth — the derivation is in docs/tomo/scripts/lib/review_pacer.md and summarised under Implementation Examples, "Estimate"; the earlier 40/140 rested on the 30/110 estimate, which was not measured).
 - **Usability:** every proposal carries a source link; every report names counts, states and missing parts; all confirmations work in plain text.
 - **Security:** 0 writes outside the inbox before apply; 0 daily-note text, journal answer, tracker value or proposal text in Tomo's stderr, logs or cost records (privacy test over every script and subcommand).
 - **Reliability:** a delivery interrupted at any step resumes without a duplicate payload or section; a rerun never yields two Tomo review sections; a same-named user heading is never replaced.

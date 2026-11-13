@@ -47,13 +47,13 @@ This phase proves the whole flow end to end and closes the spec.
   4. Validate: green when run by the owner with Kado up.
   5. Success: the reader works on the owner's real note shapes `[ref: PRD/Assumptions; SDD/Quality Requirements]`
 
-- [ ] **T6.3 Live walk on `tomo-instance`** `[activity: validate]` `[model: routine]`
+- [x] **T6.3 Live walk on `tomo-instance`** `[activity: validate]` `[model: routine]`
 
   1. Prime: memory "sync before any live walk", "restart Claude after agent/skill sync", "cost log after every live run"
   2. Test: after the owner's go: `scripts/update-tomo.sh --instance tomo-instance --yolo`, grep the instance for the new files; the owner runs `/review setup`, `/review 2026-W13`, edits, `/review`, applies in Hashi; then `/review 2026-03`. Record per run: cost, duration, calls, retried, waited, kept/unticked/deleted/added counts (no text), and the model-behaviour criteria named above.
   3. Implement: nothing in code; results into `docs/XDD/specs/045-weekly-monthly-review/live-walk.md` and the cost log.
   4. Validate: transcript lines quoted with session ids; no journal text quoted.
-  5. Success: weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.20; ≤ 40 % of Tomo items unticked or deleted over the review (habits excluded); 0 writes outside the inbox before apply `[ref: PRD/KPIs; PRD/F1-AC6, F4-AC5, F4-AC7, F5-AC2]`
+  5. Success: weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75; ≤ 40 % of Tomo items unticked or deleted over the review (habits excluded); 0 writes outside the inbox before apply `[ref: PRD/KPIs; PRD/F1-AC6, F4-AC5, F4-AC7, F5-AC2]`
 
 - [ ] **T6.4 Close-out** `[activity: validate]`
 

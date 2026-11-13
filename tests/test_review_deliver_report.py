@@ -19,7 +19,7 @@ B. a resume reports the plan the delivery wrote — `mode`, `target`, `place`, r
    scans every working file for it) — a resume then reports the rebuilt plan's anchor for that one field; the record
    keeps `anchor_picked: true` instead, and a resume without the pick is refused (tests/test_review_deliver_resume.py).
 
-Mechanisms a mutation falsifies: `_conflict_reason` answering one name for every conflict flips
+Mechanisms a mutation falsifies: `lib/review_delivery.conflict_reason` answering one name for every conflict flips
 `test_doc_changed_names_why_kado_refused_the_mark`; the stop carrying the reason on every problem flips
 `test_kado_write_failed_carries_no_reason`; putting Kado's message on stdout flips the leak assertions; recording the
 plan after the loop instead of before the first mark flips `test_the_plan_is_recorded_with_the_first_in_flight_mark`;

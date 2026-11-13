@@ -235,7 +235,6 @@ def match(args: argparse.Namespace) -> dict:
     return propose(lambda: Vault(KadoClient), config, profile, args)
 
 
-
 # ---------------------------------------------------------------- setup-input
 
 _INPUT_KEYS = ("folder", "format", "first_day", "min_days", "template", "template_variant", "heading",

@@ -75,6 +75,7 @@ ERROR_HANDLING_ROWS = {
     "drop kado-write-failed twice": "say the next `/review` lists this review again and offers Drop",
     "deliver name-taken": "say a note at `exists_path` is not Tomo's and nothing was overwritten",
     "deliver doc-changed": "save it and run `/review` again; the payloads in `paths` already written count as done",
+    "deliver doc-changed open-unsaved": "say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then run `/review` and choose Resume",
     "deliver failed step": "the next `/review` offers Resume or Drop",
     "preview / deliver target appeared": "the target note was created since Pass 1; the plan targets it instead of a new note",
     "drop no step began": "say only the stage was removed (`removed`); nothing was in the inbox",

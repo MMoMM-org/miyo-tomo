@@ -268,7 +268,10 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
     assert ("- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; "
             "stop. `set-exists` or `set-withdrawn` → as in step 7. Any other → the step 7 lines; nothing was written."
             ) in text
-    assert ("- `stopped` → `doc-changed` → say the document was edited, or is open with unsaved edits, since the "
+    assert ("- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with "
+            "unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then "
+            "run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` "
+            "`changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the "
             "preview: save it and run `/review` again; the payloads in `paths` already written count as done, and "
             "the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at "
             "`failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.") in text

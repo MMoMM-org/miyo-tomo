@@ -148,6 +148,56 @@ saving; payloads already written count as done" (F5-AC10). So a step in
 have landed) still goes through the loop's compare-or-upload. Nothing is
 written twice; a landed file is never overwritten with a rebuilt one.
 
+## WHY a Resume Reports the Plan It Recorded, Not the Re-Plan (P6 live walk)
+
+Owner decision 2026-11-13. `load_run` builds the plan against the vault as
+it is now, on every call — a resume included, because the undone steps
+need payloads and the plan is a pure function of the document and the
+target (ADR-3). The live walk showed the cost of reporting that re-plan: the
+first attempt wrote the `new-note` plan (the note `<inbox>/<period>.md` and
+a set with one `move_note`) and stopped at the mark; Hashi moved the note
+before the resume; the resume re-planned `replace` against the landed note,
+skipped every done step, marked the document — and reported `mode: replace`,
+`place.anchor: "Tomo Review"` and `target_appeared`, none of which had been
+written. Nothing wrong landed; the report was wrong, and the skill repeats
+the report to the user as what Tomo did. `meta.json`'s own `mode` is Pass
+1's (`review-doc.py write`: `insert` or `new-note` by whether the target
+existed then), not the delivered plan, so it could not answer either.
+
+`deliver` therefore records the plan it is about to write — `mode`,
+`target`, `place` under `delivered_plan` in `meta.json` — before the first
+step, so the record is persisted with the first in-flight mark the way
+`set_replaced` is: a delivery that wrote anything has the record, a refused
+delivery (nothing written, meta never saved) has none. A `resumed` output
+takes `mode`, `target` and `place` from the record, and `target_appeared`
+on a resume compares Pass 1's mode with the recorded mode — the question it
+answers is "did the delivery target an existing note although Pass 1
+expected to create one", and the delivery is the recorded one.
+
+The record holds `place.anchor` only when it is the configured anchor
+(`setup.anchor`, text the instance config already holds). The plan's anchor
+is otherwise the note's own text — the heading the user picked with
+`--place-anchor`, the heading found above the marker on a replace — and
+nothing text-derived may enter `tomo-tmp` (ADR-9; the privacy suite scans
+every working file for the fixture's markers and went red on the first
+version, which stored the anchor blind). For such a plan the record keeps
+`placement` and `level` and `anchor: null`, and the resume reports the
+rebuilt plan's anchor for that one field: the only live source, right
+whenever the re-plan is the same kind of plan (a replace finds the same
+heading above the same marker; a picked anchor is passed again by step 8),
+and the accepted cost of not storing the note's text otherwise. A record is
+written only by the run that begins the delivery; a resume never writes one
+(it would record the re-plan as if it had been written), and a delivery
+begun before this change — `meta.json` without `delivered_plan` — falls
+back to the re-plan, as every resume reported before. Only the report
+changes: the payloads a resume writes are still built from the re-plan,
+because the `set_json` step compares the landed set with the rebuilt one
+and a plan reconstructed from a three-field record could not rebuild the
+section text. That leaves the known gap the report does not cover: a resume
+whose re-plan differs from the record and whose set step is still undone
+writes the re-plan's set beside the first attempt's note (recorded with the
+P6 live walk; not changed here).
+
 ## WHY `generated` and `run_id` Come From `meta.json`
 
 A resumed delivery must rebuild the set JSON, the MD peer and the new note
@@ -189,7 +239,41 @@ to write a note that is open and dirty in an editor. Both mean the same
 thing for the review — the user is or was editing the document, so the
 delivered text is not the text in the vault; the honest next step for both
 is "save, then resume", which re-reads and marks. Both therefore map to
-`doc-changed`; the script does not tell them apart.
+`doc-changed`, and the stop names which one it was in `reason`.
+
+### WHY the `doc-changed` Stop Carries a `reason` (P6 live walk)
+
+Owner decision 2026-11-13. The live walk on `tomo-instance` stopped twice
+at `doc_mark` with `doc-changed` while nothing had been saved: the review
+document was open in Obsidian and the `update-time-on-edit` plugin had
+changed `Updated:` in the editor buffer without saving it, so Kado's
+dirty-editor guard refused the write (`src/obsidian/note-adapter.ts`
+`conflictEditorError`); a live read proved Kado's `modified` equalled the
+on-disk mtime, so the write guard was not it. The script dropped Kado's
+message, and the skill — which only knew "edited or open with unsaved
+edits" — could not tell the user the one thing that helped: save (Cmd+S) or
+close the note, then Resume. Kado offers no structured sub-code (its hint
+says "the file changed" for both), so the only source is the message text.
+
+`_conflict_reason` reads it and answers a name: `open-unsaved` when the
+message carries Kado's editor phrase ("open in the editor with unsaved
+changes"), `changed-since-read` for the write guard's phrase ("updated in
+the background") and for the client's `KadoConcurrencyError` (the client
+raises it for the same guard on frontmatter writes), `unknown` for a
+CONFLICT with neither — a payload the token fallback recognised but could
+not parse, or a message Kado changes one day. The classification is next to
+`_tool_error_code` because both read the same payload; the message is read
+once there and never travels further. The skill branches on `open-unsaved`
+only; the other two keep the earlier wording, since "save and run `/review`
+again" is right for both and the user cannot act differently on `unknown`.
+The stop puts the reason name on stdout and nothing else: Kado's message
+names the document's path, and the script's contract is that stdout and
+stderr carry problem classes only (never a path, never note text). A
+`kado-write-failed` stop carries no `reason` — a 503 has no conflict to
+explain, and a key that is sometimes absent is a key the skill would read
+blind. The reason is not kept in `meta.json`: the next `/review` lists the
+stem as `failed-delivery` and Resume retries the mark, which refuses again
+with a fresh reason if the note is still dirty.
 
 The classification parses the JSON after the client's prefix and compares
 `code` with `CONFLICT`. When the payload is not parseable JSON (Kado wraps

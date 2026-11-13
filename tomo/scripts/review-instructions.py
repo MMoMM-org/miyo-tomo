@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.4
+# version: 0.2.5
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -12,7 +12,10 @@ this order, the new note (``new-note`` mode only), ``<stem>_instructions.json``
 and ``<stem>_instructions.md`` to the inbox through ``lib/staged_delivery``,
 then marks the document delivered with one write guarded by the ``modified``
 the reader saw; ``meta.json`` records every step so a failed delivery resumes
-without a duplicate. A set at the stem's path that this delivery did not
+without a duplicate, and the plan the delivery writes (``delivered_plan``:
+mode, target, place), recorded with the first step, so a resume reports what
+was written rather than the plan rebuilt against the vault now (the undone
+steps still write the rebuilt payloads). A set at the stem's path that this delivery did not
 write refuses ``set-exists`` while any action in it waits; once every action
 is applied (``lib/review_state.all_applied`` — the finished set of an earlier
 run of the period) ``deliver`` writes the new set JSON over it, guarded by the
@@ -46,7 +49,8 @@ Output: one JSON object on stdout, ASCII-escaped.
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
              mode, target, place, notices, target_appeared?
            | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|name-taken], exists_path?, step?
-           | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed]
+           | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed],
+             reason? open-unsaved|changed-since-read|unknown (doc-changed only)
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
            | status refused, stem, problems [already-applied]
            | status stopped, stem, problems [set-changed|kado-write-failed], error {kind}
@@ -61,7 +65,12 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     (set-withdrawn) before set-exists is considered — drop completes it, deliver never resumes over it;
     steps already done are skipped on resume, a step in flight is compared or uploaded; the document mark
     is the last step — a refused guard (Kado's error code CONFLICT, or the client's KadoConcurrencyError)
-    is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable.
+    is doc-changed with failed_step doc_mark, any other write failure kado-write-failed, both resumable;
+    doc-changed names why in reason — open-unsaved (Kado's dirty-editor message: the document is open in
+    Obsidian with unsaved changes), changed-since-read (the write guard's message, or KadoConcurrencyError),
+    unknown (a CONFLICT with neither) — the name only, never Kado's message; a resumed output reports the
+    recorded delivered_plan (mode, target, place; target_appeared from the Pass 1 mode against the recorded
+    one), the rebuilt plan when the delivery began before the record existed.
     drop refuses already-applied on any action with applied: true (no partial withdrawal); its set
     read answers absent only on NOT_FOUND, any other Kado failure stops the run; a refused guard on
     the set write is set-changed, resumable by running drop again.
@@ -111,8 +120,12 @@ NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
 SET_CHANGED = "set-changed"
 SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
+DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
 CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
 TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
+OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
+EDITOR_PHRASE = "open in the editor with unsaved changes"   # Kado's dirty-editor refusal (note-adapter conflictEditorError)
+GUARD_PHRASE = "updated in the background"                  # Kado's write guard (concurrency-guard)
 
 
 class Refused(Exception):
@@ -277,16 +290,24 @@ def preview(args: argparse.Namespace) -> dict:
 
 # ---------------------------------------------------------------- deliver
 
-def _tool_error_code(exc: KadoToolError) -> Optional[str]:
-    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
-    token when the payload is not JSON; None when neither names a code."""
+def _tool_error_payload(exc: KadoToolError) -> Optional[dict]:
+    """The MCP error payload after the client's prefix as a dict; None when it is not a JSON object."""
     text = str(exc)
     payload = text.split(TOOL_ERROR_PREFIX, 1)[1] if TOOL_ERROR_PREFIX in text else text
     try:
         data = json.loads(payload)
     except ValueError:
-        return CONFLICT if f'"code":"{CONFLICT}"' in payload else None
-    code = data.get("code") if isinstance(data, dict) else None
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _tool_error_code(exc: KadoToolError) -> Optional[str]:
+    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
+    token when the payload is not JSON; None when neither names a code."""
+    data = _tool_error_payload(exc)
+    if data is None:
+        return CONFLICT if f'"code":"{CONFLICT}"' in str(exc) else None
+    code = data.get("code")
     return code if isinstance(code, str) else None
 
 
@@ -294,6 +315,21 @@ def _is_conflict(exc: KadoError) -> bool:
     """Kado refused the guard: the client's concurrency error, or a tool error whose code is CONFLICT."""
     return isinstance(exc, KadoConcurrencyError) or (
         isinstance(exc, KadoToolError) and _tool_error_code(exc) == CONFLICT)
+
+
+def _conflict_reason(exc: KadoError) -> str:
+    """Why Kado refused the guard, as a name only: ``open-unsaved`` for the dirty-editor message,
+    ``changed-since-read`` for the write guard's message and for ``KadoConcurrencyError``, else ``unknown``."""
+    if isinstance(exc, KadoConcurrencyError):
+        return CHANGED_SINCE_READ
+    data = _tool_error_payload(exc) if isinstance(exc, KadoToolError) else None
+    message = data.get("message") if data is not None else None
+    message = message if isinstance(message, str) else ""
+    if EDITOR_PHRASE in message:
+        return OPEN_UNSAVED
+    if GUARD_PHRASE in message:
+        return CHANGED_SINCE_READ
+    return UNKNOWN_CONFLICT
 
 
 def _mark_document(run: Run, delivery: StagedDelivery) -> None:
@@ -310,7 +346,8 @@ def _mark_document(run: Run, delivery: StagedDelivery) -> None:
         run.vault.client.write_note(run.read.doc_path, marked, expected_modified=run.read.modified)
     except KadoError as exc:
         stop = delivery.fail(rdl.DOC_MARK, exc)
-        stop.status = DOC_CHANGED if _is_conflict(exc) else stop.status
+        if _is_conflict(exc):
+            stop.status, stop.reason = DOC_CHANGED, _conflict_reason(exc)
         raise stop from exc
     delivery.record(rdl.DOC_MARK)
 
@@ -324,6 +361,34 @@ def _delivery_paths(run: Run) -> Dict[str, str]:
 
 def _public_paths(paths: Dict[str, str]) -> Dict[str, str]:
     return {key: paths[key] for key in (rdl.SET_JSON, rdl.SET_MD, rdl.NOTE) if key in paths}
+
+
+def _plan_record(run: Run) -> dict:
+    """``mode``, ``target`` and ``place`` of the plan about to be written, for ``meta.json``: the anchor only
+    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``."""
+    place = dict(run.plan.place)
+    if place.get("anchor") != run.setup.anchor:
+        place["anchor"] = None
+    return {"mode": run.plan.mode, "target": run.plan.target, "place": place}
+
+
+def _report_delivered_plan(run: Run, out: dict) -> dict:
+    """A resumed output reports the plan recorded when the delivery began — ``mode``, ``target``, ``place`` —
+    and ``target_appeared`` against that mode; an anchor the record could not hold stays the rebuilt plan's;
+    without a record (a delivery begun before it existed) the rebuilt plan stands."""
+    record = run.meta.data.get(DELIVERED_PLAN)
+    if not isinstance(record, dict):
+        return out
+    out.update({key: record[key] for key in ("mode", "target") if key in record})
+    if isinstance(record.get("place"), dict):
+        place = dict(record["place"])
+        if place.get("anchor") is None:
+            place["anchor"] = out["place"].get("anchor")
+        out["place"] = place
+    out.pop("target_appeared", None)
+    if run.meta.data.get("mode") == ra.NEW_NOTE and record.get("mode") != ra.NEW_NOTE:
+        out["target_appeared"] = True
+    return out
 
 
 def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str, set_doc: dict) -> None:
@@ -360,6 +425,8 @@ def deliver(args: argparse.Namespace) -> dict:
     resumed = run.meta.started()
     if run.replaces_set:
         run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
+    if not resumed:                                            # the plan this run writes, persisted the same way
+        run.meta.data[DELIVERED_PLAN] = _plan_record(run)
     delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
                               lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
     try:
@@ -375,11 +442,14 @@ def deliver(args: argparse.Namespace) -> dict:
         if stop.status == "exists":
             return {"status": "refused", "stem": run.stem, "problems": [NAME_TAKEN], "exists_path": stop.exists_path,
                     "step": stop.step}
-        problem = DOC_CHANGED if stop.status == DOC_CHANGED else KADO_WRITE_FAILED
-        return {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
-                "paths": _public_paths(paths), "problems": [problem]}
-    return run.output(section=False, status="resumed" if resumed else "delivered", step="",
-                      paths=_public_paths(paths), next=NEXT)
+        stopped = {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
+                   "paths": _public_paths(paths), "problems": [KADO_WRITE_FAILED]}
+        if stop.status == DOC_CHANGED:
+            stopped["problems"], stopped["reason"] = [DOC_CHANGED], stop.reason
+        return stopped
+    out = run.output(section=False, status="resumed" if resumed else "delivered", step="",
+                     paths=_public_paths(paths), next=NEXT)
+    return _report_delivered_plan(run, out) if resumed else out
 
 
 # ---------------------------------------------------------------- drop

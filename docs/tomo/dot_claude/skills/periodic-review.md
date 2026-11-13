@@ -450,6 +450,31 @@ refusal or failure at that step. Either way the next `/review` lists the stem as
 (F5-AC10). The skill reads `status` first because the same key `problems` appears under `refused` and `stopped` with
 opposite meanings for the user: fix the document, or just try again.
 
+### Why `doc-changed` Branches on `reason` and Names Obsidian for `open-unsaved` (Phase 6 Live Walk)
+
+WHY: the live walk of 2026-11-13 stopped twice at the mark with `doc-changed` although the user had saved nothing
+since the preview: the review document was open in Obsidian and the `update-time-on-edit` plugin had changed its
+`Updated:` stamp in the editor buffer — unsaved — so Kado's dirty-editor guard refused the write. The skill said "edited,
+or open with unsaved edits: save it and run `/review` again", which is true and did not help: the user had not typed
+anything and did not know a plugin had. The script now names the cause in `reason` (`open-unsaved` for Kado's editor
+refusal, `changed-since-read` for the write guard, `unknown` for a conflict with neither; docs/tomo/scripts/
+review-instructions.md, "WHY the `doc-changed` Stop Carries a `reason`"), and the skill branches on it once: for
+`open-unsaved` it says the document is open in Obsidian with unsaved changes, names a plugin that stamps the note on
+edit as a possible cause, and says to save it (Cmd+S) or close it, then run `/review` and choose Resume — the two
+actions that clear the editor buffer, and the step that retries the mark. After Cmd+S the live walk's Resume went
+through. `changed-since-read` and `unknown` keep the earlier wording: for a stale stamp "save and run `/review` again"
+is right, and for an unknown conflict nothing more specific is known. The reason is read from Kado's message in the
+script, never shown: Kado's message names the document's path, and stdout carries problem classes only.
+
+### Why a `resumed` Report Is the Plan the Delivery Wrote (Phase 6 Live Walk)
+
+WHY: the skill repeats `target`, `place` and the `target_appeared` line from the `deliver` output as what Tomo did.
+On a resume the script used to report the plan rebuilt against the vault now — the live walk's resume said `replace`
+at `Tomo Review` with `target_appeared` after the first attempt had written a new note and a `move_note` set, because
+Hashi had moved the note in between. The script now records the plan it writes with its first step and a `resumed`
+output reports that record (docs/tomo/scripts/review-instructions.md, "WHY a Resume Reports the Plan It Recorded");
+the skill's step 8 lines did not change, they only became true on a resume.
+
 ## Why `drop` Withdraws and Abort Before Delivery Writes Nothing (ADR-13)
 
 WHY: Abort at the Deliver question is free: nothing was written, the document stays open. Drop is offered only for a

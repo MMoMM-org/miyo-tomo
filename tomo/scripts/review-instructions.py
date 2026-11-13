@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.6
+# version: 0.2.7
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -75,12 +75,13 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     Obsidian with unsaved changes), changed-since-read (the write guard's message, or KadoConcurrencyError),
     unknown (a CONFLICT with neither) — the name only, never Kado's message; a resumed output reports the
     recorded delivered_plan (mode, target, place; target_appeared from the Pass 1 mode against the recorded
-    one), the rebuilt plan when the delivery began before the record existed; a resume of a record whose
-    anchor_picked is true needs --place-anchor again (anchor-needed, with headings, before anything else);
-    a resume with a record and an undone step among the record's own steps (note for a new-note record,
-    set_json, set_md) is refused replan-differs when the rebuilt mode, target, place.placement or place.level
-    differs from the record, or place.anchor when the record holds one — before the rebuilt plan's own
-    problems; only doc_mark undone, or no record, resumes as before.
+    one), the rebuilt plan when the delivery began before the record existed; on a delivery still open (begun,
+    doc_mark undone, not withdrawn, no set-withdrawn), a record whose anchor_picked is true needs --place-anchor
+    again (anchor-needed, with headings, before anything else), and a record with an undone step among its own
+    steps (note for a new-note record, set_json, set_md) is refused replan-differs when the rebuilt mode, target,
+    place.placement or place.level differs from the record, or place.anchor when the record holds one — before
+    the rebuilt plan's own problems; only doc_mark undone, or no record, resumes as before; a finished or
+    withdrawn delivery keeps set-exists or set-withdrawn and is never compared or asked for a heading.
     drop refuses already-applied on any action with applied: true (no partial withdrawal); its set
     read answers absent only on NOT_FOUND, any other Kado failure stops the run; a refused guard on
     the set write is set-changed, resumable by running drop again.
@@ -403,9 +404,12 @@ def _replan_differs(run: Run, record: dict) -> bool:
 def _resume_refusal(run: Run) -> Optional[str]:
     """Why a resumed run must not write: ``anchor-needed`` when the record says a heading was picked and none was
     given now; ``replan-differs`` when a step of the recorded plan is undone and the plan built now differs from
-    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree."""
+    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
+    delivery nothing resumes (the mark done, withdrawn, or a drop that did not finish): it keeps its own refusal."""
     record = run.meta.data.get(DELIVERED_PLAN)
-    if not isinstance(record, dict):
+    closed = (rdl.DOC_MARK in run.meta.steps_done or run.meta.withdrawn()
+              or rdl.SET_WITHDRAWN in run.problems)
+    if not isinstance(record, dict) or closed:
         return None
     if record.get(ANCHOR_PICKED) is True and not run.anchor_picked:
         return rdl.ANCHOR_NEEDED

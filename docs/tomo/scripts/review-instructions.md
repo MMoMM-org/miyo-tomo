@@ -224,15 +224,42 @@ re-plan's own refusing problems: a re-plan nobody will write has nothing to
 fix, and sending the user through a heading pick (`place-missing` carries
 `headings`) that ends in `replan-differs` would waste the pick.
 
+Each compared field moves on its own through one change the user can make:
+`target` when the note moves to the year subfolder or elsewhere (still
+`insert`, same place); `place.level` when the anchor heading is demoted;
+`place.anchor` when the configured heading is renamed and the new name is
+picked on the resume (without a pick the re-plan is `place-missing` and
+holds no level, so the level term catches it). `place.placement` is the
+setup's alone — `review_actions` copies `setup.placement` into every insert
+and new-note place, and `replace` arrives only together with the mode — so
+no vault change moves it by itself; it changes when the user edits
+`vault-config.yaml` between the stop and the resume, and the comparison
+reads it for that case. tests/test_review_deliver_resume.py holds one test
+per field on exactly that change, each red under a mutation that drops the
+field.
+
 The skill offers Drop: a vault that changed under a half-written set is the
 user's to look at, and Resume from the listing would refuse again (the
 re-plan is a pure function of the vault now). Two cases keep today's path.
 When only `doc_mark` is undone the set is complete and the resume only marks
 the document — the live-walk case, whose report 88773c67 fixed — so no
-comparison runs. A record without `delivered_plan` (a delivery begun before
-88773c67) has nothing to compare with and writes the re-plan as every resume
-did before; the record is never written by a resume, so such a delivery
-stays uncompared to its end.
+comparison runs; `note` counts as a step of the record only when the record's
+mode is `new-note`, since an insert or replace delivery never writes one. A
+record without `delivered_plan` (a delivery begun before 88773c67) has
+nothing to compare with and writes the re-plan as every resume did before;
+the record is never written by a resume, so such a delivery stays uncompared
+to its end.
+
+Both resume refusals — this one and `anchor-needed` below — guard what a
+resume would write, so they apply only to a delivery still open: begun, the
+mark undone, not withdrawn, and not a drop that did not finish (the emptied
+set `set-withdrawn` names). A finished delivery (`doc_mark` done) and a
+withdrawn one keep their own refusals, `set-exists` or `set-withdrawn`
+(0.2.7): asking the user for a heading, or telling them the vault changed,
+over a set nobody will write again would send them through a pick that ends
+in `set-exists` anyway. The order inside `deliver` is therefore: closed
+delivery → its own problems; open delivery → `anchor-needed`, then
+`replan-differs`, then the re-plan's own problems.
 
 ## WHY a Picked Anchor Is Recorded as a Flag and Asked Again (fix #258)
 
@@ -254,10 +281,12 @@ heading. On a resume of such a record without `--place-anchor`, `deliver`
 refuses `anchor-needed` and carries `headings`: the list the pick chooses
 from, built by `review_actions.pick_headings` from the target note, or from
 the chosen template for a new note, exactly as a place problem names them.
-The refusal is unconditional — it does not wait for the re-plan to refuse,
-and it holds when only `doc_mark` is undone as well, because the re-plan at
-the configured anchor may refuse there too (the first `place-missing` of
-#258) and one rule is simpler than two. With `--place-anchor` given the
+The refusal does not wait for the re-plan to refuse, and it holds when only
+`doc_mark` is undone as well, because the re-plan at the configured anchor
+may refuse there too (the first `place-missing` of #258) and one rule is
+simpler than two; its only condition is the one above — the delivery is
+still open (a finished or withdrawn stem keeps `set-exists` /
+`set-withdrawn`, 0.2.7). With `--place-anchor` given the
 resume continues, and the comparison above applies to the re-plan at that
 heading: a *different* pick is not caught (the record cannot hold the
 heading, so it compares placement and level only) — the accepted cost of

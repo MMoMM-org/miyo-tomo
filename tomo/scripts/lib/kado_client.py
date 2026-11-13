@@ -1,4 +1,4 @@
-# version: 0.15.0
+# version: 0.16.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -62,6 +62,14 @@ class KadoToolError(KadoError):
 
 class KadoBudgetExhausted(KadoError):
     """Raised when ``attempt_gate`` refuses a send; nothing was sent."""
+
+
+class KadoRateLimitError(KadoError):
+    """Raised when a 429 or 503 outlasts every retry; ``status`` is the HTTP code."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
 
 
 class KadoConcurrencyError(KadoToolError):
@@ -147,6 +155,10 @@ class KadoClient:
         # Minimum seconds between sends (monotonic clock).
         self.min_interval = min_interval
         self._last_send: float | None = None
+        # Seconds slept before 429/503 retries (Retry-After or backoff).
+        self.retry_wait_s = 0.0
+        # Seconds slept by _pace to keep sends min_interval apart.
+        self.pace_wait_s = 0.0
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -247,6 +259,7 @@ class KadoClient:
         fields: list[str] | None = None,
         depth: int | None = None,
         limit: int = 500,
+        filter: dict | None = None,
     ) -> list[dict]:
         """List notes under a vault path via kado-search operation=listNotes.
 
@@ -267,9 +280,15 @@ class KadoClient:
             Per-request page size for cursor-based pagination.  Defaults to 500.
             This is NOT a total-result cap — all pages are followed and merged,
             so the returned list may exceed ``limit``.
+        filter:
+            Optional Kado universal filter object, sent verbatim on every page,
+            e.g. ``{"createdAfter": 1774828800000, "createdBefore": 1775433599999}``
+            (Unix milliseconds; also ``modifiedAfter``/``modifiedBefore``,
+            ``path``, ``tags``, ``frontmatter``).  ``None`` omits the key.
         """
         return self._search_all(
-            "listNotes", path=path, depth=depth, limit=limit, fields=fields
+            "listNotes", path=path, depth=depth, limit=limit, fields=fields,
+            filter=filter,
         )
 
     def list_dir(self, path: str = "/", *, depth: int = None, limit: int = 500) -> list:
@@ -644,8 +663,13 @@ class KadoClient:
         depth: int = None,
         limit: int = 500,
         fields: list[str] | None = None,
+        filter: dict | None = None,
     ) -> list:
-        """Call kado-search, following cursors until all pages are collected."""
+        """Call kado-search, following cursors until all pages are collected.
+
+        ``filter`` (Kado's universal filter object) is repeated on every page:
+        the cursor is a bare offset and carries no filter of its own.
+        """
         all_items: list = []
         cursor: str = None
 
@@ -659,6 +683,8 @@ class KadoClient:
                 args["depth"] = depth
             if fields is not None:
                 args["fields"] = fields
+            if filter is not None:
+                args["filter"] = filter
             if cursor is not None:
                 args["cursor"] = cursor
 
@@ -678,6 +704,7 @@ class KadoClient:
         if self.min_interval > 0 and self._last_send is not None:
             wait = self._last_send + self.min_interval - time.monotonic()
             if wait > 0:
+                self.pace_wait_s += wait
                 time.sleep(wait)
         self._last_send = time.monotonic()
 
@@ -691,6 +718,7 @@ class KadoClient:
         KadoAuthError        — 401/403 HTTP response
         KadoNotFoundError    — 404 HTTP response or tool not-found error
         KadoToolError        — MCP tool returned isError: true
+        KadoRateLimitError   — 429/503 outlasted the retries; ``.status`` holds the code
         KadoError            — any other protocol/server error
         KadoBudgetExhausted  — attempt_gate refused a send; nothing was sent
         """
@@ -747,10 +775,15 @@ class KadoClient:
                         f"attempt {attempt + 1}/{_MAX_RETRIES}, sleeping {delay:.1f}s",
                         file=sys.stderr,
                     )
+                    self.retry_wait_s += delay
                     time.sleep(delay)
                     continue
-                suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""
-                raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}") from exc
+                if exc.code in _RETRY_STATUSES:
+                    raise KadoRateLimitError(
+                        f"HTTP {exc.code} from Kado: {exc.reason} (after {_MAX_RETRIES} retries)",
+                        status=exc.code,
+                    ) from exc
+                raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc
             except urllib.error.URLError as exc:
                 reason = str(exc.reason)
                 if "refused" in reason.lower() or "timed out" in reason.lower():

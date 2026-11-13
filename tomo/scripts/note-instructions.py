@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.11
+# version: 0.3.1
 """note-instructions.py — lifecycle of one /note draft in tomo-tmp/note/<stem>/.
 
 The note-from-template skill calls this script for every state change of a
@@ -69,7 +69,6 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
-import re
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
@@ -86,7 +85,7 @@ from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E4
 from lib.note_actions import build_note_actions, build_note_instruction_set  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.note_meta import (  # noqa: E402
-    KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, is_frozen, mark_step_done,
+    KADO_CONFIG, STEPS, MetaError, apply_stage_update, draw_stem, is_frozen,
     mark_step_failed, new_meta, read_meta, remove_stage, stage_dir, write_meta,
 )
 from lib.note_meta import NOTE_FILE, stage_root  # noqa: E402
@@ -94,10 +93,12 @@ from lib.note_paths import (  # noqa: E402
     has_template_syntax, has_unsafe_char, is_inside, vault_folder, vault_note,
 )
 from lib.note_process import PROCESS_DIR, read_process  # noqa: E402
+from lib.render_helpers import fence_for  # noqa: E402
 from lib.render_md import render_instructions_md  # noqa: E402
 from lib.render_withhold import (  # noqa: E402
     make_folder_listing, validate_destinations, withdraw_unjustified_deletes,
 )
+from lib.staged_delivery import DeliveryStop, StagedDelivery, stable_block  # noqa: E402
 from lib.template_syntax import (  # noqa: E402
     filled_note_check, resolve_tokens, source_link_value,
 )
@@ -172,11 +173,6 @@ def remove_view() -> None:
     _view_path().unlink(missing_ok=True)
 
 
-def _fence_for(text: str) -> str:
-    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
-    return "`" * max(4, longest + 1)
-
-
 def render_view(meta, note_text: str) -> str:
     """Return the approval header (SKILL step 6 wording) and note_text in a fence."""
     lines = [f"Template: {meta.template_stem} · Final name: {meta.destination_file()} · "
@@ -184,7 +180,7 @@ def render_view(meta, note_text: str) -> str:
     if meta.source_path and not meta.keep_source:
         lines.append(f"Source {meta.source_path} is deleted when you apply "
                      "the instruction set in Hashi.")
-    fence = _fence_for(note_text)
+    fence = fence_for(note_text)
     body = note_text if note_text.endswith("\n") else note_text + "\n"
     return "\n\n".join(lines) + f"\n\n{fence}markdown\n{body}{fence}\n"
 
@@ -385,14 +381,6 @@ class UnguardedMarkError(Exception):
     """read_frontmatter returned no modified time; the merge would be unguarded."""
 
 
-class DeliveryStop(Exception):
-    """Ends a delivery early with an output status, a step and an exit code."""
-
-    def __init__(self, status: str, step: str, code: int, exists_path: str = ""):
-        super().__init__(status)
-        self.status, self.step, self.code, self.exists_path = status, step, code, exists_path
-
-
 def _set_path(meta, suffix: str) -> str:
     return f"{posixpath.dirname(meta.inbox_file)}/{meta.instructions_stem()}{suffix}"
 
@@ -414,13 +402,6 @@ def _deliver_output(meta, status: str, step: str = "", exists_path: str = "",
             "exists_path": exists_path}
 
 
-def _stable_block(doc_type: str, state: str, meta) -> dict:
-    """A tomo: block whose updated_at is meta.generated, so a rebuild is byte-identical."""
-    block = build_tomo_block(doc_type, state, meta.run_id)
-    block["updated_at"] = meta.generated
-    return block
-
-
 def _checked_note(stage: Path, meta) -> str:
     """Return the resolved draft stamped rendered-note/pending-move; refuse a failing check."""
     resolved = _resolved_draft(stage, meta)
@@ -430,7 +411,7 @@ def _checked_note(stage: Path, meta) -> str:
         raise DeliveryStop("failed", "", 1)
     try:
         return merge_tomo_block_into_markdown(
-            resolved, _stable_block("rendered-note", "pending-move", meta))
+            resolved, stable_block("rendered-note", "pending-move", meta))
     except FrontmatterMergeError as exc:
         print(f"note-instructions: cannot stamp the note ({type(exc).__name__})", file=sys.stderr)
         raise DeliveryStop("failed", "", 1) from exc
@@ -458,58 +439,13 @@ def _payloads(meta, note_text: str, actions: list[dict]) -> dict:
     return {"note": note_text,
             "instructions_json": json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
             "instructions_md": merge_tomo_block_into_markdown(
-                md, _stable_block("instructions", "pending-apply", meta))}
+                md, stable_block("instructions", "pending-apply", meta))}
 
 
-def _without_final_newline(text: str) -> str:
-    return text[:-1] if text.endswith("\n") else text
-
-
-def _same_text(client, path: str, payload: str) -> bool:
-    if path.endswith(".md"):
-        landed = client.read_note(path).get("content") or ""
-    else:
-        landed = client.read_file_bytes(path).decode("utf-8", errors="replace")
-    return _without_final_newline(landed) == _without_final_newline(payload)
-
-
-def _upload(client, path: str, payload: str) -> None:
-    if path.endswith(".md"):
-        client.write_note(path, payload)
-    else:
-        client.write_file(path, payload.encode("utf-8"))
-
-
-def _mark_in_flight(stage: Path, meta, step: str) -> None:
-    mark_step_failed(meta, step)
-    write_meta(stage, meta)
-
-
-def _record(stage: Path, meta, step: str) -> None:
-    mark_step_done(meta, step)
-    write_meta(stage, meta)
-
-
-def _fail(stage: Path, meta, step: str, exc: Exception) -> DeliveryStop:
-    mark_step_failed(meta, step)
-    write_meta(stage, meta)
-    print(f"note-instructions: delivery failed at {step} ({type(exc).__name__})", file=sys.stderr)
-    return DeliveryStop("failed", step, 1)
-
-
-def _deliver_step(client, stage: Path, meta, step: str, payload: str) -> None:
-    """Identical target: done. Other text: name taken. Absent: write unless already done."""
-    path = _targets(meta)[step]
-    try:
-        if client.path_exists(path):
-            if not _same_text(client, path, payload):
-                raise DeliveryStop("exists", step, 3, path)
-        elif step not in meta.steps_done:
-            _mark_in_flight(stage, meta, step)
-            _upload(client, path, payload)
-    except KadoError as exc:
-        raise _fail(stage, meta, step, exc) from exc
-    _record(stage, meta, step)
+def _staged_delivery(client, stage: Path, meta) -> StagedDelivery:
+    """The shared loop over /note's steps, persisting meta.json through write_meta."""
+    return StagedDelivery(client, STEPS, _targets(meta), meta,
+                          lambda: write_meta(stage, meta), script="note-instructions")
 
 
 def _write_mark(client, meta) -> bool:
@@ -537,7 +473,7 @@ def _carries_mark(client, meta) -> bool:
             and block.get("run_id") == meta.run_id)
 
 
-def _mark_source(client, stage: Path, meta) -> bool:
+def _mark_source(client, delivery: StagedDelivery, meta) -> bool:
     """Run the source_mark step; return whether the source carries the mark."""
     if not meta.source_path:
         return False
@@ -545,8 +481,8 @@ def _mark_source(client, stage: Path, meta) -> bool:
     try:
         marked = _carries_mark(client, meta) if recorded else _write_mark(client, meta)
     except (KadoError, UnguardedMarkError) as exc:
-        raise _fail(stage, meta, SOURCE_MARK, exc) from exc
-    _record(stage, meta, SOURCE_MARK)
+        raise delivery.fail(SOURCE_MARK, exc) from exc
+    delivery.record(SOURCE_MARK)
     return marked
 
 
@@ -560,9 +496,10 @@ def _deliver(stage: Path, meta) -> bool:
         write_meta(stage, meta)
         raise DeliveryStop("failed", KADO_CONFIG, 1) from exc
     payloads = _payloads(meta, note_text, _guarded_actions(meta, client))
+    delivery = _staged_delivery(client, stage, meta)
     for step in INBOX_STEPS:
-        _deliver_step(client, stage, meta, step, payloads[step])
-    return _mark_source(client, stage, meta)
+        delivery.deliver_step(step, payloads[step])
+    return _mark_source(client, delivery, meta)
 
 
 def cmd_deliver(args: argparse.Namespace) -> int:

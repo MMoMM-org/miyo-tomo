@@ -1058,3 +1058,24 @@ A `/note` note cannot (the filled-note check refuses leftover tokens), so
 `note-instructions.py deliver` passes `templater_hint: False` in `cfg`. The key
 defaults to on, so Pass 2, which never sets it, renders the line as before. See
 `docs/tomo/scripts/note-instructions.md` for the `/note` side.
+
+## `insert_under_marker` and `replace_section` Render Copy-Ready (spec 045 T1.5, v0.37.0)
+
+The blockquote rendering of `insert_under_marker` content was replaced by a
+fenced block (`lib/render_helpers.fence_for`), its heading now names the
+placement — "Insert before", "Insert inside" or "Insert after" the anchor
+heading — and `replace_section` got its own branch under "Replace the body of
+`…`", grouped with its sibling in `_md_section_for`. The reasons are in
+[instruction-render.md](../instruction-render.md#section-actions-render-copy-ready-spec-045-t15-render_md-v0370)
+(the task's named WHY site); this section exists so the mirrored path for
+`render_md.py` points at them.
+
+### WHY `_fenced_content` splits on `"\n"` only (v0.37.1, Phase 1 review)
+
+The fence body is the content a user copies by hand, so it must come back
+byte for byte. `str.splitlines()` also breaks a line on `\x0b`, `\x0c`,
+`\x1c`–`\x1e`, `\x85`, ` ` and ` ` and drops the character —
+a line separator inside a review line would silently become two lines.
+The body is therefore split on `"\n"` alone; one trailing newline is the
+line terminator and adds no empty line, a trailing blank line stays, and
+empty content yields an empty fence (the pre-existing pin).

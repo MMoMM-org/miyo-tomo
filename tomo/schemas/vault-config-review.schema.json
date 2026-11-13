@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-review.schema.json",
+  "title": "vault-config.yaml — /review setup for one period kind",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py review` (spec 045, ADR-5). One confirmed setup for one period kind. The writer edits only the config keys the input names — concepts.calendar.granularities.<weekly|monthly>, naming.calendar_patterns.<weekly|monthly>, templates.mapping.<weekly|monthly> and the review: section — and leaves every other byte of vault-config.yaml unchanged. An optional key that is absent changes nothing; a null template or template_variant removes the config key. The week rule is required for kind week and not accepted for kind month. The daily folder path is corrected only when daily_path_fix is present.",
+  "type": "object",
+  "required": ["kind", "folder", "format", "heading", "place", "language"],
+  "additionalProperties": false,
+  "$defs": {
+    "trimmed": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+      "description": "A non-empty string with no whitespace at either end."
+    },
+    "trimmedList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trimmed" }
+    }
+  },
+  "properties": {
+    "kind": {
+      "enum": ["week", "month"],
+      "description": "The period kind this setup is for; selects the weekly or monthly keys."
+    },
+    "folder": {
+      "$ref": "#/$defs/trimmed",
+      "description": "Vault folder of the periodic notes (concepts.calendar.granularities.<kind>.path); enabled is set to true."
+    },
+    "format": {
+      "$ref": "#/$defs/trimmed",
+      "description": "Moment-style name format (naming.calendar_patterns.<kind>), e.g. GGGG-[W]WW or YYYY-MM; checked by period.check_format under the input's week rule."
+    },
+    "first_day": {
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+      "description": "First day of the week (review.week.first_day); kind week only."
+    },
+    "min_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7,
+      "description": "Days of the new year week 1 must hold (review.week.min_days_in_first_week); 4 = ISO, 1 = week 1 contains 1 January; kind week only."
+    },
+    "template": {
+      "oneOf": [{ "$ref": "#/$defs/trimmed" }, { "type": "null" }],
+      "description": "Template filename under templates.base_path (templates.mapping.<kind>); null removes the mapping key; absent leaves it as it is."
+    },
+    "template_variant": {
+      "oneOf": [{ "$ref": "#/$defs/trimmed" }, { "type": "null" }],
+      "description": "Tomo-ready variant of a Templater template (review.<kind>.template_variant); null removes the key."
+    },
+    "heading": {
+      "$ref": "#/$defs/trimmed",
+      "pattern": "^[^#\\s][\\s\\S]*$",
+      "description": "Text of the review heading without # marks (review.<kind>.heading)."
+    },
+    "place": {
+      "type": "object",
+      "required": ["anchor", "placement"],
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "$ref": "#/$defs/trimmed",
+          "description": "Text of the heading the review section is placed at (review.<kind>.place.anchor)."
+        },
+        "placement": {
+          "enum": ["before", "inside"],
+          "description": "before = at the anchor's level above it; inside = one level deeper at the end of its section. after is never accepted (ADR-3)."
+        }
+      }
+    },
+    "own_sections": {
+      "$ref": "#/$defs/trimmedList",
+      "description": "Headings of the periodic note the user writes by hand (review.<kind>.own_sections)."
+    },
+    "daily_sections": {
+      "$ref": "#/$defs/trimmedList",
+      "description": "Daily-note sections to read (review.daily.sections)."
+    },
+    "skip_sections": {
+      "$ref": "#/$defs/trimmedList",
+      "description": "Daily-note sections never read, prefix match on the heading text (review.daily.skip_sections)."
+    },
+    "task_notes": {
+      "$ref": "#/$defs/trimmedList",
+      "description": "Vault paths of living task notes (review.daily.task_notes)."
+    },
+    "max_chars_per_day": {
+      "type": "integer",
+      "minimum": 1000,
+      "description": "Read cap per day (review.daily.max_chars_per_day)."
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z]{2,8})?$",
+      "description": "Review language as a BCP 47 primary tag with an optional subtag (review.language), e.g. de, en, pt-BR."
+    },
+    "daily_path_fix": {
+      "$ref": "#/$defs/trimmed",
+      "description": "Corrected daily folder path (concepts.calendar.granularities.daily.path); present only when the user confirmed the correction."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "week" } }, "required": ["kind"] },
+      "then": { "required": ["first_day", "min_days"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "month" } }, "required": ["kind"] },
+      "then": { "properties": { "first_day": { "not": {} }, "min_days": { "not": {} } } }
+    }
+  ]
+}

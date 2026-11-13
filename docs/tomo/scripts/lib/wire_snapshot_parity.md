@@ -183,18 +183,34 @@ guess dressed as a measurement.
 
 `SANCTIONED_ASYMMETRIES` + `partition_sanctioned` exist because of what
 T4.4 found the moment the two published wires reached zero: the
-**instructions** wire has three permanent differences from its vendored
-copy, and none of them is drift.
+**instructions** wire had three permanent differences from its vendored
+copy, and none of them was drift.
 
 - `properties.tomo` is Tomo-owned. Its own schema description records the
   agreement — kept permissive "so Tomo can evolve the block without a
   coordinated round-trip" (tomo-to-hashi handoff 2026-06-20,
   miyo-tomo#74) — and states that "Hashi ignores it for execution — Hashi
   only runs `actions`."
-- `$defs/replace_section` exists in the contract and not in the producer
-  copy. That is the structural difference spec 035 T3.2 gave the two
+- `$defs/replace_section` existed in the contract and not in the producer
+  copy. That was the structural difference spec 035 T3.2 gave the two
   documents distinct `$id`s over. Their carrying a definition we never
-  emit cannot make them reject anything of ours.
+  emitted could not make them reject anything of ours.
+
+**The second entry was removed by spec 045 (ADR-3, 2026-11-11).** `/review`
+delivers a rerun of its section as `replace_section`, so Tomo now emits the
+action and the producer schema carries the definition — copied from the
+contract verbatim, never the other way round, because the contract mirror
+is Hashi's document and is never edited here. Once both copies hold the
+same `$defs/replace_section`, the prefix no longer names an agreed
+difference; leaving it in would have been exactly the hidden-change case
+point 4 below warns about — a genuine divergence inside that subtree
+would have been filed as agreed-and-expected. The entry went out the same
+commit the definition came in, and the pinning tests in
+`tests/test_wire_snapshot_parity.py` assert the one-entry set. The distinct
+`$id`s stay: ADR-6 of spec 035 rests on the two documents having different
+roles (producer vs. vendored contract), not on this one structural
+difference, and a producer copy that today matches the contract will not
+match it the next time Hashi ships an action Tomo does not emit.
 
 Three options were on the table. Baselining the three entries (assert
 exactly them, read F6-AC3 as "no *unexpected* delta") was rejected because

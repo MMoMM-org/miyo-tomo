@@ -406,9 +406,9 @@ the draft stays, because dropping it would discard the user's material in `tomo-
 
 Whether anything reached the vault depends on the cause. A malformed or unknown stem, an unreadable `meta.json` and
 "no title staged" stop `deliver` before it asks Kado, so nothing reached the vault. A failed `meta.json` write can come
-after a step landed: `_record` writes it after each delivery step and `_fail` after a failed one, so the inbox may
-already hold the note or the `<stem>_instructions` files, and a failed `_record` write leaves that step out of
-`steps_done`. On the next `/note`, a stage whose `meta.json` already holds a `steps_done` entry or a `failed_step` is a
+after a step landed: `StagedDelivery.record` (`lib/staged_delivery.py`, called from `note-instructions.py deliver`)
+writes it after each delivery step and `StagedDelivery.fail` after a failed one, so the inbox may already hold the
+note or the `<stem>_instructions` files, and a failed `record` write leaves that step out of `steps_done`. On the next `/note`, a stage whose `meta.json` already holds a `steps_done` entry or a `failed_step` is a
 kept draft, and resume counts the landed file as done, not as a name clash, because `deliver` rebuilds identical text.
 That holds for the first step (`note`) too: `deliver` writes the step as `failed_step` to `meta.json` before uploading
 it, so a stage whose upload landed but was never recorded is a kept draft, never one of the `stale_stages` the skill

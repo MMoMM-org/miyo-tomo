@@ -77,6 +77,7 @@
           {"$ref": "#/$defs/delete_source"},
           {"$ref": "#/$defs/skip"},
           {"$ref": "#/$defs/insert_under_marker"},
+          {"$ref": "#/$defs/replace_section"},
           {"$ref": "#/$defs/edit_note_text"},
           {"$ref": "#/$defs/edit_frontmatter"},
           {"$ref": "#/$defs/remove_up_link"},
@@ -293,6 +294,19 @@
           "type": "string",
           "description": "Multi-line markdown block to insert verbatim. May contain embedded newlines. Hashi inserts as-is without transformation."
         },
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "replace_section": {
+      "type": "object",
+      "required": ["id", "action", "target_path", "anchor", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "replace_section"},
+        "target_path": {"type": "string", "description": "Vault-relative full path of ANY existing note to modify (not a MOC stem). Hashi modifies only; Tomo guarantees the note exists before emitting."},
+        "anchor": {"$ref": "#/$defs/anchor", "description": "Marker locating the section to overwrite. Heading-scoped for v1: anchor.type must be heading; the section body (line after the heading down to the next heading of same-or-higher level, or EOF) is replaced and the heading line preserved. A non-heading anchor type fails gracefully."},
+        "content": {"type": "string", "description": "Multi-line markdown block that REPLACES the heading section body. MAY contain embedded \\n (blank lines preserved). Unlike insert_under_marker, replace_section overwrites — the prior section body is discarded. Anchor-not-found / missing target → graceful no-op, never a blind write."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

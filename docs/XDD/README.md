@@ -24,6 +24,7 @@
 | 018 | [Agent Architecture Cleanup](specs/018-agent-architecture-cleanup/) | Live-validated | Review + live testing complete 2026-05-27. Conductors refactored to pure routers, skills own pipelines, synthesis-conductor dispatched on haiku, moc-proposal-parser added, related:: aggregation Tomo-side, inbox-triage state coverage extended. |
 | 024 | [Tag-Handler Framework](specs/024-tag-handler-framework/) | Phase 5 | Phases 1–4 shipped (detect → compose → render → guards). T5.3 docs complete. |
 | 030 | [Knowledge-Garden Audit (`/garden-audit`)](specs/030-garden-audit/) | Shipped | Suggest/apply pipeline merged 2026-07-25 (#148): two-artifact split, opt-in apply, `resolve_dead_link`/`remove_up_link`/`file_note`, auto-on-approve advisory pushback, wire `suggest_pending` gate + bare-invocation auto-detect. |
+| 045 | [Weekly & Monthly Review (`/review`)](specs/045-weekly-monthly-review/) | Completed | 6 phases; live walk 2026-11-12/13 (19 runs, $7.51); close-out traces 59 criteria in one pytest run ([close-out](specs/045-weekly-monthly-review/close-out.md)); #31 |
 
 ## Architecture Reference
 

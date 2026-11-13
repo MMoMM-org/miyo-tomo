@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """tomo_lifecycle.py — Pure-data state machine for all Tomo-produced doc-types.
 
 ADR-1 (SDD §Architecture Decisions): the state machine is a plain dict-of-dicts
@@ -6,15 +6,18 @@ ADR-1 (SDD §Architecture Decisions): the state machine is a plain dict-of-dicts
 the module importable anywhere (stdlib only), trivially auditable, and avoids
 coupling state knowledge to any particular producer or consumer.
 
-All five doc-types produced by Tomo are represented:
+All doc-types produced by Tomo are represented:
 
   source         — inbox source items; captured at Pass-1 dispatch
   suggestions    — Pass-1 analysis output; approved after Pass-2 success
   suggestions-fan— XDD-012 Force-Atomic-Resolve companion; same lifecycle
   moc-proposal   — /moc-propose output; accepted after MOC-consumption
+  garden-audit   — /garden-audit report; accepted after its fixes render
   instructions   — Pass-2 / MOC-consumption output; applied when Hashi is done
+  review         — /review inbox document; approved when its set is delivered
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/solution.md §Application Data Models
+      docs/XDD/specs/045-weekly-monthly-review/solution.md ADR-10 (review)
 AC:   AC-3.4 (invalid transition rejected), AC-7.1 (single import point)
 """
 from __future__ import annotations
@@ -97,6 +100,21 @@ STATE_MACHINE: dict[str, dict[str, Any]] = {
             },
         ],
         "terminal": ["applied"],
+    },
+    "review": {
+        # spec 045 ADR-10 — "<period> Review.md" in the inbox; same shape as
+        # suggestions. The review_* keys are top-level frontmatter, not here.
+        "initial": None,
+        "states": ["pending-approval", "approved"],
+        "transitions": [
+            {"from": None, "to": "pending-approval", "trigger": "review-doc write"},
+            {
+                "from": "pending-approval",
+                "to": "approved",
+                "trigger": "review-instructions deliver, doc_mark step",
+            },
+        ],
+        "terminal": ["approved"],
     },
     "source": {
         # Source items have no outgoing transitions once captured.

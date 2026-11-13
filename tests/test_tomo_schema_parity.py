@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 2.2.0
+# version: 2.3.0
 """test_tomo_schema_parity.py — bidirectional action-contract parity guard between Tomo's two instruction schemas.
 
 tomo/schemas/instructions.schema.json    — Tomo's producer copy (original, from xdd-008).
@@ -82,11 +82,9 @@ PRODUCER_ONLY_PROPS: dict[tuple[str, str], str] = {
 # to instructions.schema.json simultaneously).
 # ---------------------------------------------------------------------------
 MIRROR_ONLY_ACTIONS: dict[str, str] = {
-    "replace_section": (
-        "no Tomo emitter — parity-only mirror of Hashi's shipped wire surface "
-        "(spec 025 ADR-7). Add a Tomo emitter if/when the structured-compose "
-        "producer needs to overwrite sections."
-    ),
+    # Empty — replace_section was the only entry (spec 025 ADR-7, no Tomo
+    # emitter) until spec 045 ADR-3 made /review's rerun delivery its first
+    # emitter; the $def and oneOf ref now live in instructions.schema.json.
 }
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -222,6 +222,19 @@ written after every step, so a process killed between steps leaves
 lists it as a kept draft (part of it is already in the vault), never as a stale
 stage to drop.
 
+## WHY the Deliver Loop Lives in lib/staged_delivery.py (spec 045, ADR-11)
+
+Since spec 045 the per-step loop (`deliver_step`, `mark_in_flight`, `record`,
+`fail`) and `stable_block` are `lib/staged_delivery.py`, shared with
+`/review`. `deliver` builds one `StagedDelivery` with its own step set
+(`lib/note_meta.STEPS`), its own step → path map (`_targets`) and a closure
+over `write_meta` as the persist callable, then runs the three inbox steps
+through `deliver_step` and the source mark through `record`/`fail`. The rules
+below (in flight before the upload, compare instead of skip or overwrite,
+check-then-act) describe the loop's behaviour, unchanged by the move; the
+reasons for the extraction and for its shape are in
+`docs/tomo/scripts/lib/staged_delivery.md`.
+
 ## WHY deliver Reports steps_done and frozen
 
 Every `deliver` output carries `steps_done` and `frozen` from `meta.json` as it
@@ -467,7 +480,9 @@ terminal for a long draft. `view.md` is the deterministic copy the
   own Markdown paragraph so the pane draws them as separate lines.
 - `note.md` follows in a fence one backtick longer than the longest backtick
   run in it (at least four), so a code block inside the note cannot end the
-  fence early.
+  fence early. The rule is `lib/render_helpers.fence_for`, shared with the
+  instruction renderer's section actions since spec 045 T1.5; this script
+  no longer carries its own copy.
 - `stage` removes `view.md` before it does anything else and writes it again
   only when the stage has a title and the filled-note check passes. A refused
   stage (exit 2), an untitled stage or a failing check therefore leaves no

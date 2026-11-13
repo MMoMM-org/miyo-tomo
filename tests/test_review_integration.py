@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_integration.py — review-read.py over Privat-Test through a live Kado
 (spec 045 T6.2; PRD Assumptions; SDD Quality Requirements).
 
-Opt-in on three counts, every test skips otherwise: ``-m integration``,
-``TOMO_LIVE_KADO=1`` and a Kado that answers. The Kado URL and key come from
+Opt-in on two counts, every live test skips otherwise: ``TOMO_LIVE_KADO=1`` and a Kado that answers
+(``-m integration`` only selects the marked tests; no default option excludes them, so it is not a gate). A Kado
+that refuses the key (``KadoAuthError``) fails the run: a wrong key is a real failure, an unreachable Kado is a
+skip. The Kado URL and key come from
 ``KADO_URL``/``KADO_TOKEN`` or, read-only, from ``tomo-instance/.mcp.json``
 (``host.docker.internal`` becomes ``127.0.0.1`` for the host). The owner runs:
 
@@ -60,7 +62,7 @@ SCRIPT_PATH = SCRIPTS_DIR / "review-read.py"
 INSTANCE_MCP_JSON = REPO_ROOT / "tomo-instance" / ".mcp.json"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.kado_client import KadoClient, KadoError, _extract_from_mcp_json  # noqa: E402
+from lib.kado_client import KadoAuthError, KadoClient, KadoConnectionError, KadoError, _extract_from_mcp_json  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
@@ -108,15 +110,43 @@ def _live_settings() -> Optional[Tuple[str, str]]:
 @pytest.fixture(scope="module")
 def live() -> Tuple[str, str]:
     if os.environ.get(OPT_IN) != "1":
-        pytest.skip(f"live Kado run is opt-in: {OPT_IN}=1 with -m integration")
+        pytest.skip(f"live Kado run is opt-in: {OPT_IN}=1")
     settings = _live_settings()
     if settings is None:
         pytest.skip(f"no Kado settings: KADO_URL and KADO_TOKEN, or {INSTANCE_MCP_JSON}")
+    _probe(settings)
+    return settings
+
+
+def _probe(settings: Tuple[str, str]) -> None:
+    """One cheap call: a skip when Kado does not answer, a failure when it answers and refuses the key."""
     try:
         KadoClient(base_url=settings[0], token=settings[1]).list_dir("/", depth=1, limit=1)
+    except KadoAuthError as exc:
+        pytest.fail(f"Kado at {settings[0]} refused the key: {type(exc).__name__}", pytrace=False)
     except KadoError as exc:
         pytest.skip(f"Kado does not answer at {settings[0]}: {type(exc).__name__}")
-    return settings
+
+
+@pytest.mark.parametrize("error, outcome", [(KadoAuthError("401"), pytest.fail.Exception),
+                                             (KadoConnectionError("down"), pytest.skip.Exception)],
+                         ids=["wrong-key-fails", "unreachable-skips"])
+def test_the_probe_fails_on_a_refused_key_and_skips_on_an_unreachable_kado(monkeypatch, error, outcome):
+    """No live Kado needed: the probe's two outcomes, with the client's list_dir raising each error."""
+    class Refusing:
+        def __init__(self, base_url, token):
+            pass
+
+        def list_dir(self, *args, **kwargs):
+            raise error
+
+    monkeypatch.setattr(sys.modules[__name__], "KadoClient", Refusing)
+    got = None
+    try:
+        _probe(("http://127.0.0.1:1", "t"))
+    except (pytest.fail.Exception, pytest.skip.Exception) as exc:     # caught, so a wrong outcome fails here
+        got = type(exc)
+    assert got is outcome
 
 
 class GuardedClient(KadoClient):
@@ -214,8 +244,6 @@ def _run_period(live: Tuple[str, str], root: Path, period: str, kind: str) -> Ru
     assert code == 0, f"review-read.py exited {code}"
     out = json.loads(buffer.getvalue())
     assert out["stem"] == f"{period}_review", out.get("stem")
-    assert code == 0, f"review-read.py exited {code}"
-    out = json.loads(buffer.getvalue())
     assert out["status"] == "ok", {k: out.get(k) for k in ("status", "problems", "error")}
     assert out["nothing_to_review"] is False and out["read_path"], out.get("read_path")
     return Run(out, client, root)

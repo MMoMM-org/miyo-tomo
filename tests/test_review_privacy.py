@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.4
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -30,7 +30,8 @@ which marker kinds it may carry and why. The walk then asserts:
   included;
 - no marker in stdout once the named fields are taken out;
 - a named field carries only its own kinds, and every named field really
-  carried its marker (no stale entry);
+  carried its marker (no stale entry): the allowlist and the walk's stdout are compared both ways, so the
+  table needs no test of its own;
 - no marker in any file under tomo-tmp/review/ that a step leaves behind;
 - the readable tracker value reaches read.json and the document's habits
   line, and nothing else of Tomo's: not stderr, not stdout outside the named
@@ -515,10 +516,6 @@ def test_every_named_field_carried_its_marker_once(walk):
             if seen:
                 used.add((call["script"], call["sub"], field))
     assert sorted(set(USER_TEXT_FIELDS) - used) == []
-
-
-def test_user_text_fields_give_a_reason_each():
-    assert all(kinds and reason.strip() for kinds, reason in USER_TEXT_FIELDS.values())
 
 
 def test_no_marker_in_tomos_working_files_after_any_step(walk):

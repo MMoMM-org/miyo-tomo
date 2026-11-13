@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.4.2
 r"""test_review_instructions.py — lib/review_actions.py (spec 045 T4.1; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3, Edge Cases; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -69,11 +69,8 @@ from lib import review_doc as rd  # noqa: E402
 from lib import review_doc_parse as rdp  # noqa: E402
 from lib.period import ISO, Period  # noqa: E402
 from test_review_doc import INBOX, WEEKLY, _doc_input  # noqa: E402
+from review_deliver_helpers import SCHEMA_PARAMS  # noqa: E402
 from test_review_doc_parse import GROUPS, tick  # noqa: E402
-
-SCHEMAS = [REPO / "tomo" / "schemas" / "instructions.schema.json",
-           REPO / "tomo" / "schemas" / "hashi-instructions.schema.json"]
-HASHI_VENDORED = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
 
 PERIOD = "2026-W13"
 MARKER = f"%% tomo-review {PERIOD} %%"
@@ -723,8 +720,7 @@ def test_actions_an_unapproved_gateless_or_empty_review_emits_nothing():
 # ---------------------------------------------------------------- the wire
 
 @pytest.mark.parametrize("mode", ["insert", "replace", "new-note"])
-@pytest.mark.parametrize("schema", SCHEMAS + ([HASHI_VENDORED] if HASHI_VENDORED.exists() else []),
-                         ids=lambda p: p.name if p.parent.name == "schemas" else "hashi-vendored")
+@pytest.mark.parametrize("schema", SCHEMA_PARAMS)
 def test_actions_every_set_validates_against_both_schemas(mode, schema):
     p = {"insert": lambda: plan(), "replace": lambda: plan(target_text=landed_note()),
          "new-note": lambda: plan(target_text=None, template=ra.Template(raw=RAW_TEMPLATE))}[mode]()

@@ -1,5 +1,5 @@
 # staged_delivery.py — the staged, resumable deliver loop shared by /note and /review.
-# version: 0.1.0
+# version: 0.1.1
 """Write a set of vault files one step at a time, resumable without duplicates.
 
 ``note-instructions.py deliver`` and the /review delivery write their files in
@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterable, Mapping
+from typing import Optional
 
 from lib.doc_frontmatter import build_tomo_block
 from lib.kado_client import KadoError
@@ -45,11 +46,14 @@ from lib.note_meta import mark_step_done, mark_step_failed
 
 
 class DeliveryStop(Exception):
-    """Ends a delivery early with an output status, a step and an exit code."""
+    """Ends a delivery early with an output status, a step and an exit code.
+
+    ``reason`` is a caller's name for why the stop happened; None unless the caller sets it."""
 
     def __init__(self, status: str, step: str, code: int, exists_path: str = ""):
         super().__init__(status)
         self.status, self.step, self.code, self.exists_path = status, step, code, exists_path
+        self.reason: Optional[str] = None
 
 
 def stable_block(doc_type: str, state: str, meta) -> dict:

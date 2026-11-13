@@ -360,14 +360,14 @@ edits" — could not tell the user the one thing that helped: save (Cmd+S) or
 close the note, then Resume. Kado offers no structured sub-code (its hint
 says "the file changed" for both), so the only source is the message text.
 
-`_conflict_reason` reads it and answers a name: `open-unsaved` when the
+`conflict_reason` (lib/review_delivery.py) reads it and answers a name: `open-unsaved` when the
 message carries Kado's editor phrase ("open in the editor with unsaved
 changes"), `changed-since-read` for the write guard's phrase ("updated in
 the background") and for the client's `KadoConcurrencyError` (the client
 raises it for the same guard on frontmatter writes), `unknown` for a
 CONFLICT with neither — a payload the token fallback recognised but could
 not parse, or a message Kado changes one day. The classification is next to
-`_tool_error_code` because both read the same payload; the message is read
+`tool_error_code` because both read the same payload; the message is read
 once there and never travels further. The skill branches on `open-unsaved`
 only; the other two keep the earlier wording, since "save and run `/review`
 again" is right for both and the user cannot act differently on `unknown`.
@@ -494,7 +494,7 @@ Hashi may write `applied` between `drop`'s read and its write — the user
 runs Hashi and `/review` in the same minute. The set JSON is therefore
 written with `expected_modified` set to the `modified` the read returned,
 the same guard the document mark uses. A refused guard (Kado's `CONFLICT`,
-recognised by `_is_conflict` exactly as on the mark) is `set-changed`:
+recognised by `is_conflict` exactly as on the mark) is `set-changed`:
 `status: stopped`, nothing written, the stage and the meta unchanged,
 resumable by running `drop` again — the second run reads the set as it is
 now and refuses or withdraws on what it finds. Any other failure stays
@@ -546,3 +546,19 @@ JSON for an approved document (1), then for a waiting set one probe (insert
 or replace: the target) or one to two (move: the source, then the
 destination only while the source exists). A week stays well under the
 budget.
+
+## WHY the Delivery Helpers Live in `lib/review_delivery.py` (#260)
+
+`review-instructions.py` stood at 630 lines against the constitution's L2
+band. The helpers that need no `Run` — Kado's refused guard (`tool_error_payload`,
+`tool_error_code`, `is_conflict`, `conflict_reason`) and the #258 record and
+resume (`plan_record`, `replan_differs`, `resume_refusal`,
+`report_delivered_plan`), with the two path shapers `delivery_paths` and
+`public_paths` — moved to `lib/review_delivery.py` as public names. They take
+the plan, the meta, the problems and the configured anchor they read, not the
+script's `Run`, so the lib has no import back into the script. The script
+keeps the context of one run, the Kado reads, the four subcommands and the
+argparse wiring. The reason of a `doc-changed` stop is read from
+`DeliveryStop.reason` (declared in `lib/staged_delivery.py`, `None` unless the
+mark set it), so the stop's output no longer tests the status as well.
+Nothing the script prints changed; the delivery tests run unchanged.

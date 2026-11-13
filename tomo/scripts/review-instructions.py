@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.7
+# version: 0.2.8
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -115,7 +115,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib import review_doc as rd  # noqa: E402
 from lib.kado_client import (  # noqa: E402
-    KadoClient, KadoConcurrencyError, KadoError, KadoNotFoundError, KadoToolError,
+    KadoClient, KadoError, KadoNotFoundError,
 )
 from lib.note_io import ConfigError, load_vault_config  # noqa: E402
 from lib.period import parse_name, render_name  # noqa: E402
@@ -131,13 +131,6 @@ NEXT = "hashi-or-by-hand"
 DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed", "name-taken"
 SET_CHANGED = "set-changed"
 SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
-DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
-ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
-CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
-TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
-OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
-EDITOR_PHRASE = "open in the editor with unsaved changes"   # Kado's dirty-editor refusal (note-adapter conflictEditorError)
-GUARD_PHRASE = "updated in the background"                  # Kado's write guard (concurrency-guard)
 
 
 class Refused(Exception):
@@ -306,48 +299,6 @@ def preview(args: argparse.Namespace) -> dict:
 
 # ---------------------------------------------------------------- deliver
 
-def _tool_error_payload(exc: KadoToolError) -> Optional[dict]:
-    """The MCP error payload after the client's prefix as a dict; None when it is not a JSON object."""
-    text = str(exc)
-    payload = text.split(TOOL_ERROR_PREFIX, 1)[1] if TOOL_ERROR_PREFIX in text else text
-    try:
-        data = json.loads(payload)
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def _tool_error_code(exc: KadoToolError) -> Optional[str]:
-    """The ``code`` of the MCP error payload after the client's prefix; the exact ``"code":"CONFLICT"``
-    token when the payload is not JSON; None when neither names a code."""
-    data = _tool_error_payload(exc)
-    if data is None:
-        return CONFLICT if f'"code":"{CONFLICT}"' in str(exc) else None
-    code = data.get("code")
-    return code if isinstance(code, str) else None
-
-
-def _is_conflict(exc: KadoError) -> bool:
-    """Kado refused the guard: the client's concurrency error, or a tool error whose code is CONFLICT."""
-    return isinstance(exc, KadoConcurrencyError) or (
-        isinstance(exc, KadoToolError) and _tool_error_code(exc) == CONFLICT)
-
-
-def _conflict_reason(exc: KadoError) -> str:
-    """Why Kado refused the guard, as a name only: ``open-unsaved`` for the dirty-editor message,
-    ``changed-since-read`` for the write guard's message and for ``KadoConcurrencyError``, else ``unknown``."""
-    if isinstance(exc, KadoConcurrencyError):
-        return CHANGED_SINCE_READ
-    data = _tool_error_payload(exc) if isinstance(exc, KadoToolError) else None
-    message = data.get("message") if data is not None else None
-    message = message if isinstance(message, str) else ""
-    if EDITOR_PHRASE in message:
-        return OPEN_UNSAVED
-    if GUARD_PHRASE in message:
-        return CHANGED_SINCE_READ
-    return UNKNOWN_CONFLICT
-
-
 def _mark_document(run: Run, delivery: StagedDelivery) -> None:
     """The last step: one guarded write of the marked document, unless it already carries the mark."""
     if rdl.DOC_MARK in run.meta.steps_done:
@@ -362,80 +313,10 @@ def _mark_document(run: Run, delivery: StagedDelivery) -> None:
         run.vault.client.write_note(run.read.doc_path, marked, expected_modified=run.read.modified)
     except KadoError as exc:
         stop = delivery.fail(rdl.DOC_MARK, exc)
-        if _is_conflict(exc):
-            stop.status, stop.reason = DOC_CHANGED, _conflict_reason(exc)
+        if rdl.is_conflict(exc):
+            stop.status, stop.reason = DOC_CHANGED, rdl.conflict_reason(exc)
         raise stop from exc
     delivery.record(rdl.DOC_MARK)
-
-
-def _delivery_paths(run: Run) -> Dict[str, str]:
-    paths = dict(run.paths)
-    if run.plan.mode == ra.NEW_NOTE and run.plan.note_path:
-        paths[rdl.NOTE] = run.plan.note_path
-    return paths
-
-
-def _public_paths(paths: Dict[str, str]) -> Dict[str, str]:
-    return {key: paths[key] for key in (rdl.SET_JSON, rdl.SET_MD, rdl.NOTE) if key in paths}
-
-
-def _plan_record(run: Run) -> dict:
-    """``mode``, ``target`` and ``place`` of the plan about to be written, for ``meta.json``: the anchor only
-    when it is the configured one (config text) — a heading of the note's own stays out of ``tomo-tmp``."""
-    place = dict(run.plan.place)
-    if place.get("anchor") != run.setup.anchor:
-        place["anchor"] = None
-    record = {"mode": run.plan.mode, "target": run.plan.target, "place": place}
-    if run.anchor_picked:
-        record[ANCHOR_PICKED] = True
-    return record
-
-
-def _replan_differs(run: Run, record: dict) -> bool:
-    """Whether the plan built now would write something else than ``record`` says the delivery wrote: ``mode``,
-    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one."""
-    place, recorded = run.plan.place, record.get("place")
-    recorded = recorded if isinstance(recorded, dict) else {}
-    keys = ["placement", "level"] + (["anchor"] if recorded.get("anchor") is not None else [])
-    return (record.get("mode") != run.plan.mode or record.get("target") != run.plan.target
-            or any(recorded.get(key) != place.get(key) for key in keys))
-
-
-def _resume_refusal(run: Run) -> Optional[str]:
-    """Why a resumed run must not write: ``anchor-needed`` when the record says a heading was picked and none was
-    given now; ``replan-differs`` when a step of the recorded plan is undone and the plan built now differs from
-    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
-    delivery nothing resumes (the mark done, withdrawn, or a drop that did not finish): it keeps its own refusal."""
-    record = run.meta.data.get(DELIVERED_PLAN)
-    closed = (rdl.DOC_MARK in run.meta.steps_done or run.meta.withdrawn()
-              or rdl.SET_WITHDRAWN in run.problems)
-    if not isinstance(record, dict) or closed:
-        return None
-    if record.get(ANCHOR_PICKED) is True and not run.anchor_picked:
-        return rdl.ANCHOR_NEEDED
-    steps = ([rdl.NOTE] if record.get("mode") == ra.NEW_NOTE else []) + [rdl.SET_JSON, rdl.SET_MD]
-    if all(step in run.meta.steps_done for step in steps):
-        return None
-    return rdl.REPLAN_DIFFERS if _replan_differs(run, record) else None
-
-
-def _report_delivered_plan(run: Run, out: dict) -> dict:
-    """A resumed output reports the plan recorded when the delivery began — ``mode``, ``target``, ``place`` —
-    and ``target_appeared`` against that mode; an anchor the record could not hold stays the rebuilt plan's;
-    without a record (a delivery begun before it existed) the rebuilt plan stands."""
-    record = run.meta.data.get(DELIVERED_PLAN)
-    if not isinstance(record, dict):
-        return out
-    out.update({key: record[key] for key in ("mode", "target") if key in record})
-    if isinstance(record.get("place"), dict):
-        place = dict(record["place"])
-        if place.get("anchor") is None:
-            place["anchor"] = out["place"].get("anchor")
-        out["place"] = place
-    out.pop("target_appeared", None)
-    if run.meta.data.get("mode") == ra.NEW_NOTE and record.get("mode") != ra.NEW_NOTE:
-        out["target_appeared"] = True
-    return out
 
 
 def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str, set_doc: dict) -> None:
@@ -460,7 +341,7 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
 
 def deliver(args: argparse.Namespace) -> dict:
     run = load_run(args)
-    refusal = _resume_refusal(run) if run.meta.started() else None
+    refusal = rdl.resume_refusal(run.meta, run.plan, run.problems, run.anchor_picked) if run.meta.started() else None
     if refusal is not None:
         out = {"status": "refused", "stem": run.stem, "problems": [refusal], "notices": run.notices}
         if refusal == rdl.ANCHOR_NEEDED:
@@ -468,7 +349,7 @@ def deliver(args: argparse.Namespace) -> dict:
         return out
     if run.problems:
         return {"status": "refused", "stem": run.stem, "problems": run.problems, "notices": run.notices}
-    paths = _delivery_paths(run)
+    paths = rdl.delivery_paths(run.paths, run.plan)
     set_doc = ra.build_review_instruction_set(run.plan, stem=run.stem, generated=run.meta.generated,
                                               profile=run.profile)
     payloads = {rdl.SET_JSON: json.dumps(set_doc, indent=2, ensure_ascii=False) + "\n",
@@ -479,7 +360,7 @@ def deliver(args: argparse.Namespace) -> dict:
     if run.replaces_set:
         run.meta.data[SET_REPLACED] = True                     # persisted with the first step's in-flight mark
     if not resumed:                                            # the plan this run writes, persisted the same way
-        run.meta.data[DELIVERED_PLAN] = _plan_record(run)
+        run.meta.data[rdl.DELIVERED_PLAN] = rdl.plan_record(run.plan, run.setup.anchor, run.anchor_picked)
     delivery = StagedDelivery(run.vault.client, rdl.STEPS, paths, run.meta,
                               lambda: rdl.save_meta(run.stage, run.meta), script=SCRIPT)
     try:
@@ -496,13 +377,13 @@ def deliver(args: argparse.Namespace) -> dict:
             return {"status": "refused", "stem": run.stem, "problems": [NAME_TAKEN], "exists_path": stop.exists_path,
                     "step": stop.step}
         stopped = {"status": "stopped", "stem": run.stem, "step": stop.step, "failed_step": run.meta.failed_step,
-                   "paths": _public_paths(paths), "problems": [KADO_WRITE_FAILED]}
-        if stop.status == DOC_CHANGED:
+                   "paths": rdl.public_paths(paths), "problems": [KADO_WRITE_FAILED]}
+        if stop.reason is not None:
             stopped["problems"], stopped["reason"] = [DOC_CHANGED], stop.reason
         return stopped
     out = run.output(section=False, status="resumed" if resumed else "delivered", step="",
-                     paths=_public_paths(paths), next=NEXT)
-    return _report_delivered_plan(run, out) if resumed else out
+                     paths=rdl.public_paths(paths), next=NEXT)
+    return rdl.report_delivered_plan(run.meta, out) if resumed else out
 
 
 # ---------------------------------------------------------------- drop
@@ -541,7 +422,7 @@ def drop(args: argparse.Namespace) -> dict:
                                 expected_modified=held.modified if held is not None else None)
     except KadoError as exc:
         return {"status": "stopped", "stem": args.stem,
-                "problems": [SET_CHANGED if _is_conflict(exc) else KADO_WRITE_FAILED],
+                "problems": [SET_CHANGED if rdl.is_conflict(exc) else KADO_WRITE_FAILED],
                 "error": {"kind": type(exc).__name__}}
     try:
         vault.client.write_note(paths[rdl.SET_MD], rdl.withdrawn_md(args.stem, meta, profile, files))
@@ -551,7 +432,7 @@ def drop(args: argparse.Namespace) -> dict:
     meta.data["withdrawn"] = True
     meta.failed_step = ""
     rdl.save_meta(stage, meta)
-    return {"status": "withdrawn", "stem": args.stem, "paths": _public_paths(paths)}
+    return {"status": "withdrawn", "stem": args.stem, "paths": rdl.public_paths(paths)}
 
 
 # ---------------------------------------------------------------- status

@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.14")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.15")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -370,11 +370,14 @@ def test_setup_asks_when_the_template_has_no_frontmatter_block():
     """Phase 6 live walk (2026-11-13): the month template opened its frontmatter only inside a Templater include,
     Pass 2 prepended Tomo's block and the rendered note carried two. Owner decision: the setup asks once, after
     the template is chosen and before Confirm; `1` keeps today's behaviour and is carried as a flag bound to the
-    template; `2` stops the setup with nothing saved and tells the user how to build the `_tomo` variant."""
+    template; `2` stops the setup with nothing saved and tells the user how to build the `_tomo` variant.
+    #259 (live walk 269b1964:83, :142): after `1` the model reran `match` and told the user `needs_template_ok` was
+    no longer set; the `1` branch now says to continue with the shown proposal, without a rerun or a field name."""
     text = _section("2. Setup")
     assert ("- `needs_template_ok` is true → say that the template `<template>` has no frontmatter block at its "
             "first line and ask: `1 Use it as it is · 2 I'll create a Tomo variant`. End the turn. "
-            "`1` → `<ok-template>` is `<template>` as it is now; continue. "
+            "`1` → `<ok-template>` is `<template>` as it is now; continue with the proposal already shown: rerun no "
+            "`match` and name no flag or field. "
             "`2` → the Abort branch below; say in its line: create a Tomo variant of the template, `<template>` "
             "with `_tomo` before `.md`, next to it, whose first line is `---` and whose frontmatter is closed by "
             "`---`; then run `/review setup` again and choose the variant.") in text

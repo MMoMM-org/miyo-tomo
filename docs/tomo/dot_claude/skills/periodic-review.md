@@ -224,7 +224,11 @@ name as `<ok-template>` when the answer is given, so a Correct to another templa
 that template (the script honours the flag only when it names the resolved template), while a stale flag on a
 template with a block is harmless. The Correct branch names the flag beside the other three and points back at the
 question line, because a literal model that reruns `match` from the Correct branch otherwise never reads the
-`needs_template_ok` of the new output. `2` is the Abort branch with one more sentence: nothing is saved for that
+`needs_template_ok` of the new output. After `1` the skill continues with the proposal it already printed and runs
+no `match`: the answer changes nothing in the proposal, and the flag only matters on a later rerun. It also names
+no flag or field to the user. Both were added in #259: in the spec 045 live walk (session 269b1964, lines 83 and 142)
+the model reran `match` after `1`, told the user that "`needs_template_ok` is no longer set", and printed the whole
+proposal again. That cost one turn per kind and exposed a script field the user cannot act on. `2` is the Abort branch with one more sentence: nothing is saved for that
 kind, and the user is told how the way out looks — a `_tomo` variant of the template next to it (`<template>` with
 `_tomo` before `.md`, the `template_variant` convention of ADR-8) whose first line is `---` and whose frontmatter
 is closed by `---`, then `/review setup` again and the variant chosen. A variant is the way out, not a code change,

@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.14
+# version: 0.1.15
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -76,7 +76,7 @@ with the flags of the last `match` call added, and continue with its output. `0`
 - Print `proposal`, `evidence` (`matched`, `unmatched`, `week_rule`, `folder_listing`, `format_problems`) and every line of `hints`.
 - `evidence.folder_listing` is `kado-none` → the `hints` line says so; ask before proposing to create notes there.
 - `proposal.template_kind` is `missing` → say that a plain note (title and review section) is proposed. `unreadable` → say the same and that the template may not be readable by the Kado key (no access).
-- `needs_template_ok` is true → say that the template `<template>` has no frontmatter block at its first line and ask: `1 Use it as it is · 2 I'll create a Tomo variant`. End the turn. `1` → `<ok-template>` is `<template>` as it is now; continue. `2` → the Abort branch below; say in its line: create a Tomo variant of the template, `<template>` with `_tomo` before `.md`, next to it, whose first line is `---` and whose frontmatter is closed by `---`; then run `/review setup` again and choose the variant.
+- `needs_template_ok` is true → say that the template `<template>` has no frontmatter block at its first line and ask: `1 Use it as it is · 2 I'll create a Tomo variant`. End the turn. `1` → `<ok-template>` is `<template>` as it is now; continue with the proposal already shown: rerun no `match` and name no flag or field. `2` → the Abort branch below; say in its line: create a Tomo variant of the template, `<template>` with `_tomo` before `.md`, next to it, whose first line is `---` and whose frontmatter is closed by `---`; then run `/review setup` again and choose the variant.
 - `daily_path_fix` is set → print `configured` and `found` and say the saved value is corrected to `found` only on Confirm.
 - `evidence.week_rule` is `ambiguous` (week only) → ask in plain text, before the confirm question: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?" Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week with 1 January, `4` for at least four days), rerun `python3 scripts/review-session.py match --kind <kind> --folder "<folder>" --format "<format>" --first-day <day> --min-days <n> --template <template>` with the proposal's folder and format, and print the new proposal, evidence and hints. Its `evidence.week_rule` is `given`: the question is answered and not asked again; only `ambiguous` asks it.
 - `needs_anchor` is true → say that no heading could be proposed for the place of the review section (no template, or none with a heading below its title); print `anchor_candidates` as a numbered list and ask: Which heading, by number or typed? End the turn. The answer is `<anchor>` and `proposal.place.anchor`; print the proposal with it in place. Never offer Confirm while `place.anchor` is null.

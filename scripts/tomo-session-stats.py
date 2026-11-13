@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # tomo-session-stats.py — Token usage and cost report for a Tomo session.
-# version: 0.1.0
+# version: 0.1.1
 """
 Reports turns, token breakdown (input/cache_read/cache_create/output),
 peak single-turn context, model usage, subagent stats, and estimated cost.
+
+One API reply is written as one transcript line per content block (thinking, text, each tool_use),
+and every line repeats the reply's ``message.id`` and ``usage``. Each id is counted once; a line
+without an id counts as its own reply. Summing per line overstated cost about 2× (#262).
 
 Usage:
   python3 scripts/tomo-session-stats.py --session-latest
@@ -44,6 +48,7 @@ def collect_stats(jsonl_path: Path) -> dict:
     turns = 0
     models: set[str] = set()
     peak = 0
+    seen_ids: set[str] = set()
 
     for line in jsonl_path.open():
         try:
@@ -56,6 +61,11 @@ def collect_stats(jsonl_path: Path) -> dict:
         u = msg.get("usage", {})
         if not u:
             continue
+        msg_id = msg.get("id")
+        if msg_id:
+            if msg_id in seen_ids:
+                continue  # another content block of a reply already counted
+            seen_ids.add(msg_id)
         turns += 1
         inp = u.get("input_tokens", 0)
         out = u.get("output_tokens", 0)

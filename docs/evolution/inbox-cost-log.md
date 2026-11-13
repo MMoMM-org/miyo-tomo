@@ -11,9 +11,17 @@ python3 scripts/tomo-session-stats.py --session-latest
 Copy the output into a new row below. Note the conductor/analyst versions
 from `tomo/dot_claude/agents/*.md` headers.
 
-**Pricing**: Sonnet 4.6 list rates ($3/$15/$3.75/$0.30 per M tokens for
+**Pricing**: Sonnet list rates ($3/$15/$3.75/$0.30 per M tokens for
 input/output/cache_create/cache_read). Actual billed cost may differ
 (volume discounts, batch API).
+
+**Correction (2026-11-13, #262)**: until `tomo-session-stats.py` 0.1.1 the tool summed `usage` once per
+transcript line. Claude Code writes one line per content block of a reply, and every line repeats the
+reply's `usage`, so costs taken from the tool before that date are overstated, typically about 2×. Since
+0.1.1 each `message.id` is counted once. Rows below are left as logged. Comparisons inside one row
+(before/after, same tool) keep their ratios. Recomputed whole-transcript totals for the sessions the log
+names: spec 039 `790a0265` **$8.11** (logged $16.90), spec 040 `0656bb24` **$8.02** (logged $8.36,
+already close: those figures came from `baseline.md`, not from the tool).
 
 ---
 
@@ -678,7 +686,9 @@ One container session (`790a0265`) carried cycle 1 Pass 1, Pass 2 and cycle 2 `/
 | 12:54 | `12-54-02Z-6e223e` | render | 6 | 0 | 31 | 3 / 3 | 4 / 4 |
 | 13:05 | `13-03-47Z-070715` | suggest (`--recover`) | 11 | **2** | 11 | 2 / 2 | — |
 
-Session cost: main $4.39 (Sonnet 5.5, 120 turns), 22 subagents $12.51, **total $16.90**.
+Session cost: main $4.39 (Sonnet 5.5, 120 turns), 22 subagents $12.51, **total $16.90**. The tool
+counted each reply once per content block. Recomputed with each message id counted once (#262):
+main $3.12, subagents $4.99, **total $8.11** for the whole transcript.
 
 The new spec 039 counters (`folder_listing_calls`, `distinct_destination_folders`,
 `basename_searches`, `basename_pages`) hold their bound: one listing per distinct target

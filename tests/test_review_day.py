@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_review_day.py — Behavioural tests for lib.review_day and the markdown
 layer it applies, lib.review_md (spec 045 T3.2; PRD F3-AC1, F3-AC2, F3-AC3,
 F3-AC4, F3-AC8; SDD "same-day reading of one daily").
@@ -45,6 +45,8 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -687,6 +689,15 @@ def test_next_day_tick_keeps_its_own_date():
     nxt = next(t for t in entry["tasks"] if "Anything to change" in t["text"])
     assert nxt["done"] is True and nxt["done_date"] == "2026-03-27"
     assert "✅" not in nxt["text"]
+
+
+@pytest.mark.parametrize("mark", ["✅", "✅\ufe0f"], ids=["plain-check", "with-variation-selector"])
+def test_the_done_marker_is_read_with_or_without_the_emoji_variation_selector(mark):
+    """U+FE0F after the check mark (a keyboard or editor adds it) is part of the Tasks done marker: the tick keeps
+    its date and the marker, selector included, leaves the task text."""
+    tasks = rd.task_note_tasks("n.md", f"- [x] Pay the invoice {mark} 2026-03-26\n- [x] Call back {mark}2026-03-27\n")
+    assert [(t["text"], t["done"], t["done_date"]) for t in tasks] == [
+        ("Pay the invoice", True, "2026-03-26"), ("Call back", True, "2026-03-27")]
 
 
 def test_done_in_period_counts_by_tick_date_whichever_file_holds_it():

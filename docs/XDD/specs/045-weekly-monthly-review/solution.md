@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.24"
+version: "1.25"
 ---
 
 # Solution Design Document
@@ -479,6 +479,7 @@ tests/
 ├── test_review_state_finished.py             # NEW: a complete delivery (doc_mark) whose set the user deleted is finished — not listed, status null — while a record short of doc_mark stays failed-delivery; the neighbouring rules unchanged (implemented, spec 045 Phase 6, pre-live-walk fix)
 ├── test_review_privacy.py                    # NEW (marker allowlist, exception handler; implemented, spec 045 Phase 5)
 ├── review_deliver_helpers.py                 # NEW (#260): the fixtures, constants and helpers the four test_review_deliver*.py files and review_e2e_walk.py share, moved out of test_review_deliver.py
+├── review_state_helpers.py                   # NEW (#261): the constants, document, meta, action and vault fixtures the three test_review_state*.py files share, moved out of test_review_state.py
 ├── review_privacy_fixture.py                 # NEW: the marked vault of the privacy walk, never a production code path (implemented, spec 045 Phase 5)
 ├── test_review_privacy_docs.py               # NEW: PRIVACY.md clauses, docs/setup.md, README, the vault-example.yaml review example (implemented, spec 045 Phase 5)
 ├── review_cli_contract.py                    # NEW: the /review CLI contract read from the scripts' own argparse parsers, shared by the WHY-doc and skill tests (implemented, spec 045 Phase 5)
@@ -724,9 +725,11 @@ review-doc.py replace --stem S [--confirm | --abort] [--proposals <json>] [--run
 
 review-instructions.py preview --stem S [--place-anchor H]
   out: {status: ok|stopped, stem, doc_path, mode: insert|replace|new-note, target, target_moved?: true, duplicates?: [paths],
-        target_appeared?: true, place: {anchor, placement, level}, section_md, escaped_lines: n, templater_hint: bool,
+        target_appeared?: true, place: {anchor, placement, level?}, section_md, escaped_lines: n, templater_hint: bool,
         variant_missing?: true, template_unmergeable?: "<reason>", unlanded?: n, headings?: [names],
         problems: [refusing names], notices: [names], set_exists: bool, set_applied: bool, resume: bool}   # (implemented, spec 045 Phase 4; set_applied Phase 6)
+  # place.level: an integer once the place is found and accepted; null on a rerun whose marker has no heading above it
+  # (place-missing); absent from a refused insert place (place-too-deep, place-missing: no level is computed). #261
   # problems refuse a delivery (nothing is written): not-approved | approved-line-missing | nothing-to-deliver |
   #   place-missing | place-too-deep | user-heading-collision | set-exists | set-withdrawn. A name that is in neither list refuses too.
   # notices are shown and the delivery proceeds: heading-renamed | unlanded-items | variant_missing | templater_hint |

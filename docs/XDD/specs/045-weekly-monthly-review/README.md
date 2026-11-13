@@ -5,18 +5,18 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-08 |
-| **Current Phase** | PLAN |
+| **Current Phase** | Implemented |
 | **Decomposition tier** | Incremental |
 | **Model tier** | frontier |
-| **Last Updated** | 2026-11-11 |
+| **Last Updated** | 2026-11-13 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.3: 8 features, 59 criteria; v1.1 approved 2026-11-11; v1.2 SDD decisions; v1.3 validation findings (definitions, edge cases, KPI scope) |
-| solution.md | completed | v1.2 (Phase 2 as-built); v1.1: 19 components, ADR-1..13 confirmed, all 59 PRD criteria traced; validation findings worked in |
-| plan/ | completed | v1.1: 6 phases, 34 tasks (28 deliverables + 6 phase validations); PRD traceability table in phase-6.md, checked by script |
+| requirements.md | completed | v1.8: 8 features, 59 criteria (1.4–1.8 live-walk decisions: 7 min, bare /review, Pass 2 $0.75, setup frontmatter question, stop reason); v1.1 approved 2026-11-11; v1.2 SDD decisions; v1.3 validation findings (definitions, edge cases, KPI scope) |
+| solution.md | completed | v1.21 (as-built through Phase 6); v1.1: 19 components, ADR-1..13 confirmed, all 59 PRD criteria traced; validation findings worked in |
+| plan/ | completed | v1.1: 6 phases, 34 tasks, all ticked; close-out.md + live-walk.md (28 deliverables + 6 phase validations); PRD traceability table in phase-6.md, checked by script |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -95,6 +95,7 @@
 | 2026-11-13 | Pass 2 KPI raised from $0.20 to $0.75 (owner); a cut of the skill text loaded per `/review` goes to the backlog. | Measured $0.32 (week) and $0.66 (month), $0.27 / $0.53 already at the `deliver` call (live-walk.md). |
 | 2026-11-13 | The 0-writes-outside-the-inbox KPI is met for what Tomo and Kado write; on the raw-template new-note path the vault changed before apply through plugins (Templater moved the note, Obsidian updated links in backlinking notes, `update-time-on-edit` stamped them; 65 notes changed mtime (31 dailies, 30 5-Year-Journal notes, 4 weekly notes; plus one hierarchy MOC); likely chain Templater move → Obsidian link updates → update-time-on-edit stamps (all sampled notes link `[[2026-03]]` and carry `Updated: 2026-11-13 09:01`), not fully proven) — recorded as a vault-side caveat, not a Tomo write (owner). | Kado's audit log shows no write outside `100 Inbox/` in the window; the setup question now offers the variant. |
 | 2026-11-11 | Phase 3 decisions: the reader owns the yesterday shift and reads the day after the period; time averages are circular; a bare `-` is missing for every tracker; a rule `---` ends a section only before navigation; exact digit-bounded day tokens; plain dailies read whole under `text`; empty growth is not an access problem; a recovered folder listing rereads the period, an unread daily listing stops the run; write never overwrites (review-exists), replace --confirm/--abort; links only from resolved period sources, structural markers escaped; edited is structural (pass1_links, nothing text-derived in meta); the parse result stays in-process; one stem guard | Coordinator |
+| 2026-11-13 | Implementation complete | PR pending on branch docs/31-weekly-monthly-review (#31); 6 phases; live-walk fixes 1ea36204, 867e8cbf, 6cdbed8d, 88773c67, 586277fa; close-out 6f9a96e2 (59 criteria, 725 passed in one invocation); drift fixes b9e8bed4 (PRD 1.8, SDD 1.21); versions periodic-review SKILL 0.1.13, review-session 0.6.4, review-instructions 0.2.5, review-read 0.1.3 |
 
 ## Context
 

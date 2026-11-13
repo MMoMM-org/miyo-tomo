@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, live walk and close-out"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 6
 ---
@@ -57,7 +57,7 @@ This phase proves the whole flow end to end and closes the spec.
   4. Validate: transcript lines quoted with session ids; no journal text quoted.
   5. Success: weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75; ≤ 40 % of Tomo items unticked or deleted over the review (habits excluded); 0 writes outside the inbox before apply `[ref: PRD/KPIs; PRD/F1-AC6, F4-AC5, F4-AC7, F5-AC2]`
 
-- [ ] **T6.4 Close-out** `[activity: validate]`
+- [x] **T6.4 Close-out** `[activity: validate]`
 
   1. Prime: spec 044 close-out
   2. Test: map all 59 PRD criteria to node ids; run them in ONE pytest invocation; list the model-behaviour criteria with their live-walk evidence; find parts no test can fail and close them with RED-proven tests in `tests/test_045_close_out_gaps.py`.
@@ -112,6 +112,6 @@ Each row lists the tasks whose Success line cites the criterion.
 | PRD Edge Cases | T3.7, T4.1, T6.1 |
 | KPIs | T6.3 |
 
-- [ ] **T6.5 Phase Validation** `[activity: validate]`
+- [x] **T6.5 Phase Validation** `[activity: validate]`
 
   - Full suite and ruff green; close-out committed; README phase set by Finalize.

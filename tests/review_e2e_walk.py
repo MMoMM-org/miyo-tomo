@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """review_e2e_walk.py — the driver of the /review end-to-end tests (spec 045 T6.1).
 
 Lives in tests/, not tomo/scripts/lib/: never a production code path. Not
@@ -50,7 +50,7 @@ for entry in (str(SCRIPTS_DIR), str(TESTS_DIR)):
 
 from review_fake_vault import _folder_key, split_frontmatter  # noqa: E402
 from review_privacy_fixture import CONFIG, DAILY, INBOX, MOCS, MONTHLY, WEEKLY, build_vault, proposals  # noqa: E402
-from test_review_deliver import GuardedVault  # noqa: E402
+from review_deliver_helpers import GuardedVault  # noqa: E402
 
 TODAY = "2026-11-11"
 SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions")

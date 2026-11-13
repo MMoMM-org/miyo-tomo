@@ -39,9 +39,18 @@ read a weekly note's evidence are `lib/review_vault.py` (WHY:
 inference is `lib/week_rule_inference.py` (WHY:
 `docs/tomo/scripts/lib/week_rule_inference.md` — never `.obsidian`, the
 eight-note budget, the rule intersection, duplicated stems). The script
-keeps what is specific to the subcommands: the precedence of flags, config,
-inference and defaults, the name matching, the proposal, the writer input
-and the argparse wiring.
+keeps what is specific to the subcommands: the writer input and the argparse
+wiring (the precedence of flags, config, inference and defaults, the name
+matching and the proposal moved on, see below).
+
+#260: with the template choice, the anchor question and the frontmatter gate
+in `match`, the script stood at 532 lines. The `match` flow — the precedence
+of flags, config, inference and defaults, the name matching (`match_names`),
+the proposal — moved whole to `lib/review_match.py` (`propose`, with the
+config readers `str_value`, `str_list`, `review_section` and `configured_rule`,
+the last shared with `start`; WHY: `docs/tomo/scripts/lib/review_match.md`).
+The script's `match` loads the config and the profile and calls `propose`
+with a vault factory; nothing it prints changed.
 
 The T2.3 code review found the script at 486 lines once `start` was in. The
 helpers that only turn the config into a shape and need neither Kado nor

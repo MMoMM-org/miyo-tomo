@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.23"
+version: "1.24"
 ---
 
 # Solution Design Document
@@ -365,7 +365,8 @@ Responsibilities (one owner each):
 | `lib/review_doc_parse.py` | Parsing the edited document: Approved line, items by id, user items, warnings |
 | `lib/review_doc_read.py` | The one shared reader of the review document for `parse`, `preview` and `deliver`: `doc_path_of`, and `read_document` (the Kado read, Kado's `modified` stamp, the parse with `meta.pass1_links` and the Pass 1 total) so `edited` and `deleted` are computed one way (implemented, spec 045 Phase 4) |
 | `lib/review_actions.py` | Locating the target (by path, else by name outside the inbox), choosing insert vs replace vs new note, the heading and marker rules as Hashi reads the file, building the section text with escaping, the actions and the stamped new note (implemented, spec 045 Phase 4) |
-| `lib/review_delivery.py` | The delivery around the plan: `classify` (refusing problems against notices), `ReviewMeta` (the `meta.json` dict as the staged loop's record: `started()`, `withdrawn()`, `second_set()`), set paths, template paths, the set's MD peer, the withdrawn set and its MD (implemented, spec 045 Phase 4) |
+| `lib/review_delivery.py` | The delivery around the plan: `classify` (refusing problems against notices), `ReviewMeta` (the `meta.json` dict as the staged loop's record: `started()`, `withdrawn()`, `second_set()`), set paths (`delivery_paths`, `public_paths`), template paths, the set's MD peer, the withdrawn set and its MD (implemented, spec 045 Phase 4); Kado's refused guard read from a `KadoError` (`tool_error_payload`, `tool_error_code`, `is_conflict`, `conflict_reason`) and the `delivered_plan` record with the resume refusal (`plan_record`, `replan_differs`, `resume_refusal`, `report_delivered_plan`), moved out of `review-instructions.py` (#260) |
+| `lib/review_match.py` | The proposal behind `review-session.py match`: `propose(open_vault, config, profile, args)` (folder listing, name matching, week-rule inference, template and anchor choice, daily sections, language), `match_names`, the config readers `str_value`, `str_list`, `review_section` and `configured_rule` (also used by `start`); moved out of the script (#260) |
 | `lib/review_state.py` | The one open-review state function and `stem_state`, the one probe-and-classify step: reads document frontmatter, `meta.json`, the set JSON (`applied`) and the probes, and returns the canonical state or None; also `safe_stem`, `read_meta` and the listing `open_reviews` (implemented, spec 045 Phase 4) |
 | `lib/staged_delivery.py` | The ordered, resumable, identical-text-idempotent write of inbox payloads (extracted from `note-instructions.py`; steps and targets supplied by the caller) |
 | `review-instructions.py` | `preview`, `deliver`, `drop`, `status` subcommands over the above (implemented, spec 045 Phase 4) |
@@ -410,7 +411,8 @@ tomo/
 │       ├── review_doc.py                     # NEW
 │       ├── review_doc_parse.py               # NEW
 │       ├── review_actions.py                 # NEW (implemented, spec 045 Phase 4)
-│       ├── review_delivery.py                # NEW: problem classes, meta adapter, set paths, withdrawn set (implemented, spec 045 Phase 4)
+│       ├── review_delivery.py                # NEW: problem classes, meta adapter, set paths, withdrawn set (implemented, spec 045 Phase 4); the guard reading and the resume record moved in (#260)
+│       ├── review_match.py                   # NEW (#260): the proposal behind review-session.py match, moved out of the script
 │       ├── review_doc_read.py                # NEW: the one reader of the review document for Pass 2 (implemented, spec 045 Phase 4)
 │       ├── review_state.py                   # NEW (implemented, spec 045 Phase 4)
 │       ├── staged_delivery.py                # NEW: extracted deliver loop
@@ -440,6 +442,7 @@ docs/tomo/
     │   review_actions.md, review_state.md, staged_delivery.md                      # NEW
     ├── lib/review_vault.md, lib/week_rule_inference.md, lib/vault_config_edit.md  # NEW (implemented, spec 045 Phase 2)
     ├── lib/review_templates.md                                                     # NEW: WHY the candidates are listed, the words, the two recent notes (implemented, spec 045 Phase 6 live-walk fix)
+    ├── lib/review_match.md                                                         # NEW (#260): WHY the match proposal left review-session.py
     ├── lib/review_delivery.md, lib/review_doc_read.md                              # NEW: WHY of the delivery adapter and the one document reader (implemented, spec 045 Phase 4)
     ├── vault-config-writer.md, inbox-triage.md, note-instructions.md,
     │   instruction-render.md, lib/kado_client.md, lib/note_meta.md                 # MODIFY
@@ -475,6 +478,7 @@ tests/
 ├── test_review_state_listing.py              # NEW: open_reviews — one entry per document found by frontmatter, probed through stem_state, ordered under the configured rule and formats, the kind inferred, skips with a reason, withdrawn and reported-applied never listed (split out of test_review_state.py; implemented, spec 045 Phase 6, pre-live-walk)
 ├── test_review_state_finished.py             # NEW: a complete delivery (doc_mark) whose set the user deleted is finished — not listed, status null — while a record short of doc_mark stays failed-delivery; the neighbouring rules unchanged (implemented, spec 045 Phase 6, pre-live-walk fix)
 ├── test_review_privacy.py                    # NEW (marker allowlist, exception handler; implemented, spec 045 Phase 5)
+├── review_deliver_helpers.py                 # NEW (#260): the fixtures, constants and helpers the four test_review_deliver*.py files and review_e2e_walk.py share, moved out of test_review_deliver.py
 ├── review_privacy_fixture.py                 # NEW: the marked vault of the privacy walk, never a production code path (implemented, spec 045 Phase 5)
 ├── test_review_privacy_docs.py               # NEW: PRIVACY.md clauses, docs/setup.md, README, the vault-example.yaml review example (implemented, spec 045 Phase 5)
 ├── review_cli_contract.py                    # NEW: the /review CLI contract read from the scripts' own argparse parsers, shared by the WHY-doc and skill tests (implemented, spec 045 Phase 5)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_deliver_resume.py — a resume never writes a set that contradicts what the first attempt delivered
 (fix #258; spec 045 SDD Error Handling rows `replan-differs` and `anchor-needed`; PRD F5-AC10).
 
@@ -48,15 +48,12 @@ TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-import test_review_deliver as deliver_tests  # noqa: E402 — puts tomo/scripts on the path
-from test_review_deliver import (  # noqa: E402
-    DOC, NEW_NOTE, NOTE, OWN, SET_JSON, SET_MD, STEM, TARGET, WEEKLY, meta_of, ready, set_json_of, vault, writes,
+from review_deliver_helpers import (  # noqa: E402,F401 — puts tomo/scripts on the path; doc_mod, ins, instance are fixtures
+    DOC, NEW_NOTE, NOTE, OWN, SET_JSON, SET_MD, STEM, TARGET, WEEKLY, meta_of, ready,
+    set_json_of, vault, writes, doc_mod, ins, instance,
 )
 from review_skill_helpers import _section  # noqa: E402
 from lib.kado_client import KadoError  # noqa: E402
-
-# the fixtures of test_review_deliver.py, found by pytest in this module's globals
-doc_mod, ins, instance = deliver_tests.doc_mod, deliver_tests.ins, deliver_tests.instance
 
 PLACE = {"anchor": OWN, "placement": "before", "level": 2}
 PICKED = "Woche"

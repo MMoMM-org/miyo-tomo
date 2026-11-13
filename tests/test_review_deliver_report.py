@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_deliver_report.py — what a `deliver` stop and a resume tell the skill (spec 045 P6 live-walk fix,
 owner decision 2026-11-13; PRD F5-AC10, F6-AC4; SDD Error Handling `doc-changed`).
 
@@ -19,7 +19,7 @@ B. a resume reports the plan the delivery wrote — `mode`, `target`, `place`, r
    scans every working file for it) — a resume then reports the rebuilt plan's anchor for that one field; the record
    keeps `anchor_picked: true` instead, and a resume without the pick is refused (tests/test_review_deliver_resume.py).
 
-Mechanisms a mutation falsifies: `_conflict_reason` answering one name for every conflict flips
+Mechanisms a mutation falsifies: `lib/review_delivery.conflict_reason` answering one name for every conflict flips
 `test_doc_changed_names_why_kado_refused_the_mark`; the stop carrying the reason on every problem flips
 `test_kado_write_failed_carries_no_reason`; putting Kado's message on stdout flips the leak assertions; recording the
 plan after the loop instead of before the first mark flips `test_the_plan_is_recorded_with_the_first_in_flight_mark`;
@@ -38,16 +38,12 @@ TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-import test_review_deliver as deliver_tests  # noqa: E402 — puts tomo/scripts on the path
-from test_review_deliver import (  # noqa: E402
-    DOC, GUARD_REFUSED, NEW_NOTE, NOTE, OWN, SET_JSON, SET_MD, STEM, TARGET, meta_of, prepared, ready, run,
-    set_json_of, vault, writes,
+from review_deliver_helpers import (  # noqa: E402,F401 — puts tomo/scripts on the path; doc_mod, ins, instance are fixtures
+    DOC, GUARD_REFUSED, NEW_NOTE, NOTE, OWN, SET_JSON, SET_MD, STEM, TARGET, meta_of,
+    prepared, ready, run, set_json_of, vault, writes, doc_mod, ins, instance,
 )
 from note_fake_vault import Killed  # noqa: E402
 from lib.kado_client import KadoConcurrencyError, KadoError, KadoToolError  # noqa: E402
-
-# the fixtures of test_review_deliver.py, found by pytest in this module's globals
-doc_mod, ins, instance = deliver_tests.doc_mod, deliver_tests.ins, deliver_tests.instance
 
 EDITOR_TEXT = "is open in the editor with unsaved changes. Re-read it and retry"
 # Kado's dirty-editor refusal (src/obsidian/note-adapter.ts conflictEditorError), code CONFLICT, the path in the message

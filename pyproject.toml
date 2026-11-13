@@ -26,3 +26,5 @@ ignore = ["E402"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/measure-*.py" = ["E701"]
+# the delivery tests import the ins/doc_mod/instance fixtures from review_deliver_helpers; a test argument of the same name is not a redefinition
+"tests/test_review_deliver*.py" = ["F811"]

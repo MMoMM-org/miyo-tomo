@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.4
+# version: 0.6.5
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -131,8 +131,8 @@ import argparse
 import json
 import sys
 from datetime import date
-from pathlib import Path, PurePosixPath
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -141,30 +141,16 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
-from lib.period import (  # noqa: E402
-    DAY_NAMES, DEFAULT_FORMATS, ISO, KINDS, MONTH, SETUP, WEEK, RequestError, WeekRule,
-    check_format, parse_args, parse_name,
-)
+from lib.period import DAY_NAMES, ISO, KINDS, MONTH, SETUP, RequestError, parse_args  # noqa: E402
+from lib.review_match import configured_rule, propose  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
-from lib.review_templates import (  # noqa: E402
-    NO_TEMPLATE, anchor_candidates_from_notes, anchor_text, daily_sections_from, propose_anchor,
-    resolve_template, template_anchor_candidates, template_choice, template_has_frontmatter, template_vault_path,
-)
-from lib.review_vault import Stopped, Vault, headings  # noqa: E402
-from lib.vault_config_edit import get_path  # noqa: E402
-from lib.week_rule_inference import Checked, Inference, infer_rule  # noqa: E402
+from lib.review_templates import anchor_text, template_choice  # noqa: E402
+from lib.review_vault import Stopped, Vault  # noqa: E402
 
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
-DEFAULT_HEADING = "Tomo Review"
-NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
 APPLIED_NOT_RECORDED = "applied-not-recorded"
 REQUEST_WITHHELD = "open-reviews"
-
-FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
-               "may not reach it. Ask before proposing to create notes there.")
-NO_NOTES_HINT = ("Found no notes to compare with in {folder}: the default naming is proposed. "
-                 "Say so when showing the proposal.")
 
 
 # ---------------------------------------------------------------- config
@@ -176,37 +162,12 @@ def load_config(path: str) -> dict:
         return {}
 
 
-def _str(value) -> Optional[str]:
-    return value if isinstance(value, str) and value.strip() else None
-
-
-def _str_list(value) -> Optional[List[str]]:
-    if isinstance(value, list) and all(isinstance(v, str) for v in value):
-        return list(value)
-    return None
-
-
-def _review_section(config: dict, granularity: str) -> dict:
-    section = get_path(config, ("review", granularity))[1]
-    return section if isinstance(section, dict) else {}
-
-
-def _configured_rule(config: dict) -> Optional[WeekRule]:
-    week = get_path(config, ("review", "week"))[1]
-    if not isinstance(week, dict) or "first_day" not in week:
-        return None
-    try:
-        return WeekRule.from_config(week.get("first_day"), week.get("min_days_in_first_week", 4))
-    except (ValueError, TypeError):
-        return None
-
-
 # ---------------------------------------------------------------- start
 
 def start(args: argparse.Namespace) -> dict:
     config = load_config(args.config)
     profile = rc.load_profile(Path(args.profiles_dir), config)
-    rule = _configured_rule(config) or ISO
+    rule = configured_rule(config) or ISO
     formats = rc.configured_formats(config)
     result: dict = {
         "status": "ok",
@@ -268,132 +229,10 @@ def _record_applied(root: Path, reviews: List[OpenReview]) -> bool:
 
 # ---------------------------------------------------------------- the proposal
 
-def _day_name(rule: WeekRule) -> str:
-    return DAY_NAMES[rule.first_day]
-
-
-def _match_names(notes: List[Tuple[str, str]], fmt: str, rule: WeekRule, kind: str,
-                 checked: List[Checked]) -> Tuple[List[str], List[str]]:
-    """Names under ``matched``/``unmatched``, one entry per note (a duplicated stem once per path)."""
-    starts = {c.path: c.start for c in checked if c.start is not None}
-    matched, unmatched = [], []
-    for stem, path in notes:
-        period = parse_name(stem, fmt, rule) if kind == WEEK else parse_name(stem, fmt)
-        fits = period is not None and (path not in starts or period.start == starts[path])
-        (matched if fits else unmatched).append(stem)
-    return matched, unmatched
-
-
 def match(args: argparse.Namespace) -> dict:
-    kind = args.kind
-    granularity = rc.GRANULARITY[kind]
     config = load_config(args.config)
     profile = rc.load_profile(Path(args.profiles_dir), config)
-    templates = config.get("templates") if isinstance(config.get("templates"), dict) else {}
-    section = _review_section(config, granularity)
-    review = config.get("review") if isinstance(config.get("review"), dict) else {}
-    hints: List[str] = []
-
-    folder = args.folder or rc.folder_for(config, profile, granularity) or ""
-    configured_fmt = _str(get_path(config, ("naming", "calendar_patterns", granularity))[1])
-    fmt_for_names = args.format or configured_fmt or DEFAULT_FORMATS[kind]
-    if any(mark in fmt_for_names for mark in ("/", "\\", "..")):
-        return {"status": "stopped", "kind": kind, "error": {"kind": "unsafe-format"}}
-
-    try:
-        vault = Vault(KadoClient)
-        paths = vault.list_notes(folder) if folder else None
-        listing = "kado-none" if paths is None else "found"
-        if paths is None:
-            hints.append(FOLDER_HINT.format(folder=folder))
-            paths = []
-        notes = [(PurePosixPath(p).name[:-3], p) for p in paths]
-
-        inference = Inference("default")
-        if kind == WEEK and notes:
-            inference = infer_rule(vault, notes, fmt_for_names)
-        rule = _configured_rule(config) or inference.rule or ISO
-        if args.first_day is not None:
-            rule = WeekRule.from_config(args.first_day, args.min_days)
-        if kind == WEEK:
-            default_fmt = DEFAULT_FORMATS[WEEK] if rule == ISO else NON_ISO_WEEK_FORMAT
-        else:
-            default_fmt = DEFAULT_FORMATS[MONTH]
-        fmt = args.format or configured_fmt or default_fmt
-        problems = check_format(fmt, kind, rule, today=args.today)
-        matched, unmatched = _match_names(notes, fmt, rule, kind, inference.checked)
-        if listing == "found" and inference.verdict == "default" and not matched:
-            hints.append(NO_NOTES_HINT.format(folder=folder))
-
-        base = _str(templates.get("base_path"))
-        no_template = args.template == NO_TEMPLATE
-        template = None if no_template else args.template or _str(get_path(templates, ("mapping", granularity))[1])
-        template_kind, template_text, candidates, hint = resolve_template(vault, base, template, kind,
-                                                                          no_template=no_template)
-        if hint is not None:
-            hints.append(hint)
-        template_headings = template_anchor_candidates(headings(template_text)) if template_text else []
-        template_frontmatter = template_has_frontmatter(template_text) if template_text is not None else None
-        needs_template_ok = template_frontmatter is False and args.template_frontmatter_ok != template
-
-        place = section.get("place") if isinstance(section.get("place"), dict) else {}
-        anchor = args.anchor or _str(place.get("anchor")) or propose_anchor(template_headings)
-        anchor_candidates = anchor_candidates_from_notes(vault, notes, fmt, rule, kind) if anchor is None else None
-
-        daily_sections = _str_list(get_path(review, ("daily", "sections"))[1])
-        if daily_sections is None:
-            daily_sections = []
-            daily_path = template_vault_path(base, _str(get_path(templates, ("mapping", "daily"))[1]))
-            if daily_path is not None:
-                _, daily_text = vault.template(daily_path)
-                if daily_text:
-                    daily_sections = daily_sections_from(daily_text)
-
-        result: dict = {"status": "ok", "kind": kind}
-        daily_configured = rc.folder_for(config, profile, "daily")
-        if daily_configured and daily_configured != daily_configured.strip():
-            trimmed = daily_configured.strip()
-            if vault.folder_listed(trimmed):
-                result["daily_path_fix"] = {"configured": daily_configured, "found": trimmed}
-    except Stopped as stop:
-        return {"status": "stopped", "kind": kind, "error": {"kind": stop.kind, "detail": stop.detail}}
-
-    placement = place.get("placement") if place.get("placement") in rc.PLACEMENTS else rc.BEFORE
-    language = (_str(review.get("language"))
-                or next((c.locale for c in inference.checked if c.locale), None)
-                or rc.DEFAULT_LANGUAGE)
-    result["proposal"] = {
-        "folder": folder,
-        "format": fmt,
-        "first_day": _day_name(rule) if kind == WEEK else None,
-        "min_days": rule.min_days_in_first_week if kind == WEEK else None,
-        "template": template,
-        "template_kind": template_kind,
-        "template_frontmatter": template_frontmatter,
-        "heading": _str(section.get("heading")) or DEFAULT_HEADING,
-        "place": {"anchor": anchor, "placement": placement},
-        "own_sections": _str_list(section.get("own_sections")) or [],
-        "daily_sections": daily_sections,
-        "language": language,
-    }
-    result["evidence"] = {
-        "matched": matched,
-        "unmatched": unmatched,
-        "week_rule": "given" if args.first_day is not None else inference.verdict,
-        "notes_checked": len(inference.checked),
-        "folder_listing": listing,
-        "format_problems": [{"kind": p.kind, "example": p.example} for p in problems],
-        "template_headings": [{"level": level, "text": text} for level, text in template_headings],
-    }
-    if candidates is not None:
-        result["template_candidates"] = candidates
-    if anchor_candidates is not None:
-        result["needs_anchor"] = True
-        result["anchor_candidates"] = anchor_candidates
-    if needs_template_ok:
-        result["needs_template_ok"] = True
-    result["hints"] = hints
-    return result
+    return propose(lambda: Vault(KadoClient), config, profile, args)
 
 
 # ---------------------------------------------------------------- setup-input

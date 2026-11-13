@@ -93,3 +93,12 @@ Open". Those sections are the record of the live failures that shaped the
 rules; they stay with the script whose history they describe, and this file
 only explains the extraction. A rule that changes for both callers is changed
 here and its reason recorded there.
+
+## WHY `DeliveryStop` Declares `reason` (#260)
+
+`review-instructions.py` set `stop.reason` on a stop it caught, an attribute
+`DeliveryStop` did not declare, and read it back behind a `stop.status ==
+"doc-changed"` test. The field is declared, `None` by default; only the caller
+that sets it (the document mark, on Kado's refused guard) makes it non-`None`,
+so the output tests the field and the status gate is redundant. Behaviour is
+the same: `reason` reaches stdout for `doc-changed` only.

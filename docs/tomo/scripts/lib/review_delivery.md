@@ -93,3 +93,20 @@ stem, `generated` and the profile — the envelope with an empty `actions`
 list — and `withdrawn_md` the list of files the delivery left. Both validate
 like any instruction set, so Hashi lists them and finds nothing to apply
 (ADR-13).
+
+## WHY the Guard Reading and the Resume Record Live Here (#260)
+
+They moved out of `review-instructions.py` (630 lines) because none of them
+needs the script's `Run`: each takes the plan, the meta, the problems or the
+exception it reads. `tool_error_payload`, `tool_error_code`, `is_conflict` and
+`conflict_reason` read a `KadoError` the delivery caught — the module imports
+the exception classes only, it makes no Kado call. `plan_record`,
+`replan_differs`, `resume_refusal` and `report_delivered_plan` are the
+`delivered_plan` record of `meta.json` and what a resumed run does with it
+(docs/tomo/scripts/review-instructions.md, "WHY a Resume Refuses a Re-Plan That
+Differs From the Record"); `DELIVERED_PLAN` and `ANCHOR_PICKED`, the key and
+the flag of that record, moved with them. Passing `configured_anchor` and
+`anchor_picked` instead of the `Run` is what keeps the lib free of an import
+cycle. `delivery_paths` and `public_paths` sit with the other path functions.
+At about 320 lines the module stays one responsibility (what a delivery needs
+around the plan); a split such as a resume lib is the move if it passes 350.

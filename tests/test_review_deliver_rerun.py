@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_deliver_rerun.py — a rerun of a period writes its set over the first run's fully applied set
 (spec 045 T6.1 fix round; owner decision 2026-11-12; PRD F6-AC2, F6-AC3; SDD Error Handling `set-exists`).
 
@@ -31,14 +31,11 @@ TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-import test_review_deliver as deliver_tests  # noqa: E402 — puts tomo/scripts on the path
-from test_review_deliver import (  # noqa: E402
+from review_deliver_helpers import (  # noqa: E402,F401 — puts tomo/scripts on the path; doc_mod, ins, instance are fixtures
     DOC, LANDED, SET_JSON, SET_MD, STEM, TARGET, meta_of, ready, set_json_of, vault, writes,
+    doc_mod, ins, instance,
 )
 from lib.kado_client import KadoError  # noqa: E402
-
-# the fixtures of test_review_deliver.py, found by pytest in this module's globals
-doc_mod, ins, instance = deliver_tests.doc_mod, deliver_tests.ins, deliver_tests.instance
 
 OLD_MD = "---\ntomo:\n  doc_type: instructions\n---\n# old readable instructions\n- [x] Applied\n"
 

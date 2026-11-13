@@ -20,7 +20,14 @@ with the others and no script spells it on its own. `SET_WITHDRAWN`
 (`set-withdrawn`, P5) is `preview`'s and `deliver`'s refusal of an emptied
 set on a begun stem (docs/tomo/scripts/review-instructions.md, "WHY an
 Emptied Set on a Begun Stem Is `set-withdrawn`"); it lives beside
-`SET_EXISTS` for the same reason.
+`SET_EXISTS` for the same reason. `REPLAN_DIFFERS` (`replan-differs`) and
+`ANCHOR_NEEDED` (`anchor-needed`, both fix #258) are `deliver`'s refusals of
+a resume — the re-plan contradicts the recorded `delivered_plan` while a set
+step is undone; a delivery begun with a picked heading is resumed without
+`--place-anchor` (docs/tomo/scripts/review-instructions.md, "WHY a Resume
+Refuses a Re-Plan That Differs From the Record" and "WHY a Picked Anchor Is
+Recorded as a Flag") — never handed to `classify`, listed in `REFUSING` so the
+one pin test and the skill's coverage test name them with the others.
 
 ## WHY `second_set` Takes Whether the Set at the Path Is Applied (T6.1 fix round)
 

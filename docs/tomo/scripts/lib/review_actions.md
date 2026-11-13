@@ -287,3 +287,18 @@ Hashi's `move_note` refuses when source and destination both exist
 (`moveNote.ts:71`), which is the "the user created the note in the meantime"
 guard of F6-AC4; Tomo's side of it is choosing the existing note at delivery
 time, which `locate_target` does.
+
+## WHY `pick_headings` Names the Pick List Outside a Refusal (fix #258)
+
+A place problem hands the skill the note's headings for the heading pick
+(`_refuse` fills `plan.headings`): the target note's, or the chosen
+template's for a new note, as `hashi_headings` reads them. A resume of a
+delivery that began with a picked heading needs the same list without a
+refusal — the re-plan at the configured anchor may be clean —
+(docs/tomo/scripts/review-instructions.md, "WHY a Picked Anchor Is Recorded
+as a Flag and Asked Again"). `pick_headings(setup, target, template)` is that
+one definition, built from the same `_template_choice` and `_split_lines`
+the planner uses, so the list the resume offers is the list the first pick
+offered; a plain note (no template) has none. A plan that always carried
+`headings` was rejected: `preview` prints them only on a place problem (SDD
+Interface `headings?`), and the privacy allowlist names them for that case.

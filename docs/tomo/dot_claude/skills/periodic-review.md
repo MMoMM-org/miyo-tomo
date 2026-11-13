@@ -510,6 +510,29 @@ Hashi had moved the note in between. The script now records the plan it writes w
 output reports that record (docs/tomo/scripts/review-instructions.md, "WHY a Resume Reports the Plan It Recorded");
 the skill's step 8 lines did not change, they only became true on a resume.
 
+### Why a Resume Can Be Refused With `replan-differs` or `anchor-needed` (fix #258)
+
+WHY: issue #258, owner decision 2026-11-13. A resume writes the undone set steps from the re-plan, so a vault that
+changed between the stop and the resume could land a set that contradicts the note or the set the first attempt
+already wrote. The script now compares the re-plan with the recorded plan before it writes and refuses
+`replan-differs` (docs/tomo/scripts/review-instructions.md, "WHY a Resume Refuses a Re-Plan That Differs From the
+Record"). The step 8 line says what that means in the user's terms — the vault changed since the stopped delivery,
+the target note or its place is not what the first attempt wrote for — and that nothing more was written, then
+offers Drop (step 9) or Abort: Resume from the listing would refuse again, because the re-plan is built from the
+vault as it is now, and the half-written set is the user's to look at in Obsidian before anything else lands. Start
+over is not offered here: the stopped delivery's files are still in the inbox, and `drop` is the step that withdraws
+them.
+
+The listing's Resume runs `deliver --stem` without `--place-anchor` — the heading picked in step 7 lives in the
+conversation that stopped, and the record never holds a heading of the note's own (ADR-9). The script records that a
+heading was picked and refuses `anchor-needed` with `headings` on a resume without it (docs/tomo/scripts/
+review-instructions.md, "WHY a Picked Anchor Is Recorded as a Flag and Asked Again"). The step 8 line reuses the
+step 7 pick: print `headings`, ask for a number, rerun `preview` with the heading as `--place-anchor` and branch by
+the step 7 list, so Deliver reaches step 8 with the heading again. A new pick dialogue in step 8 was rejected: the
+step 7 rerun shows the section at the chosen place before anything lands, and one pick flow keeps the "offered once"
+rule of the collision case in one place. The refused branch names the two tokens before "Any other → the step 7
+lines" so the precedence is explicit; step 7 has no line for either.
+
 ## Why `drop` Withdraws and Abort Before Delivery Writes Nothing (ADR-13)
 
 WHY: Abort at the Deliver question is free: nothing was written, the document stays open. Drop is offered only for a

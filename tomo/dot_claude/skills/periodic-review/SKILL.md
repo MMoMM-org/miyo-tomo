@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.13
+# version: 0.1.14
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -196,7 +196,9 @@ python3 scripts/review-instructions.py deliver --stem <stem>
 
 Add `--place-anchor "<heading>"` when a heading was chosen in step 7. Branch on `status` first:
 - `delivered` or `resumed` → report `target`, `place`, `paths.set_json`, `paths.set_md` and `paths.note` when set, and "Next: review and apply the instruction set in Hashi, or by hand with the readable instructions." Then the step 7 notice lines for `notices` and `target_appeared`.
-- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` or `set-withdrawn` → as in step 7. Any other → the step 7 lines; nothing was written.
+- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs` or `anchor-needed` → the two lines below. Any other → the step 7 lines; nothing was written.
+  - `replan-differs` → say the vault changed since the stopped delivery: the target note or its place is not what the first attempt wrote for; nothing more was written, and Resume would refuse again. Ask `1 Drop · 2 Abort`; Drop → step 9 with `<stem>`, Abort → stop.
+  - `anchor-needed` → say the stopped delivery used a chosen heading that is asked again: print `headings` as a numbered list and ask: Which number, or 0 Abort? A number → rerun `preview` of step 7 with that heading as `--place-anchor`, keep it for this step and branch on the rerun by the step 7 list. 0 → stop.
 - `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` `changed-since-read` or `unknown` → say the document was edited, or is open with unsaved edits, since the preview: save it and run `/review` again; the payloads in `paths` already written count as done, and the next `/review` offers Resume or Drop. `kado-write-failed` → say Kado refused or failed at `failed_step`; nothing more was written; the next `/review` offers Resume or Drop. Stop.
 - `not-found` → as in step 6.
 

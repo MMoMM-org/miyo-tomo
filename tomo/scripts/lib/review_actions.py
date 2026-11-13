@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.4.1
+# version: 0.4.2
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -31,8 +31,10 @@ from ``review_config.place_level``; every
 landed item line runs through ``review_doc.neutralised`` once more (idempotent); ids are
 stripped; the content ends with one blank line and depends on nothing but the arguments.
 ``locate_target`` picks the target among the configured paths (flat folder first, the duplicate
-named) and the by-name hits elsewhere. ``build_review_instruction_set`` wraps the actions in the
-wire envelope.
+named) and the by-name hits elsewhere. ``pick_headings`` names the headings a heading pick
+chooses from without a refusal (the target note's, or the chosen template's for a new note) —
+the list a resume of a delivery begun with ``--place-anchor`` offers again.
+``build_review_instruction_set`` wraps the actions in the wire envelope.
 
 No Kado, no clock, no file I/O (the wire schema version is read from the schema file).
 
@@ -319,6 +321,17 @@ def _gate(review: dict, groups: list) -> Optional[str]:
     if not groups:
         return NOTHING_TO_DELIVER
     return None
+
+
+def pick_headings(setup: rc.ReviewSetup, target: Target, template: Optional[Template] = None) -> List[str]:
+    """The headings a heading pick chooses from, as a place problem names them: the target note's, else the
+    chosen template's for a new note (as ``_template_choice`` picks it), none for a plain note."""
+    text = target.text
+    if text is None:
+        text = _template_choice(setup, template or Template())[0]
+    if text is None:
+        return []
+    return [heading for _, _, heading in hashi_headings(_split_lines(text)[0])]
 
 
 def build_review_plan(review: dict, setup: rc.ReviewSetup, target: Target, template: Optional[Template] = None,

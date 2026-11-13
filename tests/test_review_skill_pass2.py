@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -223,7 +223,7 @@ def _problem_bullets(*headings: str) -> set[str]:
 def test_the_refusing_set_is_derived_and_every_token_has_a_stop_line_in_pass_2():
     refusing, notices, _ = _delivery_vocabulary()
     assert not set(refusing) & set(notices)
-    covered = _problem_bullets("7. Preview", "9. Drop a failed delivery")
+    covered = _problem_bullets("7. Preview", "8. Deliver", "9. Drop a failed delivery")
     missing = sorted(set(refusing) - covered)
     assert not missing, f"refusing problems without a branch in the skill's Pass 2: {missing}"
 
@@ -266,8 +266,8 @@ def test_deliver_branches_on_status_then_problems_or_failed_step():
             "`paths.note` when set, and \"Next: review and apply the instruction set in Hashi, or by hand with the "
             "readable instructions.\"") in text
     assert ("- `refused` → `name-taken` → say a note at `exists_path` is not Tomo's and nothing was overwritten; "
-            "stop. `set-exists` or `set-withdrawn` → as in step 7. Any other → the step 7 lines; nothing was written."
-            ) in text
+            "stop. `set-exists` or `set-withdrawn` → as in step 7. `replan-differs` or `anchor-needed` → the two lines "
+            "below. Any other → the step 7 lines; nothing was written.") in text
     assert ("- `stopped` → `doc-changed` → `reason` `open-unsaved` → say the document is open in Obsidian with "
             "unsaved changes (a plugin that stamps the note on edit can cause that): save it (Cmd+S) or close it, then "
             "run `/review` and choose Resume; the payloads in `paths` already written count as done. `reason` "

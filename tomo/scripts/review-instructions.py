@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.2.5
+# version: 0.2.7
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13).
 
@@ -13,9 +13,13 @@ and ``<stem>_instructions.md`` to the inbox through ``lib/staged_delivery``,
 then marks the document delivered with one write guarded by the ``modified``
 the reader saw; ``meta.json`` records every step so a failed delivery resumes
 without a duplicate, and the plan the delivery writes (``delivered_plan``:
-mode, target, place), recorded with the first step, so a resume reports what
-was written rather than the plan rebuilt against the vault now (the undone
-steps still write the rebuilt payloads). A set at the stem's path that this delivery did not
+mode, target, place, ``anchor_picked`` when ``--place-anchor`` was given —
+never the heading), recorded with the first step, so a resume reports what
+was written rather than the plan rebuilt against the vault now; the undone
+steps write the rebuilt payloads, so a resume with an undone set step whose
+rebuilt plan differs from the record refuses ``replan-differs``, and a resume
+of a picked-anchor record without ``--place-anchor`` refuses ``anchor-needed``
+with the ``headings`` of the pick (nothing written either way). A set at the stem's path that this delivery did not
 write refuses ``set-exists`` while any action in it waits; once every action
 is applied (``lib/review_state.all_applied`` — the finished set of an earlier
 run of the period) ``deliver`` writes the new set JSON over it, guarded by the
@@ -48,7 +52,8 @@ Output: one JSON object on stdout, ASCII-escaped.
              set_exists, set_applied, resume
     deliver: status delivered|resumed, stem, step "", paths {set_json, set_md, note?}, next hashi-or-by-hand,
              mode, target, place, notices, target_appeared?
-           | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|name-taken], exists_path?, step?
+           | status refused, stem, problems [<refusing problems>|set-exists|set-withdrawn|replan-differs|anchor-needed|
+             name-taken], exists_path?, step?, headings? (anchor-needed only)
            | status stopped, stem, step, failed_step, paths, problems [doc-changed|kado-write-failed],
              reason? open-unsaved|changed-since-read|unknown (doc-changed only)
     drop:    status withdrawn, stem, paths {set_json, set_md, note?} | status dropped, stem, removed
@@ -70,7 +75,13 @@ Rules: a refusing problem means nothing is written; a second set for the stem is
     Obsidian with unsaved changes), changed-since-read (the write guard's message, or KadoConcurrencyError),
     unknown (a CONFLICT with neither) — the name only, never Kado's message; a resumed output reports the
     recorded delivered_plan (mode, target, place; target_appeared from the Pass 1 mode against the recorded
-    one), the rebuilt plan when the delivery began before the record existed.
+    one), the rebuilt plan when the delivery began before the record existed; on a delivery still open (begun,
+    doc_mark undone, not withdrawn, no set-withdrawn), a record whose anchor_picked is true needs --place-anchor
+    again (anchor-needed, with headings, before anything else), and a record with an undone step among its own
+    steps (note for a new-note record, set_json, set_md) is refused replan-differs when the rebuilt mode, target,
+    place.placement or place.level differs from the record, or place.anchor when the record holds one — before
+    the rebuilt plan's own problems; only doc_mark undone, or no record, resumes as before; a finished or
+    withdrawn delivery keeps set-exists or set-withdrawn and is never compared or asked for a heading.
     drop refuses already-applied on any action with applied: true (no partial withdrawal); its set
     read answers absent only on NOT_FOUND, any other Kado failure stops the run; a refused guard on
     the set write is set-changed, resumable by running drop again.
@@ -121,6 +132,7 @@ DOC_CHANGED, KADO_WRITE_FAILED, NAME_TAKEN = "doc-changed", "kado-write-failed",
 SET_CHANGED = "set-changed"
 SET_REPLACED = "set_replaced"                           # meta.json: this delivery writes over an earlier run's applied set
 DELIVERED_PLAN = "delivered_plan"                       # meta.json: the mode, target and place the delivery writes
+ANCHOR_PICKED = "anchor_picked"                         # delivered_plan: --place-anchor was given (never the heading)
 CONFLICT = "CONFLICT"                                   # Kado's error code for a refused guard or a dirty editor
 TOOL_ERROR_PREFIX = "returned an error: "               # KadoClient's prefix before the MCP error payload
 OPEN_UNSAVED, CHANGED_SINCE_READ, UNKNOWN_CONFLICT = "open-unsaved", "changed-since-read", "unknown"
@@ -169,6 +181,8 @@ class Run:
     plan: ra.ReviewPlan
     problems: List[str]
     notices: List[str]
+    anchor_picked: bool                        # --place-anchor was given on this call
+    pick_headings: List[str]                   # what a heading pick chooses from, refusal or not
 
     @property
     def set_exists(self) -> bool:
@@ -265,9 +279,10 @@ def load_run(args: argparse.Namespace) -> Run:
     except rc.UnsafePath:
         raise Refused("inbox-not-configured") from None
     target = _target(vault, setup, str(period_name or ""))
-    plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, _template(vault, setup, target),
-                                anchor=getattr(args, "place_anchor", None), run_id=meta.run_id,
-                                generated=meta.generated)
+    template = _template(vault, setup, target)
+    anchor = getattr(args, "place_anchor", None)
+    plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, template, anchor=anchor,
+                                run_id=meta.run_id, generated=meta.generated)
     held = rs.read_set(vault, paths[rdl.SET_JSON])
     set_exists, set_applied = held is not None, held is not None and rs.all_applied(held.data)
     if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):
@@ -277,7 +292,8 @@ def load_run(args: argparse.Namespace) -> Run:
     problems, notices = rdl.classify(plan, extra)
     # the finished set of an earlier run is written over; the flag outlives the first write for the resume
     replaces_set = not problems and (set_applied or meta.data.get(SET_REPLACED) is True)
-    return Run(args.stem, stage, meta, setup, profile, vault, read, paths, held, replaces_set, plan, problems, notices)
+    return Run(args.stem, stage, meta, setup, profile, vault, read, paths, held, replaces_set, plan, problems, notices,
+               anchor is not None, ra.pick_headings(setup, target, template))
 
 
 # ---------------------------------------------------------------- preview
@@ -369,7 +385,38 @@ def _plan_record(run: Run) -> dict:
     place = dict(run.plan.place)
     if place.get("anchor") != run.setup.anchor:
         place["anchor"] = None
-    return {"mode": run.plan.mode, "target": run.plan.target, "place": place}
+    record = {"mode": run.plan.mode, "target": run.plan.target, "place": place}
+    if run.anchor_picked:
+        record[ANCHOR_PICKED] = True
+    return record
+
+
+def _replan_differs(run: Run, record: dict) -> bool:
+    """Whether the plan built now would write something else than ``record`` says the delivery wrote: ``mode``,
+    ``target``, ``place.placement`` and ``place.level``, plus ``place.anchor`` when the record holds one."""
+    place, recorded = run.plan.place, record.get("place")
+    recorded = recorded if isinstance(recorded, dict) else {}
+    keys = ["placement", "level"] + (["anchor"] if recorded.get("anchor") is not None else [])
+    return (record.get("mode") != run.plan.mode or record.get("target") != run.plan.target
+            or any(recorded.get(key) != place.get(key) for key in keys))
+
+
+def _resume_refusal(run: Run) -> Optional[str]:
+    """Why a resumed run must not write: ``anchor-needed`` when the record says a heading was picked and none was
+    given now; ``replan-differs`` when a step of the recorded plan is undone and the plan built now differs from
+    the record. None without a record, with only ``doc_mark`` undone, or when the plans agree — and None for a
+    delivery nothing resumes (the mark done, withdrawn, or a drop that did not finish): it keeps its own refusal."""
+    record = run.meta.data.get(DELIVERED_PLAN)
+    closed = (rdl.DOC_MARK in run.meta.steps_done or run.meta.withdrawn()
+              or rdl.SET_WITHDRAWN in run.problems)
+    if not isinstance(record, dict) or closed:
+        return None
+    if record.get(ANCHOR_PICKED) is True and not run.anchor_picked:
+        return rdl.ANCHOR_NEEDED
+    steps = ([rdl.NOTE] if record.get("mode") == ra.NEW_NOTE else []) + [rdl.SET_JSON, rdl.SET_MD]
+    if all(step in run.meta.steps_done for step in steps):
+        return None
+    return rdl.REPLAN_DIFFERS if _replan_differs(run, record) else None
 
 
 def _report_delivered_plan(run: Run, out: dict) -> dict:
@@ -413,6 +460,12 @@ def _overwrite_step(run: Run, delivery: StagedDelivery, step: str, payload: str,
 
 def deliver(args: argparse.Namespace) -> dict:
     run = load_run(args)
+    refusal = _resume_refusal(run) if run.meta.started() else None
+    if refusal is not None:
+        out = {"status": "refused", "stem": run.stem, "problems": [refusal], "notices": run.notices}
+        if refusal == rdl.ANCHOR_NEEDED:
+            out["headings"] = run.pick_headings
+        return out
     if run.problems:
         return {"status": "refused", "stem": run.stem, "problems": run.problems, "notices": run.notices}
     paths = _delivery_paths(run)

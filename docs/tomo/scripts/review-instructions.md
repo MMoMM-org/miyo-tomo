@@ -193,10 +193,115 @@ back to the re-plan, as every resume reported before. Only the report
 changes: the payloads a resume writes are still built from the re-plan,
 because the `set_json` step compares the landed set with the rebuilt one
 and a plan reconstructed from a three-field record could not rebuild the
-section text. That leaves the known gap the report does not cover: a resume
-whose re-plan differs from the record and whose set step is still undone
-writes the re-plan's set beside the first attempt's note (recorded with the
-P6 live walk; not changed here).
+section text. That left a gap the report did not cover — a resume whose
+re-plan differs from the record while a set step is still undone would
+write the re-plan's set beside the first attempt's note — recorded with
+the P6 live walk as a known gap and closed by the two sections below
+(fix #258).
+
+## WHY a Resume Refuses a Re-Plan That Differs From the Record (fix #258)
+
+Issue #258, owner decision 2026-11-13. The payloads a resume writes are the
+re-plan's (previous section), so when the vault changed between the stop
+and the resume — the target note appeared, vanished or moved; the mode
+flipped between `new-note` and `insert` or `replace` — the undone steps
+would land a set that contradicts what the first attempt already wrote:
+a new note orphaned in the inbox while the set inserts into a target that
+appeared meanwhile, or a `move_note` set for a note the first attempt never
+wrote. Nothing can repair that after the fact — Hashi applies the set as it
+finds it — so `deliver` compares before it writes: on a resumed run that
+carries a `delivered_plan` record and still has an undone step among the
+record's own steps (`note` only when the record's mode is `new-note`,
+`set_json`, `set_md`), the re-plan's `mode`, `target`, `place.placement`
+and `place.level` must equal the record's, and `place.anchor` too when the
+record holds one (the configured anchor; a null anchor is the privacy rule
+of the previous section, not a wildcard the comparison may read as "any").
+A difference is `refused` with `replan-differs`: nothing written, `meta.json`
+untouched — the comparison runs before the loop and before the `SET_REPLACED`
+and record keys are set, so the stage still describes the first attempt and
+`drop` withdraws it from that record. The comparison comes before the
+re-plan's own refusing problems: a re-plan nobody will write has nothing to
+fix, and sending the user through a heading pick (`place-missing` carries
+`headings`) that ends in `replan-differs` would waste the pick.
+
+Each compared field moves on its own through one change the user can make:
+`target` when the note moves to the year subfolder or elsewhere (still
+`insert`, same place); `place.level` when the anchor heading is demoted;
+`place.anchor` when the configured heading is renamed and the new name is
+picked on the resume (without a pick the re-plan is `place-missing` and
+holds no level, so the level term catches it). `place.placement` is the
+setup's alone — `review_actions` copies `setup.placement` into every insert
+and new-note place, and `replace` arrives only together with the mode — so
+no vault change moves it by itself; it changes when the user edits
+`vault-config.yaml` between the stop and the resume, and the comparison
+reads it for that case. tests/test_review_deliver_resume.py holds one test
+per field on exactly that change, each red under a mutation that drops the
+field.
+
+The skill offers Drop: a vault that changed under a half-written set is the
+user's to look at, and Resume from the listing would refuse again (the
+re-plan is a pure function of the vault now). Two cases keep today's path.
+When only `doc_mark` is undone the set is complete and the resume only marks
+the document — the live-walk case, whose report 88773c67 fixed — so no
+comparison runs; `note` counts as a step of the record only when the record's
+mode is `new-note`, since an insert or replace delivery never writes one. A
+record without `delivered_plan` (a delivery begun before 88773c67) has
+nothing to compare with and writes the re-plan as every resume did before;
+the record is never written by a resume, so such a delivery stays uncompared
+to its end.
+
+Both resume refusals — this one and `anchor-needed` below — guard what a
+resume would write, so they apply only to a delivery still open: begun, the
+mark undone, not withdrawn, and not a drop that did not finish (the emptied
+set `set-withdrawn` names). A finished delivery (`doc_mark` done) and a
+withdrawn one keep their own refusals, `set-exists` or `set-withdrawn`
+(0.2.7): asking the user for a heading, or telling them the vault changed,
+over a set nobody will write again would send them through a pick that ends
+in `set-exists` anyway. The order inside `deliver` is therefore: closed
+delivery → its own problems; open delivery → `anchor-needed`, then
+`replan-differs`, then the re-plan's own problems.
+
+## WHY a Picked Anchor Is Recorded as a Flag and Asked Again (fix #258)
+
+The second half of #258. The listing's Resume (SKILL step 1,
+`failed-delivery` → Resume → step 8) runs `deliver --stem` without
+`--place-anchor`, because the heading the user picked in step 7 lives in the
+conversation that stopped, not in `meta.json` — the record holds `anchor:
+null` for a picked heading (ADR-9, previous section). The resume then
+re-plans at the configured anchor: a `place-missing` refusal when that
+heading is still absent (the user is sent through the pick again by
+accident, which works), or — worse — a clean plan at the configured heading
+when the note regained it meanwhile, so the set MD would name one heading
+while the set JSON the first attempt landed names the pick, and the
+comparison above cannot see it (a null record anchor compares nothing).
+
+So the record keeps that a heading *was* picked — `anchor_picked: true`,
+set only when `--place-anchor` was given, absent otherwise — and never the
+heading. On a resume of such a record without `--place-anchor`, `deliver`
+refuses `anchor-needed` and carries `headings`: the list the pick chooses
+from, built by `review_actions.pick_headings` from the target note, or from
+the chosen template for a new note, exactly as a place problem names them.
+The refusal does not wait for the re-plan to refuse, and it holds when only
+`doc_mark` is undone as well, because the re-plan at the configured anchor
+may refuse there too (the first `place-missing` of #258) and one rule is
+simpler than two; its only condition is the one above — the delivery is
+still open (a finished or withdrawn stem keeps `set-exists` /
+`set-withdrawn`, 0.2.7). With `--place-anchor` given the
+resume continues, and the comparison above applies to the re-plan at that
+heading: a *different* pick is not caught (the record cannot hold the
+heading, so it compares placement and level only) — the accepted cost of
+ADR-9, as before.
+
+`anchor-needed` is a new name rather than a reuse of `place-missing` with
+`headings`: the step 7 line for `place-missing` says "this heading is not
+in the target note" and names `place.anchor`, which on a resume may be
+false (the configured heading can be there), and a second meaning for a
+plan problem would have to be told apart in the skill by `resume` alone.
+One new step 8 line routes the pick back through step 7's rerun of
+`preview --place-anchor`, so Deliver carries the heading again; no new pick
+dialogue exists. The `headings` field on a `deliver` output is user text,
+named in the privacy allowlist (tests/test_review_privacy.py
+`USER_TEXT_FIELDS`) with this reason.
 
 ## WHY `generated` and `run_id` Come From `meta.json`
 

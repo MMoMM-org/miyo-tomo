@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -12,8 +12,10 @@ plus one readable tracker value (`READABLE`) the habits do count: session start 
 period, `setup`, the open reviews), `match` and `setup-input` for both kinds,
 the week read, the document write, parse, preview with a place problem,
 preview and deliver with a `--place-anchor` that is a marker-bearing heading
-of the target, status, a second deliver (set-exists), drop after a complete
-delivery; the month read, a write refused by `review-exists`, `replace`
+of the target — the delivery stopped at the set MD, resumed without the pick
+(refused `anchor-needed`, the headings named again, the pick never in
+meta.json) and then with it — status, a second deliver (set-exists), drop
+after a complete delivery; the month read, a write refused by `review-exists`, `replace`
 without a flag, `--confirm` and `--abort`, a new-note preview, a delivery
 that fails at the set MD, drop after it. One forced exception per script,
 raised while a marker-bearing text is being parsed, must leave only the
@@ -87,12 +89,16 @@ USER_TEXT_FIELDS = {
         ({"weekly"}, "--place-anchor echoes the heading the user picked from headings[]: the target's own text"),
     ("review-instructions", "deliver", "place.anchor"):
         ({"weekly"}, "--place-anchor echoes the heading the user picked from headings[]: the target's own text"),
+    ("review-instructions", "deliver", "headings[]"):
+        ({"weekly"}, "a resume of a delivery begun with --place-anchor and run without it (anchor-needed) names the "
+                     "target note's headings again, so the user can choose one; the pick itself never enters "
+                     "meta.json (fix #258)"),
 }
 
 TODAY = "2026-11-11"
 WEEK_STEM, MONTH_STEM = "2026-W13_review", "2026-03_review"
 WEEK_DOC, MONTH_DOC = f"{INBOX}2026-W13 Review.md", f"{INBOX}2026-03 Review.md"
-MONTH_SET_MD = f"{INBOX}{MONTH_STEM}_instructions.md"
+WEEK_SET_MD, MONTH_SET_MD = f"{INBOX}{WEEK_STEM}_instructions.md", f"{INBOX}{MONTH_STEM}_instructions.md"
 SCRIPTS = ("review-session", "review-read", "review-doc", "review-instructions")
 
 
@@ -322,11 +328,19 @@ def _week(w: Walk) -> None:
     assert rc == 0 and out["approved"] is True and out["counts"]["added"] == 1, out
     rc, out = w.run("review-instructions", "preview", ["preview", "--stem", WEEK_STEM])
     assert rc == 0 and out["problems"] == ["place-missing"] and ANCHOR in out["headings"], out
-    # the user picks a heading from that list: preview and deliver echo it as the place
+    # the user picks a heading from that list: preview and deliver echo it as the place; the delivery stops at the
+    # set MD, the listing's Resume (no pick) is refused with the headings, the resume with the pick lands
     rc, out = w.run("review-instructions", "preview", ["preview", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
     assert rc == 0 and out["problems"] == [] and out["place"]["anchor"] == ANCHOR, out
+    w.vault.fail[("write_note", WEEK_SET_MD)] = KadoError(f"503 while writing {ANCHOR} {DAY}")
     rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
-    assert rc == 0 and out["status"] == "delivered" and out["place"]["anchor"] == ANCHOR, out
+    assert rc == 0 and out["status"] == "stopped" and out["failed_step"] == "set_md", out
+    w.vault.fail.clear()
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM])
+    assert rc == 0 and out["status"] == "refused" and out["problems"] == ["anchor-needed"], out
+    assert ANCHOR in out["headings"], out
+    rc, out = w.run("review-instructions", "deliver", ["deliver", "--stem", WEEK_STEM, "--place-anchor", ANCHOR])
+    assert rc == 0 and out["status"] == "resumed" and out["place"]["anchor"] == ANCHOR, out
     rc, out = w.run("review-instructions", "status", ["status", "--stem", WEEK_STEM])
     assert rc == 0 and out == {"state": "delivered", "stem": WEEK_STEM}, out
     rc, out = w.run("review-session", "start", ["start", "--args=", "--today", TODAY])

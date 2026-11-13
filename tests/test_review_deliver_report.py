@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_deliver_report.py — what a `deliver` stop and a resume tell the skill (spec 045 P6 live-walk fix,
 owner decision 2026-11-13; PRD F5-AC10, F6-AC4; SDD Error Handling `doc-changed`).
 
@@ -16,7 +16,8 @@ B. a resume reports the plan the delivery wrote — `mode`, `target`, `place`, r
    Pass 1 mode with the recorded mode; a delivery that began before the record existed falls back to the re-plan.
    The record holds the anchor only when it is the configured one: a heading of the note's own (`--place-anchor`,
    the heading above the marker) is note text and never enters `tomo-tmp` (ADR-9; tests/test_review_privacy.py
-   scans every working file for it) — a resume then reports the rebuilt plan's anchor for that one field.
+   scans every working file for it) — a resume then reports the rebuilt plan's anchor for that one field; the record
+   keeps `anchor_picked: true` instead, and a resume without the pick is refused (tests/test_review_deliver_resume.py).
 
 Mechanisms a mutation falsifies: `_conflict_reason` answering one name for every conflict flips
 `test_doc_changed_names_why_kado_refused_the_mark`; the stop carrying the reason on every problem flips
@@ -214,7 +215,8 @@ def test_the_record_never_holds_a_heading_of_the_notes_own(doc_mod, ins, instanc
     meta_text = (instance / "tomo-tmp" / "review" / STEM / "meta.json").read_text(encoding="utf-8")
     assert "Woche" not in meta_text and "Meins" not in meta_text
     assert meta_of(instance)["delivered_plan"] == {"mode": "insert", "target": TARGET,
-                                                   "place": {"anchor": None, "placement": "before", "level": 2}}
+                                                   "place": {"anchor": None, "placement": "before", "level": 2},
+                                                   "anchor_picked": True}
     fake.fail.clear()
     _, out, _ = run(ins, monkeypatch, capsys, ["deliver", "--stem", STEM, "--place-anchor", "Woche"], fake)
     assert out["status"] == "resumed" and out["mode"] == "insert"

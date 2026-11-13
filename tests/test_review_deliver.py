@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.2.4
 """test_review_deliver.py — review-instructions.py preview, deliver, drop, status (spec 045 T4.2, T4.3, T4.4;
 PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; SDD Internal API Changes, Error Handling,
 ADR-3, ADR-11, ADR-13) and the shared document reader lib/review_doc_read.py.
@@ -258,7 +258,7 @@ def test_cli_reader_answers_not_found_and_stops_on_kado(doc_mod, ins, instance, 
 def test_cli_every_problem_name_is_pinned_to_refusing_or_notice():
     assert set(rdl.REFUSING) == {"not-approved", "approved-line-missing", "nothing-to-deliver", "place-missing",
                                  "place-too-deep", "user-heading-collision", "set-exists", "set-withdrawn",
-                                 "already-applied"}
+                                 "already-applied", "replan-differs", "anchor-needed"}
     assert set(rdl.NOTICES) == {"heading-renamed", "unlanded-items", "variant_missing", "templater_hint",
                                 "template_unmergeable"}
     assert not set(rdl.REFUSING) & set(rdl.NOTICES)

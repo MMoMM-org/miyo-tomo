@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.21"
+version: "1.22"
 ---
 
 # Solution Design Document
@@ -470,6 +470,7 @@ tests/
 ├── test_review_deliver.py                    # NEW (Phase 4): review-instructions.py preview/deliver/drop/status over the fake vault; MODIFY: a drop that failed after the set write is listed again (implemented, spec 045 Phase 5)
 ├── test_review_deliver_rerun.py              # NEW: a rerun writes its set over the first run's fully applied set, set-exists for a waiting or partly applied one, the resume over the old MD (split out of test_review_deliver.py; implemented, spec 045 Phase 6 fix round)
 ├── test_review_deliver_report.py             # NEW: the doc-changed stop's reason (open-unsaved | changed-since-read | unknown, Kado's message never on stdout), no reason on kado-write-failed, a resume reports the recorded delivered_plan and falls back to the re-plan without one (split out of test_review_deliver.py; implemented, spec 045 P6 live-walk fix)
+├── test_review_deliver_resume.py             # NEW: a resume refuses replan-differs when the re-plan contradicts delivered_plan while a set step is undone (writes with nothing changed, proceeds with only doc_mark undone or without a record), records anchor_picked and refuses anchor-needed with headings without --place-anchor, the SKILL step 8 lines (fix #258)
 ├── test_review_state.py                      # NEW (canonical states; MODIFY: a fresh record over a fully applied set reads open, Phase 6 fix round)
 ├── test_review_state_listing.py              # NEW: open_reviews — one entry per document found by frontmatter, probed through stem_state, ordered under the configured rule and formats, the kind inferred, skips with a reason, withdrawn and reported-applied never listed (split out of test_review_state.py; implemented, spec 045 Phase 6, pre-live-walk)
 ├── test_review_state_finished.py             # NEW: a complete delivery (doc_mark) whose set the user deleted is finished — not listed, status null — while a record short of doc_mark stays failed-delivery; the neighbouring rules unchanged (implemented, spec 045 Phase 6, pre-live-walk fix)
@@ -739,11 +740,18 @@ review-instructions.py preview --stem S [--place-anchor H]
 review-instructions.py deliver --stem S [--place-anchor H]
   out: {status: delivered|resumed, stem, step: "", paths: {set_json, set_md, note?}, next: hashi-or-by-hand,
         mode, target, place, notices, problems: [], target_appeared?: true, ...the preview keys except section_md}
-     | {status: refused, stem, problems: [<refusing names>|name-taken], notices, exists_path?, step?}
+     | {status: refused, stem, problems: [<refusing names>|name-taken|replan-differs|anchor-needed], notices,
+        exists_path?, step?, headings?}
      | {status: stopped, stem, step, failed_step, paths, problems: [doc-changed|kado-write-failed],
         reason?: open-unsaved|changed-since-read|unknown}
   # refused = nothing written (a problem the user must fix); stopped = a step failed after writing began (resumable)
   # name-taken: a payload's path holds a note that is not Tomo's identical text (exists_path names it)
+  # replan-differs (fix #258): a resume with a delivered_plan record and an undone step among the record's own steps
+  #   (note for a new-note record, set_json, set_md) whose plan built now differs from the record in mode, target,
+  #   place.placement or place.level — or place.anchor when the record holds one; meta.json unchanged. Checked
+  #   before the plan's own problems. Only doc_mark undone, or no record: no comparison, the resume proceeds.
+  # anchor-needed (fix #258): a resume of a record with anchor_picked: true run without --place-anchor; headings
+  #   names the pick list again (the target note's, or the chosen template's for a new note). Checked first.
   # deliver success carries no section_md; the section is the preview's
   # reason: only with doc-changed — why Kado refused the mark, read from its CONFLICT message and never echoed:
   #   open-unsaved (the document is open in Obsidian with unsaved changes), changed-since-read (the write guard, or the
@@ -752,7 +760,9 @@ review-instructions.py deliver --stem S [--place-anchor H]
   #   its first step; target_appeared on a resume compares Pass 1's mode with the recorded mode. On a delivered output
   #   and on a resume of a delivery that began before the record existed they are the plan built now (P6 live walk).
   #   place.anchor is recorded only when it is the configured anchor (a heading of the note's own never enters
-  #   tomo-tmp, ADR-9); a resume reports the plan built now for that one field otherwise.
+  #   tomo-tmp, ADR-9); a resume reports the plan built now for that one field otherwise. The undone steps a resume
+  #   writes are still the plan built now — hence replan-differs above; a resume with --place-anchor is compared on
+  #   placement and level only when the record's anchor is null, so a different pick is not caught (accepted, ADR-9).
 
 review-instructions.py drop --stem S
   out: {status: dropped, stem, removed: bool}                       # no step began: only the stage is removed
@@ -844,9 +854,11 @@ ENTITY: ReviewDeliveryMeta (NEW, content-free) — meta.json
   FIELDS: stem, period, kind, doc_path, target, target_exists, run_id, mode, generated, pass1_counts {group: n},
           pass1_links {t<n>: [link stem]} (the source-link stems of each Tomo item, dates and note stems only),
           steps_done: [note|set_json|set_md|doc_mark] (in this order), failed_step, withdrawn, applied_reported,
-          set_replaced (this delivery writes over an earlier run's applied set), delivered_plan {mode, target, place}
-          (the plan the delivery wrote, recorded with its first step; a resumed output reports it — P6 live walk;
-          place.anchor only when it is the configured anchor, else null: a heading of the note's own is text)
+          set_replaced (this delivery writes over an earlier run's applied set), delivered_plan {mode, target, place,
+          anchor_picked?} (the plan the delivery wrote, recorded with its first step; a resumed output reports it — P6
+          live walk — and a resume with an undone set step is refused when its plan differs from it — fix #258;
+          place.anchor only when it is the configured anchor, else null: a heading of the note's own is text;
+          anchor_picked: true when --place-anchor was given, so a resume asks for the heading again — never the heading)
   RULE: nothing text-derived (no digest of item text — templated lines are recoverable by enumeration)
         `mode` is `insert` when the target note exists and `new-note` when it does not, as Pass 1 knew it
         (implemented, spec 045 Phase 3); `replace` is decided later, by the marker search at preview.
@@ -1130,6 +1142,8 @@ sequenceDiagram
 | `deliver` | the guarded mark is refused: Kado's error code `CONFLICT` (a `KadoToolError` whose JSON payload says so; `write_note` never raises `KadoConcurrencyError`, which counts too) — a stale `modified` or the document open with unsaved edits | `status: stopped`, `doc-changed`, `failed_step: doc_mark`, `reason`: `open-unsaved` (Kado's dirty-editor message), `changed-since-read` (the write guard's message, or `KadoConcurrencyError`), `unknown` (neither) — the name only, never Kado's message | `open-unsaved` → the skill says the document is open in Obsidian with unsaved changes (a plugin that stamps the note on edit can cause that — the P6 live walk met `update-time-on-edit`): save it (Cmd+S) or close it, then `/review` → Resume. Otherwise resume after saving; payloads already written count as done (F5-AC10). Accepted gap: resume does not re-check the landed set against the edited document |
 | `deliver` | any other refused mark, e.g. `VALIDATION_ERROR` whatever its message says | `status: stopped`, `kado-write-failed`, `failed_step: doc_mark` | resumable |
 | `deliver` | failure at any step | `status: stopped`, `failed_step` | next `/review` offers resume or drop; resume does not duplicate (F5-AC10) |
+| `deliver` | a resume with a `delivered_plan` record and an undone step among the record's own steps (`note` for a new-note record, `set_json`, `set_md`) whose plan built now differs from the record — `mode`, `target`, `place.placement`, `place.level`, or `place.anchor` when the record holds one (the target note appeared, vanished or moved; the mode flipped) | `status: refused`, `replan-differs` | nothing written, `meta.json` unchanged; the skill says the vault changed since the stopped delivery (the target note or its place is not what the first attempt wrote for) and offers Drop or Abort — Resume would refuse again. Only `doc_mark` undone (the set is complete) or no record (begun before 88773c67): no comparison, the resume proceeds as before (fix #258) |
+| `deliver` | a resume of a record with `anchor_picked: true` (the delivery began with `--place-anchor`) run without `--place-anchor` — the listing's Resume | `status: refused`, `anchor-needed`, `headings` | nothing written; the skill prints `headings` and reuses the step 7 pick (`preview --place-anchor`, then Deliver with it); refused before the plan's own problems and before the comparison above, whatever is undone. The record never holds the heading (ADR-9); a different pick on the resume is compared on placement and level only (accepted) (fix #258) |
 | `preview`, `deliver` | target appeared since Pass 1 (meta said `new-note`, the fresh plan does not; the by-name search ignores hits inside the inbox) | `target_appeared: true`, mode `insert` or `replace` | says it targets the existing note (F6-AC4) |
 | `drop` | no delivery step began | `status: dropped`, `removed` | only the stage is removed |
 | `drop` | a delivery step began, done or in flight (the note step alone counts) | `status: withdrawn`, `paths` | the set JSON is written with an empty `actions` list (schema-valid, nothing to apply) and its MD says "withdrawn — delete these files" and names every file the delivery left, a lone new note included; `meta.json` keeps `withdrawn: true`, so a later `deliver` is `set-exists`; Kado offers Tomo no delete. The set is written first, the MD second, the meta mark last: a `kado-write-failed` on the MD leaves the set empty, the MD listing the actions and the meta unmarked — the skill reruns `drop` once in the session, and the next `/review` lists the stem as `failed-delivery` again until the mark is written (SDD 1.7) |
@@ -1186,7 +1200,7 @@ OUTPUT: open_reviews lists the states ordered by period start; the skill offers 
 
 As built, Phase 3 (implemented, spec 045 T3.1-T3.8): the read side is `review_md` (markdown structure), `review_day` (one daily), `review_weekly` (names, link targets, weekly day blocks), `review_reader` (`PacedReader`, the cache in front of the pacer) and `review_period` (the period read and its report), run by `review-read.py`; the document side is `review_doc`, `review_doc_parse` and `review-doc.py` (write / parse / replace). `ReviewPacer.finish()` runs once per period, keeps the widest interval installed and puts what it read into `recovered`; the interval is restored by `close()` / the context manager's exit.
 
-As built, Phase 4 (implemented, spec 045 T4.1-T4.3): `review_actions` builds the plan (target, mode, section, actions, new note) from the approved document and the target as Kado holds it now; `review_delivery` splits the plan's problems into refusing problems and notices (`classify`) and owns the meta adapter, the set paths and the withdrawn set; `review_doc_read` is the one reader of the document for `parse`, `preview` and `deliver`; `review_state.stem_state` is the one probe-and-classify step for `start` and `status`; `review-instructions.py` runs `preview`, `deliver`, `drop` and `status`. `deliver` writes the new note (new-note mode only), the set JSON and its MD through `staged_delivery`, then marks the document with one write guarded by the `modified` stamp the reader saw. A refused guard is read from Kado's error code `CONFLICT` (an open editor with unsaved edits is `CONFLICT` too), so both are `doc-changed`, and the stop names which in `reason` (`open-unsaved`, `changed-since-read`, `unknown`), read from Kado's message and never echoed (P6 live walk, 2026-11-13); any other refused write is `kado-write-failed`. Resume after `doc-changed` does not re-check the landed set against the edited document; payloads already written count as done (accepted). `deliver` records the plan it writes (`delivered_plan`: mode, target, place) in `meta.json` with its first step, and a `resumed` output reports that record rather than the plan rebuilt against the vault now — the re-plan still supplies the payloads of the undone steps (P6 live walk). `mark_delivered` returns a text without a `tomo:` block unchanged; that is reachable only when the user deleted the frontmatter, and the listing never finds such a document (it searches by `tomo.doc_type`).
+As built, Phase 4 (implemented, spec 045 T4.1-T4.3): `review_actions` builds the plan (target, mode, section, actions, new note) from the approved document and the target as Kado holds it now; `review_delivery` splits the plan's problems into refusing problems and notices (`classify`) and owns the meta adapter, the set paths and the withdrawn set; `review_doc_read` is the one reader of the document for `parse`, `preview` and `deliver`; `review_state.stem_state` is the one probe-and-classify step for `start` and `status`; `review-instructions.py` runs `preview`, `deliver`, `drop` and `status`. `deliver` writes the new note (new-note mode only), the set JSON and its MD through `staged_delivery`, then marks the document with one write guarded by the `modified` stamp the reader saw. A refused guard is read from Kado's error code `CONFLICT` (an open editor with unsaved edits is `CONFLICT` too), so both are `doc-changed`, and the stop names which in `reason` (`open-unsaved`, `changed-since-read`, `unknown`), read from Kado's message and never echoed (P6 live walk, 2026-11-13); any other refused write is `kado-write-failed`. Resume after `doc-changed` does not re-check the landed set against the edited document; payloads already written count as done (accepted). `deliver` records the plan it writes (`delivered_plan`: mode, target, place) in `meta.json` with its first step, and a `resumed` output reports that record rather than the plan rebuilt against the vault now — the re-plan still supplies the payloads of the undone steps (P6 live walk), so a resume with an undone set step whose re-plan differs from the record (mode, target, place) is refused `replan-differs` with nothing written, and a resume of a delivery begun with `--place-anchor` (recorded as `anchor_picked: true`, never the heading) is refused `anchor-needed` with the pick's `headings` until the heading is given again (fix #258; the known gap recorded at the P6 live walk is closed). `mark_delivered` returns a text without a `tomo:` block unchanged; that is reachable only when the user deleted the frontmatter, and the listing never finds such a document (it searches by `tomo.doc_type`).
 
 ```
 ALGORITHM: month reading (F3-AC5/6)

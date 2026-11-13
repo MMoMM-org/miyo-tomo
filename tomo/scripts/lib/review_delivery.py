@@ -1,5 +1,5 @@
 # review_delivery.py — what a /review delivery needs around the plan: problem classes, meta adapter, set paths, peers.
-# version: 0.1.5
+# version: 0.1.6
 """The delivery-side helpers of ``review-instructions.py`` (spec 045; ADR-11, ADR-13).
 
 ``classify(plan)`` splits a ``ReviewPlan``'s problems into ``(problems,
@@ -9,7 +9,11 @@ notices)``: ``REFUSING`` names stop a delivery (nothing is written),
 notices as names; a name in neither tuple refuses; ``ALREADY_APPLIED`` is
 ``drop``'s refusal (a set Hashi marked applied) and ``SET_WITHDRAWN``
 ``deliver``'s refusal of an emptied set on a begun stem (a drop that did not
-finish), both listed among ``REFUSING`` so one pin covers every name.
+finish), ``REPLAN_DIFFERS`` ``deliver``'s refusal of a resume whose re-plan
+contradicts the recorded ``delivered_plan`` while a set step is undone, and
+``ANCHOR_NEEDED`` its refusal of a resume without ``--place-anchor`` of a
+delivery begun with one — all listed among ``REFUSING`` so one pin covers
+every name.
 ``STEPS`` is the delivery
 order ``note → set_json → set_md → doc_mark``. ``ReviewMeta`` lends the
 ``meta.json`` dict the attributes ``staged_delivery`` records into
@@ -51,9 +55,11 @@ STEPS = (NOTE, SET_JSON, SET_MD, DOC_MARK)
 SET_EXISTS = "set-exists"
 SET_WITHDRAWN = "set-withdrawn"
 ALREADY_APPLIED = "already-applied"
+REPLAN_DIFFERS = "replan-differs"
+ANCHOR_NEEDED = "anchor-needed"
 TEMPLATER_HINT, VARIANT_MISSING, TEMPLATE_UNMERGEABLE = "templater_hint", "variant_missing", "template_unmergeable"
 REFUSING = (ra.NOT_APPROVED, APPROVED_MISSING, ra.NOTHING_TO_DELIVER, ra.PLACE_MISSING, ra.PLACE_TOO_DEEP,
-            ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED)
+            ra.HEADING_COLLISION, SET_EXISTS, SET_WITHDRAWN, ALREADY_APPLIED, REPLAN_DIFFERS, ANCHOR_NEEDED)
 NOTICES = (ra.HEADING_RENAMED, ra.UNLANDED_ITEMS, VARIANT_MISSING, TEMPLATER_HINT, TEMPLATE_UNMERGEABLE)
 INSTRUCTIONS_SUFFIX = "_instructions"
 

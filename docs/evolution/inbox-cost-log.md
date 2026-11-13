@@ -715,3 +715,29 @@ spilled. After mean: **97,328** cache-write / item (−18%), **$0.553** / item (
 | `19-55-38Z-7b2b5a` | 12 | 96,240 | 0.546 | $6.55 |
 
 Cost unchanged against the spec 040 after-runs (mean 97,328 / $0.553). 74 reads, none spilled.
+
+## Spec 045 — T6.3 live walk (`/review` weekly and monthly)
+
+**Date**: 2026-11-12 and 2026-11-13 · **Branch**: `docs/31-weekly-monthly-review` · **Model**: Sonnet 5.5 (`claude-sonnet-5-5`, main session only, no subagents) · Sessions `5b959432`, `da0eedd9`, `68459faa`, `3a862c54`, `a5f4180a`, `80a4605a`, `269b1964`
+
+Cost is counted once per API message id at $3 / $15 / $3.75 / $0.30 per M tokens. `tomo-session-stats.py`
+adds the `usage` repeated on every content block and overstates it (`68459faa`: $5.41 against $2.658 here).
+Run ids, evidence lines and the KPI verdicts: `docs/XDD/specs/045-weekly-monthly-review/live-walk.md`.
+
+| run | what | cost | duration | Kado calls / retried / waited |
+|---|---|---|---|---|
+| R1 | setup, week (rejected, defect) | $0.268 | 58 s | — |
+| R2 | setup, week + month | $0.566 | 123 s | — |
+| R3 | **Pass 1 week 2026-W13** | **$0.469** | 48 s | 41 / 0 / 11.7 s (write 3) |
+| R5 | **Pass 2 week W13** (+ default-week read) | **$0.322** | 94 s | ≈ 8 (audit log) |
+| R6 | **Pass 1 month 2026-03** | **$0.909** | 161 s | 165 / 0 / 48.4 s (write 5) |
+| R8 | Pass 1 month, second | $0.532 | 92 s | 165 / 0 / 48.2 s (write 5) |
+| R9 | **Pass 2 month** (+ default-week read) | **$0.663** | 97 s | ≈ 11 (audit log) |
+| R11 | Pass 1 month, third (ended at Replace / Keep) | $0.869 | 155 s | 165 / 0 / 48.2 s |
+| R13 | Pass 1 month, fourth (target exists) | $0.682 | 132 s | 165 / 0 / 48.4 s (write 3) |
+| R14-R17 | Pass 2 month, tries and resumes | $0.244 / $0.227 / $0.117 / $0.118 | 89 / 30 / 15 / 12 s | audit ≈ 9 / 16 / 7 / 10 |
+| R18 | setup, week + month (frontmatter question) | $0.579 | 69 s | — |
+| R4, R7, R10, R12, R19 | bare `/review` (parse or default week, nothing to review) | $0.231 / 0.231 / 0.163 / 0.182 / 0.134 | 9-23 s | W45 read 5 / 0 / ~1 s |
+
+Total $7.51 over 19 runs. Weekly Pass 1 and monthly Pass 1 are inside their KPIs; Pass 2 ($0.322, $0.663) is not
+(KPI $0.20). Items kept / unticked / deleted: W13 33 / 0 / 0 (habits 12), month 46 / 1 / 0.

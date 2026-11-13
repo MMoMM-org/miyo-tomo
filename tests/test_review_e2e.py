@@ -158,7 +158,8 @@ def test_setup_abort_saves_nothing_and_writes_nothing(walk: Walk):
     # the user answers Abort: no confirmed file, no setup-input, no writer, no further script
     assert (walk.root / "config" / "vault-config.yaml").read_bytes() == saved
     assert walk.vault.recorded == recorded_before and walk.vault.writes == []
-    assert list((walk.root / "tomo-tmp").rglob("*.json")) == [], "no confirmed-/setup- file left by match"
+    assert [p for p in (walk.root / "tomo-tmp").rglob("*") if p.is_file()] == [], \
+        "no confirmed-/setup- file (nor any other file) left by match"
     assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing"}
 
 

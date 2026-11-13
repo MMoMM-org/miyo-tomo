@@ -4,7 +4,7 @@
 (spec 045 T6.2; PRD Assumptions; SDD Quality Requirements).
 
 Opt-in on two counts, every live test skips otherwise: ``TOMO_LIVE_KADO=1`` and a Kado that answers
-(``-m integration`` only selects the marked tests; no default option excludes them, so it is not a gate). A Kado
+(``-m integration`` only selects the marked tests; no default option currently excludes them, so it is not a gate). A Kado
 that refuses the key (``KadoAuthError``) fails the run: a wrong key is a real failure, an unreachable Kado is a
 skip. The Kado URL and key come from
 ``KADO_URL``/``KADO_TOKEN`` or, read-only, from ``tomo-instance/.mcp.json``

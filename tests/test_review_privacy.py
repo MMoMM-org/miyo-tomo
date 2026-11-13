@@ -516,6 +516,8 @@ def test_every_named_field_carried_its_marker_once(walk):
             if seen:
                 used.add((call["script"], call["sub"], field))
     assert sorted(set(USER_TEXT_FIELDS) - used) == []
+    assert all(kinds and reason.strip() for kinds, reason in USER_TEXT_FIELDS.values()), \
+        "every named field names its marker kinds and why it may carry user text"
 
 
 def test_no_marker_in_tomos_working_files_after_any_step(walk):

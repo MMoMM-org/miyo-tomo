@@ -740,4 +740,4 @@ Run ids, evidence lines and the KPI verdicts: `docs/XDD/specs/045-weekly-monthly
 | R4, R7, R10, R12, R19 | bare `/review` (parse or default week, nothing to review) | $0.231 / 0.231 / 0.163 / 0.182 / 0.134 | 9-23 s | W45 read 5 / 0 / ~1 s |
 
 Total $7.51 over 19 runs. Weekly Pass 1 and monthly Pass 1 are inside their KPIs; Pass 2 ($0.322, $0.663) is not
-(KPI $0.20). Items kept / unticked / deleted: W13 33 / 0 / 0 (habits 12), month 46 / 1 / 0.
+inside the original KPI of $0.20; KPI raised to $0.75 by the owner on 2026-11-13 (README Decisions Log): $0.322 and $0.663 PASS; FAIL under the original $0.20. Items kept / unticked / deleted: W13 33 / 0 / 0 (habits 12), month 46 / 1 / 0.

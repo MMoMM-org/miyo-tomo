@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.3
+# version: 0.6.4
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -49,7 +49,8 @@ Output: one JSON object on stdout, ASCII-escaped.
                      notes_checked, folder_listing found|kado-none, format_problems,
                      template_headings},
            daily_path_fix {configured, found} (only when the other spelling exists),
-           template_candidates [names below templates.base_path, without .md] (only when neither
+           template_candidates [names below templates.base_path, without .md, only those holding the kind
+             word (week/woche, month/monat, case-insensitive; lib/review_templates.py)] (only when neither
              the mapping nor --template names a template and --template is not none;
              [] without a base_path or for kado-none),
            needs_anchor true, anchor_candidates [headings of the two most recent periodic notes]

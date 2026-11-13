@@ -1,7 +1,7 @@
 ---
 title: "/review: weekly and monthly reviews the user edits before they land"
 status: approved
-version: "1.7"
+version: "1.8"
 ---
 
 # Product Requirements Document
@@ -102,6 +102,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given the user sets a first day of the week other than Monday, When Tomo shows the matches, Then week numbers and the week's year follow that first day, and the existing notes the name format no longer matches are shown before the user confirms
   - [ ] Given existing weekly notes do not show how the user counts weeks (which day starts a week, which week is week 1), When Tomo proposes the setup, Then it asks the user in plain words how their weeks are counted and derives the rule from the answer; the Obsidian plugin configuration is never taken as the user's week
   - [ ] Given no template mapped for the period kind, When Tomo proposes the setup, Then it lists the notes of the templates folder whose name fits the kind and asks which one, or none; given none chosen, or a template Kado cannot read, Then it says so and proposes a plain note (title and review section) instead, says an unreadable template may mean the Kado key has no access, and — when no heading of the template can be proposed as the place — asks at which heading of the periodic note the review goes before it offers to confirm
+    - Clarification (1.8, owner 2026-11-13): when the chosen template has no frontmatter block at its first line, the setup asks "use it as it is / create a Tomo variant"; "as it is" keeps today's behaviour, "variant" stops the setup with nothing saved.
   - [ ] Given the user corrects a proposal, When Tomo has applied it, Then it shows the new matches again before asking, and nothing is saved until the user confirms
   - [ ] Given the user confirms, When the setup is saved, Then no other setting changes except a correction the user confirmed in the same dialogue (for example a daily folder path with a stray trailing space), and the review request continues in the same session
   - [ ] Given the user aborts the setup, When the session ends, Then nothing is saved and nothing is written to the vault
@@ -164,6 +165,7 @@ The user writes a daily note every day and a weekly and a monthly note to look b
   - [ ] Given the delivered instruction set, When Hashi lists the inbox, Then it finds and validates it like a Pass 2 set
   - [ ] Given delivery, When Tomo writes the instruction set, Then it also writes readable instructions in the inbox, as `/inbox` and `/note` do, that let a user without Hashi apply the review by hand: the section text ready to copy, the target note and the exact place, or the new note and the folder to move it to
   - [ ] Given a delivery that fails midway, When the user next runs `/review`, Then Tomo offers to resume or drop it, and a resume finishes without duplicating what already landed
+    - Clarification (1.8): a stop on the guarded document mark names its cause (open with unsaved changes, changed since read, or unknown), and a resume reports the plan it recorded.
   - [ ] Given delivery succeeded, When Tomo reports, Then it names the target note, the place, the instruction set and the readable instructions, and that the next step is to apply it in Hashi or by hand, and the review document shows in its name or its first line that it was delivered
 
 #### Feature 6: One review per period

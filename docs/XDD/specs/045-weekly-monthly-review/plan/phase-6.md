@@ -49,6 +49,8 @@ This phase proves the whole flow end to end and closes the spec.
 
 - [x] **T6.3 Live walk on `tomo-instance`** `[activity: validate]` `[model: routine]`
 
+  Exceptions recorded in close-out §5/§7: F1-AC6 and F4-AC7 not reachable on the test vault, `88773c67` and `586277fa` not re-walked, cold-session weekly Pass 1 not measured.
+
   1. Prime: memory "sync before any live walk", "restart Claude after agent/skill sync", "cost log after every live run"
   2. Test: after the owner's go: `scripts/update-tomo.sh --instance tomo-instance --yolo`, grep the instance for the new files; the owner runs `/review setup`, `/review 2026-W13`, edits, `/review`, applies in Hashi; then `/review 2026-03`. Record per run: cost, duration, calls, retried, waited, kept/unticked/deleted/added counts (no text), and the model-behaviour criteria named above.
   3. Implement: nothing in code; results into `docs/XDD/specs/045-weekly-monthly-review/live-walk.md` and the cost log.

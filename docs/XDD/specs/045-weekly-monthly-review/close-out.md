@@ -16,7 +16,7 @@ Every acceptance criterion below traces to evidence that was **executed**, not t
 
 For each criterion the trace names the **mechanism** the evidence falsifies: the concrete change that would turn it red.
 
-`requirements.md` and `solution.md` were not edited.
+`requirements.md` and `solution.md` were not edited by this close-out.
 
 ## Criteria count
 
@@ -33,7 +33,7 @@ Three criterion parts had no test that pinned them; all three are now closed by 
 
 ## 1. The single invocation
 
-The **524 node ids** in the trace table ran **together in one `pytest` invocation** on 2026-11-13, branch `docs/31-weekly-monthly-review` at `a2f1daa6` with `tests/test_045_close_out_gaps.py` added (uncommitted at the time of the run):
+The **524 node ids** in the trace table ran **together in one `pytest` invocation** on 2026-11-13, branch `docs/31-weekly-monthly-review` at `a2f1daa6` with `tests/test_045_close_out_gaps.py` added (uncommitted at the time of the run; committed in `6f9a96e2`):
 
 ```
 725 passed in 8.34s
@@ -680,7 +680,7 @@ Consumer-owned halves: F5-AC8 "Hashi lists and validates it" and F6-AC4 "the app
 |---|---|---|
 | Adoption: 4 consecutive finished weeks in the live vault after release | not measured: every run was on `tomo-instance` and the test vault | open, measured from release |
 | Engagement: ≤ 40 % of Tomo's proposals unticked or deleted (habits excluded) | 1 of 56 (1.8 %) over W13 and the first month delivery; the owner edited nothing | PASS; says little about the proposals' quality (live-walk.md caveat) |
-| 0 writes to the vault outside the inbox before apply | Kado audit-log windows: inbox paths only, plus read probes of the target and the template. Vault side: Templater moved the raw-template month note and ~61 backlinking notes were restamped (DL 2026-11-13 "recorded as a vault-side caveat, not a Tomo write") | PASS for Tomo and Kado; vault-side caveat on the raw-template new-note path, now gated by the setup question (`586277fa`) |
+| 0 writes to the vault outside the inbox before apply | Kado audit-log windows: inbox paths only, plus read probes of the target and the template. Vault side: Templater moved the raw-template month note and backlinking notes were restamped (65 notes changed mtime (31 dailies, 30 5-Year-Journal notes, 4 weekly notes; plus one hierarchy MOC); likely chain Templater move → Obsidian link updates → update-time-on-edit stamps (all sampled notes link `[[2026-03]]` and carry `Updated: 2026-11-13 09:01`), not fully proven) (DL 2026-11-13 "recorded as a vault-side caveat, not a Tomo write") | PASS for Tomo and Kado; vault-side caveat on the raw-template new-note path, now gated by the setup question (`586277fa`) |
 | 0 delivered proposals without a source-day link | 0 of 21 / 35 / 24 | PASS |
 | 0 periodic notes with two Tomo review sections | W13: 1 heading, 1 marker after apply; the March note vanished, not checkable | PASS for W13; month not checkable |
 | Weekly Pass 1 ≤ $0.50 | R3 $0.469 / 48 s, warm session; cold not measured | PASS (margin $0.031, warm) |

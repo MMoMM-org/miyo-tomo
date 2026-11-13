@@ -106,8 +106,8 @@ When implementation requires changes from the specification:
 
 **Specification**:
 
-- `docs/XDD/specs/045-weekly-monthly-review/requirements.md` - Product Requirements (v1.2, 59 criteria)
-- `docs/XDD/specs/045-weekly-monthly-review/solution.md` - Solution Design (v1.0, ADR-1..12)
+- `docs/XDD/specs/045-weekly-monthly-review/requirements.md` - Product Requirements (v1.8, 59 criteria)
+- `docs/XDD/specs/045-weekly-monthly-review/solution.md` - Solution Design (v1.21, ADR-1..13)
 - `docs/XDD/specs/044-note-from-template/solution.md` - the precedent this design copies
 - `docs/tomo/scripts/note-instructions.md` - WHY of the deliver loop extracted in T1.3
 - `CLAUDE.md` - runtime-file rules, eval gate, version bumps

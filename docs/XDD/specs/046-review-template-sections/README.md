@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-13 |
-| **Current Phase** | Initialization |
+| **Current Phase** | SDD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Model tier** | {{MODEL_TIER}} |
 | **Last Updated** | 2026-11-14 |
@@ -14,7 +14,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | v1.1: 7 features, 47 criteria (F1 material per section is the headline; F6 quarter); no open questions |
+| requirements.md | completed | v1.1 (approved 2026-11-14): 7 features, 47 criteria (F1 material per section is the headline; F6 quarter); no open questions |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -47,6 +47,7 @@
 | 2026-11-14 | Name: the command stays `/review`; the purpose is described as a review helper; a skill rename (e.g. review-helper) is decided at the skill revisit #259 | Owner (recommended); a rename touches many tests and docs |
 | 2026-11-14 | F5-AC2 decided: the Hashi action exists by assumption; a re-run always replaces only Tomo's block; no fallback and no safety refusal for an older Hashi. The PR merges only after Tomo and Hashi work together in the test vault; the Hashi handoff (incl. schema JSONs) goes out as soon as the SDD defines the action; Hashi builds it | Owner notes + answer ("without any safety refusal") |
 | 2026-11-14 | PRD v1.1: owner notes worked in and removed; quarter confirmed with Pass 1 ≤ $5.00 / ≤ 20 min on Q1 2026; quarter marks one level up from the month (only-in-monthly, not-in-monthly; weekly notes read as sources); calendar quarters only; yearly stays Could Have for a later spec | Owner answers 2026-11-14; test vault has `t_quarter_privat.md` and quarterly notes from 2022-Q2 |
+| 2026-11-14 | PRD v1.1 approved; phase PRD → SDD | Owner; validation checklist passed (two known deviations kept from 045: the amendments subsection, no business-impact KPI) |
 
 ## Context
 

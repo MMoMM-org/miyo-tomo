@@ -15,7 +15,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.3 (2026-11-14): 7 features, 49 criteria (F1 material per section is the headline; F6 quarter; v1.2 adds F2-AC11 off-limits and narrows F1-AC6; v1.3 adds F2-AC12 analysis rows after SDD validation) |
-| solution.md | in_progress | v1.1 (2026-11-14): 13 ADRs, all confirmed; validation findings worked in |
+| solution.md | in_progress | v1.2 (2026-11-14): 13 ADRs, all confirmed; two validation passes worked in |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -59,6 +59,7 @@
 | 2026-11-14 | Script-only sections: a section whose content is only a script (trackers, Dataview, habits) is never written; the user may still give it a description at setup ("analysis row"), and Tomo's analysed overview / conclusion for it lands in the "Tomo Review" section under a sub-heading named after that section; the script-computed habit lines stay in "Tomo Review" as in spec 045, and a row cannot name `habits` as a group (PRD v1.3 F2-AC12, F2-AC7) | Owner: "a section which contains only a script will not be touched by tomo, user might request a 'analysed' overview/conclusion for that section though, which goes into tomo review" |
 | 2026-11-14 | A Tomo block the user moved into the "Tomo Review" section: only leave out or Abort (a re-run's `replace_section` of Tomo Review would wipe it); narrows the PRD edge case for this one location | Owner (recommended) |
 | 2026-11-14 | Waiting v3 instruction sets after the wire bump: Hashi decides how it handles them (handoff item); Tomo builds no upgrade or converter script; the readable instruction document remains the user's fallback | Owner: "tell hashi to figure that out … we will not create upgrade or convert scripts in tomo" |
+| 2026-11-14 | Second SDD validation (independent opus, 7 adversarial note layouts walked against Hashi's code): not ready — 2 HIGH (the "Tomo Review" placement never checked against off-limits; a section insert landing inside "Tomo Review" is wiped in the same set because Hashi runs inserts before `replace_section`), 7 MEDIUM, 11 LOW. Worked into SDD v1.2: landing check on the "Tomo Review" placement too; `plan_section` stops `block-in-review-section` for an insert inside or at the "Tomo Review" range; `home(before)` passes over a "Tomo Review" section directly above; re-run hardened (missing / ambiguous checks also on re-run, a heading between the markers = broken, the landing check where the block actually sits, never a scope-less replace on the moved path, hidden marker copies = broken); double placement and "omit empty groups" only with a mapping; one owner per criterion; renames (`landing-off-limits` stop, `heading_key`) | Follows the owner's earlier rule (a block inside "Tomo Review" → skip or Abort); no new owner decision needed |
 
 ## Context
 

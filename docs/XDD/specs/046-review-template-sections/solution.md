@@ -1,7 +1,7 @@
 ---
 title: "/review: review material for the user's own template sections"
 status: draft
-version: "1.1"
+version: "1.2"
 ---
 
 # Solution Design Document
@@ -76,7 +76,7 @@ Notes on two gates: there are no database migrations; "column names" means the f
 ## Constraints
 
 - CON-1 Spec 045's architecture stays (its ADR-1, ADR-2, ADR-12): the `/review` skill owns the flow, scripts own state, reads, writes, checks and rendering, and the model's only output is `proposals.json`. Python 3 stdlib plus the repo's `lib/` only; scripts run in the container and on the host (`./venv/bin/python`). Runtime prose (`tomo/dot_claude/**`) holds imperatives only; every WHY goes to `docs/tomo/<mirrored-path>.md` first. Every edited managed file bumps `# version:`.
-- CON-2 Nothing of spec 045 is removed (PRD Constraints): without a mapping every path keeps its behaviour and renders the same review document as on `main`; the month's `read.json` keys and the proposals' `groups` keep their names. Three intended differences reach the unmapped path too, each pinned by a test: `read*.json` is written compact (ADR-7), every instruction set carries `schema_version` "4" (ADR-5), and a partly applied set may be overwritten (ADR-12). Files stay within the L2 size guide (300–500 lines of dense logic): new logic goes into new modules, not into the already large `review-instructions.py` (511), `lib/review_actions.py` (463), `lib/period.py` (486), `lib/review_period.py` (421).
+- CON-2 Nothing of spec 045 is removed (PRD Constraints): without a mapping every path keeps its behaviour and renders the same review document as on `main`; the month's `read.json` keys and the proposals' `groups` keep their names. Five intended differences reach the unmapped path too, each pinned by a test: `read*.json` is written compact (ADR-7); every instruction set carries `schema_version` "4" (ADR-5); a partly applied set may be overwritten (ADR-12); a mistyped or deleted template is refused at setup and the configured anchor no longer outlives a template change (ADR-13, #267); the "Tomo Review" placement is checked against off-limits rows (an empty list by default, so nothing changes until the user marks one). The optional `mark` field is defined only on section items, so the group items' schema stays as it is. Files stay within the L2 size guide (300–500 lines of dense logic): new logic goes into new modules, not into the already large `review-instructions.py` (511), `lib/review_actions.py` (463), `lib/period.py` (486), `lib/review_period.py` (421).
 - CON-3 Privacy (spec 045 ADR-9, Feature 7): no note text in Tomo's logs, stderr, cost records, `meta.json`, `delivered_plan` or `rows-<kind>.json` (`read*.json` and `proposals.json` hold read content by design and are deleted after the document is written, as in spec 045). Section headings, descriptions and keywords are setup text the user confirmed and may sit in the vault config, `read*.json` and `rows-<kind>.json`; headings and content found in the target note may not enter `meta.json` or `delivered_plan`. Marker ids are opaque and never derived from text.
 - CON-4 Tomo writes only to the inbox; the vault changes through the instruction set the user applies in Hashi or by hand. Kado is the only vault access (Constitution L1/L2).
 - CON-5 Cross-repo: the new Hashi action and the wire bump go to Hashi through `_outbox/for-hashi/` (owner-orchestrated), with an FYI to Kokoro (Constitution Architecture L2); the PR merges only after Tomo and Hashi work together in the test vault (PRD Constraints).
@@ -92,7 +92,7 @@ Notes on two gates: there are no database migrations; "column names" means the f
 ```yaml
 - doc: docs/XDD/specs/046-review-template-sections/requirements.md
   relevance: HIGH
-  why: "PRD v1.2 — the 48 criteria this design satisfies; the amendments to spec 045"
+  why: "PRD v1.3 — the 49 criteria this design satisfies; the amendments to spec 045"
 - doc: docs/XDD/specs/045-weekly-monthly-review/solution.md
   relevance: HIGH
   why: "Base design (v1.25): ADR-1..13, the review section, marker, staged delivery, privacy, pacing"
@@ -156,7 +156,7 @@ Notes on two gates: there are no database migrations; "column names" means the f
   why: "deliver_step :124-139; resume needs byte-identical payloads (unchanged)"
 - file: tomo/scripts/lib/period.py
   relevance: HIGH
-  why: "KINDS :28-31, Period :123-176, _TOKENS :36, format_kind :221, parse_args :384, _parse_period_word :426, _parse_at :473"
+  why: "KINDS :28-31, Period :123-176, _TOKENS :36, format_kind :221, parse_args :384, _parse_period_word :425, _parse_at :473"
 - file: tomo/scripts/review-doc.py
   relevance: HIGH
   why: "render_and_write :220-265, _write_meta :193"
@@ -177,7 +177,7 @@ Notes on two gates: there are no database migrations; "column names" means the f
   why: "REFUSING/NOTICES :70, second_set :141, plan_record :262, replan_differs :274, resume_refusal :284"
 - file: tomo/scripts/lib/review_state.py
   relevance: MEDIUM
-  why: "SECTION_ACTIONS :83, all_applied/any_applied :123, _infer_kind :323"
+  why: "SECTION_ACTIONS :83, all_applied/any_applied :123, _infer_kind :322"
 - file: tomo/scripts/lib/render_md.py
   relevance: MEDIUM
   why: "insert_under_marker :312, replace_section :336 — the readable instructions"
@@ -356,14 +356,33 @@ graph LR
 | `lib/review_sections.py` (new) | Pass 1 section side: definitions for `read*.json`, every proposal check on items (keys, caps, double placement, sources via `review_doc.Sources`, marks), rendering of a section part and of an analysis sub-part (incl. the mark suffix) |
 | `lib/review_doc.py` / `review-doc.py` | Group side as today (per-kind group tables); assembles section parts + "Tomo Review" part; `meta.json` incl. `pass1_sections` |
 | `lib/review_doc_parse.py` | Parses section parts and section checkboxes back and reports a missing expected key; computes per-section counts incl. the user's own items |
-| `lib/review_section_plan.py` (new) | Pass 2 per kept section, existing or new note: heading resolution as Hashi does, own-block detection by line range, the off-limits landing check, the mode (insert / replace / skip / review / broken / moved), the section's action, preview lines and notices (`section-dropped`, `section-empty`, `block-replaced`) |
-| `lib/review_actions.py` | The "Tomo Review" section as today plus its analysis sub-parts and the routed sections; composes the whole plan (section actions first, then Tomo Review), numbered `I01…In`; the `review-section-kept` notice |
+| `lib/review_section_plan.py` (new) | Pass 2 per kept section, existing or new note: heading resolution as Hashi does, own-block detection by line range, the off-limits landing check, the mode (insert / replace / skip / review / broken / moved), the section's action, preview lines and notices (`block-replaced`, `block-moved-confirmed`); the `section-dropped` and `section-empty` notices come from the parse counts |
+| `lib/review_actions.py` | The "Tomo Review" section as today plus its analysis sub-parts and the routed sections; composes the whole plan (section actions first, then Tomo Review), numbered `I01…In` — Hashi then runs them by kind (`insert_under_marker`, then `replace_section`, then `replace_between_markers`, `planner.ts:39-56`), which is why a section never lands inside "Tomo Review"; the `review-section-kept` notice |
 | `lib/review_delivery.py` | Refusals, `delivered_plan` incl. `sections`, overwrite of a partly applied set |
 | `lib/render_md.py` | Readable instructions incl. `replace_between_markers` |
 
 Touched without a new responsibility: `lib/review_templates.py` (quarter kind word), `lib/review_md.py` (`AUTOMATIC_FENCES`, shared regexes), `lib/template_syntax.py` (helper made public), `lib/review_weekly.py` (content split reused for monthly notes), `lib/review_state.py` (`SECTION_ACTIONS`, `_infer_kind`, partly applied state), `lib/review_doc_read.py` (`pass1_counts` with section keys), `lib/staged_delivery.py` (unchanged, named for resume), the schemas and `shapes/instructions.shape.json`, `commands/review.md`, `config/vault-example.yaml`.
 
-**Responsibility matrix (one owner per PRD criterion):** F1-AC1 `review-read.py`; F1-AC2, F1-AC6 (semantic part), F1-AC3 ("reminder, not finished text") SKILL.md; F1-AC3 (source rule), F1-AC4, F1-AC5, F1-AC6 (check), F1-AC8, F1-AC9 `review_sections`; F1-AC7, F1-AC10 `review_doc`; F2-AC1, F2-AC9, F6-AC1, F7-AC1, F7-AC2, F7-AC3 `review_match`; F2-AC2, F2-AC6 (wording) SKILL.md; F2-AC3, F2-AC5, F2-AC11 (left out, landing check) `review_mapping`; F2-AC4 `review-session.py setup-input`; F2-AC7, F2-AC8 `review_config`; F2-AC10 `vault-config-writer.py`; F2-AC12 `review_actions` (its document rendering is part of F3-AC1/F3-AC2); F3-AC1 `review_doc`; F3-AC2, F3-AC3 `review_sections`; F3-AC4, F3-AC5 `review_section_plan` (notices); F3-AC6 `review_doc_parse`; F4-AC1 `review_actions`; F4-AC2…F4-AC6, F5-AC1…F5-AC5 `review_section_plan`; F4-AC7 `render_md`; F6-AC2, F6-AC3 `period`; F6-AC4 `review_period`; F6-AC5 `review_children`; F6-AC6 is cross-cutting and verified by the quarter end-to-end test.
+**Responsibility matrix (exactly one owner per PRD criterion; collaborators in brackets):**
+
+| Owner | Criteria |
+|---|---|
+| `skills/periodic-review/SKILL.md` | F1-AC2, F2-AC2, F2-AC6, F6-AC6 (the kind-agnostic flow) |
+| `review-read.py` | F1-AC1 |
+| `lib/review_sections.py` | F1-AC3 [the "reminder, not finished text" wording is the skill's; verified live], F1-AC4, F1-AC5, F1-AC6 [the semantic part is the skill's prose], F1-AC8, F1-AC9, F3-AC2, F3-AC3 |
+| `lib/review_doc.py` | F1-AC7, F1-AC10, F3-AC1 |
+| `lib/review_match.py` | F2-AC1, F2-AC9, F6-AC1, F7-AC1, F7-AC2, F7-AC3 |
+| `lib/review_mapping.py` | F2-AC3, F2-AC5, F2-AC11 [`landing_off_limits` is called by `setup-input` and `plan_section`] |
+| `review-session.py` (`setup-input`) | F2-AC4 |
+| `lib/review_config.py` | F2-AC7, F2-AC8 |
+| `vault-config-writer.py` | F2-AC10 |
+| `lib/review_actions.py` | F2-AC12, F4-AC1 |
+| `lib/review_doc_parse.py` | F3-AC4 [counts incl. the user's own items; the preview line is worded by `review-instructions.py`], F3-AC5, F3-AC6 |
+| `lib/review_section_plan.py` | F4-AC2, F4-AC3, F4-AC4, F4-AC5, F4-AC6, F5-AC1, F5-AC2, F5-AC3, F5-AC4, F5-AC5 |
+| `lib/render_md.py` | F4-AC7 |
+| `lib/period.py` | F6-AC2, F6-AC3 |
+| `lib/review_period.py` | F6-AC4 |
+| `lib/review_children.py` | F6-AC5 |
 
 ### Directory Map
 
@@ -485,7 +504,7 @@ A row with `placement: review` is allowed only on a heading left out as `automat
 - review-session.py match --kind <k> [--template T] [--anchor A]
   (writes tomo-tmp/review/rows-<kind>.json with the rows it shows; on a template change it reads the previous file first)
   response adds:
-    sections: {template, candidates: [{key: {heading, level, parent, occurrence}, state: offered|left-out,
+    sections: {template, candidates: [{heading_key: {heading, level, parent, occurrence}, state: offered|left-out,
                reason: templater|link|per-period-parent|off-limits|automatic|null, flags: [mixed|container|under-own],
                defaults: {placement, cap}, saved: <row or null>}],
                off_limits: [<saved rows>], dropped: [{heading, level, parent}]}
@@ -505,7 +524,7 @@ A row with `placement: review` is allowed only on a heading left out as `automat
                                           [--confirm-moved <key> ...]
   new stops (all owned by review-instructions.py, which reads them from parse and plan):
              section-checkbox-missing (from review_doc_parse), section-missing, section-ambiguous, section-broken,
-             section-moved, block-in-review-section, section-off-limits (from review_section_plan), choices-needed
+             section-moved, block-in-review-section, landing-off-limits (from review_section_plan), choices-needed
              (from review_delivery); nothing-to-deliver now counts kept sections and the "Tomo Review" part
   new notices: section-dropped (with user item count), section-empty, block-replaced, block-moved-confirmed,
                review-section-kept (an earlier "Tomo Review" section with nothing left for it stays as it is)
@@ -517,7 +536,7 @@ A row with `placement: review` is allowed only on a heading left out as `automat
 ENTITY: SectionRow (vault config)            # see Data Storage Changes
 ENTITY: OffLimitsRow (vault config)          # {heading, level, parent, occurrence, with_subsections}
 ENTITY: TemplateHeading (review_mapping)
-  FIELDS: key{heading, level, parent, occurrence}, line, state, reason, flags
+  FIELDS: heading_key{heading, level, parent, occurrence}, line, state, reason, flags
 ENTITY: SectionDefinition (read.json "sections")
   FIELDS: key (= row id), heading, level, parent, description, keywords, groups, cap
 ENTITY: Proposals (proposals.json)
@@ -528,7 +547,7 @@ ENTITY: SectionPart (DocInput)
 ENTITY: ParsedDoc (review_doc_parse) adds
   FIELDS: sections: Dict[key, bool | None], items carry group = key for section items
 ENTITY: SectionPlan (review_section_plan)
-  FIELDS: key, mode: insert|replace|skip|review|broken|moved, anchor (Hashi text), hashi_placement, scope?, lines,
+  FIELDS: key, mode: insert|replace|skip|review|broken|moved|missing|ambiguous|in-review|landing-off-limits, anchor (Hashi text), hashi_placement, scope?, lines,
           notices
 ```
 
@@ -725,7 +744,7 @@ sequenceDiagram
 | Block moved out of its section | plan | stop `section-moved` naming where it is; replace only with `--confirm-moved <key>` |
 | Block inside the "Tomo Review" section | plan | stop `block-in-review-section`; skip / Abort (a `replace_section` of Tomo Review would wipe it) |
 | A heading not in the template added in Correct | `setup-input` | `section-not-in-template` |
-| A `before`/`end` placement that would land in an off-limits section | `setup-input`, plan | `landing-off-limits` at setup; `section-off-limits` stop at plan (the note may differ from the template) |
+| A `before`/`end` placement that would land in an off-limits section | `setup-input`, plan | `landing-off-limits` at setup and as the stop at plan (the note may differ from the template) |
 | An analysis row on a heading that is not script-only | `setup-input` | `analysis-not-automatic` |
 | Every section unticked and nothing left for "Tomo Review" | `review-instructions.py` | spec 045's `nothing-to-deliver`, now counting kept sections and the part; Abort or start over |
 | A re-run leaves nothing for an earlier "Tomo Review" section | `review_actions` | notice `review-section-kept`; the section stays, removal is the user's choice |
@@ -748,41 +767,57 @@ OUTPUT: SectionPlan
 2. start = "%% tomo:<id> <period> %%", end = "%% /tomo:<id> <period> %%"
    is_marker(i, m) = not fenced[i] and lines[i] has no leading space and lines[i].rstrip(JS_WS) == m
 3. S = [i | is_marker(i, start)], E = [i | is_marker(i, end)]
+   textual(m) = any line whose text contains m, fenced, indented or quoted included
+3b. IF textual(start) or textual(end) holds more lines than S + E: RETURN stop(section-broken)  # a hidden copy
 4. mapped = heading in H by (bare text, level, parent, occurrence), or None
-   range(mapped) = mapped.line .. (next heading in H with level <= mapped.level) - 1   # subsections included
+   range(h) = h.line .. (next heading in H with level <= h.level) - 1        # subsections included
+   TR = range of the "Tomo Review" heading found by the spec 045 marker, or None; its planned insertion
+        point in this set when it is new
    home(row) = range(mapped) for under|end;
-               (previous heading in H, or line 0) .. mapped.line - 1 for before      # the gap above it
-5. landing check (F2-AC11): the heading whose own body receives the lines — mapped itself for under;
-   the last heading inside range(mapped) for end; the heading above mapped for before —
-   IF it or an ancestor is covered by an off-limits row: RETURN stop(section-off-limits)
+               for before: from the heading above mapped (or line 0) to mapped.line - 1, passing over a whole
+               TR that ends directly above mapped
+   first_hit(text, level) = the first heading in H with that Hashi text and level      # what Hashi's scope finds
+   landing(p) = the heading whose own body receives a line at p (none in the preamble)
+5. IF mapped is None: RETURN stop(section-missing) unless choice skip|review   # also on a re-run (renamed heading);
+                                                                               # confirm-moved is an extra choice there
+   IF count(h in H where h.text == mapped.hashi_text) > 1: RETURN stop(section-ambiguous) unless choice
+                                                                               # Rule 9, first delivery and re-run
 6. IF S == [] and E == []:                                        # first delivery
-     IF mapped is None: RETURN stop(section-missing) unless choice skip|review
-     IF count(h in H where h.text == mapped.hashi_text) > 1: RETURN stop(section-ambiguous) unless choice
+     p = insertion point Hashi will use: mapped.line for before, mapped.line + 1 for under,
+         range(mapped).end + 1 for end
+     IF landing(p) is covered by an off-limits row: RETURN stop(landing-off-limits)
+     IF TR is not None and (p lies inside TR or p equals TR's insertion point):
+        RETURN stop(block-in-review-section) unless skip        # Hashi runs every insert before replace_section
      RETURN insert(anchor = mapped.hashi_text, placement = {before: before, under: after, end: inside}[row.placement],
                    content = start + item lines + end)
 7. IF len(S) == 1 and len(E) == 1 and E[0] > S[0]:                # re-run
-     IF S[0] lies inside the "Tomo Review" section's range: RETURN stop(block-in-review-section) unless skip
-     IF mapped is not None and S[0], E[0] both lie in home(row):
-        scope = (mapped.hashi_text, mapped.level) for under|end   # Hashi's level-aware range = range(mapped)
-                None for before (the gap belongs to the previous heading; whole-note uniqueness of the markers holds)
+     IF a heading of H lies strictly between S[0] and E[0]: RETURN stop(section-broken)   # straddles a heading
+     IF TR is not None and S[0] lies inside TR: RETURN stop(block-in-review-section) unless skip
+     IF landing(S[0]) is covered by an off-limits row: RETURN stop(landing-off-limits)   # where it actually sits
+     IF S[0] lies in home(row) and (row.placement != under or landing(S[0]) == mapped):
+        scope = (mapped.hashi_text, mapped.level) for under|end   # first_hit(...) == mapped by step 6
+                None for before (the markers are unique in the whole note by steps 3–3b)
         RETURN replace(start, end, scope, item lines)
-     near = the innermost heading whose range holds S[0]
-     RETURN stop(section-moved, under = near) unless confirm-moved → landing check on near, then
-            replace with scope = (near.hashi_text, near.level) when _resolved(near), else None
+     near = landing(S[0]); IF near is None: RETURN stop(section-moved, under = preamble) unless skip
+     IF first_hit(near.hashi_text, near.level) != near: RETURN stop(section-ambiguous) unless skip
+     RETURN stop(section-moved, under = near) unless confirm-moved →
+            replace with scope = (near.hashi_text, near.level)    # never without a scope on this path
 8. RETURN stop(section-broken) unless choice skip                  # any other count or order
 ```
 
-Traced example 1, `end` with subsections (monthly re-run `2026-03`, s4 mapped to "Goals and Wishes" L3 with four L4 children Work, Contacts, Health, Spare Time): H holds "Goals and Wishes" L3 at line 20, the L4 children at 22, 25, 28, 31, and "I look forward to" L3 at 38. range(mapped) = 20..37. The first delivery used Hashi `inside`, so the block sits at 34..36, below "Spare Time". S = [34], E = [36], both in home = 20..37 → `replace_between_markers` with scope `{"Goals and Wishes", 3}`; Hashi's level-aware range is 20..37 as well, so the markers are inside scope. Comparing with "the nearest heading above" would have named "Spare Time" and stopped as moved; the range rule does not. Landing check: the last heading inside the range is "Spare Time"; were "Spare Time" off-limits, step 5 stops (and setup already refused `landing-off-limits`).
+The off-limits landing check is one function, `review_mapping.landing_off_limits(heading, off_limits)`: a heading is covered when a row names it, or when a row with `with_subsections: true` names one of its ancestors; `setup-input` calls it on the template, `plan_section` on the note. The same check runs on spec 045's "Tomo Review" placement (`place.anchor` + `place.placement`) at setup and at plan time, for an existing and a new note, so neither the "Tomo Review" heading nor an analysis sub-heading can land in an off-limits section.
 
-Traced example 2, `under` (weekly re-run `2026-W13`, s1 → "What Went Well This Week?" L4 at line 10, next L4 at 18): S = [11], E = [14] inside 10..17 → replace with scope `{"What Went Well This Week?", 4}`. If the user had deleted line 14: S = [11], E = [] → step 8 → `section-broken`; no action targets the note's later lines. If line 11 sat inside a ```` ``` ```` fence: S = [] (masked), E = [14] → step 8 → broken (Hashi would also fail; nothing is lost).
+Traced example 1, `end` with subsections (monthly re-run `2026-03`, s4 mapped to "Goals and Wishes" L3 with four L4 children Work, Contacts, Health, Spare Time): H holds "Goals and Wishes" L3 at line 20, the L4 children at 22, 25, 28, 31, and "I look forward to" L3 at 38. range(mapped) = 20..37. The first delivery used Hashi `inside`, so the block sits at 34..36, below "Spare Time". S = [34], E = [36], both in home = 20..37 → `replace_between_markers` with scope `{"Goals and Wishes", 3}`; Hashi's level-aware range is 20..37 as well, so the markers are inside scope. Comparing with "the nearest heading above" would have named "Spare Time" and stopped as moved; the range rule does not. Landing check: the last heading inside the range is "Spare Time"; were "Spare Time" off-limits, the landing check of step 7 stops (and setup already refused `landing-off-limits`).
 
-Traced example 3, `before` (s3 → "Planning" L3 at line 50; the previous heading "Check My Own Words" L3 at 44): home = 44..49. A block at 47..49 is replaced without scope. If "Check My Own Words" were off-limits, step 5 stops before any write, because a `before` block becomes part of that heading's body.
+Traced example 2, `under` (weekly re-run `2026-W13`, s1 → "What Went Well This Week?" L4 at line 10, next L4 at 18): S = [11], E = [14] inside 10..17 → replace with scope `{"What Went Well This Week?", 4}`. If the user had deleted line 14: S = [11], E = [] → step 8 → `section-broken`; no action targets the note's later lines. If line 11 sat inside a ```` ``` ```` fence: S = [] (masked) but the fenced line is a textual copy → step 3b → broken (Hashi would also fail; nothing is lost).
+
+Traced example 3, `before` (s3 → "Planning" L3 at line 50; the previous heading "Check My Own Words" L3 at 44): home = 44..49. A block at 47..49 is replaced without scope. If "Check My Own Words" were off-limits, the landing check of step 6 (first delivery) or 7 (re-run) stops before any write, because a `before` block becomes part of that heading's body.
 
 New note (F4-AC5): the same function runs on the note text `_templated_note` produces. Spec 045's rule applies first — a template that Templater runs on creation is used as its `_tomo` variant or as it is. A mapped heading found exactly once as plain text receives its block spliced in at its placement (with both markers, so the next run finds it); a section whose heading the new note lacks, or holds only as Templater code, is routed to the "Tomo Review" section, and its landing line in the document says so before delivery.
 
 **Quarter marks**: `CHILD = {MONTH: WEEK, QUARTER: MONTH}`. For each day, `Period.containing(child_kind, day)` picks the child note; only read child notes count; `_is_periodic` knows the daily, weekly, monthly and quarterly formats, so a link to `2026-02` is never content. The month writes `only_in_weekly_links` / `dailies_not_in_weekly`; the quarter writes `only_in_monthly_links` / `dailies_not_in_monthly`, and its weekly notes go to `weekly` without marks.
 
-**Double placement**: normalise each item's text (casefold, collapse whitespace, strip the link list) and its source set; two items with the same normalised text, or the same source set and the same normalised first line, anywhere across sections and groups → `double-placement` on the later one.
+**Double placement**: normalise each item's text (casefold, collapse whitespace, strip the link list) and its source set; two items with the same normalised text, or the same source set and the same normalised first line, anywhere across sections and groups → `double-placement` on the later one. The check runs only where a mapping exists; without one, spec 045's proposals are checked exactly as today (F1-AC10).
 
 ## Deployment View
 
@@ -877,7 +912,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - User confirmed: 2026-11-14
 
 - [x] ADR-2 Double placement: `review_sections.check` refuses an item proposed in two places (same normalised text, or same sources + first line); the semantic one-finding-one-place stays the model's; caps are refused (`over-cap`), never truncated, so the model merges on the rewrite-once loop; a moved month/quarter item keeps its mark in an optional `mark` field checked like its group and rendered as a labelled suffix that travels with the item text.
-  - Rationale: only what a script can check is promised (PRD v1.2 F1-AC6); refusing beats silent loss.
+  - Rationale: only what a script can check is promised (PRD v1.3 F1-AC6); refusing beats silent loss.
   - Trade-offs: a reworded duplicate passes; a refusal costs one rewrite turn.
   - User confirmed: 2026-11-14
 
@@ -926,7 +961,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: a visible `%%sN%%` in source view; one more meta field.
   - User confirmed: 2026-11-14
 
-- [x] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"); user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records keys and modes only, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
+- [x] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"); Hashi executes by kind regardless (`insert_under_marker` → `replace_section` → `replace_between_markers`, `planner.ts:39-56`), so `plan_section` never plans a section insert inside or at the "Tomo Review" range; user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records keys and modes only, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
   - Rationale: byte-identical resume payloads (#258) and no dead end after one failed section.
   - Trade-offs: `second_set` loosens: the old set's waiting actions are replaced by the new plan, which is built from the note as it is now.
   - User confirmed: 2026-11-14
@@ -948,11 +983,11 @@ Preview → per section: heading · placement · add|replace · lines · notices
 **Main Flow Criteria: PRD F1 — material per section**
 - [ ] F1-AC1 WHERE a mapping exists, THE SYSTEM SHALL read the same notes as without it and add the section definitions to `read.json`.
 - [ ] F1-AC2 WHEN the model proposes for a section, THE SYSTEM SHALL accept items for any description, independent of the group set (no group filter on `sections`).
-- [ ] F1-AC3 THE SYSTEM SHALL refuse a section item without a source resolving to a daily (or, for a review-only finding, a weekly/monthly note) of the period.
+- [ ] F1-AC3 (model part, worded by the skill and checked in the live walk) THE SYSTEM SHALL ask for reminders of what happened or will need to happen, never finished review text; (script part) THE SYSTEM SHALL refuse a section item without a source resolving to a daily (or, for a review-only finding, a weekly/monthly note) of the period.
 - [ ] F1-AC4 THE SYSTEM SHALL apply the same source rule to items of forward-looking sections.
 - [ ] F1-AC5 IF a section has more items than its cap, THEN THE SYSTEM SHALL refuse the proposals with `over-cap` naming the section.
 - [ ] F1-AC6 IF an item is proposed in two places (normalised text, or sources + first line), THEN THE SYSTEM SHALL refuse it with `double-placement`.
-- [ ] F1-AC7 THE SYSTEM SHALL render the remaining groups as the "Tomo Review" part, omitting empty groups and the part when no group is left.
+- [ ] F1-AC7 WHERE a mapping exists, THE SYSTEM SHALL render the remaining groups as the "Tomo Review" part, omitting empty groups and the part when no group is left (without a mapping, spec 045's `- nothing found` group lines stay).
 - [ ] F1-AC8 WHEN a section has no items, THE SYSTEM SHALL render `nothing found` and an unticked section checkbox.
 - [ ] F1-AC9 WHERE the kind is month or quarter, THE SYSTEM SHALL accept a `mark` on section items only for that kind's marks, check it as for the group, and render it as a labelled suffix that is delivered with the item text.
 - [ ] F1-AC10 WHERE no mapping exists, THE SYSTEM SHALL produce the spec 045 document byte-for-byte (quarter: with its groups).
@@ -969,7 +1004,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 - [ ] F2-AC9 IF no heading is offered or no template exists, THEN THE SYSTEM SHALL return no candidates and save no rows.
 - [ ] F2-AC10 WHEN rows are saved, THE SYSTEM SHALL change only `sections.<template>` / `off_limits.<template>` and continue the session.
 - [ ] F2-AC11 WHERE a heading is marked off-limits, THE SYSTEM SHALL leave it (with sub-sections: its subtree) out of the candidates, refuse a row on it or a placement landing in it, and stop delivery into it; reading sources is unaffected.
-- [ ] F2-AC12 WHERE a row has `placement: review` on a script-only heading, THE SYSTEM SHALL never write into that heading and SHALL deliver its items in the "Tomo Review" section under a sub-heading named after it; a row SHALL NOT name `habits`.
+- [ ] F2-AC12 WHERE a row has `placement: review` on a script-only heading, THE SYSTEM SHALL never write into that heading, SHALL render it in the review document with its own section checkbox, and SHALL deliver its items in the "Tomo Review" section under a sub-heading named after it; a row SHALL NOT name `habits`. (The sub-heading repeats a script-only heading's text inside Tomo's own section. No block targets a script-only heading; should a mapped heading share that text, step 5's whole-note count makes it `section-ambiguous`, so Hashi's first-match lookup never lands on the copy blind.)
 - [ ] F7-AC1 IF a typed or configured template is not found, THEN THE SYSTEM SHALL return `template_not_found` with the candidates and `setup-input` SHALL refuse it.
 - [ ] F7-AC2 WHEN the template changes in the dialogue, THE SYSTEM SHALL propose place and rows from the new template only.
 - [ ] F7-AC3 WHEN the template changes and `rows-<kind>.json` holds the earlier rows, THE SYSTEM SHALL return the earlier rows the new template lacks as `dropped`.
@@ -1037,7 +1072,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 
 ### Implementation Gotchas
 
-- Python `rstrip()` is not JS `trimEnd()` (U+001C–1F, U+0085, U+FEFF); use `JS_WS` as `review_actions.py:73-82` does.
+- Python `rstrip()` is not JS `trimEnd()` (U+001C–1F, U+0085, U+FEFF); use `JS_WS` as `review_actions.py:76-82` does.
 - `%% fold %%` suffixes are part of a heading's text for Hashi; never normalise them away when emitting an anchor.
 - `own_sections` compares bare text without level; off-limits rows carry level and parent — do not mix the two.
 - `group_labels()` maps label text to groups across languages; a section heading must never pass through it.

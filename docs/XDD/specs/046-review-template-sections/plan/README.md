@@ -1,7 +1,7 @@
 ---
 title: "/review: review material for the user's own template sections"
 status: draft
-version: "1.0"
+version: "1.1"
 ---
 
 # Implementation Plan
@@ -118,14 +118,14 @@ When implementation requires changes from the specification:
 - **ADR-1 / ADR-2**: one Pass 1 model pass writes `sections` beside the unchanged `groups`; scripts check keys, caps (refuse, never cut), double placement (only with a mapping) and sources.
 - **ADR-4 / ADR-10**: each block sits between `%% tomo:<id> <period> %%` and `%% /tomo:<id> <period> %%`; the first delivery uses `insert_under_marker`, a re-run `replace_between_markers`; `plan_section` mirrors Hashi's parse and stops rather than writes blind.
 - **ADR-8 / ADR-9**: off-limits headings (heading only or with sub-sections) are never written, and the landing check also guards `before`/`end` placements and the "Tomo Review" placement; the template analysis is deterministic and conservative.
-- **ADR-5**: instructions wire `schema_version` "3" → "4", lockstep with Hashi; the vendored copy changes only after Hashi's release; Tomo builds no converter.
+- **ADR-5**: instructions wire `schema_version` "3" → "4", lockstep with Hashi; every instruction-schema change (producer schema, version, manifest, vendored copy) lands together in T6.1 after Hashi's release; until then new-action tests use a test-only schema built from the handoff fragment, and the full suite stays GREEN; Tomo builds no converter.
 - **ADR-6 / ADR-7**: the quarter reads through a `CHILD` table; the month's output is pinned by a golden test before the refactor; a quarter's read is measured first, then split per month.
 
 **Implementation Context**:
 
 ```bash
 # Testing
-./venv/bin/python -m pytest tests/ -q                       # full suite (must stay green except the named parity RED, Phase 5–6)
+./venv/bin/python -m pytest tests/ -q                       # full suite (GREEN at every phase validation)
 ./venv/bin/python -m pytest tests/test_review_*.py tests/test_period.py -q
 ./venv/bin/python -m pytest tests/test_035_wire_gate.py tests/test_035_wire_manifests.py tests/test_tomo_schema_parity.py tests/test_hashi_instructions_schema.py -q
 ./venv/bin/python -m pytest -m integration tests/           # opt-in, Privat-Test (owner go)
@@ -139,7 +139,7 @@ scripts/update-tomo.sh --instance tomo-instance --yolo
 python3 scripts/tomo-session-stats.py --session <jsonl>
 ```
 
-Standing rules for every task: WHY to `docs/tomo/<mirrored-path>.md` first, runtime prose second, imperatives only in `tomo/dot_claude/**`; bump `# version:` on every managed file; runtime skill edits through `tcs-helper:skill-author`; stage explicit paths only; never `git stash/reset/restore/clean/checkout`; never a `CLAUDE_ALLOW_*` override; never touch `tomo-privat`; the test vault is read-only and no journal text is quoted; no eval-gated file changes (CON-6); subagents never on fable.
+Standing rules for every task: WHY to `docs/tomo/<mirrored-path>.md` first, runtime prose second, imperatives only in `tomo/dot_claude/**`; bump `# version:` on every managed file; runtime skill edits through `tcs-helper:skill-author`; stage explicit paths only; never `git stash/reset/restore/clean/checkout`; never a `CLAUDE_ALLOW_*` override; never touch `tomo-privat`; never edit the test vault directly (writes reach it only through the owner's Hashi apply in T6.3) and never quote journal text; no eval-gated file changes (CON-6); subagents never on fable.
 
 ---
 
@@ -156,7 +156,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [ ] [Phase 5: Pass 2 — delivery into the user's sections](phase-5.md)
 - [ ] [Phase 6: Wire v4, integration, live walk and close-out](phase-6.md)
 
-**Phase dependencies:** 1 → 2 → (3 ∥ 4 after 2) → 5 → 6. Phase 3 and Phase 4 may overlap: T4.1–T4.3 need only Phase 1–2 and a `read.json` with `sections` (T3.3); the quarter parts of Phase 4 (T4.2 parts loading, T4.4 quarter branch) need T3.4. Phase 6's wire step (T6.1) waits for Hashi's release.
+**Phase dependencies:** 1 → 2 → T3.1 → T3.2 → T3.3 → {T4.1–T4.4 ∥ T3.4 (owner-gated measurement)} → T4.5 → 5 → 6. Inside Phase 1, T1.3 needs T1.1 and T1.4. Inside Phase 5: T5.1 ∥ T5.3 → T5.2 → T5.4 → T5.5 → T5.6. Phase 6's wire step (T6.1) waits for Hashi's release.
 
 **Criteria → task map (one primary task per PRD criterion):**
 
@@ -176,9 +176,10 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 | F1-AC2 | T4.4 |
 | F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5 | T5.1 |
 | F4-AC5, F2-AC12 | T5.2 |
-| F4-AC1, F4-AC7 | T5.3 |
-| F4-AC6, F5-AC4 | T5.4 |
-| F6-AC6 | T6.2 |
+| F4-AC7 | T5.3 |
+| F4-AC1 | T5.4 |
+| F4-AC6, F5-AC4 | T5.5 |
+| F6-AC6 | T6.2 (quarter Pass 1 reading: T4.5) |
 
 ---
 

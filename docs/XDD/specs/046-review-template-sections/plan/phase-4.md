@@ -23,7 +23,7 @@ phase: 4
 - Every part stays at `##`; the section heading and checkbox carry `%%sN%%`; expected keys in `meta.json` `pass1_sections` (ADR-11).
 - Without a mapping the document is spec 045's (F1-AC10, CON-2).
 
-**Dependencies**: Phase 2; T3.3 (`read.json` with `sections`); the quarter parts of T4.2 and T4.4 need T3.4.
+**Dependencies**: Phase 2 and T3.3 (`read.json` with `sections`, which itself needs T3.1–T3.2). T4.1–T4.4 may run while T3.4 waits for the owner; T4.5 needs T3.4.
 
 ---
 
@@ -42,7 +42,7 @@ Turns the model's per-section proposals into a review document laid out like the
 - [ ] **T4.2 Rendering the document by section and the write path** `[activity: backend-api]`
 
   1. Prime: `lib/review_doc.py` (`DocInput` 265, `item_lines` 296, `neutralised` 289, `_callout` 303, `render_document` 324, `_LABELS` 82, `group_labels` 108); `review-doc.py` (`render_and_write` 220-265, `_write_meta` 193, `replace`); `lib/review_doc_read.py:55` `[ref: SDD/Implementation Examples/One section part; ADR-11]`
-  2. Test: parts in template order, then the `## Tomo Review %%review%%` divider with its landing line, analysis parts, then groups; empty groups omitted only with a mapping; an empty section shows `- nothing found` and an unticked checkbox; the landing line per part names heading and placement (and "Tomo Review" for a routed or analysis section); the mark suffix from `_LABELS` (de, en); global `%%tN%%` numbering; `meta.json` `pass1_sections` keys and counts only (privacy test); `pass1_counts` with section keys read by `review_doc_read`; `write` and `replace` both run the checks; a quarter's parts are loaded and joined; **an unmapped document is byte-identical to spec 045's** for the week and month fixtures.
+  2. Test: parts in template order, then the `## Tomo Review %%review%%` divider with its landing line, analysis parts, then groups; empty groups omitted only with a mapping; an empty section shows `- nothing found` and an unticked checkbox; the landing line per part names heading and placement (and "Tomo Review" for a routed or analysis section); the mark suffix from `_LABELS` (de, en); global `%%tN%%` numbering; the section checkbox label is the positive wording per review language (de `Abschnitt übernehmen`, en); with a mapping and no group left the whole "Tomo Review" part and its divider are absent; the habits stay in the "Tomo Review" part with a mapping; `meta.json` `pass1_sections` keys and counts only (privacy test); `pass1_counts` with section keys read by `review_doc_read`; `write` and `replace` both run the checks; **an unmapped document is byte-identical to spec 045's** for the week and month fixtures. (The quarter's read parts are T4.5.)
   3. Implement: `review_sections` rendering, `review_doc.render_document` assembly, `review-doc.py`, `review_doc_read.py`; WHY docs first; version bumps.
   4. Validate: `test_review_doc*.py`, `test_review_e2e*.py`, `test_review_privacy*.py` (amended closed-key assertion for sections, as decided for amended CON-3) green; `review_doc.py` ≤ 450 lines; ruff clean.
   5. Success: the document mirrors the user's note `[ref: PRD/F1-AC7, F1-AC8, F1-AC10, F3-AC1, F3-AC2, F3-AC3]`
@@ -58,11 +58,19 @@ Turns the model's per-section proposals into a review document laid out like the
 - [ ] **T4.4 Skill steps 5 and 6: proposing by section** `[activity: prompt-authoring]`
 
   1. Prime: SKILL.md steps 5-6 (117-161); `docs/tomo/dot_claude/skills/periodic-review.md`; `tests/test_review_skill.py:164, 478-492, 538`, `test_review_skill_contract.py:51`, `test_review_skill_pass2.py:43-46` `[ref: SDD/Components SKILL.md row; ADR-1]`
-  2. Test: pins for: items per `read.json` `sections` entry from its description and keywords, reminders not finished text, at most `cap`, one place per item, the rest in the groups, analysis rows as overviews, the quarter branch reading the parts in turn, counts per section in the report, the new refusals in the rewrite-once loop, the `section-checkbox-missing` stop.
+  2. Test: pins for: items per `read.json` `sections` entry from its description and keywords, reminders not finished text, at most `cap`, one place per item, the rest in the groups, analysis rows as overviews, counts per section in the report, the new refusals in the rewrite-once loop, the `section-checkbox-missing` stop.
   3. Implement: WHY first; SKILL.md through `tcs-helper:skill-author`; version bump; record the character growth.
   4. Validate: skill tests green.
   5. Success: the model gathers what each section asks for `[ref: PRD/F1-AC2; F1-AC3 model part]`
 
-- [ ] **T4.5 Phase Validation** `[activity: validate]`
+- [ ] **T4.5 Quarter: reading the split parts in Pass 1** `[activity: backend-api]`
 
-  - Run all Phase 4 tests and the full suite. The unmapped-document byte-identity test green. Drift check against ADR-1/2/11. Lint clean.
+  1. Prime: T3.4's `read-index.json` / `read-<YYYY-MM>.json` and its measurement; SKILL.md step 5 `[ref: SDD/Architecture Decisions; ADR-7]`
+  2. Test: `review-doc.py write` loads all parts through T3.4's loader and checks sources across them; skill pins for the quarter branch: read the index, then each month part in turn, then write one `proposals.json`; a quarter document renders with the quarter groups and marks.
+  3. Implement: WHY first; the loader call in `review-doc.py`; the skill's quarter branch through `tcs-helper:skill-author`; version bumps.
+  4. Validate: tests green.
+  5. Success: a quarter's Pass 1 reads within the Read limit `[ref: PRD/F6-AC6; SDD/Quality Requirements]`
+
+- [ ] **T4.6 Phase Validation** `[activity: validate]`
+
+  - Run all Phase 4 tests and the full suite (GREEN). The unmapped-document byte-identity test green. Drift check against ADR-1/2/11. WHY-first order (git log) and no eval-gated file changed. Lint clean.

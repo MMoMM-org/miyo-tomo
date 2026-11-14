@@ -15,8 +15,8 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | v1.3 (2026-11-14): 7 features, 49 criteria (F1 material per section is the headline; F6 quarter; v1.2 adds F2-AC11 off-limits and narrows F1-AC6; v1.3 adds F2-AC12 analysis rows after SDD validation) |
-| solution.md | completed | v1.2 (2026-11-14): 13 ADRs, all confirmed; two validation passes worked in |
-| plan/ | completed | v1.0 (2026-11-14): 6 phases, 29 tasks (incl. 5 phase validations); criteria → task map in plan/README.md |
+| solution.md | completed | v1.3 (2026-11-14): 13 ADRs, all confirmed; two validation passes worked in; ADR-5 schema timing |
+| plan/ | completed | v1.1 (2026-11-14): 6 phases, 31 tasks (incl. 5 phase validations), plan validation worked in; criteria → task map in plan/README.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -64,6 +64,8 @@
 | 2026-11-14 | Decomposition tier: Incremental | Classifier recommended Incremental (change_type=feature; 6 Must-Have features; 49 criteria; 4 new components: review_mapping, review_sections, review_section_plan, review_children; no parallel markers; rule 1). Accepted. |
 | 2026-11-14 | Model tier: hard (override) | Classifier recommended frontier (novel_pattern=true: per-block markers, child-review table; high_risks=2; adr_count=13). User chose hard: no fable for this work (owner 2026-11-13: fable was not better than opus on spec 045). |
 | 2026-11-14 | Phase SDD → PLAN | SDD v1.2 completed; tiers confirmed |
+| 2026-11-14 | Plan validation (independent opus): not ready — 3 HIGH (more tests RED than parity once the producer schema gains the action early; `test_review_sdd_map` RED from Phase 1; spec 046 map not parseable by it), 9 MEDIUM, 10 LOW; coverage complete (49/49), ~85 code refs checked | Worked into plan v1.1 and SDD v1.3 |
+| 2026-11-14 | Schema timing: every instruction-schema change (producer schema, schema_version "4", shape manifest, vendored copy) lands together in T6.1 after Hashi releases; until then the new action is tested against a test-only schema built from the handoff fragment, and the full suite stays GREEN at every phase validation | Owner (recommended); listing every expected-RED node id for weeks was rejected |
 
 ## Context
 

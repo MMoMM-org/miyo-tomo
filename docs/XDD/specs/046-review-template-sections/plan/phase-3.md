@@ -22,7 +22,7 @@ phase: 3
 - Golden test first, refactor second; the golden file is captured from `main`'s code (ADR-6).
 - Measure before splitting: `--measure` on 2026-Q1 runs only on the owner's go (perf-test rule: announce, wait, report done) (ADR-7).
 
-**Dependencies**: Phase 1 (T1.4); T3.3 also needs T1.3 (section definitions from the config).
+**Dependencies**: Phase 1 and Phase 2 (T3.3 needs the saved rows of T1.3/T2.2). Order inside the phase: T3.1 → T3.2 → T3.3 → T3.4; T3.4 (owner-gated) may run alongside Phase 4.
 
 ---
 
@@ -64,4 +64,4 @@ Reads a quarter like a month one level up, and hands the model the section defin
 
 - [ ] **T3.5 Phase Validation** `[activity: validate]`
 
-  - Run all Phase 3 tests and the full suite. Golden test green. Drift check against SDD ADR-6/ADR-7. Lint clean.
+  - Run all Phase 3 tests and the full suite (GREEN). Golden test green. Drift check against SDD ADR-6/ADR-7. WHY-first order (git log) and no eval-gated file changed. Lint clean. T3.4 may still be waiting for the owner's go; the phase closes only when it is done.

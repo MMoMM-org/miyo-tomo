@@ -1,7 +1,7 @@
 ---
 title: "/review: review material for the user's own template sections"
 status: draft
-version: "1.2"
+version: "1.3"
 ---
 
 # Solution Design Document
@@ -296,7 +296,7 @@ Test one area: ./venv/bin/python -m pytest tests/test_review_*.py tests/test_per
 Lint:    ./venv/bin/ruff check tomo/scripts scripts tests
 Wire gate: ./venv/bin/python -m pytest tests/test_035_wire_gate.py tests/test_035_wire_manifests.py -q
 Integration (opt-in, Privat-Test): ./venv/bin/python -m pytest -m integration tests/
-Quarter read dry run (no model, owner go): python3 scripts/review-read.py --kind quarter --period 2026-Q1 --stem <stem> --measure
+Quarter read dry run (no model, owner go): python3 tomo/scripts/review-read.py --kind quarter --period 2026-Q1 --stem <stem> --measure
 Sync to the test instance (owner instruction only): scripts/update-tomo.sh --instance tomo-instance --yolo
 Cost: python3 scripts/tomo-session-stats.py --session <jsonl>
 ```
@@ -427,14 +427,33 @@ tomo/
         ├── staged_delivery.py                   # UNCHANGED (resume byte-identity relied on)
         ├── vault_config_edit.py                 # MODIFY
         └── render_md.py                         # MODIFY
-docs/tomo/                                       # MODIFY/NEW: WHY mirror for every file above (written first)
-tests/                                           # NEW/MODIFY: see Acceptance Criteria, Implementation Examples and Technical Debt
-                                                 # (test_review_sdd_map.py repointed to this spec's map; ~14 files with
-                                                 #  "schema_version": "3", the 038 wire baselines, schema parity)
 tomo-tmp/review/                                 # runtime, instance only
 ├── <stem>/read.json | read-index.json + read-<YYYY-MM>.json, proposals.json, meta.json
 └── rows-<kind>.json                             # written and read by `match`; deleted by `setup-input` on save
                                                  # and by `start`; setup text only
+```
+
+**Component**: WHY documents (written before the file they explain; existing ones are listed in spec 045's map and change in place)
+```
+docs/tomo/
+└── scripts/lib/
+    ├── review_mapping.md                        # NEW
+    ├── review_sections.md                       # NEW
+    ├── review_section_plan.md                   # NEW
+    └── review_children.md                       # NEW
+```
+
+**Component**: Tests (new files; existing review tests are listed in spec 045's map. `test_review_sdd_map.py` reads both maps — T1.2.
+The wire bump also moves every instructions-wire hit of `rg -n "schema_version.{0,8}['\"]3['\"]" tests tomo/scripts`, the 038 wire baselines and schema parity — T6.1.)
+```
+tests/
+├── test_review_mapping.py                       # NEW: template analysis, off-limits, landing check
+├── test_review_sections.py                      # NEW: proposal section checks and section parts
+├── test_review_section_plan.py                  # NEW: plan_section on numbered-line layouts
+├── test_review_children.py                      # NEW: child-review notes and their report
+├── test_review_period_golden.py                 # NEW: golden month/week read (before the refactor)
+├── test_046_close_out_gaps.py                   # NEW at close-out
+└── fixtures/instructions-v4-candidate.schema.json   # NEW until T6.1: test-only schema from the handoff fragment
 ```
 
 ### Interface Specifications
@@ -830,7 +849,7 @@ New note (F4-AC5): the same function runs on the note text `_templated_note` pro
 
 ### Multi-Component Coordination (if applicable)
 
-- **Deployment order**: (1) the Hashi handoff goes out as soon as this SDD is confirmed; (2) Tomo implements against the contract; its producer schema gains the action from the handoff fragment while the vendored copy stays Hashi's, so `test_tomo_schema_parity` is expected RED on the branch (named in the plan, never skipped silently); (3) Hashi releases; (4) the vendored schema is replaced verbatim from Hashi; (5) the owner walks Tomo + Hashi in the test vault (week, month, quarter; first delivery and re-run); (6) the Tomo PR merges; (7) the user re-delivers pending v3 sets.
+- **Deployment order**: (1) the Hashi handoff goes out as soon as this SDD is confirmed; (2) Tomo implements against the contract with a test-only schema built from the handoff fragment; no committed schema changes yet, so the full suite stays GREEN; (3) Hashi releases; (4) the vendored schema is replaced verbatim from Hashi; (5) the owner walks Tomo + Hashi in the test vault (week, month, quarter; first delivery and re-run); (6) the Tomo PR merges; (7) the user re-delivers pending v3 sets.
 - **Version dependencies**: Tomo ≥ this release ⇔ Hashi ≥ the release with schema "4".
 - **Rollback**: revert both together; v4 sets in the inbox are dropped and re-delivered.
 - **Kokoro**: FYI handoff on the wire change (schema "4", the new action, the release lockstep).
@@ -926,7 +945,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: longer marker lines in the note (invisible in reading view); Hashi's existing handlers keep their stale-index pattern (named in the handoff as an observation, not a request).
   - User confirmed: 2026-11-14
 
-- [x] ADR-5 Wire `schema_version` "3" → "4" for all Tomo producers (they read it from the schema through `wire_schema_version`, so `/inbox` and `/note` follow automatically); Tomo and Hashi release in lockstep; how Hashi treats a waiting v3 set is Hashi's decision (handoff); Tomo builds no converter; Kokoro gets an FYI. Tomo's producer schema and the vendored copy change in one step once Hashi confirms its release (spec 039's v4 precedent, `test_039_t3_1_wire_v4`); until then the parity test is expected RED on the branch.
+- [x] ADR-5 Wire `schema_version` "3" → "4" for all Tomo producers (they read it from the schema through `wire_schema_version`, so `/inbox` and `/note` follow automatically); Tomo and Hashi release in lockstep; how Hashi treats a waiting v3 set is Hashi's decision (handoff); Tomo builds no converter; Kokoro gets an FYI. All instruction-schema changes — the producer schema, `schema_version`, the shape manifest and the vendored copy — land together after Hashi's release (owner 2026-11-14); until then tests of the new action validate against a test-only schema built from the handoff fragment, and the full suite stays GREEN. (Spec 039's v4 moved schema, version and manifest together and let only the vendored copy lag; here nothing moves early.)
   - Rationale: spec 035 Rule 9; Hashi accepts one version; the owner keeps conversion out of Tomo.
   - Trade-offs: inbox and `/note` sets need the new Hashi too; about 14 test files and the 038 wire baselines hard-code `"3"` and move with the bump.
   - User confirmed: 2026-11-14

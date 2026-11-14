@@ -14,8 +14,8 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.2 (2026-11-14): 7 features, 48 criteria (F1 material per section is the headline; F6 quarter; v1.2 adds F2-AC11 off-limits and narrows F1-AC6 after SDD research) |
-| solution.md | pending | |
+| requirements.md | completed | v1.3 (2026-11-14): 7 features, 49 criteria (F1 material per section is the headline; F6 quarter; v1.2 adds F2-AC11 off-limits and narrows F1-AC6; v1.3 adds F2-AC12 analysis rows after SDD validation) |
+| solution.md | in_progress | v1.1 (2026-11-14): 13 ADRs, all confirmed; validation findings worked in |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -55,6 +55,10 @@
 | 2026-11-14 | Off-limits sections: no built-in default ("In my own words" is not off-limits by itself). The setup's confirm table lets the user mark any template heading off-limits, either the heading only or with its sub-sections; off-limits means Tomo never writes there — Tomo may still read the user's own text there as a source (spec 045's weekly own sections for a month stay). Nothing is off-limits by default; no extra question turn | Owner: "I want tomo to hand me information I can use to write my own words … using 'In my own words' as a default … is too strict. the user should be asked if any section … is off-limits … for the whole section or only for specific sub sections" |
 | 2026-11-14 | Wire `schema_version` 3 → 4 for the new action kind; Tomo and Hashi release in lockstep; v3 sets waiting in an inbox are re-delivered | Owner (recommended); follows spec 035 Rule 9; a Hashi accepting 3 and 4 was rejected |
 | 2026-11-14 | SDD v1.0 drafted: 13 ADRs; the seven new ones confirmed by the owner, all as recommended — ADR-3 config rows per template (placement `before|under|end`, cap 1–30 default 8, off_limits with `with_subsections`, writer learns lists of mappings and quoted keys); ADR-4 contract adds unique end markers `%% /tomo:<id> <period> %%` and marker resolution inside `vault.process` (existing Hashi handlers' stale-index pattern named as an observation only); ADR-9 conservative deterministic template analysis in `lib/review_mapping.py`; ADR-10 stable `s<n>` row ids, strict duplicate-heading count; ADR-11 `%%sN%%` on the section heading and checkbox, expected keys in `meta.json`; ADR-12 fixed `I01…In` order, choice flags, `choices-needed`, overwrite of a partly applied set; ADR-13 #267 not-found refusal, anchor kept only for the same template, `rows-<kind>.json` for dropped headings | Owner confirmations 2026-11-14 |
+| 2026-11-14 | SDD validation (independent opus run): 3 HIGH (re-run detection by nearest heading breaks `end`/`before`; `before`/`end` can land in off-limits text; skill and entry scripts missing from the components), 13 MEDIUM, 13 LOW; all 48 criteria traced, ~50 of ~60 code refs matched | All findings worked into SDD v1.1 |
+| 2026-11-14 | Script-only sections: a section whose content is only a script (trackers, Dataview, habits) is never written; the user may still give it a description at setup ("analysis row"), and Tomo's analysed overview / conclusion for it lands in the "Tomo Review" section under a sub-heading named after that section; the script-computed habit lines stay in "Tomo Review" as in spec 045, and a row cannot name `habits` as a group (PRD v1.3 F2-AC12, F2-AC7) | Owner: "a section which contains only a script will not be touched by tomo, user might request a 'analysed' overview/conclusion for that section though, which goes into tomo review" |
+| 2026-11-14 | A Tomo block the user moved into the "Tomo Review" section: only leave out or Abort (a re-run's `replace_section` of Tomo Review would wipe it); narrows the PRD edge case for this one location | Owner (recommended) |
+| 2026-11-14 | Waiting v3 instruction sets after the wire bump: Hashi decides how it handles them (handoff item); Tomo builds no upgrade or converter script; the readable instruction document remains the user's fallback | Owner: "tell hashi to figure that out … we will not create upgrade or convert scripts in tomo" |
 
 ## Context
 

@@ -1,7 +1,7 @@
 ---
 title: "/review: review material for the user's own template sections"
 status: approved
-version: "1.2"
+version: "1.3"
 ---
 
 # Product Requirements Document
@@ -124,11 +124,12 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
   - [ ] F2-AC4: Given the user adds a heading Tomo did not offer, When the heading falls under one of the reasons of F2-AC3, Then Tomo refuses it and says the reason; any other heading of the template is accepted
   - [ ] F2-AC5: Given a heading text that occurs more than once in the template (for example "In my own words" at two levels), When it is mapped, Then the mapping names it by its text, level and parent heading, and the proposal shows these so the user sees which one is meant
   - [ ] F2-AC6: Given a template with forward-looking sections (for example "I look forward to", "This will be challenging", "Goals and Wishes"), When Tomo proposes the mapping, Then it may propose them with a description that asks for suggestions drawn from what the period shows
-  - [ ] F2-AC7: Given a mapped section, When Tomo proposes its description, Then it may name one or more of the spec 045 groups (done, open, themes, growth, habits; for a month also only-in-weekly and not-in-weekly; for a quarter also the groups of F6-AC4) as the section's starting point; a group named by no mapped section stays in the "Tomo Review" section
+  - [ ] F2-AC7: Given a mapped section, When Tomo proposes its description, Then it may name one or more of the spec 045 groups (done, open, themes, growth; for a month also only-in-weekly and not-in-weekly; for a quarter also the groups of F6-AC4) as the section's starting point; a group named by no mapped section stays in the "Tomo Review" section; the habits, which a script computes, always stay in the "Tomo Review" section
   - [ ] F2-AC8: Given the private and the work variant of a template, or the templates of two period kinds, When each is set up, Then each has its own mapping, and a mapping saved for one never applies to another
   - [ ] F2-AC9: Given a template with no suitable heading, or no template, When the setup runs, Then Tomo says no section can be mapped, saves no mapping, and the review works as in spec 045
   - [ ] F2-AC10: Given the user corrects or confirms the mapping, When it is saved, Then no other setup value changes, the descriptions and keywords are stored as the user confirmed them, and the review request continues in the same session
   - [ ] F2-AC11: Given the mapping proposal, When the user marks a heading of the template off-limits in the same confirm step — either the heading only or the heading with its sub-sections — Then Tomo never writes into that section (or, with its sub-sections, into any of them), whatever the mapping says; nothing is off-limits unless the user marks it, no heading name is off-limits by default, and Tomo may still read the user's own text there as a source, as spec 045 reads the weekly notes' own sections for a month
+  - [ ] F2-AC12: Given a section left out because it holds only automatic content (for example a tracker, a Dataview query or the habits), When the user gives it a description in the same confirm step, Then Tomo never writes into that section, and its analysed overview or conclusion for it — items under the rules of Feature 1 — lands in the "Tomo Review" section under a sub-heading named after that section, with its own section checkbox in the review document
 
 #### Feature 3: The review document by section (Pass 1)
 
@@ -198,7 +199,7 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
 - **Writing into inline fields** or placing anything other than by headings.
 - **Replacing a whole section** of the user's note; Tomo only adds its block or replaces its own block.
 - **Writing into sections the user marked off-limits** (F2-AC11), whatever the mapping says.
-- **New headings in the user's note** other than the "Tomo Review" heading of spec 045.
+- **New headings in the user's note** other than the "Tomo Review" heading of spec 045 and, inside that Tomo-owned section, the sub-headings of F2-AC12.
 - **Executing Templater** to fill a new note's headings; the spec 045 rule for such templates stays.
 - **Quarters other than calendar quarters** (for example a business year starting in another month).
 - **The bare "stop" answer and the saved week rule** of #267; they stay in #267.
@@ -247,7 +248,7 @@ Everything of spec 045's PRD (v1.8) stays in force. No spec 045 feature or crite
 
 **Edge Cases:**
 - The user renames a mapped heading in the note → Expected: F4-AC4 names it as missing; the setup's mapping is unchanged until the user runs `/review setup`.
-- The user moves Tomo's block to another section → Expected: a re-run finds the block by its markers, names where it is now, and replaces it there only after the user confirms.
+- The user moves Tomo's block to another section → Expected: a re-run finds the block by its markers, names where it is now, and replaces it there only after the user confirms; a block moved into the "Tomo Review" section is only left out or the delivery aborted (that section is replaced as a whole on a re-run).
 - Every section is unticked and nothing is left for the "Tomo Review" section → Expected: Pass 2 says there is nothing to deliver and offers Abort or start over (spec 045 edge case, extended).
 - A re-run leaves nothing for the "Tomo Review" section that an earlier review wrote → Expected: Tomo names the earlier section and says it stays as it is; removing it is the user's choice.
 - The template changed since the mapping was saved → Expected: F4-AC4 catches missing headings in the note; the setup is not changed by `/review` itself.
@@ -289,6 +290,7 @@ All events carry counts and states only, never text (spec 045 Feature 7, unchang
 - Placement is by headings only. Hashi matches a heading by its exact text and, when a text occurs more than once, takes the first; Tomo must therefore detect duplicates before delivery (F4-AC4).
 - Replacing Tomo's earlier block (F5-AC1) uses a new Hashi action that replaces only Tomo's marked block. This spec assumes the action exists; there is no fallback and no refusal for a Hashi version without it.
 - The handoff to Hashi for that action — including the changes to the instruction-set schema files — goes out through the MiYo handoff protocol as soon as the SDD defines the action; Hashi builds it, orchestrated by the owner.
+- The new Hashi action changes the instruction-set version for every Tomo command; how Hashi treats a set written by an older Tomo is Hashi's decision (handoff). Tomo builds no converter; the readable instructions remain the user's fallback.
 - The change is merged only after Tomo and Hashi work together in the test vault: first delivery, re-run with block replacement, for a week, a month and a quarter.
 - Spec 045 Feature 7 applies unchanged: no note text in Tomo's logs, error output or cost records. The section descriptions and keywords are setup text the user confirms, not note text.
 - As in spec 045, no change to the files under the eval gate is planned; if one becomes necessary, it needs the full-suite run before merge.
@@ -335,6 +337,12 @@ Decisions proposed by the coordinator and confirmed by the owner on 2026-11-14:
 - [x] The core of the spec is gathering material per section; delivery into the sections serves it (owner notes 2026-11-14; Vision, Feature 1).
 - [x] Quarterly reviews join this spec as a third period kind (owner 2026-11-14; Feature 6).
 - [x] The command stays `/review`, described as a review helper; a skill rename is decided at #259 (Won't Have).
+
+Added by v1.3 (SDD validation, owner 2026-11-14):
+
+- [x] Script-only sections stay untouched; an analysis row puts Tomo's overview into the "Tomo Review" section under the section's name (F2-AC12); habits are not a group a row can name (F2-AC7).
+- [x] A block moved into the "Tomo Review" section is only left out or the delivery aborted (Edge Cases).
+- [x] Instruction sets written before the wire update are Hashi's to handle; Tomo has no converter; the readable instructions stay the fallback (Constraints).
 
 Added by v1.1, to confirm:
 

@@ -13,7 +13,7 @@ version: "1.0"
 - [x] All required sections are complete
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Architecture pattern is clearly stated with rationale
-- [ ] **All architecture decisions confirmed by user**
+- [x] **All architecture decisions confirmed by user**
 - [x] Every interface has specification
 
 ### QUALITY CHECKS (Should Pass)
@@ -812,15 +812,15 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: a reworded duplicate passes; a refusal costs one rewrite turn.
   - User confirmed: 2026-11-14
 
-- [ ] ADR-3 Config: `review.<g>.sections.<template>` (rows with opaque `id`, heading, level, parent, occurrence, description, keywords, groups, placement `before|under|end`, cap 1..30 default 8) and `review.<g>.off_limits.<template>` (heading key + `with_subsections`); `vault_config_edit` learns block-style lists of mappings, quoted keys and removal on empty; `setup-input` refuses rows on left-out or off-limits headings and duplicate keys. The location was confirmed; the field set and the placement names are proposed here.
+- [x] ADR-3 Config: `review.<g>.sections.<template>` (rows with opaque `id`, heading, level, parent, occurrence, description, keywords, groups, placement `before|under|end`, cap 1..30 default 8) and `review.<g>.off_limits.<template>` (heading key + `with_subsections`); `vault_config_edit` learns block-style lists of mappings, quoted keys and removal on empty; `setup-input` refuses rows on left-out or off-limits headings and duplicate keys. The location was confirmed; the field set and the placement names are proposed here.
   - Rationale: per-template keys keep variants apart (F2-AC8) and one template's save from touching another (F2-AC10); `under` avoids reusing spec 045's `inside`, which means "end of section" there.
   - Trade-offs: a writer extension with its own round-trip tests; `setup-input` stays offline, so a forged row's eligibility is checked against the `match` evidence the skill passes, not re-read from Kado.
-  - User confirmed: _Pending_ (location confirmed 2026-11-14)
+  - User confirmed: 2026-11-14
 
-- [ ] ADR-4 Hashi action `replace_between_markers` as specified under Integration Points, with two safety rules beyond the confirmed shape: (a) unique end markers — start `%% tomo:<id> <period> %%`, end `%% /tomo:<id> <period> %%` — so a lost end marker can never pair with another block; (b) Hashi resolves the markers inside `vault.process`, never splicing indexes from an earlier read.
+- [x] ADR-4 Hashi action `replace_between_markers` as specified under Integration Points, with two safety rules beyond the confirmed shape: (a) unique end markers — start `%% tomo:<id> <period> %%`, end `%% /tomo:<id> <period> %%` — so a lost end marker can never pair with another block; (b) Hashi resolves the markers inside `vault.process`, never splicing indexes from an earlier read.
   - Rationale: a shared end marker or a stale index both delete the user's text; both are cheap to prevent in the contract.
   - Trade-offs: longer marker lines in the note (invisible in reading view); Hashi's existing handlers keep their stale-index pattern (named in the handoff as an observation, not a request).
-  - User confirmed: _Pending_ (action shape confirmed 2026-11-14)
+  - User confirmed: 2026-11-14
 
 - [x] ADR-5 Wire `schema_version` "3" → "4" for all Tomo producers; Tomo and Hashi release in lockstep; pending v3 sets are re-delivered; Kokoro gets an FYI.
   - Rationale: spec 035 Rule 9; Hashi accepts one version.
@@ -842,30 +842,30 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: the user must mark protection explicitly; the table grows by one mark per row.
   - User confirmed: 2026-11-14
 
-- [ ] ADR-9 Template analysis in `lib/review_mapping.py`, deterministic, first rule wins (templater, link, per-period-parent, off-limits, automatic); conservative `automatic` verdict — only when every body line is automatic and nothing own-writable remains; `tp.file.cursor` placeholders, callouts and comments are neutral; `mixed` headings are offered and never refused; the per-period repeat threshold is 3 parents; headings are kept verbatim (incl. `%% fold %%`). The model only words descriptions, keywords and group hints.
+- [x] ADR-9 Template analysis in `lib/review_mapping.py`, deterministic, first rule wins (templater, link, per-period-parent, off-limits, automatic); conservative `automatic` verdict — only when every body line is automatic and nothing own-writable remains; `tp.file.cursor` placeholders, callouts and comments are neutral; `mixed` headings are offered and never refused; the per-period repeat threshold is 3 parents; headings are kept verbatim (incl. `%% fold %%`). The model only words descriptions, keywords and group hints.
   - Rationale: a wrong left-out cannot be undone by the user (F2-AC4); deterministic rules are testable on the owner's templates.
   - Trade-offs: some automatic-heavy sections are offered with a `mixed` flag; the threshold is a judgement pinned by tests.
-  - User confirmed: _Pending_
+  - User confirmed: 2026-11-14
 
-- [ ] ADR-10 Marker identity and detection: the row `id` is assigned at save (next free `s<n>` per template), kept when a row is corrected and when a template correction keeps the same (heading, level, parent); per kept section Tomo reads the target and decides insert (no markers), replace (one start, one end after it, with `scope` from the nearest heading when `_resolved` confirms it), or a stop (broken, moved, block inside "Tomo Review", missing, ambiguous) as in Complex Logic; heading matches count exact Hashi text at any level.
+- [x] ADR-10 Marker identity and detection: the row `id` is assigned at save (next free `s<n>` per template), kept when a row is corrected and when a template correction keeps the same (heading, level, parent); per kept section Tomo reads the target and decides insert (no markers), replace (one start, one end after it, with `scope` from the nearest heading when `_resolved` confirms it), or a stop (broken, moved, block inside "Tomo Review", missing, ambiguous) as in Complex Logic; heading matches count exact Hashi text at any level.
   - Rationale: stable ids keep F5-AC5 (one block per section) across template edits; the strict count matches Rule 9.
   - Trade-offs: a heading that occurs twice in a note always needs a choice, even when the mapped one is first.
-  - User confirmed: _Pending_
+  - User confirmed: 2026-11-14
 
-- [ ] ADR-11 Review document: a section part is `## <heading> %%sN%%`, the section checkbox `- [x] <label> %%sN%%` (unticked when empty), an italic landing line, then the items with global `%%tN%%` ids; `meta.json` stores the expected keys (`pass1_sections`), and a missing checkbox stops delivery.
+- [x] ADR-11 Review document: a section part is `## <heading> %%sN%%`, the section checkbox `- [x] <label> %%sN%%` (unticked when empty), an italic landing line, then the items with global `%%tN%%` ids; `meta.json` stores the expected keys (`pass1_sections`), and a missing checkbox stops delivery.
   - Rationale: the parser's column-0 grammar would otherwise read a deleted checkbox's items as another heading's (F3-AC6); keys beat label matching (a user section named "Done").
   - Trade-offs: a visible `%%sN%%` in source view; one more meta field.
-  - User confirmed: _Pending_
+  - User confirmed: 2026-11-14
 
-- [ ] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"); user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records keys and modes only, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
+- [x] ADR-12 Multi-action sets: ids `I01…In` in a fixed order (sections in mapping order, then "Tomo Review"); user choices are flags on `preview` and `deliver` (`--section-choice <key>=skip|review`, `--confirm-moved <key>`); `delivered_plan.sections` records keys and modes only, and `replan_differs` compares them; `choices-needed` refuses a resume without the original choices; a set with any applied action can be overwritten by a new delivery (`_overwrite_step` with the `modified` guard), so a partly applied set is never stuck.
   - Rationale: byte-identical resume payloads (#258) and no dead end after one failed section.
   - Trade-offs: `second_set` loosens: the old set's waiting actions are replaced by the new plan, which is built from the note as it is now.
-  - User confirmed: _Pending_
+  - User confirmed: 2026-11-14
 
-- [ ] ADR-13 Template choice (#267, F7): `match` returns `template_not_found` with the candidates and a null template; `setup-input` refuses a confirmed missing template; the configured anchor is used only when the resolved template equals the configured one, and the skill drops `--anchor` when the template changes; the skill keeps the last shown rows in `tomo-tmp/review/rows-<kind>.json` and passes `--previous-rows`, from which `match` returns `dropped`.
+- [x] ADR-13 Template choice (#267, F7): `match` returns `template_not_found` with the candidates and a null template; `setup-input` refuses a confirmed missing template; the configured anchor is used only when the resolved template equals the configured one, and the skill drops `--anchor` when the template changes; the skill keeps the last shown rows in `tomo-tmp/review/rows-<kind>.json` and passes `--previous-rows`, from which `match` returns `dropped`.
   - Rationale: today a typo is saved and a corrected template keeps the old anchor; prose rules alone did not hold.
   - Trade-offs: one more tomo-tmp file (setup text only, no note text); a carve-out from the skill's "never drop a flag" rule.
-  - User confirmed: _Pending_
+  - User confirmed: 2026-11-14
 
 ## Quality Requirements
 

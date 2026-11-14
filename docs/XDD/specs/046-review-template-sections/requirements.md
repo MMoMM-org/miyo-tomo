@@ -1,7 +1,7 @@
 ---
 title: "/review: review material for the user's own template sections"
 status: approved
-version: "1.1"
+version: "1.2"
 ---
 
 # Product Requirements Document
@@ -108,7 +108,7 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
   - [ ] F1-AC3: Given a proposal for a mapped section, When Tomo writes it, Then it is one item that reminds the user of something the period shows — what happened, or what will need to happen — with at least one link to a daily note inside the period, or, for what only a weekly or monthly review of the period holds, to that note; it leaves judgement and reflection to the user and is not written as the user's finished review text
   - [ ] F1-AC4: Given a forward-looking section, When Tomo proposes items for it, Then each item is a suggestion drawn from something the period shows and links the day it came from; Tomo invents no item without a source
   - [ ] F1-AC5: Given more material for a section than its item cap, When Tomo writes it, Then it merges related findings into fewer items, keeps the source links of every merged finding, and never exceeds the cap
-  - [ ] F1-AC6: Given a finding that fits more than one section, When Tomo writes the proposals, Then it lands in exactly one section, the one whose description it fits best, and in no other section or group
+  - [ ] F1-AC6: Given a finding that fits more than one section, When Tomo writes the proposals, Then it proposes it in one section, the one whose description it fits best, and in no other section or group; an item proposed in two places (the same text, or the same sources with the same first line) is refused before the document is written
   - [ ] F1-AC7: Given what no mapped section takes, When Tomo writes the proposals, Then it goes into the spec 045 groups of the "Tomo Review" part, so that every finding a spec 045 group would hold lands either in a mapped section or there; a group with nothing left is absent from that part, and with no group left the "Tomo Review" part is absent
   - [ ] F1-AC8: Given a mapped section for which nothing in the period fits, When the document is written, Then the section shows one line saying nothing was found and its section checkbox starts unticked
   - [ ] F1-AC9: Given a monthly or quarterly review, When Tomo builds the proposals, Then the spec 045 marks for what only a weekly review holds and what the weekly reviews left out (month), and the marks of F6-AC4 (quarter), stay on the items they apply to, in whichever section those items land
@@ -120,7 +120,7 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
 - **Acceptance Criteria:**
   - [ ] F2-AC1: Given a period kind whose template Tomo can read, When the setup proposes its values (`/review` without a mapping, or `/review setup`), Then in the same confirm step it proposes a section mapping: for each suitable heading of the template, the heading with its level and parent heading, a description of what Tomo is to look for in the period's notes for that section, optional keywords, the placement (before the heading, directly under the heading, or at the end of the section) and a maximum number of items; nothing is saved until the user confirms
   - [ ] F2-AC2: Given the proposal, When Tomo shows it, Then it is one table in the existing confirm step — no extra question turn — and the user corrects a row by naming it and the change in plain text, removes a row, or adds a heading the proposal left out
-  - [ ] F2-AC3: Given a heading whose text carries Templater code or a link, a heading that repeats under parents that change per period (for example the day headings of a week), a section that holds only automatic content (queries, embeds, buttons, inline fields), or a section on the setup's list of the user's own sections that Tomo never writes to, When Tomo builds the proposal, Then it does not offer that heading, and it names the left-out headings with the reason in one line each
+  - [ ] F2-AC3: Given a heading whose text carries Templater code or a link, a heading that repeats under parents that change per period (for example the day headings of a week), a section that holds only automatic content (queries, embeds, buttons, inline fields), or a section the user marked off-limits (F2-AC11), When Tomo builds the proposal, Then it does not offer that heading, and it names the left-out headings with the reason in one line each
   - [ ] F2-AC4: Given the user adds a heading Tomo did not offer, When the heading falls under one of the reasons of F2-AC3, Then Tomo refuses it and says the reason; any other heading of the template is accepted
   - [ ] F2-AC5: Given a heading text that occurs more than once in the template (for example "In my own words" at two levels), When it is mapped, Then the mapping names it by its text, level and parent heading, and the proposal shows these so the user sees which one is meant
   - [ ] F2-AC6: Given a template with forward-looking sections (for example "I look forward to", "This will be challenging", "Goals and Wishes"), When Tomo proposes the mapping, Then it may propose them with a description that asks for suggestions drawn from what the period shows
@@ -128,6 +128,7 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
   - [ ] F2-AC8: Given the private and the work variant of a template, or the templates of two period kinds, When each is set up, Then each has its own mapping, and a mapping saved for one never applies to another
   - [ ] F2-AC9: Given a template with no suitable heading, or no template, When the setup runs, Then Tomo says no section can be mapped, saves no mapping, and the review works as in spec 045
   - [ ] F2-AC10: Given the user corrects or confirms the mapping, When it is saved, Then no other setup value changes, the descriptions and keywords are stored as the user confirmed them, and the review request continues in the same session
+  - [ ] F2-AC11: Given the mapping proposal, When the user marks a heading of the template off-limits in the same confirm step — either the heading only or the heading with its sub-sections — Then Tomo never writes into that section (or, with its sub-sections, into any of them), whatever the mapping says; nothing is off-limits unless the user marks it, no heading name is off-limits by default, and Tomo may still read the user's own text there as a source, as spec 045 reads the weekly notes' own sections for a month
 
 #### Feature 3: The review document by section (Pass 1)
 
@@ -196,7 +197,7 @@ Spec 045 (`/review`, shipped in PR #257) reads a week's or a month's daily notes
 - **Removing anything spec 045 reads, proposes or delivers.** This spec adds material per section, a third period kind and new places for the material; it takes nothing away.
 - **Writing into inline fields** or placing anything other than by headings.
 - **Replacing a whole section** of the user's note; Tomo only adds its block or replaces its own block.
-- **Writing into sections on the never-write list** (for example the "Reflections" callouts with inline fields), whatever the mapping says.
+- **Writing into sections the user marked off-limits** (F2-AC11), whatever the mapping says.
 - **New headings in the user's note** other than the "Tomo Review" heading of spec 045.
 - **Executing Templater** to fill a new note's headings; the spec 045 rule for such templates stays.
 - **Quarters other than calendar quarters** (for example a business year starting in another month).
@@ -211,7 +212,7 @@ Everything of spec 045's PRD (v1.8) stays in force. No spec 045 feature or crite
 - **Could-Have "Quarterly and yearly reviews"**: quarterly moves into this spec as a Must (Feature 6); yearly stays a Could Have.
 - **F4-AC2** (the fixed group set): amended. With a mapping, the document is laid out by mapped sections and the spec 045 groups hold what no mapped section takes, so every group's material is still proposed (F1-AC7, F3-AC1). Without a mapping, F4-AC2 applies unchanged (F1-AC10).
 - **F4-AC4** (a group with no proposal shows one line): extended to mapped sections, whose checkbox then starts unticked (F1-AC8).
-- **F4-AC7** and **Rule 4** (no text for the user's own sections): narrowed to sections on the never-write list. Tomo proposes material for mapped sections; it still never proposes text for sections on the never-write list.
+- **F4-AC7** and **Rule 4** (no text for the user's own sections): narrowed to sections the user marked off-limits (F2-AC11). Tomo proposes material for mapped sections; it never proposes text for an off-limits section. Spec 045's list of the user's own sections keeps its other role unchanged: their text in the weekly notes is read as a source for a month, and the "Tomo Review" section is never placed in them.
 - **Won't-Have "writing into … the user's own sections of the periodic note"**: lifted for mapped sections; writing into daily notes stays out.
 - **F5-AC3** (the instruction set adds the review section under its own heading): extended by F4-AC1. The "Tomo Review" section is added when something is left for it.
 - **F5-AC6** (unticked items and empty groups are absent): extended by F3-AC4 and F3-AC5.
@@ -237,8 +238,8 @@ Everything of spec 045's PRD (v1.8) stays in force. No spec 045 feature or crite
 - Rule 1: Spec 045 Rules 1, 2, 3, 6 and 7 apply unchanged (items start ticked, the user's text lands unchanged, every Tomo proposal has a source link in the period, empty Kado results are reported as such, nothing is delivered without Approved).
 - Rule 2: What a mapped section receives follows its description and keywords; a mapping adds what Tomo looks for and never narrows what it reads or proposes.
 - Rule 3: Tomo's lines in a user's section stay inside Tomo's markers; the user's text outside them is never changed.
-- Rule 4: A section on the never-write list never receives anything.
-- Rule 5: A finding lands in exactly one section or group.
+- Rule 4: A section the user marked off-limits never receives anything.
+- Rule 5: A finding is proposed in one section or group; no item is proposed in two places.
 - Rule 6: A section's items never exceed its cap.
 - Rule 7: An unticked section checkbox drops the whole section, including the user's own items in it.
 - Rule 8: At most one Tomo block per mapped section and period, and at most one "Tomo Review" section per period.
@@ -261,7 +262,7 @@ Everything of spec 045's PRD (v1.8) stays in force. No spec 045 feature or crite
 - **Adoption:** The owner runs 4 consecutive weekly reviews, 1 monthly review and 1 quarterly review with a section mapping in the live vault after release (measured after the spec closes).
 - **Engagement — section fit:** Over those reviews, at least 70 % of the mapped sections that received items stay ticked at Pass 2. Counted from section counts, without storing any text.
 - **Engagement — items:** At most 40 % of Tomo's proposals are unticked or deleted over a delivered review (spec 045 KPI, now also reported per section); habit items are not counted.
-- **Quality:** 0 writes to the vault outside the inbox before the user applies; 0 changed characters of the user's own text in a mapped section after an apply; 0 sections with two Tomo blocks for a period; 0 findings in two sections; 0 writes to a never-write section; 0 Tomo proposals without a source link in the period.
+- **Quality:** 0 writes to the vault outside the inbox before the user applies; 0 changed characters of the user's own text in a mapped section after an apply; 0 sections with two Tomo blocks for a period; 0 items proposed in two places; 0 writes to an off-limits section; 0 Tomo proposals without a source link in the period.
 - **Cost and time:** The spec 045 limits stay on the test vault's March 2026: weekly Pass 1 at most $0.50, monthly Pass 1 at most $2.00, Pass 2 at most $0.75, monthly Pass 1 within 7 minutes. A quarterly Pass 1 on the test vault's first quarter of 2026 costs at most $5.00 and finishes within 20 minutes (to confirm: scaled from the month's $2.00 and 7 minutes for about three times the reads, plus the quarter's weekly and monthly notes). The mapping adds no question turn to the setup.
 
 ### Tracking Requirements
@@ -323,7 +324,7 @@ All events carry counts and states only, never text (spec 045 Feature 7, unchang
 Decisions proposed by the coordinator and confirmed by the owner on 2026-11-14:
 
 - [x] #267 split: in this spec the not-found template with candidates (F7-AC1), the re-proposal after a template correction (F7-AC2) and the same-named heading told apart by level and parent (F2-AC5); the bare "stop" answer and the saved week rule stay in #267.
-- [x] The setup's list of the user's own sections stays, as the never-write list (F2-AC3, Rule 4).
+- [x] ~~The setup's list of the user's own sections stays, as the never-write list~~ — superseded in v1.2: the user marks off-limits headings in the confirm step, heading only or with sub-sections, nothing by default (F2-AC11, Rule 4); spec 045's own-sections list keeps its reading role.
 - [x] Headings with Templater code or links, headings under parents that change per period, and sections with only automatic content are not offered as targets (F2-AC3).
 - [x] New-note mode: mapped sections are filled only where the new note has the heading as plain text; Templater-on-create templates keep the spec 045 rule; the rest goes to the "Tomo Review" section (F4-AC5).
 - [x] A missing or ambiguous mapped heading in the target note: leave the section out, put it into the "Tomo Review" section, or Abort, chosen in the existing Deliver step (F4-AC4).

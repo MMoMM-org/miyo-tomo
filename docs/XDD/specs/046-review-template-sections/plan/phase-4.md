@@ -1,0 +1,68 @@
+---
+title: "Phase 4: Pass 1 — proposals and the review document by section"
+status: pending
+version: "1.0"
+phase: 4
+---
+
+# Phase 4: Pass 1 — proposals and the review document by section
+
+## Phase Context
+
+**GATE**: Read all referenced files before starting this phase.
+
+**Specification References**:
+- `[ref: SDD/Application Data Models]` — Proposals, SectionPart, ParsedDoc
+- `[ref: SDD/Implementation Examples/One section part in the review document]` — divider, analysis part, mark suffix
+- `[ref: SDD/Runtime View/Complex Logic]` — "Double placement"
+- `[ref: SDD/Architecture Decisions; ADR-1, ADR-2, ADR-11]`
+
+**Key Decisions**:
+- `sections: [{key, items}]` beside unchanged `groups`; keys only, never heading text (ADR-1).
+- Caps refused (`over-cap`), never truncated; double placement refused only with a mapping (ADR-2).
+- Every part stays at `##`; the section heading and checkbox carry `%%sN%%`; expected keys in `meta.json` `pass1_sections` (ADR-11).
+- Without a mapping the document is spec 045's (F1-AC10, CON-2).
+
+**Dependencies**: Phase 2; T3.3 (`read.json` with `sections`); the quarter parts of T4.2 and T4.4 need T3.4.
+
+---
+
+## Tasks
+
+Turns the model's per-section proposals into a review document laid out like the user's note, with one checkbox per section.
+
+- [ ] **T4.1 Proposals schema and section checks (`lib/review_sections.py`)** `[activity: domain-modeling]`
+
+  1. Prime: `tomo/schemas/review-proposals.schema.json`; `lib/review_doc.py` (`load_proposals` 132, `Sources` 165, `_group_reason` 201, `_check_item` 209, `check_items` 236, `MONTH_GROUPS` 65-70) `[ref: SDD/Application Data Models; ADR-1; ADR-2]`
+  2. Test: `sections` with `key` pattern and items; `mark` defined only on section items (group item schema unchanged); quarter groups `monthly_only` / `not_in_monthly`; checks: `unknown-section`, `over-cap`, `double-placement` (normalised text; sources + first line; only with a mapping), `mark-not-allowed` per kind, `NO_SOURCE` for section items (daily of the period, or a weekly/monthly note for a review-only finding); the per-kind group tables keep the week and month order; spec 045 proposals without `sections` pass and fail exactly as before; each check RED-proven.
+  3. Implement: schema; `lib/review_sections.py` (definitions, checks); per-kind group tables in `review_doc.py`; WHY docs first; version bumps.
+  4. Validate: `test_review_doc.py`, new `test_review_sections.py` green; ruff clean.
+  5. Success: no over-cap, sourceless or twice-placed item reaches the document `[ref: PRD/F1-AC3, F1-AC4, F1-AC5, F1-AC6, F1-AC9; Rules 5, 6]`
+
+- [ ] **T4.2 Rendering the document by section and the write path** `[activity: backend-api]`
+
+  1. Prime: `lib/review_doc.py` (`DocInput` 265, `item_lines` 296, `neutralised` 289, `_callout` 303, `render_document` 324, `_LABELS` 82, `group_labels` 108); `review-doc.py` (`render_and_write` 220-265, `_write_meta` 193, `replace`); `lib/review_doc_read.py:55` `[ref: SDD/Implementation Examples/One section part; ADR-11]`
+  2. Test: parts in template order, then the `## Tomo Review %%review%%` divider with its landing line, analysis parts, then groups; empty groups omitted only with a mapping; an empty section shows `- nothing found` and an unticked checkbox; the landing line per part names heading and placement (and "Tomo Review" for a routed or analysis section); the mark suffix from `_LABELS` (de, en); global `%%tN%%` numbering; `meta.json` `pass1_sections` keys and counts only (privacy test); `pass1_counts` with section keys read by `review_doc_read`; `write` and `replace` both run the checks; a quarter's parts are loaded and joined; **an unmapped document is byte-identical to spec 045's** for the week and month fixtures.
+  3. Implement: `review_sections` rendering, `review_doc.render_document` assembly, `review-doc.py`, `review_doc_read.py`; WHY docs first; version bumps.
+  4. Validate: `test_review_doc*.py`, `test_review_e2e*.py`, `test_review_privacy*.py` (amended closed-key assertion for sections, as decided for amended CON-3) green; `review_doc.py` ≤ 450 lines; ruff clean.
+  5. Success: the document mirrors the user's note `[ref: PRD/F1-AC7, F1-AC8, F1-AC10, F3-AC1, F3-AC2, F3-AC3]`
+
+- [ ] **T4.3 Parsing sections back** `[activity: backend-api]`
+
+  1. Prime: `lib/review_doc_parse.py` (`_ITEM` 53, `_HEADING` 54, `_APPROVED` 55, `_item_of` 165, `_parse_body` 182, `counts` 109, `approved_review` 124) `[ref: SDD/Application Data Models ParsedDoc; ADR-11]`
+  2. Test: a section heading with `%%sN%%` and its checkbox matched before `_ITEM`; ticked / unticked / missing per expected key from `meta.json` → `section-checkbox-missing` names the section and the line to restore; the divider is a boundary with no items; a user section named "Done" is never read as group `done`; per-section counts incl. the user's own items (for `section-dropped`) and empty ticked sections (`section-empty`); the landing line is ignored; an edited heading keeps its section; spec 045 documents parse exactly as before (`unknown-group`, `duplicate-group`, `item-outside-group` unchanged).
+  3. Implement: parser changes; WHY doc first; version bump.
+  4. Validate: `test_review_doc_parse.py`, `test_review_instructions.py` green; ruff clean.
+  5. Success: an unticked section drops everything in it, a broken checkbox stops delivery `[ref: PRD/F3-AC4, F3-AC5, F3-AC6; Rule 7]`
+
+- [ ] **T4.4 Skill steps 5 and 6: proposing by section** `[activity: prompt-authoring]`
+
+  1. Prime: SKILL.md steps 5-6 (117-161); `docs/tomo/dot_claude/skills/periodic-review.md`; `tests/test_review_skill.py:164, 478-492, 538`, `test_review_skill_contract.py:51`, `test_review_skill_pass2.py:43-46` `[ref: SDD/Components SKILL.md row; ADR-1]`
+  2. Test: pins for: items per `read.json` `sections` entry from its description and keywords, reminders not finished text, at most `cap`, one place per item, the rest in the groups, analysis rows as overviews, the quarter branch reading the parts in turn, counts per section in the report, the new refusals in the rewrite-once loop, the `section-checkbox-missing` stop.
+  3. Implement: WHY first; SKILL.md through `tcs-helper:skill-author`; version bump; record the character growth.
+  4. Validate: skill tests green.
+  5. Success: the model gathers what each section asks for `[ref: PRD/F1-AC2; F1-AC3 model part]`
+
+- [ ] **T4.5 Phase Validation** `[activity: validate]`
+
+  - Run all Phase 4 tests and the full suite. The unmapped-document byte-identity test green. Drift check against ADR-1/2/11. Lint clean.

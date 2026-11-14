@@ -16,7 +16,7 @@
 |----------|--------|-------|
 | requirements.md | completed | v1.3 (2026-11-14): 7 features, 49 criteria (F1 material per section is the headline; F6 quarter; v1.2 adds F2-AC11 off-limits and narrows F1-AC6; v1.3 adds F2-AC12 analysis rows after SDD validation) |
 | solution.md | completed | v1.2 (2026-11-14): 13 ADRs, all confirmed; two validation passes worked in |
-| plan/ | pending | |
+| plan/ | completed | v1.0 (2026-11-14): 6 phases, 29 tasks (incl. 5 phase validations); criteria → task map in plan/README.md |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 

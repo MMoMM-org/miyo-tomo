@@ -380,7 +380,7 @@ tomo/
 │   ├── hashi-instructions.schema.json           # REPLACE verbatim from Hashi after its release
 │   └── shapes/instructions.shape.json           # REGENERATE
 └── scripts/
-    ├── review-session.py                        # MODIFY: sections/off_limits in _INPUT_KEYS, setup-input refusals, match --previous-rows
+    ├── review-session.py                        # MODIFY: sections/off_limits in _INPUT_KEYS, setup-input refusals, match writes/reads
     │                                            #         + rows-<kind>.json, quarter
     ├── review-read.py                           # MODIFY: quarter period, compact JSON, split per month, --measure
     ├── review-doc.py                            # MODIFY: write and replace call the section checks; pass1_sections; read parts
@@ -972,7 +972,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 - [ ] F2-AC12 WHERE a row has `placement: review` on a script-only heading, THE SYSTEM SHALL never write into that heading and SHALL deliver its items in the "Tomo Review" section under a sub-heading named after it; a row SHALL NOT name `habits`.
 - [ ] F7-AC1 IF a typed or configured template is not found, THEN THE SYSTEM SHALL return `template_not_found` with the candidates and `setup-input` SHALL refuse it.
 - [ ] F7-AC2 WHEN the template changes in the dialogue, THE SYSTEM SHALL propose place and rows from the new template only.
-- [ ] F7-AC3 WHEN `--previous-rows` is given, THE SYSTEM SHALL return the earlier rows the new template lacks as `dropped`.
+- [ ] F7-AC3 WHEN the template changes and `rows-<kind>.json` holds the earlier rows, THE SYSTEM SHALL return the earlier rows the new template lacks as `dropped`.
 
 **Main Flow Criteria: PRD F3 — document by section**
 - [ ] F3-AC1 THE SYSTEM SHALL render section parts in template order, then "Tomo Review", with spec 045's header parts unchanged.

@@ -14,7 +14,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | v1.0 draft: 6 features, 38 criteria; owner reading; F5-AC2 open |
+| requirements.md | in_progress | v1.1: 7 features, 47 criteria (F1 material per section is the headline; F6 quarter); no open questions |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -42,6 +42,11 @@
 | 2026-11-14 | The per-section checkbox (#256) unticked drops the whole section, including items the owner added there, with a one-line warning; ticked means keep | Owner (recommended) |
 | 2026-11-14 | PRD v1.0 drafted (6 features, 38 criteria); owner confirmed the five coordinator defaults (#267 split, never-write list stays, non-target headings, new-note rule, missing-heading choice) and three added decisions (duplicate heading = same choice as missing; unticked on re-run keeps the earlier block; default cap 8 items per section) | Owner review, 2026-11-14 |
 | 2026-11-14 | NOT accepted: "a re-run before the Hashi action exists delivers without the filled sections or aborts" (F5-AC2) — left OPEN in the PRD Open Questions | Owner did not accept it; to be decided after reading the PRD |
+| 2026-11-14 | Focus: the core of 046 is gathering and processing the material each section of the user's template needs ("reminders" of what happened and what will need to happen, which the user turns into their own thoughts); placing it in the right section only saves the back-and-forth. Tomo reads what the target template requires and searches the notes for it. No spec 045 feature is removed; 046 adds and changes where the information goes | Owner notes in the PRD draft |
+| 2026-11-14 | Quarterly reviews join spec 046 as a third period kind (`quarter`), with the same section mapping | Owner: "i also have quarterly reviews"; chosen over a separate spec 047 |
+| 2026-11-14 | Name: the command stays `/review`; the purpose is described as a review helper; a skill rename (e.g. review-helper) is decided at the skill revisit #259 | Owner (recommended); a rename touches many tests and docs |
+| 2026-11-14 | F5-AC2 decided: the Hashi action exists by assumption; a re-run always replaces only Tomo's block; no fallback and no safety refusal for an older Hashi. The PR merges only after Tomo and Hashi work together in the test vault; the Hashi handoff (incl. schema JSONs) goes out as soon as the SDD defines the action; Hashi builds it | Owner notes + answer ("without any safety refusal") |
+| 2026-11-14 | PRD v1.1: owner notes worked in and removed; quarter confirmed with Pass 1 ≤ $5.00 / ≤ 20 min on Q1 2026; quarter marks one level up from the month (only-in-monthly, not-in-monthly; weekly notes read as sources); calendar quarters only; yearly stays Could Have for a later spec | Owner answers 2026-11-14; test vault has `t_quarter_privat.md` and quarterly notes from 2022-Q2 |
 
 ## Context
 

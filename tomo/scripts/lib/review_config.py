@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.3.1
+# version: 0.3.2
 """The ``/review`` setup of one period kind (spec 045, T2.1, T2.3; spec 046, T1.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -97,13 +97,16 @@ class UnsafePath(ValueError):
 @dataclass(frozen=True)
 class Problem:
     pointer: str
-    kind: str          # "schema" or a period.FormatProblem kind
+    kind: str          # "schema", a period.FormatProblem kind, a duplicate or a setup-input row refusal
     example: str = ""
+    reason: str = ""   # the left-out reason of a ``section-left-out`` refusal
 
     def to_dict(self) -> Dict[str, str]:
         out = {"pointer": self.pointer, "kind": self.kind}
         if self.example:
             out["example"] = self.example
+        if self.reason:
+            out["reason"] = self.reason
         return out
 
 

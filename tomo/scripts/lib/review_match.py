@@ -1,5 +1,5 @@
 # review_match.py — the setup proposal of /review: match the notes of a period kind and propose the setup.
-# version: 0.2.0
+# version: 0.3.0
 """The proposal behind ``review-session.py match`` (spec 045 F1; ADR-1, ADR-4; spec 046 T2.1, ADR-9, ADR-13).
 
 ``propose(open_vault, config, profile, args)`` lists the folder of one period
@@ -13,7 +13,9 @@ built here too, so the script only prints what comes back.
 ``sections`` is always in an ``ok`` output: one candidate per template heading
 (``lib/review_mapping.analyse_template``) with ``defaults`` and the ``saved`` row
 of the resolved template, the saved ``off_limits`` rows, ``mappable`` and
-``dropped``; ``candidates`` is ``[]`` and ``mappable`` false when no heading
+``dropped`` (after a template change the earlier rows the template lacks, and
+on every run the saved rows of the template whose heading it lost);
+``candidates`` is ``[]`` and ``mappable`` false when no heading
 takes a row. A typed or configured template Kado does not find becomes
 ``template_not_found`` with a null template and the candidates listed. The
 configured anchor counts only while the resolved template is the configured
@@ -21,8 +23,11 @@ one. A quarter's format, with none typed or configured, is the
 ``QUARTER_FORMATS`` entry that parses the most note names.
 
 ``match`` keeps the rows it shows in ``<args.tmp>/rows-<kind>.json`` (setup
-text only: ``ROW_FIELDS``) and reads the previous file for ``dropped``; a
-template not found or unreadable shows no rows and leaves the file alone.
+text only: ``ROW_FIELDS``) with the template's ``outline``
+(``lib/review_mapping.outline``) and ``resolved {template, kind}`` — the name it
+tried and its ``template_kind`` — for ``setup-input``, and reads the previous
+file for ``dropped``; a template not found or unreadable shows no rows and
+keeps the file's template, rows and outline, updating ``resolved`` only.
 
 ``open_vault`` is a zero-argument callable returning the ``Vault``; the script
 passes ``lambda: Vault(KadoClient)`` so the client stays patchable where the
@@ -46,7 +51,7 @@ from typing import Callable, List, Optional, Tuple
 from lib import review_config as rc
 from lib.note_io import atomic_write_text
 from lib.period import DAY_NAMES, DEFAULT_FORMATS, ISO, QUARTER, WEEK, WeekRule, check_format, parse_name
-from lib.review_mapping import AUTOMATIC, TemplateHeading, analyse_template, dropped, row_key
+from lib.review_mapping import AUTOMATIC, TemplateHeading, analyse_template, dropped, outline, row_key
 from lib.review_templates import (
     NO_TEMPLATE, anchor_candidates_from_notes, daily_sections_from, propose_anchor, resolve_template,
     template_anchor_candidates, template_has_frontmatter, template_vault_path,
@@ -61,6 +66,7 @@ QUARTER_FORMATS = ("YYYY-[Q]Q", "YYYY [Q]Q", "YYYY_[Q]Q", "[Q]Q YYYY", "[Q]Q-YYY
 OFFERED = "offered"
 END, REVIEW = "end", "review"         # an offered heading's default placement; an automatic one's only one
 ROW_FIELDS = ("heading", "level", "parent", "occurrence", "description", "keywords", "placement", "cap")
+NO_OUTLINE = {"headings": [], "top": []}
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
@@ -129,19 +135,23 @@ def rows_path(tmp: str, kind: str) -> Path:
 
 
 def read_rows(path: Path) -> Optional[dict]:
-    """``{template, rows}`` of the rows file; None when it is absent or not the file ``write_rows`` writes."""
+    """``{template, rows, outline}`` of the rows file; None when it is absent or not the file ``write_rows``
+    writes."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
         return None
-    return {"template": data.get("template"), "rows": [r for r in data["rows"] if isinstance(r, dict)]}
+    return {"template": data.get("template"), "rows": [r for r in data["rows"] if isinstance(r, dict)],
+            "outline": data.get("outline", NO_OUTLINE)}
 
 
-def write_rows(path: Path, kind: str, template: Optional[str], rows: List[dict]) -> None:
+def write_rows(path: Path, kind: str, shown: dict, resolved: dict) -> None:
+    """``shown`` is ``{template, rows, outline}`` of the template whose rows were shown last."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"kind": kind, "template": template, "rows": rows}
+    data = {"kind": kind, "template": shown["template"], "rows": shown["rows"], "outline": shown["outline"],
+            "resolved": resolved}
     atomic_write_text(path, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
 
 
@@ -184,12 +194,15 @@ def section_proposal(config: dict, kind: str, template: Optional[str], text: Opt
     shown_heads = heads if mappable else []
     shown = [row for row in (_shown_row(h, saved.get(h.key)) for h in shown_heads) if row is not None]
     changed = previous is not None and previous["template"] != template
+    lost = dropped(previous["rows"], heads) if changed else []
+    if text is not None:
+        lost += [r for r in dropped(saved_rows, heads) if r not in lost]
     sections = {
         "template": template,
         "mappable": mappable,
         "candidates": [_candidate(h, saved.get(h.key)) for h in shown_heads],
         "off_limits": off_limits,
-        "dropped": dropped(previous["rows"], heads) if changed else [],
+        "dropped": lost,
     }
     return sections, shown
 
@@ -275,10 +288,15 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
         return {"status": "stopped", "kind": kind, "error": {"kind": stop.kind, "detail": stop.detail}}
 
     path = rows_path(args.tmp, kind)
+    previous = read_rows(path)
     sections, shown = section_proposal(config, kind, template, template_text if rows_shown else None,
-                                       read_rows(path) if rows_shown else None)
+                                       previous if rows_shown else None)
+    resolved = {"template": not_found["name"] if not_found else template, "kind": template_kind}
     if rows_shown:
-        write_rows(path, kind, template, shown)
+        kept = {"template": template, "rows": shown, "outline": outline(template_text) if template_text else NO_OUTLINE}
+    else:
+        kept = previous or {"template": None, "rows": [], "outline": NO_OUTLINE}
+    write_rows(path, kind, kept, resolved)
     placement = place.get("placement") if place.get("placement") in rc.PLACEMENTS else rc.BEFORE
     language = (str_value(review.get("language"))
                 or next((c.locale for c in inference.checked if c.locale), None)

@@ -1,5 +1,5 @@
 # review_mapping.py — which template headings /review may offer as sections, and why the others are left out.
-# version: 0.1.0
+# version: 0.2.0
 """Template analysis for ``/review`` sections (spec 046, T1.2; PRD F2-AC3, F2-AC5, F2-AC11).
 
 ``analyse_template(text, off_limits)`` returns one ``TemplateHeading`` per heading of level
@@ -9,7 +9,13 @@
 offered one (mixed, container, under-own). ``heading_tree(text)`` gives the same headings
 unclassified, for any note. ``landing_off_limits(heading, off_limits)`` is the one landing
 check: the row that covers the heading, or None. ``assign_ids`` gives rows their ``s<n>``
-id, ``dropped`` names earlier rows a new template lacks. No setting file, no Kado, no
+id, ``dropped`` names earlier rows a new template lacks. ``outline(text)`` is the
+template's headings after the structural rules (key, line, ancestors, body kind, reason)
+plus its level-1 lines, as JSON-ready data; ``from_outline(data, off_limits)`` runs the
+off-limits and automatic rules on it (``ValueError`` for another shape) and
+``outline_top(data)`` returns the level-1 lines. ``landing(heads, top, line, placement)``
+names the heading whose own body receives a ``before | under | end`` placement at the
+heading on ``line`` (None in the preamble or a level-1 body). No setting file, no Kado, no
 model, no file I/O.
 
 Design notes: docs/tomo/scripts/lib/review_mapping.md
@@ -97,13 +103,14 @@ def _spanned_lines(text: str, offset: int) -> Set[int]:
     return out
 
 
-def _tree(text: str) -> Tuple[List[TemplateHeading], List[str], Set[int]]:
+def _tree(text: str) -> Tuple[List[TemplateHeading], List[str], Set[int], List[Tuple[int, str]]]:
     lines, offset = _body_lines(text)
     inner = {i - offset for i in templater_inner_line_indexes(text)}
     found = [h for h in headings(lines)[0] if h[0] not in inner]
     spanned = _spanned_lines(text, offset)
     heads: List[TemplateHeading] = []
     stack: List[Tuple[Optional[HeadingKey], int]] = []
+    top: List[Tuple[int, str]] = []
     seen: Dict[Tuple[str, int, Optional[str]], int] = {}
     for n, (index, level, text_) in enumerate(found):
         while stack and stack[-1][1] >= level:
@@ -111,6 +118,7 @@ def _tree(text: str) -> Tuple[List[TemplateHeading], List[str], Set[int]]:
         parent = stack[-1][0].heading if stack and stack[-1][0] else None
         if level == 1:
             stack.append((None, 1))
+            top.append((index + offset + 1, text_))
             continue
         seen[(text_, level, parent)] = occurrence = seen.get((text_, level, parent), 0) + 1
         key = HeadingKey(text_, level, parent, occurrence)
@@ -118,7 +126,7 @@ def _tree(text: str) -> Tuple[List[TemplateHeading], List[str], Set[int]]:
         heads.append(TemplateHeading(key, index + offset + 1, tuple(k for k, _ in stack if k),
                                      _body_kind(lines, index + 1, end, spanned)))
         stack.append((key, level))
-    return heads, lines, spanned
+    return heads, lines, spanned, top
 
 
 def heading_tree(text: str) -> List[TemplateHeading]:
@@ -227,13 +235,87 @@ def _apply_automatic(heads: Sequence[TemplateHeading]) -> None:
             h.flags.add(CONTAINER)
 
 
-def analyse_template(text: str, off_limits: Sequence[dict]) -> List[TemplateHeading]:
-    """Every heading of level 2..6, offered or left out with its reason (ADR-9)."""
-    heads = heading_tree(text)
-    _apply_structural(heads)
+def _classify(heads: List[TemplateHeading], off_limits: Sequence[dict]) -> List[TemplateHeading]:
+    """The rules that depend on the off-limits rows, on headings the structural rules have seen."""
     _apply_off_limits(heads, off_limits)
     _apply_automatic(heads)
     return heads
+
+
+def _structural(text: str) -> Tuple[List[TemplateHeading], List[Tuple[int, str]]]:
+    heads, _, _, top = _tree(text)
+    _apply_structural(heads)
+    return heads, top
+
+
+def analyse_template(text: str, off_limits: Sequence[dict]) -> List[TemplateHeading]:
+    """Every heading of level 2..6, offered or left out with its reason (ADR-9)."""
+    return _classify(_structural(text)[0], off_limits)
+
+
+# --- the outline setup-input checks against (T2.2) -----------------------------------------
+
+def outline(text: str) -> dict:
+    """The headings after the structural rules and the level-1 lines, as ``match`` keeps them."""
+    heads, top = _structural(text)
+    return {"headings": [{**h.key._asdict(), "line": h.line, "ancestors": [list(a) for a in h.ancestors],
+                          "body_kind": h.body_kind, "reason": h.reason} for h in heads],
+            "top": [{"heading": text_, "line": line} for line, text_ in top]}
+
+
+def _key(value) -> HeadingKey:
+    heading, level, parent, occurrence = value
+    if not (isinstance(heading, str) and type(level) is int and type(occurrence) is int
+            and (parent is None or isinstance(parent, str))):
+        raise ValueError("not a heading key")
+    return HeadingKey(heading, level, parent, occurrence)
+
+
+def _stored_heading(entry: dict) -> TemplateHeading:
+    key = _key([entry["heading"], entry["level"], entry["parent"], entry["occurrence"]])
+    if type(entry["line"]) is not int or entry["reason"] not in (None, TEMPLATER, LINK, PER_PERIOD):
+        raise ValueError("not a stored heading")
+    head = TemplateHeading(key, entry["line"], tuple(_key(a) for a in entry["ancestors"]), str(entry["body_kind"]))
+    if entry["reason"] is not None:
+        head.left_out(entry["reason"])
+    return head
+
+
+def from_outline(data, off_limits: Sequence[dict]) -> List[TemplateHeading]:
+    """The headings of a stored ``outline``, classified under ``off_limits`` as ``analyse_template`` does."""
+    try:
+        heads = [_stored_heading(e) for e in data["headings"]]
+        outline_top(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("not an outline") from exc
+    return _classify(heads, off_limits)
+
+
+def outline_top(data) -> List[Tuple[int, str]]:
+    """``(line, text)`` of every level-1 heading of a stored ``outline``."""
+    try:
+        top = [(e["line"], e["heading"]) for e in data["top"]]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("not an outline") from exc
+    if not all(type(line) is int and isinstance(text_, str) for line, text_ in top):
+        raise ValueError("not an outline")
+    return top
+
+
+def landing(heads: Sequence[TemplateHeading], top: Sequence[Tuple[int, str]], line: int,
+            placement: str) -> Optional[TemplateHeading]:
+    """The heading whose own body receives a ``before`` / ``under`` / ``end`` placement at the heading on
+    ``line``; None in the preamble or in a level-1 body (no row covers a level-1 heading)."""
+    entries = sorted([(h.line, h.level, h) for h in heads] + [(ln, 1, None) for ln, _ in top],
+                     key=lambda e: e[0])
+    index = next(i for i, e in enumerate(entries) if e[0] == line)
+    if placement == "before":
+        return entries[index - 1][2] if index > 0 else None
+    last = index
+    if placement == "end":
+        while last + 1 < len(entries) and entries[last + 1][1] > entries[index][1]:
+            last += 1
+    return entries[last][2]
 
 
 # --- off-limits landing, row ids, dropped rows -----------------------------------------------

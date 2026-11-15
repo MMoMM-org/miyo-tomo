@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.8.0
+# version: 0.8.1
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -30,13 +30,13 @@ Usage (cwd = instance root):
 
 Output: one JSON object on stdout, ASCII-escaped.
     start: status ok|stopped,
-           request {kind week|month, period, year_inferred, source arg|at|default, start, end}
-             | request {kind setup} + current {week, month: values | null | {invalid [pointers]}}
+           request {kind week|month|quarter, period, year_inferred, source arg|at|default, start, end}
+             | request {kind setup} + current {week, month, quarter: values | null | {invalid [pointers]}}
              | request null + request_withheld open-reviews (a blank argument while open_reviews
                is non-empty: no new period starts until the user names one)
              | error {kind invalid-period|unfinished-period|not-periodic-note|unknown-argument,
                       expected, example, last_finished?},
-           setup {week present|missing, month present|missing},
+           setup {week present|missing, month present|missing, quarter present|missing},
            open_reviews [{period, kind, doc_path, stem, state}] ordered by period,
            skipped_review_docs [{doc_path, reason}], problems [inbox-not-configured]?,
            notices [applied-not-recorded]? (the applied flag could not be written),

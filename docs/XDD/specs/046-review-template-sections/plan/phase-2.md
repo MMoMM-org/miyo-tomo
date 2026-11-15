@@ -47,7 +47,7 @@ Lets the vault keeper confirm, in one turn per template, which sections receive 
   4. Validate: tests green; ruff clean.
   5. Success: nothing ineligible or off-limits can be saved `[ref: PRD/F2-AC4, F2-AC11; Rule 4]`
 
-- [ ] **T2.3 Skill setup step: the mapping table** `[activity: prompt-authoring]`
+- [x] **T2.3 Skill setup step: the mapping table** `[activity: prompt-authoring]`
 
   1. Prime: `tomo/dot_claude/skills/periodic-review/SKILL.md` step 2 (59-100); `docs/tomo/dot_claude/skills/periodic-review.md`; `tests/test_review_skill.py`, `test_review_skill_contract.py` `[ref: SDD/User Interface & UX; ADR-8; ADR-9]`
   2. Test: skill pins (in `tests/test_review_skill*.py`) for: the table printed from `match` evidence, every left-out heading with its reason in one line, corrections as plain text in the existing Correct step (edit, remove, add, mark off-limits heading only / with sub-sections, analysis row), forward-looking sections offered with suggestion descriptions, no extra turn, the dropped headings named after a template change, the `--anchor` carve-out on a template change, the quarter in the same flow, and the review request continuing in the same session after the save (F2-AC10, an untested close-out gap in spec 044).

@@ -69,7 +69,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
 - [ ] **T6.4 Close-out** `[activity: validate]`
 
   1. Prime: spec 045 `close-out.md` and spec 044's (method)
-  2. Test: every one of the 49 PRD criteria traced to node ids run in ONE pytest invocation, or to a recorded live-walk row for model behaviour; criteria parts no test can fail closed by RED-proven tests in `tests/test_046_close_out_gaps.py`; inbox cost log updated.
+  2. Test: every one of the 49 PRD criteria traced to node ids run in ONE pytest invocation, or to a recorded live-walk row for model behaviour; criteria parts no test can fail closed by RED-proven tests in `tests/test_046_close_out_gaps.py`; inbox cost log updated. Known prose-pin-only parts to trace to live-walk rows (Phase 2 drift check): F2-AC10 "the request continues in the same session", F2-AC3 "one line per left-out heading with its reason", F2-AC2/F2-AC6 (the table and suggestion descriptions as the model words them).
   3. Implement: `close-out.md`; spec README Finalize after merge; memory index entry (Critical Documentation).
   4. Validate: drift check spec vs code; the Kokoro FYI (`_outbox/for-kokoro/2026-11-14_…`) status checked and, if the contract changed at T6.1, a follow-up FYI; the PR carries the spec ID, the issues (#263, #256, #267) and the Hashi release.
   5. Success: the spec closes with its evidence `[ref: PRD all criteria]`

@@ -529,10 +529,14 @@ A row with `placement: review` is allowed only on a heading left out as `automat
 - review-session.py match --kind <k> [--template T] [--anchor A]
   (writes tomo-tmp/review/rows-<kind>.json with the rows it shows; on a template change it reads the previous file first)
   response adds:
-    sections: {template, candidates: [{heading_key: {heading, level, parent, occurrence}, state: offered|left-out,
-               reason: templater|link|per-period-parent|off-limits|automatic|null, flags: [mixed|container|under-own],
-               defaults: {placement, cap}, saved: <row or null>}],
+    sections: {template, mappable: bool, candidates: [{heading_key: {heading, level, parent, occurrence},
+               state: offered|left-out, reason: templater|link|per-period-parent|off-limits|automatic|null,
+               flags: [mixed|container|under-own],
+               defaults: {placement, cap} | null, saved: <row or null>}],
                off_limits: [<saved rows>], dropped: [{heading, level, parent}]}
+               # mappable: at least one heading offered or left out as automatic; false → candidates [] (F2-AC9)
+               # defaults: offered → end/8, automatic → review, any other left-out → null
+               # template_candidates / anchor_candidates stay top-level keys as in spec 045
                # dropped: earlier rows the template lacks — after a template change (rows file), and on a
                # same-template run also saved config rows whose heading the template no longer has (owner 2026-11-15)
     template_not_found: {name, source: typed|configured} | absent   # with template: null and candidates listed
@@ -542,6 +546,11 @@ A row with `placement: review` is allowed only on a heading left out as `automat
   belong to an off-limits section), analysis-not-automatic, duplicate-section, duplicate-off-limits,
   duplicate-section-id (an id outside ^s[0-9]{1,3}$ is refused by the schema as a `schema` problem at its pointer;
   names as built in T1.3, `review_config.input_problems`)
+  pointers: /template (template-not-found), /sections/<i> (row refusals; section-left-out carries `reason`),
+  /sections/<i>/placement (landing-off-limits of a row), /place (landing-off-limits of the "Tomo Review" place);
+  eligibility evidence is read only from rows-<kind>.json:
+  {kind, template, rows: [{heading, level, parent, occurrence, description, keywords, placement, cap}],
+   outline: {headings: [...], top: [...]}, resolved: {template, kind}} — no ids, no groups, no note text
 - review-read.py --kind week|month|quarter --period <name> --stem <stem> [--measure]
   writes read.json (week, month) or read-index.json + read-<YYYY-MM>.json (quarter); adds `sections` (definitions);
   quarter adds `monthly`, `only_in_monthly_links`, `dailies_not_in_monthly`, report.monthly_status/monthly_notes

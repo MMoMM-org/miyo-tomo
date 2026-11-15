@@ -32,7 +32,7 @@ phase: 1
 
 Establishes the storage, the template analysis and the quarter as a period, on which setup, reading and delivery build.
 
-- [ ] **T1.1 Writer renders lists of mappings and quoted keys** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T1.1 Writer renders lists of mappings and quoted keys** `[activity: data-architecture]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/lib/vault_config_edit.py` (`render_scalar` 109, `render_leaf` 121, `render_tree` 127, `set_path` 156); `tests/test_vault_config_writer_review.py`; `docs/tomo/scripts/lib/vault_config_edit.md` `[ref: SDD/Data Storage Changes; ADR-3]`
   2. Test: a list of mappings renders block-style and reads back equal; a key with spaces, a colon or non-ASCII (`"t_week privat: v2.md"`, `Übersicht`) is quoted and reads back; `[]` or `null` removes the key; a second template's rows under the same parent stay byte-identical; every other line of a copy of the instance config stays byte-identical; existing writer tests stay green.

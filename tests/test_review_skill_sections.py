@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_review_skill_sections.py — spec 046 T2.3: the setup step's mapping table in the periodic-review skill.
 
 The dialogue is model behaviour; these pins prove that each criterion has its imperative in
@@ -20,9 +20,14 @@ fix: the two template-choice reruns added every flag of the last `match` call, i
 """
 from __future__ import annotations
 
+import json
 import re
 
+from review_cli_contract import REPO
 from review_skill_helpers import COMMAND, SKILL, _section, _text
+
+REVIEW_SCHEMA = REPO / "tomo" / "schemas" / "vault-config-review.schema.json"
+SETUP_ROWS = REPO / "tomo" / "scripts" / "lib" / "review_setup_rows.py"
 
 SETUP_KINDS = "`<kind>` is `week`, `month` or `quarter`."
 NOT_FOUND = ("- `template_not_found` is set → say that the template `template_not_found.name` was not found "
@@ -38,7 +43,8 @@ RERUN_EXCEPT = RERUN_FLAGS + ", except `--template` and `--anchor`, and continue
 CARVE_OUT = ("- When `<template>` changes, the next `match` call carries no `--anchor` and `<anchor>` is unset: the "
              "new output proposes the place, and `needs_anchor` asks again.")
 DROPPED = ("- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under "
-           "`parent`) of the earlier mapping is not in `<template>` and is not kept.")
+           "`parent`) of the earlier mapping is not in `<template>`: with `sections.mappable` true it is not kept; "
+           "with `sections.mappable` false the save leaves the saved rows as they are.")
 NOT_MAPPABLE = ("- `sections.mappable` is false → say in one line that no section of the template can be mapped, so "
                 "the review goes into its own section only; print no table.")
 TABLE = ("- `sections.mappable` is true → print the mapping table in the same reply, before the confirm question, "
@@ -72,7 +78,9 @@ CONFIRM_ROWS = ("With `sections.mappable` true, add `sections`, the table rows i
                 "`parent` and `occurrence` of its `heading_key`, `description`, `placement`, `cap`, and `keywords` and "
                 "`groups` when set; and `off_limits`, each entry of the `Off-limits:` line with its `heading_key` "
                 "fields and `with_subsections`; `[]` when there is none.")
-POINTER = "A `/sections/<i>` pointer is the row at index `<i>` of `sections`, counted from 0: name its heading."
+POINTER = ("A pointer that starts with `/sections/<i>` is the row at index `<i>` of `sections`, counted from 0: "
+           "name its heading. `/place` is the place of the review section, `/template` the template: name them in "
+           "words.")
 CONFIRM_QUESTION = "Ask `1 Confirm · 2 Correct · 3 Abort`."
 
 
@@ -211,6 +219,16 @@ def test_the_dropped_headings_are_named_after_a_template_change():
     assert DROPPED in _setup()
 
 
+def test_a_dropped_heading_is_said_kept_or_not_by_whether_the_save_writes_rows():
+    """Drift check of Phase 2: `match` lists saved rows the template lacks in `dropped` also when
+    `sections.mappable` is false, and then Confirm writes no `sections`, so the writer changes no row —
+    "is not kept" holds only with `mappable` true."""
+    assert DROPPED in _setup()
+    assert "with `sections.mappable` true it is not kept" in DROPPED
+    assert "with `sections.mappable` false the save leaves the saved rows as they are" in DROPPED
+    assert "With `sections.mappable` true, add `sections`" in CONFIRM_ROWS
+
+
 def test_the_anchor_is_not_carried_over_a_template_change():
     text = _setup()
     assert CARVE_OUT in text
@@ -229,6 +247,45 @@ def test_confirm_writes_the_table_rows_and_the_off_limits_marks():
 
 def test_a_row_pointer_of_setup_input_is_named_by_its_heading():
     assert POINTER in _setup()
+
+
+def test_every_pointer_setup_input_returns_is_named_in_words():
+    """`setup-input` refuses at `/sections/<i>`, `/sections/<i>/placement`, `/place` and `/template`
+    (review_setup_rows.py); the skill names each, the row pointers by the row's heading."""
+    source = _text(SETUP_ROWS)
+    for pointer in ('"/place"', '"/template"', 'pointer + "/placement"', 'f"/{rc.SECTIONS}/{i}"'):
+        assert pointer in source, pointer
+    assert "A pointer that starts with `/sections/<i>`" in POINTER
+    assert "`/place` is the place of the review section, `/template` the template" in POINTER
+    assert POINTER in _setup()
+
+
+def _skill_groups(line: str) -> dict:
+    """The groups the GROUPS line names per kind: the shared ones, plus `for `<kind>` also …`."""
+    body = line.split(": ", 1)[1].split(". Never ", 1)[0]
+    shared, *extras = body.split("; ")
+    base = re.findall(r"`([a-z_]+)`", shared)
+    named = {"week": base}
+    for part in extras:
+        kind, rest = re.fullmatch(r"for `([a-z]+)` also (.*)", part).groups()
+        named[kind] = base + re.findall(r"`([a-z_]+)`", rest)
+    return {kind: sorted(groups) for kind, groups in named.items()}
+
+
+def _schema_groups(schema: dict) -> dict:
+    defs = schema["$defs"]
+    return {kind: sorted(defs[f"{kind}Group"]["enum"]) for kind in ("week", "month", "quarter")}
+
+
+def test_the_skill_names_per_kind_exactly_the_groups_the_schema_allows():
+    """Drift check of Phase 2: the GROUPS line is a literal pin; this ties it to the schema's
+    weekGroup / monthGroup / quarterGroup enums, so neither side can change alone."""
+    (line,) = [ln.strip() for ln in _text(SKILL).splitlines() if ln.strip().startswith("- Groups a row may name: ")]
+    named = _skill_groups(line)
+    allowed = _schema_groups(json.loads(_text(REVIEW_SCHEMA)))
+    assert named == allowed
+    assert line.endswith(" Never `habits`.")
+    assert all("habits" not in groups for groups in allowed.values())
 
 
 def test_the_request_continues_in_the_same_session_after_the_save():

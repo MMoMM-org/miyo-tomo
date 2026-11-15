@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.2
+# version: 0.2.3
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -83,7 +83,7 @@ with the flags of the last `match` call added, except `--template` and `--anchor
 - `daily_path_fix` is set → print `configured` and `found` and say the saved value is corrected to `found` only on Confirm.
 - `evidence.week_rule` is `ambiguous` (week only) → ask in plain text, before the confirm question: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?" Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week with 1 January, `4` for at least four days), rerun `python3 scripts/review-session.py match --kind <kind> --folder "<folder>" --format "<format>" --first-day <day> --min-days <n> --template <template>` with the proposal's folder and format, and print the new proposal, evidence and hints. Its `evidence.week_rule` is `given`: the question is answered and not asked again; only `ambiguous` asks it.
 - `needs_anchor` is true → say that no heading could be proposed for the place of the review section (no template, or none with a heading below its title); print `anchor_candidates` as a numbered list and ask: Which heading, by number or typed? End the turn. The answer is `<anchor>` and `proposal.place.anchor`; print the proposal with it in place. Never offer Confirm while `place.anchor` is null.
-- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under `parent`) of the earlier mapping is not in `<template>` and is not kept.
+- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under `parent`) of the earlier mapping is not in `<template>`: with `sections.mappable` true it is not kept; with `sections.mappable` false the save leaves the saved rows as they are.
 - `sections.mappable` is false → say in one line that no section of the template can be mapped, so the review goes into its own section only; print no table.
 - `sections.mappable` is true → print the mapping table in the same reply, before the confirm question, from `sections.candidates` in their order:
   - Each candidate with `state` `offered` or with `saved` set is one row, numbered `s1`, `s2`, … in order: `heading_key` as heading (level, under parent), its `flags` in brackets, description, keywords, groups, placement and cap. With `saved` set, take them from `saved`; else placement and cap from `defaults`, and write the description: what to look for in the period's notes for that section, in `proposal.language`; add keywords (at most 12) and groups only where they fit.
@@ -103,7 +103,7 @@ Ask `1 Confirm · 2 Correct · 3 Abort`.
 python3 scripts/review-session.py setup-input --kind <kind> --confirmed tomo-tmp/review/confirmed-<kind>.json
 ```
 
-`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`; Correct → the Correct branch above. A `/sections/<i>` pointer is the row at index `<i>` of `sections`, counted from 0: name its heading. `status` `ok` → run:
+`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`; Correct → the Correct branch above. A pointer that starts with `/sections/<i>` is the row at index `<i>` of `sections`, counted from 0: name its heading. `/place` is the place of the review section, `/template` the template: name them in words. `status` `ok` → run:
 
 ```bash
 python3 scripts/vault-config-writer.py review --input <input_path>

@@ -352,6 +352,7 @@ graph LR
 | `lib/period.py` | Period kinds incl. `quarter`, names, the `Q` token, argument parsing |
 | `lib/review_period.py` | Reading a period: dailies, the child-review level, marks parameterised by `CHILD` |
 | `lib/review_children.py` (new) | Finding and reading child-review notes (weekly for a month/quarter, monthly for a quarter) and their status report |
+| `lib/review_read_parts.py` (new) | The `read*.json` layout: compact encoding, the quarter's split per month, writing the stage files, the loader that joins the parts |
 | `review-read.py` | Writes `read.json` (week, month) or `read-index.json` + `read-<YYYY-MM>.json` (quarter), compact, with the section definitions |
 | `lib/review_sections.py` (new) | Pass 1 section side: definitions for `read*.json`, every proposal check on items (keys, caps, double placement, sources via `review_doc.Sources`, marks), rendering of a section part and of an analysis sub-part (incl. the mark suffix) |
 | `lib/review_doc.py` / `review-doc.py` | Group side as today (per-kind group tables); assembles section parts + "Tomo Review" part; `meta.json` incl. `pass1_sections` |
@@ -411,6 +412,7 @@ tomo/
         ├── review_sections.py                   # NEW
         ├── review_section_plan.py               # NEW
         ├── review_children.py                   # NEW
+        ├── review_read_parts.py                 # NEW (spec 046 T3.4): read*.json layout, quarter split per month, loader
         ├── period.py                            # MODIFY: QUARTER, Q token, months(), parsing
         ├── review_period.py                     # MODIFY: CHILD table, generic marks, _is_periodic
         ├── review_weekly.py                     # MODIFY: content split reused for monthly notes
@@ -443,7 +445,8 @@ docs/tomo/
     ├── review_setup_rows.md                     # NEW (T2.2)
     ├── review_sections.md                       # NEW
     ├── review_section_plan.md                   # NEW
-    └── review_children.md                       # NEW
+    ├── review_children.md                       # NEW
+    └── review_read_parts.md                     # NEW (T3.4)
 ```
 
 **Component**: Tests (new files; existing review tests are listed in spec 045's map. `test_review_sdd_map.py` reads both maps — T1.2.
@@ -458,6 +461,8 @@ tests/
 ├── test_review_skill_sections.py               # NEW (spec 046 T2.3): skill pins for the setup mapping table and the quarter routing
 ├── test_review_children.py                      # NEW: child-review notes and their report
 ├── test_review_period_golden.py                 # NEW: golden month/week read (before the refactor)
+├── test_review_read_parts.py                    # NEW (spec 046 T3.4): quarter split, loader, parts <= 256 KB on the scaled fixture
+├── review_scaled_quarter.py                     # NEW (T3.4): a 2026-Q1 read scaled to the measured bytes (synthetic)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
 └── fixtures/instructions-v4-candidate.schema.json   # NEW until T6.1: test-only schema from the handoff fragment
 ```

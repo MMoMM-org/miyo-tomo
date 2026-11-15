@@ -169,7 +169,8 @@ WHY: spec 046 ADR-7 and CON-2. The measured March `read.json` was 274.7 KB,
 over what the model's Read tool takes in one call; `indent=2` spent a large
 share of that on indentation and newlines that carry nothing. Every
 `read*.json` is therefore written with `separators=(",", ":")`, ASCII-escaped
-as before. This is one of the five intended differences CON-2 lets reach the
+as before (the encoder is `lib/review_read_parts.encode`, shared by the
+write and `--measure`). This is one of the five intended differences CON-2 lets reach the
 unmapped path: without a mapping the parsed content is unchanged — the
 script test pins that the parsed file equals the T3.1 golden recording of
 `read_period` (plus the pacing counters this script always merged into the
@@ -177,16 +178,36 @@ report) and that the bytes are the compact dump of it. The consumers parse
 the file with `json.loads`/`json.load` (`review-doc.py`), so the encoding is
 invisible to them.
 
+## WHY a Quarter Writes `read-index.json` and One Part per Month
+
+WHY: spec 046 ADR-7, T3.4. 2026-Q1 measured 710,106 bytes as one compact
+`read.json`, almost three times what the model's Read tool takes. A quarter
+run therefore writes `read-index.json` (period, report, sections, the part
+list and the small lists) and `read-<YYYY-MM>.json` per month (that month's
+days, weekly notes and monthly note); a week and a month still write one
+`read.json`. Which entry goes to which file, the write order and the loader
+that joins the parts back are `lib/review_read_parts.py`'s (WHY:
+`docs/tomo/scripts/lib/review_read_parts.md`), so `review-doc.py` (T4.5)
+loads through the same module that wrote. stdout says where they are:
+`read_path` is the index for a quarter (the file the model reads first) and
+`read_parts` lists the month parts in order, so the skill never composes a
+path; a week or a month has no `read_parts` key, so its stdout is unchanged.
+The week rule is handed to the split because a weekly note's month is
+computed from its week's days under that rule.
+
 ## WHY `--measure` Writes No File and Prints Only Counts
 
-WHY: spec 046 ADR-7. Before the quarter's read is split per month (T3.4),
-the owner measures 2026-Q1 on the test vault without a model run: how many
+WHY: spec 046 ADR-7. Before the quarter's read was split per month (T3.4),
+the owner measured 2026-Q1 on the test vault without a model run: how many
 Kado calls, how long the pacer waited, how many bytes the file would hold.
 `--measure` runs the same read through the same client and pacer and the
 same stop rules, then prints `measure` — `calls`, `retried`, `waited_s`,
-`not_read` (a count), `bytes` per part (today one part, `read.json`; T3.4
-adds the quarter's parts) and `day_bytes` per month (the compact bytes of the
-month's `days` entries, the share a per-month part would hold) — next to
+`not_read` (a count), `bytes` per file the run would write (`read.json`, or
+`read-index.json` and each `read-<YYYY-MM>.json` for a quarter — the text
+`lib/review_read_parts.files_of` builds for the write, so the measured bytes
+are the written bytes) and `day_bytes` per month (the compact bytes of the
+month's `days` entries; kept after the split because it shows how much of a
+part is days and how much is the month's other entries) — next to
 `status`, `stem`, `period` and `nothing_to_review`. It writes no file, so a
 measurement never leaves content in `tomo-tmp` for a later session to pick
 up, and the per-day report is left out because the measurement is about

@@ -54,7 +54,7 @@ Reads a quarter like a month one level up, and hands the model the section defin
   4. Validate: `test_review_read.py` green; ruff clean.
   5. Success: the model gets the definitions in the file it already reads `[ref: PRD/F1-AC1]`
 
-- [ ] **T3.4 Measure 2026-Q1, then split a quarter's read per month** `[activity: performance]`
+- [x] **T3.4 Measure 2026-Q1, then split a quarter's read per month** `[activity: performance]`
 
   1. Prime: `[ref: SDD/Quality Requirements; ADR-7]`; spec 045 `live-walk.md` (R6/R8 March numbers)
   2. Test: (after the measurement) a quarter writes `read-index.json` (period, report, sections, part list) and one `read-<YYYY-MM>.json` per month; every part ≤ 256 KB on the measured data shape (fixture scaled to the measured bytes); week and month still write one `read.json`; a loader joins the parts back into one result equal to the unsplit one.

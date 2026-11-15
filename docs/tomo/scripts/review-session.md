@@ -311,8 +311,9 @@ WHY: SDD Error Handling row for `setup-input`: an invalid confirmed input is
 `status: invalid` with pointers and nothing saved. The writer validates
 again, but the skill needs the pointers before it spends a writer call, and
 the confirmed proposal is not the writer's shape: `template_kind` is dropped,
-a month proposal's null `first_day`/`min_days` are dropped (the schema forbids
-them for a month), and `daily_path_fix` is reduced to the found spelling.
+a month or quarter proposal's null `first_day`/`min_days` are dropped (the
+schema forbids them for every kind but the week; spec 046 T1.4 made the test
+`kind != week` so a new kind cannot inherit the week rule by accident), and `daily_path_fix` is reduced to the found spelling.
 Validation is `review_config.input_problems`, the writer's own check, so the
 two cannot disagree. The input is written atomically to
 `tomo-tmp/review/setup-<kind>.json` (`--output` overrides) and `input_path`

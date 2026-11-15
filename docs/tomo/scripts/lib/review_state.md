@@ -412,7 +412,8 @@ of the kind — a week named under `gggg.ww` (`2027.01`) carries no `W` and
 was listed as a month, parsed under `YYYY-MM` and sorted last. The kind is
 now the first kind, in `KINDS` order (week before month), whose configured
 format parses the name; a name no format parses falls back to the letter
-guess so the listing still shows a kind for it. Week first because a name
+guess so the listing still shows a kind for it: `W` is a week, `Q` a quarter
+(spec 046 T1.4), anything else a month. Week first because a name
 that parses under both (a week format `gggg-ww` and the month format
 `YYYY-MM` both accept `2027-01`) is an ambiguity the frontmatter normally
 settles; the fallback only has to be deterministic, and the SDD's listing

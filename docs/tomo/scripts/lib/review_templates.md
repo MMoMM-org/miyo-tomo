@@ -40,7 +40,8 @@ cannot name a file the dialogue never showed. So `match` lists
 `templates.base_path` once (the same `list_notes` call the periodic folder
 gets, two levels deep, because template folders hold subfolders too) and
 keeps the notes whose file name fits the kind: `week` or `woche` for a week,
-`month` or `monat` for a month, case-insensitive. The words cover the
+`month` or `monat` for a month, `quarter` or `quartal` for a quarter (spec
+046 T1.4; `quartal` also catches `Quartalsrückblick`), case-insensitive. The words cover the
 owner's English file names and German ones; a vault that names its templates
 otherwise gets an empty list and the plain note, as before. The word is
 looked for in the file name alone, never in the folders above it: a

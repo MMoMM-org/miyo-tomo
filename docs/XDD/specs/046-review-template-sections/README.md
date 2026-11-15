@@ -74,6 +74,9 @@
 | 2026-11-15 | T2.2: `dropped` also names saved rows whose heading the same template no longer has (orphan rows), so a save never removes a row silently; `setup-input` refuses a kept orphan as `section-not-in-template`. SDD F7-AC3 and the `match` contract extended | Found by the T2.1 spec review (tension with F2-AC10); owner chose one list over a separate `orphaned` key |
 | 2026-11-15 | T2.2: the "Tomo Review" place uses the uniform landing rule — a `before` anchor directly after an off-limits heading is refused as `landing-off-limits` | Follows SDD Complex Logic; owner chose to keep it strict (Rule 4 never at risk) |
 | 2026-11-15 | T2.2: `setup-input` reads eligibility evidence only from `rows-<kind>.json` written by `match` (outline + `resolved`), never from the model-written confirmed file; `lib/review_setup_rows.py` (new) holds the checks; `review_mapping.py` grew to 370 lines (T1.2's plan cap was 300; within the constitution's ~300–500 guide) | ADR-3 "match evidence"; split of the outline/landing code noted as Technical Debt if it grows further |
+| 2026-11-15 | T2.3: SKILL.md setup step grew 24,278 → 28,176 characters (+3,898) against ADR-1's "about 1,000"; accepted, the trim belongs to #259 | Owner (recommended); the per-reason words, per-kind groups, Correct operations and confirmed-file shape carry the growth |
+| 2026-11-15 | T2.3: a not-found template with no candidate templates asks for a typed name or `0` (none) instead of falling through to a plain note | Owner (recommended); outside F7-AC1's "with candidates" scope, closed in T2.3's review round |
+| 2026-11-15 | T2.3: interim — a set-up quarter request stops with one line ("cannot review a quarter yet") until T4.5 removes it; `/review setup` walks the quarter only once it is set up | Reading a quarter is Phase 3/4; `review-read --kind quarter` exits 2 until T3.3 |
 
 ## Context
 

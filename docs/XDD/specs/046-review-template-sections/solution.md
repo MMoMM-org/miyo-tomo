@@ -945,7 +945,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 
 - [x] ADR-1 Gathering: the single existing Pass 1 model pass writes `proposals.json` with `sections: [{key, items}]` beside the unchanged `groups`; the section definitions (key, heading, level, parent, description, keywords, groups, cap) ride in `read.json`, so the model reads one file.
   - Rationale: no extra pass or config read; the model cannot invent or rename a section (keys only); the closed schema stays closed.
-  - Trade-offs: the skill grows by about 1,000 characters; the model's single pass carries more instructions.
+  - Trade-offs: the skill grows by about 1,000 characters; the model's single pass carries more instructions. (Measured at T2.3: the setup step alone added about 3,900 characters; accepted by the owner 2026-11-15, the trim belongs to #259.)
   - User confirmed: 2026-11-14
 
 - [x] ADR-2 Double placement: `review_sections.check` refuses an item proposed in two places (same normalised text, or same sources + first line); the semantic one-finding-one-place stays the model's; caps are refused (`over-cap`), never truncated, so the model merges on the rewrite-once loop; a moved month/quarter item keeps its mark in an optional `mark` field checked like its group and rendered as a labelled suffix that travels with the item text.

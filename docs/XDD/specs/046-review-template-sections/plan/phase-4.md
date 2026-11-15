@@ -66,7 +66,7 @@ Turns the model's per-section proposals into a review document laid out like the
 - [ ] **T4.5 Quarter: reading the split parts in Pass 1** `[activity: backend-api]`
 
   1. Prime: T3.4's `read-index.json` / `read-<YYYY-MM>.json` and its measurement; SKILL.md step 5 `[ref: SDD/Architecture Decisions; ADR-7]`
-  2. Test: `review-doc.py write` loads all parts through T3.4's loader and checks sources across them; skill pins for the quarter branch: read the index, then each month part in turn, then write one `proposals.json`; a quarter document renders with the quarter groups and marks.
+  2. Test: `review-doc.py write` loads all parts through T3.4's loader and checks sources across them; skill pins for the quarter branch: read the index, then each month part in turn, then write one `proposals.json`; a quarter document renders with the quarter groups and marks; the interim step 1 line that stops a set-up quarter request ("cannot review a quarter yet", T2.3) is removed together with its pin `test_a_quarter_request_sets_up_and_reads_nothing` and the routing goes on to step 3.
   3. Implement: WHY first; the loader call in `review-doc.py`; the skill's quarter branch through `tcs-helper:skill-author`; version bumps.
   4. Validate: tests green.
   5. Success: a quarter's Pass 1 reads within the Read limit `[ref: PRD/F6-AC6; SDD/Quality Requirements]`

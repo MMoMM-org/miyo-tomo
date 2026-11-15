@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -28,7 +28,8 @@ Covers the /review setup model:
   review_setup reads only the configured template's rows (F2-AC8), defaults cap,
   keywords and groups, and reports escaped pointers for bad rows; the quarter
   validates and reads through the quarterly keys; a config without the new keys
-  reads as before
+  reads as before; every returned row is an independent copy (no shared
+  default lists, no aliasing of the config)
 """
 from __future__ import annotations
 
@@ -557,6 +558,21 @@ def test_review_setup_reads_only_the_configured_templates_rows_with_defaults():
     del config["templates"]["mapping"]["weekly"]
     unmapped = rc.review_setup(config, PROFILE, "week")
     assert unmapped.sections == [] and unmapped.off_limits == []
+
+
+def test_every_row_is_an_independent_copy_of_its_defaults_and_of_the_config():
+    config = _config_with_rows()
+    present = dict(ROW, id="s2", heading="Present", keywords=["kept"], groups=["done"])
+    config["review"]["weekly"]["sections"]["t_week_privat.md"] = [ROW, dict(ROW, id="s9", heading="Other"), present]
+    before = copy.deepcopy(config)
+    first = rc.review_setup(config, PROFILE, "week").sections
+    first[0]["keywords"].append("LEAK")
+    first[0]["groups"].append("LEAK")
+    first[2]["keywords"].append("LEAK")
+    assert first[1]["keywords"] == [] and first[1]["groups"] == []
+    again = rc.review_setup(config, PROFILE, "week").sections
+    assert [r["keywords"] for r in again] == [[], [], ["kept"]] and [r["groups"] for r in again] == [[], [], ["done"]]
+    assert config == before
 
 
 def test_review_setup_reports_pointers_for_invalid_rows_of_the_configured_template_only():

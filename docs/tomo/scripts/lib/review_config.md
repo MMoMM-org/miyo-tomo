@@ -190,7 +190,10 @@ The writer stores a row as the user confirmed it (F2-AC10): an omitted
 `cap`, `keywords` or `groups` stays omitted in the file. `ReviewSetup.
 sections` fills `cap` 8, `keywords` [] and `groups` [] on a copy, so every
 later reader (`review-read`, the proposal check) sees one shape and none of
-them spells the default again.
+them spells the default again. Each row is returned as a deep copy:
+a shallow merge would hand every defaulted row the same module-level
+`keywords`/`groups` list and alias the loaded config's lists, so one
+caller's append would leak into every other row and later read.
 
 ## WHY `writer_edits` Writes One Template's Entry
 

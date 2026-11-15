@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.3.0
+# version: 0.3.1
 """The ``/review`` setup of one period kind (spec 045, T2.1, T2.3; spec 046, T1.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -36,6 +36,7 @@ Design notes: docs/tomo/scripts/lib/review_config.md
 """
 from __future__ import annotations
 
+import copy
 import json
 import posixpath
 from dataclasses import dataclass, field
@@ -304,7 +305,7 @@ def template_rows(config: dict, kind: str, template: Any, name: str, pointers: L
     pointers.extend(f"{base}/{_escape(template)}{p.pointer[len(name) + 1:]}" for p in problems)
     if problems:
         return []
-    return [{**_ROW_DEFAULTS[name], **row} for row in rows]
+    return [copy.deepcopy({**_ROW_DEFAULTS[name], **row}) for row in rows]
 
 
 def row_problems(rows: Any, name: str, kind: str, template: str) -> List[Problem]:

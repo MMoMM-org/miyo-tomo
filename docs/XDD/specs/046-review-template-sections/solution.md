@@ -76,7 +76,7 @@ Notes on two gates: there are no database migrations; "column names" means the f
 ## Constraints
 
 - CON-1 Spec 045's architecture stays (its ADR-1, ADR-2, ADR-12): the `/review` skill owns the flow, scripts own state, reads, writes, checks and rendering, and the model's only output is `proposals.json`. Python 3 stdlib plus the repo's `lib/` only; scripts run in the container and on the host (`./venv/bin/python`). Runtime prose (`tomo/dot_claude/**`) holds imperatives only; every WHY goes to `docs/tomo/<mirrored-path>.md` first. Every edited managed file bumps `# version:`.
-- CON-2 Nothing of spec 045 is removed (PRD Constraints): without a mapping every path keeps its behaviour and renders the same review document as on `main`; the month's `read.json` keys and the proposals' `groups` keep their names. Five intended differences reach the unmapped path too, each pinned by a test: `read*.json` is written compact (ADR-7); every instruction set carries `schema_version` "4" (ADR-5); a partly applied set may be overwritten (ADR-12); a mistyped or deleted template is refused at setup and the configured anchor no longer outlives a template change (ADR-13, #267); the "Tomo Review" placement is checked against off-limits rows (an empty list by default, so nothing changes until the user marks one). The optional `mark` field is defined only on section items, so the group items' schema stays as it is. Files stay within the L2 size guide (300–500 lines of dense logic): new logic goes into new modules, not into the already large `review-instructions.py` (511), `lib/review_actions.py` (463), `lib/period.py` (486), `lib/review_period.py` (421).
+- CON-2 Nothing of spec 045 is removed (PRD Constraints): without a mapping every path keeps its behaviour and renders the same review document as on `main`; the month's `read.json` keys and the proposals' `groups` keep their names. Six intended differences reach the unmapped path too, each pinned by a test: `read*.json` is written compact (ADR-7); every instruction set carries `schema_version` "4" (ADR-5); a partly applied set may be overwritten (ADR-12); a mistyped or deleted template is refused at setup and the configured anchor no longer outlives a template change (ADR-13, #267); the "Tomo Review" placement is checked against off-limits rows (an empty list by default, so nothing changes until the user marks one); with a monthly or quarterly name pattern configured, a link to such a note (`[[2026-02]]`, `[[2026-Q1]]`) is navigation, not content, so it leaves a month's marks (`only_in_weekly_links`, `dailies_not_in_weekly`) — a week has no marks (T3.2, owner-logged 2026-11-15). The optional `mark` field is defined only on section items, so the group items' schema stays as it is. Files stay within the L2 size guide (300–500 lines of dense logic): new logic goes into new modules, not into the already large `review-instructions.py` (511), `lib/review_actions.py` (463), `lib/period.py` (486), `lib/review_period.py` (421).
 - CON-3 Privacy (spec 045 ADR-9, Feature 7): no note text in Tomo's logs, stderr, cost records, `meta.json`, `delivered_plan` or `rows-<kind>.json` (`read*.json` and `proposals.json` hold read content by design and are deleted after the document is written, as in spec 045). Section headings, descriptions and keywords are setup text the user confirmed and may sit in the vault config, `read*.json` and `rows-<kind>.json`; headings and content found in the target note may not enter `meta.json` or `delivered_plan`. Marker ids are opaque and never derived from text.
 - CON-4 Tomo writes only to the inbox; the vault changes through the instruction set the user applies in Hashi or by hand. Kado is the only vault access (Constitution L1/L2).
 - CON-5 Cross-repo: the new Hashi action and the wire bump go to Hashi through `_outbox/for-hashi/` (owner-orchestrated), with an FYI to Kokoro (Constitution Architecture L2); the PR merges only after Tomo and Hashi work together in the test vault (PRD Constraints).
@@ -461,6 +461,8 @@ tests/
 ├── test_review_skill_sections.py               # NEW (spec 046 T2.3): skill pins for the setup mapping table and the quarter routing
 ├── test_review_children.py                      # NEW: child-review notes and their report
 ├── test_review_period_golden.py                 # NEW: golden month/week read (before the refactor)
+├── fixtures/046-t3-1-period-read-golden/        # NEW: month.json, week.json, record.py (recorded from main)
+├── review_period_fixtures.py                    # MODIFY: quarter fixtures (disagreeing notes)
 ├── test_review_read_parts.py                    # NEW (spec 046 T3.4): quarter split, loader, parts <= 256 KB on the scaled fixture
 ├── review_scaled_quarter.py                     # NEW (T3.4): a 2026-Q1 read scaled to the measured bytes (synthetic)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
@@ -560,6 +562,12 @@ A row with `placement: review` is allowed only on a heading left out as `automat
   writes read.json (week, month) or read-index.json + read-<YYYY-MM>.json (quarter); adds `sections` (definitions);
   quarter adds `monthly`, `only_in_monthly_links`, `dailies_not_in_monthly`, report.monthly_status/monthly_notes
   --measure: no file for the model; prints calls, waits, bytes per part
+  stdout: read_path (read.json, or read-index.json for a quarter) and, for a quarter, read_parts (the month parts in order);
+  --measure prints {status, stem, period, nothing_to_review, measure: {calls, retried, waited_s, not_read (count),
+  bytes: {<file>: n}, day_bytes: {<YYYY-MM>: n}}} — counts and bytes only
+  quarter files: read-index.json holds every key except days/weekly/monthly, plus `parts`; each read-<YYYY-MM>.json holds
+  {month, days, weekly, monthly} (days by date, monthly notes by month, weekly notes by the majority month of their days
+  in the quarter); joined back by lib/review_read_parts.load
 - review-doc.py write --stem <stem> --proposals <path>
   new refusal errors: unknown-section, over-cap, double-placement, mark-not-allowed (plus spec 045's)
   status written: counts per group and per section key
@@ -987,7 +995,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: a refactor of a tested path; the golden test is the guard.
   - User confirmed: 2026-11-14
 
-- [x] ADR-7 Quarter size: `review-read.py --measure` first (2026-Q1, no model); all `read*.json` compact; a quarter writes `read-index.json` (period, report, sections, part list) and one `read-<YYYY-MM>.json` per month that the model reads in turn; `review-doc.py` loads all parts for its checks; week and month stay one file.
+- [x] ADR-7 Quarter size: `review-read.py --measure` first (2026-Q1, no model); all `read*.json` compact; a quarter writes `read-index.json` (period, report, sections, part list, and the other keys that carry no month: open tasks, growth, not read, the monthly marks) and one `read-<YYYY-MM>.json` per month that the model reads in turn; `review-doc.py` loads all parts for its checks; week and month stay one file.
   - Rationale: March's 275 KB was already over the Read limit; a quarter is about 0.8 MB.
   - Trade-offs: the skill gets a quarter branch in step 5; if the measured size stays too large, a quarter-level character budget is the next lever (Technical Debt).
   - User confirmed: 2026-11-14

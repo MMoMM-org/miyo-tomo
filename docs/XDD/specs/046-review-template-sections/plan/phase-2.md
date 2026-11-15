@@ -39,7 +39,7 @@ Lets the vault keeper confirm, in one turn per template, which sections receive 
   4. Validate: `test_review_session_templates.py`, `test_review_session.py` green; ruff clean.
   5. Success: one call gives the skill everything for the confirm table `[ref: PRD/F2-AC1, F2-AC9, F6-AC1, F7-AC1, F7-AC2, F7-AC3]`
 
-- [ ] **T2.2 `setup-input` refusals and saving rows** `[activity: backend-api]`
+- [x] **T2.2 `setup-input` refusals and saving rows** `[activity: backend-api]`
 
   1. Prime: `review-session.py` (`_INPUT_KEYS` 240, `writer_input` 245, `setup_input` 263); `lib/review_config.input_problems`; `lib/review_mapping.landing_off_limits` (T1.2) `[ref: SDD/Internal API Changes; SDD/Runtime View/Error Handling]`
   2. Test: refusals `template-not-found`, `section-left-out` (with its reason), `section-not-in-template`, `section-off-limits`, `landing-off-limits` (a `before` under an off-limits previous heading, an `end` whose last subsection is off-limits, the "Tomo Review" `place` inside an off-limits subtree), `analysis-not-automatic`, `duplicate-section`, `duplicate-off-limits`, `duplicate-section-id` (these three come from `review_config.input_problems`, T1.3), a malformed id as a `schema` problem at its pointer; a `mixed` heading is accepted (F2-AC4); accepted rows reach the writer input; the rows file is deleted on save; each refusal RED-proven.

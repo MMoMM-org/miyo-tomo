@@ -123,11 +123,38 @@ The file holds setup text only — heading keys, descriptions, keywords,
 placements, caps (CON-3). It never holds the anchor, a note heading or any
 body line; ids and groups are left out because nothing reads them from it.
 
-A template that is not found writes nothing and drops nothing: no proposal
-was shown for it, the question is asked again, and the next answer is still
-compared against the rows the user last saw. An unreadable template does the
-same, since its headings are unknown and every earlier row would read as
-dropped.
+A template that is not found drops nothing and keeps the rows, the template
+and the outline of the file: no proposal was shown for it, the question is
+asked again, and the next answer is still compared against the rows the user
+last saw. An unreadable template does the same, since its headings are
+unknown and every earlier row would read as dropped. Only `resolved` changes
+(below).
+
+### WHY the Rows File Also Holds the Outline and `resolved` (T2.2)
+
+`setup-input` stays offline (ADR-3) and checks a row's eligibility against
+what `match` saw (docs/tomo/scripts/lib/review_setup_rows.md). The evidence
+must come from a script, not from the model's confirmed file, so `match`
+writes it next to the rows: `outline` — per template heading its key, line,
+ancestors, body kind and structural reason, plus the level-1 lines, from
+`review_mapping.outline` — and `resolved {template, kind}`, the template name
+`match` tried last and its `template_kind` (`missing` when Kado did not find
+it). `resolved` is written on every run, also when no rows are shown, so a
+name that was not found is refused even when the model puts it back into the
+confirmed setup. Off-limits and `automatic` verdicts are not stored: they
+depend on the off-limits rows the user may change in the same step.
+
+### WHY a Saved Row Whose Heading Is Gone Is in `dropped`
+
+A row saved for the resolved template whose (heading, level, parent) the
+template no longer has is shown nowhere else: it is no candidate and no shown
+row. The skill builds the save from the confirm table, so `setup-input` would
+remove it without the user ever seeing it (F2-AC10: saving changes no other
+setup value without the user's confirmation). `dropped` already means "rows
+the template lacks" and is what the skill names before the save, so such a
+row is listed there too, on every run with the same template, not only after a
+template change. The rows-file comparison (F7-AC3) still drops nothing for the
+same template.
 
 A rows file that cannot be written (`OSError` from `write_rows`) is not
 caught: `match` exits 1 instead of degrading to `status ok`. The proposal
@@ -144,7 +171,7 @@ Prose rules in the skill did not hold. `match` now returns
 `template_not_found {name, source: typed|configured}`, sets the template to
 null and lists the candidates of the templates folder, so the skill names the
 miss and asks again from the list (`setup-input` refuses a confirmed missing
-template, T2.2). `source` tells the skill whether the user mistyped or the
+template from `resolved` in the rows file, T2.2). `source` tells the skill whether the user mistyped or the
 saved mapping points at a template that was renamed or deleted.
 
 ## WHY the Configured Anchor Counts Only for the Configured Template (F7-AC2)

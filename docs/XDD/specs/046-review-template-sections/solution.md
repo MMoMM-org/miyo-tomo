@@ -407,6 +407,7 @@ tomo/
     ├── vault-config-writer.py                   # MODIFY: review subcommand writes rows
     └── lib/
         ├── review_mapping.py                    # NEW
+        ├── review_setup_rows.py                 # NEW (spec 046 T2.2): setup-input row refusals, ids, rows-file evidence
         ├── review_sections.py                   # NEW
         ├── review_section_plan.py               # NEW
         ├── review_children.py                   # NEW
@@ -430,7 +431,7 @@ tomo/
         └── render_md.py                         # MODIFY
 tomo-tmp/review/                                 # runtime, instance only
 ├── <stem>/read.json | read-index.json + read-<YYYY-MM>.json, proposals.json, meta.json
-└── rows-<kind>.json                             # written and read by `match`; deleted by `setup-input` on save
+└── rows-<kind>.json                             # written and read by `match` (rows, outline, resolved); read and deleted by `setup-input` on save
                                                  # and by `start`; setup text only
 ```
 
@@ -439,6 +440,7 @@ tomo-tmp/review/                                 # runtime, instance only
 docs/tomo/
 └── scripts/lib/
     ├── review_mapping.md                        # NEW
+    ├── review_setup_rows.md                     # NEW (T2.2)
     ├── review_sections.md                       # NEW
     ├── review_section_plan.md                   # NEW
     └── review_children.md                       # NEW
@@ -452,6 +454,7 @@ tests/
 ├── test_review_sections.py                      # NEW: proposal section checks and section parts
 ├── test_review_section_plan.py                  # NEW: plan_section on numbered-line layouts
 ├── test_review_session_sections.py             # NEW (implemented, spec 046 T2.1): match sections, rows file, template_not_found, quarter
+├── test_review_setup_input_rows.py             # NEW (spec 046 T2.2): setup-input refusals, ids, rows file deleted on save
 ├── test_review_children.py                      # NEW: child-review notes and their report
 ├── test_review_period_golden.py                 # NEW: golden month/week read (before the refactor)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
@@ -516,7 +519,7 @@ review:
     format: "YYYY-[Q]Q"
 ```
 
-A row with `placement: review` is allowed only on a heading left out as `automatic`; every other placement only on an offered heading. `own_sections` is unchanged. `tomo-tmp/review/rows-<kind>.json` holds the last rows `match` showed (setup text only: heading keys, descriptions, keywords, placements, caps); `match` writes it and reads it back for `dropped`, `setup-input` deletes it on save, `start` deletes a stale one. `tomo-tmp/review/<stem>/meta.json` gains `pass1_sections: [{key, count, empty}]` (keys and counts only) and `delivered_plan.sections: [{key, mode, placement, scope_level}]` plus `choices_given: bool` (ids and enums only).
+A row with `placement: review` is allowed only on a heading left out as `automatic`; every other placement only on an offered heading. `own_sections` is unchanged. `tomo-tmp/review/rows-<kind>.json` holds the last rows `match` showed (setup text only: heading keys, descriptions, keywords, placements, caps), the template's heading outline (keys, lines, ancestors, body kinds, structural reasons) and `resolved` (the template `match` tried last and its kind); `match` writes it and reads it back for `dropped`, `setup-input` checks rows against it and deletes it on save, `start` deletes a stale one. `tomo-tmp/review/<stem>/meta.json` gains `pass1_sections: [{key, count, empty}]` (keys and counts only) and `delivered_plan.sections: [{key, mode, placement, scope_level}]` plus `choices_given: bool` (ids and enums only).
 
 #### Internal API Changes
 

@@ -114,6 +114,33 @@ that its parent is protected. Off-limits rows compare level and parent;
 `own_sections` (spec 045) compares bare text and is a different setting —
 the module never reads it.
 
+## WHY the Outline Is Split at the Off-Limits Rule (T2.2)
+
+`setup-input` checks rows offline against what `match` saw (ADR-3), and the
+user may mark headings off-limits in the same Correct step. The rules before
+off-limits (templater, link, per-period parent) depend on the template text
+only; off-limits and `automatic` depend on the off-limits rows (an off-limits
+sub-heading keeps its parent from being an automatic-only container).
+`outline(text)` therefore stores the headings after the structural rules —
+key, line, ancestors, body kind, structural reason — and `from_outline(data,
+off_limits)` runs the last two rules on it. `analyse_template` is the same two
+steps on the text, so `match` and `setup-input` classify a heading the same
+way. A stored shape `outline` never writes raises `ValueError`; the caller
+treats it as no evidence.
+
+## WHY the Landing Is Computed on the Outline
+
+ADR-8 / SDD Complex Logic: a `before` block becomes part of the body of the
+heading above the mapped one; an `end` block (and the "Tomo Review" section
+placed `inside` an anchor) part of the body of the last heading inside the
+mapped heading's range, sub-sections included; `under` lands in the mapped
+heading. `landing(heads, top, line, placement)` names that heading from the
+template's lines, level-1 headings included as boundaries (`top`): a level-1
+heading ends every range and its body is never coverable (rows have levels
+2..6), so a landing there or in the preamble is None. `plan_section` applies
+the same rule to the note at delivery (Phase 5); the template check is the
+earlier refusal, the note check the one that guards the actual write.
+
 ## WHY Row Ids Never Reuse a Number
 
 ADR-10: a row keeps its id when it is corrected and when the template keeps

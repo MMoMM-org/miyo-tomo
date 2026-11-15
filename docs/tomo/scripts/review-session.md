@@ -320,6 +320,26 @@ two cannot disagree. The input is written atomically to
 names it; the skill passes it to the writer and removes it, as `/note` does
 with `note-include.json`.
 
+### WHY `setup-input` Carries the Rows and Checks Them (spec 046 T2.2)
+
+`sections` and `off_limits` join `_INPUT_KEYS`, so the confirmed rows reach
+the writer input. Before validation every section row without an id gets one
+(ADR-10); after `input_problems` passes, `lib/review_setup_rows` refuses what
+may not be saved — a missing template, a left-out heading with its reason, a
+heading not in the template, an off-limits heading, a placement landing in
+off-limits text, an analysis row on a heading that is not `automatic` (F2-AC4,
+F2-AC11, F2-AC12, Rule 4). The evidence is the rows file `match` wrote, not
+the confirmed file (docs/tomo/scripts/lib/review_setup_rows.md). The saved
+rows the ids are taken from come from `--config`; nothing reaches Kado.
+
+On a save (`status ok`) `setup-input` removes `rows-<kind>.json`: the
+dialogue it belonged to is over, and the next `match` must not report the
+saved rows as `dropped` against a template the user no longer sees
+(ADR-13). A file that cannot be removed is left (as in `start`); an invalid
+input keeps the file, because the Correct step reruns `match` and
+`setup-input` against it. `setup-input` takes the hidden `--tmp` for the same
+reason `match` does.
+
 ## WHY `start` Parses the Argument Before It Reaches Kado
 
 WHY: F2 (every argument form yields the request or one error with the

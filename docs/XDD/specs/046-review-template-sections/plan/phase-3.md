@@ -38,7 +38,7 @@ Reads a quarter like a month one level up, and hands the model the section defin
   4. Validate: test green on the unchanged code; mutating `_link_differences` (one line) turns it RED, then restore.
   5. Success: any change to the month or week read shape is caught `[ref: SDD/Constraints; CON-2]`
 
-- [ ] **T3.2 Child-review level and quarter reading** `[activity: domain-modeling]`
+- [x] **T3.2 Child-review level and quarter reading** `[activity: domain-modeling]`
 
   1. Prime: `lib/review_period.py` (`PeriodSources` 63, `sources_from_config` 95, `_find_weeklies` 214, `_weekly_entries` 227, `_is_periodic` 245, `_link_differences` 259, `_after_end_pass` 331, `run` 346); `lib/review_weekly.py` (`weekly_content` 139); `lib/review_pacer.py` `[ref: SDD/Runtime View/Complex Logic "Quarter marks"; ADR-6]`
   2. Test: the golden test (T3.1) stays green; the disagreeing-notes quarter fixture (a link only in a weekly, only in a monthly, only in a daily, a link to stem `2026-02`) gives `only_in_monthly_links` = the monthly-only link, the weekly-only link in no mark, the monthly stem in no list; read as a month the same notes give `only_in_weekly_links` = the weekly-only link; boundary weeks clipped to the quarter's days (week-level own-section text tagged `overlap_days`, the accepted deviation); `monthly_status` / `monthly_notes` report absent months (F6-AC5) and `kado-empty`; the end pass recovers a monthly listing; the CHILD level is RED-proven (revert to WEEK → quarter test RED).

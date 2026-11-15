@@ -80,6 +80,7 @@
 | 2026-11-15 | Model escalation: T2.3 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-15 | Phase 2 drift check (Drift, Alignment, Consistency; no FAIL, 2 MEDIUM, 4 LOW): all fixed — WHY rerun-flags sentence, the "not kept" wording when `mappable` is false, refusal pointers named in the skill, a test tying the skill's group names to the schema enums; SDD `match`/`setup-input`/rows-file shapes completed (`mappable`, `defaults` null, pointers, rows-file keys); T4.5 clean-up list extended (setup gate, description, two WHY passages); T6.4 lists the prose-pin-only criteria | Owner chose "fix all now" |
 | 2026-11-15 | Phase 2 complete (T2.1–T2.4); drift fixes reviewed PASS. Advisory for #259: the `dropped` line's "not kept" after a template change reads better as "not in the new mapping" (the old template's rows stay under their own key) | Full suite 10249 passed, 1 known unrelated failure (ide_bridge registry pollution) |
+| 2026-11-15 | T3.2: with `naming.calendar_patterns.monthly` / `.quarterly` configured, a link to a monthly or quarterly note (`[[2026-02]]`, `[[2026-Q1]]`) is navigation, not content — also in a WEEK or MONTH read, a deliberate exception to CON-2 for vaults that configure those patterns; without a configured pattern such a link stays content (no default-format guess) | SDD Complex Logic "a link to 2026-02 is never content"; pinned in tests/test_review_children.py; the T3.1 golden holds no such link |
 
 ## Context
 

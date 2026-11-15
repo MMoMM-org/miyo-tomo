@@ -79,6 +79,7 @@
 | 2026-11-15 | T2.3: interim — a set-up quarter request stops with one line ("cannot review a quarter yet") until T4.5 removes it; `/review setup` walks the quarter only once it is set up | Reading a quarter is Phase 3/4; `review-read --kind quarter` exits 2 until T3.3 |
 | 2026-11-15 | Model escalation: T2.3 opus → opus@max | Trigger: second review FAIL |
 | 2026-11-15 | Phase 2 drift check (Drift, Alignment, Consistency; no FAIL, 2 MEDIUM, 4 LOW): all fixed — WHY rerun-flags sentence, the "not kept" wording when `mappable` is false, refusal pointers named in the skill, a test tying the skill's group names to the schema enums; SDD `match`/`setup-input`/rows-file shapes completed (`mappable`, `defaults` null, pointers, rows-file keys); T4.5 clean-up list extended (setup gate, description, two WHY passages); T6.4 lists the prose-pin-only criteria | Owner chose "fix all now" |
+| 2026-11-15 | Phase 2 complete (T2.1–T2.4); drift fixes reviewed PASS. Advisory for #259: the `dropped` line's "not kept" after a template change reads better as "not in the new mapping" (the old template's rows stay under their own key) | Full suite 10249 passed, 1 known unrelated failure (ide_bridge registry pollution) |
 
 ## Context
 

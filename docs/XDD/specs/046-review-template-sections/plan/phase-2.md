@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Setup — mapping, off-limits, template choice"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -55,6 +55,6 @@ Lets the vault keeper confirm, in one turn per template, which sections receive 
   4. Validate: skill tests green; skill-author verification; character growth recorded.
   5. Success: the vault keeper confirms or corrects the whole mapping in one turn `[ref: PRD/F2-AC2, F2-AC6]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 2 tests and the full suite (GREEN). Drift check against SDD Internal API Changes. WHY-first order (git log) and no eval-gated file changed. Lint clean.

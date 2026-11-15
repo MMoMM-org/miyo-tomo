@@ -96,12 +96,55 @@ wrong rewrite or the misleading scalar message. A mapping that does not
 parse at all gets the same refusal. The writer's per-leaf read-back after the
 edit is the second guard for whatever the scan still gets wrong.
 
-## WHY `null` Removes the Key
+## WHY `null` and `[]` Remove the Key
 
 The review setup's reader treats an absent key and `null` alike. Writing
 `template: null` would keep a line that says nothing; removing the key line
 (and a list's continuation lines) is the edit that matches what the user
 confirmed. A `null` for a key that does not exist is a no-op.
+
+An empty list removes the key too (spec 046, ADR-3). The per-template
+section rows (`review.<g>.sections."<template>"`) and the off-limits rows are
+lists; a template whose mapping the user cleared would otherwise leave
+`"t_week_privat.md": []` behind, a key that says nothing and that the next
+setup has to tell apart from "never mapped". The readers treat an absent
+list and `[]` alike (`review_config._str_list`), so the writer's read-back
+counts an absent key as holding `[]`. The removal applies to the key the
+caller names only: a member inside a list item (`keywords: []`,
+`parent: null`) is rendered as given, because the item is one value the user
+confirmed and its read-back compares the whole item.
+
+## WHY Lists of Mappings Render Block-Style
+
+A section row holds nine members, one of them a heading the user wrote with
+`%% folds %%`, colons and quotes. One flow line per row would be unreadable
+and, for the user who opens the config to correct a description, uneditable.
+So a list with any mapping item renders as block items one step below the
+key: `- id: "s1"` and the item's other members on their own lines aligned
+under the first (two columns past the dash), a member list of scalars as a
+flow list, a member mapping as a block one step deeper. A list of scalars
+keeps the one-line flow form — every spec 045 value is one, and changing it
+would rewrite lines the earlier setup already wrote. The items sit deeper
+than the key, so the block extent (`block_extent`) that finds a key's lines
+for a later replace or removal is the same one that already covers block
+lists: replacing one template's rows replaces exactly its own lines, and a
+second template's rows under the same parent stay byte-identical (F2-AC10).
+
+## WHY a Key Is Quoted Unless It Is a Plain Identifier
+
+Template file names become keys (`"t_week privat: v2.md"`, `Übersicht.md`).
+Written plain, `t_week privat: v2.md:` is not a key YAML reads back, and a
+key such as `on`, `yes` or `null` reads back as a boolean or a null. The rule
+is the narrow one: a key is written plain only when it is an ASCII
+identifier (`[A-Za-z_][A-Za-z0-9_]*`) that YAML reads back as the same
+string; everything else is double-quoted with JSON escaping, the same
+rendering as string values. That keeps every spec 045 key (`weekly`,
+`min_days_in_first_week`) spelled as before and quotes every template name,
+which is how the SDD's config example writes them. The key finder
+(`is_key_line`) also matches the JSON-escaped spelling, so a key with a quote
+or a backslash inside is found again by the next edit instead of being
+inserted a second time. A key the flow-mapping rewrite copies keeps its
+spelling as written; only keys the module renders are quoted by this rule.
 
 ### WHY an Emptied Flow Mapping Is Written as `{}`
 
@@ -125,8 +168,9 @@ described the old value.
 ## WHY the Rendering Is Double-Quoted Strings and Flow Lists
 
 Same convention as the section writers and `vault-example.yaml`: strings via
-JSON escaping (safe for `#`, `:`, quotes and non-ASCII), lists on one line
-(`["Habit", "Daily Log"]`), booleans lowercase. A list the file held as block
+JSON escaping (safe for `#`, `:`, quotes and non-ASCII), lists of scalars on
+one line (`["Habit", "Daily Log"]`; lists of mappings are block items, see
+above), booleans lowercase. A list the file held as block
 items is replaced by the flow form; the read-back in the writer guarantees
 both parse to the same value. The renderer only ever sees the caller's value
 (a leaf or the chain of new keys above it); text the file already holds is

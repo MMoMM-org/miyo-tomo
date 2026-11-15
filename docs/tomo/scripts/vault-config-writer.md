@@ -256,6 +256,10 @@ in some other block is left alone for the reason given above.
 
 **Why the read-back checks every leaf.** After the edit the result is parsed
 and each written path must hold its value (a removed key must be absent).
+An empty list counts as held by an absent key: the editor removes a key set
+to `[]` (spec 046, ADR-3) and the readers treat absent and `[]` alike, so a
+setup with `own_sections: []` reads back instead of being refused, and a
+config without the key is `unchanged` for it.
 A flow mapping, an inline `{}` or a quoted key the matcher handled wrongly
 would otherwise save a file that reads back as something else. The check is
 the last guard before the atomic write, so it cannot be exercised through

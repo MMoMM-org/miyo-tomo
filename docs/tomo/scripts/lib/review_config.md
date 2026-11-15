@@ -156,3 +156,47 @@ or every `review-session.py start` would fail with a `KeyError` before the
 quarterly setup itself is implemented (T1.3). With the key named and nothing
 configured under it, the quarter reads as `missing`, which is exactly what it
 is.
+
+## WHY Only the Configured Template's Rows Are Read (spec 046, T1.3)
+
+`review.<g>.sections` and `review.<g>.off_limits` are mappings keyed by
+template name. `review_setup` reads the entry of the template
+`templates.mapping.<g>` names and nothing else: the rows of the work
+variant, or of a template the user switched away from, never apply to the
+configured one (PRD F2-AC8), and they stay stored so switching back finds
+them. Without a configured template the setup has no rows — spec 045
+behaviour. Rows of another template are not validated either: a broken
+row there cannot block a review that does not use it.
+
+## WHY Invalid Rows Are Pointers, Checked Against the Writer's Schema
+
+The rows are the user's confirmed text and are written only through the
+writer, but the file can be edited by hand. A present row the reader
+cannot use raises `SetupInvalid` with pointers into the config
+(`/review/weekly/sections/t_week_privat.md/0/cap`, the template name
+escaped per RFC 6901), like every other broken setup key. The reader does
+not keep its own copy of the row rules: it validates the rows by wrapping
+them in a synthetic writer input (`kind`, `template`, the rows) and keeping
+only the schema errors under the rows' key, so the writer and the reader
+cannot disagree on what a valid row is. The same duplicate check —
+heading key twice, an id twice — runs for the writer input
+(`input_problems`) and for the stored rows: a duplicate key would map one
+template heading twice, a duplicate id would make two sections share one
+pair of markers (ADR-10).
+
+## WHY Row Defaults Are Filled at Read Time
+
+The writer stores a row as the user confirmed it (F2-AC10): an omitted
+`cap`, `keywords` or `groups` stays omitted in the file. `ReviewSetup.
+sections` fills `cap` 8, `keywords` [] and `groups` [] on a copy, so every
+later reader (`review-read`, the proposal check) sees one shape and none of
+them spells the default again.
+
+## WHY `writer_edits` Writes One Template's Entry
+
+`sections` and `off_limits` edit `review.<g>.sections.<template>` and
+`review.<g>.off_limits.<template>` — the one leaf under the named
+template — never the whole `sections` mapping. Saving the mapping of one
+template therefore cannot change another's (F2-AC10, "no other setup value
+changes"), and an empty list removes only that template's entry (T1.1:
+`[]` removes a key).

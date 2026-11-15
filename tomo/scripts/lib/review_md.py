@@ -1,5 +1,5 @@
 # review_md.py — the markdown structure a /review read works on: body, fences, sections, breaks, navigation.
-# version: 0.1.2
+# version: 0.2.0
 """Markdown structure for ``/review`` reading (spec 045, T3.2; PRD F3-AC1, F3-AC2, F3-AC4).
 
 ``DONE_MARK_RE`` is the Tasks plugin's `` ✅ YYYY-MM-DD`` done marker (the check
@@ -12,8 +12,10 @@ section its subsections (cut at a break only when asked).
 METADATA callout, a callout of links only, navigation-only lines — and nothing
 else. ``cleaned`` drops query and embed fences and inline queries, never
 executing them. ``is_navigation``, ``metadata_mask`` and ``has_token`` are the
-navigation and day-name tests. No setting, no Kado, no model, no file I/O:
-``review_day`` applies these rules to one daily.
+navigation and day-name tests. ``AUTOMATIC_FENCES``, ``FIELD_RE`` and
+``EMBED_LINE_RE`` are the plugin fences, inline fields and embed lines both
+``review_day`` and ``review_mapping`` (spec 046, T1.2) read. No setting, no
+Kado, no model, no file I/O: ``review_day`` applies these rules to one daily.
 
 Design notes: docs/tomo/scripts/lib/review_md.md
 """
@@ -25,6 +27,8 @@ from typing import Callable, Iterable, List, Optional, Tuple
 
 QUERY_FENCES = ("dataview", "dataviewjs")
 EMBED_FENCES = ("quoth", "dynbedded")
+AUTOMATIC_FENCES = QUERY_FENCES + EMBED_FENCES + (
+    "tracker", "chartsview", "calendar-nav", "meta-bind-button", "toc", "tasks")
 
 HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 FENCE_RE = re.compile(r"^\s*(?:>\s*)*(`{3,}|~{3,})\s*([\w-]*)")
@@ -36,6 +40,8 @@ DONE_MARK_RE = re.compile(r"\s*✅\ufe0f?\s*(\d{4}-\d{2}-\d{2})")     # the Task
 YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 QUOTE_RE = re.compile(r"^(?:>\s*)+")
 METADATA_RE = re.compile(r"^(?:>\s*)+\[!metadata\]", re.IGNORECASE)
+FIELD_RE = re.compile(r"^[\s>*+-]*(\*\*)?([A-Za-z][\w .&/-]*?)(?(1)\*\*)::(?!:)\s*(.*?)\s*$")
+EMBED_LINE_RE = re.compile(r"^\s*(?:>\s*)*!\[\[")
 _CALLOUT_RE = re.compile(r"^(?:>\s*)+\[![^\]]*\][-+]?[ \t]*(.*)$")
 _NAV_SEP_RE = re.compile(r"<==|==>|<=|=>|<-|->|[|·•\-–—=<>*_#\s]")
 

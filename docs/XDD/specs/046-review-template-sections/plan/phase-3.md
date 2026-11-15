@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reading — child-review level, quarter, read files"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -65,6 +65,6 @@ Reads a quarter like a month one level up, and hands the model the section defin
   - Split (`lib/review_read_parts.py`): days by date, monthly notes by their month, weekly notes by the majority month of their in-quarter days (tie: earlier month); period, report, sections, open tasks, growth, `not_read` and both mark lists in the index (none carries a date). Per-part bytes on 2026-Q1 scaled to the measured totals (`tests/review_scaled_quarter.py`, written through `review-read.py`), two shapes because the non-day breakdown was not measured — non-day bytes in the weekly/monthly notes (3 : 1): index 17,710 / 01 238,492 / 02 213,908 / 03 240,227; non-day bytes in growth and open tasks: index 178,833 / 01 181,905 / 02 165,954 / 03 183,645. Every part ≤ 256,000 bytes; the tightest, March, has 15.8 KB headroom.
   - Re-measured after the split (2026-11-15, owner go; same command and scratch config, live Kado, read-only): wall 138 s, 453 calls, 0 retried, 133.0 s wait; real per-part bytes: read-index.json 144,294 / read-2026-01.json 193,079 / read-2026-02.json 176,710 / read-2026-03.json 196,218. Every part ≤ 256,000 bytes; the tightest, March, has 59.8 KB headroom. The real shape lies between the two fixture shapes (most non-day bytes sit in the index's growth and open tasks).
 
-- [ ] **T3.5 Phase Validation** `[activity: validate]`
+- [x] **T3.5 Phase Validation** `[activity: validate]`
 
   - Run all Phase 3 tests and the full suite (GREEN). Golden test green. Drift check against SDD ADR-6/ADR-7. WHY-first order (git log) and no eval-gated file changed. Lint clean. T3.4 may still be waiting for the owner's go; the phase closes only when it is done.

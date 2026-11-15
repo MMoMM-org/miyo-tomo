@@ -172,3 +172,12 @@ WHY: the deliver step stamps the `tomo:` block with
 `merge_tomo_block_into_markdown`, which treats only a literal `---` on line 1 as a
 leading fence and rejects a top-level `tomo:` key already in the block. The check
 uses exactly those two rules, so a note that passes it can always be stamped.
+
+## Why the Templater block mask is public
+
+WHY: `templater_inner_line_indexes` (0-based indexes of the lines that begin
+inside a multi-line `<% … %>` span) was private to `headings()`. Spec 046
+(T1.2) needs the same mask in `review_mapping`: a heading-looking line inside
+a `<%* … %>` block is no heading there either, and the lines of such a block
+are automatic content. One mask for both readers keeps `/note` and `/review`
+agreeing on what a Templater block covers.

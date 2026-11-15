@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -30,7 +30,8 @@ and the real lib.review_day readers:
 - spec 046 T3.3: read.json carries `sections` (the SectionDefinition fields,
   key = row id, analysis rows included) only with a mapping; it is written
   compact; without a mapping its parsed content equals the T3.1 golden
-  recording (CON-2: only the encoding differs); `--kind quarter --period
+  recording (CON-2: only the encoding differs); a mapped month's read.json
+  equals the unmapped one's once `sections` is popped; `--kind quarter --period
   2026-Q1` reads the quarter; `--measure` writes no file and prints counts
   and bytes only
 - spec 046 T3.4: a quarter writes read-index.json plus read-<YYYY-MM>.json
@@ -550,6 +551,32 @@ def test_without_a_mapping_read_json_has_no_sections_key(mod, instance, monkeypa
     code, out, _ = _week(mod, monkeypatch, capsys, week_vault())
     assert code == 0 and out["status"] == "ok"
     assert "sections" not in json.loads(_read_json(instance).read_text(encoding="utf-8"))
+
+
+def _map_month(instance: Path) -> None:
+    def edit(cfg):
+        cfg["templates"] = {"mapping": {"monthly": TEMPLATE}}
+        cfg["review"]["monthly"]["sections"] = {TEMPLATE: ROWS}
+    _edit_config(instance, edit)
+
+
+def _month_read(mod, instance, monkeypatch, capsys) -> dict:
+    code, out, _ = _month(mod, monkeypatch, capsys, month_vault())
+    assert code == 0 and out["status"] == "ok"
+    return json.loads(_read_json(instance, "2026-03_review").read_text(encoding="utf-8"))
+
+
+def test_a_mapped_month_reads_the_same_notes_days_and_weekly_entries_as_an_unmapped_one(mod, instance, monkeypatch,
+                                                                                       capsys):
+    """F1-AC1 / CON-2: the mapping only adds the definitions; the same vault read with and without it gives the
+    same read.json once `sections` is taken out — no day, note or weekly entry is dropped or added."""
+    unmapped = _month_read(mod, instance, monkeypatch, capsys)
+    _map_month(instance)
+    mapped = _month_read(mod, instance, monkeypatch, capsys)
+    assert "sections" not in unmapped
+    assert [s["key"] for s in mapped.pop("sections")] == ["s1", "s7"]
+    assert unmapped["days"] and unmapped["weekly"], "the comparison covers days and weekly entries"
+    assert mapped == unmapped
 
 
 def test_read_json_is_written_compact(mod, instance, monkeypatch, capsys):

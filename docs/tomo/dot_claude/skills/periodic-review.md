@@ -340,8 +340,10 @@ without quarterly notes is not walked through a third dialogue it has no use for
 be changed the same way as the others; the first quarter setup comes from `/review quarter` (or `/review 2026-Q1`).
 The command's and the skill's argument hints name `quarter` and `2026-Q1`.
 
-**Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to the count recorded in
-the T2.3 commit (SDD: about 1,000 characters for the sections; the trim is #259). No `STRICT` block was added: no
+**Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
+(+3,898, `wc -c`; 221 → 233 lines). The SDD estimated about 1,000 characters for the sections; the estimate did not
+count the per-reason words, the per-kind group list, the Correct operations and the confirmed-file shape, each
+of which a literal model needs spelled out. The trim is #259. No `STRICT` block was added: no
 run has shown a deviation in this step yet.
 
 ## Why the Week Question Is Asked in Plain Words (ADR-7)

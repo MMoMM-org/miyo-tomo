@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.0"), (SKILL, "0.1.15")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.0")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -251,9 +251,10 @@ def test_a_withheld_request_ends_the_run_after_the_listed_reviews():
 
 def test_after_the_list_the_request_routes_by_kind_and_setup():
     text = _section("1. Start")
-    assert "- `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop." in text
-    assert ("- `week` or `month` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the `start` call "
-            "above (skip the open reviews already handled) and continue here.") in text
+    assert ("- `setup` → step 2 for `week`, then for `month`, then for `quarter` when `setup.quarter` is "
+            "`present`, each starting from `current.<kind>`; then stop.") in text
+    assert ("- `week`, `month` or `quarter` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the "
+            "`start` call above (skip the open reviews already handled) and continue here.") in text
     assert "- Otherwise → step 3." in text
 
 
@@ -297,7 +298,8 @@ CARRY_RULE = ("- Every later `match` call of this step carries `--template <temp
               "`--anchor \"<anchor>\"`, once the week question is answered `--first-day <day> --min-days <n>`, and "
               "once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the "
               "script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no "
-              "`needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun.")
+              "`needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun, except "
+              "`--anchor` by the next line.")
 
 
 def test_every_later_match_call_carries_the_week_answer_like_the_template_and_the_anchor():
@@ -352,8 +354,9 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     """Phase 6 live walk: no `templates.mapping.<kind>` → `match` lists `template_candidates`; the skill asks,
     numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2)."""
     text = _section("2. Setup")
-    assert ("`template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes "
-            "of the templates folder fit it; ask, numbered on one line with `0 none` last: "
+    assert ("`template_candidates` is non-empty → without `template_not_found`, say that no template is saved for "
+            "`<kind>`; say that these notes of the templates folder fit it; ask, numbered on one line with "
+            "`0 none` last: "
             "`1 <name> · 2 <name> · 0 none`. End the turn.") in text
     assert ("A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; a typed name → `<template>` "
             "is that name in double quotes; run:") in text

@@ -455,6 +455,7 @@ tests/
 ├── test_review_section_plan.py                  # NEW: plan_section on numbered-line layouts
 ├── test_review_session_sections.py             # NEW (implemented, spec 046 T2.1): match sections, rows file, template_not_found, quarter
 ├── test_review_setup_input_rows.py             # NEW (spec 046 T2.2): setup-input refusals, ids, rows file deleted on save
+├── test_review_skill_sections.py               # NEW (spec 046 T2.3): skill pins for the setup mapping table and the quarter routing
 ├── test_review_children.py                      # NEW: child-review notes and their report
 ├── test_review_period_golden.py                 # NEW: golden month/week read (before the refactor)
 ├── test_046_close_out_gaps.py                   # NEW at close-out

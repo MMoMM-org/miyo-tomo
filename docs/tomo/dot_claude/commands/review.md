@@ -34,8 +34,10 @@ or another name, decided by the owner, never a silent rename.
 ## Why the Shim Carries `argument-hint` but No Example List
 
 WHY: The `argument-hint` in the frontmatter is what the `/` menu shows next to the command, so it names the argument
-kinds in a few words (a period, `month`, `setup`, an `@`-picked note). It is a menu label, not help: the forms
-themselves stay with `review-session.py start` and `tomo-help.md`, as the section above says.
+kinds in a few words (a period, `month`, `quarter`, `setup`, an `@`-picked note). It is a menu label, not help: the
+forms themselves stay with `review-session.py start` and `tomo-help.md`, as the section above says. `quarter` and
+`2026-Q1` joined the label with spec 046 (F6-AC1): `start` parses a quarter, and the skill runs its setup; reading a
+quarter follows in spec 046 Phase 3, so until then a quarter request ends after the setup.
 
 ## Why the Command Carries No Argument Help
 

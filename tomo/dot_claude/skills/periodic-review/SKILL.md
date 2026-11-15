@@ -3,10 +3,10 @@ name: periodic-review
 description: MUST BE USED when the user runs /review, or asks for a weekly or monthly review of their periodic notes (the last finished week or month, a named period such as 2026-W13 or 2026-03, an @-picked weekly or monthly note), to continue, deliver or drop an open review, or to set up or change the review setup (/review setup). NOT for inbox triage (/inbox) and NOT for a single note from a template (/note).
 user-invocable: true
 allowed-tools: Read, Write, Bash
-argument-hint: "a period (2026-W13, W13, 2026-03), month, setup, an @-picked weekly or monthly note, or nothing"
+argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.1.15
+# version: 0.2.0
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -52,27 +52,30 @@ Continue with the next entry, then with the new request, after each one ends wit
 `request` is null (`request_withheld` `open-reviews`) → there is no new request: say in one line that a bare `/review` starts no new period while a review is listed, and that `/review <period>` (`2026-W13`, `2026-03`) or `/review month` names one; end the run after the last entry.
 
 Then the new request, by `request.kind`:
-- `setup` → step 2 for `week`, then for `month`, each starting from `current.<kind>`; then stop.
-- `week` or `month` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the `start` call above (skip the open reviews already handled) and continue here.
+- `setup` → step 2 for `week`, then for `month`, then for `quarter` when `setup.quarter` is `present`, each starting from `current.<kind>`; then stop.
+- `week`, `month` or `quarter` with `setup.<kind>` `missing` → step 2 for that kind, then rerun the `start` call above (skip the open reviews already handled) and continue here.
+- `quarter` → say in one line that the quarter setup is saved and that Tomo cannot review a quarter yet; stop, nothing is read.
 - Otherwise → step 3.
 
 ## 2. Setup
 
-`<kind>` is `week` or `month`. When `current.<kind>` is given, print it first: its values, or that none is saved, or its `invalid` pointers. Run:
+`<kind>` is `week`, `month` or `quarter`. When `current.<kind>` is given, print it first: its values, or that none is saved, or its `invalid` pointers. Run:
 
 ```bash
 python3 scripts/review-session.py match --kind <kind>
 ```
 
 - `status` `stopped` → the stopped rule. `error.kind` `unsafe-format` → say the name format must not contain `/`, `\` or `..` and ask for another format; rerun `match` with it as `--format`.
-- `template_candidates` is non-empty → say that no template is saved for `<kind>` and that these notes of the templates folder fit it; ask, numbered on one line with `0 none` last: `1 <name> · 2 <name> · 0 none`. End the turn. A number → `<template>` is `"<name>"`, the chosen name in double quotes; a typed name → `<template>` is that name in double quotes; run:
+- `template_not_found` is set → say that the template `template_not_found.name` was not found (`source` `typed`: the name typed, `configured`: the saved one); the `template_candidates` line asks for another.
+- `template_candidates` is non-empty → without `template_not_found`, say that no template is saved for `<kind>`; say that these notes of the templates folder fit it; ask, numbered on one line with `0 none` last: `1 <name> · 2 <name> · 0 none`. End the turn. A number → `<template>` is `"<name>"`, the chosen name in double quotes; a typed name → `<template>` is that name in double quotes; run:
 
 ```bash
 python3 scripts/review-session.py match --kind <kind> --template <template>
 ```
 
 with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without `template_candidates`, `<template>` is `"<proposal.template>"` when `proposal.template` is set, else `none`.
-- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given `--anchor "<anchor>"`, once the week question is answered `--first-day <day> --min-days <n>`, and once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no `needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun.
+- Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given `--anchor "<anchor>"`, once the week question is answered `--first-day <day> --min-days <n>`, and once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no `needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun, except `--anchor` by the next line.
+- When `<template>` changes, the next `match` call carries no `--anchor` and `<anchor>` is unset: the new output proposes the place, and `needs_anchor` asks again.
 - Print `proposal`, `evidence` (`matched`, `unmatched`, `week_rule`, `folder_listing`, `format_problems`) and every line of `hints`.
 - `evidence.folder_listing` is `kado-none` → the `hints` line says so; ask before proposing to create notes there.
 - `proposal.template_kind` is `missing` → say that a plain note (title and review section) is proposed. `unreadable` → say the same and that the template may not be readable by the Kado key (no access).
@@ -80,17 +83,27 @@ with the flags of the last `match` call added, and continue with its output. `0`
 - `daily_path_fix` is set → print `configured` and `found` and say the saved value is corrected to `found` only on Confirm.
 - `evidence.week_rule` is `ambiguous` (week only) → ask in plain text, before the confirm question: "Which day does your week start on? Is week 1 the week with 1 January, or the first week with at least four days in the new year?" Map the answer to `--first-day <day>` (the day in lowercase) and `--min-days <n>` (`1` for the week with 1 January, `4` for at least four days), rerun `python3 scripts/review-session.py match --kind <kind> --folder "<folder>" --format "<format>" --first-day <day> --min-days <n> --template <template>` with the proposal's folder and format, and print the new proposal, evidence and hints. Its `evidence.week_rule` is `given`: the question is answered and not asked again; only `ambiguous` asks it.
 - `needs_anchor` is true → say that no heading could be proposed for the place of the review section (no template, or none with a heading below its title); print `anchor_candidates` as a numbered list and ask: Which heading, by number or typed? End the turn. The answer is `<anchor>` and `proposal.place.anchor`; print the proposal with it in place. Never offer Confirm while `place.anchor` is null.
+- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under `parent`) of the earlier mapping is not in `<template>` and is not kept.
+- `sections.mappable` is false → say in one line that no section of the template can be mapped, so the review goes into its own section only; print no table.
+- `sections.mappable` is true → print the mapping table in the same reply, before the confirm question, from `sections.candidates` in their order:
+  - Each candidate with `state` `offered` or with `saved` set is one row, numbered `s1`, `s2`, … in order: `heading_key` as heading (level, under parent), its `flags` in brackets, description, keywords, groups, placement and cap. With `saved` set, take them from `saved`; else placement and cap from `defaults`, and write the description: what to look for in the period's notes for that section, in `proposal.language`; add keywords (at most 12) and groups only where they fit.
+  - Groups a row may name: `done`, `open`, `themes`, `growth`; for `month` also `weekly_only`, `not_in_weekly`; for `quarter` also `monthly_only`, `not_in_monthly`. Never `habits`.
+  - A heading that looks ahead (what comes next, goals, wishes, what to start, stop or continue, what will be challenging) gets a description asking for suggestions drawn from what the period shows.
+  - Each other candidate is one line `—` with heading, level, parent and the `reason` in words: `templater` Templater code in the heading, `link` a link in the heading, `per-period-parent` repeats under headings that change per period, `off-limits` marked off-limits, `automatic` only automatic content, can get an analysis row.
+  - Last the line `Off-limits:` with each `sections.off_limits` row (heading, level, parent, `with sub-sections` when `with_subsections` is true), or `none`.
 
 Ask `1 Confirm · 2 Correct · 3 Abort`.
 - Correct: for the folder, the format, the first day, the week-1 rule or the template, rerun `match` with the corrected value as its flag (`--folder`, `--format`, `--first-day` with `--min-days`, `--template` — a corrected template is `<template>` from then on, `none` for no template), the proposal's values for the others, `--template <template>`, `--anchor "<anchor>"` when given, `--first-day <day> --min-days <n>` once the week question was answered and `--template-frontmatter-ok <ok-template>` once the frontmatter question was answered with `1`, and print the new proposal, evidence and hints; its `needs_template_ok` line above applies; for heading, place, own sections, daily sections or language, print the proposal with the corrected value; a corrected anchor is `<anchor>` from then on. Then ask `1 Confirm · 2 Correct · 3 Abort` again. Write nothing before Confirm.
+- Correct of the table: the user names a row (`s<n>` or its heading) and the change in plain text. Change its description, keywords, groups, placement (`before`, `under`, `end`) or cap (1 to 30), or remove it. Add a heading: an `offered` candidate → a row with its `defaults`; an `automatic` one with a description → an analysis row with placement `review`; any other `left-out` one → say its `reason` and add nothing; a heading not among the candidates → say it is not in `<template>`. Mark a candidate off-limits, heading only or with sub-sections → it joins the `Off-limits:` line and its row leaves the table (with sub-sections, the rows under it too); unmark → it leaves the line. Print the table with the change, run no `match` and ask `1 Confirm · 2 Correct · 3 Abort` again.
+- A `match` rerun with the same `<template>` keeps the table changes; with a changed `<template>` the table is built anew from the new `sections`.
 - Abort: stop; nothing is saved and nothing is written. A kind confirmed and saved earlier in this run stays saved.
-- Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, the corrected values in place; add `daily_path_fix` from the `match` output only when the user confirmed it. Then run:
+- Confirm: write `tomo-tmp/review/confirmed-<kind>.json` with the last `proposal` object as it is, the corrected values in place; add `daily_path_fix` from the `match` output only when the user confirmed it. With `sections.mappable` true, add `sections`, the table rows in order, each with `heading`, `level`, `parent` and `occurrence` of its `heading_key`, `description`, `placement`, `cap`, and `keywords` and `groups` when set; and `off_limits`, each entry of the `Off-limits:` line with its `heading_key` fields and `with_subsections`; `[]` when there is none. Then run:
 
 ```bash
 python3 scripts/review-session.py setup-input --kind <kind> --confirmed tomo-tmp/review/confirmed-<kind>.json
 ```
 
-`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`; Correct → the Correct branch above. `status` `ok` → run:
+`status` `invalid` → show `errors` and `problems` verbatim and ask `1 Correct · 2 Abort`; Correct → the Correct branch above. A `/sections/<i>` pointer is the row at index `<i>` of `sections`, counted from 0: name its heading. `status` `ok` → run:
 
 ```bash
 python3 scripts/vault-config-writer.py review --input <input_path>

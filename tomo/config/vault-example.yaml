@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.9
+# version: 1.10
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -128,6 +128,7 @@ templates:
     daily: "Daily Note.md"
     weekly: "Weekly Note.md"
     monthly: "Monthly Note.md"
+    quarterly: "Quarterly Note.md"
     yearly: "Yearly Note.md"
     project: "Project.md"
     source: "Source.md"

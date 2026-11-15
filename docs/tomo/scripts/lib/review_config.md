@@ -12,7 +12,7 @@
 The setup lives in four config sections (`concepts.calendar.granularities`,
 `naming.calendar_patterns`, `templates.mapping`, `review`) because three of
 them already exist for other features and the profile already names the
-weekly and monthly folders. A reader (`review-session.py start`) and a writer
+weekly, monthly and quarterly folders. A reader (`review-session.py start`) and a writer
 (`vault-config-writer.py review`) that each spelled those paths would drift —
 the same three-way drift spec 038 found between spec, schema and consumer. So
 `review_setup()` reads the keys and `writer_edits()` produces the edits for
@@ -21,20 +21,20 @@ what a review setup is.
 
 ## WHY Config Over Profile, and What "Missing" Means
 
-`concepts.calendar.granularities.<weekly|monthly>` falls back to the profile
+`concepts.calendar.granularities.<weekly|monthly|quarterly>` falls back to the profile
 (`tomo/profiles/miyo.yaml` carries both folders), so a vault on the MiYo
 profile needs no folder answer when the folders are where the profile says.
 Nothing else falls back: the name format and the review section are the
 user's confirmation and the profile has no opinion on them. A setup counts as
 *present* for a kind when the config holds `naming.calendar_patterns.<kind>`
-and `review.<weekly|monthly>` with a heading and a place; `review_setup()`
+and `review.<weekly|monthly|quarterly>` with a heading and a place; `review_setup()`
 returns None otherwise, so `start` can report `setup: missing` and the skill
 runs Feature 1 first (F2-AC8). A granularity with `enabled: false` is treated
 as no folder: the user switched those notes off.
 
 `folder_for(config, profile, granularity)` is public because the setup
 preview (`review-session.py match`) resolves the same folders before any
-setup exists: the weekly or monthly folder to list and the daily folder to
+setup exists: the weekly, monthly or quarterly folder to list and the daily folder to
 probe for the spelling fix. The script carried its own copy at first, and the
 two had already diverged on a blank path (`path: "   "`): the copy returned
 the blank string, this one returns None. One function, these semantics: a
@@ -146,16 +146,16 @@ into `review:` would be a second place to keep in step. `tracker_types()`
 returns `{name: type}` over all three lists; a type change the setup proposes
 goes through the existing `trackers` writer subcommand (SDD Data Storage).
 
-## WHY `GRANULARITY` Names the Quarter Before Its Setup Exists
+## WHY `GRANULARITY` Names the Quarter in the Same Change as `KINDS`
 
 `GRANULARITY` maps a period kind to its config key (`weekly`, `monthly`,
 `quarterly`) and every reader iterates `period.KINDS` through it
-(`configured_formats`, `setup_present`, the `start` listing). When the quarter
-joined `KINDS` (spec 046 T1.4) the mapping had to name it in the same change,
-or every `review-session.py start` would fail with a `KeyError` before the
-quarterly setup itself is implemented (T1.3). With the key named and nothing
-configured under it, the quarter reads as `missing`, which is exactly what it
-is.
+(`configured_formats`, `setup_present`, the `start` listing). The quarter
+joined `GRANULARITY` in T1.4, together with `KINDS`: `start` iterates every
+kind in `KINDS` and would fail with a `KeyError` without the mapping entry.
+The quarterly setup arrived in T1.3 and `review.quarterly` is stored and
+read. With the key named and nothing configured under it, the quarter reads
+as `missing`, which is exactly what it is.
 
 ## WHY Only the Configured Template's Rows Are Read (spec 046, T1.3)
 

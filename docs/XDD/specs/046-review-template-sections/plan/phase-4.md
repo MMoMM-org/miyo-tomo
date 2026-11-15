@@ -59,7 +59,7 @@ Turns the model's per-section proposals into a review document laid out like the
 
   1. Prime: SKILL.md steps 5-6 (117-161); `docs/tomo/dot_claude/skills/periodic-review.md`; `tests/test_review_skill.py:164, 478-492, 538`, `test_review_skill_contract.py:51`, `test_review_skill_pass2.py:43-46` `[ref: SDD/Components SKILL.md row; ADR-1]`
   2. Test: pins for: items per `read.json` `sections` entry from its description and keywords, reminders not finished text, at most `cap`, one place per item, the rest in the groups, analysis rows as overviews, counts per section in the report, the new refusals in the rewrite-once loop, the `section-checkbox-missing` stop.
-  3. Implement: WHY first; SKILL.md through `tcs-helper:skill-author`; version bump; record the character growth.
+  3. Implement: WHY first; SKILL.md through `tcs-helper:skill-author`; version bump; record the character growth. Note from T3.3: `read.json` `sections` carries no `placement` (SDD SectionDefinition), so the model cannot tell an analysis row from its fields alone; if "analysis rows as overviews" needs a marker, add `placement` (or an `analysis` flag) to `review-read.py` `section_definitions` and the SDD data model in this task, with a pin.
   4. Validate: skill tests green.
   5. Success: the model gathers what each section asks for `[ref: PRD/F1-AC2; F1-AC3 model part]`
 

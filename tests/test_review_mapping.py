@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_review_mapping.py — lib.review_mapping: template analysis, off-limits, landing check
 (spec 046 T1.2; PRD F2-AC3, F2-AC5, F2-AC11; SDD ADR-8, ADR-9, ADR-10, "Template analysis").
 
@@ -13,6 +13,8 @@ Covers:
   `%% fold %%` is kept verbatim; duplicates are keyed by (text, level, parent, occurrence)
 - landing_off_limits: a named row, an ancestor with sub-sections, an ancestor without
 - row ids s<n> kept per heading key, never reusing a number; dropped rows after a change
+- outline / from_outline classify as analyse_template does (T2.2); a stored outline of another
+  shape raises; landing names the heading whose body receives a before / under / end placement
 - the offered / left-out sets of the five test-vault templates (structure only, no journal
   text) match the SDD's Template analysis example
 """
@@ -405,3 +407,52 @@ def test_dropped_names_previous_rows_the_new_template_lacks() -> None:
     previous = [row("A", 2), row("B", 3, "A", occurrence=2), row("B", 3, None), row("Gone", 2)]
     assert rm.dropped(previous, heads) == [{"heading": "B", "level": 3, "parent": None},
                                            {"heading": "Gone", "level": 2, "parent": None}]
+
+
+# --- the outline setup-input checks against, and the landing (spec 046 T2.2) --------------------
+
+_OUTLINE = ("---\na: 1\n---\n# Title\n\n## Habits\n```dataview\nLIST\n```\n\n## <% tp.date.now() %>\n### Day\n\n"
+            "## Mixed\nown words\n`= this.x`\n\n## Box\n### Inner\nw\n### Last\nw\n# Second\n## After\nw\n")
+
+
+@pytest.mark.parametrize("off_limits", [(), (row("Inner", 3, "Box"),), (row("Box", 2, with_subsections=True),),
+                                        (row("Habits", 2),)])
+def test_from_outline_classifies_as_analyse_template_does(off_limits) -> None:
+    stored = rm.outline(_OUTLINE)
+    again = rm.from_outline(stored, list(off_limits))
+    direct = rm.analyse_template(_OUTLINE, list(off_limits))
+    assert [h.as_dict() for h in again] == [h.as_dict() for h in direct]
+    assert [h.ancestors for h in again] == [h.ancestors for h in direct]
+
+
+def test_the_outline_holds_the_structural_reason_only_and_the_level_1_lines() -> None:
+    stored = rm.outline(_OUTLINE)
+    reasons = {h["heading"]: h["reason"] for h in stored["headings"]}
+    assert reasons["Habits"] is None, "automatic depends on the off-limits rows: not stored"
+    assert reasons["<% tp.date.now() %>"] == TPL and reasons["Day"] == PPP
+    assert stored["top"] == [{"heading": "Title", "line": 4}, {"heading": "Second", "line": 23}]
+
+
+@pytest.mark.parametrize("broken", [None, [], {"headings": [{"heading": "A"}], "top": []},
+                                    {"headings": [], "top": [{"line": "x"}]}])
+def test_a_stored_outline_of_another_shape_raises_value_error(broken) -> None:
+    with pytest.raises(ValueError):
+        rm.from_outline(broken, [])
+
+
+@pytest.mark.parametrize("heading,placement,expected", [
+    ("Box", "before", "Mixed"),          # the body of the heading above
+    ("Box", "under", "Box"),
+    ("Box", "end", "Last"),              # the last heading inside the range, sub-sections included
+    ("Inner", "end", "Inner"),
+    ("Habits", "before", None),          # below a level-1 heading: never coverable
+    ("After", "before", None),
+    ("Second", "end", "After"),          # an anchor at level 1 ("Tomo Review" inside)
+    ("Title", "end", "Last"),            # a level-1 range ends at the next level-1 heading
+])
+def test_landing_names_the_heading_whose_body_receives_the_lines(heading, placement, expected) -> None:
+    stored = rm.outline(_OUTLINE)
+    heads, top = rm.from_outline(stored, []), rm.outline_top(stored)
+    line = next(e["line"] for e in [*stored["headings"], *stored["top"]] if e["heading"] == heading)
+    found = rm.landing(heads, top, line, placement)
+    assert (found.heading if found else None) == expected

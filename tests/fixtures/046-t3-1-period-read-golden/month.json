@@ -1,0 +1,779 @@
+{
+  "dailies_not_in_weekly": [
+    "Only Daily",
+    "Omega",
+    "Beta"
+  ],
+  "days": [
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-01.md"
+      ],
+      "date": "2026-03-01",
+      "fields": {},
+      "has_content": true,
+      "linked": [],
+      "links": [
+        "March Note",
+        "Only Daily"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "first [[March Note]] [[Only Daily]]"
+      },
+      "tasks": [
+        {
+          "done": true,
+          "done_date": "2026-03-01",
+          "source": "Efforts/500 OnGoing/Next Todos.md",
+          "text": "done before"
+        }
+      ]
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-02",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-03",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-04",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-05",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-06",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-07",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-08",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-09",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-10",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-11",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-12",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-13",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-14",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-15",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-16",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-17",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-18",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-19",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-20",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-21",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-22",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-23.md"
+      ],
+      "date": "2026-03-23",
+      "fields": {
+        "linked": "DP-2026-03-23"
+      },
+      "has_content": true,
+      "linked": [
+        {
+          "kind": "other",
+          "path": "DP-2026-03-23",
+          "text": "# Plan\n- planned\n",
+          "vault_path": "Efforts/300 Planner/DP-2026-03-23.md"
+        }
+      ],
+      "links": [
+        "Alpha",
+        "Omega",
+        "DP-2026-03-23",
+        "DP-2026-03-23"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "monday [[Alpha]] [[Omega]] [[DP-2026-03-23]]"
+      },
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026/2026-03-24.md"
+      ],
+      "date": "2026-03-24",
+      "fields": {},
+      "has_content": true,
+      "linked": [],
+      "links": [
+        "Beta"
+      ],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "tuesday [[Beta]]"
+      },
+      "tasks": [
+        {
+          "done": true,
+          "done_date": "2026-03-24",
+          "source": "Efforts/500 OnGoing/Next Todos.md",
+          "text": "done in week"
+        }
+      ]
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-25",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-26",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-27",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-28",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-29",
+      "fields": {},
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [],
+      "date": "2026-03-30",
+      "fields": {
+        "Mood": "1"
+      },
+      "has_content": false,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {},
+      "tasks": []
+    },
+    {
+      "dailies": [
+        "Calendar/301 Daily/2026-03-31.md"
+      ],
+      "date": "2026-03-31",
+      "fields": {
+        "Mood": "9"
+      },
+      "has_content": true,
+      "linked": [],
+      "links": [],
+      "partly_read": false,
+      "problems": [],
+      "sections": {
+        "Daily Log": "last day"
+      },
+      "tasks": []
+    }
+  ],
+  "growth": {
+    "created": [],
+    "mocs_changed": [],
+    "mocs_linked_by_new": []
+  },
+  "not_read": [],
+  "only_in_weekly_links": [
+    "Thought Note",
+    "Own Note",
+    "Delta",
+    "Epsilon"
+  ],
+  "open_tasks": [
+    {
+      "done": false,
+      "done_date": null,
+      "label": "open today",
+      "source": "Efforts/500 OnGoing/Next Todos.md",
+      "text": "still open"
+    }
+  ],
+  "period": {
+    "end": "2026-03-31",
+    "kind": "month",
+    "name": "2026-03",
+    "start": "2026-03-01"
+  },
+  "report": {
+    "advice": [],
+    "day_after": {
+      "dailies": [
+        {
+          "path": "Calendar/301 Daily/2026-04-01.md",
+          "state": "read"
+        }
+      ],
+      "date": "2026-04-01"
+    },
+    "days": [
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-01.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-01",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-02",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-03",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-04",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-05",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-06",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-07",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-08",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-09",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-10",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-11",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-12",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-13",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-14",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-15",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-16",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-17",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-18",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-19",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-20",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-21",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-22",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-23.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-23",
+        "duplicate": false,
+        "linked": [
+          {
+            "name": "DP-2026-03-23",
+            "path": "Efforts/300 Planner/DP-2026-03-23.md",
+            "state": "read"
+          }
+        ]
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026/2026-03-24.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-24",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-25",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-26",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-27",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-28",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-29",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [],
+        "date": "2026-03-30",
+        "duplicate": false,
+        "linked": []
+      },
+      {
+        "dailies": [
+          {
+            "path": "Calendar/301 Daily/2026-03-31.md",
+            "state": "found"
+          }
+        ],
+        "date": "2026-03-31",
+        "duplicate": false,
+        "linked": []
+      }
+    ],
+    "growth": {
+      "created": 0,
+      "kado_none": [
+        "created",
+        "mocs"
+      ],
+      "moc_folders": 1,
+      "mocs_changed": 0,
+      "mocs_linked_by_new": 0
+    },
+    "kado_empty": [],
+    "not_read": [],
+    "task_notes": [
+      {
+        "path": "Efforts/500 OnGoing/Next Todos.md",
+        "state": "read"
+      }
+    ],
+    "weekly_notes": [
+      {
+        "path": "Calendar/302 Weekly/2026/2026-W09.md",
+        "state": "read",
+        "week": "2026-W09"
+      },
+      {
+        "path": null,
+        "state": "absent",
+        "week": "2026-W10"
+      },
+      {
+        "path": null,
+        "state": "absent",
+        "week": "2026-W11"
+      },
+      {
+        "path": null,
+        "state": "absent",
+        "week": "2026-W12"
+      },
+      {
+        "path": "Calendar/302 Weekly/2026-W13.md",
+        "state": "read",
+        "week": "2026-W13"
+      },
+      {
+        "path": null,
+        "state": "absent",
+        "week": "2026-W14"
+      }
+    ],
+    "weekly_status": "found"
+  },
+  "weekly": [
+    {
+      "day_blocks": {
+        "2026-03-01": "#### Notes of the Day %% fold %%\n- march text [[March Note]]\n#### My final thoughts for that day\n- thoughts [[Thought Note]]"
+      },
+      "duplicate": false,
+      "links": [
+        "March Note",
+        "Thought Note",
+        "Own Note",
+        "Alpha"
+      ],
+      "overlap_days": 1,
+      "path": "Calendar/302 Weekly/2026/2026-W09.md",
+      "week": "2026-W09",
+      "week_text": {
+        "In my own words": "Own words [[Own Note]] and [[Alpha]]"
+      }
+    },
+    {
+      "day_blocks": {
+        "2026-03-23": "- monday block [[Alpha]] [[Delta]]",
+        "2026-03-29": "- sunday block"
+      },
+      "duplicate": false,
+      "links": [
+        "Alpha",
+        "Delta",
+        "Epsilon",
+        "2026-03-25",
+        "2026-W13"
+      ],
+      "overlap_days": 7,
+      "path": "Calendar/302 Weekly/2026-W13.md",
+      "week": "2026-W13",
+      "week_text": {
+        "In my own words": "",
+        "Reflections": "Reflection [[Epsilon]] [[2026-03-25]] [[2026-W13]]"
+      }
+    }
+  ]
+}

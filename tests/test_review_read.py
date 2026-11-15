@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -617,14 +617,54 @@ def test_measure_writes_no_file_and_prints_counts_and_bytes_only(mod, instance, 
     assert set(measure) == {"calls", "retried", "waited_s", "not_read", "bytes", "day_bytes"}
     assert measure["calls"] == fake.call_count and measure["retried"] == 0 and measure["not_read"] == 0
     assert measure["bytes"] == {"read.json": len(written)}
-    assert set(measure["day_bytes"]) == {"2026-03"} and 0 < measure["day_bytes"]["2026-03"] < len(written)
+    assert measure["day_bytes"] == _expected_day_bytes(written) and set(measure["day_bytes"]) == {"2026-03"}
     assert all(isinstance(v, (int, float)) for v in (measure["calls"], measure["retried"], measure["waited_s"]))
 
 
-def test_measure_of_a_quarter_counts_each_month_of_its_days(mod, instance, monkeypatch, capsys):
-    _quarter_setup(instance)
-    code, out, _ = _run(mod, monkeypatch, capsys,
-                        ["--period", "2026-Q1", "--kind", "quarter", "--measure"], quarter_vault())
+def _expected_day_bytes(written: bytes) -> dict:
+    """Per month of ``date``, the compact size of each days entry as it stands in read.json (no newline)."""
+    sums: dict = {}
+    for day in json.loads(written)["days"]:
+        size = len(json.dumps(day, ensure_ascii=True, separators=(",", ":")))
+        sums[day["date"][:7]] = sums.get(day["date"][:7], 0) + size
+    return sums
+
+
+def _written_then_measured(mod, instance, monkeypatch, capsys, argv, vault, stem):
+    """read.json of a normal run, then the --measure run of the same read (its file removed in between)."""
+    code, _, _ = _run(mod, monkeypatch, capsys, argv, vault())
+    assert code == 0
+    path = _read_json(instance, stem)
+    written = path.read_bytes()
+    path.unlink()
+    path.parent.rmdir()
+    code, out, _ = _run(mod, monkeypatch, capsys, [*argv, "--measure"], vault())
     assert code == 0 and out["status"] == "ok"
-    assert sorted(out["measure"]["day_bytes"]) == ["2026-01", "2026-02", "2026-03"]
-    assert not (instance / "tomo-tmp").exists()
+    assert not path.parent.exists()
+    return written, out["measure"]
+
+
+def test_measure_of_a_quarter_counts_each_month_of_its_days(mod, instance, monkeypatch, capsys):
+    # RED when a day's size counts _encode's trailing newline: every month sum is off by its day count
+    _quarter_setup(instance)
+    written, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                              ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault,
+                                              "2026-Q1_review")
+    assert sorted(measure["day_bytes"]) == ["2026-01", "2026-02", "2026-03"]
+    assert measure["day_bytes"] == _expected_day_bytes(written)
+    assert measure["bytes"] == {"read.json": len(written)}
+
+
+def _w14_vault() -> ReviewFakeVault:
+    """W14 runs 2026-03-30 .. 2026-04-05: dailies on both sides of the month boundary."""
+    return week_vault(**dict([daily(date(2026, 3, 31), "Tuesday end of March"),
+                              daily(date(2026, 4, 1), "Wednesday April [[Alpha]]"),
+                              daily(date(2026, 4, 5), "Sunday April\nSleep:: 8")]))
+
+
+def test_measure_of_a_week_across_a_month_boundary_splits_its_days_by_month(mod, instance, monkeypatch, capsys):
+    written, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                              ["--period", "2026-W14", "--kind", "week"], _w14_vault,
+                                              "2026-W14_review")
+    assert set(measure["day_bytes"]) == {"2026-03", "2026-04"}
+    assert measure["day_bytes"] == _expected_day_bytes(written)

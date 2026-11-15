@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.2.0
+# version: 0.2.1
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -185,8 +185,12 @@ def section_definitions(setup) -> List[dict]:
     return [{"key": row["id"], **{name: row[name] for name in DEFINITION_FIELDS}} for row in setup.sections]
 
 
+def _encode_body(data) -> str:
+    return json.dumps(data, ensure_ascii=True, separators=(",", ":"))
+
+
 def _encode(data) -> str:
-    return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
+    return _encode_body(data) + "\n"
 
 
 def _measure(result: dict, text: str) -> dict:
@@ -195,7 +199,7 @@ def _measure(result: dict, text: str) -> dict:
     day_bytes: dict = {}
     for day in result["days"]:
         month = day["date"][:7]
-        day_bytes[month] = day_bytes.get(month, 0) + len(_encode(day)) - 1
+        day_bytes[month] = day_bytes.get(month, 0) + len(_encode_body(day))
     return {"calls": report["calls"], "retried": report["retried"], "waited_s": report["waited_s"],
             "not_read": len(report["not_read"]), "bytes": {READ_FILE: len(text.encode("ascii"))},
             "day_bytes": day_bytes}

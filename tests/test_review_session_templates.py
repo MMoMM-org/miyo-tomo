@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.3.0
 """test_review_session_templates.py — the template choice and the anchor question of `review-session.py match`
 (spec 045 Phase 6, live-walk defect: a proposal with `template: null` and `anchor: null` that `setup-input` refused).
 
@@ -255,13 +255,17 @@ def test_the_chosen_template_gives_its_kind_and_the_anchor_from_its_headings(mod
     assert out["proposal"]["template"] == "archive/Wochenplan alt.md" and out["proposal"]["template_kind"] == "plain"
 
 
-def test_the_flag_wins_over_the_mapping_and_a_missing_choice_is_reported_as_today(mod, instance, monkeypatch, capsys):
+def test_the_flag_wins_over_the_mapping_and_a_missing_choice_is_reported_not_found(mod, instance, monkeypatch, capsys):
+    """Spec 046 ADR-13 (#267) changed the missing choice: it is no longer proposed as the template (a typo would
+    be saved) but reported as `template_not_found` with a null template and the candidates listed."""
     _config(instance, templates=_no_mapping(weekly="t_week.md"))
     out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_privat")
     assert out["proposal"]["template"] == "t_week_privat.md" and out["proposal"]["place"]["anchor"] == "Reflections"
 
     out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_gone")
-    assert out["proposal"]["template"] == "t_gone.md" and out["proposal"]["template_kind"] == "missing"
+    assert out["proposal"]["template"] is None and out["proposal"]["template_kind"] == "missing"
+    assert out["template_not_found"] == {"name": "t_gone.md", "source": "typed"}
+    assert out["template_candidates"] == ["archive/Wochenplan alt", "t_week", "t_week_privat", "t_week_work"]
     assert out["needs_anchor"] is True
 
 

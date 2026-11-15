@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_e2e.py — the 2-pass /review flow end to end on the fake vault, without an AI in the loop
 (spec 045 T6.1; PRD Secondary User Journeys 1, 2, 5, 6, 7; PRD Edge Cases; KPI Quality; F1-AC10; SDD Runtime View).
 
@@ -158,8 +158,9 @@ def test_setup_abort_saves_nothing_and_writes_nothing(walk: Walk):
     # the user answers Abort: no confirmed file, no setup-input, no writer, no further script
     assert (walk.root / "config" / "vault-config.yaml").read_bytes() == saved
     assert walk.vault.recorded == recorded_before and walk.vault.writes == []
-    assert [p for p in (walk.root / "tomo-tmp").rglob("*") if p.is_file()] == [], \
-        "no confirmed-/setup- file (nor any other file) left by match"
+    # spec 046 ADR-13: match keeps the rows it showed (setup text only); start removes it on the next run
+    assert [p.name for p in (walk.root / "tomo-tmp").rglob("*") if p.is_file()] == ["rows-month.json"], \
+        "no confirmed-/setup- file (nor any other file but the rows match showed) left by match"
     assert walk.start(WEEK_PERIOD)["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test_review_privacy.py — No journal content in the output of the /review scripts (spec 045 T5.4).
 
 PRD F7-AC1 / SDD ADR-9: Tomo's own records — stdout, stderr and the files under
@@ -307,6 +307,8 @@ def _session(w: Walk) -> None:
                      "--anchor", picked, "--today", TODAY])
     assert rc == 0 and "template_candidates" not in out and "needs_anchor" not in out, out
     assert out["proposal"]["template"] is None and out["proposal"]["place"]["anchor"] == picked, out
+    # spec 046 T2.1: match keeps the rows it showed; the tmp-leak check of every call covers this file
+    assert (w.root / "tomo-tmp" / "review" / "rows-week.json").is_file()
 
 
 def _week(w: Walk) -> None:

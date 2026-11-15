@@ -1,6 +1,6 @@
 # review_match.py — the setup proposal of /review: match the notes of a period kind and propose the setup.
-# version: 0.1.1
-"""The proposal behind ``review-session.py match`` (spec 045 F1; ADR-1, ADR-4).
+# version: 0.2.0
+"""The proposal behind ``review-session.py match`` (spec 045 F1; ADR-1, ADR-4; spec 046 T2.1, ADR-9, ADR-13).
 
 ``propose(open_vault, config, profile, args)`` lists the folder of one period
 kind, matches the existing names against the proposed format, infers the week
@@ -10,26 +10,43 @@ asks about (``template_candidates``, ``needs_anchor``, ``needs_template_ok``,
 ``daily_path_fix``, ``hints``). The unsafe-format and ``Stopped`` outputs are
 built here too, so the script only prints what comes back.
 
+``sections`` is always in an ``ok`` output: one candidate per template heading
+(``lib/review_mapping.analyse_template``) with ``defaults`` and the ``saved`` row
+of the resolved template, the saved ``off_limits`` rows, ``mappable`` and
+``dropped``; ``candidates`` is ``[]`` and ``mappable`` false when no heading
+takes a row. A typed or configured template Kado does not find becomes
+``template_not_found`` with a null template and the candidates listed. The
+configured anchor counts only while the resolved template is the configured
+one. A quarter's format, with none typed or configured, is the
+``QUARTER_FORMATS`` entry that parses the most note names.
+
+``match`` keeps the rows it shows in ``<args.tmp>/rows-<kind>.json`` (setup
+text only: ``ROW_FIELDS``) and reads the previous file for ``dropped``; a
+template not found or unreadable shows no rows and leaves the file alone.
+
 ``open_vault`` is a zero-argument callable returning the ``Vault``; the script
 passes ``lambda: Vault(KadoClient)`` so the client stays patchable where the
 script names it, and nothing is opened before the format is known to be safe.
 ``args`` is the parsed ``match`` namespace and is read for ``kind``, ``folder``,
 ``format``, ``first_day``, ``min_days``, ``template``, ``anchor``,
-``template_frontmatter_ok`` and ``today``.
+``template_frontmatter_ok``, ``tmp`` and ``today``.
 
 ``configured_rule`` and the ``str_value``/``str_list``/``review_section``
 config readers are shared with ``review-session.py start``; ``match_names``
 and ``day_name`` serve the proposal only.
 
-No clock of its own, no stdout, no exit code. Design notes: docs/tomo/scripts/lib/review_match.md
+No clock of its own, no stdout, no exit code; the rows file is its only write. Design notes: docs/tomo/scripts/lib/review_match.md
 """
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+import json
+from pathlib import Path, PurePosixPath
 from typing import Callable, List, Optional, Tuple
 
 from lib import review_config as rc
-from lib.period import DAY_NAMES, DEFAULT_FORMATS, ISO, WEEK, WeekRule, check_format, parse_name
+from lib.note_io import atomic_write_text
+from lib.period import DAY_NAMES, DEFAULT_FORMATS, ISO, QUARTER, WEEK, WeekRule, check_format, parse_name
+from lib.review_mapping import AUTOMATIC, TemplateHeading, analyse_template, dropped, row_key
 from lib.review_templates import (
     NO_TEMPLATE, anchor_candidates_from_notes, daily_sections_from, propose_anchor, resolve_template,
     template_anchor_candidates, template_has_frontmatter, template_vault_path,
@@ -40,6 +57,10 @@ from lib.week_rule_inference import Checked, Inference, infer_rule
 
 DEFAULT_HEADING = "Tomo Review"
 NON_ISO_WEEK_FORMAT = "gggg-[W]ww"
+QUARTER_FORMATS = ("YYYY-[Q]Q", "YYYY [Q]Q", "YYYY_[Q]Q", "[Q]Q YYYY", "[Q]Q-YYYY")
+OFFERED = "offered"
+END, REVIEW = "end", "review"         # an offered heading's default placement; an automatic one's only one
+ROW_FIELDS = ("heading", "level", "parent", "occurrence", "description", "keywords", "placement", "cap")
 
 FOLDER_HINT = ("Kado returned none for {folder}: the folder may be empty, or the Kado key "
                "may not reach it. Ask before proposing to create notes there.")
@@ -88,6 +109,91 @@ def match_names(notes: List[Tuple[str, str]], fmt: str, rule: WeekRule, kind: st
     return matched, unmatched
 
 
+def notes_format(notes: List[Tuple[str, str]], kind: str) -> Optional[str]:
+    """The ``QUARTER_FORMATS`` entry that parses the most note names (the first on a tie); None for another kind
+    or when no name parses."""
+    if kind != QUARTER:
+        return None
+    best, most = None, 0
+    for fmt in QUARTER_FORMATS:
+        count = sum(parse_name(stem, fmt) is not None for stem, _ in notes)
+        if count > most:
+            best, most = fmt, count
+    return best
+
+
+# --- the section mapping (spec 046 T2.1) ----------------------------------------------------
+
+def rows_path(tmp: str, kind: str) -> Path:
+    return Path(tmp) / f"rows-{kind}.json"
+
+
+def read_rows(path: Path) -> Optional[dict]:
+    """``{template, rows}`` of the rows file; None when it is absent or not the file ``write_rows`` writes."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
+        return None
+    return {"template": data.get("template"), "rows": [r for r in data["rows"] if isinstance(r, dict)]}
+
+
+def write_rows(path: Path, kind: str, template: Optional[str], rows: List[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"kind": kind, "template": template, "rows": rows}
+    atomic_write_text(path, json.dumps(data, ensure_ascii=True, indent=2) + "\n")
+
+
+def _defaults(head: TemplateHeading, saved: Optional[dict]) -> Optional[dict]:
+    if saved is not None:
+        return {"placement": saved["placement"], "cap": saved["cap"]}
+    if head.state == OFFERED:
+        return {"placement": END, "cap": rc.DEFAULT_CAP}
+    if head.reason == AUTOMATIC:
+        return {"placement": REVIEW, "cap": rc.DEFAULT_CAP}
+    return None
+
+
+def _candidate(head: TemplateHeading, saved: Optional[dict]) -> dict:
+    out = head.as_dict()
+    out.pop("line")
+    out["defaults"] = _defaults(head, saved)
+    out["saved"] = saved
+    return out
+
+
+def _shown_row(head: TemplateHeading, saved: Optional[dict]) -> Optional[dict]:
+    """The row the table shows for ``head``: its saved row, else a default row for an offered heading."""
+    if saved is None and head.state != OFFERED:
+        return None
+    source = saved or {**head.key._asdict(), "keywords": [], "placement": END, "cap": rc.DEFAULT_CAP}
+    return {name: source[name] for name in ROW_FIELDS if name in source}
+
+
+def section_proposal(config: dict, kind: str, template: Optional[str], text: Optional[str],
+                     previous: Optional[dict]) -> Tuple[dict, List[dict]]:
+    """``(sections, rows shown)`` for the resolved ``template`` and its ``text`` (None: nothing to analyse);
+    ``dropped`` names the ``previous`` rows the template lacks when ``previous`` was for another template."""
+    pointers: List[str] = []
+    saved_rows = rc.template_rows(config, kind, template, rc.SECTIONS, pointers)
+    off_limits = rc.template_rows(config, kind, template, rc.OFF_LIMITS, pointers)
+    heads = analyse_template(text, off_limits) if text is not None else []
+    saved = {row_key(r): r for r in saved_rows}
+    mappable = any(h.state == OFFERED or h.reason == AUTOMATIC for h in heads)
+    shown_heads = heads if mappable else []
+    shown = [row for row in (_shown_row(h, saved.get(h.key)) for h in shown_heads) if row is not None]
+    changed = previous is not None and previous["template"] != template
+    sections = {
+        "template": template,
+        "mappable": mappable,
+        "candidates": [_candidate(h, saved.get(h.key)) for h in shown_heads],
+        "off_limits": off_limits,
+        "dropped": dropped(previous["rows"], heads) if changed else [],
+    }
+    return sections, shown
+
+
 def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dict:
     kind = args.kind
     granularity = rc.GRANULARITY[kind]
@@ -121,7 +227,7 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
             default_fmt = DEFAULT_FORMATS[WEEK] if rule == ISO else NON_ISO_WEEK_FORMAT
         else:
             default_fmt = DEFAULT_FORMATS[kind]
-        fmt = args.format or configured_fmt or default_fmt
+        fmt = args.format or configured_fmt or notes_format(notes, kind) or default_fmt
         problems = check_format(fmt, kind, rule, today=args.today)
         matched, unmatched = match_names(notes, fmt, rule, kind, inference.checked)
         if listing == "found" and inference.verdict == "default" and not matched:
@@ -129,17 +235,25 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
 
         base = str_value(templates.get("base_path"))
         no_template = args.template == NO_TEMPLATE
-        template = None if no_template else args.template or str_value(get_path(templates, ("mapping", granularity))[1])
+        configured_template = str_value(get_path(templates, ("mapping", granularity))[1])
+        template = None if no_template else args.template or configured_template
         template_kind, template_text, candidates, hint = resolve_template(vault, base, template, kind,
                                                                           no_template=no_template)
+        not_found = None
+        if template is not None and template_kind == "missing":
+            not_found = {"name": template, "source": "typed" if args.template else "configured"}
+            template = None
+            _, _, candidates, hint = resolve_template(vault, base, None, kind)
         if hint is not None:
             hints.append(hint)
+        rows_shown = not_found is None and template_kind != "unreadable"
         template_headings = template_anchor_candidates(headings(template_text)) if template_text else []
         template_frontmatter = template_has_frontmatter(template_text) if template_text is not None else None
         needs_template_ok = template_frontmatter is False and args.template_frontmatter_ok != template
 
         place = section.get("place") if isinstance(section.get("place"), dict) else {}
-        anchor = args.anchor or str_value(place.get("anchor")) or propose_anchor(template_headings)
+        configured_anchor = str_value(place.get("anchor")) if template == configured_template else None
+        anchor = args.anchor or configured_anchor or propose_anchor(template_headings)
         anchor_candidates = anchor_candidates_from_notes(vault, notes, fmt, rule, kind) if anchor is None else None
 
         daily_sections = str_list(get_path(review, ("daily", "sections"))[1])
@@ -160,6 +274,11 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
     except Stopped as stop:
         return {"status": "stopped", "kind": kind, "error": {"kind": stop.kind, "detail": stop.detail}}
 
+    path = rows_path(args.tmp, kind)
+    sections, shown = section_proposal(config, kind, template, template_text if rows_shown else None,
+                                       read_rows(path) if rows_shown else None)
+    if rows_shown:
+        write_rows(path, kind, template, shown)
     placement = place.get("placement") if place.get("placement") in rc.PLACEMENTS else rc.BEFORE
     language = (str_value(review.get("language"))
                 or next((c.locale for c in inference.checked if c.locale), None)
@@ -187,6 +306,9 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
         "format_problems": [{"kind": p.kind, "example": p.example} for p in problems],
         "template_headings": [{"level": level, "text": text} for level, text in template_headings],
     }
+    result["sections"] = sections
+    if not_found is not None:
+        result["template_not_found"] = not_found
     if candidates is not None:
         result["template_candidates"] = candidates
     if anchor_candidates is not None:

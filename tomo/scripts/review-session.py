@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.6
+# version: 0.7.0
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -22,9 +22,9 @@ review``. Nothing is saved by any of them.
 Usage (cwd = instance root):
     python3 scripts/review-session.py start --args='<raw $ARGUMENTS>'
         [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
-    python3 scripts/review-session.py match --kind week|month
+    python3 scripts/review-session.py match --kind week|month|quarter
         [--folder P] [--format F] [--first-day D --min-days N] [--template T|none] [--anchor H]
-        [--template-frontmatter-ok T] [--today YYYY-MM-DD]
+        [--template-frontmatter-ok T] [--tmp tomo-tmp/review] [--today YYYY-MM-DD]
     python3 scripts/review-session.py setup-input --kind week|month --confirmed <json>
         [--output tomo-tmp/review/setup-<kind>.json] [--today YYYY-MM-DD]
 
@@ -48,6 +48,13 @@ Output: one JSON object on stdout, ASCII-escaped.
            evidence {matched, unmatched, week_rule given|inferred|ambiguous|default,
                      notes_checked, folder_listing found|kado-none, format_problems,
                      template_headings},
+           sections {template, mappable, candidates [{heading_key {heading, level, parent, occurrence},
+                     state offered|left-out, reason templater|link|per-period-parent|off-limits|automatic|null,
+                     flags [mixed|container|under-own], defaults {placement, cap} | null, saved <row> | null}],
+                     off_limits [<saved rows>], dropped [{heading, level, parent}]}
+             (always; candidates [] and mappable false when no heading takes a row),
+           template_not_found {name, source typed|configured} (only when Kado does not find the template;
+             proposal.template is then null and template_candidates is listed),
            daily_path_fix {configured, found} (only when the other spelling exists),
            template_candidates [names below templates.base_path, without .md, only those holding the kind
              word (week/woche, month/monat, case-insensitive; lib/review_templates.py)] (only when neither
@@ -115,6 +122,12 @@ Rules:
     it was given for, so a corrected template without a block is asked about
     again. The field stays false under the flag; only the question key goes.
     The skill repeats every answer on every rerun of ``match``.
+    ``match`` writes the rows it shows to ``<tmp>/rows-<kind>.json`` (setup text
+    only) and returns as ``dropped`` the earlier file's rows the template lacks
+    when the file was for another template; a template not found or unreadable
+    leaves the file alone. ``start`` removes every ``rows-<kind>.json`` first.
+    The configured anchor counts only while the resolved template is the
+    configured one. Nothing else is written by ``match``.
 
 Exit codes:
     0 — output usable (every status, every error object)
@@ -142,7 +155,7 @@ from lib import review_delivery as rdl  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
 from lib.period import DAY_NAMES, ISO, KINDS, SETUP, WEEK, RequestError, parse_args  # noqa: E402
-from lib.review_match import configured_rule, propose  # noqa: E402
+from lib.review_match import configured_rule, propose, rows_path  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import anchor_text, template_choice  # noqa: E402
 from lib.review_vault import Stopped, Vault  # noqa: E402
@@ -164,7 +177,17 @@ def load_config(path: str) -> dict:
 
 # ---------------------------------------------------------------- start
 
+def _remove_rows_files(tmp: str) -> None:
+    """A rows file belongs to one setup dialogue; a new session starts without one."""
+    for kind in KINDS:
+        try:
+            rows_path(tmp, kind).unlink(missing_ok=True)
+        except OSError:
+            pass        # a leftover only costs a spurious `dropped` line; start keeps exit 0
+
+
 def start(args: argparse.Namespace) -> dict:
+    _remove_rows_files(args.tmp)
     config = load_config(args.config)
     profile = rc.load_profile(Path(args.profiles_dir), config)
     rule = configured_rule(config) or ISO
@@ -340,6 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--template-frontmatter-ok", type=_typed(template_choice),
                    help="The template the user agreed to use without a frontmatter block (the --template syntax); "
                         "needs_template_ok is then not set for it")
+    m.add_argument("--tmp", default=DEFAULT_TMP, help=argparse.SUPPRESS)   # where rows-<kind>.json lives
     m.add_argument("--today", type=_date_arg, default=date.today(), help=argparse.SUPPRESS)
 
     s = sub.add_parser("setup-input", help="Build the vault-config-writer review input from a confirmed proposal")

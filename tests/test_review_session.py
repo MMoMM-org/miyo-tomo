@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.6
+# version: 0.3.7
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -424,7 +424,9 @@ def test_match_template_kinds(mod, instance, monkeypatch, capsys):
 
     _config(instance, templates=_templates_config(weekly="t_gone.md"))
     _, out, *_ = _match(mod, monkeypatch, capsys, fake)
-    assert out["proposal"]["template"] == "t_gone.md" and out["proposal"]["template_kind"] == "missing"
+    # spec 046 ADR-13: a configured template Kado does not find is reported, not proposed
+    assert out["proposal"]["template"] is None and out["proposal"]["template_kind"] == "missing"
+    assert out["template_not_found"] == {"name": "t_gone.md", "source": "configured"}
     assert not any("no access" in h for h in out["hints"])
 
     _config(instance, templates=_templates_config(weekly="t_week.md"))

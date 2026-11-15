@@ -473,8 +473,9 @@ spurious `dropped` line, not a wrong save, and `start` keeps its exit-0
 contract. Nothing else under `tomo-tmp/review/` is touched.
 
 `match` gains `--tmp` (the same default as `start`'s) so both subcommands
-name one folder and a test can point them elsewhere; the skill passes
-neither.
+name one folder and a test can point them elsewhere. It is hidden from
+`--help` like `--today`: the skill never passes it, and a visible flag is
+one the setup dialogue would have to carry back.
 
 ## WHY the JSON Is Written ASCII-Escaped
 

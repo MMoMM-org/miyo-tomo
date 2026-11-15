@@ -312,6 +312,12 @@ counted from 0, so the skill names the heading of that row instead of a JSON pat
 with `template: null` and the candidates listed. The skill says the name was not found — the typed one, or the
 saved one when `source` is `configured` — and the existing candidates question asks for another; the "no template
 is saved" sentence is said only without `template_not_found`, because for a typed name it would be false.
+`match` sets `template_not_found` independently of `template_candidates`, and the candidate list is empty when the
+templates folder lists nothing; then no candidates question fires, and without its own line the flow would fall
+through to `<template>` `none` without the user ever choosing a plain note. So the empty-list case asks in the same
+reply for a typed name or `0` for none — the same single question turn the candidates path has, not an extra one
+(owner decision 2026-11-15). A table correction prints the whole table again with the change, so the user confirms
+what is actually saved, not a remembered earlier version plus a described edit.
 
 `sections.dropped` names the headings of the earlier mapping the template lacks: once after a template change
 (the first `match` with the new template; the rows file is then rewritten, so a later rerun shows none), and on
@@ -341,7 +347,8 @@ be changed the same way as the others; the first quarter setup comes from `/revi
 The command's and the skill's argument hints name `quarter` and `2026-Q1`.
 
 **Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
-(+3,898, `wc -c`; 221 → 233 lines). The SDD estimated about 1,000 characters for the sections; the estimate did not
+(+3,898, `wc -c`; 220 → 233 lines) at 0.2.0; the T2.3 review fixes (the empty-candidates question, the table
+printed again) brought it to 28,600 at 0.2.1, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
 count the per-reason words, the per-kind group list, the Correct operations and the confirmed-file shape, each
 of which a literal model needs spelled out. The trim is #259. No `STRICT` block was added: no
 run has shown a deviation in this step yet.

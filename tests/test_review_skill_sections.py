@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_skill_sections.py — spec 046 T2.3: the setup step's mapping table in the periodic-review skill.
 
 The dialogue is model behaviour; these pins prove that each criterion has its imperative in
@@ -26,6 +26,11 @@ SETUP_KINDS = "`<kind>` is `week`, `month` or `quarter`."
 NOT_FOUND = ("- `template_not_found` is set → say that the template `template_not_found.name` was not found "
              "(`source` `typed`: the name typed, `configured`: the saved one); the `template_candidates` line asks "
              "for another.")
+NO_CANDIDATES = ("`template_candidates` is empty → in the same reply ask: Which template, typed, or `0` for none? "
+                 "End the turn. A typed name → `<template>` is that name in double quotes; run "
+                 "`python3 scripts/review-session.py match --kind <kind> --template <template>` with the flags of the "
+                 "last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with "
+                 "this output: no template, a plain note.")
 CARVE_OUT = ("- When `<template>` changes, the next `match` call carries no `--anchor` and `<anchor>` is unset: the "
              "new output proposes the place, and `needs_anchor` asks again.")
 DROPPED = ("- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under "
@@ -56,7 +61,7 @@ CORRECT_TABLE = ("- Correct of the table: the user names a row (`s<n>` or its he
                  "`reason` and add nothing; a heading not among the candidates → say it is not in `<template>`. Mark "
                  "a candidate off-limits, heading only or with sub-sections → it joins the `Off-limits:` line and its "
                  "row leaves the table (with sub-sections, the rows under it too); unmark → it leaves the line. Print "
-                 "the table with the change, run no `match` and ask `1 Confirm · 2 Correct · 3 Abort` again.")
+                 "the table again with the change, run no `match` and ask `1 Confirm · 2 Correct · 3 Abort` again.")
 RERUN_TABLE = ("- A `match` rerun with the same `<template>` keeps the table changes; with a changed `<template>` the "
                "table is built anew from the new `sections`.")
 CONFIRM_ROWS = ("With `sections.mappable` true, add `sections`, the table rows in order, each with `heading`, `level`, "
@@ -181,6 +186,12 @@ def test_a_template_not_found_is_named_before_the_candidates_are_asked():
     text = _setup()
     assert NOT_FOUND in text
     assert text.index(NOT_FOUND) < text.index("`template_candidates` is non-empty")
+
+
+def test_a_template_not_found_without_candidates_asks_for_a_typed_name_or_none():
+    """Owner decision 2026-11-15: an empty candidate list must not fall through to `none` silently."""
+    text = _setup()
+    assert NOT_FOUND + " " + NO_CANDIDATES in text
 
 
 def test_the_dropped_headings_are_named_after_a_template_change():

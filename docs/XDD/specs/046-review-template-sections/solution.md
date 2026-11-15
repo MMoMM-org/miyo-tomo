@@ -1,6 +1,6 @@
 ---
 title: "/review: review material for the user's own template sections"
-status: draft
+status: approved
 version: "1.3"
 ---
 

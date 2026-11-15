@@ -5,10 +5,10 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-11-13 |
-| **Current Phase** | PLAN |
+| **Current Phase** | Ready |
 | **Decomposition tier** | Incremental |
 | **Model tier** | hard |
-| **Last Updated** | 2026-11-14 |
+| **Last Updated** | 2026-11-15 |
 
 ## Documents
 
@@ -66,6 +66,7 @@
 | 2026-11-14 | Phase SDD → PLAN | SDD v1.2 completed; tiers confirmed |
 | 2026-11-14 | Plan validation (independent opus): not ready — 3 HIGH (more tests RED than parity once the producer schema gains the action early; `test_review_sdd_map` RED from Phase 1; spec 046 map not parseable by it), 9 MEDIUM, 10 LOW; coverage complete (49/49), ~85 code refs checked | Worked into plan v1.1 and SDD v1.3 |
 | 2026-11-14 | Schema timing: every instruction-schema change (producer schema, schema_version "4", shape manifest, vendored copy) lands together in T6.1 after Hashi releases; until then the new action is tested against a test-only schema built from the handoff fragment, and the full suite stays GREEN at every phase validation | Owner (recommended); listing every expected-RED node id for weeks was rejected |
+| 2026-11-15 | Phase PLAN → Ready; branch pushed; the PR opens after implementation and the joint Tomo + Hashi live walk | Owner: finalize + push branch |
 
 ## Context
 

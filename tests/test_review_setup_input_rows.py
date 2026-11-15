@@ -33,6 +33,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(TESTS_DIR))
 
 from lib import review_config as rc  # noqa: E402
+from lib.kado_client import KadoToolError  # noqa: E402
 from review_fake_vault import ReviewFakeVault  # noqa: E402
 
 TODAY = "2026-11-11"
@@ -105,8 +106,8 @@ def _vault() -> ReviewFakeVault:
     return ReviewFakeVault(files, folders=[WEEKLY, TEMPLATES])
 
 
-def _main(mod, monkeypatch, capsys, *argv) -> dict:
-    monkeypatch.setattr(mod, "KadoClient", _vault())
+def _main(mod, monkeypatch, capsys, *argv, fake=None) -> dict:
+    monkeypatch.setattr(mod, "KadoClient", fake or _vault())
     code = mod.main(["--profiles-dir", "profiles", *argv, "--today", TODAY])
     out, err = capsys.readouterr()
     assert BODY not in out and BODY not in err
@@ -114,8 +115,8 @@ def _main(mod, monkeypatch, capsys, *argv) -> dict:
     return json.loads(out)
 
 
-def _match(mod, monkeypatch, capsys, *extra) -> dict:
-    out = _main(mod, monkeypatch, capsys, "match", "--kind", "week", *extra)
+def _match(mod, monkeypatch, capsys, *extra, fake=None) -> dict:
+    out = _main(mod, monkeypatch, capsys, "match", "--kind", "week", *extra, fake=fake)
     assert out["status"] == "ok", out
     return out
 
@@ -209,6 +210,20 @@ def test_rows_for_a_template_match_did_not_show_are_refused(mod, instance, monke
     out = _setup(mod, monkeypatch, capsys, instance, {**proposal, "template": "t_week_plain.md"},
                  sections=[row(key("Theme"))])
     _refused(out, "/template", "template-not-found")
+
+
+def test_rows_for_an_unreadable_template_are_refused_and_the_template_alone_is_saved(
+        mod, instance, monkeypatch, capsys):
+    _match(mod, monkeypatch, capsys, "--template", "t_week_plain")
+    fake = _vault()
+    fake.fail[("read_note", TEMPLATES + TEMPLATE)] = KadoToolError("kado-read returned an error: PERMISSION_DENIED")
+    out = _match(mod, monkeypatch, capsys, fake=fake)
+    assert (out["proposal"]["template"], out["proposal"]["template_kind"]) == (TEMPLATE, "unreadable")
+    place = {"anchor": "Planning", "placement": "before"}
+    refused = _setup(mod, monkeypatch, capsys, instance, {**out["proposal"], "place": place}, sections=[row(PLANNING)])
+    _refused(refused, "/template", "template-not-found")
+    accepted = _setup(mod, monkeypatch, capsys, instance, {**out["proposal"], "place": place})
+    assert _written(instance, accepted)["template"] == TEMPLATE, "spec 045: an unreadable template is still saved"
 
 
 def test_rows_without_any_match_are_refused(mod, instance, monkeypatch, capsys):

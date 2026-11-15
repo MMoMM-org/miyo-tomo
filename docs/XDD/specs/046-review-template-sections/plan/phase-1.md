@@ -56,7 +56,7 @@ Establishes the storage, the template analysis and the quarter as a period, on w
   4. Validate: `test_review_config.py`, `test_vault_config_writer_review.py` green; ruff clean.
   5. Success: rows and off-limits marks are stored per template and read back for the configured one `[ref: PRD/F2-AC7, F2-AC8, F2-AC10]`
 
-- [ ] **T1.4 Quarter as a period kind** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T1.4 Quarter as a period kind** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: `tomo/scripts/lib/period.py` (`KINDS` 28-31, `DEFAULT_FORMATS` 34, `_TOKENS` 36, `Period` 123-176, `weeks_overlapping` 167, `format_kind` 221, `check_format` 301, `parse_args` 384, `_parse_period_word` 425, `_latest_finished_with_number` 460, `_parse_at` 473); `lib/review_templates.py` `KIND_WORDS` 45; `lib/review_state.py` `_infer_kind` 322; `review-session.py:251`; `tests/test_period.py` `[ref: SDD/Architecture Decisions; ADR-6]`
   2. Test: `Period.quarter` bounds and `2026-Q5` → `InvalidPeriod`; `containing`, `previous`, `months()`, `weeks_overlapping` for 2026-Q1 (W01 starts 2025-12-29, W14 ends 2026-04-05); the `Q` token renders and parses `YYYY-[Q]Q`; `format_kind` exactly-one over three kinds; `/review quarter` on 2026-11-14 → 2026-Q3; `2026-Q1`; `Q1` → most recent finished with `year_inferred`; `2026-Q5` → `invalid-period` with example `2026-Q4`; an unfinished quarter → `unfinished-period`; an @-picked `2026-Q1` note; `_infer_kind("2026-Q1")` is quarter; every existing `test_period.py` case stays green.

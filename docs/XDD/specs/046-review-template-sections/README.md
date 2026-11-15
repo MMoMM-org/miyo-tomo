@@ -68,6 +68,8 @@
 | 2026-11-14 | Schema timing: every instruction-schema change (producer schema, schema_version "4", shape manifest, vendored copy) lands together in T6.1 after Hashi releases; until then the new action is tested against a test-only schema built from the handoff fragment, and the full suite stays GREEN at every phase validation | Owner (recommended); listing every expected-RED node id for weeks was rejected |
 | 2026-11-15 | Phase PLAN → Ready; branch pushed; the PR opens after implementation and the joint Tomo + Hashi live walk | Owner: finalize + push branch |
 | 2026-11-15 | Implementation starts on `docs/263-review-template-sections` (Standard mode); no separate feat branch | The `tcs-git-helpers` hook refused a branch from an unfinished one (BRANCH_FROM_UNFINISHED); owner chose to stay rather than override; spec and code ship in one PR |
+| 2026-11-15 | T1.2: SDD Template analysis trace corrected — "Review of the Week" is offered with flag `container`, not left out as `per-period-parent` | In the real `t_week_privat` it also holds four non-per-period L3 headings; the stated rule ("container of only such headings") offers it, the conservative side of ADR-9. Owner accepted the correction |
+| 2026-11-15 | T1.4 deviations accepted: `GRANULARITY[QUARTER]` added early in `review_config.py` (T1.3's line; `start` raised KeyError without it); `review_match` default format per kind; `review-read.py --kind` limited to week/month until Phase 3 | Forced by `KINDS` gaining quarter (ADR-6); reviewed PASS |
 
 ## Context
 

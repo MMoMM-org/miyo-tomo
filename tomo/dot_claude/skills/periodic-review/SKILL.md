@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Bash
 argument-hint: "a period (2026-W13, W13, 2026-03, 2026-Q1), month, quarter, setup, an @-picked weekly or monthly note, or nothing"
 ---
 # Periodic Review
-# version: 0.2.1
+# version: 0.2.2
 
 Review one finished week or month with the user: Pass 1 writes a review document to the inbox, Pass 2 turns the edited document into an instruction set. Run the steps in order. Run every script from the session's working directory (the instance root), never from the skill's base directory. Write only `tomo-tmp/review/<stem>/proposals.json` and `tomo-tmp/review/confirmed-<kind>.json` yourself; every other change goes through the scripts below.
 
@@ -66,14 +66,14 @@ python3 scripts/review-session.py match --kind <kind>
 ```
 
 - `status` `stopped` → the stopped rule. `error.kind` `unsafe-format` → say the name format must not contain `/`, `\` or `..` and ask for another format; rerun `match` with it as `--format`.
-- `template_not_found` is set → say that the template `template_not_found.name` was not found (`source` `typed`: the name typed, `configured`: the saved one); the `template_candidates` line asks for another. `template_candidates` is empty → in the same reply ask: Which template, typed, or `0` for none? End the turn. A typed name → `<template>` is that name in double quotes; run `python3 scripts/review-session.py match --kind <kind> --template <template>` with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note.
+- `template_not_found` is set → say that the template `template_not_found.name` was not found (`source` `typed`: the name typed, `configured`: the saved one); the `template_candidates` line asks for another. `template_candidates` is empty → in the same reply ask: Which template, typed, or `0` for none? End the turn. A typed name → `<template>` is that name in double quotes; run `python3 scripts/review-session.py match --kind <kind> --template <template>` with the flags of the last `match` call added, except `--template` and `--anchor`, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note.
 - `template_candidates` is non-empty → without `template_not_found`, say that no template is saved for `<kind>`; say that these notes of the templates folder fit it; ask, numbered on one line with `0 none` last: `1 <name> · 2 <name> · 0 none`. End the turn. A number → `<template>` is `"<name>"`, the chosen name in double quotes; a typed name → `<template>` is that name in double quotes; run:
 
 ```bash
 python3 scripts/review-session.py match --kind <kind> --template <template>
 ```
 
-with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without `template_candidates`, `<template>` is `"<proposal.template>"` when `proposal.template` is set, else `none`.
+with the flags of the last `match` call added, except `--template` and `--anchor`, and continue with its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without `template_candidates`, `<template>` is `"<proposal.template>"` when `proposal.template` is set, else `none`.
 - Every later `match` call of this step carries `--template <template>`, once `<anchor>` is given `--anchor "<anchor>"`, once the week question is answered `--first-day <day> --min-days <n>`, and once the frontmatter question is answered with `1` `--template-frontmatter-ok <ok-template>`: the script then lists no candidates, asks for no anchor, reports `week_rule` `given` and sets no `needs_template_ok`, so each question is asked once. Never drop one of these flags from a rerun, except `--anchor` by the next line.
 - When `<template>` changes, the next `match` call carries no `--anchor` and `<anchor>` is unset: the new output proposes the place, and `needs_anchor` asks again.
 - Print `proposal`, `evidence` (`matched`, `unmatched`, `week_rule`, `folder_listing`, `format_problems`) and every line of `hints`.

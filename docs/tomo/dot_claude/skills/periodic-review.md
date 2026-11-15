@@ -316,8 +316,14 @@ is saved" sentence is said only without `template_not_found`, because for a type
 templates folder lists nothing; then no candidates question fires, and without its own line the flow would fall
 through to `<template>` `none` without the user ever choosing a plain note. So the empty-list case asks in the same
 reply for a typed name or `0` for none — the same single question turn the candidates path has, not an extra one
-(owner decision 2026-11-15). A table correction prints the whole table again with the change, so the user confirms
-what is actually saved, not a remembered earlier version plus a described edit.
+(owner decision 2026-11-15). Both template-choice reruns, the typed name and the picked candidate, add the flags of
+the last `match` call except `--template` and `--anchor` (T2.3 code review): after a `template_not_found` the last
+call carries the name that failed, and `match` keeps the last of two `--template` values (argparse's `store`
+action), so the old name added after the new one would win and the same question would come back; an old
+`--anchor` names a heading of the template it was given for, which the carve-out below keeps off a template change,
+and the rerun sentence names both flags itself because it is the line a literal model follows at that point. A
+table correction prints the whole table again with the change, so the user confirms what is actually saved, not a
+remembered earlier version plus a described edit.
 
 `sections.dropped` names the headings of the earlier mapping the template lacks: once after a template change
 (the first `match` with the new template; the rows file is then rewritten, so a later rerun shows none), and on
@@ -348,7 +354,8 @@ The command's and the skill's argument hints name `quarter` and `2026-Q1`.
 
 **Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
 (+3,898, `wc -c`; 220 → 233 lines) at 0.2.0; the T2.3 review fixes (the empty-candidates question, the table
-printed again) brought it to 28,600 at 0.2.1, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
+printed again) brought it to 28,600 at 0.2.1 and the `--template` / `--anchor` exception of the two
+template-choice reruns to 28,672 at 0.2.2, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
 count the per-reason words, the per-kind group list, the Correct operations and the confirmed-file shape, each
 of which a literal model needs spelled out. The trim is #259. No `STRICT` block was added: no
 run has shown a deviation in this step yet.

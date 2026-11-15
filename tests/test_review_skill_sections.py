@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_skill_sections.py — spec 046 T2.3: the setup step's mapping table in the periodic-review skill.
 
 The dialogue is model behaviour; these pins prove that each criterion has its imperative in
@@ -14,7 +14,9 @@ again (F7-AC1), dropped headings are named (F7-AC3), `--anchor` is not carried o
 same session after the save (F2-AC10, an untested close-out gap of spec 044).
 
 RED before T2.3: none of these lines is in the skill; step 2 names `week` or `month` only and step 1
-routes a quarter to step 3, whose `review-read.py --kind quarter` exits 2.
+routes a quarter to step 3, whose `review-read.py --kind quarter` exits 2. RED before the T2.3 code-review
+fix: the two template-choice reruns added every flag of the last `match` call, its `--template` and
+`--anchor` too.
 """
 from __future__ import annotations
 
@@ -29,8 +31,10 @@ NOT_FOUND = ("- `template_not_found` is set → say that the template `template_
 NO_CANDIDATES = ("`template_candidates` is empty → in the same reply ask: Which template, typed, or `0` for none? "
                  "End the turn. A typed name → `<template>` is that name in double quotes; run "
                  "`python3 scripts/review-session.py match --kind <kind> --template <template>` with the flags of the "
-                 "last `match` call added, and continue with its output. `0` → `<template>` is `none`; continue with "
-                 "this output: no template, a plain note.")
+                 "last `match` call added, except `--template` and `--anchor`, and continue with its output. `0` → "
+                 "`<template>` is `none`; continue with this output: no template, a plain note.")
+RERUN_FLAGS = "with the flags of the last `match` call added"
+RERUN_EXCEPT = RERUN_FLAGS + ", except `--template` and `--anchor`, and continue with its output."
 CARVE_OUT = ("- When `<template>` changes, the next `match` call carries no `--anchor` and `<anchor>` is unset: the "
              "new output proposes the place, and `needs_anchor` asks again.")
 DROPPED = ("- `sections.dropped` is non-empty → say in one line per entry that `heading` (level `level`, under "
@@ -192,6 +196,15 @@ def test_a_template_not_found_without_candidates_asks_for_a_typed_name_or_none()
     """Owner decision 2026-11-15: an empty candidate list must not fall through to `none` silently."""
     text = _setup()
     assert NOT_FOUND + " " + NO_CANDIDATES in text
+
+
+def test_a_template_choice_rerun_adds_neither_the_old_template_nor_the_old_anchor():
+    """Code review of T2.3: after a `template_not_found` the last `match` call carries the name that failed, and
+    `match`'s parser keeps the last of two `--template` values (argparse `store`), so the old name added after the
+    new one wins and the question repeats; an old `--anchor` would break the carve-out. Both reruns — the typed
+    name and the candidate pick — name the exception, and no rerun adds the last call's flags without it."""
+    text = _setup()
+    assert text.count(RERUN_EXCEPT) == text.count(RERUN_FLAGS) == 2
 
 
 def test_the_dropped_headings_are_named_after_a_template_change():

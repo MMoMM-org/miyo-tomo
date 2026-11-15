@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.6
+# version: 0.2.7
 """test_review_skill.py — spec 045 T5.2: the /review command shim, the periodic-review skill and the help entry;
 Pass 1 and the rules (the Pass 2 steps, the SDD rows and the CLI sweep are in the sibling files, P5 D8).
 
@@ -76,7 +76,7 @@ from review_skill_helpers import (
 # ── Files, headers, frontmatter ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.1")], ids=["command", "skill"])
+@pytest.mark.parametrize(("path", "version"), [(COMMAND, "0.1.1"), (SKILL, "0.2.2")], ids=["command", "skill"])
 def test_carries_its_version_header(path, version):
     assert re.search(rf"^# version: {re.escape(version)}$", _text(path), re.MULTILINE)
 
@@ -352,7 +352,8 @@ def test_setup_abort_saves_nothing_and_an_earlier_saved_kind_stays():
 
 def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     """Phase 6 live walk: no `templates.mapping.<kind>` → `match` lists `template_candidates`; the skill asks,
-    numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2)."""
+    numbered with `0 none` last, ends the turn, and reruns `match --template` for a number (owner decisions 1, 2).
+    Spec 046 T2.3 code review: the rerun adds the last call's flags except `--template` and `--anchor`."""
     text = _section("2. Setup")
     assert ("`template_candidates` is non-empty → without `template_not_found`, say that no template is saved for "
             "`<kind>`; say that these notes of the templates folder fit it; ask, numbered on one line with "
@@ -361,9 +362,10 @@ def test_setup_asks_for_the_template_when_candidates_are_listed(tmp_path):
     assert ("A number → `<template>` is `\"<name>\"`, the chosen name in double quotes; a typed name → `<template>` "
             "is that name in double quotes; run:") in text
     assert "python3 scripts/review-session.py match --kind <kind> --template <template>" in text
-    assert ("with the flags of the last `match` call added, and continue with its output. `0` → `<template>` is "
-            "`none`; continue with this output: no template, a plain note. Without `template_candidates`, "
-            "`<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else `none`.") in text
+    assert ("with the flags of the last `match` call added, except `--template` and `--anchor`, and continue with "
+            "its output. `0` → `<template>` is `none`; continue with this output: no template, a plain note. Without "
+            "`template_candidates`, `<template>` is `\"<proposal.template>\"` when `proposal.template` is set, else "
+            "`none`.") in text
     assert CARRY_RULE in text
     assert text.index("`template_candidates` is non-empty") < text.index("Print `proposal`"), \
         "the template question comes before the proposal is printed: its answer changes the proposal"

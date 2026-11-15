@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -439,6 +439,7 @@ def test_a_given_stem_names_the_stage_folder(mod, instance, monkeypatch, capsys)
     ["--kind", "week"],
     ["--period", "2026-W13"],
     ["--period", "2026-W13", "--kind", "year"],
+    ["--period", "2026-Q1", "--kind", "quarter"],                    # a kind lib/period knows, review-read cannot read yet
     ["--period", "2026-03", "--kind", "week"],
     ["--period", "2026-W13", "--kind", "month"],
     ["--period", "2026-W60", "--kind", "week"],

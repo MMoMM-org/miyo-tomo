@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.2.1
+# version: 0.2.2
 """The ``/review`` setup of one period kind (spec 045, T2.1, T2.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -194,7 +194,7 @@ def setup_present(config: dict, kind: str) -> bool:
 def review_setup(config: dict, profile: dict, kind: str, *, today: Optional[date] = None) -> Optional[ReviewSetup]:
     """The setup of ``kind``; None while missing; ``SetupInvalid`` when present but broken."""
     if kind not in KINDS:
-        raise ValueError("kind must be week or month")
+        raise ValueError("kind must be one of: " + ", ".join(KINDS))
     if not setup_present(config, kind):
         return None
     granularity = GRANULARITY[kind]

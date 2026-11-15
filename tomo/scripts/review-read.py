@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.1.3
+# version: 0.1.4
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -66,7 +66,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from lib import review_config as rc  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoConnectionError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
-from lib.period import KINDS, MONTH, WEEK, InvalidPeriod, Period, WeekRule  # noqa: E402
+from lib.period import MONTH, WEEK, InvalidPeriod, Period, WeekRule  # noqa: E402
 from lib.review_day import day_settings  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, ReviewPacer  # noqa: E402
 from lib.review_period import read_period, sources_from_config  # noqa: E402
@@ -116,7 +116,7 @@ def _date_arg(text: str) -> date:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Read one finished period for /review.")
     p.add_argument("--period", required=True, help="Canonical period name: 2026-W13 or 2026-03")
-    p.add_argument("--kind", required=True, choices=KINDS)
+    p.add_argument("--kind", required=True, choices=tuple(_PERIOD_RE))
     p.add_argument("--stem", type=_stem_arg, help="Stage folder under --tmp (default: <period>_review)")
     p.add_argument("--tmp", default=DEFAULT_TMP, help="Where tomo-tmp/review/<stem>/ lives")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")

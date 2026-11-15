@@ -47,6 +47,11 @@ rule than under ISO (F2-AC9) and the read must cover the days `start`
 printed. A name that does not fit the kind is a usage error (exit 2): the
 skill passed the wrong thing, there is nothing for the user to decide.
 
+WHY `--kind` offers only the kinds `_PERIOD_RE` can parse, not all of
+`lib.period.KINDS`: spec 046 T1.4 added `quarter` to `KINDS`, but reading a
+quarter is Phase 3; until then argparse refuses `--kind quarter` (exit 2)
+instead of `period_from` failing with a KeyError once a quarter setup exists.
+
 ## WHY the Setup Is Required
 
 WHY: F2-AC8 — the setup runs before the first review of a kind, so by the

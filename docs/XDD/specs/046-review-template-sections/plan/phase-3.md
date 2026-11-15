@@ -46,7 +46,7 @@ Reads a quarter like a month one level up, and hands the model the section defin
   4. Validate: `test_review_period*.py`, `test_review_read.py` green; `review_period.py` ≤ 450 lines; ruff clean.
   5. Success: a quarter reads its dailies, weekly notes as sources and monthly notes with marks `[ref: PRD/F6-AC4, F6-AC5]`
 
-- [ ] **T3.3 Read files: section definitions, compact JSON, quarter period, `--measure`** `[activity: backend-api]`
+- [x] **T3.3 Read files: section definitions, compact JSON, quarter period, `--measure`** `[activity: backend-api]`
 
   1. Prime: `tomo/scripts/review-read.py` (`_PERIOD_RE` 78, `period_from` 91, `run` 164-199, `indent=2` 195); `lib/review_config.ReviewSetup.sections` (T1.3) `[ref: SDD/Internal API Changes; ADR-1; ADR-7]`
   2. Test: `read.json` carries `sections` (key, heading, level, parent, description, keywords, groups, cap; analysis rows included) only with a mapping; written compact; `--kind quarter --period 2026-Q1` reads the quarter; `--measure` writes no file for the model and prints calls, waits and bytes only (privacy test: no note text on stdout or stderr); without a mapping the result equals the golden content apart from the compact encoding (CON-2 difference pinned).

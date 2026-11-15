@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """review_period_fixtures.py — the fixtures of the period-read tests
 (tests/test_review_period.py and tests/test_review_period_end_pass.py;
 spec 045 T3.3).
@@ -15,7 +15,8 @@ lines are today's fields, `Y-Name:: v` lines are yesterday fields,
 the owner's notes. `week_vault()` holds ISO week 2026-W13 with its day after,
 a planner note and a task note; `month_vault()` holds March 2026 with two
 weekly notes; `growth_vault()` adds stamped notes and MOCs around the W13
-bounds.
+bounds; `quarter_vault()` holds 2026-Q1 with disagreeing dailies, weekly
+and monthly notes (spec 046 T3.2).
 """
 from __future__ import annotations
 
@@ -198,6 +199,64 @@ def month_vault(**files) -> ReviewFakeVault:
     base[TASK_NOTE] = TASK_NOTE_TEXT
     base.update(files)
     return ReviewFakeVault(base, folders=[DAILY, WEEKLY, MOCS])
+
+
+MONTHLY = "Calendar/303 Monthly/"
+Q1 = Period.quarter(2026, 1)             # 2026-01-01 .. 2026-03-31; weeks 2026-W01 .. 2026-W14
+
+W01_NOTE = """# Weekly Review: [[2026-W01]]
+## Review of the Week
+### [[2025-12-30|2025-12-30 Tue]]
+- old year [[Old Year]]
+### [[2026-01-02|2026-01-02 Fri]]
+- new year [[New Year]]
+### In my own words
+Own [[Week Own]]
+"""
+
+W07_NOTE = """# Weekly Review: [[2026-W07]]
+## Review of the Week
+### [[2026-02-10|2026-02-10 Tue]]
+- tuesday [[Shared]] [[Only-Weekly]]
+"""
+
+W14_NOTE = """## Review of the Week
+### [[2026-03-31|2026-03-31 Tue]]
+- last [[Q End]]
+### [[2026-04-01|2026-04-01 Wed]]
+- april [[April Only]]
+"""
+
+FEB_NOTE = """# Monthly Review: [[2026-02]]
+## Highlights
+- [[Shared]] [[Only-Monthly]] [[2026-W07]] [[2026-02-10]] [[2026-Q1]]
+## Organisation
+- next [[Plan Link]]
+"""
+
+
+def quarter_sources(**extra) -> PeriodSources:
+    kw = dict(monthly_folder=MONTHLY, monthly_format="YYYY-MM", quarterly_format="YYYY-[Q]Q",
+              monthly_own_sections=["Highlights"])
+    kw.update(extra)
+    return month_sources(**kw)
+
+
+def quarter_vault(**files) -> ReviewFakeVault:
+    """Disagreeing notes: a link only in a weekly, only in a monthly, only in a daily, a link to `2026-02`."""
+    base = dict([
+        daily(date(2026, 1, 2), "jan [[New Year]] [[Jan Shared]]"),
+        daily(date(2026, 2, 10), "tuesday [[Shared]] [[Only-Daily]] [[2026-02]]"),
+        daily(date(2026, 3, 31), "end [[Q End]]"),
+        daily(date(2026, 4, 1), "april\nY-Mood:: 2"),
+    ])
+    base[f"{WEEKLY}2026-W01.md"] = W01_NOTE
+    base[f"{WEEKLY}2026-W07.md"] = W07_NOTE
+    base[f"{WEEKLY}2026/2026-W14.md"] = W14_NOTE
+    base[f"{MONTHLY}2026-02.md"] = FEB_NOTE
+    base[TASK_NOTE] = TASK_NOTE_TEXT
+    base.update(files)
+    return ReviewFakeVault(base, folders=[DAILY, WEEKLY, MONTHLY, MOCS])
 
 
 def growth_vault(page_size=None) -> ReviewFakeVault:

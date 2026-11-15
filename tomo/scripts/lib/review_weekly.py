@@ -1,5 +1,5 @@
 # review_weekly.py — the text side of a period read: daily names, link targets, a weekly note's day blocks.
-# version: 0.1.0
+# version: 0.2.0
 """Daily names, link targets and the split of a weekly note (spec 045, T3.3; PRD F3-AC5).
 
 ``daily_name`` / ``daily_date`` render and parse the daily name format
@@ -10,7 +10,8 @@ spelling kept); ``link_key`` is their comparison key (stem, ``path_key``).
 their heading links (ending at the next heading of the same or a higher
 level, blocks outside the period dropped), week-level text per own section,
 and the links of both; sections whose heading starts with a skip prefix are
-cut out. No Kado call is made here — ``lib/review_period.py`` reads.
+cut out; a monthly note is split the same way, its own-section text under
+``text_key`` (spec 046 T3.2). No Kado call is made here — ``lib/review_period.py`` reads.
 
 Design notes: docs/tomo/scripts/lib/review_weekly.md
 """
@@ -137,8 +138,8 @@ def heading_date(heading: str, daily_format: str) -> Optional[date]:
 
 
 def weekly_content(text: str, period: Period, *, daily_format: str, own_sections: Sequence[str],
-                   skip_sections: Sequence[str] = DEFAULT_WEEKLY_SKIP) -> dict:
-    """Day blocks of ``period`` keyed by date, week-level text per own section, their links."""
+                   skip_sections: Sequence[str] = DEFAULT_WEEKLY_SKIP, text_key: str = "week_text") -> dict:
+    """Day blocks of ``period`` keyed by date, the note's own-section text under ``text_key``, their links."""
     lines = text.splitlines()
     sections = _sections(lines)
     skipped = [(s, e) for _, head, s, e in sections if any(head.startswith(p) for p in skip_sections)]
@@ -163,4 +164,4 @@ def weekly_content(text: str, period: Period, *, daily_format: str, own_sections
         if head in own_sections:
             week_text[head] = (week_text.get(head, "") + "\n" + body(start, end)).strip()
     links = link_targets("\n".join(list(day_blocks.values()) + list(week_text.values())))
-    return {"day_blocks": day_blocks, "week_text": week_text, "links": links}
+    return {"day_blocks": day_blocks, text_key: week_text, "links": links}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """test_review_privacy_docs.py — spec 045 T5.3: the privacy and setup documentation of /review.
 
 Pins PRIVACY.md (PRD F7-AC2, ADR-9): "metadata only" is scoped to Tomo's own
@@ -28,7 +28,9 @@ Restore heading ahead of the Protect subsection, and the IDE lock path naming
 the instance home `home/`, never `tomo-home/`), the README naming
 /review, and tomo/config/vault-example.yaml: the weekly pattern GGGG-[W]WW and
 a commented review: example that the real reader (lib.review_config) accepts
-and whose writer-input form validates against vault-config-review.schema.json.
+for week, month and quarter, whose section rows and off-limits marks it reads
+for the mapped template (spec 046 T1.3), and whose writer-input form validates
+against vault-config-review.schema.json.
 """
 from __future__ import annotations
 
@@ -251,7 +253,7 @@ def test_weekly_pattern_is_iso_week_year() -> None:
     assert _example_config()["naming"]["calendar_patterns"]["weekly"] == "GGGG-[W]WW"
 
 
-@pytest.mark.parametrize("kind", ["week", "month"])
+@pytest.mark.parametrize("kind", ["week", "month", "quarter"])
 def test_commented_review_example_is_a_valid_setup(kind: str) -> None:
     config = _example_config()
     config["review"] = _commented_review_example()
@@ -271,6 +273,23 @@ def test_commented_review_example_is_a_valid_setup(kind: str) -> None:
     assert dropped.isdisjoint(_required_keys(schema, kind)), f"required keys dropped: {dropped}"
     writer_input = {"kind": kind, **{k: v for k, v in proposal.items() if v is not None}}
     jsonschema.Draft202012Validator(schema).validate(writer_input)   # the writer input validates
+    assert rc.input_problems(writer_input, today=TODAY) == []
+
+
+def test_commented_review_example_rows_are_read_for_the_mapped_template() -> None:
+    config = _example_config()
+    config["review"] = _commented_review_example()
+    config["concepts"]["calendar"]["granularities"]["weekly"] = {"enabled": True, "path": "Calendar/Weekly/"}
+    template = config["templates"]["mapping"]["weekly"]
+    assert set(config["review"]["weekly"]["sections"]) == {template}, "the example keys rows by the mapped template"
+    setup = rc.review_setup(config, {}, "week", today=TODAY)
+    assert [r["placement"] for r in setup.sections] == ["end", "review"]
+    assert setup.off_limits and setup.off_limits[0]["with_subsections"] is True
+    stored = config["review"]["weekly"]
+    writer_input = {"kind": "week", "folder": "Calendar/Weekly/", "format": "GGGG-[W]WW", "first_day": "monday",
+                    "min_days": 4, "template": template, "heading": stored["heading"], "place": stored["place"],
+                    "language": "de", "sections": stored["sections"][template],
+                    "off_limits": stored["off_limits"][template]}
     assert rc.input_problems(writer_input, today=TODAY) == []
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.2.0
 """test_review_config.py — Behavioural tests for lib.review_config (spec 045 T2.1).
 
 Covers the /review setup model:
@@ -21,6 +21,14 @@ Covers the /review setup model:
 - the session shapes review-session.py start prints: configured_formats,
   inbox_folder (config over profile), request_dict (plus first and last day),
   current_setup (proposal shape | None | pointers)
+- spec 046 T1.3: section rows (each placement incl. review; groups per kind,
+  never habits; id ^s[0-9]{1,3}$; cap 1..30; non-empty description; closed
+  fields) and off_limits rows need a named template; duplicate heading keys and
+  ids are refused; writer_edits touch only review.<g>.sections|off_limits.<template>;
+  review_setup reads only the configured template's rows (F2-AC8), defaults cap,
+  keywords and groups, and reports escaped pointers for bad rows; the quarter
+  validates and reads through the quarterly keys; a config without the new keys
+  reads as before
 """
 from __future__ import annotations
 
@@ -387,3 +395,224 @@ def test_current_setup_is_the_proposal_shape_none_or_the_pointers():
     broken = copy.deepcopy(CONFIG)
     broken["review"]["weekly"]["place"]["placement"] = "after"
     assert rc.current_setup(broken, PROFILE, "week", TODAY) == {"invalid": ["/review/weekly/place/placement"]}
+
+
+# --- spec 046 T1.3: section rows, off-limits marks, the quarter ----------------------
+
+ROW = {"id": "s1", "heading": "What Went Well This Week?", "level": 4, "parent": "In my own words",
+       "occurrence": 1, "description": "What went well: finished tasks, good days", "placement": "end"}
+OFF = {"heading": "Reflections", "level": 3, "parent": "Review of the Week", "occurrence": 1,
+       "with_subsections": True}
+QUARTER_INPUT = {
+    "kind": "quarter", "folder": "Calendar/304 Quarterly/", "format": "YYYY-[Q]Q", "template": "t_quarter_privat.md",
+    "heading": "Tomo Review", "place": {"anchor": "Conclusions", "placement": "before"}, "language": "de",
+}
+
+
+def _with_rows(base=WEEK_INPUT, sections=None, off_limits=None, **extra):
+    data = dict(copy.deepcopy(base), **extra)
+    if sections is not None:
+        data["sections"] = sections
+    if off_limits is not None:
+        data["off_limits"] = off_limits
+    return data
+
+
+def _pointers(data):
+    return [p.pointer for p in rc.input_problems(data, today=TODAY)]
+
+
+@pytest.mark.parametrize("placement", ["before", "under", "end", "review"])
+def test_schema_accepts_a_row_with_each_placement(placement):
+    row = dict(ROW, placement=placement, keywords=["erledigt", "geschafft"], groups=["done", "themes"], cap=8)
+    assert rc.input_problems(_with_rows(sections=[row]), today=TODAY) == []
+
+
+@pytest.mark.parametrize("field, value, pointer", [
+    ("groups", ["done", "habits"], "/sections/0/groups/1"),
+    ("id", "s1000", "/sections/0/id"),
+    ("id", "S1", "/sections/0/id"),
+    ("id", "x1", "/sections/0/id"),
+    ("id", "s", "/sections/0/id"),
+    ("cap", 0, "/sections/0/cap"),
+    ("cap", 31, "/sections/0/cap"),
+    ("cap", 8.5, "/sections/0/cap"),
+    ("description", "", "/sections/0/description"),
+    ("description", "   ", "/sections/0/description"),
+    ("placement", "inside", "/sections/0/placement"),
+    ("level", 1, "/sections/0/level"),
+    ("level", 7, "/sections/0/level"),
+    ("occurrence", 0, "/sections/0/occurrence"),
+    ("keywords", [f"k{i}" for i in range(13)], "/sections/0/keywords"),
+    ("bogus", 1, "/sections/0"),
+])
+def test_schema_refuses_a_bad_row_at_its_pointer(field, value, pointer):
+    assert pointer in _pointers(_with_rows(sections=[dict(ROW, **{field: value})]))
+
+
+@pytest.mark.parametrize("missing", ["id", "heading", "level", "parent", "occurrence", "description", "placement"])
+def test_schema_requires_every_identity_field_of_a_row(missing):
+    row = {k: v for k, v in ROW.items() if k != missing}
+    assert "/sections/0" in _pointers(_with_rows(sections=[row]))
+
+
+@pytest.mark.parametrize("cap", [1, 30])
+def test_cap_bounds_are_inclusive_and_a_top_level_heading_has_a_null_parent(cap):
+    assert _pointers(_with_rows(sections=[dict(ROW, cap=cap, parent=None, level=2)])) == []
+
+
+def test_off_limits_rows_with_and_without_subsections():
+    rows = [OFF, dict(OFF, heading="Notes", with_subsections=False)]
+    assert _pointers(_with_rows(off_limits=rows)) == []
+    assert "/off_limits/0" in _pointers(_with_rows(off_limits=[{k: v for k, v in OFF.items() if k != "with_subsections"}]))
+    assert "/off_limits/0/with_subsections" in _pointers(_with_rows(off_limits=[dict(OFF, with_subsections="yes")]))
+    assert "/off_limits/0" in _pointers(_with_rows(off_limits=[dict(OFF, placement="end")]))
+
+
+def test_rows_need_a_named_template():
+    no_template = {k: v for k, v in _with_rows(sections=[ROW]).items() if k != "template"}
+    assert "/" in _pointers(no_template)
+    assert "/template" in _pointers(_with_rows(sections=[ROW], template=None))
+    assert "/template" in _pointers(_with_rows(off_limits=[OFF], template=None))
+    assert _pointers(dict(WEEK_INPUT, template=None)) == []          # without rows a null template still removes
+
+
+@pytest.mark.parametrize("base, group, ok", [
+    (WEEK_INPUT, "weekly_only", False), (WEEK_INPUT, "monthly_only", False),
+    (MONTH_INPUT, "weekly_only", True), (MONTH_INPUT, "not_in_weekly", True), (MONTH_INPUT, "monthly_only", False),
+    (QUARTER_INPUT, "monthly_only", True), (QUARTER_INPUT, "not_in_monthly", True), (QUARTER_INPUT, "weekly_only", False),
+    (QUARTER_INPUT, "growth", True), (MONTH_INPUT, "habits", False), (QUARTER_INPUT, "habits", False),
+])
+def test_groups_follow_the_kind(base, group, ok):
+    data = _with_rows(base, sections=[dict(ROW, groups=[group])], template="t.md")
+    assert (_pointers(data) == []) is ok, _pointers(data)
+
+
+def test_quarter_input_is_valid_and_forbids_the_week_keys():
+    assert rc.input_problems(QUARTER_INPUT, today=TODAY) == []
+    assert "/first_day" in _pointers(dict(QUARTER_INPUT, first_day="monday"))
+    assert "/format" in _pointers(dict(QUARTER_INPUT, format="YYYY-MM"))
+
+
+def test_input_problems_refuse_duplicate_heading_keys_and_ids():
+    twice = _with_rows(sections=[ROW, dict(ROW, id="s2")])
+    assert [p.to_dict() for p in rc.input_problems(twice, today=TODAY)] == [
+        {"pointer": "/sections/1", "kind": "duplicate-section"}]
+    same_id = _with_rows(sections=[ROW, dict(ROW, heading="Other")])
+    assert [p.to_dict() for p in rc.input_problems(same_id, today=TODAY)] == [
+        {"pointer": "/sections/1/id", "kind": "duplicate-section-id"}]
+    off_twice = _with_rows(off_limits=[OFF, dict(OFF, with_subsections=False)])
+    assert [p.to_dict() for p in rc.input_problems(off_twice, today=TODAY)] == [
+        {"pointer": "/off_limits/1", "kind": "duplicate-off-limits"}]
+    # the same text under another parent, at another level or a later occurrence is another heading
+    others = [ROW, dict(ROW, id="s2", parent="Other"), dict(ROW, id="s3", level=5), dict(ROW, id="s4", occurrence=2)]
+    assert rc.input_problems(_with_rows(sections=others), today=TODAY) == []
+
+
+def test_writer_edits_touch_only_the_named_templates_entries():
+    data = _with_rows(sections=[ROW], off_limits=[OFF])
+    edits = rc.writer_edits(data)
+    assert edits[:len(rc.writer_edits(WEEK_INPUT))] == rc.writer_edits(WEEK_INPUT)
+    assert edits[len(rc.writer_edits(WEEK_INPUT)):] == [
+        (("review", "weekly", "sections", "t_week_privat.md"), [ROW]),
+        (("review", "weekly", "off_limits", "t_week_privat.md"), [OFF]),
+    ]
+    assert all(path[:3] != ("review", "weekly", "sections") for path, _ in rc.writer_edits(WEEK_INPUT))
+    cleared = rc.writer_edits(_with_rows(sections=[]))
+    assert (("review", "weekly", "sections", "t_week_privat.md"), []) in cleared
+
+
+def test_quarter_writer_edits_use_the_quarterly_keys():
+    edits = dict(rc.writer_edits(QUARTER_INPUT))
+    assert edits[("concepts", "calendar", "granularities", "quarterly", "path")] == "Calendar/304 Quarterly/"
+    assert edits[("naming", "calendar_patterns", "quarterly")] == "YYYY-[Q]Q"
+    assert edits[("templates", "mapping", "quarterly")] == "t_quarter_privat.md"
+    assert edits[("review", "quarterly", "place", "anchor")] == "Conclusions"
+    assert not any(path[:2] == ("review", "week") for path in edits)
+
+
+def _config_with_rows():
+    config = copy.deepcopy(CONFIG)
+    config["templates"]["mapping"]["monthly"] = "t_month_privat.md"
+    weekly, monthly = config["review"]["weekly"], config["review"]["monthly"]
+    weekly["sections"] = {"t_week_privat.md": [ROW], "t_week_work.md": [dict(ROW, id="s7", heading="Work")]}
+    weekly["off_limits"] = {"t_week_privat.md": [OFF], "t_week_work.md": [dict(OFF, heading="Work")]}
+    monthly["sections"] = {"t_month_privat.md": [dict(ROW, id="s3", groups=["weekly_only"], cap=12)]}
+    return config
+
+
+def test_review_setup_reads_only_the_configured_templates_rows_with_defaults():
+    config = _config_with_rows()
+    week = rc.review_setup(config, PROFILE, "week")
+    assert week.sections == [dict(ROW, keywords=[], groups=[], cap=8)]
+    assert week.off_limits == [OFF]
+    month = rc.review_setup(config, PROFILE, "month")
+    assert month.sections == [dict(ROW, id="s3", keywords=[], groups=["weekly_only"], cap=12)]
+    assert month.off_limits == []
+    config["templates"]["mapping"]["weekly"] = "t_week_work.md"
+    work = rc.review_setup(config, PROFILE, "week")
+    assert [r["heading"] for r in work.sections] == ["Work"] and [r["heading"] for r in work.off_limits] == ["Work"]
+    config["templates"]["mapping"]["weekly"] = "t_week_other.md"
+    assert rc.review_setup(config, PROFILE, "week").sections == []
+    del config["templates"]["mapping"]["weekly"]
+    unmapped = rc.review_setup(config, PROFILE, "week")
+    assert unmapped.sections == [] and unmapped.off_limits == []
+
+
+def test_review_setup_reports_pointers_for_invalid_rows_of_the_configured_template_only():
+    config = _config_with_rows()
+    config["review"]["weekly"]["sections"]["t_week_privat.md"] = [dict(ROW, cap=99), {**ROW, "bogus": 1}]
+    config["review"]["weekly"]["off_limits"]["t_week_privat.md"] = [dict(OFF, with_subsections="yes")]
+    config["review"]["weekly"]["sections"]["t_week_work.md"] = [{"junk": True}]   # another template: not read
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "week")
+    assert exc.value.pointers == [
+        "/review/weekly/sections/t_week_privat.md/0/cap",
+        "/review/weekly/sections/t_week_privat.md/1",
+        "/review/weekly/off_limits/t_week_privat.md/0/with_subsections",
+    ]
+    config["review"]["weekly"]["sections"]["t_week_privat.md"] = [ROW, dict(ROW, id="s2"), dict(ROW, heading="B")]
+    config["review"]["weekly"]["off_limits"]["t_week_privat.md"] = [OFF, OFF]
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "week")
+    assert exc.value.pointers == [
+        "/review/weekly/sections/t_week_privat.md/1",
+        "/review/weekly/sections/t_week_privat.md/2/id",
+        "/review/weekly/off_limits/t_week_privat.md/1",
+    ]
+    config["templates"]["mapping"]["weekly"] = "a/b~c.md"
+    config["review"]["weekly"]["sections"] = {"a/b~c.md": "not a list"}
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "week")
+    assert exc.value.pointers == ["/review/weekly/sections/a~1b~0c.md"]
+    config["review"]["weekly"]["sections"] = ["not", "a", "mapping"]
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "week")
+    assert exc.value.pointers == ["/review/weekly/sections"]
+    config["review"]["monthly"]["sections"] = {"t_month_privat.md": [dict(ROW, groups=["monthly_only"])]}
+    with pytest.raises(rc.SetupInvalid) as exc:
+        rc.review_setup(config, PROFILE, "month")
+    assert exc.value.pointers == ["/review/monthly/sections/t_month_privat.md/0/groups/0"]
+
+
+def test_a_config_without_the_new_keys_reads_as_before():
+    setup = rc.review_setup(CONFIG, PROFILE, "week")
+    assert setup.sections == [] and setup.off_limits == []
+    assert set(rc.current_setup(CONFIG, PROFILE, "week", TODAY)) == {
+        "folder", "format", "first_day", "min_days", "template", "template_variant", "heading", "place",
+        "own_sections", "daily_sections", "skip_sections", "task_notes", "max_chars_per_day", "language"}
+    assert rc.review_setup(CONFIG, PROFILE, "quarter") is None
+
+
+def test_quarter_setup_reads_the_quarterly_keys_with_the_profile_folder():
+    config = copy.deepcopy(CONFIG)
+    config["naming"]["calendar_patterns"]["quarterly"] = "YYYY-[Q]Q"
+    config["templates"]["mapping"]["quarterly"] = "t_quarter_privat.md"
+    config["review"]["quarterly"] = {"heading": "Tomo Review", "place": {"anchor": "Conclusions", "placement": "before"},
+                                     "sections": {"t_quarter_privat.md": [dict(ROW, groups=["not_in_monthly"])]}}
+    profile = copy.deepcopy(PROFILE)
+    profile["concept_defaults"]["calendar"]["granularities"]["quarterly"] = {"enabled": True, "path": "Calendar/304 Quarterly/"}
+    setup = rc.review_setup(config, profile, "quarter")
+    assert setup.kind == "quarter" and setup.folder == "Calendar/304 Quarterly/" and setup.format == "YYYY-[Q]Q"
+    assert setup.template == "t_quarter_privat.md" and setup.sections[0]["groups"] == ["not_in_monthly"]
+    assert rc.configured_formats(config)["quarter"] == "YYYY-[Q]Q"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.2.0
 """test_vault_config_writer_review.py — `vault-config-writer.py review` (spec 045 T2.1, ADR-5).
 
 Runs the subcommand as a subprocess on a synthetic config shaped like the
@@ -23,6 +23,13 @@ its set_path so the per-leaf read-back before the write can be tripped. Covers:
 - a null template removes the mapping key; stdout names keys, never values
 - an empty own_sections list removes the key and reads back (spec 046 ADR-3)
 - missing config exits 2
+- spec 046 T1.3: section rows and off_limits marks are saved under the quoted
+  template key as block items and read back through review_config.review_setup;
+  a second template keeps the first (F2-AC8); a corrected mapping changes only
+  its leaf (F2-AC10); [] removes only that template's entry; a single-quoted
+  template key is recognised and replaced, one the matcher misses is refused as
+  an introduced duplicate, a pre-existing duplicate template key is refused;
+  bad rows are refused with pointers; a quarter lands under the quarterly keys
 """
 from __future__ import annotations
 
@@ -373,3 +380,137 @@ def test_empty_own_sections_removes_the_key_and_reads_back(tmp_path):
     assert "own_sections" not in yaml.safe_load(cfg.read_text(encoding="utf-8"))["review"]["weekly"]
     proc, _ = _run(tmp_path, None, dict(WEEK, own_sections=[]))
     assert _out(proc) == {"status": "unchanged"}
+
+
+# --- spec 046 T1.3: section rows and off-limits marks per template, the quarter -------
+
+ROWS = [
+    {"id": "s1", "heading": "What Went Well This Week?", "level": 4, "parent": "In my own words", "occurrence": 1,
+     "description": "What went well: finished tasks, good days", "keywords": ["erledigt", "geschafft"],
+     "groups": ["done", "themes"], "placement": "end", "cap": 8},
+    {"id": "s2", "heading": "Energy and Sleep", "level": 3, "parent": None, "occurrence": 1,
+     "description": "What the week's sleep and energy values show", "placement": "review", "cap": 4},
+]
+OFF_LIMITS = [{"heading": "Reflections", "level": 3, "parent": "Review of the Week", "occurrence": 1,
+               "with_subsections": True}]
+TEMPLATE_KEY = '"t_week_privat.md":'
+
+
+def _week_with_rows(**extra):
+    return {**WEEK, "sections": ROWS, "off_limits": OFF_LIMITS, **extra}
+
+
+def test_rows_round_trip_per_template_and_read_back_through_the_reader(tmp_path):
+    sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
+    from lib import review_config as rc
+
+    proc, cfg = _run(tmp_path, CONFIG, _week_with_rows())
+    out = _out(proc)
+    assert out["status"] == "written"
+    assert {"review.weekly.sections.t_week_privat.md", "review.weekly.off_limits.t_week_privat.md"} <= set(out["keys"])
+    assert "What Went Well" not in proc.stdout and "Reflections" not in proc.stdout
+    after = cfg.read_text(encoding="utf-8")
+    assert _diff_tags(CONFIG, after) == {"equal", "insert"}
+    assert after.count(TEMPLATE_KEY) == 2, "the template name is a quoted key under sections and off_limits"
+    assert "    sections:\n      " + TEMPLATE_KEY + "\n        - id: \"s1\"\n" in after, "rows are block items"
+    parsed = yaml.safe_load(after)
+    assert parsed["review"]["weekly"]["sections"] == {"t_week_privat.md": ROWS}
+    assert parsed["review"]["weekly"]["off_limits"] == {"t_week_privat.md": OFF_LIMITS}
+    setup = rc.review_setup(parsed, {}, "week")
+    assert [r["id"] for r in setup.sections] == ["s1", "s2"] and setup.sections[1]["keywords"] == []
+    assert setup.off_limits == OFF_LIMITS
+    proc, _ = _run(tmp_path, None, _week_with_rows())
+    assert _out(proc) == {"status": "unchanged"}
+
+
+def test_a_second_template_keeps_the_first_and_changes_nothing_else(tmp_path):
+    _run(tmp_path, CONFIG, _week_with_rows())
+    before = (tmp_path / "vault-config.yaml").read_text(encoding="utf-8")
+    work_rows = [dict(ROWS[0], heading="Work Wins")]
+    proc, cfg = _run(tmp_path, None, dict(WEEK, template="t_week_work.md", sections=work_rows))
+    out = _out(proc)
+    assert sorted(out["keys"]) == ["review.weekly.sections.t_week_work.md", "templates.mapping.weekly"], out
+    after = cfg.read_text(encoding="utf-8")
+    assert _diff_tags(before, after) == {"equal", "insert", "replace"}
+    sections = yaml.safe_load(after)["review"]["weekly"]["sections"]
+    assert sections == {"t_week_privat.md": ROWS, "t_week_work.md": work_rows}
+    assert yaml.safe_load(after)["review"]["weekly"]["off_limits"] == {"t_week_privat.md": OFF_LIMITS}
+
+
+def test_a_corrected_mapping_saves_only_its_rows(tmp_path):
+    _run(tmp_path, CONFIG, _week_with_rows())
+    before = (tmp_path / "vault-config.yaml").read_text(encoding="utf-8")
+    corrected = [dict(ROWS[0], description="Wins of the week", keywords=["Erfolg"])]
+    proc, cfg = _run(tmp_path, None, dict(WEEK, sections=corrected))
+    assert _out(proc)["keys"] == ["review.weekly.sections.t_week_privat.md"]
+    after = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert after["review"]["weekly"]["sections"]["t_week_privat.md"] == corrected
+    old = yaml.safe_load(before)
+    old["review"]["weekly"]["sections"]["t_week_privat.md"] = corrected
+    assert after == old, "no other setup value changes (F2-AC10)"
+
+
+def test_empty_rows_remove_only_that_templates_entry(tmp_path):
+    _run(tmp_path, CONFIG, _week_with_rows())
+    _run(tmp_path, None, dict(WEEK, template="t_week_work.md", sections=ROWS[:1]))
+    proc, cfg = _run(tmp_path, None, dict(WEEK, template="t_week_work.md", sections=[]))
+    assert _out(proc)["keys"] == ["review.weekly.sections.t_week_work.md"]
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["review"]["weekly"]["sections"] == {"t_week_privat.md": ROWS}
+
+
+def test_a_single_quoted_template_key_is_recognised_and_replaced_in_place(tmp_path):
+    config = CONFIG + "\nreview:\n  weekly:\n    sections:\n      't_week_privat.md':\n        - id: \"s9\"\n"
+    proc, cfg = _run(tmp_path, config, _week_with_rows())
+    assert _out(proc)["status"] == "written"
+    after = cfg.read_text(encoding="utf-8")
+    assert "'t_week_privat.md':" not in after and after.count(TEMPLATE_KEY) == 2, "replaced, not duplicated"
+    assert yaml.safe_load(after)["review"]["weekly"]["sections"] == {"t_week_privat.md": ROWS}
+
+
+def test_a_template_key_the_matcher_misses_is_refused_as_an_introduced_duplicate(tmp_path):
+    config = CONFIG + f"\nreview:\n  weekly:\n    sections:\n      t_week_privat.md :\n        - id: {SECRET}\n"
+    proc, cfg = _run(tmp_path, config, _week_with_rows())
+    out = _out(proc)
+    assert out["status"] == "refused" and "introduced by the edit" in out["reason"], out
+    assert cfg.read_text(encoding="utf-8") == config
+    assert SECRET not in proc.stdout + proc.stderr
+
+
+def test_a_preexisting_duplicate_template_key_is_refused(tmp_path):
+    config = CONFIG + ("\nreview:\n  weekly:\n    sections:\n"
+                       f"      \"t_week_privat.md\":\n        - id: {SECRET}\n"
+                       "      \"t_week_privat.md\":\n        - id: \"s2\"\n")
+    proc, cfg = _run(tmp_path, config, _week_with_rows())
+    out = _out(proc)
+    assert out["status"] == "refused" and "pre-existing" in out["reason"], out
+    assert cfg.read_text(encoding="utf-8") == config
+    assert SECRET not in proc.stdout + proc.stderr
+
+
+@pytest.mark.parametrize("payload, pointer", [
+    (_week_with_rows(sections=[dict(ROWS[0], groups=["habits"])]), "/sections/0/groups/0"),
+    (_week_with_rows(sections=[ROWS[0], dict(ROWS[1], id="s1")]), "/sections/1/id"),
+    (_week_with_rows(template=None), "/template"),
+])
+def test_invalid_rows_are_refused_with_pointers_and_nothing_written(tmp_path, payload, pointer):
+    proc, cfg = _run(tmp_path, CONFIG, payload)
+    out = _out(proc)
+    assert out["status"] == "refused" and pointer in out["pointers"], out
+    assert cfg.read_text(encoding="utf-8") == CONFIG
+
+
+def test_quarter_setup_lands_under_the_quarterly_keys(tmp_path):
+    quarter = {"kind": "quarter", "folder": "Calendar/304 Quarterly/", "format": "YYYY-[Q]Q",
+               "template": "t_quarter_privat.md", "heading": "Tomo Review",
+               "place": {"anchor": "Conclusions", "placement": "before"}, "language": "de",
+               "sections": [dict(ROWS[0], groups=["monthly_only"])]}
+    proc, cfg = _run(tmp_path, CONFIG, quarter)
+    assert _out(proc)["status"] == "written"
+    after = cfg.read_text(encoding="utf-8")
+    assert _diff_tags(CONFIG, after) == {"equal", "insert"}
+    parsed = yaml.safe_load(after)
+    assert parsed["concepts"]["calendar"]["granularities"]["quarterly"] == {"enabled": True, "path": "Calendar/304 Quarterly/"}
+    assert parsed["naming"]["calendar_patterns"] == {"quarterly": "YYYY-[Q]Q"}
+    assert parsed["templates"]["mapping"]["quarterly"] == "t_quarter_privat.md"
+    assert set(parsed["review"]) == {"language", "quarterly"}
+    assert parsed["review"]["quarterly"]["sections"]["t_quarter_privat.md"][0]["groups"] == ["monthly_only"]

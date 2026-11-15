@@ -30,7 +30,7 @@ phase: 3
 
 Reads a quarter like a month one level up, and hands the model the section definitions in a file it can read.
 
-- [ ] **T3.1 Golden characterisation of the month read** `[activity: testing]`
+- [x] **T3.1 Golden characterisation of the month read** `[activity: testing]`
 
   1. Prime: `tomo/scripts/lib/review_period.py` (`run` 346, `_link_differences` 259, report block 397-401); `tests/test_review_period.py`, `test_review_period_end_pass.py`, `test_review_read.py:185` fixtures `[ref: SDD/Implementation Examples/Test Examples; ADR-6]`
   2. Test: `tests/test_review_period_golden.py` captures the whole `read_period` result (days, weekly, both marks, report) for the fake month and fake week fixtures as committed JSON, generated from the unchanged code; it passes on the current code.

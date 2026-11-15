@@ -102,6 +102,16 @@ def test_each_entry_goes_to_the_month_it_belongs_to():
     assert [w["week"] for w in mar["weekly"]] == ["2026-W14"]
 
 
+def test_a_weekly_note_goes_to_its_majority_month_not_its_first():
+    # RED when a week goes to its first month: in 2026-Q1 the two agree for every week, so the case is 2026-Q3,
+    # where 2026-W36 (Aug 31 - Sep 6) is one day August and six days September
+    result = {"period": {"kind": "quarter", "name": "2026-Q3", "start": "2026-07-01", "end": "2026-09-30"},
+              "days": [], "weekly": [{"week": "2026-W36", "path": "W/2026-W36.md"}], "report": {}}
+    files = _parts(rp.files_of(result, ISO))
+    assert files["read-index.json"]["parts"] == ["read-2026-07.json", "read-2026-08.json", "read-2026-09.json"]
+    assert files["read-2026-08.json"]["weekly"] == [] and len(files["read-2026-09.json"]["weekly"]) == 1
+
+
 def test_a_weekly_note_is_placed_by_its_days_under_the_configured_week_rule():
     # RED when the week is rebuilt under ISO: ISO 2026-W05 is Jan 26 - Feb 1 (January),
     # under a Sunday rule with full first weeks it is Feb 1 - 7 (February)

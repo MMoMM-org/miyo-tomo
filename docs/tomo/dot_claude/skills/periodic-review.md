@@ -235,6 +235,115 @@ is closed by `---`, then `/review setup` again and the variant chosen. A variant
 because the owner handles the same template's `tp.file.move` by a variant too, and because only the user knows which
 Templater lines of the frontmatter the variant may keep as literals.
 
+## Why the Confirm Step Carries the Section Mapping Table (Spec 046 F2, F6, F7; ADR-8, ADR-9, ADR-13)
+
+WHY: spec 046 lets the vault keeper say which sections of their own template receive review material. The PRD
+asks for it in the confirm step that already exists (F2-AC2: "one table in the existing confirm step — no extra
+question turn"), because a setup that already asks for the template, the anchor and the week rule must not grow a
+question per heading. So the table is printed in the same reply as the proposal, after the template, frontmatter,
+week and anchor questions (whose answers change which template the table is for) and before the one
+`1 Confirm · 2 Correct · 3 Abort` question; the table block itself carries no option line and no "End the turn".
+
+**The script owns the facts, the model the words (ADR-9).** `review-session.py match --kind --template --anchor`
+returns `sections`: per template heading its `heading_key` (text, level, parent, occurrence), `state`, `reason`,
+`flags`, `defaults` and the `saved` row. The skill builds the table from that list in its order and never decides
+eligibility, reasons, keys, placements or caps itself: a model that judged "this heading holds a Dataview query"
+would disagree with the analysis `setup-input` checks the rows against, and the user would meet a refusal for a row
+the table offered. What the model adds is the wording ADR-9 leaves to it: a description of what to look for in the
+period's notes (in `proposal.language`, the language the rows are stored and later searched in), keywords (the
+schema's ≤ 12) and group hints. A saved row is shown as saved, so a second setup shows what the user confirmed
+last time rather than a new wording (F2-AC10: descriptions are stored as the user confirmed them). A candidate
+with `saved` set is a row even when it is `left-out`: an analysis row (placement `review`) is saved on an
+`automatic` heading, and `match` shows it as a row too. The heading is shown with level and parent because the
+same text can occur twice ("In my own words" at two levels, F2-AC5); `flags` (`mixed`, `container`, `under-own`)
+are shown in brackets so the user sees why an offered heading may be a poor pick, without the skill naming what
+the analysis looked at.
+
+The group list is spelled out per kind (F2-AC7, the schema's `weekGroup` / `monthGroup` / `quarterGroup`), with
+`habits` excluded by name: the habits are computed by a script and always stay in the "Tomo Review" section, and a
+group the kind does not have would be refused by the schema at `setup-input`.
+
+**Left-out headings get one line each (F2-AC3).** Every candidate that is not a row is printed as `—` with its
+reason in words — Templater code, a link, a heading that repeats under per-period parents, an off-limits mark,
+automatic content only — so the user is never left wondering why a heading is missing. `automatic` says it "can get
+an analysis row" because that is the one left-out reason the user can act on (F2-AC12).
+
+**Forward-looking sections (F2-AC6).** "I look forward to", "This will be challenging", "Goals and Wishes" ask for
+what comes, not what was. The line tells the model to describe them as suggestions drawn from what the period
+shows, so Pass 1 later proposes reminders with a source (F1-AC4) instead of inventing goals. The line names the
+shapes of such a heading (what comes next, goals, wishes, start/stop/continue, challenges) rather than example
+headings, so the model does not parrot the owner's template.
+
+**Off-limits (ADR-8, F2-AC11).** The `Off-limits:` line shows the saved marks or `none`; nothing is marked by
+default and no heading name is off-limits by itself. A mark is a correction like any other, heading only or with
+its sub-sections, and a marked heading leaves the table because `setup-input` refuses a row on it
+(`section-off-limits`).
+
+**Corrections are plain text in the existing Correct step (F2-AC2, F2-AC4, F2-AC12).** The user names a row by its
+`s<n>` or its heading and says the change ("s3 Beschreibung: …", "entferne s5", "füge ‚Planning' hinzu",
+"Reflections tabu mit Unterabschnitten"). The step lists the operations — edit description / keywords / groups /
+placement / cap, remove, add, mark and unmark off-limits — and what an added heading becomes: an `offered` one a row
+with its `defaults`, an `automatic` one with a description an analysis row (`review`), any other left-out one is
+refused with its reason (F2-AC4), and a heading not in the candidate list is not in the template (the script would
+refuse it as `section-not-in-template`). A table correction reruns no `match`: nothing it changes is computed by
+the script, and a rerun would cost a Kado round trip and a reprint. The script still has the last word — the rows
+are checked by `setup-input` against the rows file `match` wrote — so a wrongly added row is refused, not saved.
+
+A `match` rerun with the same template (a corrected folder, format or week rule) keeps the table changes, because
+the rows of the template did not change; a changed template builds the table anew from the new output (F7-AC2: no
+row from the earlier template remains).
+
+**No mappable heading (F2-AC9).** `sections.mappable` false (no template, or none of its headings can take a row)
+prints one line and no table; the confirmed file then carries neither `sections` nor `off_limits`, because the
+writer stores rows under a named template and an absent key changes nothing.
+
+**Confirm writes the rows into the confirmed file.** The skill already writes `tomo-tmp/review/confirmed-<kind>.json`
+(the one setup file it may write); with a mappable template it adds `sections` (the table rows in order, with the
+`heading_key` fields, description, placement, cap, and keywords / groups when set) and `off_limits` (the marks with
+`with_subsections`), `[]` when there is none. `[]` is deliberate: the writer reads an empty list as "remove this
+template's entry", so a user who removes every row saves no mapping, while the rows of another template stay
+(F2-AC8). The skill writes no `id`: `review-session.py setup-input --kind --confirmed` gives every row the saved
+row's id of its heading key or the next free one. The skill never writes `rows-<kind>.json`; `match` writes it and
+`setup-input` deletes it on save (ADR-13, CON-1). A refusal's pointer `/sections/<i>` is the row at index `<i>`,
+counted from 0, so the skill names the heading of that row instead of a JSON path the user cannot act on; the
+`problems` themselves stay verbatim (the verbatim rule names the setup step's `errors`).
+
+**Template choice (F7, #267).** A typed or saved template Kado does not find comes back as `template_not_found`
+with `template: null` and the candidates listed. The skill says the name was not found — the typed one, or the
+saved one when `source` is `configured` — and the existing candidates question asks for another; the "no template
+is saved" sentence is said only without `template_not_found`, because for a typed name it would be false.
+
+`sections.dropped` names the headings of the earlier mapping the template lacks: once after a template change
+(the first `match` with the new template; the rows file is then rewritten, so a later rerun shows none), and on
+every same-template run for saved rows whose heading the template lost (owner decision 2026-11-15). One line per
+entry, so a typo never leaves the user believing a mapping still applies (F7-AC3).
+
+**The `--anchor` carve-out (ADR-13).** The carry rule says never drop a flag from a rerun, so each question is
+asked once. The anchor is the exception: a typed anchor names a heading of the template it was given for, and the
+script now uses even the configured anchor only for the configured template. Carrying `--anchor` into a `match`
+with another template would place the review under a heading the new template may not have. So when `<template>`
+changes, the next `match` carries no `--anchor` and `<anchor>` is unset; the new output proposes the place from
+the new template, and `needs_anchor` asks again when it cannot. The carry rule names the exception in place
+("except `--anchor` by the next line"), because a literal model reading "never drop" otherwise keeps it.
+`--template-frontmatter-ok` needs no carve-out: it names the template it was given for and the script ignores it
+for any other.
+
+**The quarter in the same flow (F6-AC1).** Step 2 runs for `quarter` exactly as for `week` and `month` (the week
+question never fires for it; `match` proposes the folder, the `YYYY-[Q]Q` format or the one found, template, place,
+language and rows). Step 1 sends a quarter request with `setup.quarter` `missing` into step 2 and reruns `start`
+after the save, like the other kinds (F2-AC10: the request continues in the same session). A quarter cannot be read
+yet (`review-read.py` takes `--kind quarter` only from spec 046 Phase 3 on), so a quarter request then stops with
+one line that the setup is saved and Tomo cannot review a quarter yet — the skill never routes a quarter to step 3,
+where the read would exit 2 and look like a failure. Phases 3 and 4 replace that line with the quarter branch.
+`/review setup` runs the quarter after the week and the month only when `setup.quarter` is `present`: a vault
+without quarterly notes is not walked through a third dialogue it has no use for, while a saved quarter setup can
+be changed the same way as the others; the first quarter setup comes from `/review quarter` (or `/review 2026-Q1`).
+The command's and the skill's argument hints name `quarter` and `2026-Q1`.
+
+**Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to the count recorded in
+the T2.3 commit (SDD: about 1,000 characters for the sections; the trim is #259). No `STRICT` block was added: no
+run has shown a deviation in this step yet.
+
 ## Why the Week Question Is Asked in Plain Words (ADR-7)
 
 WHY: Which day starts a week and which week is week 1 decide which note a review targets; a wrong rule creates a

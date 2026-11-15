@@ -55,6 +55,9 @@ find it, but the model could still put the name back. So `match` records in
 `resolved` the name it tried and its kind (`missing` when not found), also
 when it shows no rows, and `setup-input` refuses a confirmed template that is
 not the one `match` resolved last, or that it resolved as missing.
+This is conservative by design: `match` for A, then `match` for a B it does
+not find, then confirming A is refused, because `resolved` now names B; the
+user re-runs `match` with A.
 
 Rows (sections or off-limits) need more: the outline must belong to the
 confirmed template. Rows for a template whose outline the file does not hold

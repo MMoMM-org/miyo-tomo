@@ -1,5 +1,5 @@
 # review_setup_rows.py — may these section and off-limits rows be saved: the setup-input row checks of /review.
-# version: 0.1.0
+# version: 0.1.1
 """The row checks of ``review-session.py setup-input`` (spec 046 T2.2; PRD F2-AC4, F2-AC11, F2-AC12, Rule 4).
 
 ``read_evidence(path)`` reads the rows file ``match`` wrote (``lib/review_match.write_rows``):
@@ -72,14 +72,14 @@ def saved_off_limits(config: dict, kind: str, template) -> List[dict]:
 
 
 def with_ids(data: dict, previous: Sequence[dict]) -> dict:
-    """``data`` with an id on every section row; unchanged when the rows are not dicts or no id is left
-    (the schema then names the row)."""
+    """``data`` with an id on every section row; unchanged when the rows are not dicts, a heading key is
+    unhashable or no id is left (the schema then names the row)."""
     rows = data.get(rc.SECTIONS)
     if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
         return data
     try:
         return {**data, rc.SECTIONS: assign_ids(rows, previous)}
-    except ValueError:
+    except (ValueError, TypeError):
         return data
 
 

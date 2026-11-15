@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_setup_input_rows.py — `review-session.py setup-input` refuses what may not be saved and saves the rest
 (spec 046 T2.2).
 
@@ -339,6 +339,32 @@ def test_duplicates_and_a_malformed_id_are_refused_at_their_pointer(mod, instanc
                                                                     pointer, kind):
     out = _matched_setup(mod, monkeypatch, capsys, instance, **confirmed)
     _refused(out, pointer, kind)
+
+
+@pytest.mark.parametrize("bad,pointer", [
+    ({"heading": ["x"]}, "/sections/0/heading"),
+    ({"heading": "Overview", "parent": {"a": 1}}, "/sections/0/parent"),
+])
+def test_an_id_less_row_with_an_unhashable_key_is_a_schema_problem_not_a_crash(mod, instance, monkeypatch, capsys,
+                                                                               bad, pointer):
+    out = _matched_setup(mod, monkeypatch, capsys, instance, sections=[{"level": 2, "placement": "end", **bad}])
+    assert out["status"] == "invalid", out
+    assert {"pointer": pointer, "kind": "schema"} in out["problems"], out["problems"]
+
+
+# ---------------------------------------------------------------- an unusable rows file is no evidence
+
+@pytest.mark.parametrize("content", [
+    "{not json",
+    "[]",
+    json.dumps({"template": TEMPLATE, "outline": {"headings": [{"heading": "A"}], "top": []}, "resolved": {}}),
+    json.dumps({"template": TEMPLATE, "outline": {"headings": [], "top": []}, "resolved": "x"}),
+], ids=["not-json", "a-list", "a-malformed-outline", "resolved-not-a-dict"])
+def test_rows_against_an_unusable_rows_file_are_refused(mod, instance, monkeypatch, capsys, content):
+    proposal = _match(mod, monkeypatch, capsys)["proposal"]
+    _rows_file(instance).write_text(content, encoding="utf-8")
+    out = _setup(mod, monkeypatch, capsys, instance, proposal, sections=[row(PLANNING)])
+    _refused(out, "/template", "template-not-found")
 
 
 # ---------------------------------------------------------------- a saved row the template lost (F2-AC10)

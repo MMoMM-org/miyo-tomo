@@ -532,6 +532,8 @@ A row with `placement: review` is allowed only on a heading left out as `automat
                reason: templater|link|per-period-parent|off-limits|automatic|null, flags: [mixed|container|under-own],
                defaults: {placement, cap}, saved: <row or null>}],
                off_limits: [<saved rows>], dropped: [{heading, level, parent}]}
+               # dropped: earlier rows the template lacks — after a template change (rows file), and on a
+               # same-template run also saved config rows whose heading the template no longer has (owner 2026-11-15)
     template_not_found: {name, source: typed|configured} | absent   # with template: null and candidates listed
 - review-session.py setup-input --kind <k> --confirmed <file>
   accepts sections[] and off_limits[] (rows as above); refuses: template-not-found, section-left-out,
@@ -1041,7 +1043,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 - [ ] F2-AC12 WHERE a row has `placement: review` on a script-only heading, THE SYSTEM SHALL never write into that heading, SHALL render it in the review document with its own section checkbox, and SHALL deliver its items in the "Tomo Review" section under a sub-heading named after it; a row SHALL NOT name `habits`. (The sub-heading repeats a script-only heading's text inside Tomo's own section. No block targets a script-only heading; should a mapped heading share that text, step 5's whole-note count makes it `section-ambiguous`, so Hashi's first-match lookup never lands on the copy blind.)
 - [ ] F7-AC1 IF a typed or configured template is not found, THEN THE SYSTEM SHALL return `template_not_found` with the candidates and `setup-input` SHALL refuse it.
 - [ ] F7-AC2 WHEN the template changes in the dialogue, THE SYSTEM SHALL propose place and rows from the new template only.
-- [ ] F7-AC3 WHEN the template changes and `rows-<kind>.json` holds the earlier rows, THE SYSTEM SHALL return the earlier rows the new template lacks as `dropped`.
+- [ ] F7-AC3 WHEN the template changes and `rows-<kind>.json` holds the earlier rows, THE SYSTEM SHALL return the earlier rows the new template lacks as `dropped`; WHEN the template is unchanged, THE SYSTEM SHALL also return as `dropped` the saved rows whose heading the template no longer has, and `setup-input` SHALL refuse such a row as `section-not-in-template`.
 
 **Main Flow Criteria: PRD F3 — document by section**
 - [ ] F3-AC1 THE SYSTEM SHALL render section parts in template order, then "Tomo Review", with spec 045's header parts unchanged.

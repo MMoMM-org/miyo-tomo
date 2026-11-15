@@ -50,7 +50,7 @@ Reads a quarter like a month one level up, and hands the model the section defin
 
   1. Prime: `tomo/scripts/review-read.py` (`_PERIOD_RE` 78, `period_from` 91, `run` 164-199, `indent=2` 195); `lib/review_config.ReviewSetup.sections` (T1.3) `[ref: SDD/Internal API Changes; ADR-1; ADR-7]`
   2. Test: `read.json` carries `sections` (key, heading, level, parent, description, keywords, groups, cap; analysis rows included) only with a mapping; written compact; `--kind quarter --period 2026-Q1` reads the quarter; `--measure` writes no file for the model and prints calls, waits and bytes only (privacy test: no note text on stdout or stderr); without a mapping the result equals the golden content apart from the compact encoding (CON-2 difference pinned).
-  3. Implement: `review-read.py` changes; WHY doc first; version bump.
+  3. Implement: `review-read.py` changes — for the quarter: `QUARTER: ^(\d{4})-Q([1-4])$` in `_PERIOD_RE`, `period_from` through `period.build`, which re-opens `--kind quarter` (limited to `tuple(_PERIOD_RE)` since T1.4), remove the `--kind quarter` case from `test_a_bad_invocation_exits_2` and the "until Phase 3" WHY paragraph in `docs/tomo/scripts/review-read.md`; WHY doc first; version bump.
   4. Validate: `test_review_read.py` green; ruff clean.
   5. Success: the model gets the definitions in the file it already reads `[ref: PRD/F1-AC1]`
 

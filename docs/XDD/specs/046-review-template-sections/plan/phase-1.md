@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundations — config, writer, template analysis, quarter period"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -48,11 +48,11 @@ Establishes the storage, the template analysis and the quarter as a period, on w
   4. Validate: new and existing tests green (`test_review_md*`, `test_template_syntax*`); ruff clean; module ≤ 300 lines.
   5. Success: the setup can offer exactly the headings the rules allow, with reasons `[ref: PRD/F2-AC3, F2-AC5, F2-AC11]`
 
-- [ ] **T1.3 Config schema and reader: sections, off-limits, quarterly** `[activity: data-architecture]`
+- [x] **T1.3 Config schema and reader: sections, off-limits, quarterly** `[activity: data-architecture]`
 
   1. Prime: `tomo/schemas/vault-config-review.schema.json` (place 57-71, own_sections 72); `tomo/scripts/lib/review_config.py` (`GRANULARITY` 47, `ReviewSetup` ~99-122, `review_setup` 194-266, `input_problems` 319, `writer_edits` 335); `tomo/scripts/vault-config-writer.py` `cmd_review` 950-1000; `tomo/config/vault-example.yaml` ~555-585 `[ref: SDD/Data Storage Changes; ADR-3]`
   2. Test: schema accepts a row with each placement incl. `review`, refuses `habits` in `groups`, an id outside `^s[0-9]{1,3}$`, a cap outside 1..30, an empty description, an unknown field; `off_limits` rows with `with_subsections`; `review.quarterly` keys; `review_setup` selects only the configured template's rows (F2-AC8) and returns pointers for invalid rows; `input_problems` refuses duplicate heading keys and duplicate ids; `writer_edits` touches only `sections.<template>` / `off_limits.<template>`; the writer round-trip saves rows and reads them back; a config without the new keys behaves exactly as before.
-  3. Implement: schema, `review_config.py` (`sections`, `off_limits` on `ReviewSetup`; `GRANULARITY[QUARTER]`), writer edits; documented example in `vault-example.yaml`; WHY docs first; version bumps.
+  3. Implement: schema, `review_config.py` (`sections`, `off_limits` on `ReviewSetup`; `GRANULARITY[QUARTER]` — added in T1.4), writer edits; documented example in `vault-example.yaml`; WHY docs first; version bumps.
   4. Validate: `test_review_config.py`, `test_vault_config_writer_review.py` green; ruff clean.
   5. Success: rows and off-limits marks are stored per template and read back for the configured one `[ref: PRD/F2-AC7, F2-AC8, F2-AC10]`
 
@@ -64,6 +64,6 @@ Establishes the storage, the template analysis and the quarter as a period, on w
   4. Validate: `test_period.py`, `test_review_state*.py`, `test_review_session.py` green; ruff clean.
   5. Success: every quarter argument resolves or is refused as the PRD says `[ref: PRD/F6-AC2, F6-AC3]`
 
-- [ ] **T1.5 Phase Validation** `[activity: validate]`
+- [x] **T1.5 Phase Validation** `[activity: validate]`
 
   - Run all Phase 1 tests and the full suite once. Check each WHY doc landed before its runtime/code change (git log order). Lint clean. Confirm no eval-gated file changed.

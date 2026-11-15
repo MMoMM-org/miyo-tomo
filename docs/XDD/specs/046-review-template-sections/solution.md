@@ -361,7 +361,7 @@ graph LR
 | `lib/review_delivery.py` | Refusals, `delivered_plan` incl. `sections`, overwrite of a partly applied set |
 | `lib/render_md.py` | Readable instructions incl. `replace_between_markers` |
 
-Touched without a new responsibility: `lib/review_templates.py` (quarter kind word), `lib/review_md.py` (`AUTOMATIC_FENCES`, shared regexes), `lib/template_syntax.py` (helper made public), `lib/review_weekly.py` (content split reused for monthly notes), `lib/review_state.py` (`SECTION_ACTIONS`, `_infer_kind`, partly applied state), `lib/review_doc_read.py` (`pass1_counts` with section keys), `lib/staged_delivery.py` (unchanged, named for resume), the schemas and `shapes/instructions.shape.json`, `commands/review.md`, `config/vault-example.yaml`.
+Touched without a new responsibility: `lib/review_templates.py` (quarter kind word), `lib/review_md.py` (`AUTOMATIC_FENCES`, shared regexes), `lib/review_day.py` (imports those regexes), `lib/template_syntax.py` (helper made public), `lib/review_weekly.py` (content split reused for monthly notes), `lib/review_state.py` (`SECTION_ACTIONS`, `_infer_kind`, partly applied state), `lib/review_doc_read.py` (`pass1_counts` with section keys), `lib/staged_delivery.py` (unchanged, named for resume), the schemas and `shapes/instructions.shape.json`, `commands/review.md`, `config/vault-example.yaml`.
 
 **Responsibility matrix (exactly one owner per PRD criterion; collaborators in brackets):**
 
@@ -417,6 +417,7 @@ tomo/
         ├── review_match.py                      # MODIFY
         ├── review_templates.py                  # MODIFY: KIND_WORDS quarter
         ├── review_md.py                         # MODIFY: AUTOMATIC_FENCES, shared inline-field/embed regexes
+        ├── review_day.py                        # MODIFY: imports the shared regexes from review_md (T1.2)
         ├── template_syntax.py                   # MODIFY: templater span helpers public
         ├── review_doc.py                        # MODIFY: per-kind group tables, assemble parts
         ├── review_doc_parse.py                  # MODIFY: section parts
@@ -531,7 +532,9 @@ A row with `placement: review` is allowed only on a heading left out as `automat
 - review-session.py setup-input --kind <k> --confirmed <file>
   accepts sections[] and off_limits[] (rows as above); refuses: template-not-found, section-left-out,
   section-not-in-template, section-off-limits, landing-off-limits (a before/end placement whose landing lines
-  belong to an off-limits section), analysis-not-automatic, duplicate-section, bad-section-id
+  belong to an off-limits section), analysis-not-automatic, duplicate-section, duplicate-off-limits,
+  duplicate-section-id (an id outside ^s[0-9]{1,3}$ is refused by the schema as a `schema` problem at its pointer;
+  names as built in T1.3, `review_config.input_problems`)
 - review-read.py --kind week|month|quarter --period <name> --stem <stem> [--measure]
   writes read.json (week, month) or read-index.json + read-<YYYY-MM>.json (quarter); adds `sections` (definitions);
   quarter adds `monthly`, `only_in_monthly_links`, `dailies_not_in_monthly`, report.monthly_status/monthly_notes

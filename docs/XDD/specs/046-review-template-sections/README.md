@@ -70,6 +70,7 @@
 | 2026-11-15 | Implementation starts on `docs/263-review-template-sections` (Standard mode); no separate feat branch | The `tcs-git-helpers` hook refused a branch from an unfinished one (BRANCH_FROM_UNFINISHED); owner chose to stay rather than override; spec and code ship in one PR |
 | 2026-11-15 | T1.2: SDD Template analysis trace corrected — "Review of the Week" is offered with flag `container`, not left out as `per-period-parent` | In the real `t_week_privat` it also holds four non-per-period L3 headings; the stated rule ("container of only such headings") offers it, the conservative side of ADR-9. Owner accepted the correction |
 | 2026-11-15 | T1.4 deviations accepted: `GRANULARITY[QUARTER]` added early in `review_config.py` (T1.3's line; `start` raised KeyError without it); `review_match` default format per kind; `review-read.py --kind` limited to week/month until Phase 3 | Forced by `KINDS` gaining quarter (ADR-6); reviewed PASS |
+| 2026-11-15 | Phase 1 drift check (Drift, Alignment, Consistency; no FAIL, 1 MEDIUM, 8 LOW): spec and docs updated to the code, code unchanged — SDD and T2.2 refusal names now `duplicate-section`, `duplicate-off-limits`, `duplicate-section-id` (a malformed id is a `schema` problem; no `bad-section-id`); `review_day.py` added to the Directory Map; plan notes in T1.3, T2.1, T3.3 (T3.3 re-opens `review-read --kind quarter`); stale WHY text in `review_config.md` and `templates.mapping.quarterly` in `vault-example.yaml` fixed | Owner chose "update spec + docs" |
 
 ## Context
 

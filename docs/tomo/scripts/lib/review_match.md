@@ -129,6 +129,13 @@ compared against the rows the user last saw. An unreadable template does the
 same, since its headings are unknown and every earlier row would read as
 dropped.
 
+A rows file that cannot be written (`OSError` from `write_rows`) is not
+caught: `match` exits 1 instead of degrading to `status ok`. The proposal
+would still be usable, but the next correction would compare against stale or
+missing rows and `dropped` would silently miss headings the user saw — F7-AC3
+would fail without a sign. A failed run is the honest answer; the tmp dir is
+Tomo's own and an unwritable one is an install fault, not a vault state.
+
 ## WHY a Template That Is Not Found Is `template_not_found` (F7-AC1, #267)
 
 Before spec 046 a typed or configured name Kado did not find was proposed as

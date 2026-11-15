@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_review_session_sections.py — `review-session.py match` proposes the section mapping, off-limits rows,
 the quarter and a checked template choice (spec 046 T2.1, #267).
 
@@ -214,6 +214,16 @@ def test_after_a_template_change_dropped_names_the_earlier_rows_the_new_template
     assert _rows_file(instance)["template"] == "t_week_plain.md", "the file now holds the rows shown last"
     again = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_plain")
     assert again["sections"]["dropped"] == [], "the same template again drops nothing"
+
+
+def test_a_same_template_rerun_drops_nothing_even_for_a_row_the_template_lacks(mod, instance, monkeypatch, capsys):
+    _config(instance)
+    (instance / ROWS).mkdir(parents=True)
+    rows = {"kind": "week", "template": "t_week_plain.md",
+            "rows": [{**LESSONS, "keywords": [], "placement": "end", "cap": 8}]}
+    (instance / ROWS / "rows-week.json").write_text(json.dumps(rows), encoding="utf-8")
+    out = _match(mod, monkeypatch, capsys, _vault(), "--template", "t_week_plain")
+    assert out["sections"]["dropped"] == [], "dropped is named only after a template change"
 
 
 def test_a_template_change_to_no_template_drops_every_earlier_row(mod, instance, monkeypatch, capsys):

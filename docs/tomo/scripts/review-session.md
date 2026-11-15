@@ -457,6 +457,25 @@ the keys instead of silently proposing over them. `setup.week` /
 `setup.month` (`present` / `missing`) are in every output so the skill runs
 the setup first when the requested kind has none (F2).
 
+## WHY `start` Removes the Rows Files and `match` Takes `--tmp`
+
+WHY: spec 046 ADR-13. `match` keeps the rows it showed in
+`tomo-tmp/review/rows-<kind>.json` so a template correction can name the
+rows it drops (docs/tomo/scripts/lib/review_match.md). That file belongs to
+one setup dialogue. A dialogue that ended in Abort, or a session that ended
+mid-setup, leaves it behind; the next session's first `match` would then
+compare its template with a mapping the user no longer sees and report
+headings as dropped that were never part of this dialogue. Every `/review`
+starts with `start`, so `start` removes every `rows-<kind>.json` before it
+does anything else, whatever the argument; `setup-input` removes it on save
+(T2.2). A file that cannot be removed (`OSError`) is left: the cost is a
+spurious `dropped` line, not a wrong save, and `start` keeps its exit-0
+contract. Nothing else under `tomo-tmp/review/` is touched.
+
+`match` gains `--tmp` (the same default as `start`'s) so both subcommands
+name one folder and a test can point them elsewhere; the skill passes
+neither.
+
 ## WHY the JSON Is Written ASCII-Escaped
 
 WHY: as in `note-session.py`: `ensure_ascii=True` cannot fail on a non-UTF-8

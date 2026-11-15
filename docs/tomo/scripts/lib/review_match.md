@@ -61,3 +61,102 @@ With no configured and no typed format, the proposal falls back to
 gets `gggg-[W]ww`). The fallback had named the month's `YYYY-MM` for every
 kind that is not a week; once the quarter became a kind (spec 046 T1.4) that
 would have proposed a month format for quarterly notes.
+
+## WHY the Section Mapping Is Proposed by `match` (spec 046 T2.1)
+
+The section mapping rides the existing confirm step (no extra question turn),
+so the one `match` call that proposes folder, format, template and place also
+carries `sections`. The script part and the model part are split as ADR-9
+draws them: `match` supplies the candidates (one per template heading of level
+2..6, from `lib/review_mapping.analyse_template`), their keys, states, reasons
+and flags, the defaults and the saved rows; the model only words descriptions,
+keywords and group hints. A deterministic analysis is testable on the owner's
+templates, and a wrong left-out cannot be undone by the user.
+
+`sections` is always present. With no template, a template Tomo cannot read or
+find, or a template without a heading a row may sit on, it carries
+`candidates: []` and `mappable: false`: the skill says that no section can be
+mapped (F2-AC9). An explicit `false` is an answer; a missing key would read
+the same as an old script and could not be told apart from a no-op.
+
+`mappable` counts an offered heading and a heading left out as `automatic`.
+The second takes an analysis row (`placement: review`, F2-AC12): its text
+lands in the "Tomo Review" section, never under the heading, so a template
+whose only sections are query output still has something to map. With no
+such heading the left-out list is dropped too, because nothing in it can be
+chosen; the reasons matter only beside headings that can.
+
+## WHY the Defaults Are What They Are
+
+A saved row comes back as the defaults (its placement and cap) and as
+`saved`, so a rerun of the setup shows what is stored, not a fresh guess. An
+offered heading without a saved row defaults to `end` with the reader's cap of
+8: the end of the section is after whatever the user wrote, so Tomo's block
+never sits between the heading and the user's own words. A heading left out as
+`automatic` defaults to `review`, the only placement it accepts (Data Storage
+Changes). Every other left-out heading has `defaults: null`: no row may sit on
+it, and a placement there would be a value the setup refuses.
+
+Saved rows and off-limits rows are read for the resolved template
+(`review.<g>.sections.<template>`, `review.<g>.off_limits.<template>`, through
+`review_config.template_rows`), not only for the configured one: a Correct back
+to a template that has rows stored shows them again. The off-limits rows feed
+the analysis, so a heading the user protected comes back left out as
+`off-limits`, and they are returned as `sections.off_limits` for the table.
+
+## WHY `match` Writes `rows-<kind>.json` and Returns `dropped`
+
+F7-AC3 asks Tomo to name the mapped headings a corrected template no longer
+has. The earlier rows exist only in the dialogue; the model writes no state
+file (CON-1, ADR-13). So `match` itself keeps the rows it showed in
+`tomo-tmp/review/rows-<kind>.json` and, when the resolved template differs
+from the one in that file, returns as `dropped` the rows whose (heading,
+level, parent) the new template lacks (`review_mapping.dropped`). The same
+template again drops nothing. One file per kind, because a week and a quarter
+can be set up in one session and the week's rows are not the quarter's
+earlier mapping.
+
+The rows shown are the saved row of a heading when there is one, else a
+default row for every offered heading: the setup proposes a row per suitable
+heading (F2-AC1), so every offered heading is part of the earlier mapping.
+The file holds setup text only — heading keys, descriptions, keywords,
+placements, caps (CON-3). It never holds the anchor, a note heading or any
+body line; ids and groups are left out because nothing reads them from it.
+
+A template that is not found writes nothing and drops nothing: no proposal
+was shown for it, the question is asked again, and the next answer is still
+compared against the rows the user last saw. An unreadable template does the
+same, since its headings are unknown and every earlier row would read as
+dropped.
+
+## WHY a Template That Is Not Found Is `template_not_found` (F7-AC1, #267)
+
+Before spec 046 a typed or configured name Kado did not find was proposed as
+the template with `template_kind: missing`, and a Confirm saved the typo.
+Prose rules in the skill did not hold. `match` now returns
+`template_not_found {name, source: typed|configured}`, sets the template to
+null and lists the candidates of the templates folder, so the skill names the
+miss and asks again from the list (`setup-input` refuses a confirmed missing
+template, T2.2). `source` tells the skill whether the user mistyped or the
+saved mapping points at a template that was renamed or deleted.
+
+## WHY the Configured Anchor Counts Only for the Configured Template (F7-AC2)
+
+The configured anchor is a heading of the configured template. After a
+Correct to another template it named a heading that template may not have,
+and the review place was not proposed anew. The anchor is therefore taken
+from the config only while the resolved template equals the configured one
+(both none counts as equal: a setup without a template keeps its anchor);
+otherwise it is proposed from the new template's headings. `--anchor` still
+wins over both, and the skill drops it when the template changes.
+
+## WHY the Quarter's Format Follows Its Notes
+
+F6-AC1 asks the proposed quarterly format to follow the existing notes, or
+`YYYY-[Q]Q` when there are none. The week infers its rule from the notes'
+dates; a quarterly note has no rule to infer, only a name. With neither a
+`--format` nor a configured one, `match` tries a short list of quarter
+formats (`QUARTER_FORMATS`) on the folder's names and takes the one that
+parses the most, the default first on a tie; with no name that parses, the
+default stands. The list is small on purpose: an unusual name stays
+unmatched in `evidence` and the user corrects the format, as for a month.

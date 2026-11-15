@@ -94,8 +94,12 @@ F3-AC13).
 
 WHY: F3-AC9 and PRD Rule 6. `nothing_to_review` is true when no day of the
 period has content beyond the template skeleton (`has_content` from
-`review_day`): no `read.json` is written, so the document step finds nothing
-to build (`review-doc.py write` → `read-missing`). The status stays `ok`:
+`review_day`): no `read.json` is written, so on a fresh stem the document
+step finds nothing to build (`review-doc.py write` → `read-missing`). Only a run that writes
+read files clears the stage's earlier `read*.json` first
+(`lib/review_read_parts.write`); this run writes none, so a file an earlier
+run left under a reused `--stem` stays — the skill stops on
+`nothing_to_review` and never calls `review-doc.py`, so it is not read. The status stays `ok`:
 Kado was reached and answered; it is the period that holds nothing.
 
 The first version appended `check-key-access` to the advice whenever nothing
@@ -136,8 +140,10 @@ means the period was read; `stopped` means it was not.
 WHY: spec 046 ADR-1, PRD F1-AC1. With a confirmed mapping the model must know,
 for each mapped section of the period kind's template, what to look for in
 the notes it reads. Those definitions go into the file it already reads —
-`read.json` key `sections` — so the creative step stays one file read and no
-second path has to be named in the skill. Each entry is the SDD's
+key `sections` of `read.json` for a week or a month, of `read-index.json`
+for a quarter (see "WHY a Quarter Writes `read-index.json` and One Part per
+Month") — so no file is read for the definitions alone and no extra path has
+to be named in the skill. Each entry is the SDD's
 `SectionDefinition`: `key`, `heading`, `level`, `parent`, `description`,
 `keywords`, `groups`, `cap`, taken from `ReviewSetup.sections` (the rows
 stored for the configured template, defaults filled by

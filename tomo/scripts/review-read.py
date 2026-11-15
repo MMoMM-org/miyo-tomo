@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read*.json for the model, the per-day report on stdout.
-# version: 0.3.0
+# version: 0.3.1
 """The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3, T3.4).
 
 After ``review-session.py start`` named a finished period and the setup of
@@ -50,8 +50,9 @@ read.json: period, days, growth, open_tasks, not_read, report; a month adds
     Written compact (separators ",", ":"), ASCII-escaped. A quarter's read is
     split: read-index.json holds every key but days, weekly and monthly, plus
     parts [file names]; read-<YYYY-MM>.json holds month and that month's
-    days, weekly and monthly entries. A run deletes the stage's earlier
-    read*.json files first.
+    days, weekly and monthly entries. A run that writes read files deletes
+    the stage's earlier read*.json files first; a run that writes none
+    (nothing_to_review, --measure, stopped) leaves them in place.
 
 Rules:
     One KadoClient per run, built before the first call and wrapped by one

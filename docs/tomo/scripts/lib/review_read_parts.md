@@ -18,7 +18,8 @@ in `plan/phase-3.md` under T3.4) — almost three times the limit. The days are
 is the natural seam: each month's days alone stay under the limit, and the
 model reads a quarter as the index plus three months in turn, the way a
 person reads it. A week and a month stay one `read.json` (ADR-7): a month
-measured 275 KB before the compact encoding and fits after it, and splitting
+measured 275 KB before the compact encoding and is expected to fit after it
+(not measured since the compact encoding), and splitting
 it would give the skill a second branch for no gain.
 
 ## WHY Every Non-Day Entry Goes to the Month It Belongs To
@@ -69,7 +70,10 @@ WHY: a stale file must never be mistaken for the current read. The stage
 folder is named by the stem, and `--stem` can be reused, so a quarter run can
 meet a `read.json` from an earlier unsplit run (before T3.4) and a week run
 can meet a quarter's index. `write` therefore deletes every `read*.json` of
-the stage first — the index before anything else — then writes the new
+the stage first — on every run that writes read files; a run that writes
+none (`review-read.py` on `nothing_to_review`, `--measure`, a stop) never
+calls `write` and leaves an earlier run's files in place, which the skill
+never reads because it stops on those outcomes — the index before anything else — then writes the new
 files, the index last. An index on disk thus always lists parts of the same
 run: if the run dies between the parts and the index, no index exists and
 the loader reports the read as missing instead of joining old parts. Parts

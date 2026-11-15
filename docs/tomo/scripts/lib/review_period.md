@@ -5,7 +5,9 @@
 > F3-AC5, F3-AC6, F3-AC7, F3-AC9; SDD Complex Logic "month reading"):
 > finding the dailies of every day (flat and year folders, duplicates), the
 > daily of the day after the period, the link stems a day asks for, the
-> living task notes, the weekly notes a month overlaps and their day blocks,
+> living task notes, the child-review notes (for a month the weekly notes it
+> overlaps and their day blocks; for a quarter the weekly notes as sources
+> and the monthly notes with their marks),
 > the two link differences, vault growth, and the per-source part of the
 > report `review-read.py` prints. Reading one day is `lib/review_day.py`'s;
 > parsing a weekly note is `lib/review_weekly.py`'s; reaching Kado is

@@ -77,6 +77,7 @@
 | 2026-11-15 | T2.3: SKILL.md setup step grew 24,278 → 28,176 characters (+3,898) against ADR-1's "about 1,000"; accepted, the trim belongs to #259 | Owner (recommended); the per-reason words, per-kind groups, Correct operations and confirmed-file shape carry the growth |
 | 2026-11-15 | T2.3: a not-found template with no candidate templates asks for a typed name or `0` (none) instead of falling through to a plain note | Owner (recommended); outside F7-AC1's "with candidates" scope, closed in T2.3's review round |
 | 2026-11-15 | T2.3: interim — a set-up quarter request stops with one line ("cannot review a quarter yet") until T4.5 removes it; `/review setup` walks the quarter only once it is set up | Reading a quarter is Phase 3/4; `review-read --kind quarter` exits 2 until T3.3 |
+| 2026-11-15 | Model escalation: T2.3 opus → opus@max | Trigger: second review FAIL |
 
 ## Context
 

@@ -158,7 +158,8 @@ the mapping nor `--template` names a template (WHY of the words and the order: `
 and the skill asks first, before it prints the proposal, because the answer changes the proposal: `1 <name> · 2 <name> · 0 none`,
 numbered on one line in the plain-text form every other question has, `0 none` last so a user who keeps the plain
 note types the one number that never shifts. A number reruns `review-session.py match --kind --template` with the name
-and the flags already given, so the chosen template takes the same path as a configured one (read, classified,
+and the flags of the last `match` call except `--template` and `--anchor` (why: the Template choice paragraph
+below), so the chosen template takes the same path as a configured one (read, classified,
 its headings proposing the anchor); `0` keeps the first output, whose `template` is null and whose `template_kind`
 is `missing` — the plain-note line already covers it, and nothing is saved to the mapping (the writer removes a key
 that is not there). The choice is saved through `setup-input` as `template`, the key `vault-config-writer.py review
@@ -306,7 +307,10 @@ template's entry", so a user who removes every row saves no mapping, while the r
 row's id of its heading key or the next free one. The skill never writes `rows-<kind>.json`; `match` writes it and
 `setup-input` deletes it on save (ADR-13, CON-1). A refusal's pointer `/sections/<i>` is the row at index `<i>`,
 counted from 0, so the skill names the heading of that row instead of a JSON path the user cannot act on; the
-`problems` themselves stay verbatim (the verbatim rule names the setup step's `errors`).
+`problems` themselves stay verbatim (the verbatim rule names the setup step's `errors`). The line says "starts
+with" because `setup-input` also refuses at `/sections/<i>/placement` (the row's landing is off-limits), and it
+names `/place` (the "Tomo Review" place lands off-limits) and `/template` (template not found) in words, the
+other two pointers `review_setup_rows.py` returns (Phase 2 drift check).
 
 **Template choice (F7, #267).** A typed or saved template Kado does not find comes back as `template_not_found`
 with `template: null` and the candidates listed. The skill says the name was not found — the typed one, or the
@@ -328,7 +332,10 @@ remembered earlier version plus a described edit.
 `sections.dropped` names the headings of the earlier mapping the template lacks: once after a template change
 (the first `match` with the new template; the rows file is then rewritten, so a later rerun shows none), and on
 every same-template run for saved rows whose heading the template lost (owner decision 2026-11-15). One line per
-entry, so a typo never leaves the user believing a mapping still applies (F7-AC3).
+entry, so a typo never leaves the user believing a mapping still applies (F7-AC3). "Not kept" is said only with
+`sections.mappable` true: `match` lists the saved rows the template lacks also when no heading can be mapped, but
+then Confirm writes no `sections` key and the writer changes no row, so the line says the save leaves the saved
+rows as they are (Phase 2 drift check).
 
 **The `--anchor` carve-out (ADR-13).** The carry rule says never drop a flag from a rerun, so each question is
 asked once. The anchor is the exception: a typed anchor names a heading of the template it was given for, and the
@@ -355,7 +362,8 @@ The command's and the skill's argument hints name `quarter` and `2026-Q1`.
 **Size.** The table, its corrections and the quarter routing grew the skill from 24,278 to 28,176 characters
 (+3,898, `wc -c`; 220 → 233 lines) at 0.2.0; the T2.3 review fixes (the empty-candidates question, the table
 printed again) brought it to 28,600 at 0.2.1 and the `--template` / `--anchor` exception of the two
-template-choice reruns to 28,672 at 0.2.2, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
+template-choice reruns to 28,672 at 0.2.2, still 233 lines; the Phase 2 drift fixes (the `dropped` line by
+`mappable`, the `/place` and `/template` pointers) to 28,885 at 0.2.3, still 233 lines. The SDD estimated about 1,000 characters for the sections; the estimate did not
 count the per-reason words, the per-kind group list, the Correct operations and the confirmed-file shape, each
 of which a literal model needs spelled out. The trim is #259. No `STRICT` block was added: no
 run has shown a deviation in this step yet.

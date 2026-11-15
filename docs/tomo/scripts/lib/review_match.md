@@ -156,6 +156,13 @@ row is listed there too, on every run with the same template, not only after a
 template change. The rows-file comparison (F7-AC3) still drops nothing for the
 same template.
 
+With `mappable` false the row is listed in `dropped` all the same, but the
+save removes nothing: the skill's Confirm writes `sections` only with
+`mappable` true, and `vault-config-writer.py review` edits no row list that
+is not in its input, so the saved rows stay until a mapping of that template
+is confirmed. The skill says so instead of "not kept"; the entry is listed so
+the user still learns the heading is gone.
+
 A rows file that cannot be written (`OSError` from `write_rows`) is not
 caught: `match` exits 1 instead of degrading to `status ok`. The proposal
 would still be usable, but the next correction would compare against stale or

@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundations — config, writer, template analysis, quarter period"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

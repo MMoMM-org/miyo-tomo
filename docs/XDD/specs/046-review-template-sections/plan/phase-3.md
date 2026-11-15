@@ -60,7 +60,8 @@ Reads a quarter like a month one level up, and hands the model the section defin
   2. Test: (after the measurement) a quarter writes `read-index.json` (period, report, sections, part list) and one `read-<YYYY-MM>.json` per month; every part ≤ 256 KB on the measured data shape (fixture scaled to the measured bytes); week and month still write one `read.json`; a loader joins the parts back into one result equal to the unsplit one.
   3. Implement: announce the measurement and wait for the owner's go; run `--measure` against the test vault (sandbox permitting, host script against live Kado); record calls, wait, bytes per month in `plan/phase-3.md` under this task; then the split and the loader; WHY doc first; version bump. If a part still exceeds 256 KB, stop and bring the quarter character budget (SDD Technical Debt) to the owner.
   4. Validate: tests green; measurement recorded.
-  5. Success: a quarter's read fits the model's Read limit per part `[ref: PRD/Success Metrics cost and time; SDD/Quality Requirements]`
+  5. Success: a quarter's read fits the model's Read limit per part
+  - Measurement (2026-11-15, owner go; host `review-read.py --kind quarter --period 2026-Q1 --measure` against live Kado on the test vault, quarterly setup in a scratch copy of the tomo-instance config; read-only): wall 137 s, 453 calls, 0 retried, 133.1 s pacing wait, 0 not read; unsplit compact `read.json` 710,106 bytes; days per month 2026-01 179,969 / 2026-02 164,293 / 2026-03 181,763 bytes; non-day content (weekly, monthly, growth, report, open tasks) 184,081 bytes. An even third of the non-day content per month part gives ≈ 243 KB for March — under the 256 KB limit with little headroom, so the split decides where weekly / monthly / growth entries go by their own month. `[ref: PRD/Success Metrics cost and time; SDD/Quality Requirements]`
 
 - [ ] **T3.5 Phase Validation** `[activity: validate]`
 

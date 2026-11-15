@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_review_read.py — Behavioural tests for review-read.py (spec 045 T3.4, T3.8;
 PRD F3-AC8..F3-AC13; SDD Internal API Changes, Error Handling).
 
@@ -33,11 +33,18 @@ and the real lib.review_day readers:
   recording (CON-2: only the encoding differs); `--kind quarter --period
   2026-Q1` reads the quarter; `--measure` writes no file and prints counts
   and bytes only
+- spec 046 T3.4: a quarter writes read-index.json plus read-<YYYY-MM>.json
+  per month (read_path = the index, read_parts = the parts), no read.json, a
+  stale read.json in its stage folder removed; on the 2026-Q1 read scaled to
+  the measured bytes every file is <= 256,000 bytes and the loader gives back
+  what read_period returned; --measure prints the bytes of every file; a
+  week and a month still write one read.json and print no read_parts
 
 All data is synthetic.
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import sys
@@ -73,6 +80,8 @@ from lib.kado_client import _MAX_RETRIES, KadoAuthError, KadoConnectionError  # 
 from lib.review_pacer import ADVICE_RAISE_LIMIT, MAX_INTERVAL_S  # noqa: E402
 from lib.review_period import ADVICE_CHECK_ACCESS  # noqa: E402
 from lib.review_period import read_period as real_read_period  # noqa: E402
+from lib import review_read_parts as rp  # noqa: E402
+from review_scaled_quarter import SHAPES, scaled_quarter  # noqa: E402
 
 TODAY = "2026-11-11"
 MONTHLY = "Calendar/303 Monthly/"
@@ -188,6 +197,7 @@ def test_a_week_run_prints_the_per_day_report_and_writes_read_json(mod, instance
     assert report["not_read"] == [] and report["kado_empty"] == [] and report["advice"] == []
     assert "weekly_status" not in report
     assert out["read_path"] == f"tomo-tmp/review/{W13_STEM}/read.json"
+    assert "read_parts" not in out, "a week is one file"
     read = json.loads(_read_json(instance).read_text(encoding="utf-8"))
     assert read["period"] == out["period"]
     assert len(read["days"]) == 7 and read["not_read"] == []
@@ -595,7 +605,7 @@ def test_a_quarter_run_reads_the_quarter_and_marks_against_the_monthly_notes(mod
     assert len(report["days"]) == 90
     assert report["monthly_status"] == "found"
     assert [m["path"] for m in report["monthly_notes"] if m["path"]] == [f"{MONTHLY}2026-02.md"]
-    read = json.loads(_read_json(instance, "2026-Q1_review").read_text(encoding="utf-8"))
+    read = rp.load(_read_json(instance, "2026-Q1_review").parent)
     assert {"monthly", "only_in_monthly_links", "dailies_not_in_monthly", "weekly"} <= set(read)
     assert "Only-Monthly" in read["only_in_monthly_links"]
 
@@ -617,42 +627,49 @@ def test_measure_writes_no_file_and_prints_counts_and_bytes_only(mod, instance, 
     assert set(measure) == {"calls", "retried", "waited_s", "not_read", "bytes", "day_bytes"}
     assert measure["calls"] == fake.call_count and measure["retried"] == 0 and measure["not_read"] == 0
     assert measure["bytes"] == {"read.json": len(written)}
-    assert measure["day_bytes"] == _expected_day_bytes(written) and set(measure["day_bytes"]) == {"2026-03"}
+    assert measure["day_bytes"] == _expected_day_bytes(json.loads(written)) and set(measure["day_bytes"]) == {
+        "2026-03"}
     assert all(isinstance(v, (int, float)) for v in (measure["calls"], measure["retried"], measure["waited_s"]))
 
 
-def _expected_day_bytes(written: bytes) -> dict:
-    """Per month of ``date``, the compact size of each days entry as it stands in read.json (no newline)."""
+def _expected_day_bytes(read: dict) -> dict:
+    """Per month of ``date``, the compact size of each days entry as it stands in read*.json (no newline)."""
     sums: dict = {}
-    for day in json.loads(written)["days"]:
+    for day in read["days"]:
         size = len(json.dumps(day, ensure_ascii=True, separators=(",", ":")))
         sums[day["date"][:7]] = sums.get(day["date"][:7], 0) + size
     return sums
 
 
 def _written_then_measured(mod, instance, monkeypatch, capsys, argv, vault, stem):
-    """read.json of a normal run, then the --measure run of the same read (its file removed in between)."""
+    """The files of a normal run (bytes per name) and their loaded read, then the --measure run of the same
+    read (the files removed in between)."""
     code, _, _ = _run(mod, monkeypatch, capsys, argv, vault())
     assert code == 0
-    path = _read_json(instance, stem)
-    written = path.read_bytes()
-    path.unlink()
-    path.parent.rmdir()
+    stage = _read_json(instance, stem).parent
+    written = {p.name: p.read_bytes() for p in stage.iterdir()}
+    read = rp.load(stage)
+    for name in written:
+        (stage / name).unlink()
+    stage.rmdir()
     code, out, _ = _run(mod, monkeypatch, capsys, [*argv, "--measure"], vault())
     assert code == 0 and out["status"] == "ok"
-    assert not path.parent.exists()
-    return written, out["measure"]
+    assert not stage.exists()
+    return written, read, out["measure"]
 
 
 def test_measure_of_a_quarter_counts_each_month_of_its_days(mod, instance, monkeypatch, capsys):
-    # RED when a day's size counts _encode's trailing newline: every month sum is off by its day count
+    # RED when a day's size counts encode's trailing newline: every month sum is off by its day count
     _quarter_setup(instance)
-    written, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
-                                              ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault,
-                                              "2026-Q1_review")
+    written, read, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                                    ["--period", "2026-Q1", "--kind", "quarter"], quarter_vault,
+                                                    "2026-Q1_review")
     assert sorted(measure["day_bytes"]) == ["2026-01", "2026-02", "2026-03"]
-    assert measure["day_bytes"] == _expected_day_bytes(written)
-    assert measure["bytes"] == {"read.json": len(written)}
+    assert measure["day_bytes"] == _expected_day_bytes(read)
+    # T3.4: the bytes of every file the run writes, the index first
+    assert list(measure["bytes"]) == ["read-index.json", "read-2026-01.json", "read-2026-02.json",
+                                      "read-2026-03.json"]
+    assert measure["bytes"] == {name: len(data) for name, data in written.items()}
 
 
 def _w14_vault() -> ReviewFakeVault:
@@ -663,8 +680,71 @@ def _w14_vault() -> ReviewFakeVault:
 
 
 def test_measure_of_a_week_across_a_month_boundary_splits_its_days_by_month(mod, instance, monkeypatch, capsys):
-    written, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
-                                              ["--period", "2026-W14", "--kind", "week"], _w14_vault,
-                                              "2026-W14_review")
+    written, read, measure = _written_then_measured(mod, instance, monkeypatch, capsys,
+                                                    ["--period", "2026-W14", "--kind", "week"], _w14_vault,
+                                                    "2026-W14_review")
     assert set(measure["day_bytes"]) == {"2026-03", "2026-04"}
-    assert measure["day_bytes"] == _expected_day_bytes(written)
+    assert measure["day_bytes"] == _expected_day_bytes(read)
+    assert measure["bytes"] == {"read.json": len(written["read.json"])} and list(written) == ["read.json"]
+
+
+# ---------------------------------------------------------------- spec 046 T3.4: the quarter split per month
+
+Q1_STEM = "2026-Q1_review"
+Q1_PARTS = ["read-2026-01.json", "read-2026-02.json", "read-2026-03.json"]
+PART_LIMIT = 256_000
+
+
+def _quarter(mod, monkeypatch, capsys, fake, *extra):
+    return _run(mod, monkeypatch, capsys, ["--period", "2026-Q1", "--kind", "quarter", *extra], fake)
+
+
+def _scaled_read(result):
+    def read(period, sources, settings, client, pacer):
+        return copy.deepcopy(result)
+    return read
+
+
+def test_a_quarter_writes_the_index_and_one_part_per_month_and_no_read_json(mod, instance, monkeypatch, capsys):
+    # RED while a quarter writes one read.json
+    _quarter_setup(instance)
+    code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
+    assert code == 0 and out["status"] == "ok"
+    stage = instance / "tomo-tmp" / "review" / Q1_STEM
+    assert out["read_path"] == f"tomo-tmp/review/{Q1_STEM}/read-index.json"
+    assert out["read_parts"] == [f"tomo-tmp/review/{Q1_STEM}/{name}" for name in Q1_PARTS]
+    assert sorted(p.name for p in stage.iterdir()) == sorted(["read-index.json", *Q1_PARTS])
+    index = json.loads((stage / "read-index.json").read_text(encoding="utf-8"))
+    assert index["parts"] == Q1_PARTS and index["report"] == out["report"] and index["period"] == out["period"]
+    assert "days" not in index and "weekly" not in index and "monthly" not in index
+
+
+def test_a_stale_read_json_in_the_quarters_stage_folder_is_removed(mod, instance, monkeypatch, capsys):
+    _quarter_setup(instance)
+    stage = instance / "tomo-tmp" / "review" / Q1_STEM
+    stage.mkdir(parents=True)
+    (stage / "read.json").write_text('{"period":{"kind":"quarter"},"days":[]}\n', encoding="utf-8")
+    code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
+    assert code == 0 and out["status"] == "ok"
+    assert not (stage / "read.json").exists(), "an unsplit read.json would be a second, older read"
+    assert len(rp.load(stage)["days"]) == 90
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_on_the_measured_shape_every_written_file_fits_and_loads_back(mod, instance, monkeypatch, capsys, shape):
+    """SDD Quality Requirements: no read*.json part above 256 KB, on 2026-Q1 scaled to the measured bytes;
+    the loader gives back what read_period returned (plus the pacing counters the script merges)."""
+    _quarter_setup(instance)
+    scaled = scaled_quarter(shape)
+    monkeypatch.setattr(mod, "read_period", _scaled_read(scaled))
+    code, out, _ = _quarter(mod, monkeypatch, capsys, quarter_vault())
+    assert code == 0 and out["status"] == "ok"
+    stage = instance / "tomo-tmp" / "review" / Q1_STEM
+    sizes = {p.name: p.stat().st_size for p in sorted(stage.iterdir())}
+    print(shape, sizes)
+    assert set(sizes) == {"read-index.json", *Q1_PARTS}
+    assert all(size <= PART_LIMIT for size in sizes.values()), sizes
+    read = rp.load(stage)
+    for key in PACER_COUNTERS:
+        assert read["report"].pop(key) == out["report"][key]
+    assert read == scaled

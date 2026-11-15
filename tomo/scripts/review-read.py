@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 # review-read.py — Read one finished period for /review: read.json for the model, the per-day report on stdout.
-# version: 0.1.4
-"""The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13).
+# version: 0.2.0
+"""The reading step of /review (spec 045 T3.4; PRD F3-AC8..F3-AC13; spec 046 T3.3).
 
 After ``review-session.py start`` named a finished period and the setup of
 its kind is confirmed, this script reads the period through Kado under the
 pacer — the dailies of every day, the day after, the same-day linked notes,
-the task notes, a month's weekly notes and the vault growth
-(lib/review_period.py) — writes what it read to ``read.json`` for the model's
+the task notes, a month's weekly notes, a quarter's weekly and monthly notes
+and the vault growth (lib/review_period.py) — writes what it read to
+``read.json`` (compact, with the mapped section definitions) for the model's
 one creative step and prints the report: per day which dailies were found
 and in what state, which linked notes were read or missing, the pacing
 summary (calls, retried, waited_s, not_read, advice) and what Kado answered
 with nothing. No note text reaches stdout or stderr.
 
 Usage (cwd = instance root):
-    python3 scripts/review-read.py --period 2026-W13 --kind week [--stem 2026-W13_review]
-        [--tmp tomo-tmp/review] [--config config/vault-config.yaml] [--profiles-dir DIR]
+    python3 scripts/review-read.py --period 2026-W13 --kind week|month|quarter [--stem 2026-W13_review]
+        [--measure] [--tmp tomo-tmp/review] [--config config/vault-config.yaml] [--profiles-dir DIR]
+    Period names: 2026-W13 (week), 2026-03 (month), 2026-Q1 (quarter).
 
 Output: one JSON object on stdout, ASCII-escaped.
     status ok|stopped, stem, period {kind, name, start, end},
@@ -23,6 +25,7 @@ Output: one JSON object on stdout, ASCII-escaped.
                    linked [{name, path, state read|missing|failed}]}],
             day_after {date, dailies [{path, state read|failed}]}, task_notes [{path, state}],
             weekly_status? found|none-found|kado-empty|not-read|not-configured, weekly_notes? [{week, path, state}],
+            monthly_status? (quarter, same values), monthly_notes? [{month, path, state}],
             growth {created, mocs_changed, mocs_linked_by_new, moc_folders, kado_none},
             calls, retried, waited_s, not_read [paths], kado_empty [sources],
             advice [raise-kado-limit | check-key-access]},
@@ -31,6 +34,16 @@ Output: one JSON object on stdout, ASCII-escaped.
     problems [setup-missing | setup-invalid | daily-not-configured | dailies-not-read] when stopped
         before or without a usable read (errors [pointers] with setup-invalid);
         a stopped output never carries nothing_to_review
+    --measure (status ok): status, stem, period, nothing_to_review and
+        measure {calls, retried, waited_s, not_read (count), bytes {"read.json": n},
+                 day_bytes {"YYYY-MM": n}} only; no file is written
+
+read.json: period, days, growth, open_tasks, not_read, report; a month adds
+    weekly, only_in_weekly_links, dailies_not_in_weekly; a quarter adds weekly,
+    monthly, only_in_monthly_links, dailies_not_in_monthly; with mapped rows
+    for the configured template also sections [{key (= row id), heading, level,
+    parent, description, keywords, groups, cap}], analysis rows included.
+    Written compact (separators ",", ":"), ASCII-escaped.
 
 Rules:
     One KadoClient per run, built before the first call and wrapped by one
@@ -66,7 +79,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from lib import review_config as rc  # noqa: E402
 from lib.kado_client import KadoAuthError, KadoClient, KadoConnectionError  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
-from lib.period import MONTH, WEEK, InvalidPeriod, Period, WeekRule  # noqa: E402
+from lib.period import MONTH, QUARTER, WEEK, InvalidPeriod, Period, WeekRule, build  # noqa: E402
 from lib.review_day import day_settings  # noqa: E402
 from lib.review_pacer import ADVICE_RAISE_LIMIT, ReviewPacer  # noqa: E402
 from lib.review_period import read_period, sources_from_config  # noqa: E402
@@ -75,7 +88,12 @@ from lib.review_state import STEM_SUFFIX, safe_stem  # noqa: E402
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 DEFAULT_TMP = "tomo-tmp/review"
 READ_FILE = "read.json"
-_PERIOD_RE = {WEEK: re.compile(r"^(\d{4})-W(\d{2})$"), MONTH: re.compile(r"^(\d{4})-(\d{2})$")}
+_PERIOD_RE = {
+    WEEK: re.compile(r"^(\d{4})-W(\d{2})$"),
+    MONTH: re.compile(r"^(\d{4})-(\d{2})$"),
+    QUARTER: re.compile(r"^(\d{4})-Q([1-4])$"),
+}
+DEFINITION_FIELDS = ("heading", "level", "parent", "description", "keywords", "groups", "cap")
 
 
 class Stopped(Exception):
@@ -89,13 +107,13 @@ class Stopped(Exception):
 # ---------------------------------------------------------------- arguments
 
 def period_from(name: str, kind: str, rule: WeekRule) -> Optional[Period]:
-    """The ``Period`` a canonical name (``2026-W13``, ``2026-03``) denotes under ``rule``; None when it does not fit."""
+    """The ``Period`` a canonical name (``2026-W13``, ``2026-03``, ``2026-Q1``) denotes under ``rule``; None if not."""
     match = _PERIOD_RE[kind].match(name.strip())
     if match is None:
         return None
     year, number = int(match.group(1)), int(match.group(2))
     try:
-        return Period.week(year, number, rule) if kind == WEEK else Period.month(year, number)
+        return build(kind, year, number, rule)
     except InvalidPeriod:
         return None
 
@@ -115,9 +133,10 @@ def _date_arg(text: str) -> date:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Read one finished period for /review.")
-    p.add_argument("--period", required=True, help="Canonical period name: 2026-W13 or 2026-03")
+    p.add_argument("--period", required=True, help="Canonical period name: 2026-W13, 2026-03 or 2026-Q1")
     p.add_argument("--kind", required=True, choices=tuple(_PERIOD_RE))
     p.add_argument("--stem", type=_stem_arg, help="Stage folder under --tmp (default: <period>_review)")
+    p.add_argument("--measure", action="store_true", help="Print calls, waits and bytes; write no file")
     p.add_argument("--tmp", default=DEFAULT_TMP, help="Where tomo-tmp/review/<stem>/ lives")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
     p.add_argument("--profiles-dir", default=str(DEFAULT_PROFILES_DIR), help="framework profiles directory")
@@ -161,6 +180,27 @@ def _read(period: Period, sources, settings: dict) -> dict:
     return result
 
 
+def section_definitions(setup) -> List[dict]:
+    """The SectionDefinition of each mapped row: ``key`` is the row ``id``; where a row lands is not the model's."""
+    return [{"key": row["id"], **{name: row[name] for name in DEFINITION_FIELDS}} for row in setup.sections]
+
+
+def _encode(data) -> str:
+    return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
+
+
+def _measure(result: dict, text: str) -> dict:
+    """Counts and bytes only (CON-3): the pacing counters, the file's size and the days' bytes per month."""
+    report = result["report"]
+    day_bytes: dict = {}
+    for day in result["days"]:
+        month = day["date"][:7]
+        day_bytes[month] = day_bytes.get(month, 0) + len(_encode(day)) - 1
+    return {"calls": report["calls"], "retried": report["retried"], "waited_s": report["waited_s"],
+            "not_read": len(report["not_read"]), "bytes": {READ_FILE: len(text.encode("ascii"))},
+            "day_bytes": day_bytes}
+
+
 def run(args: argparse.Namespace) -> dict:
     config, profile, setup = _setup(args)
     period = period_from(args.period, args.kind, setup.rule)
@@ -188,11 +228,17 @@ def run(args: argparse.Namespace) -> dict:
     # only a read period is empty or not: a stopped output never carries the flag; the access advice is the
     # listings' (kado_empty), never the empty period's
     out["nothing_to_review"] = not any(d.get("has_content") for d in result["days"])
+    if setup.sections:
+        result["sections"] = section_definitions(setup)
+    text = _encode(result)
+    if args.measure:
+        kept = {key: out[key] for key in ("status", "stem", "period", "nothing_to_review")}
+        return {**kept, "measure": _measure(result, text)}
     if out["nothing_to_review"]:
         return out
     path = Path(args.tmp) / stem / READ_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, json.dumps(result, ensure_ascii=True, indent=2) + "\n")
+    atomic_write_text(path, text)
     out["read_path"] = str(path)
     return out
 

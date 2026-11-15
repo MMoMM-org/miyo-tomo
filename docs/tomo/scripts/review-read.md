@@ -47,10 +47,19 @@ rule than under ISO (F2-AC9) and the read must cover the days `start`
 printed. A name that does not fit the kind is a usage error (exit 2): the
 skill passed the wrong thing, there is nothing for the user to decide.
 
-WHY `--kind` offers only the kinds `_PERIOD_RE` can parse, not all of
-`lib.period.KINDS`: spec 046 T1.4 added `quarter` to `KINDS`, but reading a
-quarter is Phase 3; until then argparse refuses `--kind quarter` (exit 2)
-instead of `period_from` failing with a KeyError once a quarter setup exists.
+WHY `--kind` still offers only the kinds `_PERIOD_RE` can parse: the
+choices and the name patterns are one table, so a kind can never be accepted
+by argparse and then fail in `period_from` with a KeyError. Spec 046 T1.4
+added `quarter` to `lib.period.KINDS` before the period read could handle it,
+and the table kept `--kind quarter` refused (exit 2) until T3.2 taught
+`read_period` the quarter (ADR-6). T3.3 added `QUARTER: ^(\d{4})-Q([1-4])$`
+to the table, which re-opened the kind; `2026-Q5` does not match and is
+exit 2 like `2026-W60`.
+
+WHY `period_from` goes through `period.build`: the kind → constructor
+choice (`Period.week` under the rule, `Period.month`, `Period.quarter`) has
+one owner in `lib/period.py`; a second `if kind == ...` chain here would be
+the place a fourth kind is forgotten.
 
 ## WHY the Setup Is Required
 
@@ -121,6 +130,69 @@ not-read stop has been passed, so every `status: stopped` output lacks the
 key (the Kado stops never had it: they stop inside `_read`, before `out`
 grows). The rule is one the skill can rely on: `nothing_to_review` present
 means the period was read; `stopped` means it was not.
+
+## WHY the Section Definitions Ride in `read.json`, and Only With a Mapping
+
+WHY: spec 046 ADR-1, PRD F1-AC1. With a confirmed mapping the model must know,
+for each mapped section of the period kind's template, what to look for in
+the notes it reads. Those definitions go into the file it already reads —
+`read.json` key `sections` — so the creative step stays one file read and no
+second path has to be named in the skill. Each entry is the SDD's
+`SectionDefinition`: `key`, `heading`, `level`, `parent`, `description`,
+`keywords`, `groups`, `cap`, taken from `ReviewSetup.sections` (the rows
+stored for the configured template, defaults filled by
+`review_config.template_rows`), in the rows' order.
+
+`key` is the row's `id` (`s1`, `s2`, ...), copied unchanged. The id is the
+row's opaque, stable name (spec 046 ADR-10): it survives a heading rename or
+a correction in the setup, so the `key` the model writes into
+`proposals.json` (`sections: [{key, items}]`) is the same token
+`review-doc.py` looks the row up by. The name differs because the model's
+files call it `key` throughout (proposals, the document parts); the value
+does not.
+
+`occurrence` and `placement` are left out: both say *where* a section's
+lines land in the note, and that is the document and delivery steps' (which
+read the rows from the config themselves), not the model's. Analysis rows
+(placement `review`, F2-AC12) are included like every other row — the model
+still writes their items under their `key`; only the landing differs, and
+that is decided later from the config row.
+
+Without a mapping (no template configured, or no rows stored for it) there
+is no `sections` key at all, not an empty list: CON-2 keeps the unmapped
+`read.json` as spec 045 wrote it, and the skill branches on the key being
+present.
+
+## WHY `read.json` Is Written Compact
+
+WHY: spec 046 ADR-7 and CON-2. The measured March `read.json` was 274.7 KB,
+over what the model's Read tool takes in one call; `indent=2` spent a large
+share of that on indentation and newlines that carry nothing. Every
+`read*.json` is therefore written with `separators=(",", ":")`, ASCII-escaped
+as before. This is one of the five intended differences CON-2 lets reach the
+unmapped path: without a mapping the parsed content is unchanged — the
+script test pins that the parsed file equals the T3.1 golden recording of
+`read_period` (plus the pacing counters this script always merged into the
+report) and that the bytes are the compact dump of it. The consumers parse
+the file with `json.loads`/`json.load` (`review-doc.py`), so the encoding is
+invisible to them.
+
+## WHY `--measure` Writes No File and Prints Only Counts
+
+WHY: spec 046 ADR-7. Before the quarter's read is split per month (T3.4),
+the owner measures 2026-Q1 on the test vault without a model run: how many
+Kado calls, how long the pacer waited, how many bytes the file would hold.
+`--measure` runs the same read through the same client and pacer and the
+same stop rules, then prints `measure` — `calls`, `retried`, `waited_s`,
+`not_read` (a count), `bytes` per part (today one part, `read.json`; T3.4
+adds the quarter's parts) and `day_bytes` per month (the compact bytes of the
+month's `days` entries, the share a per-month part would hold) — next to
+`status`, `stem`, `period` and `nothing_to_review`. It writes no file, so a
+measurement never leaves content in `tomo-tmp` for a later session to pick
+up, and the per-day report is left out because the measurement is about
+size and pacing, not about which notes exist. CON-3: a byte count is the
+only trace of the content; no note text reaches stdout or stderr (the
+privacy assertion of the script tests runs over the measured output too).
 
 ## WHY Reads After a Recovered Listing Run at 2 s
 

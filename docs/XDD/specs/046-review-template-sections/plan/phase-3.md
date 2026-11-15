@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reading — child-review level, quarter, read files"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

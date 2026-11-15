@@ -1,5 +1,5 @@
 # vault_config_edit.py — text-preserving edits of one nested key in vault-config.yaml.
-# version: 0.2.1
+# version: 0.3.0
 """Insert, replace or remove one nested key in ``vault-config.yaml`` as text.
 
 ``set_path(text, path, value)`` finds the key line at each level by indent,
@@ -19,8 +19,11 @@ cannot scan
 ``vault-config-writer.py review`` (spec 045, ADR-5) applies its leaf edits
 through this module; ``templates-include`` shares the line helpers.
 
-Rendering: double-quoted strings, lowercase booleans, flow lists on one line,
-two-space steps unless the parent's children show another; line endings
+Rendering: double-quoted strings, lowercase booleans, lists of scalars as flow
+lists on one line, lists of mappings as block items one step below the key;
+keys plain only when they are identifiers YAML reads back unchanged, else
+double-quoted (template file names). ``[]`` removes a key like None does.
+Two-space steps unless the parent's children show another; line endings
 follow the file's first line.
 
 Design notes: docs/tomo/scripts/lib/vault_config_edit.md
@@ -52,12 +55,18 @@ def leading_ws(line: str) -> str:
     return line[: len(line) - len(line.lstrip(" \t"))]
 
 
+def key_spellings(key: str) -> Tuple[str, ...]:
+    """``key:`` as YAML may spell it: plain, double-quoted (as written or JSON-escaped), single-quoted."""
+    quoted = (json.dumps(key, ensure_ascii=False), f'"{key}"', "'" + key.replace("'", "''") + "'")
+    return tuple(dict.fromkeys(f"{s}:" for s in (key, *quoted)))
+
+
 def is_key_line(line: str, indent: str, key: str) -> bool:
     """``<indent>key:`` plain or quoted, followed by end of line, a space or a comment."""
     if leading_ws(line) != indent:
         return False
     rest = line.strip()
-    for spelling in (f"{key}:", f'"{key}":', f"'{key}':"):
+    for spelling in key_spellings(key):
         if rest.startswith(spelling):
             after = rest[len(spelling):]
             return after == "" or after[0] in " \t#"
@@ -106,6 +115,18 @@ def child_indent(lines: Sequence[str], lo: int, hi: int, parent_indent: str) -> 
 
 # --- rendering ---------------------------------------------------------------------
 
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def render_key(key: Any) -> str:
+    """A key plain when it is an identifier YAML reads back unchanged, double-quoted otherwise."""
+    if not isinstance(key, str):
+        raise EditRefused("keys must be strings")
+    if _IDENTIFIER.fullmatch(key) and yaml.safe_load(f"{key}: 0") == {key: 0}:
+        return key
+    return json.dumps(key, ensure_ascii=False)
+
+
 def render_scalar(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -118,20 +139,43 @@ def render_scalar(value: Any) -> str:
     raise EditRefused("value must be a string, number, boolean, list or mapping")
 
 
-def render_leaf(key: str, value: Any, indent: str, nl: str) -> str:
+def _has_mapping_item(value: Any) -> bool:
+    return isinstance(value, list) and any(isinstance(v, dict) for v in value)
+
+
+def _value_lines(spelling: str, value: Any, indent: str, step: int, nl: str) -> str:
+    """``spelling: value`` as one leaf line, a block mapping or block list items below it."""
+    deeper = indent + " " * step
+    if isinstance(value, dict) and value:
+        return f"{indent}{spelling}:{nl}" + "".join(
+            _value_lines(render_key(k), v, deeper, step, nl) for k, v in value.items())
+    if isinstance(value, dict):
+        return f"{indent}{spelling}: {{}}{nl}"
+    if _has_mapping_item(value):
+        return f"{indent}{spelling}:{nl}" + "".join(_item_lines(v, deeper, step, nl) for v in value)
     if isinstance(value, list):
-        return f"{indent}{key}: [{', '.join(render_scalar(v) for v in value)}]{nl}"
-    return f"{indent}{key}: {render_scalar(value)}{nl}"
+        return f"{indent}{spelling}: [{', '.join(render_scalar(v) for v in value)}]{nl}"
+    return f"{indent}{spelling}: {render_scalar(value)}{nl}"
+
+
+def _item_lines(item: Any, indent: str, step: int, nl: str) -> str:
+    """One block list item: ``- `` and the item's members aligned two columns past the dash."""
+    if not isinstance(item, dict):
+        return f"{indent}- {render_scalar(item)}{nl}"
+    if not item:
+        return f"{indent}- {{}}{nl}"
+    members = "".join(_value_lines(render_key(k), v, indent + "  ", step, nl) for k, v in item.items())
+    return f"{indent}- {members[len(indent) + 2:]}"
+
+
+def render_leaf(key: str, value: Any, indent: str, nl: str, step: int = DEFAULT_STEP) -> str:
+    """``key: value`` with the key quoted when it needs to be; lists of mappings as block items."""
+    return _value_lines(render_key(key), value, indent, step, nl)
 
 
 def render_tree(key: str, value: Any, indent: str, step: int, nl: str) -> str:
     """``key:`` with its mapping children as a block, or a leaf line."""
-    if not isinstance(value, dict):
-        return render_leaf(key, value, indent, nl)
-    out = f"{indent}{key}:{nl}"
-    for k, v in value.items():
-        out += render_tree(k, v, indent + " " * step, step, nl)
-    return out
+    return render_leaf(key, value, indent, nl, step)
 
 
 def render_chain(path: Sequence[str], value: Any, indent: str, step: int, nl: str) -> str:
@@ -154,9 +198,11 @@ def get_path(mapping: Any, path: Sequence[str]) -> Tuple[bool, Any]:
 
 
 def set_path(text: str, path: Sequence[str], value: Any) -> str:
-    """The text with ``path`` set to ``value`` (None removes the key); other bytes unchanged."""
+    """The text with ``path`` set to ``value`` (None or ``[]`` removes the key); other bytes unchanged."""
     if not path:
         raise ValueError("path must name at least one key")
+    if isinstance(value, list) and not value:
+        value = None
     if isinstance(value, dict):
         for key, child in value.items():
             text = set_path(text, (*path, key), child)
@@ -181,7 +227,7 @@ def _edit(lines: List[str], lo: int, hi: int, indent: str, step: int, path: Tupl
         return lines[:hi] + [rendered] + lines[hi:]
     body_lo, end_content, end_block = block_extent(lines, idx, indent)
     if not rest:
-        replacement = [] if value is None else [render_leaf(key, value, indent, nl)]
+        replacement = [] if value is None else [render_leaf(key, value, indent, nl, step)]
         return lines[:idx] + replacement + lines[end_content:]
     if inline_value(lines[idx]):
         return _edit_flow_mapping(lines, idx, end_content, indent, step, key, rest, value, nl)
@@ -194,7 +240,7 @@ def _edit_flow_mapping(lines: List[str], idx: int, end: int, indent: str, step: 
                        rest: Tuple[str, ...], value: Any, nl: str) -> List[str]:
     """Rewrite ``key: { ... }`` as a block mapping with the leaf merged in, other members verbatim."""
     stripped = lines[idx].strip()
-    spelling = next(s for s in (f"{key}:", f'"{key}":', f"'{key}':") if stripped.startswith(s))
+    spelling = next(s for s in key_spellings(key) if stripped.startswith(s))
     text = "\n".join([stripped[len(spelling):]] + [ln.strip() for ln in lines[idx + 1:end]])
     block = _flow_block(text, indent + " " * step, step, rest, value, nl)
     if block is None:
@@ -232,7 +278,7 @@ def _flow_block(text: str, indent: str, step: int, rest: Tuple[str, ...], value:
             body.append(f"{indent}{raw_key}: {raw_val}{nl}" if raw_val else f"{indent}{raw_key}:{nl}")
         elif not deeper:
             if value is not None:
-                body.append(render_leaf(raw_key, value, indent, nl))
+                body.append(_value_lines(raw_key, value, indent, step, nl))
         else:
             if raw_val not in _NULL_SPELLINGS and not raw_val.startswith("{"):
                 raise EditRefused("a scalar sits where a mapping is expected")
@@ -318,5 +364,6 @@ def _split_entry(entry: str) -> Tuple[str, str, str]:
 
 __all__ = [
     "EditRefused", "block_extent", "child_indent", "get_path", "inline_value", "is_key_line",
-    "is_list_continuation", "leading_ws", "newline_of", "render_leaf", "set_path",
+    "is_list_continuation", "key_spellings", "leading_ws", "newline_of", "render_key",
+    "render_leaf", "set_path",
 ]

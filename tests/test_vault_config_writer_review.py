@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_vault_config_writer_review.py — `vault-config-writer.py review` (spec 045 T2.1, ADR-5).
 
 Runs the subcommand as a subprocess on a synthetic config shaped like the
@@ -21,6 +21,7 @@ its set_path so the per-leaf read-back before the write can be tripped. Covers:
 - a duplicate key the edit would introduce and a pre-existing duplicate in a
   touched section are refused, nothing written
 - a null template removes the mapping key; stdout names keys, never values
+- an empty own_sections list removes the key and reads back (spec 046 ADR-3)
 - missing config exits 2
 """
 from __future__ import annotations
@@ -361,3 +362,14 @@ def test_missing_input_exits_2(tmp_path):
         capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 2
+
+
+def test_empty_own_sections_removes_the_key_and_reads_back(tmp_path):
+    # spec 046 ADR-3: `[]` removes the key; absent and `[]` read alike, so it is not refused.
+    _run(tmp_path, CONFIG, WEEK)
+    proc, cfg = _run(tmp_path, None, dict(WEEK, own_sections=[]))
+    out = _out(proc)
+    assert out["status"] == "written" and out["keys"] == ["review.weekly.own_sections"], out
+    assert "own_sections" not in yaml.safe_load(cfg.read_text(encoding="utf-8"))["review"]["weekly"]
+    proc, _ = _run(tmp_path, None, dict(WEEK, own_sections=[]))
+    assert _out(proc) == {"status": "unchanged"}

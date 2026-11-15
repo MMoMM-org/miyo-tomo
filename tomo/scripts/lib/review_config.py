@@ -1,5 +1,5 @@
 # review_config.py — the /review setup: read it, validate it, map it onto config keys.
-# version: 0.2.0
+# version: 0.2.1
 """The ``/review`` setup of one period kind (spec 045, T2.1, T2.3).
 
 One owner for the config keys the setup lives in — ``concepts.calendar.
@@ -39,12 +39,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from lib.period import DAY_NAMES, ISO, KINDS, MONTH, WEEK, Request, WeekRule, check_format
+from lib.period import DAY_NAMES, ISO, KINDS, MONTH, QUARTER, WEEK, Request, WeekRule, check_format
 from lib.vault_config_edit import get_path
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "vault-config-review.schema.json"
 
-GRANULARITY = {WEEK: "weekly", MONTH: "monthly"}
+GRANULARITY = {WEEK: "weekly", MONTH: "monthly", QUARTER: "quarterly"}
 BEFORE = "before"
 INSIDE = "inside"
 PLACEMENTS = (BEFORE, INSIDE)

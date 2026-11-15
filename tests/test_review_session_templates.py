@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """test_review_session_templates.py — the template choice and the anchor question of `review-session.py match`
 (spec 045 Phase 6, live-walk defect: a proposal with `template: null` and `anchor: null` that `setup-input` refused).
 
@@ -642,3 +642,28 @@ def test_every_later_match_call_of_the_setup_step_carries_the_template_choice():
     assert "Every later `match` call of this step carries `--template <template>`" in step
     assert "`--anchor \"<anchor>\"`" in step
     assert "The answer is `<anchor>`" in step
+
+
+# ---------------------------------------------------------------- the quarter's kind words (spec 046 T1.4)
+
+class _ListingOnly:
+    def __init__(self, paths):
+        self.paths = paths
+
+    def list_notes(self, base_path):
+        return self.paths
+
+
+def test_quarter_candidates_are_the_templates_named_quarter_or_quartal():
+    from lib.review_templates import template_candidates
+    names = ["t_quarter", "Quartalsrückblick", "t_month", "t_week", "Quarterly Review"]
+    vault = _ListingOnly([TEMPLATES + n + ".md" for n in names])
+    assert template_candidates(vault, TEMPLATES, "quarter") == ["Quartalsrückblick", "Quarterly Review", "t_quarter"]
+    assert template_candidates(vault, TEMPLATES, "month") == ["t_month"]
+
+
+def test_match_for_a_quarter_without_a_configured_format_proposes_the_quarter_default(mod, instance, monkeypatch,
+                                                                                      capsys):
+    _config(instance, templates=_no_mapping())
+    out = _match(mod, monkeypatch, capsys, _vault(), kind="quarter")
+    assert out["proposal"]["format"] == "YYYY-[Q]Q"

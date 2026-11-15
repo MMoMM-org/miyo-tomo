@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.3.6
 """test_review_session.py — Behavioural tests for review-session.py (spec 045 T2.2, T2.3, T4.3).
 
 Covers the session start, the setup preview and the confirmed-input step, on
@@ -856,7 +856,7 @@ def test_start_every_bad_argument_yields_kind_expectation_and_example(mod, insta
     for key, value in extra.items():
         assert out["error"][key] == value
     assert out["open_reviews"] == [] and fake.call_count == 0      # nothing spent on a typo
-    assert out["setup"] == {"week": "missing", "month": "missing"}
+    assert out["setup"] == {"week": "missing", "month": "missing", "quarter": "missing"}
 
 
 def test_start_at_note_resolves_under_the_configured_names(mod, instance, monkeypatch, capsys):
@@ -903,8 +903,8 @@ def test_start_setup_returns_the_current_values(mod, instance, monkeypatch, caps
             review=WEEK_SETUP)
     code, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "setup")
     assert code == 0 and out["request"] == {"kind": "setup"}
-    assert out["setup"] == {"week": "present", "month": "missing"}
-    assert out["current"]["month"] is None
+    assert out["setup"] == {"week": "present", "month": "missing", "quarter": "missing"}
+    assert out["current"]["month"] is None and out["current"]["quarter"] is None
     assert out["current"]["week"] == {
         "folder": WEEKLY, "format": "gggg-[W]ww", "first_day": "sunday", "min_days": 1,
         "template": "t_week.md", "template_variant": None, "heading": "Tomo Review",
@@ -924,11 +924,11 @@ def test_start_setup_returns_the_current_values(mod, instance, monkeypatch, caps
 def test_start_reports_the_missing_setup_per_kind(mod, instance, monkeypatch, capsys):
     _config(instance, naming={"monthly": "YYYY-MM"}, review={"monthly": {"heading": "Tomo Review"}})
     _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "")
-    assert out["setup"] == {"week": "missing", "month": "present"}
+    assert out["setup"] == {"week": "missing", "month": "present", "quarter": "missing"}
     assert "current" not in out
     _config(instance, naming={"weekly": "GGGG-[W]WW"})          # a format without a review section
     _, out, *_ = _start(mod, monkeypatch, capsys, ReviewFakeVault(), "")
-    assert out["setup"] == {"week": "missing", "month": "missing"}
+    assert out["setup"] == {"week": "missing", "month": "missing", "quarter": "missing"}
 
 
 def test_start_lists_the_open_reviews_by_period_with_their_state(mod, instance, monkeypatch, capsys):
@@ -1204,3 +1204,18 @@ def test_start_without_args_exits_2(mod, instance, capsys):
     with pytest.raises(SystemExit) as info:
         mod.main(["start"])
     assert info.value.code == 2
+
+
+# ---------------------------------------------------------------- the quarter (spec 046 T1.4)
+
+def test_writer_input_for_a_quarter_drops_the_null_week_rule(mod):
+    confirmed = {"kind": "quarter", "folder": "Calendar/304 Quarterly", "format": "YYYY-[Q]Q",
+                 "first_day": None, "min_days": None, "template": None}
+    data = mod.writer_input(confirmed, "quarter")
+    assert "first_day" not in data and "min_days" not in data
+    assert data == {"kind": "quarter", "folder": "Calendar/304 Quarterly", "format": "YYYY-[Q]Q", "template": None}
+
+
+def test_writer_input_for_a_week_keeps_its_week_rule(mod):
+    data = mod.writer_input({"kind": "week", "first_day": None, "min_days": None}, "week")
+    assert data == {"kind": "week", "first_day": None, "min_days": None}

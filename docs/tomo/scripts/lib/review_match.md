@@ -53,3 +53,11 @@ without a vault. `match_names` returns one entry per note, so a duplicated
 stem is listed once per path (see "WHY Two Notes With the Same Stem Are Both
 Listed" in docs/tomo/scripts/review-session.md); a dated note is matched only
 when its own start date fits the proposal's rule.
+
+## WHY the Default Format Is Looked Up by Kind
+
+With no configured and no typed format, the proposal falls back to
+`DEFAULT_FORMATS[kind]`; only the week has a special case (a non-ISO rule
+gets `gggg-[W]ww`). The fallback had named the month's `YYYY-MM` for every
+kind that is not a week; once the quarter became a kind (spec 046 T1.4) that
+would have proposed a month format for quarterly notes.

@@ -1,5 +1,5 @@
 # review_match.py — the setup proposal of /review: match the notes of a period kind and propose the setup.
-# version: 0.1.0
+# version: 0.1.1
 """The proposal behind ``review-session.py match`` (spec 045 F1; ADR-1, ADR-4).
 
 ``propose(open_vault, config, profile, args)`` lists the folder of one period
@@ -29,7 +29,7 @@ from pathlib import PurePosixPath
 from typing import Callable, List, Optional, Tuple
 
 from lib import review_config as rc
-from lib.period import DAY_NAMES, DEFAULT_FORMATS, ISO, MONTH, WEEK, WeekRule, check_format, parse_name
+from lib.period import DAY_NAMES, DEFAULT_FORMATS, ISO, WEEK, WeekRule, check_format, parse_name
 from lib.review_templates import (
     NO_TEMPLATE, anchor_candidates_from_notes, daily_sections_from, propose_anchor, resolve_template,
     template_anchor_candidates, template_has_frontmatter, template_vault_path,
@@ -120,7 +120,7 @@ def propose(open_vault: Callable[[], Vault], config: dict, profile, args) -> dic
         if kind == WEEK:
             default_fmt = DEFAULT_FORMATS[WEEK] if rule == ISO else NON_ISO_WEEK_FORMAT
         else:
-            default_fmt = DEFAULT_FORMATS[MONTH]
+            default_fmt = DEFAULT_FORMATS[kind]
         fmt = args.format or configured_fmt or default_fmt
         problems = check_format(fmt, kind, rule, today=args.today)
         matched, unmatched = match_names(notes, fmt, rule, kind, inference.checked)

@@ -221,5 +221,7 @@ example (`2026-Q4`), the same rule as `2026-W54`; a bare `Q5` names the range
 1..4 and offers the last finished quarter. The `@` path tries the week, month
 and quarter formats in that order; the formats are disjoint by `format_kind`,
 so the order only fixes which error text is shown. The repeated
-"week, month or quarter?" choice in the parser is one helper (`_build`), so
-adding the kind did not add a third copy of each branch.
+"week, month or quarter?" choice is one function (`build(kind, year, number,
+rule)`), used by `parse_name`, the argument parser and the walk back, so
+adding the kind did not add a third copy of each branch. It is public because
+the period reader (spec 046 Phase 3) needs the same choice.

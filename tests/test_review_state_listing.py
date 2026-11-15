@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_review_state_listing.py — lib/review_state.open_reviews, the listing `review-session.py start` prints
 (spec 045 T2.3, T4.3, P5; SDD Complex Logic review_state OUTPUT; ADR-6).
 
@@ -173,3 +173,29 @@ def test_open_reviews_skips_unreadable_and_period_less_documents(tmp_path):
     assert [r.period for r in reviews] == ["2026-W13"]
     assert skipped == [{"doc_path": INBOX + "broken.md", "reason": "frontmatter-unreadable"},
                        {"doc_path": INBOX + "no period.md", "reason": "period-missing"}]
+
+
+# ---------------------------------------------------------------- the quarter (spec 046 T1.4)
+
+def test_a_quarter_period_is_inferred_as_quarter():
+    assert rs._infer_kind("2026-Q1", WeekRule(), dict(rs.DEFAULT_FORMATS)) == "quarter"
+    assert rs._infer_kind("2026-W13", WeekRule(), dict(rs.DEFAULT_FORMATS)) == "week"
+    assert rs._infer_kind("2026-03", WeekRule(), dict(rs.DEFAULT_FORMATS)) == "month"
+
+
+def test_a_quarter_name_no_format_parses_keeps_the_letter_guess():
+    formats = dict(rs.DEFAULT_FORMATS, quarter="[Q]Q YYYY")
+    assert rs._infer_kind("2026-Q1", WeekRule(), formats) == "quarter"
+    assert rs._infer_kind("2026-W54", WeekRule(), formats) == "week"
+
+
+def test_open_reviews_lists_a_quarter_by_its_start_and_infers_its_kind(tmp_path):
+    quarter = _doc("2026-Q1", "quarter")
+    del quarter["review_kind"]
+    docs = [(INBOX + "m.md", _doc("2026-02", "month")), (INBOX + "q.md", quarter),
+            (INBOX + "w.md", _doc("2025-W52", "week"))]
+    reviews, skipped = rs.open_reviews(docs, tmp_path, _empty_vault(), INBOX)
+    assert skipped == []
+    assert [(r.period, r.kind, r.stem) for r in reviews] == [
+        ("2025-W52", "week", "2025-W52_review"), ("2026-Q1", "quarter", "2026-Q1_review"),
+        ("2026-02", "month", "2026-02_review")]

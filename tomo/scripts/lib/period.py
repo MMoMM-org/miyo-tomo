@@ -1,13 +1,14 @@
-# period.py — weeks, months, the week rule and the /review argument.
-# version: 0.1.1
-"""Week and month arithmetic for ``/review`` (spec 045).
+# period.py — weeks, months, quarters, the week rule and the /review argument.
+# version: 0.2.0
+"""Week, month and quarter arithmetic for ``/review`` (spec 045; quarter: spec 046).
 
 Owns the week rule (first day of the week, minimum days in week 1; ISO is
-Monday and 4), the ``Period`` value (a week or a calendar month with its first
-and last day), the periodic name formats (Moment-style ``GGGG-[W]WW``,
-``gggg-[W]ww``, ``YYYY-MM`` with ``[...]`` literals), their rendering, parsing
-and safety check, the weeks overlapping a month, the note paths a period may
-live at, and the parsing of the ``/review`` argument into a ``Request`` or a
+Monday and 4), the ``Period`` value (a week, a calendar month or a calendar
+quarter with its first and last day), the periodic name formats (Moment-style
+``GGGG-[W]WW``, ``gggg-[W]ww``, ``YYYY-MM``, ``YYYY-[Q]Q`` with ``[...]``
+literals), their rendering, parsing and safety check, the weeks overlapping a
+month or quarter, a quarter's months, the note paths a period may live at, and
+the parsing of the ``/review`` argument into a ``Request`` or a
 ``RequestError`` object.
 
 Stdlib only. ``today`` is always passed in; nothing here reads the clock.
@@ -27,33 +28,37 @@ from typing import Dict, List, Optional, Tuple, Union
 
 WEEK = "week"
 MONTH = "month"
+QUARTER = "quarter"
 SETUP = "setup"
-KINDS = (WEEK, MONTH)
+KINDS = (WEEK, MONTH, QUARTER)
 
 DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-DEFAULT_FORMATS = {WEEK: "GGGG-[W]WW", MONTH: "YYYY-MM"}
+DEFAULT_FORMATS = {WEEK: "GGGG-[W]WW", MONTH: "YYYY-MM", QUARTER: "YYYY-[Q]Q"}
 
 # Longest token first so the scanner never splits GGGG into G+G+G+G.
-_TOKENS = ("GGGG", "gggg", "YYYY", "WW", "ww", "MM", "W", "w", "M")
+_TOKENS = ("GGGG", "gggg", "YYYY", "WW", "ww", "MM", "W", "w", "M", "Q")
 _ISO_WEEK_TOKENS = ("GGGG", "WW", "W")
 _RULE_WEEK_TOKENS = ("gggg", "ww", "w")
-_WEEK_NUMBER_TOKENS = ("WW", "ww", "W", "w")
 _YEAR_TOKENS = ("GGGG", "gggg", "YYYY")
-_MONTH_TOKENS = ("MM", "M")
+_NUMBER_TOKENS = {WEEK: ("WW", "ww", "W", "w"), MONTH: ("MM", "M"), QUARTER: ("Q",)}
+_NAMES = {WEEK: "{y}-W{n:02d}", MONTH: "{y}-{n:02d}", QUARTER: "{y}-Q{n}"}
+_EXAMPLES = {WEEK: "2026-W13", MONTH: "2026-03", QUARTER: "2026-Q1"}
+_MAX_NUMBER = {WEEK: 53, MONTH: 12, QUARTER: 4}
 _UNSAFE = ("/", "\\", "..")
 _YEAR_SEARCH_LIMIT = 60
 # date() holds 1..9999; a week may start in the year before its week year and end in the year after.
 MIN_YEAR = 2
 MAX_YEAR = 9998
 
-_FULL_WEEK_RE = re.compile(r"(\d{4})-[Ww](\d{1,2})")
-_FULL_MONTH_RE = re.compile(r"(\d{4})-(\d{1,2})")
-_BARE_WEEK_RE = re.compile(r"[Ww](\d{1,2})")
-_BARE_MONTH_RE = re.compile(r"[Mm](\d{1,2})")
+# (kind, has a year, pattern); the shapes are disjoint, so the order only fixes the scan.
+_ARG_RES = tuple((kind, full, re.compile(pattern)) for kind, full, pattern in (
+    (WEEK, True, r"(\d{4})-[Ww](\d{1,2})"), (WEEK, False, r"[Ww](\d{1,2})"),
+    (MONTH, True, r"(\d{4})-(\d{1,2})"), (MONTH, False, r"[Mm](\d{1,2})"),
+    (QUARTER, True, r"(\d{4})-[Qq](\d{1,2})"), (QUARTER, False, r"[Qq](\d{1,2})")))
 
 
 class InvalidPeriod(ValueError):
-    """A week or month number that does not exist in its year, or a year outside
+    """A week, month or quarter number that does not exist in its year, or a year outside
     ``MIN_YEAR..MAX_YEAR``."""
 
 
@@ -122,7 +127,7 @@ ISO = WeekRule(first_day=0, min_days_in_first_week=4)
 
 @dataclass(frozen=True)
 class Period:
-    """A week or a calendar month; ``end`` is inclusive."""
+    """A week, a calendar month or a calendar quarter; ``end`` is inclusive."""
 
     kind: str
     year: int
@@ -144,16 +149,23 @@ class Period:
         return cls(MONTH, year, number, date(year, number, 1), date(year, number, last))
 
     @classmethod
+    def quarter(cls, year: int, number: int) -> "Period":
+        check_year(year)
+        if not 1 <= number <= 4:
+            raise InvalidPeriod("quarter number outside the year")
+        return cls(QUARTER, year, number, cls.month(year, 3 * number - 2).start, cls.month(year, 3 * number).end)
+
+    @classmethod
     def containing(cls, kind: str, d: date, rule: WeekRule = ISO) -> "Period":
         if kind == WEEK:
             return cls.week(*rule.week_of(d), rule)
+        if kind == QUARTER:
+            return cls.quarter(d.year, (d.month - 1) // 3 + 1)
         return cls.month(d.year, d.month)
 
     @property
     def name(self) -> str:
-        if self.kind == WEEK:
-            return f"{self.year}-W{self.number:02d}"
-        return f"{self.year}-{self.number:02d}"
+        return _NAMES[self.kind].format(y=self.year, n=self.number)
 
     def days(self) -> List[date]:
         return [self.start + timedelta(days=i) for i in range((self.end - self.start).days + 1)]
@@ -164,10 +176,16 @@ class Period:
     def previous(self, rule: WeekRule = ISO) -> "Period":
         return Period.containing(self.kind, self.start - timedelta(days=1), rule)
 
+    def months(self) -> List["Period"]:
+        """The three months of a quarter, in order; only for a quarter."""
+        if self.kind != QUARTER:
+            raise ValueError("months is defined for a quarter only")
+        return [Period.month(self.year, 3 * self.number - 2 + i) for i in range(3)]
+
     def weeks_overlapping(self, rule: WeekRule = ISO) -> List["Period"]:
-        """The weeks a month touches, in order; only for a month."""
-        if self.kind != MONTH:
-            raise ValueError("weeks_overlapping is defined for a month only")
+        """The weeks a month or quarter touches, in order; not for a week."""
+        if self.kind == WEEK:
+            raise ValueError("weeks_overlapping is defined for a month or quarter only")
         weeks = []
         week = Period.containing(WEEK, self.start, rule)
         while week.start <= self.end:
@@ -176,10 +194,17 @@ class Period:
         return weeks
 
     def note_paths(self, folder: str, fmt: str) -> List[str]:
-        """Flat path first, then the year subfolder (week year for weeks)."""
+        """Flat path first, then the year subfolder (week year for weeks, else calendar year)."""
         base = folder if folder.endswith("/") else folder + "/"
         name = render_name(self, fmt)
         return [f"{base}{name}.md", f"{base}{self.year}/{name}.md"]
+
+
+def build(kind: str, year: int, number: int, rule: WeekRule = ISO) -> Period:
+    """The period of ``kind`` with that number; ``InvalidPeriod`` when the year has none."""
+    if kind == WEEK:
+        return Period.week(year, number, rule)
+    return Period.quarter(year, number) if kind == QUARTER else Period.month(year, number)
 
 
 def last_finished(kind: str, today: date, rule: WeekRule = ISO) -> Period:
@@ -219,22 +244,19 @@ def _tokens_of(fmt: str) -> List[str]:
 
 
 def format_kind(fmt: str) -> Optional[str]:
-    """``week``, ``month`` or None when the format names neither or both."""
+    """``week``, ``month``, ``quarter`` or None when the format names none or more than one."""
     tokens = _tokens_of(fmt)
-    has_week = any(t in _WEEK_NUMBER_TOKENS for t in tokens)
-    has_month = any(t in _MONTH_TOKENS for t in tokens)
-    if has_week == has_month:
-        return None
-    return WEEK if has_week else MONTH
+    found = [kind for kind, numbers in _NUMBER_TOKENS.items() if any(t in numbers for t in tokens)]
+    return found[0] if len(found) == 1 else None
 
 
 def _render(fmt: str, *, year: int, number: int, iso_year: int, iso_week: int, calendar_year: int) -> str:
     """Fill the tokens: GGGG/WW from the ISO pair, gggg/ww/MM from the period's own
-    numbers, YYYY from the calendar year; an unknown letter stays as it is."""
+    numbers, Q from the quarter's, YYYY from the calendar year; an unknown letter stays as it is."""
     values = {
         "GGGG": f"{iso_year:04d}", "WW": f"{iso_week:02d}", "W": str(iso_week),
         "gggg": f"{year:04d}", "ww": f"{number:02d}", "w": str(number),
-        "YYYY": f"{calendar_year:04d}", "MM": f"{number:02d}", "M": str(number),
+        "YYYY": f"{calendar_year:04d}", "MM": f"{number:02d}", "M": str(number), "Q": str(number),
     }
     return "".join(values.get(text, text) if kind == "token" else text for kind, text in _tokenize(fmt))
 
@@ -260,7 +282,7 @@ def parse_name(name: str, fmt: str, rule: WeekRule = ISO) -> Optional[Period]:
             pattern.append(r"(?P<year>\d{4})")
         elif text in ("WW", "ww", "MM"):
             pattern.append(r"(?P<number>\d{2})")
-        elif text in ("W", "w", "M"):
+        elif text in ("W", "w", "M", "Q"):
             pattern.append(r"(?P<number>\d{1,2})")
         else:
             pattern.append(re.escape(text))
@@ -271,12 +293,9 @@ def parse_name(name: str, fmt: str, rule: WeekRule = ISO) -> Optional[Period]:
     if match is None:
         return None
     year, number = int(match.group("year")), int(match.group("number"))
-    tokens = _tokens_of(fmt)
     try:
-        if kind == MONTH:
-            return Period.month(year, number)
-        week_rule = ISO if any(t in _ISO_WEEK_TOKENS for t in tokens) else rule
-        return Period.week(year, number, week_rule)
+        week_rule = ISO if any(t in _ISO_WEEK_TOKENS for t in _tokens_of(fmt)) else rule
+        return build(kind, year, number, week_rule)
     except InvalidPeriod:
         return None
 
@@ -351,7 +370,7 @@ def _week_format_problems(fmt: str, tokens: List[str], rule: WeekRule, today: da
 
 @dataclass(frozen=True)
 class Request:
-    kind: str                       # week | month | setup
+    kind: str                       # week | month | quarter | setup
     period: Optional[Period] = None
     year_inferred: bool = False
     source: str = "arg"             # arg | at | default
@@ -377,8 +396,8 @@ class RequestError:
         return out
 
 
-_GRAMMAR = ("nothing (the last finished week), week, month, setup, a week like 2026-W13 or W13, "
-            "a month like 2026-03 or M03, or @<weekly or monthly note>")
+_GRAMMAR = ("nothing (the last finished week), week, month, quarter, setup, a week like 2026-W13 or W13, "
+            "a month like 2026-03 or M03, a quarter like 2026-Q1 or Q1, or @<weekly, monthly or quarterly note>")
 
 
 def parse_args(raw: str, *, today: date, rule: WeekRule = ISO,
@@ -424,44 +443,38 @@ def _finished_or_error(period: Period, today: date, rule: WeekRule, *, year_infe
 
 def _parse_period_word(word: str, kind_word: Optional[str], today: date,
                        rule: WeekRule) -> Union[Request, RequestError]:
-    full_week = _FULL_WEEK_RE.fullmatch(word)
-    full_month = _FULL_MONTH_RE.fullmatch(word)
-    bare_week = _BARE_WEEK_RE.fullmatch(word)
-    bare_month = _BARE_MONTH_RE.fullmatch(word)
-    if full_week or bare_week:
-        kind = WEEK
-    elif full_month or bare_month:
-        kind = MONTH
-    else:
+    found = next(((k, full, m) for k, full, regex in _ARG_RES for m in [regex.fullmatch(word)] if m), None)
+    if found is None:
         return _unknown(today, rule)
+    kind, full, match = found
     if kind_word and kind_word != kind:
-        wanted = "a week like 2026-W13" if kind_word == WEEK else "a month like 2026-03"
-        return _invalid(kind_word, f"{wanted} after the word {kind_word}", today, rule)
-    if full_week or full_month:
-        year, number = int((full_week or full_month).group(1)), int((full_week or full_month).group(2))
-        if not MIN_YEAR <= year <= MAX_YEAR:
-            return _invalid(kind, f"a year between {MIN_YEAR:04d} and {MAX_YEAR:04d}", today, rule)
-        try:
-            period = Period.week(year, number, rule) if kind == WEEK else Period.month(year, number)
-        except InvalidPeriod:
-            last = f"{year}-W{rule.weeks_in(year):02d}" if kind == WEEK else f"{year}-12"
-            first = f"{year}-W01" if kind == WEEK else f"{year}-01"
-            return _invalid(kind, f"a {kind} of {year} between {first} and {last}", today, rule, example=last)
-        return _finished_or_error(period, today, rule, year_inferred=False, source="arg")
-    number = int((bare_week or bare_month).group(1))
-    period = _latest_finished_with_number(kind, number, today, rule)
+        return _invalid(kind_word, f"a {kind_word} like {_EXAMPLES[kind_word]} after the word {kind_word}", today, rule)
+    if full:
+        return _parse_full(kind, int(match.group(1)), int(match.group(2)), today, rule)
+    period = _latest_finished_with_number(kind, int(match.group(1)), today, rule)
     if period is None:
-        expected = "a week number between 1 and 53" if kind == WEEK else "a month number between 1 and 12"
-        return _invalid(kind, expected, today, rule)
+        return _invalid(kind, f"a {kind} number between 1 and {_MAX_NUMBER[kind]}", today, rule)
     return Request(kind, period, year_inferred=True, source="arg")
+
+
+def _parse_full(kind: str, year: int, number: int, today: date, rule: WeekRule) -> Union[Request, RequestError]:
+    if not MIN_YEAR <= year <= MAX_YEAR:
+        return _invalid(kind, f"a year between {MIN_YEAR:04d} and {MAX_YEAR:04d}", today, rule)
+    try:
+        period = build(kind, year, number, rule)
+    except InvalidPeriod:
+        count = rule.weeks_in(year) if kind == WEEK else _MAX_NUMBER[kind]
+        first, last = (_NAMES[kind].format(y=year, n=n) for n in (1, count))
+        return _invalid(kind, f"a {kind} of {year} between {first} and {last}", today, rule, example=last)
+    return _finished_or_error(period, today, rule, year_inferred=False, source="arg")
 
 
 def _latest_finished_with_number(kind: str, number: int, today: date, rule: WeekRule) -> Optional[Period]:
     for year in range(today.year, today.year - _YEAR_SEARCH_LIMIT, -1):
         try:
-            period = Period.week(year, number, rule) if kind == WEEK else Period.month(year, number)
+            period = build(kind, year, number, rule)
         except InvalidPeriod:
-            if kind == MONTH:
+            if kind != WEEK:
                 return None
             continue
         if period.is_finished(today):
@@ -482,5 +495,6 @@ def _parse_at(text: str, today: date, rule: WeekRule, formats: Dict[str, str]) -
         period = parse_name(name, formats[kind], rule)
         if period is not None:
             return _finished_or_error(period, today, rule, year_inferred=False, source="at")
-    expected = f"a weekly note named like {formats[WEEK]} or a monthly note named like {formats[MONTH]}"
+    expected = (f"a weekly note named like {formats[WEEK]}, a monthly note named like {formats[MONTH]} "
+                f"or a quarterly note named like {formats[QUARTER]}")
     return RequestError("not-periodic-note", expected, last_finished(WEEK, today, rule).name)

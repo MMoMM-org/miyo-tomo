@@ -1,5 +1,5 @@
 # review_templates.py — the template candidates and the anchor candidates of the /review setup preview.
-# version: 0.2.2
+# version: 0.2.3
 """The questions ``review-session.py match`` can leave open (spec 045 F1-AC7, ADR-8), and their answers.
 
 ``template_candidates(vault, base_path, kind)`` lists the notes of
@@ -39,10 +39,10 @@ from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
 
 from lib.doc_frontmatter import body_after_frontmatter
-from lib.period import MONTH, WEEK, WeekRule, parse_name
+from lib.period import MONTH, QUARTER, WEEK, WeekRule, parse_name
 from lib.review_vault import TEMPLATER_MARK, headings
 
-KIND_WORDS = {WEEK: ("week", "woche"), MONTH: ("month", "monat")}
+KIND_WORDS = {WEEK: ("week", "woche"), MONTH: ("month", "monat"), QUARTER: ("quarter", "quartal")}
 RECENT_NOTES = 2
 NO_TEMPLATE = "none"
 CLIMB = ".."

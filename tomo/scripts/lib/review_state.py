@@ -1,5 +1,5 @@
 # review_state.py — the open-review states of /review and the listing a session start prints.
-# version: 0.6.2
+# version: 0.6.3
 """The one owner of ``/review``'s open-review states (spec 045, SDD Complex Logic; ADR-2, ADR-6).
 
 ``STATES`` is the canonical list; ``review_state`` is the only function that
@@ -64,7 +64,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from lib import review_delivery as rdl
 from lib.kado_client import KadoNotFoundError
 from lib.note_meta import META_FILE
-from lib.period import DEFAULT_FORMATS, ISO, KINDS, MONTH, WEEK, WeekRule, parse_name
+from lib.period import DEFAULT_FORMATS, ISO, KINDS, MONTH, QUARTER, WEEK, WeekRule, parse_name
 from lib.review_vault import Vault, kado_stops
 
 OPEN = "open"
@@ -320,12 +320,13 @@ def _period_start(period: str, kind: str, rule: WeekRule, formats: Dict[str, str
 
 
 def _infer_kind(period: str, rule: WeekRule, formats: Dict[str, str]) -> str:
-    """The first kind (week before month) whose format parses the name; a name no
-    format parses keeps the letter guess so the listing still shows a kind."""
+    """The first kind (week, month, quarter) whose format parses the name; a name no
+    format parses keeps the letter guess (W week, Q quarter, else month) so the listing still shows a kind."""
     for kind in KINDS:
         if _period_start(period, kind, rule, formats) != date.max:
             return kind
-    return WEEK if "W" in period.upper() else MONTH
+    upper = period.upper()
+    return WEEK if "W" in upper else QUARTER if "Q" in upper else MONTH
 
 
 def open_reviews(docs: Iterable[Tuple[str, Optional[dict]]], meta_root: Path, vault: Vault, inbox: str, *,

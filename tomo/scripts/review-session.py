@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-session.py — Deterministic session start and setup preview of /review.
-# version: 0.6.5
+# version: 0.6.6
 """Session start and setup preview of /review: the request, the open reviews, the setup.
 
 /review reads a finished week or month and proposes a review section for its
@@ -141,7 +141,7 @@ from lib import review_config as rc  # noqa: E402
 from lib import review_delivery as rdl  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.note_io import ConfigError, atomic_write_text, load_vault_config  # noqa: E402
-from lib.period import DAY_NAMES, ISO, KINDS, MONTH, SETUP, RequestError, parse_args  # noqa: E402
+from lib.period import DAY_NAMES, ISO, KINDS, SETUP, WEEK, RequestError, parse_args  # noqa: E402
 from lib.review_match import configured_rule, propose  # noqa: E402
 from lib.review_state import APPLIED, APPLIED_REPORTED, OpenReview, open_reviews, read_meta  # noqa: E402
 from lib.review_templates import anchor_text, template_choice  # noqa: E402
@@ -248,7 +248,7 @@ def writer_input(confirmed: dict, kind: str) -> dict:
     for key in _INPUT_KEYS:
         if key in confirmed:
             data[key] = confirmed[key]
-    if kind == MONTH:
+    if kind != WEEK:
         for key in ("first_day", "min_days"):
             if data.get(key) is None:
                 data.pop(key, None)

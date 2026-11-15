@@ -145,3 +145,14 @@ F8 sums tracker fields by their configured type. The types already live in
 into `review:` would be a second place to keep in step. `tracker_types()`
 returns `{name: type}` over all three lists; a type change the setup proposes
 goes through the existing `trackers` writer subcommand (SDD Data Storage).
+
+## WHY `GRANULARITY` Names the Quarter Before Its Setup Exists
+
+`GRANULARITY` maps a period kind to its config key (`weekly`, `monthly`,
+`quarterly`) and every reader iterates `period.KINDS` through it
+(`configured_formats`, `setup_present`, the `start` listing). When the quarter
+joined `KINDS` (spec 046 T1.4) the mapping had to name it in the same change,
+or every `review-session.py start` would fail with a `KeyError` before the
+quarterly setup itself is implemented (T1.3). With the key named and nothing
+configured under it, the quarter reads as `missing`, which is exactly what it
+is.

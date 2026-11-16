@@ -1079,3 +1079,36 @@ a line separator inside a review line would silently become two lines.
 The body is therefore split on `"\n"` alone; one trailing newline is the
 line terminator and adds no empty line, a trailing blank line stays, and
 empty content yields an empty fence (the pre-existing pin).
+
+## `replace_between_markers` Renders as Two Marker Lines and a Scope (spec 046 T5.3, v0.38.0)
+
+Spec 046 delivers a `/review` section into the user's own heading. The first
+delivery is an `insert_under_marker` whose content opens and closes with
+Tomo's marker lines (`%% tomo:<key> <period> %%` … `%% /tomo:<key> <period> %%`);
+its rendering is spec 045's, unchanged, because it already names the heading,
+the placement and the block (PRD F4-AC7). A re-run emits the new
+`replace_between_markers` action, which needs a branch of its own: a user
+without Hashi has to find Tomo's block, not a heading, so the readable block
+names both marker lines verbatim (code spans, so a backtick in them cannot
+break the line), and says where to look — the section under the scope heading
+with its level, or the whole note when the action carries no scope (a
+`before` block sits above its heading, so Tomo plans it unscoped).
+
+- WHY the marker lines stay in place: the action replaces only the lines
+  strictly between them (SDD Integration Points). Saying so keeps a user from
+  deleting the markers by hand, which would make the next re-run stop as
+  `section-broken`.
+- WHY the fence body is split differently from `_fenced_content`:
+  `replace_between_markers.content` is the lines joined by `\n` with no
+  trailing newline, so `"a\n"` means two lines (`a` and an empty one). Reusing
+  `_fenced_content`, whose one trailing newline is a terminator, would hide
+  that empty line. `_fenced_lines` splits on `"\n"` only, for the same
+  byte-faithfulness reason as `_fenced_content`.
+- WHY empty content renders a sentence, not an empty fence: `""` means "leave
+  no line between the markers"; an empty fence reads as a rendering fault.
+- WHY the same bucket as `insert_under_marker`: the readable document lists a
+  section's first delivery and its re-run in one place; without the bucket the
+  action would fall to `new_files`, the fallback of `_md_section_for`.
+- The action is not in Tomo's committed schemas until Hashi releases it
+  (ADR-5, T6.1); the tests validate it against a test-only candidate built in
+  `tests/review_deliver_helpers.py`.

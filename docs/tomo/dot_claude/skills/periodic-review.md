@@ -685,14 +685,62 @@ WHY: spec 046 T5.5 added section stops (`section-missing`, `section-ambiguous`, 
 line for every notice, and a name the skill does not know reaches the user as a bare token — so each name got one
 plain-language line in the existing lists the same task the script learned it, not one phase later. The lines name a
 section by the heading of its `key` from step 5 (the script prints keys only, as for `section-checkbox-missing`).
-The stop line ends the step for now: asking per section, passing the answers as `--section-choice` /
-`--confirm-moved` on `deliver`, and offering a fresh delivery after `name-taken` are spec 046 T5.6's dialogue
-(PRD F4-AC4, F4-AC6). The `block-replaced` line already says that edits inside Tomo's block are replaced and text
+In T5.5 the stop line ended the step; T5.6 replaced that end with the per-section dialogue (next section). The `block-replaced` line already says that edits inside Tomo's block are replaced and text
 outside it is kept (F5-AC4): a re-run replaces the block whether or not T5.6 has landed. `sections` is printed in the
 `ok` line, not as a bullet, because it is output, not a problem the step branches on (F4-AC6: heading, placement
 from step 5, and the lines that land). `choices-needed` sends the user back through a fresh `preview` of step 7: the
 choices are not recorded (keys and modes only), so they are asked again, and a different answer is caught as
 `replan-differs`.
+
+## Why Steps 7 and 8 Ask per Section in the Deliver Step (Spec 046 T5.6)
+
+WHY: PRD F4-AC4 and F5-AC3 want every section stop named before anything is written, with a choice per section
+(leave it out, put its items into "Tomo Review", or Abort), and the SDD's Interaction Design says "per-section choices
+in the existing Deliver step" — no extra turn. So a preview whose `problems` hold only section stops is shown like a
+clean preview (plan, per-section lines, the replace line and the notice lines, among them `block-replaced`'s replace
+sentence: edits inside Tomo's block are replaced, text outside it is kept), and the stop lines come last, right before
+the question, so the user reads what lands before deciding what does not. The stop dialogue replaces the
+`1 Deliver · 2 Abort` question; it is never asked as well.
+
+- **One plain-text question, not AskUserQuestion.** A choice per section across several sections does not fit one
+  AskUserQuestion (at most four options), and a list printed before an AskUserQuestion call is not seen live (memory:
+  print-before-ask fails live). The skill asks once in plain text: per listed section one of its `choices`, or
+  0 Abort; the user answers in words, and Rule "when it is unclear, ask again" covers a garbled answer.
+- **The offered choices come from the script, never from the skill.** Each `sections[]` entry with a `stop` carries
+  `choices` (`lib/review_section_plan._stop` / `plan_section`, per case, not per stop name: a missing heading offers
+  skip and review, plus confirm-moved when Tomo's block pair is still in the note; a heading there more than once
+  offers skip and review, a moved block's ambiguous landing heading skip only; broken and in-review offer skip; a moved
+  block skip and confirm-moved, skip only when no heading stands above it; `landing-off-limits` none). A stop-name →
+  choices table in the skill would be wrong for some of these. A stop without choices can only be aborted: the skill names it and stops without a
+  question, because there is nothing to choose.
+- **Naming.** A section is named by the configured heading of its `key` (step 5, the `review.<kind>.sections` row),
+  never by `read.json`: `read.json` is model input that is never quoted (Rules), and a continued review (step 6) has
+  not read it in this session. The `placement` is named because the same heading can take the review before, under or
+  at the end of it, and the user decides knowing where. The lines are said in `<language>` (step 5), the document's
+  language, like the document the user just edited.
+- **Answers become flags; the same flags reach `deliver`.** `skip` / `review` are `--section-choice <key>=…`,
+  `confirm-moved` is `--confirm-moved <key>` (SDD ADR-12). The skill reruns `preview` with them — the plan with the
+  choices taken is what the user is told about — and, when that preview has no problem, goes to step 8 without a second
+  Deliver question: the answer was the decision to deliver. `deliver` gets exactly the flags of the last preview, since
+  a differing set would plan a different set than the one shown. Beside any other problem only that problem's line
+  applies: every other problem stops or asks first, and choices answer a plan that is otherwise deliverable.
+- **`choice-invalid`** means a choice no longer answers a stop of its section: the note changed between the preview and
+  the call. The skill says so and previews again without the choices; a preview without choices cannot be
+  `choice-invalid`, so this cannot loop.
+- **`choices-needed`** (a resume begun with choices, rerun without) is now reachable: the choices are never recorded
+  (keys and modes only), so step 8 reruns the step 7 preview, the stops are asked again, and the rerun with the
+  answers resumes; a different answer is caught as `replan-differs`.
+- **`section-dropped` / `section-empty`.** F3-AC4 wants the user's own items lost with an unticked section counted in
+  that line; F3-AC5 wants an empty ticked section named as empty. The lines say both in those words.
+- **`name-taken` at a set step is not a foreign note.** `staged_delivery` reports `exists` when a step in flight finds
+  other bytes at its path. With `step` `note` that is a note at the new note's path that is not Tomo's (spec 045). With
+  `step` `set_json` or `set_md` it is an earlier instruction set of this review waiting at the path — the SDD case
+  "Resume over an uploaded v3 set" — and "a note that is not Tomo's" was wrong. The skill offers a fresh delivery with
+  the two cures `tests/test_046_t5_6_fresh_delivery.py` proves: the user applies that set in Hashi (an applied set is
+  written over, `replaces_set`), or deletes it in Obsidian, then Resume delivers. At `set_json` the readable
+  instructions beside it are deleted too, or Resume stops at `set_md`; at `set_md` the set JSON is this delivery's own
+  and must stay. Drop is not offered: it would write a withdrawn set over the earlier set and leave the review
+  unlisted with nothing delivered.
 
 ## Why the Heading Pick Is Offered Once for a Collision (Third T5.2 Fix Round)
 
@@ -733,8 +781,9 @@ note (new-note mode only), the set JSON and the set MD through `lib/staged_deliv
 with one write guarded by the `modified` the reader saw (ADR-11; steps `note → set_json → set_md → doc_mark`). The
 skill never runs those steps itself. `status: delivered` or `resumed` is reported with the target, the place, the set
 JSON and the set MD paths and the next step, apply in Hashi or by hand (F5-AC11). `status: refused` names the
-`problems` and nothing was written: `name-taken` names `exists_path` (a note at a payload's path that is not Tomo's
-identical text; never overwritten), the plan problems are the preview's. `status: stopped` carries `failed_step` and is
+`problems` and nothing was written: `name-taken` names `exists_path` (a payload's path holding other bytes than
+Tomo's identical text; never overwritten — a foreign note with `step` `note`, an earlier set with a set step, see
+"Why Steps 7 and 8 Ask per Section in the Deliver Step"), the plan problems are the preview's. `status: stopped` carries `failed_step` and is
 resumable: `doc-changed` means the document was edited or is open with unsaved edits since the preview; the skill says
 to save it and run `/review` again, and the payloads already written count as done; `kado-write-failed` is a Kado
 refusal or failure at that step. Either way the next `/review` lists the stem as `failed-delivery` with Resume / Drop

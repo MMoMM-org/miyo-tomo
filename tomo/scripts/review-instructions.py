@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # review-instructions.py — Pass 2 of /review: preview the section, deliver the set resumably, drop it, name the state.
-# version: 0.3.3
+# version: 0.3.4
 """Pass 2 of /review (spec 045; PRD F5-AC1, F5-AC2, F5-AC8 to F5-AC11, F6-AC2, F6-AC4; ADR-3, ADR-6, ADR-11,
 ADR-13; spec 046 ADR-12: section stops, choices).
 
@@ -249,7 +249,8 @@ def _template(vault: Vault, setup: rc.ReviewSetup, target: ra.Target) -> Optiona
 
 
 def load_run(args: argparse.Namespace) -> Run:
-    """Read the document, the target and the template; build the plan; classify its problems."""
+    """Read the document, the set at the stem's path, the target and the template; build the plan; classify its
+    problems."""
     stage = Path(args.tmp) / args.stem
     meta_data = rs.read_meta(Path(args.tmp), args.stem)
     doc_path = doc_path_of(meta_data)
@@ -268,12 +269,12 @@ def load_run(args: argparse.Namespace) -> Run:
         paths = rdl.set_paths(setup, args.stem)
     except rc.UnsafePath:
         raise Refused("inbox-not-configured") from None
+    held = rs.read_set(vault, paths[rdl.SET_JSON])     # before the note, never after it (T6.2)
     target = _target(vault, setup, str(period_name or ""))
     template = _template(vault, setup, target)
     anchor, choices = getattr(args, "place_anchor", None), getattr(args, "choices", None) or {}
     plan = ra.build_review_plan(read.parsed.approved_review(), setup, target, template, anchor=anchor,
                                 choices=choices, run_id=meta.run_id, generated=meta.generated)
-    held = rs.read_set(vault, paths[rdl.SET_JSON])
     # a set with any action applied is written over: a partly applied set never gets stuck (spec 046 ADR-12)
     set_exists, applied_any = held is not None, held is not None and rs.any_applied(held.data)
     if set_exists and meta.started() and not meta.withdrawn() and rs.is_emptied_set(held.data):

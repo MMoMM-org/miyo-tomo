@@ -437,6 +437,20 @@ comparison differs and the loop stops `exists`, which `deliver` reports as
 offers a fresh delivery (T5.6). No converter: the SDD leaves a waiting v3
 set to Hashi.
 
+### WHY the Set Is Read Before the Target Note (spec 046 T6.2)
+
+`load_run` reads the set JSON at the stem's path before the target note
+(and its template). Hashi may apply that set at any moment. Read the other
+way round, the note could be read just before Hashi lands the section and
+the set just after: the set then says "applied" (`any_applied`, so the run
+writes over it) while the plan was built against a note without the block,
+and plans a second `insert` — two blocks for one section. Set first, the
+window closes in both orders: a set read before the apply is not applied
+(`set-exists` refuses, or the resume runs as recorded), and a note read
+after a set read as applied already holds what that set landed, so the
+re-plan replaces the block. The document is read before both: Hashi never
+changes it. A test reads the order off the fake's call log.
+
 ## WHY `generated` and `run_id` Come From `meta.json`
 
 A resumed delivery must rebuild the set JSON, the MD peer and the new note
@@ -671,9 +685,9 @@ to the user on purpose (F5-AC2).
 
 ## Kado Calls
 
-`preview`: the document (1), the target candidates (1–2), a by-name search
-when neither exists (1), the template and its variant for a new note (0–2),
-the set read (1; its `actions` decide `set-withdrawn`). `deliver`: the same, then per uploaded step one probe and
+`preview`: the document (1), the set read (1; its `actions` decide
+`set-withdrawn`), the target candidates (1–2), a by-name search when
+neither exists (1), the template and its variant for a new note (0–2). `deliver`: the same, then per uploaded step one probe and
 one write, and the document mark (1). `drop` on a begun delivery: the set
 JSON (1), then the two writes. `status`: the frontmatter (1), the set
 JSON for an approved document (1), then for a waiting set one probe (insert

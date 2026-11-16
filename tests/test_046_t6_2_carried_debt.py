@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t6_2_carried_debt.py — the code debt Phase 5 carried into spec 046 T6.2.
 
 docs/XDD/specs/046-review-template-sections/plan/phase-6.md T6.2 / T6.4 "Carried from Phase 5". Mechanisms a
@@ -7,7 +7,9 @@ mutation falsifies:
 
 - the choice flags' key pattern being the section key ``^s[0-9]{1,3}$`` of ``lib/review_doc_parse.SECTION_KEY``, not
   a looser one (``test_a_key_that_is_no_section_key_is_a_bad_invocation``,
-  ``test_the_flag_parser_and_the_document_parser_share_one_key``).
+  ``test_the_flag_parser_and_the_document_parser_share_one_key``);
+- ``load_run`` reading the set JSON before the target note
+  (``test_the_set_is_read_before_the_target_note``).
 
 All data is synthetic.
 """
@@ -24,7 +26,7 @@ sys.path.insert(0, str(TESTS_DIR))
 
 from review_deliver_helpers import ins  # noqa: E402,F401 — ins is a fixture
 from test_046_t4_2_doc_sections import inst, script  # noqa: E402,F401 — fixtures
-from test_046_t5_5_delivery_choices import STEM  # noqa: E402
+from test_046_t5_5_delivery_choices import SET_JSON, STEM, TARGET, approved, cli  # noqa: E402
 
 __all__ = ["ins", "inst", "script"]                 # fixtures, used by name
 
@@ -52,3 +54,14 @@ def test_the_flag_parser_and_the_document_parser_share_one_key():
     for key in ("s1", "s999", "s1000", "S1", "x", "s١", ""):
         assert bool(rdp.SECTION_KEY.fullmatch(key)) == (key in ("s1", "s999")), key
 
+
+# ---------------------------------------------------------------- the set before the note
+
+def test_the_set_is_read_before_the_target_note(script, inst, ins, monkeypatch, capsys):
+    """A set Hashi applies between the two reads must not meet a note read before it: read the set first."""
+    fake = approved(script, inst, monkeypatch, capsys)
+    for command in ("preview", "deliver"):
+        fake.events.clear()
+        cli(ins, monkeypatch, capsys, fake, command, "--stem", STEM)
+        reads = [e for e in fake.events if e in (("read_file", SET_JSON), ("read_note", TARGET))]
+        assert reads[:2] == [("read_file", SET_JSON), ("read_note", TARGET)], (command, fake.events)

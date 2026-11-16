@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.4
+# version: 0.1.5
 """test_review_section_plan.py — lib/review_section_plan.py, plan_section on an existing note (046 T5.1).
 
 PRD F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
@@ -390,6 +390,26 @@ def test_missing_on_rerun_confirm_moved_replaces_scoped_where_it_sits():
     assert p.mode == "replace" and p.scope == {"heading": "A renamed", "level": 2}
     assert p.notices == ["block-replaced", "block-moved-confirmed"]
     assert plan(row("s1", "A", 2), ["## B"], choice="confirm-moved").mode == "missing"
+
+
+def test_missing_on_rerun_with_an_intact_block_offers_no_review():
+    """Rule 8 / F5-AC5: `review` would leave the earlier block and add a second copy into Tomo Review."""
+    renamed = ["## A renamed", start(), "- old", end(), "## B"]
+    p = plan(row("s1", "A", 2), renamed)
+    assert p.mode == "missing" and p.offers == ("skip", "confirm-moved")
+    refused = plan(row("s1", "A", 2), renamed, choice="review")
+    assert refused.mode == "missing" and refused.offers == ("skip", "confirm-moved")
+    assert plan(row("s1", "A", 2), renamed, choice="skip").mode == "skip"
+    assert plan(row("s1", "A", 2), ["## B"]).offers == ("skip", "review"), "no block: review stays"
+
+
+def test_ambiguous_on_rerun_with_an_intact_block_offers_no_review():
+    lines = ["## A", start(), "- old", end(), "## A"]
+    p = plan(row("s1", "A", 2), lines)
+    assert p.mode == "ambiguous" and p.offers == ("skip",)
+    assert plan(row("s1", "A", 2), lines, choice="review").mode == "ambiguous"
+    assert plan(row("s1", "A", 2), lines, choice="skip").mode == "skip"
+    assert plan(row("s1", "A", 2), ["## A", "## A"]).offers == ("skip", "review"), "no block: review stays"
 
 
 def test_mapped_by_level_parent_and_occurrence():

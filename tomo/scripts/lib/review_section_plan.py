@@ -1,5 +1,5 @@
 # review_section_plan.py — whether one mapped review section goes into an existing note, and where.
-# version: 0.5.1
+# version: 0.5.2
 """Plan one kept, mapped section of a ``/review`` delivery into a note's text (spec 046 T5.1; PRD
 F4-AC2, F4-AC3, F4-AC4, F5-AC1, F5-AC2, F5-AC3, F5-AC5; Rules 3, 4, 8, 9; SDD Runtime View /
 Complex Logic, ADR-4, ADR-10, ADR-12).
@@ -11,8 +11,8 @@ Hashi text, ``before`` -> ``before``, ``under`` -> ``after``, ``end`` -> ``insid
 scoped to the mapped heading for ``under`` / ``end``, unscoped for ``before``), ``skip`` / ``review``
 (the user's choice at a stop) or a stop: ``missing``, ``ambiguous``, ``broken``, ``moved``,
 ``in-review``, ``landing-off-limits`` (``SectionPlan.stop`` names it). ``choice`` (``skip``,
-``review``, ``confirm-moved``) answers only the stop that offers it; ``SectionPlan.offers`` names what a stop
-that stays offers. ``review_at`` is the planned
+``review``, ``confirm-moved``) answers only the stop that offers it — ``review`` never beside an intact earlier
+block of the section; ``SectionPlan.offers`` names what a stop that stays offers. ``review_at`` is the planned
 insertion index of a new "Tomo Review" section; an existing one is found by its spec 045 marker.
 ``place_off_limits`` runs the landing check on spec 045's "Tomo Review" placement, ``review_off_limits`` where it sits.
 
@@ -210,11 +210,12 @@ def plan_section(row: dict, note_text: str, period: str, items: Sequence[dict], 
         return _stop(plan, BROKEN, choice)                                  # step 3b: a hidden copy
     pair = len(starts) == 1 and len(ends) == 1 and ends[0] > starts[0]
     mapped = note.find(row_key(row))
+    routable = (SKIP,) if pair else (SKIP, REVIEW)                          # Rule 8: never beside an intact block
     if mapped is None and not (pair and choice == CONFIRM_MOVED):
-        return _stop(plan, MISSING, choice, (SKIP, REVIEW),                 # step 5, also on a re-run
-                     (SKIP, REVIEW, CONFIRM_MOVED) if pair else None)
+        return _stop(plan, MISSING, choice, routable,                       # step 5, also on a re-run
+                     (SKIP, CONFIRM_MOVED) if pair else None)
     if mapped is not None and sum(h[2] == note.heads[mapped][2] for h in note.heads) > 1:
-        return _stop(plan, AMBIGUOUS, choice, (SKIP, REVIEW))               # Rule 9: Hashi takes the first
+        return _stop(plan, AMBIGUOUS, choice, routable)                     # Rule 9: Hashi takes the first
     tr = note.review_range(period)
     if not starts and not ends:
         return _first_delivery(plan, note, mapped, placement, choice, off_limits, tr, review_at)

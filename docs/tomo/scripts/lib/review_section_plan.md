@@ -155,6 +155,22 @@ path decides from there), and a block moved under a heading (`skip` or
 without a scope). `landing-off-limits` offers nothing. A choice that was
 taken leaves `offers` empty: the section has no stop.
 
+### WHY No `review` Beside an Intact Earlier Block (owner decision, T5.7)
+
+One block per section and period (Rule 8, F5-AC5). When a re-run finds
+exactly one start and one end marker of the section and period, in order,
+but its mapped heading is gone (`section-missing`) or stands twice
+(`section-ambiguous`), `review` would put the items into "Tomo Review" and
+leave the earlier block where it is: two Tomo copies of one section for
+the period. So with such a block `section-missing` offers `skip` and
+`confirm-moved` (replace the block where it sits), `section-ambiguous`
+only `skip`; `review` stays where no earlier block exists (a first
+delivery). A `--section-choice <key>=review` given there is not taken and
+`review-instructions.py` refuses it `choice-invalid`. A broken earlier
+block is not intact: its stops keep their choices (`section-broken`
+offers `skip` only; a missing heading beside a broken block still offers
+`review`).
+
 ## WHY Notices `block-replaced` and `block-moved-confirmed`
 
 A replace overwrites whatever the user edited inside Tomo's block; the

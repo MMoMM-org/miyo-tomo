@@ -356,7 +356,7 @@ graph LR
 | `review-read.py` | Writes `read.json` (week, month) or `read-index.json` + `read-<YYYY-MM>.json` (quarter), compact, with the section definitions |
 | `lib/review_sections.py` (new) | Pass 1 section side: definitions for `read*.json`, every proposal check on items (keys, caps, double placement, sources via `review_doc.Sources`, marks), rendering of a section part and of an analysis sub-part (incl. the mark suffix) |
 | `lib/review_doc.py` / `review-doc.py` | Group side as today (per-kind group tables); assembles section parts + "Tomo Review" part; `meta.json` incl. `pass1_sections` |
-| `lib/review_doc_parse.py` | Parses section parts and section checkboxes back and reports a missing expected key; computes per-section counts incl. the user's own items |
+| `lib/review_doc_parse.py` | Parses section parts and section checkboxes back and reports a missing expected key; computes per-section counts incl. the user's own items; emits `section-checkbox-missing` as a warning (a `review_actions._gate` refusal, like `approved-missing`) |
 | `lib/review_section_plan.py` (new) | Pass 2 per kept section, existing or new note: heading resolution as Hashi does, own-block detection by line range, the off-limits landing check, the mode (insert / replace / skip / review / broken / moved), the section's action, preview lines and notices (`block-replaced`, `block-moved-confirmed`); the `section-dropped` and `section-empty` notices come from the parse counts |
 | `lib/review_actions.py` | The "Tomo Review" section as today plus its analysis sub-parts and the routed sections; composes the whole plan (section actions first, then Tomo Review), numbered `I01…In` — Hashi then runs them by kind (`insert_under_marker`, then `replace_section`, then `replace_between_markers`, `planner.ts:39-56`), which is why a section never lands inside "Tomo Review"; the `review-section-kept` notice |
 | `lib/review_delivery.py` | Refusals, `delivered_plan` incl. `sections`, overwrite of a partly applied set |
@@ -449,7 +449,7 @@ docs/tomo/
     └── review_read_parts.md                     # NEW (T3.4)
 ```
 
-**Component**: Tests (new files; existing review tests are listed in spec 045's map. `test_review_sdd_map.py` reads both maps — T1.2.
+**Component**: Tests (new files; existing review tests are listed in spec 045's map. `test_review_sdd_map.py` reads both maps — T1.2 — and checks only `tests/test_review_*.py`, so the `test_046_*` files below are not map-checked.
 The wire bump also moves every instructions-wire hit of `rg -n "schema_version.{0,8}['\"]3['\"]" tests tomo/scripts`, the 038 wire baselines and schema parity — T6.1.)
 ```
 tests/
@@ -465,6 +465,16 @@ tests/
 ├── review_period_fixtures.py                    # MODIFY: quarter fixtures (disagreeing notes)
 ├── test_review_read_parts.py                    # NEW (spec 046 T3.4): quarter split, loader, parts <= 256 KB on the scaled fixture
 ├── review_scaled_quarter.py                     # NEW (T3.4): a 2026-Q1 read scaled to the measured bytes (synthetic)
+├── test_046_t4_2_doc_sections.py                # NEW (T4.2): the mapped document
+├── test_046_t4_2_unmapped_doc_golden.py         # NEW (T4.2): the unmapped document, byte for byte
+├── test_046_t4_3_section_parse.py               # NEW (T4.3): section parts and checkboxes parsed back
+├── test_046_t4_3_unmapped_parse_golden.py       # NEW (T4.3): the unmapped parse, unchanged
+├── test_046_t4_4_section_stop.py                # NEW (T4.4): the missing-checkbox stop
+├── test_046_t4_4_skill_sections.py              # NEW (T4.4): skill pins for proposing by section
+├── test_046_t4_5_quarter_read.py                # NEW (T4.5): the quarter read in review-doc
+├── test_046_t4_5_skill_quarter.py               # NEW (T4.5): skill pins for the quarter read
+├── fixtures/046-t4-2-unmapped-doc-golden/       # NEW (T4.2)
+├── fixtures/046-t4-3-unmapped-parse-golden/     # NEW (T4.3)
 ├── test_046_close_out_gaps.py                   # NEW at close-out
 └── fixtures/instructions-v4-candidate.schema.json   # NEW until T6.1: test-only schema from the handoff fragment
 ```
@@ -527,7 +537,7 @@ review:
     format: "YYYY-[Q]Q"
 ```
 
-A row with `placement: review` is allowed only on a heading left out as `automatic`; every other placement only on an offered heading. `own_sections` is unchanged. `tomo-tmp/review/rows-<kind>.json` holds the last rows `match` showed (setup text only: heading keys, descriptions, keywords, placements, caps), the template's heading outline (keys, lines, ancestors, body kinds, structural reasons) and `resolved` (the template `match` tried last and its kind); `match` writes it and reads it back for `dropped`, `setup-input` checks rows against it and deletes it on save, `start` deletes a stale one. `tomo-tmp/review/<stem>/meta.json` gains `pass1_sections: [{key, count, empty}]` (keys and counts only) and `delivered_plan.sections: [{key, mode, placement, scope_level}]` plus `choices_given: bool` (ids and enums only).
+A row with `placement: review` is allowed only on a heading left out as `automatic`; every other placement only on an offered heading. `own_sections` is unchanged. `tomo-tmp/review/rows-<kind>.json` holds the last rows `match` showed (setup text only: heading keys, descriptions, keywords, placements, caps), the template's heading outline (keys, lines, ancestors, body kinds, structural reasons) and `resolved` (the template `match` tried last and its kind); `match` writes it and reads it back for `dropped`, `setup-input` checks rows against it and deletes it on save, `start` deletes a stale one. `tomo-tmp/review/<stem>/meta.json` gains `pass1_sections: [{key, count, empty}]` (keys and counts only; only with a mapping; in read.json's section order, which is not the rendered order: analysis parts render after the others; `pass1_counts` stays flat and includes the section keys) and `delivered_plan.sections: [{key, mode, placement, scope_level}]` plus `choices_given: bool` (ids and enums only).
 
 #### Internal API Changes
 
@@ -569,14 +579,22 @@ A row with `placement: review` is allowed only on a heading left out as `automat
   {month, days, weekly, monthly} (days by date, monthly notes by month, weekly notes by the majority month of their days
   in the quarter); joined back by lib/review_read_parts.load
 - review-doc.py write --stem <stem> --proposals <path>
-  new refusal errors: unknown-section, duplicate-section (a key named twice in `sections`), over-cap (naming the
-  section key), double-placement, mark-not-allowed (plus spec 045's); new per-item reasons for the quarter groups:
-  quarter-only-group (a quarter group outside a quarter), no-monthly-notes (a quarter that read no monthly notes)
+  refusals: proposals-invalid (errors "<pointer>: <error>": unknown-section, duplicate-section, over-cap (<key>),
+  double-placement, mark-not-allowed; plus spec 045's), sections-changed (read's section keys differ from the
+  configured rows' ids; refused before any Kado call), read-missing / read-invalid (read loaded via
+  lib/review_read_parts.load; a missing, broken or duplicated part, or both layouts present, is read-invalid);
+  replace --confirm runs the same checks; success and replace --abort delete every read file and proposals.json,
+  a refused or failed write keeps them; new per-item reasons for the quarter groups: quarter-only-group,
+  no-monthly-notes
   status written: counts per group and per section key
+- review-doc.py parse --stem <stem>
+  stdout adds section_problems [{key, restore}] and section_counts {key: {ticked, kept, unticked, added, empty}}
+  only for a mapped document
 - review-instructions.py preview|deliver --stem <stem> [--place-anchor A] [--section-choice <key>=skip|review ...]
                                           [--confirm-moved <key> ...]
-  new stops (all owned by review-instructions.py, which reads them from parse and plan):
-             section-checkbox-missing (from review_doc_parse), section-missing, section-ambiguous, section-broken,
+  new stops (owned by review-instructions.py, which reads them from parse and plan; section-checkbox-missing is
+             emitted by review_doc_parse as a warning and is a review_actions._gate refusal listed in
+             review_delivery.REFUSING, like approved-missing): section-checkbox-missing, section-missing, section-ambiguous, section-broken,
              section-moved, block-in-review-section, landing-off-limits (from review_section_plan), choices-needed
              (from review_delivery); nothing-to-deliver now counts kept sections and the "Tomo Review" part
   new notices: section-dropped (with user item count), section-empty, block-replaced, block-moved-confirmed,
@@ -591,14 +609,18 @@ ENTITY: OffLimitsRow (vault config)          # {heading, level, parent, occurren
 ENTITY: TemplateHeading (review_mapping)
   FIELDS: heading_key{heading, level, parent, occurrence}, line, state, reason, flags
 ENTITY: SectionDefinition (read.json "sections")
-  FIELDS: key (= row id), heading, level, parent, description, keywords, groups, cap
+  FIELDS: key (= row id), heading, level, parent, description, keywords, groups, cap, analysis? (true only on placement-review rows)
 ENTITY: Proposals (proposals.json)
   FIELDS: language, sections: [{key, items: [{text, sources, mark?}]}], groups: {...spec 045...}
   mark: weekly_only | not_in_weekly (month) | monthly_only | not_in_monthly (quarter)
 ENTITY: SectionPart (DocInput)
-  FIELDS: key, heading, placement, landing (heading, level, parent), items, empty
+  FIELDS: key, heading, placement, landing (heading, level, parent), items, empty,
+          routed (lands in "Tomo Review"; set by delivery planning, Phase 5)
+  placement and landing come from the configured rows by id, not from read.json
 ENTITY: ParsedDoc (review_doc_parse) adds
-  FIELDS: sections: Dict[key, bool | None], items carry group = key for section items
+  FIELDS: sections: Dict[key, bool | None], section_problems: [{key, heading|None, restore}] (public form {key, restore}),
+          items carry group = key for section items
+  METHODS: lands(item), section_counts() -> {key: {ticked, kept, unticked, added, empty}}
 ENTITY: SectionPlan (review_section_plan)
   FIELDS: key, mode: insert|replace|skip|review|broken|moved|missing|ambiguous|in-review|landing-off-limits, anchor (Hashi text), hashi_placement, scope?, lines,
           notices
@@ -712,6 +734,8 @@ Expected sets on the five test-vault templates, no off-limits rows (structure on
 ```
 
 With a mapping, the "Tomo Review" part starts with a divider heading `## Tomo Review %%review%%` and its landing line (the parser treats it as a part boundary that holds no items); analysis rows (F2-AC12) follow as section parts, then the remaining groups as spec 045's `## <label>` parts. Every part stays at `##`, so the parser's grammar is unchanged; without a mapping no divider is rendered and the document is spec 045's. In the delivered note, an analysis row becomes a `<level+1>` sub-heading with its text inside the "Tomo Review" section. A mark (F1-AC9) renders as a suffix from `_LABELS` (`· nur im Wochenrückblick`, `· in keinem Wochenrückblick`, the quarter's monthly equivalents); it is part of the item text, so the user can edit or delete it and it is delivered as written; the parser does not need to read it back. The id on the heading keeps a section recognisable when the user edits the heading text, and keeps a user section named like a group label ("Done") from being read as that group. The checkbox line is matched before `_ITEM`; the italic landing line has no column-0 structure and is ignored by the parser. An empty section shows `- nothing found` (`words['nothing']`) and its checkbox starts `- [ ]`.
+
+Headings, landing lines and the mapped callout's anchor are display-neutralised (review_sections.display_heading: whitespace collapsed, `%%…%%` spans dropped) so no config text forms an id; the unmapped callout keeps its raw anchor (CON-2).
 
 #### Example: The block in the note, first delivery and re-run
 
@@ -969,7 +993,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
 
 - [x] ADR-1 Gathering: the single existing Pass 1 model pass writes `proposals.json` with `sections: [{key, items}]` beside the unchanged `groups`; the section definitions (key, heading, level, parent, description, keywords, groups, cap) ride in `read.json`, so the model reads one file.
   - Rationale: no extra pass or config read; the model cannot invent or rename a section (keys only); the closed schema stays closed.
-  - Trade-offs: the skill grows by about 1,000 characters; the model's single pass carries more instructions. (Measured at T2.3: the setup step alone added about 3,900 characters; accepted by the owner 2026-11-15, the trim belongs to #259.)
+  - Trade-offs: the skill grows by about 1,000 characters; the model's single pass carries more instructions. (Measured at T2.3: the setup step alone added about 3,900 characters; accepted by the owner 2026-11-15, the trim belongs to #259.) Phase 4 added about 2,700 bytes more (28,885 → 31,600 bytes, wc -c: proposing by section, the missing-checkbox stop, the quarter read); the trim stays with #259.
   - User confirmed: 2026-11-14
 
 - [x] ADR-2 Double placement: `review_sections.check` refuses an item proposed in two places (same normalised text, or same sources + first line); the semantic one-finding-one-place stays the model's; caps are refused (`over-cap`), never truncated, and a section key named twice is refused (`duplicate-section`, owner 2026-11-16) so a split entry cannot get round its cap, so the model merges on the rewrite-once loop; a moved month/quarter item keeps its mark in an optional `mark` field checked like its group and rendered as a labelled suffix that travels with the item text.
@@ -997,7 +1021,7 @@ Preview → per section: heading · placement · add|replace · lines · notices
   - Trade-offs: a refactor of a tested path; the golden test is the guard.
   - User confirmed: 2026-11-14
 
-- [x] ADR-7 Quarter size: `review-read.py --measure` first (2026-Q1, no model); all `read*.json` compact; a quarter writes `read-index.json` (period, report, sections, part list, and the other keys that carry no month: open tasks, growth, not read, the monthly marks) and one `read-<YYYY-MM>.json` per month that the model reads in turn; `review-doc.py` loads all parts for its checks; week and month stay one file.
+- [x] ADR-7 Quarter size: `review-read.py --measure` first (2026-Q1, no model); all `read*.json` compact; a quarter writes `read-index.json` (period, report, sections, part list, and the other keys that carry no month: open tasks, growth, not read, the monthly marks) and one `read-<YYYY-MM>.json` per month that the model reads in turn; `review-doc.py` loads all parts for its checks (T4.5); the model reads the index and then each part in turn, keeping its notes in the conversation; week and month stay one file.
   - Rationale: March's 275 KB was already over the Read limit; a quarter is about 0.8 MB.
   - Trade-offs: the skill gets a quarter branch in step 5; if the measured size stays too large, a quarter-level character budget is the next lever (Technical Debt).
   - User confirmed: 2026-11-14
@@ -1122,13 +1146,14 @@ Preview → per section: heading · placement · add|replace · lines · notices
 - `insert_under_marker` skips only a byte-identical block anywhere in the note; a block added by another set between plan and apply yields a second block (low likelihood; `set-exists` guards the common case).
 - The pacer never narrows after a retry (`review_pacer.py:66-67`); one early 429 in a quarter stretches the read to ≈ 13 min.
 - Week-level own-section text in the boundary weeks of a quarter cannot be clipped by day (as for a month today).
+- Quarter context size: a quarter's Pass 1 holds about 520 KB of month parts (2026-Q1) in one conversation; unmeasured until the quarter live walk (T6.x), which records context use and cost; the quarter character budget is the lever if it does not fit.
 
 ### Technical Debt
 
 - `review-instructions.py` (511) and `lib/period.py` (486) stay near or over the L2 guide; this design adds only thin wiring there; a split of `period.py` (parsing vs model) is a follow-up.
 - `setup-input` stays offline; eligibility of a row is checked against `match` evidence, not re-read.
 - If the measured quarter parts still exceed 256 KB, the next lever is a quarter-level character budget per day (`max_chars_per_day` does not bind today).
-- The skill text grows (~1,000 chars for sections, a quarter branch, choice flags); the trim is #259. The WHY for every new rule is written to `docs/tomo/` before the runtime text (a gate task per phase).
+- The skill text grows (~1,000 chars for sections, a quarter branch, choice flags; Phase 4 added about 2,700 bytes, 28,885 → 31,600 bytes, wc -c); the trim is #259. The WHY for every new rule is written to `docs/tomo/` before the runtime text (a gate task per phase).
 - The wire bump moves about 14 test files that hard-code `"schema_version": "3"` in schema-validated sets (`test_instruction_render_wire_hygiene`, `test-resolve-section-names`, `test_031_t6_1_end_to_end`, `test_tag_handler_e2e`, `test_037_*`, `test_spec022_schema_additions`, `test-008-phase1`, …), the 038 wire baseline fixtures and `test_tomo_schema_parity`; one task enumerates them with `rg '"schema_version": "3"' tests` (never truncated).
 
 ### Implementation Gotchas

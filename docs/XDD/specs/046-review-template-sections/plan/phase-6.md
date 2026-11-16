@@ -62,7 +62,7 @@ Ships the wire bump with Hashi, proves the whole flow end to end and in the test
         - items read as reminders, not finished review text;
         - costs and durations per pass from `tomo-session-stats.py`.
      Writes reach the test vault only through Hashi's apply; nothing edits it directly.
-  3. Implement: record every run in `live-walk.md` (counts only, no journal text); file walk-found fixes as tasks with RED tests.
+  3. Implement: record every run in `live-walk.md` (counts only, no journal text); file walk-found fixes as tasks with RED tests. Notes from Phase 4: record the context use (tokens) and cost of the quarter's Pass 1 beside the ≤ $5 / ≤ 20 min KPI; the mapped callout's target stem and not-read / partly-read paths are still raw (path-derived, low risk) — check them in the walk or note them in the close-out.
   4. Validate: KPIs — weekly Pass 1 ≤ $0.50, monthly Pass 1 ≤ $2.00 and ≤ 7 min, Pass 2 ≤ $0.75, quarterly Pass 1 ≤ $5.00 and ≤ 20 min; 0 changed characters of user text outside markers; 0 sections with two blocks; 0 writes to off-limits.
   5. Success: Tomo and Hashi work together on all three kinds, first delivery and re-run `[ref: PRD/Success Metrics; PRD/Constraints]`
 

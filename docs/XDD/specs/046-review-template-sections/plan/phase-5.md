@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Pass 2 — delivery into the user's sections"
-status: in_progress
+status: completed
 version: "1.1"
 phase: 5
 ---
@@ -87,7 +87,7 @@ Delivers each kept section into the user's note as a marked block, replaces it o
   4. Validate: skill tests green.
   5. Success: the user decides every ambiguous case in the existing Deliver step `[ref: PRD/F4-AC4, F4-AC6]`
 
-- [ ] **T5.7 Phase Validation** `[activity: validate]`
+- [x] **T5.7 Phase Validation** `[activity: validate]`
 
   - Notes from T5.6: SKILL.md 0.2.9, 34,626 bytes; advisory nits for #259 or the close-out: the step 7 stop bullet is one ~1,100-character sentence (split into sub-bullets, "per stopped section named on a line, using only the choices that line listed"; re-pin `QUESTION` / `STOPS_HEAD`); one half of a negative pin in `test_046_t5_6_skill_choices.py` checks its own constant (tautology).
 

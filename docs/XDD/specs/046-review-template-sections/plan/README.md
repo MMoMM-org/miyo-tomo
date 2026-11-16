@@ -153,7 +153,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 2: Setup — mapping, off-limits, template choice](phase-2.md)
 - [x] [Phase 3: Reading — child-review level, quarter, read files](phase-3.md)
 - [x] [Phase 4: Pass 1 — proposals and the review document by section](phase-4.md)
-- [ ] [Phase 5: Pass 2 — delivery into the user's sections](phase-5.md)
+- [x] [Phase 5: Pass 2 — delivery into the user's sections](phase-5.md)
 - [ ] [Phase 6: Wire v4, integration, live walk and close-out](phase-6.md)
 
 **Phase dependencies:** 1 → 2 → T3.1 → T3.2 → T3.3 → {T4.1–T4.4 ∥ T3.4 (owner-gated measurement)} → T4.5 → 5 → 6. Inside Phase 1, T1.3 needs T1.1 and T1.4. Inside Phase 5: T5.1 ∥ T5.3 → T5.2 → T5.4 → T5.5 → T5.6. Phase 6's wire step (T6.1) waits for Hashi's release.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_046_t4_2_doc_sections.py — the review document by section and its write path (spec 046 T4.2).
 
 On tests/review_fake_vault with synthetic read.json / proposals.json files and a vault config that
@@ -450,7 +450,7 @@ def test_a_hostile_parent_and_anchor_in_the_landing_lines():
     analysis = _part("s2", placement="review", items=[{"text": "b", "links": []}])
     text, _ = rd.render_document(_doc_input(sections=[part, analysis], anchor="R %%s7%%\n## z"))
     lines = text.splitlines()
-    body = lines[lines.index("## Goals %%s1%%"):]          # the spec 045 info callout above is pinned as is
+    body = lines[lines.index("## Goals %%s1%%"):]          # the callout: test_a_hostile_anchor_forges_nothing_…
     assert '*Lands: right under "Goals" (level 3, under "P - [x] q")*' in body
     assert '*Lands: as the section "Tomo Review" inside "R ## z"*' in body
     assert "%%t9%%" not in text and "%%s7%%" not in "\n".join(body)
@@ -462,3 +462,22 @@ def test_a_hostile_parent_and_anchor_in_the_landing_lines():
 ])
 def test_display_heading_leaves_no_id_able_percent_pair(raw, shown):
     assert rs.display_heading(raw) == shown and "%%" not in rs.display_heading(raw)
+
+
+def test_a_hostile_anchor_forges_nothing_in_the_mapped_document():
+    text, _ = rd.render_document(_doc_input(sections=[_part(items=[{"text": "a", "links": []}])],
+                                            anchor="R %%s7%%\n## z"))
+    assert "%%s7%%" not in text and "## z" not in text.splitlines()
+    assert '> [!info] Target: [[2026-Q1]] (exists) · inside "R ## z"' in text.splitlines()
+
+
+def test_a_folded_anchor_shows_without_its_comment_in_the_mapped_callout():
+    text, _ = rd.render_document(_doc_input(sections=[_part()], anchor="Organisation %% fold %%"))
+    assert '> [!info] Target: [[2026-Q1]] (exists) · inside "Organisation"' in text.splitlines()
+
+
+def test_the_unmapped_callout_keeps_the_anchor_raw_as_spec_045():
+    text, _ = rd.render_document(_doc_input(anchor="R %%s7%%\n## z"))
+    lines = text.splitlines()
+    assert lines[lines.index("# 2026-Q1 Review") + 1:][:2] == ['> [!info] Target: [[2026-Q1]] (exists) · inside "R %%s7%%',
+                                                              '## z"']

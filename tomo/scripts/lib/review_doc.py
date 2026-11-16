@@ -1,5 +1,5 @@
 # review_doc.py — the Pass 1 review document of /review: proposals checked against the period, then rendered.
-# version: 0.5.0
+# version: 0.5.1
 """The review document ``<period> Review.md`` (spec 045, PRD F4, ADR-12, ADR-13).
 
 Pure functions between the model's ``proposals.json`` and the document the
@@ -347,13 +347,13 @@ def item_lines(text: str, links: Sequence[str], number: int, suffix: str = "") -
     return [f"- [x] {first}{link_part}{suffix} {ID_MARK}t{number}{ID_MARK}", *(_CONTINUATION + ln for ln in rest)]
 
 
-def _callout(inp: DocInput, words: Dict[str, str]) -> str:
+def _callout(inp: DocInput, words: Dict[str, str], anchor: str) -> str:
     if inp.target_found_elsewhere:
         state = words["elsewhere"].format(path=inp.target_found_elsewhere)
     else:
         state = words["exists"] if inp.target_exists else words["created"]
     parts = [f"{words['target']}: [[{note_stem(inp.target)}]] ({state})",
-             f"{words[inp.placement]} \"{inp.anchor}\""]
+             f"{words[inp.placement]} \"{anchor}\""]
     if inp.not_read:
         parts.append(f"{words['not_read']}: {', '.join(note_stem(p) for p in inp.not_read)}")
     if inp.partly_read:
@@ -374,9 +374,10 @@ def render_document(inp: DocInput) -> Tuple[str, Dict[str, int]]:
     import yaml
 
     words = labels(inp.language)
-    lines = [f"# {inp.period_name}{DOC_SUFFIX}", _callout(inp, words), APPROVED_LINE]
     from lib import review_sections          # imports this module: the parts are rendered there
 
+    anchor = inp.anchor if inp.sections is None else review_sections.display_heading(inp.anchor)
+    lines = [f"# {inp.period_name}{DOC_SUFFIX}", _callout(inp, words, anchor), APPROVED_LINE]
     if inp.sections is None:
         body, counts, _ = review_sections.group_parts(inp, words, 0, keep_empty=True)
     else:

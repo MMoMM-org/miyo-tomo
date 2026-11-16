@@ -217,6 +217,17 @@ is legitimate Obsidian text, starts no column-0 structure and is not an id.
 It is display only. The parts, the config rows, `read.json` and everything
 delivery planning reads keep the original text; a section is identified by
 its `%%sN%%` key, never by the heading shown, so the delivered heading is
-matched against the template as configured. The spec 045 info callout
-(`review_doc._callout`, which also shows the anchor) is not touched: the
-unmapped document is pinned byte for byte by its golden.
+matched against the template as configured.
+
+The info callout (`review_doc._callout`) shows the anchor too, and it is
+neutralised there only in a mapped document, the one rendered with section
+parts: only that document is read back by the T4.3 section parser, so only
+there could a forged `## z` line or `%%s7%%` id pass for structure. An
+unmapped document keeps the anchor raw, because CON-2 holds it byte-identical
+to the document spec 045 shipped (pinned by
+`tests/test_046_t4_2_unmapped_doc_golden.py` and by
+`test_the_unmapped_callout_keeps_the_anchor_raw_as_spec_045`). `render_document`
+picks the anchor and hands it to `_callout`; it calls `display_heading` through
+the `review_sections` module it already imports locally, since
+`review_sections` imports `review_doc` at module level and a top-level import
+the other way would be a cycle.

@@ -1,5 +1,5 @@
 # review_doc_parse.py — the edited review document of /review read back: Approved line, sections, items by id.
-# version: 0.4.0
+# version: 0.4.1
 """Parse the review document after the user edited it (spec 045, T3.7, PRD F5, ADR-9, ADR-13).
 
 ``parse_document`` reads the text of ``<period> Review.md`` and returns a
@@ -236,8 +236,8 @@ class _Sections:
         self.stray: Set[str] = set()
 
     def key_of(self, text: str) -> Optional[str]:
-        match = _SECTION_ID.search(text)
-        return match.group(1) if match and match.group(1) in self.expected else None
+        """The first ``%%sN%%`` on the line that is an expected key; an unlisted id before it is skipped."""
+        return next((m.group(1) for m in _SECTION_ID.finditer(text) if m.group(1) in self.expected), None)
 
     def checkbox(self, key: str, group: Optional[str], box: str) -> None:
         if group == key and key not in self.boxes:

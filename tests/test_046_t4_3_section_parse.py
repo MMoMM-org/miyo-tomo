@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t4_3_section_parse.py — the mapped review document read back by section (spec 046 T4.3).
 
 Documents are the T4.2 renderer's own output (``review-doc.py write`` on the
@@ -24,12 +24,16 @@ meta.json:
   mapped document reads as spec 045 did (the unmapped golden is
   test_046_t4_3_unmapped_parse_golden.py)
 - ``review_doc_read`` hands meta.json's ``pass1_sections`` to the parser;
-  ``review-doc.py parse`` names the stop and leaks no heading text.
+  ``review-doc.py parse`` warns ``section-checkbox-missing`` and leaks no
+  heading text
+- a Tomo id on a checkbox line is the checkbox's (the id counts as deleted);
+  the first expected ``%%sN%%`` on a line names the section.
 
 All data is synthetic.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,7 +49,7 @@ from lib import review_doc_parse as rdp  # noqa: E402
 from lib import review_sections as rs  # noqa: E402
 from lib.review_doc_read import read_document  # noqa: E402
 from test_046_t4_2_doc_sections import (  # noqa: E402
-    MARKER, WEEK_PROPS, WEEK_ROWS, _doc_input, inst, mapped_week, map_config, meta_of, row, run, script, section,
+    MARKER, WEEK_PROPS, WEEK_ROWS, _doc_input, inst, mapped_week, map_config, meta_of, row, script, section,
     write,
 )
 from test_review_doc import item  # noqa: E402
@@ -322,12 +326,36 @@ def test_read_document_hands_pass1_sections_to_the_parser(written):
     assert read.parsed.sections["s1"] is None and MISSING in read.parsed.warnings
 
 
-def test_the_parse_command_names_the_stop_and_leaks_no_heading(script, inst, monkeypatch, capsys):
+def test_the_parse_command_warns_section_checkbox_missing_and_leaks_no_heading(script, inst, monkeypatch, capsys):
     rows = [row("s1", MARKER + " heading", "end"), *WEEK_ROWS[1:]]
     map_config(inst, rows)
     props = {**WEEK_PROPS, "sections": [section("s1", item("eins", "2026-03-24"))]}
     _, out, fake = write(script, monkeypatch, capsys, inst, mapped_week(rows), props)
     path = out["doc_path"]
     fake.files[path] = edit(fake.text(path), "- [x] Abschnitt übernehmen %%s1%%\n", "")
-    code, result = run(script, monkeypatch, capsys, ["parse", "--stem", "2026-W13_review"], fake)
+    monkeypatch.setattr(script, "KadoClient", fake)
+    code = script.main(["--profiles-dir", "profiles", "parse", "--stem", "2026-W13_review"])
+    stdout, stderr = capsys.readouterr()
+    result = json.loads(stdout)
     assert code == 0 and MISSING in result["warnings"]
+    assert MARKER not in json.dumps(result, ensure_ascii=False) and MARKER not in stderr
+
+
+# ---------------------------------------------------------------- ids on the section lines
+
+def test_a_tomo_id_on_the_checkbox_line_is_read_as_the_checkbox(written):
+    text, meta = written
+    parsed = parse(edit(text, S1_BOX, S1_BOX + " %%t3%%"), meta)
+    assert parsed.sections["s1"] is True and parsed.section_problems == []
+    t3 = next(ln for ln in text.splitlines() if ln.endswith("%%t3%%"))
+    gone = parse(edit(edit(text, t3 + "\n", ""), S1_BOX, S1_BOX + " %%t3%%"), meta)
+    assert "t3" not in by_id(gone) and gone.counts()["deleted"] == 1      # the checkbox, never Tomo's item t3
+
+
+def test_a_heading_carrying_an_unlisted_key_before_the_expected_one_keeps_its_section(written):
+    text, meta = written
+    parsed = parse(edit(text, S1_HEAD, "## What Went Well This Week? %%s9%% %%s1%%"), meta)
+    assert parsed.sections["s1"] is True and parsed.section_problems == [] and parsed.warnings == []
+    assert by_id(parsed)["t1"].group == "s1"
+    boxed = parse(edit(text, S1_BOX, "- [x] Abschnitt übernehmen %%s9%% %%s1%%"), meta)
+    assert boxed.sections["s1"] is True and boxed.section_problems == []

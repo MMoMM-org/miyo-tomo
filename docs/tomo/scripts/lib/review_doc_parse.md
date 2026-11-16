@@ -282,7 +282,12 @@ user typed or copied one) is an ordinary heading, read by its label as
 before, so an unknown key is `unknown-group` with its items kept under
 `unknown` — the same answer as a renamed heading, and no new way to land
 text Tomo cannot place. A second heading with the same key continues that
-section, like a heading rendered twice (`duplicate-group`).
+section, like a heading rendered twice (`duplicate-group`). A line carrying
+several section ids is named by the first one that is an expected key, so a
+typed or copied `%%s9%%` in front of the rendered `%%s1%%` neither hides the
+section nor stops; two expected keys on one heading need no rule of their
+own — the second key's checkbox then stands outside its part and stops
+(`section-checkbox-missing`), so nothing lands by a guess.
 
 **The divider is a boundary that holds no items.** `%%review%%` on a heading
 ends the part before it; a checkbox line between the divider and the next
@@ -297,8 +302,10 @@ section named "Done" would break. It is not an item and never counts. It is
 valid only inside its own part (after the heading with the same key, before
 the next heading) and only once per key; where it stands inside the part
 does not matter, so an item the user moved above it still belongs to the
-section. Everything else is one stop, `section-checkbox-missing`, for the key
-it concerns:
+section. A Tomo id typed onto the checkbox line (`- [x] <label> %%s1%%
+%%t3%%`) does not make it an item: the line is the checkbox, so `t3` counts
+as deleted unless another line still carries it. Everything else is one
+stop, `section-checkbox-missing`, for the key it concerns:
 
 - no checkbox line for an expected key — deleted, or broken so it is no
   longer a column-0 checkbox carrying the id (indented, `-[x]`, `%%s1%`,

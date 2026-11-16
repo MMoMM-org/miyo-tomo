@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.6
+# version: 0.1.7
 """test_review_skill_pass2.py — spec 045 T5.2 / P5: the Pass 2 steps of the periodic-review skill.
 
 Continue (`parse`), preview, deliver and drop: every refusing problem of lib/review_delivery.REFUSING
@@ -106,8 +106,8 @@ PREVIEW_PROBLEMS = {
     "section-stops": ("- `section-missing`, `section-ambiguous`, `section-broken`, `section-moved`, "
                       "`block-in-review-section` or `landing-off-limits` with no other problem in `problems` → print "
                       "the plan as `ok` with empty `problems` below does, without its question; then per entry of "
-                      "`sections` with a `stop` one line in `<language>` (step 5): the section `<section heading>` "
-                      "(step 5) of its `key`, its `placement`, why it stops (its heading is not in the target note, is "
+                      "`sections` with a `stop` one line in `<language>` (`review.language` of "
+                      "`config/vault-config.yaml`, Read it): the section `<section heading>` (step 5) of its `key`, its `placement`, why it stops (its heading is not in the target note, is "
                       "there more than once, Tomo's earlier block in it is broken, the block was moved under "
                       "`block_at.heading`, the block sits inside the \"Tomo Review\" section, or it would land in an "
                       "off-limits section) and its `choices`: `skip` leaves the section out, `review` puts its items "

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_046_t5_6_skill_choices.py — the per-section choice dialogue of the periodic-review skill (spec 046 T5.6).
 
 PRD F4-AC4, F4-AC6, F5-AC3, F3-AC4, F3-AC5; SDD User Interface & UX ("per-section choices in the existing Deliver
@@ -9,8 +9,9 @@ Step". The full lines of the stop bullet, `choice-invalid`, `section-dropped`, `
 names the skill spells are the scripts'. What each test falsifies:
 
 - the empty-choices branch standing before the question (`test_a_stop_without_choices_ends_before_any_question`);
-- the question replacing `1 Deliver · 2 Abort` and ending the turn, answers rerunning `preview` with the flags
-  (`test_the_answers_rerun_preview_with_the_flags_and_go_to_deliver`);
+- the question replacing the first `1 Deliver · 2 Abort` and ending the turn, answers rerunning `preview` with the
+  flags and its `ok` ending in the Deliver question (`test_the_answers_rerun_preview_with_the_flags_and_end_in_the_deliver_question`);
+- `<language>` read from the config in step 7 itself (`test_the_stop_lines_language_is_read_where_it_is_used`);
 - the flag and choice spellings drifting from `review-instructions.py` / `lib/review_section_plan`
   (`test_the_flags_and_choices_the_skill_names_are_the_scripts`);
 - the stop lines coming after the plan and its notices (`test_the_stop_lines_follow_the_plan_and_its_notices`);
@@ -29,8 +30,8 @@ NO_CHOICES = "- An entry with empty `choices` → say that it can only be aborte
 QUESTION = ("- Otherwise ask per listed section for one of its `choices`, or 0 Abort, and end the turn. The answer → "
             "rerun `preview` with `--section-choice <key>=skip`, `--section-choice <key>=review` or `--confirm-moved "
             "<key>` per listed section, keep these flags for step 8 and branch on the rerun by this list; `ok` with "
-            "empty `problems` → print it as `ok` with empty `problems` does, then step 8 without asking again. "
-            "0 → stop.")
+            "empty `problems` → its bullet below, its question included. 0 → stop.")
+LANGUAGE = "one line in `<language>` (`review.language` of `config/vault-config.yaml`, Read it)"
 
 
 def test_a_stop_without_choices_ends_before_any_question():
@@ -40,12 +41,24 @@ def test_a_stop_without_choices_ends_before_any_question():
     assert text.index(QUESTION) < text.index("- `choice-invalid` →")
 
 
-def test_the_answers_rerun_preview_with_the_flags_and_go_to_deliver():
+def test_the_answers_rerun_preview_with_the_flags_and_end_in_the_deliver_question():
+    """The rerun with the choices is approved like any clean preview: its `ok` bullet asks `1 Deliver · 2 Abort`."""
     text = _section("7. Preview")
     stops = text[text.index(STOPS_HEAD):text.index("- `choice-invalid` →")]
-    assert "1 Deliver" not in stops, "the choice question replaces the Deliver question"
+    assert "1 Deliver" not in stops, "the choice question replaces the first Deliver question"
     assert "Nothing is delivered; stop." not in stops.replace(NO_CHOICES, "")
-    assert "end the turn" in QUESTION and "step 8 without asking again" in QUESTION
+    assert "end the turn" in QUESTION and "its bullet below, its question included" in QUESTION
+    assert "without asking again" not in text and "then step 8" not in QUESTION
+    ok_bullet = text[text.index("- `ok` with empty `problems` →"):]
+    assert "Then ask `1 Deliver · 2 Abort` and end the turn." in ok_bullet and "Deliver → step 8." in ok_bullet
+
+
+def test_the_stop_lines_language_is_read_where_it_is_used():
+    """Step 7 is reached by a later run in which step 5 never ran: `<language>` is defined in the stop bullet."""
+    bullet = _section("7. Preview")
+    bullet = bullet[bullet.index(STOPS_HEAD):bullet.index(NO_CHOICES)]
+    assert LANGUAGE in bullet
+    assert "`<language>` (step 5)" not in bullet
 
 
 def test_the_flags_and_choices_the_skill_names_are_the_scripts():
@@ -68,7 +81,7 @@ def test_the_stop_lines_follow_the_plan_and_its_notices():
     text = _section("7. Preview")
     bullet = text[text.index(STOPS_HEAD):text.index(NO_CHOICES)]
     assert bullet.index("print the plan as `ok` with empty `problems` below does, without its question") < \
-        bullet.index("then per entry of `sections` with a `stop` one line in `<language>` (step 5)")
+        bullet.index(f"then per entry of `sections` with a `stop` {LANGUAGE}")
     for named in ("`<section heading>` (step 5) of its `key`", "its `placement`", "its `choices`"):
         assert named in bullet, named
 

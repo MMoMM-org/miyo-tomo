@@ -716,12 +716,21 @@ the question, so the user reads what lands before deciding what does not. The st
 - **Naming.** A section is named by the configured heading of its `key` (step 5, the `review.<kind>.sections` row),
   never by `read.json`: `read.json` is model input that is never quoted (Rules), and a continued review (step 6) has
   not read it in this session. The `placement` is named because the same heading can take the review before, under or
-  at the end of it, and the user decides knowing where. The lines are said in `<language>` (step 5), the document's
-  language, like the document the user just edited.
+  at the end of it, and the user decides knowing where. The stop lines are said in `<language>`, the document's
+  language (`review.language` of `config/vault-config.yaml`), because they name the review document's sections as the
+  user just edited them. Step 7 defines `<language>` where it uses it and Reads the config: step 7 is normally reached
+  by a later `/review` run (step 6) in which step 5 never ran, so step 5's definition is not in that run. The question
+  after the stop lines (the choices, `0 Abort`) falls under the Rule "Ask in the language the user writes in", like
+  every other question; when the two languages differ, the stop lines follow the document and the question the user.
 - **Answers become flags; the same flags reach `deliver`.** `skip` / `review` are `--section-choice <key>=…`,
   `confirm-moved` is `--confirm-moved <key>` (SDD ADR-12). The skill reruns `preview` with them — the plan with the
-  choices taken is what the user is told about — and, when that preview has no problem, goes to step 8 without a second
-  Deliver question: the answer was the decision to deliver. `deliver` gets exactly the flags of the last preview, since
+  choices taken is what the user is told about — and branches on that rerun by the same list, as the heading pick does:
+  an `ok` with empty `problems` goes through the `ok` bullet, prints the plan with the choices taken and asks
+  `1 Deliver · 2 Abort`. The choice answer is not the decision to deliver: a `review` choice moves items into "Tomo
+  Review" and `confirm-moved` replaces a block where it sits now, and the user sees that final content before anything
+  is written (PRD F4-AC6: the preview is listed before asking Deliver or Abort; the project rule: never execute without
+  user approval). An earlier version went to step 8 without asking again, so the final plan was never approved; the
+  spec compliance review of T5.6 caught it. `deliver` gets exactly the flags of the last preview, since
   a differing set would plan a different set than the one shown. Beside any other problem only that problem's line
   applies: every other problem stops or asks first, and choices answer a plan that is otherwise deliverable.
 - **`choice-invalid`** means a choice no longer answers a stop of its section: the note changed between the preview and

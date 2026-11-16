@@ -413,6 +413,7 @@ tomo/
         ├── review_section_plan.py               # NEW
         ├── review_hashi_text.py                 # NEW (spec 046 T5.2): the Hashi-parse mirror and item lines, split out of review_actions
         ├── review_new_note.py                   # NEW (spec 046 T5.2): new-note text (template choice, splice, stamp), split out of review_actions
+        ├── review_section_set.py                # NEW (spec 046 T5.4): the delivery's sections as a set (plan per row, routing, parts, splice) and the I01…In composition
         ├── review_children.py                   # NEW
         ├── review_read_parts.py                 # NEW (spec 046 T3.4): read*.json layout, quarter split per month, loader
         ├── period.py                            # MODIFY: QUARTER, Q token, months(), parsing
@@ -449,6 +450,7 @@ docs/tomo/
     ├── review_section_plan.md                   # NEW
     ├── review_hashi_text.md                     # NEW (T5.2)
     ├── review_new_note.md                       # NEW (T5.2)
+    ├── review_section_set.md                    # NEW (T5.4)
     ├── review_children.md                       # NEW
     └── review_read_parts.md                     # NEW (T3.4)
 ```

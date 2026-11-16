@@ -157,6 +157,48 @@ listing's `applied_reported` filter part of the classifier instead was
 rejected: `status` answers `applied` for a reported stem by design (see
 "WHY `applied` Is Offered Once, and the Listing Applies It").
 
+## WHY a Partly Applied Set Reads `open` (spec 046 T5.4, ADR-12)
+
+WHY: a mapped delivery into an existing note is a set of several actions
+(`I01…In`: the sections, then "Tomo Review"), and Hashi resolves each on
+its own — one section can fail (its heading was renamed, its markers were
+edited) while the others land. Hashi writes `applied: true` only for an
+action it applied, so a failed one stays unflagged. Before spec 046 such a
+set read `delivered` ("waits for Hashi or by hand; no second set is
+delivered"), and the next `/review` of the period met `set-exists` and
+`drop` met `already-applied`: the review was stuck (SDD research finding,
+README Decisions Log 2026-11-14). ADR-12 says a set with any applied
+action can be overwritten by a new delivery, so the listing must offer
+one. `partly_applied` (step 6a: some actions applied, not all — `any_applied`
+and not `all_applied`) therefore reads `open`, the state whose offers lead
+there: Continue runs step 6 (parse) and step 7 (preview), which re-plans
+from the note as it is — the landed sections become `replace`, the failed
+one is planned again or stops for the user's choice — and step 8 delivers
+the new set over the old one (`_overwrite_step` with the `modified` guard,
+wired by T5.5); Start over and Abort keep their meaning.
+
+Step 6a sits after step 6 (every action applied → `applied`) and before
+the probes of steps 7 and 8: no partly applied set needs a probe, and
+`stem_state` returns `open` without a Kado call. A partly applied set can
+only be a multi-action set into an existing note (a new note's set is one
+`move_note`), so `move-refused` is never shadowed. A begun delivery without
+`doc_mark` over such a set is still `failed-delivery` (step 3 comes first):
+the resume of that delivery is the open question there, not the old set.
+
+The alternatives were rejected. A seventh state (`partly-applied`) needs
+its own offer in the skill (`tests/test_review_skill.py` pins the skill's
+offers to `STATES`), and its offer would be `open`'s Continue — the same
+path under a second name, the reason the earlier seventh states were
+rejected above. `failed-delivery` offers Resume and Drop: Resume runs
+`deliver` straight away, without the preview that shows the user the
+re-plan and its stops, and the delivery it would resume had finished
+(`doc_mark` recorded). Keeping `delivered` keeps the dead end.
+
+`SECTION_ACTIONS` names the action kinds that write into an existing note
+— `insert_under_marker`, `replace_section` and, since spec 046,
+`replace_between_markers` — so step 8 (`target-missing`) and the probe in
+`stem_state` treat a section's own action like the "Tomo Review" action.
+
 ## WHY a Complete Delivery Whose Set Is Gone Is Finished, Not Failed (Phase 6, pre-live-walk)
 
 WHY: owner decision 2026-11-12. The "approved document without a set →

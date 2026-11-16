@@ -183,10 +183,21 @@ goes in that text (`_insertion`, shared with an existing note), plans the
 sections on it (`_sectioned`) and emits the `move_note`: those steps read and
 write `ReviewPlan`, so they stay beside it.
 
-## WHY the Set Holds One Action
+## WHY the Set Holds One Action per Landing Part (spec 046 T5.4, ADR-12)
 
-An existing target gets one `insert_under_marker` or one `replace_section`;
-a new note gets one `move_note` — the section is already inside the note.
+Without a mapping an existing target gets one `insert_under_marker` or one
+`replace_section`; a new note gets one `move_note` — the section (and with
+a mapping every spliced block) is already inside the note. With a mapping
+an existing note gets one action per section that lands as its own block
+(`insert_under_marker` or `replace_between_markers`), in mapping order,
+then the "Tomo Review" action when anything is left for it, numbered
+`I01…In` by `review_section_set.compose` (docs/tomo/scripts/lib/review_section_set.md,
+"WHY Ids Are Dense Over the Emitted Actions"). The section actions are
+composed on every path that does not refuse the "Tomo Review" part —
+also when "Tomo Review" itself emits nothing (`review-section-kept`, or no
+content for a new one), because a section's block does not depend on it.
+A refused "Tomo Review" part (a plan problem) leaves the set empty: the
+delivery is refused as a whole, as in spec 045.
 Hashi's `move_note` refuses when source and destination both exist
 (`moveNote.ts:71`), which is the "the user created the note in the meantime"
 guard of F6-AC4; Tomo's side of it is choosing the existing note at delivery
@@ -238,8 +249,10 @@ line to land.
 (`SectionPlan.escaped_lines` of every `insert`), because those blocks are
 written with the note. It is recomputed from the groups' count on every
 planning, so the fallback that re-plans a new note on the plain note counts
-each line once. An existing note's `insert`/`replace` blocks are counted
-when their actions are composed (T5.4), not before.
+each line once. An existing note's `insert`/`replace` blocks land as actions
+of their own (T5.4), so their escapes count too
+(`review_section_set.landed_escapes`; docs/tomo/scripts/lib/review_section_set.md,
+"WHY Every Landed Block's Escapes Are Counted Once").
 
 ## WHY "Tomo Review" Holds Analysis Rows, Routed Sections, Then the Groups
 
@@ -249,7 +262,7 @@ sub-heading inside "Tomo Review" (F2-AC12). A routed section has no
 heading in the note to land under. Both become sub-parts at the Tomo
 Review level + 1 in mapping order, before spec 045's groups; the habits
 stay a group and so stay in "Tomo Review" (F2-AC7). The sub-parts are built
-by `review_section_plan.review_parts`.
+by `review_section_set.review_parts`.
 
 ## WHY Sections Are Planned Before the "Tomo Review" Insertion Point
 
@@ -318,4 +331,7 @@ needed the section planner. The Hashi mirror moved to
 `lib/review_new_note.py`; imports now go one way —
 `review_actions` → `review_new_note` → `review_section_plan` →
 `review_hashi_text` — and no compatibility names are re-exported here, so a
-caller names the module that owns what it uses.
+caller names the module that owns what it uses. T5.4 added
+`lib/review_section_set.py` between `review_new_note` and
+`review_section_plan` for the set-level steps and the composition
+(docs/tomo/scripts/lib/review_section_set.md, "WHY a Module of Its Own").

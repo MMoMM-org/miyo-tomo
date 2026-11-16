@@ -249,6 +249,6 @@ its landing line must say so before the user approves. For a new target
 (and only with a mapping) `write` reads the configured template and its
 `_tomo` variant (`review_delivery.template_paths`), chooses one by spec
 045's rule (`review_new_note.template_choice`) and marks the parts
-`review_section_plan.routed_keys` names. That is one or two Kado reads per
+`review_section_set.routed_keys` names. That is one or two Kado reads per
 new-note run; the template text goes nowhere but that call. An existing
 note needs no read: its routing depends on the user's Pass 2 choices.

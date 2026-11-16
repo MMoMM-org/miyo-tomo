@@ -15,8 +15,9 @@ planning the sections, the `move_note`) stay in `review_actions`, because
 `_insertion` and `_sectioned` serve the existing note too; moving them here
 would make this module import `review_actions` while `review_actions` calls
 it, the cycle the split removes. So this module takes plain values and
-returns text: `review_actions` → `review_new_note` → `review_section_plan` →
-`review_hashi_text`, never back. Pass 1 (`review-doc.py`) and Pass 2
+returns text: `review_actions` → `review_new_note` → `review_section_set` →
+`review_section_plan` → `review_hashi_text`, never back (the splice helper
+`splice_blocks` lives in `review_section_set` since T5.4). Pass 1 (`review-doc.py`) and Pass 2
 (`review-instructions.py`) build the `Template` record and use
 `template_choice` from here, so both passes pick the same text.
 

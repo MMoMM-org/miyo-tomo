@@ -151,70 +151,11 @@ A replace overwrites whatever the user edited inside Tomo's block; the
 preview says so (`block-replaced`). A confirmed moved block is replaced
 where it now sits; the preview names that (`block-moved-confirmed`).
 
-## WHY a New Note Runs the Same `plan_section` (spec 046 T5.2, F4-AC5)
+## WHY the Set-Level Steps Live in `review_section_set` (spec 046 T5.4)
 
-A new note is built by Tomo, not by Hashi: the set holds one `move_note`
-and the note text already carries every block. `plan_new_note` still runs
-`plan_section` on the text `review_new_note.template_choice` chose by spec
-045's Templater rule (the `_tomo` variant, else the template as it is), so
-a new note and
-an existing note answer "where does this section go" by one rule, and the
-block Tomo splices is the block the next run finds with both markers. The
-splice index is `SectionPlan.insert_at` — the line Hashi's `before` /
-`after` / `inside` would insert at — so the spliced note is the note Hashi
-would produce from the same insert.
-
-## WHY a New Note Routes Instead of Stopping
-
-On an existing note a missing or doubled heading is a stop the user
-answers (Rule 9). A new note has no user text yet; its headings are the
-template's. A heading the template lacks, holds twice (Hashi's anchor and
-the next run's scope would take the first), or holds only inside a
-multi-line Templater span (`template_syntax.templater_inner_line_indexes`:
-the heading does not exist until Templater runs, and splicing there would
-write into Templater code) is routed to "Tomo Review" without a question:
-`plan_section` is called with the choice `review`, so the stop answers
-itself, and an `insert` whose heading sits in a Templater span becomes
-`review` too. Only an explicit `skip` from the user overrides the routing.
-Without a template (a plain note) every section placed in the note routes.
-Every other stop (`landing-off-limits`, `section-broken`) stays a stop: the
-template was checked at setup, but the variant can differ.
-
-## WHY `review_at` Is None on a New Note, and Blocks Go Above "Tomo Review"
-
-`review_at` exists because Hashi orders two inserts at one index by kind,
-not by Tomo's wish. On a new note Tomo splices every block itself, so it
-decides the order: at the same index a section block goes above the "Tomo
-Review" section. Everything below the Tomo Review heading up to the next
-heading of its level or higher is Tomo Review's body, so a block placed
-below it would sit inside the range its own `replace_section` rewrites on
-the next run (and the next run would stop it as `block-in-review-section`).
-`splice_blocks` applies the inserts from the last index to the first, so
-earlier indexes stay valid, and keeps the order it is given at one index.
-
-## WHY `routed_keys` Exists for Pass 1
-
-The landing line of a section part says where it lands before the user
-approves anything (F4-AC5: "naming them in their landing lines before
-delivery"). For a new note Pass 1 already knows everything routing depends
-on — the template text and the rows; items play no part — so
-`review-doc.py write` calls `routed_keys` on the chosen template and marks
-those parts `routed`. For an existing note routing depends on stops the
-user answers in Pass 2 (`--section-choice <key>=review`), so Pass 1 leaves
-`routed` false and the Pass 2 preview names the stop. Pass 2 is the
-authority either way: the note may be created, or the template changed,
-between the two passes, and the preview shows the plan Pass 2 built.
-
-## WHY the "Tomo Review" Sub-Parts Are Built Here
-
-`review_parts` turns the analysis rows (placement `review`, F2-AC12) and
-the routed sections into the sub-parts `review_actions.render_section`
-renders under the Tomo Review heading at its level + 1, like the groups.
-Mapping order, analysis and routed rows interleaved as configured, then
-the groups: the rows are the user's order (ADR-12), the groups are spec
-045's. The sub-heading is the row's heading through
-`review_sections.display_heading` (one line, no `%%` span), so config text
-never forms an id or a marker. Item lines go through `block_lines`, which
-escapes marker text: a routed item quoting a section marker would
-otherwise make that section's next run `section-broken`. An empty section
-leaves no sub-heading, like an empty group.
+Planning every row of a delivery, the new note's routing, `routed_keys`,
+the "Tomo Review" sub-parts and `splice_blocks` sat at the end of this
+module until T5.4; they moved to `lib/review_section_set.py` with the
+composition of the set's actions, so this module keeps room for the
+per-section rules (docs/tomo/scripts/lib/review_section_set.md, "WHY a
+Module of Its Own"). Their WHY sections moved with them.

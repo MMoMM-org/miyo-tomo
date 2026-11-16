@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass 1 — proposals and the review document by section"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---

@@ -233,6 +233,14 @@ taken out and spec 045's output is byte-identical (CON-2).
 `nothing-to-deliver` refuses only when neither a group nor a section has a
 line to land.
 
+`escaped_lines` counts every escaped line that lands: the groups', the
+"Tomo Review" sub-parts', and on a new note the blocks spliced into it
+(`SectionPlan.escaped_lines` of every `insert`), because those blocks are
+written with the note. It is recomputed from the groups' count on every
+planning, so the fallback that re-plans a new note on the plain note counts
+each line once. An existing note's `insert`/`replace` blocks are counted
+when their actions are composed (T5.4), not before.
+
 ## WHY "Tomo Review" Holds Analysis Rows, Routed Sections, Then the Groups
 
 An analysis row's heading is script-only (dataview, tracker); writing into

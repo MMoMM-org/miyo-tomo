@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """test_046_t5_2_new_note_sections.py — new notes, analysis rows and the "Tomo Review" interplay (046 T5.2).
 
 PRD F4-AC5, F2-AC12, F2-AC7; SDD Runtime View / Complex Logic "New note", the off-limits landing
@@ -361,3 +361,20 @@ def test_a_block_at_tomo_reviews_own_index_goes_above_it_and_the_next_run_still_
     assert lines.index(rsp.end_marker("s1", PERIOD)) < lines.index(f"## {HEADING}") < lines.index("## Energy and Sleep")
     again = plan(review=approved(rows, {"s1": ["neu"]}), target_text=p.note_text, rows=rows, setup=s)
     assert modes(again) == {"s1": "replace"} and again.problems == []
+
+
+def test_a_spliced_blocks_escape_is_counted_in_a_new_notes_preview_once_also_when_planned_twice():
+    """A new note's spliced block lands its escaped line, so the preview counts it — exactly once, also after
+    the unmergeable-template fallback plans the sections a second time (on the plain note, routed)."""
+    rows = [row("s1", "Highlights", "end")]
+    review = approved(rows, {"s1": ["x"]}, groups={}, habits=False)
+    review["groups"]["s1"][0]["text"] = "quote %% tomo:s4 2026-W13 %% here"   # set on the record directly
+    p = plan(review=review, rows=rows)
+    [s1] = p.sections
+    assert s1.mode == "insert" and s1.escaped_lines == 1
+    assert "- quote %% tomo\\:s4 2026-W13 %% here" in body(p)
+    assert p.preview()["escaped_lines"] == 1
+    unmergeable = "---\ntomo:\n  x: 1\n---\n" + TEMPLATE_TEXT
+    again = plan(review=review, rows=rows, template=rnn.Template(raw=unmergeable))
+    assert again.template_unmergeable and modes(again) == {"s1": "review"}
+    assert again.preview()["escaped_lines"] == 1

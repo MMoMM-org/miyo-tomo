@@ -1,5 +1,5 @@
 # review_actions.py — the instruction set a /review delivery writes: where the section lands and what it holds.
-# version: 0.6.0
+# version: 0.6.1
 """Build the delivery plan of an approved review (spec 045; PRD F4-AC7, F5-AC3 to F5-AC7,
 F6-AC3; SDD "the review section and the heading-level rule", ADR-3, ADR-8, ADR-13).
 
@@ -294,6 +294,8 @@ def _sectioned(plan: ReviewPlan, setup: rc.ReviewSetup, text: Optional[str], per
         plan.sections = rsp.plan_existing(setup.sections, text, period, mapped.items, choices=mapped.choices,
                                           off_limits=setup.off_limits, review_at=review_at)
     parts, escaped = rsp.review_parts(setup.sections, plan.sections, mapped.items)
+    if new_note:                               # the inserts are spliced into the new note: their escapes land
+        escaped += sum(p.escaped_lines for p in plan.sections if p.mode == rsp.INSERT)
     plan.escaped_lines = mapped.escaped + escaped
     return parts + list(groups)
 
